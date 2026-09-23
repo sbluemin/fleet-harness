@@ -3,7 +3,7 @@ import type { GatewayRequestPolicy } from "../../router/request-policy.js";
 /**
  * Codex receives Claude Code's own search tools.
  *
- * Web Search stays withheld — that one is Claude- and Kimi-owned, and no Codex model
+ * Web Search stays withheld — that one is Claude-owned, and no Codex model
  * can service a call to it.
  *
  * Anthropic's client identity and billing blocks go as well: a GPT model is not Claude

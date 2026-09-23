@@ -32,7 +32,6 @@ export * from "./upstream/anthropic/quota.js";
 export * from "./upstream/anthropic/credentials.js";
 export * from "./upstream/codex/quota.js";
 export * from "./upstream/cursor/quota.js";
-export * from "./upstream/kimi/quota.js";
 export * from "./upstream/opencode-go/quota.js";
 export * from "./upstream/xai/index.js";
 export * from "./canonical/index.js";
@@ -80,7 +79,6 @@ export * from "./settings/store.js";
 export * from "./upstream/opencode-go/index.js";
 export * from "./upstream/codex/credentials.js";
 export * from "./upstream/codex/responses/index.js";
-export * from "./upstream/kimi/index.js";
 export * from "./transport/sse-keepalive.js";
 export {
   DEFAULT_MAX_IN_FLIGHT_PER_ORIGIN,
@@ -111,9 +109,6 @@ export {
 } from "./downstream/harness/claude-code/context.js";
 
 export {
-  KIMI_AUTH_PROVIDER_ID,
-  KIMI_CODE_API_BASE_URL,
-  KIMI_CODE_MODEL,
   OPENCODE_AUTH_PROVIDER_ID,
   OPENCODE_GO_API_BASE_URL,
   OPENCODE_GO_MODEL,
@@ -121,7 +116,6 @@ export {
   TYPESAFE_AUTH_PROVIDER_ID,
   TYPESAFE_DEFAULT_MODEL,
   TYPESAFE_MODELS,
-  validateKimiAuthKey,
   validateOpencodeGoAuthKey,
   validateTypesafeAuthKey,
 } from "./fleet/auth.js";

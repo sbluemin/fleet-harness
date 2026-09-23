@@ -33,11 +33,6 @@ import { resolveCursorCredentials } from "../upstream/cursor/credentials.js";
 import { resolveXaiCliCredentials } from "../upstream/xai/credentials.js";
 import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
 import {
-  kimiAnthropicHeaders,
-  kimiRequestBody,
-  KIMI_MESSAGES_URL,
-} from "../upstream/kimi/anthropic/index.js";
-import {
   GATEWAY_MODELS,
   upstreamModelId,
 } from "../models.js";
@@ -82,7 +77,6 @@ export type PassthroughRelay = Pick<
 >;
 
 export { OPENCODE_GO_MESSAGES_URL as OPENCODE_MESSAGES_URL } from "../upstream/opencode-go/index.js";
-export { KIMI_MESSAGES_URL } from "../upstream/kimi/anthropic/index.js";
 export { ANTHROPIC_MESSAGES_URL } from "../upstream/anthropic/native.js";
 
 export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
@@ -207,7 +201,6 @@ export interface AiGatewayRouteDeps {
    * for every provider that cannot renew on demand.
    */
   readonly renewAntigravityToken?: () => string | null | Promise<string | null>;
-  readonly readKimiApiKey?: () => Promise<string | undefined>;
   readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   readonly readModelOverride?: () => string | undefined;
   /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
@@ -587,13 +580,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       }
       credential = auth.accessToken;
       chatgptAccountId = auth.accountId;
-    } else if (target?.provider === "kimi") {
-      const kimiApiKey = await deps.readKimiApiKey?.();
-      if (!kimiApiKey) {
-        writeAnthropicError(res, 401, "authentication_error", "No Kimi API key was found. Sign in to Kimi Code first.");
-        return true;
-      }
-      credential = kimiApiKey;
     } else if (target?.provider === "opencode") {
       const opencodeApiKey = await deps.readOpencodeApiKey?.();
       if (!opencodeApiKey) {
@@ -644,20 +630,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         ...(passthroughProjection ? { projectResponseBody: passthroughProjection } : {}),
         ...(harness.retryableStatus ? { retryableStatus: harness.retryableStatus } : {}),
       };
-      if (target.provider === "kimi") {
-        await proxyToKimi(
-          req.headers,
-          res,
-          body,
-          upstreamModelId(target),
-          claudeContextWindow,
-          passthroughRelay,
-          credential,
-          fetchImpl,
-          controller.signal,
-        );
-        return true;
-      }
       if (target.provider === "opencode" && isOpencodeAnthropicPassthrough(target)) {
         await proxyToOpencode(
           req.headers,
@@ -898,34 +870,6 @@ async function proxyToAnthropic(
     signal,
     url: ANTHROPIC_MESSAGES_URL,
     wireEventLabel: "anthropic.wire.event",
-  });
-}
-
-async function proxyToKimi(
-  requestHeaders: Record<string, unknown>,
-  res: GatewayProxyResponse,
-  body: AnthropicMessagesRequest,
-  model: string,
-  contextWindow: number | undefined,
-  projection: PassthroughRelay,
-  apiKey: string,
-  fetchImpl: typeof fetch,
-  signal: AbortSignal,
-): Promise<void> {
-  // 헤더·본문 정책은 core-ai-gateway가 소유한다. 여기는 요청을 실어 보낼 뿐이다.
-  const headers = kimiAnthropicHeaders(requestHeaders, apiKey);
-  // 클라이언트 요청 model은 provider wire id로 재작성되기 전 원본을 에코용으로 남긴다.
-  const responseModel = typeof body.model === "string" ? body.model : undefined;
-  await proxyAnthropicMessages(res, kimiRequestBody(body, model), {
-    contextWindow,
-    ...projection,
-    responseModel,
-    keepAlive: true,
-    fetchImpl,
-    headers,
-    signal,
-    url: KIMI_MESSAGES_URL,
-    wireEventLabel: "kimi-anthropic.wire.event",
   });
 }
 

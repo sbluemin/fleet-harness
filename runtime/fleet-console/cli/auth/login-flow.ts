@@ -1,6 +1,6 @@
 import { cancel, isCancel, password, select } from "@clack/prompts";
 import type { AuthService } from "@fleet-console/ai-gateway";
-import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, validateKimiAuthKey, validateOpencodeGoAuthKey, validateTypesafeAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
+import { OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, validateOpencodeGoAuthKey, validateTypesafeAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
 
 export interface AuthCommandDeps {
   readonly authService: AuthService;
@@ -11,7 +11,7 @@ export interface AuthCommandIo {
   readonly stderr: Pick<NodeJS.WriteStream, "write">;
 }
 
-export type AuthCliId = "kimi" | "opencode" | "typesafe";
+export type AuthCliId = "opencode" | "typesafe";
 
 interface AuthCliDefinition {
   readonly label: string;
@@ -22,12 +22,6 @@ interface AuthCliDefinition {
 }
 
 export const AUTH_CLI_DEFINITIONS: Readonly<Record<AuthCliId, AuthCliDefinition>> = {
-  kimi: {
-    label: "Kimi for AI Gateway",
-    shortName: "Kimi",
-    providerId: KIMI_AUTH_PROVIDER_ID,
-    validate: validateKimiAuthKey,
-  },
   opencode: {
     label: "OpenCode Go for AI Gateway",
     shortName: "OpenCode Go",

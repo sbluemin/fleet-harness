@@ -14,7 +14,7 @@ export type { GatewayProxyResponse };
 /**
  * Anthropic passthrough 공용 프리미티브.
  *
- * upstream wire가 downstream wire와 같은 공급자(Kimi, OpenCode Go의 Anthropic 모델,
+ * upstream wire가 downstream wire와 같은 공급자(OpenCode Go의 Anthropic 모델,
  * 네이티브 Anthropic)는 canonical 번역 없이 요청 본문과 응답 스트림을 그대로 중계한다.
  * 그 경로가 공유하는 전송·정규화 조각들이 여기 모여 있고, provider별 본문 성형(모델
  * 재작성·effort 정책)은 각 소유 모듈에 남는다.

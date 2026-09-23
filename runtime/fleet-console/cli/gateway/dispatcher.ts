@@ -7,7 +7,7 @@ import {
   type AiGatewaySettingsStore,
   type AuthService,
 } from "@fleet-console/ai-gateway";
-import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
+import { OPENCODE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
 import { getFleetDataDir } from "@fleet-console/infra";
 
 import { createConsoleDataPaths } from "../../core/host/bootstrap/paths.js";
@@ -168,11 +168,6 @@ async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly Ga
       provider: "opencode",
       source: "api-key",
       state: signedIn.has(OPENCODE_AUTH_PROVIDER_ID) ? "present" : "absent",
-    },
-    {
-      provider: "kimi",
-      source: "api-key",
-      state: signedIn.has(KIMI_AUTH_PROVIDER_ID) ? "present" : "absent",
     },
   ];
 }

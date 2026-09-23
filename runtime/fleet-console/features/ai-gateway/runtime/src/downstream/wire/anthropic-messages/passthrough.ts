@@ -10,8 +10,8 @@ import type {
  * 도구는 eager로 펼치고 tool_reference 결과 블록과 tool_addition/tool_removal 블록은
  * 텍스트로 강등한다.
  *
- * Anthropic-wire passthrough 모델(Kimi, OpenCode Go native)과 번역 모델 공통의
- * 프로토콜 정규화로, provider 소유 본문 정책(opencodeRequestBody, kimiRequestBody)이
+ * Anthropic-wire passthrough 모델(OpenCode Go native)과 번역 모델 공통의
+ * 프로토콜 정규화로, provider 소유 본문 정책(opencodeRequestBody)이
  * 이 위에서 구성된다.
  */
 export function eagerAnthropicRequestBody(

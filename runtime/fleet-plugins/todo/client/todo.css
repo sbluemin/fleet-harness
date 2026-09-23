@@ -441,7 +441,6 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-menu-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .todo-menu-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .todo-menu-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
-.todo-menu-provider.is-kimi { --launch-provider-tone: var(--provider-kimi); }
 .todo-menu-track { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px var(--space-2) 10px; }
 .todo-menu-track .effort-track-value { display: none; }
 .todo-menu-effort-word { font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass); }

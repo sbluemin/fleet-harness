@@ -1,7 +1,7 @@
-import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, TYPESAFE_MODELS } from "@fleet-console/ai-gateway";
+import { OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, TYPESAFE_MODELS } from "@fleet-console/ai-gateway";
 import type { AuthService } from "@fleet-console/ai-gateway";
 
-export type TerminalModelAuthProviderId = "kimi" | "opencode" | "typesafe";
+export type TerminalModelAuthProviderId = "opencode" | "typesafe";
 
 /**
  * 자격증명이 무엇에 쓰이는지. `model-provider`는 모델 카탈로그에 좌석을 가진 공급자라
@@ -34,13 +34,11 @@ export interface TerminalModelAuthState {
 
 /** Route provider id → persisted auth-store provider id. */
 export const MODEL_AUTH_STORE_IDS: Readonly<Record<TerminalModelAuthProviderId, string>> = Object.freeze({
-  kimi: KIMI_AUTH_PROVIDER_ID,
   opencode: OPENCODE_AUTH_PROVIDER_ID,
   typesafe: TYPESAFE_AUTH_PROVIDER_ID,
 });
 
 const MODEL_AUTH_KINDS: Readonly<Record<TerminalModelAuthProviderId, TerminalModelAuthProviderKind>> = Object.freeze({
-  kimi: "model-provider",
   opencode: "model-provider",
   typesafe: "service",
 });
@@ -50,7 +48,6 @@ const MODEL_AUTH_SERVICE_MODELS: Readonly<Partial<Record<TerminalModelAuthProvid
 });
 
 const MODEL_AUTH_DISPLAY_NAMES: Readonly<Record<TerminalModelAuthProviderId, string>> = Object.freeze({
-  kimi: "Kimi for AI Gateway",
   opencode: "OpenCode Go for AI Gateway",
   typesafe: "TypeSafe",
 });

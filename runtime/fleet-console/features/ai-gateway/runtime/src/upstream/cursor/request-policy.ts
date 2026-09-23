@@ -10,7 +10,7 @@ import type { GatewayRequestPolicy } from "../../router/request-policy.js";
  * schema directly and leaves the redirect as the fallback for a native call it makes
  * anyway, so the two paths cover each other instead of competing.
  *
- * Web Search stays withheld — that one is Claude- and Kimi-owned, and no Cursor model
+ * Web Search stays withheld — that one is Claude-owned, and no Cursor model
  * can service a call to it.
  *
  * Anthropic's client identity and billing blocks go as well, and reselling Claude seats

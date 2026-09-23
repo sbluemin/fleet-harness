@@ -26,7 +26,6 @@ const UPSTREAM_FOLDERS = [
   "antigravity",
   "codex",
   "cursor",
-  "kimi",
   "opencode-go",
   "typesafe",
   "xai",
@@ -37,7 +36,6 @@ const GATEWAY_PROVIDER_FOLDERS = [
   "antigravity",
   "codex",
   "cursor",
-  "kimi",
   "opencode-go",
   "xai",
 ] as const;
@@ -377,8 +375,7 @@ describe("core-ai-gateway direction boundaries", () => {
   });
 
   it("lets an upstream provider borrow only the shared inbound wire modules", () => {
-    // The two providers whose upstream wire IS the downstream wire — Kimi and OpenCode
-    // Go's Anthropic models — relay a caller request without translating it, so they
+    // OpenCode Go's Anthropic models relay the downstream wire without translating it, so they
     // speak the same normalization. Nothing else downstream is shared: a harness dialect
     // is never an upstream concern.
     for (const file of listTsFiles(srcDir)) {
@@ -469,7 +466,6 @@ describe("core-ai-gateway direction boundaries", () => {
       "antigravity",
       "codex",
       "cursor",
-      "kimi",
       "opencode-go",
       "xai",
       "openai-chat-adapter.ts",
@@ -564,12 +560,12 @@ describe("gateway module specifier extraction", () => {
     expect(moduleSpecifiers(`
       type T = import("../../codex/x.js").T;
       const r = require("../cursor/y.js");
-      const cr = createRequire(import.meta.url)("../../kimi/z.js");
+      const cr = createRequire(import.meta.url)("../../opencode-go/z.js");
       import { E } from "./e.js";
     `)).toEqual([
       "../../codex/x.js",
       "../cursor/y.js",
-      "../../kimi/z.js",
+      "../../opencode-go/z.js",
       "./e.js",
     ]);
   });
@@ -578,12 +574,12 @@ describe("gateway module specifier extraction", () => {
     expect(moduleSpecifiers(`
       const a = import(\`../../codex/x.js\`);
       const r = require(\`../cursor/y.js\`);
-      const cr = createRequire(import.meta.url)(\`../../kimi/z.js\`);
+      const cr = createRequire(import.meta.url)(\`../../opencode-go/z.js\`);
       const dyn = import(\`../\${name}.js\`);
     `)).toEqual([
       "../../codex/x.js",
       "../cursor/y.js",
-      "../../kimi/z.js",
+      "../../opencode-go/z.js",
     ]);
   });
 

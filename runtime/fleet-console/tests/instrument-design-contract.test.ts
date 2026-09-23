@@ -1490,7 +1490,7 @@ describe("Instrument core design contract", () => {
     // 공급자 색 대조표는 --provider-* 축 하나다. 표에서 빠진 공급자는 컴파일도 렌더도 실패하지
     // 않고 조용히 회색으로 떨어지며, AI Gateway 칩의 경우 톤이 미정의라 color-mix()가 통째로
     // 무효화되어 테두리·배경까지 사라진다 — 같은 공급자가 두 화면에서 다른 마크로 읽힌다.
-    const providers = ["antigravity", "codex", "cursor", "kimi", "opencode", "xai"] as const;
+    const providers = ["antigravity", "codex", "cursor", "opencode", "xai"] as const;
     const theme = source("styles/theme.css");
     for (const provider of providers) {
       expect(theme).toMatch(new RegExp(`--provider-${provider}: oklch\\(`));
@@ -4340,7 +4340,7 @@ describe("Effort track interaction grammar", () => {
       /\.quick-launch-command-row\[data-effort-level="auto"\] \.quick-launch-mention-name \{[^}]*text-decoration: underline dashed;/,
     );
 
-    // 문구는 실제로 열리는 단에서 유도한다 — max만 내놓는 모델(Codex Luna 계열·Kimi K3 등)에서
+    // 문구는 실제로 열리는 단에서 유도한다 — max만 내놓는 모델(Codex Luna 계열 등)에서
     // 고정 문구는 열리지 않는 단을 약속한다. 세 표면(덱 문 행·바 트랙·캔버스 트랙)이 같은 유도를
     // 쓰므로 문구가 갈라지지 않는다.
     const common = source("i18n/messages/common.ts");

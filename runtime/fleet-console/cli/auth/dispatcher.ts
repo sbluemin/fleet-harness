@@ -13,9 +13,9 @@ import {
 const AUTH_HELP_TEXT = `fleet gateway auth — AI Gateway provider authentication
 
 Usage:
-  fleet gateway auth login [kimi|opencode|typesafe]
+  fleet gateway auth login [opencode|typesafe]
   fleet gateway auth list
-  fleet gateway auth logout [kimi|opencode|typesafe]
+  fleet gateway auth logout [opencode|typesafe]
 
 Codex, Cursor, and xAI use their own subscription credentials.
 Run fleet gateway status to see whether each one was found.

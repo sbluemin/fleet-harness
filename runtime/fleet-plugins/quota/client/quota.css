@@ -473,10 +473,6 @@
   color: var(--provider-cursor);
 }
 
-.quota-provider__mark--kimi {
-  color: var(--provider-kimi);
-}
-
 .quota-provider__mark--opencode {
   color: var(--provider-opencode);
 }

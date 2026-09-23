@@ -9,16 +9,13 @@ interface WriteJsonCall { readonly status: number; readonly body: unknown }
 interface RouterHarnessOptions {
   readonly authorized?: boolean;
   readonly signedIn?: boolean;
-  readonly opencodeSignedIn?: boolean;
   readonly body?: unknown;
   readonly validationStatus?: "success" | "unauthorized" | "network";
 }
 
 const BASE_PATH = "/api/v1";
-const KIMI_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 const OPENCODE_PROVIDER_ID = "Claude Code with OpenCode Go";
 const TYPESAFE_PROVIDER_ID = "Fleet Console with TypeSafe System One";
-const KIMI_PATH = `${BASE_PATH}/model-auth/providers/kimi`;
 const OPENCODE_PATH = `${BASE_PATH}/model-auth/providers/opencode`;
 
 describe("terminal model auth routes", () => {
@@ -30,8 +27,7 @@ describe("terminal model auth routes", () => {
       status: 200,
       body: {
         providers: [
-          { provider: "kimi", kind: "model-provider", displayName: "Kimi for AI Gateway", signedIn: true },
-          { provider: "opencode", kind: "model-provider", displayName: "OpenCode Go for AI Gateway", signedIn: false },
+          { provider: "opencode", kind: "model-provider", displayName: "OpenCode Go for AI Gateway", signedIn: true },
           // 라우팅되는 모델이 없는 서비스 자격증명도 같은 상태에 실린다. `kind`가 그
           // 차이를 나르므로 브라우저는 공급자 id를 외워 두고 갈라 볼 필요가 없다.
           { provider: "typesafe", kind: "service", displayName: "TypeSafe", signedIn: false },
@@ -39,7 +35,6 @@ describe("terminal model auth routes", () => {
       },
     });
     const serialized = JSON.stringify(harness.writes);
-    expect(serialized).not.toContain(KIMI_PROVIDER_ID);
     expect(serialized).not.toContain(OPENCODE_PROVIDER_ID);
     expect(serialized).not.toContain(TYPESAFE_PROVIDER_ID);
     expect(serialized).not.toContain("stored-key");
@@ -47,22 +42,22 @@ describe("terminal model auth routes", () => {
 
   it("does not store a rejected key or leak the storage provider ID", async () => {
     const harness = createRouterHarness({ body: { apiKey: "bad" }, validationStatus: "unauthorized" });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: OPENCODE_PATH });
 
     expect(harness.store.size).toBe(0);
     expect(harness.writes[0]?.status).toBe(400);
-    expect(JSON.stringify(harness.writes)).not.toContain(KIMI_PROVIDER_ID);
+    expect(JSON.stringify(harness.writes)).not.toContain(OPENCODE_PROVIDER_ID);
   });
 
   it("maps provider network failures to 502", async () => {
     const harness = createRouterHarness({ body: { apiKey: "x" }, validationStatus: "network" });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: OPENCODE_PATH });
     expect(harness.writes[0]?.status).toBe(502);
   });
 
   it("requires terminal authorization for mutations", async () => {
     const harness = createRouterHarness({ authorized: false, body: { apiKey: "x" } });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: OPENCODE_PATH });
     expect(harness.writes[0]?.status).toBe(401);
     expect(harness.validatedKeys).toEqual([]);
   });
@@ -72,13 +67,12 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
   const writes: WriteJsonCall[] = [];
   const validatedKeys: [string, string][] = [];
   const store = new Map<string, string>([
-    ...(options.signedIn ? [[KIMI_PROVIDER_ID, "stored-key"] as const] : []),
-    ...(options.opencodeSignedIn ? [[OPENCODE_PROVIDER_ID, "stored-key"] as const] : []),
+    ...(options.signedIn ? [[OPENCODE_PROVIDER_ID, "stored-key"] as const] : []),
   ]);
   const ctx = createContext({
     writes,
     authorized: options.authorized ?? true,
-    readBody: async () => options.body ?? { apiKey: "kimi-secret" },
+    readBody: async () => options.body ?? { apiKey: "opencode-secret" },
   });
   const router = createTerminalModelAuthRouter(ctx, {
     authService: {
@@ -88,7 +82,7 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
     },
     validateApiKey: async (provider, apiKey) => {
       validatedKeys.push([provider, apiKey]);
-      return { providerId: KIMI_PROVIDER_ID, status: options.validationStatus ?? "success" };
+      return { providerId: OPENCODE_PROVIDER_ID, status: options.validationStatus ?? "success" };
     },
   });
   return { router, writes, store, validatedKeys };
@@ -118,6 +112,5 @@ function createContext(options: {
 function req(method: string, contentType?: string): http.IncomingMessage {
   return { method, headers: contentType ? { "content-type": contentType } : {} } as unknown as http.IncomingMessage;
 }
-
 function jsonReq(method: string): http.IncomingMessage { return req(method, "application/json"); }
 function res(): http.ServerResponse { return {} as http.ServerResponse; }

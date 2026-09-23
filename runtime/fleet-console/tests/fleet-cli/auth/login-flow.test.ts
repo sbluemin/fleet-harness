@@ -20,28 +20,28 @@ vi.mock("@fleet-console/ai-gateway", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@fleet-console/ai-gateway")>();
   return {
     ...actual,
-    validateKimiAuthKey: mocks.validate,
+    validateOpencodeGoAuthKey: mocks.validate,
   };
 });
 
-describe("Kimi auth login flow", () => {
+describe("OpenCode Go auth login flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.password.mockResolvedValue("kimi-secret");
-    mocks.validate.mockResolvedValue({ providerId: "Claude Code with Moonshot Kimi", status: "success" });
+    mocks.password.mockResolvedValue("opencode-secret");
+    mocks.validate.mockResolvedValue({ providerId: "Claude Code with OpenCode Go", status: "success" });
   });
 
-  it("validates before saving the Kimi API key", async () => {
+  it("validates before saving the OpenCode Go API key", async () => {
     const io = createIo();
-    await expect(runAuthLoginFlow(["kimi"], io, createDeps())).resolves.toBe(0);
-    expect(mocks.validate).toHaveBeenCalledWith("kimi-secret");
-    expect(mocks.setApiKey).toHaveBeenCalledWith("Claude Code with Moonshot Kimi", "kimi-secret");
+    await expect(runAuthLoginFlow(["opencode"], io, createDeps())).resolves.toBe(0);
+    expect(mocks.validate).toHaveBeenCalledWith("opencode-secret");
+    expect(mocks.setApiKey).toHaveBeenCalledWith("Claude Code with OpenCode Go", "opencode-secret");
   });
 
   it("does not save a rejected key", async () => {
     const io = createIo();
-    mocks.validate.mockResolvedValue({ providerId: "Claude Code with Moonshot Kimi", status: "unauthorized" });
-    await expect(runAuthLoginFlow(["kimi"], io, createDeps())).resolves.toBe(1);
+    mocks.validate.mockResolvedValue({ providerId: "Claude Code with OpenCode Go", status: "unauthorized" });
+    await expect(runAuthLoginFlow(["opencode"], io, createDeps())).resolves.toBe(1);
     expect(mocks.setApiKey).not.toHaveBeenCalled();
     expect(io.stderr.output).toContain("rejected");
   });
@@ -51,7 +51,7 @@ describe("Kimi auth login flow", () => {
     await expect(runAuthLoginFlow(["bogus"], io, createDeps())).resolves.toBe(1);
     expect(mocks.password).not.toHaveBeenCalled();
     expect(mocks.setApiKey).not.toHaveBeenCalled();
-    expect(io.stderr.output).toBe("Unknown fleet gateway auth provider: bogus\nUse one of: kimi, opencode, typesafe.\n");
+    expect(io.stderr.output).toBe("Unknown fleet gateway auth provider: bogus\nUse one of: opencode, typesafe.\n");
   });
 });
 

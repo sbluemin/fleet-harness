@@ -42,8 +42,8 @@ export interface ProviderDeps {
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
   /**
-   * Kimi and OpenCode Go are reached with keys Fleet itself stores, not another
-   * CLI's credential file, so they read through core-infra's auth surface — which
+   * OpenCode Go is reached with a key Fleet itself stores, not another
+   * CLI's credential file, so it reads through core-infra's auth surface — which
    * owns the file's shape and its symlink-guarded read — instead of parsing the
    * file here.
    */

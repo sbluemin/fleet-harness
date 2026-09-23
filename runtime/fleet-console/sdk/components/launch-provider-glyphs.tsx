@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 // Shared provider marks for launch menus and Session Analyst. Host chrome and
 // plugins both import this module so the bands cannot restyle apart.
 
-export type LaunchProviderGlyphId = "claude" | "codex" | "cursor" | "kimi" | "opencode" | "xai" | "antigravity";
+export type LaunchProviderGlyphId = "claude" | "codex" | "cursor" | "opencode" | "xai" | "antigravity";
 
 /**
  * Optional intrinsic size for a provider mark.
@@ -19,8 +19,8 @@ export type LaunchProviderGlyphSize = {
 
 type LaunchProviderGlyphProps = { readonly size?: LaunchProviderGlyphSize };
 
-const LAUNCH_PROVIDER_IDS = ["claude", "codex", "cursor", "kimi", "opencode", "xai", "antigravity"] as const;
-const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "cursor", "opencode", "antigravity", "kimi"];
+const LAUNCH_PROVIDER_IDS = ["claude", "codex", "cursor", "opencode", "xai", "antigravity"] as const;
+const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "cursor", "opencode", "antigravity"];
 const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> = {
   claude: "Claude",
   codex: "Codex",
@@ -28,7 +28,6 @@ const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> 
   antigravity: "Antigravity",
   cursor: "Cursor",
   opencode: "OpenCode",
-  kimi: "Moonshot-Kimi",
 };
 const CLAUDE_GATEWAY_MODEL_PREFIX = "claude-gateway--";
 
@@ -97,14 +96,6 @@ function CursorGlyph({ size }: LaunchProviderGlyphProps) {
   );
 }
 
-function KimiGlyph({ size }: LaunchProviderGlyphProps) {
-  return (
-    <svg viewBox="0 0 1024 1024" {...size} aria-hidden="true">
-      <path fillRule="evenodd" d="M525.019429 157.257143c-201.984 0-365.714286 163.730286-365.714286 365.714286 0 70.326857 19.858286 136.118857 54.345143 191.926857L174.811429 807.570286A58.514286 58.514286 0 0 0 228.790857 888.685714h296.228572c201.947429 0 365.714286-163.730286 365.714285-365.714285s-163.766857-365.714286-365.714285-365.714286z m138.422857 180.114286a45.458286 45.458286 0 0 1 51.2 38.875428l12.361143 90.441143a45.458286 45.458286 0 0 1-90.075429 12.324571l-12.361143-90.441142a45.458286 45.458286 0 0 1 38.875429-51.2z m-195.876572 24.137142a45.458286 45.458286 0 0 1 51.2 38.838858l12.361143 90.441142a45.458286 45.458286 0 1 1-90.038857 12.324572l-12.361143-90.441143a45.458286 45.458286 0 0 1 38.838857-51.2" fill="currentColor" />
-    </svg>
-  );
-}
-
 function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
   return (
     <svg viewBox="0 0 240 300" {...size} aria-hidden="true">
@@ -136,7 +127,6 @@ function GrokGlyph({ size }: LaunchProviderGlyphProps) {
 export function launchProviderGlyph(provider: LaunchProviderGlyphId, size?: LaunchProviderGlyphSize): ReactNode {
   if (provider === "claude") return <ClaudeGlyph size={size} />;
   if (provider === "cursor") return <CursorGlyph size={size} />;
-  if (provider === "kimi") return <KimiGlyph size={size} />;
   if (provider === "opencode") return <OpencodeGlyph size={size} />;
   if (provider === "xai") return <GrokGlyph size={size} />;
   if (provider === "antigravity") return <AntigravityGlyph size={size} />;

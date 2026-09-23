@@ -10032,8 +10032,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 .quick-launch-pop-band.is-codex { --launch-provider-tone: var(--provider-codex); }
 .operation-launch-variant-caption.is-cursor,
 .quick-launch-pop-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.operation-launch-variant-caption.is-kimi,
-.quick-launch-pop-band.is-kimi { --launch-provider-tone: var(--provider-kimi); }
 .operation-launch-variant-caption.is-opencode,
 .quick-launch-pop-band.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .operation-launch-variant-caption.is-xai,
@@ -10043,7 +10041,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 .fc-model-picker__glyph.is-claude { --launch-provider-tone: var(--provider-claude); }
 .fc-model-picker__glyph.is-codex { --launch-provider-tone: var(--provider-codex); }
 .fc-model-picker__glyph.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.fc-model-picker__glyph.is-kimi { --launch-provider-tone: var(--provider-kimi); }
 .fc-model-picker__glyph.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .fc-model-picker__glyph.is-xai { --launch-provider-tone: var(--provider-xai); }
 
@@ -10074,7 +10071,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 .quick-launch-kind-icon.is-claude,
 .quick-launch-kind-icon.is-codex,
 .quick-launch-kind-icon.is-cursor,
-.quick-launch-kind-icon.is-kimi,
 .quick-launch-kind-icon.is-opencode,
 .quick-launch-kind-icon.is-xai {
   color: var(--launch-provider-tone);
@@ -10083,7 +10079,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 .quick-launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
 .quick-launch-kind-icon.is-codex { --launch-provider-tone: var(--provider-codex); }
 .quick-launch-kind-icon.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.quick-launch-kind-icon.is-kimi { --launch-provider-tone: var(--provider-kimi); }
 .quick-launch-kind-icon.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .quick-launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
 

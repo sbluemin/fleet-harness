@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
-import { KIMI_AUTH_PROVIDER_ID } from "../../src/models.js";
 import { OPENCODE_AUTH_PROVIDER_ID } from "../../src/upstream/opencode-go/index.js";
 import { getJson } from "../../src/quota/windows.js";
 import type { ProviderSuccess } from "../../src/quota/types.js";
@@ -16,7 +15,6 @@ describe("quota service", () => {
     const service = createQuotaService({
       platform: "darwin",
       isClaudeConnected: async () => false,
-      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
@@ -32,7 +30,6 @@ describe("quota service", () => {
     const service = createQuotaService({
       platform: "darwin",
       isClaudeConnected: async () => true,
-      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => false,
       fetchClaude: async () => ({ status: "signed_out" }),
       fetchCodex: async () => ({ status: "signed_out" }),
@@ -51,7 +48,6 @@ describe("quota service", () => {
     const service = createQuotaService({
       now: () => now,
       isClaudeConnected: async () => true,
-      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
@@ -94,7 +90,6 @@ describe("quota service", () => {
     const service = createQuotaService({
       now: () => 1_000,
       isClaudeConnected: async () => true,
-      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => true,
       fetchClaude,
       fetchCodex,
@@ -114,23 +109,21 @@ describe("quota service", () => {
     expect(refreshed.providers.xai.windows?.[0]?.usedPercent).toBe(42);
   });
 
-  it("collectors read Kimi and OpenCode keys only through the injected auth service", async () => {
+  it("collectors read OpenCode keys only through the injected auth service", async () => {
     const authService = {
-      getApiKey: vi.fn(async (providerId: string) => providerId === KIMI_AUTH_PROVIDER_ID ? "kimi-key" : "opencode-key"),
+      getApiKey: vi.fn(async () => "opencode-key"),
       setApiKey: async () => undefined,
       deleteApiKey: async () => false,
       listProviderIds: async () => [],
     };
-    const fetchImpl = vi.fn(async (url: string | URL | Request) => new Response(
-      String(url).includes("kimi")
-        ? JSON.stringify({ usage: { limit: "100", used: "4" } })
-        : JSON.stringify({
-          usage: {
-            rolling: { percent: 1, resetsAt: "2026-07-12T17:00:00.000Z" },
-            weekly: { percent: 2, resetsAt: "2026-07-13T00:00:00.000Z" },
-            monthly: { percent: 3, resetsAt: "2026-08-04T00:00:00.000Z" },
-          },
-        }),
+    const fetchImpl = vi.fn(async () => new Response(
+      JSON.stringify({
+        usage: {
+          rolling: { percent: 1, resetsAt: "2026-07-12T17:00:00.000Z" },
+          weekly: { percent: 2, resetsAt: "2026-07-13T00:00:00.000Z" },
+          monthly: { percent: 3, resetsAt: "2026-08-04T00:00:00.000Z" },
+        },
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     ));
     const collectors = createAiGatewayQuotaCollectors({
@@ -138,10 +131,8 @@ describe("quota service", () => {
       fetch: fetchImpl as typeof fetch,
     });
 
-    await expect(collectors.fetchKimi()).resolves.toMatchObject({ status: "ok" });
     await expect(collectors.fetchOpencode()).resolves.toMatchObject({ status: "ok", plan: "Go" });
-    expect(authService.getApiKey).toHaveBeenNthCalledWith(1, KIMI_AUTH_PROVIDER_ID);
-    expect(authService.getApiKey).toHaveBeenNthCalledWith(2, OPENCODE_AUTH_PROVIDER_ID);
+    expect(authService.getApiKey).toHaveBeenCalledWith(OPENCODE_AUTH_PROVIDER_ID);
   });
 
   it("serves last-good data as stale for 30 minutes, then returns sanitized error", async () => {
@@ -153,7 +144,6 @@ describe("quota service", () => {
     const service = createQuotaService({
       now: () => now,
       isClaudeConnected: async () => true,
-      fetchKimi: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),

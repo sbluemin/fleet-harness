@@ -400,7 +400,7 @@ export function effortLadderPosition(row: OperationLaunchVariantRow, effort: str
 
 /**
  * 게이트가 여는 단들의 이름. 문구가 열리지 않는 단을 약속하지 않게 한다 — max만 내놓는
- * 모델(Codex Luna 계열·Cursor Opus 5 계열·Kimi K3 등)에서 "MAX·ULTRACODE"라고 말하면 열었을 때
+ * 모델(Codex Luna 계열·Cursor Opus 5 계열 등)에서 "MAX·ULTRACODE"라고 말하면 열었을 때
  * 한 단만 서고, 나머지 하나는 어디 갔는지 물을 자리가 없다.
  *
  * 기준은 트랙이 문을 세우는 기준과 같은 **사다리**다. chips만 세면, 축에만 오른 게이트 단을

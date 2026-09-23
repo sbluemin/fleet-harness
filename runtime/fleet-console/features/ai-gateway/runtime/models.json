@@ -654,47 +654,6 @@
         }
       ]
     },
-    "kimi": {
-      "name": "Moonshot-Kimi",
-      "defaultModel": "k3-256k",
-      "source": "https://www.kimi.com/code/docs/en/kimi-code/models.html (2026-08-01)",
-      "models": [
-        {
-          "modelId": "k3",
-          "name": "K3-1M",
-          "capabilityClass": "flagship",
-          "contextWindow": 1048576,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "high",
-              "max"
-            ]
-          },
-          "aliases": [
-            "k3"
-          ]
-        },
-        {
-          "modelId": "k3-256k",
-          "name": "K3-256K",
-          "capabilityClass": "flagship",
-          "contextWindow": 262144,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "high",
-              "max"
-            ]
-          },
-          "aliases": [
-            "k3-256k"
-          ]
-        }
-      ]
-    },
     "opencode": {
       "name": "OpenCode",
       "defaultModel": "glm-5.3",
