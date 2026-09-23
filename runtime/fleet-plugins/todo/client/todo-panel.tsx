@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
@@ -424,6 +424,32 @@ interface DetailProps {
  * 세부 — 입력 폼이 아니라 행의 목록이다. 일정 → 셰프 → 쿠킹 → 단계 → 레시피 → 메모, 맨 아래 시작/중단/완료 띠와 닫기·삭제.
  * 값이 있는 행은 그 값을 말하고 × 로 지우며, 없는 행은 동사("기한 설정")로 선다. 테두리 친 입력은 없다 — 제목·단계·메모 모두 글 위에 바로 쓴다.
  */
+const ZoomGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" /></svg>;
+const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
+
+/** 레시피 확대본 — body 포털의 고정 오버레이. Esc·바깥 누름·닫기 글리프로 닫히고, 열릴 때 카드가 포커스를 받는다. */
+function RecipeZoom({ t, title, onClose, children }: { readonly t: Translate<TodoMessageKey>; readonly title: string; readonly onClose: () => void; readonly children: ReactNode }) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    cardRef.current?.focus();
+    // 캡처 단계에서 삼킨다 — 같은 Esc 가 창의 처리기까지 올라가 상세를 함께 닫지 않도록.
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  return (
+    <div className="todo-zoom-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div ref={cardRef} className="todo-zoom" role="dialog" aria-modal="true" aria-label={`${t("todo.graph.title")} · ${title}`} tabIndex={-1}>
+        <div className="todo-zoom-head">
+          <span className="todo-zoom-title">{t("todo.graph.title")}<span className="todo-zoom-item">{title}</span></span>
+          <button type="button" className="todo-glyph" aria-label={t("todo.detail.close")} title={t("todo.detail.close")} onClick={onClose}><CloseGlyph /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 const GoGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5H3.5v9h9V10M9.5 3.5h3v3M12.5 3.5 7.5 8.5" /></svg>;
 
 const AssignGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="5" cy="5" r="2.2" /><circle cx="11" cy="11" r="2.2" /><path d="M7 5h3.5a1.5 1.5 0 0 1 1.5 1.5V8.8M9 11H5.5A1.5 1.5 0 0 1 4 9.5V7.2" /></svg>;
@@ -472,6 +498,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const mode = coordinatorMode(item);
   const locked = !!item.slot;
   const editable = !item.done && !busy;
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
   // 사람의 결정을 기다리는 세션 — 셰프가 먼저, 다음은 단계 순서. 카드가 잠기지 않은 채 사람을 부르는 유일한 상태다.
   const awaiting = item.done ? null : (() => {
     if (item.slot && operationState(item.slot.operationId) === "awaiting") return { operationId: item.slot.operationId, stepIndex: null as number | null };
@@ -616,14 +644,23 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
             <div className="todo-row is-static">
               <span className="todo-row-ic"><GraphGlyph /></span>
               <span className="todo-row-lab">{t("todo.graph.title")}</span>
-              {item.steps.length > 1 && editable ? <span className="todo-row-tools">
-                <button type="button" className="todo-btn is-small" onClick={async () => { if (await call("/edge/linear", { itemId: item.id })) toast(t("todo.toast.linear")); }}>{t("todo.graph.linear")}</button>
-                <button type="button" className="todo-btn is-small" onClick={async () => { if (await call("/edge/clear", { itemId: item.id })) toast(t("todo.toast.parallel")); }}>{t("todo.graph.parallel")}</button>
-              </span> : null}
+              <span className="todo-row-tools">
+                {item.steps.length > 1 && editable ? <>
+                  <button type="button" className="todo-btn is-small" onClick={async () => { if (await call("/edge/linear", { itemId: item.id })) toast(t("todo.toast.linear")); }}>{t("todo.graph.linear")}</button>
+                  <button type="button" className="todo-btn is-small" onClick={async () => { if (await call("/edge/clear", { itemId: item.id })) toast(t("todo.toast.parallel")); }}>{t("todo.graph.parallel")}</button>
+                </> : null}
+                <button ref={zoomTriggerRef} type="button" className="todo-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("todo.graph.zoom")} title={t("todo.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>
+              </span>
             </div>
             <div className="todo-graph-wrap">
-              <CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} />
+              <CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} />
             </div>
+            {zoomOpen ? createPortal(
+              <RecipeZoom t={t} title={item.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}>
+                <CoordinationGraph zoom item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} />
+              </RecipeZoom>,
+              document.body,
+            ) : null}
           </>
         ) : null}
       </div>

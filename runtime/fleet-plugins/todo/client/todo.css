@@ -478,6 +478,16 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-dag-box { background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); overflow: hidden; }
 .todo-dag { display: block; max-width: 100%; background: transparent; border: 0; touch-action: none; }
 .todo-dag-hint { text-align: center; padding: 0 10px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
+/* 확대본 — 빈 배경을 누르면 열린다(커서로 예고). 오버레이는 다른 팝오버와 같은 층(60), 카드는 넓은 폭에 같은 그래프를 다시 그린다. */
+.todo-dag-box.can-zoom .todo-dag { cursor: zoom-in; }
+.todo-dag-box.can-zoom .todo-dag.is-dragging { cursor: grabbing; }
+.todo-zoom-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: color-mix(in oklch, var(--ink-deep) 55%, transparent); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); }
+.todo-zoom { width: min(940px, 100%); max-height: 100%; overflow: auto; padding: 12px 16px 16px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); outline: none; }
+.todo-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.todo-zoom-title { display: inline-flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--t-base); font-weight: var(--weight-bold); color: var(--text-primary); }
+.todo-zoom-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-regular); color: var(--text-secondary); }
+.todo-zoom .todo-dag-box.is-zoom { padding: 8px 12px 0; }
+.todo-zoom .todo-dag-box.is-zoom text { font-size: var(--t-xs); }
 .todo-dag .todo-edge { fill: none; stroke: var(--hairline-strong); stroke-width: 1.6; }
 .todo-dag .todo-edge.is-met { stroke: var(--brass); }
 .todo-dag .todo-edge.is-root { stroke-dasharray: 3 3; opacity: 0.7; }
