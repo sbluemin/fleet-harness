@@ -968,6 +968,12 @@ export function OperationsCanvas({
   useEffect(() => {
     if (!snapHoldActive) setSnapAssist(false);
   }, [snapHoldActive]);
+  // 판은 빈 칸이 있는 동안만 산다 — 마지막 칸을 채우면 걷히고, 뒤에 칸이 다시 비어도(끌어내기·최소화)
+  // 새 스냅 없이는 돌아오지 않는다.
+  const snapAssistEmptyCount = snapHoldActive ? snapHoldBodies.length - snapHoldTakenExcept(null).size : 0;
+  useEffect(() => {
+    if (snapAssist && snapAssistEmptyCount === 0) setSnapAssist(false);
+  }, [snapAssist, snapAssistEmptyCount]);
   const snapIntoZone = (operationId: string, hit: SnapZoneHit) => {
     snapOperationToArenaRect(operationId, hit.zone, { presetId: hit.set.id, zones: hit.set.zones, zoneIndex: hit.zoneIndex });
     // 빈 칸이 남으면 후보를 권한다 — 전체 한 칸이면 권할 칸이 없다.
@@ -1118,6 +1124,7 @@ export function OperationsCanvas({
   }, [snapEnabled]);
   useEffect(() => {
     setSnapMenu(null);
+    setSnapAssist(false);
   }, [state.activeTheaterId]);
   // 퇴장은 한 박자 남긴다 — 판이 줌 한 노치에 즉시 사라지면 패널의 복귀 페이드와 어긋나 화면이 빈다.
   const [fleetMapLeaving, setFleetMapLeaving] = useState(false);

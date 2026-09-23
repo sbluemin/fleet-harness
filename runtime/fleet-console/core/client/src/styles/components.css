@@ -8561,7 +8561,10 @@ body[data-companion-resizing="true"] .canvas-operation {
   align-content: start;
   gap: 8px;
   padding: 12px;
-  overflow: hidden;
+  /* 좁은 칸(사분면·⅓)에는 후보 여섯이 다 서지 못한다 — 잘라내지 말고 판 안에서 스크롤한다. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
   border-radius: var(--radius-md);
   outline: 1px dashed color-mix(in oklch, var(--brass) 34%, transparent);
   outline-offset: -1px;
