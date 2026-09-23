@@ -82,11 +82,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: TodoSt
     ctx.host.operations.patch(operationId, { payload });
   };
 
-  const send = async (operationId: string | undefined, text: string): Promise<void> => {
-    if (!operationId || !ctx.host.consoleControl) return;
-    if (!ctx.host.operations.get(operationId)) return;
-    try { await ctx.host.consoleControl.request({ kind: "send", operationId, text }, `todo:notice:${randomUUID()}`); }
-    catch { /* 닫혔거나 받을 수 없는 Operation 에는 통지를 버린다 — 상태는 스토어가 진실이다. */ }
+  /** 전달됐는지를 돌려준다 — 못 닿은 알림에 기대 상태를 지우면 다음 시작이 같은 변경을 말하지 못한다. */
+  const send = async (operationId: string | undefined, text: string): Promise<boolean> => {
+    if (!operationId || !ctx.host.consoleControl) return false;
+    if (!ctx.host.operations.get(operationId)) return false;
+    try { await ctx.host.consoleControl.request({ kind: "send", operationId, text }, `todo:notice:${randomUUID()}`); return true; }
+    catch { /* 닫혔거나 받을 수 없는 Operation 에는 통지를 버린다 — 상태는 스토어가 진실이다. */ return false; }
   };
 
   /** 셰프에게는 한 줄 프롬프트(text), 담당에게는 아무것도 — 첫 턴 없이 서서 셰프의 메시지를 기다린다. */
@@ -209,9 +210,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: TodoSt
       // 조율자가 이미 있으면(사람이 연결했거나, 중단된 뒤) 새로 띄우지 않는다 — 그 세션에 브리프를 보내고 담당만 띄운다.
       if (current.slot) {
         const existing = current.slot;
-        await send(existing.operationId, startTurn(current, language));
-        // 알림이 나갔다 — 같은 변경을 다음 시작에 되풀이하지 않는다. 셰프는 이제 보드를 다시 읽는다.
-        current = store.setEdited(itemId, null);
+        const delivered = await send(existing.operationId, startTurn(current, language));
+        // 알림이 닿았을 때만 지운다 — 같은 변경을 다음 시작에 되풀이하지 않되, 못 닿았으면 다음 시작이 다시 말한다.
+        if (delivered) current = store.setEdited(itemId, null);
         if (alone) current = store.setSlot(itemId, alone.id, existing);
         return { item: current, operationId: existing.operationId };
       }
