@@ -160,8 +160,9 @@ export interface ClientExecutionProvider {
    * 한 실행 구조에 묶인 Operation 들 — 뿌리(조율자) 하나와 선후 관계를 가진 구성원(단계)들.
    *
    * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아
-   * 사이드바(뿌리 아래 깊이만큼 들여쓰기)·Cruise(뿌리 기준 대형과 간선)·Tactical(블록 배치)·War Room(무대의
-   * 위치 표시)에 같은 문법으로 그린다. 소유하지 않는 Operation 도 묶을 수 있고, 진실은 플러그인 쪽에 남는다.
+   * 뿌리 하나로 묶음을 대표한다 — 구성원 Operation 은 어느 모드에서도 따로 패널로 서지 않고 뒤에서 돌며, 뿌리의
+   * 캡션에 진척도 띠(와 단계 목록), 뿌리 패널 본문에 구성원 세션으로 바꿔 보는 노드 줄(「N 노드」, N 은 members
+   * 선언 순서의 자리)을 그린다. 소유하지 않는 Operation 도 묶을 수 있고, 진실은 플러그인 쪽에 남는다.
    * `get()` 은 바뀌지 않았으면 같은 참조를 돌려줘야 한다(useSyncExternalStore).
    */
   readonly operationClusters?: OperationClusterSource;

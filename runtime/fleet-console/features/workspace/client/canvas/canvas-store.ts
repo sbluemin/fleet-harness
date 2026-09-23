@@ -348,17 +348,20 @@ export function resetCanvasViewportSize(): void {
   fitAllOperationsPending = false;
 }
 
-// ── 묶음 동반 ──────────────────────────────────────────────────────────────────
-// 묶음 구성원(단계 패널)의 최소화는 자기 플래그가 아니라 뿌리(셰프)를 따른다 — 캔버스가 패널을 그릴 때와 같은 규칙이다.
+// ── 늘 숨은 패널 ────────────────────────────────────────────────────────────────
+// 묶음의 단계 Operation 은 최소화 여부와 무관하게 패널로 서지 않는다(셰프 패널이 본문 교체로 보여 준다).
 // 묶음 색인은 플러그인 레지스트리(React 컨텍스트)에 살아 스토어가 직접 읽지 못하므로, 캔버스가 색인을 셀 때마다
-// 이 해석기를 갈아 끼운다. 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)는 이 집합으로 숨은 패널을 거른다.
-let clusterMembersOf: (rootId: string) => readonly string[] = () => [];
-export function setClusterMembersResolver(resolver: (rootId: string) => readonly string[]): void {
-  clusterMembersOf = resolver;
+// 이 집합을 갈아 끼운다. 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)는 이 집합으로 숨은 패널을 거른다.
+let alwaysHiddenGeometryIds: ReadonlySet<string> = new Set();
+export function setAlwaysHiddenGeometryIds(ids: ReadonlySet<string>): void {
+  alwaysHiddenGeometryIds = ids;
+}
+export function getAlwaysHiddenGeometryIds(): ReadonlySet<string> {
+  return alwaysHiddenGeometryIds;
 }
 function hiddenGeometryIds(minimized: readonly string[] = state.minimized): Set<string> {
   const hidden = new Set(minimized);
-  for (const rootId of minimized) for (const memberId of clusterMembersOf(rootId)) hidden.add(memberId);
+  for (const id of alwaysHiddenGeometryIds) hidden.add(id);
   return hidden;
 }
 
@@ -390,14 +393,6 @@ export function fitAllOperations(): void {
     y: arenaHeight / 2 - (minY + bboxHeight / 2) * zoom,
     zoom,
   });
-}
-
-/** 자리만 옮긴다 — z 는 그대로. 묶음 구성원처럼 뿌리를 따라 파생되는 좌표를 스토어에 맞출 때 쓴다(앞으로 튀어나오지 않게). */
-export function placeOperationGeometry(sessionId: string, geometry: OperationGeometry): void {
-  const current = state.operations[sessionId];
-  if (current && current.x === geometry.x && current.y === geometry.y && current.width === geometry.width && current.height === geometry.height) return;
-  const zIndex = current?.zIndex ?? geometry.zIndex;
-  setState({ operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(geometry, zIndex), zIndex } } });
 }
 
 export function setOperationGeometry(sessionId: string, geometry: OperationGeometry): void {

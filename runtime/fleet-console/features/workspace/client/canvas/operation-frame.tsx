@@ -36,8 +36,8 @@ interface OperationFrameProps {
   readonly groupColor?: string | null;
   /** Shell 캡션의 소속 Theater. 저장 제목과 별개라 Theater 이름이 바뀌어도 따라간다. */
   readonly theaterLabel?: string | null;
-  /** 묶음 안의 자리 — 구성원은 제목 대신 짧은 라벨(label), 뿌리는 이름 뒤에 단계 띠(strip). */
-  readonly clusterCaption?: { readonly label: string | null; readonly strip: ReactNode } | null;
+  /** 셰프 패널의 묶음 장치 — 이름 뒤의 단계 띠(strip)와 본문 오른쪽 위의 노드 줄(nodes). */
+  readonly cluster?: { readonly strip: ReactNode; readonly nodes: ReactNode } | null;
   readonly children: ReactNode;
   /**
    * 캡션 동작 선반 — 이 Operation의 플러그인이 채우는 마크 버튼들. 자리는 프레임이 정한다:
@@ -113,7 +113,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, clusterCaption = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -135,7 +135,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   const [arrivalFlash, setArrivalFlash] = useState(false);
   const [focusArrival, setFocusArrival] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const displayTitle = clusterCaption?.label ?? operation.title;
+  const displayTitle = operation.title;
   const rename = useInlineRename({
     currentTitle: operation.title,
     onBegin: () => {
@@ -602,7 +602,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
             {displayTitle}
           </button>
         )}
-        {clusterCaption?.strip ?? null}
+        {cluster?.strip ?? null}
         {theaterLabelVisible ? (
           <span
             className="canvas-operation-theater-label"
@@ -679,6 +679,8 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker inert={deckTile ? true : undefined}>
         {children}
       </div>
+      {/* 덱 칸의 본문은 읽는 자리라 세션을 바꿀 문도 두지 않는다. */}
+      {cluster && !deckTile ? cluster.nodes : null}
       {/* 최대화 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —
           외곽 hover 시 resize 커서가 뜨거나 포인터를 가로채는 일이 없도록 한다. */}
       {!maximized && !interactionDisabled && RESIZE_DIRECTIONS.map((direction) => (

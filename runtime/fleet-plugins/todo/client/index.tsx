@@ -68,7 +68,7 @@ const todoPlugin = definePlugin({
   railEntries: [todoEntry],
   panes: [todoPane],
   expandedSurfaces: [todoSurface],
-  // 조율자와 담당 Operation 은 한 묶음이다 — 사이드바 들여쓰기·캔버스 대형·간선은 호스트가 이 서술자로 그린다.
+  // 셰프와 담당 Operation 은 한 묶음이다 — 호스트는 이 서술자로 셰프 캡션의 진척도 띠와 셰프 패널의 노드 줄을 그린다.
   operationClusters: todoClusterSource,
 });
 
