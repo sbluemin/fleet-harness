@@ -3695,34 +3695,80 @@
   white-space: nowrap;
 }
 
-/* 묶음 간선 — 월드 좌표의 SVG 한 장, 패널(z ≥ 1) 아래. 선은 구조라 hairline, 초점만 brass. */
-.canvas-cluster-edges {
+/* 노드 줄 — 셰프 패널 본문의 오른쪽 위, 세션마다 버튼 하나를 세로로. 평소엔 흐리고, 패널에 올리거나 포커스가 들어오면
+   선명해진다. 지금 보는 세션 버튼은 비활성화된 brass 워시(자리), 점은 진행(신호 토큰)만 말한다. */
+.cluster-node-rail {
   position: absolute;
-  left: 0;
-  top: 0;
-  width: 1px;
-  height: 1px;
-  overflow: visible;
-  z-index: 0;
-  pointer-events: none;
+  top: 10px;
+  right: 12px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  min-width: 84px;
+  max-height: calc(100% - 20px);
+  padding: 3px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  /* 유리 채널이 꺼져 있으면 흐림이 없으므로 뒤 글자가 비치지 않을 만큼 불투명하게 둔다. */
+  background: color-mix(in oklch, var(--surface-panel-raised) 92%, transparent);
+  backdrop-filter: var(--glass-backdrop-soft);
+  opacity: 0.55;
+  transition: opacity var(--duration-base) var(--ease-spring);
 }
-.canvas-cluster-edge {
-  fill: none;
-  stroke: var(--hairline-strong);
-  stroke-width: 1.25;
-  transition: stroke var(--duration-fast) var(--ease-spring);
+.cluster-node-rail::-webkit-scrollbar { display: none; }
+.canvas-operation:hover .cluster-node-rail,
+.cluster-node-rail:focus-within,
+.cluster-node-rail.is-away,
+.cluster-node-rail.has-await { opacity: 1; }
+/* 본문에 타이핑하는 동안은 비켜 선다 — 포인터가 움직이면 돌아온다. */
+.cluster-node-rail.is-typing:not(:focus-within) { opacity: 0; pointer-events: none; }
+.cluster-node {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px 0 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
 }
-.canvas-cluster-edge.is-dispatch { stroke-dasharray: 1 4; stroke-linecap: round; opacity: 0.7; }
-.canvas-cluster-edge.is-pending { stroke-dasharray: 2 4; }
-.canvas-cluster-edge.is-flow { stroke: var(--text-tertiary); stroke-dasharray: 5 9; animation: cluster-edge-flow 1.6s linear infinite; }
-.canvas-cluster-edge.is-hot { stroke: var(--brass); opacity: 1; }
-@keyframes cluster-edge-flow { to { stroke-dashoffset: -14; } }
+.cluster-node:hover:not(:disabled),
+.cluster-node:focus-visible { color: var(--text-primary); border-color: var(--control-hover-rim); background: var(--control-hover-fill); outline: none; }
+.cluster-node:disabled {
+  cursor: default;
+  color: var(--text-primary);
+  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+}
+.cluster-node-sep { flex: none; height: 1px; margin: 2px 4px; background: var(--hairline-strong); }
+.cluster-node-dot { display: block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); }
+.cluster-node-dot.is-running { background: var(--warn); }
+.cluster-node-dot.is-background { background: transparent; box-shadow: inset 0 0 0 1px var(--warn); }
+.cluster-node-dot.is-awaiting { background: var(--aurora); animation: cluster-strip-pulse 1.8s ease-in-out infinite; }
+.cluster-node-dot.is-done, .cluster-node-dot.is-idle { background: var(--positive); }
+.cluster-node-dot.is-blocked, .cluster-node-dot.is-ended { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
 @media (prefers-reduced-motion: reduce) {
-  .canvas-cluster-edge.is-flow { animation: none; }
+  .cluster-node-rail { transition: none; }
+  .cluster-node-dot.is-awaiting { animation: none; }
 }
 .canvas-operation-cluster-strip { margin-left: 2px; }
 
-/* 묶음 피커 — 조율자 캡션의 단계 띠가 여는 작은 메뉴. 줄마다 진행 사각(신호 토큰) 하나, 고른 줄은 brass 워시. */
+/* 묶음 피커 — 셰프 캡션의 단계 띠가 여는 작은 메뉴. 줄마다 진행 사각(신호 토큰) 하나, 고른 줄은 brass 워시. */
 .cluster-picker {
   position: fixed;
   z-index: 1200;

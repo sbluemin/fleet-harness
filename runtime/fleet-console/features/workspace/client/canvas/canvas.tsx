@@ -17,7 +17,8 @@ import { usePluginRegistry } from "../../../../core/client/src/integration/plugi
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { ClusterStrip } from "../cluster-strip.js";
 import { ClusterPicker } from "../cluster-picker.js";
-import { hiddenClusterMembers, nestClusterMembers, selectClusterBody, useClusterBodySelection, useClusterIndex, type ClusterLayout } from "../operation-clusters.js";
+import { ClusterNodeRail } from "../cluster-node-rail.js";
+import { hiddenClusterMembers, selectClusterBody, useClusterBodySelection, useClusterIndex } from "../operation-clusters.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { clearIdleArrival, getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
@@ -25,7 +26,7 @@ import { pluginRuntimeState, resolveOperationActivity } from "../../../execution
 import type { ConsoleState, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { setClusterMembersResolver, snapOperationToArenaRect, calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, OPERATION_WINDOW_CAPTION_HEIGHT, placeOperationGeometry, prefersReducedMotion, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, syncSnapHoldGeometry, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, useSnapHold, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
+import { setAlwaysHiddenGeometryIds, snapOperationToArenaRect, calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, syncSnapHoldGeometry, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -161,47 +162,17 @@ export function OperationsCanvas({
   const minimized = useMinimized();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const activePluginOperationId = state.activeOperationId;
-  // ── 묶음 대형 ────────────────────────────────────────────────────────────
-  // Cruise 에서 묶음 구성원의 자리는 뿌리 패널에서 파생된다 — 뿌리 오른쪽, 깊이가 열, 병렬이 행(뿌리 높이에 가운데 맞춤).
-  // 사용자가 어느 구성원을 끌어도 대형째 움직이고, 개별 배치는 없다. 파생 좌표는 스토어에도 맞춰 두어
-  // 미니맵·전체 보기·Station Keeping 이 같은 자리를 읽게 한다(z 는 올리지 않는다).
+  // ── 묶음 ────────────────────────────────────────────────────────────────
+  // 단계 Operation 은 어느 모드에서도 패널로 서지 않는다 — 뒤에서 돌고, 셰프 패널이 본문 교체로 보여 준다.
   const clusterIndex = useClusterIndex();
-  // 스토어의 기하 전역 읽기(전체 맞춤·Station Keeping)도 아래 followingRoots 와 같은 규칙을 보도록 구성원 해석기를 건넨다.
+  const hiddenMembers = useMemo(() => hiddenClusterMembers(clusterIndex), [clusterIndex]);
+  // 스토어의 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)도 숨은 단계를 거르도록 같은 집합을 건넨다.
   useEffect(() => {
-    setClusterMembersResolver((rootId) => clusterIndex.rootOf.get(rootId)?.formation.members.map((laid) => laid.member.operationId) ?? []);
-    return () => setClusterMembersResolver(() => []);
-  }, [clusterIndex]);
+    setAlwaysHiddenGeometryIds(hiddenMembers);
+    return () => setAlwaysHiddenGeometryIds(new Set());
+  }, [hiddenMembers]);
   // 셰프의 활동은 셰프 자신의 것이다 — 단계의 전이(완료·결정 대기)가 셰프를 War Room 무대에 올리지 않는다.
   const operationRuntime = state.operationRuntime;
-  const clusterGeometries = useMemo(() => {
-    const out = new Map<string, OperationGeometry>();
-    if (clusterIndex.rootOf.size === 0) return out;
-    const byId = new Map((state.operations ?? []).map((operation) => [operation.id, operation]));
-    for (const layout of clusterIndex.rootOf.values()) {
-      const rootOperation = byId.get(layout.cluster.root);
-      if (!rootOperation) continue;
-      const root = canvas.operations[rootOperation.id] ?? ensurePluginGeometry(rootOperation);
-      const rowsAtDepth = new Map<number, number>();
-      for (const laid of layout.formation.members) rowsAtDepth.set(laid.depth, Math.max(rowsAtDepth.get(laid.depth) ?? 0, laid.row + 1));
-      for (const laid of layout.formation.members) {
-        const member = byId.get(laid.member.operationId);
-        if (!member) continue;
-        const rows = rowsAtDepth.get(laid.depth) ?? 1;
-        const pitchY = root.height + CLUSTER_GAP_Y;
-        out.set(member.id, {
-          x: Math.round(root.x + (laid.depth + 1) * (root.width + CLUSTER_GAP_X)),
-          y: Math.round(root.y + laid.row * pitchY - ((rows - 1) * pitchY) / 2),
-          width: root.width,
-          height: root.height,
-          zIndex: canvas.operations[member.id]?.zIndex ?? root.zIndex,
-        });
-      }
-    }
-    return out;
-  }, [clusterIndex, canvas.operations, state.operations]);
-  useEffect(() => {
-    for (const [operationId, geometry] of clusterGeometries) placeOperationGeometry(operationId, geometry);
-  }, [clusterGeometries]);
   const [focusFadeTransitionReady, setFocusFadeTransitionReady] = useState(activePluginOperationId !== null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const registry = usePluginRegistry();
@@ -212,12 +183,6 @@ export function OperationsCanvas({
   const disabled = !state.activeTheaterId || state.addingTheater;
   const operationBodyPoolAvailable = useOperationBodyPoolAvailable();
   const triageActive = useTriageActive();
-  // 단계 Operation 은 Tactical·War Room 과 스냅된 Cruise 에서 화면에 서지 않는다 — 조율자 패널이 본문 교체로 그들을 보여 준다.
-  const snapHoldForClusters = useSnapHold();
-  const hiddenMembers = useMemo(
-    () => hiddenClusterMembers(clusterIndex, { formation: formationView, triage: triageActive, snapHeld: (rootId) => snapHoldForClusters?.assignments[rootId] !== undefined }),
-    [clusterIndex, formationView, triageActive, snapHoldForClusters],
-  );
   const clusterBodySelection = useClusterBodySelection();
   const [clusterPicker, setClusterPicker] = useState<{ readonly rootId: string; readonly anchor: DOMRect } | null>(null);
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
@@ -527,19 +492,18 @@ export function OperationsCanvas({
     onRefreshCatalog?.();
   };
 
-  // 묶음 구성원의 최소화는 자기 플래그가 아니라 뿌리를 따른다 — 셰프 패널을 내리면 단계 패널도 함께 내려가고, 되올리면
-  // 함께 선다. Cruise 대형은 뿌리에서 파생되므로 뿌리 없이 남은 단계 패널은 주인 잃은 조각이다. 구성원 자신의 플래그는
-  // 여기서 읽지 않는다(표시 여부의 나머지는 묶음 규칙 hiddenMembers 가 정한다).
-  const followingRoots = (flags: readonly string[]): Set<string> => {
-    const out = new Set(flags.filter((id) => !clusterIndex.memberOf.has(id)));
-    for (const [id, { layout }] of clusterIndex.memberOf) if (out.has(layout.cluster.root)) out.add(id);
+  // 숨은 단계 Operation 은 최소화 여부와 무관하게 화면 밖이다 — 미니맵·함대 지도·가시 기하가 최소화 집합 하나로
+  // 거르므로 그 집합에 함께 넣는다. 단계 자신의 최소화 플래그는 의미가 없다.
+  const withHiddenMembers = (flags: readonly string[]): Set<string> => {
+    const out = new Set(flags);
+    for (const id of hiddenMembers) out.add(id);
     return out;
   };
-  const minimizedSet = followingRoots(minimized);
+  const minimizedSet = withHiddenMembers(minimized);
   // War Room의 판은 전 Theater를 한 번에 얹으므로 최소화 판정도 Theater 경계를 넘는다. canvas 스냅샷은
   // 비활성 Theater에 쓸 때도 새 객체로 갈리므로(setTheaterOperationMinimized) 이 파생값이 함께 갱신된다.
   const triageMinimizedSet = triageActive
-    ? followingRoots(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)))
+    ? withHiddenMembers(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)))
     : minimizedSet;
   const visibleOperations = Object.fromEntries(
     Object.entries(canvas.operations).filter(([sessionId]) => !minimizedSet.has(sessionId)),
@@ -973,8 +937,8 @@ export function OperationsCanvas({
   // 무엇이든 지도가 끼어들 자리가 없다. 렌더 중 ref 갱신은 같은 줌에 같은 답을 내는 순수 판정이라
   // 재렌더에 안전하다. 지도는 전 Theater를 얹으므로 최소화 판정도 Theater 경계를 넘는다.
   const cruiseSurface = !formationView && !triageActive && panelMaximized === null && panelCompanion === null && !disabled;
-  // 지도 점도 구성원은 뿌리를 따른다 — 최소화한 셰프의 단계가 줌을 내렸다고 점으로 되살아나면 안 된다.
-  const fleetMapMinimizedSet = followingRoots(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
+  // 지도 점에도 숨은 단계는 서지 않는다 — 셰프 점 하나가 묶음을 대표한다.
+  const fleetMapMinimizedSet = withHiddenMembers(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
   const fleetMapOperations = state.operations.filter((operation) => !fleetMapMinimizedSet.has(operation.id));
   fleetMapActiveRef.current = cruiseSurface && fleetMapOperations.length > 0
     && resolveFleetMapActive(fleetMapActiveRef.current, canvas.viewport.zoom);
@@ -1237,17 +1201,12 @@ export function OperationsCanvas({
   // 캡션 그룹 라벨의 조회는 활성 Theater로 좁히지 않는다 — 선별 무대는 활성 Theater 밖 Operation도
   // 올린다. 소속 판정은 resolveOperationGroup이 Operation 자신의 Theater 기준으로 내린다.
   const groupById = new Map(state.groups.map((group) => [group.id, group]));
-  // 묶음 구성원은 뿌리 뒤에 위상 순으로 선다 — Tactical 은 이 순서만 쓴다(블록·간선은 그리지 않는다).
-  const formationOperationIds = nestClusterMembers(
-    flattenGroupedOrder(
-      theaterOperations,
-      state.groups.filter((group) => group.theaterId === state.activeTheaterId),
-      canvas.operationOrder,
-      [],
-    ).filter((operation) => !minimizedSet.has(operation.id)),
-    (operation) => operation.id,
-    clusterIndex,
-  ).map((operation) => operation.id);
+  const formationOperationIds = flattenGroupedOrder(
+    theaterOperations,
+    state.groups.filter((group) => group.theaterId === state.activeTheaterId),
+    canvas.operationOrder,
+    [],
+  ).filter((operation) => !minimizedSet.has(operation.id)).map((operation) => operation.id);
   const formationCellCount = formationLayout === "grid"
     ? completeFormationGridCellCount(formationOperationIds.length)
     : formationOperationIds.length;
@@ -1515,18 +1474,9 @@ export function OperationsCanvas({
             </div>
           );
         }) : null}
-        {!formationView && !triageActive && !panelMaximized ? (
-          <ClusterEdges
-            layouts={[...clusterIndex.rootOf.values()]}
-            geometryOf={(operationId) => clusterGeometries.get(operationId) ?? canvas.operations[operationId] ?? null}
-            visible={(operationId) => theaterOperations.some((operation) => operation.id === operationId) && !minimizedSet.has(operationId)}
-            activeOperationId={activePluginOperationId}
-          />
-        ) : null}
         {pluginOperations.map((operation) => {
-          const clusterMember = clusterIndex.memberOf.get(operation.id) ?? null;
           const clusterRoot = clusterIndex.rootOf.get(operation.id) ?? null;
-          const baseGeometry = clusterGeometries.get(operation.id) ?? canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
+          const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
           const operationMaximized = panelMaximized === operation.id;
           const operationCompanion = panelCompanion === operation.id;
           const operationTriageStage = triageStageId === operation.id;
@@ -1606,19 +1556,32 @@ export function OperationsCanvas({
             // 런타임 축을 심지 않은 복원 Operation이 doctrine상 dormant인데도 캡션에서만 idle로 서서,
             // 같은 순간 사이드바는 휴면, 패널은 초록이라고 말한다.
             status: resolveOperationActivity(operation, operationRuntime),
-            // 단계가 숨은 모드에서 조율자 패널은 고른 단계의 본문을 보인다 — 프레임은 조율자, 본문 마운트만 풀에서 옮겨 온다.
+            // 셰프 패널은 고른 단계의 본문을 보인다 — 프레임은 셰프, 본문 마운트만 풀에서 옮겨 온다.
+            // War Room 덱 칸에는 노드 줄이 없어 누구 본문인지 말할 수 없으므로 셰프 자신의 본문을 둔다.
             bodyOperation: (() => {
-              if (!clusterRoot) return null;
+              if (!clusterRoot || deckSlot) return null;
               const chosen = clusterBodySelection[operation.id];
-              if (!chosen || !hiddenMembers.has(chosen) || !clusterRoot.byOperationId.has(chosen)) return null;
+              if (!chosen || !clusterRoot.formation.byOperationId.has(chosen)) return null;
               const node = state.operations?.find((candidate) => candidate.id === chosen) ?? null;
               return node ? { operation: node, runtimeState: pluginRuntimeState(operationRuntime, state.operationRuntimeHydration, node.id) } : null;
             })(),
-            clusterCaption: clusterRoot
-              ? { label: null, strip: <ClusterStrip layout={clusterRoot} rootActivity={resolveOperationActivity(operation, operationRuntime)} onOpen={(_, event) => setClusterPicker({ rootId: operation.id, anchor: (event?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0) })} className="canvas-operation-cluster-strip" /> }
-              : clusterMember
-                ? { label: clusterMember.laid.member.label, strip: null }
-                : null,
+            cluster: clusterRoot
+              ? {
+                strip: <ClusterStrip layout={clusterRoot} rootActivity={resolveOperationActivity(operation, operationRuntime)} onOpen={(_, event) => setClusterPicker({ rootId: operation.id, anchor: (event?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0) })} className="canvas-operation-cluster-strip" />,
+                nodes: (
+                  <ClusterNodeRail
+                    layout={clusterRoot}
+                    current={clusterRoot.formation.byOperationId.has(clusterBodySelection[operation.id] ?? "") ? clusterBodySelection[operation.id]! : operation.id}
+                    rootActivity={resolveOperationActivity(operation, operationRuntime)}
+                    onPick={(operationId) => {
+                      selectClusterBody(operation.id, operationId);
+                      setActiveOperation(operation.id);
+                      requestOperationKeyboardFocus(operation.id);
+                    }}
+                  />
+                ),
+              }
+              : null,
             runtimeState: pluginRuntimeState(operationRuntime, state.operationRuntimeHydration, operation.id),
             theme: state.activeTheme,
             language,
@@ -1719,32 +1682,10 @@ export function OperationsCanvas({
                 setSnapHoldZones(snapZonesResized(snapArena, snapHold.zones, snapHeldIndex, frame, MIN_OPERATION_WIDTH, MIN_OPERATION_HEIGHT));
                 return;
               }
-              // 구성원을 끌면 대형째 — 이동분을 뿌리에 옮기고 구성원은 파생으로 따라온다. 크기 변경은 대형에서 받지 않는다.
-              if (clusterMember) {
-                const derived = clusterGeometries.get(operation.id);
-                const root = canvas.operations[clusterMember.layout.cluster.root];
-                if (!derived || !root) return;
-                const dx = geometry.x - derived.x;
-                const dy = geometry.y - derived.y;
-                if (dx === 0 && dy === 0) return;
-                setOperationGeometry(clusterMember.layout.cluster.root, { ...root, x: root.x + dx, y: root.y + dy });
-                return;
-              }
               setOperationGeometry(operation.id, geometry);
             },
             onGeometryCommit: (geometry) => {
               if (operationMaximized || operationCompanion || formationView) return;
-              if (clusterMember) {
-                const rootId = clusterMember.layout.cluster.root;
-                const root = getCanvasSnapshot().operations[rootId];
-                if (root) void updatePluginOperationGeometry(rootId, root);
-                for (const [memberId, derived] of clusterGeometries) if (clusterMember.layout.byOperationId.has(memberId)) void updatePluginOperationGeometry(memberId, derived);
-                return;
-              }
-              if (clusterRoot) {
-                // 뿌리를 놓으면 구성원의 파생 좌표도 durable 로 — 다시 열었을 때 같은 대형이 서도록.
-                for (const [memberId, derived] of clusterGeometries) if (clusterRoot.byOperationId.has(memberId)) void updatePluginOperationGeometry(memberId, derived);
-              }
               // 스냅 표적이 있으면 그 칸이 자리다 — 사용자가 고른 칸이라 Station Keeping 정착을 건너뛴다.
               if (consumeSnapDrag(operation.id)) {
                 void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
@@ -1759,10 +1700,9 @@ export function OperationsCanvas({
               if (!triageActive) settleOperationGeometry(operation.id);
               void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
             },
-            // 구성원은 스냅 칸에 들어가지 않는다 — 자리는 대형이 정한다.
-            onDragPointer: clusterMember ? undefined : (pointer) => handleSnapDragPointer(operation.id, pointer),
-            onDragRelease: clusterMember ? undefined : (pointer) => handleSnapDragRelease(operation.id, pointer),
-            onOpenSnapMenu: clusterMember ? undefined : (anchor) => openSnapMenu(operation.id, anchor),
+            onDragPointer: (pointer) => handleSnapDragPointer(operation.id, pointer),
+            onDragRelease: (pointer) => handleSnapDragRelease(operation.id, pointer),
+            onOpenSnapMenu: (anchor) => openSnapMenu(operation.id, anchor),
           });
         })}
         {companionDividersActive ? companionSlotIds.slice(0, -1).map((slotId, index) => (
@@ -1872,16 +1812,14 @@ export function OperationsCanvas({
         const layout = clusterIndex.rootOf.get(clusterPicker.rootId);
         if (!layout) return null;
         const rootNode = state.operations?.find((candidate) => candidate.id === clusterPicker.rootId) ?? null;
-        const expanded = !hiddenMembers.has(layout.formation.members[0]?.member.operationId ?? "");
         return (
           <ClusterPicker
             layout={layout}
             anchor={clusterPicker.anchor}
-            current={expanded ? null : clusterBodySelection[clusterPicker.rootId] ?? null}
+            current={clusterBodySelection[clusterPicker.rootId] ?? null}
             rootActivity={rootNode ? resolveOperationActivity(rootNode, operationRuntime) : null}
             onPick={(operationId) => {
-              // 펼쳐진 Cruise 에서는 그 패널로 초점, 단계가 숨은 모드에서는 조율자 패널의 본문을 바꾼다.
-              if (expanded) { setActiveOperation(operationId); requestOperationKeyboardFocus(operationId); return; }
+              // 단계는 어느 모드에서도 패널로 서지 않는다 — 셰프 패널의 본문을 그 단계로 바꾼다(노드 줄과 같은 동작).
               selectClusterBody(clusterPicker.rootId, operationId);
               setActiveOperation(clusterPicker.rootId);
             }}
@@ -1978,58 +1916,6 @@ export function OperationsCanvas({
 
 function rectToGeometry(rect: CanvasRect): OperationGeometry {
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, zIndex: 0 };
-}
-
-// 묶음 대형의 틈 — 가로는 간선이 지나는 홈, 세로는 캡션(32px)이 겹치지 않을 만큼.
-const CLUSTER_GAP_X = 28;
-const CLUSTER_GAP_Y = OPERATION_WINDOW_CAPTION_HEIGHT + 20;
-
-/**
- * 묶음 간선 — 패널 아래 층에 그리는 그래프 선. 뿌리→구성원은 지시선(촘촘한 점), 선행→후행은 의존선.
- * 의존선의 상태: 선행이 안 끝났으면 점선, 끝났고 후행이 일하는 중이면 흐르는 대시, 끝났으면 실선.
- * 묶음의 어느 패널이 활성이면 그 묶음의 선이 brass(초점) — 소속을 색이 아니라 같이 켜짐으로 말한다.
- */
-type ClusterEdgeBox = { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
-function ClusterEdges({ layouts, geometryOf, visible, activeOperationId }: {
-  readonly layouts: readonly ClusterLayout[];
-  readonly geometryOf: (operationId: string) => ClusterEdgeBox | null;
-  readonly visible: (operationId: string) => boolean;
-  readonly activeOperationId: string | null;
-}) {
-  if (layouts.length === 0) return null;
-  const paths: ReactNode[] = [];
-  for (const layout of layouts) {
-    if (!visible(layout.cluster.root)) continue;
-    const root = geometryOf(layout.cluster.root);
-    if (!root) continue;
-    const hot = activeOperationId === layout.cluster.root || layout.byOperationId.has(activeOperationId ?? "");
-    const anchorOut = (geometry: ClusterEdgeBox) => ({ x: geometry.x + geometry.width, y: geometry.y + geometry.height / 2 });
-    const anchorIn = (geometry: ClusterEdgeBox) => ({ x: geometry.x, y: geometry.y + geometry.height / 2 });
-    const curve = (from: { x: number; y: number }, to: { x: number; y: number }) => {
-      const bend = Math.max(12, Math.min(48, (to.x - from.x) / 2));
-      return `M${from.x} ${from.y} C${from.x + bend} ${from.y} ${to.x - bend} ${to.y} ${to.x} ${to.y}`;
-    };
-    for (const laid of layout.members) {
-      const id = laid.member.operationId;
-      if (!visible(id)) continue;
-      const target = geometryOf(id);
-      if (!target) continue;
-      if (laid.member.after.length === 0) {
-        paths.push(<path key={`${layout.cluster.id}:root>${id}`} className={["canvas-cluster-edge", "is-dispatch", hot ? "is-hot" : ""].filter(Boolean).join(" ")} d={curve(anchorOut(root), anchorIn(target))} />);
-      }
-      for (const from of laid.member.after) {
-        if (!visible(from)) continue;
-        const source = geometryOf(from);
-        const prerequisite = layout.byOperationId.get(from);
-        if (!source || !prerequisite) continue;
-        const met = prerequisite.member.progress === "done";
-        const flowing = met && (laid.member.progress === "running" || laid.member.progress === "awaiting");
-        paths.push(<path key={`${layout.cluster.id}:${from}>${id}`} className={["canvas-cluster-edge", met ? (flowing ? "is-flow" : "is-met") : "is-pending", hot ? "is-hot" : ""].filter(Boolean).join(" ")} d={curve(anchorOut(source), anchorIn(target))} />);
-      }
-    }
-  }
-  if (paths.length === 0) return null;
-  return <svg className="canvas-cluster-edges" aria-hidden="true">{paths}</svg>;
 }
 
 function ensurePluginGeometry(operation: OperationNode): OperationGeometry {
@@ -2218,8 +2104,8 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly geometry: OperationGeometry;
   readonly operationKindRegistry: readonly OperationKindDescriptor[];
   readonly status?: OperationActivityVisual;
-  /** 묶음 안의 자리 — 뿌리는 단계 띠, 구성원은 제목 대신 짧은 라벨. */
-  readonly clusterCaption: { readonly label: string | null; readonly strip: ReactNode } | null;
+  /** 셰프 패널의 묶음 장치 — 캡션의 진척도 띠와 본문 오른쪽 위의 세션 전환 노드 줄. */
+  readonly cluster: { readonly strip: ReactNode; readonly nodes: ReactNode } | null;
   /** 이 프레임이 보일 본문의 주인 — 없으면 자기 자신. 묶음의 조율자 패널이 숨은 단계를 보일 때 쓴다. */
   readonly bodyOperation: { readonly operation: OperationNode; readonly runtimeState: OperationRuntimeState | null } | null;
   readonly runtimeState: OperationRuntimeState | null;
@@ -2313,7 +2199,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         groupName={options.groupName}
         groupColor={options.groupColor}
         theaterLabel={options.theaterLabel}
-        clusterCaption={options.clusterCaption}
+        cluster={options.cluster}
         onActivate={options.onActivate}
         onClose={options.onClose}
         onMinimize={options.onMinimize}
