@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.107.0] - 2026-09-23
+
+### fleet-console
+
+#### Added
+- Cruise에서 스냅한 패널이 분할을 유지합니다. 사이드바·레일을 여닫아도 칸을 따라가고, Tactical·War Room을 다녀와도 그대로이며, 브래킷 프레임이 유지 중임을 보여 줍니다. 유지 패널 사이 경계를 끌면 둘이 함께 조절됩니다. 줌하면 풀리고, 패널을 칸 밖으로 끌면 그 패널만 풀립니다.
+- 스냅 직후 빈 칸이 이 Theater의 다른 패널을 권합니다. 고르면 그 칸에 들어가고, Escape나 캔버스 클릭으로 걷힙니다.
+
 ## [1.106.0] - 2026-09-23
 
 ### fleet-console

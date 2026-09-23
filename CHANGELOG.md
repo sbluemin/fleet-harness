@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.107.0] - 2026-09-23
+
+### fleet-console
+
+#### Added
+- Snapped panels in Cruise now keep their split: they follow the view when the sidebar or rail opens and closes, survive a trip through Tactical or War Room, and a bracket frame marks the layout. Dragging the edge between two snapped panels resizes both. Zooming lets the layout go; dragging a panel out of its slot frees just that panel.
+- Right after a snap, each empty slot offers the other panels of the Theater; pick one to fill the slot. Escape or a click on the canvas dismisses the offer.
+
 ## [1.106.0] - 2026-09-23
 
 ### fleet-console
