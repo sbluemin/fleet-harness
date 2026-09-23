@@ -7501,6 +7501,19 @@ body[data-companion-resizing="true"] .canvas-operation {
   animation: caption-rail-call 2.4s var(--ease-glide) infinite;
 }
 
+/* 패널 안 허용 요청이 떠 있는 동안 — 도구 호출이 진행 중이라 활동 축은 turn 이지만, 실제로는 사람의 답을 기다린다.
+   활동 축(입력 대기 hook 이 awaiting 의 권위)을 건드리지 않고, 카드가 서 있는 동안만 레일이 awaiting 문법(aurora·부름
+   맥동)을 탄다. 크로스 번들 클래스 계약(.use-request-card)을 `:has()` 로 읽는다 — 사용 배지 레일과 같은 방식이다. */
+.canvas-operation:has(> .canvas-operation-terminal .use-request-card) {
+  --caption-rail: var(--aurora);
+}
+.canvas-operation:has(> .canvas-operation-terminal .use-request-card) > .canvas-operation-titlebar::after {
+  opacity: 1;
+  background: var(--caption-rail);
+  background-size: auto;
+  animation: caption-rail-call 2.4s var(--ease-glide) infinite;
+}
+
 /* 미확인 완료는 이미 끝난 일이라 급하지 않다 — 부름(2.4s)보다 느린 잔광으로 남는다.
    하한 0.58은 awaiting 하한(0.62) 아래, background 마루(0.55) 위다. 세 상태의 밝기 위계는
    awaiting > unseen > background 순으로 어느 순간에도 뒤집히지 않는다. */
@@ -8218,6 +8231,7 @@ body[data-companion-resizing="true"] .canvas-operation {
      즉시 정착한 레일로 대체한다. 상태 자체는 계속 읽혀야 하므로 레일을 끄지는 않는다. */
   .canvas-operation.is-running--turn > .canvas-operation-titlebar::after,
   .canvas-operation.is-running--awaiting > .canvas-operation-titlebar::after,
+  .canvas-operation:has(> .canvas-operation-terminal .use-request-card) > .canvas-operation-titlebar::after,
   .canvas-operation.is-unseen > .canvas-operation-titlebar::after,
   .canvas-operation.is-unseen-arriving > .canvas-operation-titlebar::after {
     animation: none;

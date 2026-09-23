@@ -1,4 +1,5 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
+import { UseRequestCards } from "../use-request-card.js";
 import { createPortal } from "react-dom";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
@@ -695,6 +696,8 @@ export function AgentChatView({
             onBack={() => setOpenJobId(null)}
           />
         ) : null}
+        {/* 패널 안 허용 요청 — 대화 면 바닥, 컴포저 바로 위에 선다. 초점은 가져가지 않는다. */}
+        <UseRequestCards operationId={context.operationId} language={language} placement="chat" />
         </div>
 
         {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로, 언제나 서 있다. 말풍선 문

@@ -36,6 +36,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     runtime.terminate(payload.operationId);
     // 브라우저 컨텍스트(탭·쿠키)도 Operation 과 함께 사라진다 — 남겨 두면 엔진이 유휴 종료에 닿지 못한다.
     ctx.host.browserMcp?.revokeOperation(payload.operationId);
+    // 닫힌 Operation 이 띄운 허용 요청은 답할 자리가 없다 — 붙잡힌 호출을 풀고 허가도 걷는다.
+    ctx.host.useRequests?.settle(payload.operationId);
   });
   ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
   /**
@@ -65,7 +67,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     onTurnEnded: (operationId) => sessionWatch.onTurnEnded(operationId),
     // 턴이 멈추면(정상·중단 모두) 에이전트 사용 표식을 내린다. Computer Use 는 기기 소유도 함께 놓는다 — 표식만
     // 내리고 잡고 있으면 공유 화면이 조용히 살아 있는 셈이다. 세 호출 모두 멱등이라 겹쳐 불려도 된다.
-    onTurnSettled: (operationId) => { ctx.host.browserMcp?.endAgentSession(operationId); ctx.host.computerUseMcp?.revokeOperation(operationId); ctx.host.consoleUse.endOperationUse?.(operationId); },
+    // 「이번 작업만」 허가도 턴과 함께 풀린다.
+    onTurnSettled: (operationId) => { ctx.host.useRequests?.settle(operationId); ctx.host.browserMcp?.endAgentSession(operationId); ctx.host.computerUseMcp?.revokeOperation(operationId); ctx.host.consoleUse.endOperationUse?.(operationId); },
   });
   return { launchKinds: agent.launchKinds, actions: { ...agent.actions, analystAsk: analysis.ask, analystArtifacts: analysis.artifacts, analystState: analysis.state } };
 }

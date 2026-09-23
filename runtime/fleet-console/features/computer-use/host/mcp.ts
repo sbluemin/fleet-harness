@@ -20,6 +20,28 @@ export interface ComputerUseMcpDeps {
   readonly operations?: () => readonly OperationNode[];
   readonly experimentEnabled?: () => boolean;
   readonly language?: () => "en" | "ko" | null;
+  /**
+   * 패널 안 허용 요청 — 콘솔 사용과 같은 요청 브로커를 호스트 조립이 주입한다(이 기능은 콘솔 사용 구현을 모른다).
+   * 주어지면 허용받지 않은 Operation 호출은 거부 대신 붙잡혀 그 패널에 카드를 띄우고, 「이번 작업만」 허가도 허용으로 친다.
+   */
+  readonly requests?: ComputerUseRequestPort;
+}
+
+/** Operation 호출자에게만 붙는 설명 — 플러그인 호출자는 카드를 띄우지 않는다. */
+const OPERATION_REQUEST_NOTE = "Operation permission: allowed when this Operation's own Computer Use toggle is on, or when the person allowed it for this turn from the request card in the Operation panel. Without either, the call waits up to four minutes for the person's answer on that card; a permission granted for this turn ends with your turn. If they decline or do not answer, do not request Computer Use again in this turn.";
+
+/** 요청 브로커 중 컴퓨터 사용이 쓰는 몫. */
+export interface ComputerUseRequestPort {
+  hold(input: {
+    readonly operationId: string;
+    readonly capability: "computer";
+    readonly tool: string;
+    readonly signal?: AbortSignal;
+    readonly authorized: () => boolean;
+    readonly blocked?: () => "experiment_disabled" | null;
+  }): Promise<"turn" | "always" | "authorized" | "declined" | "no_response" | "stopped">;
+  granted(operationId: string, capability: "computer"): boolean;
+  touch(operationId: string, capability: "computer"): void;
 }
 
 export function readComputerUseFlag(payload: Record<string, unknown> | undefined): { readonly enabled: true; readonly language: "en" | "ko" } | null {
@@ -36,20 +58,24 @@ export function operationIdFromSessionLabel(label: string | undefined): string {
   return value.startsWith("chat:") ? value.slice(5) : value;
 }
 
-type ComputerUseRefusal = "experiment_disabled" | "operation_not_authorized" | "plugin_not_authorized" | "caller_unresolved";
+type ComputerUseRefusal = "experiment_disabled" | "operation_not_authorized" | "plugin_not_authorized" | "caller_unresolved" | "declined_by_user" | "no_response";
 
 const REFUSAL_REMEDY = {
   experiment_disabled: { actor: "user", surface: "settings", path: ["Settings", "Experiments", "Computer Use"] },
   operation_not_authorized: { actor: "user", surface: "operation_panel", path: ["Operation menu", "Computer Use"] },
   plugin_not_authorized: { actor: "user", surface: "caller_menu", path: ["Caller menu", "Computer Use"] },
   caller_unresolved: { actor: "none", surface: "none", path: [] },
+  declined_by_user: { actor: "user", surface: "operation_panel", path: ["Operation panel", "Computer Use request"] },
+  no_response: { actor: "user", surface: "operation_panel", path: ["Operation panel", "Computer Use request"] },
 } as const satisfies Record<ComputerUseRefusal, { readonly actor: string; readonly surface: string; readonly path: readonly string[] }>;
 
 const REFUSAL_INSTRUCTION: Record<ComputerUseRefusal, string> = {
   experiment_disabled: "Computer Use is turned off for this Console, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Settings > Experiments > Computer Use, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
-  operation_not_authorized: "This Operation has not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use in this Operation's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
+  operation_not_authorized: "This Operation has not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use (컴퓨터 사용 in the Korean interface) in this Operation's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   plugin_not_authorized: "You have not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use in your own ··· menu, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   caller_unresolved: "This session is not bound to a Console Operation, so Computer Use can never answer it. Do not retry and do not ask the user to change a setting — nothing they can turn on fixes this. Continue without the computer.",
+  declined_by_user: "The person declined this Computer Use request in the Operation panel. Do not request Computer Use again in this turn and do not look for another route to the user's computer. Continue the task without the computer, and tell the person what you could not do.",
+  no_response: "Nobody answered the Computer Use request in the Operation panel within four minutes, so the host refused this call. Do not keep calling Computer Use tools in this turn. Continue without the computer, and tell the person they can allow it from the panel card the next time you ask.",
 };
 
 const REFUSAL_MESSAGE: Record<ComputerUseRefusal, Record<"en" | "ko", string>> = {
@@ -69,10 +95,19 @@ const REFUSAL_MESSAGE: Record<ComputerUseRefusal, Record<"en" | "ko", string>> =
     en: "This session is not bound to a Console Operation, so Computer Use is unavailable to it.",
     ko: "이 세션은 Console Operation에 묶여 있지 않아 컴퓨터 사용을 쓸 수 없습니다.",
   },
+  declined_by_user: {
+    en: "You declined Computer Use for this Operation. It continues without the computer.",
+    ko: "이 Operation의 컴퓨터 사용을 거절했습니다. 컴퓨터 없이 계속합니다.",
+  },
+  no_response: {
+    en: "The Computer Use request got no answer, so it was declined. It continues without the computer.",
+    ko: "컴퓨터 사용 요청에 답이 없어 거절로 처리했습니다. 컴퓨터 없이 계속합니다.",
+  },
 };
 
 function refuse(reason: ComputerUseRefusal, operationId: string | null, language: "en" | "ko") {
-  const actionable = reason !== "caller_unresolved";
+  // 거절·무응답은 이번 턴에서 다시 두드릴 길이 아니다.
+  const actionable = reason === "experiment_disabled" || reason === "operation_not_authorized" || reason === "plugin_not_authorized";
   return { content: [{ type: "text" as const, text: JSON.stringify({
     error: "computer_use_not_authorized", reason,
     retryable: actionable, retryAfter: actionable ? "user_action" : "never",
@@ -86,17 +121,45 @@ function refuse(reason: ComputerUseRefusal, operationId: string | null, language
  * 호출자 Operation 단위 판정 — 콘솔 사용과 같은 규칙이다. 실험 플래그와 그 Operation의 토글이
  * 둘 다 참일 때만 통과하고, 어느 쪽이 막았는지를 구분해 돌려준다. 신원이 풀리지 않으면 거부한다.
  */
-function denyComputerUse(deps: ComputerUseMcpDeps, sessionLabel: string | undefined) {
+function computerUseDenial(deps: ComputerUseMcpDeps, sessionLabel: string | undefined): { readonly reason: ComputerUseRefusal; readonly operationId: string | null; readonly language: "en" | "ko" } | null {
   if (!deps.operations) return null;
   const id = operationIdFromSessionLabel(sessionLabel);
   const fallback = deps.language?.() ?? "en";
   const operation = deps.operations().find((op) => op.id === id);
-  if (!operation) return refuse("caller_unresolved", null, fallback);
+  if (!operation) return { reason: "caller_unresolved", operationId: null, language: fallback };
   const flag = readComputerUseFlag(operation.payload);
   const language = flag?.language ?? fallback;
-  if (deps.experimentEnabled?.() !== true) return refuse("experiment_disabled", operation.id, language);
-  if (!flag) return refuse("operation_not_authorized", operation.id, language);
+  if (deps.experimentEnabled?.() !== true) return { reason: "experiment_disabled", operationId: operation.id, language };
+  if (!flag && deps.requests?.granted(operation.id, "computer") !== true) return { reason: "operation_not_authorized", operationId: operation.id, language };
   return null;
+}
+
+function denyComputerUse(deps: ComputerUseMcpDeps, sessionLabel: string | undefined) {
+  const denial = computerUseDenial(deps, sessionLabel);
+  return denial ? refuse(denial.reason, denial.operationId, denial.language) : null;
+}
+
+/**
+ * 허용받지 않은 Operation 호출을 붙잡아 그 패널에 허용 요청 카드를 띄운다. 실험 스위치가 꺼져 있으면 카드는
+ * 설정으로 안내하고(카드에서 허용할 수 없다), 켜지면 같은 카드에서 허용할 수 있게 된다.
+ */
+async function holdComputerUse(deps: ComputerUseMcpDeps, sessionLabel: string, tool: string, signal: AbortSignal) {
+  const denial = computerUseDenial(deps, sessionLabel);
+  if (!denial) return null;
+  const requests = deps.requests;
+  if (!requests || !denial.operationId || (denial.reason !== "operation_not_authorized" && denial.reason !== "experiment_disabled")) return refuse(denial.reason, denial.operationId, denial.language);
+  const outcome = await requests.hold({
+    operationId: denial.operationId,
+    capability: "computer",
+    tool,
+    signal,
+    authorized: () => computerUseDenial(deps, sessionLabel) === null,
+    blocked: () => deps.experimentEnabled?.() === true ? null : "experiment_disabled",
+  });
+  if (outcome === "declined") return refuse("declined_by_user", denial.operationId, denial.language);
+  if (outcome === "no_response") return refuse("no_response", denial.operationId, denial.language);
+  if (outcome === "stopped") return refuse(denial.reason, denial.operationId, denial.language);
+  return denyComputerUse(deps, sessionLabel);
 }
 export interface ComputerUseMcpConnection extends AdmiralMcpSession {
   cancelSession(label: string): void;
@@ -138,12 +201,15 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       const snapshotStore = createMcpToolSnapshotStore();
       for (const spec of deps.service.specs()) {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]);
-        registry.registerAgentTool({ ...spec, execute: (args, context) => {
+        registry.registerAgentTool({ ...spec, ...(deps.requests ? { description: `${spec.description} ${OPERATION_REQUEST_NOTE}` } : {}), execute: async (args, context) => {
           const parsed = schema.safeParse(args);
-          if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return Promise.resolve({ content: [{ type: "text", text: "Computer Use session or arguments unavailable" }], isError: true });
-          // 허용은 도구 호출마다 다시 읽는다 — 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다.
-          const denied = denyComputerUse(deps, context.sessionLabel);
-          if (denied) return Promise.resolve(denied);
+          if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session or arguments unavailable" }], isError: true };
+          // 허용은 도구 호출마다 다시 읽는다 — 켜고 끄는 것이 재연결 없이 다음 호출부터 듣는다. 허용받지 않았으면
+          // 패널에서 사람의 답을 기다린다.
+          const denied = await holdComputerUse(deps, context.sessionLabel, spec.id, AbortSignal.any([controller.signal, ...(context.signal ? [context.signal] : [])]));
+          if (denied) return denied;
+          if (controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
+          deps.requests?.touch(operationIdFromSessionLabel(context.sessionLabel), "computer");
           const sessionLabel = owner(context.sessionLabel);
           owners.add(sessionLabel);
           const operationId = operationIdFromSessionLabel(context.sessionLabel);
