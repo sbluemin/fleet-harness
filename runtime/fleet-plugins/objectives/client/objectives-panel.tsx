@@ -410,7 +410,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           {sections.map((section) => { const expanded = isOpen(section.key, !section.done); return (<div key={section.key} data-section={section.key} className={`objectives-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}`}>
           {section.label ? <button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span>{section.label}</span><span className="objectives-count">{section.items.length}</span></button> : null}
           {expanded ? section.items.map((item) => {
-            const index = visible.indexOf(item);
+            // 방향키 이웃은 같은 구획의 카드 행 기준 — 검토 대기가 빠져나가면 visible 순서와 구획 안 순서가 어긋난다.
+            const index = section.items.indexOf(item);
             const mode = coordinatorMode(item);
             const showGroup = false as false | ObjectiveGroup | null;
             const busy = isBusy(item);
