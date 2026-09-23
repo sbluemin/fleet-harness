@@ -10,7 +10,6 @@ const BASE: SystemPromptSettingsState = {
   claudeCodeDisabledAgents: [],
   aiGateway: null,
   aiGatewayCatalog: { providers: [] },
-  cursorDiagnosticsEnabled: false,
   wireLogEnabled: false,
   delegationRoutingEnabled: true,
   delegationRoutingModel: null,

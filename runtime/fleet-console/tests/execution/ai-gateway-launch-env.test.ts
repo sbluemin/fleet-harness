@@ -49,7 +49,7 @@ describe("Claude gateway launch environment", () => {
     const selection = resolveAiGatewaySelection({
       version: 1,
       models: [
-        { id: "cursor--grok-4.7-fast" },
+        { id: "xai--grok-4.7-fast" },
         { id: "codex--gpt-6-sol-fast" },
         { id: "xai--grok-4.7" },
         { id: "codex--gpt-6-luna-fast" },
@@ -75,7 +75,7 @@ describe("Claude gateway launch environment", () => {
       "claude-gateway--codex--gpt-6-sol-fast",
       "claude-gateway--codex--gpt-6-luna-fast",
       "claude-gateway--xai--grok-4.7",
-      "claude-gateway--cursor--grok-4.7-fast",
+      "claude-gateway--xai--grok-4.7-fast",
     ]);
   });
 

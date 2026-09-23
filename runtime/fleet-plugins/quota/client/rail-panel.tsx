@@ -20,13 +20,12 @@ import "./quota.css";
 
 type T = Translate<QuotaMessageKey>;
 /** Providers whose credential read is gated behind an explicit connect. */
-type ConnectableProviderId = "claude" | "cursor";
+type ConnectableProviderId = "claude";
 
 const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   antigravity: "Antigravity",
   claude: "Claude Code",
   codex: "Codex",
-  cursor: "Cursor",
   opencode: "OpenCode Go",
   xai: "xAI",
 };
@@ -35,7 +34,6 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.antigravity.signedOut",
   claude: "quota.claude.signedOut",
   codex: "quota.codex.signedOut",
-  cursor: "quota.cursor.signedOut",
   opencode: "quota.opencode.signedOut",
   xai: "quota.xai.signedOut",
 };
@@ -44,24 +42,22 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.expired.antigravity",
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
-  cursor: "quota.expired.cursor",
   opencode: "quota.expired.opencode",
   xai: "quota.expired.xai",
 };
 
-// Cursor·OpenCode만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다),
+// OpenCode만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다),
 // 프로바이더별 안내를 공용 문구로 대신하면 다른 공급자의 지시를 보여주게 되므로 나머지도 명시한다.
 export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.noSubscription",
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
-  cursor: "quota.noSubscription",
   opencode: "quota.opencode.noSubscription",
   xai: "quota.noSubscription",
 };
 
 function isConnectable(id: ProviderId): id is ConnectableProviderId {
-  return id === "claude" || id === "cursor";
+  return id === "claude";
 }
 
 /** 한 칸 이동. 경계 밖이면 null — 호출자가 저장·공지를 건너뛴다. */
@@ -218,16 +214,13 @@ export function meterSeverity(window: QuotaWindow): "normal" | "warning" | "crit
 /**
  * 접힌 행이 대변할 창 하나.
  *
- * 집계 창(isAggregate)은 형제 창들의 합이라 개별 풀이 말라도 평온하게 읽힌다 —
- * 실제 풀이 하나라도 있으면 집계는 후보에서 뺀다. 그다음 순위는 퍼센트가 아니라
- * 게이트웨이의 압력 판정이 먼저다. 회차의 5분의 1 지점에서 44%를 쓴 창은 조용한
+ * 순위는 퍼센트가 아니라 게이트웨이의 압력 판정이 먼저다.
+ * 회차의 5분의 1 지점에서 44%를 쓴 창은 조용한
  * 60% 창보다 급하고, 퍼센트만 보는 비교로는 그 사실을 볼 수 없다.
  */
 export function foldedWindow(windows: readonly QuotaWindow[] | undefined): QuotaWindow | null {
   if (windows === undefined || windows.length === 0) return null;
-  const pools = windows.filter((window) => window.isAggregate !== true);
-  const candidates = pools.length > 0 ? pools : windows;
-  return candidates.reduce((worst, window) => {
+  return windows.reduce((worst, window) => {
     const rank = SEVERITY_RANK[meterSeverity(window)] - SEVERITY_RANK[meterSeverity(worst)];
     if (rank !== 0) return rank > 0 ? window : worst;
     return window.usedPercent > worst.usedPercent ? window : worst;
@@ -585,9 +578,9 @@ function ProviderCard({
     <FoldButton folded={folded} name={name} regionId={regionId} onToggle={() => toggleFold(id)} t={t} />
   );
   if (isConnectable(id) && provider.status === "not_connected") {
-    const titleKey = id === "claude" ? "quota.connect.title" : "quota.connect.title.cursor";
-    const bodyKey = id === "claude" ? "quota.connect.body" : "quota.connect.body.cursor";
-    const actionKey = id === "claude" ? "quota.connect.action" : "quota.connect.action.cursor";
+    const titleKey = "quota.connect.title";
+    const bodyKey = "quota.connect.body";
+    const actionKey = "quota.connect.action";
     return (
       <section className={`quota-connect-card${modifiers}`} data-provider={id}>
         <header className="quota-provider__header">
@@ -948,7 +941,6 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
     data?.providers.antigravity.fetchedAt ?? 0,
     data?.providers.claude.fetchedAt ?? 0,
     data?.providers.codex.fetchedAt ?? 0,
-    data?.providers.cursor.fetchedAt ?? 0,
     data?.providers.opencode.fetchedAt ?? 0,
     data?.providers.xai.fetchedAt ?? 0,
   );

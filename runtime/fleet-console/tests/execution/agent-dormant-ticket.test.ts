@@ -56,6 +56,43 @@ describe("agent dormant ticket guards", () => {
     expect(harness.invalidateCalls).toEqual([sessionId]);
   });
 
+  it("requires explicit valid model reselection before restarting a removed-provider Operation", async () => {
+    const harness = await createHarness({
+      body: { model: "sonnet" },
+      aiGatewaySettings: { version: 1, models: [{ id: "codex--gpt-6-luna" }] },
+    });
+    const sessionId = await harness.createLiveSession();
+    await harness.transitionToDormant(sessionId);
+    const operation = harness.operations[0]!;
+    operation.payload.session = { ...(operation.payload.session as Record<string, unknown>), model: "cursor--retired", effort: "high", transcriptPath: "/saved/history.jsonl" };
+    operation.payload.chatMode = true;
+    const original = JSON.stringify(operation.payload);
+    const before = harness.attach.mock.calls.length;
+
+    await harness.resumeSession(sessionId, { fresh: true });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "gateway_model_reselection_required" } });
+    await harness.resumeSession(sessionId, { fresh: true, model: "codex--not-enabled" });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "gateway_model_not_enabled" } });
+    expect(harness.attach).toHaveBeenCalledTimes(before);
+    expect(JSON.stringify(harness.operations[0]!.payload)).toBe(original);
+
+    await harness.resumeSession(sessionId, { fresh: true, model: "sonnet" });
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({ model: "sonnet", sessionId }));
+    expect(harness.operations[0]?.payload.session).toMatchObject({ model: "sonnet" });
+    expect(harness.operations[0]?.payload.previousAgentSessions).toEqual([expect.objectContaining({ transcriptPath: "/saved/history.jsonl", model: "cursor--retired" })]);
+
+    const failed = await createHarness({ body: { model: "sonnet" }, resumeAttachError: new Error("attach failed") });
+    const failedId = await failed.createLiveSession();
+    await failed.transitionToDormant(failedId);
+    failed.operations[0]!.payload.session = { ...(failed.operations[0]!.payload.session as Record<string, unknown>), model: "cursor--retired", transcriptPath: "/saved/history.jsonl" };
+    failed.operations[0]!.payload.chatMode = true;
+    const saved = JSON.stringify(failed.operations[0]!.payload);
+    await failed.resumeSession(failedId, { fresh: true, model: "sonnet" });
+    expect(failed.responses.at(-1)).toMatchObject({ status: 503 });
+    expect(JSON.stringify(failed.operations[0]!.payload)).toBe(saved);
+  });
+
   it("allows ticket issuance after resume moves the session out of dormant", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
@@ -78,7 +115,7 @@ describe("agent dormant ticket guards", () => {
 });
 
 type TestRequest = http.IncomingMessage & {
-  readonly __body?: { readonly operationId?: string; readonly fresh?: boolean };
+  readonly __body?: { readonly operationId?: string; readonly fresh?: boolean; readonly model?: string; readonly effort?: string };
 };
 
 async function createHarness(options: {
@@ -310,7 +347,7 @@ async function createHarness(options: {
     return body?.sessions ?? [];
   }
 
-  async function resumeSession(sessionId: string, body?: { readonly fresh?: boolean }): Promise<void> {
+  async function resumeSession(sessionId: string, body?: { readonly fresh?: boolean; readonly model?: string; readonly effort?: string }): Promise<void> {
     if (!route) throw new Error("Agent route was not registered");
     await route({
       req: { method: "POST", url: `/api/v1/agent/sessions/${sessionId}/resume`, ...(body ? { __body: body } : {}) } as TestRequest,

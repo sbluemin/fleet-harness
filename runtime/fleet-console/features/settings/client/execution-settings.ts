@@ -16,7 +16,7 @@ export interface AiGatewaySettings {
   readonly providerPriority?: readonly AiGatewayProviderId[];
 }
 
-export type AiGatewayProviderId = "antigravity" | "codex" | "cursor" | "opencode" | "xai" | "claude";
+export type AiGatewayProviderId = "antigravity" | "codex" | "opencode" | "xai" | "claude";
 
 /** Absent / null is Auto. `"early"` / `"late"` are 88 / 97. A number is Custom 70–99. */
 export type CompactCeiling = "early" | "late" | number;
@@ -70,7 +70,6 @@ export interface SystemPromptSettingsState {
   readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
-  readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
   /** AI 판단 활성화 여부. Off는 로컬 규칙 기반 fallback을 사용한다. */
   readonly delegationRoutingEnabled: boolean;
@@ -87,7 +86,6 @@ export type SystemPromptSettingsUpdate =
   | { readonly claudeCodeSkipPermissions: boolean }
   | { readonly claudeCodeDisabledAgents: readonly string[] }
   | { readonly aiGateway: AiGatewaySettings | null }
-  | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
   | { readonly delegationRoutingEnabled: boolean }
   | { readonly delegationRoutingMode: DelegationRoutingMode }
@@ -148,7 +146,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || typeof payload.claudeCodeSkipPermissions !== "boolean"
     || !isStringList(payload.claudeCodeDisabledAgents)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
-    || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
     || typeof payload.delegationRoutingEnabled !== "boolean"
     || !isDelegationRoutingMode(payload.delegationRoutingMode)
@@ -165,7 +162,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     claudeCodeDisabledAgents: payload.claudeCodeDisabledAgents,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
-    cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
     wireLogEnabled: payload.wireLogEnabled,
     delegationRoutingEnabled: payload.delegationRoutingEnabled,
     delegationRoutingModel: payload.delegationRoutingModel ?? null,
@@ -213,7 +209,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeCustomSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeCustomSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -337,9 +333,6 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
     return { claudeCodeSkipPermissions: state.claudeCodeSkipPermissions };
   }
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
-  if (field === "cursorDiagnosticsEnabled") {
-    return { cursorDiagnosticsEnabled: state.cursorDiagnosticsEnabled };
-  }
   if (field === "wireLogEnabled") {
     return { wireLogEnabled: state.wireLogEnabled };
   }

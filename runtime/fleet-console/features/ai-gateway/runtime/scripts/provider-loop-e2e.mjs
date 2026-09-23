@@ -183,7 +183,6 @@ function createTrialMetrics() {
       cacheWriteInputTokens: 0,
       outputTokens: 0,
     },
-    cursorDiagnosticEvents: {},
   };
 }
 
@@ -219,7 +218,7 @@ function parseAnthropicResponse(result) {
   return response;
 }
 
-async function runTrial({ options, port, diagnostics }) {
+async function runTrial({ options, port }) {
   const startedAt = Date.now();
   const deadline = startedAt + options.timeoutMs;
   const metrics = createTrialMetrics();
@@ -352,13 +351,6 @@ function safeErrorName(error) {
   return /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(name) ? name : "Error";
 }
 
-function makeDiagnosticSink(diagnostics) {
-  return (event) => {
-    if (typeof event?.event !== "string") return;
-    diagnostics[event.event] = (diagnostics[event.event] ?? 0) + 1;
-  };
-}
-
 function validateTarget(gateway, options) {
   const target = gateway.findGatewayModel(options.model);
   if (!target || gateway.toClaudeGatewayModelId(target) !== options.model) {
@@ -387,15 +379,6 @@ function aggregateUsage(trials) {
   });
 }
 
-function aggregateDiagnosticEvents(trials) {
-  return trials.reduce((total, trial) => {
-    for (const [event, count] of Object.entries(trial.cursorDiagnosticEvents)) {
-      total[event] = (total[event] ?? 0) + count;
-    }
-    return total;
-  }, {});
-}
-
 function createTrialServer(router) {
   return http.createServer(async (request, response) => {
     try {
@@ -417,30 +400,25 @@ function createTrialServer(router) {
 }
 
 async function runTrialWithLifecycle({ gateway, options, target }) {
-  const diagnostics = {};
-  const diagnosticSink = makeDiagnosticSink(diagnostics);
   const authService = gateway.createProviderAuthService();
   const router = gateway.createAiGatewayRouter({
     originator: "core-ai-gateway-provider-loop-e2e",
     readAuth: gateway.readCodexSubscriptionAuth,
-    readCursorToken: gateway.readCursorSubscriptionToken,
     readXaiToken: gateway.readXaiSubscriptionToken,
     readAntigravityToken: gateway.readAntigravitySubscriptionToken,
     readOpencodeApiKey: () => authService.getApiKey(gateway.OPENCODE_AUTH_PROVIDER_ID),
-    cursorDiagnostics: diagnosticSink,
   });
   const server = createTrialServer(router);
   let serverClosed = false;
 
   try {
     const port = await listen(server);
-    const metrics = await runTrial({ options, port, diagnostics });
+    const metrics = await runTrial({ options, port });
     router.dispose();
     const routerDisposed = true;
     await closeServer(server);
     serverClosed = !server.listening;
     if (!serverClosed) throw new Error("loopback server remained open");
-    metrics.cursorDiagnosticEvents = Object.freeze({ ...diagnostics });
     metrics.cleanup = { routerDisposed, loopbackServerClosed: true };
     return metrics;
   } finally {
@@ -485,7 +463,6 @@ async function main() {
     successfulTrials: trials.length,
     trials,
     usage: aggregateUsage(trials),
-    cursorDiagnosticEvents: aggregateDiagnosticEvents(trials),
   })}\n`);
 }
 

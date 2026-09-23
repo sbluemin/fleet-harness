@@ -22,7 +22,6 @@
     "e2e:provider-loop": "node scripts/provider-loop-e2e.mjs",
     "probe:claude-auto-compact": "pnpm run build 1>&2 && node scripts/probe-claude-auto-compact.mjs",
     "probe:claude-codex-compact": "pnpm run build 1>&2 && node scripts/probe-claude-codex-compact.mjs",
-    "probe:cursor-context": "pnpm run build 1>&2 && node scripts/probe-cursor-context-windows.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -34,7 +33,6 @@
     }
   },
   "dependencies": {
-    "@bufbuild/protobuf": "^2.12.0",
     "@fleet-console/infra": "workspace:*",
     "zod": "^4.3.6",
     "@fleet-console/agent-runtime": "workspace:*"

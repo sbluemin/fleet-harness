@@ -149,11 +149,11 @@ export async function createAgentSession(
 }
 
 
-export async function resumeAgentSession(sessionId: string, options?: { readonly fresh?: boolean; readonly signal?: AbortSignal }): Promise<SessionInfo> {
+export async function resumeAgentSession(sessionId: string, options?: { readonly fresh?: boolean; readonly model?: string; readonly effort?: string; readonly signal?: AbortSignal }): Promise<SessionInfo> {
   const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/resume`, {
     method: "POST",
     ...(options?.fresh
-      ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fresh: true }) }
+      ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fresh: true, ...(options.model ? { model: options.model } : {}), ...(options.effort ? { effort: options.effort } : {}) }) }
       : {}),
     signal: options?.signal,
   });

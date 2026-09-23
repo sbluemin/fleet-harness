@@ -4,9 +4,7 @@ import benchmarksData from "../benchmarks.json" with { type: "json" };
 import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
-import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
-
-export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "antigravity", "claude"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "opencode", "antigravity", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -42,16 +40,12 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   z.object({
     supported: z.literal(true),
     levels: z.array(z.enum(GATEWAY_REASONING_EFFORTS)).min(1),
-    upstreamModelIdTemplate: z.string().min(1).optional(),
     upstreamModelIds: GatewayEffortUpstreamModelIdsSchema.optional(),
   }).strict(),
   z.object({
     supported: z.literal(false),
   }).strict(),
 ]);
-
-const GATEWAY_QUOTA_SCOPES = ["auto", "api"] as const;
-export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
 
 /**
  * The provider's own positioning of a model within its current lineup, read
@@ -66,17 +60,11 @@ export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
  * upstream under different service terms, and an unlinked `-fast`/`flash` name
  * reads as the provider's light tier.
  *
- * Two links prove it, because providers spell the same fact two ways. Where the
- * variant reaches its base's own wire id, `providerModelId` already carries the
- * proof. Where the provider gives the variant a wire id of its own — Cursor's
- * `cursor-grok-4.6-{effort}-fast` against `cursor-grok-4.6-{effort}` — that
- * field is spoken for by the wire, so {@link GatewayModelEntry.variantOf} states
- * the lineage separately. Without the second spelling such a variant could not
- * be linked at all, and the downward rule would grade a flagship's priority tier
- * as light purely because the catalog had no room to say otherwise.
+ * Where the variant reaches its base's own wire id, `providerModelId` carries
+ * the lineage. A provider that gives a variant its own wire id declares
+ * {@link GatewayModelEntry.variantOf} separately.
  *
- * Routing aliases (Cursor's `auto`) carry no class: what serves the request
- * varies per call, so any single class would lie.
+ * Routing aliases carry no class: what serves the request varies per call.
  */
 const GATEWAY_CAPABILITY_CLASSES = ["flagship", "standard", "light"] as const;
 export type GatewayCapabilityClass = typeof GATEWAY_CAPABILITY_CLASSES[number];
@@ -179,20 +167,12 @@ const GatewayModelEntrySchema = z.object({
   benchmarkKey: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
-  /**
-   * The catalog entry this one is a serving variant of, when the provider gives
-   * the variant its own wire id and `providerModelId` is therefore unavailable
-   * as the lineage link. Pure provenance: it names a sibling `modelId` in the
-   * same provider and never reaches a request, so the variant keeps sending its
-   * own upstream id while inheriting the base's class and benchmark evidence.
-   */
+  /** A serving sibling with its own wire id names the catalog base separately. */
   variantOf: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
-  quotaScope: z.enum(GATEWAY_QUOTA_SCOPES).optional(),
   wire: z.enum(GATEWAY_MODEL_WIRES).optional(),
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
-  cursorMaxMode: z.literal(true).optional(),
   effort: GatewayModelEffortSchema.optional(),
 }).strict();
 
@@ -208,7 +188,6 @@ const GatewayModelsRegistrySchema = z.object({
   updatedAt: z.iso.datetime(),
   providers: z.object({
     codex: GatewayProviderSchema,
-    cursor: GatewayProviderSchema,
     opencode: GatewayProviderSchema,
     xai: GatewayProviderSchema,
     antigravity: GatewayProviderSchema,
@@ -233,9 +212,7 @@ export type GatewayModelEffort =
   | {
       readonly supported: true;
       readonly levels: readonly GatewayReasoningEffort[];
-      /** Cursor wire id with one `{effort}` placeholder, resolved immediately before transport. */
-      readonly upstreamModelIdTemplate?: string;
-      /** Exact Cursor wire ids for effort tiers that do not follow the model's common template. */
+      /** Exact upstream wire ids for effort tiers (Antigravity). */
       readonly upstreamModelIds?: Readonly<Partial<Record<GatewayReasoningEffort, string>>>;
     };
 
@@ -250,16 +227,6 @@ export interface GatewayModel {
   /** Model id sent to the selected upstream provider. */
   readonly upstreamId?: string;
   readonly serviceTier?: "priority";
-  /** Cursor Run에서 확장 컨텍스트를 활성화하는 명시적 공급자 옵션. */
-  readonly cursorMaxMode?: true;
-  /**
-   * Sub-allowance this model is billed against, when its provider splits one
-   * subscription across pools. Cursor spends Auto-tier models from a separate
-   * budget than any API-tier pool the subscription still reports, so the
-   * provider's combined usage figure cannot tell a caller whether this
-   * particular model still has room.
-   */
-  readonly quotaScope?: GatewayQuotaScope;
   /** Upstream wire protocol; OpenCode Go only. Omission means `anthropic`. */
   readonly wire?: GatewayModelWire;
   /** Provider-stated lineup positioning; absent only on routing aliases. */
@@ -409,7 +376,6 @@ export const GATEWAY_MODELS: readonly GatewayModel[] = Object.freeze(
 );
 
 export const CODEX_SUBSCRIPTION_MODELS = providerModels("codex");
-export const CURSOR_SUBSCRIPTION_MODELS = providerModels("cursor");
 export const OPENCODE_SUBSCRIPTION_MODELS = providerModels("opencode");
 
 /**
@@ -436,8 +402,7 @@ export function upstreamModelId(model: GatewayModel): string {
  * Several entries are the same model under different service terms — Codex's
  * `-fast` variants are the priority tier of an identical upstream id — so a fact
  * measured about one holds for its siblings. Entries that merely share a vendor
- * name do not collapse: models exposed by different providers reach separate
- * upstreams through different transports and keep separate identities.
+ * name but reach different upstream transports keep separate identities.
  *
  * This is a lookup key for measurements recorded per upstream, not a routing
  * fact and not an id anything accepts. It stays out of `GatewayModelConstraints`
@@ -477,7 +442,6 @@ export interface GatewayModelConstraints {
    * a significance threshold published by the source.
    */
   readonly benchmark?: GatewayModelBenchmark;
-  readonly quotaScope?: GatewayQuotaScope;
 }
 
 export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelConstraints {
@@ -491,58 +455,7 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     effortSupported: ladder.length > 0,
     ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
     ...(model.benchmark && ladder.includes(model.benchmark.effort) ? { benchmark: model.benchmark } : {}),
-    ...(model.quotaScope ? { quotaScope: model.quotaScope } : {}),
   };
-}
-
-export interface CursorModelSelection {
-  readonly upstreamModelId: string;
-  readonly maxMode?: true;
-}
-
-/** Resolve one picker-visible Cursor model to its exact wire id. */
-export function resolveCursorModelSelection(
-  modelId: string,
-  requestedEffort?: ReasoningEffort,
-  catalog: readonly GatewayModel[] = CURSOR_SUBSCRIPTION_MODELS,
-): CursorModelSelection {
-  const model = findGatewayModel(modelId, catalog)
-    ?? catalog.find((candidate) => candidate.provider === "cursor" && (
-      candidate.id === scopedModelId("cursor", modelId)
-      || upstreamModelId(candidate) === modelId
-    ));
-  if (!model || model.provider !== "cursor") {
-    return { upstreamModelId: modelId };
-  }
-
-  const upstreamId = upstreamModelId(model);
-  if (!model.effort.supported) {
-    return { upstreamModelId: upstreamId, ...(model.cursorMaxMode ? { maxMode: true } : {}) };
-  }
-  // 카탈로그는 모델별 기본 effort를 정의하지 않는다. Claude Code는 effort 미설정 세션에도
-  // 항상 자기 세션 기본값 "high"를 명시해 보내므로(2026-08-02 실측), effort를 생략하는
-  // 드문 호출자에게도 같은 기준을 적용해 사다리 안으로 하향 클램프한다.
-  const effort = clampReasoningEffort(
-    requestedEffort ?? "high",
-    model.effort.levels,
-    upstreamId,
-  ) as GatewayReasoningEffort;
-  const exactModelId = model.effort.upstreamModelIds?.[effort];
-  return {
-    ...(model.cursorMaxMode ? { maxMode: true } : {}),
-    upstreamModelId: exactModelId
-      ?? model.effort.upstreamModelIdTemplate?.replace("{effort}", effort)
-      ?? upstreamId,
-  };
-}
-
-/** Backwards-compatible wire-id-only view of {@link resolveCursorModelSelection}. */
-export function resolveCursorUpstreamModelId(
-  modelId: string,
-  requestedEffort?: ReasoningEffort,
-  catalog: readonly GatewayModel[] = CURSOR_SUBSCRIPTION_MODELS,
-): string {
-  return resolveCursorModelSelection(modelId, requestedEffort, catalog).upstreamModelId;
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {
@@ -661,13 +574,11 @@ function toGatewayModel(
     provider,
     upstreamId: entry.providerModelId ?? entry.modelId,
     ...(entry.serviceTier ? { serviceTier: entry.serviceTier } : {}),
-    ...(entry.quotaScope ? { quotaScope: entry.quotaScope } : {}),
     ...(entry.wire ? { wire: entry.wire } : {}),
     ...(entry.capabilityClass ? { capabilityClass: entry.capabilityClass } : {}),
     ...(benchmark ? { benchmark } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
-    ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
     ...(entry.aliases ? { aliases: Object.freeze([...entry.aliases]) } : {}),
   };
@@ -743,15 +654,10 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       // A service-tier sibling is the same upstream under different terms; a
       // class diverging from its base would let the serving tier edit the prior.
       // The lineage link is `providerModelId` where the sibling reaches the
-      // base's own wire id, and `variantOf` where the provider gave it one of
-      // its own. Two links must never name two different bases.
+      // base's wire id, or `variantOf` when the variant has its own wire id.
       const catalogEntry = (modelId: string | undefined) => (
         modelId === undefined ? undefined : definition.models.find((candidate) => candidate.modelId === modelId)
       );
-      // `providerModelId`는 계보 지목이기 전에 wire id다. 카탈로그에 없는 upstream 이름을
-      // 담고 있으면 어떤 base 도 지목하지 않은 것이므로 `variantOf` 와 경쟁하지 않는다 —
-      // 여기서 무조건 불일치를 거부하면, 자체 wire id 와 계보를 동시에 적어야 하는 변형이
-      // 다시 표현 불가가 되어 이 필드를 들인 이유가 사라진다.
       const providerLinkedBase = isRoutingAlias ? undefined : catalogEntry(model.providerModelId);
       if (model.variantOf && providerLinkedBase && model.providerModelId !== model.variantOf) {
         throw new Error(`Gateway service-tier sibling names two different bases: ${provider}/${model.modelId}`);
@@ -762,15 +668,11 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       const baseModelId = isRoutingAlias ? undefined : model.variantOf ?? model.providerModelId;
       if (baseModelId) {
         const base = catalogEntry(baseModelId);
-        // `providerModelId` may legitimately name an upstream this catalog does
-        // not list, so only an explicit `variantOf` demands a resolvable base.
+        // `providerModelId` may name an upstream not listed here; an explicit
+        // `variantOf` must resolve. A listed base must not itself be a sibling.
         if (model.variantOf && !base) {
           throw new Error(`Gateway service-tier sibling names an unknown base: ${provider}/${model.modelId} -> ${model.variantOf}`);
         }
-        // A chain would let the class travel two hops from the model that
-        // actually stated it, so a base is always a base. 한 홉 위도 두 표기 중
-        // 어느 쪽으로든 이어질 수 있으므로 둘 다 본다 — `variantOf` 만 보면 base 가
-        // `providerModelId` 로 이어진 형제일 때 체인이 그대로 통과한다.
         const baseLink = base && base.modelId !== base.providerModelId
           ? base.variantOf ?? base.providerModelId
           : base?.variantOf;
@@ -790,12 +692,6 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       if (model.serviceTier && provider !== "codex") {
         throw new Error(`Gateway service tier is only supported by Codex: ${provider}/${model.modelId}`);
       }
-      // Cursor is the only provider observed to split one subscription across
-      // pools. Declaring a scope elsewhere would invite a caller to look for a
-      // per-pool window that provider's usage response never reports.
-      if (model.quotaScope && provider !== "cursor") {
-        throw new Error(`Gateway quota scope is only supported by Cursor: ${provider}/${model.modelId}`);
-      }
       // OpenCode Go selects among several wires per model; xAI's Grok CLI subscription
       // is fixed to Responses but declares it so routing never falls back to Anthropic.
       if (model.wire && provider !== "opencode" && provider !== "xai") {
@@ -805,36 +701,17 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         if (new Set(model.effort.levels).size !== model.effort.levels.length) {
           throw new Error(`Gateway effort levels contain duplicates: ${provider}/${model.modelId}`);
         }
-        const template = model.effort.upstreamModelIdTemplate;
         const exactModelIds = model.effort.upstreamModelIds;
-        if (provider === "cursor" && !template && !exactModelIds) {
-          throw new Error(`Cursor effort model requires an upstream model id template or overrides: ${provider}/${model.modelId}`);
-        }
-        if (template) {
-          if (provider !== "cursor") {
-            throw new Error(`Gateway effort model id templates are only supported by Cursor: ${provider}/${model.modelId}`);
-          }
-          if (template.split("{effort}").length !== 2) {
-            throw new Error(`Gateway effort model id template must contain one {effort}: ${provider}/${model.modelId}`);
-          }
-        }
         if (exactModelIds) {
-          // Cursor and Antigravity both spell a rung inside the wire model id, so
-          // both need per-level overrides. Every other provider carries effort as a
-          // request field, where an id override would silently never be read.
-          if (provider !== "cursor" && provider !== "antigravity") {
-            throw new Error(`Gateway effort model id overrides are only supported by Cursor and Antigravity: ${provider}/${model.modelId}`);
+          // Antigravity spells some effort rungs in the upstream model id. Other
+          // providers carry effort in a request field instead.
+          if (provider !== "antigravity") {
+            throw new Error(`Gateway effort model id overrides are only supported by Antigravity: ${provider}/${model.modelId}`);
           }
           for (const effort of Object.keys(exactModelIds) as GatewayReasoningEffort[]) {
             if (!model.effort.levels.includes(effort)) {
               throw new Error(`Gateway effort model id override is not an advertised level: ${provider}/${model.modelId}/${effort}`);
             }
-          }
-        }
-        if (provider === "cursor" && !template) {
-          const missing = model.effort.levels.find((effort) => !exactModelIds?.[effort]);
-          if (missing) {
-            throw new Error(`Cursor effort model has no upstream model id for level: ${provider}/${model.modelId}/${missing}`);
           }
         }
       }
@@ -877,9 +754,6 @@ function freezeGatewayModelEffort(
   return Object.freeze({
     supported: true as const,
     levels: Object.freeze([...effort.levels]),
-    ...(effort.upstreamModelIdTemplate
-      ? { upstreamModelIdTemplate: effort.upstreamModelIdTemplate }
-      : {}),
     ...(effort.upstreamModelIds
       ? { upstreamModelIds: Object.freeze({ ...effort.upstreamModelIds }) }
       : {}),
@@ -921,7 +795,7 @@ export function anthropicModelCapabilities(effort: GatewayModelEffort): Anthropi
     },
     effort: anthropicEffortCapability(effort),
     // Claude Code still attaches images even when this is false; advertise support
-    // once the gateway forwards Anthropic image blocks to Codex/Cursor.
+    // once the gateway forwards Anthropic image blocks to Codex.
     image_input: capability(true),
     pdf_input: capability(false),
     structured_outputs: capability(false),

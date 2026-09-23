@@ -115,44 +115,15 @@ describe("ai-gateway settings store", () => {
     });
   });
 
-  it("keeps each setting axis independent across writes", () => {
+  it("keeps the wire-log choice independent of model selection", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
-
-    store.write({ models: [{ id: "cursor--grok-4.7" }] });
-    store.writeCursorDiagnosticsEnabled(true);
-    expect(store.read()).toEqual({
-      version: 1,
-      models: [{ id: "cursor--grok-4.7" }],
-      cursorDiagnosticsEnabled: true,
-    });
-    store.write({ models: [{ id: "cursor--auto" }] });
-    expect(store.read()).toEqual({
-      version: 1,
-      models: [{ id: "cursor--auto" }],
-      cursorDiagnosticsEnabled: true,
-    });
-    store.write(undefined);
-    expect(store.read()).toEqual({ version: 1, cursorDiagnosticsEnabled: true });
-    store.writeCursorDiagnosticsEnabled(false);
-    expect(store.read()).toEqual({ version: 1 });
-
+    store.write({ models: [{ id: "kimi--k3" }] });
     store.writeWireLogEnabled(false);
+    expect(store.read()).toEqual({ version: 1, models: [{ id: "kimi--k3" }], wireLogEnabled: false });
+    store.write(undefined);
     expect(store.read()).toEqual({ version: 1, wireLogEnabled: false });
-    store.write({ models: [{ id: "cursor--auto" }] });
-    expect(store.read()).toEqual({ version: 1, models: [{ id: "cursor--auto" }], wireLogEnabled: false });
-    store.writeCursorDiagnosticsEnabled(true);
-    expect(store.read()).toEqual({
-      version: 1,
-      models: [{ id: "cursor--auto" }],
-      cursorDiagnosticsEnabled: true,
-      wireLogEnabled: false,
-    });
     store.writeWireLogEnabled(undefined);
-    expect(store.read()).toEqual({
-      version: 1,
-      models: [{ id: "cursor--auto" }],
-      cursorDiagnosticsEnabled: true,
-    });
+    expect(store.read()).toEqual({ version: 1 });
   });
 
   it("adopts the settings from the host directory it is given, without announcing it", () => {
@@ -189,7 +160,7 @@ describe("ai-gateway settings store", () => {
     );
 
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [dataDir] });
-    store.writeCursorDiagnosticsEnabled(true);
+    store.writeWireLogEnabled(true);
 
     expect(existsSync(store.path)).toBe(true);
     expect(store.read().models).toEqual([{ id: "cursor--auto" }]);
@@ -245,39 +216,12 @@ describe("ai-gateway settings store", () => {
   // 만들어 버리면, 아직 옮기지 못한 나머지 축이 영영 고아가 된다.
   // `write`는 선별 자체를 교체하는 연산이므로 모델이 바뀌는 게 정상이다. 각 경로가 건드리지
   // **않는** 축이 승계된 값 그대로인지가 판정 기준이다.
-  it.each([
-    [
-      "write",
-      (store: ReturnType<typeof createAiGatewaySettingsStore>) => store.write({ models: [{ id: "opencode--glm-5.3" }] }),
-      { version: 1, models: [{ id: "opencode--glm-5.3" }], cursorDiagnosticsEnabled: true },
-    ],
-    [
-      "writeCursorDiagnosticsEnabled",
-      (store: ReturnType<typeof createAiGatewaySettingsStore>) => store.writeCursorDiagnosticsEnabled(false),
-      { version: 1, models: [{ id: "cursor--auto" }] },
-    ],
-    [
-      "writeWireLogEnabled",
-      (store: ReturnType<typeof createAiGatewaySettingsStore>) => store.writeWireLogEnabled(true),
-      {
-        version: 1,
-        models: [{ id: "cursor--auto" }],
-        cursorDiagnosticsEnabled: true,
-        wireLogEnabled: true,
-      },
-    ],
-  ])("adopts before the first %s so a partial update cannot erase the adopted state", (_name, mutate, expected) => {
+  it("adopts before a partial wire-log update", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, {
-      version: 1,
-      models: [{ id: "cursor--auto" }],
-      defaultModel: "cursor--auto",
-      cursorDiagnosticsEnabled: true,
-    });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
-
-    mutate(store);
-    expect(store.read()).toEqual(expected);
+    store.writeWireLogEnabled(true);
+    expect(store.read()).toEqual({ version: 1, models: [{ id: "cursor--auto" }], wireLogEnabled: true });
   });
 
   it("retries adoption after a write it could not complete, instead of settling on the loss", () => {
@@ -299,11 +243,11 @@ describe("ai-gateway settings store", () => {
 
     rmSync(lockDir, { recursive: true, force: true });
     // 락이 풀린 뒤 한 축만 갱신해도 승계가 먼저 일어나야 한다.
-    store.writeCursorDiagnosticsEnabled(true);
+    store.writeWireLogEnabled(true);
     expect(store.read()).toEqual({
       version: 1,
       models: [{ id: "cursor--auto" }],
-      cursorDiagnosticsEnabled: true,
+      wireLogEnabled: true,
     });
   });
 
@@ -326,15 +270,15 @@ describe("ai-gateway settings store", () => {
     expect(store.read()).toEqual({ version: 1 });
     expect(existsSync(store.path)).toBe(false);
     // 쓰기는 거절한다. 여기서 파일이 생기면 그 순간 과거 선별이 영영 고아가 된다.
-    expect(() => store.writeCursorDiagnosticsEnabled(true)).toThrow(/could not be read/);
+    expect(() => store.writeWireLogEnabled(true)).toThrow(/could not be read/);
     expect(existsSync(store.path)).toBe(false);
 
     chmodSync(legacyFile, 0o644);
-    store.writeCursorDiagnosticsEnabled(true);
+    store.writeWireLogEnabled(true);
     expect(store.read()).toEqual({
       version: 1,
       models: [{ id: "cursor--auto" }],
-      cursorDiagnosticsEnabled: true,
+      wireLogEnabled: true,
     });
   });
 
@@ -346,8 +290,8 @@ describe("ai-gateway settings store", () => {
     mkdirSync(path.join(legacyDir, "ai-gateway.json"), { recursive: true });
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
 
-    store.writeCursorDiagnosticsEnabled(true);
-    expect(store.read()).toEqual({ version: 1, cursorDiagnosticsEnabled: true });
+    store.writeWireLogEnabled(true);
+    expect(store.read()).toEqual({ version: 1, wireLogEnabled: true });
   });
 
   it("cleans up its own orphaned temp files", () => {
@@ -360,10 +304,10 @@ describe("ai-gateway settings store", () => {
     writeFileSync(orphan, "{}", "utf-8");
     utimesSync(orphan, new Date(0), new Date(0));
 
-    store.writeCursorDiagnosticsEnabled(true);
+    store.writeWireLogEnabled(true);
 
     expect(existsSync(orphan)).toBe(false);
     // 같은 접두를 가진 락 디렉터리는 파일이 아니므로 정리 대상이 아니다.
-    expect(store.read().cursorDiagnosticsEnabled).toBe(true);
+    expect(store.read().wireLogEnabled).toBe(true);
   });
 });

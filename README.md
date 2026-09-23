@@ -18,7 +18,7 @@
 
 <img src=".github/console-canvas.png" alt="Fleet Console running four operations side by side — Claude, Codex GPT-5.6, and Cursor Grok sessions with a live shell" width="100%" />
 
-<p align="center"><sub>One Theater, four live Operations: Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.6 answering side by side, next to a plain shell. Every screenshot in this README is a real capture of Fleet running this repository.</sub></p>
+<p align="center"><sub>Earlier Fleet capture: one Theater, four live Operations — Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.6 beside a plain shell. Cursor Gateway sessions shown here are no longer available in the current version. Every screenshot in this README is a real capture of Fleet running this repository.</sub></p>
 
 Working with one AI coding agent is a workflow. Working with five is a mess of terminal tabs — until you give them a deck to land on. Fleet turns every agent session into an **Operation**: a real PTY owned by a local server, laid out on an infinite canvas, observable from any device you trust.
 
@@ -44,15 +44,18 @@ A **Theater** is a project folder. Register as many as you work in — every pan
 
 ## Every frontier model behind one launch menu
 
-<img src=".github/console-launch-menu.png" alt="The launch menu: Claude, Codex, and Cursor models in one right-click menu over the live canvas" width="100%" />
+<img src=".github/console-launch-menu.png" alt="Earlier Fleet launch-menu capture showing Claude, Codex, and now-removed Cursor Gateway models over the live canvas" width="100%" />
+
+<sub>This launch-menu capture is from an earlier version; its Cursor Gateway choices are no longer available.</sub>
 
 Right-click the canvas and launch Claude Code on any model you have enabled — its built-in Claude models, or gateway models that ride credentials the Console holds for you. The gateway is a local Claude Code endpoint, not an API proxy: the native agent loop, tool grammar, and authentication are preserved, and non-Anthropic credentials never enter the agent process.
 
 | Provider | Credential | Models |
 |---|---|---|
 | **Codex** | ChatGPT subscription | GPT-6 Astra · Sol · Luna · GPT-5.6 Terra, each with 524K and 1M context variants and a Fast variant |
-| **Cursor** | Cursor subscription | Auto · Composer 2.5 · Grok 4.5 · Grok 4.6, with Fast variants · Opus 5 · Fable 5, each with a Max Mode 1M variant |
-| **OpenCode Go** | API key | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash / Pro · GLM-5.2 · MiMo V2.5 / Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
+| **Antigravity** | Google subscription | Gemini 3.8 Flash · Gemini 3.1 Pro |
+| **OpenCode Go** | API key | GLM-5.3 · GLM-5.3 Flash · DeepSeek V4 Flash Vision / V4.1 Flash / V4 Pro · Muse Spark 1.3 Contributor |
+| **xAI** | Grok subscription | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
 
 Enable exactly the roster you want under **Settings → AI Gateway** — only those models appear in the launch menu and in Claude Code's `/model` picker. Models that support reasoning effort carry their own ladder — how far it climbs varies by model, and only some reach **MAX**. Every AI Gateway model also offers **ULTRACODE** in both launch intensity controls, which launches Claude Code with xhigh effort and standing multi-agent orchestration in one move. Usage-limit meters read the same risk verdict the gateway uses, so a window being spent faster than it refills shows as at-risk before a run stops.
 

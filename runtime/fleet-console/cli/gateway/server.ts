@@ -5,12 +5,10 @@ import path from "node:path";
 import {
   AI_GATEWAY_MODEL_ENV,
   createAiGatewayRouter,
-  createCursorDiagnosticLog,
   createFailureJournal,
   createClaudeCodexCompactionStore,
   readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
-  readCursorSubscriptionToken,
   readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
   type AuthService,
@@ -35,7 +33,6 @@ export async function startGatewayHttpServer(deps: {
   readonly port?: number;
 }): Promise<FleetCliGatewayServer> {
   const gatewayDir = path.join(path.dirname(deps.store.path), "fleet-cli", "ai-gateway");
-  const diagnostics = createCursorDiagnosticLog(gatewayDir);
   const failureJournal = createFailureJournal({
     filePath: path.join(gatewayDir, "failures.jsonl"),
   });
@@ -49,12 +46,10 @@ export async function startGatewayHttpServer(deps: {
     originator: "fleet-cli",
     // 자격증명 조달은 호스트 결정이다 — thin 런처도 export된 기본 reader를 명시 주입한다.
     readAuth: () => readCodexSubscriptionAuth(),
-    readCursorToken: () => readCursorSubscriptionToken(),
     readXaiToken: () => readXaiSubscriptionToken(),
     readAntigravityToken: () => readAntigravitySubscriptionToken(),
     renewAntigravityToken: () => readAntigravitySubscriptionToken({ forceRenew: true }),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
-    cursorDiagnostics: diagnostics.write,
   });
   const routePath = "/ai-gateway";
   const server = http.createServer((req, res) => {
@@ -85,7 +80,6 @@ export async function startGatewayHttpServer(deps: {
     await listen(server, deps.port);
   } catch (error) {
     router.dispose();
-    await diagnostics.flush();
     await failureJournal.flush();
     throw error;
   }
@@ -104,8 +98,7 @@ export async function startGatewayHttpServer(deps: {
     close() {
       closePromise ??= closeServer(server).finally(async () => {
         router.dispose();
-        await diagnostics.flush();
-        await failureJournal.flush();
+            await failureJournal.flush();
       });
       return closePromise;
     },

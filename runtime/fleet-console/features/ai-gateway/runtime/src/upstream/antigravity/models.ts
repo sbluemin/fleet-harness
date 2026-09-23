@@ -78,8 +78,7 @@ export function resolveAntigravityModelSelection(
     baseId,
   ) as GatewayReasoningEffort;
 
-  const exactModelId = model.effort.upstreamModelIds?.[effort]
-    ?? model.effort.upstreamModelIdTemplate?.replace("{effort}", effort);
+  const exactModelId = model.effort.upstreamModelIds?.[effort];
   if (exactModelId) return { wireModelId: exactModelId };
   return { wireModelId: baseId, thinkingLevel: thinkingLevel(effort) };
 }

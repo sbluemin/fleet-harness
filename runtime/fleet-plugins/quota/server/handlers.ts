@@ -15,7 +15,6 @@ export type SettingsSerializer = <T>(operation: () => Promise<T>) => Promise<T>;
 
 interface StoredSettings {
   readonly claudeConnected?: unknown;
-  readonly cursorConnected?: unknown;
   readonly providerOrder?: unknown;
   readonly foldedProviders?: unknown;
 }
@@ -32,7 +31,6 @@ async function readStoredSettings(ctx: FleetPluginServerContext): Promise<Stored
 function retainedSettings(settings: StoredSettings): Record<string, unknown> {
   return {
     ...(typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {}),
-    ...(typeof settings.cursorConnected === "boolean" ? { cursorConnected: settings.cursorConnected } : {}),
     ...(Array.isArray(settings.providerOrder) ? { providerOrder: sanitizeProviderOrder(settings.providerOrder) } : {}),
     ...(Array.isArray(settings.foldedProviders) ? { foldedProviders: sanitizeFoldedProviders(settings.foldedProviders) } : {}),
   };
@@ -110,7 +108,7 @@ export async function handleConnect(
   if (
     !body
     || Object.keys(body).length !== 2
-    || (body.provider !== "claude" && body.provider !== "cursor")
+    || body.provider !== "claude"
     || typeof body.connected !== "boolean"
   ) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_connect_request" });
@@ -119,9 +117,7 @@ export async function handleConnect(
   await serializeSettings(async () => {
     const next = {
       ...retainedSettings(await readStoredSettings(ctx)),
-      ...(body.provider === "claude"
-        ? { claudeConnected: body.connected }
-        : { cursorConnected: body.connected }),
+      claudeConnected: body.connected,
     };
     await ctx.host.storage.writeJson("quota", "settings", next);
   });

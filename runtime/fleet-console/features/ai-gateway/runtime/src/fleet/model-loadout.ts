@@ -13,8 +13,8 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
     .map(model => {
       const constraints = buildGatewayModelConstraints(model);
       const efforts = exposedEffortLadder(model.id, constraints.effortLadder, exposure.effortExposure);
-      const pool = `${model.provider}:${constraints.quotaScope ?? "shared"}`;
-      quotaPools[pool] ??= normalizeRoutingQuota(exposure.quota?.[model.provider], constraints.quotaScope, now);
+      const pool = `${model.provider}:shared`;
+      quotaPools[pool] ??= normalizeRoutingQuota(exposure.quota?.[model.provider], now);
       const benchmark = constraints.benchmark;
       const rank = preference.indexOf(model.provider);
       return {

@@ -24,7 +24,7 @@ import { buildAgentCliLaunchKinds } from "./agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, resolveAgentCliBinary } from "./agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-cli-types.js";
-import { findGatewayModel, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
+import { findGatewayModel, isLegacyCursorModelId, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { AiGatewayLaunchBinding } from "./launch.js";
 import { deriveOperationLabel } from "./auto-name.js";
@@ -1193,9 +1193,20 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     // body는 선택이다: { fresh: true }이면 저장된 provider 세션을 버리고 같은 Operation에서
     // 완전히 새 세션을 시작한다(Resume 실패 후의 Start fresh 경로). body 없음/파싱 실패는 일반 resume.
-    const body = await ctx.host.http.readJsonBody<{ readonly fresh?: unknown }>(req);
+    const body = await ctx.host.http.readJsonBody<{ readonly fresh?: unknown; readonly model?: unknown; readonly effort?: unknown }>(req);
     const fresh = body?.fresh === true;
-    const result = await resumeOperation(sessionId, fresh);
+    const node = ctx.host.operations.get(sessionId);
+    const legacyModel = readAgentSession(node?.payload)?.model;
+    let replacement: { readonly model?: string; readonly effort?: string } | undefined;
+    if (body?.model !== undefined || body?.effort !== undefined) {
+      if (!fresh || !isUnavailableLegacyCursorModel(legacyModel) || typeof body?.model !== "string") {
+        ctx.host.http.writeJson(res, 400, { error: "invalid_launch_option" }); return true;
+      }
+      const parsed = readLaunchOptions(body, CLAUDE_HARNESS_ID, (status, value) => ctx.host.http.writeJson(res, status, value));
+      if (parsed === false) return true;
+      replacement = parsed;
+    }
+    const result = await resumeOperation(sessionId, fresh, replacement);
     if (!result.ok) {
       ctx.host.http.writeJson(res, result.status, { error: result.error });
       return true;
@@ -1205,10 +1216,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   /** handleResume 의 본체 — Console Use 의 console_resume 도 같은 길을 쓴다(chat 접기·좌표 판정·코어 재기동). */
-  async function resumeOperation(sessionId: string, fresh: boolean): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
+  async function resumeOperation(sessionId: string, fresh: boolean, replacement?: { readonly model?: string; readonly effort?: string }): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
     const node = ctx.host.operations.get(sessionId);
     if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { ok: false, status: 404, error: "session_not_found" };
     const payload = node.payload;
+    if (isUnavailableLegacyCursorModel(readAgentSession(payload)?.model) && (!fresh || !replacement?.model)) {
+      return { ok: false, status: 409, error: "gateway_model_reselection_required" };
+    }
     const cliId = CLAUDE_HARNESS_ID;
     const providerSession = readProviderSession(payload);
     // 이어붙일 좌표가 없거나 launch 좌표뿐이면 재개는 정의상 **새 시작**이고, `fresh`와 같은
@@ -1220,7 +1234,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 이 시점의 payload에는 이미 없다. 그래서 Chat 진입의 resolveChatSeed와 같은 source 판정을 쓴다.
     // 휴면한 채팅의 재개는 그 대화로 돌아가는 것이다 — 표면을 갈아 끼우지 않는다. 이전 대화는
     // seed의 transcript 재생이 되살린다.
-    if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true && observability.getTerminalSessionInfo(sessionId)?.chatActive !== true) {
+    if (!replacement && node.payload[CHAT_MODE_PAYLOAD_KEY] === true && observability.getTerminalSessionInfo(sessionId)?.chatActive !== true) {
       const woken = await wakeChatOperation(sessionId);
       return woken.ok ? { ok: true, resumed: woken.session } : { ok: false, status: woken.status, error: woken.error };
     }
@@ -1228,11 +1242,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // chat 세션을 접고 모드 마커를 걷은 뒤 재기동해 같은 세션의 이중 필자를 막는다.
     let resumeNode = node;
     let resumeProviderSession = providerSession;
+    let replacementRollbackPayload: OperationNode["payload"] | undefined;
     if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
       // 진행 중 응답과 예약을 즉시 중단하고, 기존 필자가 닫힌 뒤에만 터미널로 넘긴다.
       await chatRegistry.dispose(sessionId);
       // dispose까지의 write-back이 providerSession을 갱신했을 수 있다 — 최신 payload로 다시 읽는다.
       const cleared = { ...(ctx.host.operations.get(sessionId)?.payload ?? node.payload) };
+      if (replacement) replacementRollbackPayload = { ...cleared };
       delete cleared[CHAT_MODE_PAYLOAD_KEY];
       ctx.host.operations.patch(sessionId, { payload: cleared });
       const releasedOnResume = observability.setTerminalSessionChatActive(sessionId, false);
@@ -1244,7 +1260,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const startsFresh = fresh
       || !resumeProviderSession
       || resumeProviderSession.source === "launch";
-    return await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh: startsFresh, providerSession: resumeProviderSession });
+    return await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh: startsFresh, providerSession: resumeProviderSession, replacement, replacementRollbackPayload });
   }
 
   // handleResume(fresh 포함)과 handleMessage(dormant 전달)가 공유하는 재기동 코어 — 상태 어휘·
@@ -1253,14 +1269,19 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     node: OperationNode,
     sessionId: string,
     cliId: AgentCliId,
-    options: { readonly fresh: boolean; readonly providerSession: CapturedAgentSession | undefined },
+    options: { readonly fresh: boolean; readonly providerSession: CapturedAgentSession | undefined; readonly replacement?: { readonly model?: string; readonly effort?: string }; readonly replacementRollbackPayload?: OperationNode["payload"] },
   ): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
-    const { fresh, providerSession } = options;
+    const { fresh, providerSession, replacement, replacementRollbackPayload } = options;
+    // Removed provider identities remain in the durable Operation, but may never
+    // restart under a different model. Reject before mutating session or chat state.
+    if (isUnavailableLegacyCursorModel(readAgentSession(node.payload)?.model) && !replacement?.model) {
+      return { ok: false, status: 409, error: "gateway_model_reselection_required" };
+    }
     // launchModel 도입 전 Operation은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
     // 신규 Quick Launch와 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
-    const launchModel = readAgentSession(node.payload)?.model
-      || (cliId === "claude" ? "opus[1m]" : undefined);
-    const launchEffort = readAgentSession(node.payload)?.effort || undefined;
+    const launchModel = replacement?.model ?? readAgentSession(node.payload)?.model
+      ?? (cliId === "claude" ? "opus[1m]" : undefined);
+    const launchEffort = replacement ? replacement.effort : readAgentSession(node.payload)?.effort;
     // cwd 해석은 상태 전이 전에 끝낸다 — 'starting'으로 올린 뒤 404로 빠지면 catch의 dormant
     // 복귀를 건너뛰어 세션이 starting에 고착된다.
     const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
@@ -1276,11 +1297,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다.
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
-        const launchSession = readAgentSession(node.payload);
         payloadWithoutProvider.session = {
           harness: "claude-code",
-          ...(launchSession?.model ? { model: launchSession.model } : {}),
-          ...(launchSession?.effort ? { effort: launchSession.effort } : {}),
+          ...(launchModel ? { model: launchModel } : {}),
+          ...(launchEffort ? { effort: launchEffort } : {}),
         };
         ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
       }
@@ -1308,18 +1328,28 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const resumedPayload = toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle);
       // Legacy fallback도 첫 성공 뒤에는 Operation의 확정 launch 좌표가 된다 — 매 resume마다
       // fallback 정책을 다시 적용해 향후 기본값 변경에 따라 같은 Operation이 흔들리지 않게 한다.
-      if (!readAgentSession(resumedPayload)?.model && launchModel) {
+      if ((replacement || !readAgentSession(resumedPayload)?.model) && launchModel) {
         resumedPayload.session = {
           ...(readAgentSession(resumedPayload) ?? { harness: "claude-code" }),
           model: launchModel,
+          ...(replacement ? {} : readAgentSession(resumedPayload)?.effort ? { effort: readAgentSession(resumedPayload)!.effort } : {}),
           ...(launchEffort ? { effort: launchEffort } : {}),
         };
+      }
+      if (replacement && providerSession) {
+        // 새 실행 좌표와 별개로 이전 transcript 좌표는 서버 전용 기록으로 남긴다.
+        const previous = Array.isArray(node.payload.previousAgentSessions) ? node.payload.previousAgentSessions : [];
+        resumedPayload.previousAgentSessions = [...previous, providerSession];
       }
       ctx.host.operations.patch(sessionId, { payload: resumedPayload });
       return { ok: true, resumed };
     } catch (error) {
       resetOscActivity(sessionId);
-      if (fresh && providerSession) {
+      if (replacement) {
+        // 재선택은 성공한 attach만 확정한다. 실패 시 이전 모델·세션 좌표와 기록을 되돌린다.
+        ctx.host.operations.patch(sessionId, { payload: replacementRollbackPayload ?? node.payload });
+        if (providerSession) observability.updateTerminalSessionProviderSession(sessionId, providerSession);
+      } else if (fresh && providerSession) {
         // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
         // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다.
         const rollbackPayload = { ...(ctx.host.operations.get(sessionId)?.payload ?? {}) };
@@ -1909,8 +1939,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     | { readonly ok: false; readonly status: number; readonly error: string };
 
   async function resolveChatSeed(node: OperationNode): Promise<ChatSeedResolution> {
-    if (!readAgentSession(node.payload)) {
+    const savedSession = readAgentSession(node.payload);
+    if (!savedSession) {
       return { ok: false, status: 409, error: "chat_unsupported" };
+    }
+    if (isUnavailableLegacyCursorModel(savedSession.model)) {
+      return { ok: false, status: 409, error: "gateway_model_reselection_required" };
     }
     const providerSession = readProviderSession(node.payload);
     const transcriptPath = providerSession?.transcriptPath
@@ -2569,6 +2603,10 @@ function readProviderTitle(value: Record<string, unknown> | undefined): AgentPro
   const candidate = marker as Record<string, unknown>;
   if (candidate.source !== "provider" || Object.keys(candidate).length !== 1) return undefined;
   return { source: "provider" };
+}
+
+function isUnavailableLegacyCursorModel(model: string | undefined): boolean {
+  return !!model && isLegacyCursorModelId(model) && !findGatewayModel(model);
 }
 
 // create와 resume는 같은 launch-option 오류 계약을 공유한다.

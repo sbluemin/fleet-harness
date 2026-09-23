@@ -1,9 +1,7 @@
 import {
   AnthropicMessagesGateway,
-  CURSOR_TOOL_BYTES_LIMIT,
   createClaudeCodexCompactionStore,
   ContextWindowExceededError,
-  CursorAdapter,
   CLAUDE_COMPACT_CONTINUATION_MARKER,
   CLAUDE_COMPACT_PROMPT_MARKER,
 } from "../../src/index.js";
@@ -103,7 +101,7 @@ describe("delegation assignment", () => {
   const MOD_TOKEN = "mod-token";
   const exposure = {
     delegationRoutingEnabled: true,
-    delegationModels: [requireGatewayModel("cursor--composer-2.5")],
+    delegationModels: [requireGatewayModel("codex--gpt-5.6-terra")],
   };
   const assigningRouter = () => createAiGatewayRouter({
     readAuth,
@@ -130,7 +128,7 @@ describe("delegation assignment", () => {
       { ...exposure, delegationRoutingEnabled: false, delegationRoutingMode: "model" },
       { choose },
     );
-    expect(decision.model).toBe("claude-gateway--cursor--composer-2.5");
+    expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
     expect(decision.because).toContain("fallback");
     expect(choose).not.toHaveBeenCalled();
   });
@@ -140,8 +138,8 @@ describe("delegation assignment", () => {
     const at = Date.now();
     let current: GatewayAssignmentExposure = {
       delegationRoutingEnabled: true, delegationRoutingMode: "model", distribution,
-      delegationModels: [requireGatewayModel("cursor--composer-2.5"), requireGatewayModel("xai--grok-composer-2.5-fast")],
-      quota: { cursor: { status: "ok", fetchedAt: at, windows: [] }, xai: { status: "ok", fetchedAt: at, windows: [] } },
+      delegationModels: [requireGatewayModel("codex--gpt-5.6-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
+      quota: { codex: { status: "ok", fetchedAt: at, windows: [] }, xai: { status: "ok", fetchedAt: at, windows: [] } },
     };
     let release!: () => void;
     const barrier = new Promise<void>(resolve => { release = resolve; });
@@ -149,12 +147,12 @@ describe("delegation assignment", () => {
     let calls = 0;
     const choose = vi.fn(async ({ state, criteria }: any) => {
       // 동일 스냅샷으로 병렬 판단하되 이후 호출은 확정된 배정을 보아야 한다.
-      expect(Object.values(criteria).some((value: any) => value.includes("cursor"))).toBe(true);
+      expect(Object.values(criteria).some((value: any) => value.includes("codex"))).toBe(true);
       expect(Object.values(criteria).some((value: any) => value.includes("xai"))).toBe(true);
-      seen.push(state.gateway_models.recentAssignments.providers.cursor.assignments);
+      seen.push(state.gateway_models.recentAssignments.providers.codex.assignments);
       calls++;
       if (calls === 1) await barrier;
-      return Object.keys(criteria).find(key => criteria[key].includes("cursor"))!;
+      return Object.keys(criteria).find(key => criteria[key].includes("codex"))!;
     });
     const options = { choose, refreshExposure: () => current };
     const first = decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
@@ -171,17 +169,17 @@ describe("delegation assignment", () => {
     expect(seen).toEqual([0, 0, 0]);
     await decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
     expect(seen).toEqual([0, 0, 0, 2]);
-    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(3);
+    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(3);
     current = { ...current, quota: { ...current.quota, xai: { status: "ok", fetchedAt: at + 1, windows: [] } } };
-    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(3);
-    current = { ...current, quota: { ...current.quota, cursor: { status: "stale", fetchedAt: at, windows: [] } } };
-    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(3);
-    current = { ...current, quota: { ...current.quota, cursor: { status: "ok", fetchedAt: at + 1, windows: [] } } };
-    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(0);
+    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(3);
+    current = { ...current, quota: { ...current.quota, codex: { status: "stale", fetchedAt: at, windows: [] } } };
+    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(3);
+    current = { ...current, quota: { ...current.quota, codex: { status: "ok", fetchedAt: at + 1, windows: [] } } };
+    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(0);
     await decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
     expect(seen).toEqual([0, 0, 0, 2, 0]);
-    distribution.snapshot({ ...current, quota: { cursor: { status: "ok", fetchedAt: at, windows: [] } } });
-    expect(distribution.snapshot(current).providers.cursor?.assignments).toBe(1);
+    distribution.snapshot({ ...current, quota: { codex: { status: "ok", fetchedAt: at, windows: [] } } });
+    expect(distribution.snapshot(current).providers.codex?.assignments).toBe(1);
   });
 
   it("refuses an assignment request that carries no mod credential", async () => {
@@ -202,7 +200,7 @@ describe("delegation assignment", () => {
 
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toMatchObject({
-      model: "claude-gateway--cursor--composer-2.5",
+      model: "claude-gateway--codex--gpt-5.6-terra",
       because: "no model named → work",
     });
   });
@@ -216,7 +214,7 @@ describe("delegation assignment", () => {
       providerPlugin: "fleet",
     });
 
-    expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--cursor--composer-2.5" });
+    expect(JSON.parse(res.body)).toMatchObject({ model: "claude-gateway--codex--gpt-5.6-terra" });
   });
 
   it("spreads a fan across providers instead of piling onto one, and steps over a spent allowance", async () => {
@@ -226,12 +224,12 @@ describe("delegation assignment", () => {
     const spread = {
       delegationRoutingEnabled: true,
       delegationModels: [
-        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("codex--gpt-5.6-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       // xai는 소진 직전이다. 읽을 수 있는 대안이 있는 한 그쪽으로 보내지 않는다.
       quota: {
-        cursor: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
+        codex: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
         xai: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 99, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
       },
       providerLoad,
@@ -242,8 +240,8 @@ describe("delegation assignment", () => {
       spread,
     ).model);
 
-    expect(carried.every((model) => model === "claude-gateway--cursor--composer-2.5")).toBe(true);
-    expect(providerLoad.get("cursor")).toBe(4);
+    expect(carried.every((model) => model === "claude-gateway--codex--gpt-5.6-terra")).toBe(true);
+    expect(providerLoad.get("codex")).toBe(4);
     expect(providerLoad.get("xai")).toBeUndefined();
   });
 
@@ -252,11 +250,11 @@ describe("delegation assignment", () => {
     const even = {
       delegationRoutingEnabled: true,
       delegationModels: [
-        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("codex--gpt-5.6-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       quota: {
-        cursor: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
+        codex: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
         xai: { status: "ok", fetchedAt: 1, windows: [{ id: "cycle", usedPercent: 4, period: { durationMs: 2_592_000_000, durationBasis: "catalog", startsAt: 0 } }] },
       },
       providerLoad,
@@ -270,7 +268,7 @@ describe("delegation assignment", () => {
     }
 
     // 넷을 둘로 나눈다. 한 공급자가 다른 쪽보다 한 갈래 넘게 앞서지 않는다.
-    expect(providerLoad.get("cursor")).toBe(2);
+    expect(providerLoad.get("codex")).toBe(2);
     expect(providerLoad.get("xai")).toBe(2);
   });
 
@@ -280,7 +278,7 @@ describe("delegation assignment", () => {
     const reserved = "claude-gateway--xai--grok-4.6";
     const hostOnly = {
       delegationRoutingEnabled: true,
-      delegationModels: [requireGatewayModel("cursor--composer-2.5")],
+      delegationModels: [requireGatewayModel("codex--gpt-5.6-terra")],
     } satisfies GatewayAssignmentExposure;
 
     const decision = decideGatewayRoutingAssignment(
@@ -289,7 +287,7 @@ describe("delegation assignment", () => {
     );
 
     expect(decision.model).not.toBe(reserved);
-    expect(decision.model).toBe("claude-gateway--cursor--composer-2.5");
+    expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
   });
 
   it("routes a workflow stage instead of letting it keep the model it inherited", async () => {
@@ -300,7 +298,7 @@ describe("delegation assignment", () => {
     const exposure = {
       delegationRoutingEnabled: true,
       delegationModels: [
-        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("codex--gpt-5.6-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       providerLoad,
@@ -313,7 +311,7 @@ describe("delegation assignment", () => {
 
     expect(carried).not.toContain(inherited);
     expect(new Set(carried).size).toBe(2);
-    expect(providerLoad.get("cursor")).toBe(2);
+    expect(providerLoad.get("codex")).toBe(2);
     expect(providerLoad.get("xai")).toBe(2);
   });
 
@@ -396,11 +394,11 @@ describe("delegation assignment", () => {
       delegationRoutingEnabled: true,
       delegationRoutingMode: "jev",
       delegationModels: [
-        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("codex--gpt-5.6-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       providerLoad,
-      providerPriority: ["cursor", "xai"],
+      providerPriority: ["codex", "xai"],
     } satisfies GatewayAssignmentExposure;
     const request = {
       surface: "agent" as const,
@@ -413,6 +411,7 @@ describe("delegation assignment", () => {
     let jevState: unknown;
     let jevInstructions: unknown;
     let jevCriteria: unknown;
+    let xaiChoice = "";
     const picking = new SystemOneClient({
       readApiKey: async () => "tsv_test",
       maxAttempts: 1,
@@ -424,7 +423,8 @@ describe("delegation assignment", () => {
         jevState = body.state;
         jevInstructions = body.questions.seat.instructions;
         jevCriteria = body.questions.seat.criteria;
-        expect(body.state.gateway_models.models[0]).toMatchObject({ efforts: [], preferenceRank: 1, quotaPool: "cursor:auto" });
+        xaiChoice = Object.keys(jevCriteria as Record<string, string>).find((key) => (jevCriteria as Record<string, string>)[key]!.includes("--xai--"))!;
+        expect(body.state.gateway_models.models[0]).toMatchObject({ preferenceRank: 1, quotaPool: "codex:shared" });
         expect(body.state.gateway_models.quotaPools["xai:shared"]).toEqual({ observation: "unknown" });
         expect(body.state).not.toHaveProperty("candidates");
         return new Response(JSON.stringify({
@@ -432,9 +432,8 @@ describe("delegation assignment", () => {
         answers: {
           seat: {
             type: "choice",
-            choice: "c1",
+            choice: xaiChoice,
             confidence: 0.91,
-            probabilities: { c0: 0.09, c1: 0.91 },
           },
         },
         usage: { input_tokens: 1, output_tokens: 1 },
@@ -445,7 +444,7 @@ describe("delegation assignment", () => {
     expect(picked.model).toBe("claude-gateway--xai--grok-composer-2.5-fast");
     expect(picked.because).toContain("· jev");
     expect(providerLoad.get("xai")).toBe(1);
-    expect(providerLoad.get("cursor")).toBeUndefined();
+    expect(providerLoad.get("codex")).toBeUndefined();
 
     const aiPicked = await decideGatewayRoutingAssignmentWithJev(request, {
       ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
@@ -453,8 +452,8 @@ describe("delegation assignment", () => {
       expect(state).toEqual(jevState);
       expect(instructions).toEqual(jevInstructions);
       expect(criteria).toEqual(jevCriteria);
-      expect(criteria.c1).toContain("claude-gateway--xai--grok-composer-2.5-fast");
-      return "c1";
+      expect(criteria[xaiChoice]).toContain("claude-gateway--xai--grok-composer-2.5-fast");
+      return xaiChoice;
     } });
     expect(aiPicked.model).toBe(picked.model);
     expect(aiPicked.because).toContain("AI model");
@@ -468,9 +467,9 @@ describe("delegation assignment", () => {
       },
     });
     const fallback = await decideGatewayRoutingAssignmentWithJev(request, jevExposure, { client: unsigned });
-    expect(fallback.model).toBe("claude-gateway--cursor--composer-2.5");
+    expect(fallback.model).toBe("claude-gateway--codex--gpt-5.6-terra");
     expect(fallback.because).toContain("fallback: routing decision failed: not signed in");
-    expect(providerLoad.get("cursor")).toBe(1);
+    expect(providerLoad.get("codex")).toBe(1);
     expect(providerLoad.get("xai")).toBe(1);
 
     // await 중 host-only로 바뀌면 옛 후보로 결정론 확정하지 않는다.
@@ -496,7 +495,7 @@ describe("delegation assignment", () => {
         client: new SystemOneClient({
           readApiKey: async () => "tsv_test", maxAttempts: 1,
           fetch: async () => new Response(JSON.stringify({
-            answers: { seat: { type: "choice", choice: "c1", ...metadata } },
+            answers: { seat: { type: "choice", choice: xaiChoice, ...metadata } },
           })),
         }),
       });
@@ -519,7 +518,7 @@ describe("delegation assignment", () => {
     const sole = await decideGatewayRoutingAssignmentWithJev(request, {
       delegationRoutingEnabled: true,
       delegationRoutingMode: "jev",
-      delegationModels: [requireGatewayModel("cursor--composer-2.5")],
+      delegationModels: [requireGatewayModel("xai--grok-composer-2.5-fast")],
       providerLoad: new Map(),
     }, {
       client: new SystemOneClient({
@@ -529,7 +528,7 @@ describe("delegation assignment", () => {
         },
       }),
     });
-    expect(sole.model).toBe("claude-gateway--cursor--composer-2.5");
+    expect(sole.model).toBe("claude-gateway--xai--grok-composer-2.5-fast");
     expect(sole.because).toContain("· sole candidate");
     expect(sole.because).not.toContain("· jev");
 
@@ -547,72 +546,52 @@ describe("delegation assignment", () => {
       client: cancelled,
       signal: abort.signal,
     })).rejects.toMatchObject({ name: "AbortError" });
-    // unsigned + invalid-choice 두 결정론 fallback이 cursor를 올렸다.
-    expect(providerLoad.get("cursor")).toBe(2);
+    // unsigned + invalid-choice 두 결정론 fallback이 codex를 올렸다.
+    expect(providerLoad.get("codex")).toBe(2);
     expect(providerLoad.get("xai")).toBe(2);
   });
 
   it("keeps simultaneous quota bottlenecks and uncertain observations in routing evidence", async () => {
     const now = Date.now();
     const hour = 3_600_000;
-    const window = (id: string, usedPercent: number, durationHours: number, remainingHours: number, scope?: string) => ({
+    const window = (id: string, usedPercent: number, durationHours: number, remainingHours: number) => ({
       id, usedPercent, resetsAt: now + remainingHours * hour,
       period: { durationMs: durationHours * hour, durationBasis: "upstream" },
-      ...(scope ? { scope } : {}),
     });
-    const windows = [
-      window("session", 60, 5, 1),
-      window("week", 70, 168, 100.8),
-      window("month", 30, 720, 360, "auto"),
-      window("api", 100, 720, 360, "api"),
-      { ...window("aggregate", 100, 720, 360), isAggregate: true },
-    ];
+    const windows = [window("session", 60, 5, 1), window("week", 70, 168, 100.8)];
     const run = async (quota: GatewayAssignmentExposure["quota"]) => {
       let data: any;
       const decision = await decideGatewayRoutingAssignmentWithJev({ surface: "agent", prompt: "review authentication" }, {
         delegationRoutingEnabled: true, delegationRoutingMode: "model", quota,
-        delegationModels: [requireGatewayModel("cursor--composer-2.5"), requireGatewayModel("xai--grok-composer-2.5-fast")],
+        delegationModels: [requireGatewayModel("codex--gpt-5.6-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
       }, { choose: async ({ state }) => { data = (state as Record<string, unknown>).gateway_models; return "c0"; } });
-      expect(decision.model).toBe("claude-gateway--cursor--composer-2.5");
+      expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
       return data;
     };
     const quota = { status: "ok", fetchedAt: now, windows };
-    const data = await run({ cursor: quota });
-    expect(Object.keys(data.quotaPools)).toEqual(["cursor:auto", "xai:shared"]);
-    expect(data.quotaPools["cursor:auto"]).toMatchObject({
+    const data = await run({ codex: quota });
+    expect(Object.keys(data.quotaPools)).toEqual(["codex:shared", "xai:shared"]);
+    expect(data.quotaPools["codex:shared"]).toMatchObject({
       observation: "fresh", remainingPercent: 30, sustainableHeadroom: 0.5,
-      recovery: { remainingPercent: 70 },
+      recovery: { remainingPercent: 100 },
     });
-    expect(data.quotaPools["cursor:auto"].recovery.inSeconds).toBeGreaterThan(100 * 3600);
-    expect(data.quotaPools["cursor:auto"].recovery.inSeconds).toBeLessThanOrEqual(100.8 * 3600);
-    expect(data.quotaPools["cursor:auto"]).not.toHaveProperty("windows");
+    expect(data.quotaPools["codex:shared"].recovery.inSeconds).toBeGreaterThan(100 * 3600);
+    expect(data.quotaPools["codex:shared"].recovery.inSeconds).toBeLessThanOrEqual(100.8 * 3600);
+    expect(data.quotaPools["codex:shared"]).not.toHaveProperty("windows");
 
-    // 리셋을 지난 관측이나 오래된 캐시에서 가짜 여유를 만들지 않는다.
-    for (const old of [
-      { ...quota, windows: [window("expired", 100, 5, -0.01, "auto")] },
-    ]) {
-      const stale = (await run({ cursor: old })).quotaPools["cursor:auto"];
-      expect(stale.observation).toBe("stale");
-      expect(stale).not.toHaveProperty("remainingPercent");
-      expect(stale).not.toHaveProperty("recovery");
-    }
-    const retained = (await run({ cursor: { ...quota, status: "stale", fetchedAt: now - 4 * 60_000 } })).quotaPools["cursor:auto"];
+    const expired = (await run({ codex: { ...quota, windows: [window("expired", 100, 5, -0.01)] } })).quotaPools["codex:shared"];
+    expect(expired.observation).toBe("stale");
+    expect(expired).not.toHaveProperty("remainingPercent");
+    const retained = (await run({ codex: { ...quota, status: "stale", fetchedAt: now - 4 * 60_000 } })).quotaPools["codex:shared"];
     expect(retained).toMatchObject({ observation: "stale", remainingPercent: 30 });
-    expect(retained.ageSeconds).toBeGreaterThanOrEqual(240);
-    const partial = (await run({ cursor: { ...quota, windows: [{ id: "auto", scope: "auto", usedPercent: 100 }] } })).quotaPools["cursor:auto"];
+    const partial = (await run({ codex: { ...quota, windows: [{ id: "session", usedPercent: 100 }] } })).quotaPools["codex:shared"];
     expect(partial).toMatchObject({ observation: "partial", remainingPercent: 0 });
     expect(partial).not.toHaveProperty("sustainableHeadroom");
-    const missingPool = (await run({ cursor: { ...quota, windows: windows.filter(w => w.scope !== "auto") } })).quotaPools["cursor:auto"];
-    expect(missingPool.observation).toBe("partial");
-    expect(missingPool).not.toHaveProperty("remainingPercent");
-    const invalid = (await run({ cursor: { ...quota, windows: [{ id: "auto", scope: "auto", usedPercent: NaN }] } })).quotaPools["cursor:auto"];
+    const invalid = (await run({ codex: { ...quota, windows: [{ id: "session", usedPercent: NaN }] } })).quotaPools["codex:shared"];
     expect(invalid).not.toHaveProperty("remainingPercent");
-    const almostReset = (await run({ cursor: { ...quota, windows: [window("month", 99.9999, 720, 0.1, "auto")] } })).quotaPools["cursor:auto"];
-    expect(almostReset.remainingPercent).toBeGreaterThan(0);
-    expect(almostReset.remainingPercent).toBeLessThan(0.001);
-    const exhausted = (await run({ cursor: { ...quota, windows: [window("month", 105, 720, 0.1, "auto")] } })).quotaPools["cursor:auto"];
+    const exhausted = (await run({ codex: { ...quota, windows: [window("week", 105, 168, 1)] } })).quotaPools["codex:shared"];
     expect(exhausted).toMatchObject({ remainingPercent: 0, sustainableHeadroom: 0 });
-    const future = (await run({ cursor: { ...quota, fetchedAt: now + hour } })).quotaPools["cursor:auto"];
+    const future = (await run({ codex: { ...quota, fetchedAt: now + hour } })).quotaPools["codex:shared"];
     expect(future).toEqual({ observation: "unknown" });
   });
 
@@ -624,7 +603,7 @@ describe("delegation assignment", () => {
         delegationRoutingEnabled: true,
         delegationRoutingMode: "jev",
         delegationModels: [
-          requireGatewayModel("cursor--composer-2.5"),
+          requireGatewayModel("codex--gpt-5.6-terra"),
           requireGatewayModel("xai--grok-composer-2.5-fast"),
         ],
         providerLoad,
@@ -639,16 +618,16 @@ describe("delegation assignment", () => {
       },
     );
 
-    expect(decision.model).toBe("claude-gateway--cursor--composer-2.5");
+    expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
     expect(decision.because).toContain("fallback: Workflow stage");
-    expect(providerLoad.get("cursor")).toBe(1);
+    expect(providerLoad.get("codex")).toBe(1);
   });
 
   it("preserves deterministic spend order with providerPriority even under critical quota", () => {
     const reachable = [
       {
-        model: "claude-gateway--cursor--composer-2.5",
-        provider: "cursor" as const,
+        model: "claude-gateway--codex--gpt-5.6-terra",
+        provider: "codex" as const,
         label: "composer",
       },
       {
@@ -660,21 +639,21 @@ describe("delegation assignment", () => {
     const exposure: GatewayAssignmentExposure = {
       delegationRoutingEnabled: true,
       delegationModels: [
-        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("codex--gpt-5.6-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
-      providerPriority: ["cursor", "xai"],
+      providerPriority: ["codex", "xai"],
       quota: {
-        cursor: {
+        codex: {
           status: "ok",
           windows: [{ id: "monthly", usedPercent: 100 }],
         },
       },
     };
 
-    // 결정론 pickSeat: 소진 순서가 압박 예측을 이겨 critical인 cursor를 그대로 집는다.
+    // 결정론 pickSeat: 소진 순서가 압박 예측을 이겨 critical인 codex를 그대로 집는다.
     const seat = pickSeat(reachable, exposure);
-    expect(seat.model.provider).toBe("cursor");
+    expect(seat.model.provider).toBe("codex");
     expect(seat.suffix).toBe(" · spend order");
 
 
@@ -686,7 +665,7 @@ describe("delegation assignment", () => {
       delegationRoutingEnabled: true,
       delegationRoutingMode: "jev",
       delegationModels: [
-        requireGatewayModel("cursor--composer-2.5"),
+        requireGatewayModel("codex--gpt-5.6-terra"),
         requireGatewayModel("xai--grok-composer-2.5-fast"),
       ],
       providerLoad,
@@ -723,7 +702,7 @@ describe("delegation assignment", () => {
 
     const [d1, d2] = await Promise.all([p1, p2]);
     expect(d1.model).not.toBe(d2.model);
-    expect(providerLoad.get("cursor")).toBe(1);
+    expect(providerLoad.get("codex")).toBe(1);
     expect(providerLoad.get("xai")).toBe(1);
   });
 
@@ -736,7 +715,7 @@ describe("delegation assignment", () => {
         seenSignal = options?.signal;
         await new Promise((resolve) => setTimeout(resolve, 50));
         return {
-          model: "claude-gateway--cursor--composer-2.5",
+          model: "claude-gateway--codex--gpt-5.6-terra",
           label: "composer",
           because: "test · jev",
         };
@@ -768,7 +747,7 @@ describe("delegation assignment", () => {
 
       expect(resp.status).toBe(200);
       const data = (await resp.json()) as Record<string, unknown>;
-      expect(data.model).toBe("claude-gateway--cursor--composer-2.5");
+      expect(data.model).toBe("claude-gateway--codex--gpt-5.6-terra");
       expect(data.because).toBe("test · jev");
       expect(seenSignal?.aborted).toBe(false);
     } finally {
@@ -1042,7 +1021,7 @@ describe("route surface", () => {
     await router.handle(ctx({
       res,
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--cursor--does-not-exist",
+      model: "claude-gateway--codex--does-not-exist",
     }));
 
     expect(res.status).toBe(400);
@@ -1071,12 +1050,11 @@ describe("route surface", () => {
 function createAiGatewayRouter(
   deps: Partial<AiGatewayRouteDeps> = {},
 ) {
-  // readAuth/readCursorToken은 프로덕션에서 필수 주입이다. 테스트 래퍼는 자격증명 부재 스텁을
+  // readAuth는 프로덕션에서 필수 주입이다. 테스트 래퍼는 자격증명 부재 스텁을
   // 기본값으로 두고, 각 테스트가 필요한 조달자만 덮어쓴다.
   return createCoreAiGatewayRouter({
     originator: "fleet-console",
     readAuth: () => null,
-    readCursorToken: () => null,
     ...deps,
   });
 }

@@ -270,17 +270,7 @@ async function editDiagnostics(deps: GatewayInteractiveDeps): Promise<void> {
   if (isCancel(wireLog)) return;
   deps.store.writeWireLogEnabled(wireLog === "auto" ? undefined : wireLog === "on");
 
-  const cursor = await select<"on" | "off">({
-    message: "Keep Cursor diagnostics?",
-    options: [
-      { value: "off", label: "Off" },
-      { value: "on", label: "On", hint: "records Cursor request/response detail" },
-    ],
-    initialValue: settings.cursorDiagnosticsEnabled === true ? "on" : "off",
-  });
-  if (isCancel(cursor)) return;
-  deps.store.writeCursorDiagnosticsEnabled(cursor === "on");
-  log.success(`Wire log ${wireLog} · Cursor diagnostics ${cursor}.`);
+  log.success(`Wire log ${wireLog}.`);
 }
 
 function summarizeModels(settings: AiGatewayStoredSettings): string {
@@ -306,7 +296,7 @@ function summarizePolicy(settings: AiGatewayStoredSettings): string {
 
 function summarizeDiagnostics(settings: AiGatewayStoredSettings): string {
   const policy = describeGatewayPolicy(settings);
-  return `wire log ${policy["wire-log"]} · cursor ${policy["cursor-diagnostics"]}`;
+  return `wire log ${policy["wire-log"]}`;
 }
 
 export function cancelGatewayInteractive(): number {

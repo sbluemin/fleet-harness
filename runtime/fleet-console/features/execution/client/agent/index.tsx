@@ -207,13 +207,15 @@ const agentResumeFailedNotification = defineNotificationKind({
 
 function isLaunchOptionError(error: unknown): boolean {
   return error instanceof AgentApiError
-    && (error.message === "gateway_model_not_enabled" || error.message === "invalid_effort");
+    && (error.message === "gateway_model_not_enabled" || error.message === "invalid_effort" || error.message === "gateway_model_reselection_required");
 }
 
 function resumeFailureMessage(error: unknown, locale?: ConsoleLocale): string {
-  return getT(locale)(isLaunchOptionError(error)
-    ? "terminal.notifications.resumeLaunchOptionFailedMessage"
-    : "terminal.notifications.resumeFailedMessage");
+  return getT(locale)(error instanceof AgentApiError && error.message === "gateway_model_reselection_required"
+    ? "terminal.notifications.resumeRemovedModelMessage"
+    : isLaunchOptionError(error)
+      ? "terminal.notifications.resumeLaunchOptionFailedMessage"
+      : "terminal.notifications.resumeFailedMessage");
 }
 
 export const agentExecution: ClientExecutionProvider = {
@@ -1793,7 +1795,7 @@ function AgentCliRow({
   );
 }
 
-async function resumeSession(sessionId: string, options?: { readonly fresh?: boolean }): Promise<void> {
+async function resumeSession(sessionId: string, options?: { readonly fresh?: boolean; readonly model?: string; readonly effort?: string }): Promise<void> {
   applySessionUpdate(await resumeAgentSession(sessionId, options));
   selectSession(sessionId);
 }
@@ -1857,11 +1859,32 @@ function DormantChatView({ context, session }: { readonly context: OperationRend
 function DormantOperationView({ context, session }: { readonly context: OperationRenderContext; readonly session: SessionInfo }) {
   const t = getT(context.language ?? "en");
   const freshOnly = !session.resumeAvailable;
+  const savedModel = (context.operation.payload.session as { readonly model?: unknown } | undefined)?.model;
+  const removedModel = typeof savedModel === "string"
+    && (savedModel.startsWith("cursor--") || savedModel.startsWith("claude-gateway--cursor--"));
   const [resumeState, setResumeState] = React.useState<"idle" | "resuming" | "error" | "launch-option-error">("idle");
+  const [replacementModel, setReplacementModel] = React.useState("");
+  const [replacementEffort, setReplacementEffort] = React.useState("");
+  const gatewaySettings = useSystemPromptSettingsStore();
+  const replacementOptions = [
+    { id: "opus", label: "Opus", effort: [] as readonly string[] },
+    { id: "sonnet", label: "Sonnet", effort: [] as readonly string[] },
+    ...gatewaySettings.state?.aiGatewayCatalog.providers.flatMap((provider) => provider.models
+      .filter((model) => gatewaySettings.state?.aiGateway?.models?.some((selected) => selected.id === model.id))
+      .filter((model) => model.id !== "claude--opus" && model.id !== "claude--sonnet")
+      .map((model) => ({ id: model.id, label: model.name, effort: model.effort?.levels ?? [] }))) ?? [],
+  ];
+  const chosenOption = replacementOptions.find((option) => option.id === replacementModel);
+  React.useEffect(() => {
+    if (!removedModel) return;
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, [removedModel]);
   const resume = React.useCallback(async (fresh: boolean) => {
     setResumeState("resuming");
     try {
-      await resumeSession(session.sessionId, { fresh });
+      await resumeSession(session.sessionId, { fresh, ...(removedModel && replacementModel ? { model: replacementModel } : {}), ...(removedModel && replacementEffort ? { effort: replacementEffort } : {}) });
       // 성공 시 이전 실패 알림을 거둔다 — 두지 않으면 live 세션에 "Resume failed" 뱃지가 남는다.
       context.notifications.dismiss(session.sessionId);
     } catch (error) {
@@ -1872,9 +1895,9 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
         message: resumeFailureMessage(error, context.language),
       });
     }
-  }, [context, session.sessionId, t]);
+  }, [context, session.sessionId, t, removedModel, replacementModel, replacementEffort]);
 
-  if (resumeState === "error" || resumeState === "launch-option-error") {
+  if (!removedModel && (resumeState === "error" || resumeState === "launch-option-error")) {
     return (
       <div className="canvas-operation-dormant canvas-operation-dormant--error" role="alert">
         <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
@@ -1903,6 +1926,39 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
         </div>
       </div>
     );
+  }
+
+  if (removedModel) {
+    return <div className="canvas-operation-dormant" role="group" aria-label={t("terminal.dormant.reselectModel")}>
+      <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
+      <span>{t("terminal.dormant.removedModelBody", { name: session.label || session.cwdLabel })}</span>
+      <div role="group" aria-label={t("terminal.dormant.reselectModel")}>
+        <Select
+          label={t("terminal.dormant.reselectModel")}
+          value={replacementModel}
+          options={[
+            { value: "", label: t("terminal.dormant.chooseModel") },
+            ...replacementOptions.map((option) => ({ value: option.id, label: option.label })),
+          ]}
+          onChange={(value) => { setReplacementModel(value); setReplacementEffort(""); }}
+        />
+      </div>
+      {chosenOption && chosenOption.effort.length > 0 ? <div role="group" aria-label={t("terminal.dormant.reselectEffort")}>
+        <Select
+          label={t("terminal.dormant.reselectEffort")}
+          value={replacementEffort}
+          options={[
+            { value: "", label: t("terminal.dormant.defaultEffort") },
+            ...chosenOption.effort.map((effort) => ({ value: effort, label: effort })),
+          ]}
+          onChange={setReplacementEffort}
+        />
+      </div> : null}
+      <button type="button" className="canvas-operation-dormant-action" disabled={!replacementModel || !gatewaySettings.state || resumeState === "resuming"}
+        onClick={() => { void resume(true); }}>{resumeState === "resuming" ? t("terminal.dormant.startingFresh") : t("terminal.dormant.startFresh")}</button>
+      {gatewaySettings.error ? <span role="alert">{gatewaySettings.error}</span> : null}
+      {resumeState === "launch-option-error" || resumeState === "error" ? <span role="alert">{t("terminal.dormant.removedModelRetry")}</span> : null}
+    </div>;
   }
 
   return (

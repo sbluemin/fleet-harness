@@ -36,7 +36,6 @@ describe("terminal settings routes", () => {
       // 승인 게이트는 그 반대다 — 저장된 적 없는 상태가 건너뛰기 동의를 대신할 수 없다.
       claudeCodeSkipPermissions: false,
       aiGateway: null,
-      cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
       delegationRoutingEnabled: false,
       delegationRoutingMode: "model",
@@ -82,6 +81,21 @@ describe("terminal settings routes", () => {
     });
   });
 
+  it("preserves a removed Cursor selection and routing identity without exposing it", async () => {
+    const legacy = normalizeAiGatewaySettings({
+      version: 1,
+      models: [{ id: "cursor--retired", efforts: ["high"], hostOnly: true }],
+      delegationRoutingModel: "cursor--retired",
+    });
+    expect(legacy.models).toEqual([{ id: "cursor--retired" }]);
+    expect(legacy.delegationRoutingModel).toBe("cursor--retired");
+    const harness = createRouteHarness({ body: { delegationRoutingMode: "model" }, aiGateway: legacy });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.currentAiGateway().delegationRoutingModel).toBe("cursor--retired");
+    expect(harness.currentAiGateway().models).toEqual([{ id: "cursor--retired" }]);
+  });
+
   it("PUT /api/v1/agent/settings stores the Claude Code permission opt-in", async () => {
     const harness = createRouteHarness({
       body: { claudeCodeSkipPermissions: true },
@@ -115,14 +129,14 @@ describe("terminal settings routes", () => {
   });
 
   it("PUT /api/v1/agent/settings rejects payloads with unknown extra keys", async () => {
-    const harness = createRouteHarness({ body: { cursorDiagnosticsEnabled: true, consolePortMode: "static" } });
+    const harness = createRouteHarness({ body: { wireLogEnabled: true, consolePortMode: "static" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(harness.writes[0]?.status).toBe(400);
     expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /api/v1/agent/settings enforces terminal-origin authorization", async () => {
-    const harness = createRouteHarness({ terminalAuthorized: false, body: { cursorDiagnosticsEnabled: true } });
+    const harness = createRouteHarness({ terminalAuthorized: false, body: { wireLogEnabled: true } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(harness.writes).toEqual([{ status: 401, body: { error: "unauthorized" } }]);
     expect(harness.updateCalls).toBe(0);
@@ -173,9 +187,6 @@ function createRouteHarness(options: HarnessOptions = {}) {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({
           version: 1,
-          ...(aiGateway.cursorDiagnosticsEnabled === true
-            ? { cursorDiagnosticsEnabled: true }
-            : {}),
           ...(typeof aiGateway.wireLogEnabled === "boolean"
             ? { wireLogEnabled: aiGateway.wireLogEnabled }
             : {}),
@@ -214,14 +225,6 @@ function createRouteHarness(options: HarnessOptions = {}) {
       writeDelegationRoutingMode: (mode) => {
         updateCalls += 1;
         aiGateway = normalizeAiGatewaySettings({ ...aiGateway, delegationRoutingMode: mode });
-        return aiGateway;
-      },
-      writeCursorDiagnosticsEnabled: (enabled) => {
-        updateCalls += 1;
-        aiGateway = normalizeAiGatewaySettings({
-          ...aiGateway,
-          cursorDiagnosticsEnabled: enabled,
-        });
         return aiGateway;
       },
       writeWireLogEnabled: (enabled) => {

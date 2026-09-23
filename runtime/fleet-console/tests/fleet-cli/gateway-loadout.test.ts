@@ -13,14 +13,6 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}): Response {
 const summary = {
   providers: {
     claude: { status: "ok", windows: [{ id: "weekly", usedPercent: 28, resetsAt: 1_785_763_415_825 }], fetchedAt: 42 },
-    cursor: {
-      status: "ok",
-      windows: [
-        { id: "cycle", usedPercent: 65 },
-        { id: "cycle", scope: "auto", label: "Auto", usedPercent: 62 },
-        { id: "cycle", scope: "api", label: "API", usedPercent: 92 },
-      ],
-    },
   },
 };
 

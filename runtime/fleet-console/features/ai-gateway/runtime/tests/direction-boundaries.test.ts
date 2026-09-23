@@ -25,7 +25,6 @@ const UPSTREAM_FOLDERS = [
   "anthropic",
   "antigravity",
   "codex",
-  "cursor",
   "opencode-go",
   "typesafe",
   "xai",
@@ -35,7 +34,6 @@ const UPSTREAM_FOLDERS = [
 const GATEWAY_PROVIDER_FOLDERS = [
   "antigravity",
   "codex",
-  "cursor",
   "opencode-go",
   "xai",
 ] as const;
@@ -465,7 +463,6 @@ describe("core-ai-gateway direction boundaries", () => {
       "gateway-router",
       "antigravity",
       "codex",
-      "cursor",
       "opencode-go",
       "xai",
       "openai-chat-adapter.ts",
@@ -489,17 +486,6 @@ describe("core-ai-gateway direction boundaries", () => {
     }
   });
 
-  it("keeps cursor exec-responses and exec-redirect internal to the cursor folder", () => {
-    // The only path from the root facade to those modules is the cursor/native barrel,
-    // so pinning the barrel means CursorClientToolReference, CursorUnknownExecReply,
-    // cursorNativeExecPolicyReplies, cursorNativeExecRedirect, cursorUnknownExecCaseName,
-    // and cursorUnknownExecReply stay out of the package-level public surface.
-    const nativeIndexSpecifiers = moduleSpecifiers(
-      readFileSync(path.join(srcDir, UPSTREAM_ROOT, "cursor", "native", "index.ts"), "utf8"),
-    );
-    expect(nativeIndexSpecifiers).not.toContain("./exec-responses.js");
-    expect(nativeIndexSpecifiers).not.toContain("./exec-redirect.js");
-  });
 });
 
 // Extractor assertions: pin the AST extraction shapes the boundary checks rely on.
@@ -546,13 +532,13 @@ describe("gateway module specifier extraction", () => {
       import { A } from "@fleet-console/ai-gateway";
       import { B } from "@fleet-console/ai-gateway/models";
       import { C } from "node:fs";
-      import { D } from "@bufbuild/protobuf";
+      import { D } from "zod";
     `)).toEqual([
       "../../index.js",
       "@fleet-console/ai-gateway",
       "@fleet-console/ai-gateway/models",
       "node:fs",
-      "@bufbuild/protobuf",
+      "zod",
     ]);
   });
 

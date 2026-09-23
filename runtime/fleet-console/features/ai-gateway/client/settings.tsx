@@ -17,7 +17,7 @@ export const aiGatewaySettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex cursor opencode xai routing delegation subagent workflow diagnostics wire log compact",
+    "gateway provider model api key codex opencode xai routing delegation subagent workflow diagnostics wire log compact",
     "게이트웨이 공급자 모델 키 라우팅 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
@@ -31,7 +31,6 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   antigravity: "terminal.settings.aiGatewayProviderAntigravity",
   claude: "terminal.settings.aiGatewayProviderClaude",
   codex: "terminal.settings.aiGatewayProviderCodex",
-  cursor: "terminal.settings.aiGatewayProviderCursor",
   opencode: "terminal.settings.aiGatewayProviderOpencode",
   xai: "terminal.settings.aiGatewayProviderXai",
 } as const;
@@ -332,6 +331,8 @@ function AiGatewayRoutingCard() {
   const jevStored = mode === "jev";
   const jevActive = jevStored && typesafeSignedIn;
   const jevFallback = jevStored && !typesafeSignedIn;
+  const unavailableModel = state.delegationRoutingModel?.startsWith("cursor--")
+    || state.delegationRoutingModel?.startsWith("claude-gateway--cursor--");
   const saveMode = (next: DelegationRoutingMode): void => {
     if (next === "jev" && !typesafeSignedIn) return;
     void setSystemPromptSettingsField("delegationRoutingMode", next);
@@ -390,6 +391,7 @@ function AiGatewayRoutingCard() {
               <ModelPicker
                 value={state.delegationRoutingModel ?? "sonnet"}
                 options={[
+                  ...(unavailableModel && state.delegationRoutingModel ? [{ id: state.delegationRoutingModel, label: `${state.delegationRoutingModel} · ${t("terminal.settings.aiGatewayRemovedModel")}`, provider: "" }] : []),
                   { id: "opus", label: "Opus", provider: "claude" },
                   { id: "sonnet", label: "Sonnet", provider: "claude" },
                   ...state.aiGatewayCatalog.providers.flatMap(provider => provider.models
@@ -404,7 +406,8 @@ function AiGatewayRoutingCard() {
             </div>
           ) : null}
           {mode === "model" ? <p className="global-settings-help">{t("terminal.settings.aiGatewayRoutingModelNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p> : null}
-          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? "sonnet"}`} mode={mode} disabled={modeSaving || (mode === "jev" && !typesafeSignedIn)} />
+          {unavailableModel ? <p className="global-settings-error" role="status">{t("terminal.settings.aiGatewayRemovedRoutingModel")}</p> : null}
+          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? "sonnet"}`} mode={mode} disabled={modeSaving || (mode === "jev" && !typesafeSignedIn) || !!unavailableModel} />
         </>
       ) : null}
     </section>
@@ -484,16 +487,6 @@ function AiGatewayDiagnosticsCard() {
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayDiagnostics")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-      <SettingToggleRow
-        title={t("terminal.settings.aiGatewayDiagnostics")}
-        help={t("terminal.settings.aiGatewayDiagnosticsHelp")}
-        value={state.cursorDiagnosticsEnabled}
-        disabled={saving.has("cursorDiagnosticsEnabled")}
-        onToggle={() => void setSystemPromptSettingsField(
-          "cursorDiagnosticsEnabled",
-          !state.cursorDiagnosticsEnabled,
-        )}
-      />
       <SettingToggleRow
         title={t("terminal.settings.aiGatewayWireLog")}
         help={t("terminal.settings.aiGatewayWireLogHelp")}
@@ -617,6 +610,7 @@ function AiGatewayModelsCard() {
 
   const selection = state.aiGateway ?? {};
   const enabled = selection.models ?? [];
+  const unavailable = enabled.filter((entry) => entry.id.startsWith("cursor--") || entry.id.startsWith("claude-gateway--cursor--"));
   // 순위는 켠 공급자에 대한 선호다 — 로드아웃이 켠 모델 없는 공급자를 거르고 다시 번호를 매기므로,
   // 화면도 같은 순위를 읽는다. 예전 저장값에 남은 빈 공급자는 다음 순위 저장에서 함께 정리된다.
   const enabledProviderIds = new Set(
@@ -732,6 +726,15 @@ function AiGatewayModelsCard() {
         </div>
         {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
         {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
+        {unavailable.length > 0 ? <div className="global-settings-help" role="status">
+          <p>{t("terminal.settings.aiGatewayRemovedModelNotice")}</p>
+          {unavailable.map((entry) => <div key={entry.id} className="ai-gateway-model-row">
+            <span className="ai-gateway-model-name">{entry.id}</span>
+            <button type="button" className="ai-gateway-remove" disabled={saving}
+              aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: entry.id })}
+              onClick={() => removeModel(entry.id)}>✕</button>
+          </div>)}
+        </div> : null}
         <div className="ai-gateway-stack">
         <div className="ai-gateway-roster-head">
           <div className="ai-gateway-palette-anchor">
@@ -980,7 +983,7 @@ interface AiGatewayPaletteHit {
 
 /**
  * 검색어로 카탈로그를 거른다. 띄어 쓴 토큰을 모두 포함하는 항목만 남고, 공급자 id·이름과
- * 계열 이름을 한 문자열로 본다 — "cursor opus"가 한 공급자의 한 계열을 짚는다.
+ * 계열 이름을 한 문자열로 본다 — "codex gpt"가 한 공급자의 한 계열을 짚는다.
  */
 export function filterAiGatewayPalette(
   entries: readonly AiGatewayPaletteHit[],

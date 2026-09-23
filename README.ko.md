@@ -18,7 +18,7 @@
 
 <img src=".github/console-canvas.png" alt="Claude, Codex GPT-5.6, Cursor Grok 세션과 라이브 셸이 나란히 도는 Fleet Console" width="100%" />
 
-<p align="center"><sub>하나의 Theater, 네 개의 라이브 Operation: Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.6이 셸 옆에서 나란히 답하고 있습니다. 이 README의 모든 스크린샷은 이 저장소 위에서 Fleet를 실제로 돌려 캡처한 것입니다.</sub></p>
+<p align="center"><sub>이전 버전의 Fleet 화면: 하나의 Theater에서 Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.6과 셸이 나란히 실행 중입니다. 화면 속 Cursor Gateway 세션은 현재 버전에서 시작할 수 없습니다. 이 README의 모든 스크린샷은 이 저장소 위에서 Fleet를 실제로 돌려 캡처한 것입니다.</sub></p>
 
 AI 코딩 에이전트 하나와 일하는 것은 워크플로우지만, 다섯과 일하는 것은 터미널 탭의 아수라장입니다 — 내려앉을 갑판을 주기 전까지는. Fleet는 모든 에이전트 세션을 **Operation**으로 만듭니다: 로컬 서버가 소유한 진짜 PTY이며, 무한 캔버스 위에 배치되고, 신뢰하는 어떤 기기에서든 관찰할 수 있습니다.
 
@@ -44,15 +44,18 @@ Operation의 주인은 브라우저가 아니라 로컬 Fleet Console 서버입�
 
 ## 런치 메뉴 하나 뒤의 모든 프런티어 모델
 
-<img src=".github/console-launch-menu.png" alt="런치 메뉴: Claude, Codex, Cursor 모델이 라이브 캔버스 위 우클릭 메뉴 하나에" width="100%" />
+<img src=".github/console-launch-menu.png" alt="이전 버전의 런치 메뉴: 라이브 캔버스 위에 Claude, Codex, 현재는 제거된 Cursor Gateway 모델이 표시된 모습" width="100%" />
+
+<sub>이 런치 메뉴는 이전 버전에서 캡처한 화면이며, Cursor Gateway 항목은 현재 버전에서 사용할 수 없습니다.</sub>
 
 캔버스를 우클릭하고, 켜 둔 어떤 모델로든 Claude Code를 띄우세요 — 내장 Claude 모델이든, Console이 대신 쥔 자격증명 위를 달리는 게이트웨이 모델이든. 게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트입니다: 네이티브 에이전트 루프, 도구 문법, 인증이 그대로 보존되고, 비-Anthropic 자격증명은 에이전트 프로세스에 결코 들어가지 않습니다.
 
 | 프로바이더 | 자격증명 | 모델 |
 |---|---|---|
 | **Codex** | ChatGPT 구독 | GPT-6 Astra · Sol · Luna · GPT-5.6 Terra, 각각 524K·1M 컨텍스트 변형과 Fast 변형 |
-| **Cursor** | Cursor 구독 | Auto · Composer 2.5 · Grok 4.5 · Grok 4.6, Fast 변형 포함 · Opus 5 · Fable 5, 각각 Max Mode 1M 변형 |
-| **OpenCode Go** | API 키 | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash / Pro · GLM-5.2 · MiMo V2.5 / Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
+| **Antigravity** | Google 구독 | Gemini 3.8 Flash · Gemini 3.1 Pro |
+| **OpenCode Go** | API 키 | GLM-5.3 · GLM-5.3 Flash · DeepSeek V4 Flash Vision / V4.1 Flash / V4 Pro · Muse Spark 1.3 Contributor |
+| **xAI** | Grok 구독 | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
 
 **설정 → AI Gateway**에서 원하는 로스터만 켜세요 — 켠 모델만 런치 메뉴와 Claude Code의 `/model` 피커에 나타납니다. 추론 강도를 지원하는 모델은 저마다의 사다리를 가지며 — 어디까지 오르는지는 모델마다 다르고 **MAX**까지 닿는 모델만 그 단을 엽니다 — 모든 AI Gateway 모델은 두 런치 강도 컨트롤에서 **ULTRACODE**를 제공합니다. xhigh 강도와 상시 멀티 에이전트 오케스트레이션을 한 번에 켜는 선택지입니다. 사용 한도 미터는 게이트웨이와 같은 리스크 판정을 읽으므로, 회복보다 빨리 소진되는 윈도우는 런이 멈추기 전에 위험으로 표시됩니다.
 

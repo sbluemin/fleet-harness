@@ -77,6 +77,7 @@ const FIXED_SENSITIVE_OPERATION_FIELDS = new Set([
   "persona",
   "prompt",
   "providerSession",
+  "previousAgentSessions",
   "ticket",
   "token",
   "toolAllowlist",
