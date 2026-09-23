@@ -115,20 +115,6 @@ export interface AiGatewayUpdateValue {
   readonly providerPriority?: readonly GatewayProvider[];
 }
 
-// Retain only the identity of a removed provider, not its catalog or executable adapter.
-// Stored selections must survive catalog removal so a later settings write cannot silently
-// replace a deliberately selected model with another provider.
-export function isLegacyCursorModelId(value: string): boolean {
-  return value.startsWith("cursor--") || value.startsWith("claude-gateway--cursor--");
-}
-
-export class LegacyGatewayModelSelectionError extends Error {
-  constructor() {
-    super("Routing model is no longer available; select another model explicitly");
-    this.name = "LegacyGatewayModelSelectionError";
-  }
-}
-
 export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSettings {
   if (!isRecord(value) || value.version !== 1) return { version: 1 };
   const models = Array.isArray(value.models)
@@ -137,9 +123,8 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
         isRecord(entry) && typeof entry.id === "string" && entry.id.length > 0)
       .flatMap((entry) => {
         const model = findGatewayModel(entry.id);
-        // Removed Cursor selections remain visible as inert identities until explicitly
-        // deselected. Never infer an active provider, efforts, or routing from this row.
-        if (!model) return isLegacyCursorModelId(entry.id) ? [{ id: entry.id }] : [];
+        // 카탈로그에서 제거된 모델은 저장 선택에서도 제거한다.
+        if (!model) return [];
         const efforts = Array.isArray(entry.efforts)
           ? entry.efforts.filter((level): level is string => typeof level === "string" && level.length > 0)
           : [];
@@ -167,7 +152,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     version: 1,
     ...(models.length > 0 ? { models } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
-    ...(typeof value.delegationRoutingModel === "string" && (["sonnet", "opus", "haiku", "fable", "sonnet[1m]", "opus[1m]", "fable[1m]"].includes(value.delegationRoutingModel) || findGatewayModel(value.delegationRoutingModel) || isLegacyCursorModelId(value.delegationRoutingModel)) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
+    ...(typeof value.delegationRoutingModel === "string" && (["sonnet", "opus", "haiku", "fable", "sonnet[1m]", "opus[1m]", "fable[1m]"].includes(value.delegationRoutingModel) || findGatewayModel(value.delegationRoutingModel)) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
     ...(value.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
     ...((value.delegationRoutingMode === "jev" || value.delegationRoutingMode === "model") ? { delegationRoutingMode: value.delegationRoutingMode } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
@@ -310,14 +295,7 @@ export function parseAiGatewayUpdate(value: unknown):
       if (typeof entry.id !== "string") return { ok: false };
       if (entry.hostOnly !== undefined && typeof entry.hostOnly !== "boolean") return { ok: false };
       const model = findGatewayModel(entry.id);
-      if (!model && !isLegacyCursorModelId(entry.id)) return { ok: false };
-      if (!model) {
-        // An unchanged legacy row can round-trip through unrelated settings edits.
-        // It is never projected into the active gateway selection.
-        if (entry.efforts !== undefined || entry.hostOnly !== undefined || models.some((existing) => existing.id === entry.id)) return { ok: false };
-        models.push({ id: entry.id });
-        continue;
-      }
+      if (!model) return { ok: false };
       if (models.some((existing) => existing.id === model.id)) return { ok: false };
       const efforts = parseExposedEfforts(model, entry.efforts);
       if (efforts === null) return { ok: false };

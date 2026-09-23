@@ -7,9 +7,6 @@ import {
   parseGatewayQuotaSnapshot,
   GATEWAY_PROVIDERS,
   GatewayRoutingDistribution,
-  findGatewayModel,
-  isLegacyCursorModelId,
-  LegacyGatewayModelSelectionError,
   decideGatewayRoutingAssignment,
   JEV_ROUTING_TIMEOUT_MS,
   parseGatewayAssignmentRequest,
@@ -144,13 +141,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
       // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
       void quota.getSummary().catch(() => undefined);
       const parsed = parseGatewayAssignmentRequest(request);
-      const settings = aiGatewayStore.read();
       const exposure = test ? { ...currentExposure(), providerLoad: new Map(providerLoad), distribution: new GatewayRoutingDistribution() } : currentExposure();
-      if (exposure.delegationRoutingEnabled && exposure.delegationRoutingMode === "model"
-        && settings.delegationRoutingModel && isLegacyCursorModelId(settings.delegationRoutingModel)
-        && !findGatewayModel(settings.delegationRoutingModel)) {
-        throw new LegacyGatewayModelSelectionError();
-      }
       return await decideGatewayRoutingAssignment(parsed, exposure, {
         ...(exposure.delegationRoutingMode === "model" ? {
           choose: (input, signal) => chooseRoutingModel({
@@ -191,9 +182,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
         mode: selection.delegationRoutingMode, elapsedMs: Date.now() - started,
         ...decision, fallback: decision.because.includes("fallback"),
       });
-    } catch (error) {
-      if (!res.destroyed) ctx.host.http.writeJson(res, error instanceof LegacyGatewayModelSelectionError ? 409 : 502,
-        { error: error instanceof LegacyGatewayModelSelectionError ? "gateway_model_reselection_required" : "routing_test_failed" });
+    } catch {
+      if (!res.destroyed) ctx.host.http.writeJson(res, 502, { error: "routing_test_failed" });
     } finally { testing = false; res.off("close", abort); }
     return true;
   }, [{ method: "POST", path: "", summary: "Test the configured routing decision with a real provider request.", category: "Console Execution", gate: "origin-write", transport: "http" }]);

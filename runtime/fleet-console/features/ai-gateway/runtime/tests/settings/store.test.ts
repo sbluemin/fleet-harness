@@ -48,10 +48,10 @@ describe("ai-gateway settings store", () => {
     // 읽기만으로는 파일이 생기지 않는다 — 미구성과 "빈 설정을 저장함"은 다른 상태다.
     expect(existsSync(store.path)).toBe(false);
 
-    store.write({ models: [{ id: "cursor--grok-4.7" }] });
+    store.write({ models: [{ id: "xai--grok-4.7" }] });
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({
       version: 1,
-      models: [{ id: "cursor--grok-4.7" }],
+      models: [{ id: "xai--grok-4.7" }],
     });
   });
 
@@ -81,10 +81,10 @@ describe("ai-gateway settings store", () => {
       models: [{ id: "opencode--glm-5.3" }],
       compactCeiling: "early",
     });
-    store.write({ models: [{ id: "cursor--auto" }] });
+    store.write({ models: [{ id: "codex--gpt-6-sol" }] });
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "cursor--auto" }],
+      models: [{ id: "codex--gpt-6-sol" }],
       compactCeiling: "early",
     });
     store.writeCompactCeiling(94);
@@ -92,7 +92,7 @@ describe("ai-gateway settings store", () => {
     store.writeCompactCeiling(undefined);
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "cursor--auto" }],
+      models: [{ id: "codex--gpt-6-sol" }],
     });
   });
 
@@ -106,12 +106,12 @@ describe("ai-gateway settings store", () => {
       xaiEndpoint: "cli-proxy",
     });
     // A models-only save must not silently move the endpoint back to the default.
-    store.write({ models: [{ id: "cursor--auto" }] });
+    store.write({ models: [{ id: "codex--gpt-6-sol" }] });
     expect(store.read()?.xaiEndpoint).toBe("cli-proxy");
     store.writeXaiEndpoint(undefined);
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "cursor--auto" }],
+      models: [{ id: "codex--gpt-6-sol" }],
     });
   });
 
@@ -130,8 +130,8 @@ describe("ai-gateway settings store", () => {
     const dataDir = createDataDir();
     const legacyDir = seedLegacySettings(dataDir, {
       version: 1,
-      models: [{ id: "opencode--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "cursor--auto" }],
-      defaultModel: "cursor--auto",
+      models: [{ id: "opencode--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "codex--gpt-6-sol" }],
+      defaultModel: "codex--gpt-6-sol",
       wireLogEnabled: false,
     });
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
@@ -139,7 +139,7 @@ describe("ai-gateway settings store", () => {
     // 레거시 defaultModel은 승계 시 조용히 버린다.
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "opencode--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "cursor--auto" }],
+      models: [{ id: "opencode--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "codex--gpt-6-sol" }],
       wireLogEnabled: false,
     });
     // 승계는 새 축에 실제로 안착해야 한다 — 매 부팅 과거 파일을 다시 읽는 상태로 남으면 안 된다.
@@ -155,7 +155,7 @@ describe("ai-gateway settings store", () => {
     const dataDir = createDataDir();
     writeFileSync(
       path.join(dataDir, "ai-gateway.json"),
-      JSON.stringify({ version: 1, models: [{ id: "cursor--auto" }] }),
+      JSON.stringify({ version: 1, models: [{ id: "codex--gpt-6-sol" }] }),
       "utf-8",
     );
 
@@ -163,12 +163,12 @@ describe("ai-gateway settings store", () => {
     store.writeWireLogEnabled(true);
 
     expect(existsSync(store.path)).toBe(true);
-    expect(store.read().models).toEqual([{ id: "cursor--auto" }]);
+    expect(store.read().models).toEqual([{ id: "codex--gpt-6-sol" }]);
   });
 
   it("performs no adoption when no host directory is given", () => {
     const dataDir = createDataDir();
-    seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
+    seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
     const store = createAiGatewaySettingsStore({ dataDir });
 
     expect(store.read()).toEqual({ version: 1 });
@@ -177,7 +177,7 @@ describe("ai-gateway settings store", () => {
 
   it("never overwrites settings that already exist on the new axis", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
     createAiGatewaySettingsStore({ dataDir }).write({ models: [{ id: "opencode--glm-5.3" }] });
 
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
@@ -186,7 +186,7 @@ describe("ai-gateway settings store", () => {
 
   it("treats an emptied selection as a real state rather than something to re-adopt", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
     // 사용자가 전부 지운 상태. 정규형은 승계 전과 구분되지 않으므로 파일 존재로만 판정해야 한다.
     createAiGatewaySettingsStore({ dataDir }).write(undefined);
 
@@ -195,7 +195,7 @@ describe("ai-gateway settings store", () => {
   });
 
   it("stays unconfigured when the host directory holds nothing usable", () => {
-    for (const seeded of [undefined, "{ not json", { version: 1 }, { version: 9, models: [{ id: "cursor--auto" }] }]) {
+    for (const seeded of [undefined, "{ not json", { version: 1 }, { version: 9, models: [{ id: "codex--gpt-6-sol" }] }]) {
       const dataDir = createDataDir();
       const legacyDir = path.join(dataDir, "console", "plugins", "terminal");
       if (seeded !== undefined) {
@@ -218,15 +218,15 @@ describe("ai-gateway settings store", () => {
   // **않는** 축이 승계된 값 그대로인지가 판정 기준이다.
   it("adopts before a partial wire-log update", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
     store.writeWireLogEnabled(true);
-    expect(store.read()).toEqual({ version: 1, models: [{ id: "cursor--auto" }], wireLogEnabled: true });
+    expect(store.read()).toEqual({ version: 1, models: [{ id: "codex--gpt-6-sol" }], wireLogEnabled: true });
   });
 
   it("retries adoption after a write it could not complete, instead of settling on the loss", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
     // 다른 프로세스가 락을 쥐고 있는 상태. staleLockMs를 크게 잡아 stale 회수 경로를 배제한다.
     const lockDir = path.join(dataDir, "ai-gateway.json.lock");
     mkdirSync(lockDir, { recursive: true });
@@ -246,14 +246,14 @@ describe("ai-gateway settings store", () => {
     store.writeWireLogEnabled(true);
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "cursor--auto" }],
+      models: [{ id: "codex--gpt-6-sol" }],
       wireLogEnabled: true,
     });
   });
 
   it("refuses to write while the previous file exists but cannot be read yet", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
     const legacyFile = path.join(legacyDir, "ai-gateway.json");
     chmodSync(legacyFile, 0o000);
     // root는 권한 검사를 우회해 EACCES가 나지 않는다. 그 환경에서는 이 경로를 재현할 수 없다.
@@ -277,7 +277,7 @@ describe("ai-gateway settings store", () => {
     store.writeWireLogEnabled(true);
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "cursor--auto" }],
+      models: [{ id: "codex--gpt-6-sol" }],
       wireLogEnabled: true,
     });
   });
@@ -297,7 +297,7 @@ describe("ai-gateway settings store", () => {
   it("cleans up its own orphaned temp files", () => {
     const dataDir = createDataDir();
     const store = createAiGatewaySettingsStore({ dataDir });
-    store.write({ models: [{ id: "cursor--auto" }] });
+    store.write({ models: [{ id: "codex--gpt-6-sol" }] });
     // writeAtomicSync이 실제로 만드는 이름은 `<파일명>.<pid>.<ts>.<rand>.<host>.tmp`다.
     // 정리 접두가 그 규약과 어긋나면 고아 temp가 영원히 쌓인다.
     const orphan = `${store.path}.999.1.abc.host.tmp`;

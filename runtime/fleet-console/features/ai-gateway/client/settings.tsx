@@ -331,8 +331,6 @@ function AiGatewayRoutingCard() {
   const jevStored = mode === "jev";
   const jevActive = jevStored && typesafeSignedIn;
   const jevFallback = jevStored && !typesafeSignedIn;
-  const unavailableModel = state.delegationRoutingModel?.startsWith("cursor--")
-    || state.delegationRoutingModel?.startsWith("claude-gateway--cursor--");
   const saveMode = (next: DelegationRoutingMode): void => {
     if (next === "jev" && !typesafeSignedIn) return;
     void setSystemPromptSettingsField("delegationRoutingMode", next);
@@ -391,7 +389,6 @@ function AiGatewayRoutingCard() {
               <ModelPicker
                 value={state.delegationRoutingModel ?? "sonnet"}
                 options={[
-                  ...(unavailableModel && state.delegationRoutingModel ? [{ id: state.delegationRoutingModel, label: `${state.delegationRoutingModel} · ${t("terminal.settings.aiGatewayRemovedModel")}`, provider: "" }] : []),
                   { id: "opus", label: "Opus", provider: "claude" },
                   { id: "sonnet", label: "Sonnet", provider: "claude" },
                   ...state.aiGatewayCatalog.providers.flatMap(provider => provider.models
@@ -406,8 +403,7 @@ function AiGatewayRoutingCard() {
             </div>
           ) : null}
           {mode === "model" ? <p className="global-settings-help">{t("terminal.settings.aiGatewayRoutingModelNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p> : null}
-          {unavailableModel ? <p className="global-settings-error" role="status">{t("terminal.settings.aiGatewayRemovedRoutingModel")}</p> : null}
-          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? "sonnet"}`} mode={mode} disabled={modeSaving || (mode === "jev" && !typesafeSignedIn) || !!unavailableModel} />
+          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? "sonnet"}`} mode={mode} disabled={modeSaving || (mode === "jev" && !typesafeSignedIn)} />
         </>
       ) : null}
     </section>
@@ -610,7 +606,6 @@ function AiGatewayModelsCard() {
 
   const selection = state.aiGateway ?? {};
   const enabled = selection.models ?? [];
-  const unavailable = enabled.filter((entry) => entry.id.startsWith("cursor--") || entry.id.startsWith("claude-gateway--cursor--"));
   // 순위는 켠 공급자에 대한 선호다 — 로드아웃이 켠 모델 없는 공급자를 거르고 다시 번호를 매기므로,
   // 화면도 같은 순위를 읽는다. 예전 저장값에 남은 빈 공급자는 다음 순위 저장에서 함께 정리된다.
   const enabledProviderIds = new Set(
@@ -726,15 +721,6 @@ function AiGatewayModelsCard() {
         </div>
         {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
         {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
-        {unavailable.length > 0 ? <div className="global-settings-help" role="status">
-          <p>{t("terminal.settings.aiGatewayRemovedModelNotice")}</p>
-          {unavailable.map((entry) => <div key={entry.id} className="ai-gateway-model-row">
-            <span className="ai-gateway-model-name">{entry.id}</span>
-            <button type="button" className="ai-gateway-remove" disabled={saving}
-              aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: entry.id })}
-              onClick={() => removeModel(entry.id)}>✕</button>
-          </div>)}
-        </div> : null}
         <div className="ai-gateway-stack">
         <div className="ai-gateway-roster-head">
           <div className="ai-gateway-palette-anchor">

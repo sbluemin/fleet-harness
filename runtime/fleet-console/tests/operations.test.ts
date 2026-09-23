@@ -49,7 +49,6 @@ describe("operations platform", () => {
         cwd: "/secret",
         canonicalCwd: "/secret",
         providerSession: { sessionId: "provider-secret" },
-        previousAgentSessions: [{ id: "provider-secret-history", transcriptPath: "/secret/history.jsonl" }],
         providerTitle: { source: "provider" },
         ticket: "ticket-secret",
         token: "token-secret",

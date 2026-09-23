@@ -57,14 +57,14 @@ describe("terminal settings routes", () => {
   it("PUT /api/v1/agent/settings stores delegation routing mode independently", async () => {
     const harness = createRouteHarness({
       body: { delegationRoutingMode: "jev" },
-      aiGateway: { version: 1, models: [{ id: "cursor--auto" }] },
+      aiGateway: { version: 1, models: [{ id: "codex--gpt-6-sol" }] },
     });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({ delegationRoutingMode: "jev" });
     expect(harness.currentAiGateway()).toEqual({
       version: 1,
-      models: [{ id: "cursor--auto" }],
+      models: [{ id: "codex--gpt-6-sol" }],
       delegationRoutingMode: "jev",
     });
 
@@ -77,23 +77,8 @@ describe("terminal settings routes", () => {
     expect(cleared.currentAiGateway()).toEqual({
       version: 1,
       delegationRoutingMode: "model",
-      models: [{ id: "cursor--auto" }],
+      models: [{ id: "codex--gpt-6-sol" }],
     });
-  });
-
-  it("preserves a removed Cursor selection and routing identity without exposing it", async () => {
-    const legacy = normalizeAiGatewaySettings({
-      version: 1,
-      models: [{ id: "cursor--retired", efforts: ["high"], hostOnly: true }],
-      delegationRoutingModel: "cursor--retired",
-    });
-    expect(legacy.models).toEqual([{ id: "cursor--retired" }]);
-    expect(legacy.delegationRoutingModel).toBe("cursor--retired");
-    const harness = createRouteHarness({ body: { delegationRoutingMode: "model" }, aiGateway: legacy });
-    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
-    expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.currentAiGateway().delegationRoutingModel).toBe("cursor--retired");
-    expect(harness.currentAiGateway().models).toEqual([{ id: "cursor--retired" }]);
   });
 
   it("PUT /api/v1/agent/settings stores the Claude Code permission opt-in", async () => {

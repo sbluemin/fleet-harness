@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { createClaudeGatewaySdk } from "@fleet-console/agent-runtime/claude";
-import { claudeGatewayModelPolicy, buildGatewayModelConstraints, findGatewayModel, isLegacyCursorModelId, LegacyGatewayModelSelectionError, resolveAiGatewaySelection, toClaudeGatewayModelId, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
+import { claudeGatewayModelPolicy, buildGatewayModelConstraints, findGatewayModel, resolveAiGatewaySelection, toClaudeGatewayModelId, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 
 /** 판단 전용 실행. 도구·플러그인·사용자 작업 디렉터리를 제공하지 않는다. */
 export async function chooseRoutingModel(input: {
@@ -14,9 +14,6 @@ export async function chooseRoutingModel(input: {
 }): Promise<string> {
   const selected = input.settings.delegationRoutingModel ?? "sonnet";
   const model = findGatewayModel(selected);
-  if (!model && isLegacyCursorModelId(selected)) {
-    throw new LegacyGatewayModelSelectionError();
-  }
   const isClaude = model?.provider === "claude" || ["sonnet", "opus"].includes(selected);
   const selection = resolveAiGatewaySelection(input.settings);
   if (!["sonnet", "opus"].includes(selected) && (!model || !selection.models.some(entry => entry.id === model.id))) {
