@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
-import type { ClientApiCapability, ClientExpandedSurfacesCapability, ConsoleTheme } from "../plugin/types.js";
+import type { ClientApiCapability, ClientExpandedSurfacesCapability, ClientRailCapability, ConsoleTheme } from "../plugin/types.js";
 import type { OperationLaunchKind } from "../operations/types.js";
 import type { PaneSearchProvider } from "../pane/types.js";
 
@@ -23,6 +23,8 @@ export interface RailPanelContext {
   readonly launchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
   /** rail 동작이 Operation 대신 확대 표면을 열 때 쓴다. */
   readonly surfaces?: ClientExpandedSurfacesCapability;
+  /** 도킹할 수 있는 동작 엔트리가 자기 패널을 열고 닫을 때 쓰는 창구. */
+  readonly rail?: ClientRailCapability;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
 }

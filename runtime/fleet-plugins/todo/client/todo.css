@@ -1,8 +1,10 @@
 /* 할 일 표면 — 목록 · 항목 · 세부 세 열. 색은 토큰만. */
 
+.todo-container { container: todo-panel / inline-size; width: 100%; height: 100%; min-height: 0; }
 .todo-root {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
+  position: relative;
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -11,11 +13,21 @@
   color: var(--text-primary);
   background: var(--surface-panel);
 }
-.todo-root.has-detail { grid-template-columns: 200px minmax(0, 1fr) minmax(320px, 380px); }
-.todo-root.is-narrow { grid-template-columns: minmax(0, 1fr); }
-.todo-root.is-narrow .todo-lists { display: none; }
-.todo-root.is-narrow.has-detail { grid-template-columns: minmax(0, 1fr); }
-.todo-root.is-narrow.has-detail .todo-main { display: none; }
+.todo-root.has-detail { grid-template-columns: 200px minmax(0, 1fr) minmax(420px, 480px); }
+.todo-place-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.todo-place-button:hover, .todo-place-button:focus-visible { color: var(--brass); border-color: var(--brass); outline: none; }
 
 /* ── 목록 열 ── */
 .todo-lists {
@@ -79,7 +91,17 @@
   padding: 12px 14px 10px;
   position: relative;
 }
-.todo-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding-right: var(--expanded-surface-float-inset, 0px); }
+.todo-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.todo-title .todo-place-button { margin-left: auto; }
+.todo-list-select { display: none; position: relative; min-width: 0; }
+.todo-list-trigger { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 3px 7px; background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); color: var(--text-primary); font: inherit; cursor: pointer; }
+.todo-list-trigger > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.todo-list-trigger .todo-count { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
+.todo-list-trigger:focus-visible { outline: 1px solid var(--brass); }
+.todo-list-menu { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; width: min(240px, calc(100cqw - 28px)); max-height: min(440px, 65vh); overflow: auto; padding: 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); }
+.todo-list-menu .todo-lists-add { width: 100%; margin-top: 8px; }
+.todo-place-detail { display: grid; }
+.todo-root.has-detail .todo-place-main, .todo-glyph.todo-detail-back { display: none; }
 .todo-title h2 { margin: 0; font-family: var(--font-display); font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 1.2; }
 .todo-title .todo-sub { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
 .todo-title .todo-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
@@ -247,9 +269,12 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
+  container: todo-detail / inline-size;
 }
+.todo-detail-scroll { flex: 1; min-height: 0; overflow: auto; }
+.todo-detail-bottom { flex: none; background: var(--surface-panel-raised); }
 .todo-group { display: flex; flex-direction: column; padding: 6px 0; }
 .todo-group + .todo-group { border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
 .todo-detail-head { display: flex; gap: 12px; align-items: flex-start; padding: 8px 20px 10px 22px; }
@@ -480,12 +505,25 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 
 /* 레시피 상자 — 그래프와 그 아래 안내 문구가 한 상자 안에 선다. 문구는 상자 바닥 가운데. */
 .todo-dag-box { background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); overflow: hidden; }
-.todo-dag { display: block; max-width: 100%; background: transparent; border: 0; touch-action: none; }
+.todo-dag { display: block; max-width: 100%; height: auto; margin: 0 auto; background: transparent; border: 0; touch-action: none; }
+.todo-graph-vertical { display: none; }
+.todo-dag-vertical { padding: 8px 12px; }
+.todo-dag-row { display: flex; align-items: center; gap: 12px; min-height: 38px; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); }
+.todo-dag-row + .todo-dag-row { border-top: 1px solid var(--hairline); }
+.todo-dag-dot { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border: 1px solid var(--aurora); border-radius: 50%; color: var(--text-primary); }
+.todo-dag-dot.is-done { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); }
+.todo-dag-dot.is-assigned { border-color: var(--positive); }
+.todo-dag-row.is-root .todo-dag-dot { border-color: var(--text-tertiary); }
+.todo-dag-step-name { min-width: 0; overflow-wrap: anywhere; }
+@container todo-detail (width < 420px) {
+  .todo-graph-horizontal { display: none; }
+  .todo-graph-vertical { display: block; }
+}
 .todo-dag-hint { text-align: center; padding: 0 10px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
 /* 확대본 — 빈 배경을 누르면 열린다(커서로 예고). 오버레이는 다른 팝오버와 같은 층(60), 카드는 넓은 폭에 같은 그래프를 다시 그린다. */
 .todo-dag-box.can-zoom .todo-dag { cursor: zoom-in; }
 .todo-dag-box.can-zoom .todo-dag.is-dragging { cursor: grabbing; }
-.todo-zoom-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: color-mix(in oklch, var(--ink-deep) 55%, transparent); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); }
+.todo-zoom-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 12px; background: color-mix(in oklch, var(--ink-deep) 55%, transparent); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); }
 .todo-zoom { width: min(940px, 100%); max-height: 100%; overflow: auto; padding: 12px 16px 16px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); outline: none; }
 .todo-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .todo-zoom-title { display: inline-flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--t-base); font-weight: var(--weight-bold); color: var(--text-primary); }
@@ -567,12 +605,36 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-pick button { text-align: left; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 4px 6px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
 .todo-pick button:hover { border-color: var(--brass); }
 
+@container todo-panel (width < 960px) {
+  .todo-root, .todo-root.has-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .todo-root:not(.has-detail) { grid-template-columns: minmax(0, 1fr); }
+  .todo-lists { display: none; }
+  .todo-list-select { display: block; }
+  .todo-title h2 { display: none; }
+  .todo-place-detail { display: grid; }
+  .todo-root.has-detail .todo-place-main { display: none; }
+}
+@container todo-panel (width < 600px) {
+  .todo-root, .todo-root.has-detail { grid-template-columns: minmax(0, 1fr); }
+  .todo-root.has-detail .todo-main { display: none; }
+  .todo-detail { border-left: 0; }
+  .todo-glyph.todo-detail-back { display: inline-grid; margin-right: -6px; font-size: var(--t-xl); }
+  .todo-place-detail { margin-left: 0; }
+  .todo-detail-head { gap: 8px; padding-right: 12px; padding-left: 12px; }
+  .todo-row { padding-right: 12px; padding-left: 14px; gap: 8px; }
+  .todo-row-main { margin-left: -14px; margin-right: -12px; padding-left: 14px; padding-right: 12px; gap: 8px; }
+  .todo-step { padding-left: 14px; padding-right: 8px; gap: 8px; }
+  .todo-graph-wrap { padding-left: 14px; padding-right: 12px; }
+  .todo-detail textarea.todo-note { padding-left: 14px; padding-right: 12px; }
+  .todo-detail-created { white-space: normal; }
+  .todo-start { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 9px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .todo-step.is-highlight { animation: none; }
 }
 
 /* 기한 달력 — 메뉴와 같은 카드 위에 월 하나. 숫자는 모노, 오늘은 고리, 고른 날은 brass 채움, 지난 날은 dim. */
-.todo-cal { position: fixed; z-index: 60; width: 252px; padding: 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); outline: none; }
+.todo-cal { position: fixed; z-index: 60; width: min(252px, calc(100vw - 16px)); padding: 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); outline: none; }
 .todo-cal-quick { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px 8px; border-bottom: 1px solid var(--hairline); margin-bottom: 6px; }
 .todo-cal-chip { padding: 2px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
 .todo-cal-chip:hover { border-color: var(--brass); color: var(--text-primary); }

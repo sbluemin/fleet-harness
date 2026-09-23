@@ -20,13 +20,14 @@ interface GraphProps {
   readonly operationTitle: (operationId: string) => string;
   /** 확대본 — 넓은 폭에 줄이지 않은 제목. 사이드 패널에서는 생략한다. */
   readonly zoom?: boolean;
+  readonly vertical?: boolean;
   /** 빈 배경을 누르면 확대본을 연다. 노드·간선 위의 누름과 드래그 끝은 제외. */
   readonly onZoom?: () => void;
   /** 이 단계의 선행을 사람이 바꿀 수 있는가 — 셰프가 일하는 동안은 시작 전 단계만. 없으면 모두. */
   readonly canEdit?: (stepId: string) => boolean;
 }
 
-export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, operationTitle, zoom = false, onZoom, canEdit }: GraphProps) {
+export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, operationTitle, zoom = false, vertical = false, onZoom, canEdit }: GraphProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<{ from: string; x0: number; y0: number; x: number; y: number; over: string | null } | null>(null);
   const movedRef = useRef(false);
@@ -123,13 +124,22 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
   };
 
   const mode = coordinatorMode(item);
+  if (vertical) return (
+    <div className="todo-dag-box todo-dag-vertical">
+      <div className="todo-dag-row is-root"><span className="todo-dag-dot" aria-hidden="true" /><span>{t("todo.graph.coordinator")}</span></div>
+      {steps.map((step, index) => <div key={step.id} className="todo-dag-row" title={step.after.length ? t("todo.graph.edgeAria", { from: steps.findIndex((candidate) => candidate.id === step.after[0]) + 1, to: index + 1 }) : undefined}>
+        <span className={`todo-dag-dot${step.done ? " is-done" : step.slot ? " is-assigned" : ""}`}>{index + 1}</span><span className="todo-dag-step-name">{step.text}</span>
+      </div>)}
+      <span hidden>{mode}</span>
+    </div>
+  );
   return (
     <div className={`todo-dag-box${onZoom ? " can-zoom" : ""}${zoom ? " is-zoom" : ""}`}>
       <svg
         ref={svgRef}
         className={`todo-dag${drag ? " is-dragging" : ""}`}
         viewBox={`0 0 ${W} ${H}`}
-        width="100%"
+        width={W}
         role="img"
         aria-label={t("todo.graph.title")}
         onPointerMove={onPointerMove}

@@ -1,11 +1,12 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
+import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import { todoClusterSource } from "./clusters.js";
 import { getT } from "./i18n/index.js";
 import { TodoPanel } from "./todo-panel.js";
-import { activeTheaterId, installTodoState, loadTheater, revealItem, todoApi } from "./todo-state.js";
+import { activeTheaterId, installTodoState, loadTheater, onTodoSurfaceClose, revealItem, todoApi, toggleTodoPlace } from "./todo-state.js";
 import "./todo.css";
 
 export const TODO_SURFACE_ID = "todo";
@@ -16,16 +17,24 @@ const TodoIcon = () => (
   </svg>
 );
 
-/**
- * 할 일 — 레일 아이콘이 확대 표면을 여닫는다(Repository 문법). 표면 하나에 목록 · 항목 · 세부가 선다.
- */
+/** 같은 본문을 레일 primary와 기존 전용 확장 표면에 각각 세운다. */
+export const todoPane: PaneDescriptor = {
+  id: TODO_SURFACE_ID,
+  role: "primary",
+  mounts: ["rail"],
+  title: (ctx) => getT(ctx.language)("todo.panel.title"),
+  widthClass: "standard",
+  render: (ctx) => <TodoPanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "rail" }} />,
+};
+
 export const todoSurface: ExpandedSurfaceDescriptor = {
   id: TODO_SURFACE_ID,
   title: (ctx) => getT(ctx.language ?? "en")("todo.panel.title"),
   minPaneWidth: 560,
   // 레일 아이콘이 여닫으므로 호스트의 부유 닫기는 중복이다.
   ownsClose: true,
-  render: (ctx: ExpandedSurfaceContext) => <TodoPanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, paneWidth: ctx.paneWidth }} />,
+  onClose: onTodoSurfaceClose,
+  render: (ctx: ExpandedSurfaceContext) => <TodoPanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "expanded" }} />,
 };
 
 export const todoEntry: RailEntryDescriptor = {
@@ -33,13 +42,9 @@ export const todoEntry: RailEntryDescriptor = {
   title: (locale) => getT(locale)("todo.panel.title"),
   icon: () => <TodoIcon />,
   scope: "theater",
+  panes: [TODO_SURFACE_ID],
   surfaceId: TODO_SURFACE_ID,
-  activate: (ctx) => {
-    const surfaces = ctx.surfaces;
-    if (!surfaces) return;
-    if (surfaces.isOpen(TODO_SURFACE_ID)) surfaces.closeSurface(TODO_SURFACE_ID);
-    else surfaces.open({ surfaceId: TODO_SURFACE_ID });
-  },
+  activate: (ctx) => toggleTodoPlace(ctx.rail, ctx.surfaces),
   search: async ({ query, theaterId, limit, language }) => {
     const api = todoApi();
     if (!api) return [];
@@ -61,6 +66,7 @@ const todoPlugin = definePlugin({
     return dispose;
   },
   railEntries: [todoEntry],
+  panes: [todoPane],
   expandedSurfaces: [todoSurface],
   // 조율자와 담당 Operation 은 한 묶음이다 — 사이드바 들여쓰기·캔버스 대형·간선은 호스트가 이 서술자로 그린다.
   operationClusters: todoClusterSource,

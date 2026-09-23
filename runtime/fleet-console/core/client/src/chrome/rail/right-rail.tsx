@@ -41,7 +41,7 @@ interface RightRailProps {
 }
 
 /** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */
-const STABLE_RAIL_SURFACES = createHostCapabilities().surfaces;
+const RAIL_CAPABILITIES = createHostCapabilities();
 /** 아이콘 열 폭 — rail.css .right-rail-icons와 한 값. */
 const RAIL_ICON_STRIP_WIDTH = 44;
 /** 카드 양쪽 테두리 — 열 실측과 카드 폭 사이의 차이. */
@@ -284,7 +284,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     api,
     language,
     theme,
-    surfaces: STABLE_RAIL_SURFACES,
+    surfaces: RAIL_CAPABILITIES.surfaces,
+    rail: RAIL_CAPABILITIES.rail,
     launchOperation: onLaunchOperation,
   }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation]);
 
@@ -401,9 +402,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
                   entry={entry}
                   context={baseCtx}
                   language={language}
-                  // 표면을 여는 동작은 그 표면이 서 있는 동안 켜져 있다 — 펼친 패널과 같은 문법으로
-                  // "지금 여기"를 말한다. 표면을 열지 않는 동작은 켜질 자리가 없다.
-                  isActive={entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId)}
+                  // 확장 표면이나 자기 레일 패널이 열려 있으면 켜짐이다.
+                  isActive={activePanelId === entry.id || (entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))}
                 />
               ))}
             </Fragment>
@@ -411,7 +411,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           : (
             <div key={run.key} className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
               {run.bindings.map(({ entry }) => (
-                <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activePanelId === entry.id} />
+                <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))} />
               ))}
             </div>
           ));

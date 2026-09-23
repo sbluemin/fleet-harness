@@ -8,7 +8,7 @@ import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState,
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel } from "./operations-sse.js";
-import { openRailPanel } from "../chrome/rail/rail-store.js";
+import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../chrome/rail/rail-store.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, getState, openQuickLaunch, openQuickLaunchForOperation,
   openQuickLaunchWithDraft, raiseOperationNotification, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 import { restoreOperation } from "../../../../features/workspace/client/canvas/canvas-store.js";
@@ -80,6 +80,8 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
     },
     rail: {
       open: (panelId) => openRailPanel(panelId),
+      close: (panelId) => closeRailPanel(panelId),
+      isOpen: (panelId) => getRailStoreSnapshot().activePanelId === panelId,
     },
     consoleEvents: {
       subscribe: (channel, onEvent) => subscribeConsoleChannel(channel, onEvent),
