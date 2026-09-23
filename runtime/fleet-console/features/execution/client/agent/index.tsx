@@ -58,7 +58,7 @@ import {
   useSystemPromptSettingsStore,
   type ClaudeCodeSystemPromptMode,
 } from "../../../settings/client/execution-settings.js";
-import { AgentApiError, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, fetchClaudeBuiltInAgents, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
+import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, fetchClaudeBuiltInAgents, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { startAgentConnection } from "./connection.js";
 import { applySessionUpdate, getAgentState, removeSession, selectSession, useAgentState } from "./store.js";
@@ -832,6 +832,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onOpenLink={linkOpen.choose}
+        knownLinks={(text) => confirmAgentSessionLinks(session.sessionId, text)}
         onExit={() => removeSession(session.sessionId)}
       />
       <ComputerScreenShare operationId={context.operationId} />

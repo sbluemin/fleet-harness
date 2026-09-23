@@ -159,6 +159,23 @@ describe("agent chat mode routes", () => {
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "operation_chat_mode" } });
   });
 
+  it("confirms wrapped terminal links only from text the caller already shows", async () => {
+    // transcript는 브라우저 DTO에 실리지 않는다 — 줄바꿈 URL 확인은 보낸 글 안에 있는 주소만 돌려줘야 한다.
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.attachProviderSession(sessionId);
+    const shown = "https://docs.example.dev/guide?topic=wrapped-url&page=3";
+    const hidden = "https://internal.example.dev/tool-result?token=never-on-screen";
+    await fs.appendFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), `\n${JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: `See [Guide](${shown}).` }, { type: "tool_result", content: hidden }] },
+    })}`);
+
+    await harness.post(sessionId, "links", { text: `⏺ Guide (${shown})` });
+
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { urls: [shown] } });
+  });
+
   it.each(["pending", "missed"])("preserves first-turn identity after a %s transcript lookup at disposal", async (lookup) => {
     const harness = await createHarness({ holdChatTurn: true });
     vi.stubEnv("CLAUDE_CONFIG_DIR", harness.fleetDataDir);

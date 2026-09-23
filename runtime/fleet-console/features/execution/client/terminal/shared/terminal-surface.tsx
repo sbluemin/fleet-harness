@@ -16,6 +16,7 @@ import { describeTerminalFailure } from "./terminal-failure.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { createTerminalLinkHandler, createTerminalLinkRoute, TERMINAL_OPTIONS } from "./terminal-options.js";
+import { createWrappedLinkProvider } from "./terminal-wrapped-links.js";
 import { dispatchSyntheticTerminalWheel } from "./terminal-synthetic-wheel.js";
 import { createTerminalTouchGestures, MIN_FONT_SCALE } from "./terminal-touch-gestures.js";
 import { createXtermGestureOriginGuard } from "./terminal-xterm-gesture-origin.js";
@@ -57,6 +58,12 @@ export interface TerminalSurfaceProps {
    * 링크는 확인을 받은 뒤 새 창으로 연다.
    */
   readonly onOpenLink?: (url: string, at: { readonly x: number; readonly y: number }) => boolean;
+  /**
+   * 앱이 스스로 줄을 바꿔 그린 긴 URL을 이을 때의 원문 확인 — 화면에서 이어 붙인 글을 받아 그 안에
+   * 들어 있는 원문 주소(예: 그 세션 transcript에 적힌 것)를 돌려준다. 넘기면 원문과 정확히 같은
+   * 조각만 전체 주소 한 링크로 세운다. 넘기지 않은 표면은 맨 URL 탐지만 쓴다.
+   */
+  readonly knownLinks?: (text: string) => Promise<readonly string[]>;
   /** 관전 배지 문구용. 넘기지 않으면 영어로 떨어진다 — 배지 외의 동작에는 영향이 없다. */
   readonly locale?: ConsoleLocale;
 }
@@ -193,7 +200,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, locale }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, knownLinks, locale }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -244,6 +251,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // 링크를 여는 문은 렌더마다 새 함수일 수 있고, 마운트 effect는 다시 돌지 않는다(세션이 끊긴다).
   const onOpenLinkRef = useRef(onOpenLink);
   onOpenLinkRef.current = onOpenLink;
+  const knownLinksRef = useRef(knownLinks);
+  knownLinksRef.current = knownLinks;
   // 비활성 Map 패널의 마운트 자동 포커스를 억제하기 위해 최신 active를 ref로 들고 있는다(마운트 effect는 재실행하지 않음).
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -350,6 +359,14 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       const fitAddon = new FitAddon();
       fitAddonRef.current = fitAddon;
       terminal.loadAddon(fitAddon);
+      // 원문과 맞춰 이은 긴 주소가 맨 URL 탐지의 첫 줄 조각보다 앞선다 — xterm은 먼저 등록한 공급자의
+      // 링크를 고른다. 원문과 맞지 않으면 이 공급자는 아무것도 내지 않아 아래 addon이 그대로 맡는다.
+      if (knownLinksRef.current) {
+        terminal.registerLinkProvider(createWrappedLinkProvider(terminal, {
+          knownUrls: (text) => knownLinksRef.current?.(text) ?? Promise.resolve([]),
+          activate: linkRoute,
+        }));
+      }
       // CLI가 뱉는 주소는 대개 맨 텍스트다(하이퍼링크를 지원하지 않는 터미널로 보므로). 그 텍스트를
       // 링크로 세우는 일은 이 addon이 진다 — 줄바꿈으로 갈린 URL까지 한 링크로 잇는다.
       terminal.loadAddon(new WebLinksAddon(linkRoute));
