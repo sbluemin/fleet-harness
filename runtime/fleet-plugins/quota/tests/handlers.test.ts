@@ -24,7 +24,7 @@ function harness(
 ) {
   const writes: Array<{ status: number; payload: unknown }> = [];
   const writeJson = vi.fn(async () => {});
-  const readJson = vi.fn(async (): Promise<Record<string, unknown>> => ({ claudeConnected: true, cursorConnected: false }));
+  const readJson = vi.fn(async (): Promise<Record<string, unknown>> => ({ claudeConnected: true }));
   const ctx = {
     host: {
       security: { isTerminalAuthorized: () => true },
@@ -45,7 +45,6 @@ function harness(
       providers: {
         claude: { status: "ok", windows: [{ id: "session", usedPercent: 1 }], fetchedAt: 10 },
         codex: { status: "signed_out" },
-        cursor: { status: "signed_out" },
       },
     })),
   } as unknown as QuotaService;
@@ -70,62 +69,11 @@ describe("quota route handlers", () => {
     expect(json).not.toMatch(/accessToken|access_token|account_id|Users|\\\\Users/);
   });
 
-  it("serializes concurrent connection flag mutations without losing either update", async () => {
-    for (const order of ["claude-first", "cursor-first"] as const) {
-      let stored = { claudeConnected: true, cursorConnected: false };
-      const writes: unknown[] = [];
-      const ctx = {
-        host: {
-          security: { isTerminalAuthorized: () => true },
-          storage: {
-            readJson: async () => ({ ...stored }),
-            writeJson: async (_plugin: string, _key: string, value: typeof stored) => {
-              await Promise.resolve();
-              stored = value;
-              writes.push(value);
-            },
-          },
-          http: {
-            readJsonBody: async (req: IncomingMessage) => (req as IncomingMessage & { body: unknown }).body,
-            writeJson: () => {},
-          },
-        },
-      } as unknown as FleetPluginServerContext;
-      const service = {
-        getSummary: vi.fn(async () => ({
-          providers: {
-            claude: { status: "signed_out" },
-            codex: { status: "signed_out" },
-            cursor: { status: "signed_out" },
-          },
-        })),
-      } as unknown as QuotaService;
-      const request = (body: unknown) => ({
-        method: "POST",
-        url: "/plugins/quota/connect",
-        headers: { host: "localhost", "content-type": "application/json" },
-        body,
-      }) as unknown as IncomingMessage;
-      const claude = () => handleConnect(
-        request({ provider: "claude", connected: false }),
-        {} as ServerResponse,
-        ctx,
-        service,
-        serializer,
-      );
-      const cursor = () => handleConnect(
-        request({ provider: "cursor", connected: true }),
-        {} as ServerResponse,
-        ctx,
-        service,
-        serializer,
-      );
-      const serializer = createSerializer();
-      const pending = order === "claude-first" ? [claude(), cursor()] : [cursor(), claude()];
-      await Promise.all(pending);
-      expect(stored, order).toEqual({ claudeConnected: false, cursorConnected: true });
-      expect(writes, order).toHaveLength(2);
-    }
+  it("rejects connection to a removed provider", async () => {
+    const test = harness("POST", "/plugins/quota/connect", { provider: "cursor", connected: true });
+    await handleConnect(test.req, test.res, test.ctx, test.service, test.serializeSettings);
+    expect(test.writes).toEqual([{ status: 400, payload: { error: "invalid_connect_request" } }]);
+    expect(test.writeJson).not.toHaveBeenCalled();
   });
 
   it("guards the fold route with the same method, auth, and media-type gates as the others", async () => {

@@ -93,14 +93,13 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const providerLoad = new Map<string, number>();
   const distribution = new GatewayRoutingDistribution();
   // 저장된 연결 동의는 유지하되 공급자 조회와 캐시는 Gateway 한 인스턴스가 소유한다.
-  const isConnected = async (provider: "claude" | "cursor") => {
+  const isClaudeConnected = async () => {
     const settings = await ctx.host.storage.readJson("quota", "settings");
     return settings !== null && typeof settings === "object"
-      && (settings as Record<string, unknown>)[`${provider}Connected`] === true;
+      && (settings as Record<string, unknown>).claudeConnected === true;
   };
   const quota = createQuotaService({
-    isClaudeConnected: () => isConnected("claude"),
-    isCursorConnected: () => isConnected("cursor"),
+    isClaudeConnected,
     ...createAiGatewayQuotaCollectors({ authService }),
   });
   ctx.registerRouter("ai-gateway/quota", async ({ req, res }) => {

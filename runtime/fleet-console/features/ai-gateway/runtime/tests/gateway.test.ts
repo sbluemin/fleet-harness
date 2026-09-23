@@ -8,7 +8,6 @@ import {
   GATEWAY_MODELS,
   GATEWAY_REASONING_EFFORTS,
   CODEX_SUBSCRIPTION_MODELS,
-  CURSOR_SUBSCRIPTION_MODELS,
   OPENCODE_SUBSCRIPTION_MODELS,
   buildAnthropicModelList,
   buildGatewayModelConstraints,
@@ -21,8 +20,6 @@ import {
   parseGatewayModelsRegistry,
   validateBenchmarkCoverage,
   projectAnthropicResponseUsage,
-  resolveCursorUpstreamModelId,
-  resolveCursorModelSelection,
   resolveGatewayModel,
   projectClaudeContextInputTokens,
   unprojectClaudeContextInputTokens,
@@ -31,7 +28,6 @@ import {
   DEFAULT_CODEX_MODEL,
   CHATGPT_CODEX_RESPONSES_URL,
   ContextWindowExceededError,
-  CursorAdapter,
   OPENAI_RESPONSES_URL,
   OpenAIResponsesAdapter,
   UpstreamBodyLimitError,
@@ -128,20 +124,19 @@ describe("Anthropic request translation", () => {
 
 describe("non-streaming response assembly", () => {
   it("keeps the arguments of a tool call that closes without streaming argument deltas", async () => {
-    // The Cursor adapter reports a client tool call whole, on the closing item, and emits no
-    // `function_call_arguments` events at all. The SSE encoder already accepts that shape, so a
-    // non-streaming turn of the same conversation must not hand the caller an empty tool input.
+    // A provider can emit only the closing function-call item with no argument deltas.
+    // The non-streaming response still needs the complete tool input.
     async function* events(): AsyncGenerator<CanonicalResponseEvent> {
-      yield { type: "response.created", response: { id: "resp_1", model: "cursor-grok", usage: { input_tokens: 10, output_tokens: 0 } } };
+      yield { type: "response.created", response: { id: "resp_1", model: "gpt-5.5", usage: { input_tokens: 10, output_tokens: 0 } } };
       yield {
         type: "response.output_item.done",
         output_index: 0,
         item: { id: "item_1", type: "function_call", call_id: "toolu_1", name: "Read", arguments: '{"file_path":"/tmp/a.py"}' },
       };
-      yield { type: "response.completed", response: { id: "resp_1", model: "cursor-grok", usage: { input_tokens: 10, output_tokens: 4 } } };
+      yield { type: "response.completed", response: { id: "resp_1", model: "gpt-5.5", usage: { input_tokens: 10, output_tokens: 4 } } };
     }
 
-    const message = await collectAnthropicMessage(events(), "cursor-grok");
+    const message = await collectAnthropicMessage(events(), "gpt-5.5");
 
     expect(message.stop_reason).toBe("tool_use");
     expect(message.content).toEqual([
@@ -231,14 +226,15 @@ describe("model catalog", () => {
     expect(() => parseGatewayModelsRegistry(invalidPricing)).toThrow();
 
     const duplicate = minimalRegistry();
-    duplicate.providers.cursor.models.push({ modelId: "auto", name: "Again" });
+    duplicate.providers.codex.models.push({ modelId: "codex-model", name: "Again" });
     expect(() => parseGatewayModelsRegistry(duplicate)).toThrow(/Duplicate gateway model id/);
 
     const invalidTier = minimalRegistry();
-    invalidTier.providers.cursor.models[0] = {
-      modelId: "auto",
-      name: "Auto",
-      providerModelId: "default",
+    invalidTier.providers.xai.models[0] = {
+      modelId: "grok-4.6",
+      name: "Grok",
+      capabilityClass: "standard",
+      providerModelId: "grok-4.6",
       serviceTier: "priority",
     };
     expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex/);
@@ -274,43 +270,17 @@ describe("model catalog", () => {
     };
     expect(() => parseGatewayModelsRegistry(duplicateEffort)).toThrow(/levels contain duplicates/);
 
-    const missingCursorTemplate = minimalRegistry();
-    missingCursorTemplate.providers.cursor.models[0] = {
-      modelId: "cursor-model",
-      name: "Model",
-      capabilityClass: "standard",
-      effort: { supported: true, levels: ["low", "high"] },
-    };
-    missingCursorTemplate.providers.cursor.defaultModel = "cursor-model";
-    expect(() => parseGatewayModelsRegistry(missingCursorTemplate)).toThrow(/requires an upstream model id template/);
-
-    const invalidTemplate = minimalRegistry();
-    invalidTemplate.providers.cursor.models[0] = {
-      modelId: "cursor-model",
-      name: "Model",
-      capabilityClass: "standard",
-      effort: {
-        supported: true,
-        levels: ["low", "high"],
-        upstreamModelIdTemplate: "cursor-model",
-      },
-    };
-    invalidTemplate.providers.cursor.defaultModel = "cursor-model";
-    expect(() => parseGatewayModelsRegistry(invalidTemplate)).toThrow(/must contain one \{effort\}/);
-
     const invalidOverride = minimalRegistry();
-    invalidOverride.providers.cursor.models[0] = {
-      modelId: "cursor-model",
+    invalidOverride.providers.antigravity.models[0] = {
+      modelId: "gemini-3.7-flash",
       name: "Model",
       capabilityClass: "standard",
       effort: {
         supported: true,
         levels: ["low", "high"],
-        upstreamModelIdTemplate: "cursor-model-{effort}",
-        upstreamModelIds: { max: "cursor-model-thinking-max" },
+        upstreamModelIds: { max: "gemini-thinking-max" },
       },
     };
-    invalidOverride.providers.cursor.defaultModel = "cursor-model";
     expect(() => parseGatewayModelsRegistry(invalidOverride)).toThrow(/override is not an advertised level/);
   });
 });
@@ -517,7 +487,6 @@ function minimalRegistry() {
     providers: {
       antigravity: provider("Antigravity", "gemini-3.7-flash"),
       codex: provider("Codex", "codex-model"),
-      cursor: provider("Cursor", "auto"),
       opencode: provider("OpenCode", "minimax-m3"),
       xai: provider("Grok", "grok-4.6"),
       claude: provider("Claude", "sonnet"),

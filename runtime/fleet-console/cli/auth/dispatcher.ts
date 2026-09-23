@@ -17,7 +17,7 @@ Usage:
   fleet gateway auth list
   fleet gateway auth logout [opencode|typesafe]
 
-Codex, Cursor, and xAI use their own subscription credentials.
+Codex and xAI use their own subscription credentials.
 Run fleet gateway status to see whether each one was found.
 
 TypeSafe holds no routable model: its key lets Console features ask Jev

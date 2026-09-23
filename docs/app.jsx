@@ -37,8 +37,8 @@ const UI = {
   metaScreensV: { ko: "브라우저 · 데스크톱 · Android", en: "Browser · Desktop · Android" },
   bootTitle: { ko: "fleet — zsh", en: "fleet — zsh" },
   heroCap: {
-    ko: "실제 화면 — 이 저장소 위에서 Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.6이 나란히 도는 Tactical 캔버스.",
-    en: "Real capture — Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.6 running side by side on the Tactical canvas, on this very repository.",
+    ko: "이전 버전의 실제 화면 — 이 저장소 위에서 세 에이전트가 나란히 도는 Tactical 캔버스. 화면 속 Cursor Gateway 세션은 현재 버전에서 시작할 수 없습니다.",
+    en: "Real capture from an earlier version — three agents running side by side on the Tactical canvas. The Cursor Gateway session pictured can no longer be started in the current version.",
   },
 
   thesis1: { ko: "서버가 세션을 소유하면, ", en: "When the server owns the session, " },
@@ -63,8 +63,8 @@ const UI = {
     en: "Reasoning effort opens differently per model — those that support it carry their own ladder, and only some reach <b>MAX</b>. Every gateway model offers <b>ULTRACODE</b> (xhigh effort plus standing multi-agent orchestration) in its launch intensity controls.",
   },
   gwShotCap: {
-    ko: "실제 화면 — 캔버스 우클릭으로 열리는 런치 메뉴. Claude·Codex·Cursor 행이 라이브 패널 위에 떠 있다.",
-    en: "Real capture — the launch menu on one right-click, with Claude, Codex, and Cursor rows over the live canvas.",
+    ko: "이전 버전의 실제 화면 — 캔버스 우클릭으로 열리는 런치 메뉴. Cursor 행은 현재 버전에서 제거되었습니다.",
+    en: "Real capture from an earlier version — the launch menu on one right-click. The Cursor row is no longer available in the current version.",
   },
 
   modesEy: { ko: "Canvas modes", en: "Canvas modes" },
@@ -164,21 +164,17 @@ const PROVIDERS = [
     ],
   },
   {
-    id: "Cursor",
-    role: { ko: "Cursor 구독", en: "Cursor subscription" },
+    id: "Antigravity",
+    role: { ko: "Google 구독", en: "Google subscription" },
     cred: "subscription",
-    color: "#d4af37",
+    color: "#8ea9f2",
     mission: {
-      ko: "쓰던 Cursor 구독으로 Cursor의 에이전트 라인업에 닿는다. Auto는 작업에 맞는 모델을 Cursor가 스스로 고르는 좌석이고, Composer와 Grok은 Fast 변형까지 따로 선다. Opus 5와 Fable 5는 API 풀로 청구되며 각각 Max Mode 1M 창을 연다.",
-      en: "Rides the Cursor subscription you already have into Cursor's agent lineup. Auto is the seat where Cursor picks the model for the task; Composer and Grok each stand with their own Fast variant. Opus 5 and Fable 5 bill against the API pool and each open a Max Mode 1M window.",
+      ko: "Antigravity 구독으로 Gemini 3.8 Flash와 Gemini 3.1 Pro를 Claude Code에서 사용할 수 있습니다.",
+      en: "Use Gemini 3.8 Flash and Gemini 3.1 Pro in Claude Code through your Antigravity subscription.",
     },
     models: [
-      { ko: "Auto — Cursor가 모델을 선택", en: "Auto — Cursor picks the model" },
-      { ko: "Composer 2.5 — Fast 변형 포함", en: "Composer 2.5 — Fast variant included" },
-      { ko: "Grok 4.5 — Fast 변형 포함", en: "Grok 4.5 — Fast variant included" },
-      { ko: "Grok 4.6 — Fast 변형 포함", en: "Grok 4.6 — Fast variant included" },
-      { ko: "Opus 5 — Max Mode 1M 변형 포함", en: "Opus 5 — Max Mode 1M variant included" },
-      { ko: "Fable 5 — Max Mode 1M 변형 포함", en: "Fable 5 — Max Mode 1M variant included" },
+      { ko: "Gemini 3.8 Flash — low~high", en: "Gemini 3.8 Flash — low through high" },
+      { ko: "Gemini 3.1 Pro — low·high", en: "Gemini 3.1 Pro — low and high" },
     ],
   },
   {
@@ -195,7 +191,21 @@ const PROVIDERS = [
       { ko: "DeepSeek V4 Flash · Pro", en: "DeepSeek V4 Flash and Pro" },
       { ko: "GLM-5.2 · HY3", en: "GLM-5.2 and HY3" },
       { ko: "MiMo V2.5 · Pro", en: "MiMo V2.5 and Pro" },
-      { ko: "Grok 4.5 · GPT-5.6 Luna", en: "Grok 4.5 and GPT-5.6 Luna" },
+      { ko: "DeepSeek V4.1 Flash · Vision", en: "DeepSeek V4.1 Flash and Vision" },
+    ],
+  },
+  {
+    id: "xAI",
+    role: { ko: "Grok 구독", en: "Grok subscription" },
+    cred: "subscription",
+    color: "#b1bac6",
+    mission: {
+      ko: "Grok 구독으로 Grok 4.7과 Fast 변형을 Claude Code에서 사용할 수 있습니다.",
+      en: "Use Grok 4.7 and its Fast variant in Claude Code through your Grok subscription.",
+    },
+    models: [
+      { ko: "Grok 4.7 — Fast 변형 포함", en: "Grok 4.7 — Fast variant included" },
+      { ko: "Grok Composer 2.5 Fast", en: "Grok Composer 2.5 Fast" },
     ],
   },
 ];
@@ -360,7 +370,7 @@ const COMPARES = [
     us: true,
     bullets: [
       { ko: "서버가 소유하는 병렬 Operation", en: "Parallel, server-owned Operations" },
-      { ko: "내 계정으로 닿는 여러 공급자", en: "Multiple providers on accounts you own" },
+      { ko: "내 계정으로 닿는 Gateway 공급자", en: "Gateway providers on accounts you own" },
       { ko: "브라우저·데스크톱·Android", en: "Browser, desktop, and Android" },
     ],
     verdict: { ko: "여러 에이전트를 동시에 감독하는 자리로 설계되었다.", en: "Built to be the place you supervise several agents at once." },

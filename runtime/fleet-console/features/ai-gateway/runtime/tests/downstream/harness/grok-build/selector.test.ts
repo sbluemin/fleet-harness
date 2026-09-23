@@ -44,7 +44,7 @@ describe("grok build harness selector", () => {
   });
 
   it("carries the client's session header into the identity every upstream reads", async () => {
-    // Cursor는 이 값이 없으면 요청을 거절하고, Codex는 sticky routing을 잃는다.
+    // Codex는 이 값이 없으면 sticky routing을 잃는다.
     const seen: Array<Record<string, unknown> | undefined> = [];
     const router = grokRouter(recordingGateway(seen));
 
@@ -67,7 +67,6 @@ function grokRouter(gateway: AnthropicMessagesGateway = stubGateway()) {
     originator: "test",
     harnesses: { grok: grokBuildHarnessProfile },
     readAuth: () => ({ accessToken: "chatgpt-token", accountId: "account" }),
-    readCursorToken: () => null,
     gateway,
   });
 }

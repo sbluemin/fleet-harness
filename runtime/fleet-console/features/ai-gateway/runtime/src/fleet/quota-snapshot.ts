@@ -65,8 +65,6 @@ function toWindowAmounts(value: unknown): { used: string; limit: string } | unde
 /** A provider allowance reading, shaped by the host that took it. */
 export interface GatewayQuotaWindow {
   readonly id: string;
-  /** Sub-pool this window measures; absent when it covers the whole allowance. */
-  readonly scope?: string;
   /** Human-readable subject of the window, e.g. the model a scoped limit binds. */
   readonly label?: string;
   readonly usedPercent: number;
@@ -84,8 +82,6 @@ export interface GatewayQuotaWindow {
     /** `upstream` = provider-stated; `derived` = reset minus duration. */
     readonly startsAtBasis?: string;
   };
-  /** The window sums sibling scoped pools; exclude it from headroom math. */
-  readonly isAggregate?: boolean;
   /** Absolute usage in plain counts, as decimal strings. Never money. */
   readonly amounts?: { readonly used: string; readonly limit: string };
 }
@@ -108,12 +104,10 @@ export function parseGatewayQuotaSnapshot(value: unknown): GatewayQuotaSnapshot 
     status: string;
     windows?: Array<{
       id: string;
-      scope?: string;
       label?: string;
       usedPercent: number;
       resetsAt?: number;
       period?: { durationMs: number; durationBasis: string; startsAt?: number; startsAtBasis?: string };
-      isAggregate?: boolean;
       amounts?: { used: string; limit: string };
     }>;
     fetchedAt?: number;
@@ -129,12 +123,10 @@ export function parseGatewayQuotaSnapshot(value: unknown): GatewayQuotaSnapshot 
           const amounts = toWindowAmounts(window.amounts);
           return [{
             id: window.id,
-            ...(typeof window.scope === "string" ? { scope: window.scope } : {}),
             ...(typeof window.label === "string" ? { label: window.label } : {}),
             usedPercent: window.usedPercent,
             ...(typeof window.resetsAt === "number" ? { resetsAt: window.resetsAt } : {}),
             ...(period ? { period } : {}),
-            ...(window.isAggregate === true ? { isAggregate: true } : {}),
             ...(amounts ? { amounts } : {}),
           }];
         })

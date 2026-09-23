@@ -25,8 +25,8 @@ Instrument before the first prompt. Collect all layers that exist for the provid
 | Caller transcript | Claude Code JSONL | Which tools were actually handed to the caller, executed, errored, and returned? |
 | Client ingress | `anthropic.request` | Which model/catalog did Claude Code send? |
 | Canonical seam | `canonical.request` / `canonical.event` | What did normalization preserve or drop? |
-| Provider wire | `<provider>.wire.request`, `cursor.wire.*` | What exact body/catalog/instructions reached upstream? |
-| Provider diagnostics | e.g. Cursor bridge/redirect events | Did a live connection park, attach, mismatch, expire, or replay? |
+| Provider wire | `<provider>.wire.request` | What exact body/catalog/instructions reached upstream? |
+| Provider diagnostics | Provider-specific events, when available | Did a provider-specific connection or tool transition succeed or fail? |
 | Host lifecycle | Operation state, transcript timestamps, processes | Did the agent finish, retry an auxiliary turn, or remain resident? |
 
 Collect a layer only when it exists for the chosen execution surface. The standalone runner creates no caller transcript, host lifecycle, or auxiliary turns; do not count those as zero or infer them from runner metrics. Do not infer one layer from another. A provider rejection is not a caller execution. A `function_call` in replay history is not a new tool call. A session registry state is not necessarily a terminal process state.
@@ -50,11 +50,7 @@ Separate workload traffic from host auxiliary traffic by input shape and prompt,
 
 ### Classify lifecycle outcomes before counting them
 
-**Symptom:** a probe reports provider failures on otherwise successful Cursor multi-tool trials.
-
-**Action:** classify each lifecycle outcome against the adapter contract before aggregating it; `client_tool_suspended` is the normal segment boundary that parks a Run while it waits for client tool results.
-
-**Why:** counting every non-success segment finish as a provider failure creates one false failure per park even though the Run attaches and completes normally.
+A provider-specific continuation boundary is not necessarily a failed request. Check the current adapter contract before aggregating provider failures, and report lifecycle counters only when that adapter emits them.
 
 ### Baseline metric contract
 
@@ -69,7 +65,7 @@ Report counts and denominators, not percentages alone:
 - instruction bytes and tool-schema bytes where the wire exposes them;
 - input, cached-input, cache-write, output, and reasoning tokens;
 - **cache ratio** = cached input / input tokens;
-- provider-specific lifecycle counts: selected, parked, exact attach, deferred replay, result written, mismatch, expiry;
+- provider-specific lifecycle counts when emitted by the current adapter, with each event defined against its contract;
 - wall time per successful trial;
 - final visible-output recovery count;
 - cleanup status: standalone router/server close; real Operation owned-process cleanup.

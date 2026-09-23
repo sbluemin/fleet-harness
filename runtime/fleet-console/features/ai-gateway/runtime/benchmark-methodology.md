@@ -4,7 +4,7 @@
 
 ## 조사 및 채택
 
-1. 현재 카탈로그를 공급자·서비스 티어와 실제 벤더 모델로 구분한다. `providerModelId`/`variantOf`로 입증되는 동일 모델만 연결하고 모델명 유사도만으로 revision·preview·contributor·free·Flash Next를 합치지 않는다. Cursor Auto처럼 실제 모델을 공급자가 고르는 별칭은 고정 모델 성능 필드가 없는 예외다.
+1. 현재 카탈로그를 공급자·서비스 티어와 실제 벤더 모델로 구분한다. `providerModelId`/`variantOf`로 입증되는 동일 모델만 연결하고 모델명 유사도만으로 revision·preview·contributor·free·Flash Next를 합치지 않는다. 실제 모델을 공급자가 고르는 별칭은 고정 모델 성능 필드가 없는 예외다.
 2. 기존 출처의 공식 리더보드, 변경 이력, 방법론, 공개 데이터/API, 데이터 재사용 조건을 확인한다. 새 후보는 [OpenEvals](https://huggingface.co/spaces/OpenEvals/find-a-leaderboard) 등으로 찾되 디렉터리 자체를 평가 점수로 취급하지 않는다. 프로젝트 코드의 유지 여부와 공식 평가 결과의 최신성은 별개다.
 3. 페이지 갱신일, benchmark release, 모델 출시일, 실제 평가일, 조회일을 구별한다. 인증·유료 호출 없이 가능한 공식 공개 자료를 우선한다. 인증/유료 호출·외부 배포는 별도 권한이 필요하며 HTTP403이나 약관상 수집 금지를 우회하지 않는다.
 4. 점수의 측정 주체, 같은 데이터셋/기간, 하네스와 설정, effort/토큰 예산, attempts, fallback·ensemble·추정치 여부를 확인한다. 서로 다른 벤치가 각자 다른 하네스를 쓰는 것은 허용하되 한 출처 안의 비교 조건은 동일해야 한다. 하네스가 모델마다 다른 agent 순위를 모델 단독 품질로 바꾸지 않는다.

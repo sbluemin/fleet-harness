@@ -52,7 +52,6 @@ interface TerminalSettingsBody {
   readonly claudeCodeSkipPermissions?: unknown;
   readonly claudeCodeDisabledAgents?: unknown;
   readonly aiGateway?: unknown;
-  readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
   readonly delegationRoutingEnabled?: unknown;
   readonly delegationRoutingMode?: unknown;
@@ -68,7 +67,6 @@ type TerminalSettingsUpdate =
   | { readonly claudeCodeSkipPermissions: boolean }
   | { readonly claudeCodeDisabledAgents: readonly string[] | undefined }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
-  | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
   | { readonly delegationRoutingEnabled: boolean }
   | { readonly delegationRoutingMode: DelegationRoutingMode }
@@ -87,7 +85,6 @@ export interface TerminalSettingsState {
   readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
-  readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
   /** AI 판단 활성화 여부. Off는 로컬 규칙 기반 fallback을 사용한다. */
   readonly delegationRoutingEnabled: boolean;
@@ -129,15 +126,6 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       if ("aiGateway" in update) {
         // AI Gateway 선별은 Fleet 전역 옵션이 아니라 core-ai-gateway가 소유하는 자기 축이다.
         const stored = deps.aiGatewayStore.write(update.aiGateway);
-        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
-        ));
-        return true;
-      }
-      if ("cursorDiagnosticsEnabled" in update) {
-        const stored = deps.aiGatewayStore.writeCursorDiagnosticsEnabled(
-          update.cursorDiagnosticsEnabled,
-        );
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
           deps.agentOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
         ));
@@ -246,7 +234,6 @@ function toTerminalSettingsState(
       }
       : null,
     aiGatewayCatalog: buildAiGatewayCatalog(),
-    cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
     wireLogEnabled,
     delegationRoutingEnabled: aiGateway.delegationRoutingEnabled === true,
     delegationRoutingModel: aiGateway.delegationRoutingModel ?? null,
@@ -328,11 +315,6 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "aiGateway") {
     const parsed = parseAiGatewayUpdate(body.aiGateway);
     return parsed.ok ? { aiGateway: parsed.value } : null;
-  }
-  if (keys[0] === "cursorDiagnosticsEnabled") {
-    return typeof body.cursorDiagnosticsEnabled === "boolean"
-      ? { cursorDiagnosticsEnabled: body.cursorDiagnosticsEnabled }
-      : null;
   }
   if (keys[0] === "delegationRoutingEnabled") {
     return typeof body.delegationRoutingEnabled === "boolean"

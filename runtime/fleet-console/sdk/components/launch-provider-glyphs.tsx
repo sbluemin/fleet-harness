@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 // Shared provider marks for launch menus and Session Analyst. Host chrome and
 // plugins both import this module so the bands cannot restyle apart.
 
-export type LaunchProviderGlyphId = "claude" | "codex" | "cursor" | "opencode" | "xai" | "antigravity";
+export type LaunchProviderGlyphId = "claude" | "codex" | "opencode" | "xai" | "antigravity";
 
 /**
  * Optional intrinsic size for a provider mark.
@@ -19,14 +19,13 @@ export type LaunchProviderGlyphSize = {
 
 type LaunchProviderGlyphProps = { readonly size?: LaunchProviderGlyphSize };
 
-const LAUNCH_PROVIDER_IDS = ["claude", "codex", "cursor", "opencode", "xai", "antigravity"] as const;
-const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "cursor", "opencode", "antigravity"];
+const LAUNCH_PROVIDER_IDS = ["claude", "codex", "opencode", "xai", "antigravity"] as const;
+const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "opencode", "antigravity"];
 const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> = {
   claude: "Claude",
   codex: "Codex",
   xai: "xAI",
   antigravity: "Antigravity",
-  cursor: "Cursor",
   opencode: "OpenCode",
 };
 const CLAUDE_GATEWAY_MODEL_PREFIX = "claude-gateway--";
@@ -88,14 +87,6 @@ function CodexGlyph({ size }: LaunchProviderGlyphProps) {
   );
 }
 
-function CursorGlyph({ size }: LaunchProviderGlyphProps) {
-  return (
-    <svg viewBox="0 0 24 24" {...size} aria-hidden="true">
-      <path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23" fill="currentColor" />
-    </svg>
-  );
-}
-
 function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
   return (
     <svg viewBox="0 0 240 300" {...size} aria-hidden="true">
@@ -126,7 +117,6 @@ function GrokGlyph({ size }: LaunchProviderGlyphProps) {
 
 export function launchProviderGlyph(provider: LaunchProviderGlyphId, size?: LaunchProviderGlyphSize): ReactNode {
   if (provider === "claude") return <ClaudeGlyph size={size} />;
-  if (provider === "cursor") return <CursorGlyph size={size} />;
   if (provider === "opencode") return <OpencodeGlyph size={size} />;
   if (provider === "xai") return <GrokGlyph size={size} />;
   if (provider === "antigravity") return <AntigravityGlyph size={size} />;
@@ -173,7 +163,7 @@ export function launchProviderFromGroupId(groupId: string): LaunchProviderGlyphI
 /**
  * Resolve the provider glyph for a model id.
  *
- * Launch rows use `fable` or `cursor--grok-4.5`. Analyst catalog ids prefix the
+ * Launch rows use `fable` or `xai--grok-4`. Analyst catalog ids prefix the
  * same payload with `claude-gateway--`, so that wrapper is stripped first.
  */
 export function launchProviderFromModelId(modelId: string | null | undefined): LaunchProviderGlyphId | null {

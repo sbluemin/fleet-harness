@@ -1490,7 +1490,7 @@ describe("Instrument core design contract", () => {
     // 공급자 색 대조표는 --provider-* 축 하나다. 표에서 빠진 공급자는 컴파일도 렌더도 실패하지
     // 않고 조용히 회색으로 떨어지며, AI Gateway 칩의 경우 톤이 미정의라 color-mix()가 통째로
     // 무효화되어 테두리·배경까지 사라진다 — 같은 공급자가 두 화면에서 다른 마크로 읽힌다.
-    const providers = ["antigravity", "codex", "cursor", "opencode", "xai"] as const;
+    const providers = ["antigravity", "codex", "opencode", "xai"] as const;
     const theme = source("styles/theme.css");
     for (const provider of providers) {
       expect(theme).toMatch(new RegExp(`--provider-${provider}: oklch\\(`));

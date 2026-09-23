@@ -198,7 +198,6 @@ export async function createProductProbeRuntime(gateway, options, trigger) {
   const router = gateway.createAiGatewayRouter({
     originator: "fleet-console",
     readAuth: () => auth,
-    readCursorToken: () => null,
     readXaiToken: () => null,
     readAntigravityToken: () => null,
     fetch: fetchImpl,

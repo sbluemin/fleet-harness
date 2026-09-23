@@ -99,7 +99,7 @@ export interface OpenAIChatCompletionsAdapterOptions {
  * Two deliberate contractions against the Responses adapter:
  * - No strict-mode schema rewrite. Chat Completions backends differ on strict
  *   support, so tools ship with their original schemas and the optional-argument
- *   pollution caveat documented for Cursor applies here too.
+ *   optional-argument pollution remains possible here.
  * - Chat Completions 규격에는 이식 가능한 `reasoning` 요청 파라미터가 없다. 그래서 effort는
  *   기본적으로 wire에 싣지 않고, 백엔드가 자기 사다리를 실측으로 밝힌 provider instance의
  *   선언 모델에 한해 `reasoning_effort`로만 나간다(아래 reasoningEffortPolicy). Provider가

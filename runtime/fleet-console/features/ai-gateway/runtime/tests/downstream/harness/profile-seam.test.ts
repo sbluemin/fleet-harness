@@ -52,7 +52,6 @@ describe("gateway harness profile seam", () => {
       originator: "test",
       harness: bareHarness,
       readAuth: () => ({ accessToken: "chatgpt-token", accountId: "account" }),
-      readCursorToken: () => null,
       gateway: stubGateway(),
     });
 
@@ -75,7 +74,6 @@ describe("gateway harness profile seam", () => {
       originator: "test",
       harness: bareHarness,
       readAuth: () => null,
-      readCursorToken: () => null,
     });
 
     const res = response();
@@ -94,7 +92,6 @@ describe("gateway harness profile seam", () => {
       originator: "test",
       harness: bareHarness,
       readAuth: () => null,
-      readCursorToken: () => null,
     });
 
     const res = response();
@@ -110,7 +107,6 @@ describe("gateway harness profile seam", () => {
       originator: "test",
       harness: grokBuildHarnessProfile,
       readAuth: () => null,
-      readCursorToken: () => null,
       fetch: async () => { upstreamCalls++; throw new Error("네이티브 Claude 요청을 전송하면 안 됩니다"); },
     });
     const alias = toGrokGatewayModelId(native);
@@ -148,7 +144,6 @@ describe("gateway harness profile seam", () => {
       originator: "test",
       harness: bareHarness,
       readAuth: () => null,
-      readCursorToken: () => null,
     });
 
     const res = response();
@@ -161,7 +156,6 @@ describe("gateway harness profile seam", () => {
     const router = createAiGatewayRouter({
       originator: "test",
       readAuth: () => null,
-      readCursorToken: () => null,
       gateway: stubGateway(),
     });
 

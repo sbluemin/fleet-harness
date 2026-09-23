@@ -84,9 +84,8 @@ export interface GatewayHarnessProfile {
   /**
    * 이 클라이언트가 한 대화를 식별하는 값을, 그 클라이언트의 요청 헤더에서 읽는다.
    *
-   * 업스트림 두 곳이 캐논 요청의 `metadata.user_id`에서 세션 정체성을 유도한다 — Cursor는
-   * conversation/x-session-id를 거기서 만들고(없으면 요청을 거절한다), Codex는 sticky routing용
-   * `session_id` 헤더를 거기서 만든다(없으면 프롬프트 캐시 적중률이 떨어진다). Claude Code는 그
+   * Codex는 캐논 요청의 `metadata.user_id`에서 sticky routing용 `session_id`
+   * 헤더를 만든다(없으면 프롬프트 캐시 적중률이 떨어진다). Claude Code는 그
    * 값을 본문에 직접 실어 보내지만, 다른 클라이언트는 자기 헤더에 싣는다.
    *
    * 어느 헤더인지는 **클라이언트가 아는 사실**이므로 라우터가 아니라 이 프로필이 답한다.

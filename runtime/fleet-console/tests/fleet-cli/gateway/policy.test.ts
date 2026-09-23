@@ -48,23 +48,24 @@ describe("fleet gateway set", () => {
   });
 
   it("parses a provider order and rejects unknown or repeated providers", () => {
-    expect(parseProviderPriority("cursor,codex")).toEqual(["cursor", "codex"]);
-    expect(parseProviderPriority(" cursor , codex ")).toEqual(["cursor", "codex"]);
+    expect(parseProviderPriority("xai,codex")).toEqual(["xai", "codex"]);
+    expect(parseProviderPriority(" xai , codex ")).toEqual(["xai", "codex"]);
     expect(parseProviderPriority("none")).toEqual([]);
-    expect(parseProviderPriority("cursor,cursor")).toBe("invalid");
+    expect(parseProviderPriority("xai,xai")).toBe("invalid");
+    expect(parseProviderPriority("cursor")).toBe("invalid");
     expect(parseProviderPriority("anthropic")).toBe("invalid");
     expect(parseProviderPriority("")).toBe("invalid");
   });
 });
 
 describe("interactive spend priority defaults", () => {
-  const ALL = ["codex", "xai", "cursor", "opencode"] as const;
+  const ALL = ["codex", "xai", "antigravity", "opencode"] as const;
 
   it("walks the stored order while it lasts, then terminates", () => {
-    const stored = ["cursor", "codex"] as const;
-    expect(nextPriorityDefault(stored, [], ALL)).toBe("cursor");
-    expect(nextPriorityDefault(stored, ["cursor"], ALL.filter((p) => p !== "cursor"))).toBe("codex");
+    const stored = ["xai", "codex"] as const;
+    expect(nextPriorityDefault(stored, [], ALL)).toBe("xai");
+    expect(nextPriorityDefault(stored, ["xai"], ALL.filter((p) => p !== "xai"))).toBe("codex");
     // 저장된 둘을 다 지나면 기본은 Done이라, 부분 순위가 전체 랭킹으로 자라지 않는다.
-    expect(nextPriorityDefault(stored, ["cursor", "codex"], ["xai", "opencode"])).toBe("");
+    expect(nextPriorityDefault(stored, ["xai", "codex"], ["antigravity", "opencode"])).toBe("");
   });
 });

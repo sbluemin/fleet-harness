@@ -14,22 +14,19 @@ export interface RoutingQuota {
   readonly recovery?: { readonly inSeconds: number; readonly remainingPercent: number };
 }
 
-/** 집계 풀은 빼되, 모델별 풀과 동시에 적용되는 공급자 공통 제한은 함께 보존한다. */
-export function bindingQuotaWindows(quota: GatewayProviderQuota | undefined, scope?: string): readonly GatewayQuotaWindow[] {
-  return (quota?.windows ?? []).filter(window => window.isAggregate !== true
-    && (scope === undefined || window.scope === undefined || window.scope === scope));
+/** 공급자가 보고한 창을 라우팅 계산에 사용한다. */
+export function bindingQuotaWindows(quota: GatewayProviderQuota | undefined): readonly GatewayQuotaWindow[] {
+  return quota?.windows ?? [];
 }
 
 /** 원자료는 그대로 두고 판단 모델에만 병목을 보존한 무차원 여유를 제공한다. */
-export function normalizeRoutingQuota(quota: GatewayProviderQuota | undefined, scope: string | undefined, now: number): RoutingQuota {
+export function normalizeRoutingQuota(quota: GatewayProviderQuota | undefined, now: number): RoutingQuota {
   const at = quota?.fetchedAt;
   if (at === undefined || !Number.isFinite(at) || at < 0 || at > now) return { observation: "unknown" };
   const ageSeconds = Math.floor((now - at) / 1_000);
   const stale = quota?.status === "stale" || now - at > MAX_OBSERVATION_AGE_MS;
-  const windows = bindingQuotaWindows(quota, scope);
+  const windows = bindingQuotaWindows(quota);
   if ((quota?.status !== "ok" && quota?.status !== "stale") || windows.length === 0) return { observation: "unknown", ageSeconds };
-  // 다른 풀이나 공통 제한만으로 해당 모델 풀의 잔여량을 추정하지 않는다.
-  const missingScope = scope !== undefined && !windows.some(window => window.scope === scope);
   const facts = windows.map(window => {
     const validUsage = Number.isFinite(window.usedPercent) && window.usedPercent >= 0;
     const remaining = validUsage ? Math.max(0, 1 - window.usedPercent / 100) : undefined;
@@ -46,8 +43,8 @@ export function normalizeRoutingQuota(quota: GatewayProviderQuota | undefined, s
   });
   // 리셋을 넘긴 옛 사용량을 0% 사용으로 자동 갱신하지 않는다. 새 관측이 필요하다.
   if (facts.some(fact => fact.expired)) return { observation: "stale", ageSeconds };
-  const complete = !missingScope && facts.every(fact => fact.remaining !== undefined && fact.headroom !== undefined);
-  const remainingKnown = !missingScope && facts.every(fact => fact.remaining !== undefined);
+  const complete = facts.every(fact => fact.remaining !== undefined && fact.headroom !== undefined);
+  const remainingKnown = facts.every(fact => fact.remaining !== undefined);
   const remaining = remainingKnown ? Math.min(...facts.map(fact => fact.remaining!)) : undefined;
   const headroom = complete ? Math.min(...facts.map(fact => fact.headroom!)) : undefined;
   let recovery: RoutingQuota["recovery"];

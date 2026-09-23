@@ -719,8 +719,7 @@ export interface ResponseCompatibilityOptions {
    * Responses-backed providers (xAI, Codex, OpenCode) send `usage: null` on `response.created`,
    * so the `message_start` frame they produce would otherwise claim zero input tokens for the
    * whole turn — and Claude Code reads that frame to size the turn while it is still running,
-   * which is what leaves those models showing `0 tok` until the turn ends. Cursor never hits
-   * this branch: its adapter synthesizes a real per-segment usage before `response.created`.
+   * which is what leaves those models showing `0 tok` until the turn ends.
    *
    * This is an estimate and is labelled as one — it is a floor for a frame that would otherwise
    * be a definite lie (zero), never a substitute for the upstream count. The terminal

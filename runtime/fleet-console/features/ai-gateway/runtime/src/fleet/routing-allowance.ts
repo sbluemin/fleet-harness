@@ -10,7 +10,6 @@
  */
 
 import { deriveQuotaWindowRisk, type QuotaWindowPressure } from "../quota/pressure.js";
-import type { GatewayModelConstraints } from "../models.js";
 import type { GatewayQuotaSnapshot, GatewayProviderQuota } from "./quota-snapshot.js";
 
 /** 압박이 센 순서. 한 모델을 여러 창이 묶으면 가장 restrictive한 평결이 이긴다. */
@@ -22,21 +21,11 @@ const SEVERITY: Readonly<Record<QuotaWindowPressure, number>> = { ok: 0, elevate
  * **부재는 안전이 아니다.** 읽지 못한 허용량은 `critical`로도 `ok`로도 읽지 않는다 — 배제하면
  * 멀쩡한 공급자를 잃고, 통과시키면 소진된 공급자에 몰아넣는다. 호출자가 그 중간을 정한다.
  *
- * 묶는 창을 고르는 규칙은 로스터의 것과 같다: `quotaScope`가 풀을 지목하면 그 `scope`의 창이
- * 묶고, 아니면 집계가 아닌 창 전부가 동시에 묶는다. 집계 창(`isAggregate`)은 형제 풀을 합쳐
- * 놓은 값이라 모델 자신의 풀이 비어도 건강해 보이므로 판정에서 뺀다.
+ * 공급자가 보고한 창은 모두 동시에 적용된다.
  */
-export function modelPressure(
-  quota: GatewayProviderQuota | undefined,
-  constraints: Pick<GatewayModelConstraints, "quotaScope"> | undefined,
-): QuotaWindowPressure | undefined {
-  const windows = quota?.windows;
-  if (!windows || windows.length === 0) return undefined;
-  const scope = constraints?.quotaScope;
-  const binding = scope === undefined
-    ? windows.filter((window) => window.isAggregate !== true)
-    : windows.filter((window) => window.scope === scope);
-  if (binding.length === 0) return undefined;
+export function modelPressure(quota: GatewayProviderQuota | undefined): QuotaWindowPressure | undefined {
+  const binding = quota?.windows;
+  if (!binding || binding.length === 0) return undefined;
   const at = typeof quota?.fetchedAt === "number" && Number.isFinite(quota.fetchedAt)
     ? quota.fetchedAt
     : Date.now();

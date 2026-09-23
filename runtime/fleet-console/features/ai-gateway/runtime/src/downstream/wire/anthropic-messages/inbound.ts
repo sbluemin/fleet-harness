@@ -195,12 +195,9 @@ async function* oneChunk(body: Uint8Array): AsyncGenerator<Uint8Array> {
  * a tokenizer. It is a last-resort backstop behind correct window accounting, never the
  * primary defence, so it only fires when the estimate is strictly over the window.
  *
- * Only the tools the adapter actually serializes upstream are counted. Cursor drops
- * deferred tools and caps the rest, so counting the declared catalog would refuse turns
- * whose real request is far under the window — and, because the catalog is re-declared
- * every turn while reactive compaction only shrinks the conversation, a catalog large
- * enough to overflow on its own would lock the model out permanently instead of
- * degrading.
+ * Only the tools the adapter actually serializes upstream are counted. An adapter
+ * may narrow the declared tool catalog, so counting more than the wire carries could
+ * refuse a request that actually fits the model window.
  */
 function guardModelContextWindow(
   canonical: CanonicalResponseRequest,

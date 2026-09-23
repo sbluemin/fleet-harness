@@ -17,7 +17,7 @@ export const aiGatewaySettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex cursor opencode xai routing delegation subagent workflow diagnostics wire log compact",
+    "gateway provider model api key codex opencode xai routing delegation subagent workflow diagnostics wire log compact",
     "게이트웨이 공급자 모델 키 라우팅 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
@@ -31,7 +31,6 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   antigravity: "terminal.settings.aiGatewayProviderAntigravity",
   claude: "terminal.settings.aiGatewayProviderClaude",
   codex: "terminal.settings.aiGatewayProviderCodex",
-  cursor: "terminal.settings.aiGatewayProviderCursor",
   opencode: "terminal.settings.aiGatewayProviderOpencode",
   xai: "terminal.settings.aiGatewayProviderXai",
 } as const;
@@ -484,16 +483,6 @@ function AiGatewayDiagnosticsCard() {
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayDiagnostics")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-      <SettingToggleRow
-        title={t("terminal.settings.aiGatewayDiagnostics")}
-        help={t("terminal.settings.aiGatewayDiagnosticsHelp")}
-        value={state.cursorDiagnosticsEnabled}
-        disabled={saving.has("cursorDiagnosticsEnabled")}
-        onToggle={() => void setSystemPromptSettingsField(
-          "cursorDiagnosticsEnabled",
-          !state.cursorDiagnosticsEnabled,
-        )}
-      />
       <SettingToggleRow
         title={t("terminal.settings.aiGatewayWireLog")}
         help={t("terminal.settings.aiGatewayWireLogHelp")}
@@ -980,7 +969,7 @@ interface AiGatewayPaletteHit {
 
 /**
  * 검색어로 카탈로그를 거른다. 띄어 쓴 토큰을 모두 포함하는 항목만 남고, 공급자 id·이름과
- * 계열 이름을 한 문자열로 본다 — "cursor opus"가 한 공급자의 한 계열을 짚는다.
+ * 계열 이름을 한 문자열로 본다 — "codex gpt"가 한 공급자의 한 계열을 짚는다.
  */
 export function filterAiGatewayPalette(
   entries: readonly AiGatewayPaletteHit[],

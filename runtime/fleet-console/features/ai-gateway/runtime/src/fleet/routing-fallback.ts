@@ -160,7 +160,7 @@ export function pickSeat(
     return { model: reachable[0] as GatewayRoutingCandidate, suffix: "" };
   }
   const scored = reachable.map((candidate, index) => {
-    const pressure = modelPressure(exposure.quota?.[candidate.provider], candidate);
+    const pressure = modelPressure(exposure.quota?.[candidate.provider]);
     return { candidate, index, pressure };
   });
   // `critical`은 모든 대안이 더 나쁠 때만 간다. 전부 critical이면 위임을 죽이는 것보다 낫다.

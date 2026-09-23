@@ -48,8 +48,6 @@ export interface GatewayRoutingCandidate {
   readonly label: string;
   /** 이 모델이 비용을 무는 공급자. 배정이 공급자 사이를 고르게 돌릴 때 이 값으로 센다. */
   readonly provider: GatewayProvider;
-  /** 공급자가 풀을 나눠 재는 경우 이 모델을 묶는 풀. 허용량을 읽을 창을 이 값이 고른다. */
-  readonly quotaScope?: GatewayModelConstraints["quotaScope"];
 }
 
 export interface GatewayRoutingTable {
@@ -66,7 +64,7 @@ export const EMPTY_GATEWAY_ROUTING_TABLE: GatewayRoutingTable = {
  * capabilityClass가 등급 소속을 정한다. 공급자가 스스로 밝힌 라인업 위치라, Fleet이 모델
  * 이름에서 추측하는 것보다 정확하고 카탈로그가 늘어도 따라온다.
  *
- * 라우팅 별칭(Cursor `auto`)은 class를 싣지 않는다 — 호출마다 다른 것이 답하므로 어떤 값도
+ * 라우팅 별칭은 class를 싣지 않는다 — 호출마다 다른 것이 답하므로 어떤 값도
  * 거짓이 된다. 그런 모델은 중간 등급으로 둔다: 모르면서 최상위라고 주장하지 않는다.
  */
 function tierOf(model: GatewayModel): GatewayRoutingTier {
@@ -182,7 +180,6 @@ function toCandidate(
     ...(effort === undefined ? {} : { effort }),
     label: effort === undefined ? label : `${label} @${effort}`,
     provider: model.provider,
-    ...(constraints.quotaScope === undefined ? {} : { quotaScope: constraints.quotaScope }),
   };
 }
 

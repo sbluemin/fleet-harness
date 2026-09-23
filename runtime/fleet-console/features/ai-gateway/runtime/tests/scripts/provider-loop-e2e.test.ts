@@ -59,7 +59,7 @@ describe("provider loop runner", () => {
       const result = runScript(
         fixture.scriptPath,
         "--model",
-        "claude-gateway--cursor--auto",
+        "claude-gateway--codex--gpt-6-sol",
       );
 
       expect(result.status).toBe(2);
@@ -87,7 +87,7 @@ describe("provider loop runner", () => {
     const result = runScript(
       sourceScript,
       "--model",
-      "claude-gateway--cursor--auto",
+      "claude-gateway--codex--gpt-6-sol",
       "--bogus",
     );
 

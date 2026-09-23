@@ -715,8 +715,7 @@ function forOpenAIResponsesBackend(
  * purpose and codex-rs sends it; it simply is not what makes the difference here.
  *
  * The identity has to be the caller's conversation, not this adapter's lifetime — a gateway
- * builds one adapter per request. Claude Code's `metadata.user_id` is stable for a session and
- * is already the Cursor path's session source (`resolveCursorSessionIdentity`). A caller that
+ * builds one adapter per request. Claude Code's `metadata.user_id` is stable for a session. A caller that
  * sends none keeps the un-pinned behavior rather than being handed a fresh identity per turn,
  * which would pin every turn to a different machine and be strictly worse than sending nothing.
  */

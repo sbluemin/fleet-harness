@@ -44,11 +44,9 @@ function retainStoredHostOnly(model: GatewayModel, hostOnly: unknown): boolean {
 export interface AiGatewayStoredSettings {
   readonly version: 1;
   readonly models?: readonly AiGatewayStoredModel[];
-  /** 부재/false는 기본 Off. 저장 정규형은 opt-in인 true만 보존한다. */
-  readonly cursorDiagnosticsEnabled?: boolean;
   /**
    * 부재는 env(`FLEET_GATEWAY_WIRE_LOG`) 폴백, true/false는 호스트가 강제하는 On/Off다.
-   * 위 `cursorDiagnosticsEnabled`와 달리 **false를 정규형에서 지우면 안 된다** — env를 켜 둔 설치에서
+   * **false를 정규형에서 지우면 안 된다** — env를 켜 둔 설치에서
    * 사용자가 UI로 Off한 뒤 재시작하면 부재가 다시 env 상속으로 읽혀 로깅이 되살아나고,
    * 토글이 꺼지지 않는 결함이 된다.
    */
@@ -124,11 +122,8 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
       .filter((entry): entry is AiGatewayStoredModel =>
         isRecord(entry) && typeof entry.id === "string" && entry.id.length > 0)
       .flatMap((entry) => {
-        // 카탈로그를 떠난 모델은 저장에서도 접는다. 남겨두면 GET이 stale id를 클라이언트로
-        // 돌려보내고 클라이언트는 무관한 편집에도 전체 선택을 되돌려 보내므로, 검증기가
-        // 그 id를 거부해 모델을 지우기 전까지 AI Gateway 저장 전체가 400으로 잠긴다 —
-        // 아래 사다리-밖 단계 접기와 같은 규율의 모델 축이다.
         const model = findGatewayModel(entry.id);
+        // 카탈로그에서 제거된 모델은 저장 선택에서도 제거한다.
         if (!model) return [];
         const efforts = Array.isArray(entry.efforts)
           ? entry.efforts.filter((level): level is string => typeof level === "string" && level.length > 0)
@@ -156,7 +151,6 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
   return {
     version: 1,
     ...(models.length > 0 ? { models } : {}),
-    ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
     ...(typeof value.delegationRoutingModel === "string" && (["sonnet", "opus", "haiku", "fable", "sonnet[1m]", "opus[1m]", "fable[1m]"].includes(value.delegationRoutingModel) || findGatewayModel(value.delegationRoutingModel)) ? { delegationRoutingModel: value.delegationRoutingModel } : {}),
     ...(value.delegationRoutingEnabled === true ? { delegationRoutingEnabled: true } : {}),
@@ -376,7 +370,7 @@ export interface AiGatewayCatalogProvider {
 }
 
 export interface AiGatewayCatalogModel {
-  /** Scoped gateway model id, e.g. `cursor--grok-4.5`. */
+  /** Scoped gateway model id, e.g. `codex--gpt-6-sol`. */
   readonly id: string;
   /** Bare model label without the provider prefix. */
   readonly name: string;
