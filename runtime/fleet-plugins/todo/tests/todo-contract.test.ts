@@ -136,12 +136,13 @@ describe("To-do contract", () => {
     expect(reopened.slot?.operationId).toBe(started.operationId);
     expect(reopened.steps[1]!.slot?.operationId).toBe("launched-3");
     // 계획은 완료·배정된 단계를 보존하고 나머지를 바꾼다; 새 단계는 stepId 로 기존 단계 뒤에 설 수 있다.
+    // 단계는 레시피 순으로 선다 — 계획이 뒤에 적은 선행(y)이 그 후속(x)보다 앞으로 온다.
     store.setSlot(item.id, c!.id, null);
     // 다시 작업해 다시 완료하면 기록이 덮이지 않고 쌓인다.
     store.stepDone(item.id, a!.id, ["a done"], "human");
     store.stepDone(item.id, a!.id, ["a redone", "fixed the gap"], "human");
-    const planned = store.plan(item.id, { steps: [{ text: "x", after: [{ stepId: a!.id, why: "builds on a" }] }, { text: "y", after: [{ index: 0, why: "shares files" }] }] }, "human");
-    expect(planned.steps.map((step) => step.text)).toEqual(["a", "b", "x", "y"]);
+    const planned = store.plan(item.id, { steps: [{ text: "x", after: [{ index: 1, why: "shares files" }] }, { text: "y", after: [{ stepId: a!.id, why: "builds on a" }] }] }, "human");
+    expect(planned.steps.map((step) => step.text)).toEqual(["a", "b", "y", "x"]);
     expect(planned.steps[2]!.after).toEqual([a!.id]);
     expect(planned.steps[3]!.why?.[planned.steps[2]!.id]).toBe("shares files");
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다.
