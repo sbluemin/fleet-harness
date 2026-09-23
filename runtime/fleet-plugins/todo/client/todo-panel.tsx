@@ -660,7 +660,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const seenPending = useRef(new Set<string>());
   useEffect(() => {
     for (const step of item.steps) {
-      const key = `${step.id}:${step.records?.length ?? 0}`;
+      // 가장 최근 기록 id 로 거른다 — 기록 수는 상한(20)에 닿으면 더 늘지 않아, 그 뒤의 새 기록을 알리지 못한다.
+      const key = `${step.id}:${step.records?.at(-1)?.id ?? ""}`;
       if (!(step.id in openRecords) || unseenRecords(step) === 0 || seenPending.current.has(key)) continue;
       seenPending.current.add(key);
       void call("/step/seen", { itemId: item.id, stepId: step.id });
