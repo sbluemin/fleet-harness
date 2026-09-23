@@ -37,6 +37,30 @@ describe("operations platform", () => {
     expect(store.list()).toEqual([]);
   });
 
+  it("persists Theater order while ignoring foreign and duplicate IDs", async () => {
+    const store = createOperationStore({ now: () => 10 });
+    store.create(makeOperation({ id: "a", theaterId: "one", createdAt: 1 }));
+    store.create(makeOperation({ id: "b", theaterId: "one", createdAt: 2 }));
+    store.create(makeOperation({ id: "foreign", theaterId: "two", createdAt: 3 }));
+    const persist = vi.fn();
+    const broadcast = vi.fn();
+    const router = createOperationsRouter({
+      store, isAuthorized: () => true, readJsonBody: async <T,>() => ({ theaterId: "one", operationIds: ["b", "foreign", "b", "missing", "a"] }) as T,
+      writeJson: (res, status, payload) => Object.assign(res, { status, payload }), persist,
+      deleteOperation: () => null, broadcastOperationChanged: broadcast,
+    });
+    const res: { status?: number; payload?: { operations: OperationNode[] } } = {};
+    await router({ req: { method: "PUT" } as never, res: res as never, pathname: "/api/v1/operations/order" });
+    expect(res.status).toBe(200);
+    expect(res.payload?.operations.map((op) => [op.id, op.order])).toEqual([["a", 1], ["b", 0]]);
+    expect(store.listByTheater("one").map((op) => op.id)).toEqual(["b", "a"]);
+    expect(store.get("foreign")?.order).toBeUndefined();
+    expect(persist).toHaveBeenCalledOnce();
+    expect(broadcast).toHaveBeenCalledTimes(2);
+    expect(store.reorder("one", ["b"]).map((op) => op.id)).toEqual(["a"]);
+    expect(store.get("a")?.order).toBeUndefined();
+  });
+
   it("strips fixed and plugin-declared sensitive fields from browser DTOs fail-closed", () => {
     const store = createOperationStore({ now: () => 10 });
     const node = store.create({

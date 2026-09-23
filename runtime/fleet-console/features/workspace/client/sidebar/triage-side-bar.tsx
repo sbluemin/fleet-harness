@@ -14,6 +14,7 @@ import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/clie
 import type { OperationGroup, OperationNode, OperationNotification } from "../../../../core/client/src/integration/types.js";
 import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized, useCanvasState } from "../canvas/canvas-store.js";
 import { resolveOperationActivity } from "../../../execution/client/operation-activity.js";
+import { operationOrderFromNodes } from "../../../../core/client/src/integration/store.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
 import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, type TriageQueueEntry } from "../canvas/triage-store.js";
@@ -192,7 +193,7 @@ export function TriageSideBar({
   const entries = withoutClusterMembers(theaters.flatMap((theater) => buildTheaterEntries({
     theaterId: theater.id,
     operations,
-    operationOrder: getTheaterCanvasSnapshot(theater.id).operationOrder,
+    operationOrder: operationOrderFromNodes(operations.filter((operation) => operation.theaterId === theater.id)),
     minimizedSet: EMPTY_MINIMIZED,
     activeOperationId: stagedOperationId,
     operationNotifications,

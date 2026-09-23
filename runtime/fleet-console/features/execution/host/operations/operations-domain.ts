@@ -33,16 +33,19 @@ export interface OperationGroupPatchInput {
 export interface OperationNode extends SdkOperationNode {
   readonly accent?: string;
   readonly groupId?: string | null;
+  readonly order?: number;
 }
 
 export interface OperationCreateInput extends SdkOperationCreateInput {
   readonly accent?: string;
   readonly groupId?: string | null;
+  readonly order?: number;
 }
 
 export interface OperationPatchInput extends SdkOperationPatchInput {
   readonly accent?: string | null;
   readonly groupId?: string | null;
+  readonly order?: number;
 }
 
 export interface OperationStore {
@@ -52,6 +55,7 @@ export interface OperationStore {
   create(input: OperationCreateInput): OperationNode;
   upsert(input: OperationCreateInput): OperationNode;
   patch(id: string, input: OperationPatchInput): OperationNode | null;
+  reorder(theaterId: string, orderedIds: readonly string[]): readonly OperationNode[];
   delete(id: string): boolean;
   deleteByTheater(theaterId: string): number;
   replace(nodes: readonly OperationNode[]): void;
@@ -179,6 +183,7 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
     const updated = normalizePatch(existing, {
       title: input.title,
       accent: input.accent ?? existing.accent,
+      order: input.order ?? existing.order,
       geometry: input.geometry ?? existing.geometry,
       payload: input.payload ?? existing.payload,
     }, now());
@@ -193,6 +198,25 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
     nodes.set(id, updated);
     grouped(existing, updated);
     return updated;
+  }
+
+  function reorder(theaterId: string, orderedIds: readonly string[]): readonly OperationNode[] {
+    const positions = new Map<string, number>();
+    for (const id of orderedIds) {
+      if (positions.has(id) || nodes.get(id)?.theaterId !== theaterId) continue;
+      positions.set(id, positions.size);
+    }
+    const changed: OperationNode[] = [];
+    for (const [id, node] of nodes) {
+      if (node.theaterId !== theaterId) continue;
+      const order = positions.get(id);
+      if (node.order === order) continue;
+      const updated = { ...node, order };
+      if (order === undefined) delete (updated as { order?: number }).order;
+      nodes.set(id, updated);
+      changed.push(updated);
+    }
+    return changed;
   }
 
   function deleteNode(id: string): boolean {
@@ -288,7 +312,7 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
     }
   }
 
-  return { list, listByTheater, get, create, upsert, patch, delete: deleteNode, deleteByTheater, replace, createGroup, updateGroup, deleteGroup, listGroups, listAllGroups, deleteGroupsByTheater, replaceGroups };
+  return { list, listByTheater, get, create, upsert, patch, reorder, delete: deleteNode, deleteByTheater, replace, createGroup, updateGroup, deleteGroup, listGroups, listAllGroups, deleteGroupsByTheater, replaceGroups };
 }
 
 function normalizeCreateInput(input: OperationCreateInput, id: string, timestamp: number): OperationNode {
@@ -300,6 +324,7 @@ function normalizeCreateInput(input: OperationCreateInput, id: string, timestamp
     title: input.title.trim() || "Untitled Operation",
     ...(input.accent ? { accent: input.accent.trim() } : {}),
     ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
+    ...(input.order !== undefined ? { order: input.order } : {}),
     payload: input.payload ?? {},
     geometry: input.geometry ?? null,
     ts: {
@@ -316,6 +341,7 @@ function normalizePatch(existing: OperationNode, input: OperationPatchInput, tim
     ...(title !== undefined ? { title: title.length > 0 ? title : existing.title } : {}),
     ...(input.accent !== undefined ? { accent: input.accent && input.accent.trim() ? input.accent.trim() : undefined } : {}),
     ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
+    ...(input.order !== undefined ? { order: input.order } : {}),
     ...(input.payload !== undefined ? { payload: input.payload } : {}),
     ...(input.geometry !== undefined ? { geometry: input.geometry } : {}),
     ts: { ...existing.ts, updatedAt: timestamp },
@@ -323,6 +349,9 @@ function normalizePatch(existing: OperationNode, input: OperationPatchInput, tim
 }
 
 function compareOperationNodes(a: OperationNode, b: OperationNode): number {
+  if (a.order !== undefined && b.order !== undefined) return a.order - b.order || a.ts.createdAt - b.ts.createdAt || a.id.localeCompare(b.id);
+  if (a.order !== undefined) return -1;
+  if (b.order !== undefined) return 1;
   return a.ts.createdAt - b.ts.createdAt || a.id.localeCompare(b.id);
 }
 
@@ -388,6 +417,7 @@ type PatchGroupBody = Partial<OperationGroupPatchInput>;
 export const OPERATIONS_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: "/api/v1/operations", summary: "List Operations.", category: "Operations", gate: "loopback", transport: "http" },
   { method: "POST", path: "/api/v1/operations", summary: "Create an Operation.", category: "Operations", gate: "origin-write", transport: "http" },
+  { method: "PUT", path: "/api/v1/operations/order", summary: "Reorder Operations in a Theater.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/operations/:operationId", summary: "Get an Operation.", category: "Operations", gate: "loopback", transport: "http" },
   { method: "PATCH", path: "/api/v1/operations/:operationId", summary: "Update an Operation.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "DELETE", path: "/api/v1/operations/:operationId", summary: "Delete an Operation.", category: "Operations", gate: "origin-write", transport: "http" },
@@ -421,6 +451,10 @@ export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRo
       deps.subscribeOperationSse?.(req, res);
       return true;
     }
+    if (pathname === "/api/v1/operations/order") {
+      await handleOperationOrder(req, res, deps);
+      return true;
+    }
     if (pathname === "/api/v1/operations/groups") {
       await handleGroupCollection(req, res, deps);
       return true;
@@ -437,6 +471,29 @@ export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRo
     }
     return false;
   };
+}
+
+async function handleOperationOrder(req: http.IncomingMessage, res: http.ServerResponse, deps: OperationsRouterDeps): Promise<void> {
+  if (req.method !== "PUT") {
+    deps.writeJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!deps.isAuthorized(req)) {
+    deps.writeJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  const body = await deps.readJsonBody<{ readonly theaterId?: unknown; readonly operationIds?: unknown }>(req);
+  if (!body || typeof body.theaterId !== "string" || !body.theaterId || !Array.isArray(body.operationIds)
+    || !body.operationIds.every((id: unknown) => typeof id === "string")) {
+    deps.writeJson(res, 400, { error: "invalid_operation_order" });
+    return;
+  }
+  const changed = deps.store.reorder(body.theaterId, body.operationIds as string[]);
+  if (changed.length > 0) {
+    deps.persist();
+    for (const node of changed) deps.broadcastOperationChanged?.(node);
+  }
+  deps.writeJson(res, 200, { operations: changed.map((node) => sanitizeOperationNode(node, deps)) });
 }
 
 async function handleCollection(req: http.IncomingMessage, res: http.ServerResponse, deps: OperationsRouterDeps): Promise<void> {

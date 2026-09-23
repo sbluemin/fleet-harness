@@ -32,7 +32,7 @@ import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-s
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { companionDefaultChord, companionShortcutCommandId, isShortcutRecording, matchesChord, matchesShortcutCommand, resolveShortcutChords } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { cancelAddTheater, compareOperationCreatedAt, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../../../core/client/src/integration/store.js";
+import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../../../core/client/src/chrome/mobile/operation-body-pool.js";
@@ -353,7 +353,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       const order = focusCycleOperationIds(
         theaterOperations,
         snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
-        canvas.operationOrder,
+        operationOrderFromNodes(theaterOperations),
         canvas.collapsedGroups,
         // 패널로 서지 않는 단계 Operation 은 순환에서 뺀다 — 셰프 하나가 묶음을 대표한다.
         [...canvas.minimized, ...getAlwaysHiddenGeometryIds()],
@@ -1048,9 +1048,8 @@ function readShortenByChars(error: unknown): number | null {
 }
 
 function sortedTheaterOperations(state: ConsoleState): readonly OperationNode[] {
-  return state.operations
-    .filter((operation) => operation.theaterId === state.activeTheaterId)
-    .sort(compareOperationCreatedAt);
+  const operations = state.operations.filter((operation) => operation.theaterId === state.activeTheaterId);
+  return sortOperationsByOrder(operations, operationOrderFromNodes(operations));
 }
 
 // 포커스·발사 중앙의 기준 창은 아레나다 — 전면 스테이지 rect를 그대로 쓰면 대상이

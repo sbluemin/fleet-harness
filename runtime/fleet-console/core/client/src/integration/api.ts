@@ -238,6 +238,18 @@ export async function fetchOperations(theaterId?: string | null, signal?: AbortS
   return payload.operations.map((operation) => assertOperationNode(operation, response.status));
 }
 
+export async function putOperationOrder(theaterId: string, operationIds: readonly string[]): Promise<readonly OperationNode[]> {
+  const response = await fetch("/api/v1/operations/order", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theaterId, operationIds }),
+  });
+  await assertOk(response);
+  const payload = await response.json() as { readonly operations?: unknown };
+  if (!Array.isArray(payload.operations)) throw new ApiError(response.status, "Invalid operations response");
+  return payload.operations.map((operation) => assertOperationNode(operation, response.status));
+}
+
 export async function fetchGroups(theaterId?: string | null, signal?: AbortSignal): Promise<readonly OperationGroup[]> {
   const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
   const response = await fetch(`/api/v1/operations/groups${suffix}`, { signal });
@@ -359,6 +371,7 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     accent: typeof payload.accent === "string" ? payload.accent : null,
     // 서버가 영속한 groupId를 보존한다. null = Ungrouped 명시, undefined = 미설정(Ungrouped와 동일 취급).
     groupId: payload.groupId === null ? null : typeof payload.groupId === "string" ? payload.groupId : undefined,
+    order: typeof payload.order === "number" && Number.isInteger(payload.order) && payload.order >= 0 ? payload.order : undefined,
     ts: payload.ts,
   };
 }

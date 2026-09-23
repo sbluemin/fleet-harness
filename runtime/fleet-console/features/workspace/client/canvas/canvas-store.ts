@@ -20,7 +20,6 @@ export interface CanvasViewport {
 export interface CanvasState {
   readonly viewport: CanvasViewport;
   readonly operations: Record<string, OperationGeometry>;
-  readonly operationOrder: readonly string[];
   readonly operationAccent: Record<string, string>;
   // 최소화된 Operation id 목록. geometry는 operations에 그대로 보존되므로 복원은 원위치·원크기로 되돌린다.
   readonly minimized: readonly string[];
@@ -114,7 +113,7 @@ const ZOOM_TWEEN_FACTOR = 0.2;
 const ZOOM_TWEEN_POSITION_EPSILON = 0.5;
 const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
-const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false, snapHold: null };
+const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false, snapHold: null };
 // Station Keeping이 유지하는 패널 사이 최소 간격(월드 단위). 줌과 무관하게 월드 좌표로만 계산한다.
 // 충돌 상자는 본문이 아니라 창 캡션(top:-32px)을 더한 시각 프레임이다.
 export const STATION_KEEPING_GAP = 16;
@@ -256,7 +255,6 @@ export function setState(patch: Partial<CanvasState>): void {
   state = {
     viewport: patch.viewport ?? state.viewport,
     operations: patch.operations ?? state.operations,
-    operationOrder: patch.operationOrder ?? state.operationOrder,
     operationAccent: patch.operationAccent ?? state.operationAccent,
     minimized: patch.minimized ?? state.minimized,
     collapsedGroups: patch.collapsedGroups ?? state.collapsedGroups,
@@ -616,11 +614,6 @@ export function restoreOperation(sessionId: string): void {
   });
 }
 
-// dock 재배치는 항상 "전체 가시 순서"를 통째로 영속한다(canvas-dock의 드래그/키보드 핸들러가 새 순서를 만든다).
-export function setOperationOrder(nextOrder: readonly string[]): void {
-  setState({ operationOrder: normalizeOperationOrder(nextOrder) });
-}
-
 export function setOperationAccent(operationId: string, accentKey: string | null): void {
   const operationAccent = { ...state.operationAccent };
   if (accentKey === null || accentKey.trim() === "") {
@@ -948,8 +941,6 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   // 사라진 세션은 최소화 목록에서도 함께 제거해 유령 칩이 태스크바에 남지 않게 한다.
   const minimized = state.minimized.filter((sessionId) => valid.has(sessionId));
   const minimizedChanged = minimized.length !== state.minimized.length;
-  const operationOrder = state.operationOrder.filter((sessionId) => valid.has(sessionId));
-  const orderChanged = operationOrder.length !== state.operationOrder.length;
   const operationAccent = Object.fromEntries(Object.entries(state.operationAccent).filter(([sessionId]) => valid.has(sessionId)));
   const accentChanged = Object.keys(operationAccent).length !== Object.keys(state.operationAccent).length;
   const maximizedOperationId = getMaximizedOperationId();
@@ -959,8 +950,8 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   // 지속 부재의 정리는 캔버스 렌더 측 유예 효과가 소유한다. 최소화는 사용자 확정 액션이라 즉시 닫는다.
   if (companionOperationId && minimized.includes(companionOperationId)) forceDropCompanionOperationId();
   const snapHold = snapHoldWithout(state.snapHold, Object.keys(state.snapHold?.assignments ?? {}).filter((sessionId) => !valid.has(sessionId)));
-  if (changed || minimizedChanged || orderChanged || accentChanged || snapHold !== state.snapHold) {
-    setState({ operations, minimized, operationOrder, operationAccent, snapHold });
+  if (changed || minimizedChanged || accentChanged || snapHold !== state.snapHold) {
+    setState({ operations, minimized, operationAccent, snapHold });
   }
 }
 
@@ -1383,7 +1374,14 @@ function readStoredState(theaterId: string): CanvasState {
 function writeStoredState(theaterId: string | null, value: CanvasState): void {
   if (!theaterId || typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(storageKey(theaterId), JSON.stringify(value));
+    // 서버 이관이 끝나기 전의 캔버스 저장이 옛 순서를 지우지 않도록 원본 필드만 잠시 보존한다.
+    const existing = window.localStorage.getItem(storageKey(theaterId));
+    let legacyOrder: unknown;
+    try {
+      const parsed: unknown = existing ? JSON.parse(existing) : null;
+      if (isRecord(parsed)) legacyOrder = parsed.operationOrder;
+    } catch { /* 손상된 저장값은 캔버스 상태로 교체한다. */ }
+    window.localStorage.setItem(storageKey(theaterId), JSON.stringify({ ...value, ...(legacyOrder !== undefined ? { operationOrder: legacyOrder } : {}) }));
   } catch {
     // 저장 실패는 캔버스 복구성만 낮추므로 런타임 흐름을 막지 않는다.
   }
@@ -1418,7 +1416,6 @@ function normalizeCanvasState(value: unknown): CanvasState {
   return {
     viewport: normalizeViewport(value.viewport),
     operations,
-    operationOrder: normalizeOperationOrder(value.operationOrder),
     operationAccent: normalizeOperationAccent(value.operationAccent),
     minimized: normalizeMinimized(value.minimized),
     collapsedGroups: normalizeStringArray(value.collapsedGroups),
@@ -1441,6 +1438,34 @@ function normalizeSnapHold(value: unknown, operations: Record<string, OperationG
   }
   if (zones.length === 0 || Object.keys(assignments).length === 0) return null;
   return { presetId: value.presetId, zones, assignments };
+}
+
+// 서버 order가 아직 없는 Theater에서만 호출되는 구 브라우저 순서의 이관 전용 읽기다.
+export function readLegacyOperationOrder(theaterId: string): readonly string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(storageKey(theaterId));
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return isRecord(parsed) ? normalizeOperationOrder(parsed.operationOrder) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function clearLegacyOperationOrder(theaterId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(storageKey(theaterId));
+    if (!raw) return;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || !("operationOrder" in parsed)) return;
+    delete parsed.operationOrder;
+    // 활성 Theater의 지연 저장도 순서를 포함하지 않아 다시 생겨나지 않는다.
+    window.localStorage.setItem(storageKey(theaterId), JSON.stringify(parsed));
+  } catch {
+    // 브라우저 저장소를 쓸 수 없으면 다음 수화에서 다시 시도한다.
+  }
 }
 
 function normalizeOperationOrder(value: unknown): readonly string[] {

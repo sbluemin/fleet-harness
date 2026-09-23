@@ -18,8 +18,8 @@ import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/compon
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
-import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
+import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
+import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
@@ -415,13 +415,14 @@ export function OperationsSideBar({
   }, [collapsed]);
 
   const activeOperations = operations.filter((operation) => operation.theaterId === activeTheaterId);
+  const activeOperationOrder = operationOrderFromNodes(activeOperations);
   const activeGroups = groups.filter((group) => group.theaterId === activeTheaterId);
   const minimizedSet = new Set(minimized);
   const collapsedGroupSet = new Set(collapsedGroups);
   // 엔트리는 raw 활동과 마크 축을 싣는다. 섹션 승격은 groupOperationsByStatus가 혼자 소유한다 —
   // 여기서 미리 승격해 두면 그 함수가 같은 계산을 다시 해 값이 겹치고, 겹친 값은 어느 표면에도
   // 드러나지 않아 틀려도 아무 테스트가 죽지 않는다. 그리는 값은 언제나 mark다.
-  const allEntries: SideBarEntry[] = sortOperationsByOrder(activeOperations, canvas.operationOrder).map((operation) => {
+  const allEntries: SideBarEntry[] = sortOperationsByOrder(activeOperations, activeOperationOrder).map((operation) => {
     const activity = resolveOperationActivity(operation, operationRuntime);
     return {
       operation,
@@ -434,7 +435,7 @@ export function OperationsSideBar({
   });
   // 단계 행은 섹션을 나누기 전에 뺀다 — 섹션 entries 가 곧 드롭 인덱스(entryIds)와 DOM 순서의 원천이다.
   const listedEntries = withoutClusterMembers(allEntries, clusterIndex);
-  const groupedSections = groupOperations(listedEntries, activeGroups, canvas.operationOrder);
+  const groupedSections = groupOperations(listedEntries, activeGroups, activeOperationOrder);
   const statusGrouped = groupTheaterStatusEntries(listedEntries, minimizedSet, getStatusTransitionTick, t);
   const statusSections = statusGrouped.living;
   const { minimized: minimizedSection, dormant: dormantSection } = statusGrouped;
@@ -456,7 +457,7 @@ export function OperationsSideBar({
   // hidden 보존을 수행하므로, 표시(allEntries)와 기준(currentOrder)의 원천을 분리한다.
   const currentOrder = sortOperationsByOrder(
     operations.filter((operation) => operation.theaterId === activeTheaterId),
-    canvas.operationOrder,
+    activeOperationOrder,
   ).map((operation) => operation.id);
   const statusSignature = operations
     .map((operation) => `${operation.id}:${resolveOperationActivity(operation, operationRuntime)}`)
@@ -655,7 +656,7 @@ export function OperationsSideBar({
     const visibleOrder = visibleEntries.map((e) => e.operation.id);
     const nextVisibleOrder = moveByTargetIndex(visibleOrder, operationId, targetIndex);
     // currentOrder(collapsed 포함 전체)에 visible 재배치를 반영해 hidden op 순서를 보존한다.
-    setOperationOrder(applyVisibleReorder(currentOrder, visibleOrder, nextVisibleOrder));
+    if (activeTheaterId) setOperationOrder(activeTheaterId, applyVisibleReorder(currentOrder, visibleOrder, nextVisibleOrder));
   };
 
   // entryIds는 collapsed 그룹도 실제 멤버를 담는다. dropTargetFromPoint는 DOM 기반이라 collapsed에서
@@ -745,7 +746,7 @@ export function OperationsSideBar({
       if (dropGroupId !== sourceGroupId) {
         const dropSection = sections.find((s) => s.groupId === dropGroupId);
         const dropSegmentIds = dropSection?.entryIds ?? [];
-        setOperationOrder(insertIntoSegment(allIds, sourceId, dropIndex, dropSegmentIds));
+        if (activeTheaterId) setOperationOrder(activeTheaterId, insertIntoSegment(allIds, sourceId, dropIndex, dropSegmentIds));
         onSetGroupIdRef.current(sourceId, dropGroupId);
         return;
       }
@@ -755,7 +756,7 @@ export function OperationsSideBar({
       const currentLocalIndex = segmentIds.indexOf(sourceId);
       if (currentLocalIndex === -1 || dropIndex === currentLocalIndex) return;
       const nextOrder = reorderWithinSegment(allIds, sourceId, dropIndex, segmentIds);
-      setOperationOrder(nextOrder);
+      if (activeTheaterId) setOperationOrder(activeTheaterId, nextOrder);
     };
 
     const onCancel = (event: PointerEvent) => {
@@ -994,7 +995,7 @@ export function OperationsSideBar({
             const railEntries = withoutClusterMembers(theater.id === activeTheaterId ? allEntries : buildTheaterEntries({
               theaterId: theater.id,
               operations,
-              operationOrder: theaterCanvas.operationOrder,
+              operationOrder: operationOrderFromNodes(operations.filter((operation) => operation.theaterId === theater.id)),
               minimizedSet: new Set(theaterCanvas.minimized),
               activeOperationId: null,
               operationNotifications,
@@ -1060,7 +1061,7 @@ export function OperationsSideBar({
             const inactiveEntries = buildTheaterEntries({
               theaterId: theater.id,
               operations,
-              operationOrder: theaterCanvas.operationOrder,
+              operationOrder: operationOrderFromNodes(operations.filter((operation) => operation.theaterId === theater.id)),
               minimizedSet: new Set(theaterCanvas.minimized),
               // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
               activeOperationId: null,

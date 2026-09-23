@@ -151,6 +151,7 @@ export interface OperationGroup {
 export interface OperationNode {
   readonly id: string;
   readonly theaterId: string;
+  readonly order?: number;
   readonly type: string;
   readonly pluginId: string | null;
   readonly title: string;

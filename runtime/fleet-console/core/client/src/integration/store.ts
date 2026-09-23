@@ -4,6 +4,8 @@ import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
+import { fetchOperations, putOperationOrder } from "./api.js";
+import { clearLegacyOperationOrder, readLegacyOperationOrder } from "../../../../features/workspace/client/canvas/canvas-store.js";
 import { readQuickLaunchSelection, writeQuickLaunchPinned } from "../../../../features/execution/client/quick-launch-preferences.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../../../../features/settings/client/global-settings-store.js";
 import { acknowledgeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
@@ -403,6 +405,7 @@ export function hydrateTheaterBootstrap(bootstrap: TheaterBootstrap): void {
 
 export function hydrateOperations(operations: readonly OperationNode[]): void {
   setState({ operations: operations.map(normalizeOperationOwner), operationsHydrated: true });
+  migrateLegacyOperationOrders(operations);
 }
 
 // 초기 요청 응답이 늦는 동안 launch 수화가 먼저 도착할 수 있다. 그 패널을 초기 응답이 덮어쓰지 않게 합친다.
@@ -410,9 +413,94 @@ export function hydrateInitialOperations(operations: readonly OperationNode[]): 
   const initialIds = new Set(operations.map((operation) => operation.id));
   const launchedBeforeInitialHydration = state.operations.filter((operation) => !initialIds.has(operation.id));
   setState({ operations: [...operations.map(normalizeOperationOwner), ...launchedBeforeInitialHydration], operationsHydrated: true });
+  migrateLegacyOperationOrders(operations);
 }
 
-export function applyOperationUpdate(operation: OperationNode): void {
+const migratingOrderTheaters = new Set<string>();
+
+function migrateLegacyOperationOrders(operations: readonly OperationNode[]): void {
+  for (const theaterId of new Set(operations.map((operation) => operation.theaterId))) {
+    if (migratingOrderTheaters.has(theaterId)) continue;
+    const legacyOrder = readLegacyOperationOrder(theaterId);
+    if (legacyOrder.length === 0) continue;
+    const theaterOperations = operations.filter((operation) => operation.theaterId === theaterId);
+    if (theaterOperations.some((operation) => operation.order !== undefined)) {
+      clearLegacyOperationOrder(theaterId);
+      continue;
+    }
+    const ids = new Set(theaterOperations.map((operation) => operation.id));
+    const retained = legacyOrder.filter((id) => ids.has(id));
+    if (retained.length === 0) {
+      clearLegacyOperationOrder(theaterId);
+      continue;
+    }
+    migratingOrderTheaters.add(theaterId);
+    void putOperationOrder(theaterId, retained).then((changed) => {
+      for (const operation of changed) applyOperationUpdate(operation);
+      clearLegacyOperationOrder(theaterId);
+    }).catch(() => {
+      // 이관 실패 시 로컬 원본을 보존하고 다음 수화에서 다시 시도한다.
+    }).finally(() => migratingOrderTheaters.delete(theaterId));
+  }
+}
+
+export function operationOrderFromNodes(operations: readonly OperationNode[]): readonly string[] {
+  return [...operations].sort((left, right) => {
+    if (left.order !== undefined && right.order !== undefined) return left.order - right.order || compareOperationCreatedAt(left, right);
+    if (left.order !== undefined) return -1;
+    if (right.order !== undefined) return 1;
+    return compareOperationCreatedAt(left, right);
+  }).map((operation) => operation.id);
+}
+
+const pendingOrders = new Map<string, Promise<void>>();
+const orderRevisions = new Map<string, number>();
+
+export function setOperationOrder(theaterId: string, ids: readonly string[]): void {
+  const theaterOperations = state.operations.filter((operation) => operation.theaterId === theaterId);
+  const valid = new Set(theaterOperations.map((operation) => operation.id));
+  const orderedIds = [...new Set(ids.filter((id) => valid.has(id)))];
+  const positions = new Map(orderedIds.map((id, index) => [id, index]));
+  const revision = (orderRevisions.get(theaterId) ?? 0) + 1;
+  orderRevisions.set(theaterId, revision);
+  setState({ operations: state.operations.map((operation) => operation.theaterId !== theaterId ? operation : {
+    ...operation,
+    order: positions.get(operation.id),
+  }) });
+  const previous = pendingOrders.get(theaterId) ?? Promise.resolve();
+  // 같은 Theater의 두 드래그는 직렬 전송하되 화면은 즉시 최신 순서를 그린다.
+  const commit = previous.then(async () => {
+    try {
+      const changed = await putOperationOrder(theaterId, orderedIds);
+      if (orderRevisions.get(theaterId) === revision) for (const operation of changed) applyOperationUpdate(operation, true);
+    } catch {
+      if (orderRevisions.get(theaterId) !== revision) return;
+      try {
+        const serverOperations = await fetchOperations();
+        if (orderRevisions.get(theaterId) === revision) hydrateOperations(serverOperations);
+      } catch { /* 연결 복구 후 SSE/다음 조회가 다시 동기화한다. */ }
+    }
+  });
+  pendingOrders.set(theaterId, commit);
+  void commit.finally(() => {
+    if (pendingOrders.get(theaterId) !== commit) return;
+    pendingOrders.delete(theaterId);
+    // 요청 중에 눌러 둔 순서 사건은 다른 창·에이전트의 더 새 순서였을 수 있다 — 마지막 요청이 끝나면 서버 목록으로 한 번 맞춘다.
+    if (!suppressedOrders.delete(theaterId)) return;
+    void fetchOperations().then((serverOperations) => {
+      if (!pendingOrders.has(theaterId)) hydrateOperations(serverOperations);
+    }).catch(() => { /* 연결 복구 후 SSE/다음 조회가 다시 동기화한다. */ });
+  });
+}
+
+const suppressedOrders = new Set<string>();
+
+export function applyOperationUpdate(operation: OperationNode, confirmedOrder = false): void {
+  // 내 요청이 진행 중일 때 서버가 이전 순서의 개별 SSE를 보내도 낙관적 배치를 되돌리지 않는다.
+  if (!confirmedOrder && pendingOrders.has(operation.theaterId) && operation.order !== state.operations.find((op) => op.id === operation.id)?.order) {
+    suppressedOrders.add(operation.theaterId);
+    operation = { ...operation, order: state.operations.find((op) => op.id === operation.id)?.order };
+  }
   const index = state.operations.findIndex((op) => op.id === operation.id);
   const operations = [...state.operations];
   // MCP·다른 창에서 생성한 Operation은 로컬 launch 응답이 없다. 같은 이벤트로 추가·갱신한다.
@@ -687,7 +775,7 @@ export function resolveOperationGroup(
 }
 
 // GROUP 축 SideBar 표시 순서와 Alt+←/→ 순환 순서가 갈라지지 않도록 Operation 정렬을 이 한 함수로 단일화한다.
-// operationOrder(드래그 재정렬 SSoT)에 있는 항목은 그 순서를 따르고, 없는 항목은 createdAt 순으로 뒤에 붙인다.
+// order가 있는 노드는 서버 순서, 나머지는 생성 순서로 뒤에 붙는다.
 export function sortOperationsByOrder(
   operations: readonly OperationNode[],
   operationOrder: readonly string[],

@@ -11,7 +11,7 @@ import { fetchOperations } from "../../../../core/client/src/integration/api.js"
 import { claimTheaterBootMinimization } from "../../../../core/client/src/integration/boot-minimization-session.js";
 import { availableCompanionPanels, isBlockingDialogOpen } from "../../../../core/client/src/integration/shortcuts.js";
 import { clearActiveOperation, isWarRoomEmptyReleaseTarget } from "../../../../core/client/src/integration/active-operation-surface.js";
-import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, registerOperationFocusRedirect, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
+import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, operationOrderFromNodes, registerOperationFocusRedirect, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
 import { createHostCapabilities } from "../../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
@@ -1215,7 +1215,7 @@ export function OperationsCanvas({
   const formationOperationIds = flattenGroupedOrder(
     theaterOperations,
     state.groups.filter((group) => group.theaterId === state.activeTheaterId),
-    canvas.operationOrder,
+    operationOrderFromNodes(theaterOperations),
     [],
   ).filter((operation) => !minimizedSet.has(operation.id)).map((operation) => operation.id);
   const formationCellCount = formationLayout === "grid"
@@ -1250,7 +1250,7 @@ export function OperationsCanvas({
   const focusCycleIds = focusCycleOperationIds(
     theaterOperations,
     state.groups.filter((group) => group.theaterId === state.activeTheaterId),
-    canvas.operationOrder,
+    operationOrderFromNodes(theaterOperations),
     canvas.collapsedGroups,
     canvas.minimized,
   );
