@@ -23,6 +23,8 @@ interface OperationFrameProps {
   readonly renderHidden?: boolean;
   readonly focusLayerTarget?: boolean;
   readonly topEdge?: boolean;
+  /** 스냅 유지 중 — 캡션에 ▣가 서고 프레임이 칸에 붙어 있음을 말한다. */
+  readonly snapHeld?: boolean;
   readonly interactionDisabled?: boolean;
   readonly triageStage?: boolean;
   readonly triagePicked?: boolean;
@@ -109,7 +111,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -162,6 +164,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     triageStage ? "is-triage-stage" : "",
     deckTile ? "is-deck-tile" : "",
     topEdge ? "is-top-edge" : "",
+    snapHeld ? "is-snap-held" : "",
     dragging ? "is-dragging" : "",
     consoleUseWrapClassName(wrap),
     frameStatusClass(status),
@@ -559,6 +562,9 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       >
         {/* 그룹 칩 — 사이드바 칩의 알약 문법을 그대로 쓴다. 「그룹에 있다」는 칩 형태가,
             「어느 그룹」은 --group-mark 잉크·워시와 이름이 진다. 워시는 칩 안에만 머문다. */}
+        {snapHeld ? (
+          <span className="canvas-operation-snap-mark" title={t("canvas.frame.snapHeldTitle")} aria-hidden="true">▣</span>
+        ) : null}
         {groupLabelVisible ? (
           <span
             className="canvas-operation-group-label"
