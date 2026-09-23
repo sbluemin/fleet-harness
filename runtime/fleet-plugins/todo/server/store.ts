@@ -421,7 +421,8 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
 
     plan: (itemId, input, by) => update(itemId, (item) => {
       // 완료·배정·예약된 단계와 사람이 이은 간선은 보존한다. 나머지는 조율자의 계획으로 바꾼다.
-      const kept = item.steps.filter((step) => step.done || step.slot);
+      // 사람이 더한 미분류 단계도 보존한다 — 셰프가 그 단계를 보기 전의 보드로 짠 계획이 사람의 요청을 지우면 안 된다(자리는 셰프가 step after 로 정한다).
+      const kept = item.steps.filter((step) => step.done || step.slot || step.unplaced);
       const keptIds = new Set(kept.map((step) => step.id));
       const fresh: TodoStep[] = input.steps.map((step) => ({ id: randomUUID(), text: step.text, done: false, after: [], slot: null, assign: { mode: step.assign ?? "self" } }));
       const resolved: TodoStep[] = fresh.map((step, ix) => {

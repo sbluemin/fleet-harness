@@ -140,9 +140,13 @@ describe("To-do contract", () => {
     expect(launches.map((entry) => entry.sessionName)).toEqual([`todo-${item.id.slice(0, 6)}-step-1`]);
     // 사람이 선행 없이 더한 단계는 미분류 — 셰프가 자리를 정하기 전까지 준비되지 않는다. 셰프의 step after 가 자리를 정한다.
     const added = await launch.stepAdded(item.id, { text: "missed" }, { by: "human" });
-    const missed = added.steps.length - 1;
+    let missed = added.steps.length - 1;
     const board = async () => ((await call({ view: "item", itemId: item.id }, { kind: "operation", operationId: "coord" })).structuredContent.item as { graph: { steps: { unplaced?: boolean; ready: boolean; after: number[] }[] } }).graph.steps;
     expect((await board())[missed]).toMatchObject({ unplaced: true, ready: false });
+    // 셰프가 그 단계를 보기 전의 보드로 짠 계획도 사람의 미분류 단계를 지우지 않는다.
+    await launch.planApplied(item.id, { steps: [{ text: "replanned" }] }, { operationId: "coord" });
+    missed = (await board()).findIndex((step) => step.unplaced);
+    expect(missed).toBeGreaterThanOrEqual(0);
     expect((await call({ step: { itemId: item.id, index: missed, after: [0] } }, { kind: "operation", operationId: "launched-1" })).structuredContent.error).toBe("not_item_operation");
     expect((await call({ step: { itemId: item.id, index: missed, after: [0] } }, { kind: "operation", operationId: "coord" })).isError).toBe(false);
     expect((await board())[missed]).toMatchObject({ after: [0] });
