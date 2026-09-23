@@ -9,9 +9,8 @@ import { resolveOperationActivity } from "../../../../features/execution/client/
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel } from "./operations-sse.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../chrome/rail/rail-store.js";
-import { clearOperationRuntime, dismissNotificationsForOperation, getState, openQuickLaunch, openQuickLaunchForOperation,
-  openQuickLaunchWithDraft, raiseOperationNotification, requestOperationKeyboardFocus, resolveOperationFocusTarget, setActiveOperation, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
-import { restoreOperation } from "../../../../features/workspace/client/canvas/canvas-store.js";
+import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation,
+  openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
 export function createHostCapabilities(resync: () => void = () => undefined): PluginInstallContext {
   const base = createClientCapabilities(resync);
@@ -19,18 +18,10 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
     ...base,
     operations: {
       ...base.operations,
-      // 플러그인이 「이 Operation 으로」 — Theater 가 다르면 먼저 옮기고, 접혀 있으면 펴고, 활성으로 세운다.
-      focus: (operationId) => {
-        const operation = getState().operations.find((candidate) => candidate.id === operationId);
-        if (!operation) return;
-        if (getState().activeTheaterId !== operation.theaterId) setActiveTheater(operation.theaterId);
-        // 패널로 서지 않는 단계는 지휘관 패널이 대신 선다 — 펴기·키보드 포커스도 그 대상으로. 활성화는 요청한 id 로 넘겨
-        // 그 단계의 도착 표식까지 확인 처리한다(스토어가 같은 대상으로 돌린다).
-        const target = resolveOperationFocusTarget(operationId);
-        restoreOperation(target);
-        setActiveOperation(operationId);
-        requestOperationKeyboardFocus(target);
-      },
+      // 플러그인의 「이 Operation 으로」는 검색·알림과 같은 이동 요청이다 — 자리는 소비 경로가 모드별로 정한다
+      // (War Room 이면 무대에 올리고, 아니면 Theater 전환·펴기·companion·최대화·Formation 을 따른다).
+      // 패널로 서지 않는 단계는 스토어가 지휘관으로 돌리고, 요청한 단계의 도착 표식·알림까지 치운다.
+      focus: (operationId) => focusOperation(operationId),
     },
     notifications: {
       emit: (notification) => raiseOperationNotification(notification),
