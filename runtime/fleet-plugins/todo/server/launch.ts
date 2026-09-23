@@ -31,7 +31,7 @@ export interface LaunchService {
   unlinkStep(itemId: string, stepId: string, options?: LaunchOptions): Promise<TodoItem>;
   /** 조율자 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. 쌓인 편집은 「스티어링」이 알린다. */
   busy(itemId: string): boolean;
-  /** 스티어링 — 셰프 세션에 「바뀌었으니(무엇이) 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집(edited)을 비운다. 보내지 못하면 편집 기록을 남긴 채 거절한다. */
+  /** 스티어링 — 셰프 세션에 「바뀌었으니(무엇이) 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집(edited)과 검토 대기를 비운다. 보내지 못하면 둘 다 남긴 채 거절한다. */
   steer(itemId: string, options?: LaunchOptions): Promise<TodoItem>;
   /** 전체 중단 — 조율자와 모든 담당 Operation 에 인터럽트를 보낸다. 슬롯은 남는다. */
   stop(itemId: string): Promise<{ readonly item: TodoItem; readonly interrupted: number }>;
@@ -289,8 +289,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: TodoSt
       // 통지(send)와 달리 실패를 삼키지 않는다 — 셰프가 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
       const receipt = await control().request({ kind: "send", operationId: current.slot.operationId, text: steerTurn(current, languageOf(options)) }, `todo:steer:${randomUUID()}`).catch(asStoreError);
       if (receipt.status === "rejected" || receipt.status === "failed") asStoreError(new Error(receipt.error ?? "steer_failed"));
-      // 셰프에게 닿았다 — 쌓인 편집은 알렸으니 지운다(띠는 「중단」으로 돌아간다).
-      return store.setEdited(itemId, null);
+      // 셰프에게 닿았다 — 쌓인 편집은 알렸으니 지운다(띠는 「중단」으로 돌아간다). 검토 대기 중이었다면 셰프가 다시 일하므로 검토 대기도 거둔다.
+      const steered = store.setEdited(itemId, null);
+      return steered.review ? store.setReview(itemId, null) : steered;
     },
 
     async planApplied(itemId, plan, by) {

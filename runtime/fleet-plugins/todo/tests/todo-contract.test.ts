@@ -186,9 +186,10 @@ describe("To-do contract", () => {
     let missed = added.steps.length - 1;
     const board = async () => ((await call({ view: "item", itemId: item.id }, { kind: "operation", operationId: "coord" })).structuredContent.item as { graph: { steps: { unplaced?: boolean; ready: boolean; after: number[] }[] } }).graph.steps;
     expect((await board())[missed]).toMatchObject({ unplaced: true, ready: false });
-    // 셰프가 읽기 전에 사람이 바꾼 보드(edited)로는 계획을 쓸 수 없다 — 옛 보드로 짠 계획이 사람의 편집을 덮지 않는다.
+    // 셰프가 읽기 전에 사람이 바꾼 보드(edited)로는 계획도 검토 요청도 쓸 수 없다 — 옛 보드로 한 일이 사람의 편집을 덮거나 지나치지 않는다.
     store.setEdited(item.id, ["steps"]);
     expect((await call({ plan: { itemId: item.id, steps: [{ text: "stale" }] } }, { kind: "operation", operationId: "coord" })).structuredContent.error).toBe("board_changed");
+    expect((await call({ review: { itemId: item.id, summary: "stale" } }, { kind: "operation", operationId: "coord" })).structuredContent.error).toBe("board_changed");
     // 다시 읽은 뒤의 계획은 받되, 사람이 더한 미분류 단계는 지우지 않는다.
     await board();
     expect((await call({ plan: { itemId: item.id, steps: [{ text: "replanned" }] } }, { kind: "operation", operationId: "coord" })).isError).toBe(false);
