@@ -1,4 +1,5 @@
 import type { AgentHost } from "../agent/types.js";
+import type { ConsoleActionInput, ConsoleActionReceipt, ConsoleOperationObservation } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
@@ -147,6 +148,23 @@ export interface ClientExecutionProvider {
    * 본문만 그린다. 여러 표면이 세로로 나뉘어 동시에 설 수 있다.
    */
   readonly expandedSurfaces?: readonly ExpandedSurfaceDescriptor[];
+  /**
+   * 다른 플러그인이 소유한 Operation 의 캡션·사이드바 칩에 얹는 표식.
+   *
+   * `captionActions`·`operationMarks` 는 Operation 종류의 소유자만 그린다. 그러나 "이 Operation 이 어느 할 일에
+   * 연결돼 있는가"처럼 Operation 을 소유하지 않는 플러그인이 아는 사실도 그 자리에 서야 한다. 호스트가 캡션의
+   * 액션 무리 앞과 칩의 이름 뒤에 그린다. 그릴 것이 없으면 null 을 돌려주고, 그러면 자리도 없다.
+   */
+  readonly operationCaptionContributions?: readonly OperationCaptionContribution[];
+  /**
+   * 한 실행 구조에 묶인 Operation 들 — 뿌리(조율자) 하나와 선후 관계를 가진 구성원(단계)들.
+   *
+   * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아
+   * 사이드바(뿌리 아래 깊이만큼 들여쓰기)·Cruise(뿌리 기준 대형과 간선)·Tactical(블록 배치)·War Room(무대의
+   * 위치 표시)에 같은 문법으로 그린다. 소유하지 않는 Operation 도 묶을 수 있고, 진실은 플러그인 쪽에 남는다.
+   * `get()` 은 바뀌지 않았으면 같은 참조를 돌려줘야 한다(useSyncExternalStore).
+   */
+  readonly operationClusters?: OperationClusterSource;
   /**
    * 콘솔이 살아 있는 동안 호스트가 계속 마운트해 두는 화면 없는 기여.
    *
@@ -343,6 +361,8 @@ export interface ClientOperationsCapability {
   create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string | null; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
   rename(operationId: string, title: string): Promise<OperationNode>;
   remove(operationId: string): Promise<void>;
+  /** 그 Operation 으로 간다 — 활성으로 세우고, 접혀 있으면 펴고, 키보드 초점을 준다. 어느 모드에서든 호스트가 자리를 정한다. */
+  focus(operationId: string): void;
 }
 
 /**
@@ -422,6 +442,50 @@ export interface ClientSettingsCapability {
 export interface UseOperationsResult {
   readonly operations: readonly OperationNode[];
   readonly refresh: () => Promise<void>;
+}
+
+export interface OperationCaptionContributionContext {
+  readonly operation: OperationNode;
+  readonly language: "en" | "ko";
+  /** 캔버스 캡션(넓은 칩)인지 사이드바 칩(12px 표식)인지. */
+  readonly surface: "caption" | "chip";
+}
+
+export interface OperationCaptionContribution {
+  readonly id: string;
+  readonly render: (context: OperationCaptionContributionContext) => ReactNode;
+}
+
+/** 구성원(단계)의 진행 — 세션 활동이 아니라 구조 안의 자리다. 막힘은 선행이 안 끝난 것, 열림은 시작을 기다리는 것. */
+export type OperationClusterProgress = "blocked" | "open" | "running" | "awaiting" | "done";
+
+export interface OperationClusterMember {
+  readonly operationId: string;
+  /** 묶음 안에서 제목 대신 부르는 짧은 이름("1. package.json name 읽기"). */
+  readonly label: string;
+  /** 선행 구성원의 operationId. 전부 끝나야 이 구성원이 열린다. */
+  readonly after: readonly string[];
+  readonly progress: OperationClusterProgress;
+  /** 끝난 구성원이 남긴 산출 요약 한 줄 — War Room 무대가 직전 단계의 것을 보여준다. */
+  readonly result?: string;
+}
+
+export interface OperationCluster {
+  /** 플러그인 안에서 유일한 id. 호스트가 `<pluginId>:` 를 앞에 붙인다. */
+  readonly id: string;
+  readonly theaterId: string;
+  /** 묶음의 제목(할 일 제목) — 툴팁과 War Room 위치 표시에 선다. */
+  readonly title: string;
+  /** 뿌리(조율자) operationId. 뿌리는 구성원 목록에 들지 않는다. */
+  readonly root: string;
+  readonly members: readonly OperationClusterMember[];
+  /** 띠·위치 표시를 누르면 — 플러그인의 표면으로 간다. 구성원 id 가 오면 그 구성원을 집는다. */
+  readonly open?: (operationId?: string) => void;
+}
+
+export interface OperationClusterSource {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly get: () => readonly OperationCluster[];
 }
 
 export interface OperationKindDescriptor {
@@ -637,6 +701,8 @@ export interface FleetPluginHostCapabilities {
   readonly security: FleetPluginSecurityHost;
   readonly lifecycle: FleetPluginLifecycleHost;
   readonly theaterFlags: FleetPluginTheaterFlagsHost;
+  /** Console Use 와 같은 길로 Operation 을 시작·메시지하는 능력. 없는 호스트에서는 없다. */
+  readonly consoleControl?: FleetPluginConsoleControlHost;
   /**
    * 실험 설정 읽기. 이 능력이 없는 호스트(구버전·테스트 스텁)에서는 전부 꺼진 것으로 읽어야 한다 —
    * 옵트인의 부재는 꺼짐이다.
@@ -671,6 +737,42 @@ export interface FleetPluginOperationsHost {
   registerOperationType(type: string): () => void;
   registerPayloadSanitizer(pluginId: string, fields: readonly string[]): () => void;
   registerLaunchCatalog(pluginId: string, provider: OperationLaunchCatalogProvider): () => void;
+  /**
+   * Operation 그룹 — 사이드바가 Operation 을 묶는 그 그룹이다. 플러그인이 자기 목록을 따로 두는 대신 이 그룹을
+   * 그대로 목록으로 쓸 수 있도록 연다. 만들기·이름·색은 사람의 PATCH 와 같은 길을 지나 영속되고
+   * `group:changed` / `group:removed` 로 모든 브라우저에 닿는다. 없는 호스트(구버전·테스트 스텁)에서는 없다.
+   */
+  readonly groups?: FleetPluginOperationGroupsHost;
+}
+
+export interface FleetPluginOperationGroup {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string;
+  readonly order: number;
+  readonly theaterId: string;
+  readonly createdAt: number;
+}
+
+export interface FleetPluginOperationGroupsHost {
+  list(theaterId?: string): readonly FleetPluginOperationGroup[];
+  get(id: string): FleetPluginOperationGroup | null;
+  create(input: { readonly theaterId: string; readonly name: string; readonly color: string; readonly order?: number }): FleetPluginOperationGroup;
+  patch(id: string, input: { readonly name?: string; readonly color?: string; readonly order?: number }): FleetPluginOperationGroup | null;
+  /** 빈 그룹만 지운다 — 멤버가 있으면 false. */
+  delete(id: string): boolean;
+}
+
+/**
+ * Console Use 와 같은 제어 경로로 Operation 을 시작하거나 그 입력창에 메시지를 넣는 능력. 호출자는 이 플러그인
+ * 자신이며(`{ kind: "plugin", pluginId }`), 시작한 Operation 의 `payload.launchedBy` 에 그렇게 남는다. 시트를 거치지
+ * 않는다 — `console_launch` 가 쓰는 서버 경로 그대로다. 없는 호스트에서는 없다.
+ */
+export interface FleetPluginConsoleControlHost {
+  /** 접수 뒤 실행 결과(operationId 또는 실패)가 정해질 때까지 기다린다. 실패는 코드 문자열을 message 로 던진다. */
+  request(input: ConsoleActionInput, requestId?: string): Promise<ConsoleActionReceipt>;
+  /** 한 Operation 의 지금 관측 — 활동·생명주기·표면·마지막 산출. 모르면 null. */
+  observe(operationId: string): ConsoleOperationObservation | null;
 }
 
 /**

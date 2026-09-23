@@ -6,13 +6,25 @@ export interface ConsoleActionInput {
   readonly kind: ConsoleActionKind;
   readonly theaterId?: string;
   readonly operationId?: string;
+  /** launch 의 첫 프롬프트 / send 의 본문. launch 에서는 생략할 수 있다 — 그 세션은 첫 턴 없이 서서 메시지를 기다린다. */
   readonly text?: string;
   readonly model?: string;
   readonly effort?: string;
   readonly viewMode?: "chat" | "terminal";
+  /**
+   * launch·send 전용 — 원장(채팅뷰 말풍선)에 세울 문면. 없으면 `text` 가 그대로 선다. 자식에게 가는 것은 언제나
+   * `text` 다. 플러그인이 모델용 구조화 프롬프트와 사람용 요약을 갈라 보낼 때 쓴다.
+   */
+  readonly display?: string;
+  /** `display` 의 형식. markdown 이면 말풍선이 마크다운으로 그린다. 기본은 평문. */
+  readonly displayFormat?: "markdown" | "text";
   /** launch 전용 — 태어날 때부터 속할 그룹과 이름. 같은 Theater 의 그룹이어야 한다. */
   readonly groupId?: string;
   readonly title?: string;
+  /** launch 전용 — CLI 세션의 표시 이름. 세션 목록·터미널 제목에 서고, 다른 세션이 이 세션에 메시지를 보낼 주소가 된다. */
+  readonly sessionName?: string;
+  /** launch 전용 — 이 세션의 서브에이전트(Claude Code `Agent` 도구, fleet:execute 포함)를 모두 끈다. 이미 분배된 일을 맡은 세션이 다시 나누지 않게. */
+  readonly disableSubagents?: boolean;
 }
 
 export interface ConsoleOperationObservation {

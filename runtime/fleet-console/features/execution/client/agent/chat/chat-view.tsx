@@ -1025,11 +1025,16 @@ function ChatTurn({
             {turn.dispatch.by ? <span className="chat-by-agent">{chatOriginLabel(turn.dispatch.by)}</span> : null}
             {turn.dispatch.at !== undefined ? <span>{timeFormat.format(new Date(turn.dispatch.at))}</span> : null}
           </div>
-          <div className="agent-chat-dispatch-bubble">
+          <div className={`agent-chat-dispatch-bubble${turn.dispatch.format === "markdown" ? " is-markdown" : ""}`}>
             {turn.dispatch.attachments && turn.dispatch.attachments.length > 0
               ? <ChatDispatchAttachments attachments={turn.dispatch.attachments} language={language} />
               : null}
-            {turn.dispatch.text ? <span className="agent-chat-dispatch-text">{turn.dispatch.text}</span> : null}
+            {/* 플러그인·Console Use 저자가 준 문면은 마크다운일 수 있다 — 자식에게 간 프롬프트와 별개인, 사람이 읽을 요약. */}
+            {turn.dispatch.text
+              ? turn.dispatch.format === "markdown"
+                ? <StreamedMarkdown text={turn.dispatch.text} streaming={false} className="agent-chat-dispatch-md" language={language} />
+                : <span className="agent-chat-dispatch-text">{turn.dispatch.text}</span>
+              : null}
           </div>
         </div>
       ) : null}
@@ -1285,7 +1290,9 @@ function InjectLine({
   return (
     <div className="agent-chat-turn-inject">
       <span className="agent-chat-turn-inject-caption">{t("terminal.chat.injectCaption")}</span>
-      <div className="agent-chat-turn-inject-body">{item.text ?? ""}</div>
+      {item.format === "markdown"
+        ? <StreamedMarkdown text={item.text ?? ""} streaming={false} className="agent-chat-turn-inject-body agent-chat-dispatch-md" language={language} />
+        : <div className="agent-chat-turn-inject-body">{item.text ?? ""}</div>}
     </div>
   );
 }

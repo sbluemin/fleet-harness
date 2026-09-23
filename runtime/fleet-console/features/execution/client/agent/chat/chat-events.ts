@@ -121,9 +121,9 @@ export type AgentChatStreamEvent =
   /** 라이브 전용 총량 — 저널에 실리지 않는다. 내역은 없다(control 채널만 그것을 안다). */
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
-  | { readonly kind: "dispatch"; readonly text: string; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
+  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
   /** 도는 턴이 사용자의 말 하나를 집어갔다 — 새 턴을 열지 않고 그 턴 안에 선다. */
-  | { readonly kind: "turn-inject"; readonly text: string; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
+  | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
   /** 자식이 문맥을 비웠다. 서버가 저널을 비우고 `cleared`를 내므로 화면은 이것을 그리지 않는다. */
   | { readonly kind: "reset"; readonly at?: number }
   /** 이 세션의 기록을 비웠다 — 화면의 원장도 함께 비운다. */
@@ -264,12 +264,12 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     case "dispatch": {
       if (typeof event.text !== "string") return null;
       const attachments = readChatAttachments(event.attachments);
-      return { ...journal, event: { kind: "dispatch", text: event.text, ...(attachments.length > 0 ? { attachments } : {}), ...atField(event.at), ...(readChatOrigin(event.by) ? { by: readChatOrigin(event.by) } : {}) } };
+      return { ...journal, event: { kind: "dispatch", text: event.text, ...(event.format === "markdown" ? { format: "markdown" as const } : {}), ...(attachments.length > 0 ? { attachments } : {}), ...atField(event.at), ...(readChatOrigin(event.by) ? { by: readChatOrigin(event.by) } : {}) } };
     }
     case "turn-inject": {
       if (typeof event.text !== "string") return null;
       const attachments = readChatAttachments(event.attachments);
-      return { ...journal, event: { kind: "turn-inject", text: event.text, ...(attachments.length > 0 ? { attachments } : {}), ...atField(event.at), ...(readChatOrigin(event.by) ? { by: readChatOrigin(event.by) } : {}) } };
+      return { ...journal, event: { kind: "turn-inject", text: event.text, ...(event.format === "markdown" ? { format: "markdown" as const } : {}), ...(attachments.length > 0 ? { attachments } : {}), ...atField(event.at), ...(readChatOrigin(event.by) ? { by: readChatOrigin(event.by) } : {}) } };
     }
     case "reset":
       return { ...journal, event: { kind: "reset", ...atField(event.at) } };
@@ -589,6 +589,8 @@ export interface AgentChatTurnItem {
   readonly result?: string;
   readonly outside?: boolean;
   readonly change?: AgentChatChange;
+  /** type="inject"의 문면 형식 — markdown 이면 본문을 마크다운으로 그린다. */
+  readonly format?: "markdown";
   /** type="inject"가 함께 나른 이미지의 미리보기 좌표. */
   readonly attachments?: readonly AgentChatAttachment[];
   /** type="inject"를 보낸 저자 — 사람이 아니면 실린다. */
@@ -598,7 +600,7 @@ export interface AgentChatTurnItem {
 }
 
 export interface AgentChatTurn {
-  readonly dispatch: { readonly text: string; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin } | null;
+  readonly dispatch: { readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin } | null;
   readonly items: readonly AgentChatTurnItem[];
   /**
    * `stopped`가 `error`와 따로 있는 이유는 결말이 다르기 때문이다. 실패는 하려던 일이 안 된
@@ -938,7 +940,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
     }
     case "dispatch": {
       const turn: AgentChatTurn = {
-        dispatch: { text: event.text, ...(event.attachments && event.attachments.length > 0 ? { attachments: event.attachments } : {}), ...(event.at !== undefined ? { at: event.at } : {}), ...(event.by ? { by: event.by } : {}) },
+        dispatch: { text: event.text, ...(event.format ? { format: event.format } : {}), ...(event.attachments && event.attachments.length > 0 ? { attachments: event.attachments } : {}), ...(event.at !== undefined ? { at: event.at } : {}), ...(event.by ? { by: event.by } : {}) },
         items: [],
         // synthetic replay에서는 저널의 live dispatch 뒤에 같은 턴의 turn-start가 따라온다. 여기서
         // 미리 done으로 닫으면 그 start가 별도 턴을 만들므로, replay-end나 다음 dispatch가 닫게 둔다.
@@ -954,6 +956,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       return appendItem(wakeLastTurn(state, now), {
         type: "inject",
         text: event.text,
+        ...(event.format ? { format: event.format } : {}),
         ...(event.attachments && event.attachments.length > 0 ? { attachments: event.attachments } : {}),
         ...(event.by ? { by: event.by } : {}),
         ...(event.at !== undefined ? { at: event.at } : {}),

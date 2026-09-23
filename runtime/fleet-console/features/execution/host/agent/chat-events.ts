@@ -136,7 +136,7 @@ export type AgentChatStreamEvent =
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
   /** `by` 는 사람이 아닌 저자 — Console Use 로 다른 Operation 이 보낸 지시. 없으면 사람이 친 것이다. */
-  | { readonly kind: "dispatch"; readonly text: string; readonly attachments?: readonly ChatAttachment[]; readonly at?: number; readonly by?: ChatOrigin }
+  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly ChatAttachment[]; readonly at?: number; readonly by?: ChatOrigin }
   /**
    * 도는 턴이 사용자의 말 하나를 집어갔다 — 새 턴을 열지 않고 **그 턴 안에** 선다.
    *
@@ -144,7 +144,7 @@ export type AgentChatStreamEvent =
    * 이쪽은 이미 돌던 턴이 도중에 이 말을 읽었다는 뜻이다. 한 kind로 합치면 원장이 턴을
    * 하나 더 세우고, 사용자는 자기가 고쳐 준 방향이 다음 턴의 일이었다고 읽는다.
    */
-  | { readonly kind: "turn-inject"; readonly text: string; readonly attachments?: readonly ChatAttachment[]; readonly at?: number; readonly by?: ChatOrigin }
+  | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly ChatAttachment[]; readonly at?: number; readonly by?: ChatOrigin }
   /**
    * 자식이 문맥을 비웠다(`/clear`). 서버가 이 신호를 받아 저널을 비우고 `cleared`를 낸다 —
    * 이 이벤트 자체는 원장에 남지 않는다.

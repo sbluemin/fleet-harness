@@ -524,14 +524,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, prompt: sanitizeLaunchPrompt(input.text!), ...(input.viewMode !== "terminal" ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.viewMode !== "terminal" ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
         const launched = ctx.host.operations.get(launchedId);
         if (launched) ctx.host.operations.patch(launchedId, { payload: { ...launched.payload, launchedBy: caller } });
         // 제목은 사람의 이름 바꾸기와 같은 길로 — 그래야 관측 세션이 사용자 소유 라벨로 기록해 자동 이름이 덮지 않는다.
-        if (input.title) deps.organize?.rename?.(launchedId, input.title);
+        // 제목은 태어날 때 붙였다(createSession) — 여기서 rename 사건을 내면 PTY 에 `/rename` 이 쳐진다.
         // 태어날 때부터 그룹에 — 사람이 그룹 헤더의 + 로 여는 것과 같은 자리. 그룹은 호스트 저장소 필드라 표면을 지난다.
         // 그룹이 그 사이 지워졌어도 시작은 성공이다 — 실패 영수증을 남기면 재시도가 같은 Operation 을 하나 더 만든다.
         if (input.groupId && deps.organize?.group) { try { deps.organize.group({ mode: "assign", theaterId: input.theaterId!, groupId: input.groupId, operationIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
@@ -557,7 +557,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         settled("interrupted");
         return { operationId, delivery: "requested" };
       }
-      await deliverMessage(operationId, input.text!, [], reply, assertCurrent, settled, chatOrigin(caller));
+      await deliverMessage(operationId, input.text!, [], reply, assertCurrent, settled, chatOrigin(caller), input.display ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
       return { operationId, delivery: "queued" };
     },
@@ -998,7 +998,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   async function startChatBornSession(
     sessionId: string,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly prompt?: string; readonly displayPrompt?: string; readonly attachmentIds?: readonly string[]; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void },
+    launchOptions: { readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly attachmentIds?: readonly string[]; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void },
   ): Promise<void> {
     const rollback = (status: number, error: string) => {
       if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
@@ -1030,6 +1030,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         launchOptions.prompt,
         {
           display: launchOptions.displayPrompt ?? launchOptions.prompt,
+          ...(launchOptions.displayFormat ? { format: launchOptions.displayFormat } : {}),
           attachments: (launchOptions.attachmentIds ?? []).map((id) => ({ id })),
         },
         launchOptions.onSettled,
@@ -1049,7 +1050,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
@@ -1074,7 +1075,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const named = launchOptions.prompt === undefined
       ? null
       : observability.autoNameTerminalSession(sessionId, deriveOperationLabel(launchOptions.prompt));
-    const namedSession = named?.session ?? session;
+    // 호출자가 제목을 들고 왔으면 사람이 붙인 이름으로 태어난다 — 자동 작명이 덮지 않고, rename 사건도 나지 않는다.
+    const titled = launchOptions.title ? observability.renameTerminalSession(sessionId, launchOptions.title) : null;
+    const namedSession = titled ?? named?.session ?? session;
     ctx.host.operations.create({
       id: session.sessionId,
       theaterId,
@@ -1114,6 +1117,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // spawn-only 상태 — Operation payload·브라우저 DTO에 넣지 않는다
         // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
         ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
+        ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
+        ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
       });
       // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
       // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
@@ -1352,7 +1357,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return deliverMessage(sessionId, text, attachmentIds, (status, value) => ctx.host.http.writeJson(res, status, value));
   }
 
-  async function deliverMessage(sessionId: string, text: string, attachmentIds: readonly string[], reply: (status: number, value: unknown) => void, assertCurrent: () => void = () => {}, onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin): Promise<boolean> {
+  async function deliverMessage(sessionId: string, text: string, attachmentIds: readonly string[], reply: (status: number, value: unknown) => void, assertCurrent: () => void = () => {}, onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin, presentation?: { readonly display?: string; readonly format?: "markdown" | "text" }): Promise<boolean> {
     // PTY로 나가는 텍스트에서 제어 바이트·괄호붙임 종료 마커를 벗겨낸다 — rename 주입과 같은 방어선.
     const sanitized = sanitizePtyMessageText(text);
     if (sanitized.trim().length === 0) {
@@ -1439,7 +1444,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         assertCurrent();
         chat.send(
           composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string,
-          { display: text.trim(), attachments: attachmentIds.map((id) => ({ id })) },
+          { display: presentation?.display ?? text.trim(), ...(presentation?.format ? { format: presentation.format } : {}), attachments: attachmentIds.map((id) => ({ id })) },
           onSettled,
           by,
         );
@@ -2197,7 +2202,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE, selection);
   }
 
-  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string } | undefined) {
+  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly sessionName?: string; readonly disableSubagents?: boolean } | undefined) {
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
     const cliId = operation ? CLAUDE_HARNESS_ID : undefined;
@@ -2213,6 +2218,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ...(context?.model ? { model: context.model } : {}),
       ...(context?.effort ? { effort: context.effort } : {}),
       ...(context?.prompt ? { prompt: context.prompt } : {}),
+      ...(context?.sessionName ? { sessionName: context.sessionName } : {}),
+      ...(context?.disableSubagents ? { disableSubagents: true } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });
   }

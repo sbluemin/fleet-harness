@@ -7,6 +7,7 @@ export interface ResolveAgentCliProfileOptions {
   readonly effort?: string;
   readonly prompt?: string;
   readonly resumeSessionId?: string;
+  readonly sessionName?: string;
 }
 
 export interface AgentCliMetadata {
@@ -32,6 +33,7 @@ export async function resolveAgentCliProfile(
     effort: options.effort,
     prompt: options.prompt,
     resumeSessionId: options.resumeSessionId,
+    sessionName: options.sessionName,
   });
 }
 

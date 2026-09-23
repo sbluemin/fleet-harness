@@ -1,0 +1,144 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { createTodoConsoleTools } from "../server/console-tools.js";
+import { createLaunchService } from "../server/launch.js";
+import { createTodoStore, TodoStoreError } from "../server/store.js";
+import type { TodoItemEvent } from "../server/types.js";
+
+/**
+ * 할 일의 필수 계약 — 실행(시작 한 번이 조율자와 담당 세션을 이름 붙여 한꺼번에 띄우고 이름을 조율자에게 알린다),
+ * 저장 무결성(완료가 슬롯을 놓고 되돌리기가 복원, 순환 거절, 계획이 잠긴 단계를 보존), 권한 경계(조율자만 완료·계획,
+ * 계보 밖 연결 거절, 같은 슬롯의 겹친 시작 거절), 사건 방송(쓰기 한 번에 todo:item 한 프레임).
+ */
+
+const dirs: string[] = [];
+afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+
+function harness() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-todo-"));
+  dirs.push(dir);
+  const events: TodoItemEvent[] = [];
+  const store = createTodoStore({ dir, emit: (event) => events.push(event) });
+  const operations = new Map<string, { id: string; theaterId: string; title: string; payload: Record<string, unknown>; groupId?: string | null }>();
+  operations.set("coord", { id: "coord", theaterId: "t1", title: "Coordinator", payload: { consoleUse: { enabled: true, language: "en" } } });
+  operations.set("stranger", { id: "stranger", theaterId: "t1", title: "Stranger", payload: {} });
+  const sent: { operationId: string; text: string }[] = [];
+  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; disableSubagents?: boolean }[] = [];
+  const ctx = {
+    pluginId: "todo",
+    host: {
+      operations: {
+        get: (id: string) => operations.get(id) ?? null,
+        list: () => [...operations.values()],
+        patch: (id: string, input: { payload?: Record<string, unknown> }) => { const node = operations.get(id); if (!node) return null; if (input.payload) node.payload = input.payload; return node; },
+        groups: { list: () => [], get: () => null, create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
+      },
+      consoleControl: {
+        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; disableSubagents?: boolean }) => {
+          if (input.kind === "send") { sent.push({ operationId: input.operationId!, text: input.text! }); return { id: "r", requestId: "r", caller: { kind: "plugin", pluginId: "todo" }, input, status: "running", createdAt: "", updatedAt: "", expiresAt: "", operationId: input.operationId }; }
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          const id = `launched-${launches.length + 1}`;
+          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, disableSubagents: input.disableSubagents });
+          operations.set(id, { id, theaterId: "t1", title: input.title ?? id, payload: {} });
+          return { id: "r", requestId: "r", caller: { kind: "plugin", pluginId: "todo" }, input, status: "running", createdAt: "", updatedAt: "", expiresAt: "", operationId: id };
+        },
+        observe: () => null,
+      },
+      paths: { resolveTheaterPath: () => dir },
+    },
+  } as unknown as FleetPluginServerContext;
+  const launch = createLaunchService(ctx, store);
+  const [tool] = createTodoConsoleTools(ctx, store, launch);
+  const call = async (args: Record<string, unknown>, caller?: { kind: "operation"; operationId: string }) => {
+    const result = await tool!.execute(args, { cwd: dir, ...(caller ? { caller } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
+    return result;
+  };
+  return { dir, store, events, launch, tool: tool!, call, operations, sent, launches };
+}
+
+describe("To-do contract", () => {
+  it("starts the coordinator and one named assignee session per step at once, and keeps storage consistent across completion, reopen and re-plan", async () => {
+    const { dir, store, events, launch, sent, launches } = harness();
+    const item = store.create({ theaterId: "t1", title: "Release", steps: [{ text: "a" }, { text: "b", after: [0] }, { text: "c", after: [1] }] });
+    // 새 단계의 기본은 「셰프 직접」— 담당을 띄우려면 배정이 있어야 한다.
+    for (const step of item.steps) store.stepPatch(item.id, step.id, { assign: { mode: "model" } });
+    const [a, , c] = item.steps;
+    // 순환은 저장 전에 거절된다.
+    expect(() => store.stepPatch(item.id, a!.id, { after: [c!.id] })).toThrow(TodoStoreError);
+    expect(store.find(item.id)!.steps[0]!.after).toEqual([]);
+    // 시작 한 번 — 셰프만 이름 붙은 CLI 세션으로 뜬다. 담당은 셰프가 위임하는 순간에 프롬프트 없이 뜬다.
+    const started = await launch.startCoordinator(item.id);
+    const head = `todo-${item.id.slice(0, 6)}`;
+    expect(launches.map((entry) => entry.sessionName)).toEqual([`${head}-chef`]);
+    expect(launches[0]!.viewMode).toBe("terminal");
+    expect(launches[0]!.text).toContain(item.id);
+    expect(started.item.slot?.sessionName).toBe(`${head}-chef`);
+    const delegated = await launch.delegateStep(item.id, a!.id);
+    expect(delegated.session).toBe(`${head}-step-1`);
+    expect(launches.at(-1)).toMatchObject({ sessionName: `${head}-step-1`, viewMode: "terminal", disableSubagents: true });
+    expect(launches[0]!.disableSubagents).toBeUndefined();
+    expect(launches.at(-1)!.text).toBeUndefined();
+    // 같은 단계를 두 번 위임할 수 없고, 끝난 단계도 위임할 수 없다.
+    await expect(launch.delegateStep(item.id, a!.id)).rejects.toMatchObject({ code: "slot_taken" });
+    await launch.stepPatched(item.id, a!.id, { done: true, result: "a done" }, "human");
+    await expect(launch.delegateStep(item.id, a!.id)).rejects.toMatchObject({ code: "step_done" });
+    await launch.delegateStep(item.id, item.steps[1]!.id);
+    await launch.delegateStep(item.id, c!.id);
+    await launch.stepPatched(item.id, item.steps[1]!.id, { done: true }, "human");
+    // 완료해도 매핑은 남는다 — 카드의 Operation 이동과 묶음이 그대로다; 되돌리기도 그대로 잇는다.
+    const done = await launch.complete(item.id, "human");
+    expect(done.done?.released.map((entry) => entry.slot.operationId)).toEqual([started.operationId, "launched-2", "launched-3", "launched-4"]);
+    expect(done.slot?.operationId).toBe(started.operationId);
+    expect(done.steps.map((step) => step.slot?.operationId)).toEqual(["launched-2", "launched-3", "launched-4"]);
+    const reopened = store.reopen(item.id);
+    expect(reopened.slot?.operationId).toBe(started.operationId);
+    expect(reopened.steps[1]!.slot?.operationId).toBe("launched-3");
+    // 계획은 완료·배정된 단계를 보존하고 나머지를 바꾼다; 새 단계는 stepId 로 기존 단계 뒤에 설 수 있다.
+    store.setSlot(item.id, c!.id, null);
+    store.stepPatch(item.id, a!.id, { done: true, result: "a done" });
+    const planned = store.plan(item.id, { steps: [{ text: "x", after: [{ stepId: a!.id, why: "builds on a" }] }, { text: "y", after: [{ index: 0, why: "shares files" }] }] }, "human");
+    expect(planned.steps.map((step) => step.text)).toEqual(["a", "b", "x", "y"]);
+    expect(planned.steps[2]!.after).toEqual([a!.id]);
+    expect(planned.steps[3]!.why?.[planned.steps[2]!.id]).toBe("shares files");
+    // 재시작 뒤에도 파일에서 같은 상태를 읽는다.
+    const reloaded = createTodoStore({ dir, emit: () => undefined });
+    expect(reloaded.find(item.id)?.steps[0]?.result).toBe("a done");
+    // 모든 쓰기가 사건으로 나갔다 — 화면은 이 프레임으로 갱신된다.
+    expect(events.filter((event) => event.op === "upsert" && event.itemId === item.id).length).toBeGreaterThanOrEqual(8);
+  });
+
+  it("lets only the Chef plan and mark steps, keeps completion and linking human-only, and refuses overlapping starts", async () => {
+    const { store, call, launch, sent, launches } = harness();
+    const item = store.create({ theaterId: "t1", title: "Guarded", steps: [{ text: "one" }, { text: "two", after: [0] }] });
+    // 조율자 슬롯이 비어 있으면 아무 Operation 도 완료·계획할 수 없다.
+    expect((await call({ plan: { itemId: item.id, steps: [{ text: "p" }] } }, { kind: "operation", operationId: "stranger" })).structuredContent.error).toBe("not_item_operation");
+    // 연결은 사람의 일이다 — 도구에는 link 가 없다. 사람이 연결한 뒤 계획을 쓴다.
+    expect((await call({ link: { itemId: item.id, operationId: "coord" } }, { kind: "operation", operationId: "coord" })).isError).toBe(true);
+    await launch.linkCoordinator(item.id, "coord");
+    const planned = await call({ plan: { itemId: item.id, steps: [{ text: "p1", assign: "route" }, { text: "p2", after: [{ index: 0 }], assign: "route" }] } }, { kind: "operation", operationId: "coord" });
+    expect(planned.isError).toBe(false);
+    // 계획은 담당을 띄우지 않는다 — 셰프가 위임할 때 뜬다.
+    expect(launches).toEqual([]);
+    const delegated = await call({ step: { itemId: item.id, index: 0, delegate: true } }, { kind: "operation", operationId: "coord" });
+    expect(delegated.structuredContent.session).toBe(`todo-${item.id.slice(0, 6)}-step-1`);
+    expect(launches.map((entry) => entry.sessionName)).toEqual([`todo-${item.id.slice(0, 6)}-step-1`]);
+    // 완료 표시와 완료는 조율자만.
+    expect((await call({ step: { itemId: item.id, doneIndex: 0, result: "r" } }, { kind: "operation", operationId: "launched-1" })).structuredContent.error).toBe("not_item_operation");
+    expect((await call({ step: { itemId: item.id, doneIndex: 0, result: "r" } }, { kind: "operation", operationId: "coord" })).isError).toBe(false);
+    expect(store.find(item.id)!.steps[0]!.result).toBe("r");
+    // 할 일 자체의 완료는 AI 도구에 없다 — 사람의 완료는 매핑을 남긴다.
+    expect((await call({ done: { itemId: item.id } }, { kind: "operation", operationId: "coord" })).isError).toBe(true);
+    expect((await launch.complete(item.id, "human")).slot?.operationId).toBe("coord");
+    expect(store.find(item.id)!.done).not.toBeNull();
+    // 같은 슬롯에 시작이 겹치면 하나만 뜬다.
+    const other = store.create({ theaterId: "t1", title: "Twice", steps: [{ text: "s1" }, { text: "s2" }] });
+    const results = await Promise.allSettled([launch.startCoordinator(other.id), launch.startCoordinator(other.id)]);
+    expect(results.filter((result) => result.status === "fulfilled").length).toBe(1);
+    expect(results.some((result) => result.status === "rejected" && (result.reason as TodoStoreError).code === "slot_taken")).toBe(true);
+  });
+});

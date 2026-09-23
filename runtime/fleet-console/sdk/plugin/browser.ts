@@ -146,6 +146,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
         const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, { method: "DELETE" });
         if (!response.ok) throw new ApiError(response.status, `Operation remove failed: ${response.status}`);
       },
+      focus: () => undefined,
     },
     preferences: {
       read: (key, fallback) => readPreference(key, fallback),
