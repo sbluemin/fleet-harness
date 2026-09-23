@@ -44,10 +44,19 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
   const byDepth = new Map<number, string[]>();
   for (const step of steps) { const d = depth.get(step.id) ?? 0; byDepth.set(d, [...(byDepth.get(d) ?? []), step.id]); }
   const rows = Math.max(1, ...[...byDepth.values()].map((ids) => ids.length));
-  const H = Math.max(70, rows * rowH + 26);
+  // 노드 아래 제목은 열 간격에 맞춰 줄인다. 열이 촘촘하면(긴 일렬) 위·아래를 번갈아 써서 이웃과 겹치지 않게 하고,
+  // 그래도 서너 글자가 안 들어가면 제목을 숨긴다 — 번호와 툴팁, 그리고 위의 단계 목록이 남는다.
+  const CHAR = 11;
+  const fitIn = (width: number) => Math.min(8, Math.floor((width - 6) / CHAR));
+  const stagger = columns > 1 && fitIn(colW) < 5;
+  const fit = stagger ? fitIn(colW * 2) : fitIn(colW);
+  const showLabels = fit >= 3;
+  const lift = stagger && showLabels ? 12 : 0;
+  const H = Math.max(70, rows * rowH + 26) + lift;
   const pos = new Map<string, { x: number; y: number }>();
-  for (const [d, ids] of byDepth) ids.forEach((id, r) => pos.set(id, { x: 72 + d * colW + 16, y: 16 + r * rowH + ((rows - ids.length) * rowH) / 2 }));
+  for (const [d, ids] of byDepth) ids.forEach((id, r) => pos.set(id, { x: 72 + d * colW + 16, y: 16 + lift + r * rowH + ((rows - ids.length) * rowH) / 2 }));
   const root = { x: 20, y: H / 2 };
+  const shorten = (text: string) => (text.length > fit ? `${text.slice(0, Math.max(1, fit - 1))}…` : text);
 
   const point = (event: ReactPointerEvent | PointerEvent) => {
     const svg = svgRef.current;
@@ -144,8 +153,8 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
         {steps.map((step, index) => {
           const p = pos.get(step.id)!;
           const cls = step.done ? "is-done" : step.slot ? "is-assigned" : stepReady(item, step) ? "is-ready" : "is-wait";
-          // 노드 아래에는 단계 제목을 줄여 쓴다 — 모델·강도는 단계 행이 말한다.
-          const label = step.text;
+          // 노드 곁에는 단계 제목을 줄여 쓴다 — 모델·강도는 단계 행이 말한다.
+          const above = stagger && (depth.get(step.id) ?? 0) % 2 === 1;
           return (
             <g
               key={step.id}
@@ -158,7 +167,7 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
             >
               <circle cx={p.x} cy={p.y} r={9} />
               <text x={p.x} y={p.y + 3.5} textAnchor="middle" className="todo-num">{index + 1}</text>
-              <text x={p.x} y={p.y + 21} textAnchor="middle">{label.length > 8 ? `${label.slice(0, 8)}…` : label}</text>
+              {showLabels ? <text x={p.x} y={above ? p.y - 15 : p.y + 21} textAnchor="middle">{shorten(step.text)}</text> : null}
               <title>{`${index + 1}. ${step.text}`}</title>
             </g>
           );
