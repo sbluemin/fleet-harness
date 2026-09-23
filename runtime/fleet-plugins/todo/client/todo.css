@@ -98,10 +98,10 @@
 .todo-list-trigger > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .todo-list-trigger .todo-count { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
 .todo-list-trigger:focus-visible { outline: 1px solid var(--brass); }
-.todo-list-menu { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; width: min(240px, calc(100cqw - 28px)); max-height: min(440px, 65vh); overflow: auto; padding: 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: var(--shadow-popover); }
+.todo-list-menu { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; width: min(240px, calc(100cqw - 28px)); max-height: min(440px, 65vh); overflow: auto; padding: 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); }
 .todo-list-menu .todo-lists-add { width: 100%; margin-top: 8px; }
 .todo-place-detail { display: grid; }
-.todo-root.has-detail .todo-place-main, .todo-detail-back { display: none; }
+.todo-root.has-detail .todo-place-main, .todo-glyph.todo-detail-back { display: none; }
 .todo-title h2 { margin: 0; font-family: var(--font-display); font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 1.2; }
 .todo-title .todo-sub { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
 .todo-title .todo-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
@@ -618,7 +618,7 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
   .todo-root, .todo-root.has-detail { grid-template-columns: minmax(0, 1fr); }
   .todo-root.has-detail .todo-main { display: none; }
   .todo-detail { border-left: 0; }
-  .todo-detail-back { display: grid; margin-right: -6px; font-size: var(--t-xl); }
+  .todo-glyph.todo-detail-back { display: inline-grid; margin-right: -6px; font-size: var(--t-xl); }
   .todo-place-detail { margin-left: 0; }
   .todo-detail-head { gap: 8px; padding-right: 12px; padding-left: 12px; }
   .todo-row { padding-right: 12px; padding-left: 14px; gap: 8px; }
