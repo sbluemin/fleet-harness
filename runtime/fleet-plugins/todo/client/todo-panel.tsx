@@ -433,7 +433,22 @@ function RecipeZoom({ t, title, onClose, children }: { readonly t: Translate<Tod
   useEffect(() => {
     cardRef.current?.focus();
     // 캡처 단계에서 삼킨다 — 같은 Esc 가 창의 처리기까지 올라가 상세를 함께 닫지 않도록.
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } };
+    // Tab 은 카드 안에서만 돈다(aria-modal): 뒤의 패널로 초점이 새면 열린 채로 숨은 조작이 가능해진다.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); return; }
+      if (event.key !== "Tab" || !cardRef.current) return;
+      const card = cardRef.current;
+      const stops = [...card.querySelectorAll<HTMLElement | SVGElement>("button, [tabindex]:not([tabindex='-1'])")].filter((el) => !(el as HTMLButtonElement).disabled);
+      const active = document.activeElement;
+      const inside = active instanceof Node && card.contains(active);
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      if (!first || !last) { event.preventDefault(); card.focus(); return; }
+      if (event.shiftKey ? !inside || active === first || active === card : !inside || active === last) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, [onClose]);
