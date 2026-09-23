@@ -24,7 +24,7 @@ export const todoPane: PaneDescriptor = {
   mounts: ["rail"],
   title: (ctx) => getT(ctx.language)("todo.panel.title"),
   widthClass: "standard",
-  render: (ctx) => <TodoPanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, paneWidth: ctx.width, place: "rail" }} />,
+  render: (ctx) => <TodoPanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "rail" }} />,
 };
 
 export const todoSurface: ExpandedSurfaceDescriptor = {
@@ -34,7 +34,7 @@ export const todoSurface: ExpandedSurfaceDescriptor = {
   // 레일 아이콘이 여닫으므로 호스트의 부유 닫기는 중복이다.
   ownsClose: true,
   onClose: onTodoSurfaceClose,
-  render: (ctx: ExpandedSurfaceContext) => <TodoPanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, paneWidth: ctx.paneWidth, place: "expanded" }} />,
+  render: (ctx: ExpandedSurfaceContext) => <TodoPanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "expanded" }} />,
 };
 
 export const todoEntry: RailEntryDescriptor = {

@@ -51,6 +51,14 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose }: {
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [onClose]);
   useEffect(() => { cardRef.current?.focus(); }, []);
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault(); event.stopPropagation(); onClose();
+    };
+    document.addEventListener("keydown", onEscape, true);
+    return () => document.removeEventListener("keydown", onEscape, true);
+  }, [onClose]);
 
   const move = (days: number) => {
     const next = addDays(cursor, days);
@@ -58,7 +66,7 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose }: {
     if (next.getMonth() !== month.getMonth() || next.getFullYear() !== month.getFullYear()) setMonth(new Date(next.getFullYear(), next.getMonth(), 1));
   };
   const onKey = (event: React.KeyboardEvent) => {
-    if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); return; }
     if (event.key === "ArrowLeft") { event.preventDefault(); move(-1); return; }
     if (event.key === "ArrowRight") { event.preventDefault(); move(1); return; }
     if (event.key === "ArrowUp") { event.preventDefault(); move(-7); return; }

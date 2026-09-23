@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
@@ -16,7 +16,6 @@ export interface TodoContext {
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
   readonly language?: ConsoleLocale;
-  readonly paneWidth?: number;
   readonly place: "rail" | "expanded";
 }
 
@@ -92,7 +91,20 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
   const dragRef = useRef<{ itemId: string; section: string; startX: number; startY: number; live: boolean; over: ListId | null; insert: Insert | null; offX: number; offY: number; width: number } | null>(null);
   const suppressClick = useRef(false);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const narrow = (ctx.paneWidth ?? 1200) < 760;
+  const [listMenuOpen, setListMenuOpen] = useState(false);
+  const listMenuRef = useRef<HTMLDivElement | null>(null);
+  const listTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const placeButton = (className: string) => <button type="button" className={`todo-place-button ${className}`} aria-label={t(ctx.place === "rail" ? "todo.panel.expand" : "todo.panel.dock")} title={t(ctx.place === "rail" ? "todo.panel.expand" : "todo.panel.dock")} onClick={ctx.place === "rail" ? expandTodo : dockTodo}>
+    {ctx.place === "rail" ? <ExpandGlyph /> : <DockGlyph />}
+  </button>;
+  useEffect(() => {
+    if (!listMenuOpen) return;
+    const onDown = (event: PointerEvent) => { if (!listMenuRef.current?.contains(event.target as Node)) setListMenuOpen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); setListMenuOpen(false); listTriggerRef.current?.focus(); } };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey, true);
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey, true); };
+  }, [listMenuOpen]);
 
   useEffect(() => { if (theaterId) void loadTheater(ctx.api, theaterId); }, [ctx.api, theaterId]);
   // 남겨 둔 자리가 사라졌으면(항목 삭제 · 그룹 제거) 그 자리만 거둔다 — 다른 곳에서 지워진 것을 붙들고 빈 화면을 보이지 않게.
@@ -174,6 +186,21 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
   }, [sectioned, open, finished, state.groups, t]);
   const openCount = (predicate: (item: TodoItem) => boolean) => state.items.filter((item) => !item.done && predicate(item)).length;
   const current = selected ? state.items.find((item) => item.id === selected) ?? null : null;
+  const detailRef = useRef<HTMLElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const itemsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!selected) return;
+    const frame = requestAnimationFrame(() => {
+      if (mainRef.current && getComputedStyle(mainRef.current).display === "none") detailRef.current?.querySelector<HTMLElement>(".todo-detail-back")?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selected]);
+  const closeDetail = () => {
+    const id = selected;
+    setSelected(null);
+    requestAnimationFrame(() => { if (id) itemsRef.current?.querySelector<HTMLElement>(`.todo-item[data-item-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }); });
+  };
 
   const listTitle = list === "today" ? t("todo.list.today") : list === "due" ? t("todo.list.due") : list === "all" ? t("todo.list.all") : list === "agent" ? t("todo.list.agent") : list === "ungrouped" ? t("todo.list.ungrouped") : groupOf(list.slice(6))?.name ?? t("todo.list.all");
   const listSub = list === "today" ? t("todo.sub.today") : list === "due" ? t("todo.sub.due") : list === "all" ? t("todo.sub.all") : list === "agent" ? t("todo.sub.agent") : list === "ungrouped" ? t("todo.sub.ungrouped") : t("todo.sub.group");
@@ -290,18 +317,16 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
     else if (event.key === "ArrowUp") { event.preventDefault(); rows[index - 1]?.focus(); }
   };
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && selected) setSelected(null); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && selected && !listMenuOpen && !document.querySelector(".todo-cal, .todo-zoom-backdrop, .todo-menu")) closeDetail(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected]);
+  }, [selected, listMenuOpen]);
 
-  if (!theaterId) return <div className="todo-root"><div className="todo-main"><div className="todo-empty">{t("todo.items.emptyTheater")}</div></div></div>;
+  if (!theaterId) return <div className="todo-container"><div className="todo-root"><div className="todo-main"><div className="todo-empty">{t("todo.items.emptyTheater")}</div></div></div></div>;
 
+  const pickList = (next: ListId) => { setList(next); setListMenuOpen(false); listTriggerRef.current?.focus(); };
   return (
-    <div className={`todo-root${current ? " has-detail" : ""}${narrow ? " is-narrow" : ""}`}>
-      <button type="button" className="todo-place-button" aria-label={t(ctx.place === "rail" ? "todo.panel.expand" : "todo.panel.dock")} title={t(ctx.place === "rail" ? "todo.panel.expand" : "todo.panel.dock")} onClick={ctx.place === "rail" ? expandTodo : dockTodo}>
-        {ctx.place === "rail" ? <ExpandGlyph /> : <DockGlyph />}
-      </button>
+    <div className="todo-container"><div className={`todo-root${current ? " has-detail" : ""}`}>
       <nav className={`todo-lists${drag ? " is-dragging" : ""}`} aria-label={t("todo.panel.title")}>
         <ListButton id="today" current={list} onPick={setList} drop over={drag?.over === "today"} label={`☀ ${t("todo.list.today")}`} count={openCount((item) => item.today)} />
         <ListButton id="due" current={list} onPick={setList} drop over={drag?.over === "due"} label={t("todo.list.due")} count={openCount((item) => !!item.dueDate)} />
@@ -315,10 +340,21 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
         <button type="button" className="todo-lists-add" onClick={async () => { const result = await call<{ group: TodoGroup }>("/group/create", { theaterId, name: t("todo.list.newGroupName"), color: "teal" }); if (result) { setList(`group:${result.group.id}`); toast(t("todo.toast.groupCreated")); } }}>+ {t("todo.list.newGroup")}</button>
       </nav>
 
-      <section className="todo-main">
+      <section ref={mainRef} className="todo-main">
         <div className="todo-title">
+          <div ref={listMenuRef} className="todo-list-select">
+            <button ref={listTriggerRef} type="button" className="todo-list-trigger" aria-label={t("todo.list.select")} aria-haspopup="menu" aria-expanded={listMenuOpen} onClick={() => setListMenuOpen((value) => !value)}><span>{listTitle}</span><span className="todo-count">{open.length}</span><span aria-hidden="true">⌄</span></button>
+            {listMenuOpen ? <div className="todo-list-menu" role="menu" aria-label={t("todo.list.select")}>
+              {(["today", "due", "all", "agent"] as const).map((id) => <ListButton key={id} id={id} current={list} onPick={pickList} label={t(`todo.list.${id}`)} count={openCount((item) => id === "today" ? item.today : id === "due" ? !!item.dueDate : id === "agent" ? item.author.kind === "operation" : true)} menu />)}
+              <div className="todo-lists-hd">{t("todo.list.groups")}</div>
+              {state.groups.map((group) => <ListButton key={group.id} id={`group:${group.id}`} current={list} onPick={pickList} label={group.name} swatch={group.color} count={openCount((item) => item.groupId === group.id)} menu />)}
+              <ListButton id="ungrouped" current={list} onPick={pickList} label={t("todo.list.ungrouped")} count={openCount((item) => !groupOf(item.groupId))} menu />
+              <button type="button" className="todo-lists-add" role="menuitem" onClick={async () => { const result = await call<{ group: TodoGroup }>("/group/create", { theaterId, name: t("todo.list.newGroupName"), color: "teal" }); if (result) { pickList(`group:${result.group.id}`); toast(t("todo.toast.groupCreated")); } }}>+ {t("todo.list.newGroup")}</button>
+            </div> : null}
+          </div>
           <h2>{listTitle}</h2>
           <span className="todo-sub">{listSub}</span>
+          {placeButton("todo-place-main")}
         </div>
         {list === "due" ? (
           <div className="todo-chips">
@@ -327,7 +363,7 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
             ))}
           </div>
         ) : null}
-        <div className="todo-items" role="listbox" aria-label={listTitle}>
+        <div ref={itemsRef} className="todo-items" role="listbox" aria-label={listTitle}>
           {open.length === 0 && finished.length === 0 ? <div className="todo-empty">{t("todo.items.empty")}</div> : null}
           {sections.map((section) => { const expanded = isOpen(section.key, !section.done); return (<div key={section.key} data-section={section.key} className={`todo-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}`}>
           {section.label ? <button type="button" className="todo-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)}><span className="todo-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="todo-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span>{section.label}</span><span className="todo-count">{section.items.length}</span></button> : null}
@@ -399,7 +435,9 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
           busy={isBusy(current)}
           onStop={() => stopItem(current)}
           highlightStep={highlightStep}
-          onClose={() => setSelected(null)}
+          onClose={closeDetail}
+          detailRef={detailRef}
+          placeButton={placeButton("todo-place-detail")}
           onComplete={() => completeItem(current)}
           onToggleEdge={(from, to) => toggleEdge(current, from, to)}
           freeOperations={operations.filter((operation) => operation.theaterId === theaterId && operation.activity !== "ended")}
@@ -415,13 +453,13 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
         </div>,
         document.body,
       ) : null}
-    </div>
+    </div></div>
   );
 }
 
-function ListButton({ id, current, onPick, label, count, swatch, muted, drop, over }: { id: ListId; current: ListId; onPick: (id: ListId) => void; label: string; count: number; swatch?: string; muted?: boolean; drop?: boolean; over?: boolean }) {
+function ListButton({ id, current, onPick, label, count, swatch, muted, drop, over, menu }: { id: ListId; current: ListId; onPick: (id: ListId) => void; label: string; count: number; swatch?: string; muted?: boolean; drop?: boolean; over?: boolean; menu?: boolean }) {
   return (
-    <button type="button" className={`todo-list-btn${muted ? " is-muted" : ""}${over ? " is-drop" : ""}`} aria-current={current === id} onClick={() => onPick(id)} {...(drop ? { "data-drop-list": id } : {})}>
+    <button type="button" className={`todo-list-btn${muted ? " is-muted" : ""}${over ? " is-drop" : ""}`} role={menu ? "menuitemradio" : undefined} aria-checked={menu ? current === id : undefined} aria-current={current === id} onClick={() => onPick(id)} {...(drop ? { "data-drop-list": id } : {})}>
       {swatch ? <span className="todo-swatch" style={{ background: `var(--id-${swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}
       <span>{label}</span>
       <span className="todo-count">{count}</span>
@@ -468,6 +506,8 @@ interface DetailProps {
   readonly onStop: () => Promise<void>;
   readonly highlightStep: string | null;
   readonly onClose: () => void;
+  readonly detailRef: RefObject<HTMLElement | null>;
+  readonly placeButton: ReactNode;
   readonly onComplete: () => void;
   readonly onToggleEdge: (from: string, to: string) => Promise<void>;
   readonly freeOperations: readonly { id: string; title: string; activity: string }[];
@@ -555,7 +595,7 @@ function SendGlyph() {
   return <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" /></svg>;
 }
 
-function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, busy, onStop, highlightStep, onClose, onComplete, onToggleEdge, freeOperations }: DetailProps) {
+function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, busy, onStop, highlightStep, onClose, detailRef, placeButton, onComplete, onToggleEdge, freeOperations }: DetailProps) {
   const [note, setNote] = useState(item.note);
   const [cook, setCook] = useState(item.cook ?? "");
   const [cookOpen, setCookOpen] = useState(false);
@@ -615,12 +655,15 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
 
   return (
-    <aside className={`todo-detail${busy ? " is-busy" : ""}`} aria-label={item.title}>
+    <aside ref={detailRef} className={`todo-detail${busy ? " is-busy" : ""}`} aria-label={item.title}>
+      <div className="todo-detail-scroll">
       <div className="todo-group">
         <div className="todo-detail-head">
+          <button type="button" className="todo-glyph todo-detail-back" aria-label={t("todo.detail.backToList")} title={t("todo.detail.backToList")} onClick={onClose}>‹</button>
           <button type="button" className={`todo-check${item.done ? " is-on" : ""}`} aria-label={t(item.done ? "todo.item.reopen" : "todo.item.complete")} disabled={busy} onClick={onComplete}><CheckGlyph /></button>
           <textarea className="todo-detail-title" aria-label={t("todo.item.titleAria")} value={title} rows={1} readOnly={!editable} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); } }} onBlur={() => { if (title.trim() && title !== item.title) void call("/item/patch", { itemId: item.id, patch: { title: title.trim() } }); }} />
           <button type="button" className={`todo-star${item.important ? " is-on" : ""}`} aria-label={t("todo.item.important")} aria-pressed={item.important} onClick={() => void call("/item/patch", { itemId: item.id, patch: { important: !item.important } })}>{item.important ? "★" : "☆"}</button>
+          {placeButton}
         </div>
         {busy ? <div className="todo-busy-line" role="status"><i aria-hidden="true" /><span>{t(item.cooking ? "todo.cooking" : "todo.busy")}</span></div> : null}
       </div>
@@ -738,7 +781,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
               </span>
             </div>
             <div className="todo-graph-wrap">
-              <CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} />
+              <div className="todo-graph-horizontal"><CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} /></div>
+              <div className="todo-graph-vertical"><CoordinationGraph vertical item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} /></div>
             </div>
             {zoomOpen ? createPortal(
               <RecipeZoom t={t} title={item.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}>
@@ -762,6 +806,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <NoteAttachments item={item} t={t} touchable={touchable} upload={attachments.upload} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />
       </div>
 
+      </div>
+      <div className="todo-detail-bottom">
       {/* 마지막 행동 한 자리 — 검토 대기면 「완료」, 누군가 사람의 결정을 기다리면 「결정 대기」(누르면 그 Operation으로),
           아니면 「시작」, 일하는 동안에는 「중단」 — 그동안 사람이 보드를 고쳤으면 「중단」 자리가 「스티어링」이 된다. 같은 띠, 낱말만 다르다. */}
       {item.review && !item.done ? (
@@ -808,6 +854,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <button type="button" className="todo-glyph" aria-label={t("todo.detail.close")} title={t("todo.detail.close")} onClick={onClose}><ChevronGlyph /></button>
         <span className="todo-detail-created">{t("todo.detail.created", { date: createdLabel(item.createdAt, language) })}</span>
         {busy ? <span aria-hidden="true" className="todo-detail-foot-spacer" /> : <button type="button" className="todo-glyph is-danger is-large" aria-label={t("todo.item.delete")} title={t("todo.item.delete")} onClick={async () => { const removed = await call<{ item: TodoItem }>("/item/remove", { itemId: item.id }); if (removed) toast(t("todo.toast.deleted")); }}><TrashGlyph /></button>}
+      </div>
       </div>
     </aside>
   );
