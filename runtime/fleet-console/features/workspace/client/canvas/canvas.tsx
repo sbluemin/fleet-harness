@@ -1872,7 +1872,7 @@ export function OperationsCanvas({
               selectClusterBody(clusterPicker.rootId, operationId);
               setActiveOperation(clusterPicker.rootId);
             }}
-            onOpenItem={layout.cluster.open ? () => layout.cluster.open?.() : undefined}
+            onOpenItem={layout.cluster.open ? (operationId) => layout.cluster.open?.(operationId) : undefined}
             onClose={() => setClusterPicker(null)}
           />
         );

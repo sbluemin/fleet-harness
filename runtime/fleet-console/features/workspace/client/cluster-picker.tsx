@@ -1,13 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
+import type { OperationClusterMember } from "@fleet-console/sdk/plugin";
+
 import { useT } from "../../../core/client/src/i18n/index.js";
 import type { ClusterLayout } from "./operation-clusters.js";
 
 /**
- * 묶음 피커 — 조율자 캡션의 단계 띠를 누르면 뜬다. 조율자와 단계를 한 줄씩 늘어놓고, 고르면 호출자가 정한 대로
- * 그 Operation 의 본문이 조율자 패널에 서거나(단계가 숨은 모드) 그 패널로 초점이 간다(펼쳐진 Cruise).
- * 마지막 줄은 할 일 표면으로 가는 문. 색은 진행 사각(신호 토큰)뿐, 고른 줄은 brass 워시.
+ * 묶음 피커 — 조율자 캡션의 단계 띠를 누르면 뜬다. 머리는 조율자 행 하나(활동 낱말 + 완료 셈) — 제목은 바로 위
+ * 캡션이 이미 말하므로 되풀이하지 않는다. 그 아래 레시피 순서의 단계 전부: Operation 이 있는 단계를 고르면 호출자가
+ * 정한 대로 그 본문이 조율자 패널에 서거나(단계가 숨은 모드) 그 패널로 초점이 간다(펼쳐진 Cruise). 아직 Operation 이
+ * 없는 단계는 흐린 글자로 자리를 지키고, 누르면 할 일 표면의 그 단계로 간다. 오른쪽 낱말은 진행(실행 중·결정 대기·
+ * 준비됨·n 뒤), 끝난 단계 아래엔 남긴 산출 한 줄. 마지막 줄은 할 일 표면으로 가는 문. 색은 진행 사각(신호 토큰)뿐,
+ * 고른 줄은 brass 워시.
  */
 export function ClusterPicker({ layout, anchor, current, rootActivity, onPick, onOpenItem, onClose }: {
   readonly layout: ClusterLayout;
@@ -16,7 +21,8 @@ export function ClusterPicker({ layout, anchor, current, rootActivity, onPick, o
   readonly current: string | null;
   readonly rootActivity: "idle" | "running" | "awaiting" | "background" | "ended" | null;
   readonly onPick: (operationId: string) => void;
-  readonly onOpenItem?: () => void;
+  /** 할 일 표면으로 — 자리표시 단계의 id 가 오면 그 단계를 집는다. */
+  readonly onOpenItem?: (operationId?: string) => void;
   readonly onClose: () => void;
 }) {
   const t = useT();
@@ -39,10 +45,19 @@ export function ClusterPicker({ layout, anchor, current, rootActivity, onPick, o
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("pointerdown", onDown, true); };
   }, [onClose]);
   useEffect(() => { cardRef.current?.querySelector<HTMLButtonElement>("button[aria-checked='true']")?.focus(); }, []);
-  const rows: { id: string; label: string; progress: string }[] = [
-    { id: layout.cluster.root, label: t("cluster.picker.coordinator"), progress: rootActivity ?? "unknown" },
-    ...layout.members.filter((laid) => !laid.member.pending).map((laid) => ({ id: laid.member.operationId, label: laid.member.label, progress: laid.member.progress })),
-  ];
+  const total = layout.cluster.members.length;
+  const done = layout.cluster.members.filter((member) => member.progress === "done").length;
+  const numberOf = new Map(layout.cluster.members.map((member, index) => [member.operationId, index + 1]));
+  const stateOf = (member: OperationClusterMember): string | null => {
+    if (member.progress === "running") return t("cluster.picker.state.running");
+    if (member.progress === "awaiting") return t("cluster.picker.state.awaiting");
+    if (member.progress === "open") return t("cluster.picker.state.open");
+    if (member.progress === "blocked") {
+      const waiting = member.after.map((id) => layout.cluster.members.find((candidate) => candidate.operationId === id)).find((prior) => prior && prior.progress !== "done");
+      return waiting ? t("cluster.picker.state.blocked", { n: numberOf.get(waiting.operationId) ?? 0 }) : null;
+    }
+    return null;
+  };
   const selected = current ?? layout.cluster.root;
   return createPortal(
     <div
@@ -53,20 +68,42 @@ export function ClusterPicker({ layout, anchor, current, rootActivity, onPick, o
       style={{ left: placed?.left ?? anchor.left, top: placed?.top ?? anchor.bottom + 6, visibility: placed ? "visible" : "hidden" } as CSSProperties}
       data-canvas-blocker
     >
-      <div className="cluster-picker-title">{layout.cluster.title}</div>
-      {rows.map((row) => (
-        <button
-          key={row.id}
-          type="button"
-          role="menuitemradio"
-          aria-checked={row.id === selected}
-          className={`cluster-picker-row${row.id === selected ? " is-current" : ""}`}
-          onClick={() => { onPick(row.id); onClose(); }}
-        >
-          <i className={`cluster-picker-dot is-${row.progress}`} aria-hidden="true" />
-          <span className="cluster-picker-label">{row.label}</span>
-        </button>
-      ))}
+      <button
+        type="button"
+        role="menuitemradio"
+        aria-checked={layout.cluster.root === selected}
+        className={`cluster-picker-row is-head${layout.cluster.root === selected ? " is-current" : ""}`}
+        onClick={() => { onPick(layout.cluster.root); onClose(); }}
+      >
+        <i className={`cluster-picker-dot is-${rootActivity ?? "unknown"}`} aria-hidden="true" />
+        <span className="cluster-picker-label">{t("cluster.picker.coordinator")}</span>
+        {rootActivity ? <span className={`cluster-picker-state is-${rootActivity}`}>{t(`cluster.picker.activity.${rootActivity}`)}</span> : null}
+        <span className="cluster-picker-count" aria-label={t("cluster.picker.count.aria", { done, total })}>{done}/{total}</span>
+      </button>
+      <div className="cluster-picker-list">
+        {layout.cluster.members.map((member) => {
+          const pending = member.pending === true;
+          const state = stateOf(member);
+          const pick = pending ? (onOpenItem ? () => { onOpenItem(member.operationId); onClose(); } : undefined) : () => { onPick(member.operationId); onClose(); };
+          return (
+            <div key={member.operationId} className="cluster-picker-step">
+              <button
+                type="button"
+                role={pending ? "menuitem" : "menuitemradio"}
+                aria-checked={pending ? undefined : member.operationId === selected}
+                className={`cluster-picker-row${member.operationId === selected ? " is-current" : ""}${pending ? " is-pending" : ""}${member.progress === "done" ? " is-done" : ""}`}
+                disabled={!pick}
+                onClick={pick}
+              >
+                <i className={`cluster-picker-dot is-${member.progress}`} aria-hidden="true" />
+                <span className="cluster-picker-label">{member.label}</span>
+                {state ? <span className={`cluster-picker-state is-${member.progress}`}>{state}</span> : null}
+              </button>
+              {member.progress === "done" && member.result ? <div className="cluster-picker-result" title={member.result}>{member.result}</div> : null}
+            </div>
+          );
+        })}
+      </div>
       {onOpenItem ? (
         <button type="button" role="menuitem" className="cluster-picker-row is-link" onClick={() => { onOpenItem(); onClose(); }}>
           <span className="cluster-picker-label">{t("cluster.picker.open")}</span>
