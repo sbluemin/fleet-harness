@@ -253,7 +253,9 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       for (const op of deps.operations()) {
         alive.add(op.id);
         const obs = observe(op.id);
-        const fingerprint = hash([op.title, op.theaterId, obs?.activity, obs?.lifecycle, obs?.output.revision, obs?.output.outcome]);
+        // 사이드바 순서·그룹 소속도 목록의 일부다 — 바뀌면 console_operations 의 waitMs 를 깨운다.
+        const placement = op as OperationNode & { readonly groupId?: string | null; readonly order?: number };
+        const fingerprint = hash([op.title, op.theaterId, placement.groupId ?? null, placement.order ?? null, obs?.activity, obs?.lifecycle, obs?.output.revision, obs?.output.outcome]);
         if (observed.get(op.id) !== fingerprint) publish({ kind: "operation", operationId: op.id, activity: obs?.activity ?? "unknown" });
         if (previousActivity.has(op.id) && previousActivity.get(op.id) !== obs?.activity && obs) changes.set(op.id, obs.activity);
         observed.set(op.id, fingerprint);

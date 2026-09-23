@@ -218,10 +218,24 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     const current = snapshot();
     const activities = new Map(current?.operations.map((op) => [op.id, op.activity]) ?? []);
     const names = new Map(theaters().map((theater) => [theater.id, theater.name]));
+    // 사이드바가 그리는 순서와 같게 센다 — 그룹 순서대로 멤버(Operation 순서), 그 뒤 미그룹. 없는 그룹을 가리키면 미그룹이다.
+    const groupRank = new Map((readActions().groups?.() ?? []).map((group, index) => [group.id, { theaterId: group.theaterId, index }]));
+    const all = operations();
+    const listIndex = new Map(all.map((op, index) => [op.id, index]));
+    const section = (op: OperationNode) => {
+      const groupId = (op as OperationNode & { readonly groupId?: string | null }).groupId;
+      const rank = groupId ? groupRank.get(groupId) : undefined;
+      return rank && rank.theaterId === op.theaterId ? rank.index : Number.MAX_SAFE_INTEGER;
+    };
+    const sidebarOrders = new Map<string, number>();
     const theaterPositions = new Map<string, number>();
-    const values = operations().map((op) => {
-      const sidebarOrder = theaterPositions.get(op.theaterId) ?? 0;
-      theaterPositions.set(op.theaterId, sidebarOrder + 1);
+    for (const op of [...all].sort((a, b) => section(a) - section(b) || listIndex.get(a.id)! - listIndex.get(b.id)!)) {
+      const position = theaterPositions.get(op.theaterId) ?? 0;
+      theaterPositions.set(op.theaterId, position + 1);
+      sidebarOrders.set(op.id, position);
+    }
+    const values = all.map((op) => {
+      const sidebarOrder = sidebarOrders.get(op.id) ?? 0;
       const observation = control?.observe(op.id);
       const snapshotActivity = activities.get(op.id);
       const stale = !observation && !!current?.takenAt && (!Number.isFinite(Date.parse(current.takenAt)) || Date.now() - Date.parse(current.takenAt) > 60_000);
@@ -294,7 +308,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here", gestures: "Every call is shown on the person's Console: the target you read or change (Operation row and panel, Theater, group, Repository/File panel) is wrapped in a Console use pulse with your name; nothing is written on your own caption." },
       };
     }),
-    define("console_operations", "Scan the sidebar: Operations with activity, group, accent, lineage, last activity and order (zero-based Theater-wide Operation order); groups include sidebar-ordered members. Operation rows remain ID-sorted for pagination. Host observation is preferred; unknown is not idle. With waitMs, waits (up to 25 s) for the list or an activity to change before answering. Cursor expires when the matching list or its order changes.", z.object({ theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional(), waitMs: z.number().int().min(0).max(25_000).optional() }).strict(), async (args, ctx) => {
+    define("console_operations", "Scan the sidebar: Operations with activity, group, accent, lineage, last activity and order (zero-based position in the Theater's sidebar: groups in their order, then ungrouped); groups include sidebar-ordered members. Operation rows remain ID-sorted for pagination. Host observation is preferred; unknown is not idle. With waitMs, waits (up to 25 s) for the list or an activity to change before answering. Cursor expires when the matching list or its order changes.", z.object({ theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional(), waitMs: z.number().int().min(0).max(25_000).optional() }).strict(), async (args, ctx) => {
       if (args.waitMs && control) {
         gesture(ctx, "console_operations", "변화를 기다리는 중", "wait", args.theaterId ? { kind: "theater", theaterId: args.theaterId } : undefined);
         const head = await control.readEvents(undefined, 0);
