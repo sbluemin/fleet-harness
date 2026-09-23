@@ -430,8 +430,12 @@ const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="n
 /** 레시피 확대본 — body 포털의 고정 오버레이. Esc·바깥 누름·닫기 글리프로 닫히고, 열릴 때 카드가 포커스를 받는다. */
 function RecipeZoom({ t, title, onClose, children }: { readonly t: Translate<TodoMessageKey>; readonly title: string; readonly onClose: () => void; readonly children: ReactNode }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  // 최초 한 번만 카드로 초점을 옮긴다 — 부모가 다시 그려도(항목 사건 갱신) 사용자가 옮겨 둔 초점을 되돌리지 않는다.
+  useEffect(() => { cardRef.current?.focus(); }, []);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
-    cardRef.current?.focus();
+    const onClose = () => onCloseRef.current();
     // 캡처 단계에서 삼킨다 — 같은 Esc 가 창의 처리기까지 올라가 상세를 함께 닫지 않도록.
     // Tab 은 카드 안에서만 돈다(aria-modal): 뒤의 패널로 초점이 새면 열린 채로 숨은 조작이 가능해진다.
     const onKey = (event: KeyboardEvent) => {
@@ -451,7 +455,7 @@ function RecipeZoom({ t, title, onClose, children }: { readonly t: Translate<Tod
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  }, []);
   return (
     <div className="todo-zoom-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div ref={cardRef} className="todo-zoom" role="dialog" aria-modal="true" aria-label={`${t("todo.graph.title")} · ${title}`} tabIndex={-1}>
