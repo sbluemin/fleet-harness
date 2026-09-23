@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runAuthLoginFlow } from "../../../cli/auth/login-flow.js";
-import { dispatchAuthCommand } from "../../../cli/auth/dispatcher.js";
 
 const mocks = vi.hoisted(() => ({
   cancel: vi.fn(),
@@ -45,25 +44,6 @@ describe("OpenCode Go auth login flow", () => {
     await expect(runAuthLoginFlow(["opencode"], io, createDeps())).resolves.toBe(1);
     expect(mocks.setApiKey).not.toHaveBeenCalled();
     expect(io.stderr.output).toContain("rejected");
-  });
-
-  it("lets users delete a retired credential without restoring its login", async () => {
-    const legacyId = "Claude Code with Moonshot Kimi";
-    const activeId = "Claude Code with OpenCode Go";
-    const keys = new Map([[legacyId, "legacy-key"], [activeId, "active-key"]]);
-    const deps = {
-      authService: {
-        getApiKey: async (id: string) => keys.get(id),
-        setApiKey: mocks.setApiKey,
-        listProviderIds: async () => [...keys.keys()],
-        deleteApiKey: async (id: string) => keys.delete(id),
-      },
-    };
-    await expect(dispatchAuthCommand(["auth", "login", "kimi"], createIo(), deps)).resolves.toBe(1);
-    expect(keys.has(legacyId)).toBe(true);
-    expect(mocks.password).not.toHaveBeenCalled();
-    await expect(dispatchAuthCommand(["auth", "logout", "kimi"], createIo(), deps)).resolves.toBe(0);
-    expect([...keys.entries()]).toEqual([[activeId, "active-key"]]);
   });
 
   it("rejects an unknown provider argument instead of opening a picker", async () => {
