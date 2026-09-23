@@ -470,6 +470,8 @@ export function setActiveOperation(
   options?: { readonly acknowledged?: boolean },
 ): void {
   const operationId = requestedOperationId === null ? null : redirectOperationFocus(requestedOperationId);
+  // 돌려진 포커스라도 사용자가 가리킨 것은 요청한 Operation 이다 — 그 도착 표식을 먼저 확인 처리한다.
+  if (requestedOperationId !== null && requestedOperationId !== operationId && options?.acknowledged !== false) acknowledgeIdleArrival(requestedOperationId);
   const acknowledged = operationId === null
     ? true
     : options?.acknowledged === false
@@ -576,13 +578,17 @@ export function focusOperation(requestedOperationId: string): void {
   noteOperationFocused(operationId);
   const suppressSwitch = focusTheaterSwitchSuppressed() && operation.theaterId !== state.activeTheaterId;
   if (!suppressSwitch) writeStoredActiveTheaterId(operation.theaterId);
+  // 돌려진 포커스(숨은 단계 → 셰프)라도 사용자가 따라온 알림·도착 표식은 요청한 Operation 의 것이다 — 둘 다 치운다.
+  const redirected = requestedOperationId !== operationId;
+  if (redirected) acknowledgeIdleArrival(requestedOperationId);
   const activeOperationAcknowledged = acknowledgeIdleArrival(operationId);
+  const withoutRequested = redirected ? removeNotificationForOperation(state.operationNotifications, requestedOperationId) : state.operationNotifications;
   setState({
     ...(suppressSwitch ? {} : { activeTheaterId: operation.theaterId }),
     activeOperationId: operationId,
     activeOperationAcknowledged,
     pendingOperationFocus: operationId,
-    operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
+    operationNotifications: removeNotificationForOperation(withoutRequested, operationId),
   });
 }
 
