@@ -1,13 +1,13 @@
 import { useMemo, useSyncExternalStore } from "react";
 
-import type { OperationCluster, OperationClusterMember, OperationClusterProgress, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { OperationCluster, OperationClusterMember, OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
 
 /**
  * 묶음 — 플러그인이 선언한 실행 구조를 네 모드가 같은 셈법으로 읽는 자리.
  *
- * 깊이(가장 긴 선행 경로)가 곧 사이드바의 들여쓰기이자 Cruise·Tactical 의 열이고, 같은 깊이의 구성원이 행(병렬)이다.
+ * 깊이(가장 긴 선행 경로)가 곧 Cruise 대형의 열이고, 같은 깊이의 구성원이 행(병렬)이다. 사이드바는 셰프 행 하나만 세운다.
  * 여기서 계산하는 것은 순서·깊이·행뿐이다. 색과 모션은 각 표면의 CSS 가, 진실은 플러그인이 진다.
  */
 
@@ -20,7 +20,7 @@ export interface ClusterLaidMember {
   readonly order: number;
 }
 
-/** Operation 이 선 구성원만의 배치 — 대형(캔버스 열·행)과 사이드바 들여쓰기가 읽는다. 자리표시(pending) 단계는 열도 행도 차지하지 않는다. */
+/** Operation 이 선 구성원만의 배치 — 대형(캔버스 열·행)이 읽는다. 자리표시(pending) 단계는 열도 행도 차지하지 않는다. */
 export interface ClusterFormation {
   readonly members: readonly ClusterLaidMember[];
   readonly byOperationId: ReadonlyMap<string, ClusterLaidMember>;
@@ -116,25 +116,10 @@ export function indexClusters(clusters: readonly OperationCluster[]): ClusterInd
     layouts.set(cluster.id, layout);
     // 한 Operation 은 한 묶음에만 선다 — 먼저 선언된 묶음이 이긴다.
     if (!rootOf.has(cluster.root) && !memberOf.has(cluster.root)) rootOf.set(cluster.root, layout);
-    // 구성원 색인은 대형 기준 — 자리표시는 행이 없으니 색인에도 없고, 들여쓰기 깊이도 Operation 이 선 선행만 센다.
+    // 구성원 색인은 대형 기준 — 자리표시는 행이 없으니 색인에도 없고, 깊이도 Operation 이 선 선행만 센다.
     for (const laid of layout.formation.members) if (!memberOf.has(laid.member.operationId) && !rootOf.has(laid.member.operationId)) memberOf.set(laid.member.operationId, { layout, laid });
   }
   return { clusters, layouts, rootOf, memberOf };
-}
-
-// 접힘은 시각 상태다 — 세션 안에서만 산다. 묶음은 기본이 접힘이라 뿌리 행과 띠만 보이고, 사람이 편 것만 기억한다.
-export interface ClusterFold { readonly expanded: readonly string[] }
-export const isClusterCollapsed = (fold: ClusterFold, clusterId: string): boolean => !fold.expanded.includes(clusterId);
-let clusterFold: ClusterFold = { expanded: [] };
-const collapseListeners = new Set<() => void>();
-export function toggleClusterCollapsed(clusterId: string): void {
-  clusterFold = { expanded: clusterFold.expanded.includes(clusterId) ? clusterFold.expanded.filter((id) => id !== clusterId) : [...clusterFold.expanded, clusterId] };
-  for (const listener of collapseListeners) listener();
-}
-const subscribeCollapse = (listener: () => void) => { collapseListeners.add(listener); return () => { collapseListeners.delete(listener); }; };
-const readFold = () => clusterFold;
-export function useClusterFold(): ClusterFold {
-  return useSyncExternalStore(subscribeCollapse, readFold, readFold);
 }
 
 export function useOperationClusters(): readonly OperationCluster[] {
@@ -142,9 +127,9 @@ export function useOperationClusters(): readonly OperationCluster[] {
   return useSyncExternalStore(operationClusters.subscribe, operationClusters.get, operationClusters.get);
 }
 
-export function useClusterIndex(theaterId?: string | null): ClusterIndex {
+export function useClusterIndex(): ClusterIndex {
   const clusters = useOperationClusters();
-  return useMemo(() => indexClusters(theaterId === undefined ? clusters : clusters.filter((cluster) => cluster.theaterId === theaterId)), [clusters, theaterId]);
+  return useMemo(() => indexClusters(clusters), [clusters]);
 }
 
 /**
@@ -171,35 +156,6 @@ export function nestClusterMembers<T>(items: readonly T[], idOf: (item: T) => st
     for (const laid of layout.members) { const member = byId.get(laid.member.operationId); if (member) out.push(member); }
   }
   return out;
-}
-
-// ── 조율자의 파생 상태 ─────────────────────────────────────────────────────────────────────────────
-// 묶음은 화면에서 조율자 하나로 대표된다. 그래서 조율자의 표시 활동은 자기 것이 아니라 묶음에서 가장 급한 것이다 —
-// 단계 하나가 사람의 결정을 기다리면 조율자가 「결정 대기」로 서고 War Room 무대에도 조율자가 오른다.
-// 사이드바의 단계 행만 각자의 활동을 그대로 보인다.
-const ACTIVITY_URGENCY: Record<string, number> = { awaiting: 0, running: 1, background: 2, idle: 3 };
-
-export function clusterRuntimeOverlay(runtime: Readonly<Record<string, OperationRuntimeState>>, index: ClusterIndex): Readonly<Record<string, OperationRuntimeState>> {
-  if (index.rootOf.size === 0) return runtime;
-  let next: Record<string, OperationRuntimeState> | null = null;
-  for (const layout of index.rootOf.values()) {
-    const rootId = layout.cluster.root;
-    const candidates = [rootId, ...layout.members.map((laid) => laid.member.operationId)]
-      .map((id) => runtime[id])
-      .filter((state): state is Extract<OperationRuntimeState, { lifecycle: "live" }> => !!state && state.lifecycle === "live");
-    if (candidates.length === 0) continue;
-    const best = candidates.reduce((top, state) => ((ACTIVITY_URGENCY[state.activity] ?? 9) < (ACTIVITY_URGENCY[top.activity] ?? 9) ? state : top));
-    const current = runtime[rootId];
-    if (current && current.lifecycle === "live" && current.activity === best.activity) continue;
-    if (!current || current.lifecycle !== "live") continue; // 조율자가 휴면이면 그대로 — 살아 있지 않은 것을 살아 있다고 말하지 않는다.
-    next ??= { ...runtime };
-    next[rootId] = { ...current, activity: best.activity };
-  }
-  return next ?? runtime;
-}
-
-export function useClusterRuntime(runtime: Readonly<Record<string, OperationRuntimeState>>, index: ClusterIndex): Readonly<Record<string, OperationRuntimeState>> {
-  return useMemo(() => clusterRuntimeOverlay(runtime, index), [runtime, index]);
 }
 
 // ── 구성원 숨김 ────────────────────────────────────────────────────────────────────────────────────

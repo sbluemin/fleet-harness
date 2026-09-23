@@ -6709,78 +6709,8 @@ body[data-companion-resizing="true"] .canvas-operation {
    본문 잉크(--text-secondary)로 선다: 허용은 위치(brass)도 활동(signal)도 아닌 사실이다.
    검토 중인 관찰만 aurora 점을 단다(진행 채널). */
 /* ── 묶음(cluster) — 한 실행 구조에 묶인 Operation 들 ─────────────────────────────────────────────
-   뿌리(조율자) 행은 접기 화살과 단계 띠를, 구성원(단계) 행은 깊이만큼 들여쓰기와 hairline 가지를 얹는다.
-   가지는 구조를 말하는 선이지 선택을 말하는 띠가 아니다 — brass·워시를 쓰지 않는다. 색 채널은 그대로:
-   띠의 사각은 진행(신호 토큰), 비콘은 세션 활동, 초점만 brass. */
-/* 묶음 행은 화살·비콘·이름 사이를 조금 더 붙인다 — 들여쓰기가 이미 구조를 말하므로 간격까지 넓을 필요가 없다. */
-.side-bar-chip--cluster-root,
-.side-bar-chip--cluster-member { gap: 6px; }
-.side-bar-chip-cluster-toggle {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  margin-left: -2px;
-  margin-right: -4px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-.side-bar-chip-cluster-toggle svg { display: block; transition: transform var(--duration-fast) var(--ease-spring); }
-.side-bar-chip-cluster-toggle.is-collapsed svg { transform: rotate(-90deg); }
-.side-bar-chip-cluster-toggle:hover,
-.side-bar-chip-cluster-toggle:focus-visible { color: var(--text-primary); background: color-mix(in oklch, var(--ink-spectral) 10%, transparent); outline: none; }
-
-.side-bar-chip--cluster-member {
-  /* 줄기 x=14 는 뿌리 행 비콘의 중심, 깊이 d 의 가지는 깊이 d-1 행 비콘의 중심(14 + d·14)에서 내려온다. */
-  --cluster-indent: calc(18px + var(--cluster-depth, 0) * 14px);
-  padding-left: calc(var(--space-2) + var(--cluster-indent) + 10px);
-}
-.side-bar-chip--cluster-member.is-blocked .side-bar-chip-name { color: var(--text-tertiary); }
-.side-bar-chip-cluster-gutter {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: calc(var(--space-2) + 4px);
-  width: calc(var(--cluster-indent) + 12px);
-  pointer-events: none;
-}
-/* 줄기 — 깊이와 무관하게 하나(0열)뿐이다. 마지막 행이 아니면 행을 관통하고(행 사이 2px 틈까지 3px 연장해 잇는다),
-   마지막 행에서는 절반까지 내려와 팔꿈치에서 멎는다. 깊이는 팔꿈치의 길이로만 드러난다. */
-.side-bar-chip-cluster-gutter::before {
-  content: "";
-  position: absolute;
-  left: 14px;
-  top: -3px;
-  bottom: -3px;
-  border-left: 1px solid var(--hairline-strong);
-}
-.side-bar-chip--cluster-member.is-last .side-bar-chip-cluster-gutter::before { bottom: 50%; }
-/* 팔꿈치: 줄기에서 행 가운데로 꺾여 깊이만큼 길게 뻗어 비콘 앞에 닿는다. */
-.side-bar-chip-cluster-gutter::after {
-  content: "";
-  position: absolute;
-  left: 14px;
-  top: -3px;
-  height: calc(50% + 3px);
-  width: calc(8px + var(--cluster-depth, 0) * 14px);
-  border-left: 1px solid var(--hairline-strong);
-  border-bottom: 1px solid var(--hairline-strong);
-  border-bottom-left-radius: 3px;
-}
-.side-bar-chip-cluster-after {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
-  letter-spacing: 0.02em;
-}
-
+   사이드바에서는 뿌리(셰프) 행 하나가 묶음을 대표하고, 이름 뒤에 단계 띠를 얹는다. 단계 행은 서지 않는다.
+   색 채널은 그대로: 띠의 사각은 진행(신호 토큰), 비콘은 세션 활동, 초점만 brass. */
 /* 단계 띠 — 뿌리 고리 + 깊이 눈금 + 구성원 사각. 어느 표면에서나 같은 크기. */
 .cluster-strip {
   display: inline-flex;
