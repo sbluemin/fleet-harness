@@ -34,7 +34,7 @@ const EDIT_WORDS: Record<PromptLanguage, Record<TodoEditKind, string>> = {
 const editedWords = (item: TodoItem, language: PromptLanguage): string => (item.edited?.kinds ?? []).map((kind) => EDIT_WORDS[language][kind]).join(language === "ko" ? "·" : ", ");
 
 /**
- * 스티어링 — 셰프가 일하는 동안 사람이 보드를 고쳤다. 한 줄: 할 일 id 가 바뀌었다는 것과 무엇이 바뀌었는지(종류만).
+ * 스티어링 — 셰프가 일하는 동안이나 검토 대기 중에 사람이 보드를 고쳤다. 한 줄: 할 일 id 가 바뀌었다는 것과 무엇이 바뀌었는지(종류만).
  * 바뀐 내용 자체(미분류 단계 등)는 보드가 말한다.
  */
 export function steerTurn(item: TodoItem, language: PromptLanguage): string {

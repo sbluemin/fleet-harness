@@ -651,6 +651,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const notStarted = (step: TodoStep) => !step.done && !step.slot;
   const canEditStep = (stepId: string) => { if (editable) return true; const target = item.steps.find((candidate) => candidate.id === stepId); return touchable && !!target && notStarted(target); };
   const [steering, setSteering] = useState(false);
+  // 셰프에게 알릴 편집이 쌓였다 — 셰프가 일하는 중이거나, 일을 마치고 검토를 맡긴 뒤다(셰프는 그 편집을 아직 읽지 않았다).
+  const steerPending = !item.done && !!item.edited && !!item.slot && (busy || !!item.review);
   const attachments = useAttachmentUpload(item, t);
   const [dropping, setDropping] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
@@ -890,8 +892,17 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
       </div>
       <div className="todo-detail-bottom">
       {/* 마지막 행동 한 자리 — 검토 대기면 「완료」, 누군가 사람의 결정을 기다리면 「결정 대기」(누르면 그 Operation으로),
-          아니면 「시작」, 일하는 동안에는 「중단」 — 그동안 사람이 보드를 고쳤으면 「중단」 자리가 「스티어링」이 된다. 같은 띠, 낱말만 다르다. */}
-      {item.review && !item.done ? (
+          아니면 「시작」, 일하는 동안에는 「중단」 — 일하는 동안이나 검토 대기 중에 사람이 보드를 고쳤으면 그 자리가 「스티어링」이 된다.
+          같은 띠, 낱말만 다르다. 검토 대기의 「완료」는 목록 카드 고리에 남는다. */}
+      {steerPending ? (
+        <div className="todo-group todo-start-group">
+          <button type="button" className="todo-start is-steer" title={t("todo.steer.hint")} disabled={steering} onClick={() => void steer()}>
+            <span className="todo-start-word">{t("todo.steer")}</span>
+            <span className="todo-start-sub" />
+            <span className="todo-start-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      ) : item.review && !item.done ? (
         <div className="todo-group todo-start-group">
           <button type="button" className="todo-start is-review" title={item.review.summary} onClick={onComplete}>
             <span className="todo-start-word">{t("todo.review.complete")}</span>
@@ -912,14 +923,6 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           <button type="button" className="todo-start" disabled={!launchAvailable} title={launchAvailable ? undefined : t("todo.coordinator.unavailable")} onClick={() => void start()}>
             <span className="todo-start-word">{t("todo.coordinator.start")}</span>
             <span className="todo-start-sub">{item.slot ? `${stateLabel(operationState(item.slot.operationId))} · ${t("todo.start.resume")}` : (() => { const open = item.steps.filter((step) => !step.done && !step.slot); const workers = open.filter((step) => step.assign && step.assign.mode !== "self").length; return open.length <= 1 || workers === 0 ? t("todo.start.direct") : t("todo.start.workers", { count: workers }); })()}</span>
-            <span className="todo-start-arrow" aria-hidden="true">→</span>
-          </button>
-        </div>
-      ) : busy && item.edited ? (
-        <div className="todo-group todo-start-group">
-          <button type="button" className="todo-start is-steer" title={t("todo.steer.hint")} disabled={steering} onClick={() => void steer()}>
-            <span className="todo-start-word">{t("todo.steer")}</span>
-            <span className="todo-start-sub" />
             <span className="todo-start-arrow" aria-hidden="true">→</span>
           </button>
         </div>
