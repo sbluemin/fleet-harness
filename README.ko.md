@@ -52,7 +52,7 @@ Operation의 주인은 브라우저가 아니라 로컬 Fleet Console 서버입�
 |---|---|---|
 | **Codex** | ChatGPT 구독 | GPT-6 Astra · Sol · Luna · GPT-5.6 Terra, 각각 524K·1M 컨텍스트 변형과 Fast 변형 |
 | **Cursor** | Cursor 구독 | Auto · Composer 2.5 · Grok 4.5 · Grok 4.6, Fast 변형 포함 · Opus 5 · Fable 5, 각각 Max Mode 1M 변형 |
-| **OpenCode Go** | API 키 | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash / Pro · GLM-5.2 · Kimi K3 · MiMo V2.5 / Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
+| **OpenCode Go** | API 키 | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash / Pro · GLM-5.2 · MiMo V2.5 / Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
 
 **설정 → AI Gateway**에서 원하는 로스터만 켜세요 — 켠 모델만 런치 메뉴와 Claude Code의 `/model` 피커에 나타납니다. 추론 강도를 지원하는 모델은 저마다의 사다리를 가지며 — 어디까지 오르는지는 모델마다 다르고 **MAX**까지 닿는 모델만 그 단을 엽니다 — 모든 AI Gateway 모델은 두 런치 강도 컨트롤에서 **ULTRACODE**를 제공합니다. xhigh 강도와 상시 멀티 에이전트 오케스트레이션을 한 번에 켜는 선택지입니다. 사용 한도 미터는 게이트웨이와 같은 리스크 판정을 읽으므로, 회복보다 빨리 소진되는 윈도우는 런이 멈추기 전에 위험으로 표시됩니다.
 

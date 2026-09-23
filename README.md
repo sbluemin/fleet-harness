@@ -52,7 +52,7 @@ Right-click the canvas and launch Claude Code on any model you have enabled — 
 |---|---|---|
 | **Codex** | ChatGPT subscription | GPT-6 Astra · Sol · Luna · GPT-5.6 Terra, each with 524K and 1M context variants and a Fast variant |
 | **Cursor** | Cursor subscription | Auto · Composer 2.5 · Grok 4.5 · Grok 4.6, with Fast variants · Opus 5 · Fable 5, each with a Max Mode 1M variant |
-| **OpenCode Go** | API key | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash / Pro · GLM-5.2 · Kimi K3 · MiMo V2.5 / Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
+| **OpenCode Go** | API key | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash / Pro · GLM-5.2 · MiMo V2.5 / Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
 
 Enable exactly the roster you want under **Settings → AI Gateway** — only those models appear in the launch menu and in Claude Code's `/model` picker. Models that support reasoning effort carry their own ladder — how far it climbs varies by model, and only some reach **MAX**. Every AI Gateway model also offers **ULTRACODE** in both launch intensity controls, which launches Claude Code with xhigh effort and standing multi-agent orchestration in one move. Usage-limit meters read the same risk verdict the gateway uses, so a window being spent faster than it refills shows as at-risk before a run stops.
 

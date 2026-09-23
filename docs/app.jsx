@@ -142,7 +142,7 @@ const UI = {
   ctaGithub: { ko: "GitHub에서 보기", en: "View on GitHub" },
   ctaGateway: { ko: "게이트웨이 모델 보기", en: "See the gateway models" },
   footerLine: { ko: "fleet-harness · Fleet Console", en: "fleet-harness · Fleet Console" },
-  footerMeta: { ko: "1 콘솔 · 4 프로바이더 · 3 캔버스 모드 · 어떤 화면에서든", en: "one console · four providers · three canvas modes · any screen" },
+  footerMeta: { ko: "1 콘솔 · 여러 프로바이더 · 3 캔버스 모드 · 어떤 화면에서든", en: "one console · multiple providers · three canvas modes · any screen" },
 };
 
 // ───── Data ─────
@@ -182,20 +182,6 @@ const PROVIDERS = [
     ],
   },
   {
-    id: "Moonshot",
-    role: { ko: "Moonshot AI · Kimi API 키", en: "Moonshot AI · Kimi API key" },
-    cred: "API key",
-    color: "#ff6b6b",
-    mission: {
-      ko: "긴 컨텍스트가 필요한 작업을 위한 경로. K3는 백만 토큰 창을 들고 오므로, 큰 하위 시스템을 한 세션 안에서 통째로 읽힐 수 있다.",
-      en: "The path for work that needs a long context. K3 brings a million-token window, so a large subsystem can be read whole inside one session.",
-    },
-    models: [
-      { ko: "Kimi K3 — 1M 컨텍스트", en: "Kimi K3 — 1M context" },
-      { ko: "Kimi K3 256K", en: "Kimi K3 256K" },
-    ],
-  },
-  {
     id: "OpenCode",
     role: { ko: "OpenCode Go API 키", en: "OpenCode Go API key" },
     cred: "API key",
@@ -207,7 +193,7 @@ const PROVIDERS = [
     models: [
       { ko: "MiniMax M3 · Qwen3.8 Max", en: "MiniMax M3 and Qwen3.8 Max" },
       { ko: "DeepSeek V4 Flash · Pro", en: "DeepSeek V4 Flash and Pro" },
-      { ko: "GLM-5.2 · Kimi K3 · HY3", en: "GLM-5.2, Kimi K3, and HY3" },
+      { ko: "GLM-5.2 · HY3", en: "GLM-5.2 and HY3" },
       { ko: "MiMo V2.5 · Pro", en: "MiMo V2.5 and Pro" },
       { ko: "Grok 4.5 · GPT-5.6 Luna", en: "Grok 4.5 and GPT-5.6 Luna" },
     ],
@@ -374,7 +360,7 @@ const COMPARES = [
     us: true,
     bullets: [
       { ko: "서버가 소유하는 병렬 Operation", en: "Parallel, server-owned Operations" },
-      { ko: "내 계정으로 닿는 4개 공급자", en: "Four providers on accounts you own" },
+      { ko: "내 계정으로 닿는 여러 공급자", en: "Multiple providers on accounts you own" },
       { ko: "브라우저·데스크톱·Android", en: "Browser, desktop, and Android" },
     ],
     verdict: { ko: "여러 에이전트를 동시에 감독하는 자리로 설계되었다.", en: "Built to be the place you supervise several agents at once." },
