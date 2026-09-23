@@ -619,6 +619,17 @@ export function OperationsCanvas({
     } else if (!slots.delete(operationId)) return;
     setTriageDeckSlots(new Map(slots));
   }, []);
+  // Snap Assist의 칸도 같은 자리 계약이다 — 후보 Operation의 실제 패널이 그 칸으로 portal된다.
+  const snapAssistSlotsRef = useRef(new Map<string, HTMLElement>());
+  const [snapAssistSlots, setSnapAssistSlots] = useState<ReadonlyMap<string, HTMLElement>>(() => new Map());
+  const registerSnapAssistSlot = useCallback((operationId: string, element: HTMLElement | null) => {
+    const slots = snapAssistSlotsRef.current;
+    if (element) {
+      if (slots.get(operationId) === element) return;
+      slots.set(operationId, element);
+    } else if (!slots.delete(operationId)) return;
+    setSnapAssistSlots(new Map(slots));
+  }, []);
   const setAsideArmedId = getTriageSetAsideArmedId();
   // 덱 줌 wheel은 React 합성 onWheel 밖에서 부착한다 — React는 root wheel을 passive로
   // 묶어 preventDefault(브라우저 페이지 줌 차단)가 무용해진다. wheel 문법: bare wheel은
@@ -973,18 +984,33 @@ export function OperationsCanvas({
     setSnapGhost(null);
   };
   // 바의 어느 칸 위인가 — 포인터는 캡션이 잡고 있으므로 elementFromPoint 대신 칸 사각형으로 잰다.
+  // 사각형은 전환이 끝난 자리(offset 기하)로 잰다: 바는 열리며 14px 내려오고 0.96에서 자라는데,
+  // 열리는 도중 getBoundingClientRect로 재면 빠른 드래그가 칸 가장자리에서 빗나간다.
   // 프리셋 안 칸 사이 틈은 가장 가까운 칸으로 친다.
+  const settledRectOf = (element: HTMLElement, bar: HTMLDivElement, canvasRect: DOMRect): SnapRect => {
+    let left = 0;
+    let top = 0;
+    for (let node: HTMLElement | null = element; node && node !== bar; node = node.offsetParent as HTMLElement | null) {
+      left += node.offsetLeft;
+      top += node.offsetTop;
+    }
+    // 바 자체는 left:anchorX·translate(-50%)라 정착 자리는 anchorX - width/2.
+    const barLeft = canvasRect.left + bar.offsetLeft - bar.offsetWidth / 2;
+    const barTop = canvasRect.top + bar.offsetTop;
+    return { x: barLeft + left, y: barTop + top, width: element.offsetWidth, height: element.offsetHeight };
+  };
   const hitTestSnapBar = (pointer: OperationDragPointer): SnapZoneRef | null => {
     const bar = snapBarRef.current;
-    if (!bar) return null;
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!bar || !canvasRect) return null;
     let best: { ref: SnapZoneRef; distance: number } | null = null;
     for (const preset of bar.querySelectorAll<HTMLElement>("[data-snap-preset]:not([data-snap-zone])")) {
-      const presetRect = preset.getBoundingClientRect();
-      if (pointer.clientX < presetRect.left || pointer.clientX > presetRect.right || pointer.clientY < presetRect.top || pointer.clientY > presetRect.bottom) continue;
+      const presetRect = settledRectOf(preset, bar, canvasRect);
+      if (pointer.clientX < presetRect.x || pointer.clientX > presetRect.x + presetRect.width || pointer.clientY < presetRect.y || pointer.clientY > presetRect.y + presetRect.height) continue;
       for (const zone of preset.querySelectorAll<HTMLElement>("[data-snap-zone]")) {
-        const zoneRect = zone.getBoundingClientRect();
-        const centerX = (zoneRect.left + zoneRect.right) / 2;
-        const centerY = (zoneRect.top + zoneRect.bottom) / 2;
+        const zoneRect = settledRectOf(zone, bar, canvasRect);
+        const centerX = zoneRect.x + zoneRect.width / 2;
+        const centerY = zoneRect.y + zoneRect.height / 2;
         const distance = (centerX - pointer.clientX) ** 2 + (centerY - pointer.clientY) ** 2;
         if (best === null || distance < best.distance) best = { ref: { presetIndex: Number(zone.dataset.snapPreset), zoneIndex: Number(zone.dataset.snapZone) }, distance };
       }
@@ -992,10 +1018,12 @@ export function OperationsCanvas({
     return best?.ref ?? null;
   };
   const pointerOverSnapBar = (pointer: OperationDragPointer): boolean => {
-    const rect = snapBarRef.current?.getBoundingClientRect();
-    if (!rect) return false;
+    const bar = snapBarRef.current;
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!bar || !canvasRect) return false;
+    const rect = settledRectOf(bar, bar, canvasRect);
     const margin = 8;
-    return pointer.clientX >= rect.left - margin && pointer.clientX <= rect.right + margin && pointer.clientY >= rect.top - margin && pointer.clientY <= rect.bottom + margin;
+    return pointer.clientX >= rect.x - margin && pointer.clientX <= rect.x + rect.width + margin && pointer.clientY >= rect.y - margin && pointer.clientY <= rect.y + rect.height + margin;
   };
   const handleSnapDragPointer = (operationId: string, pointer: OperationDragPointer) => {
     if (!snapEnabled) {
@@ -1074,7 +1102,7 @@ export function OperationsCanvas({
         .filter((operation) => !(operation.id in snapHold.assignments))
         .map((operation) => ({ id: operation.id, title: operation.title, minimized: minimizedSet.has(operation.id), z: canvas.operations[operation.id]?.zIndex ?? 0 }))
         .sort((a, b) => Number(a.minimized) - Number(b.minimized) || b.z - a.z)
-        .map(({ id, title, minimized: isMinimized }) => ({ id, title, minimized: isMinimized }))
+        .map(({ id, title }) => ({ id, title }))
     : [];
   const snapAssistZones = snapAssist && snapHoldActive
     ? snapHoldBodies.flatMap((body, index) => (snapHoldTakenExcept(null).has(index) ? [] : [{ index, rect: arenaRectToBox(frameOf(body)) }]))
@@ -1419,7 +1447,8 @@ export function OperationsCanvas({
           // companion을 연 패널은 칸에 담기지 않는다 — 그 레이아웃은 캔버스를 나눠 쓰는 모드이고,
           // 렌더는 프레임과 companion 프레임을 한 벌로 내놓는다. 칸으로 들여보내면 캔버스 좌표를
           // 지닌 companion들이 타일 안으로 함께 딸려 들어간다. 덱 칸은 그때 이름만 남기고 비운다.
-          const deckSlot = operationTriageStage || operationCompanion ? null : triageDeckSlots.get(operation.id) ?? null;
+          const snapAssistSlot = snapAssist && snapHoldActive && snapHold && !(operation.id in snapHold.assignments) ? snapAssistSlots.get(operation.id) ?? null : null;
+          const deckSlot = operationTriageStage || operationCompanion ? null : triageDeckSlots.get(operation.id) ?? snapAssistSlot;
           const operationGroup = resolveOperationGroup(operation, groupById);
           // 색을 못 푸는 그룹은 라벨 자체를 내지 않는다 — 도트 없는 이름만 남으면 그것이 그룹이라는
           // 사실을 캡션에서 읽을 수 없다.
@@ -1495,7 +1524,8 @@ export function OperationsCanvas({
             viewportZoom: operationZoom,
             // 선별 중 무대 밖 패널은 덱 칸으로 간다 — 자리가 있으면 그 자리에 실물로 서므로
             // 숨기지 않고, 자리가 아직 없을 때만(입장 연출·지도 전환 직전) 접어 둔다.
-            minimized: triageActive ? !operationTriageStage && !deckSlot : minimizedSet.has(operation.id),
+            // 후보 판의 칸에 선 동안은 최소화 상태여도 실물로 선다(War Room 덱과 같다).
+            minimized: triageActive ? !operationTriageStage && !deckSlot : minimizedSet.has(operation.id) && !snapAssistSlot,
             maximized: operationMaximized,
             triageStage: operationTriageStage,
             triagePicked: operationTriageStage && triageStage?.picked === true,
@@ -1746,7 +1776,7 @@ export function OperationsCanvas({
         {/* 손잡이는 Command Band 아랫변(아레나 윗변)에 물려 내려오고, 아레나 폭의 절반쯤(360~760px)을 차지한다. */}
         <SnapHandle visible={snapDragging && !snapBar.open} anchorX={arena.x + arena.width / 2} anchorY={arena.y} width={snapHandleWidth} />
         <SnapLayoutBar ref={snapBarRef} open={snapBar.open} hover={snapBar.hover} full={snapBar.full} anchorX={arena.x + arena.width / 2} anchorY={arena.y + SNAP_TOP_FULL_EDGE} />
-        {snapAssistZones.length > 0 ? <SnapAssist zones={snapAssistZones} candidates={snapAssistCandidates} onPick={pickSnapAssist} onClose={closeSnapAssist} /> : null}
+        {snapAssistZones.length > 0 ? <SnapAssist zones={snapAssistZones} candidates={snapAssistCandidates} onPanelSlotRef={registerSnapAssistSlot} onPick={pickSnapAssist} onClose={closeSnapAssist} /> : null}
         {snapMenu ? (
           <SnapLayoutMenu
             title={state.operations.find((operation) => operation.id === snapMenu.operationId)?.title ?? ""}

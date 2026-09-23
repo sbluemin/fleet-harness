@@ -209,23 +209,25 @@ export function SnapLayoutMenu({ title, anchor, boundsWidth, boundsHeight, onPic
 export interface SnapAssistCandidate {
   readonly id: string;
   readonly title: string;
-  readonly minimized: boolean;
 }
 
 interface SnapAssistProps {
   /** 비어 있는 칸들 — 캔버스 박스 좌표의 시각 프레임(캡션 포함). */
   readonly zones: readonly { readonly index: number; readonly rect: SnapRect }[];
   readonly candidates: readonly SnapAssistCandidate[];
+  /** 칸이 마운트·해제될 때 그 자리를 캔버스에 알린다 — 캔버스가 그 Operation의 실제 패널을 portal한다(War Room 덱과 같은 계약). */
+  readonly onPanelSlotRef: (operationId: string, element: HTMLElement | null) => void;
   readonly onPick: (operationId: string, zoneIndex: number) => void;
   readonly onClose: () => void;
 }
 
 /**
- * Snap Assist — 스냅 직후 한 번, 빈 칸 자체가 후보 판이 된다. 캔버스의 다른 자유 패널과 최소화된 패널을
- * 타일로 늘어놓고 누르면 그 칸에 앉힌다. Esc·캔버스 클릭·다른 드래그로 사라지고, 사라진 빈 칸에는
- * 아무것도 남지 않는다(격자를 남기는 안은 기각됐다).
+ * Snap Assist — 스냅 직후 한 번, 빈 칸 자체가 후보 판이 된다. 판의 칸은 자리이지 그림이 아니다: War Room 덱처럼
+ * 캔버스가 그 Operation의 실제 패널(캡션·본문)을 칸으로 들여보내고, 누르면 그 칸에 앉힌다. Esc·캔버스 클릭·
+ * 다른 드래그로 사라지고, 사라진 빈 칸에는 아무것도 남지 않는다(격자를 남기는 안은 기각됐다).
+ * 후보 칸의 mount는 첫 빈 칸에만 선다 — 같은 패널을 두 자리에 세울 수 없다. 나머지 빈 칸은 이름만 든다.
  */
-export function SnapAssist({ zones, candidates, onPick, onClose }: SnapAssistProps) {
+export function SnapAssist({ zones, candidates, onPanelSlotRef, onPick, onClose }: SnapAssistProps) {
   const t = useT();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -236,10 +238,21 @@ export function SnapAssist({ zones, candidates, onPick, onClose }: SnapAssistPro
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
+  const slotRefRef = useRef(onPanelSlotRef);
+  slotRefRef.current = onPanelSlotRef;
+  const slotRefsRef = useRef(new Map<string, (element: HTMLElement | null) => void>());
+  const slotRefFor = (operationId: string) => {
+    const cache = slotRefsRef.current;
+    const existing = cache.get(operationId);
+    if (existing) return existing;
+    const callback = (element: HTMLElement | null) => { slotRefRef.current(operationId, element); };
+    cache.set(operationId, callback);
+    return callback;
+  };
   const shown = candidates.slice(0, SNAP_ASSIST_MAX);
   const overflow = candidates.length - shown.length;
   return <>
-    {zones.map(({ index, rect }) => (
+    {zones.map(({ index, rect }, zoneOrder) => (
       <section
         key={index}
         className="canvas-snap-assist"
@@ -252,18 +265,23 @@ export function SnapAssist({ zones, candidates, onPick, onClose }: SnapAssistPro
           <kbd>Esc</kbd>
         </header>
         {shown.length > 0 ? (
-          <div className="canvas-snap-assist-tiles">
+          <div className="canvas-snap-assist-cells">
             {shown.map((candidate) => (
-              <button
+              <div
                 key={candidate.id}
-                type="button"
-                className={`canvas-snap-assist-tile${candidate.minimized ? " is-minimized" : ""}`}
+                className="canvas-snap-assist-cell"
                 onClick={() => onPick(candidate.id, index)}
-                title={t("canvas.snap.assistPickTitle", { title: candidate.title })}
               >
-                <span className="canvas-snap-assist-tile-cap">{candidate.title}</span>
-                <span className="canvas-snap-assist-tile-body">{candidate.minimized ? t("canvas.snap.assistMinimized") : t("canvas.snap.assistOnCanvas")}</span>
-              </button>
+                {zoneOrder === 0
+                  ? <div className="canvas-snap-assist-mount" data-fallback-title={candidate.title} ref={slotRefFor(candidate.id)} />
+                  : <div className="canvas-snap-assist-mount" data-fallback-title={candidate.title} />}
+                <button
+                  type="button"
+                  className="canvas-snap-assist-pick"
+                  aria-label={t("canvas.snap.assistPickTitle", { title: candidate.title })}
+                  onClick={(event) => { event.stopPropagation(); onPick(candidate.id, index); }}
+                />
+              </div>
             ))}
           </div>
         ) : (

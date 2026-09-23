@@ -4471,7 +4471,8 @@ describe("War Room deck panel grammar", () => {
     expect(canvas).toContain("deckTile={options.deckSlot !== null}");
     // 무대와 companion은 칸을 쓰지 않는다 — 렌더가 프레임과 companion 프레임을 한 벌로 내놓으므로,
     // companion을 연 패널을 칸으로 들여보내면 캔버스 좌표를 지닌 companion까지 타일 안에 갇힌다.
-    expect(canvas).toContain("const deckSlot = operationTriageStage || operationCompanion ? null : triageDeckSlots.get(operation.id) ?? null;");
+    // Snap Assist의 후보 칸은 같은 자리 계약의 두 번째 원천이다 — 무대·companion 배제는 그대로다.
+    expect(canvas).toContain("const deckSlot = operationTriageStage || operationCompanion ? null : triageDeckSlots.get(operation.id) ?? snapAssistSlot;");
   });
 
   it("keeps the deck tile off the canvas coordinate system", () => {
