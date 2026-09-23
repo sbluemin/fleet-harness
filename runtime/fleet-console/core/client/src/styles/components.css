@@ -6757,6 +6757,10 @@ body[data-companion-resizing="true"] .canvas-operation {
   .cluster-strip-step.is-awaiting { animation: none; }
 }
 
+/* 사이드바 칩의 셋째 줄 — 이름·위치 줄 아래 왼쪽 정렬. 띠 자체의 안쪽 여백만큼 물려 사각의 왼끝이 글자 왼끝과 맞는다. */
+.side-bar-chip-cluster-strip { align-self: flex-start; margin: 1px 0 0 -3px; }
+.side-bar-chip--minimized .side-bar-chip-cluster-strip { opacity: 0.7; }
+
 .side-bar-chip-marks {
   display: inline-flex;
   flex: none;

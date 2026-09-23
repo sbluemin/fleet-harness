@@ -367,8 +367,9 @@ export function OperationsSideBarChip({
           <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
         )}
         {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
+        {/* 묶음의 단계 띠는 이름·위치 줄 아래 셋째 줄 — 이름 옆에 세우면 제목이 밀려 잘린다. */}
+        {cluster ? cluster.strip : null}
       </span>
-      {cluster ? cluster.strip : null}
       {preview ? null : <PluginOperationMarks operation={operation} />}
       {groupMark && statusAxis && groupBadge && !preview ? (
         <span
