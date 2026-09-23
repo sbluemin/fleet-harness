@@ -27,6 +27,7 @@ export function isFleetMobileUserAgent(userAgent: string): boolean {
 // re-links so a localStorage preference does not reliably survive. Auto resolves mobile there;
 // an explicit desktop preference still wins.
 const fleetMobileShell = typeof navigator !== "undefined" && isFleetMobileUserAgent(navigator.userAgent ?? "");
+const desktopShell = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron");
 
 let store: ViewModeSnapshot = createSnapshot(readStoredPreference(), false);
 
@@ -46,7 +47,7 @@ export function useViewMode(): ViewModeSnapshot {
 }
 
 export function setViewModePreference(preference: ViewModePreference): void {
-  if (store.preference === preference) return;
+  if (desktopShell || store.preference === preference) return;
   setStore(createSnapshot(preference, store.viewportNarrow));
   saveStoredPreference(preference);
 }
@@ -81,7 +82,7 @@ function createSnapshot(preference: ViewModePreference, viewportNarrow: boolean)
   return {
     preference,
     viewportNarrow,
-    effective: preference === "auto" ? (fleetMobileShell || viewportNarrow ? "mobile" : "desktop") : preference,
+    effective: desktopShell ? "desktop" : preference === "auto" ? (fleetMobileShell || viewportNarrow ? "mobile" : "desktop") : preference,
   };
 }
 
