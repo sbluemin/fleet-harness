@@ -6,23 +6,7 @@ import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
 
-/**
- * Subscription credential coordinates for gateway providers.
- *
- * These are provider access facts, not Fleet policy: the id a credential is
- * persisted under and the base URL its subscription API answers on. Callers that
- * read a provider's own usage or validate its key need the same coordinates as
- * the transport path, so they live beside the model catalog rather than in a
- * Fleet-domain package.
- */
-
-// Keep the persisted provider id stable so existing Kimi keys remain usable
-// after the retired direct Kimi backend is removed.
-export const KIMI_AUTH_PROVIDER_ID = "Claude Code with Moonshot Kimi";
-export const KIMI_CODE_API_BASE_URL = "https://api.kimi.com/coding";
-export const KIMI_CODE_MODEL = "k3";
-
-export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "antigravity", "kimi", "claude"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "antigravity", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -225,7 +209,6 @@ const GatewayModelsRegistrySchema = z.object({
   providers: z.object({
     codex: GatewayProviderSchema,
     cursor: GatewayProviderSchema,
-    kimi: GatewayProviderSchema,
     opencode: GatewayProviderSchema,
     xai: GatewayProviderSchema,
     antigravity: GatewayProviderSchema,
@@ -411,7 +394,7 @@ export const GATEWAY_BENCHMARKS_STAMP = `sha256:${createHash("sha256")
   .update(JSON.stringify(benchmarksRegistry))
   .digest("hex")}`;
 
-/** Human-readable provider names as declared by the model registry (e.g. `Moonshot-Kimi`). */
+/** Human-readable provider names as declared by the model registry. */
 export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> = Object.freeze(
   Object.fromEntries(
     GATEWAY_PROVIDERS.map((provider) => [provider, registry.providers[provider].name]),
@@ -427,7 +410,6 @@ export const GATEWAY_MODELS: readonly GatewayModel[] = Object.freeze(
 
 export const CODEX_SUBSCRIPTION_MODELS = providerModels("codex");
 export const CURSOR_SUBSCRIPTION_MODELS = providerModels("cursor");
-export const KIMI_SUBSCRIPTION_MODELS = providerModels("kimi");
 export const OPENCODE_SUBSCRIPTION_MODELS = providerModels("opencode");
 
 /**
@@ -454,7 +436,7 @@ export function upstreamModelId(model: GatewayModel): string {
  * Several entries are the same model under different service terms — Codex's
  * `-fast` variants are the priority tier of an identical upstream id — so a fact
  * measured about one holds for its siblings. Entries that merely share a vendor
- * name do not collapse: Cursor's `kimi-k3` and Moonshot's `k3` reach different
+ * name do not collapse: models exposed by different providers reach separate
  * upstreams through different transports and keep separate identities.
  *
  * This is a lookup key for measurements recorded per upstream, not a routing

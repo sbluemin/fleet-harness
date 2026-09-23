@@ -51,7 +51,7 @@ describe("Claude gateway launch environment", () => {
       models: [
         { id: "cursor--grok-4.7-fast" },
         { id: "codex--gpt-6-sol-fast" },
-        { id: "kimi--k3" },
+        { id: "xai--grok-4.7" },
         { id: "codex--gpt-6-luna-fast" },
       ],
     });
@@ -74,8 +74,8 @@ describe("Claude gateway launch environment", () => {
     expect(cache.models.map((model) => model.id)).toEqual([
       "claude-gateway--codex--gpt-6-sol-fast",
       "claude-gateway--codex--gpt-6-luna-fast",
+      "claude-gateway--xai--grok-4.7",
       "claude-gateway--cursor--grok-4.7-fast",
-      "claude-gateway--kimi--k3[1m]",
     ]);
   });
 
@@ -108,7 +108,7 @@ describe("Claude gateway launch environment", () => {
 
     const selection = resolveAiGatewaySelection({
       version: 1,
-      models: [{ id: "kimi--k3-256k" }],
+      models: [{ id: "codex--gpt-6-sol" }],
     });
     const configured = prepareAiGatewayLaunchProfile({
       id: "claude",

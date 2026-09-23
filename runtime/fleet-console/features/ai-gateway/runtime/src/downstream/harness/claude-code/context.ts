@@ -929,7 +929,7 @@ export function omitClaudeClientTools<
  * request, right behind the tool results it interrupts.
  *
  * The premise of that directive is the caller's Claude subscription, which has nothing to
- * do with the Cursor, Codex, xAI, Kimi or OpenCode budget actually paying for the turn it
+ * do with the Cursor, Codex, xAI or OpenCode budget actually paying for the turn it
  * lands in. One measured session ran 59 assistant turns entirely on a gateway model and
  * still carried it. So the text either misleads a provider that is nowhere near a limit, or
  * truthfully shrinks the work on one whose spend the number does not describe. Neither is

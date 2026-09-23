@@ -61,10 +61,10 @@ describe("ai-gateway settings store", () => {
     store.write({ providerPriority: ["codex"] });
     expect(store.read()).toEqual({ version: 1, providerPriority: ["codex"] });
 
-    store.write({ models: [{ id: "kimi--k3" }] });
+    store.write({ models: [{ id: "opencode--glm-5.3" }] });
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "kimi--k3" }],
+      models: [{ id: "opencode--glm-5.3" }],
       providerPriority: ["codex"],
     });
 
@@ -74,11 +74,11 @@ describe("ai-gateway settings store", () => {
 
   it("persists compactCeiling independently of models", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
-    store.write({ models: [{ id: "kimi--k3" }] });
+    store.write({ models: [{ id: "opencode--glm-5.3" }] });
     store.writeCompactCeiling("early");
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "kimi--k3" }],
+      models: [{ id: "opencode--glm-5.3" }],
       compactCeiling: "early",
     });
     store.write({ models: [{ id: "cursor--auto" }] });
@@ -98,11 +98,11 @@ describe("ai-gateway settings store", () => {
 
   it("persists xaiEndpoint independently of models", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
-    store.write({ models: [{ id: "kimi--k3" }] });
+    store.write({ models: [{ id: "opencode--glm-5.3" }] });
     store.writeXaiEndpoint("cli-proxy");
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "kimi--k3" }],
+      models: [{ id: "opencode--glm-5.3" }],
       xaiEndpoint: "cli-proxy",
     });
     // A models-only save must not silently move the endpoint back to the default.
@@ -159,7 +159,7 @@ describe("ai-gateway settings store", () => {
     const dataDir = createDataDir();
     const legacyDir = seedLegacySettings(dataDir, {
       version: 1,
-      models: [{ id: "kimi--k3", efforts: ["max"] }, { id: "cursor--auto" }],
+      models: [{ id: "opencode--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "cursor--auto" }],
       defaultModel: "cursor--auto",
       wireLogEnabled: false,
     });
@@ -168,7 +168,7 @@ describe("ai-gateway settings store", () => {
     // 레거시 defaultModel은 승계 시 조용히 버린다.
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "kimi--k3", efforts: ["max"] }, { id: "cursor--auto" }],
+      models: [{ id: "opencode--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "cursor--auto" }],
       wireLogEnabled: false,
     });
     // 승계는 새 축에 실제로 안착해야 한다 — 매 부팅 과거 파일을 다시 읽는 상태로 남으면 안 된다.
@@ -207,10 +207,10 @@ describe("ai-gateway settings store", () => {
   it("never overwrites settings that already exist on the new axis", () => {
     const dataDir = createDataDir();
     const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "cursor--auto" }] });
-    createAiGatewaySettingsStore({ dataDir }).write({ models: [{ id: "kimi--k3" }] });
+    createAiGatewaySettingsStore({ dataDir }).write({ models: [{ id: "opencode--glm-5.3" }] });
 
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
-    expect(store.read()).toEqual({ version: 1, models: [{ id: "kimi--k3" }] });
+    expect(store.read()).toEqual({ version: 1, models: [{ id: "opencode--glm-5.3" }] });
   });
 
   it("treats an emptied selection as a real state rather than something to re-adopt", () => {
@@ -248,8 +248,8 @@ describe("ai-gateway settings store", () => {
   it.each([
     [
       "write",
-      (store: ReturnType<typeof createAiGatewaySettingsStore>) => store.write({ models: [{ id: "kimi--k3" }] }),
-      { version: 1, models: [{ id: "kimi--k3" }], cursorDiagnosticsEnabled: true },
+      (store: ReturnType<typeof createAiGatewaySettingsStore>) => store.write({ models: [{ id: "opencode--glm-5.3" }] }),
+      { version: 1, models: [{ id: "opencode--glm-5.3" }], cursorDiagnosticsEnabled: true },
     ],
     [
       "writeCursorDiagnosticsEnabled",

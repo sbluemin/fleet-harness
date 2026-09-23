@@ -17,7 +17,7 @@ export const aiGatewaySettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex cursor opencode xai kimi routing delegation subagent workflow diagnostics wire log compact",
+    "gateway provider model api key codex cursor opencode xai routing delegation subagent workflow diagnostics wire log compact",
     "게이트웨이 공급자 모델 키 라우팅 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
@@ -32,7 +32,6 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   claude: "terminal.settings.aiGatewayProviderClaude",
   codex: "terminal.settings.aiGatewayProviderCodex",
   cursor: "terminal.settings.aiGatewayProviderCursor",
-  kimi: "terminal.settings.aiGatewayProviderKimi",
   opencode: "terminal.settings.aiGatewayProviderOpencode",
   xai: "terminal.settings.aiGatewayProviderXai",
 } as const;
@@ -41,19 +40,16 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
  * API key로 연결하는 공급자. 어느 공급자가 키를 요구하는지는 서버(model-auth 상태)가 권위이고,
  * 이 목록은 그 응답이 오기 전 첫 렌더가 같은 답을 내게 하는 기본값이다.
  */
-const AI_GATEWAY_KEY_PROVIDER_IDS: ReadonlySet<string> = new Set(["kimi", "opencode"]);
+const AI_GATEWAY_KEY_PROVIDER_IDS: ReadonlySet<string> = new Set(["opencode"]);
 
 /**
  * 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서,
- * API key 공급자는 맨 뒤(OpenCode Go, Kimi). 표시 순서는 소진 우선순위를 바꾸지 않는다.
+ * API key 공급자는 맨 뒤(OpenCode Go). 표시 순서는 소진 우선순위를 바꾸지 않는다.
  */
 export function orderAiGatewayProviders<T extends { readonly id: string }>(providers: readonly T[]): T[] {
-  const keyOrder = ["opencode", "kimi"];
   const claude = providers.filter((provider) => provider.id === "claude");
   const subscription = providers.filter((provider) => provider.id !== "claude" && !AI_GATEWAY_KEY_PROVIDER_IDS.has(provider.id));
-  const apiKey = providers
-    .filter((provider) => AI_GATEWAY_KEY_PROVIDER_IDS.has(provider.id))
-    .sort((a, b) => keyOrder.indexOf(a.id) - keyOrder.indexOf(b.id));
+  const apiKey = providers.filter((provider) => AI_GATEWAY_KEY_PROVIDER_IDS.has(provider.id));
   return [...claude, ...subscription, ...apiKey];
 }
 
@@ -887,9 +883,9 @@ export interface AiGatewayModelFamily {
  * 카탈로그를 계열로 묶는다. id에서 `-fast`와 컨텍스트 접미사를 벗긴 줄기가 계열 키다.
  *
  * 접미사가 언제나 변형 쌍을 뜻하지는 않는다. `grok-composer-2.5-fast`는 카탈로그에 없는
- * `grok-composer-2.5`의 빠른 빌드가 아니라 그 자체가 모델 이름이고, Kimi의 `k3-256k`·`k3-1m`은
- * 접미사 없는 `k3`가 없다. 그래서 변형은 있는 조합만 기록하고, 계열 이름은 변형이 둘 이상일
- * 때만 접미사를 벗긴다 — 홀로 선 모델은 카탈로그 이름 그대로 나타난다.
+ * `grok-composer-2.5`의 빠른 빌드가 아니라 그 자체가 모델 이름이다. 그래서 변형은 있는 조합만
+ * 기록하고, 계열 이름은 변형이 둘 이상일 때만 접미사를 벗긴다 — 홀로 선 모델은
+ * 카탈로그 이름 그대로 나타난다.
  */
 export function groupAiGatewayModelFamilies(
   models: readonly AiGatewayCatalogModel[],

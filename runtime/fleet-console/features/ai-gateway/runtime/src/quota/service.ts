@@ -4,7 +4,6 @@ import { fetchAntigravityUsage } from "../upstream/antigravity/quota.js";
 import { fetchClaudeUsage } from "../upstream/anthropic/quota.js";
 import { fetchCodexUsage } from "../upstream/codex/quota.js";
 import { fetchCursorUsage } from "../upstream/cursor/quota.js";
-import { fetchKimiUsage } from "../upstream/kimi/quota.js";
 import { fetchOpencodeUsage } from "../upstream/opencode-go/quota.js";
 import { fetchXaiUsage } from "../upstream/xai/quota.js";
 import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
@@ -15,7 +14,7 @@ import { sanitizeProviderError, type ProviderDeps } from "./windows.js";
 export const QUOTA_CACHE_TTL_MS = 5 * 60_000;
 const STALE_TTL_MS = 1_800_000;
 
-type ProviderId = "antigravity" | "claude" | "codex" | "cursor" | "kimi" | "opencode" | "xai";
+type ProviderId = "antigravity" | "claude" | "codex" | "cursor" | "opencode" | "xai";
 
 export interface QuotaService {
   peekSummary(): QuotaSummaryDto | undefined;
@@ -31,7 +30,6 @@ export interface QuotaServiceDeps {
   readonly fetchClaude: () => Promise<ProviderResult>;
   readonly fetchCodex: () => Promise<ProviderResult>;
   readonly fetchCursor: () => Promise<ProviderResult>;
-  readonly fetchKimi: () => Promise<ProviderResult>;
   readonly fetchOpencode: () => Promise<ProviderResult>;
   readonly fetchXai?: () => Promise<ProviderResult>;
   readonly fetchAntigravity?: () => Promise<ProviderResult>;
@@ -41,7 +39,7 @@ export interface QuotaServiceDeps {
 
 /**
  * Deps for building the provider probes. `authService` is required here —
- * Kimi and OpenCode Go read the keys Fleet itself stores through it — so a host
+ * OpenCode Go reads the key Fleet itself stores through it — so a host
  * that composes these collectors can never silently fall back to constructing a
  * default auth path inside the package.
  */
@@ -56,7 +54,6 @@ export interface AiGatewayQuotaCollectors {
   readonly fetchClaude: () => Promise<ProviderResult>;
   readonly fetchCodex: () => Promise<ProviderResult>;
   readonly fetchCursor: () => Promise<ProviderResult>;
-  readonly fetchKimi: () => Promise<ProviderResult>;
   readonly fetchOpencode: () => Promise<ProviderResult>;
   readonly fetchXai: () => Promise<ProviderResult>;
   readonly fetchAntigravity: () => Promise<ProviderResult>;
@@ -73,7 +70,6 @@ export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps
     fetchClaude: () => fetchClaudeUsage(providerDeps),
     fetchCodex: () => fetchCodexUsage(providerDeps),
     fetchCursor: () => fetchCursorUsage(providerDeps),
-    fetchKimi: () => fetchKimiUsage(providerDeps),
     fetchOpencode: () => fetchOpencodeUsage(providerDeps),
     fetchXai: () => fetchXaiUsage(providerDeps),
     fetchAntigravity: () => fetchAntigravityUsage(providerDeps),
@@ -97,7 +93,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     claude: deps.fetchClaude,
     codex: deps.fetchCodex,
     cursor: deps.fetchCursor,
-    kimi: deps.fetchKimi,
     opencode: deps.fetchOpencode,
     xai: deps.fetchXai ?? (async () => ({ status: "signed_out" })),
     antigravity: deps.fetchAntigravity ?? (async () => ({ status: "signed_out" })),
@@ -179,15 +174,14 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       };
       return { providers: {
         claude: read("claude"), codex: read("codex"), cursor: read("cursor"),
-        kimi: read("kimi"), opencode: read("opencode"), xai: read("xai"), antigravity: read("antigravity"),
+        opencode: read("opencode"), xai: read("xai"), antigravity: read("antigravity"),
       } };
     },
     async getSummary(options = {}) {
-      const [claude, codex, cursor, kimi, opencode, xai, antigravity] = await Promise.all([
+      const [claude, codex, cursor, opencode, xai, antigravity] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
         load("cursor", options.force === true || options.forceProvider === "cursor"),
-        load("kimi", options.force === true || options.forceProvider === "kimi"),
         load("opencode", options.force === true || options.forceProvider === "opencode"),
         load("xai", options.force === true || options.forceProvider === "xai"),
         load("antigravity", options.force === true || options.forceProvider === "antigravity"),
@@ -197,7 +191,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
           claude: withRisk(claude),
           codex: withRisk(codex),
           cursor: withRisk(cursor),
-          kimi: withRisk(kimi),
           opencode: withRisk(opencode),
           xai: withRisk(xai),
           antigravity: withRisk(antigravity),

@@ -1448,7 +1448,7 @@ export function QuickLaunch() {
   const showStrip = pinned && collapsed && !holdsMessage;
   const draftTrace = prompt.trim();
   // Prefer the selected model\'s provider mark. Falling back to the launch-kind
-  // icon would keep showing Claude even when a Cursor/Codex/Kimi model is chosen.
+  // icon would keep showing Claude even when a Cursor/Codex/OpenCode model is chosen.
   const selectedProvider = selectedRow
     ? (launchProviderFromGroupId(groups.find((group) => group.rows.some((row) => row.id === selectedRow.id))?.id ?? "")
       ?? launchProviderFromModelId(selectedRow.launch.model ?? selectedRow.id))

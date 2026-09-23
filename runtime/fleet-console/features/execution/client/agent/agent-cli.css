@@ -219,7 +219,6 @@
 .ai-gateway-provider.is-claude { --ai-gateway-provider-tone: var(--provider-claude); }
 .ai-gateway-provider.is-codex { --ai-gateway-provider-tone: var(--provider-codex); }
 .ai-gateway-provider.is-cursor { --ai-gateway-provider-tone: var(--provider-cursor); }
-.ai-gateway-provider.is-kimi { --ai-gateway-provider-tone: var(--provider-kimi); }
 .ai-gateway-provider.is-opencode { --ai-gateway-provider-tone: var(--provider-opencode); }
 .ai-gateway-provider.is-typesafe { --ai-gateway-provider-tone: var(--provider-typesafe); }
 .ai-gateway-provider.is-xai { --ai-gateway-provider-tone: var(--provider-xai); }

@@ -37,7 +37,6 @@ describe("provider response boundaries", () => {
     Object.defineProperty(response, "url", { value: "https://redirected.example/usage" });
     const service = createQuotaService({
       isClaudeConnected: async () => true,
-      fetchKimi: async () => ({ status: "signed_out" }),
       fetchClaude: () => fetchClaudeUsage({
         credentials: claudeCredentials(),
         fetch: (async () => response) as typeof fetch,

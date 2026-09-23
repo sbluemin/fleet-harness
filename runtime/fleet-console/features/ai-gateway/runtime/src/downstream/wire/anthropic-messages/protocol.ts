@@ -1281,7 +1281,7 @@ export async function* encodeAnthropicSse(
           },
           // Claude Code updates context occupancy from the terminal cumulative
           // usage frame. Sending output-only leaves Responses-backed models at
-          // zero input usage even though Kimi's native Anthropic stream works.
+          // zero input usage even though native Anthropic streams work.
           usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow, {
             projectInputTokens: options.projectInputTokens,
             estimatedInputTokens: options.estimatedInputTokens,

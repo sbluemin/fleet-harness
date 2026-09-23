@@ -426,7 +426,6 @@ async function runTrialWithLifecycle({ gateway, options, target }) {
     readCursorToken: gateway.readCursorSubscriptionToken,
     readXaiToken: gateway.readXaiSubscriptionToken,
     readAntigravityToken: gateway.readAntigravitySubscriptionToken,
-    readKimiApiKey: () => authService.getApiKey(gateway.KIMI_AUTH_PROVIDER_ID),
     readOpencodeApiKey: () => authService.getApiKey(gateway.OPENCODE_AUTH_PROVIDER_ID),
     cursorDiagnostics: diagnosticSink,
   });

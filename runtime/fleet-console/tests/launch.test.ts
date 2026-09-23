@@ -197,7 +197,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     await expect(resolve(root, {
       cliId: "claude",
-      model: "kimi--k3",
+      model: "codex--gpt-6-sol",
       sessionId: "gateway-stale-model",
     })).rejects.toMatchObject({
       name: "GatewayLaunchOptionError",
@@ -218,12 +218,12 @@ describe("createDefaultTerminalLaunchResolver", () => {
       infraServices: createFakeInfraServices() as never,
       injectProfile: (async (profile: AgentCliProfile) => profile) as never,
       resolveProfile: resolveProfile as never,
-      readAiGatewaySettings: () => ({ version: 1, models: [{ id: "kimi--k3" }] }),
+      readAiGatewaySettings: () => ({ version: 1, models: [{ id: "codex--gpt-6-sol" }] }),
     });
 
-    await resolve("/work/project", { sessionId: "gateway-roster-model", cliId: "claude", model: "claude-gateway--kimi--k3[1m]" });
+    await resolve("/work/project", { sessionId: "gateway-roster-model", cliId: "claude", model: "claude-gateway--codex--gpt-6-sol" });
 
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--kimi--k3[1m]" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--codex--gpt-6-sol" }));
   });
 
   it("launches the user's shell without Agent CLI injection for shell sessions", async () => {

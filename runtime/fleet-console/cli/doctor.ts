@@ -70,7 +70,6 @@ export async function buildFleetDoctorText(deps: DoctorDeps): Promise<string> {
     formatRow("package", `@dotobokuri/fleet-console ${release.version} (${release.channel})`),
     formatRow("data", dataDir),
     formatRow("binary", binary),
-    formatRow("kimi", signedIn.has(AUTH_CLI_DEFINITIONS.kimi.providerId) ? "signed in" : "signed out"),
     formatRow("opencode", signedIn.has(AUTH_CLI_DEFINITIONS.opencode.providerId) ? "signed in" : "signed out"),
     formatRow("typesafe", signedIn.has(AUTH_CLI_DEFINITIONS.typesafe.providerId) ? "signed in" : "signed out"),
     formatRow("console", stripConsolePrefix(consoleLine)),

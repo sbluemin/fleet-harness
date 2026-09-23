@@ -15,7 +15,7 @@ import {
   type AiGatewaySettingsStore,
   type AuthService,
 } from "@fleet-console/ai-gateway";
-import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
+import { OPENCODE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
 
 export interface FleetCliGatewayServer {
   origin(): string;
@@ -45,7 +45,6 @@ export async function startGatewayHttpServer(deps: {
     compactionHookToken: compactHookToken,
     failureJournal: failureJournal.write,
     readAiGatewaySettings: () => deps.store.read(),
-    readKimiApiKey: () => deps.authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
     readOpencodeApiKey: () => deps.authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     originator: "fleet-cli",
     // 자격증명 조달은 호스트 결정이다 — thin 런처도 export된 기본 reader를 명시 주입한다.

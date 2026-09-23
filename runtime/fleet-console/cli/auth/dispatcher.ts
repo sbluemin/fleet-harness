@@ -13,9 +13,11 @@ import {
 const AUTH_HELP_TEXT = `fleet gateway auth — AI Gateway provider authentication
 
 Usage:
-  fleet gateway auth login [kimi|opencode|typesafe]
+  fleet gateway auth login [opencode|typesafe]
   fleet gateway auth list
-  fleet gateway auth logout [kimi|opencode|typesafe]
+  fleet gateway auth logout [opencode|typesafe|kimi]
+
+The retired kimi provider supports logout only to remove its stored key.
 
 Codex, Cursor, and xAI use their own subscription credentials.
 Run fleet gateway status to see whether each one was found.
@@ -58,6 +60,12 @@ async function logoutAuthProvider(
   io: AuthCommandIo,
   deps: AuthCommandDeps,
 ): Promise<number> {
+  // 제거된 공급자의 저장 키는 자동 삭제하지 않되 명시적 로그아웃은 유지한다.
+  if (argv[0] === "kimi") {
+    await deps.authService.deleteApiKey("Claude Code with Moonshot Kimi");
+    io.stdout.write("Stored Moonshot-Kimi key removed.\n");
+    return 0;
+  }
   const selectedCli = resolveAuthCliId(argv[0], io);
   if (selectedCli === "invalid") return 1;
   const chosen = selectedCli ?? await promptForLogoutCli();

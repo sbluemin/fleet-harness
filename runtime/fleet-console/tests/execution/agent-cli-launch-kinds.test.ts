@@ -29,7 +29,7 @@ describe("buildAgentCliLaunchKinds", () => {
       version: 1,
       models: [
         { id: "claude--sonnet-1m" },
-        { id: "kimi--k3", efforts: ["max"] },
+        { id: "opencode--muse-spark-1.3-contributor", efforts: ["high"] },
         { id: "codex--gpt-6-sol-fast" },
       ],
     });
@@ -64,19 +64,18 @@ describe("buildAgentCliLaunchKinds", () => {
         ],
       },
       {
-        id: "gateway:kimi",
-        label: "Moonshot-Kimi",
+        id: "gateway:opencode",
+        label: "OpenCode",
         rows: [
           {
-            id: "kimi--k3",
-            label: "K3-1M",
-            launch: { model: "kimi--k3" },
-            // 노출은 MAX 한 단이지만 ultra는 하네스 능력이라 사다리 밖에서 끝 칩으로 선다.
-            effortAxis: EFFORT_AXIS,
-            gatedEfforts: APEX_EFFORTS,
+            id: "opencode--muse-spark-1.3-contributor",
+            label: "Muse-Spark-1.3-Contributor",
+            launch: { model: "opencode--muse-spark-1.3-contributor" },
+            effortAxis: MAX_LESS_AXIS,
+            gatedEfforts: ["ultra"],
             chips: [
-              gatewayChip("kimi--k3", "max", "MAX"),
-              gatewayChip("kimi--k3", "ultra", "ULTRACODE"),
+              gatewayChip("opencode--muse-spark-1.3-contributor", "high", "HIGH"),
+              gatewayChip("opencode--muse-spark-1.3-contributor", "ultra", "ULTRACODE"),
             ],
           },
         ],
@@ -92,7 +91,7 @@ describe("buildAgentCliLaunchKinds", () => {
       "agent",
       resolveAiGatewaySelection({
         version: 1,
-        models: [{ id: "kimi--k3" }],
+        models: [{ id: "opencode--glm-5.3" }],
       }),
     );
 

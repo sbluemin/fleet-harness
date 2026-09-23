@@ -15,7 +15,6 @@ import {
   createProviderAuthService,
   setWireLogTarget,
   wireLogEnabled,
-  KIMI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
   SystemOneClient,
   TYPESAFE_AUTH_PROVIDER_ID,
@@ -192,7 +191,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
     readAiGatewaySettings: aiGatewayStore.read,
     assignRouting: (request, options) => assign(request, options?.signal),
-    readKimiApiKey: () => authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
   });
   return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime };

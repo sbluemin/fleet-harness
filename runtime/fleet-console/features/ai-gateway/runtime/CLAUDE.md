@@ -21,7 +21,7 @@ When changing layer placement, model registration, request shaping, or provider 
 - Normalize only the complete intersection: every admitted model has the identical required sources and metrics, with the same source weights and source-specific evaluation conditions. Never impute missing scores, borrow another generation or effort, mix fallback systems with a single model, or silently shrink the required source set. Routing aliases such as Cursor Auto carry no fixed-model benchmark evidence.
 - Normalized scores are cohort-relative Fleet calculations, not absolute accuracy or provider billing facts. Recompute and validate the whole cohort when its members, sources, or weights change, update the content stamp and consumers, and keep incomplete models available in the provider catalog without a normalized benchmark.
 - `src/settings/` and `src/auth/` are provider-neutral: neither imports providers nor discovers host data roots. Only `src/auth/` constructs credential stores; providers and quota collectors receive auth dependencies explicitly.
-- The `auth.json` filename and stored provider IDs are signed-in-state compatibility contracts; do not change them. Vendor CLI-owned subscription credential files are read-only.
+- The `auth.json` filename and stored provider IDs are signed-in-state compatibility contracts; do not rename or automatically delete existing entries when a provider is removed. Vendor CLI-owned subscription credential files are read-only.
 
 ## Loss-prevention boundaries
 

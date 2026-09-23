@@ -167,7 +167,7 @@ The AI Gateway is configured from the same launcher, against the same `ai-gatewa
 fleet gateway                          # interactive configuration
 fleet gateway status                   # configuration and credential state
 fleet gateway models --json            # what the gateway currently exposes
-fleet gateway auth login               # Kimi / OpenCode Go API keys
+fleet gateway auth login               # OpenCode Go / TypeSafe API keys
 fleet gateway set xai-endpoint direct  # one policy axis, no prompts
 fleet gateway serve                    # a standalone loopback gateway
 ```

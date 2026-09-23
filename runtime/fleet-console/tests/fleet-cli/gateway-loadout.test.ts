@@ -21,7 +21,6 @@ const summary = {
         { id: "cycle", scope: "api", label: "API", usedPercent: 92 },
       ],
     },
-    kimi: { status: "signed_out" },
   },
 };
 

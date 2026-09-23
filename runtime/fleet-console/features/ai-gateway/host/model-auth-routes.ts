@@ -11,7 +11,7 @@ interface ModelAuthHostContext {
 }
 import type http from "node:http";
 
-import { validateKimiAuthKey, validateOpencodeGoAuthKey, validateTypesafeAuthKey } from "@fleet-console/ai-gateway";
+import { validateOpencodeGoAuthKey, validateTypesafeAuthKey } from "@fleet-console/ai-gateway";
 import type { AuthService, AuthValidationFailureResult } from "@fleet-console/ai-gateway";
 
 import {
@@ -38,7 +38,6 @@ interface SignInBody {
 const UPSTREAM_FAILURE_STATUSES: ReadonlySet<string> = new Set(["timeout", "network", "server"]);
 
 const MODEL_AUTH_VALIDATORS: Readonly<Record<TerminalModelAuthProviderId, (apiKey: string) => Promise<AuthKeyValidation>>> = {
-  kimi: validateKimiAuthKey,
   opencode: validateOpencodeGoAuthKey,
   typesafe: validateTypesafeAuthKey,
 };

@@ -24,7 +24,6 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  KIMI_MESSAGES_URL,
   MAX_GATEWAY_REQUEST_BODY_BYTES,
   OPENCODE_MESSAGES_URL,
   XAI_CLI_RESPONSES_URL,

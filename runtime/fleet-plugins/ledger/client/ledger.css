@@ -376,11 +376,6 @@
   color: var(--provider-cursor);
 }
 
-.ledger-client-mark.is-kimi,
-.ledger-backend-slice.is-kimi {
-  color: var(--provider-kimi);
-}
-
 .ledger-client-mark.is-opencode,
 .ledger-backend-slice.is-opencode {
   color: var(--provider-opencode);
