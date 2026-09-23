@@ -52,23 +52,24 @@ function recordTime(at: number | null, language: "en" | "ko", earlier: string): 
   if (date.toDateString() === new Date().toDateString()) return time;
   return `${new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date)} ${time}`;
 }
+const EMPTY_IDS: ReadonlySet<string> = new Set();
 const ThreadGlyph = () => <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" aria-hidden="true"><path d="M2 3h8M2 6h8M2 9h5" /></svg>;
 
 /**
  * 단계 기록 — 쿠킹 입력 줄과 같은 문법이다: 상자·배경 없이 단계 글자와 같은 선에서 펼쳐지고, 한 건은 흐린 모노 한 줄(시각·종류)
- * 아래 결론과 나머지 줄. 오래된 것부터 읽는다. 「새 기록」은 펼친 순간의 읽은 수로 가른다(펼치면 읽음이 되어도 표시는 남는다).
+ * 아래 결론과 나머지 줄. 오래된 것부터 읽는다. 「새 기록」은 펼친 순간 이미 읽은 기록의 id 로 가른다(펼치면 읽음이 되어도 표시는 남는다; 상한에서 밀려나도 위치가 아니라 id 라 어긋나지 않는다).
  */
-function StepRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly StepRecord[]; seenAtOpen: number; open: boolean; t: Translate<TodoMessageKey>; language: "en" | "ko" }) {
+function StepRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly StepRecord[]; seenAtOpen: ReadonlySet<string>; open: boolean; t: Translate<TodoMessageKey>; language: "en" | "ko" }) {
   return (
     <div id={id} className={`todo-records${open ? " is-open" : ""}`} hidden={!open}>
       <div className="todo-records-inner">
-        {records.map((record, index) => (
+        {records.map((record) => (
           <div key={record.id} className="todo-record">
             <div className="todo-record-meta">
               <span>{recordTime(record.at, language, t("todo.records.earlier"))}</span>
               <span aria-hidden="true">·</span>
               <span className={record.kind === "redone" ? "is-redone" : undefined}>{t(record.kind === "redone" ? "todo.records.redone" : "todo.records.done")}</span>
-              {index >= seenAtOpen ? <span className="is-new">· {t("todo.records.new")}</span> : null}
+              {!seenAtOpen.has(record.id) ? <span className="is-new">· {t("todo.records.new")}</span> : null}
             </div>
             {record.lines.map((line, at) => <div key={at} className={at === 0 ? "todo-record-head" : "todo-record-line"}>{line}</div>)}
           </div>
@@ -653,8 +654,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const attachments = useAttachmentUpload(item, t);
   const [dropping, setDropping] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
-  // 펼친 단계 기록 — 단계 id → 펼친 순간의 읽은 수(「새 기록」 표시의 기준). 다른 항목으로 가면 모두 접는다.
-  const [openRecords, setOpenRecords] = useState<Readonly<Record<string, number>>>({});
+  // 펼친 단계 기록 — 단계 id → 펼친 순간 이미 읽은 기록 id(「새 기록」 표시의 기준). 다른 항목으로 가면 모두 접는다.
+  const [openRecords, setOpenRecords] = useState<Readonly<Record<string, ReadonlySet<string>>>>({});
   useEffect(() => { setOpenRecords({}); }, [item.id]);
   // 펼친 동안 쌓이는 기록도 읽은 것이다 — 보이는 단계의 안 읽은 기록을 서버에 읽음으로 알린다.
   const seenPending = useRef(new Set<string>());
@@ -669,7 +670,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   }, [item, openRecords, call]);
   const toggleRecords = (step: TodoStep) => setOpenRecords((current) => {
     if (step.id in current) { const { [step.id]: _closed, ...rest } = current; return rest; }
-    return { ...current, [step.id]: Math.min(step.seen ?? 0, step.records?.length ?? 0) };
+    const records = step.records ?? [];
+    return { ...current, [step.id]: new Set(records.slice(0, Math.min(step.seen ?? 0, records.length)).map((record) => record.id)) };
   });
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
   // 사람의 결정을 기다리는 세션 — 셰프가 먼저, 다음은 단계 순서. 카드가 잠기지 않은 채 사람을 부르는 유일한 상태다.
@@ -817,7 +819,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
                   {notStarted(step) && touchable ? <button type="button" className="todo-glyph" title={t("todo.steps.remove")} aria-label={t("todo.steps.remove")} onClick={() => void call("/step/remove", { itemId: item.id, stepId: step.id })}><TrashGlyph /></button> : null}
                 </span>
               </div>
-              {records.length > 0 ? <StepRecords id={recordsId} records={records} seenAtOpen={openRecords[step.id] ?? 0} open={recordsOpen} t={t} language={language} /> : null}
+              {records.length > 0 ? <StepRecords id={recordsId} records={records} seenAtOpen={openRecords[step.id] ?? EMPTY_IDS} open={recordsOpen} t={t} language={language} /> : null}
               </Fragment>
             );
           })}
