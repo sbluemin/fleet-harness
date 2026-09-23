@@ -1175,8 +1175,8 @@ export function activeTheater(current: ConsoleState): TheaterInfo | null {
   return current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
 }
 
-export function operationSearchEntries(current: ConsoleState) {
-  return buildOperationSearchEntries(current);
+export function operationSearchEntries(current: ConsoleState, hidden?: ReadonlySet<string>) {
+  return buildOperationSearchEntries(current, hidden);
 }
 
 function emit(): void {

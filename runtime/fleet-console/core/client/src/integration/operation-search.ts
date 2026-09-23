@@ -74,6 +74,7 @@ export const RAIL_SEARCH_PROVIDER_TIMEOUT_MS = 500;
 export const RAIL_SEARCH_PROVIDER_LIMIT = 8;
 
 const UNASSIGNED_GROUP_KEY = "__unassigned__";
+const EMPTY_HIDDEN: ReadonlySet<string> = new Set();
 
 /**
  * 팔레트가 검색 공급자에게 요구하는 최소 형태.
@@ -148,11 +149,15 @@ async function searchRailPanel(
   }
 }
 
-export function buildOperationSearchEntries(current: ConsoleState): readonly OperationSearchEntry[] {
+/**
+ * `hidden` 은 목록에 서지 않을 Operation — 묶음의 단계 Operation 처럼 사이드바·캔버스가 접는 것을
+ * 여기서도 같은 집합으로 뺀다. 지휘관 하나가 묶음을 대표한다.
+ */
+export function buildOperationSearchEntries(current: ConsoleState, hidden: ReadonlySet<string> = EMPTY_HIDDEN): readonly OperationSearchEntry[] {
   const theaters = new Map(current.theaters.map((theater) => [theater.id, theater]));
   const entries: OperationSearchEntry[] = [];
   for (const operation of current.operations) {
-    if (!operation.theaterId) continue;
+    if (!operation.theaterId || hidden.has(operation.id)) continue;
     entries.push(toOperationSearchEntry(operation, theaters.get(operation.theaterId), current.operationRuntime));
   }
   return entries;
