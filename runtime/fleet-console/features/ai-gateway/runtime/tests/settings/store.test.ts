@@ -216,12 +216,14 @@ describe("ai-gateway settings store", () => {
   // 만들어 버리면, 아직 옮기지 못한 나머지 축이 영영 고아가 된다.
   // `write`는 선별 자체를 교체하는 연산이므로 모델이 바뀌는 게 정상이다. 각 경로가 건드리지
   // **않는** 축이 승계된 값 그대로인지가 판정 기준이다.
-  it("adopts before a partial wire-log update", () => {
+  it("adopts remaining provider settings before a partial wire-log update", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6-sol" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, cursorDiagnosticsEnabled: true, xaiEndpoint: "direct" });
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
     store.writeWireLogEnabled(true);
-    expect(store.read()).toEqual({ version: 1, models: [{ id: "codex--gpt-6-sol" }], wireLogEnabled: true });
+    expect(store.read()).toEqual({ version: 1, xaiEndpoint: "direct", wireLogEnabled: true });
+    expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual(store.read());
+    expect(existsSync(path.join(legacyDir, "ai-gateway.json"))).toBe(false);
   });
 
   it("retries adoption after a write it could not complete, instead of settling on the loss", () => {

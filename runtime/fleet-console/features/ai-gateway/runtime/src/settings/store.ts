@@ -183,5 +183,6 @@ function hasStoredValue(settings: AiGatewayStoredSettings): boolean {
     || settings.delegationRoutingEnabled !== undefined
     || settings.delegationRoutingMode !== undefined
     || settings.delegationRoutingModel !== undefined
-    || settings.compactCeiling !== undefined;
+    || settings.compactCeiling !== undefined
+    || settings.xaiEndpoint !== undefined;
 }
