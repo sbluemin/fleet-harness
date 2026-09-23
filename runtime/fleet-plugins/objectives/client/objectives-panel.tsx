@@ -209,13 +209,17 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const sections = useMemo(() => {
     type Section = { key: string; label: string | null; swatch: string | null; items: ObjectiveItem[]; done?: boolean };
     const out: Section[] = [];
-    if (!sectioned) out.push({ key: "flat", label: null, swatch: null, items: open });
+    // 검토 대기 — 지휘관이 넘겨 사람의 완료만 남은 항목은 맨 위 한 구획으로 모인다(그룹 구획에서 빠진다). 펼침이 기본.
+    const reviewing = open.filter((item) => !!item.review);
+    if (reviewing.length) out.push({ key: "review", label: t("objectives.items.review"), swatch: null, items: reviewing });
+    const working = open.filter((item) => !item.review);
+    if (!sectioned) out.push({ key: "flat", label: null, swatch: null, items: working });
     else {
       for (const group of state.groups) {
-        const items = open.filter((item) => item.groupId === group.id);
+        const items = working.filter((item) => item.groupId === group.id);
         if (items.length) out.push({ key: group.id, label: group.name, swatch: group.color, items });
       }
-      const rest = open.filter((item) => !groupOf(item.groupId));
+      const rest = working.filter((item) => !groupOf(item.groupId));
       if (rest.length) out.push({ key: "ungrouped", label: t("objectives.list.ungrouped"), swatch: null, items: rest });
     }
     // 완료된 항목은 목록 맨 아래 「완료됨」 한 구획 — 펼쳐야 보인다.
