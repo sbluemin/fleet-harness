@@ -177,8 +177,8 @@ export function OperationsCanvas({
       if (!rootOperation) continue;
       const root = canvas.operations[rootOperation.id] ?? ensurePluginGeometry(rootOperation);
       const rowsAtDepth = new Map<number, number>();
-      for (const laid of layout.members) rowsAtDepth.set(laid.depth, Math.max(rowsAtDepth.get(laid.depth) ?? 0, laid.row + 1));
-      for (const laid of layout.members) {
+      for (const laid of layout.formation.members) rowsAtDepth.set(laid.depth, Math.max(rowsAtDepth.get(laid.depth) ?? 0, laid.row + 1));
+      for (const laid of layout.formation.members) {
         const member = byId.get(laid.member.operationId);
         if (!member) continue;
         const rows = rowsAtDepth.get(laid.depth) ?? 1;
@@ -1857,7 +1857,7 @@ export function OperationsCanvas({
         const layout = clusterIndex.rootOf.get(clusterPicker.rootId);
         if (!layout) return null;
         const rootNode = state.operations?.find((candidate) => candidate.id === clusterPicker.rootId) ?? null;
-        const expanded = !hiddenMembers.has(layout.members[0]?.member.operationId ?? "");
+        const expanded = !hiddenMembers.has(layout.formation.members[0]?.member.operationId ?? "");
         return (
           <ClusterPicker
             layout={layout}
