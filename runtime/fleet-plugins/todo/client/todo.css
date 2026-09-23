@@ -348,7 +348,24 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-step-sub.is-idle i, .todo-step-sub.is-ended i, .todo-step-sub.is-closed i, .todo-step-sub.is-unknown i { background: var(--text-tertiary); }
 .todo-step-sub.is-background i { background: var(--aurora); }
 .todo-step-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary)); }
-.todo-step-result { font-size: var(--t-2xs); color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 단계 기록 — 쿠킹 입력 줄(.todo-cook-line)과 같은 문법: 상자·배경 없이 단계 글자 선(22 + 확인 16 + 간격 12 = 50px)에서 펼쳐진다. */
+.todo-records-count { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
+.todo-records-count svg { width: 12px; height: 12px; }
+.todo-records-count i { width: 5px; height: 5px; border-radius: 50%; background: var(--brass); }
+.todo-records-count:hover { background: var(--control-rest); color: var(--text-secondary); }
+.todo-records-count.is-unseen { color: var(--brass); border-color: color-mix(in oklch, var(--brass) 45%, transparent); }
+.todo-records-count[aria-expanded="true"] { background: transparent; color: var(--text-primary); }
+.todo-records-count:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.todo-step.is-expanded .todo-step-text { color: var(--text-secondary); }
+.todo-records-inner { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 10px 50px; }
+.todo-records.is-open .todo-records-inner { animation: todo-records-in 220ms var(--ease-spring); }
+@keyframes todo-records-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.todo-record { font-size: var(--t-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.todo-record-meta { display: flex; gap: 6px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.todo-record-meta .is-redone { color: var(--aurora); }
+.todo-record-meta .is-new { color: var(--brass); }
+.todo-record-head { color: var(--text-primary); font-weight: var(--weight-medium); }
+.todo-record-line { color: var(--text-secondary); }
 .todo-step-sub b::before { content: "·"; margin-right: 6px; color: var(--text-tertiary); font-weight: normal; }
 .todo-step .todo-wait { font-size: var(--t-2xs); color: var(--text-tertiary); }
 .todo-step-tools { display: inline-flex; gap: 2px; opacity: 0.45; transition: opacity 120ms; }
@@ -550,6 +567,8 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-dag text.todo-num { fill: var(--text-primary); font-size: var(--t-2xs); font-weight: var(--weight-medium); }
 .todo-dag .todo-node.is-done text.todo-num { fill: var(--text-on-brass); }
 .todo-dag .todo-node:focus-visible { outline: none; }
+.todo-dag .todo-node-unseen { fill: var(--brass); stroke: var(--surface-panel); stroke-width: 1.5; pointer-events: none; }
+.todo-dag .todo-node.is-done .todo-node-unseen { fill: var(--aurora); }
 .todo-dag .todo-node:focus-visible circle { stroke: var(--brass); stroke-width: 2.4; }
 .todo-hint { font-size: var(--t-2xs); color: var(--text-tertiary); margin-top: 3px; padding: 0 20px 0 22px; }
 
@@ -720,3 +739,4 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-att-view figcaption { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); text-align: center; overflow-wrap: anywhere; }
 .todo-att-view-close { position: absolute; top: -34px; right: 0; }
 @media (prefers-reduced-motion: reduce) { .todo-att-spin { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .todo-records.is-open .todo-records-inner { animation: none; } }

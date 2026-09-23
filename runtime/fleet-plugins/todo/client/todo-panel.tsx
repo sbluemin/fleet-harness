@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
-import { coordinatorMode, stepReady, type CoordinatorMode, type StepAssign, type TodoItem, type TodoStep } from "../server/types.js";
+import { coordinatorMode, stepReady, unseenRecords, type CoordinatorMode, type StepAssign, type StepRecord, type TodoItem, type TodoStep } from "../server/types.js";
 import { NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
@@ -43,6 +43,41 @@ function createdLabel(at: number, language: "en" | "ko"): string {
   }
   return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(date);
 }
+/** 기록 시각 — 오늘이면 시:분, 아니면 월·일과 시:분. 옛 결과에서 옮긴 기록은 시각이 없다. */
+function recordTime(at: number | null, language: "en" | "ko", earlier: string): string {
+  if (at === null) return earlier;
+  const date = new Date(at);
+  const locale = language === "ko" ? "ko-KR" : "en-US";
+  const time = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+  if (date.toDateString() === new Date().toDateString()) return time;
+  return `${new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date)} ${time}`;
+}
+const ThreadGlyph = () => <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" aria-hidden="true"><path d="M2 3h8M2 6h8M2 9h5" /></svg>;
+
+/**
+ * 단계 기록 — 쿠킹 입력 줄과 같은 문법이다: 상자·배경 없이 단계 글자와 같은 선에서 펼쳐지고, 한 건은 흐린 모노 한 줄(시각·종류)
+ * 아래 결론과 나머지 줄. 오래된 것부터 읽는다. 「새 기록」은 펼친 순간의 읽은 수로 가른다(펼치면 읽음이 되어도 표시는 남는다).
+ */
+function StepRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly StepRecord[]; seenAtOpen: number; open: boolean; t: Translate<TodoMessageKey>; language: "en" | "ko" }) {
+  return (
+    <div id={id} className={`todo-records${open ? " is-open" : ""}`} hidden={!open}>
+      <div className="todo-records-inner">
+        {records.map((record, index) => (
+          <div key={record.id} className="todo-record">
+            <div className="todo-record-meta">
+              <span>{recordTime(record.at, language, t("todo.records.earlier"))}</span>
+              <span aria-hidden="true">·</span>
+              <span className={record.kind === "redone" ? "is-redone" : undefined}>{t(record.kind === "redone" ? "todo.records.redone" : "todo.records.done")}</span>
+              {index >= seenAtOpen ? <span className="is-new">· {t("todo.records.new")}</span> : null}
+            </div>
+            {record.lines.map((line, at) => <div key={at} className={at === 0 ? "todo-record-head" : "todo-record-line"}>{line}</div>)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function dueLabel(iso: string, language: "en" | "ko"): string {
   const date = new Date(`${iso}T00:00:00`);
   return new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", weekday: "short" }).format(date);
@@ -618,6 +653,23 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const attachments = useAttachmentUpload(item, t);
   const [dropping, setDropping] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
+  // 펼친 단계 기록 — 단계 id → 펼친 순간의 읽은 수(「새 기록」 표시의 기준). 다른 항목으로 가면 모두 접는다.
+  const [openRecords, setOpenRecords] = useState<Readonly<Record<string, number>>>({});
+  useEffect(() => { setOpenRecords({}); }, [item.id]);
+  // 펼친 동안 쌓이는 기록도 읽은 것이다 — 보이는 단계의 안 읽은 기록을 서버에 읽음으로 알린다.
+  const seenPending = useRef(new Set<string>());
+  useEffect(() => {
+    for (const step of item.steps) {
+      const key = `${step.id}:${step.records?.length ?? 0}`;
+      if (!(step.id in openRecords) || unseenRecords(step) === 0 || seenPending.current.has(key)) continue;
+      seenPending.current.add(key);
+      void call("/step/seen", { itemId: item.id, stepId: step.id });
+    }
+  }, [item, openRecords, call]);
+  const toggleRecords = (step: TodoStep) => setOpenRecords((current) => {
+    if (step.id in current) { const { [step.id]: _closed, ...rest } = current; return rest; }
+    return { ...current, [step.id]: Math.min(step.seen ?? 0, step.records?.length ?? 0) };
+  });
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
   // 사람의 결정을 기다리는 세션 — 셰프가 먼저, 다음은 단계 순서. 카드가 잠기지 않은 채 사람을 부르는 유일한 상태다.
   const awaiting = item.done ? null : (() => {
@@ -737,17 +789,26 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <div className="todo-steps">
           {item.steps.map((step, index) => {
             const ready = stepReady(item, step);
+            const records = step.records ?? [];
+            const recordsOpen = step.id in openRecords;
+            const unseen = unseenRecords(step);
+            const recordsId = `todo-records-${step.id}`;
             return (
-              <div key={step.id} className={`todo-step${step.done ? " is-done" : ""}${highlightStep === step.id ? " is-highlight" : ""}`}>
+              <Fragment key={step.id}>
+              <div className={`todo-step${step.done ? " is-done" : ""}${recordsOpen ? " is-expanded" : ""}${highlightStep === step.id ? " is-highlight" : ""}`}>
                 <button type="button" className={`todo-check${step.done ? " is-on" : ""}`} aria-label={t("todo.steps.done")} disabled={!editable} onClick={() => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { done: !step.done } })}><CheckGlyph /></button>
                 <div className="todo-step-body">
-                  <input className="todo-step-text" aria-label={`${index + 1}`} title={step.result || undefined} defaultValue={step.text} readOnly={!(editable || (touchable && notStarted(step)))} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== step.text) void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { text: value } }); }} onKeyDown={(event) => { if (submitKey(event)) event.currentTarget.blur(); }} />
+                  <input className="todo-step-text" aria-label={`${index + 1}`} defaultValue={step.text} readOnly={!(editable || (touchable && notStarted(step)))} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== step.text) void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { text: value } }); }} onKeyDown={(event) => { if (submitKey(event)) event.currentTarget.blur(); }} />
                   {/* 배정된 모델은 단계 이름 아래 dim 한 줄 — 풀네임 · 강도. 담당은 상태 점, 예약은 ✦. */}
                   {step.slot ? <span className={`todo-step-sub is-${operationState(step.slot.operationId)}`} title={`${t("todo.steps.assignee")} · ${operationTitle(step.slot.operationId)}`}><ProviderGlyph model={step.slot.model} /><span>{launchWords(launchRows, step.slot.model, step.slot.effort, t("todo.coordinator.effortAuto")).model}</span>{step.slot.effort ? <b>{launchWords(launchRows, step.slot.model, step.slot.effort, t("todo.coordinator.effortAuto")).effort}</b> : null}</span>
                     : step.unplaced && !step.done ? <span className="todo-step-sub is-unplaced">{t("todo.steps.unplaced")}</span>
                     : !step.done ? <span className="todo-step-sub is-assign">{!step.assign || step.assign.mode === "self" ? t("todo.assign.self") : step.assign.mode === "route" ? t("todo.assign.route") : <><ProviderGlyph model={step.assign.model} /><span>{launchWords(launchRows, step.assign.model, step.assign.effort, t("todo.coordinator.effortAuto")).model}</span><b>{launchWords(launchRows, step.assign.model, step.assign.effort, t("todo.coordinator.effortAuto")).effort}</b></>}</span> : null}
-                  {/* 산출 요약은 줄로 늘어놓지 않는다 — 단계 이름의 툴팁으로만 남긴다. */}
                 </div>
+                {records.length > 0 ? (
+                  <button type="button" className={`todo-records-count${unseen > 0 ? " is-unseen" : ""}`} aria-expanded={recordsOpen} aria-controls={recordsId} aria-label={`${t("todo.records.count", { index: index + 1, count: records.length })}${unseen > 0 ? ` · ${t("todo.records.unseen", { count: unseen })}` : ""}`} onClick={() => toggleRecords(step)}>
+                    {unseen > 0 ? <i aria-hidden="true" /> : <ThreadGlyph />}{records.length}
+                  </button>
+                ) : null}
                 {!step.slot && !step.done && !ready && !step.unplaced ? <span className="todo-wait" title={t("todo.steps.waiting")}>⏸</span> : null}
                 <span className="todo-step-tools">
                   {!step.done && !step.slot && editable ? <AssignControl t={t} assign={step.assign ?? null} onChange={(assign) => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { assign } })} label={t("todo.steps.assign")} /> : null}
@@ -755,6 +816,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
                   {notStarted(step) && touchable ? <button type="button" className="todo-glyph" title={t("todo.steps.remove")} aria-label={t("todo.steps.remove")} onClick={() => void call("/step/remove", { itemId: item.id, stepId: step.id })}><TrashGlyph /></button> : null}
                 </span>
               </div>
+              {records.length > 0 ? <StepRecords id={recordsId} records={records} seenAtOpen={openRecords[step.id] ?? 0} open={recordsOpen} t={t} language={language} /> : null}
+              </Fragment>
             );
           })}
         </div>

@@ -101,7 +101,7 @@ export function createTodoRoutes(ctx: FleetPluginServerContext, store: TodoStore
     return item(kinds.length > 0 ? store.setEdited(next.id, kinds) : next);
   };
   const stepKinds = (patch: StepPatchInput): TodoEditKind[] => [
-    ...(patch.text !== undefined || patch.done !== undefined || patch.result !== undefined ? ["steps" as const] : []),
+    ...(patch.text !== undefined || patch.done !== undefined ? ["steps" as const] : []),
     ...(patch.after !== undefined || patch.why !== undefined ? ["recipe" as const] : []),
     ...(patch.assign !== undefined ? ["assign" as const] : []),
   ];
@@ -127,6 +127,8 @@ export function createTodoRoutes(ctx: FleetPluginServerContext, store: TodoStore
     { name: "item/complete", method: "POST", summary: "Complete a To-do item and release its Operation slots.", handler: json(itemRef.extend({ undone: z.boolean().optional() }), unlessBusy(async ({ itemId, undone, language }) => item(undone ? store.reopen(itemId) : await launch.complete(itemId, "human", { language })))) },
     { name: "step/add", method: "POST", summary: "Add a step.", handler: json(itemRef.extend({ step: stepAddSchema }), steerable(({ step }) => step.assign === undefined, ({ itemId, step, language }) => edited(["steps"], () => launch.stepAdded(itemId, step, { language, by: "human" })))) },
     { name: "step/patch", method: "POST", summary: "Edit a step (text, done, dependencies).", handler: json(stepRef.extend({ patch: stepPatchSchema }), steerable(({ itemId, stepId, patch }) => only(patch, ["text"]) && notStarted(itemId, stepId), ({ itemId, stepId, patch, language }) => edited(stepKinds(patch), () => launch.stepPatched(itemId, stepId, patch, "human", { language })))) },
+    // 읽음은 편집이 아니다 — 셰프가 일하는 동안에도 받고, 셰프에게 알릴 것도 없다.
+    { name: "step/seen", method: "POST", summary: "Mark every record of a step as read by the person.", handler: json(stepRef, ({ itemId, stepId }) => item(store.stepSeen(itemId, stepId))) },
     { name: "step/remove", method: "POST", summary: "Remove a step.", handler: json(stepRef, steerable(({ itemId, stepId }) => notStarted(itemId, stepId), ({ itemId, stepId }) => edited(["steps"], () => store.stepRemove(itemId, stepId)))) },
     { name: "edge/toggle", method: "POST", summary: "Link or unlink two steps in the coordination graph.", handler: json(itemRef.extend({ from: ids, to: ids }), steerable(({ itemId, to }) => notStarted(itemId, to), ({ itemId, from, to }) => { const result = store.edgeToggle(itemId, from, to); return { item: store.setEdited(itemId, ["recipe"]), linked: result.linked }; })) },
     { name: "edge/linear", method: "POST", summary: "Chain all steps in order.", handler: json(itemRef, unlessBusy(({ itemId }) => edited(["recipe"], () => store.edgesLinear(itemId)))) },

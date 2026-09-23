@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import {
   DEFAULT_STEP_ASSIGN,
+  MAX_RECORDS,
   MAX_STEPS,
   hasCycle,
   type CreateItemInput,
@@ -13,6 +14,7 @@ import {
   type Slot,
   type SlotBy,
   type StepAddInput,
+  type StepRecord,
   type TodoAttachment,
   type StepPatchInput,
   type TodoEditKind,
@@ -62,6 +64,10 @@ export interface TodoStore {
   /** `unplaced` — 사람이 선행 없이 더한 단계는 미분류로 들어간다(셰프가 자리를 잡는다). */
   stepAdd(itemId: string, input: StepAddInput, options?: { readonly unplaced?: boolean }): TodoItem;
   stepPatch(itemId: string, stepId: string, input: StepPatchInput, by?: SlotBy): TodoItem;
+  /** 셰프의 완료 — 완료로 두고 기록 한 건을 더한다. 기록이 이미 있는 단계(다시 작업)면 「다시 완료」다. */
+  stepDone(itemId: string, stepId: string, lines: readonly string[], by: SlotBy): TodoItem;
+  /** 사람이 이 단계의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
+  stepSeen(itemId: string, stepId: string): TodoItem;
   stepRemove(itemId: string, stepId: string): TodoItem;
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(itemId: string, from: string, to: string, why?: string): { readonly item: TodoItem; readonly linked: boolean };
@@ -88,11 +94,23 @@ function fileFor(dir: string, theaterId: string): string {
   return path.join(dir, `${safe}.json`);
 }
 
+/**
+ * 옛 결과 — 단계마다 덮어쓰던 문자열 하나(`result`)를 시각 없는 첫 기록으로 옮긴다. 이미 본 것으로 둔다.
+ * 파일은 다음 쓰기 때 새 모양으로 저장된다; id 가 단계에서 정해지므로 다시 읽어도 같은 기록이다.
+ */
+function migrateStep(step: TodoStep & { readonly result?: unknown }): TodoStep {
+  if (!("result" in step)) return step;
+  const { result, ...rest } = step;
+  if (typeof result !== "string" || !result.trim() || rest.records?.length) return rest;
+  const record: StepRecord = { id: `result-${step.id}`, at: null, kind: "done", lines: result.split("\n").map((line) => line.trim()).filter(Boolean) };
+  return { ...rest, records: [record], seen: 1 };
+}
+
 function readFile(file: string): TodoTheaterFile {
   try {
     const raw = fs.readFileSync(file, "utf8");
     const parsed = JSON.parse(raw) as Partial<TodoTheaterFile>;
-    if (parsed && parsed.version === 1 && Array.isArray(parsed.items)) return { version: 1, items: parsed.items as TodoItem[] };
+    if (parsed && parsed.version === 1 && Array.isArray(parsed.items)) return { version: 1, items: (parsed.items as TodoItem[]).map((item) => ({ ...item, steps: item.steps.map(migrateStep) })) };
   } catch {
     // 없거나 깨진 파일은 빈 목록으로 시작한다 — 깨진 파일은 덮어쓰지 않고 .broken 으로 비켜 둔다.
     try { if (fs.existsSync(file)) fs.renameSync(file, `${file}.broken-${Date.now()}`); } catch { /* ignore */ }
@@ -376,10 +394,27 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
         ...(input.after !== undefined ? { after: input.after.filter((id) => known.has(id) && id !== stepId) } : {}),
         ...(input.assign !== undefined ? { assign: input.assign ?? undefined } : {}),
         ...(input.why !== undefined ? { why: { ...step.why, ...input.why } } : {}),
-        ...(input.result !== undefined ? { result: input.result } : {}),
       };
       return replaceStep(item, at, next);
     }),
+
+    stepDone: (itemId, stepId, lines, by) => update(itemId, (item) => {
+      const { at, step } = stepOf(item, stepId);
+      const records = step.records ?? [];
+      const record: StepRecord = { id: randomUUID(), at: now(), kind: records.length > 0 ? "redone" : "done", lines: [...lines], by };
+      const kept = [...records, record].slice(-MAX_RECORDS);
+      // 밀려난 기록만큼 읽은 수도 줄인다 — 남은 기록 중 안 읽은 것이 그대로 안 읽은 것으로 남는다.
+      const seen = Math.max(0, Math.min(step.seen ?? 0, records.length) - (records.length + 1 - kept.length));
+      return replaceStep(item, at, { ...step, done: true, doneBy: by, records: kept, seen });
+    }),
+
+    stepSeen(itemId, stepId) {
+      const current = locate(itemId).item;
+      const { step } = stepOf(current, stepId);
+      const count = step.records?.length ?? 0;
+      if ((step.seen ?? 0) === count) return current;
+      return update(itemId, (item) => { const found = stepOf(item, stepId); return replaceStep(item, found.at, { ...found.step, seen: count }); });
+    },
 
     stepRemove: (itemId, stepId) => update(itemId, (item) => {
       stepOf(item, stepId);
