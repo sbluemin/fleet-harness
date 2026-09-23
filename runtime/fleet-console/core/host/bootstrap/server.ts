@@ -1267,6 +1267,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 403, { error: "host_mismatch" });
       return;
     }
+    if (pathname === "/" && (req.method === "GET" || req.method === "HEAD")) {
+      res.writeHead(302, withSecurityHeaders({ Location: `/console/${readUrl(req).search}` }));
+      res.end();
+      return;
+    }
     if (pathname.startsWith("/mcp/")) {
       if (listener?.audience !== "local") { writeJson(res, 404, { error: "not_found" }); return; }
       mcpHttp.handle(req, res);

@@ -162,6 +162,22 @@ describe("console terminal observability", () => {
 
 describe("console static and terminal ticket boundary", () => {
 
+  it("redirects the admitted root entry to the console document", async () => {
+    const fixture = await startFixture();
+    ensureStaticIndex();
+    const root = new URL("/?entry=bookmark", fixture.endpoint);
+
+    expect(await requestWithHost(root, root.origin, "localhost:1", "GET")).toBe(403);
+    const redirect = await fetch(root, { redirect: "manual" });
+    expect(redirect.status).toBe(302);
+    expect(redirect.headers.get("location")).toBe("/console/?entry=bookmark");
+
+    const document = await fetch(root);
+    expect(document.status).toBe(200);
+    expect(new URL(document.url).pathname).toBe("/console/");
+    expect(await document.text()).toContain("console-test-index");
+  });
+
   it.skip("keeps MCP bearer tokens out of terminal tickets, observer snapshots, SSE frames, static HTML, and launch errors", async () => {
     const fakeToken = "mcp-token-seeded-secret";
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-token-boundary-"));
