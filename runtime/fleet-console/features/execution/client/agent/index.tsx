@@ -34,7 +34,7 @@ import "../../../analyst/client/analysis.css";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useOperationUse } from "../../../computer-use/client/computer-screen-share.js";
-import { gestureCallerLabel, getOperationWrap, readLaunchAttribution, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
+import { gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { fontCjkScripts, type CjkScript } from "../terminal/shared/cjk-coverage.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
@@ -612,7 +612,6 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
   const liveReveal = React.useSyncExternalStore(subscribeOperationReveals, () => getOperationReveal(context.operationId), () => null);
   // Console Use 시선 — 에이전트가 이 Operation 을 읽거나 만지면 같은 말풍선 자리에 "○○: 전사 읽음" 이 잠깐 선다.
   const liveGaze = React.useSyncExternalStore(subscribeConsoleUseGestures, () => getOperationWrap(context.operationId)?.gesture ?? null, () => null);
-  const launchedBy = readLaunchAttribution(context.operation.payload, context.operation.ts.createdAt);
   const watchBubble = (experiments?.sessionWatch === true && watchEnabled) || liveReveal || liveGaze
     ? <span className="session-watch-host" aria-hidden={liveReview === null && liveReveal === null && liveGaze === null ? true : undefined}>
         {experiments?.sessionWatch === true && watchEnabled ? <SessionWatchBubble context={context} review={liveReview} /> : null}
@@ -620,14 +619,10 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
         {liveGaze && !liveReveal ? <div className="session-watch-bubble is-gaze" role="status" aria-live="polite"><span className="session-watch-bubble__text"><span className="chat-by-agent">{gestureCallerLabel(liveGaze.caller)}</span> {liveGaze.summary}</span></div> : null}
       </span>
     : null;
-  const launchedByMark = launchedBy
-    ? <span className="agent-launched-by chat-by-agent" title={t("terminal.experiments.launchedBy", { caller: gestureCallerLabel(launchedBy) })}>{t("terminal.experiments.launchedBy", { caller: gestureCallerLabel(launchedBy) })}</span>
-    : null;
 
   return (
     <>
       <span className="agent-operation-marks">
-        {launchedByMark}
         <OperationUseBadge active={using.console} kind="console" label={using.turnOnly.console ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuConsoleUse") }) : t("terminal.experiments.menuConsoleUse")} />
         <OperationUseBadge active={using.computer} kind="computer" label={using.turnOnly.computer ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuComputerUse") }) : t("terminal.experiments.menuComputerUse")} />
       </span>
