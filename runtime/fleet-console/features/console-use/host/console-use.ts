@@ -14,6 +14,8 @@ import type { OperationNode } from "@fleet-console/sdk/operations";
  * 분석가는 분석 라우트가. 비어 있는 묶음의 도구는 `capability_unavailable`로 답한다.
  * 쓰기(커밋·파일 변경)는 여기에 없다: 그것은 그 Theater의 Operation에 시키는 일이다.
  */
+export type SidebarPosition = "first" | "last" | { readonly before: string } | { readonly after: string };
+
 export interface ConsoleUseActions {
   resume?(operationId: string): Promise<{ readonly ok: true; readonly status: string } | { readonly ok: false; readonly error: string }>;
   /**
@@ -26,12 +28,13 @@ export interface ConsoleUseActions {
   rename?(operationId: string, title: string): boolean;
   /** 사이드바의 그룹 — 목록·수정·빈 그룹 삭제. Theater 를 주면 그 Theater 만. */
   groups?(theaterId?: string): readonly { readonly id: string; readonly name: string; readonly color: string; readonly theaterId: string; readonly order: number }[];
-  groupPatch?(input: { readonly id: string; readonly name?: string; readonly color?: string; readonly delete?: boolean }): { readonly ok: true; readonly name: string; readonly theaterId: string } | { readonly ok: false; readonly error: string };
+  groupPatch?(input: { readonly id: string; readonly name?: string; readonly color?: string; readonly delete?: boolean; readonly position?: SidebarPosition }): { readonly ok: true; readonly name: string; readonly theaterId: string; readonly groupOrder?: readonly string[] } | { readonly ok: false; readonly error: string };
   /** 사람이 지금 그 Operation 의 입력창에 쓰고 있는가 — 에이전트는 그 입력창을 쓰지 못한다. */
   composerBusy?(operationId: string): boolean;
   setView?(operationId: string, mode: "chat" | "terminal"): Promise<{ readonly ok: true; readonly mode: "chat" | "terminal"; readonly changed: boolean } | { readonly ok: false; readonly error: string }>;
   using?(): { readonly console: readonly string[]; readonly computer: string | null; readonly browser: readonly string[] };
   group?(input: { readonly mode: "create" | "assign" | "remove"; readonly theaterId: string; readonly name?: string; readonly color?: string; readonly groupId?: string; readonly operationIds: readonly string[] }): { readonly group: { readonly id: string; readonly name: string; readonly color: string } | null; readonly members: readonly string[] };
+  reorder?(input: { readonly theaterId: string; readonly operationIds: readonly string[]; readonly position: SidebarPosition; readonly groupId: string | null }): { readonly operationIds: readonly string[]; readonly groupId: string | null; readonly members: readonly string[] };
   accent?(operationId: string, accent: string | null): boolean;
   /** 사용자 화면에서 그 Operation을 앞에 세운다. 사유는 캡션 말풍선에 한 줄로 보인다. */
   reveal?(operationId: string, reason: string, caller: ConsoleCaller): void;
@@ -136,7 +139,9 @@ const NEXT_ACTION: Record<string, string> = {
   unknown_group: "No such group in that Theater. Read console_operations for the Theater's groups.",
   group_not_empty: "The group still has members. Move them out with console_organize (group: null) first.",
   mixed_theaters: "All Operations in one call must belong to the same Theater.",
-  invalid_arguments: "Check the tool's parameters. console_organize: give operationIds with title, accent, or group ({ id } to assign, { name, color? } to create, null to remove), or groupPatch alone. console_send: exactly one of text, askId, interrupt.",
+  mixed_sections: "All reordered Operations must be in the same group section (or all ungrouped). Choose an anchor in that section, or assign a group first in the same call.",
+  unknown_anchor: "The position anchor must exist in the same Theater and section, and cannot be one of the Operations being moved. Read console_operations for current IDs and groups.",
+  invalid_arguments: "Check the tool's parameters. console_organize: give operationIds with title, accent, group, or position (first, last, { before: id }, { after: id }); groupPatch accepts name, color, delete, or position (not position with delete). console_send: exactly one of text, askId, interrupt.",
 };
 
 function refuse(reason: ConsoleUseRefusal, operationId: string | null, language: "en" | "ko") {
@@ -213,7 +218,10 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     const current = snapshot();
     const activities = new Map(current?.operations.map((op) => [op.id, op.activity]) ?? []);
     const names = new Map(theaters().map((theater) => [theater.id, theater.name]));
+    const theaterPositions = new Map<string, number>();
     const values = operations().map((op) => {
+      const sidebarOrder = theaterPositions.get(op.theaterId) ?? 0;
+      theaterPositions.set(op.theaterId, sidebarOrder + 1);
       const observation = control?.observe(op.id);
       const snapshotActivity = activities.get(op.id);
       const stale = !observation && !!current?.takenAt && (!Number.isFinite(Date.parse(current.takenAt)) || Date.now() - Date.parse(current.takenAt) > 60_000);
@@ -221,7 +229,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       const host = op as OperationNode & { readonly groupId?: string | null; readonly accent?: string };
       const lastActiveAt = typeof op.ts.updatedAt === "number" ? new Date(op.ts.updatedAt).toISOString() : null;
       return {
-        id: op.id, title: op.title, theaterId: op.theaterId, theater: names.get(op.theaterId) ?? op.theaterId,
+        id: op.id, title: op.title, theaterId: op.theaterId, theater: names.get(op.theaterId) ?? op.theaterId, order: sidebarOrder,
         kind: op.type, activity: observation?.activity ?? (stale ? "unknown" : snapshotActivity ?? "unknown"),
         groupId: typeof host.groupId === "string" ? host.groupId : null,
         accent: typeof host.accent === "string" ? host.accent : null,
@@ -261,6 +269,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
   const sameCaller = (a: ConsoleCaller | null, b: ConsoleCaller | null) => !!a && !!b && (a.kind === "operation" && b.kind === "operation" ? a.operationId === b.operationId : a.kind === "plugin" && b.kind === "plugin" && a.pluginId === b.pluginId);
   const empty = z.object({}).strict();
   const ids = z.string().min(1).max(128);
+  const position = z.union([z.enum(["first", "last"]), z.object({ before: ids }).strict(), z.object({ after: ids }).strict()]);
   const title = z.string().trim().min(1).max(120);
   const theaterName = (id: string) => theaters().find((t) => t.id === id)?.name ?? id;
   const opTarget = (id: string): ConsoleUseCallEvent["target"] => ({ kind: "operation", operationId: id });
@@ -285,7 +294,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here", gestures: "Every call is shown on the person's Console: the target you read or change (Operation row and panel, Theater, group, Repository/File panel) is wrapped in a Console use pulse with your name; nothing is written on your own caption." },
       };
     }),
-    define("console_operations", "Scan the sidebar: Operations with activity, group, accent, lineage and last activity, plus the Theater's groups. Host observation is preferred; unknown is not idle. With waitMs, waits (up to 25 s) for the list or an activity to change before answering. Cursor expires when the matching list changes.", z.object({ theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional(), waitMs: z.number().int().min(0).max(25_000).optional() }).strict(), async (args, ctx) => {
+    define("console_operations", "Scan the sidebar: Operations with activity, group, accent, lineage, last activity and order (zero-based Theater-wide Operation order); groups include sidebar-ordered members. Operation rows remain ID-sorted for pagination. Host observation is preferred; unknown is not idle. With waitMs, waits (up to 25 s) for the list or an activity to change before answering. Cursor expires when the matching list or its order changes.", z.object({ theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional(), waitMs: z.number().int().min(0).max(25_000).optional() }).strict(), async (args, ctx) => {
       if (args.waitMs && control) {
         gesture(ctx, "console_operations", "변화를 기다리는 중", "wait", args.theaterId ? { kind: "theater", theaterId: args.theaterId } : undefined);
         const head = await control.readEvents(undefined, 0);
@@ -294,21 +303,22 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       const { snapshotAt, values } = rows();
       const scope = values.filter((r) => (!args.theaterId || r.theaterId === args.theaterId) && (!args.kind || r.kind === args.kind) && (args.groupId === undefined || r.groupId === args.groupId) && (!args.query || r.title.toLowerCase().includes(args.query.toLowerCase()))).sort((a, b) => a.id.localeCompare(b.id));
       const filtered = scope.filter((r) => !args.activity || r.activity === args.activity);
-      const generation = createHash("sha256").update(JSON.stringify([args.activity, args.theaterId, args.kind, args.groupId, args.query, filtered.map((r) => r.id)])).digest("hex").slice(0, 16);
+      const generation = createHash("sha256").update(JSON.stringify([args.activity, args.theaterId, args.kind, args.groupId, args.query, filtered.map((r) => [r.id, r.order, r.groupId])])).digest("hex").slice(0, 16);
       let offset = 0;
       if (args.cursor) { const [key, raw] = args.cursor.split(":"); offset = Number(raw); if (key !== generation || !Number.isSafeInteger(offset) || offset < 0 || offset > filtered.length) throw new ConsoleControlError("cursor_expired"); }
       const limit = args.limit ?? 50;
       const unknown = scope.filter((r) => r.activity === "unknown").length;
-      const groups = (readActions().groups?.(args.theaterId) ?? []).map((g) => ({ ...g, members: scope.filter((r) => r.groupId === g.id).map((r) => r.id) }));
+      const groups = (readActions().groups?.(args.theaterId) ?? []).map((g) => ({ ...g, members: scope.filter((r) => r.groupId === g.id && r.theaterId === g.theaterId).sort((a, b) => a.order - b.order).map((r) => r.id) }));
       gesture(ctx, "console_operations", `Operation ${scope.length}개 훑음${args.theaterId ? ` · ${theaterName(args.theaterId)}` : ""}`, "gaze", args.theaterId ? { kind: "theater", theaterId: args.theaterId } : undefined);
       return { snapshotAt, operations: filtered.slice(offset, offset + limit), groups, coverage: { total: scope.length, matching: filtered.length, unknown, complete: unknown === 0 }, nextCursor: offset + limit < filtered.length ? `${generation}:${offset + limit}` : null };
     }),
-    define("console_organize", "Tidy the sidebar the way the person does: rename, set an accent, put Operations into a group (existing id or a new name), take them out (group: null), or patch a group (name, color, delete when empty). All Operations must be in one Theater. The person sees the name retype in place, the group section grow, and your attribution.", z.object({
+    define("console_organize", "Tidy the sidebar: rename, accent, group assignment, reorder operationIds as one ordered block within their group/ungrouped section with position (first, last, { before: id }, { after: id }), or patch a group (name, color, delete when empty, position among Theater groups). Group assignment happens before positioning. All Operations must be in one Theater. The person sees the change and your attribution.", z.object({
       operationIds: z.array(ids).min(1).max(50).optional(),
       title: title.optional(),
       accent: z.enum(ACCENTS).nullable().optional(),
       group: z.object({ id: ids.optional(), name: z.string().trim().min(1).max(60).optional(), color: z.enum(ACCENTS).optional() }).strict().nullable().optional(),
-      groupPatch: z.object({ id: ids, name: z.string().trim().min(1).max(60).optional(), color: z.enum(ACCENTS).optional(), delete: z.boolean().optional() }).strict().optional(),
+      position: position.optional(),
+      groupPatch: z.object({ id: ids, name: z.string().trim().min(1).max(60).optional(), color: z.enum(ACCENTS).optional(), delete: z.boolean().optional(), position: position.optional() }).strict().optional(),
     }).strict(), (args, ctx) => {
       requireCaller(ctx);
       const result: Record<string, unknown> = {};
@@ -317,15 +327,40 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       if (args.operationIds && args.title !== undefined && args.operationIds.length !== 1) throw new ConsoleControlError("invalid_arguments");
       const nodesAhead = args.operationIds?.map(node) ?? [];
       if (nodesAhead.length && nodesAhead.some((op) => op.theaterId !== nodesAhead[0]!.theaterId)) throw new ConsoleControlError("mixed_theaters");
-      if (args.operationIds && args.title === undefined && args.accent === undefined && args.group === undefined) throw new ConsoleControlError("invalid_arguments");
+      if (args.operationIds && args.title === undefined && args.accent === undefined && args.group === undefined && args.position === undefined) throw new ConsoleControlError("invalid_arguments");
+      if (!args.operationIds && (args.title !== undefined || args.accent !== undefined || args.group !== undefined || args.position !== undefined)) throw new ConsoleControlError("invalid_arguments");
       if (args.group && args.group.id === undefined && args.group.name === undefined && Object.keys(args.group).length) throw new ConsoleControlError("invalid_arguments");
-      // 넣을 그룹도 미리 푼다 — 같은 Theater 에 없는 그룹이면 어떤 쓰기도 하기 전에 거절한다.
-      if (args.group?.id && !(readActions().groups?.(nodesAhead[0]?.theaterId) ?? []).some((g) => g.id === args.group!.id)) throw new ConsoleControlError("unknown_group");
+      if (args.groupPatch?.delete && args.groupPatch.position !== undefined) throw new ConsoleControlError("invalid_arguments");
+      if (args.groupPatch?.delete && args.group?.id === args.groupPatch.id) throw new ConsoleControlError("invalid_arguments");
+      if (args.position) need("reorder");
+      if (args.groupPatch) need("groupPatch");
+      if (args.position && new Set(args.operationIds).size !== args.operationIds?.length) throw new ConsoleControlError("invalid_arguments");
+      // 모든 앵커·섹션은 쓰기 전에 검증한다. group 이 있으면 배정 후의 섹션을 기준으로 본다.
+      const theaterIdAhead = nodesAhead[0]?.theaterId;
+      const theaterGroups = readActions().groups?.(theaterIdAhead) ?? [];
+      if (args.group?.id && !theaterGroups.some((g) => g.id === args.group!.id)) throw new ConsoleControlError("unknown_group");
+      const patchGroup = args.groupPatch && (readActions().groups?.().find((g) => g.id === args.groupPatch!.id));
+      if (args.groupPatch && !patchGroup) throw new ConsoleControlError("unknown_group");
+      if (args.groupPatch?.position && patchGroup) {
+        const anchor = typeof args.groupPatch.position === "string" ? null : "before" in args.groupPatch.position ? args.groupPatch.position.before : args.groupPatch.position.after;
+        if (anchor && (anchor === patchGroup.id || !readActions().groups?.(patchGroup.theaterId).some((g) => g.id === anchor))) throw new ConsoleControlError("unknown_anchor");
+      }
+      if (args.position) {
+        const expectedGroup = args.group === undefined ? ((nodesAhead[0] as OperationNode & { groupId?: string | null }).groupId ?? null) : args.group?.id ?? null;
+        if (args.group === undefined && nodesAhead.some((op) => ((op as OperationNode & { groupId?: string | null }).groupId ?? null) !== expectedGroup)) throw new ConsoleControlError("mixed_sections");
+        const anchor = typeof args.position === "string" ? null : "before" in args.position ? args.position.before : args.position.after;
+        if (anchor) {
+          const anchored = operations().find((op) => op.id === anchor);
+          if (!anchored || anchored.theaterId !== theaterIdAhead || args.operationIds?.includes(anchor) || ((anchored as OperationNode & { groupId?: string | null }).groupId ?? null) !== expectedGroup || args.group?.name) throw new ConsoleControlError("unknown_anchor");
+        }
+      }
       if (args.groupPatch) {
         const patched = need("groupPatch")(args.groupPatch);
         if (!patched.ok) throw new ConsoleControlError(patched.error);
         result.groupPatch = patched;
-        gesture(ctx, "console_organize", args.groupPatch.delete ? `그룹 「${patched.name}」 지움` : `그룹 「${patched.name}」 ${args.groupPatch.name ? "이름" : "색"} 바꿈`, args.groupPatch.delete ? "press" : "input", { kind: "group", groupId: args.groupPatch.id, theaterId: patched.theaterId });
+        const patchPosition = args.groupPatch.position;
+        const positionSummary = patchPosition && (typeof patchPosition === "string" ? patchPosition === "first" ? "맨 앞" : "맨 뒤" : "before" in patchPosition ? `「${readActions().groups?.(patched.theaterId).find((g) => g.id === patchPosition.before)?.name ?? patchPosition.before}」 앞` : `「${readActions().groups?.(patched.theaterId).find((g) => g.id === patchPosition.after)?.name ?? patchPosition.after}」 뒤`);
+        gesture(ctx, "console_organize", args.groupPatch.delete ? `그룹 「${patched.name}」 지움` : positionSummary ? `그룹 「${patched.name}」 → ${positionSummary}` : `그룹 「${patched.name}」 ${args.groupPatch.name ? "이름" : "색"} 바꿈`, args.groupPatch.delete || positionSummary ? "press" : "input", { kind: "group", groupId: args.groupPatch.id, theaterId: patched.theaterId });
       }
       if (!args.operationIds) return result;
       const nodes = nodesAhead;
@@ -357,6 +392,13 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
           const g = (result.group as { group: { id: string; name: string } | null }).group;
           gesture(ctx, "console_organize", `그룹 「${args.group.name}」 만듦 · ${nodes.length}개 넣음`, "create", g ? { kind: "group", groupId: g.id, theaterId } : { kind: "theater", theaterId });
         }
+      }
+      if (args.position) {
+        const groupId = args.group === undefined ? ((nodes[0] as OperationNode & { groupId?: string | null }).groupId ?? null) : (result.group as { group: { id: string } | null } | undefined)?.group?.id ?? null;
+        result.reordered = need("reorder")({ theaterId, operationIds: nodes.map((op) => op.id), position: args.position, groupId });
+        const location = typeof args.position === "string" ? args.position === "first" ? "맨 앞" : "맨 뒤" : "before" in args.position ? `${node(args.position.before).title} 앞` : `${node(args.position.after).title} 뒤`;
+        const groupName = groupId ? readActions().groups?.(theaterId).find((g) => g.id === groupId)?.name ?? groupId : "미그룹";
+        gesture(ctx, "console_organize", `${nodes.map((op) => op.title).join(", ")} → 「${groupName}」 ${location}`, "press", groupId ? { kind: "group", groupId, theaterId } : { kind: "theater", theaterId });
       }
       return result;
     }),
