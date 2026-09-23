@@ -406,7 +406,7 @@ export function OperationsSideBar({
     launchMenuRequest,
   } = useConsoleState();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
-  // 묶음은 셰프 한 행이 대표한다 — 단계 Operation 은 사이드바(펼친 목록·레일)에 서지 않고, 셰프 행의 상태는 셰프 자신의 것이다.
+  // 묶음은 지휘관 한 행이 대표한다 — 단계 Operation 은 사이드바(펼친 목록·레일)에 서지 않고, 지휘관 행의 상태는 지휘관 자신의 것이다.
   const clusterIndex = useClusterIndex();
 
   useLayoutEffect(() => {

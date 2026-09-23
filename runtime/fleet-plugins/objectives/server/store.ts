@@ -8,7 +8,7 @@ import {
   MAX_RECORDS,
   MAX_STEPS,
   hasCycle,
-  recipeOrder,
+  lineupOrder,
   type CreateItemInput,
   type PatchItemInput,
   type PlanInput,
@@ -16,14 +16,14 @@ import {
   type SlotBy,
   type StepAddInput,
   type StepRecord,
-  type TodoAttachment,
+  type ObjectiveAttachment,
   type StepPatchInput,
-  type TodoEditKind,
-  type TodoHistoryEntry,
-  type TodoItem,
-  type TodoItemEvent,
-  type TodoStep,
-  type TodoTheaterFile,
+  type ObjectiveEditKind,
+  type ObjectiveHistoryEntry,
+  type ObjectiveItem,
+  type ObjectiveItemEvent,
+  type ObjectiveStep,
+  type ObjectiveTheaterFile,
 } from "./types.js";
 
 /**
@@ -34,61 +34,61 @@ import {
  * 사건으로 방송된다 — 자기 변경도 재조회가 아니라 이 사건으로 화면에 닿는다.
  */
 
-export class TodoStoreError extends Error {
+export class ObjectiveStoreError extends Error {
   constructor(readonly code: string, message?: string) {
     super(message ?? code);
-    this.name = "TodoStoreError";
+    this.name = "ObjectiveStoreError";
   }
 }
 
-export interface TodoStoreOptions {
+export interface ObjectiveStoreOptions {
   readonly dir: string;
   /** 메모 첨부의 뿌리 — `<attachmentsDir>/<theaterId>/<itemId>/<attachmentId>.<ext>`. 없으면 `<dir>/../attachments`. */
   readonly attachmentsDir?: string;
-  readonly emit: (event: TodoItemEvent) => void;
+  readonly emit: (event: ObjectiveItemEvent) => void;
   readonly now?: () => number;
 }
 
-export interface TodoStore {
-  list(theaterId: string): readonly TodoItem[];
+export interface ObjectiveStore {
+  list(theaterId: string): readonly ObjectiveItem[];
   /** 디스크에 있는 모든 Theater 의 항목 — 감시자(담당 활동)가 훑는다. */
-  all(): readonly TodoItem[];
-  get(theaterId: string, itemId: string): TodoItem | null;
-  find(itemId: string): TodoItem | null;
-  create(input: CreateItemInput): TodoItem;
-  patch(itemId: string, input: PatchItemInput): TodoItem;
-  remove(itemId: string): TodoItem;
+  all(): readonly ObjectiveItem[];
+  get(theaterId: string, itemId: string): ObjectiveItem | null;
+  find(itemId: string): ObjectiveItem | null;
+  create(input: CreateItemInput): ObjectiveItem;
+  patch(itemId: string, input: PatchItemInput): ObjectiveItem;
+  remove(itemId: string): ObjectiveItem;
   /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. 내용은 그대로라 updatedAt 도 그대로다. */
-  move(itemId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): TodoItem;
-  complete(itemId: string, by: SlotBy): TodoItem;
-  reopen(itemId: string): TodoItem;
-  /** `unplaced` — 사람이 선행 없이 더한 단계는 미분류로 들어간다(셰프가 자리를 잡는다). */
-  stepAdd(itemId: string, input: StepAddInput, options?: { readonly unplaced?: boolean }): TodoItem;
-  stepPatch(itemId: string, stepId: string, input: StepPatchInput, by?: SlotBy): TodoItem;
-  /** 셰프의 완료 — 완료로 두고 기록 한 건을 더한다. 기록이 이미 있는 단계(다시 작업)면 「다시 완료」다. */
-  stepDone(itemId: string, stepId: string, lines: readonly string[], by: SlotBy): TodoItem;
+  move(itemId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): ObjectiveItem;
+  complete(itemId: string, by: SlotBy): ObjectiveItem;
+  reopen(itemId: string): ObjectiveItem;
+  /** `unplaced` — 사람이 선행 없이 더한 단계는 미분류로 들어간다(지휘관이 자리를 잡는다). */
+  stepAdd(itemId: string, input: StepAddInput, options?: { readonly unplaced?: boolean }): ObjectiveItem;
+  stepPatch(itemId: string, stepId: string, input: StepPatchInput, by?: SlotBy): ObjectiveItem;
+  /** 지휘관의 완료 — 완료로 두고 기록 한 건을 더한다. 기록이 이미 있는 단계(다시 작업)면 「다시 완료」다. */
+  stepDone(itemId: string, stepId: string, lines: readonly string[], by: SlotBy): ObjectiveItem;
   /** 사람이 이 단계의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
-  stepSeen(itemId: string, stepId: string): TodoItem;
-  stepRemove(itemId: string, stepId: string): TodoItem;
+  stepSeen(itemId: string, stepId: string): ObjectiveItem;
+  stepRemove(itemId: string, stepId: string): ObjectiveItem;
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
-  edgeToggle(itemId: string, from: string, to: string, why?: string): { readonly item: TodoItem; readonly linked: boolean };
-  edgesLinear(itemId: string): TodoItem;
-  edgesClear(itemId: string): TodoItem;
-  plan(itemId: string, input: PlanInput, by: SlotBy): TodoItem;
-  setSlot(itemId: string, stepId: string | null, slot: Slot | null): TodoItem;
-  setCooking(itemId: string, cooking: boolean): TodoItem;
-  setReview(itemId: string, review: { readonly summary: string } | null): TodoItem;
-  /** 사람의 편집을 쌓는다(셰프가 있을 때만) · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
-  setEdited(itemId: string, kinds: readonly TodoEditKind[] | null): TodoItem;
+  edgeToggle(itemId: string, from: string, to: string, why?: string): { readonly item: ObjectiveItem; readonly linked: boolean };
+  edgesLinear(itemId: string): ObjectiveItem;
+  edgesClear(itemId: string): ObjectiveItem;
+  plan(itemId: string, input: PlanInput, by: SlotBy): ObjectiveItem;
+  setSlot(itemId: string, stepId: string | null, slot: Slot | null): ObjectiveItem;
+  setCooking(itemId: string, cooking: boolean): ObjectiveItem;
+  setReview(itemId: string, review: { readonly summary: string } | null): ObjectiveItem;
+  /** 사람의 편집을 쌓는다(지휘관이 있을 때만) · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
+  setEdited(itemId: string, kinds: readonly ObjectiveEditKind[] | null): ObjectiveItem;
   /** 사라진 Operation 을 모든 슬롯(완료 항목의 released 포함)에서 지운다 — 바뀐 항목을 돌려준다. */
-  forgetOperation(operationId: string): readonly TodoItem[];
-  /** 셰프 Operation 이 그룹을 옮겼다 — 그 셰프의 항목(완료 항목 포함)을 같은 그룹으로. 이미 같으면 쓰지 않는다. 바뀐 항목을 돌려준다. */
-  followChefGroup(theaterId: string, operationId: string, groupId: string | null): readonly TodoItem[];
+  forgetOperation(operationId: string): readonly ObjectiveItem[];
+  /** 지휘관 Operation 이 그룹을 옮겼다 — 그 지휘관의 항목(완료 항목 포함)을 같은 그룹으로. 이미 같으면 쓰지 않는다. 바뀐 항목을 돌려준다. */
+  followCommanderGroup(theaterId: string, operationId: string, groupId: string | null): readonly ObjectiveItem[];
   /** 메모에 이미지를 붙인다 — 파일을 먼저 쓰고 항목에 싣는다. 형식·크기 판정은 부르는 쪽이 끝낸 뒤다. */
-  attachmentAdd(itemId: string, input: { readonly name: string; readonly type: TodoAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly item: TodoItem; readonly attachment: TodoAttachment };
-  attachmentRemove(itemId: string, attachmentId: string): TodoItem;
-  /** 첨부 파일의 절대 경로 — 서버 안(파일 서빙·셰프의 도구 응답)에서만 쓴다. */
-  attachmentPath(item: TodoItem, attachment: TodoAttachment): string;
+  attachmentAdd(itemId: string, input: { readonly name: string; readonly type: ObjectiveAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly item: ObjectiveItem; readonly attachment: ObjectiveAttachment };
+  attachmentRemove(itemId: string, attachmentId: string): ObjectiveItem;
+  /** 첨부 파일의 절대 경로 — 서버 안(파일 서빙·지휘관의 도구 응답)에서만 쓴다. */
+  attachmentPath(item: ObjectiveItem, attachment: ObjectiveAttachment): string;
 }
 
 function fileFor(dir: string, theaterId: string): string {
@@ -101,7 +101,7 @@ function fileFor(dir: string, theaterId: string): string {
  * 옛 결과 — 단계마다 덮어쓰던 문자열 하나(`result`)를 시각 없는 첫 기록으로 옮긴다. 이미 본 것으로 둔다.
  * 파일은 다음 쓰기 때 새 모양으로 저장된다; id 가 단계에서 정해지므로 다시 읽어도 같은 기록이다.
  */
-function migrateStep(step: TodoStep & { readonly result?: unknown }): TodoStep {
+function migrateStep(step: ObjectiveStep & { readonly result?: unknown }): ObjectiveStep {
   if (!("result" in step)) return step;
   const { result, ...rest } = step;
   if (typeof result !== "string" || !result.trim() || rest.records?.length) return rest;
@@ -109,11 +109,11 @@ function migrateStep(step: TodoStep & { readonly result?: unknown }): TodoStep {
   return { ...rest, records: [record], seen: 1 };
 }
 
-function readFile(file: string): TodoTheaterFile {
+function readFile(file: string): ObjectiveTheaterFile {
   try {
     const raw = fs.readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as Partial<TodoTheaterFile>;
-    if (parsed && parsed.version === 1 && Array.isArray(parsed.items)) return { version: 1, items: (parsed.items as TodoItem[]).map((item) => ({ ...item, steps: item.steps.map(migrateStep) })) };
+    const parsed = JSON.parse(raw) as Partial<ObjectiveTheaterFile>;
+    if (parsed && parsed.version === 1 && Array.isArray(parsed.items)) return { version: 1, items: (parsed.items as ObjectiveItem[]).map((item) => ({ ...item, steps: item.steps.map(migrateStep) })) };
   } catch {
     // 없거나 깨진 파일은 빈 목록으로 시작한다 — 깨진 파일은 덮어쓰지 않고 .broken 으로 비켜 둔다.
     try { if (fs.existsSync(file)) fs.renameSync(file, `${file}.broken-${Date.now()}`); } catch { /* ignore */ }
@@ -121,45 +121,45 @@ function readFile(file: string): TodoTheaterFile {
   return { version: 1, items: [] };
 }
 
-function writeFileAtomic(file: string, data: TodoTheaterFile): void {
+function writeFileAtomic(file: string, data: ObjectiveTheaterFile): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
   fs.renameSync(tmp, file);
 }
 
-/** 항목의 셰프 — 지금 슬롯, 완료 뒤에는 되돌리기용으로 남긴 조율자 슬롯(stepId 없음). 담당 슬롯은 셰프가 아니다. */
-export function chefOperationOf(item: TodoItem): string | null {
+/** 항목의 지휘관 — 지금 슬롯, 완료 뒤에는 되돌리기용으로 남긴 조율자 슬롯(stepId 없음). 담당 슬롯은 지휘관이 아니다. */
+export function commanderOperationOf(item: ObjectiveItem): string | null {
   return item.slot?.operationId ?? item.done?.released.find((entry) => !entry.stepId)?.slot.operationId ?? null;
 }
 
-const inRecipeOrder = (item: TodoItem): TodoItem => {
-  const steps = recipeOrder(item.steps);
+const inLineupOrder = (item: ObjectiveItem): ObjectiveItem => {
+  const steps = lineupOrder(item.steps);
   return steps === item.steps ? item : { ...item, steps: [...steps] };
 };
 
 const safeSegment = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "_");
 
-export function createTodoStore(options: TodoStoreOptions): TodoStore {
+export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveStore {
   const now = options.now ?? (() => Date.now());
   const attachmentsRoot = options.attachmentsDir ?? path.join(path.dirname(options.dir), "attachments");
-  const itemFolder = (item: Pick<TodoItem, "id" | "theaterId">) => path.join(attachmentsRoot, safeSegment(item.theaterId), safeSegment(item.id));
-  const fileOf = (item: Pick<TodoItem, "id" | "theaterId">, attachment: Pick<TodoAttachment, "id" | "type">) => path.join(itemFolder(item), `${safeSegment(attachment.id)}.${ATTACHMENT_TYPES[attachment.type]}`);
-  const cache = new Map<string, TodoItem[]>();
+  const itemFolder = (item: Pick<ObjectiveItem, "id" | "theaterId">) => path.join(attachmentsRoot, safeSegment(item.theaterId), safeSegment(item.id));
+  const fileOf = (item: Pick<ObjectiveItem, "id" | "theaterId">, attachment: Pick<ObjectiveAttachment, "id" | "type">) => path.join(itemFolder(item), `${safeSegment(attachment.id)}.${ATTACHMENT_TYPES[attachment.type]}`);
+  const cache = new Map<string, ObjectiveItem[]>();
   const index = new Map<string, string>(); // itemId → theaterId
 
-  const load = (theaterId: string): TodoItem[] => {
+  const load = (theaterId: string): ObjectiveItem[] => {
     let items = cache.get(theaterId);
     if (!items) {
-      // 레시피 순이 아니던 옛 항목도 읽는 순간 레시피 순으로 본다 — 다음 쓰기에 그대로 저장된다.
-      items = readFile(fileFor(options.dir, theaterId)).items.map(inRecipeOrder);
+      // 편성 순이 아니던 옛 항목도 읽는 순간 편성 순으로 본다 — 다음 쓰기에 그대로 저장된다.
+      items = readFile(fileFor(options.dir, theaterId)).items.map(inLineupOrder);
       cache.set(theaterId, items);
       for (const item of items) index.set(item.id, theaterId);
     }
     return items;
   };
 
-  const locate = (itemId: string): { theaterId: string; items: TodoItem[]; at: number; item: TodoItem } => {
+  const locate = (itemId: string): { theaterId: string; items: ObjectiveItem[]; at: number; item: ObjectiveItem } => {
     let theaterId = index.get(itemId);
     if (!theaterId) {
       // 캐시에 없는 Theater 파일을 아직 안 읽었을 수 있다 — 디렉터리를 한 번 훑는다.
@@ -171,14 +171,14 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       } catch { /* dir may not exist yet */ }
       theaterId = index.get(itemId);
     }
-    if (!theaterId) throw new TodoStoreError("unknown_item");
+    if (!theaterId) throw new ObjectiveStoreError("unknown_item");
     const items = load(theaterId);
     const at = items.findIndex((item) => item.id === itemId);
-    if (at < 0) throw new TodoStoreError("unknown_item");
+    if (at < 0) throw new ObjectiveStoreError("unknown_item");
     return { theaterId, items, at, item: items[at]! };
   };
 
-  const commit = (theaterId: string, items: TodoItem[], next: TodoItem | null, removedId?: string, reordered = false): void => {
+  const commit = (theaterId: string, items: ObjectiveItem[], next: ObjectiveItem | null, removedId?: string, reordered = false): void => {
     writeFileAtomic(fileFor(options.dir, theaterId), { version: 1, items });
     if (next) {
       index.set(next.id, theaterId);
@@ -189,30 +189,30 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
     }
   };
 
-  const update = (itemId: string, mutate: (item: TodoItem) => TodoItem): TodoItem => {
+  const update = (itemId: string, mutate: (item: ObjectiveItem) => ObjectiveItem): ObjectiveItem => {
     const { theaterId, items, at, item } = locate(itemId);
     const mutated = { ...mutate(item), updatedAt: now() };
-    if (mutated.steps.length > MAX_STEPS) throw new TodoStoreError("too_many_steps");
-    if (hasCycle(mutated.steps)) throw new TodoStoreError("dependency_cycle");
-    // 선행이 바뀌면 단계도 레시피 순으로 다시 선다 — 목록·번호·셰프 도구의 index 가 레시피와 같은 순서를 말한다.
-    const next = inRecipeOrder(mutated);
+    if (mutated.steps.length > MAX_STEPS) throw new ObjectiveStoreError("too_many_steps");
+    if (hasCycle(mutated.steps)) throw new ObjectiveStoreError("dependency_cycle");
+    // 선행이 바뀌면 단계도 편성 순으로 다시 선다 — 목록·번호·지휘관 도구의 index 가 편성과 같은 순서를 말한다.
+    const next = inLineupOrder(mutated);
     items[at] = next;
     commit(theaterId, items, next);
     return next;
   };
 
-  const withHistory = (item: TodoItem, entry: Omit<TodoHistoryEntry, "at">): TodoItem => ({ ...item, history: [...item.history.slice(-199), { at: now(), ...entry }] });
+  const withHistory = (item: ObjectiveItem, entry: Omit<ObjectiveHistoryEntry, "at">): ObjectiveItem => ({ ...item, history: [...item.history.slice(-199), { at: now(), ...entry }] });
 
-  const stepOf = (item: TodoItem, stepId: string): { at: number; step: TodoStep } => {
+  const stepOf = (item: ObjectiveItem, stepId: string): { at: number; step: ObjectiveStep } => {
     const at = item.steps.findIndex((step) => step.id === stepId);
-    if (at < 0) throw new TodoStoreError("unknown_step");
+    if (at < 0) throw new ObjectiveStoreError("unknown_step");
     return { at, step: item.steps[at]! };
   };
 
   /** 자리가 정해졌다 — 미분류 표시를 뗀다. */
-  const placed = (step: TodoStep): TodoStep => (step.unplaced ? (({ unplaced: _unplaced, ...rest }) => rest)(step) : step);
+  const placed = (step: ObjectiveStep): ObjectiveStep => (step.unplaced ? (({ unplaced: _unplaced, ...rest }) => rest)(step) : step);
 
-  const replaceStep = (item: TodoItem, at: number, step: TodoStep): TodoItem => {
+  const replaceStep = (item: ObjectiveItem, at: number, step: ObjectiveStep): ObjectiveItem => {
     const steps = [...item.steps];
     steps[at] = step;
     return { ...item, steps };
@@ -221,7 +221,7 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
   return {
     list: (theaterId) => [...load(theaterId)],
     forgetOperation(operationId) {
-      const touched: TodoItem[] = [];
+      const touched: ObjectiveItem[] = [];
       for (const item of this.all()) {
         const inSlot = item.slot?.operationId === operationId;
         const inStep = item.steps.some((step) => step.slot?.operationId === operationId);
@@ -236,10 +236,10 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       }
       return touched;
     },
-    followChefGroup(theaterId, operationId, groupId) {
-      const touched: TodoItem[] = [];
+    followCommanderGroup(theaterId, operationId, groupId) {
+      const touched: ObjectiveItem[] = [];
       for (const item of load(theaterId)) {
-        if (item.groupId === groupId || chefOperationOf(item) !== operationId) continue;
+        if (item.groupId === groupId || commanderOperationOf(item) !== operationId) continue;
         touched.push(update(item.id, (current) => ({ ...current, groupId })));
       }
       return touched;
@@ -255,7 +255,7 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       const items = load(input.theaterId);
       const at = now();
       const stepIds = (input.steps ?? []).map(() => randomUUID());
-      const steps: TodoStep[] = (input.steps ?? []).map((step, ix) => ({
+      const steps: ObjectiveStep[] = (input.steps ?? []).map((step, ix) => ({
         id: stepIds[ix]!,
         text: step.text,
         done: false,
@@ -263,7 +263,7 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
         slot: null,
         assign: DEFAULT_STEP_ASSIGN,
       }));
-      const item: TodoItem = {
+      const item: ObjectiveItem = {
         id: randomUUID(),
         theaterId: input.theaterId,
         groupId: input.groupId ?? null,
@@ -276,13 +276,13 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
         slot: null,
         // 조율자 기본은 Opus · high — 사람이 바꾸기 전까지의 값이고, 카탈로그가 다르면 시작 시 호스트가 거절한다.
         launch: { model: "opus[1m]", effort: "high", view: "terminal" },
-        steps: [...recipeOrder(steps)],
+        steps: [...lineupOrder(steps)],
         history: [],
         author: input.author ?? { kind: "human" },
         createdAt: at,
         updatedAt: at,
       };
-      if (hasCycle(item.steps)) throw new TodoStoreError("dependency_cycle");
+      if (hasCycle(item.steps)) throw new ObjectiveStoreError("dependency_cycle");
       items.unshift(item);
       commit(input.theaterId, items, item);
       return item;
@@ -313,7 +313,7 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       const { theaterId, items, at, item } = locate(itemId);
       const anchorId = "beforeId" in anchor ? anchor.beforeId : anchor.afterId;
       if (anchorId === itemId) return item;
-      if (!items.some((candidate) => candidate.id === anchorId)) throw new TodoStoreError("unknown_item");
+      if (!items.some((candidate) => candidate.id === anchorId)) throw new ObjectiveStoreError("unknown_item");
       items.splice(at, 1);
       const target = items.findIndex((candidate) => candidate.id === anchorId);
       items.splice("beforeId" in anchor ? target : target + 1, 0, item);
@@ -323,10 +323,10 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
 
     attachmentAdd(itemId, input) {
       const current = locate(itemId).item;
-      if (current.done) throw new TodoStoreError("item_done");
+      if (current.done) throw new ObjectiveStoreError("item_done");
       const existing = current.attachments ?? [];
-      if (existing.length >= MAX_ATTACHMENTS) throw new TodoStoreError("too_many_attachments");
-      const attachment: TodoAttachment = {
+      if (existing.length >= MAX_ATTACHMENTS) throw new ObjectiveStoreError("too_many_attachments");
+      const attachment: ObjectiveAttachment = {
         id: randomUUID(),
         n: existing.reduce((top, entry) => Math.max(top, entry.n), 0) + 1,
         name: input.name,
@@ -353,7 +353,7 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
     attachmentRemove(itemId, attachmentId) {
       const current = locate(itemId).item;
       const target = (current.attachments ?? []).find((entry) => entry.id === attachmentId);
-      if (!target) throw new TodoStoreError("unknown_attachment");
+      if (!target) throw new ObjectiveStoreError("unknown_attachment");
       const item = update(itemId, (item) => ({ ...item, attachments: (item.attachments ?? []).filter((entry) => entry.id !== attachmentId) }));
       try { fs.rmSync(fileOf(current, target), { force: true }); } catch { /* 이미 없으면 그만 */ }
       return item;
@@ -376,7 +376,7 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
 
     complete: (itemId, by) => update(itemId, (item) => {
       if (item.done) return item;
-      const released: TodoDoneReleased[] = [];
+      const released: ObjectiveDoneReleased[] = [];
       if (item.slot) released.push({ slot: item.slot });
       for (const step of item.steps) if (step.slot) released.push({ stepId: step.id, slot: step.slot });
       // 완료돼도 매핑은 남는다 — 카드의 Operation 이동·묶음이 그대로 살아 있어야 한다. released 는 기록이다.
@@ -403,7 +403,7 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       const after = (input.after ?? []).filter((id) => known.has(id));
       // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 단계뿐이다.
       const unplaced = options?.unplaced === true && input.after === undefined;
-      const step: TodoStep = { id: randomUUID(), text: input.text, done: false, after, slot: null, assign: input.assign ?? DEFAULT_STEP_ASSIGN, ...(unplaced ? { unplaced: true as const } : {}) };
+      const step: ObjectiveStep = { id: randomUUID(), text: input.text, done: false, after, slot: null, assign: input.assign ?? DEFAULT_STEP_ASSIGN, ...(unplaced ? { unplaced: true as const } : {}) };
       return { ...item, steps: [...item.steps, step] };
     }),
 
@@ -411,7 +411,7 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       const { at, step } = stepOf(item, stepId);
       const known = new Set(item.steps.map((candidate) => candidate.id));
       // 선행을 정하면(빈 배열도) 자리가 정해진 것이다.
-      const next: TodoStep = {
+      const next: ObjectiveStep = {
         ...(input.after !== undefined ? placed(step) : step),
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.done !== undefined ? { done: input.done, ...(input.done ? { doneBy: by ?? "human" } : {}) } : {}),
@@ -480,11 +480,11 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
 
     plan: (itemId, input, by) => update(itemId, (item) => {
       // 완료·배정·예약된 단계와 사람이 이은 간선은 보존한다. 나머지는 조율자의 계획으로 바꾼다.
-      // 사람이 더한 미분류 단계도 보존한다 — 셰프가 그 단계를 보기 전의 보드로 짠 계획이 사람의 요청을 지우면 안 된다(자리는 셰프가 step after 로 정한다).
+      // 사람이 더한 미분류 단계도 보존한다 — 지휘관이 그 단계를 보기 전의 보드로 짠 계획이 사람의 요청을 지우면 안 된다(자리는 지휘관이 step after 로 정한다).
       const kept = item.steps.filter((step) => step.done || step.slot || step.unplaced);
       const keptIds = new Set(kept.map((step) => step.id));
-      const fresh: TodoStep[] = input.steps.map((step) => ({ id: randomUUID(), text: step.text, done: false, after: [], slot: null, assign: { mode: step.assign ?? "self" } }));
-      const resolved: TodoStep[] = fresh.map((step, ix) => {
+      const fresh: ObjectiveStep[] = input.steps.map((step) => ({ id: randomUUID(), text: step.text, done: false, after: [], slot: null, assign: { mode: step.assign ?? "self" } }));
+      const resolved: ObjectiveStep[] = fresh.map((step, ix) => {
         const after: string[] = [];
         const why: Record<string, string> = {};
         for (const edge of input.steps[ix]!.after ?? []) {
@@ -506,16 +506,33 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
     setSlot: (itemId, stepId, slot) => update(itemId, (item) => {
       if (stepId === null) {
         const previous = item.slot;
-        const entry: Omit<TodoHistoryEntry, "at"> = slot ? { kind: previous ? "replace" : "assign", operationId: slot.operationId } : { kind: "release", ...(previous ? { operationId: previous.operationId } : {}) };
+        const entry: Omit<ObjectiveHistoryEntry, "at"> = slot ? { kind: previous ? "replace" : "assign", operationId: slot.operationId } : { kind: "release", ...(previous ? { operationId: previous.operationId } : {}) };
         return withHistory({ ...item, slot }, entry);
       }
       const { at, step } = stepOf(item, stepId);
       const previous = step.slot;
-      const entry: Omit<TodoHistoryEntry, "at"> = slot ? { kind: previous ? "replace" : "assign", stepId, operationId: slot.operationId } : { kind: "release", stepId, ...(previous ? { operationId: previous.operationId } : {}) };
+      const entry: Omit<ObjectiveHistoryEntry, "at"> = slot ? { kind: previous ? "replace" : "assign", stepId, operationId: slot.operationId } : { kind: "release", stepId, ...(previous ? { operationId: previous.operationId } : {}) };
       return withHistory(replaceStep(item, at, { ...step, slot }), entry);
     }),
 
   };
 }
 
-type TodoDoneReleased = { readonly stepId?: string; readonly slot: Slot };
+type ObjectiveDoneReleased = { readonly stepId?: string; readonly slot: Slot };
+
+/** 이름을 바꾸기 전 이 플러그인의 id — 그때 쌓인 목표·첨부가 이 자리에 남아 있다. */
+export const LEGACY_PLUGIN_ID = "todo";
+
+/**
+ * 옛 데이터 디렉터리를 새 자리로 한 번 옮긴다. 새 자리가 이미 있으면 옛 자리는 건드리지 않는다 — 두 곳을 합치면
+ * 어느 쪽이 최신인지 알 수 없다. 옮기지 못하면 빈 보드로 시작하되 옛 데이터는 그대로 남긴다.
+ */
+export function adoptLegacyData(legacyRoot: string, root: string): void {
+  if (fs.existsSync(root) || !fs.existsSync(legacyRoot)) return;
+  try {
+    fs.mkdirSync(path.dirname(root), { recursive: true });
+    fs.renameSync(legacyRoot, root);
+  } catch (error) {
+    console.warn(`[objectives] could not move legacy data from ${legacyRoot}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}

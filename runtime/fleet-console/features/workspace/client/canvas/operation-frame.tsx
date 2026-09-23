@@ -36,7 +36,7 @@ interface OperationFrameProps {
   readonly groupColor?: string | null;
   /** Shell 캡션의 소속 Theater. 저장 제목과 별개라 Theater 이름이 바뀌어도 따라간다. */
   readonly theaterLabel?: string | null;
-  /** 셰프 패널의 묶음 장치 — 이름 뒤의 단계 띠(strip)와 본문 오른쪽 위의 노드 줄(nodes). */
+  /** 지휘관 패널의 묶음 장치 — 이름 뒤의 단계 띠(strip)와 본문 오른쪽 위의 노드 줄(nodes). */
   readonly cluster?: { readonly strip: ReactNode; readonly nodes: ReactNode } | null;
   readonly children: ReactNode;
   /**

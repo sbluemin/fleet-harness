@@ -163,11 +163,11 @@ export function OperationsCanvas({
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const activePluginOperationId = state.activeOperationId;
   // ── 묶음 ────────────────────────────────────────────────────────────────
-  // 단계 Operation 은 어느 모드에서도 패널로 서지 않는다 — 뒤에서 돌고, 셰프 패널이 본문 교체로 보여 준다.
+  // 단계 Operation 은 어느 모드에서도 패널로 서지 않는다 — 뒤에서 돌고, 지휘관 패널이 본문 교체로 보여 준다.
   const clusterIndex = useClusterIndex();
   const hiddenMembers = useMemo(() => hiddenClusterMembers(clusterIndex), [clusterIndex]);
   // 스토어의 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)도 숨은 단계를 거르도록 같은 집합을 건넨다.
-  // 단계를 가리킨 포커스(할 일의 「결정 대기」·팔레트·알림)는 셰프로 돌리고 셰프 패널의 본문을 그 단계로 바꾼다.
+  // 단계를 가리킨 포커스(목표의 「결정 대기」·팔레트·알림)는 지휘관으로 돌리고 지휘관 패널의 본문을 그 단계로 바꾼다.
   useEffect(() => {
     setAlwaysHiddenGeometryIds(hiddenMembers);
     registerOperationFocusRedirect((operationId) => {
@@ -182,7 +182,7 @@ export function OperationsCanvas({
       registerOperationFocusRedirect((operationId) => operationId);
     };
   }, [clusterIndex, hiddenMembers]);
-  // 셰프의 공개 활동은 코어 스토어가 살아 있는 단계까지 반영한다 — 단계의 결정 대기도 셰프를 대기로 올린다.
+  // 지휘관의 공개 활동은 코어 스토어가 살아 있는 단계까지 반영한다 — 단계의 결정 대기도 지휘관을 대기로 올린다.
   const operationRuntime = state.operationRuntime;
   const [focusFadeTransitionReady, setFocusFadeTransitionReady] = useState(activePluginOperationId !== null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
@@ -525,7 +525,7 @@ export function OperationsCanvas({
     operationRuntime: operationRuntime,
   };
   // 큐는 전역이다 — 활성 Theater와 무관하게 모든 대기 Operation을 처리 순서로 세운다.
-  // 묶음의 단계 Operation 은 큐에 들지 않는다: War Room 에서는 단계 활동이 반영된 셰프가 묶음을 대표한다.
+  // 묶음의 단계 Operation 은 큐에 들지 않는다: War Room 에서는 단계 활동이 반영된 지휘관이 묶음을 대표한다.
   const triageOperations = clusterIndex.memberOf.size === 0 ? state.operations : state.operations.filter((operation) => !clusterIndex.memberOf.has(operation.id));
   const triageQueue = resolveTriageQueue(triageOperations, operationRuntime);
   const triageQueueIdSet = new Set(triageQueue.map((entry) => entry.operation.id));
@@ -948,7 +948,7 @@ export function OperationsCanvas({
   // 무엇이든 지도가 끼어들 자리가 없다. 렌더 중 ref 갱신은 같은 줌에 같은 답을 내는 순수 판정이라
   // 재렌더에 안전하다. 지도는 전 Theater를 얹으므로 최소화 판정도 Theater 경계를 넘는다.
   const cruiseSurface = !formationView && !triageActive && panelMaximized === null && panelCompanion === null && !disabled;
-  // 지도 점에도 숨은 단계는 서지 않는다 — 셰프 점 하나가 묶음을 대표한다.
+  // 지도 점에도 숨은 단계는 서지 않는다 — 지휘관 점 하나가 묶음을 대표한다.
   const fleetMapMinimizedSet = withHiddenMembers(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
   const fleetMapOperations = state.operations.filter((operation) => !fleetMapMinimizedSet.has(operation.id));
   fleetMapActiveRef.current = cruiseSurface && fleetMapOperations.length > 0
@@ -1567,8 +1567,8 @@ export function OperationsCanvas({
             // 런타임 축을 심지 않은 복원 Operation이 doctrine상 dormant인데도 캡션에서만 idle로 서서,
             // 같은 순간 사이드바는 휴면, 패널은 초록이라고 말한다.
             status: resolveOperationActivity(operation, operationRuntime),
-            // 셰프 패널은 고른 단계의 본문을 보인다 — 프레임은 셰프, 본문 마운트만 풀에서 옮겨 온다.
-            // War Room 덱 칸에는 노드 줄이 없어 누구 본문인지 말할 수 없으므로 셰프 자신의 본문을 둔다.
+            // 지휘관 패널은 고른 단계의 본문을 보인다 — 프레임은 지휘관, 본문 마운트만 풀에서 옮겨 온다.
+            // War Room 덱 칸에는 노드 줄이 없어 누구 본문인지 말할 수 없으므로 지휘관 자신의 본문을 둔다.
             bodyOperation: (() => {
               if (!clusterRoot || deckSlot) return null;
               const chosen = clusterBodySelection[operation.id];
@@ -1830,7 +1830,7 @@ export function OperationsCanvas({
             current={clusterBodySelection[clusterPicker.rootId] ?? null}
             rootActivity={rootNode ? resolveOperationActivity(rootNode, operationRuntime) : null}
             onPick={(operationId) => {
-              // 단계는 어느 모드에서도 패널로 서지 않는다 — 셰프 패널의 본문을 그 단계로 바꾼다(노드 줄과 같은 동작).
+              // 단계는 어느 모드에서도 패널로 서지 않는다 — 지휘관 패널의 본문을 그 단계로 바꾼다(노드 줄과 같은 동작).
               selectClusterBody(clusterPicker.rootId, operationId);
               setActiveOperation(clusterPicker.rootId);
               requestOperationKeyboardFocus(clusterPicker.rootId);
@@ -2116,7 +2116,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly geometry: OperationGeometry;
   readonly operationKindRegistry: readonly OperationKindDescriptor[];
   readonly status?: OperationActivityVisual;
-  /** 셰프 패널의 묶음 장치 — 캡션의 진척도 띠와 본문 오른쪽 위의 세션 전환 노드 줄. */
+  /** 지휘관 패널의 묶음 장치 — 캡션의 진척도 띠와 본문 오른쪽 위의 세션 전환 노드 줄. */
   readonly cluster: { readonly strip: ReactNode; readonly nodes: ReactNode } | null;
   /** 이 프레임이 보일 본문의 주인 — 없으면 자기 자신. 묶음의 조율자 패널이 숨은 단계를 보일 때 쓴다. */
   readonly bodyOperation: { readonly operation: OperationNode; readonly runtimeState: OperationRuntimeState | null } | null;
@@ -2229,7 +2229,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         // 덱 카드에도 그린다 — 카드의 캡션은 조작면이 아니라 표식면이며, 무엇을 남길지는 CSS(.is-deck-tile)가
         // 정한다: 에이전트 사용 배지와 「사용 중」인 브라우저 버튼만 남고 나머지 액션은 숨는다.
         captionActions={(
-          // 다른 플러그인의 표식(예: 연결된 할 일)이 종류 소유자의 액션 앞에 선다. 그 다음이 소유자의 선반이다.
+          // 다른 플러그인의 표식(예: 연결된 목표)이 종류 소유자의 액션 앞에 선다. 그 다음이 소유자의 선반이다.
           // 본문과 같은 context로 그린다 — 캡션이 본문과 다른 사실을 말하는 프레임이 나오지 않게.
           // 실패해도 32px 밴드에 오류 상자를 세울 자리는 없으므로, 선반만 조용히 비운다.
           // (fallback을 생략하거나 null로 두면 `??`가 기본 오류 상자를 되살린다 — 빈 조각이라야 빈다.)

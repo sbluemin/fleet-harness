@@ -8,16 +8,16 @@ import type { ClusterLayout } from "./operation-clusters.js";
 type RootActivity = "idle" | "running" | "awaiting" | "background" | "ended" | null;
 
 /**
- * 노드 줄 — 셰프 패널 본문의 오른쪽 위에 세로로 쌓인 세션 버튼. 맨 위가 셰프, 그 아래 Operation 이 떠 있는 단계마다
- * 「N 노드」 하나(N = 묶음 안의 단계 번호, 제목은 말풍선·낭독에만). 누르면 셰프 패널의 본문만 그 세션으로 바뀌고
+ * 노드 줄 — 지휘관 패널 본문의 오른쪽 위에 세로로 쌓인 세션 버튼. 맨 위가 지휘관, 그 아래 Operation 이 떠 있는 단계마다
+ * 「N 노드」 하나(N = 묶음 안의 단계 번호, 제목은 말풍선·낭독에만). 누르면 지휘관 패널의 본문만 그 세션으로 바뀌고
  * 세션은 뒤에서 계속 돈다. 지금 보고 있는 버튼은 비활성화된 brass 워시로 서서 현재 자리를 말한다.
  *
- * 평소엔 흐리게 있다가 패널에 올리거나 포커스가 들어오면 선명해진다. 셰프가 아닌 세션을 보는 동안과 결정을 기다리는
+ * 평소엔 흐리게 있다가 패널에 올리거나 포커스가 들어오면 선명해진다. 지휘관이 아닌 세션을 보는 동안과 결정을 기다리는
  * 노드가 있는 동안도 선명하다. 패널 본문에 타이핑하는 동안은 비켜 선다 — 포인터가 움직이면 돌아온다.
  */
 export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   readonly layout: ClusterLayout;
-  /** 지금 셰프 패널이 보이는 세션 — 셰프 자신이면 뿌리 id. */
+  /** 지금 지휘관 패널이 보이는 세션 — 지휘관 자신이면 뿌리 id. */
   readonly current: string;
   readonly rootActivity: RootActivity;
   readonly onPick: (operationId: string) => void;
@@ -26,7 +26,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const railRef = useRef<HTMLDivElement | null>(null);
   const [typing, setTyping] = useState(false);
   const root = layout.cluster.root;
-  // 번호는 레시피(선언) 순서의 자리 — 자리표시 단계도 번호를 차지하므로 셰프가 직접 하는 단계가 끼어도 번호가 밀리지 않는다.
+  // 번호는 편성(선언) 순서의 자리 — 자리표시 단계도 번호를 차지하므로 지휘관이 직접 하는 단계가 끼어도 번호가 밀리지 않는다.
   const nodes = layout.cluster.members
     .map((member, index) => ({ member, n: index + 1 }))
     .filter(({ member }) => layout.formation.byOperationId.has(member.operationId));

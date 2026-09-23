@@ -454,7 +454,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService({ readRelease: () => release });
   const updateApply = deps.updateApply ?? createConsoleUpdateApplyService();
   const theaters = new TheaterRegistry();
-  // 그룹 이동은 서버 안 플러그인에도 사건이다 — 할 일 같은 플러그인이 연결 항목을 따라 옮긴다.
+  // 그룹 이동은 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮긴다.
   const operations = createOperationStore({ onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event) });
   const folderGrants = createFolderGrantStore();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).

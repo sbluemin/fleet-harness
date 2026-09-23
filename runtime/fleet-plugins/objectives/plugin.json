@@ -1,6 +1,6 @@
 {
-  "id": "todo",
-  "name": "To-do",
+  "id": "objectives",
+  "name": "Objectives",
   "apiVersion": 1,
   "routes": "routes.ts",
   "client": "client/index.tsx"

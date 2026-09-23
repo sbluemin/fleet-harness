@@ -24,7 +24,7 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
         const operation = getState().operations.find((candidate) => candidate.id === operationId);
         if (!operation) return;
         if (getState().activeTheaterId !== operation.theaterId) setActiveTheater(operation.theaterId);
-        // 패널로 서지 않는 단계는 셰프 패널이 대신 선다 — 펴기·키보드 포커스도 그 대상으로. 활성화는 요청한 id 로 넘겨
+        // 패널로 서지 않는 단계는 지휘관 패널이 대신 선다 — 펴기·키보드 포커스도 그 대상으로. 활성화는 요청한 id 로 넘겨
         // 그 단계의 도착 표식까지 확인 처리한다(스토어가 같은 대상으로 돌린다).
         const target = resolveOperationFocusTarget(operationId);
         restoreOperation(target);

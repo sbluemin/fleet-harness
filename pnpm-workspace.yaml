@@ -20,7 +20,7 @@ packages:
   - "runtime/fleet-plugins/ledger"
   - "runtime/fleet-plugins/quota"
   - "runtime/fleet-plugins/scuttlebutt"
-  - "runtime/fleet-plugins/todo"
+  - "runtime/fleet-plugins/objectives"
 allowBuilds:
   esbuild: true
   node-pty: true

@@ -41,7 +41,7 @@ export interface SideBarEntry {
 }
 
 /**
- * 묶음의 뿌리(셰프) 행 — 이름 뒤에 단계 띠를 얹는다. 사이드바는 셰프 한 행이 묶음을 대표하므로 단계 행은 서지 않는다.
+ * 묶음의 뿌리(지휘관) 행 — 이름 뒤에 단계 띠를 얹는다. 사이드바는 지휘관 한 행이 묶음을 대표하므로 단계 행은 서지 않는다.
  */
 export interface SideBarChipCluster { readonly strip: ReactNode }
 

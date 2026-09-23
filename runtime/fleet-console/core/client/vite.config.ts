@@ -43,7 +43,7 @@ function fleetPluginsVirtualModule(): Plugin {
       const quotaClientEntry = path.resolve(__dirname, "../../../fleet-plugins/quota/client/index.tsx");
       const scuttlebuttClientEntry = path.resolve(__dirname, "../../../fleet-plugins/scuttlebutt/client/index.tsx");
       const codexClientEntry = path.resolve(__dirname, "../../../fleet-plugins/codex/client/index.tsx");
-      const todoClientEntry = path.resolve(__dirname, "../../../fleet-plugins/todo/client/index.tsx");
+      const objectivesClientEntry = path.resolve(__dirname, "../../../fleet-plugins/objectives/client/index.tsx");
       return [
         `import { plugins as fileExplorerPlugins } from ${JSON.stringify(fileExplorerClientEntry)};`,
         `import { plugins as repositoryPlugins } from ${JSON.stringify(diffClientEntry)};`,
@@ -52,10 +52,10 @@ function fleetPluginsVirtualModule(): Plugin {
         `import { plugins as quotaPlugins } from ${JSON.stringify(quotaClientEntry)};`,
         `import { plugins as scuttlebuttPlugins } from ${JSON.stringify(scuttlebuttClientEntry)};`,
         `import { plugins as codexPlugins } from ${JSON.stringify(codexClientEntry)};`,
-        `import { plugins as todoPlugins } from ${JSON.stringify(todoClientEntry)};`,
+        `import { plugins as objectivesPlugins } from ${JSON.stringify(objectivesClientEntry)};`,
         // 합성 순서가 곧 rail 순서다(코어는 정렬 필드를 두지 않는다). Codex는 코어 내장
         // 패널이던 시절 rail 최상위였고, 플러그인이 되어도 그 자리를 지킨다.
-        `export const plugins = [...codexPlugins, ...fileExplorerPlugins, ...repositoryPlugins, ...todoPlugins, ...skillsPlugins, ...ledgerPlugins, ...quotaPlugins, ...scuttlebuttPlugins];`,
+        `export const plugins = [...codexPlugins, ...fileExplorerPlugins, ...repositoryPlugins, ...objectivesPlugins, ...skillsPlugins, ...ledgerPlugins, ...quotaPlugins, ...scuttlebuttPlugins];`,
       ].join("\n");
     },
   };

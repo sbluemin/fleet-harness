@@ -1,5 +1,5 @@
 {
-  "name": "@fleet-plugins/todo",
+  "name": "@fleet-plugins/objectives",
   "version": "1.105.0",
   "private": true,
   "type": "module",

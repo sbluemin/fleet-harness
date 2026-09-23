@@ -3,12 +3,12 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
 
 import { createLaunchService, type LaunchService } from "./launch.js";
-import { TodoStoreError, type TodoStore } from "./store.js";
-import { MAX_RECORD_LINE, MAX_RECORD_LINES, coordinatorMode, latestRecord, recordLines, stepReady, type SlotBy, type TodoItem, type TodoStep } from "./types.js";
+import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
+import { MAX_RECORD_LINE, MAX_RECORD_LINES, coordinatorMode, latestRecord, recordLines, stepReady, type SlotBy, type ObjectiveItem, type ObjectiveStep } from "./types.js";
 
 /**
- * `console_todo` — 한 도구. 읽기(view)는 게이트를 지난 누구나, 쓰기는 슬롯이 권한이다: 단계 완료·단계 추가·계획은
- * 그 할 일의 셰프(할 일 슬롯의 Operation)만. 단계 담당은 도구가 없다. 할 일 완료·메모·Operation 연결은 사람만 — 도구에 없다.
+ * `console_objectives` — 한 도구. 읽기(view)는 게이트를 지난 누구나, 쓰기는 슬롯이 권한이다: 단계 완료·단계 추가·계획은
+ * 그 목표의 지휘관(목표 슬롯의 Operation)만. 단계 담당은 도구가 없다. 목표 완료·메모·Operation 연결은 사람만 — 도구에 없다.
  * 호스트가 호출마다 화면에 제스처를 그린다 — describe 가 종류와 자리를 말한다.
  */
 
@@ -30,7 +30,7 @@ const argsSchema = z.object({
   filter: z.enum(["today", "due", "all", "agent"]).optional(),
   add: z.object({ groupId: ids.nullable().optional(), title: z.string().trim().min(1).max(200), note: z.string().max(20_000).optional(), steps: z.array(z.string().trim().min(1).max(200)).max(40).optional(), after: z.array(z.array(z.number().int().min(0))).optional(), important: z.boolean().optional(), dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).strict().optional(),
   step: z.object({ itemId: ids, add: z.string().trim().min(1).max(200).optional(), delegate: z.boolean().optional(), after: z.array(z.number().int().min(0)).max(40).optional(), index: z.number().int().min(0).optional(), stepId: ids.optional(), doneIndex: z.number().int().min(0).optional(), doneStepId: ids.optional(), summary: z.array(z.string().max(2000)).max(20).optional(),
-    // 옛 인자 — 이 판 이전에 뜬 셰프의 도구 설명에 있던 이름. 줄바꿈으로 나눠 summary 와 같은 검사를 거친다.
+    // 옛 인자 — 이 판 이전에 뜬 지휘관의 도구 설명에 있던 이름. 줄바꿈으로 나눠 summary 와 같은 검사를 거친다.
     result: z.string().max(4000).optional() }).strict().optional(),
   review: z.object({ itemId: ids, summary: z.string().trim().min(1).max(2000) }).strict().optional(),
   plan: z.object({ itemId: ids, steps: z.array(z.object({ text: z.string().trim().min(1).max(200), after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).optional(), assign: z.enum(["self", "route"]).optional() })).min(1).max(40) }).strict().optional(),
@@ -38,7 +38,7 @@ const argsSchema = z.object({
 type Args = z.output<typeof argsSchema>;
 const WRITE_KEYS = ["add", "step", "plan", "review"] as const;
 
-export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: TodoStore, launch: LaunchService = createLaunchService(ctx, store)): readonly PluginMcpTool[] {
+export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly PluginMcpTool[] {
   const addBudget = new Map<string, { at: number; count: number }>();
   const theaterOfCaller = (caller: ConsoleCaller | undefined): string | null => (caller?.kind === "operation" ? ctx.host.operations.get(caller.operationId)?.theaterId ?? null : null);
   const callerTitle = (caller: ConsoleCaller | undefined): string => (caller?.kind === "operation" ? ctx.host.operations.get(caller.operationId)?.title ?? caller.operationId : caller?.kind === "plugin" ? caller.pluginId : "");
@@ -48,8 +48,8 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
     const flag = ctx.host.operations.get(caller.operationId)?.payload.consoleUse as { language?: unknown } | undefined;
     return flag?.language === "ko" ? "ko" : "en";
   };
-  const isCoordinator = (item: TodoItem, caller: ConsoleCaller | undefined) => caller?.kind === "operation" && item.slot?.operationId === caller.operationId;
-  const stepOf = (item: TodoItem, ref: { stepId?: string; stepIndex?: number; doneIndex?: number; doneStepId?: string }): TodoStep | null => {
+  const isCoordinator = (item: ObjectiveItem, caller: ConsoleCaller | undefined) => caller?.kind === "operation" && item.slot?.operationId === caller.operationId;
+  const stepOf = (item: ObjectiveItem, ref: { stepId?: string; stepIndex?: number; doneIndex?: number; doneStepId?: string }): ObjectiveStep | null => {
     if (ref.stepId) return item.steps.find((step) => step.id === ref.stepId) ?? null;
     if (ref.doneStepId) return item.steps.find((step) => step.id === ref.doneStepId) ?? null;
     const index = ref.stepIndex ?? ref.doneIndex;
@@ -62,8 +62,8 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
     const consoleUse = (node.payload.consoleUse as { enabled?: unknown } | undefined)?.enabled === true;
     return { operationId, title: node.title, state: observation ? (observation.lifecycle === "dormant" ? "dormant" : observation.activity) : "unknown", consoleUse };
   };
-  const graph = (item: TodoItem) => ({
-    chef: item.slot ? { ...observe(item.slot.operationId), session: item.slot.sessionName ?? null, mode: coordinatorMode(item) } : null,
+  const graph = (item: ObjectiveItem) => ({
+    commander: item.slot ? { ...observe(item.slot.operationId), session: item.slot.sessionName ?? null, mode: coordinatorMode(item) } : null,
     mode: coordinatorMode(item),
     steps: item.steps.map((step, index) => ({
       index, stepId: step.id, text: step.text, done: step.done,
@@ -77,21 +77,21 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
       assignee: step.slot ? { ...observe(step.slot.operationId), session: step.slot.sessionName ?? null } : null,
     })),
   });
-  const itemView = (item: TodoItem) => ({
+  const itemView = (item: ObjectiveItem) => ({
     id: item.id, theaterId: item.theaterId, groupId: item.groupId, title: item.title, note: item.note,
     // 메모에 붙인 이미지 — 이미지 자체는 싣지 않고 이 기계의 절대 경로만. 필요할 때 Read 로 연다(브라우저에는 이 경로가 가지 않는다).
     attachments: (item.attachments ?? []).map((attachment) => ({ n: attachment.n, name: attachment.name, type: attachment.type, bytes: attachment.bytes, ...(attachment.width ? { width: attachment.width, height: attachment.height } : {}), path: store.attachmentPath(item, attachment) })),
     important: item.important, dueDate: item.dueDate, today: item.today,
     done: !!item.done, review: item.review ?? null, author: item.author, updatedAt: item.updatedAt, graph: graph(item),
   });
-  const rowView = (item: TodoItem) => ({ id: item.id, groupId: item.groupId, title: item.title, done: !!item.done, important: item.important, dueDate: item.dueDate, today: item.today, steps: `${item.steps.filter((step) => step.done).length}/${item.steps.length}`, mode: coordinatorMode(item), coordinator: item.slot?.operationId ?? null, author: item.author.kind });
+  const rowView = (item: ObjectiveItem) => ({ id: item.id, groupId: item.groupId, title: item.title, done: !!item.done, important: item.important, dueDate: item.dueDate, today: item.today, steps: `${item.steps.filter((step) => step.done).length}/${item.steps.length}`, mode: coordinatorMode(item), coordinator: item.slot?.operationId ?? null, author: item.author.kind });
 
   const tool: PluginMcpTool = {
-    name: "console_todo",
-    description: "The To-do board of a Theater: intent items with steps (a dependency graph linked by after; a step is ready when all of its prerequisites are done), one Chef Operation per item, and an assignee session per step the Chef chooses to delegate. The Chef is a named CLI session; assignees are named CLI sessions too (todo-<item id prefix>-step-<n>, n = index + 1) and talk with the Chef through Claude Code cross-session messages (SendMessage / ListAgents). This tool only reads and updates the board. Steps are always listed in recipe order (earlier dependency columns first); any change to the steps or their dependencies can reorder them and shift indexes, so prefer stepId when you write, and an assignee session keeps the number it was launched with. Read with view mine (the calling Operation's own item and role) | groups | items (filter today|due|all|agent) | item (steps, dependencies, readiness, assignee sessions, each step's latest record and record count, the person's note and its attachments). attachments are images the person attached to the note ('image n' in the note means n): each path is an absolute file on this machine — open it with Read when you need to see it, and pass the path (not the image) to an assignee in SendMessage. Write one of: add (a new item with optional steps); plan (replace the open unassigned steps with steps + dependencies + why + assign: self for steps the Chef will do itself, route for steps it intends to delegate; done and assigned steps, and steps the person added that are still unplaced, are kept — refer to them by stepId; Chef only); step with delegate: true and index or stepId (launch that step's assignee session now — it starts with no prompt and knows nothing, so instruct it with SendMessage giving the full context: item, exact step text, latest records of prerequisites, constraints from the person's note, paths, what not to touch, and the report you expect; it reports back by SendMessage; Chef only); step with add (append a step that became necessary; Chef only); step with index or stepId and after (the indexes of its prerequisites, [] = it can start now — sets the dependencies of one open step; Chef only); step with doneIndex or doneStepId and summary (mark one step done and leave its record — summary is 1–3 lines, conclusion first: line 1 is the outcome in one sentence, the rest are what backs it or what is left; each line at most 160 characters, no prose paragraphs; the person reads every record of the step in time order and the next step receives the latest one; marking a step that is already done again, after you went back to rework it, adds another record; Chef only); review with summary (every step is done — hand the item to the person for review; the person completes it; Chef only). Steps assigned self are the Chef's own work; whether to delegate a step is the Chef's call at the moment it reaches that step. Steps the person added are unplaced (unplaced: true, never ready) — they only added the step; placing it is your call: before you continue, give each one its prerequisites with step after (and rewire any open step that should now wait for it); plan keeps them, so do not repeat them in a plan. A plan is refused with board_changed when the person changed the item since you last read it — read it again, then plan. While you work, and after you hand the item for review, the person may add or edit steps and the note; you then receive one line saying the item changed — read it again and continue from what it now says (a review is withdrawn when that line arrives; hand it again once the work is done). A review is refused with board_changed when the person changed the item since you last read it. Completing an item, writing the note and linking or unlinking Operations are the person's acts on the screen and have no tool here.",
+    name: "console_objectives",
+    description: "The Objectives board of a Theater. An objective is an intent the person wants achieved; it is carried out by missions (the tool calls them steps) that form a lineup — a dependency graph linked by after, where a mission is ready when all of its prerequisites are done. Each objective has one Commander Operation, plus an assignee session for each mission the Commander chooses to delegate. The Commander is a named CLI session; assignees are named CLI sessions too (objective-<objective id prefix>-mission-<n>, n = index + 1) and talk with the Commander through Claude Code cross-session messages (SendMessage / ListAgents). This tool only reads and updates the board. Missions are always listed in lineup order (earlier dependency columns first); any change to the missions or their dependencies can reorder them and shift indexes, so prefer stepId when you write, and an assignee session keeps the number it was launched with. Read with view mine (the calling Operation's own objective and role) | groups | items (filter today|due|all|agent) | item (missions, dependencies, readiness, assignee sessions, each mission's latest record and record count, the person's brief (note) and its attachments). attachments are images the person attached to the brief ('image n' in the brief means n): each path is an absolute file on this machine — open it with Read when you need to see it, and pass the path (not the image) to an assignee in SendMessage. Write one of: add (a new objective with optional missions); plan (replace the open unassigned missions with steps + dependencies + why + assign: self for missions the Commander will carry out itself, route for missions it intends to delegate; done and assigned missions, and missions the person added that are still unplaced, are kept — refer to them by stepId; Commander only); step with delegate: true and index or stepId (launch that mission's assignee session now — it starts with no prompt and knows nothing, so instruct it with SendMessage giving the full context: objective, exact mission text, latest records of prerequisites, constraints from the person's brief, paths, what not to touch, and the report you expect; it reports back by SendMessage; Commander only); step with add (append a mission that became necessary; Commander only); step with index or stepId and after (the indexes of its prerequisites, [] = it can start now — sets the dependencies of one open mission; Commander only); step with doneIndex or doneStepId and summary (mark one mission done and leave its record — summary is 1–3 lines, conclusion first: line 1 is the outcome in one sentence, the rest are what backs it or what is left; each line at most 160 characters, no prose paragraphs; the person reads every record of the mission in time order and the next mission receives the latest one; marking a mission that is already done again, after you went back to rework it, adds another record; Commander only); review with summary (every mission is done — hand the objective to the person for review; the person completes it; Commander only). Missions assigned self are the Commander's own work; whether to delegate a mission is the Commander's call at the moment it reaches that mission. Missions the person added are unplaced (unplaced: true, never ready) — they only added the mission; placing it is your call: before you continue, give each one its prerequisites with step after (and rewire any open mission that should now wait for it); plan keeps them, so do not repeat them in a plan. A plan is refused with board_changed when the person changed the objective since you last read it — read it again, then plan. While you work, and after you hand the objective for review, the person may add or edit missions and the brief; you then receive one line saying the objective changed — read it again and continue from what it now says (a review is withdrawn when that line arrives; hand it again once the work is done). A review is refused with board_changed when the person changed the objective since you last read it. Completing an objective, writing the brief and linking or unlinking Operations are the person's acts on the screen and have no tool here.",
     inputSchema: z.toJSONSchema(argsSchema),
     surface: {
-      panelId: "todo",
+      panelId: "objectives",
       describe: (raw) => {
         const parsed = argsSchema.safeParse(raw);
         if (!parsed.success) return null;
@@ -100,11 +100,11 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
         const found = typeof itemId === "string" ? store.find(itemId) : null;
         const theaterId = args.theaterId ?? found?.theaterId ?? "";
         const short = (value: string) => (value.length > 32 ? `${value.slice(0, 31)}…` : value);
-        if (args.add) return { theaterId, summary: `할 일 추가 「${short(args.add.title)}」`, view: "items", gesture: "create" };
-        if (args.plan) return { theaterId, summary: `단계 ${args.plan.steps.length}개 계획`, view: "item", gesture: "create", ...(found ? { path: found.id } : {}) };
+        if (args.add) return { theaterId, summary: `목표 추가 「${short(args.add.title)}」`, view: "items", gesture: "create" };
+        if (args.plan) return { theaterId, summary: `임무 ${args.plan.steps.length}개 구상`, view: "item", gesture: "create", ...(found ? { path: found.id } : {}) };
         if (args.review) return { theaterId, summary: "검토 요청", view: "item", gesture: "press", ...(found ? { path: found.id } : {}) };
-        if (args.step) return { theaterId, summary: args.step.add ? `단계 추가 「${short(args.step.add)}」` : args.step.delegate ? "단계 위임 — 담당 세션 띄움" : args.step.after ? "단계 선행 정함" : "단계 완료", view: "item", gesture: "press", ...(found ? { path: found.id } : {}) };
-        return { theaterId, summary: args.view === "item" ? `할 일 봄 「${short(found?.title ?? "")}」` : args.view === "mine" ? "내 할 일 봄" : args.view === "groups" ? "그룹 봄" : "할 일 목록 봄", view: args.view === "mine" ? "items" : args.view ?? "items", ...(found ? { path: found.id } : {}) };
+        if (args.step) return { theaterId, summary: args.step.add ? `임무 추가 「${short(args.step.add)}」` : args.step.delegate ? "임무 위임 — 담당 세션 띄움" : args.step.after ? "임무 선행 정함" : "임무 완료", view: "item", gesture: "press", ...(found ? { path: found.id } : {}) };
+        return { theaterId, summary: args.view === "item" ? `목표 봄 「${short(found?.title ?? "")}」` : args.view === "mine" ? "내 목표 봄" : args.view === "groups" ? "그룹 봄" : "목표 목록 봄", view: args.view === "mine" ? "items" : args.view ?? "items", ...(found ? { path: found.id } : {}) };
       },
     },
     execute: async (raw, context) => {
@@ -137,8 +137,8 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
         const targetId = (args[key] as { itemId: string }).itemId;
         const item = store.find(targetId);
         if (!item) return refuse("unknown_item");
-        // 이 아래는 셰프만 — 슬롯이 곧 권한이다.
-        if (!isCoordinator(item, caller)) return refuse("not_item_operation", { hint: "Only the Operation in this item's Chef slot may do this." });
+        // 이 아래는 지휘관만 — 슬롯이 곧 권한이다.
+        if (!isCoordinator(item, caller)) return refuse("not_item_operation", { hint: "Only the Operation in this objective's Commander slot may do this." });
         if (key === "step") {
           const stepArgs = args.step!;
           if (stepArgs.add) return text({ ok: true, item: itemView(await launch.stepAdded(item.id, { text: stepArgs.add }, { language })) });
@@ -153,16 +153,16 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
             return text({ ok: true, item: itemView(next) });
           }
           if (stepArgs.delegate) {
-            // 위임 — 이 단계의 담당 세션을 지금 띄운다. 이름을 돌려주면 셰프가 SendMessage 로 맥락을 담아 일을 시킨다.
+            // 위임 — 이 단계의 담당 세션을 지금 띄운다. 이름을 돌려주면 지휘관이 SendMessage 로 맥락을 담아 일을 시킨다.
             const delegated = await launch.delegateStep(item.id, target.id, { language });
             return text({ ok: true, session: delegated.session, operationId: delegated.operationId, item: itemView(delegated.item) });
           }
-          // 완료는 기록 한 건과 함께다 — 결론 먼저 1–3줄. 산문이면 거절해 셰프가 줄여 다시 쓰게 한다.
+          // 완료는 기록 한 건과 함께다 — 결론 먼저 1–3줄. 산문이면 거절해 지휘관이 줄여 다시 쓰게 한다.
           const lines = recordLines(stepArgs.summary ?? stepArgs.result ?? []);
           if (!lines) return refuse("summary_format", { hint: `Pass summary as 1–${MAX_RECORD_LINES} lines, conclusion first, each at most ${MAX_RECORD_LINE} characters. Rewrite it shorter; do not pack a paragraph into a line.` });
           return text({ ok: true, item: itemView(store.stepDone(item.id, target.id, lines, slotBy(caller))) });
         }
-        // 셰프가 마지막으로 읽은 뒤 사람이 바꾼 것이 있으면(edited) 그 계획·검토 요청은 옛 보드로 한 것이다 — 사람의 편집을 덮거나 지나치지 않게 거절하고 다시 읽힌다.
+        // 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것이 있으면(edited) 그 계획·검토 요청은 옛 보드로 한 것이다 — 사람의 편집을 덮거나 지나치지 않게 거절하고 다시 읽힌다.
         if ((key === "plan" || key === "review") && item.edited) return refuse("board_changed", { hint: `The person changed this item since you last read it. Read it again (view item or mine), then ${key === "plan" ? "plan" : "continue from what it now says"}.` });
         if (key === "plan") return text({ ok: true, item: itemView(await launch.planApplied(item.id, { steps: args.plan!.steps }, slotBy(caller), { language })) });
         if (key === "review") {
@@ -172,7 +172,7 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
         }
         return refuse("invalid_arguments");
       } catch (error) {
-        if (error instanceof TodoStoreError) return refuse(error.code);
+        if (error instanceof ObjectiveStoreError) return refuse(error.code);
         return refuse("todo_failed");
       }
     },
@@ -182,24 +182,24 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
     return caller ? (caller.kind === "operation" ? `op:${caller.operationId}` : `plugin:${caller.pluginId}`) : "anonymous";
   }
   function read(args: Args, caller: ConsoleCaller | undefined) {
-    // 「내 자리」 — 이 Operation 이 어느 항목의 셰프인지, 어느 단계의 담당인지. 시스템 지침은 항목을 모르므로 세션이 이걸로 시작한다.
+    // 「내 자리」 — 이 Operation 이 어느 항목의 지휘관인지, 어느 단계의 담당인지. 시스템 지침은 항목을 모르므로 세션이 이걸로 시작한다.
     if (args.view === "mine") {
-      if (caller?.kind !== "operation") throw new TodoStoreError("not_item_operation");
+      if (caller?.kind !== "operation") throw new ObjectiveStoreError("not_item_operation");
       for (const candidate of store.all()) {
-        if (candidate.slot?.operationId === caller.operationId) return { role: "chef", itemId: candidate.id, item: itemView(store.setEdited(candidate.id, null)) };
+        if (candidate.slot?.operationId === caller.operationId) return { role: "commander", itemId: candidate.id, item: itemView(store.setEdited(candidate.id, null)) };
         const index = candidate.steps.findIndex((step) => step.slot?.operationId === caller.operationId);
         if (index >= 0) return { role: "step", itemId: candidate.id, stepIndex: index, stepId: candidate.steps[index]!.id, item: itemView(candidate) };
       }
-      throw new TodoStoreError("not_item_operation");
+      throw new ObjectiveStoreError("not_item_operation");
     }
     if (args.view === "item" || (args.itemId && !args.view)) {
       const item = args.itemId ? store.find(args.itemId) : null;
-      if (!item) throw new TodoStoreError("unknown_item");
-      // 셰프가 제 항목을 읽었다 — 그 뒤의 「시작」은 사람의 변경을 다시 알리지 않는다.
+      if (!item) throw new ObjectiveStoreError("unknown_item");
+      // 지휘관이 제 항목을 읽었다 — 그 뒤의 「시작」은 사람의 변경을 다시 알리지 않는다.
       return { item: itemView(isCoordinator(item, caller) ? store.setEdited(item.id, null) : item) };
     }
     const theaterId = args.theaterId ?? theaterOfCaller(caller);
-    if (!theaterId) throw new TodoStoreError("theater_required");
+    if (!theaterId) throw new ObjectiveStoreError("theater_required");
     if (args.view === "groups") return { theaterId, groups: (ctx.host.operations.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: store.list(theaterId).filter((item) => !item.done && item.groupId === group.id).length })) };
     const today = new Date().toISOString().slice(0, 10);
     const items = store.list(theaterId).filter((item) => {
