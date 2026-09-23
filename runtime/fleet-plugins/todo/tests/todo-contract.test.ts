@@ -5,6 +5,7 @@ import path from "node:path";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { imageInfo } from "../server/attachments.js";
 import { createTodoConsoleTools } from "../server/console-tools.js";
 import { createLaunchService } from "../server/launch.js";
 import { createTodoStore, TodoStoreError } from "../server/store.js";
@@ -13,7 +14,8 @@ import type { TodoItemEvent } from "../server/types.js";
 /**
  * 할 일의 필수 계약 — 실행(시작 한 번이 조율자와 담당 세션을 이름 붙여 한꺼번에 띄우고 이름을 조율자에게 알린다),
  * 저장 무결성(완료가 슬롯을 놓고 되돌리기가 복원, 순환 거절, 계획이 잠긴 단계를 보존), 권한 경계(조율자만 완료·계획,
- * 계보 밖 연결 거절, 같은 슬롯의 겹친 시작 거절), 사건 방송(쓰기 한 번에 todo:item 한 프레임).
+ * 계보 밖 연결 거절, 같은 슬롯의 겹친 시작 거절), 사건 방송(쓰기 한 번에 todo:item 한 프레임), 사람이 더한 단계는 셰프가 자리를
+ * 정하기 전까지 준비되지 않음, 메모 첨부는 이미지 머리 바이트로만 받고 항목과 함께 지워짐.
  */
 
 const dirs: string[] = [];
@@ -110,6 +112,15 @@ describe("To-do contract", () => {
     expect(reloaded.find(item.id)?.steps[0]?.result).toBe("a done");
     // 모든 쓰기가 사건으로 나갔다 — 화면은 이 프레임으로 갱신된다.
     expect(events.filter((event) => event.op === "upsert" && event.itemId === item.id).length).toBeGreaterThanOrEqual(8);
+    // 메모 첨부 — 머리 바이트가 이미지가 아니면(SVG·HTML) 받지 않는다; 받은 파일은 항목과 함께 지워진다.
+    expect(imageInfo(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'))).toBeNull();
+    const png = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
+    expect(imageInfo(png)).toEqual({ type: "image/png", width: 2, height: 3 });
+    const attached = store.attachmentAdd(item.id, { name: "shot.png", type: "image/png", data: png });
+    const file = store.attachmentPath(attached.item, attached.attachment);
+    expect(path.isAbsolute(file) && fs.existsSync(file)).toBe(true);
+    store.remove(item.id);
+    expect(fs.existsSync(file)).toBe(false);
   });
 
   it("lets only the Chef plan and mark steps, keeps completion and linking human-only, and refuses overlapping starts", async () => {
@@ -127,6 +138,15 @@ describe("To-do contract", () => {
     const delegated = await call({ step: { itemId: item.id, index: 0, delegate: true } }, { kind: "operation", operationId: "coord" });
     expect(delegated.structuredContent.session).toBe(`todo-${item.id.slice(0, 6)}-step-1`);
     expect(launches.map((entry) => entry.sessionName)).toEqual([`todo-${item.id.slice(0, 6)}-step-1`]);
+    // 사람이 선행 없이 더한 단계는 미분류 — 셰프가 자리를 정하기 전까지 준비되지 않는다. 셰프의 step after 가 자리를 정한다.
+    const added = await launch.stepAdded(item.id, { text: "missed" }, { by: "human" });
+    const missed = added.steps.length - 1;
+    const board = async () => ((await call({ view: "item", itemId: item.id }, { kind: "operation", operationId: "coord" })).structuredContent.item as { graph: { steps: { unplaced?: boolean; ready: boolean; after: number[] }[] } }).graph.steps;
+    expect((await board())[missed]).toMatchObject({ unplaced: true, ready: false });
+    expect((await call({ step: { itemId: item.id, index: missed, after: [0] } }, { kind: "operation", operationId: "launched-1" })).structuredContent.error).toBe("not_item_operation");
+    expect((await call({ step: { itemId: item.id, index: missed, after: [0] } }, { kind: "operation", operationId: "coord" })).isError).toBe(false);
+    expect((await board())[missed]).toMatchObject({ after: [0] });
+    expect((await board())[missed]!.unplaced).toBeUndefined();
     // 완료 표시와 완료는 조율자만.
     expect((await call({ step: { itemId: item.id, doneIndex: 0, result: "r" } }, { kind: "operation", operationId: "launched-1" })).structuredContent.error).toBe("not_item_operation");
     expect((await call({ step: { itemId: item.id, doneIndex: 0, result: "r" } }, { kind: "operation", operationId: "coord" })).isError).toBe(false);

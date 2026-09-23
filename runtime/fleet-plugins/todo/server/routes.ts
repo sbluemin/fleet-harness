@@ -1,9 +1,11 @@
+import fs from "node:fs";
 import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { z } from "zod";
 
+import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { TodoStoreError, type TodoStore } from "./store.js";
 import { createItemSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type TodoEditKind, type TodoItem } from "./types.js";
@@ -35,11 +37,56 @@ export function createTodoRoutes(ctx: FleetPluginServerContext, store: TodoStore
     try {
       const value = await run(parsed.data, req);
       ctx.host.http.writeJson(res, 200, value ?? { ok: true });
-    } catch (error) {
-      if (error instanceof TodoStoreError) { ctx.host.http.writeJson(res, error.code === "unknown_item" || error.code === "unknown_step" ? 404 : 409, { error: error.code }); return true; }
-      const code = error instanceof Error ? error.message : "todo_failed";
-      ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "todo_failed" });
-    }
+    } catch (error) { fail(res, error); }
+    return true;
+  };
+  const fail = (res: http.ServerResponse, error: unknown) => {
+    if (error instanceof TodoStoreError) { ctx.host.http.writeJson(res, error.code === "unknown_item" || error.code === "unknown_step" || error.code === "unknown_attachment" ? 404 : 409, { error: error.code }); return; }
+    const code = error instanceof Error ? error.message : "todo_failed";
+    ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "todo_failed" });
+  };
+  const query = (req: http.IncomingMessage) => new URL(req.url ?? "/", "http://localhost").searchParams;
+  /** 이미지 바이트를 한도까지 읽는다 — 넘으면 나머지는 흘려보내고 null. JSON 본문 한도(1MB)를 피하려고 원시 본문으로 받는다. */
+  const readBytes = (req: http.IncomingMessage, limit: number): Promise<Buffer | null> => new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    let over = false;
+    req.on("data", (chunk: Buffer) => { total += chunk.length; if (total > limit) { over = true; chunks.length = 0; return; } if (!over) chunks.push(chunk); });
+    req.on("end", () => resolve(over ? null : Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+
+  // 메모 첨부 — 올리기(원시 이미지 바이트, 형식은 머리 바이트로 판정)·받기(id 로, 경로는 브라우저에 나가지 않는다)·지우기.
+  const attachmentAdd: RouteHandler = async ({ req, res }) => {
+    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const params = query(req);
+    const itemId = params.get("itemId");
+    if (!itemId || itemId.length > 128) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    try {
+      const data = await readBytes(req, MAX_ATTACHMENT_BYTES);
+      if (!data) { ctx.host.http.writeJson(res, 413, { error: "attachment_too_large" }); return true; }
+      const info = imageInfo(data);
+      if (!info) { ctx.host.http.writeJson(res, 415, { error: "attachment_type" }); return true; }
+      // 첨부는 메모의 일부다 — 셰프가 일하는 동안에도 받고, 셰프가 있으면 「메모」 편집으로 쌓인다.
+      const add = steerable(() => true, ({ itemId: target }: { itemId: string }) => store.attachmentAdd(target, { name: attachmentName(params.get("name"), info.type), type: info.type, data, ...(info.width ? { width: info.width } : {}), ...(info.height ? { height: info.height } : {}) }));
+      const result = await add({ itemId });
+      ctx.host.http.writeJson(res, 200, { item: store.setEdited(itemId, ["note"]), attachmentId: result.attachment.id });
+    } catch (error) { fail(res, error); }
+    return true;
+  };
+  const attachmentFile: RouteHandler = async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const params = query(req);
+    const found = store.find(params.get("itemId") ?? "");
+    const attachment = found?.attachments?.find((entry) => entry.id === params.get("attachmentId"));
+    if (!found || !attachment) { ctx.host.http.writeJson(res, 404, { error: "unknown_attachment" }); return true; }
+    try {
+      const data = await fs.promises.readFile(store.attachmentPath(found, attachment));
+      res.writeHead(200, { "Content-Type": attachment.type, "Content-Length": data.length, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "private, max-age=3600", "Content-Security-Policy": "default-src 'none'" });
+      res.end(data);
+    } catch { ctx.host.http.writeJson(res, 404, { error: "unknown_attachment" }); }
     return true;
   };
 
@@ -97,6 +144,9 @@ export function createTodoRoutes(ctx: FleetPluginServerContext, store: TodoStore
       const hits = store.list(theaterId).filter((candidate) => !candidate.done && candidate.title.toLowerCase().includes(needle)).slice(0, limit ?? 20);
       return { items: hits.map((candidate) => ({ id: candidate.id, title: candidate.title, groupId: candidate.groupId })) };
     }) },
+    { name: "attachment/add", method: "POST", summary: "Attach an image to an item's note (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per item).", handler: attachmentAdd },
+    { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },
+    { name: "attachment/remove", method: "POST", summary: "Remove an image from an item's note.", handler: json(itemRef.extend({ attachmentId: ids }), steerable(() => true, ({ itemId, attachmentId }) => edited(["note"], () => store.attachmentRemove(itemId, attachmentId)))) },
     { name: "plan/apply", method: "POST", summary: "Replace the unassigned steps with a plan (coordinator tool path; also used by tests).", handler: json(itemRef.extend({ plan: planSchema }), async ({ itemId, plan, language }) => item(await launch.planApplied(itemId, plan, "human", { language }))) },
   ];
 }

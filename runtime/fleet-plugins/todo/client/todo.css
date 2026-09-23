@@ -632,3 +632,29 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-dag .todo-dag-tray text { fill: var(--aurora); font-weight: var(--weight-bold); }
 .todo-dag .todo-node.is-unplaced circle { stroke: var(--aurora); stroke-dasharray: 2 2; }
 .todo-step-sub.is-unplaced { color: var(--aurora); }
+
+/* 메모 첨부 띠 — 본문 아래 붙인 순서대로 「이미지 n」 썸네일. 끌어오는 동안 메모 구획이 brass 로 받는다(위치의 표시). */
+.todo-note-group { transition: background var(--duration-fast); }
+.todo-note-group.is-drop { background: color-mix(in oklch, var(--brass) 8%, transparent); outline: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent); outline-offset: -4px; }
+.todo-att { display: grid; gap: 6px; padding: 0 20px 12px 22px; }
+.todo-att-strip { display: flex; flex-wrap: wrap; gap: 10px 8px; }
+.todo-att-thumb { position: relative; display: grid; gap: 3px; width: 72px; }
+.todo-att-open { width: 72px; height: 52px; padding: 0; overflow: hidden; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); cursor: zoom-in; }
+.todo-att-open:hover, .todo-att-open:focus-visible { border-color: var(--brass); outline: none; }
+.todo-att-open img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.todo-att-label { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.todo-att-x { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--surface-rim-strong); border-radius: 50%; background: var(--surface-panel); color: var(--text-secondary); cursor: pointer; opacity: 0; transition: opacity var(--duration-fast); }
+.todo-att-x svg { width: 10px; height: 10px; }
+.todo-att-thumb:hover .todo-att-x, .todo-att-x:focus-visible { opacity: 1; }
+.todo-att-x:hover { color: var(--coral); border-color: var(--coral); }
+.todo-att-add { display: grid; place-items: center; width: 72px; height: 52px; border: 1px dashed var(--surface-rim-strong); border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); cursor: pointer; }
+.todo-att-add:hover:not(:disabled), .todo-att-add:focus-visible { border-color: var(--brass); color: var(--brass); outline: none; }
+.todo-att-spin { width: 12px; height: 12px; border: 1.5px solid var(--text-tertiary); border-top-color: transparent; border-radius: 50%; animation: todo-att-spin 0.9s linear infinite; }
+@keyframes todo-att-spin { to { transform: rotate(360deg); } }
+.todo-att-hint { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.todo-att-err { font-size: var(--t-xs); color: var(--coral); }
+.todo-att-view { position: relative; display: grid; gap: 8px; justify-items: center; margin: 0; max-width: min(1100px, 100%); }
+.todo-att-view img { display: block; max-width: 100%; max-height: 80vh; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--surface-panel); }
+.todo-att-view figcaption { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); text-align: center; overflow-wrap: anywhere; }
+.todo-att-view-close { position: absolute; top: -34px; right: 0; }
+@media (prefers-reduced-motion: reduce) { .todo-att-spin { animation: none; } }

@@ -55,6 +55,22 @@ export interface StepAssign {
 export const DEFAULT_STEP_ASSIGN: StepAssign = { mode: "self" };
 export const assignModeOf = (step: { readonly assign?: StepAssign }): StepAssign["mode"] => step.assign?.mode ?? "self";
 
+/**
+ * 메모에 붙인 이미지 — 파일은 플러그인 데이터 디렉터리의 항목별 폴더에 id 이름으로 있다. 브라우저에 가는 항목에는 경로를 싣지 않는다
+ * (파일은 id 로 받아 온다). 절대 경로는 셰프의 도구 응답에만 실린다.
+ */
+export interface TodoAttachment {
+  readonly id: string;
+  /** 「이미지 n」의 n — 붙인 순서로 늘고, 지워도 다른 번호가 밀리지 않는다(메모가 번호로 가리킨다). */
+  readonly n: number;
+  readonly name: string;
+  readonly type: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  readonly bytes: number;
+  readonly width?: number;
+  readonly height?: number;
+  readonly at: number;
+}
+
 export interface TodoAuthor {
   readonly kind: "human" | "operation";
   readonly operationId?: string;
@@ -86,6 +102,8 @@ export interface TodoItem {
   readonly groupId: string | null;
   readonly title: string;
   readonly note: string;
+  /** 메모에 붙인 이미지 — 메모 아래 띠에 붙인 순서로 선다. */
+  readonly attachments?: readonly TodoAttachment[];
   /** 쿠킹에 함께 주는 맥락 — 조율자가 단계를 짤 때 읽는 사람의 프롬프트. */
   readonly cook?: string;
   /** 쿠킹 중 — 셰프가 단계·메모만 짜는 국면. 시작·중지·완료가 끝낸다. 이 동안은 계획을 써도 담당이 뜨지 않는다. */

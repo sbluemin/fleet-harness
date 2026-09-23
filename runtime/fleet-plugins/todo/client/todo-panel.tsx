@@ -5,6 +5,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
 import { coordinatorMode, stepReady, type CoordinatorMode, type StepAssign, type TodoItem, type TodoStep } from "../server/types.js";
+import { NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type TodoMessageKey } from "./i18n/index.js";
@@ -568,6 +569,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const notStarted = (step: TodoStep) => !step.done && !step.slot;
   const canEditStep = (stepId: string) => { if (editable) return true; const target = item.steps.find((candidate) => candidate.id === stepId); return touchable && !!target && notStarted(target); };
   const [steering, setSteering] = useState(false);
+  const attachments = useAttachmentUpload(item, t);
+  const [dropping, setDropping] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
   // 사람의 결정을 기다리는 세션 — 셰프가 먼저, 다음은 단계 순서. 카드가 잠기지 않은 채 사람을 부르는 유일한 상태다.
@@ -741,8 +744,16 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         ) : null}
       </div>
 
-      <div className="todo-group">
-        <textarea className="todo-note" aria-label={t("todo.item.memo")} placeholder={t("todo.item.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)} />
+      {/* 메모 — 본문 아래 첨부 띠. 메모에 이미지를 붙여넣거나 메모 구획에 끌어오면 띠에 들어간다. */}
+      <div
+        className={`todo-group todo-note-group${dropping ? " is-drop" : ""}`}
+        onDragOver={(event) => { if (touchable && [...event.dataTransfer.types].includes("Files")) { event.preventDefault(); setDropping(true); } }}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
+        onDrop={(event) => { if (!touchable) return; event.preventDefault(); setDropping(false); const files = imageFiles(event.dataTransfer.files); if (files.length) void attachments.upload(files); }}
+      >
+        <textarea className="todo-note" aria-label={t("todo.item.memo")} placeholder={t("todo.item.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)}
+          onPaste={(event) => { if (!touchable) return; const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
+        <NoteAttachments item={item} t={t} touchable={touchable} upload={attachments.upload} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />
       </div>
 
       {/* 마지막 행동 한 자리 — 검토 대기면 「완료」, 누군가 사람의 결정을 기다리면 「결정 대기」(누르면 그 Operation으로),

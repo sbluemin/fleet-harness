@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
+import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import {
   DEFAULT_STEP_ASSIGN,
   MAX_STEPS,
@@ -12,6 +13,7 @@ import {
   type Slot,
   type SlotBy,
   type StepAddInput,
+  type TodoAttachment,
   type StepPatchInput,
   type TodoEditKind,
   type TodoHistoryEntry,
@@ -38,6 +40,8 @@ export class TodoStoreError extends Error {
 
 export interface TodoStoreOptions {
   readonly dir: string;
+  /** 메모 첨부의 뿌리 — `<attachmentsDir>/<theaterId>/<itemId>/<attachmentId>.<ext>`. 없으면 `<dir>/../attachments`. */
+  readonly attachmentsDir?: string;
   readonly emit: (event: TodoItemEvent) => void;
   readonly now?: () => number;
 }
@@ -71,6 +75,11 @@ export interface TodoStore {
   setEdited(itemId: string, kinds: readonly TodoEditKind[] | null): TodoItem;
   /** 사라진 Operation 을 모든 슬롯(완료 항목의 released 포함)에서 지운다 — 바뀐 항목을 돌려준다. */
   forgetOperation(operationId: string): readonly TodoItem[];
+  /** 메모에 이미지를 붙인다 — 파일을 먼저 쓰고 항목에 싣는다. 형식·크기 판정은 부르는 쪽이 끝낸 뒤다. */
+  attachmentAdd(itemId: string, input: { readonly name: string; readonly type: TodoAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly item: TodoItem; readonly attachment: TodoAttachment };
+  attachmentRemove(itemId: string, attachmentId: string): TodoItem;
+  /** 첨부 파일의 절대 경로 — 서버 안(파일 서빙·셰프의 도구 응답)에서만 쓴다. */
+  attachmentPath(item: TodoItem, attachment: TodoAttachment): string;
 }
 
 function fileFor(dir: string, theaterId: string): string {
@@ -98,8 +107,13 @@ function writeFileAtomic(file: string, data: TodoTheaterFile): void {
   fs.renameSync(tmp, file);
 }
 
+const safeSegment = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "_");
+
 export function createTodoStore(options: TodoStoreOptions): TodoStore {
   const now = options.now ?? (() => Date.now());
+  const attachmentsRoot = options.attachmentsDir ?? path.join(path.dirname(options.dir), "attachments");
+  const itemFolder = (item: Pick<TodoItem, "id" | "theaterId">) => path.join(attachmentsRoot, safeSegment(item.theaterId), safeSegment(item.id));
+  const fileOf = (item: Pick<TodoItem, "id" | "theaterId">, attachment: Pick<TodoAttachment, "id" | "type">) => path.join(itemFolder(item), `${safeSegment(attachment.id)}.${ATTACHMENT_TYPES[attachment.type]}`);
   const cache = new Map<string, TodoItem[]>();
   const index = new Map<string, string>(); // itemId → theaterId
 
@@ -248,6 +262,8 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       const { theaterId, items, at, item } = locate(itemId);
       items.splice(at, 1);
       commit(theaterId, items, null, item.id);
+      // 항목이 사라지면 붙인 이미지도 함께 — 남은 파일은 가리킬 곳이 없다.
+      try { fs.rmSync(itemFolder(item), { recursive: true, force: true }); } catch { /* 이미 없으면 그만 */ }
       return item;
     },
 
@@ -262,6 +278,46 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       commit(theaterId, items, item, undefined, true);
       return item;
     },
+
+    attachmentAdd(itemId, input) {
+      const current = locate(itemId).item;
+      if (current.done) throw new TodoStoreError("item_done");
+      const existing = current.attachments ?? [];
+      if (existing.length >= MAX_ATTACHMENTS) throw new TodoStoreError("too_many_attachments");
+      const attachment: TodoAttachment = {
+        id: randomUUID(),
+        n: existing.reduce((top, entry) => Math.max(top, entry.n), 0) + 1,
+        name: input.name,
+        type: input.type,
+        bytes: input.data.length,
+        ...(input.width ? { width: input.width } : {}),
+        ...(input.height ? { height: input.height } : {}),
+        at: now(),
+      };
+      const file = fileOf(current, attachment);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const tmp = `${file}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, input.data);
+      fs.renameSync(tmp, file);
+      try {
+        const item = update(itemId, (item) => ({ ...item, attachments: [...(item.attachments ?? []), attachment] }));
+        return { item, attachment };
+      } catch (error) {
+        try { fs.rmSync(file, { force: true }); } catch { /* ignore */ }
+        throw error;
+      }
+    },
+
+    attachmentRemove(itemId, attachmentId) {
+      const current = locate(itemId).item;
+      const target = (current.attachments ?? []).find((entry) => entry.id === attachmentId);
+      if (!target) throw new TodoStoreError("unknown_attachment");
+      const item = update(itemId, (item) => ({ ...item, attachments: (item.attachments ?? []).filter((entry) => entry.id !== attachmentId) }));
+      try { fs.rmSync(fileOf(current, target), { force: true }); } catch { /* 이미 없으면 그만 */ }
+      return item;
+    },
+
+    attachmentPath: (item, attachment) => fileOf(item, attachment),
 
     setCooking: (itemId, cooking) => update(itemId, (item) => (item.cooking === cooking ? item : cooking ? { ...item, cooking: true } : (({ cooking: _cooking, ...rest }) => rest)(item))),
 
