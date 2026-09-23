@@ -1105,7 +1105,9 @@ export function OperationsCanvas({
   // 후보 — 이 Theater의 다른 패널. 보이는 자유 패널이 최근 활성 순으로 앞서고 최소화된 패널이 뒤따른다.
   const snapAssistCandidates: readonly SnapAssistCandidate[] = snapAssist && snapHoldActive && snapHold
     ? theaterOperations
-        .filter((operation) => !(operation.id in snapHold.assignments))
+        // 그릴 수 없는 Operation(플러그인 부재·render 없음)은 후보가 아니다 — 고르면 보이지 않는 패널이 칸을 쥔다.
+        .filter((operation) => !(operation.id in snapHold.assignments)
+          && operationKindRegistry.some((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type && Boolean(kind.render)))
         .map((operation) => ({ id: operation.id, title: operation.title, minimized: minimizedSet.has(operation.id), z: canvas.operations[operation.id]?.zIndex ?? 0 }))
         .sort((a, b) => Number(a.minimized) - Number(b.minimized) || b.z - a.z)
         .map(({ id, title }) => ({ id, title }))
