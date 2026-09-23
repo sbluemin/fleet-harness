@@ -148,20 +148,34 @@ export function snapZonesResized(arena: SnapRect, zones: readonly SnapZoneFracti
   const moveEdge = (axis: "x" | "y", from: number, to: number) => {
     if (Math.abs(from - to) < EPSILON) return;
     const min = axis === "x" ? minW : minH;
-    // 이 선을 나누는 모든 칸(자기 자신 포함) — 이웃이 최소 크기 아래로 가지 않는 범위로 한 번에 자른다.
-    let bounded = to;
-    for (const zone of next) {
-      const [zx, zy, zw, zh] = zone;
-      const start = axis === "x" ? zx : zy, size = axis === "x" ? zw : zh;
-      const crosses = axis === "x" ? overlaps(zy, zh, ofy, ofh) : overlaps(zx, zw, ofx, ofw);
-      if (!crosses) continue;
-      if (Math.abs(start + size - from) < EPSILON) bounded = Math.max(bounded, start + min);
-      if (Math.abs(start - from) < EPSILON) bounded = Math.min(bounded, start + size - min);
+    const si = axis === "x" ? 0 : 1, wi = axis === "x" ? 2 : 3;
+    const ci = axis === "x" ? 1 : 0, cwi = axis === "x" ? 3 : 2;
+    const onLine = (zone: readonly number[]) => Math.abs(zone[si]! + zone[wi]! - from) < EPSILON || Math.abs(zone[si]! - from) < EPSILON;
+    // 이 선을 나누는 칸 가운데 움직이는 구간과 이어진 것들 — 끌던 칸의 구간에서 시작해, 그 구간과 겹치는 칸의
+    // 구간을 더해 가며 닫힐 때까지 넓힌다. 한쪽 칸이 선 전체를 차지하면(stack의 왼쪽 반) 반대편 두 칸이 모두
+    // 따라와야 하고, 사분면처럼 위·아래 줄이 끊겨 있으면 줄 하나만 움직인다.
+    const moving = new Set<number>();
+    const spans: [number, number][] = [[axis === "x" ? ofy : ofx, axis === "x" ? ofh : ofw]];
+    let grew = true;
+    while (grew) {
+      grew = false;
+      next.forEach((zone, index) => {
+        if (moving.has(index) || !onLine(zone)) return;
+        if (!spans.some(([start, size]) => overlaps(zone[ci], zone[cwi], start, size))) return;
+        moving.add(index);
+        spans.push([zone[ci], zone[cwi]]);
+        grew = true;
+      });
     }
-    for (const zone of next) {
-      const si = axis === "x" ? 0 : 1, wi = axis === "x" ? 2 : 3;
-      const crosses = axis === "x" ? overlaps(zone[1], zone[3], ofy, ofh) : overlaps(zone[0], zone[2], ofx, ofw);
-      if (!crosses) continue;
+    // 이웃이 최소 크기 아래로 가지 않는 범위로 한 번에 자른다.
+    let bounded = to;
+    for (const index of moving) {
+      const zone = next[index]!;
+      if (Math.abs(zone[si] + zone[wi] - from) < EPSILON) bounded = Math.max(bounded, zone[si] + min);
+      if (Math.abs(zone[si] - from) < EPSILON) bounded = Math.min(bounded, zone[si] + zone[wi] - min);
+    }
+    for (const index of moving) {
+      const zone = next[index]!;
       if (Math.abs(zone[si] + zone[wi] - from) < EPSILON) zone[wi] = bounded - zone[si];
       else if (Math.abs(zone[si] - from) < EPSILON) { zone[wi] = zone[si] + zone[wi] - bounded; zone[si] = bounded; }
     }

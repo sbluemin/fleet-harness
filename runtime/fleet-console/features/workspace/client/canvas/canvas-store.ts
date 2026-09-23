@@ -447,6 +447,9 @@ export function setTheaterOperationMinimized(theaterId: string, sessionId: strin
     minimized: minimized
       ? [...theaterState.minimized, sessionId]
       : theaterState.minimized.filter((id) => id !== sessionId),
+    // 활성 경로와 같다 — 최소화는 그 패널을 유지에서 뺀다. 남겨 두면 그 Theater로 돌아왔을 때 보이지 않는
+    // 패널이 칸을 쥐고 있어 다른 패널을 받지 못한다.
+    snapHold: minimized ? snapHoldWithout(theaterState.snapHold, [sessionId]) : theaterState.snapHold,
   });
   state = { ...state };
   emit();
