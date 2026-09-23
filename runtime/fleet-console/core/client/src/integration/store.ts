@@ -482,12 +482,23 @@ export function setOperationOrder(theaterId: string, ids: readonly string[]): vo
     }
   });
   pendingOrders.set(theaterId, commit);
-  void commit.finally(() => { if (pendingOrders.get(theaterId) === commit) pendingOrders.delete(theaterId); });
+  void commit.finally(() => {
+    if (pendingOrders.get(theaterId) !== commit) return;
+    pendingOrders.delete(theaterId);
+    // 요청 중에 눌러 둔 순서 사건은 다른 창·에이전트의 더 새 순서였을 수 있다 — 마지막 요청이 끝나면 서버 목록으로 한 번 맞춘다.
+    if (!suppressedOrders.delete(theaterId)) return;
+    void fetchOperations().then((serverOperations) => {
+      if (!pendingOrders.has(theaterId)) hydrateOperations(serverOperations);
+    }).catch(() => { /* 연결 복구 후 SSE/다음 조회가 다시 동기화한다. */ });
+  });
 }
+
+const suppressedOrders = new Set<string>();
 
 export function applyOperationUpdate(operation: OperationNode, confirmedOrder = false): void {
   // 내 요청이 진행 중일 때 서버가 이전 순서의 개별 SSE를 보내도 낙관적 배치를 되돌리지 않는다.
   if (!confirmedOrder && pendingOrders.has(operation.theaterId) && operation.order !== state.operations.find((op) => op.id === operation.id)?.order) {
+    suppressedOrders.add(operation.theaterId);
     operation = { ...operation, order: state.operations.find((op) => op.id === operation.id)?.order };
   }
   const index = state.operations.findIndex((op) => op.id === operation.id);
