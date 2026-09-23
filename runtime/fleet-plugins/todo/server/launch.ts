@@ -210,9 +210,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: TodoSt
       if (current.slot) {
         const existing = current.slot;
         await send(existing.operationId, startTurn(current, language));
+        // 알림이 나갔다 — 같은 변경을 다음 시작에 되풀이하지 않는다. 셰프는 이제 보드를 다시 읽는다.
+        current = store.setEdited(itemId, null);
         if (alone) current = store.setSlot(itemId, alone.id, existing);
         return { item: current, operationId: existing.operationId };
       }
+      // 새 셰프는 보드를 처음부터 읽는다 — 앞선 셰프에게 남겨 둔 변경 기록은 의미가 없다.
+      current = store.setEdited(itemId, null);
       // 담당과 대화하려면 조율자도 이름 붙은 CLI 세션이어야 한다 — 담당이 있을 때는 채팅뷰를 고르지 않는다.
       const view: LaunchView | undefined = delegated ? "terminal" : preset(current).view;
       const operationId = await launch({ theaterId: current.theaterId, title: current.title, text: startTurn(current, language), view, sessionName: names.coordinator, model: preset(current).model, effort: preset(current).effort, groupId: current.groupId }).catch(asStoreError);
@@ -242,6 +246,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: TodoSt
       if (!current.cooking) current = store.setCooking(itemId, true);
       if (current.review) current = store.setReview(itemId, null);
       if (!current.slot) {
+        current = store.setEdited(itemId, null);
         const names = sessionNames(current);
         const operationId = await launch({ theaterId: current.theaterId, title: current.title, text: cookTurn(current, language), view: preset(current).view, sessionName: names.coordinator, model: preset(current).model, effort: preset(current).effort, groupId: current.groupId }).catch(asStoreError);
         mark(operationId, { itemId, role: "coordinator" }, language);

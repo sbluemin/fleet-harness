@@ -166,7 +166,7 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
     if (args.view === "mine") {
       if (caller?.kind !== "operation") throw new TodoStoreError("not_item_operation");
       for (const candidate of store.all()) {
-        if (candidate.slot?.operationId === caller.operationId) return { role: "chef", itemId: candidate.id, item: itemView(candidate) };
+        if (candidate.slot?.operationId === caller.operationId) return { role: "chef", itemId: candidate.id, item: itemView(store.setEdited(candidate.id, null)) };
         const index = candidate.steps.findIndex((step) => step.slot?.operationId === caller.operationId);
         if (index >= 0) return { role: "step", itemId: candidate.id, stepIndex: index, stepId: candidate.steps[index]!.id, item: itemView(candidate) };
       }
@@ -175,7 +175,8 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
     if (args.view === "item" || (args.itemId && !args.view)) {
       const item = args.itemId ? store.find(args.itemId) : null;
       if (!item) throw new TodoStoreError("unknown_item");
-      return { item: itemView(item) };
+      // 셰프가 제 항목을 읽었다 — 그 뒤의 「시작」은 사람의 변경을 다시 알리지 않는다.
+      return { item: itemView(isCoordinator(item, caller) ? store.setEdited(item.id, null) : item) };
     }
     const theaterId = args.theaterId ?? theaterOfCaller(caller);
     if (!theaterId) throw new TodoStoreError("theater_required");

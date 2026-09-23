@@ -72,6 +72,9 @@ export interface TodoDone {
 
 export type LaunchView = "chat" | "terminal";
 
+/** 셰프에게 알릴 만한 사람의 편집 — 일정·중요 표시·모델 같은 셰프의 일과 무관한 값은 넣지 않는다. */
+export type TodoEditKind = "title" | "note" | "steps" | "recipe" | "assign";
+
 export interface TodoItem {
   readonly id: string;
   readonly theaterId: string;
@@ -84,6 +87,11 @@ export interface TodoItem {
   readonly cooking?: boolean;
   /** 검토 대기 — 셰프가 모든 단계를 마쳤다고 사람에게 넘긴 상태(가승인). 완료는 사람이 검토해 누른다. 새 작업(쿠킹·시작·단계 되돌림)이 지운다. */
   readonly review?: { readonly at: number; readonly summary: string };
+  /**
+   * 셰프가 마지막으로 읽은 뒤 사람이 바꾼 것 — 셰프가 있는 동안의 화면 편집만 쌓인다. 「시작」이 셰프에게 한 줄로 알리고
+   * 다시 읽게 한다. 셰프가 이 항목을 읽거나(view item/mine), 새 셰프가 뜨거나, 알림이 나가면 지워진다.
+   */
+  readonly edited?: { readonly at: number; readonly kinds: readonly TodoEditKind[] };
   readonly important: boolean;
   readonly dueDate: string | null;
   readonly today: boolean;
@@ -170,6 +178,8 @@ export interface TodoItemEvent {
   readonly theaterId: string;
   readonly itemId: string;
   readonly item?: TodoItem;
+  /** 순서가 바뀌었을 때만 — 그 Theater 항목 id 의 새 순서 전체. 받는 쪽은 이 순서로 다시 줄 세운다. */
+  readonly order?: readonly string[];
 }
 
 /** 조율자의 모드 — 라벨이 아니라 매번 그래프에서 계산한다. */

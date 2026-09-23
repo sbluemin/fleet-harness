@@ -59,7 +59,14 @@ export function installTodoState(ctx: PluginInstallContext): () => void {
     if (event.op === "remove") { setTheater(event.theaterId, { items: current.items.filter((item) => item.id !== event.itemId) }); return; }
     if (!event.item) return;
     const exists = current.items.some((item) => item.id === event.itemId);
-    setTheater(event.theaterId, { items: exists ? current.items.map((item) => (item.id === event.itemId ? event.item! : item)) : [event.item, ...current.items] });
+    const items = exists ? current.items.map((item) => (item.id === event.itemId ? event.item! : item)) : [event.item, ...current.items];
+    // 순서가 함께 오면 서버의 줄을 따른다 — 목록에 없는 id 는 건너뛰고, 순서에 없는 항목은 뒤에 그대로 둔다.
+    if (event.order) {
+      const rank = new Map(event.order.map((id, index) => [id, index]));
+      setTheater(event.theaterId, { items: [...items].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)) });
+      return;
+    }
+    setTheater(event.theaterId, { items });
   });
   const offGroup = ctx.consoleEvents.subscribe("group:changed", (payload) => {
     const group = (payload as { group?: TodoGroup } | null)?.group;
@@ -151,6 +158,38 @@ export function takeReveal(): RevealTarget | null {
 }
 export function useReveal(): RevealTarget | null {
   return useSyncExternalStore(subscribeTodo, () => reveal, () => reveal);
+}
+
+/**
+ * 표면의 보기 상태 — 고른 목록 · 펼친 항목 · 구획 접힘 · 기한 필터. 표면을 닫으면 컴포넌트는 내려가지만 보던 자리는
+ * 여기 Theater 별로 남아, 다시 열면 그대로 선다. 보는 사람의 편의라 메모리에만 둔다(새로고침이면 처음부터).
+ */
+export interface TodoViewState {
+  readonly list: string;
+  readonly selected: string | null;
+  readonly collapsed: Readonly<Record<string, boolean>>;
+  readonly dueFilter: string;
+}
+const VIEW_DEFAULT: TodoViewState = { list: "all", selected: null, collapsed: { done: true }, dueFilter: "all" };
+const views = new Map<string, TodoViewState>();
+const viewListeners = new Set<() => void>();
+export function readTodoView(theaterId: string | null): TodoViewState {
+  return (theaterId ? views.get(theaterId) : undefined) ?? VIEW_DEFAULT;
+}
+export function patchTodoView(theaterId: string | null, patch: (current: TodoViewState) => Partial<TodoViewState>): void {
+  if (!theaterId) return;
+  const current = readTodoView(theaterId);
+  const next = { ...current, ...patch(current) };
+  if (next.list === current.list && next.selected === current.selected && next.collapsed === current.collapsed && next.dueFilter === current.dueFilter) return;
+  views.set(theaterId, next);
+  for (const listener of viewListeners) listener();
+}
+export function useTodoView(theaterId: string | null): TodoViewState {
+  return useSyncExternalStore(
+    (listener) => { viewListeners.add(listener); return () => { viewListeners.delete(listener); }; },
+    () => readTodoView(theaterId),
+    () => readTodoView(theaterId),
+  );
 }
 
 export function focusOperation(operationId: string): void {

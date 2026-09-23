@@ -9,7 +9,7 @@ import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type TodoMessageKey } from "./i18n/index.js";
 import { LaunchControl, ProviderGlyph, launchWords, loadLaunchRows, useLaunchRows } from "./launch-control.js";
-import { focusOperation, loadTheater, post, takeReveal, useOperationSummaries, useReveal, useTodoTheater, type TodoGroup } from "./todo-state.js";
+import { focusOperation, loadTheater, patchTodoView, post, takeReveal, useOperationSummaries, useReveal, useTodoTheater, useTodoView, type TodoGroup } from "./todo-state.js";
 
 export interface TodoContext {
   readonly theaterId: string | null;
@@ -20,6 +20,8 @@ export interface TodoContext {
 
 type ListId = "today" | "due" | "all" | "agent" | "ungrouped" | `group:${string}`;
 type DueFilter = "all" | "overdue" | "today" | "week" | "later";
+/** 끌어서 순서 바꾸기의 놓을 자리 — 이웃 카드의 앞 또는 뒤. */
+type Insert = { readonly anchorId: string; readonly place: "before" | "after" };
 type T = Translate<TodoMessageKey>;
 
 const CheckGlyph = () => <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true"><path d="M2 5.2l2.2 2.2L8 3" /></svg>;
@@ -65,25 +67,36 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
   const state = useTodoTheater(theaterId);
   const operations = useOperationSummaries();
   const reveal = useReveal();
-  const [list, setList] = useState<ListId>("all");
-  const [selected, setSelected] = useState<string | null>(null);
-  // 구획 접기 — 그룹 구획은 펼침이 기본, 맨 아래 「완료됨」은 접힘이 기본. 보는 사람의 편의라 메모리에만 둔다.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ done: true });
-  const toggleSection = (key: string, defaultOpen: boolean) => setCollapsed((value) => ({ ...value, [key]: key in value ? !value[key] : defaultOpen }));
+  // 보기 상태(목록 · 펼친 항목 · 구획 접힘 · 기한 필터)는 Theater 별 모듈 스토어에 산다 — 표면을 닫았다 열어도 보던 자리 그대로.
+  const view = useTodoView(theaterId);
+  const list = view.list as ListId;
+  const selected = view.selected;
+  const collapsed = view.collapsed;
+  const dueFilter = view.dueFilter as DueFilter;
+  const setList = useCallback((next: ListId) => patchTodoView(theaterId, () => ({ list: next })), [theaterId]);
+  const setSelected = useCallback((next: string | null | ((value: string | null) => string | null)) => patchTodoView(theaterId, (current) => ({ selected: typeof next === "function" ? next(current.selected) : next })), [theaterId]);
+  const setDueFilter = (next: DueFilter) => patchTodoView(theaterId, () => ({ dueFilter: next }));
+  // 구획 접기 — 그룹 구획은 펼침이 기본, 맨 아래 「완료됨」은 접힘이 기본.
+  const toggleSection = (key: string, defaultOpen: boolean) => patchTodoView(theaterId, (current) => ({ collapsed: { ...current.collapsed, [key]: key in current.collapsed ? !current.collapsed[key] : defaultOpen } }));
   const isOpen = (key: string, defaultOpen: boolean) => (key in collapsed ? !collapsed[key] : defaultOpen);
-  const [dueFilter, setDueFilter] = useState<DueFilter>("all");
   const [highlightStep, setHighlightStep] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ text: string; undo?: () => Promise<void> } | null>(null);
   const launchRows = useLaunchRows();
-  // 끌기 — 카드를 왼쪽 목록 위에 놓으면 그 목록으로 옮긴다. 원래 자리는 빈 홈으로 남고 카드 유령이 커서를 따른다.
-  const [drag, setDrag] = useState<{ itemId: string; x: number; y: number; over: ListId | null; offX: number; offY: number; width: number; compact: boolean } | null>(null);
-  const dragRef = useRef<{ itemId: string; startX: number; startY: number; live: boolean; over: ListId | null; offX: number; offY: number; width: number } | null>(null);
+  // 끌기 — 카드를 왼쪽 목록 위에 놓으면 그 목록으로 옮기고, 같은 구획의 카드 사이에 놓으면 순서를 바꾼다.
+  // 원래 자리는 빈 홈으로 남고 카드 유령이 커서를 따르며, 순서를 바꿀 자리에는 삽입선이 선다.
+  const [drag, setDrag] = useState<{ itemId: string; x: number; y: number; over: ListId | null; insert: Insert | null; offX: number; offY: number; width: number; compact: boolean } | null>(null);
+  const dragRef = useRef<{ itemId: string; section: string; startX: number; startY: number; live: boolean; over: ListId | null; insert: Insert | null; offX: number; offY: number; width: number } | null>(null);
   const suppressClick = useRef(false);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const narrow = (ctx.paneWidth ?? 1200) < 760;
 
   useEffect(() => { if (theaterId) void loadTheater(ctx.api, theaterId); }, [ctx.api, theaterId]);
-  useEffect(() => { setSelected(null); }, [theaterId]);
+  // 남겨 둔 자리가 사라졌으면(항목 삭제 · 그룹 제거) 그 자리만 거둔다 — 다른 곳에서 지워진 것을 붙들고 빈 화면을 보이지 않게.
+  useEffect(() => {
+    if (!state.loaded) return;
+    if (selected && !state.items.some((item) => item.id === selected)) setSelected(null);
+    if (list.startsWith("group:") && !state.groups.some((group) => group.id === list.slice(6))) setList("all");
+  }, [state.loaded, state.items, state.groups, selected, list, setSelected, setList]);
 
   // 팔레트·캡션에서 온 "이 항목으로" — 이 Theater 의 항목이면 고르고 단계를 잠깐 강조한다.
   useEffect(() => {
@@ -184,6 +197,23 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
     toast(t(result.linked ? "todo.toast.linkedEdge" : "todo.toast.cutEdge", { from: index(from), to: index(to) }));
   };
 
+  /** 같은 구획 안에서 커서 높이에 맞는 삽입 자리 — 카드의 가운데보다 위면 그 앞, 끝을 지나면 마지막 카드 뒤. 제자리면 없다. */
+  const insertAt = (x: number, y: number, itemId: string, sectionKey: string): Insert | null => {
+    if (sectionKey === "done") return null;
+    const section = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-section]");
+    if (!section || section.dataset.section !== sectionKey) return null;
+    const ids = [...section.querySelectorAll<HTMLElement>("[data-item-id]")].map((card) => ({ id: card.dataset.itemId!, rect: card.getBoundingClientRect() }));
+    const others = ids.filter((card) => card.id !== itemId);
+    if (others.length === 0) return null;
+    const next = others.find((card) => y < card.rect.top + card.rect.height / 2);
+    const insert: Insert = next ? { anchorId: next.id, place: "before" } : { anchorId: others[others.length - 1]!.id, place: "after" };
+    const from = ids.findIndex((card) => card.id === itemId);
+    const anchor = ids.findIndex((card) => card.id === insert.anchorId);
+    return (insert.place === "before" ? anchor === from + 1 : anchor === from - 1) ? null : insert;
+  };
+  const reorder = async (item: TodoItem, insert: Insert) => {
+    await call("/item/move", { itemId: item.id, ...(insert.place === "before" ? { beforeId: insert.anchorId } : { afterId: insert.anchorId }) });
+  };
   const dropTargetAt = (x: number, y: number): ListId | null => {
     const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop-list]");
     return (hit?.dataset.dropList as ListId | undefined) ?? null;
@@ -199,11 +229,13 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
     const name = target === "today" ? t("todo.list.today") : target === "due" ? t("todo.list.due") : target === "ungrouped" ? t("todo.list.ungrouped") : groupOf(target.slice(6))?.name ?? "";
     toast(t("todo.toast.moved", { list: name }));
   };
-  const onItemPointerDown = (event: ReactPointerEvent<HTMLDivElement>, item: TodoItem) => {
-    if (event.button !== 0 || isBusy(item) || (event.target as HTMLElement).closest("button, input, textarea, a")) return;
+  const onItemPointerDown = (event: ReactPointerEvent<HTMLDivElement>, item: TodoItem, sectionKey: string) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button, input, textarea, a")) return;
+    // 셰프가 일하는 동안에도 순서는 바꿀 수 있다(내용이 아니다). 목록 옮기기는 편집이라 그때는 잠긴다.
+    const busy = isBusy(item);
     // 잡은 지점을 기억한다 — 유령은 커서 옆이 아니라 손에 잡힌 그 자리에 그대로 붙어 따라온다.
     const rect = event.currentTarget.getBoundingClientRect();
-    dragRef.current = { itemId: item.id, startX: event.clientX, startY: event.clientY, live: false, over: null, offX: event.clientX - rect.left, offY: event.clientY - rect.top, width: rect.width };
+    dragRef.current = { itemId: item.id, section: sectionKey, startX: event.clientX, startY: event.clientY, live: false, over: null, insert: null, offX: event.clientX - rect.left, offY: event.clientY - rect.top, width: rect.width };
     const onMove = (move: PointerEvent) => {
       const state = dragRef.current;
       if (!state) return;
@@ -212,20 +244,23 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
         state.live = true;
         suppressClick.current = true;
       }
-      state.over = dropTargetAt(move.clientX, move.clientY);
+      state.over = busy ? null : dropTargetAt(move.clientX, move.clientY);
+      state.insert = state.over ? null : insertAt(move.clientX, move.clientY, state.itemId, state.section);
       // 목록 열 위로 들어오면 카드가 손 안의 표로 줄어든다 — 놓을 자리가 카드 아래 가려지지 않게.
       const compact = !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".todo-lists");
-      setDrag({ itemId: state.itemId, x: move.clientX, y: move.clientY, over: state.over, offX: state.offX, offY: state.offY, width: state.width, compact });
+      setDrag({ itemId: state.itemId, x: move.clientX, y: move.clientY, over: state.over, insert: state.insert, offX: state.offX, offY: state.offY, width: state.width, compact });
     };
-    const onUp = () => {
-      const state = dragRef.current;
+    // 취소(pointercancel — 시스템 제스처·창 전환)는 놓기가 아니다 — 아무것도 옮기지 않고 끝낸다.
+    const onUp = (end: PointerEvent) => {
+      const state = end.type === "pointercancel" ? null : dragRef.current;
       dragRef.current = null;
+      setTimeout(() => { suppressClick.current = false; }, 0);
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("pointercancel", onUp);
       setDrag(null);
       if (state?.live && state.over) void moveTo(item, state.over);
-      setTimeout(() => { suppressClick.current = false; }, 0);
+      else if (state?.live && state.insert) void reorder(item, state.insert);
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
@@ -233,8 +268,18 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
   };
   const dragItem = drag ? state.items.find((item) => item.id === drag.itemId) ?? null : null;
 
-  const onItemKey = (event: ReactKeyboardEvent<HTMLDivElement>, item: TodoItem, index: number) => {
+  const onItemKey = (event: ReactKeyboardEvent<HTMLDivElement>, item: TodoItem, index: number, sectionKey: string) => {
     const rows = [...(event.currentTarget.parentElement?.querySelectorAll<HTMLElement>(".todo-item") ?? [])];
+    // Alt+Shift+↑/↓ — 끌기의 키보드 짝(사이드바 칩 재정렬과 같은 조합; Alt+화살표는 Console 이 포커스 순환에 예약했다).
+    // 같은 구획의 이웃 카드와 자리를 바꾸고 초점은 옮긴 카드에 남는다.
+    if (event.altKey && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      if (sectionKey === "done") return;
+      const at = rows.indexOf(event.currentTarget);
+      const neighbor = rows[event.key === "ArrowUp" ? at - 1 : at + 1]?.dataset.itemId;
+      if (neighbor) void reorder(item, { anchorId: neighbor, place: event.key === "ArrowUp" ? "before" : "after" });
+      return;
+    }
     if (event.key === " ") { event.preventDefault(); if (!isBusy(item)) void completeItem(item); }
     else if (event.key === "Enter") { setSelected(item.id); }
     else if (event.key === "ArrowDown") { event.preventDefault(); rows[index + 1]?.focus(); }
@@ -277,7 +322,7 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
         ) : null}
         <div className="todo-items" role="listbox" aria-label={listTitle}>
           {open.length === 0 && finished.length === 0 ? <div className="todo-empty">{t("todo.items.empty")}</div> : null}
-          {sections.map((section) => { const expanded = isOpen(section.key, !section.done); return (<div key={section.key} className={`todo-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}`}>
+          {sections.map((section) => { const expanded = isOpen(section.key, !section.done); return (<div key={section.key} data-section={section.key} className={`todo-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}`}>
           {section.label ? <button type="button" className="todo-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)}><span className="todo-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="todo-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span>{section.label}</span><span className="todo-count">{section.items.length}</span></button> : null}
           {expanded ? section.items.map((item) => {
             const index = visible.indexOf(item);
@@ -285,9 +330,9 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
             const showGroup = false as false | TodoGroup | null;
             const busy = isBusy(item);
             return (
-              <div key={item.id} className={`todo-item${item.done ? " is-done" : ""}${busy ? " is-busy" : ""}${drag?.itemId === item.id ? " is-lifted" : ""}`} role="option" aria-selected={selected === item.id} tabIndex={0}
-                onPointerDown={(event) => onItemPointerDown(event, item)}
-                onClick={() => { if (suppressClick.current) return; setSelected((value) => (value === item.id ? null : item.id)); }} onKeyDown={(event) => onItemKey(event, item, index)}>
+              <div key={item.id} data-item-id={item.id} className={`todo-item${item.done ? " is-done" : ""}${busy ? " is-busy" : ""}${drag?.itemId === item.id ? " is-lifted" : ""}${drag?.insert?.anchorId === item.id ? ` is-insert-${drag.insert.place}` : ""}`} role="option" aria-selected={selected === item.id} tabIndex={0}
+                onPointerDown={(event) => onItemPointerDown(event, item, section.key)}
+                onClick={() => { if (suppressClick.current) return; setSelected((value) => (value === item.id ? null : item.id)); }} onKeyDown={(event) => onItemKey(event, item, index, section.key)}>
                 {/* 동그라미 = 완료 버튼이자 상태. 셰프가 연결돼 있으면 묶음에서 가장 급한 활동을 고리로 보이고, 일하는 동안은 누르지 못한다. 완료는 늘 사람의 몫이다. */}
                 {/* 검토 대기 — 셰프가 다 했다고 넘긴 상태. 고리는 사람의 완료 버튼이 된다. */}
                 {item.review && !item.done
@@ -355,10 +400,11 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
       ) : null}
       {/* 유령은 body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에서 어긋난다. */}
       {drag && dragItem ? createPortal(
-        <div className={`todo-drag-ghost${drag.over ? " is-over" : ""}${drag.compact ? " is-compact" : ""}`} style={drag.compact ? { left: drag.x - 18, top: drag.y - 16, width: 224 } : { left: drag.x - drag.offX, top: drag.y - drag.offY, width: drag.width }} aria-hidden="true">
+        // 순서를 바꿀 자리가 잡히면 유령은 표로 줄어 커서 오른쪽 아래로 비킨다 — 카드 크기로 커서에 붙어 있으면 바로 그 틈의 삽입선을 덮는다.
+        <div className={`todo-drag-ghost${drag.over || drag.insert ? " is-over" : ""}${drag.compact || drag.insert ? " is-compact" : ""}`} style={drag.compact ? { left: drag.x - 18, top: drag.y - 16, width: 224 } : drag.insert ? { left: drag.x + 14, top: drag.y + 12, width: 224 } : { left: drag.x - drag.offX, top: drag.y - drag.offY, width: drag.width }} aria-hidden="true">
           <span className={`todo-check${dragItem.done ? " is-on" : ""}`}><CheckGlyph /></span>
           <span className="todo-drag-title">{dragItem.title}</span>
-          <span className="todo-drag-hint">{drag.over ? "↓" : t("todo.drag.hint")}</span>
+          <span className="todo-drag-hint">{drag.over ? "↓" : drag.insert ? "↕" : t("todo.drag.hint")}</span>
         </div>,
         document.body,
       ) : null}
