@@ -260,7 +260,8 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
   const toggleEdge = async (item: TodoItem, from: string, to: string) => {
     const result = await call<{ item: TodoItem; linked: boolean }>("/edge/toggle", { itemId: item.id, from, to });
     if (!result) return;
-    const index = (id: string) => item.steps.findIndex((step) => step.id === id) + 1;
+    // 번호는 응답의 단계 순서로 센다 — 간선이 열을 바꾸면 단계가 레시피 순으로 다시 선다.
+    const index = (id: string) => result.item.steps.findIndex((step) => step.id === id) + 1;
     toast(t(result.linked ? "todo.toast.linkedEdge" : "todo.toast.cutEdge", { from: index(from), to: index(to) }));
   };
 

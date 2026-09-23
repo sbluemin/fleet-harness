@@ -540,6 +540,10 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-dag-dot.is-done { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); }
 .todo-dag-dot.is-assigned { border-color: var(--positive); }
 .todo-dag-row.is-root .todo-dag-dot { border-color: var(--text-tertiary); }
+/* 좁은 폭의 세로 레시피도 짚은 단계와 선행을 함께 켠다 */
+.todo-dag-row.is-focus { background: var(--control-rest); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 55%, transparent); }
+.todo-dag-row.is-focus .todo-dag-dot { border-color: var(--brass); }
+.todo-dag-row.is-pre { background: color-mix(in oklch, var(--aurora) 7%, transparent); }
 .todo-dag-step-name { min-width: 0; overflow-wrap: anywhere; }
 @container todo-detail (width < 420px) {
   .todo-graph-horizontal { display: none; }

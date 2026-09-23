@@ -121,7 +121,12 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
   if (vertical) return (
     <div className="todo-dag-box todo-dag-vertical">
       <div className="todo-dag-row is-root"><span className="todo-dag-dot" aria-hidden="true" /><span>{t("todo.graph.coordinator")}</span></div>
-      {steps.map((step, index) => <div key={step.id} className="todo-dag-row" title={step.after.length ? t("todo.graph.edgeAria", { from: steps.findIndex((candidate) => candidate.id === step.after[0]) + 1, to: index + 1 }) : undefined}>
+      {steps.map((step, index) => <div
+        key={step.id}
+        className={`todo-dag-row${focused?.id === step.id ? " is-focus" : focused?.after.includes(step.id) ? " is-pre" : ""}`}
+        onPointerEnter={onFocusStep ? () => onFocusStep(step.id) : undefined}
+        onPointerLeave={onFocusStep ? () => onFocusStep(null) : undefined}
+        title={step.after.length ? t("todo.graph.edgeAria", { from: steps.findIndex((candidate) => candidate.id === step.after[0]) + 1, to: index + 1 }) : undefined}>
         <span className={`todo-dag-dot${step.done ? " is-done" : step.slot ? " is-assigned" : ""}`}>{index + 1}</span><span className="todo-dag-step-name">{step.text}</span>
       </div>)}
       <span hidden>{mode}</span>
