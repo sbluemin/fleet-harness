@@ -356,9 +356,9 @@ let clusterMembersOf: (rootId: string) => readonly string[] = () => [];
 export function setClusterMembersResolver(resolver: (rootId: string) => readonly string[]): void {
   clusterMembersOf = resolver;
 }
-function hiddenGeometryIds(): Set<string> {
-  const hidden = new Set(state.minimized);
-  for (const rootId of state.minimized) for (const memberId of clusterMembersOf(rootId)) hidden.add(memberId);
+function hiddenGeometryIds(minimized: readonly string[] = state.minimized): Set<string> {
+  const hidden = new Set(minimized);
+  for (const rootId of minimized) for (const memberId of clusterMembersOf(rootId)) hidden.add(memberId);
   return hidden;
 }
 
@@ -929,7 +929,8 @@ export function settleOperationGeometry(sessionId: string): void {
 export function resolveLaunchGeometry(theaterId: string, geometry: OperationGeometry): OperationGeometry {
   const snapshot = activeTheaterId === theaterId ? state : readStoredState(theaterId);
   if (!snapshot.stationKeeping) return geometry;
-  const minimizedSet = new Set(snapshot.minimized);
+  // 최소화한 셰프의 숨은 단계는 장애물이 아니다 — 보이는 빈자리를 두고 새 패널이 밀려나면 안 된다.
+  const minimizedSet = hiddenGeometryIds(snapshot.minimized);
   const obstacles = Object.entries(snapshot.operations)
     .filter(([sessionId]) => !minimizedSet.has(sessionId))
     .map(([, existing]) => existing);
