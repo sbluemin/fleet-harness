@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
+import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import {
   DEFAULT_STEP_ASSIGN,
   MAX_STEPS,
@@ -12,6 +13,7 @@ import {
   type Slot,
   type SlotBy,
   type StepAddInput,
+  type TodoAttachment,
   type StepPatchInput,
   type TodoEditKind,
   type TodoHistoryEntry,
@@ -38,6 +40,8 @@ export class TodoStoreError extends Error {
 
 export interface TodoStoreOptions {
   readonly dir: string;
+  /** 메모 첨부의 뿌리 — `<attachmentsDir>/<theaterId>/<itemId>/<attachmentId>.<ext>`. 없으면 `<dir>/../attachments`. */
+  readonly attachmentsDir?: string;
   readonly emit: (event: TodoItemEvent) => void;
   readonly now?: () => number;
 }
@@ -55,7 +59,8 @@ export interface TodoStore {
   move(itemId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): TodoItem;
   complete(itemId: string, by: SlotBy): TodoItem;
   reopen(itemId: string): TodoItem;
-  stepAdd(itemId: string, input: StepAddInput): TodoItem;
+  /** `unplaced` — 사람이 선행 없이 더한 단계는 미분류로 들어간다(셰프가 자리를 잡는다). */
+  stepAdd(itemId: string, input: StepAddInput, options?: { readonly unplaced?: boolean }): TodoItem;
   stepPatch(itemId: string, stepId: string, input: StepPatchInput, by?: SlotBy): TodoItem;
   stepRemove(itemId: string, stepId: string): TodoItem;
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
@@ -70,6 +75,11 @@ export interface TodoStore {
   setEdited(itemId: string, kinds: readonly TodoEditKind[] | null): TodoItem;
   /** 사라진 Operation 을 모든 슬롯(완료 항목의 released 포함)에서 지운다 — 바뀐 항목을 돌려준다. */
   forgetOperation(operationId: string): readonly TodoItem[];
+  /** 메모에 이미지를 붙인다 — 파일을 먼저 쓰고 항목에 싣는다. 형식·크기 판정은 부르는 쪽이 끝낸 뒤다. */
+  attachmentAdd(itemId: string, input: { readonly name: string; readonly type: TodoAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly item: TodoItem; readonly attachment: TodoAttachment };
+  attachmentRemove(itemId: string, attachmentId: string): TodoItem;
+  /** 첨부 파일의 절대 경로 — 서버 안(파일 서빙·셰프의 도구 응답)에서만 쓴다. */
+  attachmentPath(item: TodoItem, attachment: TodoAttachment): string;
 }
 
 function fileFor(dir: string, theaterId: string): string {
@@ -97,8 +107,13 @@ function writeFileAtomic(file: string, data: TodoTheaterFile): void {
   fs.renameSync(tmp, file);
 }
 
+const safeSegment = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "_");
+
 export function createTodoStore(options: TodoStoreOptions): TodoStore {
   const now = options.now ?? (() => Date.now());
+  const attachmentsRoot = options.attachmentsDir ?? path.join(path.dirname(options.dir), "attachments");
+  const itemFolder = (item: Pick<TodoItem, "id" | "theaterId">) => path.join(attachmentsRoot, safeSegment(item.theaterId), safeSegment(item.id));
+  const fileOf = (item: Pick<TodoItem, "id" | "theaterId">, attachment: Pick<TodoAttachment, "id" | "type">) => path.join(itemFolder(item), `${safeSegment(attachment.id)}.${ATTACHMENT_TYPES[attachment.type]}`);
   const cache = new Map<string, TodoItem[]>();
   const index = new Map<string, string>(); // itemId → theaterId
 
@@ -159,6 +174,9 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
     if (at < 0) throw new TodoStoreError("unknown_step");
     return { at, step: item.steps[at]! };
   };
+
+  /** 자리가 정해졌다 — 미분류 표시를 뗀다. */
+  const placed = (step: TodoStep): TodoStep => (step.unplaced ? (({ unplaced: _unplaced, ...rest }) => rest)(step) : step);
 
   const replaceStep = (item: TodoItem, at: number, step: TodoStep): TodoItem => {
     const steps = [...item.steps];
@@ -244,6 +262,8 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       const { theaterId, items, at, item } = locate(itemId);
       items.splice(at, 1);
       commit(theaterId, items, null, item.id);
+      // 항목이 사라지면 붙인 이미지도 함께 — 남은 파일은 가리킬 곳이 없다.
+      try { fs.rmSync(itemFolder(item), { recursive: true, force: true }); } catch { /* 이미 없으면 그만 */ }
       return item;
     },
 
@@ -258,6 +278,46 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       commit(theaterId, items, item, undefined, true);
       return item;
     },
+
+    attachmentAdd(itemId, input) {
+      const current = locate(itemId).item;
+      if (current.done) throw new TodoStoreError("item_done");
+      const existing = current.attachments ?? [];
+      if (existing.length >= MAX_ATTACHMENTS) throw new TodoStoreError("too_many_attachments");
+      const attachment: TodoAttachment = {
+        id: randomUUID(),
+        n: existing.reduce((top, entry) => Math.max(top, entry.n), 0) + 1,
+        name: input.name,
+        type: input.type,
+        bytes: input.data.length,
+        ...(input.width ? { width: input.width } : {}),
+        ...(input.height ? { height: input.height } : {}),
+        at: now(),
+      };
+      const file = fileOf(current, attachment);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const tmp = `${file}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, input.data);
+      fs.renameSync(tmp, file);
+      try {
+        const item = update(itemId, (item) => ({ ...item, attachments: [...(item.attachments ?? []), attachment] }));
+        return { item, attachment };
+      } catch (error) {
+        try { fs.rmSync(file, { force: true }); } catch { /* ignore */ }
+        throw error;
+      }
+    },
+
+    attachmentRemove(itemId, attachmentId) {
+      const current = locate(itemId).item;
+      const target = (current.attachments ?? []).find((entry) => entry.id === attachmentId);
+      if (!target) throw new TodoStoreError("unknown_attachment");
+      const item = update(itemId, (item) => ({ ...item, attachments: (item.attachments ?? []).filter((entry) => entry.id !== attachmentId) }));
+      try { fs.rmSync(fileOf(current, target), { force: true }); } catch { /* 이미 없으면 그만 */ }
+      return item;
+    },
+
+    attachmentPath: (item, attachment) => fileOf(item, attachment),
 
     setCooking: (itemId, cooking) => update(itemId, (item) => (item.cooking === cooking ? item : cooking ? { ...item, cooking: true } : (({ cooking: _cooking, ...rest }) => rest)(item))),
 
@@ -296,17 +356,21 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       };
     }),
 
-    stepAdd: (itemId, input) => update(itemId, (item) => {
+    stepAdd: (itemId, input, options) => update(itemId, (item) => {
       const known = new Set(item.steps.map((step) => step.id));
-      const step: TodoStep = { id: randomUUID(), text: input.text, done: false, after: (input.after ?? []).filter((id) => known.has(id)), slot: null, assign: input.assign ?? DEFAULT_STEP_ASSIGN };
+      const after = (input.after ?? []).filter((id) => known.has(id));
+      // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 단계뿐이다.
+      const unplaced = options?.unplaced === true && input.after === undefined;
+      const step: TodoStep = { id: randomUUID(), text: input.text, done: false, after, slot: null, assign: input.assign ?? DEFAULT_STEP_ASSIGN, ...(unplaced ? { unplaced: true as const } : {}) };
       return { ...item, steps: [...item.steps, step] };
     }),
 
     stepPatch: (itemId, stepId, input, by) => update(itemId, (item) => {
       const { at, step } = stepOf(item, stepId);
       const known = new Set(item.steps.map((candidate) => candidate.id));
+      // 선행을 정하면(빈 배열도) 자리가 정해진 것이다.
       const next: TodoStep = {
-        ...step,
+        ...(input.after !== undefined ? placed(step) : step),
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.done !== undefined ? { done: input.done, ...(input.done ? { doneBy: by ?? "human" } : {}) } : {}),
         ...(input.after !== undefined ? { after: input.after.filter((id) => known.has(id) && id !== stepId) } : {}),
@@ -334,27 +398,31 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       const item = update(itemId, (current) => {
         stepOf(current, from);
         const { at, step } = stepOf(current, to);
+        // 사람이 간선을 직접 이으면 양 끝 모두 자리가 정해진 것으로 본다 — 끊는 것은 자리를 되돌리지 않는다.
         if (step.after.includes(from)) {
           linked = false;
           const nextWhy = step.why ? Object.fromEntries(Object.entries(step.why).filter(([id]) => id !== from)) : undefined;
           return replaceStep(current, at, { ...step, after: step.after.filter((id) => id !== from), ...(nextWhy ? { why: nextWhy } : {}) });
         }
         linked = true;
-        return replaceStep(current, at, { ...step, after: [...step.after, from], why: { ...step.why, [from]: why ?? "human" } });
+        const fromAt = current.steps.findIndex((candidate) => candidate.id === from);
+        const withFrom = replaceStep(current, fromAt, placed(current.steps[fromAt]!));
+        return replaceStep(withFrom, at, { ...placed(step), after: [...step.after, from], why: { ...step.why, [from]: why ?? "human" } });
       });
       return { item, linked };
     },
 
     edgesLinear: (itemId) => update(itemId, (item) => ({
       ...item,
-      steps: item.steps.map((step, ix) => (ix === 0 ? { ...step, after: [] } : { ...step, after: [item.steps[ix - 1]!.id], why: { [item.steps[ix - 1]!.id]: "human" } })),
+      steps: item.steps.map((step, ix) => (ix === 0 ? { ...placed(step), after: [] } : { ...placed(step), after: [item.steps[ix - 1]!.id], why: { [item.steps[ix - 1]!.id]: "human" } })),
     })),
 
-    edgesClear: (itemId) => update(itemId, (item) => ({ ...item, steps: item.steps.map((step) => ({ ...step, after: [], why: {} })) })),
+    edgesClear: (itemId) => update(itemId, (item) => ({ ...item, steps: item.steps.map((step) => ({ ...placed(step), after: [], why: {} })) })),
 
     plan: (itemId, input, by) => update(itemId, (item) => {
       // 완료·배정·예약된 단계와 사람이 이은 간선은 보존한다. 나머지는 조율자의 계획으로 바꾼다.
-      const kept = item.steps.filter((step) => step.done || step.slot);
+      // 사람이 더한 미분류 단계도 보존한다 — 셰프가 그 단계를 보기 전의 보드로 짠 계획이 사람의 요청을 지우면 안 된다(자리는 셰프가 step after 로 정한다).
+      const kept = item.steps.filter((step) => step.done || step.slot || step.unplaced);
       const keptIds = new Set(kept.map((step) => step.id));
       const fresh: TodoStep[] = input.steps.map((step) => ({ id: randomUUID(), text: step.text, done: false, after: [], slot: null, assign: { mode: step.assign ?? "self" } }));
       const resolved: TodoStep[] = fresh.map((step, ix) => {

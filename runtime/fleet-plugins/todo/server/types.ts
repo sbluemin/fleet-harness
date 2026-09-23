@@ -38,6 +38,11 @@ export interface TodoStep {
   readonly result?: string;
   /** 사전 배정 — self: 셰프가 직접 · route: 시작할 때 AI Gateway 라우팅이 난이도로 모델을 고름 · model: 이 모델·강도. 없으면 셰프 프리셋. */
   readonly assign?: StepAssign;
+  /**
+   * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 단계. 준비되지 않으며, 셰프가 선행을 정하거나(도구의 step after·plan)
+   * 사람이 레시피에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다. 사람은 단계를 더하기만 하고 자리는 셰프가 잡는다.
+   */
+  readonly unplaced?: true;
 }
 
 export interface StepAssign {
@@ -49,6 +54,22 @@ export interface StepAssign {
 /** 단계의 위임 — 배정이 없는(옛) 단계는 「셰프 직접」으로 읽는다. 새 단계의 기본값도 같다. */
 export const DEFAULT_STEP_ASSIGN: StepAssign = { mode: "self" };
 export const assignModeOf = (step: { readonly assign?: StepAssign }): StepAssign["mode"] => step.assign?.mode ?? "self";
+
+/**
+ * 메모에 붙인 이미지 — 파일은 플러그인 데이터 디렉터리의 항목별 폴더에 id 이름으로 있다. 브라우저에 가는 항목에는 경로를 싣지 않는다
+ * (파일은 id 로 받아 온다). 절대 경로는 셰프의 도구 응답에만 실린다.
+ */
+export interface TodoAttachment {
+  readonly id: string;
+  /** 「이미지 n」의 n — 붙인 순서로 늘고, 지워도 다른 번호가 밀리지 않는다(메모가 번호로 가리킨다). */
+  readonly n: number;
+  readonly name: string;
+  readonly type: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  readonly bytes: number;
+  readonly width?: number;
+  readonly height?: number;
+  readonly at: number;
+}
 
 export interface TodoAuthor {
   readonly kind: "human" | "operation";
@@ -81,6 +102,8 @@ export interface TodoItem {
   readonly groupId: string | null;
   readonly title: string;
   readonly note: string;
+  /** 메모에 붙인 이미지 — 메모 아래 띠에 붙인 순서로 선다. */
+  readonly attachments?: readonly TodoAttachment[];
   /** 쿠킹에 함께 주는 맥락 — 조율자가 단계를 짤 때 읽는 사람의 프롬프트. */
   readonly cook?: string;
   /** 쿠킹 중 — 셰프가 단계·메모만 짜는 국면. 시작·중지·완료가 끝낸다. 이 동안은 계획을 써도 담당이 뜨지 않는다. */
@@ -89,7 +112,7 @@ export interface TodoItem {
   readonly review?: { readonly at: number; readonly summary: string };
   /**
    * 셰프가 마지막으로 읽은 뒤 사람이 바꾼 것 — 셰프가 있는 동안의 화면 편집만 쌓인다. 「시작」이 셰프에게 한 줄로 알리고
-   * 다시 읽게 한다. 셰프가 이 항목을 읽거나(view item/mine), 새 셰프가 뜨거나, 알림이 나가면 지워진다.
+   * 다시 읽게 한다. 셰프가 일하는 동안 쌓이면 하단 「중단」 자리가 「스티어링」이 되어, 누르면 같은 한 줄이 간다. 셰프가 이 항목을 읽거나(view item/mine), 새 셰프가 뜨거나, 알림이 나가면 지워진다.
    */
   readonly edited?: { readonly at: number; readonly kinds: readonly TodoEditKind[] };
   readonly important: boolean;
@@ -185,7 +208,9 @@ export interface TodoItemEvent {
 /** 조율자의 모드 — 라벨이 아니라 매번 그래프에서 계산한다. */
 export type CoordinatorMode = "direct" | "coordinate" | "mixed";
 
+/** 준비 — 미분류 단계는 자리가 정해질 때까지 준비되지 않는다. 선행 없는 단계가 곧 「병렬」로 읽히는 것을 막는다. */
 export function stepReady(item: TodoItem, step: TodoStep): boolean {
+  if (step.unplaced) return false;
   return step.after.every((id) => item.steps.find((candidate) => candidate.id === id)?.done ?? true);
 }
 
