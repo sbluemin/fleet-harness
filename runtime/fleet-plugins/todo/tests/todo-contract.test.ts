@@ -143,8 +143,12 @@ describe("To-do contract", () => {
     let missed = added.steps.length - 1;
     const board = async () => ((await call({ view: "item", itemId: item.id }, { kind: "operation", operationId: "coord" })).structuredContent.item as { graph: { steps: { unplaced?: boolean; ready: boolean; after: number[] }[] } }).graph.steps;
     expect((await board())[missed]).toMatchObject({ unplaced: true, ready: false });
-    // 셰프가 그 단계를 보기 전의 보드로 짠 계획도 사람의 미분류 단계를 지우지 않는다.
-    await launch.planApplied(item.id, { steps: [{ text: "replanned" }] }, { operationId: "coord" });
+    // 셰프가 읽기 전에 사람이 바꾼 보드(edited)로는 계획을 쓸 수 없다 — 옛 보드로 짠 계획이 사람의 편집을 덮지 않는다.
+    store.setEdited(item.id, ["steps"]);
+    expect((await call({ plan: { itemId: item.id, steps: [{ text: "stale" }] } }, { kind: "operation", operationId: "coord" })).structuredContent.error).toBe("board_changed");
+    // 다시 읽은 뒤의 계획은 받되, 사람이 더한 미분류 단계는 지우지 않는다.
+    await board();
+    expect((await call({ plan: { itemId: item.id, steps: [{ text: "replanned" }] } }, { kind: "operation", operationId: "coord" })).isError).toBe(false);
     missed = (await board()).findIndex((step) => step.unplaced);
     expect(missed).toBeGreaterThanOrEqual(0);
     expect((await call({ step: { itemId: item.id, index: missed, after: [0] } }, { kind: "operation", operationId: "launched-1" })).structuredContent.error).toBe("not_item_operation");
