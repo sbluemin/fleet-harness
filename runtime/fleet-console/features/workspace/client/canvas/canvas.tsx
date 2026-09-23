@@ -25,7 +25,7 @@ import { pluginRuntimeState, resolveOperationActivity } from "../../../execution
 import type { ConsoleState, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { snapOperationToArenaRect, calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, OPERATION_WINDOW_CAPTION_HEIGHT, placeOperationGeometry, prefersReducedMotion, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, syncSnapHoldGeometry, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, useSnapHold, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
+import { setClusterMembersResolver, snapOperationToArenaRect, calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, OPERATION_WINDOW_CAPTION_HEIGHT, placeOperationGeometry, prefersReducedMotion, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, syncSnapHoldGeometry, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, useSnapHold, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -166,6 +166,11 @@ export function OperationsCanvas({
   // 사용자가 어느 구성원을 끌어도 대형째 움직이고, 개별 배치는 없다. 파생 좌표는 스토어에도 맞춰 두어
   // 미니맵·전체 보기·Station Keeping 이 같은 자리를 읽게 한다(z 는 올리지 않는다).
   const clusterIndex = useClusterIndex();
+  // 스토어의 기하 전역 읽기(전체 맞춤·Station Keeping)도 아래 followingRoots 와 같은 규칙을 보도록 구성원 해석기를 건넨다.
+  useEffect(() => {
+    setClusterMembersResolver((rootId) => clusterIndex.rootOf.get(rootId)?.formation.members.map((laid) => laid.member.operationId) ?? []);
+    return () => setClusterMembersResolver(() => []);
+  }, [clusterIndex]);
   // 셰프의 활동은 셰프 자신의 것이다 — 단계의 전이(완료·결정 대기)가 셰프를 War Room 무대에 올리지 않는다.
   const operationRuntime = state.operationRuntime;
   const clusterGeometries = useMemo(() => {
@@ -522,12 +527,19 @@ export function OperationsCanvas({
     onRefreshCatalog?.();
   };
 
-  // 묶음 구성원의 표시 여부는 묶음 규칙(hiddenMembers)만이 정한다 — 최소화 플래그가 남아 있어도 Cruise 에서는 대형에 선다.
-  const minimizedSet = new Set(minimized.filter((id) => !clusterIndex.memberOf.has(id)));
+  // 묶음 구성원의 최소화는 자기 플래그가 아니라 뿌리를 따른다 — 셰프 패널을 내리면 단계 패널도 함께 내려가고, 되올리면
+  // 함께 선다. Cruise 대형은 뿌리에서 파생되므로 뿌리 없이 남은 단계 패널은 주인 잃은 조각이다. 구성원 자신의 플래그는
+  // 여기서 읽지 않는다(표시 여부의 나머지는 묶음 규칙 hiddenMembers 가 정한다).
+  const followingRoots = (flags: readonly string[]): Set<string> => {
+    const out = new Set(flags.filter((id) => !clusterIndex.memberOf.has(id)));
+    for (const [id, { layout }] of clusterIndex.memberOf) if (out.has(layout.cluster.root)) out.add(id);
+    return out;
+  };
+  const minimizedSet = followingRoots(minimized);
   // War Room의 판은 전 Theater를 한 번에 얹으므로 최소화 판정도 Theater 경계를 넘는다. canvas 스냅샷은
   // 비활성 Theater에 쓸 때도 새 객체로 갈리므로(setTheaterOperationMinimized) 이 파생값이 함께 갱신된다.
   const triageMinimizedSet = triageActive
-    ? new Set(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)).filter((id) => !clusterIndex.memberOf.has(id)))
+    ? followingRoots(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)))
     : minimizedSet;
   const visibleOperations = Object.fromEntries(
     Object.entries(canvas.operations).filter(([sessionId]) => !minimizedSet.has(sessionId)),
@@ -961,7 +973,8 @@ export function OperationsCanvas({
   // 무엇이든 지도가 끼어들 자리가 없다. 렌더 중 ref 갱신은 같은 줌에 같은 답을 내는 순수 판정이라
   // 재렌더에 안전하다. 지도는 전 Theater를 얹으므로 최소화 판정도 Theater 경계를 넘는다.
   const cruiseSurface = !formationView && !triageActive && panelMaximized === null && panelCompanion === null && !disabled;
-  const fleetMapMinimizedSet = new Set(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
+  // 지도 점도 구성원은 뿌리를 따른다 — 최소화한 셰프의 단계가 줌을 내렸다고 점으로 되살아나면 안 된다.
+  const fleetMapMinimizedSet = followingRoots(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
   const fleetMapOperations = state.operations.filter((operation) => !fleetMapMinimizedSet.has(operation.id));
   fleetMapActiveRef.current = cruiseSurface && fleetMapOperations.length > 0
     && resolveFleetMapActive(fleetMapActiveRef.current, canvas.viewport.zoom);

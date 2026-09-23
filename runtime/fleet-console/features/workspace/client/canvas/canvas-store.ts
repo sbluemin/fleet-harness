@@ -348,6 +348,20 @@ export function resetCanvasViewportSize(): void {
   fitAllOperationsPending = false;
 }
 
+// ── 묶음 동반 ──────────────────────────────────────────────────────────────────
+// 묶음 구성원(단계 패널)의 최소화는 자기 플래그가 아니라 뿌리(셰프)를 따른다 — 캔버스가 패널을 그릴 때와 같은 규칙이다.
+// 묶음 색인은 플러그인 레지스트리(React 컨텍스트)에 살아 스토어가 직접 읽지 못하므로, 캔버스가 색인을 셀 때마다
+// 이 해석기를 갈아 끼운다. 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)는 이 집합으로 숨은 패널을 거른다.
+let clusterMembersOf: (rootId: string) => readonly string[] = () => [];
+export function setClusterMembersResolver(resolver: (rootId: string) => readonly string[]): void {
+  clusterMembersOf = resolver;
+}
+function hiddenGeometryIds(minimized: readonly string[] = state.minimized): Set<string> {
+  const hidden = new Set(minimized);
+  for (const rootId of minimized) for (const memberId of clusterMembersOf(rootId)) hidden.add(memberId);
+  return hidden;
+}
+
 export function fitAllOperations(): void {
   if (formationView || focusLayer !== null || canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return;
   // 맞춤도 줌이다 — 유지를 푼다.
@@ -356,7 +370,7 @@ export function fitAllOperations(): void {
   // 가장자리 패널이 부유 크롬 밑에 착지하고 그 중심이 viewport로 영속된다.
   const arenaWidth = Math.max(1, canvasViewportSize.width - canvasArenaInsets.left - canvasArenaInsets.right);
   const arenaHeight = Math.max(1, canvasViewportSize.height - canvasArenaInsets.top - canvasArenaInsets.bottom);
-  const minimized = new Set(state.minimized);
+  const minimized = hiddenGeometryIds();
   const visibleGeometries = Object.entries(state.operations)
     .filter(([operationId]) => !minimized.has(operationId))
     .map(([, geometry]) => geometry);
@@ -731,8 +745,9 @@ function resolveStationKeepingPosition(
 
 // 규율의 장애물은 "보이는 Cruise 패널"뿐이다 — 최소화·모드 투영·접힘은 자리를 차지하지 않는다.
 function visibleObstacles(excludeId: string | null): readonly StationKeepingRect[] {
+  const hidden = hiddenGeometryIds();
   return Object.entries(state.operations)
-    .filter(([sessionId]) => sessionId !== excludeId && !state.minimized.includes(sessionId))
+    .filter(([sessionId]) => sessionId !== excludeId && !hidden.has(sessionId))
     .map(([, geometry]) => geometry);
 }
 
@@ -740,9 +755,8 @@ function visibleObstacles(excludeId: string | null): readonly StationKeepingRect
 // 있는 패널이 덜 움직인다(멘탈맵 보존 — Tactical의 재격자화가 아니다). 이미 비겹침이면 null.
 function spreadVisibleOperations(
   operations: Record<string, OperationGeometry>,
-  minimized: readonly string[],
+  minimizedSet: ReadonlySet<string>,
 ): Record<string, OperationGeometry> | null {
-  const minimizedSet = new Set(minimized);
   const sorted = Object.entries(operations)
     .filter(([sessionId]) => !minimizedSet.has(sessionId))
     .sort(([, a], [, b]) => b.zIndex - a.zIndex);
@@ -775,7 +789,7 @@ export function setStationKeeping(enabled: boolean): void {
     setState({ stationKeeping: false });
     return;
   }
-  const spread = spreadVisibleOperations(state.operations, state.minimized);
+  const spread = spreadVisibleOperations(state.operations, hiddenGeometryIds());
   setState({ stationKeeping: true, ...(spread ? { operations: spread } : {}) });
 }
 
@@ -896,7 +910,7 @@ function snapZonesEqual(left: readonly SnapZoneFraction[], right: readonly SnapZ
 // 규율이 켜진 상태의 불변식 복구 — War Room 지도 이동처럼 규율 밖 쓰기가 남긴 겹침을 정착시킨다.
 export function enforceStationKeeping(): void {
   if (!state.stationKeeping) return;
-  const spread = spreadVisibleOperations(state.operations, state.minimized);
+  const spread = spreadVisibleOperations(state.operations, hiddenGeometryIds());
   if (spread) setState({ operations: spread });
 }
 
@@ -904,7 +918,7 @@ export function enforceStationKeeping(): void {
 export function settleOperationGeometry(sessionId: string): void {
   if (!state.stationKeeping) return;
   const geometry = state.operations[sessionId];
-  if (!geometry || state.minimized.includes(sessionId)) return;
+  if (!geometry || hiddenGeometryIds().has(sessionId)) return;
   const spot = resolveStationKeepingPosition(geometry, visibleObstacles(sessionId));
   if (spot.x === geometry.x && spot.y === geometry.y) return;
   setState({ operations: { ...state.operations, [sessionId]: { ...geometry, x: spot.x, y: spot.y } } });
@@ -915,7 +929,8 @@ export function settleOperationGeometry(sessionId: string): void {
 export function resolveLaunchGeometry(theaterId: string, geometry: OperationGeometry): OperationGeometry {
   const snapshot = activeTheaterId === theaterId ? state : readStoredState(theaterId);
   if (!snapshot.stationKeeping) return geometry;
-  const minimizedSet = new Set(snapshot.minimized);
+  // 최소화한 셰프의 숨은 단계는 장애물이 아니다 — 보이는 빈자리를 두고 새 패널이 밀려나면 안 된다.
+  const minimizedSet = hiddenGeometryIds(snapshot.minimized);
   const obstacles = Object.entries(snapshot.operations)
     .filter(([sessionId]) => !minimizedSet.has(sessionId))
     .map(([, existing]) => existing);
@@ -977,7 +992,7 @@ export function loadForTheater(theaterId: string | null): void {
   // (War Room 지도 이동 등)가 남긴 겹침을 정착시키고, 복구를 저장까지 수렴시켜 다음 로드가
   // 같은 복구를 반복하지 않게 한다(이탈 시 flushScheduledSave가 이 상태를 쓴다).
   if (state.stationKeeping) {
-    const spread = spreadVisibleOperations(state.operations, state.minimized);
+    const spread = spreadVisibleOperations(state.operations, hiddenGeometryIds());
     if (spread) {
       state = { ...state, operations: spread };
       scheduleSave();
