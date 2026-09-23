@@ -3,6 +3,8 @@ import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 
 export const todoEn = {
   "todo.panel.title": "To-do",
+  "todo.panel.expand": "Expand",
+  "todo.panel.dock": "Dock to rail",
   "todo.list.today": "Today",
   "todo.list.due": "Due",
   "todo.list.all": "All",
@@ -167,6 +169,8 @@ export const todoEn = {
 
 export const todoKo: Record<keyof typeof todoEn, string> = {
   "todo.panel.title": "할 일",
+  "todo.panel.expand": "확대",
+  "todo.panel.dock": "레일에 붙이기",
   "todo.list.today": "오늘",
   "todo.list.due": "기한",
   "todo.list.all": "모두",

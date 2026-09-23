@@ -423,9 +423,24 @@ export function App() {
       },
       toggleRailSurface: (entryId) => {
         const outcome = resolvePanelShortcut();
-        const surfaceId = railBindings.find((binding) => binding.entry.id === entryId)?.entry.surfaceId;
-        if (outcome === "suppress" || getState().activeTheaterId === null || surfaceId === undefined) return false;
+        const entry = railBindings.find((binding) => binding.entry.id === entryId)?.entry;
+        if (outcome === "suppress" || getState().activeTheaterId === null || entry === undefined) return false;
         if (outcome === "reveal") navigate("/operations");
+        if (entry.activate) {
+          const capabilities = createHostCapabilities();
+          entry.activate({
+            theaterId: getState().activeTheaterId,
+            pathContext: { kind: "root", relPath: null, label: getState().theaters.find((theater) => theater.id === getState().activeTheaterId)?.label ?? "" },
+            api: capabilities.api,
+            surfaces: capabilities.surfaces,
+            rail: capabilities.rail,
+            language: consoleLocale,
+            theme: getState().activeTheme,
+          });
+          return true;
+        }
+        const surfaceId = entry.surfaceId;
+        if (surfaceId === undefined) return false;
         if (outcome === "apply" && getExpandedSurfaceState().instances.some((instance) => instance.surfaceId === surfaceId)) closeExpandedSurfacesOf(surfaceId);
         else openExpandedSurface({ surfaceId });
         return true;
@@ -433,7 +448,7 @@ export function App() {
       canUndoLastClose,
       undoLastClose,
     });
-  }, [canUndoLastClose, navigate, railBindings, resolvePanelShortcut, undoLastClose]);
+  }, [canUndoLastClose, consoleLocale, navigate, railBindings, resolvePanelShortcut, undoLastClose]);
 
   const deletionToast = (
     <Toast

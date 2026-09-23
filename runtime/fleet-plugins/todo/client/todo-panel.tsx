@@ -10,13 +10,14 @@ import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type TodoMessageKey } from "./i18n/index.js";
 import { LaunchControl, ProviderGlyph, launchWords, loadLaunchRows, useLaunchRows } from "./launch-control.js";
-import { focusOperation, loadTheater, patchTodoView, post, takeReveal, useOperationSummaries, useReveal, useTodoTheater, useTodoView, type TodoGroup } from "./todo-state.js";
+import { dockTodo, expandTodo, focusOperation, loadTheater, patchTodoView, post, takeReveal, useOperationSummaries, useReveal, useTodoTheater, useTodoView, type TodoGroup } from "./todo-state.js";
 
 export interface TodoContext {
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
   readonly language?: ConsoleLocale;
   readonly paneWidth?: number;
+  readonly place: "rail" | "expanded";
 }
 
 type ListId = "today" | "due" | "all" | "agent" | "ungrouped" | `group:${string}`;
@@ -25,6 +26,8 @@ type DueFilter = "all" | "overdue" | "today" | "week" | "later";
 type Insert = { readonly anchorId: string; readonly place: "before" | "after" };
 type T = Translate<TodoMessageKey>;
 
+const ExpandGlyph = () => <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" /></svg>;
+const DockGlyph = () => <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12.5 2.5v11M3 8h7M7 5l3 3-3 3" /></svg>;
 const CheckGlyph = () => <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true"><path d="M2 5.2l2.2 2.2L8 3" /></svg>;
 const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" /></svg>;
 const WandGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 13l7-7M10 3l.6 1.6L12.2 5l-1.6.6L10 7.2 9.4 5.6 7.8 5l1.6-.6zM13 9l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4z" /></svg>;
@@ -296,6 +299,9 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
 
   return (
     <div className={`todo-root${current ? " has-detail" : ""}${narrow ? " is-narrow" : ""}`}>
+      <button type="button" className="todo-place-button" aria-label={t(ctx.place === "rail" ? "todo.panel.expand" : "todo.panel.dock")} title={t(ctx.place === "rail" ? "todo.panel.expand" : "todo.panel.dock")} onClick={ctx.place === "rail" ? expandTodo : dockTodo}>
+        {ctx.place === "rail" ? <ExpandGlyph /> : <DockGlyph />}
+      </button>
       <nav className={`todo-lists${drag ? " is-dragging" : ""}`} aria-label={t("todo.panel.title")}>
         <ListButton id="today" current={list} onPick={setList} drop over={drag?.over === "today"} label={`☀ ${t("todo.list.today")}`} count={openCount((item) => item.today)} />
         <ListButton id="due" current={list} onPick={setList} drop over={drag?.over === "due"} label={t("todo.list.due")} count={openCount((item) => !!item.dueDate)} />

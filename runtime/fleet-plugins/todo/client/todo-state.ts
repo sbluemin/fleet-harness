@@ -198,6 +198,46 @@ export function focusOperation(operationId: string): void {
   installed?.operations.focus(operationId);
 }
 
+const TODO_PANEL_ID = "todo";
+const TODO_PLACE_KEY = "todo.lastPlace";
+type TodoPlace = "rail" | "expanded";
+
+function rememberTodoPlace(place: TodoPlace): void {
+  installed?.preferences.write(TODO_PLACE_KEY, place);
+}
+
+/** 아이콘·단축키는 현재 자리를 닫고, 닫혀 있으면 마지막 자리에 연다. */
+export function toggleTodoPlace(rail = installed?.rail, surfaces = installed?.surfaces): void {
+  if (!rail || !surfaces) return;
+  if (rail.isOpen(TODO_PANEL_ID)) { rememberTodoPlace("rail"); rail.close(TODO_PANEL_ID); return; }
+  if (surfaces.isOpen(TODO_PANEL_ID)) { rememberTodoPlace("expanded"); surfaces.closeSurface(TODO_PANEL_ID); return; }
+  const place = installed?.preferences.read<unknown>(TODO_PLACE_KEY, "rail") === "expanded" ? "expanded" : "rail";
+  if (place === "expanded") surfaces.open({ surfaceId: TODO_PANEL_ID });
+  else rail.open(TODO_PANEL_ID);
+  rememberTodoPlace(place);
+}
+
+export function expandTodo(): void {
+  if (!installed?.rail.isOpen(TODO_PANEL_ID)) return;
+  installed.surfaces.open({ surfaceId: TODO_PANEL_ID });
+  installed.rail.close(TODO_PANEL_ID);
+  rememberTodoPlace("expanded");
+}
+
+export function dockTodo(): void {
+  if (!installed?.surfaces.isOpen(TODO_PANEL_ID)) return;
+  installed.rail.open(TODO_PANEL_ID);
+  installed.surfaces.closeSurface(TODO_PANEL_ID);
+  rememberTodoPlace("rail");
+}
+
+export function onTodoSurfaceClose(): void {
+  // Esc나 다른 표면에 밀려 닫힌 경우에도 마지막 자리는 확장 표면이다.
+  // 도킹 전환의 close 통보는 dockTodo가 이어서 rail로 다시 쓴다.
+  rememberTodoPlace("expanded");
+}
+
 export function openTodoSurface(): void {
-  installed?.surfaces.open({ surfaceId: "todo" });
+  installed?.surfaces.open({ surfaceId: TODO_PANEL_ID });
+  rememberTodoPlace("expanded");
 }

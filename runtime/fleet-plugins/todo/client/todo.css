@@ -3,6 +3,7 @@
 .todo-root {
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
+  position: relative;
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -16,6 +17,23 @@
 .todo-root.is-narrow .todo-lists { display: none; }
 .todo-root.is-narrow.has-detail { grid-template-columns: minmax(0, 1fr); }
 .todo-root.is-narrow.has-detail .todo-main { display: none; }
+.todo-place-button {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.todo-place-button:hover, .todo-place-button:focus-visible { color: var(--brass); border-color: var(--brass); outline: none; }
 
 /* ── 목록 열 ── */
 .todo-lists {
