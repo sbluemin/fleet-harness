@@ -472,6 +472,12 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const mode = coordinatorMode(item);
   const locked = !!item.slot;
   const editable = !item.done && !busy;
+  // 사람의 결정을 기다리는 세션 — 셰프가 먼저, 다음은 단계 순서. 카드가 잠기지 않은 채 사람을 부르는 유일한 상태다.
+  const awaiting = item.done ? null : (() => {
+    if (item.slot && operationState(item.slot.operationId) === "awaiting") return { operationId: item.slot.operationId, stepIndex: null as number | null };
+    const index = item.steps.findIndex((step) => step.slot && operationState(step.slot.operationId) === "awaiting");
+    return index >= 0 ? { operationId: item.steps[index]!.slot!.operationId, stepIndex: index } : null;
+  })();
 
   const saveNote = (value: string) => {
     setNote(value);
@@ -626,12 +632,21 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <textarea className="todo-note" aria-label={t("todo.item.memo")} placeholder={t("todo.item.memoPlaceholder")} value={note} readOnly={!editable} onChange={(event) => saveNote(event.target.value)} />
       </div>
 
-      {/* 마지막 행동 한 자리 — 검토 대기면 「완료」, 아니면 「시작」, 일하는 동안에는 「중단」. 같은 띠, 낱말만 다르다. */}
+      {/* 마지막 행동 한 자리 — 검토 대기면 「완료」, 누군가 사람의 결정을 기다리면 「결정 대기」(누르면 그 Operation으로),
+          아니면 「시작」, 일하는 동안에는 「중단」. 같은 띠, 낱말만 다르다. */}
       {item.review && !item.done ? (
         <div className="todo-group todo-start-group">
           <button type="button" className="todo-start is-review" title={item.review.summary} onClick={onComplete}>
             <span className="todo-start-word">{t("todo.review.complete")}</span>
             <span className="todo-start-sub">{t("todo.review.sub")}</span>
+            <span className="todo-start-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      ) : awaiting && !busy ? (
+        <div className="todo-group todo-start-group">
+          <button type="button" className="todo-start is-awaiting" title={operationTitle(awaiting.operationId)} onClick={() => focusOperation(awaiting.operationId)}>
+            <span className="todo-start-word"><i className="todo-start-dot" aria-hidden="true" />{t("todo.awaiting.word")}</span>
+            <span className="todo-start-sub">{awaiting.stepIndex === null ? t("todo.awaiting.chef") : t("todo.awaiting.step", { index: awaiting.stepIndex + 1 })}</span>
             <span className="todo-start-arrow" aria-hidden="true">→</span>
           </button>
         </div>

@@ -373,6 +373,11 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-start.is-review { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
 .todo-start.is-review:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
 .todo-start.is-review .todo-start-word, .todo-start.is-review .todo-start-arrow { color: var(--aurora); }
+/* 결정 대기 — 호스트의 awaiting 색(aurora)에 살아있는 맥동 점. 검토 대기와 같은 색이지만, 점이 「지금 부르는 중」을 가른다. */
+.todo-start.is-awaiting { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
+.todo-start.is-awaiting:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
+.todo-start.is-awaiting .todo-start-word, .todo-start.is-awaiting .todo-start-arrow { color: var(--aurora); }
+.todo-start-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent); animation: todo-breathe 1.8s ease-in-out infinite; }
 .todo-graph-wrap { padding: 2px 20px 8px 22px; }
 /* 조율자 모델·강도·표면 — 한 줄의 글. 누르면 캔버스 우클릭 메뉴와 같은 문법의 메뉴가 뜬다(글래스 언더레이·모노 xs·브라스 활성). */
 .todo-launch { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
