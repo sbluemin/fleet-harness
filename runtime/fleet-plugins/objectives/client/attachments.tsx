@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { TodoAttachment, TodoItem } from "../server/types.js";
-import type { TodoMessageKey } from "./i18n/index.js";
+import type { ObjectiveAttachment, ObjectiveItem } from "../server/types.js";
+import type { ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
  * 메모 첨부 띠 — 메모 본문은 그대로 두고 그 아래에 붙인 순서대로 「이미지 n」 썸네일이 선다.
@@ -14,35 +14,35 @@ import type { TodoMessageKey } from "./i18n/index.js";
 const TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_COUNT = 20;
-type T = Translate<TodoMessageKey>;
+type T = Translate<ObjectiveMessageKey>;
 
-const fileUrl = (item: Pick<TodoItem, "id">, attachment: Pick<TodoAttachment, "id">) => `/plugins/todo/attachment/file?itemId=${encodeURIComponent(item.id)}&attachmentId=${encodeURIComponent(attachment.id)}`;
+const fileUrl = (item: Pick<ObjectiveItem, "id">, attachment: Pick<ObjectiveAttachment, "id">) => `/plugins/objectives/attachment/file?itemId=${encodeURIComponent(item.id)}&attachmentId=${encodeURIComponent(attachment.id)}`;
 
 /** 클립보드·끌어놓기에서 이미지 파일만 고른다. */
 export function imageFiles(list: FileList | readonly File[] | null | undefined): File[] {
   return [...(list ?? [])].filter((file) => file.type.startsWith("image/"));
 }
 
-/** 올리기 — 형식·크기·개수를 먼저 보고 하나씩 보낸다. 항목 갱신은 응답이 아니라 `todo:item` 사건으로 들어온다. */
-export function useAttachmentUpload(item: TodoItem, t: T) {
+/** 올리기 — 형식·크기·개수를 먼저 보고 하나씩 보낸다. 항목 갱신은 응답이 아니라 `objectives:item` 사건으로 들어온다. */
+export function useAttachmentUpload(item: ObjectiveItem, t: T) {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(0);
   const upload = useCallback(async (files: readonly File[]) => {
     setError(null);
     let room = MAX_COUNT - (item.attachments?.length ?? 0);
     for (const file of files) {
-      if (!TYPES.has(file.type)) { setError(t("todo.att.errType", { name: file.name })); continue; }
-      if (file.size > MAX_BYTES) { setError(t("todo.att.errSize", { name: file.name })); continue; }
-      if (room <= 0) { setError(t("todo.att.errCount")); break; }
+      if (!TYPES.has(file.type)) { setError(t("objectives.att.errType", { name: file.name })); continue; }
+      if (file.size > MAX_BYTES) { setError(t("objectives.att.errSize", { name: file.name })); continue; }
+      if (room <= 0) { setError(t("objectives.att.errCount")); break; }
       room -= 1;
       setSending((value) => value + 1);
       try {
-        const response = await fetch(`/plugins/todo/attachment/add?itemId=${encodeURIComponent(item.id)}&name=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": file.type }, body: file });
+        const response = await fetch(`/plugins/objectives/attachment/add?itemId=${encodeURIComponent(item.id)}&name=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": file.type }, body: file });
         if (!response.ok) {
           const code = ((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? `http_${response.status}`;
-          setError(code === "attachment_type" ? t("todo.att.errType", { name: file.name }) : code === "attachment_too_large" ? t("todo.att.errSize", { name: file.name }) : code === "too_many_attachments" ? t("todo.att.errCount") : t("todo.att.errFailed", { name: file.name, code }));
+          setError(code === "attachment_type" ? t("objectives.att.errType", { name: file.name }) : code === "attachment_too_large" ? t("objectives.att.errSize", { name: file.name }) : code === "too_many_attachments" ? t("objectives.att.errCount") : t("objectives.att.errFailed", { name: file.name, code }));
         }
-      } catch { setError(t("todo.att.errFailed", { name: file.name, code: "network" })); }
+      } catch { setError(t("objectives.att.errFailed", { name: file.name, code: "network" })); }
       finally { setSending((value) => value - 1); }
     }
   }, [item.attachments?.length, item.id, t]);
@@ -52,41 +52,41 @@ export function useAttachmentUpload(item: TodoItem, t: T) {
 const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
 
 export function NoteAttachments({ item, t, touchable, upload, error, sending, onRemove }: {
-  readonly item: TodoItem;
+  readonly item: ObjectiveItem;
   readonly t: T;
   readonly touchable: boolean;
   readonly upload: (files: readonly File[]) => Promise<void>;
   readonly error: string | null;
   readonly sending: number;
-  readonly onRemove: (attachment: TodoAttachment) => void;
+  readonly onRemove: (attachment: ObjectiveAttachment) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [open, setOpen] = useState<TodoAttachment | null>(null);
+  const [open, setOpen] = useState<ObjectiveAttachment | null>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const attachments = item.attachments ?? [];
-  const label = (attachment: TodoAttachment) => t("todo.att.label", { n: attachment.n });
+  const label = (attachment: ObjectiveAttachment) => t("objectives.att.label", { n: attachment.n });
   if (!touchable && attachments.length === 0) return null;
   return (
-    <div className="todo-att">
-      <div className="todo-att-strip">
+    <div className="objectives-att">
+      <div className="objectives-att-strip">
         {attachments.map((attachment) => (
-          <div key={attachment.id} className="todo-att-thumb">
-            <button type="button" className="todo-att-open" aria-label={t("todo.att.open", { label: label(attachment), name: attachment.name })} title={attachment.name} onClick={(event) => { openerRef.current = event.currentTarget; setOpen(attachment); }}>
+          <div key={attachment.id} className="objectives-att-thumb">
+            <button type="button" className="objectives-att-open" aria-label={t("objectives.att.open", { label: label(attachment), name: attachment.name })} title={attachment.name} onClick={(event) => { openerRef.current = event.currentTarget; setOpen(attachment); }}>
               <img src={fileUrl(item, attachment)} alt="" loading="lazy" draggable={false} />
             </button>
-            <span className="todo-att-label">{label(attachment)}</span>
-            {touchable ? <button type="button" className="todo-att-x" aria-label={t("todo.att.remove", { label: label(attachment) })} title={t("todo.att.remove", { label: label(attachment) })} onClick={() => onRemove(attachment)}><CloseGlyph /></button> : null}
+            <span className="objectives-att-label">{label(attachment)}</span>
+            {touchable ? <button type="button" className="objectives-att-x" aria-label={t("objectives.att.remove", { label: label(attachment) })} title={t("objectives.att.remove", { label: label(attachment) })} onClick={() => onRemove(attachment)}><CloseGlyph /></button> : null}
           </div>
         ))}
         {touchable && attachments.length < MAX_COUNT ? (
-          <button type="button" className="todo-att-add" aria-label={t("todo.att.addAria")} onClick={() => inputRef.current?.click()} disabled={sending > 0}>
-            {sending > 0 ? <i className="todo-att-spin" aria-hidden="true" /> : t("todo.att.add")}
+          <button type="button" className="objectives-att-add" aria-label={t("objectives.att.addAria")} onClick={() => inputRef.current?.click()} disabled={sending > 0}>
+            {sending > 0 ? <i className="objectives-att-spin" aria-hidden="true" /> : t("objectives.att.add")}
           </button>
         ) : null}
       </div>
       {touchable ? <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(event) => { const files = imageFiles(event.target.files); event.target.value = ""; if (files.length) void upload(files); }} /> : null}
-      {touchable && attachments.length === 0 ? <div className="todo-att-hint">{t("todo.att.hint")}</div> : null}
-      {error ? <div className="todo-att-err" role="alert">{error}</div> : null}
+      {touchable && attachments.length === 0 ? <div className="objectives-att-hint">{t("objectives.att.hint")}</div> : null}
+      {error ? <div className="objectives-att-err" role="alert">{error}</div> : null}
       {open ? createPortal(<AttachmentView t={t} src={fileUrl(item, open)} caption={`${label(open)} · ${open.name}${open.width && open.height ? ` · ${open.width}×${open.height}` : ""}`} onClose={() => { setOpen(null); openerRef.current?.focus(); }} />, document.body) : null}
     </div>
   );
@@ -108,9 +108,9 @@ function AttachmentView({ t, src, caption, onClose }: { readonly t: T; readonly 
     return () => document.removeEventListener("keydown", onKey, true);
   }, []);
   return (
-    <div className="todo-zoom-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <figure className="todo-att-view" role="dialog" aria-modal="true" aria-label={caption}>
-        <button ref={closeRef} type="button" className="todo-glyph todo-att-view-close" aria-label={t("todo.detail.close")} title={t("todo.detail.close")} onClick={onClose}><CloseGlyph /></button>
+    <div className="objectives-zoom-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <figure className="objectives-att-view" role="dialog" aria-modal="true" aria-label={caption}>
+        <button ref={closeRef} type="button" className="objectives-glyph objectives-att-view-close" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={onClose}><CloseGlyph /></button>
         <img src={src} alt={caption} />
         <figcaption>{caption}</figcaption>
       </figure>

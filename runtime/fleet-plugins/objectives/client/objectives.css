@@ -1,0 +1,762 @@
+/* 목표 표면 — 목록 · 항목 · 세부 세 열. 색은 토큰만. */
+
+.objectives-container { container: objectives-panel / inline-size; width: 100%; height: 100%; min-height: 0; }
+.objectives-root {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: var(--t-md);
+  color: var(--text-primary);
+  background: var(--surface-panel);
+}
+.objectives-root.has-detail { grid-template-columns: 200px minmax(0, 1fr) minmax(420px, 480px); }
+.objectives-place-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.objectives-place-button:hover, .objectives-place-button:focus-visible { color: var(--brass); border-color: var(--brass); outline: none; }
+
+/* ── 목록 열 ── */
+.objectives-lists {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--surface-rim);
+  overflow: auto;
+  min-height: 0;
+}
+.objectives-lists-hd {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 8px 8px 4px;
+}
+.objectives-list-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.objectives-list-btn:hover { background: var(--control-rest); }
+.objectives-list-btn:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-list-btn[aria-current="true"] { background: var(--control-rest); color: var(--text-primary); border-color: var(--surface-rim); }
+.objectives-list-btn .objectives-count { margin-left: auto; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-list-btn .objectives-swatch { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-tertiary); }
+.objectives-list-btn.is-muted { color: var(--text-tertiary); }
+.objectives-lists-add {
+  margin-top: auto;
+  background: transparent;
+  border: 1px dashed var(--surface-rim);
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--t-sm);
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  text-align: left;
+}
+.objectives-lists-add:hover { color: var(--text-primary); border-color: var(--brass); }
+
+/* ── 항목 열 ── */
+.objectives-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 14px 10px;
+  position: relative;
+}
+.objectives-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.objectives-title .objectives-place-button { margin-left: auto; }
+.objectives-list-select { display: none; position: relative; min-width: 0; }
+.objectives-list-trigger { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 3px 7px; background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); color: var(--text-primary); font: inherit; cursor: pointer; }
+.objectives-list-trigger > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-list-trigger .objectives-count { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
+.objectives-list-trigger:focus-visible { outline: 1px solid var(--brass); }
+.objectives-list-menu { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; width: min(240px, calc(100cqw - 28px)); max-height: min(440px, 65vh); overflow: auto; padding: 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); }
+.objectives-list-menu .objectives-lists-add { width: 100%; margin-top: 8px; }
+.objectives-place-detail { display: grid; }
+.objectives-root.has-detail .objectives-place-main, .objectives-glyph.objectives-detail-back { display: none; }
+.objectives-title h2 { margin: 0; font-family: var(--font-display); font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 1.2; }
+.objectives-title .objectives-sub { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-title .objectives-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.objectives-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 6px; }
+.objectives-chip {
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  padding: 1px 9px;
+  font: inherit;
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+.objectives-chip[aria-pressed="true"] { border-color: var(--brass); color: var(--brass); }
+.objectives-section { display: flex; flex-direction: column; gap: 5px; }
+.objectives-section + .objectives-section { margin-top: 10px; }
+/* 구획 머리는 접이식 칩 — 셰브런이 펼침을 말하고, 「완료됨」은 맨 아래 접힌 채 선다 */
+.objectives-section-hd { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; margin: 2px 0 1px; padding: 4px 10px 4px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--surface-panel-raised) 70%, var(--surface-panel)); font: inherit; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-secondary); cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
+.objectives-section-hd:hover { border-color: var(--hairline-strong); color: var(--text-primary); }
+.objectives-section-hd:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-section-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-fast); }
+.objectives-section-chev svg { width: 11px; height: 11px; }
+.objectives-section-hd[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
+.objectives-section.is-done { margin-top: 14px; }
+.objectives-section.is-done .objectives-section-hd { color: var(--text-tertiary); }
+.objectives-section-hd .objectives-swatch { width: 7px; height: 7px; border-radius: 50%; }
+.objectives-section-hd .objectives-count { color: var(--text-tertiary); }
+.objectives-items { display: flex; flex-direction: column; gap: 5px; flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
+.objectives-empty { color: var(--text-tertiary); font-size: var(--t-sm); padding: 24px 8px; text-align: center; }
+.objectives-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised);
+  cursor: pointer;
+  position: relative;
+  transition: border-color var(--duration-fast);
+}
+.objectives-item:hover { border-color: var(--hairline-strong); }
+.objectives-item:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-item[aria-selected="true"] { border-color: var(--brass); }
+.objectives-item.is-done .objectives-item-title { text-decoration: line-through; color: var(--text-tertiary); }
+.objectives-item-side { display: inline-flex; align-items: center; gap: 10px; }
+/* 작업 중 — 편집 대신 중단 하나. 왼쪽 점검 원은 숨을 죽이고 오른쪽 점은 숨 쉰다. */
+.objectives-item.is-busy { cursor: default; }
+.objectives-item.is-busy .objectives-check { opacity: 0.35; cursor: default; }
+.objectives-stop { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: var(--radius-xs); color: var(--text-tertiary); cursor: pointer; transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast); }
+.objectives-stop svg { width: 14px; height: 14px; }
+.objectives-stop:hover, .objectives-stop:focus-visible { color: var(--coral); border-color: color-mix(in oklch, var(--coral) 45%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); outline: none; }
+.objectives-stop-btn { display: inline-flex; align-items: center; gap: 4px; color: var(--coral); border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
+.objectives-stop-btn:hover { border-color: var(--coral); }
+.objectives-busy-line { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px 22px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
+.objectives-busy-line i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); animation: objectives-breathe 1.6s ease-in-out infinite; }
+@keyframes objectives-breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.objectives-detail.is-busy .objectives-detail-title, .objectives-detail.is-busy .objectives-step-text:read-only, .objectives-detail.is-busy .objectives-note:read-only { cursor: default; color: var(--text-secondary); }
+.objectives-detail.is-busy .objectives-row-main:disabled { cursor: default; opacity: 0.6; }
+.objectives-detail.is-busy .objectives-check { opacity: 0.35; cursor: default; }
+.objectives-item-launch.is-running i, .objectives-step-sub.is-running i { animation: objectives-breathe 1.6s ease-in-out infinite; }
+.objectives-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-tertiary);
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-on-brass);
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.objectives-check svg { width: 10px; height: 10px; opacity: 0; }
+.objectives-check.is-on { background: var(--brass); border-color: var(--brass); }
+.objectives-check.is-on svg { opacity: 1; }
+.objectives-check:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-item-title { font-size: var(--t-md); line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
+.objectives-item-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: var(--t-xs); color: var(--text-tertiary); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.objectives-op {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  padding: 0 7px;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--text-secondary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.objectives-op i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; }
+.objectives-op.is-awaiting i { background: var(--warn); }
+.objectives-op.is-idle i, .objectives-op.is-ended i, .objectives-op.is-closed i, .objectives-op.is-unknown i { background: var(--text-tertiary); }
+.objectives-op.is-background i { background: var(--aurora); }
+.objectives-by { border: 1px solid color-mix(in oklch, var(--console-use-badge) 50%, transparent); color: var(--console-use-badge); border-radius: var(--radius-pill); padding: 0 6px; font-family: var(--font-mono); font-size: var(--t-2xs); }
+.objectives-star { background: transparent; border: 0; color: var(--text-tertiary); cursor: pointer; padding: 2px; font-size: var(--t-base); line-height: 1; }
+.objectives-star.is-on { color: var(--brass); }
+.objectives-star:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; border-radius: 4px; }
+.objectives-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--control-field);
+  padding: 6px 10px;
+}
+.objectives-add input { flex: 1; background: transparent; border: 0; color: var(--text-primary); font: inherit; outline: none; min-width: 0; }
+.objectives-add .objectives-plus { color: var(--brass); font-size: var(--t-lg); line-height: 1; }
+.objectives-add:focus-within { border-color: var(--brass); }
+
+/* ── 버튼 ── */
+.objectives-btn {
+  background: var(--control-rest);
+  border: 1px solid var(--surface-rim);
+  color: var(--text-primary);
+  border-radius: var(--radius-xs);
+  font: inherit;
+  font-size: var(--t-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+  white-space: nowrap;
+}
+.objectives-btn:hover { border-color: var(--brass); }
+.objectives-btn:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-btn:disabled { opacity: 0.45; cursor: default; }
+.objectives-btn.is-primary { background: var(--brass); color: var(--text-on-brass); border-color: transparent; }
+.objectives-btn.is-small { padding: 1px 7px; font-size: var(--t-xs); display: inline-flex; align-items: center; gap: 4px; }
+.objectives-btn svg { width: 12px; height: 12px; flex: none; }
+.objectives-glyph {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-tertiary);
+  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: var(--t-md);
+  line-height: 1;
+  padding: 0;
+  flex: none;
+}
+.objectives-glyph:hover { color: var(--brass); border-color: var(--hairline-strong); }
+.objectives-glyph:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-glyph svg { width: 14px; height: 14px; }
+
+/* ── 세부 열 ── */
+/* 세부 — 카드가 아니라 **한 장의 평면**이고, 묶음 사이는 머리선 하나,
+   행은 아이콘·라벨·(값)·× 의 한 줄(단계 36px · 동작 44px). 테두리 친 입력은 없다 — 제목·단계·메모 모두 글 위에 바로 쓴다. */
+.objectives-detail {
+  border-left: 1px solid var(--surface-rim);
+  padding: 6px 0 8px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
+  container: objectives-detail / inline-size;
+}
+.objectives-detail-scroll { flex: 1; min-height: 0; overflow: auto; }
+.objectives-detail-bottom { flex: none; background: var(--surface-panel-raised); }
+.objectives-group { display: flex; flex-direction: column; padding: 6px 0; }
+.objectives-group + .objectives-group { border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
+.objectives-detail-head { display: flex; gap: 12px; align-items: flex-start; padding: 8px 20px 10px 22px; }
+.objectives-detail-head .objectives-check { margin-top: 3px; width: 18px; height: 18px; }
+.objectives-detail-head .objectives-check svg { width: 11px; height: 11px; }
+.objectives-detail-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  font-family: inherit;
+  padding: 1px 0;
+  min-width: 0;
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  field-sizing: content;
+}
+.objectives-detail-title:focus { outline: none; }
+.objectives-detail-head .objectives-star { margin: 0 -4px 0 0; font-size: var(--t-lg); }
+
+/* 행 */
+.objectives-row { display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 0 20px 0 22px; width: 100%; background: transparent; border: 0; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: default; position: relative; }
+.objectives-row + .objectives-row::before { content: ""; position: absolute; left: 22px; right: 20px; top: 0; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent); }
+button.objectives-row { cursor: pointer; }
+button.objectives-row:hover, .objectives-row:has(> .objectives-row-main:hover) { background: var(--control-rest); }
+button.objectives-row:focus-visible, .objectives-row-main:focus-visible, .objectives-row-x:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+button.objectives-row:disabled { opacity: 0.5; cursor: default; }
+.objectives-row.is-on { color: var(--text-primary); }
+.objectives-row.is-on .objectives-row-ic { color: var(--brass); }
+.objectives-row.is-overdue .objectives-row-lab { color: var(--coral); }
+.objectives-row-main { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; min-height: 44px; margin: 0 -20px 0 -22px; padding: 0 20px 0 22px; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.objectives-row-ic { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; color: var(--text-tertiary); }
+.objectives-row-ic svg { width: 17px; height: 17px; }
+.objectives-row-ic.objectives-plus { color: var(--brass); font-size: var(--t-xl); line-height: 1; }
+.objectives-row-lab { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.objectives-row-sub { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; }
+.objectives-dot.is-running { animation: objectives-breathe 1.6s ease-in-out infinite; }
+.objectives-dot.is-awaiting { background: var(--warn); }
+.objectives-dot.is-idle, .objectives-dot.is-ended, .objectives-dot.is-closed, .objectives-dot.is-unknown { background: var(--text-tertiary); }
+.objectives-dot.is-background { background: var(--aurora); }
+.objectives-row-tools { margin-left: auto; display: inline-flex; gap: 4px; }
+.objectives-row-x { flex: none; width: 26px; height: 26px; margin-right: -8px; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-tertiary); font-size: var(--t-md); line-height: 1; cursor: pointer; position: relative; z-index: 1; }
+.objectives-row-x:hover { color: var(--coral); background: var(--control-rest); }
+.objectives-row.is-static { cursor: default; }
+.objectives-row.is-static .objectives-row-lab .objectives-op { max-width: 200px; }
+.objectives-mode { font-size: var(--t-xs); color: var(--brass); font-weight: var(--weight-medium); }
+.objectives-date-hidden-unused { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+
+/* 단계 — 36px 행, 도구는 오른쪽에 낮게 상주하고 올리면 밝아진다(MS 의 「…」 자리) */
+.objectives-steps { display: flex; flex-direction: column; }
+.objectives-steps:empty { display: none; }
+.objectives-step { display: flex; gap: 12px; align-items: center; min-height: 36px; padding: 0 14px 0 22px; font-size: var(--t-sm); }
+.objectives-step:hover { background: var(--control-rest); }
+.objectives-step .objectives-check { width: 16px; height: 16px; }
+.objectives-step .objectives-check svg { width: 9px; height: 9px; }
+.objectives-step .objectives-step-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 0; }
+.objectives-step .objectives-step-text:focus { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
+.objectives-step.is-done .objectives-step-text { text-decoration: line-through; color: var(--text-tertiary); }
+.objectives-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 6px 0; }
+.objectives-step-body .objectives-step-text { flex: none; width: 100%; }
+/* 단계 아래 dim 한 줄 — 담당·예약의 모델 풀네임과 강도 */
+.objectives-step-sub { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-step-sub i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; font-style: normal; }
+.objectives-step-sub.is-awaiting i { background: var(--warn); }
+.objectives-step-sub.is-idle i, .objectives-step-sub.is-ended i, .objectives-step-sub.is-closed i, .objectives-step-sub.is-unknown i { background: var(--text-tertiary); }
+.objectives-step-sub.is-background i { background: var(--aurora); }
+.objectives-step-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary)); }
+/* 단계 기록 — 구상 입력 줄(.objectives-cook-line)과 같은 문법: 상자·배경 없이 단계 글자 선(22 + 확인 16 + 간격 12 = 50px)에서 펼쳐진다. */
+.objectives-records-count { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
+.objectives-records-count svg { width: 12px; height: 12px; }
+.objectives-records-count i { width: 5px; height: 5px; border-radius: 50%; background: var(--brass); }
+.objectives-records-count:hover { background: var(--control-rest); color: var(--text-secondary); }
+.objectives-records-count.is-unseen { color: var(--brass); border-color: color-mix(in oklch, var(--brass) 45%, transparent); }
+.objectives-records-count[aria-expanded="true"] { background: transparent; color: var(--text-primary); }
+.objectives-records-count:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-step.is-expanded .objectives-step-text { color: var(--text-secondary); }
+.objectives-records-inner { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 10px 50px; }
+.objectives-records.is-open .objectives-records-inner { animation: objectives-records-in 220ms var(--ease-spring); }
+@keyframes objectives-records-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.objectives-record { font-size: var(--t-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.objectives-record-meta { display: flex; gap: 6px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.objectives-record-meta .is-redone { color: var(--aurora); }
+.objectives-record-meta .is-new { color: var(--brass); }
+.objectives-record-head { color: var(--text-primary); font-weight: var(--weight-medium); }
+.objectives-record-line { color: var(--text-secondary); }
+.objectives-step-sub b::before { content: "·"; margin-right: 6px; color: var(--text-tertiary); font-weight: normal; }
+/* 편성 번호 — 체크 곁에 붙어 그래프 노드와 같은 번호를 말한다. */
+.objectives-step-num { flex: none; min-width: 14px; margin: 0 -6px 0 -4px; text-align: right; font-family: var(--font-mono); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.objectives-step.is-ready .objectives-step-num { color: var(--aurora); }
+.objectives-step.is-done .objectives-step-num { opacity: 0.7; }
+/* 선행 대기는 「2·3 뒤」, 시작할 수 있으면 「준비됨」 */
+.objectives-step .objectives-wait { flex: none; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.objectives-step .objectives-wait.is-ready { color: var(--aurora); }
+/* 짚은 임무와 그 선행 — 편성 노드와 함께 켜진다 */
+.objectives-step.is-focus { background: var(--control-rest); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 55%, transparent); }
+.objectives-step.is-pre { background: color-mix(in oklch, var(--aurora) 7%, transparent); }
+.objectives-step-tools { display: inline-flex; gap: 2px; opacity: 0.45; transition: opacity 120ms; }
+.objectives-step-tools .objectives-glyph { border-color: transparent; }
+.objectives-step:hover .objectives-step-tools, .objectives-step:focus-within .objectives-step-tools { opacity: 1; }
+.objectives-step.is-highlight { box-shadow: inset 0 0 0 2px var(--brass); animation: objectives-pulse 1.2s ease-out 2; }
+@keyframes objectives-pulse { 0% { box-shadow: inset 0 0 0 2px var(--brass); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
+.objectives-op .objectives-x { background: transparent; border: 0; color: var(--text-tertiary); cursor: pointer; padding: 0 0 0 4px; font: inherit; line-height: 1; }
+.objectives-op .objectives-x:hover { color: var(--coral); }
+.objectives-row.objectives-step-add { min-height: 40px; }
+.objectives-row.objectives-step-add::before { display: none; }
+.objectives-step-add input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 0; outline: none; }
+.objectives-step-add input::placeholder { color: var(--brass); opacity: 0.9; }
+.objectives-step-add:focus-within input::placeholder { color: var(--text-tertiary); }
+
+/* 조율자 컨트롤 — 행 아래의 보조 줄 */
+/* 조율자 행 — 모델·강도 컨트롤은 오른쪽 끝. 행을 누르면 연결 목록이 아래로 펼쳐진다. */
+/* 지휘관 행의 모델·강도는 행 가운데 — 라벨과 × 사이 남은 폭의 한가운데. */
+.objectives-row .objectives-launch { margin: 0 auto; flex: none; }
+.objectives-row.is-expanded .objectives-row-main { color: var(--text-primary); }
+/* 구상 맥락 — 구상 행 아래 한 줄. 비워 두고 보내도 된다. */
+.objectives-cook-line { display: flex; align-items: flex-end; gap: 6px; padding: 0 14px 8px 54px; }
+.objectives-cook { flex: 1; min-width: 0; min-height: 24px; resize: none; overflow: hidden; padding: 2px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; }
+.objectives-cook::placeholder { color: var(--text-tertiary); }
+.objectives-cook:focus-visible { outline: none; }
+.objectives-cook-send { flex: none; color: var(--brass); border-color: transparent; }
+.objectives-cook-send:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 14%, transparent); }
+/* 시작 — 세부 창의 마지막 행동. brass 워시 한 장, 낱말은 굵게, 부제는 dim, 오른쪽 끝에 화살. 일하는 동안 같은 자리가 「중단」. */
+/* 시작 구획은 바닥(생성일) 바로 위에 붙는다 — 메모 아래 빈 공간을 떠다니지 않게. */
+/* 검토 대기 — 지휘관이 넘긴 가승인. aurora 로 「사람 차례」를 말하고, 완료 버튼 하나만 둔다. */
+.objectives-check.is-linked.is-review { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 10%, transparent); }
+.objectives-check.is-linked.is-review i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--aurora); }
+.objectives-start-group { margin-top: auto; padding: 6px 14px 10px 16px; }
+.objectives-start-group + .objectives-detail-foot { margin-top: 0; }
+.objectives-start { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; width: 100%; padding: 11px 14px; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 16%, transparent), color-mix(in oklch, var(--brass) 6%, transparent)); color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring); }
+.objectives-start:hover:not(:disabled) { border-color: var(--brass); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 24%, transparent), color-mix(in oklch, var(--brass) 10%, transparent)); }
+.objectives-start:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-start:disabled { opacity: 0.5; cursor: default; }
+.objectives-start-word { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--weight-bold); font-size: var(--t-base); color: var(--brass); letter-spacing: -0.01em; }
+.objectives-start-word svg { width: 12px; height: 12px; }
+.objectives-start-sub { min-width: 0; font-size: var(--t-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-start-arrow { color: var(--brass); font-size: var(--t-base); }
+.objectives-start.is-stop { border-color: color-mix(in oklch, var(--coral) 40%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--coral) 12%, transparent), color-mix(in oklch, var(--coral) 4%, transparent)); }
+.objectives-start.is-stop:hover { border-color: var(--coral); }
+.objectives-start.is-stop .objectives-start-word { color: var(--coral); }
+/* 검토 대기 — 카드 고리와 같은 aurora. 「시작」과 같은 띠, 색만 「사람 차례」를 말한다. */
+.objectives-start.is-review { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
+.objectives-start.is-review:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
+.objectives-start.is-review .objectives-start-word, .objectives-start.is-review .objectives-start-arrow { color: var(--aurora); }
+/* 결정 대기 — 호스트의 awaiting 색(aurora)에 살아있는 맥동 점. 검토 대기와 같은 색이지만, 점이 「지금 부르는 중」을 가른다. */
+.objectives-start.is-awaiting { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
+.objectives-start.is-awaiting:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
+.objectives-start.is-awaiting .objectives-start-word, .objectives-start.is-awaiting .objectives-start-arrow { color: var(--aurora); }
+.objectives-start-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent); animation: objectives-breathe 1.8s ease-in-out infinite; }
+.objectives-graph-wrap { padding: 2px 20px 8px 22px; }
+/* 조율자 모델·강도·표면 — 한 줄의 글. 누르면 캔버스 우클릭 메뉴와 같은 문법의 메뉴가 뜬다(글래스 언더레이·모노 xs·브라스 활성). */
+.objectives-launch { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
+.objectives-launch:hover, .objectives-launch[aria-expanded="true"] { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 10%, transparent); }
+.objectives-launch:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-launch.is-locked { cursor: default; opacity: 0.75; }
+.objectives-launch-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
+.objectives-launch-provider svg { width: 14px; height: 14px; }
+.objectives-launch-model { color: var(--text-primary); }
+.objectives-launch-dot { color: var(--text-tertiary); }
+.objectives-launch-effort { color: var(--brass); text-transform: uppercase; }
+.objectives-launch-view { display: inline-grid; place-items: center; width: 14px; height: 14px; color: var(--text-tertiary); margin-left: 2px; }
+.objectives-launch-view svg { width: 14px; height: 14px; }
+/* 표면 표식은 트리거 안에서 바로 바꾼다 — 메뉴는 모델·강도만 말한다. */
+.objectives-launch-view.is-switch { width: 20px; height: 20px; border-radius: var(--radius-xs); cursor: pointer; }
+.objectives-launch-view.is-switch:hover { color: var(--brass); background: color-mix(in oklch, var(--brass) 16%, transparent); }
+.objectives-launch-view.is-switch:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.objectives-launch-caret { color: var(--text-tertiary); line-height: 1; margin-top: -3px; }
+.objectives-menu {
+  position: fixed;
+  z-index: 60;
+  padding: var(--space-1);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)), color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent));
+  display: flex; flex-direction: column;
+  max-height: min(520px, calc(100vh - 24px)); overflow-y: auto; scrollbar-width: none;
+}
+.objectives-menu::-webkit-scrollbar { display: none; }
+.objectives-menu-group { display: flex; flex-direction: column; }
+.objectives-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
+.objectives-menu-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 7px var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.04em; text-align: left; cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
+.objectives-menu-item:hover, .objectives-menu-item:focus-visible { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 12%, transparent); outline: none; }
+.objectives-menu-item.is-active { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 8%, transparent); }
+.objectives-menu-surface { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--text-tertiary); border-radius: var(--radius-xs); }
+.objectives-menu-surface:hover { color: var(--brass); background: color-mix(in oklch, var(--brass) 14%, transparent); }
+.objectives-menu-surface svg { width: 13px; height: 13px; }
+.objectives-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-menu-gauge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 3px 2px 5px; border: 1px solid transparent; border-radius: var(--radius-pill); color: var(--text-tertiary); }
+.objectives-menu-item.is-active .objectives-menu-gauge { border-color: color-mix(in oklch, var(--brass) 30%, transparent); }
+.objectives-menu-gauge svg { width: 14px; height: 10px; }
+.objectives-menu-effort { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
+.objectives-menu-item.is-active .objectives-menu-effort, .objectives-menu-back .objectives-menu-effort { color: var(--brass); }
+.objectives-menu-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); }
+.objectives-menu-chev svg { width: 10px; height: 10px; }
+/* 2단계 머리 — ‹ 는 왼쪽에 두고, 글리프와 모델명은 가운데로 모은다. 강도 낱말은 아래 트랙이 말하므로 여기 두지 않는다. */
+.objectives-menu-back { color: var(--text-primary); position: relative; justify-content: center; padding-left: 30px; padding-right: 30px; gap: 8px; }
+.objectives-menu-back .objectives-menu-chev { position: absolute; left: var(--space-2); top: 50%; transform: translateY(-50%); }
+.objectives-menu-back .objectives-menu-label { flex: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-menu-back .objectives-menu-effort-word { flex: none; }
+.objectives-menu-item .objectives-menu-label { padding-left: 4px; }
+.objectives-menu-provider { margin-left: 2px; }
+.objectives-menu-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
+.objectives-menu-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
+.objectives-menu-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
+.objectives-menu-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.objectives-menu-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+.objectives-menu-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
+.objectives-menu-track { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px var(--space-2) 10px; }
+.objectives-menu-track .effort-track-value { display: none; }
+.objectives-menu-effort-word { font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass); }
+.objectives-menu-divider { height: 1px; margin: var(--space-1) var(--space-1); background: var(--surface-rim); }
+.objectives-menu-empty { padding: 6px var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
+
+/* 카드 오른쪽의 모델·강도 */
+.objectives-item-launch { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); white-space: nowrap; }
+.objectives-item-launch b { font-weight: var(--weight-medium); color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary)); text-transform: uppercase; }
+.objectives-item-launch i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); }
+.objectives-item-launch.is-awaiting i { background: var(--warn); }
+.objectives-item-launch.is-idle i, .objectives-item-launch.is-ended i, .objectives-item-launch.is-closed i, .objectives-item-launch.is-unknown i { background: var(--text-tertiary); }
+.objectives-item-launch.is-background i { background: var(--aurora); }
+
+/* 끌기 — 원래 카드는 빈 홈으로 남고, 유령이 커서를 따르며, 목록 행은 놓을 수 있을 때 브라스 테두리로 응답한다 */
+.objectives-item.is-lifted { opacity: 0.35; border-style: dashed; }
+.objectives-item.is-lifted > * { visibility: hidden; }
+/* 순서 바꾸기의 삽입선 — 카드 사이 틈(5px) 한가운데에 선다. */
+.objectives-item.is-insert-before::before,
+.objectives-item.is-insert-after::after { content: ""; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 1px; background: var(--brass); pointer-events: none; }
+.objectives-item.is-insert-before::before { top: -4.5px; }
+.objectives-item.is-insert-after::after { bottom: -4.5px; }
+.objectives-lists.is-dragging .objectives-list-btn[data-drop-list] { border-color: color-mix(in oklch, var(--brass) 35%, transparent); }
+.objectives-list-btn.is-drop { background: color-mix(in oklch, var(--brass) 16%, transparent); border-color: var(--brass); color: var(--text-primary); }
+.objectives-list-btn.is-drop .objectives-count { color: var(--brass); }
+.objectives-drag-ghost { position: fixed; z-index: 70; pointer-events: none; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--brass); border-radius: var(--radius-xs); background: var(--surface-panel-raised); box-shadow: 0 14px 34px color-mix(in oklch, var(--ink-deep) 62%, transparent); color: var(--text-primary); font-size: var(--t-md); transition: border-color var(--duration-fast), box-shadow var(--duration-fast); }
+.objectives-drag-ghost.is-over { border-color: var(--brass-bright, var(--brass)); box-shadow: 0 6px 18px color-mix(in oklch, var(--ink-deep) 55%, transparent); }
+.objectives-drag-ghost .objectives-check { width: 18px; height: 18px; flex: none; }
+/* 목록 열 위에서는 손 안의 표로 줄어든다 — 폭·여백·글자가 함께 줄고, 잡은 점은 표의 왼쪽 위로 옮겨 간다. */
+.objectives-drag-ghost { transition: width 160ms var(--ease-spring, ease-out), padding 160ms var(--ease-spring, ease-out), font-size 160ms, box-shadow var(--duration-fast), border-color var(--duration-fast); }
+.objectives-drag-ghost.is-compact { grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; padding: 6px 10px; font-size: var(--t-sm); border-radius: var(--radius-pill); }
+.objectives-drag-ghost.is-compact .objectives-check { width: 14px; height: 14px; }
+.objectives-drag-ghost.is-compact .objectives-check svg { width: 8px; height: 8px; }
+.objectives-drag-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-drag-hint { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--brass); letter-spacing: 0.06em; }
+.objectives-item { user-select: none; }
+
+/* 편성 상자 — 그래프와 그 아래 안내 문구가 한 상자 안에 선다. 문구는 상자 바닥 가운데. */
+.objectives-dag-box { background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); overflow: hidden; }
+.objectives-dag { display: block; max-width: 100%; height: auto; margin: 0 auto; background: transparent; border: 0; touch-action: none; }
+.objectives-graph-vertical { display: none; }
+.objectives-dag-vertical { padding: 8px 12px; }
+.objectives-dag-row { display: flex; align-items: center; gap: 12px; min-height: 38px; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); }
+.objectives-dag-row + .objectives-dag-row { border-top: 1px solid var(--hairline); }
+.objectives-dag-dot { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border: 1px solid var(--aurora); border-radius: 50%; color: var(--text-primary); }
+.objectives-dag-dot.is-done { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); }
+.objectives-dag-dot.is-assigned { border-color: var(--positive); }
+.objectives-dag-row.is-root .objectives-dag-dot { border-color: var(--text-tertiary); }
+/* 좁은 폭의 세로 편성도 짚은 임무와 선행을 함께 켠다 */
+.objectives-dag-row.is-focus { background: var(--control-rest); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 55%, transparent); }
+.objectives-dag-row.is-focus .objectives-dag-dot { border-color: var(--brass); }
+.objectives-dag-row.is-pre { background: color-mix(in oklch, var(--aurora) 7%, transparent); }
+.objectives-dag-step-name { min-width: 0; overflow-wrap: anywhere; }
+@container objectives-detail (width < 420px) {
+  .objectives-graph-horizontal { display: none; }
+  .objectives-graph-vertical { display: block; }
+}
+.objectives-dag-hint { text-align: center; padding: 0 10px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
+/* 확대본 — 빈 배경을 누르면 열린다(커서로 예고). 오버레이는 다른 팝오버와 같은 층(60), 카드는 넓은 폭에 같은 그래프를 다시 그린다. */
+.objectives-dag-box.can-zoom .objectives-dag { cursor: zoom-in; }
+.objectives-dag-box.can-zoom .objectives-dag.is-dragging { cursor: grabbing; }
+.objectives-zoom-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 12px; background: color-mix(in oklch, var(--ink-deep) 55%, transparent); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); }
+.objectives-zoom { width: min(940px, 100%); max-height: 100%; overflow: auto; padding: 12px 16px 16px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); outline: none; }
+.objectives-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.objectives-zoom-title { display: inline-flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--t-base); font-weight: var(--weight-bold); color: var(--text-primary); }
+.objectives-zoom-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-regular); color: var(--text-secondary); }
+.objectives-zoom .objectives-dag-box.is-zoom { padding: 8px 12px 0; }
+.objectives-zoom .objectives-dag-box.is-zoom text { font-size: var(--t-xs); }
+.objectives-dag .objectives-edge { fill: none; stroke: var(--hairline-strong); stroke-width: 1.6; }
+.objectives-dag .objectives-edge.is-met { stroke: var(--brass); }
+.objectives-dag .objectives-edge.is-root { stroke-dasharray: 3 3; opacity: 0.7; }
+.objectives-dag .objectives-edge[data-from] { cursor: pointer; pointer-events: stroke; }
+.objectives-dag .objectives-edge[data-from]:hover { stroke: var(--coral); stroke-width: 2.2; }
+.objectives-dag .objectives-edge.is-ghost { stroke: var(--brass); stroke-dasharray: 3 3; }
+.objectives-dag .objectives-node circle { fill: var(--surface-panel); stroke: var(--text-tertiary); stroke-width: 1.4; }
+.objectives-dag .objectives-node[data-k] { cursor: grab; }
+.objectives-dag.is-dragging { cursor: grabbing; }
+.objectives-dag .objectives-node.is-done circle { fill: var(--brass); stroke: var(--brass); }
+.objectives-dag .objectives-node.is-assigned circle { fill: color-mix(in oklch, var(--positive) 30%, var(--surface-panel)); stroke: var(--positive); }
+.objectives-dag .objectives-node.is-ready circle { stroke: var(--aurora); stroke-dasharray: 2 2; }
+.objectives-dag .objectives-node.is-wait circle { stroke: var(--hairline-strong); }
+.objectives-dag .objectives-node.is-root circle { stroke: var(--text-secondary); }
+.objectives-dag .objectives-node.is-root.is-assigned circle { fill: color-mix(in oklch, var(--brass) 35%, var(--surface-panel)); stroke: var(--brass); }
+.objectives-dag .objectives-node.is-over circle { stroke: var(--brass); stroke-width: 2.4; }
+.objectives-dag text { font-family: var(--font-mono); font-size: var(--t-2xs); fill: var(--text-tertiary); pointer-events: none; }
+.objectives-dag text.objectives-num { fill: var(--text-primary); font-size: var(--t-2xs); font-weight: var(--weight-medium); }
+.objectives-dag .objectives-node.is-done text.objectives-num { fill: var(--text-on-brass); }
+.objectives-dag .objectives-node:focus-visible { outline: none; }
+.objectives-dag .objectives-node-unseen { fill: var(--brass); stroke: var(--surface-panel); stroke-width: 1.5; pointer-events: none; }
+.objectives-dag .objectives-node.is-done .objectives-node-unseen { fill: var(--aurora); }
+.objectives-dag .objectives-node:focus-visible circle { stroke: var(--brass); stroke-width: 2.4; }
+.objectives-hint { font-size: var(--t-2xs); color: var(--text-tertiary); margin-top: 3px; padding: 0 20px 0 22px; }
+
+/* 메모 — 테두리 없는 글판(MS 의 「메모 추가」) */
+.objectives-detail textarea.objectives-note {
+  width: 100%;
+  min-height: 110px;
+  resize: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  padding: 8px 20px 8px 22px;
+  outline: none;
+  field-sizing: content;
+}
+.objectives-detail textarea.objectives-note::placeholder { color: var(--text-tertiary); }
+
+/* 바닥 — 닫기 · 삭제 (MS 의 › · 🗑 자리) */
+/* 바닥 줄 — 닫기 › · 생성일(가운데) · 삭제 */
+.objectives-detail-foot { margin-top: auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 8px 14px 0 16px; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
+.objectives-detail-foot .objectives-glyph { border-color: transparent; }
+.objectives-detail-foot > :first-child { justify-self: start; }
+.objectives-detail-foot > :last-child { justify-self: end; }
+.objectives-detail-created { font-size: var(--t-xs); color: var(--text-tertiary); text-align: center; white-space: nowrap; }
+.objectives-detail-foot-spacer { width: 32px; height: 32px; }
+.objectives-glyph.is-large { width: 32px; height: 32px; }
+.objectives-glyph.is-large svg { width: 18px; height: 18px; }
+.objectives-glyph.is-danger:hover { color: var(--coral); }
+
+.objectives-banner {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 58px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  padding: 7px 10px;
+  font-size: var(--t-sm);
+  box-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+.objectives-banner .objectives-banner-undo { margin-left: auto; }
+
+/* 연결 선택 */
+.objectives-pick { display: flex; flex-direction: column; gap: 4px; padding: 4px 20px 8px 54px; max-height: 180px; overflow: auto; }
+.objectives-pick button { text-align: left; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 4px 6px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+.objectives-pick button:hover { border-color: var(--brass); }
+
+@container objectives-panel (width < 960px) {
+  .objectives-root, .objectives-root.has-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .objectives-root:not(.has-detail) { grid-template-columns: minmax(0, 1fr); }
+  .objectives-lists { display: none; }
+  .objectives-list-select { display: block; }
+  .objectives-title h2 { display: none; }
+  .objectives-place-detail { display: grid; }
+  .objectives-root.has-detail .objectives-place-main { display: none; }
+}
+@container objectives-panel (width < 600px) {
+  .objectives-root, .objectives-root.has-detail { grid-template-columns: minmax(0, 1fr); }
+  .objectives-root.has-detail .objectives-main { display: none; }
+  .objectives-detail { border-left: 0; }
+  .objectives-glyph.objectives-detail-back { display: inline-grid; margin-right: -6px; font-size: var(--t-xl); }
+  .objectives-place-detail { margin-left: 0; }
+  .objectives-detail-head { gap: 8px; padding-right: 12px; padding-left: 12px; }
+  .objectives-row { padding-right: 12px; padding-left: 14px; gap: 8px; }
+  .objectives-row-main { margin-left: -14px; margin-right: -12px; padding-left: 14px; padding-right: 12px; gap: 8px; }
+  .objectives-step { padding-left: 14px; padding-right: 8px; gap: 8px; }
+  /* 단계 글자 선이 14 + 16 + 8 = 38px 로 당겨진다 — 기록도 같은 선에서 펼쳐진다. */
+  .objectives-records-inner { padding-left: 38px; padding-right: 8px; }
+  .objectives-graph-wrap { padding-left: 14px; padding-right: 12px; }
+  .objectives-detail textarea.objectives-note { padding-left: 14px; padding-right: 12px; }
+  .objectives-detail-created { white-space: normal; }
+  .objectives-start { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .objectives-step.is-highlight { animation: none; }
+}
+
+/* 기한 달력 — 메뉴와 같은 카드 위에 월 하나. 숫자는 모노, 오늘은 고리, 고른 날은 brass 채움, 지난 날은 dim. */
+.objectives-cal { position: fixed; z-index: 60; width: min(252px, calc(100vw - 16px)); padding: 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); outline: none; }
+.objectives-cal-quick { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px 8px; border-bottom: 1px solid var(--hairline); margin-bottom: 6px; }
+.objectives-cal-chip { padding: 2px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.objectives-cal-chip:hover { border-color: var(--brass); color: var(--text-primary); }
+.objectives-cal-chip.is-on { background: color-mix(in oklch, var(--brass) 14%, transparent); border-color: var(--brass); color: var(--text-primary); }
+.objectives-cal-chip.is-clear { margin-left: auto; color: var(--text-tertiary); border-color: transparent; }
+.objectives-cal-head { display: grid; grid-template-columns: 24px 1fr 24px; align-items: center; padding: 0 2px 4px; }
+.objectives-cal-head .objectives-glyph { width: 24px; height: 24px; border-color: transparent; color: var(--text-tertiary); font-size: var(--t-base); }
+.objectives-cal-month { text-align: center; font-size: var(--t-sm); color: var(--text-primary); }
+.objectives-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.objectives-cal-wd { text-align: center; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); padding: 2px 0 4px; }
+.objectives-cal-day { position: relative; height: 30px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--t-xs); cursor: pointer; }
+.objectives-cal-day:hover { background: color-mix(in oklch, var(--ink-spectral) 9%, transparent); }
+.objectives-cal-day.is-outside, .objectives-cal-day.is-past { color: var(--text-tertiary); }
+.objectives-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--brass); }
+.objectives-cal-day.is-cursor { border-color: var(--hairline-strong); }
+.objectives-cal-day.is-selected { background: var(--brass); color: var(--text-on-brass); box-shadow: none; }
+
+/* 카드의 기한 — 달력 글리프 + 읽는 날짜. 지난 기한은 coral. */
+.objectives-item-due { display: inline-flex; align-items: center; gap: 4px; color: var(--text-tertiary); }
+.objectives-item-due svg { width: 12px; height: 12px; flex: none; }
+.objectives-item-due.is-overdue { color: var(--coral); }
+
+/* 카드의 동그라미 — 지휘관이 연결되면 완료 버튼이 아니라 상태 고리가 된다. 대기: 가운데 점 · 진행: 도는 호 · 결정 대기: 숨 쉬는 aurora 고리 ·
+   배경: 점선 · 끝남: dim 고리와 작은 정사각. 색은 신호 토큰만. 누를 수 없고, 겨누면 말풍선이 이유를 말한다. */
+.objectives-check-tip { position: relative; display: inline-grid; place-items: center; }
+.objectives-check.is-linked { position: relative; cursor: pointer; border-color: var(--hairline-strong); background: transparent; }
+.objectives-check.is-linked:disabled { cursor: default; }
+.objectives-check.is-linked i { position: absolute; inset: 0; border-radius: 50%; }
+.objectives-check.is-linked.is-idle i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--text-tertiary); }
+.objectives-check.is-linked.is-running { border-color: color-mix(in oklch, var(--warn) 35%, transparent); }
+.objectives-check.is-linked.is-running i { border: 1.5px solid transparent; border-top-color: var(--warn); animation: objectives-spin 1.2s linear infinite; }
+.objectives-check.is-linked.is-background { border-style: dashed; border-color: var(--warn); }
+.objectives-check.is-linked.is-awaiting { border-color: var(--aurora); animation: objectives-breathe 1.6s ease-in-out infinite; }
+.objectives-check.is-linked.is-awaiting i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--aurora); }
+.objectives-check.is-linked.is-ended, .objectives-check.is-linked.is-unknown { border-color: var(--hairline); }
+.objectives-check.is-linked.is-ended i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 1px; background: var(--text-tertiary); }
+@keyframes objectives-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .objectives-check.is-linked i, .objectives-check.is-linked { animation: none; } }
+.objectives-check-bubble { position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%) translateX(-2px); padding: 4px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-spring), transform var(--duration-fast) var(--ease-spring); z-index: 3; }
+.objectives-check-tip:hover .objectives-check-bubble, .objectives-check-tip:focus-within .objectives-check-bubble { opacity: 1; transform: translateY(-50%) translateX(0); }
+.objectives-goto { color: var(--text-tertiary); border-color: transparent; }
+.objectives-goto:hover { color: var(--brass); }
+
+.objectives-step-sub .objectives-launch-provider { width: 12px; height: 12px; }
+.objectives-step-sub .objectives-launch-provider svg { width: 12px; height: 12px; }
+
+/* 단계 배정 — 글리프 트리거와 메뉴의 특별 항목. 배정 낱말은 담당 줄과 같은 자리, 조금 더 dim. */
+.objectives-launch.is-glyph { padding: 0; margin: 0; width: 22px; height: 22px; display: inline-grid; place-items: center; color: var(--text-tertiary); border-color: transparent; }
+.objectives-launch.is-glyph:hover, .objectives-launch.is-glyph[aria-expanded="true"] { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); }
+.objectives-step-add .objectives-launch.is-glyph { margin-left: auto; }
+.objectives-menu-extra .objectives-menu-label { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.objectives-menu-hint { font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0; text-transform: none; font-family: var(--font-ui, inherit); }
+.objectives-step-sub.is-assign { color: var(--text-tertiary); }
+
+/* 미분류 칸 — 사람이 선행 없이 더한 단계. 지휘관이 자리를 정하기 전까지 그래프 아래에 따로 선다(상태이므로 aurora). */
+.objectives-dag .objectives-dag-tray rect { fill: none; stroke: color-mix(in oklch, var(--aurora) 45%, transparent); stroke-width: 1; stroke-dasharray: 4 3; }
+.objectives-dag .objectives-dag-tray text { fill: var(--aurora); font-weight: var(--weight-bold); }
+.objectives-dag .objectives-node.is-unplaced circle { stroke: var(--aurora); stroke-dasharray: 2 2; }
+.objectives-step-sub.is-unplaced { color: var(--aurora); }
+
+/* 메모 첨부 띠 — 본문 아래 붙인 순서대로 「이미지 n」 썸네일. 끌어오는 동안 메모 구획이 brass 로 받는다(위치의 표시). */
+.objectives-note-group { transition: background var(--duration-fast); }
+.objectives-note-group.is-drop { background: color-mix(in oklch, var(--brass) 8%, transparent); outline: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent); outline-offset: -4px; }
+.objectives-att { display: grid; gap: 6px; padding: 0 20px 12px 22px; }
+.objectives-att-strip { display: flex; flex-wrap: wrap; gap: 10px 8px; }
+.objectives-att-thumb { position: relative; display: grid; gap: 3px; width: 72px; }
+.objectives-att-open { width: 72px; height: 52px; padding: 0; overflow: hidden; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); cursor: zoom-in; }
+.objectives-att-open:hover, .objectives-att-open:focus-visible { border-color: var(--brass); outline: none; }
+.objectives-att-open img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.objectives-att-label { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-att-x { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--surface-rim-strong); border-radius: 50%; background: var(--surface-panel); color: var(--text-secondary); cursor: pointer; opacity: 0; transition: opacity var(--duration-fast); }
+.objectives-att-x svg { width: 10px; height: 10px; }
+.objectives-att-thumb:hover .objectives-att-x, .objectives-att-x:focus-visible { opacity: 1; }
+.objectives-att-x:hover { color: var(--coral); border-color: var(--coral); }
+.objectives-att-add { display: grid; place-items: center; width: 72px; height: 52px; border: 1px dashed var(--surface-rim-strong); border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); cursor: pointer; }
+.objectives-att-add:hover:not(:disabled), .objectives-att-add:focus-visible { border-color: var(--brass); color: var(--brass); outline: none; }
+.objectives-att-spin { width: 12px; height: 12px; border: 1.5px solid var(--text-tertiary); border-top-color: transparent; border-radius: 50%; animation: objectives-att-spin 0.9s linear infinite; }
+@keyframes objectives-att-spin { to { transform: rotate(360deg); } }
+.objectives-att-hint { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-att-err { font-size: var(--t-xs); color: var(--coral); }
+.objectives-att-view { position: relative; display: grid; gap: 8px; justify-items: center; margin: 0; max-width: min(1100px, 100%); }
+.objectives-att-view img { display: block; max-width: 100%; max-height: 80vh; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--surface-panel); }
+.objectives-att-view figcaption { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); text-align: center; overflow-wrap: anywhere; }
+.objectives-att-view-close { position: absolute; top: -34px; right: 0; }
+@media (prefers-reduced-motion: reduce) { .objectives-att-spin { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .objectives-records.is-open .objectives-records-inner { animation: none; } }
+
+/* 짚은 임무(목록 행과 함께) — 그 노드는 brass, 선행은 aurora, 들어오는 선도 aurora */
+.objectives-dag .objectives-node.is-focus circle { stroke: var(--brass); stroke-width: 2.4; stroke-dasharray: none; }
+.objectives-dag .objectives-node.is-pre circle { stroke: var(--aurora); stroke-width: 2.2; stroke-dasharray: none; }
+.objectives-dag .objectives-edge.is-hot { stroke: var(--aurora); stroke-width: 2.2; }

@@ -355,7 +355,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
         operationOrderFromNodes(theaterOperations),
         canvas.collapsedGroups,
-        // 패널로 서지 않는 단계 Operation 은 순환에서 뺀다 — 셰프 하나가 묶음을 대표한다.
+        // 패널로 서지 않는 단계 Operation 은 순환에서 뺀다 — 지휘관 하나가 묶음을 대표한다.
         [...canvas.minimized, ...getAlwaysHiddenGeometryIds()],
       );
       if (arrowAction === "maximize-toggle" || arrowAction === "minimize") {

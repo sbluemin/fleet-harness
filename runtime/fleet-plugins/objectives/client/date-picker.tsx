@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { TodoMessageKey } from "./i18n/index.js";
+import type { ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
  * 기한 달력 — OS 달력 대신 표면의 문법으로 그린 팝오버. 월 하나, 요일 머리, 오늘은 고리, 고른 날은 brass.
@@ -23,7 +23,7 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose }: {
   readonly anchor: DOMRect;
   readonly value: string | null;
   readonly language: "en" | "ko";
-  readonly t: Translate<TodoMessageKey>;
+  readonly t: Translate<ObjectiveMessageKey>;
   readonly onPick: (value: string | null) => void;
   readonly onClose: () => void;
 }) {
@@ -80,25 +80,25 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose }: {
   const cells = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
   const weekdays = Array.from({ length: 7 }, (_, index) => new Intl.DateTimeFormat(locale, { weekday: "narrow" }).format(addDays(gridStart, index)));
   const monthLabel = new Intl.DateTimeFormat(locale, { year: "numeric", month: "long" }).format(month);
-  const quick: { key: TodoMessageKey; value: string | null }[] = [
-    { key: "todo.date.today", value: iso(today) },
-    { key: "todo.date.tomorrow", value: iso(addDays(today, 1)) },
-    { key: "todo.date.nextWeek", value: iso(addDays(today, 7)) },
+  const quick: { key: ObjectiveMessageKey; value: string | null }[] = [
+    { key: "objectives.date.today", value: iso(today) },
+    { key: "objectives.date.tomorrow", value: iso(addDays(today, 1)) },
+    { key: "objectives.date.nextWeek", value: iso(addDays(today, 7)) },
   ];
 
   return createPortal(
-    <div ref={cardRef} className="todo-cal" role="dialog" aria-label={t("todo.schedule.due")} tabIndex={-1} style={pos} onKeyDown={onKey}>
-      <div className="todo-cal-quick">
-        {quick.map((entry) => <button key={entry.key} type="button" className={`todo-cal-chip${value === entry.value ? " is-on" : ""}`} onClick={() => { onPick(entry.value); onClose(); }}>{t(entry.key)}</button>)}
-        {value ? <button type="button" className="todo-cal-chip is-clear" onClick={() => { onPick(null); onClose(); }}>{t("todo.date.clear")}</button> : null}
+    <div ref={cardRef} className="objectives-cal" role="dialog" aria-label={t("objectives.schedule.due")} tabIndex={-1} style={pos} onKeyDown={onKey}>
+      <div className="objectives-cal-quick">
+        {quick.map((entry) => <button key={entry.key} type="button" className={`objectives-cal-chip${value === entry.value ? " is-on" : ""}`} onClick={() => { onPick(entry.value); onClose(); }}>{t(entry.key)}</button>)}
+        {value ? <button type="button" className="objectives-cal-chip is-clear" onClick={() => { onPick(null); onClose(); }}>{t("objectives.date.clear")}</button> : null}
       </div>
-      <div className="todo-cal-head">
-        <button type="button" className="todo-glyph" aria-label={t("todo.date.prevMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>
-        <span className="todo-cal-month">{monthLabel}</span>
-        <button type="button" className="todo-glyph" aria-label={t("todo.date.nextMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button>
+      <div className="objectives-cal-head">
+        <button type="button" className="objectives-glyph" aria-label={t("objectives.date.prevMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>
+        <span className="objectives-cal-month">{monthLabel}</span>
+        <button type="button" className="objectives-glyph" aria-label={t("objectives.date.nextMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button>
       </div>
-      <div className="todo-cal-grid" role="grid">
-        {weekdays.map((day, index) => <span key={`w${index}`} className="todo-cal-wd" aria-hidden="true">{day}</span>)}
+      <div className="objectives-cal-grid" role="grid">
+        {weekdays.map((day, index) => <span key={`w${index}`} className="objectives-cal-wd" aria-hidden="true">{day}</span>)}
         {cells.map((day) => {
           const key = iso(day);
           const outside = day.getMonth() !== month.getMonth();
@@ -113,7 +113,7 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose }: {
               aria-selected={isSelected}
               aria-current={isToday ? "date" : undefined}
               tabIndex={-1}
-              className={`todo-cal-day${outside ? " is-outside" : ""}${isToday ? " is-today" : ""}${isSelected ? " is-selected" : ""}${isCursor ? " is-cursor" : ""}${day < today ? " is-past" : ""}`}
+              className={`objectives-cal-day${outside ? " is-outside" : ""}${isToday ? " is-today" : ""}${isSelected ? " is-selected" : ""}${isCursor ? " is-cursor" : ""}${day < today ? " is-past" : ""}`}
               onClick={() => { onPick(key); onClose(); }}
             >
               {day.getDate()}

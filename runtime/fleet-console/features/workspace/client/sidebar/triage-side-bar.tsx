@@ -88,8 +88,8 @@ export function TriageSideBar({
   onOpenOperationMenu,
 }: TriageSideBarProps) {
   const t = useT();
-  // 묶음: War Room 에서 단계 Operation 은 화면에도 목록에도 서지 않는다 — 큐와 목록은 셰프만 알고,
-  // 셰프는 단계의 상태가 아니라 자기 상태로만 무대에 오른다.
+  // 묶음: War Room 에서 단계 Operation 은 화면에도 목록에도 서지 않는다 — 큐와 목록은 지휘관만 알고,
+  // 지휘관은 단계의 상태가 아니라 자기 상태로만 무대에 오른다.
   const clusterIndex = useClusterIndex();
   // 지목·미룸·치워둠은 콘솔 상태를 바꾸지 않는 store 단독 변화다 — 캔버스와 같은 리비전 구독으로
   // 사이드바도 함께 리렌더한다. 유휴 도착도 awaiting 섹션 판정에 관여하므로 같이 구독한다.

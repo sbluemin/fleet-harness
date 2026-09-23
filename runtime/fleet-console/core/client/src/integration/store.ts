@@ -547,7 +547,7 @@ export function setActiveTheater(theaterId: string | null): void {
   setState({ activeTheaterId: theaterId });
 }
 
-// 화면에 패널로 서지 않는 Operation(할 일 묶음의 단계)을 가리킨 포커스를 대표 Operation(셰프)으로 돌리는 포트 —
+// 화면에 패널로 서지 않는 Operation(목표 묶음의 단계)을 가리킨 포커스를 대표 Operation(지휘관)으로 돌리는 포트 —
 // store 는 묶음을 모른다(플러그인 레지스트리는 React 컨텍스트). 캔버스가 묶음 색인을 셀 때마다 갈아 끼우고,
 // 돌려받은 id 가 실제로 활성화된다(본문 교체 같은 부수 효과는 등록한 쪽이 진다).
 let redirectOperationFocus: (operationId: string) => string = (operationId) => operationId;
@@ -717,7 +717,7 @@ export function focusOperation(requestedOperationId: string): void {
   noteOperationFocused(operationId);
   const suppressSwitch = focusTheaterSwitchSuppressed() && operation.theaterId !== state.activeTheaterId;
   if (!suppressSwitch) writeStoredActiveTheaterId(operation.theaterId);
-  // 돌려진 포커스(숨은 단계 → 셰프)라도 사용자가 따라온 알림·도착 표식은 요청한 Operation 의 것이다 — 둘 다 치운다.
+  // 돌려진 포커스(숨은 단계 → 지휘관)라도 사용자가 따라온 알림·도착 표식은 요청한 Operation 의 것이다 — 둘 다 치운다.
   const redirected = requestedOperationId !== operationId;
   if (redirected) acknowledgeIdleArrival(requestedOperationId);
   const activeOperationAcknowledged = acknowledgeIdleArrival(operationId);

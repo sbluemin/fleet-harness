@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 /**
- * 할 일 도메인 — 서버·클라이언트가 같은 모양을 본다.
+ * 목표 도메인 — 서버·클라이언트가 같은 모양을 본다.
  *
- * 할 일은 사람의 의도 단위, Operation은 실행 단위다. 할 일 하나에 조율자 슬롯 하나, 단계마다 담당 슬롯
+ * 목표는 사람의 의도 단위, Operation은 실행 단위다. 목표 하나에 조율자 슬롯 하나, 단계마다 담당 슬롯
  * 하나만 있다(1:1). 목록은 따로 두지 않는다 — Operation 그룹이 곧 목록이며 항목은 groupId 만 참조한다.
  */
 
@@ -29,7 +29,7 @@ export interface Slot {
   readonly sessionName?: string;
 }
 
-export interface TodoStep {
+export interface ObjectiveStep {
   readonly id: string;
   readonly text: string;
   readonly done: boolean;
@@ -40,17 +40,17 @@ export interface TodoStep {
   readonly why?: Readonly<Record<string, string>>;
   readonly slot: Slot | null;
   /**
-   * 기록 — 셰프가 이 단계를 완료로 표시할 때마다 한 건씩 쌓인다(다시 작업해 다시 완료해도 한 건). 오래된 것부터.
+   * 기록 — 지휘관이 이 단계를 완료로 표시할 때마다 한 건씩 쌓인다(다시 작업해 다시 완료해도 한 건). 오래된 것부터.
    * 가장 최근 기록이 다음 단계에 넘길 내용이다.
    */
   readonly records?: readonly StepRecord[];
   /** 사람이 읽은 기록 수 — 이보다 많으면 안 읽은 기록이 있다. */
   readonly seen?: number;
-  /** 사전 배정 — self: 셰프가 직접 · route: 시작할 때 AI Gateway 라우팅이 난이도로 모델을 고름 · model: 이 모델·강도. 없으면 셰프 프리셋. */
+  /** 사전 배정 — self: 지휘관이 직접 · route: 시작할 때 AI Gateway 라우팅이 난이도로 모델을 고름 · model: 이 모델·강도. 없으면 지휘관 프리셋. */
   readonly assign?: StepAssign;
   /**
-   * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 단계. 준비되지 않으며, 셰프가 선행을 정하거나(도구의 step after·plan)
-   * 사람이 레시피에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다. 사람은 단계를 더하기만 하고 자리는 셰프가 잡는다.
+   * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 단계. 준비되지 않으며, 지휘관이 선행을 정하거나(도구의 step after·plan)
+   * 사람이 편성에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다. 사람은 단계를 더하기만 하고 자리는 지휘관이 잡는다.
    */
   readonly unplaced?: true;
 }
@@ -70,7 +70,7 @@ export const latestRecord = (step: { readonly records?: readonly StepRecord[] })
 export const unseenRecords = (step: { readonly records?: readonly StepRecord[]; readonly seen?: number }): number => Math.max(0, (step.records?.length ?? 0) - (step.seen ?? 0));
 
 /**
- * 셰프의 요약을 기록의 줄로 — 빈 줄은 버리고, 1–3줄이며 줄마다 160자 이하여야 한다. 맞지 않으면 null(도구가 거절한다).
+ * 지휘관의 요약을 기록의 줄로 — 빈 줄은 버리고, 1–3줄이며 줄마다 160자 이하여야 한다. 맞지 않으면 null(도구가 거절한다).
  * 문자열은 줄바꿈으로 나눈다(옛 `result` 인자).
  */
 export function recordLines(summary: readonly string[] | string): readonly string[] | null {
@@ -85,15 +85,15 @@ export interface StepAssign {
   readonly effort?: string;
 }
 
-/** 단계의 위임 — 배정이 없는(옛) 단계는 「셰프 직접」으로 읽는다. 새 단계의 기본값도 같다. */
+/** 단계의 위임 — 배정이 없는(옛) 단계는 「지휘관 직접」으로 읽는다. 새 단계의 기본값도 같다. */
 export const DEFAULT_STEP_ASSIGN: StepAssign = { mode: "self" };
 export const assignModeOf = (step: { readonly assign?: StepAssign }): StepAssign["mode"] => step.assign?.mode ?? "self";
 
 /**
  * 메모에 붙인 이미지 — 파일은 플러그인 데이터 디렉터리의 항목별 폴더에 id 이름으로 있다. 브라우저에 가는 항목에는 경로를 싣지 않는다
- * (파일은 id 로 받아 온다). 절대 경로는 셰프의 도구 응답에만 실린다.
+ * (파일은 id 로 받아 온다). 절대 경로는 지휘관의 도구 응답에만 실린다.
  */
-export interface TodoAttachment {
+export interface ObjectiveAttachment {
   readonly id: string;
   /** 「이미지 n」의 n — 붙인 순서로 늘고, 지워도 다른 번호가 밀리지 않는다(메모가 번호로 가리킨다). */
   readonly n: number;
@@ -105,20 +105,20 @@ export interface TodoAttachment {
   readonly at: number;
 }
 
-export interface TodoAuthor {
+export interface ObjectiveAuthor {
   readonly kind: "human" | "operation";
   readonly operationId?: string;
   readonly title?: string;
 }
 
-export interface TodoHistoryEntry {
+export interface ObjectiveHistoryEntry {
   readonly at: number;
   readonly kind: "assign" | "release" | "replace" | "plan";
   readonly stepId?: string;
   readonly operationId?: string;
 }
 
-export interface TodoDone {
+export interface ObjectiveDone {
   readonly at: number;
   readonly by: SlotBy;
   /** 완료하며 비운 슬롯 — 되돌리기용. `stepId` 가 없으면 조율자 슬롯. */
@@ -127,45 +127,45 @@ export interface TodoDone {
 
 export type LaunchView = "chat" | "terminal";
 
-/** 셰프에게 알릴 만한 사람의 편집 — 일정·중요 표시·모델 같은 셰프의 일과 무관한 값은 넣지 않는다. */
-export type TodoEditKind = "title" | "note" | "steps" | "recipe" | "assign";
+/** 지휘관에게 알릴 만한 사람의 편집 — 일정·중요 표시·모델 같은 지휘관의 일과 무관한 값은 넣지 않는다. */
+export type ObjectiveEditKind = "title" | "note" | "steps" | "recipe" | "assign";
 
-export interface TodoItem {
+export interface ObjectiveItem {
   readonly id: string;
   readonly theaterId: string;
   readonly groupId: string | null;
   readonly title: string;
   readonly note: string;
   /** 메모에 붙인 이미지 — 메모 아래 띠에 붙인 순서로 선다. */
-  readonly attachments?: readonly TodoAttachment[];
-  /** 쿠킹에 함께 주는 맥락 — 조율자가 단계를 짤 때 읽는 사람의 프롬프트. */
+  readonly attachments?: readonly ObjectiveAttachment[];
+  /** 구상에 함께 주는 맥락 — 조율자가 단계를 짤 때 읽는 사람의 프롬프트. */
   readonly cook?: string;
-  /** 쿠킹 중 — 셰프가 단계·메모만 짜는 국면. 시작·중지·완료가 끝낸다. 이 동안은 계획을 써도 담당이 뜨지 않는다. */
+  /** 구상 중 — 지휘관이 단계·메모만 짜는 국면. 시작·중지·완료가 끝낸다. 이 동안은 계획을 써도 담당이 뜨지 않는다. */
   readonly cooking?: boolean;
-  /** 검토 대기 — 셰프가 모든 단계를 마쳤다고 사람에게 넘긴 상태(가승인). 완료는 사람이 검토해 누른다. 새 작업(쿠킹·시작·단계 되돌림)이 지운다. */
+  /** 검토 대기 — 지휘관이 모든 단계를 마쳤다고 사람에게 넘긴 상태(가승인). 완료는 사람이 검토해 누른다. 새 작업(구상·시작·단계 되돌림)이 지운다. */
   readonly review?: { readonly at: number; readonly summary: string };
   /**
-   * 셰프가 마지막으로 읽은 뒤 사람이 바꾼 것 — 셰프가 있는 동안의 화면 편집만 쌓인다. 「시작」이 셰프에게 한 줄로 알리고
-   * 다시 읽게 한다. 셰프가 일하는 동안 쌓이면 하단 「중단」 자리가 「스티어링」이 되어, 누르면 같은 한 줄이 간다. 셰프가 이 항목을 읽거나(view item/mine), 새 셰프가 뜨거나, 알림이 나가면 지워진다.
+   * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것 — 지휘관이 있는 동안의 화면 편집만 쌓인다. 「시작」이 지휘관에게 한 줄로 알리고
+   * 다시 읽게 한다. 지휘관이 일하는 동안 쌓이면 하단 「중단」 자리가 「스티어링」이 되어, 누르면 같은 한 줄이 간다. 지휘관이 이 항목을 읽거나(view item/mine), 새 지휘관이 뜨거나, 알림이 나가면 지워진다.
    */
-  readonly edited?: { readonly at: number; readonly kinds: readonly TodoEditKind[] };
+  readonly edited?: { readonly at: number; readonly kinds: readonly ObjectiveEditKind[] };
   readonly important: boolean;
   readonly dueDate: string | null;
   readonly today: boolean;
-  readonly done: TodoDone | null;
+  readonly done: ObjectiveDone | null;
   readonly slot: Slot | null;
   /** 조율자와 담당의 시작 옵션. view 는 담당이 없는 시작에만 효력이 있다 — 담당과 대화하는 조율자는 늘 CLI 다. */
   readonly launch: { readonly model?: string; readonly effort?: string; readonly view?: LaunchView };
-  readonly steps: readonly TodoStep[];
-  readonly history: readonly TodoHistoryEntry[];
-  readonly author: TodoAuthor;
+  readonly steps: readonly ObjectiveStep[];
+  readonly history: readonly ObjectiveHistoryEntry[];
+  readonly author: ObjectiveAuthor;
   readonly createdAt: number;
   readonly updatedAt: number;
 }
 
-export interface TodoTheaterFile {
+export interface ObjectiveTheaterFile {
   readonly version: 1;
-  readonly items: readonly TodoItem[];
+  readonly items: readonly ObjectiveItem[];
 }
 
 // ═══ wire schemas ═════════════════════════════════════════════════════════════
@@ -207,7 +207,7 @@ export const stepPatchSchema = z.object({
   done: z.boolean().optional(),
   after: z.array(ids).max(MAX_STEPS).optional(),
   why: z.record(ids, z.string().max(300)).optional(),
-  /** null 이면 배정을 지운다(셰프 프리셋 상속). */
+  /** null 이면 배정을 지운다(지휘관 프리셋 상속). */
   assign: stepAssignSchema.nullable().optional(),
 }).strict();
 
@@ -216,7 +216,7 @@ export const planSchema = z.object({
     text: stepText,
     // index 는 이 plan 의 steps 순서, stepId 는 이미 있는(완료·배정된) 단계 — 새 단계가 기존 단계 뒤에 설 수 있다.
     after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).max(MAX_STEPS).optional(),
-    /** 셰프의 위임 판단 — self 는 직접, route 는 라우팅으로 담당을 띄움. 없으면 self. */
+    /** 지휘관의 위임 판단 — self 는 직접, route 는 라우팅으로 담당을 띄움. 없으면 self. */
     assign: z.enum(["self", "route"]).optional(),
   })).min(1).max(MAX_STEPS),
 }).strict();
@@ -228,12 +228,12 @@ export type StepPatchInput = z.output<typeof stepPatchSchema>;
 export type PlanInput = z.output<typeof planSchema>;
 
 /** 브라우저·Console Use 양쪽으로 나가는 사건 프레임. */
-export const TODO_ITEM_CHANNEL = "todo:item";
-export interface TodoItemEvent {
+export const OBJECTIVE_ITEM_CHANNEL = "objectives:item";
+export interface ObjectiveItemEvent {
   readonly op: "upsert" | "remove";
   readonly theaterId: string;
   readonly itemId: string;
-  readonly item?: TodoItem;
+  readonly item?: ObjectiveItem;
   /** 순서가 바뀌었을 때만 — 그 Theater 항목 id 의 새 순서 전체. 받는 쪽은 이 순서로 다시 줄 세운다. */
   readonly order?: readonly string[];
 }
@@ -242,12 +242,12 @@ export interface TodoItemEvent {
 export type CoordinatorMode = "direct" | "coordinate" | "mixed";
 
 /** 준비 — 미분류 단계는 자리가 정해질 때까지 준비되지 않는다. 선행 없는 단계가 곧 「병렬」로 읽히는 것을 막는다. */
-export function stepReady(item: TodoItem, step: TodoStep): boolean {
+export function stepReady(item: ObjectiveItem, step: ObjectiveStep): boolean {
   if (step.unplaced) return false;
   return step.after.every((id) => item.steps.find((candidate) => candidate.id === id)?.done ?? true);
 }
 
-export function coordinatorMode(item: TodoItem): CoordinatorMode {
+export function coordinatorMode(item: ObjectiveItem): CoordinatorMode {
   const open = item.steps.filter((step) => !step.done);
   if (open.length === 0) return "direct";
   const assigned = open.filter((step) => step.slot).length;
@@ -256,7 +256,7 @@ export function coordinatorMode(item: TodoItem): CoordinatorMode {
 }
 
 /** 간선 추가가 순환을 만드는지 — `from` 이 `to` 의 후손이면 순환. */
-export function wouldCycle(steps: readonly TodoStep[], from: string, to: string): boolean {
+export function wouldCycle(steps: readonly ObjectiveStep[], from: string, to: string): boolean {
   if (from === to) return true;
   const byId = new Map(steps.map((step) => [step.id, step]));
   const seen = new Set<string>();
@@ -271,14 +271,14 @@ export function wouldCycle(steps: readonly TodoStep[], from: string, to: string)
   return false;
 }
 
-/** 레시피에 아직 자리가 없는 단계 — 사람이 선행 없이 더했고 끝나지 않았다. 그래프의 「미분류」 칸과 목록 맨 아래에 선다. */
-export const isLoose = (step: TodoStep): boolean => !!step.unplaced && !step.done;
+/** 편성에 아직 자리가 없는 단계 — 사람이 선행 없이 더했고 끝나지 않았다. 그래프의 「미분류」 칸과 목록 맨 아래에 선다. */
+export const isLoose = (step: ObjectiveStep): boolean => !!step.unplaced && !step.done;
 
 /**
- * 레시피 열 — 가장 긴 선행 사슬의 길이(선행 없음 = 0). 그래프의 열 배치와 단계 순서가 같은 값을 쓴다.
+ * 편성 열 — 가장 긴 선행 사슬의 길이(선행 없음 = 0). 그래프의 열 배치와 단계 순서가 같은 값을 쓴다.
  * 순환이 남아 있어도(옛 데이터) 끝난다.
  */
-export function stepDepths(steps: readonly TodoStep[]): Map<string, number> {
+export function stepDepths(steps: readonly ObjectiveStep[]): Map<string, number> {
   const byId = new Map(steps.map((step) => [step.id, step]));
   const depth = new Map<string, number>();
   const depthOf = (id: string, seen: Set<string>): number => {
@@ -296,20 +296,20 @@ export function stepDepths(steps: readonly TodoStep[]): Map<string, number> {
 }
 
 /**
- * 레시피 순 — 목록·번호·셰프 도구의 index·담당 세션 이름이 모두 이 순서를 쓴다.
+ * 편성 순 — 목록·번호·지휘관 도구의 index·담당 세션 이름이 모두 이 순서를 쓴다.
  * 열(깊이)이 앞선 단계가 먼저, 같은 열이면 지금 순서를 지킨다. 그래서 선행은 늘 뒤따르는 단계보다 앞에 서고,
  * 그래프 번호는 왼쪽에서 오른쪽으로 커진다. 미분류 단계는 지금 순서대로 맨 아래.
- * 이미 레시피 순이면 같은 배열을 돌려준다.
+ * 이미 편성 순이면 같은 배열을 돌려준다.
  */
-export function recipeOrder(steps: readonly TodoStep[]): readonly TodoStep[] {
+export function lineupOrder(steps: readonly ObjectiveStep[]): readonly ObjectiveStep[] {
   const depth = stepDepths(steps);
   const at = new Map(steps.map((step, index) => [step.id, index]));
-  const rank = (step: TodoStep) => (isLoose(step) ? Number.MAX_SAFE_INTEGER : depth.get(step.id) ?? 0);
+  const rank = (step: ObjectiveStep) => (isLoose(step) ? Number.MAX_SAFE_INTEGER : depth.get(step.id) ?? 0);
   const sorted = [...steps].sort((a, b) => rank(a) - rank(b) || at.get(a.id)! - at.get(b.id)!);
   return sorted.every((step, index) => step === steps[index]) ? steps : sorted;
 }
 
-export function hasCycle(steps: readonly TodoStep[]): boolean {
+export function hasCycle(steps: readonly ObjectiveStep[]): boolean {
   const byId = new Map(steps.map((step) => [step.id, step]));
   const state = new Map<string, 1 | 2>();
   const visit = (id: string): boolean => {

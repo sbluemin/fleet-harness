@@ -151,7 +151,7 @@ export interface ClientExecutionProvider {
   /**
    * 다른 플러그인이 소유한 Operation 의 캡션·사이드바 칩에 얹는 표식.
    *
-   * `captionActions`·`operationMarks` 는 Operation 종류의 소유자만 그린다. 그러나 "이 Operation 이 어느 할 일에
+   * `captionActions`·`operationMarks` 는 Operation 종류의 소유자만 그린다. 그러나 "이 Operation 이 어느 목표에
    * 연결돼 있는가"처럼 Operation 을 소유하지 않는 플러그인이 아는 사실도 그 자리에 서야 한다. 호스트가 캡션의
    * 액션 무리 앞과 칩의 이름 뒤에 그린다. 그릴 것이 없으면 null 을 돌려주고, 그러면 자리도 없다.
    */
@@ -484,7 +484,7 @@ export interface OperationCluster {
   /** 플러그인 안에서 유일한 id. 호스트가 `<pluginId>:` 를 앞에 붙인다. */
   readonly id: string;
   readonly theaterId: string;
-  /** 묶음의 제목(할 일 제목) — 툴팁과 War Room 위치 표시에 선다. */
+  /** 묶음의 제목(목표 제목) — 툴팁과 War Room 위치 표시에 선다. */
   readonly title: string;
   /** 뿌리(조율자) operationId. 뿌리는 구성원 목록에 들지 않는다. */
   readonly root: string;

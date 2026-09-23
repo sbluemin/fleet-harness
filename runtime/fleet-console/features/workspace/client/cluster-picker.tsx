@@ -7,21 +7,21 @@ import { useT } from "../../../core/client/src/i18n/index.js";
 import type { ClusterLayout } from "./operation-clusters.js";
 
 /**
- * 묶음 피커 — 셰프 캡션의 단계 띠를 누르면 뜬다. 머리는 셰프 행 하나(활동 낱말 + 완료 셈) — 제목은 바로 위
- * 캡션이 이미 말하므로 되풀이하지 않는다. 그 아래 레시피 순서의 단계 전부: Operation 이 있는 단계를 고르면 호출자가
- * 정한 대로 그 본문이 셰프 패널에 선다(단계는 어느 모드에서도 패널로 서지 않는다). 아직 Operation 이
- * 없는 단계는 흐린 글자로 자리를 지키고, 누르면 할 일 표면의 그 단계로 간다. 오른쪽 낱말은 진행(실행 중·결정 대기·
- * 준비됨·n 뒤), 끝난 단계 아래엔 남긴 산출 한 줄. 마지막 줄은 할 일 표면으로 가는 문. 색은 진행 사각(신호 토큰)뿐,
+ * 묶음 피커 — 지휘관 캡션의 단계 띠를 누르면 뜬다. 머리는 지휘관 행 하나(활동 낱말 + 완료 셈) — 제목은 바로 위
+ * 캡션이 이미 말하므로 되풀이하지 않는다. 그 아래 편성 순서의 단계 전부: Operation 이 있는 단계를 고르면 호출자가
+ * 정한 대로 그 본문이 지휘관 패널에 선다(단계는 어느 모드에서도 패널로 서지 않는다). 아직 Operation 이
+ * 없는 단계는 흐린 글자로 자리를 지키고, 누르면 목표 표면의 그 단계로 간다. 오른쪽 낱말은 진행(실행 중·결정 대기·
+ * 준비됨·n 뒤), 끝난 단계 아래엔 남긴 산출 한 줄. 마지막 줄은 목표 표면으로 가는 문. 색은 진행 사각(신호 토큰)뿐,
  * 고른 줄은 brass 워시.
  */
 export function ClusterPicker({ layout, anchor, current, rootActivity, onPick, onOpenItem, onClose }: {
   readonly layout: ClusterLayout;
   readonly anchor: DOMRect;
-  /** 지금 셰프 패널이 보이는 Operation(본문 교체) — 셰프 자신이면 null. */
+  /** 지금 지휘관 패널이 보이는 Operation(본문 교체) — 지휘관 자신이면 null. */
   readonly current: string | null;
   readonly rootActivity: "idle" | "running" | "awaiting" | "background" | "ended" | null;
   readonly onPick: (operationId: string) => void;
-  /** 할 일 표면으로 — 자리표시 단계의 id 가 오면 그 단계를 집는다. */
+  /** 목표 표면으로 — 자리표시 단계의 id 가 오면 그 단계를 집는다. */
   readonly onOpenItem?: (operationId?: string) => void;
   readonly onClose: () => void;
 }) {

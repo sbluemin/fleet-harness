@@ -7,7 +7,7 @@ import { usePluginRegistry } from "../../../core/client/src/integration/plugin-r
 /**
  * 묶음 — 플러그인이 선언한 실행 구조를 네 모드가 같은 셈법으로 읽는 자리.
  *
- * 단계 Operation 은 어느 모드에서도 패널로 서지 않는다 — 셰프 하나가 묶음을 대표하고, 셰프 패널이 본문 교체로 단계를 보인다.
+ * 단계 Operation 은 어느 모드에서도 패널로 서지 않는다 — 지휘관 하나가 묶음을 대표하고, 지휘관 패널이 본문 교체로 단계를 보인다.
  * 여기서 계산하는 것은 순서·깊이·행뿐이다. 색과 모션은 각 표면의 CSS 가, 진실은 플러그인이 진다.
  */
 
@@ -46,7 +46,7 @@ const PROGRESS_URGENCY: Record<OperationClusterProgress, number> = { awaiting: 0
 
 /**
  * 깊이·행·순서를 매긴다. `counts` 가 거짓인 구성원(자리표시)은 선행 경로를 이어 주기만 하고 자기 깊이를 더하지 않으며,
- * 결과 목록에도 들지 않는다 — 그래서 셰프가 직접 하는 단계 사이에 위임 단계가 하나 있어도 깊이는 한 칸이다.
+ * 결과 목록에도 들지 않는다 — 그래서 지휘관이 직접 하는 단계 사이에 위임 단계가 하나 있어도 깊이는 한 칸이다.
  */
 function laidOut(cluster: OperationCluster, counts: (member: OperationClusterMember) => boolean): ClusterFormation {
   const byId = new Map(cluster.members.map((member) => [member.operationId, member]));
@@ -135,15 +135,15 @@ export function useClusterIndex(): ClusterIndex {
 // ── 구성원 숨김 ────────────────────────────────────────────────────────────────────────────────────
 /**
  * 화면에서 접히는 구성원 — 모든 모드에서 전부. 단계 Operation 은 뒤에서 돌고 패널을 세우지 않으며(본문은 풀에 대기),
- * 셰프 패널이 노드 줄·진척도 목록의 본문 교체로 그들을 보여 준다.
+ * 지휘관 패널이 노드 줄·진척도 목록의 본문 교체로 그들을 보여 준다.
  */
 export function hiddenClusterMembers(index: ClusterIndex): ReadonlySet<string> {
   return new Set(index.memberOf.keys());
 }
 
 // ── 본문 선택 ──────────────────────────────────────────────────────────────────────────────────────
-// 셰프 패널이 어느 Operation 의 본문(PTY·채팅뷰)을 보이는가. 세션은 그대로고 마운트만 이 프레임의 슬롯으로 옮겨 온다.
-// 세션 안에서만 산다 — 새로 열면 셰프 자신으로 돌아온다.
+// 지휘관 패널이 어느 Operation 의 본문(PTY·채팅뷰)을 보이는가. 세션은 그대로고 마운트만 이 프레임의 슬롯으로 옮겨 온다.
+// 세션 안에서만 산다 — 새로 열면 지휘관 자신으로 돌아온다.
 let bodySelection: Readonly<Record<string, string>> = {};
 const bodyListeners = new Set<() => void>();
 export function selectClusterBody(rootId: string, operationId: string | null): void {

@@ -2,16 +2,16 @@ import { useSyncExternalStore } from "react";
 
 import type { ClientApiCapability, ConsoleOperationSummary, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
-import type { TodoItem, TodoItemEvent } from "../server/types.js";
+import type { ObjectiveItem, ObjectiveItemEvent } from "../server/types.js";
 
 /**
  * 표면·캡션·팔레트가 함께 구독하는 모듈 스토어.
  *
- * 화면은 응답이 아니라 사건으로 갱신된다 — 자기 변경도 `todo:item` 프레임으로 들어온다. 그룹은 코어의
+ * 화면은 응답이 아니라 사건으로 갱신된다 — 자기 변경도 `objectives:item` 프레임으로 들어온다. 그룹은 코어의
  * `group:changed`/`group:removed` 를 같은 스트림에서 듣는다. Operation 의 활동은 호스트 consoleState 가 진실이다.
  */
 
-export interface TodoGroup {
+export interface ObjectiveGroup {
   readonly id: string;
   readonly name: string;
   readonly color: string;
@@ -20,8 +20,8 @@ export interface TodoGroup {
 }
 
 interface TheaterState {
-  readonly items: readonly TodoItem[];
-  readonly groups: readonly TodoGroup[];
+  readonly items: readonly ObjectiveItem[];
+  readonly groups: readonly ObjectiveGroup[];
   readonly loaded: boolean;
   readonly launchAvailable: boolean;
 }
@@ -50,10 +50,10 @@ function setTheater(theaterId: string, next: Partial<TheaterState>): void {
   notify();
 }
 
-export function installTodoState(ctx: PluginInstallContext): () => void {
+export function installObjectiveState(ctx: PluginInstallContext): () => void {
   installed = ctx;
-  const offItem = ctx.consoleEvents.subscribe("todo:item", (payload) => {
-    const event = payload as TodoItemEvent | null;
+  const offItem = ctx.consoleEvents.subscribe("objectives:item", (payload) => {
+    const event = payload as ObjectiveItemEvent | null;
     if (!event || typeof event.itemId !== "string" || typeof event.theaterId !== "string") return;
     const current = theaters.get(event.theaterId) ?? EMPTY;
     if (event.op === "remove") { setTheater(event.theaterId, { items: current.items.filter((item) => item.id !== event.itemId) }); return; }
@@ -69,7 +69,7 @@ export function installTodoState(ctx: PluginInstallContext): () => void {
     setTheater(event.theaterId, { items });
   });
   const offGroup = ctx.consoleEvents.subscribe("group:changed", (payload) => {
-    const group = (payload as { group?: TodoGroup } | null)?.group;
+    const group = (payload as { group?: ObjectiveGroup } | null)?.group;
     if (!group || typeof group.id !== "string" || typeof group.theaterId !== "string") return;
     const current = theaters.get(group.theaterId) ?? EMPTY;
     const exists = current.groups.some((candidate) => candidate.id === group.id);
@@ -93,12 +93,12 @@ export function installTodoState(ctx: PluginInstallContext): () => void {
   return () => { offItem(); offGroup(); offRemoved(); offConsole(); if (installed === ctx) installed = null; };
 }
 
-export function todoApi(): ClientApiCapability | null {
+export function objectivesApi(): ClientApiCapability | null {
   return installed?.api ?? null;
 }
 
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
-  const response = await api.fetch("todo", path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const response = await api.fetch("objectives", path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const payload = await response.json().catch(() => null) as (T & { error?: string }) | null;
   if (!response.ok) throw new Error(payload?.error ?? `http_${response.status}`);
   return payload as T;
@@ -109,7 +109,7 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
   if (current?.loaded && !force) return Promise.resolve();
   const pending = inflight.get(theaterId);
   if (pending) return pending;
-  const task = post<{ items: TodoItem[]; groups: TodoGroup[]; launch: { available: boolean } }>(api, "/state", { theaterId })
+  const task = post<{ items: ObjectiveItem[]; groups: ObjectiveGroup[]; launch: { available: boolean } }>(api, "/state", { theaterId })
     .then((state) => { setTheater(theaterId, { items: state.items, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available }); })
     .catch(() => { setTheater(theaterId, { loaded: true }); })
     .finally(() => { inflight.delete(theaterId); });
@@ -117,7 +117,7 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
   return task;
 }
 
-export function subscribeTodo(listener: () => void): () => void {
+export function subscribeObjective(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
@@ -130,8 +130,8 @@ export function readTheater(theaterId: string | null): TheaterState {
   return theaterId ? theaters.get(theaterId) ?? EMPTY : EMPTY;
 }
 
-export function useTodoTheater(theaterId: string | null): TheaterState {
-  return useSyncExternalStore(subscribeTodo, () => readTheater(theaterId), () => readTheater(theaterId));
+export function useObjectiveTheater(theaterId: string | null): TheaterState {
+  return useSyncExternalStore(subscribeObjective, () => readTheater(theaterId), () => readTheater(theaterId));
 }
 
 export function operationSummaries(): readonly ConsoleOperationSummary[] {
@@ -139,7 +139,7 @@ export function operationSummaries(): readonly ConsoleOperationSummary[] {
 }
 
 export function useOperationSummaries(): readonly ConsoleOperationSummary[] {
-  return useSyncExternalStore(subscribeTodo, operationSummaries, operationSummaries);
+  return useSyncExternalStore(subscribeObjective, operationSummaries, operationSummaries);
 }
 
 export function activeTheaterId(): string | null {
@@ -157,87 +157,90 @@ export function takeReveal(): RevealTarget | null {
   return current;
 }
 export function useReveal(): RevealTarget | null {
-  return useSyncExternalStore(subscribeTodo, () => reveal, () => reveal);
+  return useSyncExternalStore(subscribeObjective, () => reveal, () => reveal);
 }
 
 /**
  * 표면의 보기 상태 — 고른 목록 · 펼친 항목 · 구획 접힘 · 기한 필터. 표면을 닫으면 컴포넌트는 내려가지만 보던 자리는
  * 여기 Theater 별로 남아, 다시 열면 그대로 선다. 보는 사람의 편의라 메모리에만 둔다(새로고침이면 처음부터).
  */
-export interface TodoViewState {
+export interface ObjectiveViewState {
   readonly list: string;
   readonly selected: string | null;
   readonly collapsed: Readonly<Record<string, boolean>>;
   readonly dueFilter: string;
 }
-const VIEW_DEFAULT: TodoViewState = { list: "all", selected: null, collapsed: { done: true }, dueFilter: "all" };
-const views = new Map<string, TodoViewState>();
+const VIEW_DEFAULT: ObjectiveViewState = { list: "all", selected: null, collapsed: { done: true }, dueFilter: "all" };
+const views = new Map<string, ObjectiveViewState>();
 const viewListeners = new Set<() => void>();
-export function readTodoView(theaterId: string | null): TodoViewState {
+export function readObjectiveView(theaterId: string | null): ObjectiveViewState {
   return (theaterId ? views.get(theaterId) : undefined) ?? VIEW_DEFAULT;
 }
-export function patchTodoView(theaterId: string | null, patch: (current: TodoViewState) => Partial<TodoViewState>): void {
+export function patchObjectiveView(theaterId: string | null, patch: (current: ObjectiveViewState) => Partial<ObjectiveViewState>): void {
   if (!theaterId) return;
-  const current = readTodoView(theaterId);
+  const current = readObjectiveView(theaterId);
   const next = { ...current, ...patch(current) };
   if (next.list === current.list && next.selected === current.selected && next.collapsed === current.collapsed && next.dueFilter === current.dueFilter) return;
   views.set(theaterId, next);
   for (const listener of viewListeners) listener();
 }
-export function useTodoView(theaterId: string | null): TodoViewState {
+export function useObjectiveView(theaterId: string | null): ObjectiveViewState {
   return useSyncExternalStore(
     (listener) => { viewListeners.add(listener); return () => { viewListeners.delete(listener); }; },
-    () => readTodoView(theaterId),
-    () => readTodoView(theaterId),
+    () => readObjectiveView(theaterId),
+    () => readObjectiveView(theaterId),
   );
 }
 
 export function focusOperation(operationId: string): void {
-  // 할 일 표면은 닫고 간다 — 확장 표면이 무대를 덮은 채로는 옮겨간 Operation 이 보이지 않는다.
-  if (installed?.surfaces.isOpen("todo")) installed.surfaces.closeSurface("todo");
+  // 목표 표면은 닫고 간다 — 확장 표면이 무대를 덮은 채로는 옮겨간 Operation 이 보이지 않는다.
+  if (installed?.surfaces.isOpen("objectives")) installed.surfaces.closeSurface("objectives");
   installed?.operations.focus(operationId);
 }
 
-const TODO_PANEL_ID = "todo";
-const TODO_PLACE_KEY = "todo.lastPlace";
-type TodoPlace = "rail" | "expanded";
+const OBJECTIVE_PANEL_ID = "objectives";
+const OBJECTIVE_PLACE_KEY = "objectives.lastPlace";
+const LEGACY_PLACE_KEY = "todo.lastPlace";
+type ObjectivePlace = "rail" | "expanded";
 
-function rememberTodoPlace(place: TodoPlace): void {
-  installed?.preferences.write(TODO_PLACE_KEY, place);
+function rememberObjectivePlace(place: ObjectivePlace): void {
+  installed?.preferences.write(OBJECTIVE_PLACE_KEY, place);
 }
 
 /** 아이콘·단축키는 현재 자리를 닫고, 닫혀 있으면 마지막 자리에 연다. */
-export function toggleTodoPlace(rail = installed?.rail, surfaces = installed?.surfaces): void {
+export function toggleObjectivePlace(rail = installed?.rail, surfaces = installed?.surfaces): void {
   if (!rail || !surfaces) return;
-  if (rail.isOpen(TODO_PANEL_ID)) { rememberTodoPlace("rail"); rail.close(TODO_PANEL_ID); return; }
-  if (surfaces.isOpen(TODO_PANEL_ID)) { rememberTodoPlace("expanded"); surfaces.closeSurface(TODO_PANEL_ID); return; }
-  const place = installed?.preferences.read<unknown>(TODO_PLACE_KEY, "rail") === "expanded" ? "expanded" : "rail";
-  if (place === "expanded") surfaces.open({ surfaceId: TODO_PANEL_ID });
-  else rail.open(TODO_PANEL_ID);
-  rememberTodoPlace(place);
+  if (rail.isOpen(OBJECTIVE_PANEL_ID)) { rememberObjectivePlace("rail"); rail.close(OBJECTIVE_PANEL_ID); return; }
+  if (surfaces.isOpen(OBJECTIVE_PANEL_ID)) { rememberObjectivePlace("expanded"); surfaces.closeSurface(OBJECTIVE_PANEL_ID); return; }
+  // 이름을 바꾸기 전(todo)에 기억한 자리도 처음 한 번은 따른다 — 여는 순간 새 키에 적힌다.
+  const remembered = installed?.preferences.read<unknown>(OBJECTIVE_PLACE_KEY, null) ?? installed?.preferences.read<unknown>(LEGACY_PLACE_KEY, "rail");
+  const place = remembered === "expanded" ? "expanded" : "rail";
+  if (place === "expanded") surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
+  else rail.open(OBJECTIVE_PANEL_ID);
+  rememberObjectivePlace(place);
 }
 
-export function expandTodo(): void {
-  if (!installed?.rail.isOpen(TODO_PANEL_ID)) return;
-  installed.surfaces.open({ surfaceId: TODO_PANEL_ID });
-  installed.rail.close(TODO_PANEL_ID);
-  rememberTodoPlace("expanded");
+export function expandObjective(): void {
+  if (!installed?.rail.isOpen(OBJECTIVE_PANEL_ID)) return;
+  installed.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
+  installed.rail.close(OBJECTIVE_PANEL_ID);
+  rememberObjectivePlace("expanded");
 }
 
-export function dockTodo(): void {
-  if (!installed?.surfaces.isOpen(TODO_PANEL_ID)) return;
-  installed.rail.open(TODO_PANEL_ID);
-  installed.surfaces.closeSurface(TODO_PANEL_ID);
-  rememberTodoPlace("rail");
+export function dockObjective(): void {
+  if (!installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
+  installed.rail.open(OBJECTIVE_PANEL_ID);
+  installed.surfaces.closeSurface(OBJECTIVE_PANEL_ID);
+  rememberObjectivePlace("rail");
 }
 
-export function onTodoSurfaceClose(): void {
+export function onObjectiveSurfaceClose(): void {
   // Esc나 다른 표면에 밀려 닫힌 경우에도 마지막 자리는 확장 표면이다.
-  // 도킹 전환의 close 통보는 dockTodo가 이어서 rail로 다시 쓴다.
-  rememberTodoPlace("expanded");
+  // 도킹 전환의 close 통보는 dockObjective가 이어서 rail로 다시 쓴다.
+  rememberObjectivePlace("expanded");
 }
 
-export function openTodoSurface(): void {
-  installed?.surfaces.open({ surfaceId: TODO_PANEL_ID });
-  rememberTodoPlace("expanded");
+export function openObjectiveSurface(): void {
+  installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
+  rememberObjectivePlace("expanded");
 }

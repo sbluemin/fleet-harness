@@ -118,7 +118,7 @@ export interface ConsoleUseMcpHost {
    * 호스트 기본 도구와 겹칠 수 없다. 기여한 도구는 모든 Console Use 연결에 실리며 호스트 기본 도구와
    * **같은 게이트**(호출자 Operation의 콘솔 사용 토글, 또는 부관 grant)를 지난다 — 플러그인이 자기
    * 게이트를 따로 두지 않는다. 파일시스템·git 쓰기(커밋·파일 변경)는 여기로 열지 않는다: 그것은 그
-   * Theater의 Operation에 시키는 일이다. 플러그인 **자기 제품 상태**의 쓰기(할 일 추가·완료 같은)는
+   * Theater의 Operation에 시키는 일이다. 플러그인 **자기 제품 상태**의 쓰기(목표 추가·완료 같은)는
    * `surface.describe` 로 제스처·자리를 선언하고 저자 귀속·되돌리기를 갖출 때 허용된다 — 조용한 API
    * 쓰기는 Console Use 가 아니다. 반환값은 등록 해제다.
    */

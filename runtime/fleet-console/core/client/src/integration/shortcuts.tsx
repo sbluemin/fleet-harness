@@ -55,7 +55,7 @@ export function buildShortcutGroups(
         { combos: bound("console.toggle-zen"), description: t("zen.toggle") },
         { combos: bound("console.toggle-global-shell"), description: t("shortcuts.console.toggleGlobalShell") },
         { combos: bound("console.toggle-repository"), description: t("shortcuts.console.toggleRepository") },
-        { combos: bound("console.toggle-todo"), description: t("shortcuts.console.toggleTodo") },
+        { combos: bound("console.toggle-objectives"), description: t("shortcuts.console.toggleObjectives") },
       ],
     },
     {
