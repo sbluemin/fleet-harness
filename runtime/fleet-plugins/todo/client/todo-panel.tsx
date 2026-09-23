@@ -32,7 +32,7 @@ function submitKey(event: ReactKeyboardEvent<HTMLElement>): boolean { return eve
 function createdLabel(at: number, language: "en" | "ko"): string {
   const date = new Date(at);
   if (language === "ko") {
-    // "2026년 9월 23일 (수)" — MS To Do 의 한국어 표기. Intl 은 요일에 괄호를 치지 않는다.
+    // "2026년 9월 23일 (수)" — 요일을 괄호로 감싼 한국어 표기. Intl 은 요일에 괄호를 치지 않는다.
     const weekday = new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(date);
     return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 (${weekday})`;
   }
@@ -67,7 +67,7 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
   const reveal = useReveal();
   const [list, setList] = useState<ListId>("all");
   const [selected, setSelected] = useState<string | null>(null);
-  // 구획 접기 — 그룹 구획은 펼침이 기본, 맨 아래 「완료됨」은 접힘이 기본(MS To Do 문법). 보는 사람의 편의라 메모리에만 둔다.
+  // 구획 접기 — 그룹 구획은 펼침이 기본, 맨 아래 「완료됨」은 접힘이 기본. 보는 사람의 편의라 메모리에만 둔다.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ done: true });
   const toggleSection = (key: string, defaultOpen: boolean) => setCollapsed((value) => ({ ...value, [key]: key in value ? !value[key] : defaultOpen }));
   const isOpen = (key: string, defaultOpen: boolean) => (key in collapsed ? !collapsed[key] : defaultOpen);
@@ -75,7 +75,7 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
   const [highlightStep, setHighlightStep] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ text: string; undo?: () => Promise<void> } | null>(null);
   const launchRows = useLaunchRows();
-  // 끌기 — 카드를 왼쪽 목록 위에 놓으면 그 목록으로 옮긴다(MS To Do 문법). 원래 자리는 빈 홈으로 남고 카드 유령이 커서를 따른다.
+  // 끌기 — 카드를 왼쪽 목록 위에 놓으면 그 목록으로 옮긴다. 원래 자리는 빈 홈으로 남고 카드 유령이 커서를 따른다.
   const [drag, setDrag] = useState<{ itemId: string; x: number; y: number; over: ListId | null; offX: number; offY: number; width: number; compact: boolean } | null>(null);
   const dragRef = useRef<{ itemId: string; startX: number; startY: number; live: boolean; over: ListId | null; offX: number; offY: number; width: number } | null>(null);
   const suppressClick = useRef(false);
@@ -137,7 +137,7 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
   const visible = useMemo(() => state.items.filter((item) => inList(item)), [state.items, inList]);
   const open = useMemo(() => visible.filter((item) => !item.done), [visible]);
   const finished = useMemo(() => visible.filter((item) => item.done), [visible]);
-  // 스마트 목록(오늘·기한·전부·에이전트)은 MS To Do 의 「모두」처럼 그룹별 구획으로 선다 — 사이드바 그룹 순서, 미분류는 마지막.
+  // 스마트 목록(오늘·기한·전부·에이전트)은 그룹별 구획으로 선다 — 사이드바 그룹 순서, 미분류는 마지막.
   const sectioned = !list.startsWith("group:") && list !== "ungrouped";
   const sections = useMemo(() => {
     type Section = { key: string; label: string | null; swatch: string | null; items: TodoItem[]; done?: boolean };
@@ -213,7 +213,7 @@ export function TodoPanel({ ctx }: { readonly ctx: TodoContext }) {
         suppressClick.current = true;
       }
       state.over = dropTargetAt(move.clientX, move.clientY);
-      // 목록 열 위로 들어오면 카드가 손 안의 표로 줄어든다(MS To Do 문법) — 놓을 자리가 카드 아래 가려지지 않게.
+      // 목록 열 위로 들어오면 카드가 손 안의 표로 줄어든다 — 놓을 자리가 카드 아래 가려지지 않게.
       const compact = !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".todo-lists");
       setDrag({ itemId: state.itemId, x: move.clientX, y: move.clientY, over: state.over, offX: state.offX, offY: state.offY, width: state.width, compact });
     };
@@ -421,7 +421,7 @@ interface DetailProps {
 }
 
 /**
- * 세부 — 입력 폼이 아니라 행의 목록이다(MS To Do 문법). 카드 셋: 제목·단계 / 오늘·기한 / 조율자·그래프, 그 아래 메모, 맨 아래 닫기·삭제.
+ * 세부 — 입력 폼이 아니라 행의 목록이다. 일정 → 셰프 → 쿠킹 → 단계 → 레시피 → 메모, 맨 아래 시작/중단/완료 띠와 닫기·삭제.
  * 값이 있는 행은 그 값을 말하고 × 로 지우며, 없는 행은 동사("기한 설정")로 선다. 테두리 친 입력은 없다 — 제목·단계·메모 모두 글 위에 바로 쓴다.
  */
 const GoGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5H3.5v9h9V10M9.5 3.5h3v3M12.5 3.5 7.5 8.5" /></svg>;
