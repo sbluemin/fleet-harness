@@ -17,7 +17,7 @@ import { usePluginRegistry } from "../../../../core/client/src/integration/plugi
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { ClusterStrip } from "../cluster-strip.js";
 import { ClusterPicker } from "../cluster-picker.js";
-import { hiddenClusterMembers, nestClusterMembers, selectClusterBody, useClusterBodySelection, useClusterIndex, useClusterRuntime, type ClusterLayout } from "../operation-clusters.js";
+import { hiddenClusterMembers, nestClusterMembers, selectClusterBody, useClusterBodySelection, useClusterIndex, type ClusterLayout } from "../operation-clusters.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { clearIdleArrival, getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
@@ -166,8 +166,8 @@ export function OperationsCanvas({
   // 사용자가 어느 구성원을 끌어도 대형째 움직이고, 개별 배치는 없다. 파생 좌표는 스토어에도 맞춰 두어
   // 미니맵·전체 보기·Station Keeping 이 같은 자리를 읽게 한다(z 는 올리지 않는다).
   const clusterIndex = useClusterIndex();
-  // 조율자의 표시 상태는 묶음에서 가장 급한 것 — 아래의 모든 활동 판정(비콘·무대 승격·덱)이 이 파생 런타임을 읽는다.
-  const operationRuntime = useClusterRuntime(state.operationRuntime, clusterIndex);
+  // 셰프의 활동은 셰프 자신의 것이다 — 단계의 전이(완료·결정 대기)가 셰프를 War Room 무대에 올리지 않는다.
+  const operationRuntime = state.operationRuntime;
   const clusterGeometries = useMemo(() => {
     const out = new Map<string, OperationGeometry>();
     if (clusterIndex.rootOf.size === 0) return out;
@@ -538,9 +538,11 @@ export function OperationsCanvas({
     operationRuntime: operationRuntime,
   };
   // 큐는 전역이다 — 활성 Theater와 무관하게 모든 대기 Operation을 처리 순서로 세운다.
-  const triageQueue = resolveTriageQueue(state.operations, operationRuntime);
+  // 묶음의 단계 Operation 은 큐에 들지 않는다: War Room 에서는 셰프가 묶음을 대표하고, 셰프 자신의 상태로만 무대에 오른다.
+  const triageOperations = clusterIndex.memberOf.size === 0 ? state.operations : state.operations.filter((operation) => !clusterIndex.memberOf.has(operation.id));
+  const triageQueue = resolveTriageQueue(triageOperations, operationRuntime);
   const triageQueueIdSet = new Set(triageQueue.map((entry) => entry.operation.id));
-  const triageIdleCount = state.operations.filter((operation) =>
+  const triageIdleCount = triageOperations.filter((operation) =>
     resolveOperationActivity(operation, operationRuntime) === "idle"
     && !triageQueueIdSet.has(operation.id)).length;
   const automaticTriageStage = triageQueue[0] ?? null;
@@ -589,7 +591,7 @@ export function OperationsCanvas({
   // 캡션으로만 활성화된 패널이 대기로 전이하면 무대 후보가 된다. pick이 아니라서 미룸·치워둠을
   // 풀지 않고, 스포트라이트 OFF 자동 등단도 강제하지 않는다. 명시적 지목·전이 유예·직전 무대
   // 포커스 고정이 이 클레임보다 앞선다.
-  const activeAwaitingTriageEntry = resolveActiveAwaitingTriageEntry(state.operations, operationRuntime);
+  const activeAwaitingTriageEntry = resolveActiveAwaitingTriageEntry(triageOperations, operationRuntime);
   // 최소화한 Operation은 판에서 내려간 것이므로 어떤 유지 경로로도 무대에 되살아나지 않는다.
   // previousTriageHasFocus가 치워둔 항목을 같은 이유로 이미 제외하지만, 최소화는 무대의 손잡이로
   // 실행되어 그 손잡이가 이전 프레임 안에서 포커스를 쥔 채 남는다 — 걸러내지 않으면 무대와 최소화

@@ -18,9 +18,9 @@ import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation
 import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
 import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, type TriageQueueEntry } from "../canvas/triage-store.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
-import { clusterChipPropsFor, nestSectionEntries } from "./cluster-rows.js";
-import { selectClusterBody, useClusterIndex, useClusterRuntime, useClusterFold } from "../operation-clusters.js";
-import { buildTheaterEntries, groupOperationsByStatus, liftClusterStatus, StatusSectionSlot, theaterInitials, type StatusSection } from "./operations-side-bar.js";
+import { clusterChipPropsFor, withoutClusterMembers } from "./cluster-rows.js";
+import { useClusterIndex } from "../operation-clusters.js";
+import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, theaterInitials, type StatusSection } from "./operations-side-bar.js";
 import { focusEdgeDockWhenPanelContainsActiveElement } from "../../../../core/client/src/integration/shortcuts.js";
 import { consumeStatusLandings, getStatusTransitionTick, setQueueRailPinned, setSideBarPeeking, useQueueRailPinned, useSideBarState } from "./operations-side-bar-store.js";
 import { SideBarCollapseControl, SideBarNarrowToggle } from "./side-bar-collapse-control.js";
@@ -74,7 +74,7 @@ export function TriageSideBar({
   theaters,
   operations,
   groups = [],
-  operationRuntime: rawOperationRuntime,
+  operationRuntime,
   operationNotifications,
   catalog,
   plugins,
@@ -87,11 +87,9 @@ export function TriageSideBar({
   onOpenOperationMenu,
 }: TriageSideBarProps) {
   const t = useT();
-  // 묶음: War Room 에서 단계 Operation 은 화면에 서지 않는다 — 큐는 조율자만 알고, 조율자의 상태는 묶음에서 파생된다.
-  // 사이드바 목록은 단계 행을 조율자 아래 중첩해 그대로 보인다(Cruise·Tactical 목록과 같은 문법).
+  // 묶음: War Room 에서 단계 Operation 은 화면에도 목록에도 서지 않는다 — 큐와 목록은 셰프만 알고,
+  // 셰프는 단계의 상태가 아니라 자기 상태로만 무대에 오른다.
   const clusterIndex = useClusterIndex();
-  const clusterFold = useClusterFold();
-  const operationRuntime = useClusterRuntime(rawOperationRuntime, clusterIndex);
   // 지목·미룸·치워둠은 콘솔 상태를 바꾸지 않는 store 단독 변화다 — 캔버스와 같은 리비전 구독으로
   // 사이드바도 함께 리렌더한다. 유휴 도착도 awaiting 섹션 판정에 관여하므로 같이 구독한다.
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
@@ -191,7 +189,7 @@ export function TriageSideBar({
     const color = resolveAccentColor(group.color);
     return [group.id, color ? { name: group.name, color } : null] as const;
   }));
-  const entries = theaters.flatMap((theater) => buildTheaterEntries({
+  const entries = withoutClusterMembers(theaters.flatMap((theater) => buildTheaterEntries({
     theaterId: theater.id,
     operations,
     operationOrder: getTheaterCanvasSnapshot(theater.id).operationOrder,
@@ -199,23 +197,21 @@ export function TriageSideBar({
     activeOperationId: stagedOperationId,
     operationNotifications,
     operationRuntime,
-  }));
+  })), clusterIndex);
   // 최소화한 Operation은 상태 축에서 내려와 전용 선반으로 모인다 — 최소화는 활동 상태가 아니라
   // 표시 선택이므로 대기·실행 중·유휴 중 어디에도 새 칸을 만들지 않는다.
   // 휴면은 그대로 휴면 선반이 가져간다: 재개 대기는 사용자가 고른 상태가 아니라 세션의 상태다.
   const minimizedIds = new Set(getTheaterMinimizedIds(theaters.map((theater) => theater.id)));
   const isDormantEntry = (entry: SideBarEntry): boolean =>
     resolveOperationActivity(entry.operation, operationRuntime) === "ended";
-  // 묶음 구성원은 선반에 내리지 않는다 — 화면에서 접혀 있어도 목록에서는 늘 조율자 아래에 선다.
-  const minimizedEntries = entries.filter((entry) => minimizedIds.has(entry.operation.id) && !isDormantEntry(entry) && !clusterIndex.memberOf.has(entry.operation.id));
+  const minimizedEntries = entries.filter((entry) => minimizedIds.has(entry.operation.id) && !isDormantEntry(entry));
   const minimizedSection: StatusSection = {
     status: "minimized",
     label: t("triageSidebar.minimizedShelf"),
     entries: minimizedEntries,
   };
   const shelvedIds = new Set(minimizedEntries.map((entry) => entry.operation.id));
-  const sections = resolveTriageSideBarSections(liftClusterStatus(entries.filter((entry) => !shelvedIds.has(entry.operation.id)), clusterIndex), queue, t)
-    .map((section) => ({ ...section, entries: nestSectionEntries(section.entries, clusterIndex, clusterFold) }));
+  const sections = resolveTriageSideBarSections(entries.filter((entry) => !shelvedIds.has(entry.operation.id)), queue, t);
   const livingSections = sections.filter((section) => section.status !== "ended");
   const endedSection = sections.find((section) => section.status === "ended");
   // 0건 섹션과 0건 선반은 서지 않는다 — 빈 칸이 축을 설명하던 자리는 퇴역했다. 살아 있는 섹션이
@@ -225,7 +221,7 @@ export function TriageSideBar({
     ? { ...endedSection, label: t("triageSidebar.dormantShelf") }
     : undefined;
   const shelvedCount = minimizedEntries.length + (dormantSection?.entries.length ?? 0);
-  const renderChip = (entry: SideBarEntry, index: number, shelf: "none" | "ended" | "minimized" = "none", siblings?: readonly SideBarEntry[]) => {
+  const renderChip = (entry: SideBarEntry, index: number, shelf: "none" | "ended" | "minimized" = "none") => {
     const dormant = shelf === "ended";
     const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
       ?? operationAccentFromNode(entry.operation);
@@ -233,20 +229,16 @@ export function TriageSideBar({
     // onPick은 알림을 지우거나 Theater를 바꾸지 않고, picked 항목은 live-only deck와 별개로 무대에 선다.
     // 최소화 선반의 본동작은 되올리기다 — 무대에 세우지 않고 deck으로만 돌려보낸다. 지목했다면 최소화가
     // 큐에서 걸러내므로 무대에 서지도 못한 채 선반에 남는다.
-    const member = clusterIndex.memberOf.get(entry.operation.id);
     const activate = dormant
       ? (operationId: string) => resumeOperationInPlace(operationId, operations, plugins, onPick)
       : shelf === "minimized"
         ? () => setTheaterOperationMinimized(entry.operation.theaterId, entry.operation.id, false)
-        // 단계 행을 누르면 조율자를 무대에 올리고 그 패널의 본문을 이 단계로 바꾼다 — 단계는 War Room 에 따로 서지 않는다.
-        : member
-          ? () => { selectClusterBody(member.layout.cluster.root, entry.operation.id); onPick(member.layout.cluster.root); }
-          : onPick;
+        : onPick;
     return (
       <OperationsSideBarChip
         key={entry.operation.id}
         entry={entry}
-        cluster={shelf === "none" ? clusterChipPropsFor(entry, clusterIndex, clusterFold, t, siblings) : null}
+        cluster={shelf === "none" ? clusterChipPropsFor(entry, clusterIndex) : null}
         index={index}
         isCloseArmed={armedCloseId === entry.operation.id}
         accentValue={accentKey ? resolveAccentColor(accentKey) : null}
@@ -349,7 +341,7 @@ export function TriageSideBar({
       <ol className="operations-side-bar-chips triage-side-bar-sections" aria-label={t("triageSidebar.aria")}>
         {visibleLivingSections.map((section) => (
           <StatusSectionSlot key={section.status} theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={section}>
-            {section.entries.map((entry, index) => renderChip(entry, index, "none", section.entries))}
+            {section.entries.map((entry, index) => renderChip(entry, index, "none"))}
           </StatusSectionSlot>
         ))}
         {visibleLivingSections.length === 0 ? <li className="triage-side-bar-empty">{t("sidebar.view.empty")}</li> : null}

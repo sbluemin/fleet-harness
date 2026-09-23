@@ -1,6 +1,4 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
-import type { OperationClusterProgress } from "@fleet-console/sdk/plugin";
-
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useAgentState } from "../../../execution/client/agent/store.js";
@@ -43,12 +41,9 @@ export interface SideBarEntry {
 }
 
 /**
- * 묶음 안의 자리 — 뿌리(조율자)는 접기 화살과 단계 띠를, 구성원(단계)은 깊이만큼의 들여쓰기와 가지를 얹는다.
- * 구성원의 이름은 제목 대신 짧은 라벨이다. 소속은 배치가 말하므로 칩은 묶음 이름을 되풀이하지 않는다.
+ * 묶음의 뿌리(셰프) 행 — 이름 뒤에 단계 띠를 얹는다. 사이드바는 셰프 한 행이 묶음을 대표하므로 단계 행은 서지 않는다.
  */
-export type SideBarChipCluster =
-  | { readonly role: "root"; readonly title: string; readonly collapsed: boolean; readonly strip: ReactNode; readonly onToggle: () => void; readonly expandable: boolean }
-  | { readonly role: "member"; readonly title: string; readonly label: string; readonly depth: number; readonly last: boolean; readonly progress: OperationClusterProgress; readonly afterTag: string | null };
+export interface SideBarChipCluster { readonly strip: ReactNode }
 
 interface SideBarChipProps {
   readonly entry: SideBarEntry;
@@ -133,7 +128,7 @@ export function OperationsSideBarChip({
   const { operation, active, minimized, status, mark } = entry;
   // 마크 축이 없는 엔트리(직접 구성한 입력)는 섹션 축을 그대로 그린다 — 두 축은 "unseen"에서만 갈린다.
   const markVisual = mark ?? status;
-  const title = cluster?.role === "member" ? cluster.label : displayTitle(operation);
+  const title = displayTitle(operation);
   // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — 눈으로는 War Room 지도가 그 구분을
   // 지므로 칩에 배지를 세우지 않고, 접근성 이름에만 소속 Theater를 싣는다. 기존 aria 키의
   // groupContext 슬롯을 재사용한다.
@@ -154,7 +149,7 @@ export function OperationsSideBarChip({
   const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext + workspaceContext;
   // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
   // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
-  const ariaTitle = cluster?.role === "member" ? t("cluster.member.aria", { label: title, title: cluster.title }) : title;
+  const ariaTitle = title;
   const chipAriaLabel = resumeOnActivate
     ? t("sidebar.chip.resumeAria", { title: ariaTitle, groupContext })
     : active
@@ -176,16 +171,12 @@ export function OperationsSideBarChip({
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
     chipContext ? "side-bar-chip--with-context" : "",
-    cluster ? `side-bar-chip--cluster-${cluster.role}` : "",
-    cluster?.role === "member" ? `is-${cluster.progress}` : "",
-    cluster?.role === "member" && cluster.last ? "is-last" : "",
   ].filter(Boolean).join(" ");
   const closeClassName = ["side-bar-chip-close", isCloseArmed ? "is-armed" : ""].filter(Boolean).join(" ");
   const chipStyle = {
     "--i": index,
     ...(accentValue ? { "--user-accent": accentValue } : {}),
     ...(dragging ? { "--drag-dy": `${Math.round(dragOffsetY)}px` } : {}),
-    ...(cluster?.role === "member" ? { "--cluster-depth": cluster.depth } : {}),
   } as CSSProperties;
 
   const focus = () => {
@@ -356,20 +347,6 @@ export function OperationsSideBarChip({
           띄웠는지가 아니라 지금 무엇을 하고 있는지다. 칩 자체가 상태를 접근성 이름으로
           말하지 않으므로 마크가 그 이름을 진다. 예외는 Shell 하나다: Shell은 활동 축을
           발행하지 않아 비콘이 늘 같은 값으로 굳으므로, 그 자리를 종류 글리프가 가져간다. */}
-      {cluster?.role === "root" && cluster.expandable && !preview ? (
-        <button
-          type="button"
-          className={["side-bar-chip-cluster-toggle", cluster.collapsed ? "is-collapsed" : ""].filter(Boolean).join(" ")}
-          aria-expanded={!cluster.collapsed}
-          aria-label={t(cluster.collapsed ? "cluster.expandAria" : "cluster.collapseAria", { title: cluster.title })}
-          onPointerDown={stopClosePointer}
-          onClick={(event) => { event.stopPropagation(); onDisarmClose(); cluster.onToggle(); }}
-        >
-          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2.5 3.75 5 6.25l2.5-2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
-      ) : cluster?.role === "member" ? (
-        <span className="side-bar-chip-cluster-gutter" aria-hidden="true" />
-      ) : null}
       <span className="side-bar-chip-beacon-button">
         <OperationNameMark operation={operation} status={markVisual} className="side-bar-chip-status" />
       </span>
@@ -391,8 +368,7 @@ export function OperationsSideBarChip({
         )}
         {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
       </span>
-      {cluster?.role === "member" && cluster.afterTag ? <span className="side-bar-chip-cluster-after">{cluster.afterTag}</span> : null}
-      {cluster?.role === "root" ? cluster.strip : null}
+      {cluster ? cluster.strip : null}
       {preview ? null : <PluginOperationMarks operation={operation} />}
       {groupMark && statusAxis && groupBadge && !preview ? (
         <span

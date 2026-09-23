@@ -18,7 +18,7 @@ import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/compon
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups, useFormationView, useSnapHold } from "../canvas/canvas-store.js";
+import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
@@ -28,9 +28,8 @@ import {
   type SideBarOperationMenuAction,
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
-import { clusterChipPropsFor, nestSectionEntries } from "./cluster-rows.js";
-import { hiddenClusterMembers, selectClusterBody, useClusterIndex, useClusterRuntime, useClusterFold, type ClusterIndex } from "../operation-clusters.js";
-import { useTriageActive } from "../canvas/triage-store.js";
+import { clusterChipPropsFor, withoutClusterMembers } from "./cluster-rows.js";
+import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarNarrowToggle, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
 import {
@@ -400,27 +399,15 @@ export function OperationsSideBar({
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
   const {
-    operationRuntime: rawOperationRuntime,
+    operationRuntime,
     activeOperationAcknowledged,
     pendingSideBarAddTheater,
     pendingSideBarTheaterLaunch,
     launchMenuRequest,
   } = useConsoleState();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
-  const clusterIndex = useClusterIndex(activeTheaterId);
-  const clusterFold = useClusterFold();
-  // 조율자의 표시 상태는 묶음에서 가장 급한 것 — 단계 행은 각자의 상태를 그대로 보인다.
-  const operationRuntime = useClusterRuntime(rawOperationRuntime, clusterIndex);
-  // 단계 패널이 숨은 모드(Tactical·War Room·스냅된 Cruise)에서 단계 행을 누르면, 그 단계의 본문이 조율자 패널에 선다.
-  const formationView = useFormationView();
-  const triageActive = useTriageActive();
-  const snapHold = useSnapHold();
-  const hiddenMembers = hiddenClusterMembers(clusterIndex, { formation: formationView, triage: triageActive, snapHeld: (rootId) => snapHold?.assignments[rootId] !== undefined });
-  const focusEntry = (operationId: string) => {
-    const member = clusterIndex.memberOf.get(operationId);
-    if (member && hiddenMembers.has(operationId)) { selectClusterBody(member.layout.cluster.root, operationId); onFocus(member.layout.cluster.root); return; }
-    onFocus(operationId);
-  };
+  // 묶음은 셰프 한 행이 대표한다 — 단계 Operation 은 사이드바(펼친 목록·레일)에 서지 않고, 셰프 행의 상태는 셰프 자신의 것이다.
+  const clusterIndex = useClusterIndex();
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
@@ -445,15 +432,13 @@ export function OperationsSideBar({
       mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),
     };
   });
-  // 묶음: 뿌리 뒤에 구성원이 위상 순으로 서고, 접힌 묶음은 뿌리 행만 남는다. 섹션 entries 자체를 바꿔 두어야
-  // 드롭 인덱스(entryIds)와 DOM 순서가 어긋나지 않는다. 상태 축에서는 묶음이 가장 급한 구성원의 칸에 한 덩어리로 선다.
-  const nestSection = (entries: readonly SideBarEntry[]): SideBarEntry[] => nestSectionEntries(entries, clusterIndex, clusterFold);
-  const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder).map((section) => ({ ...section, entries: nestSection(section.entries) }));
-  const statusInput = statusAxis ? liftClusterStatus(allEntries, clusterIndex) : allEntries;
-  const statusGrouped = groupTheaterStatusEntries(statusInput, new Set([...minimizedSet].filter((id) => !clusterIndex.memberOf.has(id))), getStatusTransitionTick, t);
-  const statusSections = statusGrouped.living.map((section) => ({ ...section, entries: nestSection(section.entries) }));
+  // 단계 행은 섹션을 나누기 전에 뺀다 — 섹션 entries 가 곧 드롭 인덱스(entryIds)와 DOM 순서의 원천이다.
+  const listedEntries = withoutClusterMembers(allEntries, clusterIndex);
+  const groupedSections = groupOperations(listedEntries, activeGroups, canvas.operationOrder);
+  const statusGrouped = groupTheaterStatusEntries(listedEntries, minimizedSet, getStatusTransitionTick, t);
+  const statusSections = statusGrouped.living;
   const { minimized: minimizedSection, dormant: dormantSection } = statusGrouped;
-  const clusterPropsFor = (entry: SideBarEntry, siblings?: readonly SideBarEntry[]) => clusterChipPropsFor(entry, clusterIndex, clusterFold, t, siblings);
+  const clusterPropsFor = (entry: SideBarEntry) => clusterChipPropsFor(entry, clusterIndex);
   // STATUS 축 렌더는 entry/그룹 조회가 칩마다 반복되므로 O(n²)를 피해 Map으로 한 번만 인덱싱한다.
   const entryIndexById = new Map(allEntries.map((entry, index) => [entry.operation.id, index] as const));
   const groupMarkByGroupId = new Map(activeGroups.map((group) => {
@@ -480,7 +465,6 @@ export function OperationsSideBar({
     entry: SideBarEntry,
     index: number,
     recovery?: "minimized" | "ended",
-    siblings?: readonly SideBarEntry[],
   ) => {
     const globalIndex = entryIndexById.get(entry.operation.id) ?? index;
     const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
@@ -491,7 +475,7 @@ export function OperationsSideBar({
       <OperationsSideBarChip
         key={entry.operation.id}
         entry={entry}
-        cluster={recovery ? null : clusterPropsFor(entry, siblings)}
+        cluster={recovery ? null : clusterPropsFor(entry)}
         index={globalIndex}
         isCloseArmed={armedCloseId === entry.operation.id}
         accentValue={accentValue}
@@ -509,7 +493,7 @@ export function OperationsSideBar({
         onDisarmClose={disarmClose}
         onClose={onClose}
         onMinimize={onMinimize}
-        onFocus={ended ? onResume : focusEntry}
+        onFocus={ended ? onResume : onFocus}
         onKeyboardMove={keyboardMove}
         onPointerDragStart={beginPointerDrag}
         onOpenAccent={(operationId, anchor, returnFocus, requestedAction) => {
@@ -1007,7 +991,7 @@ export function OperationsSideBar({
         <ol className="side-bar-rail-sections" aria-label={t("sidebar.view.railAria")}>
           {theaters.map((theater) => {
             const theaterCanvas = theater.id === activeTheaterId ? canvas : getTheaterCanvasSnapshot(theater.id);
-            const railEntries = theater.id === activeTheaterId ? allEntries : buildTheaterEntries({
+            const railEntries = withoutClusterMembers(theater.id === activeTheaterId ? allEntries : buildTheaterEntries({
               theaterId: theater.id,
               operations,
               operationOrder: theaterCanvas.operationOrder,
@@ -1015,7 +999,7 @@ export function OperationsSideBar({
               activeOperationId: null,
               operationNotifications,
               operationRuntime,
-            });
+            }), clusterIndex);
             const isActiveTheater = theater.id === activeTheaterId;
             return (
               <li key={theater.id} className={`side-bar-rail-section side-bar-rail-section--theater${isActiveTheater ? " is-active" : ""}`}>
@@ -1157,7 +1141,7 @@ export function OperationsSideBar({
                     theaterId={theater.id}
                     section={section}
                   >
-                    {section.entries.map((entry, index) => renderActiveStatusEntry(entry, index, undefined, section.entries))}
+                    {section.entries.map((entry, index) => renderActiveStatusEntry(entry, index))}
                   </StatusSectionSlot>
                 )).concat([
                   <StatusRecoveryShelves
@@ -1224,13 +1208,11 @@ export function OperationsSideBar({
                     const sectionLocalIndex = section.entries.indexOf(entry);
                     const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
                     const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
-                    const clusterProps = clusterPropsFor(entry, section.entries);
                     return (
                       <OperationsSideBarChip
                         key={entry.operation.id}
                         entry={entry}
-                        cluster={clusterProps}
-                        reorderEnabled={clusterProps?.role !== "member"}
+                        cluster={clusterPropsFor(entry)}
                         index={globalIndex}
                         isCloseArmed={armedCloseId === entry.operation.id}
                         accentValue={accentValue}
@@ -1248,7 +1230,7 @@ export function OperationsSideBar({
                         onDisarmClose={disarmClose}
                         onClose={onClose}
                         onMinimize={onMinimize}
-                        onFocus={focusEntry}
+                        onFocus={onFocus}
                         onKeyboardMove={keyboardMove}
                         onPointerDragStart={beginPointerDrag}
                         onOpenAccent={(operationId, anchor, returnFocus, requestedAction) => {
@@ -1399,27 +1381,6 @@ export function groupOperations(
 
   void operationOrder;
   return [...sections, ungrouped];
-}
-
-const ACTIVITY_URGENCY: Record<string, number> = { awaiting: 0, running: 1, background: 2, idle: 3 };
-
-/**
- * 상태 축에서 묶음을 한 덩어리로 — 뿌리와 살아 있는 구성원이 그중 가장 급한 활동의 칸에 함께 선다.
- * 그리는 색(mark)은 건드리지 않는다; 바꾸는 것은 칸(status)뿐이다. 끝난(ended) 행은 휴면 선반에 남는다.
- */
-export function liftClusterStatus(entries: readonly SideBarEntry[], index: ClusterIndex): SideBarEntry[] {
-  if (index.clusters.length === 0) return [...entries];
-  const byId = new Map(entries.map((entry) => [entry.operation.id, entry]));
-  const lifted = new Map<string, SideBarEntry["status"]>();
-  for (const layout of index.rootOf.values()) {
-    const ids = [layout.cluster.root, ...layout.members.map((laid) => laid.member.operationId)].filter((id) => byId.has(id));
-    const alive = ids.map((id) => byId.get(id)!).filter((entry) => entry.status !== "ended" && entry.status !== undefined);
-    if (alive.length < 2) continue;
-    const best = alive.reduce((top, entry) => ((ACTIVITY_URGENCY[entry.status!] ?? 9) < (ACTIVITY_URGENCY[top.status!] ?? 9) ? entry : top));
-    for (const entry of alive) if (entry.status !== best.status) lifted.set(entry.operation.id, best.status);
-  }
-  if (lifted.size === 0) return [...entries];
-  return entries.map((entry) => (lifted.has(entry.operation.id) ? { ...entry, status: lifted.get(entry.operation.id)! } : entry));
 }
 
 export function groupTheaterStatusEntries(
