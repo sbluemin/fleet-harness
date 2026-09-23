@@ -643,6 +643,8 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
   .todo-row { padding-right: 12px; padding-left: 14px; gap: 8px; }
   .todo-row-main { margin-left: -14px; margin-right: -12px; padding-left: 14px; padding-right: 12px; gap: 8px; }
   .todo-step { padding-left: 14px; padding-right: 8px; gap: 8px; }
+  /* 단계 글자 선이 14 + 16 + 8 = 38px 로 당겨진다 — 기록도 같은 선에서 펼쳐진다. */
+  .todo-records-inner { padding-left: 38px; padding-right: 8px; }
   .todo-graph-wrap { padding-left: 14px; padding-right: 12px; }
   .todo-detail textarea.todo-note { padding-left: 14px; padding-right: 12px; }
   .todo-detail-created { white-space: normal; }
