@@ -8,6 +8,7 @@ import type { TodoMessageKey } from "./i18n/index.js";
 /**
  * 조율 그래프 — 선행 관계를 그리고 편집하는 유일한 자리.
  * 노드에서 다음 노드로 끌면 간선이 이어지고, 선을 누르면 끊긴다. 순환은 잇기 전에 거절한다.
+ * 사람이 선행 없이 더한 미분류 단계는 그래프 아래 「미분류」 칸에 따로 선다 — 셰프가 자리를 정하거나, 사람이 여기서 이으면 올라간다.
  */
 
 interface GraphProps {
@@ -21,9 +22,11 @@ interface GraphProps {
   readonly zoom?: boolean;
   /** 빈 배경을 누르면 확대본을 연다. 노드·간선 위의 누름과 드래그 끝은 제외. */
   readonly onZoom?: () => void;
+  /** 이 단계의 선행을 사람이 바꿀 수 있는가 — 셰프가 일하는 동안은 시작 전 단계만. 없으면 모두. */
+  readonly canEdit?: (stepId: string) => boolean;
 }
 
-export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, operationTitle, zoom = false, onZoom }: GraphProps) {
+export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, operationTitle, zoom = false, onZoom, canEdit }: GraphProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<{ from: string; x0: number; y0: number; x: number; y: number; over: string | null } | null>(null);
   const movedRef = useRef(false);
@@ -31,6 +34,9 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
   const pressedNodeRef = useRef(false);
 
   const steps = item.steps;
+  // 미분류 — 열·행 배치에서 빼고 아래 칸에 줄 세운다.
+  const loose = steps.filter((step) => step.unplaced && !step.done);
+  const placedSteps = steps.filter((step) => !loose.includes(step));
   const depth = new Map<string, number>();
   const byId = new Map(steps.map((step) => [step.id, step]));
   const depthOf = (id: string, seen = new Set<string>()): number => {
@@ -43,15 +49,15 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
     depth.set(id, value);
     return value;
   };
-  steps.forEach((step) => depthOf(step.id));
-  const columns = steps.length ? Math.max(...steps.map((step) => depth.get(step.id) ?? 0)) + 1 : 0;
+  placedSteps.forEach((step) => depthOf(step.id));
+  const columns = placedSteps.length ? Math.max(...placedSteps.map((step) => depth.get(step.id) ?? 0)) + 1 : 0;
   const W = zoom ? 880 : 320;
   // 첫 열의 x — 확대본은 뿌리(셰프)와 첫 단계 사이를 넓혀 긴 제목이 뿌리 라벨을 덮지 않게 한다.
   const left = zoom ? 150 : 88;
   const colW = columns ? Math.min(zoom ? 150 : 92, (W - left + 4) / Math.max(columns, 1)) : 0;
   const rowH = zoom ? 56 : 42;
   const byDepth = new Map<number, string[]>();
-  for (const step of steps) { const d = depth.get(step.id) ?? 0; byDepth.set(d, [...(byDepth.get(d) ?? []), step.id]); }
+  for (const step of placedSteps) { const d = depth.get(step.id) ?? 0; byDepth.set(d, [...(byDepth.get(d) ?? []), step.id]); }
   const rows = Math.max(1, ...[...byDepth.values()].map((ids) => ids.length));
   // 노드 아래 제목은 열 간격에 맞춰 줄인다. 열이 촘촘하면(긴 일렬) 위·아래를 번갈아 써서 이웃과 겹치지 않게 하고,
   // 그래도 서너 글자가 안 들어가면 제목을 숨긴다 — 번호와 툴팁, 그리고 위의 단계 목록이 남는다.
@@ -62,10 +68,14 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
   const fit = stagger ? fitIn(colW * 2) : fitIn(colW);
   const showLabels = fit >= 3;
   const lift = stagger && showLabels ? 12 : 0;
-  const H = Math.max(70, rows * rowH + 26) + lift;
+  const body = Math.max(70, rows * rowH + 26) + lift;
+  const trayH = loose.length ? (zoom ? 52 : 40) : 0;
+  const H = body + trayH;
   const pos = new Map<string, { x: number; y: number }>();
   for (const [d, ids] of byDepth) ids.forEach((id, r) => pos.set(id, { x: left + d * colW, y: 16 + lift + r * rowH + ((rows - ids.length) * rowH) / 2 }));
-  const root = { x: zoom ? 30 : 20, y: H / 2 };
+  const trayGap = Math.min(zoom ? 64 : 30, (W - left - 12) / Math.max(loose.length, 1));
+  loose.forEach((step, i) => pos.set(step.id, { x: left + i * trayGap, y: body + trayH / 2 - 2 }));
+  const root = { x: zoom ? 30 : 20, y: body / 2 };
   const shorten = (text: string) => (text.length > fit ? `${text.slice(0, Math.max(1, fit - 1))}…` : text);
 
   const point = (event: ReactPointerEvent | PointerEvent) => {
@@ -107,6 +117,7 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
     if (!target || target === drag.from) return;
     const to = byId.get(target);
     if (!to) return;
+    if (canEdit && !canEdit(target)) return;
     if (!to.after.includes(drag.from) && wouldCycle(steps, drag.from, target)) { onCycle(); return; }
     onToggleEdge(drag.from, target);
   };
@@ -136,7 +147,7 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
           const p = pos.get(step.id)!;
           return (
             <g key={`edges-${step.id}`}>
-              {step.after.length === 0 ? <path className="todo-edge is-root" d={`M${root.x + 9},${root.y} C${root.x + 30},${root.y} ${p.x - 30},${p.y} ${p.x - 9},${p.y}`} /> : null}
+              {step.after.length === 0 && !loose.includes(step) ? <path className="todo-edge is-root" d={`M${root.x + 9},${root.y} C${root.x + 30},${root.y} ${p.x - 30},${p.y} ${p.x - 9},${p.y}`} /> : null}
               {step.after.map((parentId) => {
                 const q = pos.get(parentId);
                 if (!q) return null;
@@ -153,8 +164,8 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
                     role="button"
                     tabIndex={0}
                     aria-label={t("todo.graph.edgeAria", { from, to })}
-                    onClick={() => onToggleEdge(parentId, step.id)}
-                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onToggleEdge(parentId, step.id); } }}
+                    onClick={() => { if (!canEdit || canEdit(step.id)) onToggleEdge(parentId, step.id); }}
+                    onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && (!canEdit || canEdit(step.id))) { event.preventDefault(); onToggleEdge(parentId, step.id); } }}
                   >
                     <title>{`${from} → ${to}${why && why !== "human" ? ` · ${why}` : ""}`}</title>
                   </path>
@@ -163,6 +174,12 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
             </g>
           );
         })}
+        {loose.length ? (
+          <g className="todo-dag-tray" aria-hidden="true">
+            <rect x={6} y={body + 2} width={W - 12} height={trayH - 8} rx={7} />
+            <text x={root.x + (zoom ? 18 : 10)} y={body + trayH / 2 + 1} textAnchor="middle">{t("todo.graph.unplaced")}</text>
+          </g>
+        ) : null}
         {drag ? <path className="todo-edge is-ghost" d={`M${drag.x0},${drag.y0} L${drag.x},${drag.y}`} pointerEvents="none" /> : null}
         <g className={`todo-node is-root${item.slot ? " is-assigned" : ""}`}>
           <circle cx={root.x} cy={root.y} r={9} />
@@ -172,7 +189,8 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
         </g>
         {steps.map((step, index) => {
           const p = pos.get(step.id)!;
-          const cls = step.done ? "is-done" : step.slot ? "is-assigned" : stepReady(item, step) ? "is-ready" : "is-wait";
+          const unplaced = loose.includes(step);
+          const cls = step.done ? "is-done" : step.slot ? "is-assigned" : unplaced ? "is-unplaced" : stepReady(item, step) ? "is-ready" : "is-wait";
           // 노드 곁에는 단계 제목을 줄여 쓴다 — 모델·강도는 단계 행이 말한다.
           // 짝수 열은 위, 홀수 열은 아래 — 첫 열이 위로 가야 뿌리의 「셰프」 라벨과 같은 줄에 놓이지 않는다.
           const above = stagger && (depth.get(step.id) ?? 0) % 2 === 0;
@@ -188,7 +206,7 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
             >
               <circle cx={p.x} cy={p.y} r={9} />
               <text x={p.x} y={p.y + 3.5} textAnchor="middle" className="todo-num">{index + 1}</text>
-              {showLabels ? <text x={p.x} y={above ? p.y - 15 : p.y + 21} textAnchor="middle">{shorten(step.text)}</text> : null}
+              {showLabels && !unplaced ? <text x={p.x} y={above ? p.y - 15 : p.y + 21} textAnchor="middle">{shorten(step.text)}</text> : null}
               <title>{`${index + 1}. ${step.text}`}</title>
             </g>
           );

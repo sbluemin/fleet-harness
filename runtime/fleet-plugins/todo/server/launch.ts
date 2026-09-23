@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { cookTurn, readySteps, sessionNames, startTurn, type PromptLanguage } from "./prompts.js";
+import { cookTurn, readySteps, sessionNames, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { TodoStoreError, type TodoStore } from "./store.js";
 import { assignModeOf, type LaunchView, type PlanInput, type Slot, type SlotBy, type StepAddInput, type StepPatchInput, type TodoItem, type TodoStep } from "./types.js";
 
@@ -23,13 +23,16 @@ export interface LaunchService {
   requestPlan(itemId: string, options?: LaunchOptions): Promise<{ readonly item: TodoItem; readonly operationId: string; readonly started: boolean }>;
   complete(itemId: string, by: SlotBy, options?: LaunchOptions): Promise<TodoItem>;
   stepPatched(itemId: string, stepId: string, patch: StepPatchInput, by: SlotBy, options?: LaunchOptions): Promise<TodoItem>;
-  stepAdded(itemId: string, input: StepAddInput, options?: LaunchOptions): Promise<TodoItem>;
+  /** 사람이 더한 단계(`by: "human"`)는 선행을 함께 주지 않았다면 미분류로 들어간다 — 셰프의 추가는 셰프가 이미 자리를 안다. */
+  stepAdded(itemId: string, input: StepAddInput, options?: LaunchOptions & { readonly by?: SlotBy }): Promise<TodoItem>;
   planApplied(itemId: string, plan: PlanInput, by: SlotBy, options?: LaunchOptions): Promise<TodoItem>;
   /** 위임 — 셰프가 이 단계를 맡길 때 그 단계의 담당 세션을 띄운다(프롬프트 없음, Console Use 켬). 이름을 돌려주면 셰프가 메시지로 일을 시킨다. */
   delegateStep(itemId: string, stepId: string, options?: LaunchOptions): Promise<{ readonly item: TodoItem; readonly operationId: string; readonly session: string }>;
   unlinkStep(itemId: string, stepId: string, options?: LaunchOptions): Promise<TodoItem>;
-  /** 조율자 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 잠긴다. */
+  /** 조율자 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. 쌓인 편집은 「스티어링」이 알린다. */
   busy(itemId: string): boolean;
+  /** 스티어링 — 셰프 세션에 「바뀌었으니(무엇이) 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집(edited)을 비운다. 보내지 못하면 편집 기록을 남긴 채 거절한다. */
+  steer(itemId: string, options?: LaunchOptions): Promise<TodoItem>;
   /** 전체 중단 — 조율자와 모든 담당 Operation 에 인터럽트를 보낸다. 슬롯은 남는다. */
   stop(itemId: string): Promise<{ readonly item: TodoItem; readonly interrupted: number }>;
   /** Operation 이 삭제됐다 — 셰프였다면 담당 Operation 도 함께 닫고, 어느 슬롯에 있었든 매핑을 지운다. */
@@ -274,8 +277,20 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: TodoSt
       return current;
     },
 
-    async stepAdded(itemId, input) {
-      return store.stepAdd(itemId, input);
+    async stepAdded(itemId, input, options) {
+      return store.stepAdd(itemId, input, { unplaced: options?.by === "human" });
+    },
+
+    async steer(itemId, options) {
+      const current = item(itemId);
+      if (current.done) throw new TodoStoreError("item_done");
+      if (!current.slot) throw new TodoStoreError("no_chef");
+      operation(current.slot.operationId);
+      // 통지(send)와 달리 실패를 삼키지 않는다 — 셰프가 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
+      const receipt = await control().request({ kind: "send", operationId: current.slot.operationId, text: steerTurn(current, languageOf(options)) }, `todo:steer:${randomUUID()}`).catch(asStoreError);
+      if (receipt.status === "rejected" || receipt.status === "failed") asStoreError(new Error(receipt.error ?? "steer_failed"));
+      // 셰프에게 닿았다 — 쌓인 편집은 알렸으니 지운다(띠는 「중단」으로 돌아간다).
+      return store.setEdited(itemId, null);
     },
 
     async planApplied(itemId, plan, by) {

@@ -31,15 +31,27 @@ const EDIT_WORDS: Record<PromptLanguage, Record<TodoEditKind, string>> = {
   en: { title: "title", note: "note", steps: "steps", recipe: "dependencies", assign: "assignment" },
 };
 
+const editedWords = (item: TodoItem, language: PromptLanguage): string => (item.edited?.kinds ?? []).map((kind) => EDIT_WORDS[language][kind]).join(language === "ko" ? "·" : ", ");
+
+/**
+ * 스티어링 — 셰프가 일하는 동안 사람이 보드를 고쳤다. 한 줄: 할 일 id 가 바뀌었다는 것과 무엇이 바뀌었는지(종류만).
+ * 바뀐 내용 자체(미분류 단계 등)는 보드가 말한다.
+ */
+export function steerTurn(item: TodoItem, language: PromptLanguage): string {
+  const what = editedWords(item, language);
+  return language === "ko"
+    ? `할 일 \`${item.id}\` 이 바뀌었습니다${what ? `(${what})` : ""} — 보드를 다시 읽고 이어서 진행하세요.`
+    : `To-do item \`${item.id}\` changed${what ? ` (${what})` : ""} — read the board again and continue.`;
+}
+
 /**
  * 시작 — 한 줄: 할 일 id 와 「진행하세요」. 무엇을 어떻게 할지는 셰프가 정한다.
  * 셰프가 마지막으로 읽은 뒤 사람이 바꾼 것이 있으면 무엇이 바뀌었는지만 짧게 붙이고 다시 읽게 한다 — 바뀐 내용 자체는 보드가 말한다.
  */
 export function startTurn(item: TodoItem, language: PromptLanguage): string {
   const word = language === "ko" ? `할 일 \`${item.id}\` 의 작업들을 진행하세요.` : `Proceed with the work of to-do item \`${item.id}\`.`;
-  const kinds = item.edited?.kinds ?? [];
-  if (kinds.length === 0) return word;
-  const what = kinds.map((kind) => EDIT_WORDS[language][kind]).join(language === "ko" ? "·" : ", ");
+  const what = editedWords(item, language);
+  if (!what) return word;
   return language === "ko"
     ? `${word}\n\n마지막으로 읽은 뒤 사람이 할 일을 바꿨습니다(${what}). 진행하기 전에 \`console_todo\` 로 이 할 일을 다시 읽으세요.`
     : `${word}\n\nThe person changed this item since you last read it (${what}). Read it again with \`console_todo\` before you proceed.`;

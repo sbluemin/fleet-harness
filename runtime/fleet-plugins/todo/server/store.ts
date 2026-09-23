@@ -55,7 +55,8 @@ export interface TodoStore {
   move(itemId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): TodoItem;
   complete(itemId: string, by: SlotBy): TodoItem;
   reopen(itemId: string): TodoItem;
-  stepAdd(itemId: string, input: StepAddInput): TodoItem;
+  /** `unplaced` — 사람이 선행 없이 더한 단계는 미분류로 들어간다(셰프가 자리를 잡는다). */
+  stepAdd(itemId: string, input: StepAddInput, options?: { readonly unplaced?: boolean }): TodoItem;
   stepPatch(itemId: string, stepId: string, input: StepPatchInput, by?: SlotBy): TodoItem;
   stepRemove(itemId: string, stepId: string): TodoItem;
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
@@ -159,6 +160,9 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
     if (at < 0) throw new TodoStoreError("unknown_step");
     return { at, step: item.steps[at]! };
   };
+
+  /** 자리가 정해졌다 — 미분류 표시를 뗀다. */
+  const placed = (step: TodoStep): TodoStep => (step.unplaced ? (({ unplaced: _unplaced, ...rest }) => rest)(step) : step);
 
   const replaceStep = (item: TodoItem, at: number, step: TodoStep): TodoItem => {
     const steps = [...item.steps];
@@ -296,17 +300,21 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       };
     }),
 
-    stepAdd: (itemId, input) => update(itemId, (item) => {
+    stepAdd: (itemId, input, options) => update(itemId, (item) => {
       const known = new Set(item.steps.map((step) => step.id));
-      const step: TodoStep = { id: randomUUID(), text: input.text, done: false, after: (input.after ?? []).filter((id) => known.has(id)), slot: null, assign: input.assign ?? DEFAULT_STEP_ASSIGN };
+      const after = (input.after ?? []).filter((id) => known.has(id));
+      // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 단계뿐이다.
+      const unplaced = options?.unplaced === true && input.after === undefined;
+      const step: TodoStep = { id: randomUUID(), text: input.text, done: false, after, slot: null, assign: input.assign ?? DEFAULT_STEP_ASSIGN, ...(unplaced ? { unplaced: true as const } : {}) };
       return { ...item, steps: [...item.steps, step] };
     }),
 
     stepPatch: (itemId, stepId, input, by) => update(itemId, (item) => {
       const { at, step } = stepOf(item, stepId);
       const known = new Set(item.steps.map((candidate) => candidate.id));
+      // 선행을 정하면(빈 배열도) 자리가 정해진 것이다.
       const next: TodoStep = {
-        ...step,
+        ...(input.after !== undefined ? placed(step) : step),
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.done !== undefined ? { done: input.done, ...(input.done ? { doneBy: by ?? "human" } : {}) } : {}),
         ...(input.after !== undefined ? { after: input.after.filter((id) => known.has(id) && id !== stepId) } : {}),
@@ -334,23 +342,26 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       const item = update(itemId, (current) => {
         stepOf(current, from);
         const { at, step } = stepOf(current, to);
+        // 사람이 간선을 직접 이으면 양 끝 모두 자리가 정해진 것으로 본다 — 끊는 것은 자리를 되돌리지 않는다.
         if (step.after.includes(from)) {
           linked = false;
           const nextWhy = step.why ? Object.fromEntries(Object.entries(step.why).filter(([id]) => id !== from)) : undefined;
           return replaceStep(current, at, { ...step, after: step.after.filter((id) => id !== from), ...(nextWhy ? { why: nextWhy } : {}) });
         }
         linked = true;
-        return replaceStep(current, at, { ...step, after: [...step.after, from], why: { ...step.why, [from]: why ?? "human" } });
+        const fromAt = current.steps.findIndex((candidate) => candidate.id === from);
+        const withFrom = replaceStep(current, fromAt, placed(current.steps[fromAt]!));
+        return replaceStep(withFrom, at, { ...placed(step), after: [...step.after, from], why: { ...step.why, [from]: why ?? "human" } });
       });
       return { item, linked };
     },
 
     edgesLinear: (itemId) => update(itemId, (item) => ({
       ...item,
-      steps: item.steps.map((step, ix) => (ix === 0 ? { ...step, after: [] } : { ...step, after: [item.steps[ix - 1]!.id], why: { [item.steps[ix - 1]!.id]: "human" } })),
+      steps: item.steps.map((step, ix) => (ix === 0 ? { ...placed(step), after: [] } : { ...placed(step), after: [item.steps[ix - 1]!.id], why: { [item.steps[ix - 1]!.id]: "human" } })),
     })),
 
-    edgesClear: (itemId) => update(itemId, (item) => ({ ...item, steps: item.steps.map((step) => ({ ...step, after: [], why: {} })) })),
+    edgesClear: (itemId) => update(itemId, (item) => ({ ...item, steps: item.steps.map((step) => ({ ...placed(step), after: [], why: {} })) })),
 
     plan: (itemId, input, by) => update(itemId, (item) => {
       // 완료·배정·예약된 단계와 사람이 이은 간선은 보존한다. 나머지는 조율자의 계획으로 바꾼다.

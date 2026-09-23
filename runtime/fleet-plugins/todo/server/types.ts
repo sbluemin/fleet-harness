@@ -38,6 +38,11 @@ export interface TodoStep {
   readonly result?: string;
   /** 사전 배정 — self: 셰프가 직접 · route: 시작할 때 AI Gateway 라우팅이 난이도로 모델을 고름 · model: 이 모델·강도. 없으면 셰프 프리셋. */
   readonly assign?: StepAssign;
+  /**
+   * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 단계. 준비되지 않으며, 셰프가 선행을 정하거나(도구의 step after·plan)
+   * 사람이 레시피에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다. 사람은 단계를 더하기만 하고 자리는 셰프가 잡는다.
+   */
+  readonly unplaced?: true;
 }
 
 export interface StepAssign {
@@ -89,7 +94,7 @@ export interface TodoItem {
   readonly review?: { readonly at: number; readonly summary: string };
   /**
    * 셰프가 마지막으로 읽은 뒤 사람이 바꾼 것 — 셰프가 있는 동안의 화면 편집만 쌓인다. 「시작」이 셰프에게 한 줄로 알리고
-   * 다시 읽게 한다. 셰프가 이 항목을 읽거나(view item/mine), 새 셰프가 뜨거나, 알림이 나가면 지워진다.
+   * 다시 읽게 한다. 셰프가 일하는 동안 쌓이면 하단 「중단」 자리가 「스티어링」이 되어, 누르면 같은 한 줄이 간다. 셰프가 이 항목을 읽거나(view item/mine), 새 셰프가 뜨거나, 알림이 나가면 지워진다.
    */
   readonly edited?: { readonly at: number; readonly kinds: readonly TodoEditKind[] };
   readonly important: boolean;
@@ -185,7 +190,9 @@ export interface TodoItemEvent {
 /** 조율자의 모드 — 라벨이 아니라 매번 그래프에서 계산한다. */
 export type CoordinatorMode = "direct" | "coordinate" | "mixed";
 
+/** 준비 — 미분류 단계는 자리가 정해질 때까지 준비되지 않는다. 선행 없는 단계가 곧 「병렬」로 읽히는 것을 막는다. */
 export function stepReady(item: TodoItem, step: TodoStep): boolean {
+  if (step.unplaced) return false;
   return step.after.every((id) => item.steps.find((candidate) => candidate.id === id)?.done ?? true);
 }
 

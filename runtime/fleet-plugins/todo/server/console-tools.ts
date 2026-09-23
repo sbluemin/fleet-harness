@@ -29,7 +29,7 @@ const argsSchema = z.object({
   itemId: ids.optional(),
   filter: z.enum(["today", "due", "all", "agent"]).optional(),
   add: z.object({ groupId: ids.nullable().optional(), title: z.string().trim().min(1).max(200), note: z.string().max(20_000).optional(), steps: z.array(z.string().trim().min(1).max(200)).max(40).optional(), after: z.array(z.array(z.number().int().min(0))).optional(), important: z.boolean().optional(), dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).strict().optional(),
-  step: z.object({ itemId: ids, add: z.string().trim().min(1).max(200).optional(), delegate: z.boolean().optional(), index: z.number().int().min(0).optional(), stepId: ids.optional(), doneIndex: z.number().int().min(0).optional(), doneStepId: ids.optional(), result: z.string().trim().max(4000).optional() }).strict().optional(),
+  step: z.object({ itemId: ids, add: z.string().trim().min(1).max(200).optional(), delegate: z.boolean().optional(), after: z.array(z.number().int().min(0)).max(40).optional(), index: z.number().int().min(0).optional(), stepId: ids.optional(), doneIndex: z.number().int().min(0).optional(), doneStepId: ids.optional(), result: z.string().trim().max(4000).optional() }).strict().optional(),
   review: z.object({ itemId: ids, summary: z.string().trim().min(1).max(2000) }).strict().optional(),
   plan: z.object({ itemId: ids, steps: z.array(z.object({ text: z.string().trim().min(1).max(200), after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).optional(), assign: z.enum(["self", "route"]).optional() })).min(1).max(40) }).strict().optional(),
 }).strict();
@@ -67,6 +67,7 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
       index, stepId: step.id, text: step.text, done: step.done,
       after: step.after.map((id) => item.steps.findIndex((candidate) => candidate.id === id)).filter((value) => value >= 0),
       why: step.why ?? {},
+      ...(step.unplaced ? { unplaced: true } : {}),
       ready: !step.done && stepReady(item, step),
       result: step.result ?? null,
       assignee: step.slot ? { ...observe(step.slot.operationId), session: step.slot.sessionName ?? null } : null,
@@ -80,7 +81,7 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
 
   const tool: PluginMcpTool = {
     name: "console_todo",
-    description: "The To-do board of a Theater: intent items with steps (a dependency graph linked by after; a step is ready when all of its prerequisites are done), one Chef Operation per item, and an assignee session per step the Chef chooses to delegate. The Chef is a named CLI session; assignees are named CLI sessions too (todo-<item id prefix>-step-<n>, n = index + 1) and talk with the Chef through Claude Code cross-session messages (SendMessage / ListAgents). This tool only reads and updates the board. Read with view mine (the calling Operation's own item and role) | groups | items (filter today|due|all|agent) | item (steps, dependencies, readiness, assignee sessions, results, the person's note). Write one of: add (a new item with optional steps); plan (replace the open unassigned steps with steps + dependencies + why + assign: self for steps the Chef will do itself, route for steps it intends to delegate; done and assigned steps are kept; Chef only); step with delegate: true and index or stepId (launch that step's assignee session now — it starts with no prompt and knows nothing, so instruct it with SendMessage giving the full context: item, exact step text, results of prerequisites, constraints from the person's note, paths, what not to touch, and the report you expect; it reports back by SendMessage; Chef only); step with add (append a step that became necessary; Chef only); step with doneIndex or doneStepId and a short result (mark one step done — the result is what the next step receives; Chef only); review with summary (every step is done — hand the item to the person for review; the person completes it; Chef only). Steps assigned self are the Chef's own work; whether to delegate a step is the Chef's call at the moment it reaches that step. Completing an item, writing the note and linking or unlinking Operations are the person's acts on the screen and have no tool here.",
+    description: "The To-do board of a Theater: intent items with steps (a dependency graph linked by after; a step is ready when all of its prerequisites are done), one Chef Operation per item, and an assignee session per step the Chef chooses to delegate. The Chef is a named CLI session; assignees are named CLI sessions too (todo-<item id prefix>-step-<n>, n = index + 1) and talk with the Chef through Claude Code cross-session messages (SendMessage / ListAgents). This tool only reads and updates the board. Read with view mine (the calling Operation's own item and role) | groups | items (filter today|due|all|agent) | item (steps, dependencies, readiness, assignee sessions, results, the person's note). Write one of: add (a new item with optional steps); plan (replace the open unassigned steps with steps + dependencies + why + assign: self for steps the Chef will do itself, route for steps it intends to delegate; done and assigned steps are kept; Chef only); step with delegate: true and index or stepId (launch that step's assignee session now — it starts with no prompt and knows nothing, so instruct it with SendMessage giving the full context: item, exact step text, results of prerequisites, constraints from the person's note, paths, what not to touch, and the report you expect; it reports back by SendMessage; Chef only); step with add (append a step that became necessary; Chef only); step with index or stepId and after (the indexes of its prerequisites, [] = it can start now — sets the dependencies of one open step; Chef only); step with doneIndex or doneStepId and a short result (mark one step done — the result is what the next step receives; Chef only); review with summary (every step is done — hand the item to the person for review; the person completes it; Chef only). Steps assigned self are the Chef's own work; whether to delegate a step is the Chef's call at the moment it reaches that step. Steps the person added are unplaced (unplaced: true, never ready) — they only added the step; placing it is your call: before you continue, give each one its prerequisites with step after (and rewire any open step that should now wait for it), or re-plan. While you work the person may add or edit steps and the note; you then receive one line saying the item changed — read it again and continue from what it now says. Completing an item, writing the note and linking or unlinking Operations are the person's acts on the screen and have no tool here.",
     inputSchema: z.toJSONSchema(argsSchema),
     surface: {
       panelId: "todo",
@@ -95,7 +96,7 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
         if (args.add) return { theaterId, summary: `할 일 추가 「${short(args.add.title)}」`, view: "items", gesture: "create" };
         if (args.plan) return { theaterId, summary: `단계 ${args.plan.steps.length}개 계획`, view: "item", gesture: "create", ...(found ? { path: found.id } : {}) };
         if (args.review) return { theaterId, summary: "검토 요청", view: "item", gesture: "press", ...(found ? { path: found.id } : {}) };
-        if (args.step) return { theaterId, summary: args.step.add ? `단계 추가 「${short(args.step.add)}」` : args.step.delegate ? "단계 위임 — 담당 세션 띄움" : "단계 완료", view: "item", gesture: "press", ...(found ? { path: found.id } : {}) };
+        if (args.step) return { theaterId, summary: args.step.add ? `단계 추가 「${short(args.step.add)}」` : args.step.delegate ? "단계 위임 — 담당 세션 띄움" : args.step.after ? "단계 선행 정함" : "단계 완료", view: "item", gesture: "press", ...(found ? { path: found.id } : {}) };
         return { theaterId, summary: args.view === "item" ? `할 일 봄 「${short(found?.title ?? "")}」` : args.view === "mine" ? "내 할 일 봄" : args.view === "groups" ? "그룹 봄" : "할 일 목록 봄", view: args.view === "mine" ? "items" : args.view ?? "items", ...(found ? { path: found.id } : {}) };
       },
     },
@@ -136,6 +137,14 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
           if (stepArgs.add) return text({ ok: true, item: itemView(await launch.stepAdded(item.id, { text: stepArgs.add }, { language })) });
           const target = stepOf(item, { ...stepArgs, stepIndex: stepArgs.index });
           if (!target) return refuse("unknown_step");
+          if (stepArgs.after) {
+            // 자리 잡기 — 선행을 index 로 받아 id 로 바꾼다. 미분류가 풀리고, 순환은 스토어가 거절한다.
+            if (target.done) return refuse("step_done");
+            const prerequisites = stepArgs.after.map((index) => item.steps[index]?.id);
+            if (prerequisites.some((id) => !id)) return refuse("unknown_step");
+            const next = await launch.stepPatched(item.id, target.id, { after: prerequisites.filter((id): id is string => !!id && id !== target.id) }, slotBy(caller), { language });
+            return text({ ok: true, item: itemView(next) });
+          }
           if (stepArgs.delegate) {
             // 위임 — 이 단계의 담당 세션을 지금 띄운다. 이름을 돌려주면 셰프가 SendMessage 로 맥락을 담아 일을 시킨다.
             const delegated = await launch.delegateStep(item.id, target.id, { language });

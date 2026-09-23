@@ -563,6 +563,11 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const mode = coordinatorMode(item);
   const locked = !!item.slot;
   const editable = !item.done && !busy;
+  // 셰프가 일하는 동안에도 받는 편집 — 단계 추가, 시작 전(끝나지 않고 담당이 없는) 단계의 문구·삭제·선행, 메모. 서버가 같은 기준으로 가른다.
+  const touchable = !item.done;
+  const notStarted = (step: TodoStep) => !step.done && !step.slot;
+  const canEditStep = (stepId: string) => { if (editable) return true; const target = item.steps.find((candidate) => candidate.id === stepId); return touchable && !!target && notStarted(target); };
+  const [steering, setSteering] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
   // 사람의 결정을 기다리는 세션 — 셰프가 먼저, 다음은 단계 순서. 카드가 잠기지 않은 채 사람을 부르는 유일한 상태다.
@@ -580,6 +585,11 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const start = async () => {
     const result = await call<{ operationId: string }>("/coordinator/start", { itemId: item.id });
     if (result) { const words = launchWords(launchRows, item.launch.model, item.launch.effort, t("todo.coordinator.effortAuto")); toast(t("todo.toast.started", { model: `${words.model} · ${words.effort}` })); }
+  };
+  const steer = async () => {
+    setSteering(true);
+    await call("/coordinator/steer", { itemId: item.id });
+    setSteering(false);
   };
   const plan = async (context: string) => {
     setPlanning(true);
@@ -679,27 +689,28 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
               <div key={step.id} className={`todo-step${step.done ? " is-done" : ""}${highlightStep === step.id ? " is-highlight" : ""}`}>
                 <button type="button" className={`todo-check${step.done ? " is-on" : ""}`} aria-label={t("todo.steps.done")} disabled={!editable} onClick={() => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { done: !step.done } })}><CheckGlyph /></button>
                 <div className="todo-step-body">
-                  <input className="todo-step-text" aria-label={`${index + 1}`} title={step.result || undefined} defaultValue={step.text} readOnly={!editable} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== step.text) void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { text: value } }); }} onKeyDown={(event) => { if (submitKey(event)) event.currentTarget.blur(); }} />
+                  <input className="todo-step-text" aria-label={`${index + 1}`} title={step.result || undefined} defaultValue={step.text} readOnly={!(editable || (touchable && notStarted(step)))} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== step.text) void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { text: value } }); }} onKeyDown={(event) => { if (submitKey(event)) event.currentTarget.blur(); }} />
                   {/* 배정된 모델은 단계 이름 아래 dim 한 줄 — 풀네임 · 강도. 담당은 상태 점, 예약은 ✦. */}
                   {step.slot ? <span className={`todo-step-sub is-${operationState(step.slot.operationId)}`} title={`${t("todo.steps.assignee")} · ${operationTitle(step.slot.operationId)}`}><ProviderGlyph model={step.slot.model} /><span>{launchWords(launchRows, step.slot.model, step.slot.effort, t("todo.coordinator.effortAuto")).model}</span>{step.slot.effort ? <b>{launchWords(launchRows, step.slot.model, step.slot.effort, t("todo.coordinator.effortAuto")).effort}</b> : null}</span>
+                    : step.unplaced && !step.done ? <span className="todo-step-sub is-unplaced">{t("todo.steps.unplaced")}</span>
                     : !step.done ? <span className="todo-step-sub is-assign">{!step.assign || step.assign.mode === "self" ? t("todo.assign.self") : step.assign.mode === "route" ? t("todo.assign.route") : <><ProviderGlyph model={step.assign.model} /><span>{launchWords(launchRows, step.assign.model, step.assign.effort, t("todo.coordinator.effortAuto")).model}</span><b>{launchWords(launchRows, step.assign.model, step.assign.effort, t("todo.coordinator.effortAuto")).effort}</b></>}</span> : null}
                   {/* 산출 요약은 줄로 늘어놓지 않는다 — 단계 이름의 툴팁으로만 남긴다. */}
                 </div>
-                {!step.slot && !step.done && !ready ? <span className="todo-wait" title={t("todo.steps.waiting")}>⏸</span> : null}
+                {!step.slot && !step.done && !ready && !step.unplaced ? <span className="todo-wait" title={t("todo.steps.waiting")}>⏸</span> : null}
                 <span className="todo-step-tools">
                   {!step.done && !step.slot && editable ? <AssignControl t={t} assign={step.assign ?? null} onChange={(assign) => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { assign } })} label={t("todo.steps.assign")} /> : null}
                   {step.slot && editable ? <button type="button" className="todo-glyph" title={t("todo.steps.unlink")} aria-label={t("todo.steps.unlink")} onClick={() => void call("/step/unlink", { itemId: item.id, stepId: step.id })}>×</button> : null}
-                  {!step.done && !step.slot && editable ? <button type="button" className="todo-glyph" title={t("todo.steps.remove")} aria-label={t("todo.steps.remove")} onClick={() => void call("/step/remove", { itemId: item.id, stepId: step.id })}><TrashGlyph /></button> : null}
+                  {notStarted(step) && touchable ? <button type="button" className="todo-glyph" title={t("todo.steps.remove")} aria-label={t("todo.steps.remove")} onClick={() => void call("/step/remove", { itemId: item.id, stepId: step.id })}><TrashGlyph /></button> : null}
                 </span>
               </div>
             );
           })}
         </div>
-        {editable ? (
+        {touchable ? (
           <div className="todo-row todo-step-add">
             <span className="todo-row-ic todo-plus" aria-hidden="true">+</span>
             <input aria-label={t("todo.steps.add")} placeholder={t("todo.steps.add")} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; void call("/step/add", { itemId: item.id, step: { text: target.value.trim() } }).then(() => { target.value = ""; }); } }} />
-            {item.steps.some((step) => !step.done && !step.slot) ? (
+            {editable && item.steps.some((step) => !step.done && !step.slot) ? (
               <AssignControl t={t} assign={null} all label={t("todo.steps.assignAll")} onChange={async (assign) => { for (const step of item.steps) if (!step.done && !step.slot) await call("/step/patch", { itemId: item.id, stepId: step.id, patch: { assign } }); }} />
             ) : null}
           </div>
@@ -718,11 +729,11 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
               </span>
             </div>
             <div className="todo-graph-wrap">
-              <CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} />
+              <CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} />
             </div>
             {zoomOpen ? createPortal(
               <RecipeZoom t={t} title={item.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}>
-                <CoordinationGraph zoom item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} />
+                <CoordinationGraph zoom item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("todo.graph.cycle"))} operationTitle={operationTitle} canEdit={canEditStep} />
               </RecipeZoom>,
               document.body,
             ) : null}
@@ -731,11 +742,11 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
       </div>
 
       <div className="todo-group">
-        <textarea className="todo-note" aria-label={t("todo.item.memo")} placeholder={t("todo.item.memoPlaceholder")} value={note} readOnly={!editable} onChange={(event) => saveNote(event.target.value)} />
+        <textarea className="todo-note" aria-label={t("todo.item.memo")} placeholder={t("todo.item.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)} />
       </div>
 
       {/* 마지막 행동 한 자리 — 검토 대기면 「완료」, 누군가 사람의 결정을 기다리면 「결정 대기」(누르면 그 Operation으로),
-          아니면 「시작」, 일하는 동안에는 「중단」. 같은 띠, 낱말만 다르다. */}
+          아니면 「시작」, 일하는 동안에는 「중단」 — 그동안 사람이 보드를 고쳤으면 「중단」 자리가 「스티어링」이 된다. 같은 띠, 낱말만 다르다. */}
       {item.review && !item.done ? (
         <div className="todo-group todo-start-group">
           <button type="button" className="todo-start is-review" title={item.review.summary} onClick={onComplete}>
@@ -757,6 +768,14 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           <button type="button" className="todo-start" disabled={!launchAvailable} title={launchAvailable ? undefined : t("todo.coordinator.unavailable")} onClick={() => void start()}>
             <span className="todo-start-word">{t("todo.coordinator.start")}</span>
             <span className="todo-start-sub">{item.slot ? `${stateLabel(operationState(item.slot.operationId))} · ${t("todo.start.resume")}` : (() => { const open = item.steps.filter((step) => !step.done && !step.slot); const workers = open.filter((step) => step.assign && step.assign.mode !== "self").length; return open.length <= 1 || workers === 0 ? t("todo.start.direct") : t("todo.start.workers", { count: workers }); })()}</span>
+            <span className="todo-start-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      ) : busy && item.edited ? (
+        <div className="todo-group todo-start-group">
+          <button type="button" className="todo-start is-steer" title={t("todo.steer.hint")} disabled={steering} onClick={() => void steer()}>
+            <span className="todo-start-word">{t("todo.steer")}</span>
+            <span className="todo-start-sub" />
             <span className="todo-start-arrow" aria-hidden="true">→</span>
           </button>
         </div>
