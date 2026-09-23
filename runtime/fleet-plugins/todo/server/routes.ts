@@ -6,6 +6,7 @@ import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { z } from "zod";
 
 import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
+import { createGroupSync, type GroupSync } from "./group-sync.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { TodoStoreError, type TodoStore } from "./store.js";
 import { createItemSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type TodoEditKind, type TodoItem } from "./types.js";
@@ -27,7 +28,7 @@ const language = z.enum(["en", "ko"]).optional();
 const itemRef = z.object({ itemId: ids, language });
 const stepRef = z.object({ itemId: ids, stepId: ids, language });
 
-export function createTodoRoutes(ctx: FleetPluginServerContext, store: TodoStore, launch: LaunchService = createLaunchService(ctx, store)): readonly TodoRoute[] {
+export function createTodoRoutes(ctx: FleetPluginServerContext, store: TodoStore, launch: LaunchService = createLaunchService(ctx, store), groupSync: GroupSync = createGroupSync(ctx, store)): readonly TodoRoute[] {
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>, req: http.IncomingMessage) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -90,6 +91,8 @@ export function createTodoRoutes(ctx: FleetPluginServerContext, store: TodoStore
     return true;
   };
 
+  // 항목을 다른 그룹으로 옮기면 셰프·담당 Operation 도 사이드바에서 같은 그룹으로 — 목록이 곧 그 그룹이다.
+  const regrouped = (next: TodoItem, moved: boolean): TodoItem => { if (moved) groupSync.itemRegrouped(next); return next; };
   const groupsOf = (theaterId: string) => ctx.host.operations.groups?.list(theaterId) ?? [];
   const item = (value: TodoItem) => ({ item: value });
   // 셰프가 일하는 동안에도 계속 잠기는 것 — 쿠킹·셰프 연결/교체·시작·제목과 일정·완료·삭제·일괄 재배선. 먼저 중단해야 한다.
@@ -120,7 +123,7 @@ export function createTodoRoutes(ctx: FleetPluginServerContext, store: TodoStore
   return [
     { name: "state", method: "POST", summary: "Read the To-do items and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ items: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() })) },
     { name: "item/create", method: "POST", summary: "Create a To-do item.", handler: json(createItemSchema, ({ language: _language, ...body }) => item(store.create({ ...body, author: { kind: "human" } }))) },
-    { name: "item/patch", method: "POST", summary: "Edit a To-do item.", handler: json(itemRef.extend({ patch: patchItemSchema }), steerable(({ patch }) => only(patch, ["note"]), ({ itemId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], () => store.patch(itemId, patch)))) },
+    { name: "item/patch", method: "POST", summary: "Edit a To-do item.", handler: json(itemRef.extend({ patch: patchItemSchema }), steerable(({ patch }) => only(patch, ["note"]), ({ itemId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], () => regrouped(store.patch(itemId, patch), patch.groupId !== undefined)))) },
     // 순서는 내용이 아니다 — 셰프가 일하는 동안에도 사람이 목록을 정리할 수 있게 busy 잠금을 지나지 않는다.
     { name: "item/move", method: "POST", summary: "Reorder a To-do item before or after another item of the same Theater.", handler: json(itemRef.extend({ beforeId: ids.optional(), afterId: ids.optional() }).refine((body) => (body.beforeId === undefined) !== (body.afterId === undefined)), ({ itemId, beforeId, afterId }) => item(store.move(itemId, beforeId !== undefined ? { beforeId } : { afterId: afterId! }))) },
     { name: "item/remove", method: "POST", summary: "Delete a To-do item (Operations stay).", handler: json(itemRef, unlessBusy(({ itemId }) => item(store.remove(itemId)))) },

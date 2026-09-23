@@ -126,7 +126,7 @@ export function createTodoConsoleTools(ctx: FleetPluginServerContext, store: Tod
           if (Date.now() - budget.at > 10 * 60_000) { budget.at = Date.now(); budget.count = 0; }
           if (budget.count >= MAX_ADD_PER_TURN) return refuse("budget_exceeded", { limit: MAX_ADD_PER_TURN });
           budget.count += 1; addBudget.set(callerKey(caller), budget);
-          const groupId = add.groupId === undefined ? (caller?.kind === "operation" ? (ctx.host.operations.get(caller.operationId) as { groupId?: string | null } | null)?.groupId ?? null : null) : add.groupId;
+          const groupId = add.groupId === undefined ? (caller?.kind === "operation" ? ctx.host.operations.get(caller.operationId)?.groupId ?? null : null) : add.groupId;
           const item = store.create({
             theaterId, groupId, title: add.title, ...(add.note ? { note: add.note } : {}), ...(add.important !== undefined ? { important: add.important } : {}), ...(add.dueDate ? { dueDate: add.dueDate } : {}),
             steps: (add.steps ?? []).map((stepText, index) => ({ text: stepText, after: add.after?.[index] ?? [] })),

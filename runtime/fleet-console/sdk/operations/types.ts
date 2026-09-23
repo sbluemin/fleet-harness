@@ -18,6 +18,8 @@ export interface OperationNode {
   /** null은 Console core 소유이며, 문자열은 플러그인의 이름공간이다. */
   readonly pluginId: string | null;
   readonly title: string;
+  /** 사이드바 그룹 — 없거나 null 이면 그룹 밖. */
+  readonly groupId?: string | null;
   readonly payload: Record<string, unknown>;
   readonly geometry: OperationGeometry | null;
   readonly ts: OperationTimestamps;
@@ -38,8 +40,23 @@ export interface OperationCreateInput {
 export interface OperationPatchInput {
   readonly title?: string;
   readonly accent?: string | null;
+  /** 사이드바 그룹 — null 은 그룹 밖. 사람이 옮기는 것과 같은 저장 경로라 `operation:grouped` 가 난다. */
+  readonly groupId?: string | null;
   readonly geometry?: OperationGeometry | null;
   readonly payload?: Record<string, unknown>;
+}
+
+/**
+ * 서버 안 이벤트 채널 — Operation 의 그룹이 실제로 바뀌면 한 번 난다. 사이드바 끌기·메뉴, Console Use, 플러그인의
+ * patch, 그룹 삭제(멤버가 그룹 밖으로)가 모두 같은 저장 쓰기를 지나므로 이 채널 하나로 전부 들린다. 브라우저로는 나가지 않는다.
+ */
+export const OPERATION_GROUPED_EVENT_CHANNEL = "operation:grouped";
+
+export interface OperationGroupedEvent {
+  readonly operationId: string;
+  readonly theaterId: string;
+  readonly groupId: string | null;
+  readonly previousGroupId: string | null;
 }
 
 export interface OperationLaunchVariantChip {

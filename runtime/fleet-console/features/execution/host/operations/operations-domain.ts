@@ -1,5 +1,6 @@
 import type {
   OperationCreateInput as SdkOperationCreateInput,
+  OperationGroupedEvent,
   OperationNode as SdkOperationNode,
   OperationPatchInput as SdkOperationPatchInput,
 } from "@fleet-console/sdk/operations";
@@ -133,8 +134,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 import crypto from "node:crypto";
 
-export function createOperationStore(deps: { readonly now?: () => number } = {}): OperationStore {
+export interface OperationStoreDeps {
+  readonly now?: () => number;
+  /**
+   * Operation 의 그룹이 실제로 바뀐 순간 — 모든 이동(HTTP·Console Use·플러그인 patch·그룹 삭제)이 이 저장소의 쓰기를
+   * 지나므로 여기서 한 번만 알린다. 재수화(replace)는 이동이 아니라 알리지 않는다.
+   */
+  readonly onGroupChanged?: (event: OperationGroupedEvent) => void;
+}
+
+export function createOperationStore(deps: OperationStoreDeps = {}): OperationStore {
   const now = deps.now ?? Date.now;
+  const grouped = (before: OperationNode, after: OperationNode): void => {
+    const previousGroupId = before.groupId ?? null;
+    const groupId = after.groupId ?? null;
+    if (previousGroupId !== groupId) deps.onGroupChanged?.({ operationId: after.id, theaterId: after.theaterId, groupId, previousGroupId });
+  };
   const nodes = new Map<string, OperationNode>();
   const groups = new Map<string, OperationGroup>();
 
@@ -176,6 +191,7 @@ export function createOperationStore(deps: { readonly now?: () => number } = {})
     if (!existing) return null;
     const updated = normalizePatch(existing, input, now());
     nodes.set(id, updated);
+    grouped(existing, updated);
     return updated;
   }
 
@@ -234,9 +250,14 @@ export function createOperationStore(deps: { readonly now?: () => number } = {})
   function deleteGroup(id: string): boolean {
     if (!groups.has(id)) return false;
     groups.delete(id);
+    const ungrouped: [OperationNode, OperationNode][] = [];
     for (const [nodeId, node] of nodes.entries()) {
-      if (node.groupId === id) nodes.set(nodeId, { ...node, groupId: null });
+      if (node.groupId !== id) continue;
+      const next = { ...node, groupId: null };
+      nodes.set(nodeId, next);
+      ungrouped.push([node, next]);
     }
+    for (const [before, after] of ungrouped) grouped(before, after);
     return true;
   }
 
