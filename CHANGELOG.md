@@ -5,6 +5,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.106.0] - 2026-09-23
+
+### fleet-console
+
+#### Added
+- Choose which browser session new Operations start with: pin "Temporary" or "My profile" as the default from the browser's session menu, or take the offer that appears right after you switch sessions. Operations already open keep their current session.
+- Show how many Claude usage-limit resets you have left, and when the next one expires, on the Quota panel's Claude card.
+- Snap a panel into a split of the screen in Cruise: drag it toward the top edge to pick a layout from the bar that descends, drag it to a side or corner for a half or quarter, or hold the maximize button for the same choices. Snapping brings the view back to 100% zoom so the panel lands at working size.
+- Drag a panel past the layout bar to the very top of the view to snap it to the whole view, the way a window maximizes at the top of the screen.
+- Offer GPT-6 Sol and GPT-6 Luna in the Codex model loadout, each with 272K, 524K, and 1M context variants and a Fast twin.
+
+#### Changed
+- Opening an Operation from the sidebar or search in Cruise now brings the panel into the view you are looking at instead of moving the view to the panel.
+
+#### Fixed
+- A panel no longer drifts when the mouse passes over its caption after a click-and-release that ended outside the caption.
+
+#### Removed
+- Remove GPT-5.6 Sol and GPT-5.6 Luna from Codex in favor of their GPT-6 successors; GPT-5.6 Terra stays. Operations or settings that chose a removed model need another model selected.
+
 ## [1.105.0] - 2026-09-21
 
 ### fleet-console
