@@ -458,6 +458,11 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 /* 끌기 — 원래 카드는 빈 홈으로 남고, 유령이 커서를 따르며, 목록 행은 놓을 수 있을 때 브라스 테두리로 응답한다 */
 .todo-item.is-lifted { opacity: 0.35; border-style: dashed; }
 .todo-item.is-lifted > * { visibility: hidden; }
+/* 순서 바꾸기의 삽입선 — 카드 사이 틈(5px) 한가운데에 선다. */
+.todo-item.is-insert-before::before,
+.todo-item.is-insert-after::after { content: ""; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 1px; background: var(--brass); pointer-events: none; }
+.todo-item.is-insert-before::before { top: -4.5px; }
+.todo-item.is-insert-after::after { bottom: -4.5px; }
 .todo-lists.is-dragging .todo-list-btn[data-drop-list] { border-color: color-mix(in oklch, var(--brass) 35%, transparent); }
 .todo-list-btn.is-drop { background: color-mix(in oklch, var(--brass) 16%, transparent); border-color: var(--brass); color: var(--text-primary); }
 .todo-list-btn.is-drop .todo-count { color: var(--brass); }

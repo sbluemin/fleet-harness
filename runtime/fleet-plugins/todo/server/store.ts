@@ -13,6 +13,7 @@ import {
   type SlotBy,
   type StepAddInput,
   type StepPatchInput,
+  type TodoEditKind,
   type TodoHistoryEntry,
   type TodoItem,
   type TodoItemEvent,
@@ -50,6 +51,8 @@ export interface TodoStore {
   create(input: CreateItemInput): TodoItem;
   patch(itemId: string, input: PatchItemInput): TodoItem;
   remove(itemId: string): TodoItem;
+  /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. 내용은 그대로라 updatedAt 도 그대로다. */
+  move(itemId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): TodoItem;
   complete(itemId: string, by: SlotBy): TodoItem;
   reopen(itemId: string): TodoItem;
   stepAdd(itemId: string, input: StepAddInput): TodoItem;
@@ -63,6 +66,8 @@ export interface TodoStore {
   setSlot(itemId: string, stepId: string | null, slot: Slot | null): TodoItem;
   setCooking(itemId: string, cooking: boolean): TodoItem;
   setReview(itemId: string, review: { readonly summary: string } | null): TodoItem;
+  /** 사람의 편집을 쌓는다(셰프가 있을 때만) · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
+  setEdited(itemId: string, kinds: readonly TodoEditKind[] | null): TodoItem;
   /** 사라진 Operation 을 모든 슬롯(완료 항목의 released 포함)에서 지운다 — 바뀐 항목을 돌려준다. */
   forgetOperation(operationId: string): readonly TodoItem[];
 }
@@ -126,11 +131,11 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
     return { theaterId, items, at, item: items[at]! };
   };
 
-  const commit = (theaterId: string, items: TodoItem[], next: TodoItem | null, removedId?: string): void => {
+  const commit = (theaterId: string, items: TodoItem[], next: TodoItem | null, removedId?: string, reordered = false): void => {
     writeFileAtomic(fileFor(options.dir, theaterId), { version: 1, items });
     if (next) {
       index.set(next.id, theaterId);
-      options.emit({ op: "upsert", theaterId, itemId: next.id, item: next });
+      options.emit({ op: "upsert", theaterId, itemId: next.id, item: next, ...(reordered ? { order: items.map((item) => item.id) } : {}) });
     } else if (removedId) {
       index.delete(removedId);
       options.emit({ op: "remove", theaterId, itemId: removedId });
@@ -242,7 +247,28 @@ export function createTodoStore(options: TodoStoreOptions): TodoStore {
       return item;
     },
 
+    move(itemId, anchor) {
+      const { theaterId, items, at, item } = locate(itemId);
+      const anchorId = "beforeId" in anchor ? anchor.beforeId : anchor.afterId;
+      if (anchorId === itemId) return item;
+      if (!items.some((candidate) => candidate.id === anchorId)) throw new TodoStoreError("unknown_item");
+      items.splice(at, 1);
+      const target = items.findIndex((candidate) => candidate.id === anchorId);
+      items.splice("beforeId" in anchor ? target : target + 1, 0, item);
+      commit(theaterId, items, item, undefined, true);
+      return item;
+    },
+
     setCooking: (itemId, cooking) => update(itemId, (item) => (item.cooking === cooking ? item : cooking ? { ...item, cooking: true } : (({ cooking: _cooking, ...rest }) => rest)(item))),
+
+    setEdited(itemId, kinds) {
+      const current = locate(itemId).item;
+      if (kinds === null) return current.edited ? update(itemId, (item) => (({ edited: _edited, ...rest }) => rest)(item)) : current;
+      if (!current.slot || kinds.length === 0) return current;
+      const merged = [...new Set([...(current.edited?.kinds ?? []), ...kinds])];
+      if (current.edited && merged.length === current.edited.kinds.length) return current;
+      return update(itemId, (item) => ({ ...item, edited: { at: now(), kinds: merged } }));
+    },
 
     setReview: (itemId, review) => update(itemId, (item) => (review ? { ...item, review: { at: now(), summary: review.summary } } : item.review ? (({ review: _review, ...rest }) => rest)(item) : item)),
 

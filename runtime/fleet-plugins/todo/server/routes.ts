@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { TodoStoreError, type TodoStore } from "./store.js";
-import { createItemSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type TodoItem } from "./types.js";
+import { createItemSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type TodoEditKind, type TodoItem } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -47,19 +47,31 @@ export function createTodoRoutes(ctx: FleetPluginServerContext, store: TodoStore
   const item = (value: TodoItem) => ({ item: value });
   // 조율자가 일하는 동안 사람의 편집은 잠긴다 — 먼저 중단해야 한다. 조율자 자신의 도구 경로(console-tools)는 이 문을 지나지 않는다.
   const unlessBusy = <A extends { itemId: string }, R>(run: (body: A) => R) => (body: A): R => { if (launch.busy(body.itemId)) throw new TodoStoreError("item_busy"); return run(body); };
+  // 이 라우트들은 사람의 화면이다 — 셰프가 알아야 할 편집이면 항목에 쌓아 두고, 「시작」이 셰프에게 다시 읽으라고 알린다.
+  const edited = async (kinds: readonly TodoEditKind[], run: () => Promise<TodoItem> | TodoItem) => {
+    const next = await run();
+    return item(kinds.length > 0 ? store.setEdited(next.id, kinds) : next);
+  };
+  const stepKinds = (patch: StepPatchInput): TodoEditKind[] => [
+    ...(patch.text !== undefined || patch.done !== undefined || patch.result !== undefined ? ["steps" as const] : []),
+    ...(patch.after !== undefined || patch.why !== undefined ? ["recipe" as const] : []),
+    ...(patch.assign !== undefined ? ["assign" as const] : []),
+  ];
 
   return [
     { name: "state", method: "POST", summary: "Read the To-do items and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ items: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() })) },
     { name: "item/create", method: "POST", summary: "Create a To-do item.", handler: json(createItemSchema, ({ language: _language, ...body }) => item(store.create({ ...body, author: { kind: "human" } }))) },
-    { name: "item/patch", method: "POST", summary: "Edit a To-do item.", handler: json(itemRef.extend({ patch: patchItemSchema }), unlessBusy(({ itemId, patch }) => item(store.patch(itemId, patch)))) },
+    { name: "item/patch", method: "POST", summary: "Edit a To-do item.", handler: json(itemRef.extend({ patch: patchItemSchema }), unlessBusy(({ itemId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], () => store.patch(itemId, patch)))) },
+    // 순서는 내용이 아니다 — 셰프가 일하는 동안에도 사람이 목록을 정리할 수 있게 busy 잠금을 지나지 않는다.
+    { name: "item/move", method: "POST", summary: "Reorder a To-do item before or after another item of the same Theater.", handler: json(itemRef.extend({ beforeId: ids.optional(), afterId: ids.optional() }).refine((body) => (body.beforeId === undefined) !== (body.afterId === undefined)), ({ itemId, beforeId, afterId }) => item(store.move(itemId, beforeId !== undefined ? { beforeId } : { afterId: afterId! }))) },
     { name: "item/remove", method: "POST", summary: "Delete a To-do item (Operations stay).", handler: json(itemRef, unlessBusy(({ itemId }) => item(store.remove(itemId)))) },
     { name: "item/complete", method: "POST", summary: "Complete a To-do item and release its Operation slots.", handler: json(itemRef.extend({ undone: z.boolean().optional() }), unlessBusy(async ({ itemId, undone, language }) => item(undone ? store.reopen(itemId) : await launch.complete(itemId, "human", { language })))) },
-    { name: "step/add", method: "POST", summary: "Add a step.", handler: json(itemRef.extend({ step: stepAddSchema }), unlessBusy(async ({ itemId, step, language }) => item(await launch.stepAdded(itemId, step, { language })))) },
-    { name: "step/patch", method: "POST", summary: "Edit a step (text, done, dependencies).", handler: json(stepRef.extend({ patch: stepPatchSchema }), unlessBusy(async ({ itemId, stepId, patch, language }) => item(await launch.stepPatched(itemId, stepId, patch, "human", { language })))) },
-    { name: "step/remove", method: "POST", summary: "Remove a step.", handler: json(stepRef, unlessBusy(({ itemId, stepId }) => item(store.stepRemove(itemId, stepId)))) },
-    { name: "edge/toggle", method: "POST", summary: "Link or unlink two steps in the coordination graph.", handler: json(itemRef.extend({ from: ids, to: ids }), unlessBusy(({ itemId, from, to }) => { const result = store.edgeToggle(itemId, from, to); return { item: result.item, linked: result.linked }; })) },
-    { name: "edge/linear", method: "POST", summary: "Chain all steps in order.", handler: json(itemRef, unlessBusy(({ itemId }) => item(store.edgesLinear(itemId)))) },
-    { name: "edge/clear", method: "POST", summary: "Remove all step dependencies.", handler: json(itemRef, unlessBusy(({ itemId }) => item(store.edgesClear(itemId)))) },
+    { name: "step/add", method: "POST", summary: "Add a step.", handler: json(itemRef.extend({ step: stepAddSchema }), unlessBusy(({ itemId, step, language }) => edited(["steps"], () => launch.stepAdded(itemId, step, { language })))) },
+    { name: "step/patch", method: "POST", summary: "Edit a step (text, done, dependencies).", handler: json(stepRef.extend({ patch: stepPatchSchema }), unlessBusy(({ itemId, stepId, patch, language }) => edited(stepKinds(patch), () => launch.stepPatched(itemId, stepId, patch, "human", { language })))) },
+    { name: "step/remove", method: "POST", summary: "Remove a step.", handler: json(stepRef, unlessBusy(({ itemId, stepId }) => edited(["steps"], () => store.stepRemove(itemId, stepId)))) },
+    { name: "edge/toggle", method: "POST", summary: "Link or unlink two steps in the coordination graph.", handler: json(itemRef.extend({ from: ids, to: ids }), unlessBusy(({ itemId, from, to }) => { const result = store.edgeToggle(itemId, from, to); return { item: store.setEdited(itemId, ["recipe"]), linked: result.linked }; })) },
+    { name: "edge/linear", method: "POST", summary: "Chain all steps in order.", handler: json(itemRef, unlessBusy(({ itemId }) => edited(["recipe"], () => store.edgesLinear(itemId)))) },
+    { name: "edge/clear", method: "POST", summary: "Remove all step dependencies.", handler: json(itemRef, unlessBusy(({ itemId }) => edited(["recipe"], () => store.edgesClear(itemId)))) },
     { name: "plan/request", method: "POST", summary: "Ask the Chef to cook the item (starts one when missing): it plans steps, prerequisites and delegation; nothing runs until Start. Optional context travels with the request and is kept on the item.", handler: json(itemRef.extend({ context: z.string().max(4000).optional() }), ({ itemId, language, context }) => { if (context !== undefined) store.patch(itemId, { cook: context }); return launch.requestPlan(itemId, { language }); }) },
     { name: "coordinator/stop", method: "POST", summary: "Interrupt the coordinator and every assignee Operation of an item (slots stay).", handler: json(itemRef, ({ itemId }) => launch.stop(itemId)) },
     { name: "coordinator/start", method: "POST", summary: "Start the coordinator and one named assignee session per open step, all at once.", handler: json(itemRef, ({ itemId, language }) => launch.startCoordinator(itemId, { language })) },
