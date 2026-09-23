@@ -1,241 +1,476 @@
 {
-  "version": 4,
+  "version": 3,
   "updatedAt": "2026-09-23T00:00:00Z",
-  "source": {
-    "id": "llm-stats",
-    "name": "LLM Stats",
-    "url": "https://llm-stats.com/",
-    "methodology": "https://llm-stats.com/methodology/llm-stats-score",
-    "methodologyVersion": "v3.1",
-    "observedAt": "2026-09-23T00:00:00Z",
-    "method": "공개 리더보드 페이지에 게시된 지수의 보수적 점수(conservative = μ−3σ)를 그대로 옮긴다. score는 LLM Stats Score(general), 나머지는 같은 페이지의 Reasoning(reasoning)·Coding(code)·Agent(agents) 분야 지수다. LLM Stats는 공개 벤치마크와 승인된 커뮤니티 평가를 모델 단위로 결합하며 산식·가중치를 공개하지 않고, 업체 보고치와 자체 검증치를 함께 쓰고, effort를 구분하지 않는다. 따라서 모든 값은 effort와 무관한 모델 단위 근거다. API(api.zeroeval.com)는 사용하지 않는다.",
-    "license": "llm-stats.com Terms of Service(2026-09-22): 상업 목적을 포함한 복사·수정·재게시를 허용하며, 사용자에게 보이는 곳에 llm-stats.com 출처와 링크를 표시하는 것만 요구한다. API 데이터의 재배포 제한은 API 경로에만 적용된다.",
-    "attribution": "Data by LLM Stats (https://llm-stats.com)",
-    "artifacts": [
-      {
-        "url": "https://llm-stats.com/",
-        "sha256": "ad2abd1dc17669ecec5d51d1ad848e6b57af174fa8b9726b31796c28c62f4bb1"
-      }
-    ]
-  },
-  "metrics": {
-    "score": {
-      "label": "LLM Stats Score",
-      "sourceIndex": "general",
-      "unit": "points",
-      "direction": "higher",
-      "role": "quality"
-    },
-    "reasoning": {
-      "label": "Reasoning",
-      "sourceIndex": "reasoning",
-      "unit": "points",
-      "direction": "higher",
-      "role": "category"
-    },
-    "coding": {
-      "label": "Coding",
-      "sourceIndex": "code",
-      "unit": "points",
-      "direction": "higher",
-      "role": "category"
-    },
-    "agents": {
-      "label": "Agent",
-      "sourceIndex": "agents",
-      "unit": "points",
-      "direction": "higher",
-      "role": "category"
-    }
-  },
-  "policy": {
-    "effort": "model-level",
+  "normalization": {
+    "method": "cohort-min-max",
+    "sourceWeighting": "equal",
     "missingData": "exclude-model",
-    "tieBandPoints": 2,
-    "capabilityClassBands": {
-      "flagship": 52,
-      "standard": 46
+    "effortPolicy": "exact-match",
+    "tieBandPoints": 2
+  },
+  "sources": {
+    "cursorbench": {
+      "name": "CursorBench",
+      "benchVersion": "3.2",
+      "observedAt": "2026-09-06T00:00:00Z",
+      "url": "https://cursor.com/cursorbench",
+      "method": "동일 Cursor 하네스의 실제 다중 파일 코딩 평가. 원본 effort 행만 사용하며 다른 버전·오염된 Grok 4.5 결과는 합산하지 않는다. 소스 점수·tokens/task·steps/task·USD/task는 해당 평가 조건의 관측치다.",
+      "license": "공식 공개 리더보드의 개별 사실 인용. 별도 데이터 라이선스 미표기; 원문·실행 자료 전체의 재배포 권한을 뜻하지 않는다.",
+      "artifacts": [
+        {
+          "url": "https://cursor.com/cursorbench",
+          "sha256": "fd809da9ea3add769b95765a0e52d7422745880656bcaed49869101e3ce2901e"
+        }
+      ],
+      "metrics": {
+        "score": {
+          "unit": "percent",
+          "direction": "higher",
+          "role": "quality"
+        },
+        "tokensPerTask": {
+          "unit": "tokens/task",
+          "direction": "lower",
+          "role": "context"
+        },
+        "stepsPerTask": {
+          "unit": "steps/task",
+          "direction": "lower",
+          "role": "context"
+        },
+        "costPerTask": {
+          "unit": "USD/task",
+          "direction": "lower",
+          "role": "context"
+        }
+      }
+    },
+    "livebench": {
+      "name": "LiveBench",
+      "benchVersion": "2026-06-25",
+      "observedAt": "2026-09-06T00:00:00Z",
+      "url": "https://livebench.ai/#/",
+      "method": "2026-06-25 release의 같은 23과제·7분야를 사용. 분야별 task 산술평균 후 7분야 동일가중 평균. Agentic Coding은 별도 분야이며 공개 설명상 Mini-SWE-Agent/Multi-SWE-Bench를 사용한다. 최신 release 전체 실행의 commit은 공개 확인되지 않았다. effort가 명시된 원본 행만 선택한다. 비용·토큰은 당시 평가 조건이며 Fleet 공급자 청구나 속도를 뜻하지 않는다.",
+      "license": "CC-BY-SA-4.0 (사이트 표시). LiveBench 기여자 출처 표시; 본 파일의 LiveBench 발췌·변형 데이터도 동일 조건으로 제공한다. https://creativecommons.org/licenses/by-sa/4.0/",
+      "artifacts": [
+        {
+          "url": "https://livebench.ai/table_2026_06_25.csv",
+          "sha256": "f23992acb9c01d4904b8cb2c5714a0e9ab15694e9ee0cdc4a2b525167033ba87"
+        },
+        {
+          "url": "https://livebench.ai/categories_2026_06_25.json",
+          "sha256": "dad300ad18655b69db720e1b88fc5a5eac06c5b2f0e52c2bf50f10ff057674f3"
+        },
+        {
+          "url": "https://livebench.ai/cost_2026_06_25.csv",
+          "sha256": "ea349e6003e3da499ad207c103c7ee7f573117bb8c0e8c8bd9c18c42a6246a9d"
+        }
+      ],
+      "metrics": {
+        "score": {
+          "unit": "percent",
+          "direction": "higher",
+          "role": "quality"
+        },
+        "reasoning": {
+          "unit": "percent",
+          "direction": "higher",
+          "role": "context"
+        },
+        "coding": {
+          "unit": "percent",
+          "direction": "higher",
+          "role": "context"
+        },
+        "agenticCoding": {
+          "unit": "percent",
+          "direction": "higher",
+          "role": "context"
+        },
+        "mathematics": {
+          "unit": "percent",
+          "direction": "higher",
+          "role": "context"
+        },
+        "dataAnalysis": {
+          "unit": "percent",
+          "direction": "higher",
+          "role": "context"
+        },
+        "language": {
+          "unit": "percent",
+          "direction": "higher",
+          "role": "context"
+        },
+        "instructionFollowing": {
+          "unit": "percent",
+          "direction": "higher",
+          "role": "context"
+        },
+        "avgInputTokens": {
+          "unit": "tokens/question",
+          "direction": "lower",
+          "role": "context"
+        },
+        "avgOutputTokens": {
+          "unit": "tokens/question",
+          "direction": "lower",
+          "role": "context"
+        },
+        "costPerQuestion": {
+          "unit": "USD/question",
+          "direction": "lower",
+          "role": "context"
+        },
+        "costPerSuccessfulTask": {
+          "unit": "USD/successful-task",
+          "direction": "lower",
+          "role": "context"
+        },
+        "questions_theory_of_mind": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_zebra_puzzle": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_spatial": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_logic_with_navigation": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_code_generation": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_code_completion": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_javascript": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_typescript": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_python": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_AMPS_Hard": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_integrals_with_game": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_math_comp": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_olympiad": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_consecutive_events": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_tablejoin": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_tablereformat": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_connections": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_plot_unscrambling": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_typos": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_paraphrase": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_simplify": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_story_generation": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        },
+        "questions_summarize": {
+          "unit": "questions",
+          "direction": "higher",
+          "role": "sample-size"
+        }
+      }
     }
   },
   "models": {
-    "claude-opus-5": {
-      "name": "Claude Opus 5",
-      "scores": {
-        "score": 54.75,
-        "reasoning": 53.83,
-        "coding": 40.95,
-        "agents": 39.41
-      }
-    },
-    "claude-fable-5": {
-      "name": "Claude Fable 5",
-      "scores": {
-        "score": 53.95,
-        "reasoning": 51.32,
-        "coding": 44.81,
-        "agents": 39.82
-      }
-    },
-    "claude-sonnet-5": {
-      "name": "Claude Sonnet 5",
-      "scores": {
-        "score": 47.9,
-        "reasoning": 47.26,
-        "coding": 36.07,
-        "agents": 31.02
-      }
-    },
-    "claude-haiku-4-5-20251001": {
-      "name": "Claude Haiku 4.5",
-      "scores": {
-        "score": 25.66,
-        "reasoning": 25.28,
-        "coding": 19.65,
-        "agents": 13.41
-      }
-    },
-    "gpt-6-astra": {
-      "name": "GPT-6 Astra",
-      "scores": {
-        "score": 59.49,
-        "reasoning": 57.32,
-        "coding": 49.05,
-        "agents": 45.87
-      }
-    },
-    "gpt-6-sol": {
-      "name": "GPT-6 Sol",
-      "scores": {
-        "score": 49.39,
-        "reasoning": 45.63,
-        "coding": 35.84,
-        "agents": 36.74
-      }
-    },
-    "gpt-6-luna": {
-      "name": "GPT-6 Luna",
-      "scores": {
-        "score": 44.52,
-        "reasoning": 39.99,
-        "coding": 31.36,
-        "agents": 31.76
-      }
-    },
     "gpt-5.6-terra": {
-      "name": "GPT-5.6 Terra",
-      "scores": {
-        "score": 50.34,
-        "reasoning": 48.37,
-        "coding": 41.68,
-        "agents": 37.36
+      "effort": "max",
+      "measurements": {
+        "cursorbench": {
+          "model": "GPT-5.6 Terra Max",
+          "metrics": {
+            "score": 64.9,
+            "tokensPerTask": 32969,
+            "stepsPerTask": 47,
+            "costPerTask": 2.31
+          }
+        },
+        "livebench": {
+          "model": "gpt-5.6-terra-max",
+          "metrics": {
+            "score": 77.93625,
+            "reasoning": 90.6345,
+            "coding": 78.2455,
+            "agenticCoding": 54.949667,
+            "mathematics": 94.90825,
+            "dataAnalysis": 79.306667,
+            "language": 82.892667,
+            "instructionFollowing": 64.6165,
+            "avgInputTokens": 179096,
+            "avgOutputTokens": 22145,
+            "costPerQuestion": 0.2743,
+            "costPerSuccessfulTask": 0.3437,
+            "questions_theory_of_mind": 52,
+            "questions_zebra_puzzle": 50,
+            "questions_spatial": 50,
+            "questions_logic_with_navigation": 50,
+            "questions_code_generation": 71,
+            "questions_code_completion": 46,
+            "questions_javascript": 22,
+            "questions_typescript": 30,
+            "questions_python": 20,
+            "questions_AMPS_Hard": 100,
+            "questions_integrals_with_game": 100,
+            "questions_math_comp": 102,
+            "questions_olympiad": 77,
+            "questions_consecutive_events": 47,
+            "questions_tablejoin": 52,
+            "questions_tablereformat": 51,
+            "questions_connections": 50,
+            "questions_plot_unscrambling": 50,
+            "questions_typos": 50,
+            "questions_paraphrase": 50,
+            "questions_simplify": 50,
+            "questions_story_generation": 50,
+            "questions_summarize": 50
+          }
+        }
+      },
+      "normalized": {
+        "score": 50,
+        "sourceScores": {
+          "cursorbench": 0,
+          "livebench": 100
+        }
       }
     },
     "gemini-3.8-flash": {
-      "name": "Gemini 3.8 Flash",
-      "scores": {
-        "score": 49.72,
-        "reasoning": 45.88,
-        "coding": 37.72,
-        "agents": 34.64
-      }
-    },
-    "gemini-3.1-pro-preview": {
-      "name": "Gemini 3.1 Pro",
-      "scores": {
-        "score": 43.19,
-        "reasoning": 44.91,
-        "coding": 30.78,
-        "agents": 24.16
-      }
-    },
-    "grok-4.7": {
-      "name": "Grok 4.7",
-      "scores": {
-        "score": 48.04,
-        "reasoning": 37.08,
-        "coding": 39.6,
-        "agents": 35.54
-      }
-    },
-    "kimi-k3": {
-      "name": "Kimi K3",
-      "scores": {
-        "score": 52.49,
-        "reasoning": 51.27,
-        "coding": 42.28,
-        "agents": 38.29
-      }
-    },
-    "glm-5.3": {
-      "name": "GLM-5.3",
-      "scores": {
-        "score": 52.09,
-        "reasoning": 51.22,
-        "coding": 41.75,
-        "agents": 38.48
-      }
-    },
-    "glm-5.3-flash": {
-      "name": "GLM-5.3-Flash",
-      "scores": {
-        "score": 49.45,
-        "reasoning": 48.21,
-        "coding": 33.38,
-        "agents": 36.14
-      }
-    },
-    "muse-spark-1.3": {
-      "name": "Muse Spark 1.3",
-      "scores": {
-        "score": 53.83,
-        "reasoning": 51.18,
-        "coding": 41.36,
-        "agents": 39.52
-      }
-    },
-    "deepseek-v4.1-flash": {
-      "name": "DeepSeek-V4.1-Flash",
-      "scores": {
-        "score": 51.35,
-        "reasoning": 48.67,
-        "coding": 43.34,
-        "agents": 40.11
-      }
-    },
-    "deepseek-v4-flash-vision-exp": {
-      "name": "DeepSeek-V4-Flash-Vision-Exp",
-      "scores": {
-        "score": 45.07,
-        "reasoning": 41.17,
-        "coding": 34.26,
-        "agents": 31.59
+      "effort": "high",
+      "measurements": {
+        "cursorbench": {
+          "model": "Gemini 3.8 Flash High",
+          "metrics": {
+            "score": 69.2,
+            "tokensPerTask": 81524,
+            "stepsPerTask": 161,
+            "costPerTask": 2.38
+          }
+        },
+        "livebench": {
+          "model": "gemini-3.8-flash-high",
+          "metrics": {
+            "score": 75.828524,
+            "reasoning": 89.29325,
+            "coding": 72.489,
+            "agenticCoding": 54.242333,
+            "mathematics": 91.56425,
+            "dataAnalysis": 54.005667,
+            "language": 87.792667,
+            "instructionFollowing": 81.4125,
+            "avgInputTokens": 607424,
+            "avgOutputTokens": 42786,
+            "costPerQuestion": 0.233,
+            "costPerSuccessfulTask": 0.3073,
+            "questions_theory_of_mind": 52,
+            "questions_zebra_puzzle": 50,
+            "questions_spatial": 50,
+            "questions_logic_with_navigation": 50,
+            "questions_code_generation": 71,
+            "questions_code_completion": 46,
+            "questions_javascript": 22,
+            "questions_typescript": 30,
+            "questions_python": 20,
+            "questions_AMPS_Hard": 100,
+            "questions_integrals_with_game": 100,
+            "questions_math_comp": 102,
+            "questions_olympiad": 77,
+            "questions_consecutive_events": 47,
+            "questions_tablejoin": 52,
+            "questions_tablereformat": 51,
+            "questions_connections": 50,
+            "questions_plot_unscrambling": 50,
+            "questions_typos": 50,
+            "questions_paraphrase": 50,
+            "questions_simplify": 50,
+            "questions_story_generation": 50,
+            "questions_summarize": 50
+          }
+        }
+      },
+      "normalized": {
+        "score": 50,
+        "sourceScores": {
+          "cursorbench": 100,
+          "livebench": 0
+        }
       }
     }
   },
   "excluded": {
-    "composer-2.5": {
-      "reason": "LLM Stats에 Composer 2.5 행이 없다(2026-09-23)."
+    "claude-opus-5": {
+      "reason": "LiveBench cost 원본의 nq_AMPS_Hard가101이며 나머지 cohort는100이다. 추가 표본 의미를 확인하지 못해 동일 데이터 조건에 따라 제외한다. 성능이 낮다는 뜻이 아니다."
     },
-    "grok-composer-2.5": {
-      "reason": "LLM Stats에 Grok Composer 2.5 행이 없다(2026-09-23)."
+    "claude-fable-5": {
+      "reason": "Cursor API-tier 재판매가 카탈로그에서 빠지며 정규화 코호트에서 제외한다. 이전 6모델 complete-case 점수를 재사용하지 않는다."
+    },
+    "composer-2.5": {
+      "reason": "동일 LiveBench release에 해당 모델의 완전한 측정 행이 없다."
+    },
+    "deepseek-v4-flash": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "deepseek-v4-flash-vision-exp": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
     },
     "deepseek-v4-pro": {
-      "reason": "LLM Stats에 DeepSeek-V4-Pro-0813(51.08)과 DeepSeek-V4-Pro-Max(43.0) 두 행이 있고, OpenCode deepseek-v4-pro가 어느 쪽인지 입증되지 않았다. 점수 차가 커서 임의로 고르지 않는다."
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "gemini-3.1-pro": {
+      "reason": "LiveBench의 preview 표기와 공급자 등록 모델의 동일성이 확정되지 않았고 현재 CursorBench 행이 없다."
+    },
+    "glm-5.2": {
+      "reason": "LiveBench effort 미명시 및 OpenCode serving effort 미제어. CursorBench high/max와 임의 매칭하지 않는다."
+    },
+    "glm-5.3": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "glm-5.3-flash": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "gpt-6-astra": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "gpt-6-sol": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "gpt-6-luna": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "grok-4.5": {
+      "reason": "현재 CursorBench 3.2 표에서 제외됨. 이전 학습 오염 각주가 있는 점수를 최신 complete-case에 재사용하지 않는다."
+    },
+    "grok-4.6": {
+      "reason": "LiveBench 원본 grok-4.6 행에는 effort가 명시되지 않아 CursorBench의 low/medium/high/xhigh와 정확히 대응할 수 없다."
+    },
+    "grok-composer-2.5": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "hy3": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "hy4-preview": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "kimi-k2.7-code": {
+      "reason": "양쪽 모델 원점수는 있으나 별도 effort/비추론 설정이 명시되지 않았다. 다른 eligible 모델과 같은 exact-effort 조건을 충족하지 않는다."
+    },
+    "kimi-k3": {
+      "reason": "LiveBench 원본 kimi-k3 행의 effort가 미명시되어 CursorBench의 effort별 결과와 정확히 대응할 수 없다."
+    },
+    "longcat-2.0": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "mimo-v2.5": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "mimo-v2.5-pro": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "minimax-m3": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "muse-spark-1.3-contributor": {
+      "reason": "contributor serving identity와 LiveBench muse-spark-1.3-xhigh의 동일성이 확정되지 않았고 CursorBench 행이 없다."
+    },
+    "omen-alpha": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "ox-alpha-free": {
+      "reason": "free serving identity와 LiveBench ox-alpha-max의 동일성이 확정되지 않았고 현재 CursorBench 행이 없다."
+    },
+    "qwen3.7-plus": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "qwen3.8-flash": {
+      "reason": "LiveBench flash-next를 동일 모델로 간주할 수 없으며 현재 CursorBench 행이 없다."
+    },
+    "qwen3.8-max": {
+      "reason": "채택한 CursorBench 3.2 및 LiveBench 2026-06-25의 동일 모델·명시 effort·전체 필수 지표 교집합에 해당하지 않는다. 추정·이전 세대·다른 release 값으로 보완하지 않는다."
+    },
+    "gemini-3.7-flash": {
+      "reason": "2026-09-22: Antigravity 카탈로그에서 Gemini 3.8 Flash로 대체된 이전 세대를 제거하여 정규화 코호트에서도 제외했다."
+    },
+    "gpt-5.6-sol": {
+      "reason": "2026-09-23: Codex 카탈로그에서 GPT-6 Sol로 대체된 이전 세대를 제거하여 정규화 코호트에서도 제외했다."
+    },
+    "gpt-5.6-luna": {
+      "reason": "2026-09-23: Codex 카탈로그에서 GPT-6 Luna로 대체된 이전 세대를 제거하여 정규화 코호트에서도 제외했다."
     }
   },
   "sourceAudit": {
-    "cursorbench": {
-      "name": "CursorBench",
-      "url": "https://cursor.com/cursorbench",
-      "status": "excluded",
-      "reason": "2026-09-23 소유자 결정으로 폐기. 3.2 release에 현세대(GPT-6 등) 행이 없어 complete-case 코호트가 2개 모델로 줄었고, 단일 출처 정책으로 전환했다."
-    },
-    "livebench": {
-      "name": "LiveBench",
-      "url": "https://livebench.ai/#/",
-      "status": "excluded",
-      "reason": "2026-09-23 소유자 결정으로 폐기. 2026-06-25 이후 새 release가 없어 현세대 모델 행이 없고, 단일 출처 정책으로 전환했다."
-    },
     "artificial-analysis": {
       "name": "Artificial Analysis",
       "url": "https://artificialanalysis.ai/documentation",
@@ -259,6 +494,12 @@
       "url": "https://www.vals.ai/methodology",
       "status": "excluded",
       "reason": "Index는 금융 중심 GDP 가중치이며 일부 terminal 결과에 다른 모델 fallback이 포함된다. 최신 전체 raw 결과와 재배포 조건 미확인."
+    },
+    "llm-stats": {
+      "name": "LLM Stats",
+      "url": "https://llm-stats.com/methodology/llm-stats-score",
+      "status": "excluded",
+      "reason": "업체 보고·공개 벤치 집계의 재집계로 원본 출처를 중복 반영할 수 있다. 정확한 산식/effort 조건과 인증 API 결과 미확인."
     },
     "swe-rebench": {
       "name": "SWE-rebench",

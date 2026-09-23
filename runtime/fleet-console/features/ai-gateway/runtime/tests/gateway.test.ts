@@ -6,6 +6,7 @@ import {
   AnthropicMessagesGateway,
   GATEWAY_BENCHMARKS_STAMP,
   GATEWAY_MODELS,
+  GATEWAY_REASONING_EFFORTS,
   CODEX_SUBSCRIPTION_MODELS,
   CURSOR_SUBSCRIPTION_MODELS,
   KIMI_SUBSCRIPTION_MODELS,
@@ -151,44 +152,70 @@ describe("non-streaming response assembly", () => {
 });
 
 describe("model catalog", () => {
-  it("publishes complete single-source benchmark evidence for every effort of a joined model", () => {
+  it("publishes only complete, reproducible benchmark evidence at a reachable effort", () => {
     const snapshot = parseGatewayBenchmarksRegistry(minimalBenchmarks());
-    expect(snapshot.models.alpha!.scores).toEqual({ score: 50, reasoning: 48, coding: 40, agents: 38 });
+    expect(snapshot.models.alpha!.normalized).toEqual({ score: 50, sourceScores: { first: 0, second: 100 } });
+    expect(snapshot.models.beta!.normalized).toEqual({ score: 50, sourceScores: { first: 100, second: 0 } });
+
+    const tied = minimalBenchmarks();
+    tied.models.beta.measurements.second.metrics.cost = 0;
+    tied.models.alpha.normalized = { score: 25, sourceScores: { first: 0, second: 50 } };
+    tied.models.beta.normalized = { score: 75, sourceScores: { first: 100, second: 50 } };
+    expect(parseGatewayBenchmarksRegistry(tied).models.alpha!.normalized.score).toBe(25);
 
     const catalog = parseGatewayModelsRegistry(minimalRegistry());
     catalog.providers.codex.models[0]!.benchmarkKey = "alpha";
+    catalog.providers.codex.models[0]!.effort = { supported: true, levels: ["high"] };
     catalog.providers.xai.models[0]!.benchmarkKey = "beta";
+    catalog.providers.xai.models[0]!.effort = { supported: true, levels: ["high"] };
     expect(() => validateBenchmarkCoverage(catalog, snapshot)).not.toThrow();
-    catalog.providers.codex.models[0]!.capabilityClass = "flagship";
-    expect(() => validateBenchmarkCoverage(catalog, snapshot)).toThrow(/disagrees with its benchmark band/);
-    catalog.providers.codex.models[0]!.capabilityClass = "standard";
-    catalog.providers.codex.models[0]!.benchmarkKey = "missing";
-    expect(() => validateBenchmarkCoverage(catalog, snapshot)).toThrow(/key is unknown/);
-    catalog.providers.codex.models[0]!.benchmarkKey = "alpha";
+    catalog.providers.codex.models[0]!.effort = { supported: true, levels: ["low"] };
+    expect(() => validateBenchmarkCoverage(catalog, snapshot)).toThrow(/effort is not reachable/);
+    catalog.providers.codex.models[0]!.effort = { supported: false };
+    expect(() => validateBenchmarkCoverage(catalog, snapshot)).toThrow(/effort is not reachable/);
+    catalog.providers.codex.models[0]!.effort = { supported: true, levels: ["high"] };
     delete catalog.providers.xai.models[0]!.benchmarkKey;
     expect(() => validateBenchmarkCoverage(catalog, snapshot)).toThrow(/orphaned/);
 
     const measured = GATEWAY_MODELS.find((model) => model.benchmark)!;
     expect(measured).toBeDefined();
     expect(buildGatewayModelConstraints(measured).benchmark).toBe(measured.benchmark);
-    expect(buildGatewayModelConstraints({ ...measured, effort: { supported: false } }).benchmark).toBe(measured.benchmark);
+    expect(buildGatewayModelConstraints({
+      ...measured,
+      effort: { supported: true, levels: GATEWAY_REASONING_EFFORTS.filter((effort) => effort !== measured.benchmark!.effort) },
+    }).benchmark).toBeUndefined();
   });
 
   it("rejects malformed registry data at module boundaries", () => {
     const incomplete = minimalBenchmarks();
-    Reflect.deleteProperty(incomplete.models.alpha.scores, "coding");
-    expect(() => parseGatewayBenchmarksRegistry(incomplete)).toThrow();
+    Reflect.deleteProperty(incomplete.models.alpha.measurements, "second");
+    expect(() => parseGatewayBenchmarksRegistry(incomplete)).toThrow(/exact complete keys/);
 
-    const empty = minimalBenchmarks();
-    empty.models = {} as typeof empty.models;
-    expect(() => parseGatewayBenchmarksRegistry(empty)).toThrow(/at least one admitted model/);
+    const differentSampleSize = minimalBenchmarks();
+    differentSampleSize.models.beta.measurements.first.metrics.questions = 101;
+    expect(() => parseGatewayBenchmarksRegistry(differentSampleSize)).toThrow(/sample-size must be an equal positive integer/);
+
+    const missingMetric = minimalBenchmarks();
+    Reflect.deleteProperty(missingMetric.models.alpha.measurements.first.metrics, "tokens");
+    expect(() => parseGatewayBenchmarksRegistry(missingMetric)).toThrow(/exact complete keys/);
+
+    const unknownSource = minimalBenchmarks();
+    Object.assign(unknownSource.models.alpha.measurements, { unknown: { model: "Alpha high", metrics: { quality: 0 } } });
+    expect(() => parseGatewayBenchmarksRegistry(unknownSource)).toThrow(/unknown source/);
+
+    const forgedSourceScore = minimalBenchmarks();
+    forgedSourceScore.models.alpha.normalized.sourceScores.first = 1;
+    expect(() => parseGatewayBenchmarksRegistry(forgedSourceScore)).toThrow(/recomputed score/);
+    const forgedAverage = minimalBenchmarks();
+    forgedAverage.models.alpha.normalized.score = 51;
+    expect(() => parseGatewayBenchmarksRegistry(forgedAverage)).toThrow(/recomputed score/);
 
     const overlap = minimalBenchmarks();
     Object.assign(overlap.excluded, { alpha: { reason: "Incomplete" } });
     expect(() => parseGatewayBenchmarksRegistry(overlap)).toThrow(/overlaps excluded models/);
     const sourceOverlap = minimalBenchmarks();
     Object.assign(sourceOverlap.sourceAudit, {
-      fixture: { name: "Fixture", url: "https://example.com/fixture", status: "excluded", reason: "Duplicate source" },
+      first: { name: "First", url: "https://example.com/first", status: "excluded", reason: "Duplicate source" },
     });
     expect(() => parseGatewayBenchmarksRegistry(sourceOverlap)).toThrow(/overlaps excluded source audit/);
     const extraField = minimalRegistry() as Record<string, unknown>;
@@ -421,38 +448,57 @@ function baseRequest(): AnthropicMessagesRequest {
 }
 
 function minimalBenchmarks() {
-  const metric = (label: string, role: "quality" | "category") =>
-    ({ label, sourceIndex: label.toLowerCase(), unit: "points", direction: "higher", role });
+  const provenance = {
+    benchVersion: "1",
+    observedAt: "2026-09-06T00:00:00Z",
+    url: "https://example.com/benchmark",
+    method: "Isolated fixture",
+    license: "CC0-1.0",
+    artifacts: [{ url: "https://example.com/raw.json", sha256: "a".repeat(64) }],
+  };
   return {
-    version: 4,
-    updatedAt: "2026-09-23T00:00:00Z",
-    source: {
-      id: "fixture",
-      name: "Fixture",
-      url: "https://example.com/",
-      methodology: "https://example.com/methodology",
-      methodologyVersion: "v1",
-      observedAt: "2026-09-23T00:00:00Z",
-      method: "Isolated fixture",
-      license: "CC0-1.0",
-      attribution: "Data by Fixture",
-      artifacts: [{ url: "https://example.com/raw.html", sha256: "a".repeat(64) }],
-    },
-    metrics: {
-      score: metric("Score", "quality"),
-      reasoning: metric("Reasoning", "category"),
-      coding: metric("Coding", "category"),
-      agents: metric("Agents", "category"),
-    },
-    policy: {
-      effort: "model-level",
+    version: 3,
+    updatedAt: "2026-09-06T00:00:00Z",
+    normalization: {
+      method: "cohort-min-max",
+      sourceWeighting: "equal",
       missingData: "exclude-model",
+      effortPolicy: "exact-match",
       tieBandPoints: 2,
-      capabilityClassBands: { flagship: 52, standard: 46 },
+    },
+    sources: {
+      first: {
+        ...provenance,
+        name: "First",
+        metrics: {
+          quality: { unit: "points", direction: "higher", role: "quality" },
+          tokens: { unit: "tokens", direction: "lower", role: "context" },
+          questions: { unit: "questions", direction: "higher", role: "sample-size" },
+        },
+      },
+      second: {
+        ...provenance,
+        name: "Second",
+        metrics: { cost: { unit: "penalty", direction: "lower", role: "quality" } },
+      },
     },
     models: {
-      alpha: { name: "Alpha", scores: { score: 50, reasoning: 48, coding: 40, agents: 38 } },
-      beta: { name: "Beta", scores: { score: 47, reasoning: 44, coding: 35, agents: 30 } },
+      alpha: {
+        effort: "high",
+        measurements: {
+          first: { model: "Alpha (high)", metrics: { quality: 0, tokens: 9_000, questions: 100 } },
+          second: { model: "Alpha high", metrics: { cost: 0 } },
+        },
+        normalized: { score: 50, sourceScores: { first: 0, second: 100 } },
+      },
+      beta: {
+        effort: "high",
+        measurements: {
+          first: { model: "Beta (high)", metrics: { quality: 200, tokens: 0, questions: 100 } },
+          second: { model: "Beta high", metrics: { cost: 3 } },
+        },
+        normalized: { score: 50, sourceScores: { first: 100, second: 0 } },
+      },
     },
     excluded: {},
     sourceAudit: {},

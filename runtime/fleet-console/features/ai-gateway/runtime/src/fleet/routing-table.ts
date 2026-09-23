@@ -63,8 +63,8 @@ export const EMPTY_GATEWAY_ROUTING_TABLE: GatewayRoutingTable = {
 };
 
 /**
- * capabilityClass가 등급 소속을 정한다. 벤치마크가 있는 모델은 LLM Stats Score 구간이,
- * 없는 모델은 공급자가 밝힌 라인업 위치가 그 값을 정하므로 모델 이름에서 추측하지 않는다.
+ * capabilityClass가 등급 소속을 정한다. 공급자가 스스로 밝힌 라인업 위치라, Fleet이 모델
+ * 이름에서 추측하는 것보다 정확하고 카탈로그가 늘어도 따라온다.
  *
  * 라우팅 별칭(Cursor `auto`)은 class를 싣지 않는다 — 호출마다 다른 것이 답하므로 어떤 값도
  * 거짓이 된다. 그런 모델은 중간 등급으로 둔다: 모르면서 최상위라고 주장하지 않는다.

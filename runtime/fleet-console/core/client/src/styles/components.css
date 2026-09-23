@@ -780,12 +780,6 @@
 }
 
 .settings-help-tip__bubble p { margin: 0; }
-.settings-help-tip__bubble a {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.settings-help-tip__bubble a:hover { color: var(--text-primary); }
 
 /* 겉모습 카드의 컨트롤 열. 축소판 미리보기는 페인 이전과 함께 은퇴했다 — 설정이 콘솔
    옆에 서므로 콘솔 자체가 미리보기이고, 모형은 페이지가 콘솔을 가리던 시절의 보철이었다. */

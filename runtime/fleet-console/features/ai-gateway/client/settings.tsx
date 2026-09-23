@@ -358,10 +358,6 @@ function AiGatewayRoutingCard() {
                 <span id="delegation-routing-mode-label">{t("terminal.settings.aiGatewayDelegationRoutingMode")}</span>
                 <SettingsHelp title={t("terminal.settings.aiGatewayDelegationRoutingMode")}>
                   <p>{t("terminal.settings.aiGatewayDelegationRoutingModeHelp")}</p>
-                  <p>
-                    {t("terminal.settings.aiGatewayBenchmarkAttribution")}{" "}
-                    <a href="https://llm-stats.com" target="_blank" rel="noopener noreferrer">LLM Stats</a>
-                  </p>
                 </SettingsHelp>
               </p>
             </div>

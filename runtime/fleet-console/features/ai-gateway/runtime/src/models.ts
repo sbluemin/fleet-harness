@@ -70,15 +70,11 @@ const GATEWAY_QUOTA_SCOPES = ["auto", "api"] as const;
 export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
 
 /**
- * A model's quality tier. Where the model has benchmark evidence, the tier is
- * the band its LLM Stats Score falls in (`policy.capabilityClassBands` in
- * benchmarks.json), and validation rejects a catalog entry that disagrees, so a
- * benchmark refresh re-grades the catalog instead of drifting from it.
- *
- * A model without evidence falls back to the provider's own positioning within
- * its current lineup — lineup defaults, tier tokens (`max`/`pro` against `plus`
- * against `flash`/`mini`-class names), and generation supersession. That
- * fallback is a prior, not a measurement.
+ * The provider's own positioning of a model within its current lineup, read
+ * from what the provider states — lineup defaults, tier tokens (`max`/`pro`
+ * against `plus` against `flash`/`mini`-class names), and generation
+ * supersession. It is a prior, not a measurement: the provider's statement
+ * about its own lineup, never Fleet's judgment of quality.
  *
  * Ambiguity resolves downward. Overclassing puts a light model in seats that
  * needed judgment; underclassing merely costs one candidate. A `-fast` entry
@@ -103,69 +99,54 @@ export type GatewayCapabilityClass = typeof GATEWAY_CAPABILITY_CLASSES[number];
 
 const GatewayBenchmarkScoreSchema = z.number().finite().nonnegative().max(100);
 
-/** The fixed metric set every admitted model carries; `score` is the one quality metric. */
-export type GatewayBenchmarkMetric = "score" | "reasoning" | "coding" | "agents";
-
-const GatewayBenchmarkMetricDefinitionSchema = z.object({
-  label: z.string().min(1),
-  sourceIndex: z.string().min(1),
-  unit: z.literal("points"),
-  direction: z.literal("higher"),
-  role: z.enum(["quality", "category"]),
+const GatewayBenchmarkSourceSchema = z.object({
+  name: z.string().min(1),
+  benchVersion: z.string().min(1),
+  observedAt: z.iso.datetime(),
+  url: z.url(),
+  method: z.string().min(1),
+  license: z.string().min(1),
+  artifacts: z.array(z.object({
+    url: z.url(),
+    sha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
+  }).strict()).min(1),
+  metrics: z.record(z.string().min(1), z.object({
+    unit: z.string().min(1),
+    direction: z.enum(["higher", "lower"]),
+    role: z.enum(["quality", "context", "sample-size"]),
+  }).strict()),
 }).strict();
 
-const GatewayBenchmarkScoresSchema = z.object({
-  score: GatewayBenchmarkScoreSchema,
-  reasoning: GatewayBenchmarkScoreSchema,
-  coding: GatewayBenchmarkScoreSchema,
-  agents: GatewayBenchmarkScoreSchema,
+const GatewayBenchmarkModelEntrySchema = z.object({
+  effort: z.enum(GATEWAY_REASONING_EFFORTS),
+  measurements: z.record(z.string().min(1), z.object({
+    model: z.string().min(1),
+    metrics: z.record(z.string().min(1), z.number().finite().nonnegative()),
+  }).strict()),
+  normalized: z.object({
+    score: GatewayBenchmarkScoreSchema,
+    sourceScores: z.record(z.string().min(1), GatewayBenchmarkScoreSchema),
+  }).strict(),
 }).strict();
 
 /**
- * 단일 공개 출처(LLM Stats)의 모델 단위 지수를 그대로 옮긴 스냅샷이다.
- * 모든 채택 모델은 같은 지표 전체를 갖고, 없는 모델은 점수를 채우지 않고 제외한다.
- * 출처는 effort를 구분하지 않으므로 근거는 모델의 모든 effort에 같은 값으로 적용된다.
- * 수집·식별·갱신 절차는 ../benchmark-methodology.md를 따른다.
+ * 모든 소스의 지표와 동일 effort가 확인된 모델만 같은 코호트에서 정규화한다.
+ * 누락된 측정값은 추정하지 않고 모델 전체를 제외하며 원문 라벨과 근거를 보존한다.
+ * 소스 수집·effort 확인·갱신 절차는 ../benchmark-methodology.md를 따른다.
  */
 const GatewayBenchmarksRegistrySchema = z.object({
-  version: z.literal(4),
+  version: z.literal(3),
   updatedAt: z.iso.datetime(),
-  source: z.object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    url: z.url(),
-    methodology: z.url(),
-    methodologyVersion: z.string().min(1),
-    observedAt: z.iso.datetime(),
-    method: z.string().min(1),
-    license: z.string().min(1),
-    attribution: z.string().min(1),
-    artifacts: z.array(z.object({
-      url: z.url(),
-      sha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
-    }).strict()).min(1),
-  }).strict(),
-  metrics: z.object({
-    score: GatewayBenchmarkMetricDefinitionSchema.extend({ role: z.literal("quality") }),
-    reasoning: GatewayBenchmarkMetricDefinitionSchema.extend({ role: z.literal("category") }),
-    coding: GatewayBenchmarkMetricDefinitionSchema.extend({ role: z.literal("category") }),
-    agents: GatewayBenchmarkMetricDefinitionSchema.extend({ role: z.literal("category") }),
-  }).strict(),
-  policy: z.object({
-    effort: z.literal("model-level"),
+  normalization: z.object({
+    method: z.literal("cohort-min-max"),
+    sourceWeighting: z.literal("equal"),
     missingData: z.literal("exclude-model"),
+    effortPolicy: z.literal("exact-match"),
     // 소스가 발표한 통계적 유의성이 아니라 Fleet의 보수적 라우팅 정책이다.
     tieBandPoints: z.literal(2),
-    // 점수가 있는 모델의 capabilityClass를 정하는 score 하한. Fleet의 등급 정책이다.
-    capabilityClassBands: z.object({
-      flagship: GatewayBenchmarkScoreSchema,
-      standard: GatewayBenchmarkScoreSchema,
-    }).strict(),
   }).strict(),
-  models: z.record(z.string().min(1), z.object({
-    name: z.string().min(1),
-    scores: GatewayBenchmarkScoresSchema,
-  }).strict()),
+  sources: z.record(z.string().min(1), GatewayBenchmarkSourceSchema),
+  models: z.record(z.string().min(1), GatewayBenchmarkModelEntrySchema),
   excluded: z.record(z.string().min(1), z.object({ reason: z.string().min(1) }).strict()),
   sourceAudit: z.record(z.string().min(1), z.object({
     name: z.string().min(1),
@@ -175,14 +156,19 @@ const GatewayBenchmarksRegistrySchema = z.object({
   }).strict()),
 }).strict();
 
-export type GatewayModelBenchmark = {
-  /** Source name and methodology version, e.g. `LLM Stats v3.1`. */
-  readonly source: string;
+export type GatewayBenchmarkFigures = {
   readonly score: number;
-  readonly categories: Readonly<Record<Exclude<GatewayBenchmarkMetric, "score">, number>>;
+};
+
+export type GatewayModelBenchmark = {
+  readonly method: "cohort-min-max";
+  readonly cohortSize: number;
+  readonly effort: GatewayReasoningEffort;
+  readonly score: number;
+  readonly sourceScores: Readonly<Record<string, number>>;
+  readonly sources: readonly string[];
   readonly observedAt: string;
   readonly routingTieBandPoints: 2;
-  readonly attribution: string;
   readonly caveat: string;
 };
 
@@ -311,21 +297,91 @@ const benchmarksRegistry = parseGatewayBenchmarksRegistry(benchmarksData);
 
 export function parseGatewayBenchmarksRegistry(value: unknown): GatewayBenchmarksRegistry {
   const parsed = GatewayBenchmarksRegistrySchema.parse(value);
-  if (Object.keys(parsed.models).length === 0) {
-    throw new Error("Gateway benchmark snapshot requires at least one admitted model");
+  const sourceIds = Object.keys(parsed.sources);
+  const models = Object.entries(parsed.models);
+  if (sourceIds.length < 2 || models.length < 2) {
+    throw new Error("Gateway benchmark cohort requires at least two sources and two complete models");
   }
-  if (parsed.policy.capabilityClassBands.flagship <= parsed.policy.capabilityClassBands.standard) {
-    throw new Error("Gateway benchmark flagship band must sit above the standard band");
+  for (const [sourceId, source] of Object.entries(parsed.sources)) {
+    if (Object.hasOwn(parsed.sourceAudit, sourceId)) {
+      throw new Error(`Gateway benchmark source overlaps excluded source audit: ${sourceId}`);
+    }
+    if (Object.values(source.metrics).filter((metric) => metric.role === "quality").length !== 1) {
+      throw new Error(`Gateway benchmark source requires exactly one quality metric: ${sourceId}`);
+    }
   }
-  if (Object.hasOwn(parsed.sourceAudit, parsed.source.id)) {
-    throw new Error(`Gateway benchmark source overlaps excluded source audit: ${parsed.source.id}`);
-  }
-  for (const modelKey of Object.keys(parsed.models)) {
+  for (const [modelKey, entry] of models) {
     if (Object.hasOwn(parsed.excluded, modelKey)) {
       throw new Error(`Gateway benchmark model overlaps excluded models: ${modelKey}`);
     }
+    for (const sourceId of Object.keys(entry.measurements)) {
+      if (!Object.hasOwn(parsed.sources, sourceId)) {
+        throw new Error(`Gateway benchmark model entry names an unknown source: ${modelKey} -> ${sourceId}`);
+      }
+    }
+    requireBenchmarkKeys(entry.measurements, sourceIds, `${modelKey} measurements`);
+    requireBenchmarkKeys(entry.normalized.sourceScores, sourceIds, `${modelKey} sourceScores`);
+    for (const sourceId of sourceIds) {
+      requireBenchmarkKeys(
+        entry.measurements[sourceId]!.metrics,
+        Object.keys(parsed.sources[sourceId]!.metrics),
+        `${modelKey}/${sourceId} metrics`,
+      );
+    }
+  }
+
+  // 모든 소스가 같은 완전 코호트를 사용하며 품질 이외의 지표는 점수에 섞지 않는다.
+  const recomputedScores = new Map<string, number[]>();
+  for (const sourceId of sourceIds) {
+    const source = parsed.sources[sourceId]!;
+    for (const [metricId, metric] of Object.entries(source.metrics)) {
+      if (metric.role !== "sample-size") continue;
+      const expected = models[0]![1].measurements[sourceId]!.metrics[metricId]!;
+      for (const [modelKey, entry] of models) {
+        const count = entry.measurements[sourceId]!.metrics[metricId]!;
+        if (!Number.isSafeInteger(count) || count <= 0 || count !== expected) {
+          throw new Error(`Gateway benchmark sample-size must be an equal positive integer across the cohort: ${modelKey}/${sourceId}/${metricId}`);
+        }
+      }
+    }
+    const [qualityId, quality] = Object.entries(source.metrics).find(([, metric]) => metric.role === "quality")!;
+    const values = models.map(([, entry]) => entry.measurements[sourceId]!.metrics[qualityId]!);
+    const min = values.reduce((minimum, value) => Math.min(minimum, value), Infinity);
+    const max = values.reduce((maximum, value) => Math.max(maximum, value), -Infinity);
+    for (const [index, [modelKey, entry]] of models.entries()) {
+      const value = values[index]!;
+      const score = roundBenchmarkScore(max === min ? 50 : 100 * (
+        quality.direction === "higher" ? (value - min) / (max - min) : (max - value) / (max - min)
+      ));
+      requireBenchmarkScore(entry.normalized.sourceScores[sourceId]!, score, `${modelKey}/${sourceId}`);
+      const scores = recomputedScores.get(modelKey) ?? [];
+      scores.push(score);
+      recomputedScores.set(modelKey, scores);
+    }
+  }
+  for (const [modelKey, entry] of models) {
+    const scores = recomputedScores.get(modelKey)!;
+    const score = roundBenchmarkScore(scores.reduce((sum, value) => sum + value, 0) / sourceIds.length);
+    requireBenchmarkScore(entry.normalized.score, score, modelKey);
   }
   return parsed;
+}
+
+function requireBenchmarkKeys(value: Record<string, unknown>, expected: readonly string[], label: string): void {
+  if (Object.keys(value).length !== expected.length || expected.some((key) => !Object.hasOwn(value, key))) {
+    throw new Error(`Gateway benchmark requires exact complete keys: ${label}`);
+  }
+}
+
+function roundBenchmarkScore(score: number): number {
+  return Math.round(score * 1_000_000) / 1_000_000;
+}
+
+function requireBenchmarkScore(stored: number, expected: number, label: string): void {
+  const floatingPointSlack = Number.EPSILON * Math.max(1, Math.abs(stored), Math.abs(expected));
+  if (Math.abs(stored - expected) > 1e-6 + floatingPointSlack) {
+    throw new Error(`Gateway benchmark normalized score differs from recomputed score: ${label}`);
+  }
 }
 
 export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistry {
@@ -426,16 +482,15 @@ export interface GatewayModelConstraints {
   readonly effortLadder: readonly GatewayReasoningEffort[];
   readonly effortSupported: boolean;
   /**
-   * The model's quality tier ({@link GatewayCapabilityClass}): its benchmark
-   * band where evidence exists, otherwise the provider's lineup positioning.
-   * Decides seats whose product is judgment; allowance never implies it.
-   * Absent on routing aliases.
+   * The provider's stated lineup positioning ({@link GatewayCapabilityClass}).
+   * The quality prior for seats whose product is judgment; allowance never
+   * implies it. Absent on routing aliases.
    */
   readonly capabilityClass?: GatewayCapabilityClass;
   /**
-   * Third-party evidence about the vendor model. Where present it also fixes
-   * capabilityClass, and its scores order models within and across classes.
-   * Fleet treats a score gap within
+   * Third-party measured evidence about the vendor model. Where present and
+   * fresh it outranks the capabilityClass prior for quality ordering, and
+   * capabilityClass stands where it is absent. Fleet treats a score gap within
    * routingTieBandPoints as a routing tie; that band is Fleet's own policy, not
    * a significance threshold published by the source.
    */
@@ -453,7 +508,7 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     effortLadder: Object.freeze([...ladder]),
     effortSupported: ladder.length > 0,
     ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
-    ...(model.benchmark ? { benchmark: model.benchmark } : {}),
+    ...(model.benchmark && ladder.includes(model.benchmark.effort) ? { benchmark: model.benchmark } : {}),
     ...(model.quotaScope ? { quotaScope: model.quotaScope } : {}),
   };
 }
@@ -592,19 +647,23 @@ function scopedModelId(provider: GatewayProvider, modelId: string): string {
 
 function resolveGatewayModelBenchmark(
   entry: GatewayModelEntry,
+  effort: GatewayModelEffort,
   benchmarks: GatewayBenchmarksRegistry = benchmarksRegistry,
 ): GatewayModelBenchmark | undefined {
   if (!entry.benchmarkKey || !Object.hasOwn(benchmarks.models, entry.benchmarkKey)) return undefined;
-  const { score, ...categories } = benchmarks.models[entry.benchmarkKey]!.scores;
+  const benchEntry = benchmarks.models[entry.benchmarkKey]!;
+  if (!effort.supported || !effort.levels.includes(benchEntry.effort)) return undefined;
 
   return Object.freeze({
-    source: `${benchmarks.source.name} ${benchmarks.source.methodologyVersion}`,
-    score,
-    categories: Object.freeze(categories),
-    observedAt: benchmarks.source.observedAt,
-    routingTieBandPoints: benchmarks.policy.tieBandPoints,
-    attribution: benchmarks.source.attribution,
-    caveat: "A model-level index from one public source that does not distinguish reasoning effort and mixes lab-reported with independently verified results. Not absolute accuracy, and it does not establish serving success.",
+    method: benchmarks.normalization.method,
+    cohortSize: Object.keys(benchmarks.models).length,
+    effort: benchEntry.effort,
+    score: benchEntry.normalized.score,
+    sourceScores: Object.freeze({ ...benchEntry.normalized.sourceScores }),
+    sources: Object.freeze(Object.values(benchmarks.sources).map((source) => `${source.name} ${source.benchVersion}`)),
+    observedAt: benchmarks.updatedAt,
+    routingTieBandPoints: benchmarks.normalization.tieBandPoints,
+    caveat: "A relative index within a cohort sharing the same source set, not absolute accuracy. Applies only to the measured effort and does not establish serving success.",
   });
 }
 
@@ -613,7 +672,7 @@ function toGatewayModel(
   providerName: string,
   entry: GatewayModelEntry,
 ): GatewayModel {
-  const benchmark = resolveGatewayModelBenchmark(entry);
+  const benchmark = resolveGatewayModelBenchmark(entry, freezeGatewayModelEffort(entry.effort));
   return {
     id: scopedModelId(provider, entry.modelId),
     displayName: `${providerName}-${entry.name}`,
@@ -666,17 +725,9 @@ function validateBenchmarkJoin(
   if (model.providerModelId === "default") {
     throw new Error(`Gateway routing alias cannot carry a benchmark key: ${provider}/${model.modelId}`);
   }
-  const expected = benchmarkCapabilityClass(benchmarks.models[model.benchmarkKey]!.scores.score, benchmarks);
-  if (model.capabilityClass !== expected) {
-    throw new Error(`Gateway capability class disagrees with its benchmark band: ${provider}/${model.modelId} is ${model.capabilityClass ?? "unclassed"}, score band is ${expected}`);
+  if (!resolveGatewayModelBenchmark(model, freezeGatewayModelEffort(model.effort), benchmarks)) {
+    throw new Error(`Gateway benchmark effort is not reachable: ${provider}/${model.modelId}`);
   }
-}
-
-/** 점수가 있는 모델의 등급은 벤더 주장이 아니라 LLM Stats Score 구간이 정한다. */
-function benchmarkCapabilityClass(score: number, benchmarks: GatewayBenchmarksRegistry): GatewayCapabilityClass {
-  const bands = benchmarks.policy.capabilityClassBands;
-  if (score >= bands.flagship) return "flagship";
-  return score >= bands.standard ? "standard" : "light";
 }
 
 function validateRegistry(value: GatewayModelsRegistry): void {

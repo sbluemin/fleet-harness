@@ -22,8 +22,8 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
         ...(rank < 0 ? {} : { preferenceRank: rank + 1 }),
         ...(constraints.contextWindow === undefined ? {} : { contextWindow: constraints.contextWindow }),
         ...(constraints.capabilityClass === undefined ? {} : { capabilityClass: constraints.capabilityClass }),
-        ...(benchmark ? { benchmark: {
-          score: benchmark.score, ...benchmark.categories,
+        ...(benchmark && efforts.includes(benchmark.effort) ? { benchmark: {
+          score: benchmark.score, effort: benchmark.effort,
           tieBandPoints: benchmark.routingTieBandPoints, observedAt: benchmark.observedAt,
         } } : {}),
       };
