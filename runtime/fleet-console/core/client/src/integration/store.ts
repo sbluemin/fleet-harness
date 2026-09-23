@@ -465,6 +465,11 @@ export function registerOperationFocusRedirect(redirect: (operationId: string) =
   redirectOperationFocus = redirect;
 }
 
+/** 포커스가 실제로 설 Operation — 펴기·키보드 포커스처럼 활성화 밖의 단계도 같은 대상을 써야 한다. */
+export function resolveOperationFocusTarget(operationId: string): string {
+  return redirectOperationFocus(operationId);
+}
+
 export function setActiveOperation(
   requestedOperationId: string | null,
   options?: { readonly acknowledged?: boolean },
