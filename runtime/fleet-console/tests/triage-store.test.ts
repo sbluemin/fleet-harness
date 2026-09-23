@@ -15,7 +15,7 @@ import {
   markIdleArrival,
   resetIdleArrivalForTests,
 } from "../features/execution/client/operation-marks.js";
-import { focusOperation, getState, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setState as setConsoleState } from "../core/client/src/integration/store.js";
+import { clearOperationRuntime, focusOperation, getState, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setOperationRuntime, setOperationRuntimeClusters, setState as setConsoleState } from "../core/client/src/integration/store.js";
 import {
   clearFormationView,
   forceDropCompanionOperationId,
@@ -36,7 +36,7 @@ import {
   requestSideBarOperationAction,
   subscribeSideBarOperationAction,
 } from "../features/workspace/client/sidebar/interaction.js";
-import { resetSideBarStatusSectionCollapseForTests, setSideBarCollapsed } from "../features/workspace/client/sidebar/operations-side-bar-store.js";
+import { resetSideBarStatusSectionCollapseForTests, setSideBarCollapsed, subscribeOperationActivityTracking } from "../features/workspace/client/sidebar/operations-side-bar-store.js";
 import {
   armTriageSetAside,
   clampTriageDeckZoom,
@@ -131,6 +131,47 @@ afterEach(() => {
 });
 
 describe("triage store", () => {
+  it("keeps a Chef off the idle arrival and triage queue until its live step stops", () => {
+    const chef = operation("chef", 1);
+    const step = operation("step", 2);
+    setConsoleState({ operations: [chef, step], activeTheaterId: THEATER_ID, activeOperationId: null });
+    setOperationRuntimeClusters([{ id: "todo:item", theaterId: THEATER_ID, title: "Item", root: chef.id, members: [
+      { operationId: step.id, label: "Step", after: [], progress: "running" },
+      { operationId: "pending", pending: true, label: "Next", after: [], progress: "open" },
+    ] }]);
+    const off = subscribeOperationActivityTracking();
+    try {
+      setOperationRuntime(chef.id, { lifecycle: "live", activity: "running" });
+      setOperationRuntime(step.id, { lifecycle: "live", activity: "running" });
+      setOperationRuntime(chef.id, { lifecycle: "live", activity: "idle" });
+      expect(getState().operationRuntime[chef.id]).toEqual({ lifecycle: "live", activity: "background" });
+      expect(getIdleArrivalIds().has(chef.id)).toBe(false);
+      expect(resolveTriageQueue([chef], getState().operationRuntime)).toEqual([]);
+
+      setOperationRuntime(step.id, { lifecycle: "live", activity: "awaiting" });
+      expect(getState().operationRuntime[chef.id]).toEqual({ lifecycle: "live", activity: "awaiting" });
+      expect(getState().operationRuntime[step.id]).toEqual({ lifecycle: "live", activity: "awaiting" });
+      expect(resolveTriageQueue([chef], getState().operationRuntime).map((entry) => entry.operation.id)).toEqual([chef.id]);
+
+      const unchangedRuntime = getState().operationRuntime;
+      setOperationRuntimeClusters([{ id: "todo:item", theaterId: THEATER_ID, title: "Renamed", root: chef.id, members: [
+        { operationId: step.id, label: "Step", after: [], progress: "awaiting" },
+        { operationId: "pending", pending: true, label: "Next", after: [], progress: "open" },
+      ] }]);
+      expect(getState().operationRuntime).toBe(unchangedRuntime);
+
+      setOperationRuntime(step.id, { lifecycle: "live", activity: "idle" });
+      expect(getState().operationRuntime[chef.id]).toEqual({ lifecycle: "live", activity: "idle" });
+      expect(getIdleArrivalIds().has(chef.id)).toBe(true);
+      expect(resolveTriageQueue([chef], getState().operationRuntime).map((entry) => entry.operation.id)).toEqual([chef.id]);
+    } finally {
+      off();
+      setOperationRuntimeClusters([]);
+      clearOperationRuntime(chef.id);
+      clearOperationRuntime(step.id);
+      resetIdleArrivalForTests();
+    }
+  });
 
   it("keeps Formation view and Triage mutually exclusive in both directions", () => {
     toggleFormationView();

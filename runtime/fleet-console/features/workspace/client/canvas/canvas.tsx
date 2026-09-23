@@ -182,7 +182,7 @@ export function OperationsCanvas({
       registerOperationFocusRedirect((operationId) => operationId);
     };
   }, [clusterIndex, hiddenMembers]);
-  // 셰프의 활동은 셰프 자신의 것이다 — 단계의 전이(완료·결정 대기)가 셰프를 War Room 무대에 올리지 않는다.
+  // 셰프의 공개 활동은 코어 스토어가 살아 있는 단계까지 반영한다 — 단계의 결정 대기도 셰프를 대기로 올린다.
   const operationRuntime = state.operationRuntime;
   const [focusFadeTransitionReady, setFocusFadeTransitionReady] = useState(activePluginOperationId !== null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
@@ -525,7 +525,7 @@ export function OperationsCanvas({
     operationRuntime: operationRuntime,
   };
   // 큐는 전역이다 — 활성 Theater와 무관하게 모든 대기 Operation을 처리 순서로 세운다.
-  // 묶음의 단계 Operation 은 큐에 들지 않는다: War Room 에서는 셰프가 묶음을 대표하고, 셰프 자신의 상태로만 무대에 오른다.
+  // 묶음의 단계 Operation 은 큐에 들지 않는다: War Room 에서는 단계 활동이 반영된 셰프가 묶음을 대표한다.
   const triageOperations = clusterIndex.memberOf.size === 0 ? state.operations : state.operations.filter((operation) => !clusterIndex.memberOf.has(operation.id));
   const triageQueue = resolveTriageQueue(triageOperations, operationRuntime);
   const triageQueueIdSet = new Set(triageQueue.map((entry) => entry.operation.id));
