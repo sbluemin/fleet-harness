@@ -522,12 +522,19 @@ export function OperationsCanvas({
     onRefreshCatalog?.();
   };
 
-  // 묶음 구성원의 표시 여부는 묶음 규칙(hiddenMembers)만이 정한다 — 최소화 플래그가 남아 있어도 Cruise 에서는 대형에 선다.
-  const minimizedSet = new Set(minimized.filter((id) => !clusterIndex.memberOf.has(id)));
+  // 묶음 구성원의 최소화는 자기 플래그가 아니라 뿌리를 따른다 — 셰프 패널을 내리면 단계 패널도 함께 내려가고, 되올리면
+  // 함께 선다. Cruise 대형은 뿌리에서 파생되므로 뿌리 없이 남은 단계 패널은 주인 잃은 조각이다. 구성원 자신의 플래그는
+  // 여기서 읽지 않는다(표시 여부의 나머지는 묶음 규칙 hiddenMembers 가 정한다).
+  const followingRoots = (flags: readonly string[]): Set<string> => {
+    const out = new Set(flags.filter((id) => !clusterIndex.memberOf.has(id)));
+    for (const [id, { layout }] of clusterIndex.memberOf) if (out.has(layout.cluster.root)) out.add(id);
+    return out;
+  };
+  const minimizedSet = followingRoots(minimized);
   // War Room의 판은 전 Theater를 한 번에 얹으므로 최소화 판정도 Theater 경계를 넘는다. canvas 스냅샷은
   // 비활성 Theater에 쓸 때도 새 객체로 갈리므로(setTheaterOperationMinimized) 이 파생값이 함께 갱신된다.
   const triageMinimizedSet = triageActive
-    ? new Set(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)).filter((id) => !clusterIndex.memberOf.has(id)))
+    ? followingRoots(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)))
     : minimizedSet;
   const visibleOperations = Object.fromEntries(
     Object.entries(canvas.operations).filter(([sessionId]) => !minimizedSet.has(sessionId)),
