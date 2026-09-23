@@ -11,7 +11,7 @@ import { fetchOperations } from "../../../../core/client/src/integration/api.js"
 import { claimTheaterBootMinimization } from "../../../../core/client/src/integration/boot-minimization-session.js";
 import { availableCompanionPanels, isBlockingDialogOpen } from "../../../../core/client/src/integration/shortcuts.js";
 import { clearActiveOperation, isWarRoomEmptyReleaseTarget } from "../../../../core/client/src/integration/active-operation-surface.js";
-import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
+import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, registerOperationFocusRedirect, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
 import { createHostCapabilities } from "../../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
@@ -167,10 +167,21 @@ export function OperationsCanvas({
   const clusterIndex = useClusterIndex();
   const hiddenMembers = useMemo(() => hiddenClusterMembers(clusterIndex), [clusterIndex]);
   // 스토어의 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)도 숨은 단계를 거르도록 같은 집합을 건넨다.
+  // 단계를 가리킨 포커스(할 일의 「결정 대기」·팔레트·알림)는 셰프로 돌리고 셰프 패널의 본문을 그 단계로 바꾼다.
   useEffect(() => {
     setAlwaysHiddenGeometryIds(hiddenMembers);
-    return () => setAlwaysHiddenGeometryIds(new Set());
-  }, [hiddenMembers]);
+    registerOperationFocusRedirect((operationId) => {
+      const member = clusterIndex.memberOf.get(operationId);
+      if (!member) return operationId;
+      const rootId = member.layout.cluster.root;
+      selectClusterBody(rootId, operationId);
+      return rootId;
+    });
+    return () => {
+      setAlwaysHiddenGeometryIds(new Set());
+      registerOperationFocusRedirect((operationId) => operationId);
+    };
+  }, [clusterIndex, hiddenMembers]);
   // 셰프의 활동은 셰프 자신의 것이다 — 단계의 전이(완료·결정 대기)가 셰프를 War Room 무대에 올리지 않는다.
   const operationRuntime = state.operationRuntime;
   const [focusFadeTransitionReady, setFocusFadeTransitionReady] = useState(activePluginOperationId !== null);
@@ -1822,6 +1833,7 @@ export function OperationsCanvas({
               // 단계는 어느 모드에서도 패널로 서지 않는다 — 셰프 패널의 본문을 그 단계로 바꾼다(노드 줄과 같은 동작).
               selectClusterBody(clusterPicker.rootId, operationId);
               setActiveOperation(clusterPicker.rootId);
+              requestOperationKeyboardFocus(clusterPicker.rootId);
             }}
             onOpenItem={layout.cluster.open ? (operationId) => layout.cluster.open?.(operationId) : undefined}
             onClose={() => setClusterPicker(null)}

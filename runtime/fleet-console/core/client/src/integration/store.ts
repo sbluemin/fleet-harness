@@ -456,10 +456,20 @@ export function setActiveTheater(theaterId: string | null): void {
   setState({ activeTheaterId: theaterId });
 }
 
+// 화면에 패널로 서지 않는 Operation(할 일 묶음의 단계)을 가리킨 포커스를 대표 Operation(셰프)으로 돌리는 포트 —
+// store 는 묶음을 모른다(플러그인 레지스트리는 React 컨텍스트). 캔버스가 묶음 색인을 셀 때마다 갈아 끼우고,
+// 돌려받은 id 가 실제로 활성화된다(본문 교체 같은 부수 효과는 등록한 쪽이 진다).
+let redirectOperationFocus: (operationId: string) => string = (operationId) => operationId;
+
+export function registerOperationFocusRedirect(redirect: (operationId: string) => string): void {
+  redirectOperationFocus = redirect;
+}
+
 export function setActiveOperation(
-  operationId: string | null,
+  requestedOperationId: string | null,
   options?: { readonly acknowledged?: boolean },
 ): void {
+  const operationId = requestedOperationId === null ? null : redirectOperationFocus(requestedOperationId);
   const acknowledged = operationId === null
     ? true
     : options?.acknowledged === false
@@ -559,7 +569,8 @@ export function registerFocusTheaterSwitchSuppression(guard: () => boolean): voi
   focusTheaterSwitchSuppressed = guard;
 }
 
-export function focusOperation(operationId: string): void {
+export function focusOperation(requestedOperationId: string): void {
+  const operationId = redirectOperationFocus(requestedOperationId);
   const operation = state.operations.find((item) => item.id === operationId);
   if (!operation) return;
   noteOperationFocused(operationId);

@@ -356,6 +356,9 @@ let alwaysHiddenGeometryIds: ReadonlySet<string> = new Set();
 export function setAlwaysHiddenGeometryIds(ids: ReadonlySet<string>): void {
   alwaysHiddenGeometryIds = ids;
 }
+export function getAlwaysHiddenGeometryIds(): ReadonlySet<string> {
+  return alwaysHiddenGeometryIds;
+}
 function hiddenGeometryIds(minimized: readonly string[] = state.minimized): Set<string> {
   const hidden = new Set(minimized);
   for (const id of alwaysHiddenGeometryIds) hidden.add(id);
