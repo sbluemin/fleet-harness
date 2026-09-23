@@ -19,8 +19,9 @@ const MAX_URL_CHARS = 8192;
 export const MAX_LINK_TEXT_CHARS = 64 * 1024;
 // 따옴표·꺾쇠·백틱·역슬래시·공백은 주소 안에 그대로 올 수 없다 — 마크다운·코드 조각의 경계로 본다.
 const URL_PATTERN = /https?:\/\/[^\s<>"'`\\\u0000-\u001f\u007f]+/g;
-// 문장·강조의 끝에 붙은 문자는 주소가 아니다. 괄호는 짝이 맞지 않을 때만 뗀다(위키 주소 등 보존).
-const TRAILING_PUNCTUATION = /[.,;:!?*_~]+$/;
+// 문장·강조의 끝에 붙은 문자는 주소가 아니다 — 맨 URL 탐지(WebLinksAddon)가 주소의 마지막 글자로
+// 받지 않는 문자와 같게 둔다(`;`·`_`로 끝나는 주소는 보존). 괄호는 짝이 맞지 않을 때만 뗀다(위키 주소 등 보존).
+const TRAILING_PUNCTUATION = /[.,:!?*~]+$/;
 // 화면에 그려지지 않는 이진·서명 필드는 건너뛴다.
 const SKIPPED_KEYS = new Set(["signature", "data", "source"]);
 
