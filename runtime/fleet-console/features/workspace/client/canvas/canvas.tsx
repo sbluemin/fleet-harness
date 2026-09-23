@@ -968,7 +968,8 @@ export function OperationsCanvas({
   // 무엇이든 지도가 끼어들 자리가 없다. 렌더 중 ref 갱신은 같은 줌에 같은 답을 내는 순수 판정이라
   // 재렌더에 안전하다. 지도는 전 Theater를 얹으므로 최소화 판정도 Theater 경계를 넘는다.
   const cruiseSurface = !formationView && !triageActive && panelMaximized === null && panelCompanion === null && !disabled;
-  const fleetMapMinimizedSet = new Set(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
+  // 지도 점도 구성원은 뿌리를 따른다 — 최소화한 셰프의 단계가 줌을 내렸다고 점으로 되살아나면 안 된다.
+  const fleetMapMinimizedSet = followingRoots(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
   const fleetMapOperations = state.operations.filter((operation) => !fleetMapMinimizedSet.has(operation.id));
   fleetMapActiveRef.current = cruiseSurface && fleetMapOperations.length > 0
     && resolveFleetMapActive(fleetMapActiveRef.current, canvas.viewport.zoom);
