@@ -18,6 +18,7 @@ import { toggleOperationSearch } from "../../integration/store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../../integration/types.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
 import { useViewMode } from "../../integration/view-mode-store.js";
+import { isDesktopShell } from "../../integration/desktop-shell.js";
 import { useDesktopFullscreenSnapshot } from "../../integration/desktop-fullscreen.js";
 import { useZenChromeSlot } from "../../integration/zen-chrome-slot.js";
 import { toggleZenMode, useZenMode } from "../../integration/zen-mode.js";
@@ -507,7 +508,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         {/* 플러그인 항목은 시스템 클러스터 앞에 선다 — 상주하는 부관처럼 플러그인이 상단 바에
             두는 상태이지 콘솔 자체의 조작이 아니므로, 보기 모드·호스트·도움말보다 바깥쪽이다. */}
         <ChromePluginEntries entries={commandBandEntries} zen={zenMode} zenSlot={zenSlot} />
-        <ViewModeToggle className="command-band-button command-band-viewmode" />
+        {!isDesktopShell() ? <ViewModeToggle className="command-band-button command-band-viewmode" /> : null}
         <CommandBandSystemCluster />
       </div>
       </header>
