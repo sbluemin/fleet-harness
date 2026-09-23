@@ -27,6 +27,8 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<{ from: string; x0: number; y0: number; x: number; y: number; over: string | null } | null>(null);
   const movedRef = useRef(false);
+  // 노드에서 시작한 누름 — 포인터 캡처 탓에 뒤따르는 click 의 target 이 svg 가 되므로, 노드 누름은 여기서 기억해 확대를 막는다.
+  const pressedNodeRef = useRef(false);
 
   const steps = item.steps;
   const depth = new Map<string, number>();
@@ -87,6 +89,7 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
     if (!p) return;
     (event.currentTarget.closest("svg") as SVGSVGElement | null)?.setPointerCapture?.(event.pointerId);
     movedRef.current = false;
+    pressedNodeRef.current = true;
     setDrag({ from: id, x0: p.x, y0: p.y, x: p.x, y: p.y, over: null });
     event.preventDefault();
   };
@@ -122,7 +125,9 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
         onPointerUp={finish}
         onPointerCancel={() => setDrag(null)}
         onClick={onZoom ? (event) => {
-          if (movedRef.current) { movedRef.current = false; return; }
+          const fromNode = pressedNodeRef.current || movedRef.current;
+          pressedNodeRef.current = false; movedRef.current = false;
+          if (fromNode) return;
           if ((event.target as Element).closest(".todo-node[data-k], .todo-edge[data-from]")) return;
           onZoom();
         } : undefined}
