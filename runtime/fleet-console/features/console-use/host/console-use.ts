@@ -2,6 +2,7 @@ import { createEmbeddedMcpServer, defineTool } from "@fleet-console/agent-runtim
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { ConsoleControlError, readConsoleUseFlag, type ConsoleControl } from "./console-control.js";
+import type { UseHoldOutcome, UseRequestBroker } from "./use-requests.js";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore, type AgentToolSpec, type AgentToolCtx } from "@fleet-console/agent-runtime/tools";
 import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
@@ -55,6 +56,11 @@ export interface ConsoleUseDeps {
   readonly theaters?: () => readonly { readonly id: string; readonly name: string }[];
   readonly operations?: () => readonly OperationNode[];
   /**
+   * 패널 안 허용 요청. 주어지면 허용받지 않은 Operation 호출자의 호출은 거부되는 대신 붙잡혀 그 패널에
+   * 허용/거절 카드를 띄우고, 「이번 작업만」 허가도 허용으로 친다. 없으면(테스트·플러그인 없는 구성) 곧바로 거부한다.
+   */
+  readonly requests?: UseRequestBroker;
+  /**
    * 거부 문구의 언어 폴백. Operation이 한 번도 허용된 적 없으면 payload에 언어가 없으므로,
    * 콘솔 설정이 언어를 못박고 있을 때 그것을 쓴다. `auto`는 브라우저가 푸는 값이라 여기서는 null이다.
    */
@@ -65,7 +71,7 @@ function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: Array.isArray(value) ? { items: value } : value, isError: false };
 }
 
-type ConsoleUseRefusal = "operation_not_authorized" | "caller_unresolved";
+type ConsoleUseRefusal = "operation_not_authorized" | "caller_unresolved" | "declined_by_user" | "no_response";
 
 /**
  * 거부는 에러 코드 하나로 끝나지 않는다. 이 응답을 읽는 것은 사람이 아니라 호스트 에이전트이고,
@@ -76,11 +82,15 @@ type ConsoleUseRefusal = "operation_not_authorized" | "caller_unresolved";
 const REFUSAL_REMEDY = {
   operation_not_authorized: { actor: "user", surface: "operation_panel", path: ["Operation menu", "Console use"] },
   caller_unresolved: { actor: "none", surface: "none", path: [] },
+  declined_by_user: { actor: "user", surface: "operation_panel", path: ["Operation panel", "Console use request"] },
+  no_response: { actor: "user", surface: "operation_panel", path: ["Operation panel", "Console use request"] },
 } as const satisfies Record<ConsoleUseRefusal, { readonly actor: string; readonly surface: string; readonly path: readonly string[] }>;
 
 const REFUSAL_INSTRUCTION: Record<ConsoleUseRefusal, string> = {
-  operation_not_authorized: "This Operation has not been authorized to use the Console, so the host refused this call. This is not a transient failure. Do not retry, do not look for another route into the Console, and do not answer from earlier Console results. Ask the user to turn on Console use in this Operation's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
+  operation_not_authorized: "This Operation has not been authorized to use the Console, so the host refused this call. This is not a transient failure. Do not retry, do not look for another route into the Console, and do not answer from earlier Console results. Ask the user to turn on Console use (콘솔 사용 in the Korean interface) in this Operation's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   caller_unresolved: "This session is not bound to a Console Operation, so these tools can never answer it. Do not retry and do not ask the user to change a setting — nothing they can turn on fixes this. Continue without the Console.",
+  declined_by_user: "The person declined this Console use request in the Operation panel. Do not request Console use again in this turn, do not look for another route into the Console, and do not answer from earlier Console results. Continue the task without the Console, and tell the person what you could not check.",
+  no_response: "Nobody answered the Console use request in the Operation panel within four minutes, so the host refused this call. Do not keep calling Console tools in this turn. Continue without the Console, and tell the person they can allow Console use from the panel card the next time you ask, or turn it on in this Operation's ··· menu.",
 };
 
 const REFUSAL_MESSAGE: Record<ConsoleUseRefusal, Record<"en" | "ko", string>> = {
@@ -91,6 +101,14 @@ const REFUSAL_MESSAGE: Record<ConsoleUseRefusal, Record<"en" | "ko", string>> = 
   caller_unresolved: {
     en: "This session is not bound to a Console Operation, so Console tools are unavailable to it.",
     ko: "이 세션은 Console Operation에 묶여 있지 않아 Console 도구를 쓸 수 없습니다.",
+  },
+  declined_by_user: {
+    en: "You declined Console use for this Operation. It continues without the Console.",
+    ko: "이 Operation의 콘솔 사용을 거절했습니다. Console 없이 계속합니다.",
+  },
+  no_response: {
+    en: "The Console use request got no answer, so it was declined. It continues without the Console.",
+    ko: "콘솔 사용 요청에 답이 없어 거절로 처리했습니다. Console 없이 계속합니다.",
   },
 };
 
@@ -122,7 +140,8 @@ const NEXT_ACTION: Record<string, string> = {
 };
 
 function refuse(reason: ConsoleUseRefusal, operationId: string | null, language: "en" | "ko") {
-  const actionable = reason !== "caller_unresolved";
+  // 거절·무응답도 이번 턴에서는 다시 두드릴 길이 아니다 — 다음 요청은 사람이 다음에 답한다.
+  const actionable = reason === "operation_not_authorized";
   return {
     error: "console_use_not_authorized", reason,
     retryable: actionable, retryAfter: actionable ? "user_action" : "never",
@@ -145,8 +164,25 @@ function denyConsoleUse(deps: ConsoleUseDeps, ctx: AgentToolCtx) {
   if (!operation) return refuse("caller_unresolved", null, fallback);
   const flag = readConsoleUseFlag(operation.payload);
   const language = flag?.language ?? fallback;
-  if (!flag) return refuse("operation_not_authorized", operation.id, language);
+  if (!flag && deps.requests?.granted(operation.id, "console") !== true) return refuse("operation_not_authorized", operation.id, language);
   return null;
+}
+
+/**
+ * 허용받지 않은 Operation 호출자를 곧바로 거부하는 대신 붙잡아 그 패널에 허용 요청 카드를 띄운다.
+ * 답이 허용이면 판정을 다시 해 통과시키고, 거절·무응답·중단이면 그 사유로 거부한다.
+ */
+async function holdConsoleUse(deps: ConsoleUseDeps, ctx: AgentToolCtx, tool: string, denied: ReturnType<typeof refuse>, signal: AbortSignal): Promise<ReturnType<typeof refuse> | null> {
+  const requests = deps.requests;
+  const operationId = denied.remedy && "operationId" in denied.remedy ? denied.remedy.operationId : undefined;
+  if (!requests || denied.reason !== "operation_not_authorized" || !operationId) return denied;
+  const outcome: UseHoldOutcome = await requests.hold({ operationId, capability: "console", tool, signal, authorized: () => denyConsoleUse(deps, ctx) === null });
+  // 허용받지 않은 Operation 은 payload 에 언어가 없다 — 거부 문구와 같은 폴백을 쓴다.
+  const language = deps.language?.() ?? "en";
+  if (outcome === "declined") return refuse("declined_by_user", operationId, language);
+  if (outcome === "no_response") return refuse("no_response", operationId, language);
+  if (outcome === "stopped") return denied;
+  return denyConsoleUse(deps, ctx);
 }
 
 function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot | null, allowControl: boolean, pluginId: string | undefined, budget: (ctx: AgentToolCtx, key: string, max: number) => boolean, readActions: () => Readonly<ConsoleUseActions>): AgentToolSpec[] {
@@ -243,7 +279,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         theaters: theaters(),
         using: readActions().using?.() ?? { console: [], computer: null, browser: [] },
         focus: "unavailable",
-        capabilities: { read: true, control: allowControl && !!callerId && !!control, surface: Object.keys(readActions()).filter((key) => typeof (readActions() as Record<string, unknown>)[key] === "function"), approval: "For an Operation caller, that Operation's own Console use toggle must be on. That toggle is blanket authorization; no individual approvals.", enabled: !!control },
+        capabilities: { read: true, control: allowControl && !!callerId && !!control, surface: Object.keys(readActions()).filter((key) => typeof (readActions() as Record<string, unknown>)[key] === "function"), approval: "For an Operation caller, Console use is allowed when that Operation's own Console use toggle is on, or when the person allowed it for this turn from the request card in the Operation panel. Without either, your call waits up to four minutes for the person's answer on that card; if they decline or do not answer, do not request Console use again in this turn.", enabled: !!control },
         coverage: { total: all.length, unknown: all.filter((r) => r.activity === "unknown").length },
         pausedAutomations: callerId && control ? control.listAutomations(callerId).filter((a) => a.status === "paused").length : 0,
         semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here", gestures: "Every call is shown on the person's Console: the target you read or change (Operation row and panel, Theater, group, Repository/File panel) is wrapped in a Console use pulse with your name; nothing is written on your own caption." },
@@ -541,13 +577,21 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       const schemas = new Map(specs.map((spec) => [spec.id, z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject]));
       const registerSpec = (spec: AgentToolSpec) => registry.registerAgentTool({
         ...spec,
-        description: `${spec.description} Console Use lifecycle: the first authorized call starts a session shared by all Console tools on this connection; it ends with your turn, five idle minutes, permission withdrawal, or connection cleanup. Every call is shown on the person's Console.`,
+        description: `${spec.description} Console Use lifecycle: the first authorized call starts a session shared by all Console tools on this connection; it ends with your turn, five idle minutes, permission withdrawal, or connection cleanup. Every call is shown on the person's Console. If this Operation is not allowed yet, the call waits (up to four minutes) while the person answers a request card in the Operation panel; a permission granted "for this turn" ends with your turn.`,
         execute: async (args, ctx) => {
           if (closed || options.enabled?.() === false) return Promise.resolve({ ...text({ error: "console_read_disabled", hint: "Console access is disabled. Do not answer from earlier Console results." }), isError: true });
           // 읽기까지 포함해 전부 여기서 막는다. 도구는 세션이 열릴 때 실리지만 허용은 매 호출에 다시
           // 묻는다 — 그래야 토글이 재연결 없이 다음 호출부터 듣는다.
-          const denied = options.operationCallers === true ? denyConsoleUse(deps, ctx) : null;
+          let denied = options.operationCallers === true ? denyConsoleUse(deps, ctx) : null;
+          // 인자가 틀린 호출은 사람에게 묻지 않는다 — 허용해도 invalid_arguments 로 끝날 호출에 카드를 띄우면, 인자를 싣지 않는
+          // 카드만 보고 「계속 허용」을 누르게 된다. 이때는 예전처럼 거부가 먼저다.
+          if (denied && schemas.get(spec.id)!.safeParse(args).success) denied = await holdConsoleUse(deps, ctx, spec.id, denied, AbortSignal.any([controller.signal, ...(ctx.signal ? [ctx.signal] : [])]));
+          if (closed || options.enabled?.() === false) return { ...text({ error: "console_read_disabled" }), isError: true };
           if (denied) { if (ctx.sessionLabel) endUse(ctx.sessionLabel); return { ...text(denied), isError: true }; }
+          if (options.operationCallers === true) {
+            const label = ctx.sessionLabel ?? "";
+            deps.requests?.touch(label.startsWith("chat:") ? label.slice(5) : label, "console");
+          }
           const parsed = schemas.get(spec.id)!.safeParse(args);
           if (!parsed.success) return Promise.resolve({ ...text({ error: "invalid_arguments" }), isError: true });
           const label = ctx.sessionLabel ?? "embedded";

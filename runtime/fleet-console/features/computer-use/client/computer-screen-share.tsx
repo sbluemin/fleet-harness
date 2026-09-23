@@ -6,16 +6,55 @@ import "../../execution/client/agent/computer-screen-share.css";
 type CaptureTarget = { id: string; operationId: string; title: string };
 type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void };
 const CaptureContext = createContext<Capture | null>(null);
-const OperationUseContext = createContext<{ console: string[]; computer: string[]; browser: string[] }>({ console: [], computer: [], browser: [] });
+/** 패널 안 허용 요청 — 서버가 붙잡아 둔 호출 하나(합쳐진 도구 이름·막힌 사유·시한). 인자·내용은 없다. */
+export interface OperationUseRequest {
+  readonly id: string;
+  readonly operationId: string;
+  readonly capability: "console" | "computer";
+  readonly tools: readonly string[];
+  readonly blocked: "experiment_disabled" | null;
+  readonly expiresAt: number;
+}
+type OperationUseActivity = {
+  console: string[];
+  computer: string[];
+  browser: string[];
+  requests: OperationUseRequest[];
+  grants: { console: string[]; computer: string[] };
+};
+const EMPTY_ACTIVITY: OperationUseActivity = { console: [], computer: [], browser: [], requests: [], grants: { console: [], computer: [] } };
+const OperationUseContext = createContext<OperationUseActivity>(EMPTY_ACTIVITY);
 export function useOperationUse(operationId: string) {
   const activity = useContext(OperationUseContext);
-  return { console: activity.console.includes(operationId), computer: activity.computer.includes(operationId), browser: activity.browser.includes(operationId) };
+  return {
+    console: activity.console.includes(operationId),
+    computer: activity.computer.includes(operationId),
+    browser: activity.browser.includes(operationId),
+    /** 「이번 작업만」 허가로 쓰는 중인 도구군. */
+    turnOnly: { console: activity.grants.console.includes(operationId), computer: activity.grants.computer.includes(operationId) },
+  };
+}
+/** 이 Operation 이 답을 기다리는 허용 요청(도구군마다 하나). */
+export function useOperationUseRequests(operationId: string): readonly OperationUseRequest[] {
+  const activity = useContext(OperationUseContext);
+  return activity.requests.filter((request) => request.operationId === operationId);
+}
+
+function readRequests(value: unknown): OperationUseRequest[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): OperationUseRequest[] => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if (typeof record.id !== "string" || typeof record.operationId !== "string" || (record.capability !== "console" && record.capability !== "computer") || typeof record.expiresAt !== "number") return [];
+    const tools = Array.isArray(record.tools) ? record.tools.filter((tool): tool is string => typeof tool === "string") : [];
+    return [{ id: record.id, operationId: record.operationId, capability: record.capability, tools, blocked: record.blocked === "experiment_disabled" ? "experiment_disabled" : null, expiresAt: record.expiresAt }];
+  });
 }
 
 /** 영상 수명은 Console가, 표시 위치는 해당 Operation이 소유한다. */
 export function ComputerScreenShareProvider({ children }: { children: ReactNode }) {
   const [capture, setCapture] = useState<Capture | null>(null);
-  const [activity, setActivity] = useState<{ console: string[]; computer: string[]; browser: string[] }>({ console: [], computer: [], browser: [] });
+  const [activity, setActivity] = useState<OperationUseActivity>(EMPTY_ACTIVITY);
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -23,9 +62,10 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       try {
         const response = await fetch("/api/v1/operation-use", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) });
         if (!response.ok) throw new Error("operation_use_unavailable");
-        const next = await response.json() as { console: string[]; computer: string[]; browser?: string[] };
-        if (!controller.signal.aborted) setActivity({ console: next.console, computer: next.computer, browser: next.browser ?? [] });
-      } catch { if (!controller.signal.aborted) setActivity({ console: [], computer: [], browser: [] }); }
+        const next = await response.json() as { console: string[]; computer: string[]; browser?: string[]; requests?: unknown; grants?: { console?: unknown; computer?: unknown } };
+        const ids = (value: unknown) => Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+        if (!controller.signal.aborted) setActivity({ console: next.console, computer: next.computer, browser: next.browser ?? [], requests: readRequests(next.requests), grants: { console: ids(next.grants?.console), computer: ids(next.grants?.computer) } });
+      } catch { if (!controller.signal.aborted) setActivity(EMPTY_ACTIVITY); }
       finally { if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 400); }
     };
     void poll();

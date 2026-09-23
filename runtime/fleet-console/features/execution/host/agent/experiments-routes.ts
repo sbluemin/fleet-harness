@@ -345,6 +345,8 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext, deps: Exper
     if (consoleUseMatch) return handleConsoleUse(req, res, decodeURIComponent(consoleUseMatch[1] ?? ""));
     const computerUseMatch = /^\/sessions\/([^/]+)\/computer-use$/u.exec(path);
     if (computerUseMatch) return handleComputerUse(req, res, decodeURIComponent(computerUseMatch[1] ?? ""));
+    const useRequestMatch = /^\/sessions\/([^/]+)\/use-requests\/([^/]+)$/u.exec(path);
+    if (useRequestMatch) return handleUseRequest(req, res, decodeURIComponent(useRequestMatch[1] ?? ""), decodeURIComponent(useRequestMatch[2] ?? ""));
     ctx.host.http.writeJson(res, 404, { error: "not_found" });
     return true;
   }, [
@@ -352,6 +354,7 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext, deps: Exper
     { method: "POST", path: "/sessions/:sessionId/watch", summary: "Turn Session watch on or off for an Agent Operation (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/console-use", summary: "Allow or revoke Console use for an Agent Operation (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/computer-use", summary: "Allow or revoke Computer Use for an Agent Operation (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/use-requests/:requestId", summary: "Answer an Agent Operation's pending Console use or Computer Use request from its panel: decline, allow for this turn, or keep allowing.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
   async function handleRefinePrompt(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
@@ -412,7 +415,7 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext, deps: Exper
     if (!operation) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
     const payload = { ...(operation.payload ?? {}) };
     if (body.enabled) payload.consoleUse = { enabled: true, language };
-    else delete payload.consoleUse;
+    else { delete payload.consoleUse; ctx.host.useRequests?.revoke(operation.id, "console"); }
     ctx.host.operations.patch(operation.id, { payload });
     ctx.host.http.writeJson(res, 200, { consoleUse: body.enabled });
     return true;
@@ -432,9 +435,40 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext, deps: Exper
     if (!operation) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
     const payload = { ...(operation.payload ?? {}) };
     if (body.enabled) payload.computerUse = { enabled: true, language };
-    else { delete payload.computerUse; ctx.host.computerUseMcp?.revokeOperation(operation.id); }
+    else { delete payload.computerUse; ctx.host.useRequests?.revoke(operation.id, "computer"); ctx.host.computerUseMcp?.revokeOperation(operation.id); }
     ctx.host.operations.patch(operation.id, { payload });
     ctx.host.http.writeJson(res, 200, { computerUse: body.enabled });
+    return true;
+  }
+
+  /**
+   * 패널 안 허용 요청에 답한다. `always` 는 ··· 메뉴 스위치를 켜는 것과 같은 기록을 남긴 뒤 요청을 푼다 — 붙잡힌 호출은
+   * 풀리자마자 판정을 다시 해 스위치를 읽는다. `turn` 은 기록 없이 이번 턴 동안만 허용하고, `deny` 는 거절로 끝낸다.
+   * 컴퓨터 사용 실험이 꺼져 있으면 허용은 거절된다(카드는 설정으로 안내한다).
+   */
+  async function handleUseRequest(req: http.IncomingMessage, res: http.ServerResponse, operationId: string, requestId: string): Promise<boolean> {
+    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    const requests = ctx.host.useRequests;
+    if (!requests) { ctx.host.http.writeJson(res, 404, { error: "not_found" }); return true; }
+    const body = await ctx.host.http.readJsonBody<{ readonly decision?: unknown; readonly capability?: unknown; readonly language?: unknown }>(req);
+    const decision = body?.decision;
+    const capability = body?.capability;
+    if ((decision !== "deny" && decision !== "turn" && decision !== "always") || (capability !== "console" && capability !== "computer")) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    const operation = getAgentOperation(ctx, operationId);
+    if (!operation) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
+    const pending = requests.list().requests.find((request) => request.id === requestId && request.operationId === operation.id);
+    if (!pending) { ctx.host.http.writeJson(res, 404, { error: "request_not_found" }); return true; }
+    if (pending.capability !== capability) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    if (decision !== "deny" && capability === "computer" && !readExperiments(ctx).computerUse) { ctx.host.http.writeJson(res, 409, { error: "experiment_disabled" }); return true; }
+    if (decision === "always") {
+      const language = body?.language === "ko" ? "ko" : "en";
+      const payload = { ...(operation.payload ?? {}) };
+      payload[capability === "console" ? "consoleUse" : "computerUse"] = { enabled: true, language };
+      ctx.host.operations.patch(operation.id, { payload });
+    }
+    const answered = requests.answer(operation.id, requestId, decision);
+    if (!answered.ok) { ctx.host.http.writeJson(res, answered.error === "request_not_found" ? 404 : 409, { error: answered.error }); return true; }
+    ctx.host.http.writeJson(res, 200, { decision, capability: answered.capability });
     return true;
   }
 

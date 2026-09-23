@@ -6,6 +6,7 @@ import { createConsoleControl } from "../../features/console-use/host/console-co
 import { CONSOLE_CONTROL_TOOLS } from "@fleet-console/sdk/mcp";
 
 import { createConsoleUseMcpHost } from "../../features/console-use/host/console-use.js";
+import { createUseRequestBroker } from "../../features/console-use/host/use-requests.js";
 import type { ConsoleUseMcpConnection } from "@fleet-console/sdk/mcp";
 
 let lifecycle: ConsoleUseMcpConnection | undefined;
@@ -100,6 +101,45 @@ describe("fleet-console-use host", () => {
         expect(restarted.state().automations.some((a) => a.id === pending.id)).toBe(true);
       } finally { restarted.dispose(); }
     } finally { await host.dispose(); control.dispose(); rmSync(directory, { recursive: true, force: true }); }
+  });
+  it("holds an unauthorized Operation call for the person's answer in its panel, and a turn-only grant ends with the turn", async () => {
+    // 허용받지 않은 호출은 거부 대신 붙잡혀 사람의 답을 기다린다. 답하기 전에는 아무것도 실행되지 않고, 「이번 작업만」은
+    // 턴이 끝나면 풀리며, 거절은 이번 턴에 다시 묻지 말라는 사유로 끝난다.
+    const operations = [{ id: "op-a", title: "Build", theaterId: "theater-a", type: "agent", pluginId: null, payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 1, updatedAt: 1 } }];
+    const requests = createUseRequestBroker({ recheckMs: 10 });
+    const host = createConsoleUseMcpHost({ operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }], requests, language: () => "en" });
+    const connection = host.connect({ tools: ["console_context"], allowControl: true, operationCallers: true });
+    try {
+      const endpoint = (await connection.getEndpoint()).servers[0]!;
+      const token = connection.issueSessionToken({ label: "op-a", cwd: process.cwd() })[0]!;
+      const call = async () => {
+        const response = await fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token.token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "console_context", arguments: {} } }) });
+        return JSON.parse((await response.json()).result.content[0].text);
+      };
+      const pendingRequest = async () => { await vi.waitFor(() => expect(requests.list().requests).toHaveLength(1)); return requests.list().requests[0]!; };
+
+      const held = call();
+      const first = await pendingRequest();
+      expect(first).toMatchObject({ operationId: "op-a", capability: "console", tools: ["console_context"], blocked: null });
+      expect(requests.answer("op-a", first.id, "turn")).toEqual({ ok: true, capability: "console" });
+      expect((await held).caller.operationId).toBe("op-a");
+      // 같은 턴 안의 다음 호출은 묻지 않는다.
+      expect((await call()).caller.operationId).toBe("op-a");
+      expect(requests.list().requests).toHaveLength(0);
+
+      // 턴이 끝나면 허가가 풀려 다시 묻는다. 거절은 재시도할 길이 아니라고 말한다.
+      requests.settle("op-a");
+      const again = call();
+      const second = await pendingRequest();
+      requests.answer("op-a", second.id, "deny");
+      expect(await again).toMatchObject({ error: "console_use_not_authorized", reason: "declined_by_user", retryable: false, remedy: { surface: "operation_panel", operationId: "op-a" } });
+
+      // 기다리는 사이 ··· 메뉴 스위치가 켜지면 답 없이도 풀린다.
+      const third = call();
+      await pendingRequest();
+      operations[0]!.payload = { consoleUse: { enabled: true, language: "en" } };
+      expect((await third).caller.operationId).toBe("op-a");
+    } finally { requests.dispose(); await connection.dispose(); await host.dispose(); }
   });
   it("binds aide execution to the host plugin owner without an Operation and revokes it on unload", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "console-aide-"));

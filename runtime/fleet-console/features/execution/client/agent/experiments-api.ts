@@ -180,6 +180,16 @@ export async function setComputerUse(api: ClientApiCapability, operationId: stri
   });
 }
 
+/** 패널 안 허용 요청에 답한다. 실패(이미 풀린 요청·실험 꺼짐)는 던진다 — 카드가 다시 누르게 한다. */
+export async function answerUseRequest(api: ClientApiCapability, input: { readonly operationId: string; readonly requestId: string; readonly capability: "console" | "computer"; readonly decision: "deny" | "turn" | "always"; readonly language: "en" | "ko" }): Promise<void> {
+  const response = await api.fetch(null, `experiments/sessions/${encodeURIComponent(input.operationId)}/use-requests/${encodeURIComponent(input.requestId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision: input.decision, capability: input.capability, language: input.language }),
+  });
+  if (!response.ok) throw new Error(`use_request_${response.status}`);
+}
+
 export async function setConsoleUse(api: ClientApiCapability, operationId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
   await api.fetch(null, `experiments/sessions/${encodeURIComponent(operationId)}/console-use`, {
     method: "POST",

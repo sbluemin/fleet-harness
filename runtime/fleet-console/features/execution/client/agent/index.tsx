@@ -42,6 +42,7 @@ import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE
 import "./agent-cli.css";
 import { BROWSER_COMPANION_ID } from "./browser-companion.js";
 import { createChatLinkInterceptor, useLinkOpenChoice } from "./link-open.js";
+import { UseRequestCards, setUseRequestApi } from "./use-request-card.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OPERATION_REVEAL_EVENT_CHANNEL, SESSION_WATCH_EVENT_CHANNEL, getOperationReveal, getSessionWatchReview, isOperationRevealEvent, isSessionWatchAlert, isSessionWatchEvent, readComputerUseEnabled, readConsoleUseEnabled, readInstalledExperiments, readWatchEnabled, readWatchLast, recordOperationReveal, recordSessionWatchEvent, refineLaunchPrompt, setComputerUse, setConsoleUse, setInstalledExperiments, setSessionWatch, subscribeInstalledExperiments, subscribeOperationReveals, subscribeSessionWatchReviews, type OperationReveal, type SessionWatchReview } from "./experiments-api.js";
 import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
@@ -296,6 +297,7 @@ let installedApi: PluginInstallContext["api"] | null = null;
 function installAgentExecution(ctx: PluginInstallContext): () => void {
   installedNotifications = ctx.notifications;
   installedApi = ctx.api;
+  setUseRequestApi(ctx.api);
   setInstalledExperiments(ctx.experiments);
   // 세션 관찰 알림 — 서버가 코어 SSE에 실어 보낸 조언을 알림 층에 올린다. 관찰이 꺼진 Operation은
   // 서버가 애초에 검토하지 않으므로 여기서 거를 것이 없다.
@@ -626,8 +628,8 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
     <>
       <span className="agent-operation-marks">
         {launchedByMark}
-        <OperationUseBadge active={using.console} kind="console" label={t("terminal.experiments.menuConsoleUse")} />
-        <OperationUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
+        <OperationUseBadge active={using.console} kind="console" label={using.turnOnly.console ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuConsoleUse") }) : t("terminal.experiments.menuConsoleUse")} />
+        <OperationUseBadge active={using.computer} kind="computer" label={using.turnOnly.computer ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuComputerUse") }) : t("terminal.experiments.menuComputerUse")} />
       </span>
       {analyst}
       {browser}
@@ -833,6 +835,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onExit={() => removeSession(session.sessionId)}
       />
       <ComputerScreenShare operationId={context.operationId} />
+      <UseRequestCards operationId={context.operationId} language={context.language} placement="terminal" />
       {linkOpen.card}
     </div>
   );

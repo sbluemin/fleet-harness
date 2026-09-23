@@ -38,6 +38,7 @@ import { createBrowserScreenshotStore } from "../../../features/browser/host/scr
 import { BrowserService, type BrowserAvailability } from "../../../features/browser/host/service.js";
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
+import { createUseRequestBroker } from "../../../features/console-use/host/use-requests.js";
 import { resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import type { OperationNode } from "../../../features/execution/host/operations/operations-domain.js";
 import { createOperationStore, createOperationsRouter, createSanitizedOpDto } from "../../../features/execution/host/operations/operations-domain.js";
@@ -675,9 +676,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     enabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
   });
+  // 패널 안 허용 요청 — 콘솔 사용과 컴퓨터 사용이 같은 브로커를 나눠 쓴다. 메모리 전용이라 재시작하면 비어 있다.
+  const useRequests = createUseRequestBroker();
   const computerUseMcp = createComputerUseMcpHost({
     transport: mcpHttp.transport,
     service: computerUse,
+    requests: useRequests,
     operations: () => operations.list(),
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
@@ -730,7 +734,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const consoleOperations: string[] = [];
     for (const [id] of consoleUseActivity) {
       if (!current.some((operation) => operation.id === id)) continue;
-      if (current.some((operation) => operation.id === id && (operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true)) consoleOperations.push(id);
+      // 「이번 작업만」 허가로 쓰는 중이어도 사용 중이다.
+      if (current.some((operation) => operation.id === id && ((operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true || useRequests.granted(id, "console")))) consoleOperations.push(id);
     }
     const owner = computerUse.activeOwner();
     const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
@@ -751,6 +756,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       else consoleUseActivity.delete(operationId);
     },
     control: consoleControl,
+    requests: useRequests,
     transport: mcpHttp.transport,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
     operations: () => operations.list(),
@@ -1219,17 +1225,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   routeRegistry.register("/api/v1/operation-use", async ({ req, res }) => {
     if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    const experiments = readExperimentSettings(consoleSettingsStore);
-    const current = operations.list();
-    const consoleOperations: string[] = [];
-    for (const [id] of consoleUseActivity) {
-      if (!current.some((operation) => operation.id === id)) continue;
-      if (current.some((operation) => operation.id === id && (operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true)) consoleOperations.push(id);
-    }
-    const owner = computerUse.activeOwner();
-    const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
-    const browserOperations = browserService.status().operations.filter((id) => current.some((operation) => operation.id === id) && browserService.state(id).driving);
-    writeJson(res, 200, { console: consoleOperations, computer: computerOperation ? [computerOperation] : [], browser: browserOperations });
+    const using = listOperationUse();
+    // 패널 안 허용 요청과 「이번 작업만」 허가 — 도구 이름·사유·시한만 싣는다(인자·내용·경로는 없다).
+    const live = new Set(operations.list().map((operation) => operation.id));
+    const { requests, grants } = useRequests.list();
+    writeJson(res, 200, {
+      console: using.console,
+      computer: using.computer ? [using.computer] : [],
+      browser: using.browser,
+      requests: requests.filter((request) => live.has(request.operationId)),
+      grants: { console: grants.console.filter((id) => live.has(id)), computer: grants.computer.filter((id) => live.has(id)) },
+    });
     return true;
   });
   /**
@@ -1763,6 +1769,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     executionCleanupCallbacks.clear();
     await pluginHost.cleanup();
     consoleControl.dispose();
+    useRequests.dispose();
     try { await Promise.all([computerUseMcp.dispose(), browserMcp.dispose(), consoleUse.dispose(), pluginMcp.dispose()]); } finally { await mcpHttp.dispose(); }
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
@@ -2135,7 +2142,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const agentCliPlugin = await renderConsoleAgentCliPlugin({ dataDir: durablePaths.dir });
         const execution = await startConsoleExecution(createConsoleRuntimeContext({
           consoleControl,
-          host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
+          host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
           agentOptions,

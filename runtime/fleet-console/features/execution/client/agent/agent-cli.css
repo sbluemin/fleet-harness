@@ -1744,3 +1744,114 @@
   outline-offset: 2px;
 }
 .ai-gateway-routing-test > .ai-gateway-add-button { justify-self: start; }
+
+/* 패널 안 허용 요청 — AI 가 허용받지 않은 콘솔 사용·컴퓨터 사용 도구를 부르면 서버가 호출을 붙잡고 이 카드가 답을 받는다.
+   사람을 기다리는 상태라 질문 카드(.agent-chat-ask)와 같은 aurora 테두리·채움을 쓰고, 버튼도 그 카드의 버튼을 그대로 쓴다.
+   터미널은 본문 바닥, 채팅은 대화 면(.agent-chat-body) 바닥에 떠서 컴포저 바로 위에 선다 — 어느 쪽도 레이아웃을 밀지 않는다.
+   왼쪽 강조 띠는 쓰지 않는다: 상태는 테두리 전체가 말한다. */
+.use-request-stack {
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 4;
+  display: grid;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.use-request-card {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 560px;
+  margin: 0 auto;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--aurora) 42%, var(--hairline));
+  background: color-mix(in oklch, var(--aurora) 5%, var(--surface-panel-raised));
+  box-shadow: var(--shadow-floating);
+  font-family: var(--font-body);
+  animation: fleet-pop var(--duration-fast) var(--ease-spring) both;
+}
+
+.use-request-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.use-request-glyph {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  color: var(--aurora);
+  flex: none;
+}
+
+.use-request-glyph svg { width: 16px; height: 16px; }
+
+.use-request-title {
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+.use-request-timer {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.use-request-lead {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+}
+
+/* 도구 이름은 데이터다 — mono, 한 줄. 인자·내용은 서버가 싣지 않는다. */
+.use-request-tools {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.use-request-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.use-request-gap { flex: 1; }
+
+.use-request-blocked {
+  flex: 1;
+  min-width: 12ch;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+.use-request-fine {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+.use-request-error {
+  margin: 0;
+  color: var(--coral);
+  font-size: var(--t-xs);
+}
