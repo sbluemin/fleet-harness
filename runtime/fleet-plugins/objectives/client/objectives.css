@@ -760,3 +760,20 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-dag .objectives-node.is-focus circle { stroke: var(--brass); stroke-width: 2.4; stroke-dasharray: none; }
 .objectives-dag .objectives-node.is-pre circle { stroke: var(--aurora); stroke-width: 2.2; stroke-dasharray: none; }
 .objectives-dag .objectives-edge.is-hot { stroke: var(--aurora); stroke-width: 2.2; }
+
+/* 달성 기준 — 임무 아래 섹션. 줄은 임무 줄과 같은 들여쓰기·높이, 표식은 미확인(점선 고리)과 충족(positive 점) 둘뿐이다. */
+.objectives-criteria-count { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-criterion { display: flex; gap: 12px; align-items: center; min-height: 36px; padding: 0 14px 0 22px; font-size: var(--t-sm); }
+.objectives-criterion:hover { background: var(--control-rest); }
+.objectives-criterion-mark { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 1.5px dashed var(--text-tertiary); }
+.objectives-criterion.is-met .objectives-criterion-mark { border: 0; background: var(--positive); }
+.objectives-criterion-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 6px 0; }
+.objectives-criterion-text { width: 100%; min-width: 0; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 0; text-overflow: ellipsis; }
+.objectives-criterion-text:focus { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
+/* 근거는 내용이다 — 잘리지 않고 줄바꿈한다. 제안 표시는 dim 한 줄. */
+.objectives-criterion-sub { font-size: var(--t-2xs); color: var(--text-tertiary); overflow-wrap: anywhere; }
+.objectives-criterion-sub.is-evidence { color: var(--text-secondary); }
+.objectives-criterion-state { flex: none; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.objectives-criterion-state.is-met { color: var(--positive); }
+.objectives-criterion-remove { opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
+.objectives-criterion:hover .objectives-criterion-remove, .objectives-criterion:focus-within .objectives-criterion-remove { opacity: 1; }

@@ -217,6 +217,33 @@ describe("Objectives contract", () => {
     expect(results.some((result) => result.status === "rejected" && (result.reason as ObjectiveStoreError).code === "slot_taken")).toBe(true);
   });
 
+  it("holds the success report until the Commander backs every success criterion with evidence", async () => {
+    const { store, call, launch } = harness();
+    const as = { kind: "operation" as const, operationId: "coord" };
+    // 기준이 비어 있으면 구상의 계획에 지휘관이 제안할 수 있다 — 제안은 「지휘관이 제안」으로 남는다.
+    const blank = store.create({ theaterId: "t1", title: "Blank", steps: [{ text: "only" }] });
+    await launch.linkCoordinator(blank.id, "coord");
+    expect((await call({ plan: { itemId: blank.id, steps: [{ text: "work" }], criteria: ["login happens once"] } }, as)).isError).toBe(false);
+    expect(store.find(blank.id)!.criteria).toMatchObject([{ text: "login happens once", by: "commander" }]);
+    // 사람이 쓴 기준이 있으면 지휘관은 기준을 덧붙이지 못한다 — 스스로 정한 기준을 스스로 통과시키지 않는다.
+    const item = store.create({ theaterId: "t1", title: "Criteria", steps: [{ text: "fix" }] });
+    store.criterionAdd(item.id, "tests pass", "human");
+    store.criterionAdd(item.id, "copy unchanged", "human");
+    await launch.linkCoordinator(item.id, "coord");
+    expect((await call({ plan: { itemId: item.id, steps: [{ text: "fix" }], criteria: ["mine"] } }, as)).structuredContent.error).toBe("criteria_exist");
+    // 마지막 임무를 마치면 도구가 달성 점검을 되묻는다 — 기준 문장이 그 안에 있다.
+    const done = await call({ step: { itemId: item.id, doneIndex: 0, summary: ["fixed"] } }, as);
+    expect(String(done.structuredContent.next)).toContain("copy unchanged");
+    // 근거 없는 「충족」이나 빠진 기준은 받지 않는다 — 번호를 돌려주고 검토 대기로 넘기지 않는다.
+    const refused = await call({ review: { itemId: item.id, summary: "done", criteria: [{ n: 1, met: true, evidence: "12/12" }, { n: 2, met: true }] } }, as);
+    expect(refused.structuredContent).toMatchObject({ error: "criteria_unmet", missing: [2] });
+    expect(store.find(item.id)!.review).toBeUndefined();
+    // 기준마다 근거가 서면 검토 대기로 넘어가고, 근거는 검토 기록에 남는다.
+    const accepted = await call({ review: { itemId: item.id, summary: "done", criteria: [{ n: 1, met: true, evidence: "12/12" }, { n: 2, met: true, evidence: "diff shows no copy change" }] } }, as);
+    expect(accepted.isError).toBe(false);
+    expect(store.find(item.id)!.review?.criteria?.map((entry) => entry.evidence)).toEqual(["12/12", "diff shows no copy change"]);
+  });
+
   it("carries items and attachments saved under the old To-do plugin id over to the new data directory once", () => {
     const base = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-legacy-"));
     dirs.push(base);

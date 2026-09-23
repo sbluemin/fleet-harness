@@ -27,8 +27,8 @@ export function cookTurn(item: ObjectiveItem, language: PromptLanguage): string 
 }
 
 const EDIT_WORDS: Record<PromptLanguage, Record<ObjectiveEditKind, string>> = {
-  ko: { title: "제목", note: "브리핑", steps: "임무", recipe: "선행 관계", assign: "배정" },
-  en: { title: "title", note: "brief", steps: "missions", recipe: "dependencies", assign: "assignment" },
+  ko: { title: "제목", note: "브리핑", steps: "임무", recipe: "선행 관계", assign: "배정", criteria: "달성 기준" },
+  en: { title: "title", note: "brief", steps: "missions", recipe: "dependencies", assign: "assignment", criteria: "success criteria" },
 };
 
 const editedWords = (item: ObjectiveItem, language: PromptLanguage): string => (item.edited?.kinds ?? []).map((kind) => EDIT_WORDS[language][kind]).join(language === "ko" ? "·" : ", ");

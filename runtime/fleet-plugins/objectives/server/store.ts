@@ -5,11 +5,14 @@ import { randomUUID } from "node:crypto";
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import {
   DEFAULT_STEP_ASSIGN,
+  MAX_CRITERIA,
   MAX_RECORDS,
   MAX_STEPS,
   hasCycle,
   lineupOrder,
   type CreateItemInput,
+  type CriterionEvidence,
+  type ObjectiveCriterion,
   type PatchItemInput,
   type PlanInput,
   type Slot,
@@ -77,7 +80,11 @@ export interface ObjectiveStore {
   plan(itemId: string, input: PlanInput, by: SlotBy): ObjectiveItem;
   setSlot(itemId: string, stepId: string | null, slot: Slot | null): ObjectiveItem;
   setCooking(itemId: string, cooking: boolean): ObjectiveItem;
-  setReview(itemId: string, review: { readonly summary: string } | null): ObjectiveItem;
+  setReview(itemId: string, review: { readonly summary: string; readonly criteria?: readonly CriterionEvidence[] } | null): ObjectiveItem;
+  /** 달성 기준 — 사람이 쓰고, 비어 있을 때 구상 중인 지휘관이 제안한다(by). 고치거나 지워도 기준 id 는 다른 기준에 이어지지 않는다. */
+  criterionAdd(itemId: string, text: string, by: ObjectiveCriterion["by"]): ObjectiveItem;
+  criterionPatch(itemId: string, criterionId: string, text: string): ObjectiveItem;
+  criterionRemove(itemId: string, criterionId: string): ObjectiveItem;
   /** 사람의 편집을 쌓는다(지휘관이 있을 때만) · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
   setEdited(itemId: string, kinds: readonly ObjectiveEditKind[] | null): ObjectiveItem;
   /** 사라진 Operation 을 모든 슬롯(완료 항목의 released 포함)에서 지운다 — 바뀐 항목을 돌려준다. */
@@ -372,7 +379,22 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return update(itemId, (item) => ({ ...item, edited: { at: now(), kinds: merged } }));
     },
 
-    setReview: (itemId, review) => update(itemId, (item) => (review ? { ...item, review: { at: now(), summary: review.summary } } : item.review ? (({ review: _review, ...rest }) => rest)(item) : item)),
+    setReview: (itemId, review) => update(itemId, (item) => (review ? { ...item, review: { at: now(), summary: review.summary, ...(review.criteria?.length ? { criteria: review.criteria } : {}) } } : item.review ? (({ review: _review, ...rest }) => rest)(item) : item)),
+    criterionAdd: (itemId, text, by) => update(itemId, (item) => {
+      const criteria = item.criteria ?? [];
+      if (criteria.length >= MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria");
+      return { ...item, criteria: [...criteria, { id: randomUUID(), text: text.trim(), by, at: now() }] };
+    }),
+    criterionPatch: (itemId, criterionId, text) => update(itemId, (item) => {
+      const criteria = item.criteria ?? [];
+      if (!criteria.some((entry) => entry.id === criterionId)) throw new ObjectiveStoreError("unknown_criterion");
+      return { ...item, criteria: criteria.map((entry) => (entry.id === criterionId ? { ...entry, text: text.trim() } : entry)) };
+    }),
+    criterionRemove: (itemId, criterionId) => update(itemId, (item) => {
+      const criteria = item.criteria ?? [];
+      if (!criteria.some((entry) => entry.id === criterionId)) throw new ObjectiveStoreError("unknown_criterion");
+      return { ...item, criteria: criteria.filter((entry) => entry.id !== criterionId) };
+    }),
 
     complete: (itemId, by) => update(itemId, (item) => {
       if (item.done) return item;

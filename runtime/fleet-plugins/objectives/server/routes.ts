@@ -9,7 +9,7 @@ import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.j
 import { createGroupSync, type GroupSync } from "./group-sync.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { createItemSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type ObjectiveEditKind, type ObjectiveItem } from "./types.js";
+import { createItemSchema, criterionAddSchema, criterionPatchSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type ObjectiveEditKind, type ObjectiveItem } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -149,6 +149,10 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       const hits = store.list(theaterId).filter((candidate) => !candidate.done && candidate.title.toLowerCase().includes(needle)).slice(0, limit ?? 20);
       return { items: hits.map((candidate) => ({ id: candidate.id, title: candidate.title, groupId: candidate.groupId })) };
     }) },
+    // 달성 기준 — 브리핑처럼 지휘관이 일하는 동안에도 받고, 지휘관이 있으면 「달성 기준」 편집으로 쌓여 스티어링이 알린다.
+    { name: "criterion/add", method: "POST", summary: "Add a success criterion below the missions.", handler: json(itemRef.extend({ criterion: criterionAddSchema }), steerable(() => true, ({ itemId, criterion }) => edited(["criteria"], () => store.criterionAdd(itemId, criterion.text, "human")))) },
+    { name: "criterion/patch", method: "POST", summary: "Edit a success criterion.", handler: json(itemRef.extend({ criterionId: ids, patch: criterionPatchSchema }), steerable(() => true, ({ itemId, criterionId, patch }) => edited(["criteria"], () => store.criterionPatch(itemId, criterionId, patch.text)))) },
+    { name: "criterion/remove", method: "POST", summary: "Remove a success criterion.", handler: json(itemRef.extend({ criterionId: ids }), steerable(() => true, ({ itemId, criterionId }) => edited(["criteria"], () => store.criterionRemove(itemId, criterionId)))) },
     { name: "attachment/add", method: "POST", summary: "Attach an image to an objective's brief (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per objective).", handler: attachmentAdd },
     { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },
     { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(itemRef.extend({ attachmentId: ids }), steerable(() => true, ({ itemId, attachmentId }) => edited(["note"], () => store.attachmentRemove(itemId, attachmentId)))) },

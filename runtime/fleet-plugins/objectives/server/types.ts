@@ -11,6 +11,10 @@ export const MAX_TITLE = 200;
 export const MAX_NOTE = 20_000;
 export const MAX_STEPS = 40;
 export const MAX_STEP_TEXT = 200;
+/** 달성 기준 — 목표가 이루어졌다고 말할 조건. 개수와 길이, 검토 때 기준마다 대는 근거 한 줄의 길이. */
+export const MAX_CRITERIA = 20;
+export const MAX_CRITERION_TEXT = 300;
+export const MAX_EVIDENCE = 300;
 /** 단계 기록 한 건의 줄 — 첫 줄이 결론, 나머지는 근거·남은 것. 산문을 한 줄에 몰아넣지 못하게 줄마다 길이를 묶는다. */
 export const MAX_RECORD_LINES = 3;
 export const MAX_RECORD_LINE = 160;
@@ -128,7 +132,24 @@ export interface ObjectiveDone {
 export type LaunchView = "chat" | "terminal";
 
 /** 지휘관에게 알릴 만한 사람의 편집 — 일정·중요 표시·모델 같은 지휘관의 일과 무관한 값은 넣지 않는다. */
-export type ObjectiveEditKind = "title" | "note" | "steps" | "recipe" | "assign";
+export type ObjectiveEditKind = "title" | "note" | "steps" | "recipe" | "assign" | "criteria";
+
+/**
+ * 달성 기준 — 임무 목록 아래 섹션. 목표가 이루어졌다고 말할 조건 하나. 사람이 쓰고, 비어 있으면 구상 때 지휘관이 제안한다(by).
+ * 충족 여부는 기준에 저장하지 않는다 — 지휘관의 달성 보고(review.criteria)에만 근거와 함께 남아, 새 작업이 검토를 거두면 함께 사라진다.
+ */
+export interface ObjectiveCriterion {
+  readonly id: string;
+  readonly text: string;
+  readonly by: "human" | "commander";
+  readonly at: number;
+}
+
+/** 달성 보고에 실린 기준 하나의 근거 — 지휘관이 스스로 다시 따져 충족이라고 판단한 증거 한 줄. */
+export interface CriterionEvidence {
+  readonly id: string;
+  readonly evidence: string;
+}
 
 export interface ObjectiveItem {
   readonly id: string;
@@ -143,7 +164,9 @@ export interface ObjectiveItem {
   /** 구상 중 — 지휘관이 단계·메모만 짜는 국면. 시작·중지·완료가 끝낸다. 이 동안은 계획을 써도 담당이 뜨지 않는다. */
   readonly cooking?: boolean;
   /** 검토 대기 — 지휘관이 모든 단계를 마쳤다고 사람에게 넘긴 상태(가승인). 완료는 사람이 검토해 누른다. 새 작업(구상·시작·단계 되돌림)이 지운다. */
-  readonly review?: { readonly at: number; readonly summary: string };
+  readonly review?: { readonly at: number; readonly summary: string; readonly criteria?: readonly CriterionEvidence[] };
+  /** 달성 기준 — 없으면 섹션은 추가 줄만 보이고, 달성 보고는 지금처럼 모든 임무 완료만 본다. */
+  readonly criteria?: readonly ObjectiveCriterion[];
   /**
    * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것 — 지휘관이 있는 동안의 화면 편집만 쌓인다. 「시작」이 지휘관에게 한 줄로 알리고
    * 다시 읽게 한다. 지휘관이 일하는 동안 쌓이면 하단 「중단」 자리가 「스티어링」이 되어, 누르면 같은 한 줄이 간다. 지휘관이 이 항목을 읽거나(view item/mine), 새 지휘관이 뜨거나, 알림이 나가면 지워진다.
@@ -201,6 +224,10 @@ export const patchItemSchema = z.object({
 }).strict();
 
 export const stepAssignSchema = z.object({ mode: z.enum(["self", "route", "model"]), model: z.string().max(128).optional(), effort: z.string().max(32).optional() }).strict();
+const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
+export const criterionAddSchema = z.object({ text: criterionText }).strict();
+export const criterionPatchSchema = z.object({ text: criterionText }).strict();
+
 export const stepAddSchema = z.object({ text: stepText, after: z.array(ids).max(MAX_STEPS).optional(), assign: stepAssignSchema.nullable().optional() }).strict();
 export const stepPatchSchema = z.object({
   text: stepText.optional(),
