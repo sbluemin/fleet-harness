@@ -145,6 +145,15 @@ const inLineupOrder = (item: ObjectiveItem): ObjectiveItem => {
   return steps === item.steps ? item : { ...item, steps: [...steps] };
 };
 
+/** 검토 기록에서 기준 하나의 근거를 거둔다 — 검토 대기 자체는 남긴다(완료는 여전히 사람의 판단이다). */
+const withoutEvidence = (item: ObjectiveItem, criterionId: string): ObjectiveItem => {
+  const evidence = item.review?.criteria;
+  if (!item.review || !evidence?.some((entry) => entry.id === criterionId)) return item;
+  const rest = evidence.filter((entry) => entry.id !== criterionId);
+  const { criteria: _criteria, ...review } = item.review;
+  return { ...item, review: rest.length ? { ...review, criteria: rest } : review };
+};
+
 const safeSegment = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "_");
 
 export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveStore {
@@ -388,12 +397,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     criterionPatch: (itemId, criterionId, text) => update(itemId, (item) => {
       const criteria = item.criteria ?? [];
       if (!criteria.some((entry) => entry.id === criterionId)) throw new ObjectiveStoreError("unknown_criterion");
-      return { ...item, criteria: criteria.map((entry) => (entry.id === criterionId ? { ...entry, text: text.trim() } : entry)) };
+      const next = { ...item, criteria: criteria.map((entry) => (entry.id === criterionId ? { ...entry, text: text.trim() } : entry)) };
+      // 문구가 바뀐 기준의 근거는 옛 문구에 대한 것이다 — 그 근거만 거둬 「미확인」으로 돌린다(다른 기준의 근거와 검토 대기는 그대로).
+      return criteria.find((entry) => entry.id === criterionId)!.text === text.trim() ? item : withoutEvidence(next, criterionId);
     }),
     criterionRemove: (itemId, criterionId) => update(itemId, (item) => {
       const criteria = item.criteria ?? [];
       if (!criteria.some((entry) => entry.id === criterionId)) throw new ObjectiveStoreError("unknown_criterion");
-      return { ...item, criteria: criteria.filter((entry) => entry.id !== criterionId) };
+      return withoutEvidence({ ...item, criteria: criteria.filter((entry) => entry.id !== criterionId) }, criterionId);
     }),
 
     complete: (itemId, by) => update(itemId, (item) => {

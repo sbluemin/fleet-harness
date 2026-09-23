@@ -885,7 +885,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <div className="objectives-row is-static">
           <span className="objectives-row-ic"><CriteriaGlyph /></span>
           <span className="objectives-row-lab">{t("objectives.criteria.title")}</span>
-          {(item.criteria?.length ?? 0) > 0 ? <span className="objectives-row-tools"><span className="objectives-criteria-count">{t("objectives.criteria.count", { met: (item.review?.criteria ?? []).length, total: item.criteria!.length })}</span></span> : null}
+          {(item.criteria?.length ?? 0) > 0 ? <span className="objectives-row-tools"><span className="objectives-criteria-count">{t("objectives.criteria.count", { met: item.criteria!.filter((criterion) => item.review?.criteria?.some((entry) => entry.id === criterion.id)).length, total: item.criteria!.length })}</span></span> : null}
         </div>
         {(item.criteria ?? []).map((criterion, index) => {
           const evidence = item.review?.criteria?.find((entry) => entry.id === criterion.id)?.evidence;
@@ -939,7 +939,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <div className="objectives-group objectives-start-group">
           <button type="button" className="objectives-start is-review" title={item.review.summary} onClick={onComplete}>
             <span className="objectives-start-word">{t("objectives.review.complete")}</span>
-            <span className="objectives-start-sub">{t((item.review?.criteria?.length ?? 0) > 0 ? "objectives.review.subCriteria" : "objectives.review.sub")}</span>
+            <span className="objectives-start-sub">{t((item.criteria?.length ?? 0) > 0 && item.criteria!.every((criterion) => item.review?.criteria?.some((entry) => entry.id === criterion.id)) ? "objectives.review.subCriteria" : "objectives.review.sub")}</span>
             <span className="objectives-start-arrow" aria-hidden="true">→</span>
           </button>
         </div>
