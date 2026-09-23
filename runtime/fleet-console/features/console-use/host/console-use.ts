@@ -583,7 +583,9 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
           // 읽기까지 포함해 전부 여기서 막는다. 도구는 세션이 열릴 때 실리지만 허용은 매 호출에 다시
           // 묻는다 — 그래야 토글이 재연결 없이 다음 호출부터 듣는다.
           let denied = options.operationCallers === true ? denyConsoleUse(deps, ctx) : null;
-          if (denied) denied = await holdConsoleUse(deps, ctx, spec.id, denied, AbortSignal.any([controller.signal, ...(ctx.signal ? [ctx.signal] : [])]));
+          // 인자가 틀린 호출은 사람에게 묻지 않는다 — 허용해도 invalid_arguments 로 끝날 호출에 카드를 띄우면, 인자를 싣지 않는
+          // 카드만 보고 「계속 허용」을 누르게 된다. 이때는 예전처럼 거부가 먼저다.
+          if (denied && schemas.get(spec.id)!.safeParse(args).success) denied = await holdConsoleUse(deps, ctx, spec.id, denied, AbortSignal.any([controller.signal, ...(ctx.signal ? [ctx.signal] : [])]));
           if (closed || options.enabled?.() === false) return { ...text({ error: "console_read_disabled" }), isError: true };
           if (denied) { if (ctx.sessionLabel) endUse(ctx.sessionLabel); return { ...text(denied), isError: true }; }
           if (options.operationCallers === true) {
