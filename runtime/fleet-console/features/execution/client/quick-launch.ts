@@ -293,6 +293,7 @@ export function isMentionSelectable(activity: OperationActivityVisual): boolean 
 
 /**
  * 멘션 덱의 목록: messageOperation을 선언한 플러그인의 해당 타입 Operation만, Theater로 묶어서.
+ * `hidden`(묶음의 단계 Operation)은 덱에서 뺀다. 명시 행선지 해소(resolveMentionEntry)는 거르지 않는다.
  * 활동 분류는 팔레트와 같은 원천(resolveOperationActivity)을 쓰되 idle-arrival 화면 승격은 받지
  * 않는다 — 여기서 awaiting은 선택 차단 신호라, 표시용 승격이 섞이면 보낼 수 있는 대상이 막힌다.
  */
@@ -300,10 +301,11 @@ export function buildQuickLaunchMentionGroups(
   state: ConsoleState,
   messageableTypesByPlugin: ReadonlyMap<string | null, ReadonlySet<string>>,
   query: string,
+  hidden?: ReadonlySet<string>,
 ): readonly OperationSearchGroup[] {
   const mentionable = state.operations.filter((operation) => messageableTypesByPlugin.get(operation.pluginId)?.has(operation.type) === true);
   if (mentionable.length === 0) return [];
-  const entries = buildOperationSearchEntries({ ...state, operations: mentionable });
+  const entries = buildOperationSearchEntries({ ...state, operations: mentionable }, hidden);
   return groupOperationSearchEntries(filterOperationSearchEntries(entries, query));
 }
 
