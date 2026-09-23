@@ -12,6 +12,8 @@ import type { TodoItem } from "./types.js";
 export interface GroupSync {
   /** 기동 때 한 번 — 이 동기화 전에 갈라진 항목을 셰프의 그룹으로 맞춘다. */
   reconcile(): void;
+  /** 사람이 기존 Operation 을 셰프로 연결했다 — 항목이 그 셰프의 그룹으로 간다(기동 정합과 같은 규칙). */
+  chefLinked(item: TodoItem): TodoItem;
   /** 호스트의 `operation:grouped` — 담당이 옮긴 것은 항목을 움직이지 않는다. */
   operationGrouped(event: OperationGroupedEvent): void;
   /** 사람이 할 일에서 항목의 그룹을 바꿨다 — 연결된 Operation 들을 같은 그룹으로. */
@@ -22,15 +24,19 @@ const groupOf = (value: { readonly groupId?: string | null } | null): string | n
 
 export function createGroupSync(ctx: FleetPluginServerContext, store: TodoStore): GroupSync {
   const operations = ctx.host.operations;
+  // 항목 하나를 셰프의 그룹으로 — 셰프가 없거나 다른 Theater 면 그대로 둔다.
+  const alignToChef = (item: TodoItem): TodoItem => {
+    const chefId = chefOperationOf(item);
+    const chef = chefId ? operations.get(chefId) : null;
+    if (!chef || chef.theaterId !== item.theaterId || groupOf(chef) === item.groupId) return item;
+    store.followChefGroup(item.theaterId, chef.id, groupOf(chef));
+    return store.find(item.id) ?? item;
+  };
   return {
     reconcile() {
-      for (const item of store.all()) {
-        const chefId = chefOperationOf(item);
-        const chef = chefId ? operations.get(chefId) : null;
-        if (!chef || chef.theaterId !== item.theaterId || groupOf(chef) === item.groupId) continue;
-        store.followChefGroup(item.theaterId, chef.id, groupOf(chef));
-      }
+      for (const item of store.all()) alignToChef(item);
     },
+    chefLinked: alignToChef,
     operationGrouped(event) {
       store.followChefGroup(event.theaterId, event.operationId, event.groupId);
     },
