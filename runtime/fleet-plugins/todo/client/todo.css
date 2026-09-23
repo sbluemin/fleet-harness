@@ -563,30 +563,6 @@ button.todo-row:disabled { opacity: 0.5; cursor: default; }
 .todo-pick button { text-align: left; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 4px 6px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
 .todo-pick button:hover { border-color: var(--brass); }
 
-/* 캡션 칩 — 슬롯에 든 Operation 의 캡션·사이드바 칩에 얹는 표식 */
-.todo-caption-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 220px;
-  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
-  border-radius: var(--radius-pill);
-  padding: 0 7px;
-  font-size: var(--t-2xs);
-  font-family: var(--font-mono);
-  color: var(--text-secondary);
-  background: transparent;
-  cursor: pointer;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.todo-caption-chip b { color: var(--brass); font-weight: var(--weight-medium); }
-.todo-caption-chip span { overflow: hidden; text-overflow: ellipsis; }
-.todo-caption-chip:hover { border-color: var(--brass); }
-.todo-caption-chip:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.todo-caption-mark { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--brass); }
-.todo-caption-mark svg { width: 12px; height: 12px; }
-
 @media (prefers-reduced-motion: reduce) {
   .todo-step.is-highlight { animation: none; }
 }

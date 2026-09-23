@@ -460,7 +460,12 @@ export interface OperationCaptionContribution {
 export type OperationClusterProgress = "blocked" | "open" | "running" | "awaiting" | "done";
 
 export interface OperationClusterMember {
+  /**
+   * 구성원의 Operation id. `pending` 이면 아직 Operation 이 없는 자리표시 id 다(플러그인 안에서 안정적이면 된다) —
+   * 호스트는 띠(단계 사각)·진행 셈에만 쓰고 행·패널·본문 선택에는 세우지 않는다.
+   */
   readonly operationId: string;
+  readonly pending?: boolean;
   /** 묶음 안에서 제목 대신 부르는 짧은 이름("1. package.json name 읽기"). */
   readonly label: string;
   /** 선행 구성원의 operationId. 전부 끝나야 이 구성원이 열린다. */

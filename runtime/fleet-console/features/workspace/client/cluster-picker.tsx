@@ -41,7 +41,7 @@ export function ClusterPicker({ layout, anchor, current, rootActivity, onPick, o
   useEffect(() => { cardRef.current?.querySelector<HTMLButtonElement>("button[aria-checked='true']")?.focus(); }, []);
   const rows: { id: string; label: string; progress: string }[] = [
     { id: layout.cluster.root, label: t("cluster.picker.coordinator"), progress: rootActivity ?? "unknown" },
-    ...layout.members.map((laid) => ({ id: laid.member.operationId, label: laid.member.label, progress: laid.member.progress })),
+    ...layout.members.filter((laid) => !laid.member.pending).map((laid) => ({ id: laid.member.operationId, label: laid.member.label, progress: laid.member.progress })),
   ];
   const selected = current ?? layout.cluster.root;
   return createPortal(

@@ -20,7 +20,8 @@ export function clusterChipPropsFor(entry: SideBarEntry, index: ClusterIndex, fo
   const root = index.rootOf.get(entry.operation.id);
   if (root) {
     const isCollapsed = isClusterCollapsed(fold, root.cluster.id);
-    return { role: "root", title: root.cluster.title, collapsed: isCollapsed, strip: <ClusterStrip layout={root} rootActivity={entry.status} onOpen={root.cluster.open} />, onToggle: () => toggleClusterCollapsed(root.cluster.id) };
+    // 펼칠 것은 Operation 이 선 구성원뿐 — 자리표시(pending) 단계만 있으면 띠는 서되 접기 토글은 없다.
+    return { role: "root", title: root.cluster.title, collapsed: isCollapsed, strip: <ClusterStrip layout={root} rootActivity={entry.status} onOpen={root.cluster.open} />, onToggle: () => toggleClusterCollapsed(root.cluster.id), expandable: root.members.some((laid) => !laid.member.pending) };
   }
   const member = index.memberOf.get(entry.operation.id);
   if (!member) return null;
