@@ -252,6 +252,7 @@ export interface ConsoleOperationGeometry {
 export interface ConsoleOperationNode {
   readonly id: string;
   readonly theaterId: string;
+  readonly order?: number;
   readonly type: string;
   readonly pluginId: string;
   readonly title: string;

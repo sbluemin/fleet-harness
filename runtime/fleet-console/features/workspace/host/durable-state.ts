@@ -298,6 +298,7 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
   if (type === "shell" && pluginId === "terminal") return null;
   const accent = readOptionalAccent(value.accent);
   const groupId = readOptionalGroupId(value.groupId);
+  const order = readNonNegativeInteger(value.order);
   return {
     id,
     theaterId,
@@ -308,6 +309,7 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
     geometry: sanitizeOperationGeometry(value.geometry),
     ...(accent ? { accent } : {}),
     ...(groupId !== undefined ? { groupId } : {}),
+    ...(order !== null ? { order } : {}),
     ts,
   };
 }
