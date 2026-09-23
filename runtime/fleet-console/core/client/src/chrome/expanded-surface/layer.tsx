@@ -338,14 +338,15 @@ function SurfacePane({
         onFocusCapture={() => focusExpandedSurface(instance.instanceId)}
       >
         {/* 머리 줄은 없다 — 본문이 페인 위 가장자리까지 채우고, 이름은 aria-label로만 남는다.
-            창 조작(닫기)과 표면이 내는 tools는 본문 위 오른쪽 모서리에 부유한다. */}
+            창 조작(닫기)과 표면이 내는 tools는 본문 위 오른쪽 모서리에 부유한다.
+            닫는 길을 스스로 가진 표면(ownsClose)에는 닫기를 띄우지 않는다. */}
         <div ref={floatRef} className="expanded-surface-pane-float">
           {descriptor?.tools ? (
             <div className="expanded-surface-pane-tools">
               <PluginErrorBoundary><SurfacePanePart render={descriptor.tools} context={context} /></PluginErrorBoundary>
             </div>
           ) : null}
-          <button
+          {descriptor?.ownsClose ? null : <button
             className="expanded-surface-pane-close"
             type="button"
             aria-label={t("chrome.expandedSurface.closeAria")}
@@ -355,7 +356,7 @@ function SurfacePane({
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
               <path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
             </svg>
-          </button>
+          </button>}
         </div>
         <div className="expanded-surface-pane-body">
           {descriptor?.aside ? (

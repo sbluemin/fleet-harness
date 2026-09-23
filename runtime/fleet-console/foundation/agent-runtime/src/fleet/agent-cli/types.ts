@@ -59,6 +59,8 @@ export interface AgentCliProfileOptions {
   readonly effort?: string;
   readonly prompt?: string;
   readonly resumeSessionId?: string;
+  /** CLI 세션의 표시 이름 — 세션 목록·터미널 제목·세션 간 메시지 주소가 된다(Claude 계열 `-n`). */
+  readonly sessionName?: string;
 }
 
 export interface AgentCliMcpServerArg {

@@ -239,6 +239,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(context.effort ? { effort: context.effort } : {}),
       ...(context.prompt ? { prompt: context.prompt } : {}),
       ...(context.resumeSessionId ? { resumeSessionId: context.resumeSessionId } : {}),
+      ...(context.sessionName ? { sessionName: context.sessionName } : {}),
+      ...(context.disableSubagents ? { disableSubagents: true } : {}),
       ...(context.colorScheme ? { colorScheme: context.colorScheme } : {}),
     });
     let pty: TerminalPtyHandle;

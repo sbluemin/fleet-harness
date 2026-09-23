@@ -28,6 +28,10 @@ export interface TerminalLaunchContext {
   /** 런치 시 첫 턴으로 제출될 프롬프트. argv 위치 인자로 나가며 PTY로 주입하지 않는다. */
   readonly prompt?: string;
   readonly resumeSessionId?: string;
+  /** CLI 세션 표시 이름(세션 간 메시지 주소). spawn argv로만 나간다. */
+  readonly sessionName?: string;
+  /** 서브에이전트 전부 끄기 — 설정의 옵트아웃 목록 대신 `Agent` 도구 자체를 막는다. spawn 인자로만 나간다. */
+  readonly disableSubagents?: boolean;
   /** 콘솔 테마 극성 힌트 — spawn env COLORFGBG로만 소비된다. PTY는 최초 spawn 시점 값에 고정된다. */
   readonly colorScheme?: "light" | "dark";
 }
@@ -56,6 +60,8 @@ export interface TerminalTicketContext {
   /** 런치 시 첫 턴으로 제출될 프롬프트. argv 위치 인자로 나가며 PTY로 주입하지 않는다. */
   readonly prompt?: string;
   readonly resumeSessionId?: string;
+  readonly sessionName?: string;
+  readonly disableSubagents?: boolean;
   readonly colorScheme?: "light" | "dark";
   /**
    * 이 티켓이 여는 소켓의 역할. 생략하면 `control`이다 — 지금까지 발급된 모든 티켓이 그것이었고,

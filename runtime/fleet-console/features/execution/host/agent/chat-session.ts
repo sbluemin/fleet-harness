@@ -249,6 +249,7 @@ const QUEUE_PREVIEW_CHARS = 200;
 interface QueuedDispatch {
   readonly text: string;
   readonly display: string;
+  readonly format?: "markdown";
   /** 함께 보낸 이미지의 미리보기 좌표. 말풍선이 썸네일을 그리는 근거이며 경로는 싣지 않는다. */
   readonly attachments: readonly ChatAttachment[];
 }
@@ -262,6 +263,7 @@ interface QueuedDispatch {
 interface HostedDispatch {
   readonly queueId: string;
   readonly display: string;
+  readonly format?: "markdown";
   readonly attachments: readonly ChatAttachment[];
   readonly by?: ChatOrigin;
   readonly onSettled?: (outcome: "succeeded" | "failed" | "interrupted" | "unknown") => void;
@@ -270,8 +272,12 @@ interface HostedDispatch {
 /** `send`가 받는 표시 문면 한 벌 — 자식에게 갈 프롬프트와 갈라서 다룬다. */
 export interface ChatDispatchPresentation {
   readonly display?: string;
+  /** `display` 를 마크다운으로 그린다. 자식에게 가는 `text` 와 무관한, 원장만의 형식이다. */
+  readonly format?: "markdown" | "text";
   readonly attachments?: readonly ChatAttachment[];
 }
+
+const displayFormat = (presentation: ChatDispatchPresentation): { readonly format?: "markdown" } => (presentation.format === "markdown" ? { format: "markdown" } : {});
 
 function countReplayedTurns(entries: readonly AgentChatJournalEvent[]): number {
   let count = 0;
@@ -902,7 +908,7 @@ class AgentChatSession {
     // 기다리는 줄에 세우면 사용자가 방향을 고쳐 준 말이 이미 끝난 일에 대고 도착한다.
     if (this.handOverToRunningTurn(id, text, presentation, onSettled, by)) return;
     this.pendingTurns += 1;
-    this.queuedDispatches.set(id, { text, display: presentation.display ?? text, attachments: presentation.attachments ?? [] });
+    this.queuedDispatches.set(id, { text, display: presentation.display ?? text, ...displayFormat(presentation), attachments: presentation.attachments ?? [] });
     // 접수를 곧바로 말한다. HTTP 응답보다 이 알림이 먼저 닿을 수 있고, 그것이 이 축을 서버가
     // 소유하는 이유다 — 화면이 자기 카운터를 세면 취소가 무엇을 지웠는지 둘이 따로 말하게 된다.
     this.pushQueue();
@@ -918,7 +924,7 @@ class AgentChatSession {
         // 시작한 지시는 더 이상 예약이 아니다. 화면의 칩은 여기서 내려가고, 그 자리는 도는 턴이 잇는다.
         this.pushQueue();
         const before = this.seq;
-        return this.dispatch(text, { display: presentation.display ?? text, attachments: presentation.attachments ?? [] }, by).then(() => {
+        return this.dispatch(text, { display: presentation.display ?? text, ...displayFormat(presentation), attachments: presentation.attachments ?? [] }, by).then(() => {
           const endingKind = readChatCommandLaneName(text) === null ? "turn-end" : "command-end";
           const end = this.journal.findLast((entry) => entry.seq > before && entry.event.kind === endingKind)?.event;
           onSettled?.(end?.kind === "turn-end" ? end.stopped ? "interrupted" : end.ok ? "succeeded" : "failed" : end?.kind === "command-end" ? end.ok ? "succeeded" : "failed" : "unknown");
@@ -965,11 +971,12 @@ class AgentChatSession {
     this.hostedDispatches.set(messageId, {
       queueId: id,
       display,
+      ...displayFormat(presentation),
       attachments,
       ...(by ? { by } : {}),
       ...(onSettled ? { onSettled } : {}),
     });
-    this.queuedDispatches.set(id, { text, display, attachments });
+    this.queuedDispatches.set(id, { text, display, ...displayFormat(presentation), attachments });
     this.pushQueue();
     try {
       session.send(text, { messageId });
@@ -1004,11 +1011,12 @@ class AgentChatSession {
       this.pushQueue();
       const attachments = hosted.attachments.length > 0 ? { attachments: hosted.attachments } : {};
       const by = hosted.by ? { by: hosted.by } : {};
+      const format = hosted.format ? { format: hosted.format } : {};
       if (this.turnOpen) {
-        this.push({ kind: "turn-inject", text: hosted.display, ...attachments, at: Date.now(), ...by });
+        this.push({ kind: "turn-inject", text: hosted.display, ...format, ...attachments, at: Date.now(), ...by });
       } else {
         // 건네는 사이 턴이 닫혔다. 자식은 이 말로 제 턴을 세우므로 원장도 그렇게 선다.
-        this.push({ kind: "dispatch", text: hosted.display, ...attachments, at: Date.now(), ...by });
+        this.push({ kind: "dispatch", text: hosted.display, ...format, ...attachments, at: Date.now(), ...by });
         this.openTurn({ dispatched: true });
       }
       // 결말은 도는 턴의 것이다 — 이 말만의 `turn-end`는 오지 않으므로 여기서 정산한다.
@@ -2617,7 +2625,7 @@ class AgentChatSession {
    * 기다리는 이유는 자식의 사정이 아니라 화면의 사정이다 — 자식은 자기 큐를 갖고 있어 턴 중에
    * 받아도 잃지 않지만, 원장은 턴 하나씩 그리므로 앞 턴이 닫힌 뒤 다음 디스패치를 세운다.
    */
-  private async dispatch(text: string, presentation: { readonly display: string; readonly attachments: readonly ChatAttachment[] }, by?: ChatOrigin): Promise<void> {
+  private async dispatch(text: string, presentation: { readonly display: string; readonly format?: "markdown"; readonly attachments: readonly ChatAttachment[] }, by?: ChatOrigin): Promise<void> {
     if (this.disposed) return;
     // 이 턴이 자기 세대를 기억한다. 도중에 중지가 눌리면 세대가 어긋나고, 그 어긋남이 곧
     // "실패가 아니라 중지"라는 판정이다.
@@ -2636,6 +2644,7 @@ class AgentChatSession {
       this.push({
         kind: "dispatch",
         text: presentation.display,
+        ...(presentation.format ? { format: presentation.format } : {}),
         ...(presentation.attachments.length > 0 ? { attachments: presentation.attachments } : {}),
         at: Date.now(),
         ...(by ? { by } : {}),

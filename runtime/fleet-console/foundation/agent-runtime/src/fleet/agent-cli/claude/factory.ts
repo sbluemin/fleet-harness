@@ -35,7 +35,7 @@ export function createClaudeFamilyCliDefinition(
           profileOptions.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH ?? "1",
       });
       return {
-        args: [...prefixArgs, ...buildModelArgs(profileOptions.model), ...buildEffortArgs(profileOptions.effort)],
+        args: [...prefixArgs, ...buildModelArgs(profileOptions.model), ...buildEffortArgs(profileOptions.effort), ...buildNameArgs(profileOptions.sessionName)],
         bin,
         // prefixArgs는 이 프로필의 args로 접혀 들어간다 — shim 경유 여부를 아는 것은 이 지점이 마지막이다.
         ...(commandLineLimit === undefined ? {} : { commandLineLimit }),
@@ -55,6 +55,12 @@ export function createClaudeFamilyCliDefinition(
       };
     },
   };
+}
+
+// 세션 이름은 다른 세션이 이 세션을 부르는 주소다 — 줄바꿈·제어문자를 지우고 한 줄로만 싣는다.
+function buildNameArgs(name: string | undefined): string[] {
+  const clean = name?.replace(/[\r\n\t\u0000-\u001f]+/g, " ").trim().slice(0, 64);
+  return clean ? ["-n", clean] : [];
 }
 
 function buildModelArgs(model: string | undefined): string[] {

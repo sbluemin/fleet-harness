@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { resolvePathBinary } from "@fleet-console/process";
 import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@fleet-console/ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@fleet-console/ai-gateway";
-import { createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle } from "@fleet-console/agent-runtime/fleet";
+import { ALL_SUBAGENTS, createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle } from "@fleet-console/agent-runtime/fleet";
 import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
 import type { AgentOptionsService } from "@fleet-console/infra";
 
@@ -210,6 +210,8 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       prompt: context?.prompt,
       createSessionIdentityResolver: resolveSessionIdentityResolver,
       resumeSessionId: context?.resumeSessionId,
+      sessionName: context?.sessionName,
+      ...(context?.disableSubagents ? { disableSubagents: true } : {}),
       sessionId,
     });
   };
@@ -238,6 +240,9 @@ async function createAgentCliLaunchSpec(options: {
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
+  readonly sessionName?: string;
+  /** 서브에이전트 전부 끄기 — 설정의 옵트아웃 목록 대신 `Agent` 도구 자체를 막는다. */
+  readonly disableSubagents?: boolean;
   readonly sessionId: string;
 }): Promise<TerminalLaunchSpec> {
   const cleanupStack: Array<() => void | Promise<void>> = [];
@@ -282,6 +287,7 @@ async function createAgentCliLaunchSpec(options: {
       model: resolvedModel,
       effort: options.effort,
       prompt: options.prompt,
+      sessionName: options.sessionName,
     });
     const injectedProfile = await options.injectProfile(profile, {
       plugin: options.plugin,
@@ -292,7 +298,7 @@ async function createAgentCliLaunchSpec(options: {
       claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.agentOptionsService.load()),
       claudeCodeCustomSystemPrompt: resolveClaudeCodeCustomSystemPrompt(options.infraServices.agentOptionsService.load()),
       claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(options.infraServices.agentOptionsService.load()),
-      claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(options.infraServices.agentOptionsService.load()),
+      claudeCodeDisabledAgents: options.disableSubagents ? [ALL_SUBAGENTS] : resolveClaudeCodeDisabledAgents(options.infraServices.agentOptionsService.load()),
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.
       origin: options.resumeSessionId
         ? { kind: "resume", sessionId: options.resumeSessionId }

@@ -378,6 +378,14 @@ export function fitAllOperations(): void {
   });
 }
 
+/** 자리만 옮긴다 — z 는 그대로. 묶음 구성원처럼 뿌리를 따라 파생되는 좌표를 스토어에 맞출 때 쓴다(앞으로 튀어나오지 않게). */
+export function placeOperationGeometry(sessionId: string, geometry: OperationGeometry): void {
+  const current = state.operations[sessionId];
+  if (current && current.x === geometry.x && current.y === geometry.y && current.width === geometry.width && current.height === geometry.height) return;
+  const zIndex = current?.zIndex ?? geometry.zIndex;
+  setState({ operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(geometry, zIndex), zIndex } } });
+}
+
 export function setOperationGeometry(sessionId: string, geometry: OperationGeometry): void {
   const zIndex = claimTopZIndex();
   setState({

@@ -805,6 +805,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           if (pluginPayloadSanitizers.get(pluginId) === fields) pluginPayloadSanitizers.delete(pluginId);
         };
       },
+      // 그룹 — 사이드바가 Operation 을 묶는 그 그룹을 플러그인 목록으로 연다. 사람의 PATCH 와 같은 길(영속 + 방송).
+      groups: {
+        list: (theaterId) => (theaterId ? operations.listGroups(theaterId) : operations.listAllGroups()),
+        get: (id) => operations.listAllGroups().find((group) => group.id === id) ?? null,
+        create: (input) => { const group = operations.createGroup(input); persistDurableState(); broadcastGroupChanged(group); return group; },
+        patch: (id, input) => { const group = operations.updateGroup(id, input); if (group) { persistDurableState(); broadcastGroupChanged(group); } return group; },
+        delete: (id) => {
+          const existing = operations.listAllGroups().find((group) => group.id === id);
+          if (!existing || operations.list().some((node) => node.groupId === id)) return false;
+          const deleted = operations.deleteGroup(id);
+          if (deleted) { persistDurableState(); broadcastGroupRemoved(id, existing.theaterId); }
+          return deleted;
+        },
+      },
       registerLaunchCatalog: (pluginId, provider) => {
         const providers = pluginLaunchCatalogProviders.get(pluginId) ?? [];
         providers.push(provider);
@@ -919,6 +933,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     host: pluginHostCapabilities,
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
     contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
+    // Console 제어 — `console_launch`·`console_send` 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
+    consoleControlFor: (pluginId) => ({
+      request: async (input, requestId) => {
+        consoleAgentOwners.add(pluginId);
+        const caller = { kind: "plugin" as const, pluginId };
+        const receipt = consoleControl.request(caller, requestId ?? `${pluginId}:${crypto.randomUUID()}`, input);
+        const deadline = Date.now() + 20_000;
+        for (;;) {
+          const current = consoleControl.getAction(receipt.id, caller) ?? receipt;
+          if (current.operationId || (current.status !== "accepted" && current.status !== "running")) {
+            if (!current.operationId && current.status !== "finished") throw new Error(current.error ?? "execution_unavailable");
+            return current;
+          }
+          if (Date.now() > deadline) throw new Error("request_timeout");
+          await new Promise((resolve) => setTimeout(resolve, 60));
+        }
+      },
+      observe: (operationId) => consoleControl.observe(operationId),
+    }),
     createAgentHost: (pluginId) => {
       const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp });
       consoleAgentOwners.add(pluginId);

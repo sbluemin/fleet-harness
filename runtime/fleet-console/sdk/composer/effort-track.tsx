@@ -43,6 +43,11 @@ export interface EffortTrackProps {
   readonly apexToggleLabel?: string;
   /** 게이트가 열린 동안 같은 토글이 가지는 접힘 라벨. */
   readonly apexCollapseLabel?: string;
+  /**
+   * 게이트를 처음부터 열어 두고 닫지 않는다 — 토글도 접힘 타이머도 없이 apex 단이 늘 사다리에 선다.
+   * 확인 흐름을 다른 자리(메뉴 밖의 시작 버튼)가 지는 표면이 쓴다. apex 의 톤·모션은 그대로다.
+   */
+  readonly apexPinnedOpen?: boolean;
   readonly className?: string;
 }
 
@@ -62,6 +67,7 @@ export function EffortTrack({
   autoValueText,
   apexToggleLabel,
   apexCollapseLabel,
+  apexPinnedOpen = false,
   className,
 }: EffortTrackProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -77,7 +83,7 @@ export function EffortTrack({
     () => ladder.filter((id) => !gatedRungs.includes(id)),
     [gatedRungs, ladder],
   );
-  const [apexOpen, setApexOpen] = useState(() => value !== null && gatedRungs.includes(value));
+  const [apexOpen, setApexOpen] = useState(() => apexPinnedOpen || (value !== null && gatedRungs.includes(value)));
   const [burstKey, setBurstKey] = useState(0);
   const [burstLeft, setBurstLeft] = useState("50%");
   // 제스처 동안 React 커밋을 기다리지 않고 고른 단을 추적한다 — 같은 포인터 시퀀스에서
@@ -152,7 +158,7 @@ export function EffortTrack({
     if (entersApex) {
       setBurstLeft(leftAt(next));
       setBurstKey((key) => key + 1);
-    } else if (apexOpen && (slot.id === null || !gatedRungs.includes(slot.id))) {
+    } else if (!apexPinnedOpen && apexOpen && (slot.id === null || !gatedRungs.includes(slot.id))) {
       collapseTimerRef.current = setTimeout(() => {
         collapseTimerRef.current = null;
         setApexOpen(false);
@@ -160,7 +166,7 @@ export function EffortTrack({
     }
     onChange(slot.id);
     return true;
-  }, [apexOpen, clearCollapseTimer, gatedRungs, last, onChange, slots]);
+  }, [apexOpen, apexPinnedOpen, clearCollapseTimer, gatedRungs, last, onChange, slots]);
 
   const indexFromPointer = useCallback((clientX: number): number | null => {
     const track = trackRef.current;
@@ -327,7 +333,7 @@ export function EffortTrack({
           aria-hidden="true"
         />
       </div>
-      {hasGate ? (
+      {hasGate && !apexPinnedOpen ? (
         // 게이트 장치는 트랙 우측의 ✦ 토글이다. 닫힘·열림이 한 버튼의 두 상태이고(마운트 교체
         // 없음), 열린 동안은 폭을 18px로 줄인 ‹ 접힘 글리프가 된다 — 26px 상자를 지키면
         // 글리프와 라벨 사이가 벌어진다. apex 단이 선택된 채 접으면 일상 사다리의 마지막

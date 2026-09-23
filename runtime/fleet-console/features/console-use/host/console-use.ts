@@ -487,9 +487,10 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       const labelId = label.startsWith("chat:") ? label.slice(5) : label;
       const callerId: ConsoleCaller | null = callerPluginId ? { kind: "plugin", pluginId: callerPluginId } : deps.operations?.().some((op) => op.id === labelId) ? { kind: "operation", operationId: labelId } : null;
       const described = tool.surface && args && typeof args === "object" ? tool.surface.describe(args as Record<string, unknown>) : null;
-      if (described && callerId) deps.onCall?.({ caller: callerId, tool: tool.name, summary: described.summary, gesture: "gaze", target: { kind: "panel", panelId: tool.surface!.panelId, theaterId: described.theaterId, ...(described.view ? { view: described.view } : {}), ...(described.path ? { path: described.path } : {}) }, at: Date.now() });
+      // 기본은 레일 패널을 감싸는 시선. 자기 제품 상태를 쓰는 도구는 describe 로 제스처·자리를 대신 말한다.
+      if (described && callerId) deps.onCall?.({ caller: callerId, tool: tool.name, summary: described.summary, gesture: described.gesture ?? "gaze", target: described.target ?? { kind: "panel", panelId: tool.surface!.panelId, theaterId: described.theaterId, ...(described.view ? { view: described.view } : {}), ...(described.path ? { path: described.path } : {}) }, at: Date.now() });
       try {
-        const result = await tool.execute(args, { cwd: ctx.cwd, sessionLabel: ctx.sessionLabel, toolCallId: ctx.toolCallId, signal: ctx.signal });
+        const result = await tool.execute(args, { cwd: ctx.cwd, sessionLabel: ctx.sessionLabel, toolCallId: ctx.toolCallId, signal: ctx.signal, ...(callerId ? { caller: callerId } : {}) });
         // 레지스트리는 `isError` 가 boolean 인 결과만 그대로 통과시킨다 — 플러그인 결과에 빠져 있으면 한 번 더 감싸진다.
         if (result && typeof result === "object" && Array.isArray((result as { content?: unknown }).content)) return { ...(result as { content: readonly Readonly<Record<string, unknown>>[]; isError?: boolean }), isError: (result as { isError?: unknown }).isError === true };
         return text(result);

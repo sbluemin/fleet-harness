@@ -81,13 +81,27 @@ export interface PluginMcpTool {
    */
   readonly surface?: {
     readonly panelId: string;
-    describe(args: Record<string, unknown>): { readonly theaterId: string; readonly summary: string; readonly view?: string; readonly path?: string } | null;
+    /**
+     * 인자에서 표식 한 줄과 자리를 뽑는다. 기본은 레일 패널을 8초 감싸는 시선(gaze)이다. 자기 제품 상태를 쓰는
+     * 도구는 `gesture` 로 create·press·input 을, `target` 으로 Operation·그룹 자리를 대신 말할 수 있다 —
+     * 그래야 사람이 본 Console 에서 "무엇이 바뀌었는지" 가 그 자리에 보인다.
+     */
+    describe(args: Record<string, unknown>): {
+      readonly theaterId: string;
+      readonly summary: string;
+      readonly view?: string;
+      readonly path?: string;
+      readonly gesture?: ConsoleUseCallEvent["gesture"];
+      readonly target?: ConsoleUseCallTarget;
+    } | null;
   };
   execute(args: unknown, context: {
     readonly cwd: string;
     readonly sessionLabel?: string;
     readonly toolCallId?: string;
     readonly signal?: AbortSignal;
+    /** 이 호출을 한 Console Use 호출자 — 호출자 Operation 또는 플러그인. 계보·권한을 가르는 도구가 읽는다. */
+    readonly caller?: ConsoleCaller;
   }): Promise<unknown>;
 }
 
@@ -100,11 +114,13 @@ export interface PluginAdmiralMcpHost {
 
 export interface ConsoleUseMcpHost {
   /**
-   * 플러그인이 자기 영역의 읽기 도구를 `fleet-console-use`에 싣는다. 이름은 `console_` 접두사여야 하고
+   * 플러그인이 자기 영역의 도구를 `fleet-console-use`에 싣는다. 이름은 `console_` 접두사여야 하고
    * 호스트 기본 도구와 겹칠 수 없다. 기여한 도구는 모든 Console Use 연결에 실리며 호스트 기본 도구와
    * **같은 게이트**(호출자 Operation의 콘솔 사용 토글, 또는 부관 grant)를 지난다 — 플러그인이 자기
-   * 게이트를 따로 두지 않는다. 쓰기(커밋·파일 변경)는 여기로 열지 않는다: 그것은 그 Theater의
-   * Operation에 시키는 일이다. 반환값은 등록 해제다.
+   * 게이트를 따로 두지 않는다. 파일시스템·git 쓰기(커밋·파일 변경)는 여기로 열지 않는다: 그것은 그
+   * Theater의 Operation에 시키는 일이다. 플러그인 **자기 제품 상태**의 쓰기(할 일 추가·완료 같은)는
+   * `surface.describe` 로 제스처·자리를 선언하고 저자 귀속·되돌리기를 갖출 때 허용된다 — 조용한 API
+   * 쓰기는 Console Use 가 아니다. 반환값은 등록 해제다.
    */
   contribute?(tools: readonly PluginMcpTool[]): () => void;
   /** 도구 등록 API가 아니다. 호스트 기본 도구 중 이 연결에 필요한 것만 요청한다. */

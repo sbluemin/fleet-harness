@@ -3,7 +3,8 @@ import { createContext, useContext, useMemo } from "react";
 import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
-import type { CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
+import type {
+  OperationCaptionContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
@@ -32,6 +33,9 @@ export interface PluginRegistry {
   readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
   readonly commandBandEntries: readonly CommandBandEntryDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
+  readonly operationCaptionContributions: readonly OperationCaptionContribution[];
+  /** 모든 플러그인의 묶음을 한 원천으로 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
+  readonly operationClusters: OperationClusterSource;
 }
 
 interface PluginRuntimeManifest {
@@ -51,6 +55,8 @@ type PluginClientModule = {
   readonly plugin?: unknown;
 };
 
+// 모듈 평가 때 createPluginRegistry 가 돈다 — 그 안에서 읽는 상수는 이 줄보다 위에 있어야 한다(TDZ).
+const NO_CLUSTERS: readonly OperationCluster[] = [];
 const EMPTY_PLUGIN_REGISTRY: PluginRegistry = createPluginRegistry(builtInPlugins);
 
 const PluginRegistryContext = createContext<PluginRegistry>(EMPTY_PLUGIN_REGISTRY);
@@ -195,6 +201,35 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
       id: `${plugin.id}:${descriptor.id}`,
     }))),
     expandedSurfaces,
+    operationCaptionContributions: providers.flatMap((plugin) => (plugin.operationCaptionContributions ?? []).map((descriptor) => ({
+      ...descriptor,
+      id: `${plugin.id}:${descriptor.id}`,
+    }))),
+    operationClusters: combineClusterSources(providers.flatMap((plugin) => (plugin.operationClusters ? [{ pluginId: plugin.id ?? "core", source: plugin.operationClusters }] : []))),
+  };
+}
+
+
+/**
+ * 여러 플러그인의 묶음 원천을 하나로. 어느 원천도 참조가 바뀌지 않았으면 합친 배열도 같은 참조를 돌려준다 —
+ * 사이드바·캔버스가 useSyncExternalStore 로 읽으므로 참조가 흔들리면 매 사건마다 다시 그린다.
+ */
+export function combineClusterSources(sources: readonly { readonly pluginId: string; readonly source: OperationClusterSource }[]): OperationClusterSource {
+  if (sources.length === 0) return { subscribe: () => () => undefined, get: () => NO_CLUSTERS };
+  let seen: readonly (readonly OperationCluster[])[] = [];
+  let combined: readonly OperationCluster[] = NO_CLUSTERS;
+  return {
+    subscribe: (listener) => {
+      const offs = sources.map(({ source }) => { try { return source.subscribe(listener); } catch { return () => undefined; } });
+      return () => { for (const off of offs) off(); };
+    },
+    get: () => {
+      const current = sources.map(({ source }) => { try { return source.get(); } catch { return NO_CLUSTERS; } });
+      if (current.length === seen.length && current.every((list, index) => list === seen[index])) return combined;
+      seen = current;
+      combined = current.flatMap((list, index) => list.map((cluster) => ({ ...cluster, id: `${sources[index]!.pluginId}:${cluster.id}` })));
+      return combined;
+    },
   };
 }
 

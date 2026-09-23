@@ -47,6 +47,12 @@ export interface ExpandedSurfaceDescriptor {
    */
   readonly tools?: (ctx: ExpandedSurfaceContext) => ReactNode;
   /**
+   * 표면이 닫는 길을 스스로 가진다고 선언한다 — 레일 아이콘이 여닫는 표면처럼, 부유하는 닫기가
+   * 그 길과 중복이라 화면만 어지럽힐 때 `true`로 둔다. 호스트는 오른쪽 위의 닫기 버튼을 띄우지
+   * 않되, Esc·`close()`·다른 표면의 요청 등 나머지 닫기 경로는 그대로 열어 둔다.
+   */
+  readonly ownsClose?: boolean;
+  /**
    * 이 페인이 닫혔다는 통보. 닫기 버튼·Esc·다른 표면의 요청 등 **호스트가 닫는 모든 경로**에서
    * 인스턴스가 목록에서 빠진 뒤 불린다.
    *

@@ -36,6 +36,8 @@ interface OperationFrameProps {
   readonly groupColor?: string | null;
   /** Shell 캡션의 소속 Theater. 저장 제목과 별개라 Theater 이름이 바뀌어도 따라간다. */
   readonly theaterLabel?: string | null;
+  /** 묶음 안의 자리 — 구성원은 제목 대신 짧은 라벨(label), 뿌리는 이름 뒤에 단계 띠(strip). */
+  readonly clusterCaption?: { readonly label: string | null; readonly strip: ReactNode } | null;
   readonly children: ReactNode;
   /**
    * 캡션 동작 선반 — 이 Operation의 플러그인이 채우는 마크 버튼들. 자리는 프레임이 정한다:
@@ -111,7 +113,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, clusterCaption = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -133,7 +135,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   const [arrivalFlash, setArrivalFlash] = useState(false);
   const [focusArrival, setFocusArrival] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const displayTitle = operation.title;
+  const displayTitle = clusterCaption?.label ?? operation.title;
   const rename = useInlineRename({
     currentTitle: operation.title,
     onBegin: () => {
@@ -600,6 +602,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
             {displayTitle}
           </button>
         )}
+        {clusterCaption?.strip ?? null}
         {theaterLabelVisible ? (
           <span
             className="canvas-operation-theater-label"

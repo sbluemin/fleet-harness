@@ -521,7 +521,12 @@ export function TriageWatchDeck({
               </header>
               <div className="canvas-triage-deck-band-body">
                 <div className="canvas-triage-deck-band-cards">
-                  {band.operations.map((operation) => {
+                  {band.operations.map((operation) => renderCell(operation))}
+                </div>
+              </div>
+            </section>
+          );
+          function renderCell(operation: OperationNode) {
                     const activity = displayActivity(operation);
                     const visual = operationActivityVisual(activity);
                     return (
@@ -558,11 +563,7 @@ export function TriageWatchDeck({
                         />
                       </div>
                     );
-                  })}
-                </div>
-              </div>
-            </section>
-          );
+          }
         })}
       </div>
     </section>

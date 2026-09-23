@@ -1,0 +1,32 @@
+import { stepReady, type TodoItem, type TodoStep } from "./types.js";
+
+/**
+ * 프롬프트 — 셰프에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 셰프는 `console_todo` 도구 설명과 보드를 읽고
+ * 스스로 흐름을 잡는다. 담당 세션에는 아무 프롬프트도 가지 않는다 — 셰프가 SendMessage 로 맥락을 담아 일을 시킨다.
+ */
+
+export type PromptLanguage = "en" | "ko";
+
+const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
+
+/** 세션 이름 — 다른 세션이 이 세션을 부르는 주소. 항목 id 앞 여섯 글자로 항목을 가른다. */
+export const sessionNames = (item: TodoItem) => {
+  const head = `todo-${item.id.slice(0, 6)}`;
+  return { coordinator: `${head}-chef`, step: (index: number) => `${head}-step-${index}` };
+};
+
+export function readySteps(item: TodoItem): readonly TodoStep[] {
+  return item.steps.filter((step) => !step.done && stepReady(item, step));
+}
+
+/** 쿠킹 — 한 줄: 할 일 id 와 「쿠킹」. 사람이 함께 준 맥락이 있으면 그 아래 인용으로. */
+export function cookTurn(item: TodoItem, language: PromptLanguage): string {
+  const context = item.cook?.trim();
+  const word = language === "ko" ? `할 일 \`${item.id}\` 을 쿠킹하세요 — 계획만, 수행은 하지 마세요.` : `Cook to-do item \`${item.id}\` — plan only, do not perform it.`;
+  return context ? `${word}\n\n> ${clip(context, 2000).split("\n").join("\n> ")}` : word;
+}
+
+/** 시작 — 한 줄: 할 일 id 와 「진행하세요」. 무엇을 어떻게 할지는 셰프가 정한다. */
+export function startTurn(item: TodoItem, language: PromptLanguage): string {
+  return language === "ko" ? `할 일 \`${item.id}\` 의 작업들을 진행하세요.` : `Proceed with the work of to-do item \`${item.id}\`.`;
+}

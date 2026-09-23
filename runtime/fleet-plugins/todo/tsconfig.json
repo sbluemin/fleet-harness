@@ -1,0 +1,50 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "ignoreDeprecations": "6.0",
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": [
+      "node"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@fleet-console/agent-runtime": [
+        "../../../runtime/fleet-console/foundation/agent-runtime/dist/index.d.ts"
+      ],
+      "@fleet-console/infra": [
+        "../../../runtime/fleet-console/foundation/infra/dist/index.d.ts"
+      ],
+      "react": [
+        "../../fleet-console/node_modules/@types/react/index.d.ts"
+      ],
+      "react/jsx-runtime": [
+        "../../fleet-console/node_modules/@types/react/jsx-runtime.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "routes.ts",
+    "server/**/*.ts",
+    "client/**/*.ts",
+    "client/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx"
+  ]
+}

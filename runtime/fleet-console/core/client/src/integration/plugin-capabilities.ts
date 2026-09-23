@@ -10,12 +10,25 @@ import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../.
 import { subscribeConsoleChannel } from "./operations-sse.js";
 import { openRailPanel } from "../chrome/rail/rail-store.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, getState, openQuickLaunch, openQuickLaunchForOperation,
-  openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
+  openQuickLaunchWithDraft, raiseOperationNotification, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
+import { restoreOperation } from "../../../../features/workspace/client/canvas/canvas-store.js";
 
 export function createHostCapabilities(resync: () => void = () => undefined): PluginInstallContext {
   const base = createClientCapabilities(resync);
   return {
     ...base,
+    operations: {
+      ...base.operations,
+      // 플러그인이 「이 Operation 으로」 — Theater 가 다르면 먼저 옮기고, 접혀 있으면 펴고, 활성으로 세운다.
+      focus: (operationId) => {
+        const operation = getState().operations.find((candidate) => candidate.id === operationId);
+        if (!operation) return;
+        if (getState().activeTheaterId !== operation.theaterId) setActiveTheater(operation.theaterId);
+        restoreOperation(operationId);
+        setActiveOperation(operationId);
+        requestOperationKeyboardFocus(operationId);
+      },
+    },
     notifications: {
       emit: (notification) => raiseOperationNotification(notification),
       dismiss: (operationId) => dismissNotificationsForOperation(operationId),
