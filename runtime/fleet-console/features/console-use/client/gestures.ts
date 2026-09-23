@@ -17,8 +17,6 @@ export const GAZE_MS = 8_000;
 export const MARK_MS = 3_000;
 /** 걷히기 전 페이드 시간. CSS 의 떠남 전이와 같은 값이어야 한다. */
 export const LEAVE_MS = 220;
-/** 캡션의 "○○ 이 시작" 은 첫 몇 분 동안만 — 계보는 payload 에 영원히 남지만 표식은 잠깐이다. */
-export const LAUNCH_ATTRIBUTION_MS = 10 * 60_000;
 
 export type GestureKind = "gaze" | "input" | "press" | "create" | "wait";
 export type GestureCaller = { readonly kind: "operation"; readonly operationId: string } | { readonly kind: "plugin"; readonly pluginId: string };
@@ -157,16 +155,6 @@ export function consoleUseWrapClassName(wrap: ConsoleUseWrap | null): string {
 /** 감싸인 요소의 이름표 — "누가: 무엇". */
 export function consoleUseWrapLabel(wrap: ConsoleUseWrap): string {
   return `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}`;
-}
-
-/** 캡션의 "○○ 이 시작" — payload.launchedBy 가 있고 만든 지 얼마 안 된 Operation 만. */
-export function readLaunchAttribution(payload: Record<string, unknown> | undefined, createdAt: number): GestureCaller | null {
-  const raw = payload?.launchedBy;
-  if (!raw || typeof raw !== "object" || Date.now() - createdAt > LAUNCH_ATTRIBUTION_MS) return null;
-  const record = raw as Record<string, unknown>;
-  if (record.kind === "operation" && typeof record.operationId === "string") return { kind: "operation", operationId: record.operationId };
-  if (record.kind === "plugin" && typeof record.pluginId === "string") return { kind: "plugin", pluginId: record.pluginId };
-  return null;
 }
 
 export function subscribeClosingByAgent(listener: (closing: ClosingByAgent) => void): () => void {
