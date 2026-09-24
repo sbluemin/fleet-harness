@@ -124,14 +124,12 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
         {state.kind === "loading" && <div className="history-inspector-empty">{t("repository.common.loading")}</div>}
         {state.kind === "error" && <div className="history-inspector-empty history-inspector-error">{state.message === "stash_moved" ? t("repository.stash.moved") : `${t("repository.stash.showFailed")} ${readErrorSentence(t, state.message)}`}</div>}
         {state.kind === "ok" && state.files.length === 0 && <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
-        {state.kind === "ok" && state.files.map((file) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedFile?.path} onSelect={() => setSelectedPath(file.path)} t={t} />)}
+        {state.kind === "ok" && state.files.map((file, index) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedFile?.path} tabStop={file.path === selectedFile?.path} onNavigate={(_, direction) => { const next = state.files[index + direction]; if (!next) return; setSelectedPath(next.path); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`.repository-stash-files .repository-file-row[title="${CSS.escape(next.path)}"]`)?.focus({ preventScroll: true })); }} onSelect={() => setSelectedPath(file.path)} t={t} />)}
         {state.kind === "ok" && state.truncated && <div className="history-truncated">{t("repository.commit.capped")}</div>}
       </div>
       </div>} main={<div className="repository-stash-diff">
         {selectedFile ? <><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span></div>
-          {selectedFile.status === "A"
-            ? <div className="history-inspector-empty">{t("repository.stash.untrackedPreview")}</div>
-            : ctx.theaterId ? <HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={{ theaterId: ctx.theaterId, repoRel, fullHash: stash.sha }} /> : null}
+          {ctx.theaterId ? <HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={{ theaterId: ctx.theaterId, repoRel, fullHash: stash.sha }} emptyDiffMessage={t("repository.stash.untrackedPreview")} /> : null}
         </> : <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
       </div>} />
       {onAction && <div className="repository-stash-inspector-actions">

@@ -35,6 +35,8 @@ interface ListFileRowProps {
   readonly isSelected: boolean;
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly t: Translate<RepositoryMessageKey>;
+  readonly tabStop?: boolean;
+  readonly onNavigate?: (entry: DiffFileEntry, direction: -1 | 1) => void;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -218,7 +220,7 @@ export function FilePathLabel({ path }: { readonly path: string }) {
     </span>
   );
 }
-export function FileRow({ entry, isSelected, onSelect, t }: ListFileRowProps) {
+export function FileRow({ entry, isSelected, onSelect, t, tabStop, onNavigate }: ListFileRowProps) {
   const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
   const statusKey = STATUS_KEY[entry.status];
   return (
@@ -226,6 +228,8 @@ export function FileRow({ entry, isSelected, onSelect, t }: ListFileRowProps) {
       type="button"
       className={`repository-file-row${isSelected ? " is-cur" : ""}`}
       title={entry.path}
+      tabIndex={tabStop === undefined ? undefined : tabStop ? 0 : -1}
+      onKeyDown={(event) => { if (!onNavigate || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return; event.preventDefault(); onNavigate(entry, event.key === "ArrowUp" ? -1 : 1); }}
       onClick={handleClick}
     >
       <span

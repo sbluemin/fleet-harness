@@ -988,6 +988,7 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
   const [collapsedFolders] = useState(() => new Set(initialTreeState?.collapsedFolders ?? []));
   const [refContextMenu, setRefContextMenu] = useState<RefContextMenuState | null>(null);
   const [selectedStashSha, setSelectedStashSha] = useState<string | null>(null);
+  const [focusedTreeKey, setFocusedTreeKey] = useState<string | null>(null);
   useEffect(() => { if (source !== "history") setSelectedStashSha(null); }, [source]);
   const [treeRef] = useState<RefObject<HTMLElement | null>>(() => ({ current: null }));
   const remoteGroups = buildRemoteGroups(refs);
@@ -998,7 +999,7 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
   const sectionHeader = (id: (typeof sections)[number]["id"]) => {
     const section = sections.find((item) => item.id === id)!;
     const collapsed = isCollapsed(id);
-    return <button type="button" className="repository-ws-section-head" aria-expanded={!collapsed} onClick={() => {
+    return <button type="button" className="repository-ws-section-head" aria-expanded={!collapsed} onKeyDown={(event) => { if (event.key === "ArrowLeft" && !collapsed || event.key === "ArrowRight" && collapsed) { event.preventDefault(); event.currentTarget.click(); } }} onClick={() => {
       setCollapsedSections((current) => {
         const next = new Set(current);
         if (next.has(id)) next.delete(id);
@@ -1019,25 +1020,49 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
   };
   /* 브랜치 행은 role=button 자손에 interactive content가 금지되므로(ARIA-in-HTML)
      래퍼 div + 형제 네이티브 버튼(행 본체·비교 액션)으로 구성한다 */
+  const treeRowProps = (key: string) => ({
+    tabIndex: treeTabKey === key ? 0 : -1,
+    "data-tree-key": key,
+    onFocus: () => setFocusedTreeKey(key),
+  });
+  const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const current = event.target as HTMLElement;
+    if (!current.matches("[data-tree-key]") || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    const tree = event.currentTarget;
+    const rows = [...tree.querySelectorAll<HTMLButtonElement>("[data-tree-key]:not(:disabled)")];
+    const index = rows.indexOf(current as HTMLButtonElement);
+    if (index < 0) return;
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      const section = current.closest(".repository-ws-section");
+      const header = section?.querySelector<HTMLButtonElement>(".repository-ws-section-head");
+      if (header && header.getAttribute("aria-expanded") === String(event.key === "ArrowLeft")) { event.preventDefault(); header.click(); }
+      return;
+    }
+    const next = rows[index + (event.key === "ArrowUp" ? -1 : 1)];
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
+    next.scrollIntoView({ block: "nearest" });
+  };
   const branchRow = (row: RepositoryRefRow, remote = false) => <div
     key={row.key}
     className={`repository-ws-tree-row is-branch${remote ? " is-remote" : ""}${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`}
     onContextMenu={openRefMenu(row)}
   >
-    <button type="button" className="repository-ws-tree-row-main" title={row.current ? t("repository.refs.current") : row.primary} onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}>
+    <button type="button" className="repository-ws-tree-row-main" {...treeRowProps(`ref:${row.key}`)} title={row.current ? t("repository.refs.current") : row.primary} onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}>
       <Icon name={row.current ? "check" : "branch"} /><span>{row.primary}</span>
     </button>
     <AheadBehind t={t} row={row} />
     <span className="repository-ws-tree-hover">
-      {row.current && row.behind && onPull ? <button type="button" className={`repository-tree-action${pullBusy ? " is-busy" : ""}`} title={t("repository.verb.pullTitle")} aria-label={t("repository.verb.pull")} aria-busy={pullBusy || undefined} disabled={pullDisabled} onClick={onPull}><GlyphSlot name="pull" size={13} /></button> : null}
-      {refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}><Icon name="compare" size={13} /></button> : null}
+      {row.current && row.behind && onPull ? <button type="button" className={`repository-tree-action${pullBusy ? " is-busy" : ""}`} tabIndex={-1} title={t("repository.verb.pullTitle")} aria-label={t("repository.verb.pull")} aria-busy={pullBusy || undefined} disabled={pullDisabled} onClick={onPull}><GlyphSlot name="pull" size={13} /></button> : null}
+      {refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" tabIndex={-1} title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}><Icon name="compare" size={13} /></button> : null}
     </span>
   </div>;
   const tagRow = (row: RepositoryRefRow) => <div key={row.key} className={`repository-ws-tree-row is-tag${source === "history" && row.ref === refFilter ? " is-active" : ""}`} onContextMenu={openRefMenu(row)}>
-    <button type="button" className="repository-ws-tree-row-main" onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}><Icon name="tag" /><span>{row.primary}</span></button>
-    <span className="repository-ws-tree-hover">{refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}><Icon name="compare" size={13} /></button> : null}</span>
+    <button type="button" className="repository-ws-tree-row-main" {...treeRowProps(`ref:${row.key}`)} onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}><Icon name="tag" /><span>{row.primary}</span></button>
+    <span className="repository-ws-tree-hover">{refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" tabIndex={-1} title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}><Icon name="compare" size={13} /></button> : null}</span>
   </div>;
-  const stashRow = (row: RepositoryRefRow) => <button type="button" key={row.key} className={`repository-ws-tree-row is-stash${source === "history" && row.stashSha === selectedStashSha ? " is-active" : ""}`} disabled={!row.stashSha} onClick={() => { if (row.stashSha) { setSelectedStashSha(row.stashSha); onStashInspect({ name: row.sub ?? row.key, sha: row.stashSha, subject: row.primary }); } }} onContextMenu={(event) => {
+  const stashRow = (row: RepositoryRefRow) => <button type="button" key={row.key} className={`repository-ws-tree-row is-stash${source === "history" && row.stashSha === selectedStashSha ? " is-active" : ""}`} {...treeRowProps(`stash:${row.key}`)} disabled={!row.stashSha} onClick={() => { if (row.stashSha) { setSelectedStashSha(row.stashSha); onStashInspect({ name: row.sub ?? row.key, sha: row.stashSha, subject: row.primary }); } }} onContextMenu={(event) => {
     if (!onStashAction) return;
     event.preventDefault();
     setRefContextMenu({ row, anchor: { x: event.clientX, y: event.clientY } });
@@ -1056,6 +1081,14 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
     return { ...group, rows: groupHit ? group.rows : group.rows.filter((row) => matches(row) || fuzzyMatch(query, `${group.name}/${row.primary}`) !== null) };
   }).filter((group) => group.rows.length > 0);
   const worktreeRows = worktrees.filter((worktree) => !query || fuzzyMatch(query, worktree.name) !== null || fuzzyMatch(query, worktree.branch) !== null);
+  const visibleTreeKeys = [
+    ...(!isCollapsed("worktrees") ? worktreeRows.map((row) => `worktree:${row.relPath}`) : []),
+    ...(!isCollapsed("branches") ? branchRows.map((row) => `ref:${row.key}`) : []),
+    ...(!isCollapsed("remotes") ? visibleRemoteGroups.flatMap((group) => group.rows.map((row) => `ref:${row.key}`)) : []),
+    ...(!isCollapsed("tags") ? tagRows.map((row) => `ref:${row.key}`) : []),
+    ...(!isCollapsed("stashes") ? stashRows.map((row) => `stash:${row.key}`) : []),
+  ];
+  const treeTabKey = visibleTreeKeys.includes(focusedTreeKey ?? "") ? focusedTreeKey : visibleTreeKeys.includes(`worktree:${selectedRel}`) ? `worktree:${selectedRel}` : visibleTreeKeys[0];
   const section = (id: (typeof sections)[number]["id"], body: ReactNode) => <section className={`repository-ws-section${isCollapsed(id) ? " is-collapsed" : ""}`}>{sectionHeader(id)}{!isCollapsed(id) && body}</section>;
   return <aside ref={treeRef} className="repository-ws-tree">
     <div className={`repository-ws-context${contextDisabled ? " is-disabled" : ""}`}>{contextSlot}</div>
@@ -1065,8 +1098,8 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
       {query && <button type="button" className="repository-quiet-button repository-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => setQuery("")}><Icon name="close" size={12} /></button>}
       <button type="button" className={`repository-quiet-button repository-reload-state${reloading ? " is-busy" : ""}`} aria-label={t("repository.common.reloadState")} title={t("repository.common.reloadState")} aria-busy={reloading || undefined} onClick={onReloadState}><GlyphSlot name="refresh" /></button>
     </div>
-    <WorkspaceTreeScroll theaterId={theaterId} query={query} collapsedSections={collapsedSections} collapsedFolders={collapsedFolders} initialScrollTop={initialTreeState?.scrollTop ?? 0} contentVersion={`${refRowCount}:${remoteRowCount}:${collapsedSections.size}`}>
-      {(worktrees.length > 0 || worktreesError) && section("worktrees", worktreesError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadWorktreesFailed")} onRetry={onRetryWorktrees} /> : worktreeRows.length ? worktreeRows.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row is-worktree${worktree.relPath === selectedRel ? " is-current" : ""}`} title={worktree.relPath} disabled={contextDisabled} onClick={() => onRepository(worktree)}>
+    <WorkspaceTreeScroll theaterId={theaterId} query={query} collapsedSections={collapsedSections} collapsedFolders={collapsedFolders} initialScrollTop={initialTreeState?.scrollTop ?? 0} contentVersion={`${refRowCount}:${remoteRowCount}:${collapsedSections.size}`} onKeyDown={handleTreeKeyDown}>
+      {(worktrees.length > 0 || worktreesError) && section("worktrees", worktreesError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadWorktreesFailed")} onRetry={onRetryWorktrees} /> : worktreeRows.length ? worktreeRows.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row is-worktree${worktree.relPath === selectedRel ? " is-current" : ""}`} {...treeRowProps(`worktree:${worktree.relPath}`)} title={worktree.relPath} disabled={contextDisabled} onClick={() => onRepository(worktree)}>
         <Icon name="folder" /><span>{worktree.name}</span>{worktree.branch && worktree.branch !== worktree.name && <i title={t("repository.refs.worktreeBranch")}>{worktree.branch}</i>}
       </button>) : emptyRow)}
       {section("branches", refsError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadRefsFailed")} onRetry={onRetryRefs} /> : branchRows.length ? branchRows.map((row) => branchRow(row)) : emptyRow)}
@@ -1292,13 +1325,14 @@ function StashRowContextMenu({ anchor, boundaryRef, stashName, stashSha, t, onAc
   </div>;
 }
 
-function WorkspaceTreeScroll({ theaterId, query, collapsedSections, collapsedFolders, initialScrollTop, contentVersion, children }: {
+function WorkspaceTreeScroll({ theaterId, query, collapsedSections, collapsedFolders, initialScrollTop, contentVersion, onKeyDown, children }: {
   readonly theaterId: string;
   readonly query: string;
   readonly collapsedSections: ReadonlySet<string>;
   readonly collapsedFolders: ReadonlySet<string>;
   readonly initialScrollTop: number;
   readonly contentVersion: string;
+  readonly onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void;
   readonly children: React.ReactNode;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1353,7 +1387,7 @@ function WorkspaceTreeScroll({ theaterId, query, collapsedSections, collapsedFol
     }
     flushCache();
   }, [flushCache]);
-  return <div ref={scrollRef} className="repository-ws-tree-scroll" onScroll={updateTreeScroll}>{children}</div>;
+  return <div ref={scrollRef} className="repository-ws-tree-scroll" onKeyDown={onKeyDown} onScroll={updateTreeScroll}>{children}</div>;
 }
 
 function WorkspaceTreeError({ t, label, onRetry }: { readonly t: T; readonly label: string; readonly onRetry: () => void }) {

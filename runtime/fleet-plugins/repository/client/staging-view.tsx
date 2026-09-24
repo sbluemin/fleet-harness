@@ -339,6 +339,18 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
 
   const staged = status.kind === "ok" ? status.staged : [];
   const unstaged = status.kind === "ok" ? status.unstaged : [];
+  const [focusedFile, setFocusedFile] = useState<string | null>(null);
+  const allFiles = [...unstaged.map((entry) => ({ axis: "unstaged" as const, entry })), ...staged.map((entry) => ({ axis: "staged" as const, entry }))];
+  const tabFileKey = allFiles.some(({ axis, entry }) => `${axis}:${entry.path}` === focusedFile) ? focusedFile
+    : selection ? `${selection.axis}:${selection.entry.path}` : allFiles[0] ? `${allFiles[0].axis}:${allFiles[0].entry.path}` : null;
+  const navigateFile = (axis: Axis, entry: DiffFileEntry, direction: -1 | 1) => {
+    const index = allFiles.findIndex((item) => item.axis === axis && item.entry.path === entry.path);
+    const next = allFiles[index + direction];
+    if (!next) return;
+    setFocusedFile(`${next.axis}:${next.entry.path}`);
+    setSelection(next);
+    requestAnimationFrame(() => rootRef.current?.querySelector<HTMLButtonElement>(`.repository-staging-row-main[data-file-key="${CSS.escape(`${next.axis}:${next.entry.path}`)}"]`)?.focus({ preventScroll: true }));
+  };
   const commitCount = staged.length;
   const commitDisabled = busy || writeLocked || !amendReady || subject.trim() === "" || (commitCount === 0 && !amend);
   const hunkSelection = selection;
@@ -380,6 +392,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             onAction={stageAll}
             actionBusy={pendingKey === "stage:all"}
             selectedPath={selection?.axis === "unstaged" ? selection.entry.path : null}
+            axis="unstaged" tabFileKey={tabFileKey} onFocusFile={setFocusedFile} onNavigateFile={navigateFile}
             onSelect={(entry) => setSelection({ axis: "unstaged", entry })}
             rowActions={(entry) => <>
               {/* 충돌 파일의 discard는 서버에서 무음 no-op이 된다 — 동사를 숨기고 충돌 표식으로 안내한다. */}
@@ -421,6 +434,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             onAction={unstageAll}
             actionBusy={pendingKey === "unstage:all"}
             selectedPath={selection?.axis === "staged" ? selection.entry.path : null}
+            axis="staged" tabFileKey={tabFileKey} onFocusFile={setFocusedFile} onNavigateFile={navigateFile}
             onSelect={(entry) => setSelection({ axis: "staged", entry })}
             rowActions={(entry) => <button
               type="button"
@@ -478,7 +492,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   </div>;
 }
 
-function StagingSection({ t, view, label, files, emptyLabel, actionLabel, actionDisabled, onAction, actionBusy, selectedPath, onSelect, rowActions }: {
+function StagingSection({ t, view, label, files, emptyLabel, actionLabel, actionDisabled, onAction, actionBusy, selectedPath, axis, tabFileKey, onFocusFile, onNavigateFile, onSelect, rowActions }: {
   readonly t: T;
   readonly view: FilesViewMode;
   readonly label: string;
@@ -489,6 +503,10 @@ function StagingSection({ t, view, label, files, emptyLabel, actionLabel, action
   readonly onAction: () => void;
   readonly actionBusy: boolean;
   readonly selectedPath: string | null;
+  readonly axis: Axis;
+  readonly tabFileKey: string | null;
+  readonly onFocusFile: (key: string) => void;
+  readonly onNavigateFile: (axis: Axis, entry: DiffFileEntry, direction: -1 | 1) => void;
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly rowActions: (entry: DiffFileEntry) => React.ReactNode;
 }) {
@@ -503,20 +521,24 @@ function StagingSection({ t, view, label, files, emptyLabel, actionLabel, action
         ? <div className="repository-empty-row">{emptyLabel}</div>
         : view === "tree"
           ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} renderActions={rowActions} conflictLabel={t("repository.staging.conflict")} />
-          : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} onSelect={onSelect} actions={rowActions(entry)} />)}
+          : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} tabStop={tabFileKey === `${axis}:${entry.path}`} fileKey={`${axis}:${entry.path}`} onFocusFile={onFocusFile} onNavigate={(direction) => onNavigateFile(axis, entry, direction)} onSelect={onSelect} actions={rowActions(entry)} />)}
     </div>
   </section>;
 }
 
-function StagingFileRow({ t, entry, isSelected, onSelect, actions }: {
+function StagingFileRow({ t, entry, isSelected, tabStop, fileKey, onFocusFile, onNavigate, onSelect, actions }: {
   readonly t: T;
   readonly entry: DiffFileEntry;
   readonly isSelected: boolean;
+  readonly tabStop: boolean;
+  readonly fileKey: string;
+  readonly onFocusFile: (key: string) => void;
+  readonly onNavigate: (direction: -1 | 1) => void;
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly actions: React.ReactNode;
 }) {
   return <div className={`repository-file-row repository-staging-row${isSelected ? " is-cur" : ""}`}>
-    <button type="button" className="repository-staging-row-main" title={entry.path} onClick={() => onSelect(entry)}>
+    <button type="button" className="repository-staging-row-main" title={entry.path} data-file-key={fileKey} tabIndex={tabStop ? 0 : -1} onFocus={() => onFocusFile(fileKey)} onKeyDown={(event) => { if (event.key === "F2") { event.preventDefault(); event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(".repository-stage-actions button:not(:disabled)")?.focus(); return; } if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return; event.preventDefault(); onNavigate(event.key === "ArrowUp" ? -1 : 1); }} onClick={() => onSelect(entry)}>
       <span className={`repository-status-glyph repository-status-${entry.status.toLowerCase()}`} aria-hidden="true">{entry.status}</span>
       <FilePathLabel path={entry.path} />
       <span className="repository-nums">
@@ -525,6 +547,6 @@ function StagingFileRow({ t, entry, isSelected, onSelect, actions }: {
         {entry.deletions > 0 && <span className="repository-deletions">−{entry.deletions}</span>}
       </span>
     </button>
-    <span className="repository-stage-actions">{actions}</span>
+    <span className="repository-stage-actions" onKeyDown={(event) => { if (event.key !== "Escape") return; event.preventDefault(); event.stopPropagation(); event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(".repository-staging-row-main")?.focus(); }}>{actions}</span>
   </div>;
 }
