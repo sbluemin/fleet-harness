@@ -25,7 +25,7 @@ const WORKSPACE_MAIN_MIN_WIDTH = 180;
 // 검사기 독(파일 목록 ⇔ diff)의 폭 축. 저장값은 CSS 변수로만 주입한다 — 인라인
 // grid-template-columns는 좁은 독을 세로 스택으로 바꾸는 컨테이너 쿼리를 이겨버려
 // main 열 0 붕괴(PR#516에서 고친 선존 결함)를 되살린다.
-export const WORKSPACE_DOCK_FILES_DEFAULT_WIDTH = 250;
+export const WORKSPACE_DOCK_FILES_DEFAULT_WIDTH = 320;
 export const WORKSPACE_DOCK_FILES_MIN_WIDTH = 150;
 export const WORKSPACE_DOCK_DIVIDER_WIDTH = WORKSPACE_SEAM_WIDTH;
 // diff 열의 최소 폭. CSS의 calc(100% - …) 보정값과 반드시 같은 값이어야 한다.

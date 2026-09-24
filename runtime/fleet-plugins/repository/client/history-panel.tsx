@@ -79,7 +79,7 @@ const PREFS_HEADER_HEIGHT = "fleet-console.history.headerHeight";
 const PREFS_FILE_LIST_WIDTH = "fleet-console.history.fileListWidth";
 const LOG_PANE_DEFAULT_HEIGHT = 240;
 const HEADER_DEFAULT_HEIGHT = 214;
-const FILE_LIST_DEFAULT_WIDTH = 180;
+const FILE_LIST_DEFAULT_WIDTH = 320;
 const HISTORY_OVERSCAN_ROWS = 8;
 const HISTORY_PAGE_SIZE = 200;
 
@@ -364,7 +364,7 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
     setTreeSelection(null); /* 트리 선택은 커밋에 묶인다 — 다른 커밋으로 옮기면 옛 경로가 새 트리에서 file_not_found를 부른다 */
     ctx.api.fetch("repository", "commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: target.fullHash }) })
       .then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<CommitResult>; })
-      .then((result) => { if (!cancelled) { setState({ kind: "ok", result, fullHash: target.fullHash }); setSelectedPath(result.files[0]?.path ?? null); } })
+      .then((result) => { if (!cancelled) { setState({ kind: "ok", result, fullHash: target.fullHash }); setSelectedPath((current) => result.files.some((file) => file.path === current) ? current : result.files[0]?.path ?? null); } })
       .catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); })
       .finally(() => { if (!cancelled) setPending(false); });
     return () => { cancelled = true; };
@@ -504,7 +504,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [commitViewport, setCommitViewport] = useState({ scrollTop: initialRestore?.scrollTop ?? 0, height: 0 });
   const [logHeight, setLogHeight] = useState(readLogPaneHeight);
-  const [tab, setTab] = useState<InspectorTab>("details");
+  const [tab, setTab] = useState<InspectorTab>("changes");
   const [dockHeight, setDockHeight] = useState(() => readWorkspaceDockHeight("changes"));
   const dockHeightCustomizedRef = useRef(hasWorkspaceDockHeightPreference("changes"));
   const [dockDetent, setDockDetent] = useState<WorkspaceDockDetent>("free");
