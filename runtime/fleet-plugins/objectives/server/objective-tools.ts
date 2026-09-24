@@ -63,7 +63,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     });
 
   return [
-    tool("mine", "Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it and report to the Commander by SendMessage. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a one-line notice says so; the board holds the change itself.", z.object({}).strict(), (_args, caller) => {
+    tool("mine", "Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it and report to the Commander by SendMessage. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself.", z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findAssignee(caller.operationId);
       if (assigned) {

@@ -55,6 +55,8 @@ export interface LaunchService {
 
 export interface LaunchOptions {
   readonly language?: PromptLanguage;
+  /** 사람이 개시·스티어링에 덧붙인 말 — 그 알림 아래 인용으로 한 번 간다(저장하지 않는다). 구상의 말은 목표의 `cook` 에 산다. */
+  readonly context?: string;
 }
 
 const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.language === "ko" ? "ko" : "en");
@@ -327,7 +329,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       current = item(itemId);
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
       if (neverStarted(itemId)) current = store.setEdited(itemId, null);
-      const delivered = await send(itemId, startTurn(current, language));
+      const delivered = await send(itemId, startTurn(current, language, options?.context));
       if (!delivered) throw new ObjectiveStoreError("launch_failed");
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
       return { item: store.setEdited(itemId, null), operationId: itemId };
@@ -357,7 +359,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const current = item(itemId);
       if (current.done) throw new ObjectiveStoreError("item_done");
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
-      const receipt = await control().request({ kind: "send", operationId: itemId, text: steerTurn(current, languageOf(options)) }, `objectives:steer:${randomUUID()}`).catch(asStoreError);
+      const receipt = await control().request({ kind: "send", operationId: itemId, text: steerTurn(current, languageOf(options), options?.context) }, `objectives:steer:${randomUUID()}`).catch(asStoreError);
       if (receipt.status === "rejected" || receipt.status === "failed") asStoreError(new Error(receipt.error ?? "steer_failed"));
       // 지휘관에게 닿았다 — 쌓인 편집을 지우고, 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다.
       store.setEdited(itemId, null);
