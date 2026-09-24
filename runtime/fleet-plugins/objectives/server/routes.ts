@@ -6,7 +6,6 @@ import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { z } from "zod";
 
 import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
-import { createGroupSync, type GroupSync } from "./group-sync.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { createItemSchema, criterionAddSchema, criterionPatchSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type ObjectiveEditKind, type ObjectiveItem } from "./types.js";
@@ -28,7 +27,7 @@ const language = z.enum(["en", "ko"]).optional();
 const itemRef = z.object({ itemId: ids, language });
 const stepRef = z.object({ itemId: ids, stepId: ids, language });
 
-export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store), groupSync: GroupSync = createGroupSync(ctx, store)): readonly ObjectiveRoute[] {
+export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly ObjectiveRoute[] {
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>, req: http.IncomingMessage) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -42,7 +41,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     return true;
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
-    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, error.code === "unknown_item" || error.code === "unknown_step" || error.code === "unknown_attachment" ? 404 : 409, { error: error.code }); return; }
+    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_item", "unknown_step", "unknown_attachment", "unknown_criterion"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
     const code = error instanceof Error ? error.message : "todo_failed";
     ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "todo_failed" });
   };
@@ -91,11 +90,9 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     return true;
   };
 
-  // 항목을 다른 그룹으로 옮기면 지휘관·담당 Operation 도 사이드바에서 같은 그룹으로 — 목록이 곧 그 그룹이다.
-  const regrouped = (next: ObjectiveItem, moved: boolean): ObjectiveItem => { if (moved) groupSync.itemRegrouped(next); return next; };
   const groupsOf = (theaterId: string) => ctx.host.operations.groups?.list(theaterId) ?? [];
   const item = (value: ObjectiveItem) => ({ item: value });
-  // 지휘관이 일하는 동안에도 계속 잠기는 것 — 구상·지휘관 연결/교체·시작·제목과 일정·완료·삭제·일괄 재배선. 먼저 중단해야 한다.
+  // 지휘관이 일하는 동안에도 계속 잠기는 것 — 구상·시작·제목과 일정·완료·삭제·일괄 재배선. 먼저 중단해야 한다.
   // 지휘관 자신의 도구 경로(console-tools)는 이 문을 지나지 않는다.
   const unlessBusy = <A extends { itemId: string }, R>(run: (body: A) => R) => (body: A): R => { if (launch.busy(body.itemId)) throw new ObjectiveStoreError("item_busy"); return run(body); };
   // 이 라우트들은 사람의 화면이다 — 지휘관이 알아야 할 편집이면 항목에 쌓아 두고, 「시작」이 지휘관에게 다시 읽으라고 알린다.
@@ -116,20 +113,33 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
   };
   const notStarted = (itemId: string, stepId: string): boolean => {
     const target = store.find(itemId)?.steps.find((candidate) => candidate.id === stepId);
-    return !!target && !target.done && !target.slot;
+    return !!target && !target.done && !target.operationId;
   };
   const only = (patch: Record<string, unknown>, keys: readonly string[]): boolean => Object.keys(patch).every((key) => keys.includes(key));
 
   return [
     { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ items: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() })) },
-    { name: "item/create", method: "POST", summary: "Create an objective.", handler: json(createItemSchema, ({ language: _language, ...body }) => item(store.create({ ...body, author: { kind: "human" } }))) },
-    { name: "item/patch", method: "POST", summary: "Edit an objective.", handler: json(itemRef.extend({ patch: patchItemSchema }), steerable(({ patch }) => only(patch, ["note"]), ({ itemId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], () => regrouped(store.patch(itemId, patch), patch.groupId !== undefined)))) },
+    // 따로 만든 Operation 도 목표다 — 화면이 처음 보는 에이전트 Operation 을 목표 모양으로 받아 간다.
+    { name: "item/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(itemRef, ({ itemId }) => { const found = store.find(itemId); if (!found) throw new ObjectiveStoreError("unknown_item"); return item(found); }) },
+    // 목표를 만들면 지휘관 Operation 이 dormant 로 함께 태어난다 — 깨우는 것은 「구상」·「시작」이다.
+    { name: "item/create", method: "POST", summary: "Create an objective together with its dormant Commander Operation.", handler: json(createItemSchema, async ({ language, theaterId, title, groupId, note, important, dueDate, today, steps }) => item(await launch.create({ theaterId, title, groupId: groupId ?? null, note, important, dueDate, today, steps }, { language }))) },
+    { name: "item/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Operation's).", handler: json(itemRef.extend({ patch: patchItemSchema }), steerable(({ patch }) => only(patch, ["note"]), ({ itemId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], () => {
+      const { title, groupId, launch: preset, ...own } = patch;
+      if (title !== undefined) launch.rename(itemId, title);
+      if (groupId !== undefined) launch.regroup(itemId, groupId);
+      if (preset) launch.setPreset(itemId, preset);
+      if (Object.keys(own).length > 0) return store.patch(itemId, own);
+      const current = store.find(itemId);
+      if (!current) throw new ObjectiveStoreError("unknown_item");
+      return current;
+    }))) },
     // 순서는 내용이 아니다 — 지휘관이 일하는 동안에도 사람이 목록을 정리할 수 있게 busy 잠금을 지나지 않는다.
     { name: "item/move", method: "POST", summary: "Reorder an objective before or after another objective of the same Theater.", handler: json(itemRef.extend({ beforeId: ids.optional(), afterId: ids.optional() }).refine((body) => (body.beforeId === undefined) !== (body.afterId === undefined)), ({ itemId, beforeId, afterId }) => item(store.move(itemId, beforeId !== undefined ? { beforeId } : { afterId: afterId! }))) },
-    { name: "item/remove", method: "POST", summary: "Delete an objective (Operations stay).", handler: json(itemRef, unlessBusy(({ itemId }) => item(store.remove(itemId)))) },
-    { name: "item/complete", method: "POST", summary: "Complete an objective and release its Operation slots.", handler: json(itemRef.extend({ undone: z.boolean().optional() }), unlessBusy(async ({ itemId, undone, language }) => item(undone ? store.reopen(itemId) : await launch.complete(itemId, "human", { language })))) },
-    { name: "step/add", method: "POST", summary: "Add a mission.", handler: json(itemRef.extend({ step: stepAddSchema }), steerable(({ step }) => step.assign === undefined, ({ itemId, step, language }) => edited(["steps"], () => launch.stepAdded(itemId, step, { language, by: "human" })))) },
-    { name: "step/patch", method: "POST", summary: "Edit a mission (text, done, dependencies).", handler: json(stepRef.extend({ patch: stepPatchSchema }), steerable(({ itemId, stepId, patch }) => only(patch, ["text"]) && notStarted(itemId, stepId), ({ itemId, stepId, patch, language }) => edited(stepKinds(patch), () => launch.stepPatched(itemId, stepId, patch, "human", { language })))) },
+    // 목표를 지우면 지휘관 Operation 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
+    { name: "item/remove", method: "POST", summary: "Delete an objective by closing its Commander Operation (restorable during the undo window).", handler: json(itemRef, unlessBusy(({ itemId }) => item(launch.remove(itemId)))) },
+    { name: "item/complete", method: "POST", summary: "Complete an objective, or reopen it with undone.", handler: json(itemRef.extend({ undone: z.boolean().optional() }), unlessBusy(({ itemId, undone }) => item(undone ? store.reopen(itemId) : store.complete(itemId)))) },
+    { name: "step/add", method: "POST", summary: "Add a mission.", handler: json(itemRef.extend({ step: stepAddSchema }), steerable(({ step }) => step.assign === undefined, ({ itemId, step }) => edited(["steps"], () => launch.stepAdded(itemId, step, { by: "human" })))) },
+    { name: "step/patch", method: "POST", summary: "Edit a mission (text, done, dependencies).", handler: json(stepRef.extend({ patch: stepPatchSchema }), steerable(({ itemId, stepId, patch }) => only(patch, ["text"]) && notStarted(itemId, stepId), ({ itemId, stepId, patch }) => edited(stepKinds(patch), () => launch.stepPatched(itemId, stepId, patch)))) },
     // 읽음은 편집이 아니다 — 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 것도 없다.
     { name: "step/seen", method: "POST", summary: "Mark every record of a mission as read by the person.", handler: json(stepRef, ({ itemId, stepId }) => item(store.stepSeen(itemId, stepId))) },
     { name: "step/remove", method: "POST", summary: "Remove a mission.", handler: json(stepRef, steerable(({ itemId, stepId }) => notStarted(itemId, stepId), ({ itemId, stepId }) => edited(["steps"], () => store.stepRemove(itemId, stepId)))) },
@@ -139,10 +149,8 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "plan/request", method: "POST", summary: "Ask the Commander to plan the objective (starts one when missing): it lays out missions, prerequisites and delegation; nothing runs until Commence. Optional context travels with the request and is kept on the item.", handler: json(itemRef.extend({ context: z.string().max(4000).optional() }), unlessBusy(({ itemId, language, context }) => { if (context !== undefined) store.patch(itemId, { cook: context }); return launch.requestPlan(itemId, { language }); })) },
     { name: "coordinator/stop", method: "POST", summary: "Interrupt the Commander and every assignee Operation of an objective (slots stay).", handler: json(itemRef, ({ itemId }) => launch.stop(itemId)) },
     { name: "coordinator/start", method: "POST", summary: "Commence: start the Commander, which delegates missions to named assignee sessions as it sees fit.", handler: json(itemRef, unlessBusy(({ itemId, language }) => launch.startCoordinator(itemId, { language }))) },
-    { name: "coordinator/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line), clear the pending changes and withdraw the review.", handler: json(itemRef, ({ itemId, language }) => launch.steer(itemId, { language }).then(item)) },
-    { name: "coordinator/link", method: "POST", summary: "Put an existing Operation into the Commander slot.", handler: json(itemRef.extend({ operationId: ids }), unlessBusy(async ({ itemId, operationId, language }) => item(groupSync.commanderLinked((await launch.linkCoordinator(itemId, operationId, { language })).item)))) },
-    { name: "coordinator/unlink", method: "POST", summary: "Empty the Commander slot (the Operation stays).", handler: json(itemRef, unlessBusy(({ itemId }) => item(store.setSlot(itemId, null, null)))) },
-    { name: "step/unlink", method: "POST", summary: "Empty a mission slot (the Operation stays).", handler: json(stepRef, async ({ itemId, stepId, language }) => item(await launch.unlinkStep(itemId, stepId, { language }))) },
+    { name: "coordinator/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line), clear the pending changes and the criteria it had judged met.", handler: json(itemRef, ({ itemId, language }) => launch.steer(itemId, { language }).then(item)) },
+    { name: "step/unlink", method: "POST", summary: "Detach a mission's assignee Operation (the Operation stays).", handler: json(stepRef, ({ itemId, stepId }) => item(launch.unlinkStep(itemId, stepId))) },
     { name: "group/create", method: "POST", summary: "Create an Operation group (the Objectives list).", handler: json(z.object({ theaterId: ids, language, name: z.string().trim().min(1).max(64), color: z.string().min(1).max(32) }), ({ theaterId, name, color }) => { const groups = ctx.host.operations.groups; if (!groups) throw new Error("groups_unavailable"); return { group: groups.create({ theaterId, name, color }) }; }) },
     { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();
@@ -156,6 +164,6 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "attachment/add", method: "POST", summary: "Attach an image to an objective's brief (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per objective).", handler: attachmentAdd },
     { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },
     { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(itemRef.extend({ attachmentId: ids }), steerable(() => true, ({ itemId, attachmentId }) => edited(["note"], () => store.attachmentRemove(itemId, attachmentId)))) },
-    { name: "plan/apply", method: "POST", summary: "Replace the unassigned missions with a plan (Commander tool path; also used by tests).", handler: json(itemRef.extend({ plan: planSchema }), async ({ itemId, plan, language }) => item(await launch.planApplied(itemId, plan, "human", { language }))) },
+    { name: "plan/apply", method: "POST", summary: "Replace the unassigned missions with a plan (Commander tool path; also used by tests).", handler: json(itemRef.extend({ plan: planSchema }), ({ itemId, plan }) => item(launch.planApplied(itemId, plan))) },
   ];
 }

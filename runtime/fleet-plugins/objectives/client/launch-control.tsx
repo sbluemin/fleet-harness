@@ -7,16 +7,16 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
-import type { LaunchView } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
- * 조율자의 모델·강도·표면 — 한 줄의 글("Opus · HIGH >_")이고, 누르면 **맵 우클릭 메뉴와 같은 문법**의 메뉴가 뜬다:
- * 공급자 띠(글리프 + 이름) 아래 모델 행(표면 표식 · 이름 · 강도 게이지 · ›). 행을 고르면 목록이 접히고 그 모델 한 줄과
- * 강도 트랙만 남는다(2단계); 모델 이름을 다시 누르면 목록으로 돌아간다. 기본은 CLI 표면 — 담당은 조율자의 표면을 물려받는다.
+ * 지휘관의 모델·강도 — 한 줄의 글("Opus · HIGH")이고, 누르면 **맵 우클릭 메뉴와 같은 문법**의 메뉴가 뜬다:
+ * 공급자 띠(글리프 + 이름) 아래 모델 행(이름 · 강도 게이지 · ›). 행을 고르면 목록이 접히고 그 모델 한 줄과
+ * 강도 트랙만 남는다(2단계); 모델 이름을 다시 누르면 목록으로 돌아간다. 값은 지휘관 Operation 에 산다 — 표면(CLI·채팅)은
+ * 그 Operation 의 캡션이 바꾼다.
  */
 
-export const DEFAULT_LAUNCH = { model: "opus[1m]", effort: "high", view: "terminal" as LaunchView } as const;
+export const DEFAULT_LAUNCH = { model: "opus[1m]", effort: "high" } as const;
 
 export interface LaunchGroup { readonly provider: LaunchProviderGlyphId | null; readonly caption: string; readonly rows: readonly OperationLaunchVariantRow[] }
 
@@ -103,17 +103,14 @@ function prettyModelId(id: string): string {
     .map((token) => (/^(gpt|o\d|glm|qwen)/i.test(token) ? token.toUpperCase() : token.charAt(0).toUpperCase() + token.slice(1))).join(" ");
 }
 
-const ChatGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" /></svg>;
-const TerminalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 4.5l3.5 3.5L3 11.5M8.5 11.5H13" /></svg>;
 const Chevron = ({ back }: { readonly back?: boolean }) => <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{back ? <path d="M7.5 2.5L4 6l3.5 3.5" /> : <path d="M4.5 2.5L8 6l-3.5 3.5" />}</svg>;
 
 interface LaunchControlProps {
   readonly t: Translate<ObjectiveMessageKey>;
   readonly model: string | undefined;
   readonly effort: string | undefined;
-  readonly view: LaunchView | undefined;
   readonly locked: boolean;
-  readonly onChange: (next: { model?: string; effort?: string; view?: LaunchView }) => void;
+  readonly onChange: (next: { model?: string; effort?: string }) => void;
   /** 트리거를 글리프 하나로 — 단계 배정처럼 낱말을 쓸 자리가 없을 때. */
   readonly trigger?: ReactNode;
   readonly triggerLabel?: string;
@@ -126,13 +123,12 @@ interface LaunchControlProps {
 const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
 
-export function LaunchControl({ t, model, effort, view, locked, onChange, trigger, triggerLabel, extras, startAtList = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, trigger, triggerLabel, extras, startAtList = false }: LaunchControlProps) {
   const groups = useLaunchGroups();
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
   const currentEffort = effort ?? (model ? undefined : DEFAULT_LAUNCH.effort);
   const words = launchWords(rows, model, effort, t("objectives.coordinator.effortAuto"));
-  const currentView: LaunchView = view ?? DEFAULT_LAUNCH.view;
   const [open, setOpen] = useState(false);
   // 2단계 — 고른 모델 한 줄과 강도 트랙. 메뉴는 여기서 열리고, 모델명을 누르면 목록(1단계)으로 간다.
   const [focused, setFocused] = useState(!startAtList);
@@ -162,9 +158,6 @@ export function LaunchControl({ t, model, effort, view, locked, onChange, trigge
     return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey); };
   }, [open]);
 
-  const ViewMark = currentView === "terminal" ? TerminalGlyph : ChatGlyph;
-  const viewTitle = t(currentView === "terminal" ? "objectives.launch.switchToChat" : "objectives.launch.switchToTerminal");
-  const toggleView = () => onChange({ view: currentView === "terminal" ? "chat" : "terminal" });
   const chosenProvider = groups.find((group) => group.rows.some((row) => row.launch.model === currentModel))?.provider ?? launchProviderFromModelId(currentModel);
   const text = (
     <>
@@ -172,11 +165,6 @@ export function LaunchControl({ t, model, effort, view, locked, onChange, trigge
       <span className="objectives-launch-model">{words.model}</span>
       <span className="objectives-launch-dot" aria-hidden="true">·</span>
       <span className="objectives-launch-effort">{words.effort}</span>
-      {locked
-        ? <span className="objectives-launch-view" aria-label={t(currentView === "terminal" ? "objectives.coordinator.viewTerminal" : "objectives.coordinator.viewChat")}><ViewMark /></span>
-        : <span className="objectives-launch-view is-switch" role="button" tabIndex={0} title={viewTitle} aria-label={viewTitle}
-            onClick={(event) => { event.preventDefault(); event.stopPropagation(); toggleView(); }}
-            onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleView(); } }}><ViewMark /></span>}
     </>
   );
   if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={t("objectives.coordinator.locked")}>{text}</span>;

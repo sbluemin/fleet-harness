@@ -6,7 +6,8 @@ import path from "node:path";
 
 import { resolveAiGatewaySelection, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import { MAX_LAUNCH_PROMPT_CHARS } from "@fleet-console/agent-runtime/fleet";
-import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, withOperationLaunchPreset, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
+import { createConsoleControl } from "../../features/console-use/host/console-control.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +32,25 @@ describe("agent dormant ticket guards", () => {
     await harness.createLiveSession();
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ model: "codex--gpt-6-luna", effort: "low" }));
     expect(harness.responses.at(-1)?.status).toBe(200);
+  });
+
+  it("creates a dormant Console launch without a process and starts fresh on first send with its saved settings", async () => {
+    const harness = await createHarness();
+    const control = harness.control;
+    const caller = { kind: "plugin" as const, pluginId: "objectives" };
+    const receipt = control.request(caller, "dormant-launch", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "terminal", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true });
+    await vi.waitFor(() => expect(control.getAction(receipt.id)?.operationId).toBeTruthy());
+    const id = control.getAction(receipt.id)!.operationId!;
+    expect(harness.attach).not.toHaveBeenCalled();
+    expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "terminal", supportedActions: ["send"] });
+    const operation = harness.operations.find((op) => op.id === id)!;
+    expect(readOperationLaunch(operation.payload)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", started: false });
+    harness.patch(id, { payload: withOperationLaunchPreset(operation.payload, { model: "sonnet", effort: "low" }) });
+    const sent = control.request(caller, "wake-commander", { kind: "send", operationId: id, text: "Begin" });
+    await vi.waitFor(() => expect(control.getAction(sent.id)?.delivery).toBe("queued"));
+    expect(harness.attach).toHaveBeenCalledTimes(1);
+    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId: id, model: "sonnet", effort: "low", sessionName: "commander", disableSubagents: true }));
+    expect(harness.attach.mock.calls[0]![0]).not.toHaveProperty("resumeSessionId");
   });
 
   it("rejects ticket issuance for a dormant session with operation_dormant", async () => {
@@ -95,6 +115,7 @@ async function createHarness(options: {
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
   const invalidateCalls: string[] = [];
   let route: RouteHandler | undefined;
+  const control = createConsoleControl({ directory: path.join(fleetDataDir, "console-control"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Theater" }], pluginAvailable: (id) => id === "objectives" });
   let exitCallback: ((operationId: string) => void | Promise<void>) | undefined;
   let ticketsIssued = 0;
   const tickets = createPluginTerminalTicketRegistry({
@@ -139,6 +160,7 @@ async function createHarness(options: {
   };
   const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null }), update: (mutate) => mutate({}) };
   const ctx = {
+    consoleControl: control,
     dataDir: fleetDataDir,
     legacyDataDir: fleetDataDir,
     agentOptions: agentOptionsStub,
@@ -257,6 +279,7 @@ async function createHarness(options: {
     if (previousTerminalCommand === undefined) delete process.env.FLEET_TERMINAL_CMD;
     else process.env.FLEET_TERMINAL_CMD = previousTerminalCommand;
     for (const cleanup of [...lifecycleCleanups].reverse()) await cleanup();
+    control.dispose();
   });
 
   async function createLiveSession(): Promise<string> {
@@ -334,7 +357,9 @@ async function createHarness(options: {
 
   return {
     attach,
+    control,
     operations,
+    patch: ctx.host.operations.patch,
     tickets,
     responses,
     invalidateCalls,
