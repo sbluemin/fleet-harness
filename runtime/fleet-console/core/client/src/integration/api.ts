@@ -372,6 +372,8 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     // 서버가 영속한 groupId를 보존한다. null = Ungrouped 명시, undefined = 미설정(Ungrouped와 동일 취급).
     groupId: payload.groupId === null ? null : typeof payload.groupId === "string" ? payload.groupId : undefined,
     order: typeof payload.order === "number" && Number.isInteger(payload.order) && payload.order >= 0 ? payload.order : undefined,
+    // 코어가 영속한 부모를 보존한다. 빠지면 스토어가 구성원을 기본 목록에 세운다(isListedOperation).
+    ...(typeof payload.parentOperationId === "string" && payload.parentOperationId.length > 0 ? { parentOperationId: payload.parentOperationId } : {}),
     ts: payload.ts,
   };
 }

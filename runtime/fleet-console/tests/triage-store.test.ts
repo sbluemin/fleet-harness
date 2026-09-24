@@ -15,7 +15,8 @@ import {
   markIdleArrival,
   resetIdleArrivalForTests,
 } from "../features/execution/client/operation-marks.js";
-import { clearOperationRuntime, findOperation, focusOperation, getState, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setOperationRuntime, setState as setConsoleState } from "../core/client/src/integration/store.js";
+import { clearOperationRuntime, findOperation, focusOperation, getState, hydrateOperations, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setOperationRuntime, setState as setConsoleState } from "../core/client/src/integration/store.js";
+import { fetchOperations } from "../core/client/src/integration/api.js";
 import {
   clearFormationView,
   forceDropCompanionOperationId,
@@ -131,10 +132,13 @@ afterEach(() => {
 });
 
 describe("triage store", () => {
-  it("keeps a member under its Commander: off every list, on the Commander's activity, and reachable by id", () => {
+  it("keeps a member under its Commander: off every list, on the Commander's activity, and reachable by id", async () => {
     const commander = operation("commander", 1);
     const member = { ...operation("member", 2), parentOperationId: commander.id };
-    setConsoleState({ operations: [commander, member], activeTheaterId: THEATER_ID, activeOperationId: null });
+    // 서버 목록을 받는 길(파서 → 수화) 그대로 싣는다 — 파서가 부모를 떨어뜨리면 구성원이 모든 목록에 선다.
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ operations: [commander, member] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    try { hydrateOperations(await fetchOperations()); } finally { vi.unstubAllGlobals(); }
+    setConsoleState({ activeTheaterId: THEATER_ID, activeOperationId: null });
     const off = subscribeOperationActivityTracking();
     try {
       // 기본 목록은 사이드바·팔레트·War Room·부관단이 함께 읽는 원천이다 — 구성원은 거기 없고 id 로는 닿는다.
