@@ -11,7 +11,7 @@ Use **observe → one optimization → controlled remeasurement → falsificatio
 
 Choose the exact provider/model and effort, a short workload (usually 3–5 logical operations), a symptom hypothesis, and trial count. Default to **5 successful trials** before and after. Report changed sample sizes and excluded fixture failures.
 
-Read [Execution surface](references/execution.md) and use the smallest suitable path. For router/provider-loop behavior alone, use the standalone runner or built adapter without Console. Use a real Operation through `console-e2e` and its live-agent reference only when caller transcripts, auxiliary turns, or host lifecycle matter.
+Read [Execution surface](references/execution.md) and use the smallest suitable path. For router/provider-loop behavior alone, use the standalone runner or built adapter without Console. When caller transcripts matter but Console does not, use the headless launcher path in `console-e2e`'s live-agent reference; use a real Operation only when auxiliary turns or host lifecycle matter.
 
 The live runner's confirmation flag consents to real quota use. Never add live calls to default test/CI paths. Raw wire contains sensitive prompt/tool payloads; collect it in scratchpad only with explicit authorization. Never record credentials.
 
