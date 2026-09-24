@@ -84,7 +84,11 @@ export function ClusterPicker({
     const panelTop = panelRect?.top ?? (anchor.top - 400);
 
     const width = Math.max(220, Math.min(420, panelW - 16));
-    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
+    const maxLeft = panelRect
+      ? Math.min(window.innerWidth - width - 8, panelRect.left + panelRect.width - width - 8)
+      : window.innerWidth - width - 8;
+    const minLeft = panelRect ? Math.max(8, panelRect.left + 8) : 8;
+    const left = Math.max(minLeft, Math.min(anchor.left, maxLeft));
 
     const belowTop = anchor.bottom + 6;
     const spaceBelow = panelBottom - 8 - belowTop;
@@ -116,11 +120,18 @@ export function ClusterPicker({
         onClose();
       }
     };
+    const onWheel = (event: WheelEvent) => {
+      if (cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("wheel", onWheel, { passive: true, capture: true });
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("wheel", onWheel, { capture: true });
     };
   }, [onClose]);
 

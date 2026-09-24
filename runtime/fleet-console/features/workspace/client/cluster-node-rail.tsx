@@ -22,6 +22,8 @@ const ChevDown = () => (
   </svg>
 );
 
+const TONE_ORDER = ["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"] as const;
+
 /**
  * 본문 위 세션 줄 — 캡션 바로 아래 frame 흐름 안에 26px 높이로 서는 가로 탭 줄.
  * 지휘관 + 살아 있는 구성원 세션으로 이루어지며, 누르면 패널 본문(selectNestedBody)을 전환한다.
@@ -46,9 +48,19 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const naturalWidthsRef = useRef(new Map<string, number>());
 
   const root = layout.cluster.root;
+  // 구성원 세션 순서는 Objectives 명단(roster) 선언 순서를 따른다.
   const nodes = layout.cluster.members
     .map((member, index) => ({ member, n: index + 1 }))
-    .filter(({ member }) => layout.formation.byOperationId.has(member.operationId));
+    .filter(({ member }) => layout.formation.byOperationId.has(member.operationId))
+    .sort((a, b) => {
+      if (a.member.order !== undefined && b.member.order !== undefined) {
+        return a.member.order - b.member.order;
+      }
+      if (a.member.tone && b.member.tone) {
+        return TONE_ORDER.indexOf(a.member.tone as any) - TONE_ORDER.indexOf(b.member.tone as any);
+      }
+      return a.n - b.n;
+    });
 
   const nodeName = (node: { readonly member: { readonly name?: string }; readonly n: number }) =>
     node.member.name ?? t("cluster.nodes.node", { n: node.n });
@@ -73,12 +85,25 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       const commanderWidth = commanderTabRef.current?.offsetWidth || 76;
       const dividerWidth = 7;
       const padding = 16;
-      const moreWidth = 44;
-      const used = commanderWidth + dividerWidth + padding;
+      const baseWidth = commanderWidth + dividerWidth + padding;
 
+      // 1단계: 모든 탭이 +N 버튼 없이 전부 들어가는지 먼저 확인
+      let totalNeeded = baseWidth;
+      for (const node of nodes) {
+        const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
+        totalNeeded += w + 2;
+      }
+
+      if (totalNeeded <= railWidth) {
+        setHiddenIds(new Set());
+        return;
+      }
+
+      // 2단계: 다 들어가지 않는 경우 — +N 버튼 공간(44px)을 확보하고 넘치는 탭 가리기.
+      // 허용 요청(awaiting) 탭은 넘기지 않고 앞에 남긴다.
+      const moreWidth = 44;
       const hidden = new Set<string>();
 
-      // 허용 요청 탭의 너비를 먼저 확보
       let reservedForAwaiting = 0;
       for (const node of nodes) {
         if (node.member.progress === "awaiting") {
@@ -87,7 +112,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         }
       }
 
-      const availableForRest = railWidth - used - reservedForAwaiting - moreWidth;
+      const availableForRest = railWidth - baseWidth - reservedForAwaiting - moreWidth;
       let accumulated = 0;
 
       for (const node of nodes) {
@@ -164,19 +189,31 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       if (currentIndex >= 0) {
         const delta = event.key === "ArrowRight" ? 1 : -1;
         const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
-        tabs[nextIndex]?.focus();
-        tabs[nextIndex]?.click();
+        const nextTab = tabs[nextIndex];
+        if (nextTab) {
+          nextTab.focus();
+          const targetOpId = nextTab.dataset.memberOpId ?? root;
+          onPick(targetOpId);
+        }
       }
     } else if (event.key === "Home") {
       event.preventDefault();
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
-      tabs[0]?.focus();
-      tabs[0]?.click();
+      const firstTab = tabs[0];
+      if (firstTab) {
+        firstTab.focus();
+        const targetOpId = firstTab.dataset.memberOpId ?? root;
+        onPick(targetOpId);
+      }
     } else if (event.key === "End") {
       event.preventDefault();
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
-      tabs[tabs.length - 1]?.focus();
-      tabs[tabs.length - 1]?.click();
+      const lastTab = tabs[tabs.length - 1];
+      if (lastTab) {
+        lastTab.focus();
+        const targetOpId = lastTab.dataset.memberOpId ?? root;
+        onPick(targetOpId);
+      }
     }
   };
 

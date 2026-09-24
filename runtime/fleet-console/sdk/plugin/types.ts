@@ -496,6 +496,8 @@ export interface OperationClusterMember {
    * 표식과 같은 톤을 준다. 없으면 구성원 Operation 의 강조색, 그것도 없으면 제목의 중립 잉크다.
    */
   readonly tone?: string;
+  /** 명단(roster) 순서(0부터 시작). 세션 줄에서 명단 순서로 정렬할 때 사용한다. */
+  readonly order?: number;
   /** 선행 구성원의 operationId. 전부 끝나야 이 구성원이 열린다. */
   readonly after: readonly string[];
   readonly progress: OperationClusterProgress;

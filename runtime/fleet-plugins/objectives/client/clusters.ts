@@ -64,6 +64,7 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
       const id = idOf(step.id);
       const pending = id === placeholderId(step.id);
       const member = pending ? undefined : memberOf(id);
+      const memberIndex = member ? item.members.findIndex((candidate) => candidate.id === member.id) : -1;
       const name = member?.role;
       return {
         operationId: id,
@@ -71,6 +72,7 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
         // 노드 줄에는 구성원 이름으로 선다 — 「N 노드」가 아니라 「조사」.
         ...(name ? { name } : {}),
         ...(member ? { tone: memberToneOf(item, member.id) } : {}),
+        ...(memberIndex >= 0 ? { order: memberIndex } : {}),
         label: `${byStep.get(step.id)}. ${step.text}`,
         after: step.after.map(idOf),
         progress: pending ? (step.done ? "done" : stepReady(item.steps, step) ? "open" : "blocked") : progressOf(item, step.id, id, activity),
@@ -81,7 +83,16 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
     // 임무를 맡지 않은 구성원 — 역할 이름 칸으로 묶음에 든다.
     for (const { member, operationId } of liveMembers) {
       if (representative.has(operationId)) continue;
-      members.push({ operationId, label: member.role, name: member.role, tone: memberToneOf(item, member.id), after: [], progress: liveProgress(operationId, activity) });
+      const memberIndex = item.members.findIndex((candidate) => candidate.id === member.id);
+      members.push({
+        operationId,
+        label: member.role,
+        name: member.role,
+        tone: memberToneOf(item, member.id),
+        ...(memberIndex >= 0 ? { order: memberIndex } : {}),
+        after: [],
+        progress: liveProgress(operationId, activity),
+      });
     }
     const open = (operationId?: string) => {
       const stepId = operationId
@@ -95,7 +106,7 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
   return out;
 }
 
-const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.label, member.after, member.progress, member.result ?? ""])]));
+const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.after, member.progress, member.result ?? ""])]));
 
 let cached: readonly OperationCluster[] = [];
 let cachedSignature = "";

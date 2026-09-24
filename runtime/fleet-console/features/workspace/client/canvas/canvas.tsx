@@ -349,8 +349,12 @@ export function OperationsCanvas({
     // Formation은 읽기 전용 감독 그리드다 — 슬롯 사이 빈 공간에서 숨은 viewport를 팬/줌하거나
     // 오래된 월드 좌표로 생성하는 일이 없도록 캔버스 제스처를 통째로 게이트한다.
     disabled: disabled || formationView || companionOperationId !== null || triageActive,
-    onViewportChange: (viewport) => setViewport(storedViewportFromScreen(viewport)),
+    onViewportChange: (viewport) => {
+      setClusterPicker(null);
+      setViewport(storedViewportFromScreen(viewport));
+    },
     onZoom: (viewport, screen) => {
+      setClusterPicker(null);
       // 줌은 유지를 푼다 — 카메라를 움직이려는 첫 의도다. 패널은 그 자리에 자유 패널로 남는다.
       releaseSnapHold();
       // 판 위의 줌은 커서 아래 월드가 아니라 커서가 겨눈 점을 앵커로 잡는다 — 판 위의 커서는
@@ -1621,7 +1625,6 @@ export function OperationsCanvas({
                     onPick={(operationId) => {
                       selectNestedBody(operation.id, operationId);
                       setActiveOperation(operation.id);
-                      requestOperationKeyboardFocus(operation.id);
                     }}
                   />
                 ),

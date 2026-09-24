@@ -3698,6 +3698,7 @@
 /* 세션 줄 — 지휘관 패널 본문 위에 서는 26px 가로 탭 줄. 지휘관 + 구성원. 누르면 본문 전환.
    패널 frame 흐름 안에서 캡션 아래, 본문(터미널) 위에 위치하며 본문을 가리지 않는다. */
 .canvas-operation:has(> .cluster-node-rail) {
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
 }
 
@@ -3707,6 +3708,9 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
   height: 26px;
   min-height: 26px;
   box-sizing: border-box;
@@ -3715,6 +3719,10 @@
   background: var(--surface-panel);
   white-space: nowrap;
   overflow: visible;
+}
+
+.cluster-node-tab[hidden] {
+  display: none !important;
 }
 
 .cluster-node-tab {
@@ -5372,6 +5380,7 @@
 .canvas-operation {
   position: absolute;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   min-width: 320px;
   min-height: 200px;

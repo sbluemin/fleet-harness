@@ -1,15 +1,15 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
-import type { LaidClusterMember, OperationClusterProgress } from "@fleet-console/sdk/plugin";
+import type { OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
-import type { ClusterLayout } from "./operation-clusters.js";
+import type { ClusterLaidMember, ClusterLayout } from "./operation-clusters.js";
 
 export type StripMode = "full" | "dense" | "count";
 
 const HEADER_FIXED_PX = 251;
 
-export function requiredWidth(members: readonly LaidClusterMember[], mode: StripMode): number {
+export function requiredWidth(members: readonly ClusterLaidMember[], mode: StripMode): number {
   if (mode === "count") return 48;
   let separators = 0;
   let lastDepth = -1;
@@ -50,9 +50,9 @@ function computeBudget(element: HTMLElement | null): number {
     const titleMin = Math.min(160, Math.round(free * 0.6));
     return Math.max(0, free - titleMin);
   }
-  const sideBarMeta = element.closest<HTMLElement>(".side-bar-chip-meta") ?? element.parentElement;
-  if (sideBarMeta) {
-    return sideBarMeta.clientWidth;
+  const sideBarText = element.closest<HTMLElement>(".side-bar-chip-text") ?? element.parentElement;
+  if (sideBarText) {
+    return sideBarText.clientWidth;
   }
   return 0;
 }
@@ -79,7 +79,7 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen }: {
     if (!el) return;
     const target =
       el.closest<HTMLElement>(".canvas-operation-titlebar") ??
-      el.closest<HTMLElement>(".side-bar-chip-meta") ??
+      el.closest<HTMLElement>(".side-bar-chip-text") ??
       el.parentElement;
     if (!target) return;
 
