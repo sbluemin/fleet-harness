@@ -82,8 +82,26 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     }
   };
 
-  const targetProperties = { ref: { type: "string" }, role: { type: "string" }, name: { type: "string" }, exact: { type: "boolean", description: "Default true." }, selector: { type: "string" } };
-  const targetSchema = { type: "object", properties: { ...targetProperties, within: { type: "object", properties: targetProperties, additionalProperties: false } }, additionalProperties: false };
+  /**
+   * 지정 방식마다 한 갈래 — 한 호출이 둘 이상을 섞을 수 없는 모양이다. 한 객체에 모든 키를 선택 항목으로
+   * 두면, OpenAI strict 변환이 그것을 전부 필수+null 허용으로 바꿔 모델이 매 호출 여섯 키를 채우게 되고,
+   * gpt-6-sol 은 null 대신 값을 채워 같은 거부를 229번 되풀이했다. strict 가 받지 않는 `const` 없이 필수 키와
+   * `additionalProperties: false` 로만 갈래를 가른다.
+   *
+   * within 은 갈래마다 복사되므로 설명을 싣지 않는다 — 이 세 도구는 매 요청의 도구 목록에 실린다. ref 는 이미
+   * 요소 하나를 가리켜 within 이 확인 노릇밖에 못 하므로 ref 갈래에는 within 을 두지 않는다.
+   */
+  const targetBranches = (within?: Record<string, unknown>) => {
+    const scoped = within ? { within } : {};
+    const described = within !== undefined;
+    return [
+      { type: "object", properties: { ref: described ? { type: "string", description: "Exactly as observe/read_page/find printed it; never invent or edit." } : { type: "string" } }, required: ["ref"], additionalProperties: false },
+      { type: "object", properties: { selector: { type: "string" }, ...scoped }, required: ["selector"], additionalProperties: false },
+      { type: "object", properties: { role: { type: "string" }, name: { type: "string" }, exact: described ? { type: "boolean", description: "Exact name match. Default true." } : { type: "boolean" }, ...scoped }, additionalProperties: false },
+    ];
+  };
+  const scopeSchema = { anyOf: targetBranches() };
+  const targetSchema = { description: "Exactly one of ref, selector, or role/name; never combine them. selector and role/name take an optional within: a unique ancestor in one of the same forms. A ref is already unique and takes no within.", anyOf: targetBranches(scopeSchema) };
   const conditionSchema = { type: "object", properties: { target: targetSchema, state: { type: "string", enum: ["visible", "hidden", "enabled", "disabled", "checked", "unchecked"] }, attribute: { type: "string" }, equals: { type: "string" }, value: { type: "string" }, url: { type: "string" } }, additionalProperties: false };
   const observation = async (mode: string | undefined, operationId: string, tabId: string | null | undefined, signal: AbortSignal): Promise<TextBlock[]> => {
     if (!mode || mode === "none") return [];

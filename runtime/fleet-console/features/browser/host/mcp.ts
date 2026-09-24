@@ -3,7 +3,7 @@ import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-consol
 import { z } from "zod";
 import type { AdmiralMcpSession } from "@fleet-console/sdk/mcp";
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { BrowserService } from "./service.js";
+import { invalidTargetMessage, type BrowserService } from "./service.js";
 import { createBrowserToolSpecs, type BrowserToolDeps } from "./tools.js";
 import { operationIdFromSessionLabel } from "../../computer-use/host/mcp.js";
 
@@ -50,6 +50,21 @@ function deny(deps: BrowserMcpDeps, sessionLabel: string | undefined) {
   return { denied: null, operationId: operation.id };
 }
 
+/**
+ * 대상의 모든 갈래가 어긋나면 zod 는 그 자리에 「Invalid input」만 남긴다. 모델이 무엇을 섞었는지 알도록
+ * 받은 필드를 담은 문구로 바꾼다. 거부 여부는 그대로다.
+ */
+function describeArgumentIssue(args: unknown, issue: { code: string; path: PropertyKey[]; message: string }): string {
+  const path = issue.path.map(String);
+  const last = path.at(-1);
+  if (issue.code === "invalid_union" && (last === "target" || last === "within")) {
+    let value: unknown = args;
+    for (const key of issue.path) value = typeof value === "object" && value !== null ? (value as Record<PropertyKey, unknown>)[key] : undefined;
+    return `${path.join(".")}: ${invalidTargetMessage(value, last === "within" && path.at(-2) === "target")}`;
+  }
+  return `${path.join(".")}: ${issue.message}`;
+}
+
 export interface BrowserMcpConnection extends AdmiralMcpSession {
   cancelSession(label: string): void;
   dispose(): Promise<void>;
@@ -78,7 +93,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]);
         registry.registerAgentTool({ ...spec, execute: (args, context) => {
           const parsed = schema.safeParse(args);
-          if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ error: "browser_arguments_invalid", issues: parsed.success ? [] : parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`) }) }], isError: true });
+          if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ error: "browser_arguments_invalid", issues: parsed.success ? [] : parsed.error.issues.map((issue) => describeArgumentIssue(args, issue)) }) }], isError: true });
           const { denied, operationId } = deny(deps, context.sessionLabel);
           if (denied || !operationId) return Promise.resolve(denied ?? refuse("caller_unresolved", null, "en"));
           const signals = [controller.signal, ...(context.signal ? [context.signal] : [])];
