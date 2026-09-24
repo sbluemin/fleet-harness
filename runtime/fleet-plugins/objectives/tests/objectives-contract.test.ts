@@ -6,6 +6,7 @@ import type { OperationGroupedEvent, OperationNode } from "@fleet-console/sdk/op
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it } from "vitest";
 
+import objectivesPlugin from "../routes.js";
 import { imageInfo } from "../server/attachments.js";
 import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
@@ -317,5 +318,49 @@ describe("Objectives contract", () => {
     expect(store.find(item.id)!.awaitingReview).toBe(false);
     launch.stepAdded(item.id, { text: "one more" }, { by: "human" });
     expect(store.find(item.id)!.criteria.every((criterion) => !criterion.met)).toBe(true);
+  });
+
+  it("registers even when a registered Theater folder is gone, and still gives the present Theater's members their Commander", async () => {
+    // 등록된 Theater 폴더는 사라질 수 있다(옮김·외장 디스크). 기동의 부모 채우기가 그 Theater 에서 던지면 Console 전체가 뜨지 않는다.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-register-"));
+    dirs.push(dir);
+    const workspaceOf = (theaterId: string) => path.join(dir, "workspaces", theaterId);
+    fs.mkdirSync(path.join(workspaceOf("present"), "objectives"), { recursive: true });
+    fs.writeFileSync(path.join(workspaceOf("present"), "objectives", "state.json"), JSON.stringify({ version: 3, objectives: [{ operationId: "cmdr", note: "", steps: [], members: [{ id: "m1", role: "보조", by: "human", operationId: "member" }] }] }));
+    const node = (id: string, theaterId: string): Node => ({ id, theaterId, type: "agent", pluginId: null, title: id, payload: {}, geometry: null, ts: { createdAt: 1, updatedAt: 1 } });
+    const operations = new Map<string, Node>([["cmdr", node("cmdr", "present")], ["member", node("member", "present")], ["lost", node("lost", "gone")]]);
+    const noop = () => () => undefined;
+    const ctx = {
+      pluginId: "objectives",
+      registerRouter: () => undefined,
+      host: {
+        operations: {
+          get: (id: string) => operations.get(id) ?? null,
+          list: () => [...operations.values()],
+          patch: (id: string, input: { parentOperationId?: string | null }) => {
+            const target = operations.get(id);
+            if (!target) return null;
+            if (input.parentOperationId) target.parentOperationId = input.parentOperationId;
+            return target;
+          },
+        },
+        paths: {
+          resolveTheaterPath: (theaterId: string) => path.join(dir, "theaters", theaterId),
+          // 호스트처럼 폴더의 실경로를 풀지 못하면 던진다.
+          ensureWorkspaceDirectory: (theaterPath: string) => {
+            const theaterId = path.basename(theaterPath);
+            if (theaterId === "gone") throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${theaterPath}'`), { code: "ENOENT" });
+            return { path: workspaceOf(theaterId), id: theaterId };
+          },
+        },
+        events: { registerSseChannel: noop, subscribe: noop, publish: () => undefined },
+        lifecycle: { registerCleanup: () => undefined },
+        consoleUse: { contribute: noop },
+        admiralMcp: { register: noop },
+      },
+    } as unknown as FleetPluginServerContext;
+    await objectivesPlugin.register!(ctx);
+    expect(operations.get("member")!.parentOperationId).toBe("cmdr");
+    expect(operations.get("lost")!.parentOperationId).toBeUndefined();
   });
 });
