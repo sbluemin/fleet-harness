@@ -120,32 +120,6 @@ export function withoutReplayMetadata<T extends object>(item: T): WithoutReplayM
   return wireItem as unknown as WithoutReplayMetadata<T>;
 }
 
-/**
- * Replay metadata the canonical vocabulary carries on input items. No provider wire has these
- * fields: an adapter reads the ones it consumes and never serializes any of them. An adapter that
- * forwards canonical items onto a wire as they are must copy them through
- * {@link withoutReplayMetadata}, because a Responses wire refuses an unknown item property with a
- * 400 that fails the entire request — measured on the ChatGPT Codex backend as
- * `Unknown parameter: 'input[N].reasoning_encrypted'` once a Grok-produced blob reached it.
- */
-export const CANONICAL_REPLAY_METADATA_FIELDS = [
-  "reasoning_content",
-  "reasoning_encrypted",
-  "reasoning_id",
-] as const;
-
-/** `T` without the replay metadata, taken per member when `T` is a union of item kinds. */
-export type WithoutReplayMetadata<T> = T extends unknown
-  ? Omit<T, (typeof CANONICAL_REPLAY_METADATA_FIELDS)[number]>
-  : never;
-
-/** A copy of `item` without {@link CANONICAL_REPLAY_METADATA_FIELDS}; every other field is kept. */
-export function withoutReplayMetadata<T extends object>(item: T): WithoutReplayMetadata<T> {
-  const wireItem = { ...item };
-  for (const field of CANONICAL_REPLAY_METADATA_FIELDS) Reflect.deleteProperty(wireItem, field);
-  return wireItem as unknown as WithoutReplayMetadata<T>;
-}
-
 export interface CanonicalFunctionCallOutput {
   type: "function_call_output";
   call_id: string;
