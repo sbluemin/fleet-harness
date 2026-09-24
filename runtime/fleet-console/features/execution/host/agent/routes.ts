@@ -1058,7 +1058,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
-    if (!meta || !meta.available || !meta.signedIn) {
+    // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
+    if (!launchOptions.dormant && (!meta || !meta.available || !meta.signedIn)) {
       // 이 preflight 거절은 unreserve가 있는 아래 try보다 앞이다 — 여기서 되돌리지 않으면
       // 예약이 영영 남아 재시도가 전부 attachment_not_found로 떨어진다.
       if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {

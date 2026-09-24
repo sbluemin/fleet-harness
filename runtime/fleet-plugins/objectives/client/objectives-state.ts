@@ -64,6 +64,12 @@ function reconcileOperations(api: ClientApiCapability): void {
       const drop = new Set(gone);
       if (state.items.some((item) => drop.has(item.id))) setTheater(theaterId, { items: state.items.filter((item) => !drop.has(item.id)) });
     }
+    // 제목은 Operation 의 것이다 — 자동 작명처럼 사건 없이 바뀐 제목도 Operation 목록에서 따라간다.
+    const titles = new Map(operationsSnapshot.map((operation) => [operation.id, operation.title]));
+    const stale = (theaters.get(theaterId) ?? state).items;
+    if (stale.some((item) => titles.has(item.id) && titles.get(item.id) !== item.title)) {
+      setTheater(theaterId, { items: stale.map((item) => (titles.has(item.id) && titles.get(item.id) !== item.title ? { ...item, title: titles.get(item.id)! } : item)) });
+    }
     const known = new Set((theaters.get(theaterId) ?? state).items.map((item) => item.id));
     const assignees = assigneeIds(state.items);
     for (const operation of operationsSnapshot) {
