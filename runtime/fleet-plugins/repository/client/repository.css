@@ -1457,7 +1457,7 @@
   .repository-ws-dock { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 44%) minmax(0, 1fr); }
   /* 세로 스택에서는 열 디바이더가 트랙 수를 어긋내므로 흐름에서 제거하고, 이음매는 테두리가 잇는다. */
   .repository-ws-dock > .repository-ws-dock-divider { display: none; }
-  .repository-ws-dock > .history-commit-files { border-bottom: 1px solid var(--surface-rim); }
+  .repository-ws-dock > .history-commit-files, .repository-ws-dock > .repository-stash-files { border-bottom: 1px solid var(--surface-rim); }
 }
 /* ═══ sync surfacing · stash rows — rail-panel 소유 구역 ═══ */
 .repository-sync-toast {
@@ -1902,11 +1902,11 @@
   padding: 1px 8px;
   margin-right: auto;
 }
-.repository-stash-inspector-body {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  min-height: 0;
-}
+.repository-stash-inspector-body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; }
+.repository-stash-dock { min-height: 0; }
+.repository-stash-files { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
+.repository-stash-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
+.repository-stash-diff > .history-inspector-empty { min-height: 0; }
 .repository-stash-inspector-subject {
   padding: 8px 12px 4px;
   font-size: var(--t-sm);

@@ -987,6 +987,8 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(initialTreeState?.collapsedSections ?? ["tags", "stashes"]));
   const [collapsedFolders] = useState(() => new Set(initialTreeState?.collapsedFolders ?? []));
   const [refContextMenu, setRefContextMenu] = useState<RefContextMenuState | null>(null);
+  const [selectedStashSha, setSelectedStashSha] = useState<string | null>(null);
+  useEffect(() => { if (source !== "history") setSelectedStashSha(null); }, [source]);
   const [treeRef] = useState<RefObject<HTMLElement | null>>(() => ({ current: null }));
   const remoteGroups = buildRemoteGroups(refs);
   const remoteRowCount = remoteGroups.reduce((sum, group) => sum + group.rows.length, 0);
@@ -1022,7 +1024,7 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
     className={`repository-ws-tree-row is-branch${remote ? " is-remote" : ""}${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`}
     onContextMenu={openRefMenu(row)}
   >
-    <button type="button" className="repository-ws-tree-row-main" title={row.current ? t("repository.refs.current") : row.primary} onClick={() => onRef(row.ref!)}>
+    <button type="button" className="repository-ws-tree-row-main" title={row.current ? t("repository.refs.current") : row.primary} onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}>
       <Icon name={row.current ? "check" : "branch"} /><span>{row.primary}</span>
     </button>
     <AheadBehind t={t} row={row} />
@@ -1032,10 +1034,10 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
     </span>
   </div>;
   const tagRow = (row: RepositoryRefRow) => <div key={row.key} className={`repository-ws-tree-row is-tag${source === "history" && row.ref === refFilter ? " is-active" : ""}`} onContextMenu={openRefMenu(row)}>
-    <button type="button" className="repository-ws-tree-row-main" onClick={() => onRef(row.ref!)}><Icon name="tag" /><span>{row.primary}</span></button>
+    <button type="button" className="repository-ws-tree-row-main" onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}><Icon name="tag" /><span>{row.primary}</span></button>
     <span className="repository-ws-tree-hover">{refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}><Icon name="compare" size={13} /></button> : null}</span>
   </div>;
-  const stashRow = (row: RepositoryRefRow) => <button type="button" key={row.key} className="repository-ws-tree-row is-stash" disabled={!row.stashSha} onClick={() => { if (row.stashSha) onStashInspect({ name: row.sub ?? row.key, sha: row.stashSha, subject: row.primary }); }} onContextMenu={(event) => {
+  const stashRow = (row: RepositoryRefRow) => <button type="button" key={row.key} className={`repository-ws-tree-row is-stash${source === "history" && row.stashSha === selectedStashSha ? " is-active" : ""}`} disabled={!row.stashSha} onClick={() => { if (row.stashSha) { setSelectedStashSha(row.stashSha); onStashInspect({ name: row.sub ?? row.key, sha: row.stashSha, subject: row.primary }); } }} onContextMenu={(event) => {
     if (!onStashAction) return;
     event.preventDefault();
     setRefContextMenu({ row, anchor: { x: event.clientX, y: event.clientY } });
@@ -1045,6 +1047,9 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
   const branchRows = buildRefSectionRows("branches", refs).filter(matches);
   const tagRows = buildRefSectionRows("tags", refs).filter(matches);
   const stashRows = buildRefSectionRows("stashes", refs).filter(matches);
+  useEffect(() => {
+    if (selectedStashSha && !stashRows.some((row) => row.stashSha === selectedStashSha)) setSelectedStashSha(null);
+  }, [selectedStashSha, stashRows]);
   // 원격 행은 "origin/main"처럼 그룹 이름을 붙인 이름으로도 맞춘다 — 검색어가 원격 이름·호스트면 그룹 전체가 남는다.
   const visibleRemoteGroups = remoteGroups.map((group) => {
     const groupHit = query !== "" && (fuzzyMatch(query, group.name) !== null || (group.host !== null && fuzzyMatch(query, group.host) !== null));

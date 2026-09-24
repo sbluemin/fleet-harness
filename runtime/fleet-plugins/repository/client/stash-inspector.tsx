@@ -6,6 +6,8 @@ import type { RepositoryContext } from "./repository-context.js";
 import type { DiffFileEntry } from "../server/types.js";
 import { FileRow } from "./changed-files.js";
 import { getT, readErrorSentence } from "./i18n/index.js";
+import { HunkView } from "./hunk-view.js";
+import { WorkspaceDock } from "./workspace-dock.js";
 
 // 제품 공용 파괴 동사 무장 시간 — 스테이징 버리기·프레임 닫기와 같은 1.5s.
 const DROP_ARM_MS = 1500;
@@ -42,6 +44,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
   const [state, setState] = useState<StashShowState>({ kind: "loading" });
   const [pending, setPending] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [dropArmed, setDropArmed] = useState(false);
   const dropTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,6 +68,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
     }).then(({ files, truncated }) => {
       if (cancelled) return;
       setState({ kind: "ok", files, ...(truncated ? { truncated: true } : {}) });
+      setSelectedPath((current) => files.some((file) => file.path === current) ? current : files[0]?.path ?? null);
     }).catch((error: unknown) => {
       if (cancelled) return;
       setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
@@ -87,6 +91,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
     }
   }, [busy, onAction, onClose, stash.name, stash.sha]);
 
+  const selectedFile = state.kind === "ok" ? state.files.find((file) => file.path === selectedPath) ?? state.files[0] ?? null : null;
   const handleDrop = useCallback(() => {
     if (dropArmed) {
       if (dropTimerRef.current !== null) { clearTimeout(dropTimerRef.current); dropTimerRef.current = null; }
@@ -110,6 +115,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
     </div>
     <div className="repository-stash-inspector-body">
       <div className="repository-stash-inspector-subject" title={stash.subject}>{stash.subject}</div>
+      <WorkspaceDock t={t} className="repository-stash-dock" files={<div className="repository-stash-files">
       <div className="history-files-title">
         <span className="history-files-label">{t("repository.stash.cardFiles")}</span>
         {state.kind === "ok" && !pending && <span className="history-files-stats">{state.files.length}</span>}
@@ -118,9 +124,16 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
         {state.kind === "loading" && <div className="history-inspector-empty">{t("repository.common.loading")}</div>}
         {state.kind === "error" && <div className="history-inspector-empty history-inspector-error">{state.message === "stash_moved" ? t("repository.stash.moved") : `${t("repository.stash.showFailed")} ${readErrorSentence(t, state.message)}`}</div>}
         {state.kind === "ok" && state.files.length === 0 && <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
-        {state.kind === "ok" && state.files.map((file) => <FileRow key={file.path} entry={file} isSelected={false} onSelect={() => undefined} t={t} />)}
+        {state.kind === "ok" && state.files.map((file) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedFile?.path} onSelect={() => setSelectedPath(file.path)} t={t} />)}
         {state.kind === "ok" && state.truncated && <div className="history-truncated">{t("repository.commit.capped")}</div>}
       </div>
+      </div>} main={<div className="repository-stash-diff">
+        {selectedFile ? <><div className="history-file-repository-head"><span title={selectedFile.path}>{selectedFile.path}</span></div>
+          {selectedFile.status === "A"
+            ? <div className="history-inspector-empty">{t("repository.stash.untrackedPreview")}</div>
+            : ctx.theaterId ? <HunkView ctx={ctx} repoRel={repoRel} file={selectedFile} mode="unified" commit={{ theaterId: ctx.theaterId, repoRel, fullHash: stash.sha }} /> : null}
+        </> : <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
+      </div>} />
       {onAction && <div className="repository-stash-inspector-actions">
         <button type="button" className="repository-refresh-btn" disabled={busy} onClick={() => void run("apply")}>{t("repository.stash.apply")}</button>
         <button type="button" className="repository-refresh-btn" disabled={busy} onClick={() => void run("pop")}>{t("repository.stash.pop")}</button>
