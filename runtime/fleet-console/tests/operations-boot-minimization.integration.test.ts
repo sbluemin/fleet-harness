@@ -42,6 +42,8 @@ const canvasMocks = vi.hoisted(() => ({
 const registryMocks = vi.hoisted(() => ({
   providers: [] as Array<Record<string, unknown>>,
   operationKinds: [] as OperationKindDescriptor[],
+  // 묶음을 선언한 플러그인이 없는 레지스트리 — 스냅샷은 매번 같은 배열이어야 useSyncExternalStore가 멈춘다.
+  operationClusters: (() => { const none: readonly never[] = []; return { subscribe: () => () => undefined, get: () => none }; })(),
 }));
 const bodyPoolMocks = vi.hoisted(() => ({
   renderedOperationIds: [] as string[][],
@@ -115,7 +117,7 @@ vi.mock("../core/client/src/integration/operations-sse.js", () => ({ refreshObse
 // 라우트에 다녀오기"이므로 어댑터를 옛 페이지 모양의 대역으로 세워 라우트 왕복만 남긴다.
 vi.mock("../features/settings/client/settings-route-adapter.js", () => ({ SettingsRouteAdapter: () => createElement("div", { "data-route": "settings" }) }));
 vi.mock("../core/client/src/integration/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
-vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(), usePluginRegistry: () => ({ providers: registryMocks.providers, failures: [], operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [], commandBandEntries: [], expandedSurfaces: [], persistentComponents: []}) }));
+vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(), usePluginRegistry: () => ({ providers: registryMocks.providers, failures: [], operationKinds: registryMocks.operationKinds, operationClusters: registryMocks.operationClusters, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [], commandBandEntries: [], expandedSurfaces: [], persistentComponents: []}) }));
 // 부분 목 — 이 스토어에 export가 늘어도(아레나 점유 폭 훅 등) 테스트가 따라 깨지지 않는다.
 vi.mock("../core/client/src/chrome/rail/rail-store.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../core/client/src/chrome/rail/rail-store.js")>()),
@@ -338,6 +340,28 @@ describe("Operations boot minimization", () => {
       await Promise.resolve();
     });
     expect(resumeOperation).toHaveBeenCalledTimes(4);
+  });
+
+  // 목표의 지휘관은 휴면으로 태어나 「구상」·「개시」가 첫 턴을 보낼 때 깨어난다 — 최소화에서 꺼내는 것만으로
+  // 빈 세션을 띄우면 그 계약이 깨진다. 한 번이라도 시작한 Operation은 위 케이스의 열기 재개를 그대로 받는다.
+  it("keeps a never-started dormant-born Operation asleep when its minimized panel is opened", async () => {
+    const resumeOperation = vi.fn();
+    registryMocks.providers = [{ id: "terminal", resumeOperation }];
+    await bootApp([
+      operation("home", BOOT_FRESH_CREATED_AT(), "theater-a"),
+      { ...operation("commander", 1, "theater-a"), payload: { resumeAvailable: true, dormantBorn: true } },
+    ]);
+    await navigateTo("/operations");
+    expect(getSnapshot().minimized).toContain("commander");
+
+    await act(async () => {
+      sideBarMocks.onFocus?.("commander");
+      await Promise.resolve();
+    });
+
+    expect(getSnapshot().minimized).not.toContain("commander");
+    expect(getState().activeOperationId).toBe("commander");
+    expect(resumeOperation).not.toHaveBeenCalled();
   });
 
   it("minimizes initial hydrated panels once across /operations -> /settings -> /operations", async () => {

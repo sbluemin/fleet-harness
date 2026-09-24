@@ -2,6 +2,7 @@ import type { OperationActivityVisual } from "../../../execution/client/operatio
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
+import { wasOperationBornDormant } from "@fleet-console/sdk/operations/browser";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -511,6 +512,11 @@ export function OperationsCanvas({
     return out;
   };
   const minimizedSet = withHiddenMembers(minimized);
+  // 휴면으로 태어난 Operation은 좌표를 심는 effect보다 첫 렌더가 먼저 오므로, 좌표가 아직 없으면 최소화된 것으로 본다 —
+  // 그 effect가 좌표와 최소화를 함께 확정할 때까지 한 프레임도 펼쳐 그리지 않는다.
+  for (const operation of state.operations ?? []) {
+    if (operation.theaterId === state.activeTheaterId && !(operation.id in canvas.operations) && wasOperationBornDormant(operation.payload)) minimizedSet.add(operation.id);
+  }
   // War Room의 판은 전 Theater를 한 번에 얹으므로 최소화 판정도 Theater 경계를 넘는다. canvas 스냅샷은
   // 비활성 Theater에 쓸 때도 새 객체로 갈리므로(setTheaterOperationMinimized) 이 파생값이 함께 갱신된다.
   const triageMinimizedSet = triageActive

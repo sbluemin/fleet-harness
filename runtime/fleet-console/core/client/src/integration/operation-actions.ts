@@ -1,6 +1,7 @@
 // Operation lifecycle actions issued from chrome: close a card for good, or resume
 // a dormant one in place.
 
+import { readOperationLaunch, wasOperationBornDormant } from "@fleet-console/sdk/operations/browser";
 import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 import type { OperationNode } from "./types.js";
 import { type DeferredDeletionReceipt, deleteOperation, fetchOperations } from "./api.js";
@@ -72,6 +73,8 @@ export function resumeOperationInPlace(
 // 꺼낸 자리가 휴면 프레임이면 Resume를 한 번 더 누르게 하지 않고 여는 동작이 재개까지 데려간다.
 // 이미 캔버스에 떠 있던 휴면 패널은 대상이 아니다 — 사용자는 그 카드를 보고도 두기로 한 상태이고,
 // 단순한 포커스 이동이 프로세스를 되살리면 안 된다.
+// 다만 휴면으로 태어나 첫 턴 전인 지휘관은 구상·시작 전까지 열기만으로 깨우지 않는다.
+// 프레임의 명시적인 Resume는 resumeOperationInPlace를 직접 사용하므로 그대로 동작한다.
 // 재개 훅이 없는 plugin에서는 아무 일도 하지 않는다: 여는 동작이 이미 패널을 그 자리에 세웠으므로
 // resumeOperationInPlace의 focus 폭백은 여기서 할 일이 없다.
 export function resumeDormantOnOpen(
@@ -81,6 +84,7 @@ export function resumeDormantOnOpen(
 ): void {
   const operation = operations.find((candidate) => candidate.id === operationId);
   if (!operation) return;
+  if (wasOperationBornDormant(operation.payload) && !readOperationLaunch(operation.payload).started) return;
   if (resolveOperationActivity(operation, getState().operationRuntime) !== "ended") return;
   resumeOperationInPlace(operationId, operations, plugins, () => {});
 }
