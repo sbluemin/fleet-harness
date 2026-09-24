@@ -408,6 +408,11 @@ export interface ConsoleOperationSummary {
   readonly activity: "idle" | "running" | "awaiting" | "background" | "ended";
   /** `{ nested: true }` 로 읽은 구성원만 — 이 Operation 을 대표하는 부모. */
   readonly parentOperationId?: string;
+  /**
+   * `{ nested: true }` 로 읽은 부모(구성원을 거느린 Operation)만 — 구성원의 대기·실행을 끌어올리기 전 자기 활동이다.
+   * 부모 자신의 대기·실행을 구성원 것과 가를 때 쓴다(`ownActivity ?? activity`). `activity` 와 같은 규칙으로 센다.
+   */
+  readonly ownActivity?: "idle" | "running" | "awaiting" | "background" | "ended";
 }
 
 /**

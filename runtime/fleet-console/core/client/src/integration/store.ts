@@ -652,6 +652,14 @@ export function setActiveOperation(
   setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged, ...body });
 }
 
+/**
+ * 끌어올리기 전의 런타임 — 플러그인이 보고한 원 관측이다. 공개 축(`state.operationRuntime`)은 부모가 구성원의 대기·실행을
+ * 대표하므로, 부모 자신의 활동을 가려야 하는 소비자(목표 표면의 결정 대기)만 이것을 명시적으로 읽는다.
+ */
+export function ownOperationRuntime(): Readonly<Record<string, OperationRuntimeState>> {
+  return rawOperationRuntime;
+}
+
 export function setOperationRuntime(operationId: string, next: OperationRuntimeState): void {
   // live/idle도 명시 항목으로 저장한다. 항목 삭제로 유휴를 표현하면 resumeAvailable 마커를 가진
   // live 세션이 resolveOperationActivity 폭백에서 dormant로 재분류된다(Codex P1) —
