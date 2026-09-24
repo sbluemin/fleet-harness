@@ -32,7 +32,7 @@ import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/setti
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
-import { setZenMode, useZenMode } from "../../integration/zen-mode.js";
+import { setZenMode, useZenModeState } from "../../integration/zen-mode.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -58,7 +58,9 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
 }
 
 export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps) {
-  const zenMode = useZenMode();
+  const zenState = useZenModeState();
+  // Zen에서 레일을 드러내면 아이콘 열까지 평소처럼 선다.
+  const zenMode = zenState.active && !zenState.railRevealed;
   const t = useT();
   const railShortcut = useRailShortcutLabel();
   const theaterFallback = t("rail.theater.fallback");

@@ -67,7 +67,8 @@ import {
 } from "../../integration/store.js";
 import { useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
-import { setZenMode, toggleZenMode, useZenMode } from "../../integration/zen-mode.js";
+import { isZenMode, setZenMode, toggleZenMode, useZenMode } from "../../integration/zen-mode.js";
+import { toggleZenRail, toggleZenSideBar } from "../../integration/zen-chrome-toggles.js";
 
 interface OperationSearchProps {
   readonly state: ConsoleState;
@@ -428,6 +429,14 @@ export function OperationSearch({
         break;
       }
       case "toggle-rail": {
+        if (isZenMode() && location.pathname.startsWith("/operations")) {
+          previousFocusRef.current = null;
+          const shown = toggleZenRail();
+          requestAnimationFrame(() => {
+            (shown ? document.querySelector<HTMLElement>(".right-rail-collapse") : document.querySelector<HTMLElement>(".operations-center-stage"))?.focus({ preventScroll: true });
+          });
+          break;
+        }
         setZenMode(false);
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // 구 복원 좌표(밴드 rail 토글)는 퇴역했다 — 복원을 억제하고 도착지가 받는다: 접히면
@@ -442,6 +451,14 @@ export function OperationSearch({
         break;
       }
       case "toggle-sidebar": {
+        if (isZenMode() && location.pathname.startsWith("/operations")) {
+          previousFocusRef.current = null;
+          const shown = toggleZenSideBar();
+          requestAnimationFrame(() => {
+            (shown ? document.querySelector<HTMLElement>(".side-bar-collapse") : document.querySelector<HTMLElement>(".operations-center-stage"))?.focus({ preventScroll: true });
+          });
+          break;
+        }
         setZenMode(false);
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // toggle-rail과 같은 도착지 포커스 계약 — 접히면 엣지 독, 펼치면 사이드바의 접기 컨트롤.

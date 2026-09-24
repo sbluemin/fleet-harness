@@ -38,7 +38,7 @@ import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell
 import { OperationBodyPool, type OperationBodyConfig } from "../../../core/client/src/chrome/mobile/operation-body-pool.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
-import { useZenMode } from "../../../core/client/src/integration/zen-mode.js";
+import { useZenMode, useZenModeState } from "../../../core/client/src/integration/zen-mode.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
 const DEFAULT_SHELL_WIDTH = 560;
@@ -100,7 +100,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     setSideBarNarrow(triageActive ? !queueRailPinned : mapNarrow);
   }, [triageActive, queueRailPinned, mapNarrow]);
   const railOccupiedPx = useRailOccupiedPx();
-  const sideBarOccupiedPx = zenMode ? 0 : sideBarOccupiedWidth(sideBar);
+  const zenState = useZenModeState();
+  const zenSideBarHidden = zenMode && !zenState.sideBarRevealed;
+  const sideBarOccupiedPx = zenSideBarHidden ? 0 : sideBarOccupiedWidth(sideBar);
   const arenaInsets: CanvasArenaInsets = useMemo(() => ({
     left: sideBarOccupiedPx > 0 ? sideBarOccupiedPx + CHROME_FLOAT_GUTTER : 0,
     top: 0,
@@ -841,7 +843,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           </button>
         </p>
       ) : null}
-      <div className="zen-sidebar-chrome" inert={zenMode} hidden={zenMode}>
+      <div className="zen-sidebar-chrome" inert={zenSideBarHidden} hidden={zenSideBarHidden}>
       {triageActive ? (
         <TriageSideBar
           theaters={state.theaters}

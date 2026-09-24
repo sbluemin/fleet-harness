@@ -52,7 +52,8 @@ import { useConsoleLocale, useT } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { syncExperimentModelOptionPlugins } from "../integration/experiment-model-options.js";
 import { setZenChromeSlot } from "../integration/zen-chrome-slot.js";
-import { setZenMode, toggleZenMode, useZenMode } from "../integration/zen-mode.js";
+import { isZenMode, setZenMode, toggleZenMode, useZenModeState } from "../integration/zen-mode.js";
+import { toggleZenRail, toggleZenSideBar } from "../integration/zen-chrome-toggles.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -121,7 +122,8 @@ export function App() {
   const operationsViewVisible = pathname.startsWith("/operations");
   const mobileLayout = useViewMode().effective === "mobile";
   const mobileSessionOpen = useMobileSessionOpen();
-  const zenMode = useZenMode();
+  const zenState = useZenModeState();
+  const zenMode = zenState.active;
   const zenActive = zenMode && operationsViewVisible && !mobileLayout;
   const zenAwaitingCount = state.operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
   const zenContextRef = useRef(state.activeTheaterId);
@@ -145,6 +147,20 @@ export function App() {
     if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
     else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
   }, [zenActive]);
+  // Zen 단축키로 한쪽 크롬을 숨길 때, 포커스가 그 안에 있었다면 위 Zen 진입과 같은 복귀 규칙을
+  // 따른다. 숨길 영역 밖의 포커스는 건드리지 않는다.
+  const hideZenChromeRestoringFocus = useCallback((regionSelector: string, hide: () => boolean) => {
+    const focused = document.activeElement;
+    const focusInside = focused instanceof HTMLElement && focused.closest(regionSelector) !== null;
+    if (hide() || !focusInside) return;
+    requestAnimationFrame(() => {
+      const now = document.activeElement;
+      if (now instanceof HTMLElement && now !== document.body && !now.closest("[inert], [hidden]")) return;
+      const target = workFocusRef.current;
+      if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
+      else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
+    });
+  }, []);
 
   /*
    * 모바일 여부는 폭만으로 정해지지 않는다 — Fleet Console 앱은 UA로, 사용자는 명시 선호로 켤 수
@@ -393,6 +409,11 @@ export function App() {
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed: (collapsed) => {
+        // Zen은 /operations 데스크톱에서만 켜진다. 그 안의 토글은 Zen을 유지한 채 좌측만 드러낸다.
+        if (isZenMode() && resolvePanelShortcut() === "apply") {
+          hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar);
+          return;
+        }
         setZenMode(false);
         const outcome = resolvePanelShortcut();
         if (outcome === "suppress") return;
@@ -411,6 +432,10 @@ export function App() {
         if (resolvePanelShortcut() === "apply") toggleZenMode();
       },
       toggleRailChrome: () => {
+        if (isZenMode() && resolvePanelShortcut() === "apply") {
+          hideZenChromeRestoringFocus(".right-rail", toggleZenRail);
+          return;
+        }
         setZenMode(false);
         const outcome = resolvePanelShortcut();
         if (outcome === "suppress") return;
@@ -465,7 +490,7 @@ export function App() {
   return (
     <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
-      <div className={`console-shell${zenActive ? " is-zen" : ""}`}>
+      <div className={`console-shell${zenActive ? " is-zen" : ""}${zenActive && zenState.railRevealed ? " is-zen-rail-revealed" : ""}`}>
         {/* Zen에서 서 있는 크롬은 이 손잡이 하나다. 밴드에 자리를 빌린 플러그인 항목(부관
             글리프)은 밴드가 내려가는 동안 사라지지 않고 이 손잡이 왼편 슬롯으로 옮겨 온다 —
             닿을 수 없는 곳에 숨기지 않으면서도 크롬 조각은 여전히 하나다.
