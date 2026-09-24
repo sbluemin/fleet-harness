@@ -144,6 +144,14 @@ describe("antigravity request wire", () => {
       input: [{ type: "function_call", call_id: "c", name: "t", arguments: "{}", reasoning_encrypted: "rs_68a1b2c3d4ef" }],
     }));
     expect(envelope.request.contents[0]?.parts[0]?.thoughtSignature).toBeUndefined();
+    // A Codex blob is base64url of a plausible length and passes the shape check; only its
+    // recorded issuer keeps it off this wire after a Codex → Gemini switch.
+    const codexBlob = "gAAAAABo1a2b3c4d5e6f7g8h9i0j_kLmNoPqRsTuVwXyZ-0123456789";
+    expect(isAntigravitySignature(codexBlob)).toBe(true);
+    const switched = envelopeFor(request({
+      input: [{ type: "function_call", call_id: "c", name: "t", arguments: "{}", reasoning_encrypted: codexBlob, reasoning_origin: "codex" }],
+    }));
+    expect(switched.request.contents[0]?.parts[0]?.thoughtSignature).toBeUndefined();
   });
 });
 

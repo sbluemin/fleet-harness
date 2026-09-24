@@ -439,12 +439,27 @@ function parsedArguments(raw: string): Record<string, unknown> {
   }
 }
 
+/** The origin this adapter stamps on the reasoning blobs it issues. */
+export const ANTIGRAVITY_REASONING_ORIGIN = "antigravity";
+
+/**
+ * A carried blob this wire may send back: one it issued, or one recorded before issuers were
+ * carried that still passes the shape check. The shape check alone is not enough — a Codex blob
+ * is base64url of plausible length and passes it — so a blob another provider issued is refused
+ * by its origin before the heuristic is consulted.
+ */
+function ownedSignature(item: { reasoning_encrypted?: string; reasoning_origin?: string }): string | undefined {
+  if (item.reasoning_origin !== undefined && item.reasoning_origin !== ANTIGRAVITY_REASONING_ORIGIN) return undefined;
+  return isAntigravitySignature(item.reasoning_encrypted) ? item.reasoning_encrypted : undefined;
+}
+
 function signatureFor(
-  item: { reasoning_encrypted?: string },
+  item: { reasoning_encrypted?: string; reasoning_origin?: string },
   callId: string,
   ledger: AntigravitySignatureLedger,
 ): string | undefined {
-  if (isAntigravitySignature(item.reasoning_encrypted)) return item.reasoning_encrypted;
+  const carried = ownedSignature(item);
+  if (carried !== undefined) return carried;
   const recalled = ledger.recall(callId);
   return isAntigravitySignature(recalled) ? recalled : undefined;
 }
@@ -497,9 +512,7 @@ export function geminiContents(
     const parts: GeminiPart[] = [];
     const text = canonicalMessageText(item.content);
     if (text.length > 0) {
-      const signature = role === "model" && isAntigravitySignature(item.reasoning_encrypted)
-        ? item.reasoning_encrypted
-        : undefined;
+      const signature = role === "model" ? ownedSignature(item) : undefined;
       parts.push({ text, ...(signature === undefined ? {} : { thoughtSignature: signature }) });
     }
     for (const image of canonicalMessageImages(item.content)) {

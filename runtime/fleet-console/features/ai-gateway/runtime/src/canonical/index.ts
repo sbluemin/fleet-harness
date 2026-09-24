@@ -30,6 +30,12 @@ export interface CanonicalInputMessage {
   reasoning_encrypted?: string;
   /** The provider's id for the reasoning item `reasoning_encrypted` came from. */
   reasoning_id?: string;
+  /**
+   * The provider that issued `reasoning_encrypted` (`CanonicalReasoningOutputItem.origin`). An
+   * adapter replays a blob only to the provider it came from. Absent for blobs recorded before
+   * origins were carried, whose issuer is unknown.
+   */
+  reasoning_origin?: string;
 }
 
 /** Flatten message text for adapters that only accept a string prompt body. */
@@ -83,6 +89,35 @@ export interface CanonicalFunctionCall {
   reasoning_encrypted?: string;
   /** @see CanonicalInputMessage.reasoning_id */
   reasoning_id?: string;
+  /** @see CanonicalInputMessage.reasoning_origin */
+  reasoning_origin?: string;
+}
+
+/**
+ * Replay metadata the canonical vocabulary carries on input items. No provider wire has these
+ * fields: an adapter reads the ones it consumes and never serializes any of them. An adapter that
+ * forwards canonical items onto a wire as they are must copy them through
+ * {@link withoutReplayMetadata}, because a Responses wire refuses an unknown item property with a
+ * 400 that fails the entire request — measured on the ChatGPT Codex backend as
+ * `Unknown parameter: 'input[N].reasoning_encrypted'` once a Grok-produced blob reached it.
+ */
+export const CANONICAL_REPLAY_METADATA_FIELDS = [
+  "reasoning_content",
+  "reasoning_encrypted",
+  "reasoning_id",
+  "reasoning_origin",
+] as const;
+
+/** `T` without the replay metadata, taken per member when `T` is a union of item kinds. */
+export type WithoutReplayMetadata<T> = T extends unknown
+  ? Omit<T, (typeof CANONICAL_REPLAY_METADATA_FIELDS)[number]>
+  : never;
+
+/** A copy of `item` without {@link CANONICAL_REPLAY_METADATA_FIELDS}; every other field is kept. */
+export function withoutReplayMetadata<T extends object>(item: T): WithoutReplayMetadata<T> {
+  const wireItem = { ...item };
+  for (const field of CANONICAL_REPLAY_METADATA_FIELDS) Reflect.deleteProperty(wireItem, field);
+  return wireItem as unknown as WithoutReplayMetadata<T>;
 }
 
 /**
@@ -301,6 +336,12 @@ export interface CanonicalReasoningOutputItem {
   id: string;
   type: "reasoning";
   encrypted_content?: string;
+  /**
+   * The adapter's own provider id (`"codex"`, `"xai"`, `"antigravity"`). A blob is only ever
+   * readable by the provider that issued it, and a foreign one can pass another provider's
+   * shape check — a Codex blob is valid base64 to Antigravity — so the issuer travels with it.
+   */
+  origin: string;
 }
 
 export interface CanonicalCompactionOutputItem {
@@ -393,24 +434,46 @@ export type CanonicalResponseEvent =
  * gateway's own placeholder signatures (`gateway_...`) and any provider's real ones from being
  * mistaken for one of these, and the version segment leaves room to change the encoding without
  * a decoder guessing at which shape it holds. The id may be empty; the blob never is.
+ *
+ * v2 (`fleet-reasoning:v2:<origin>:<id>:<encrypted>`) names the issuing provider. v1 carried no
+ * issuer, so a blob recorded then decodes without one and each adapter decides what it risks.
  */
-const REASONING_SIGNATURE_PREFIX = "fleet-reasoning:v1:";
+const REASONING_SIGNATURE_V1_PREFIX = "fleet-reasoning:v1:";
+const REASONING_SIGNATURE_V2_PREFIX = "fleet-reasoning:v2:";
+const REASONING_ORIGIN = /^[a-z0-9-]+$/;
 
-export function encodeReasoningSignature(id: string, encrypted: string): string {
-  return `${REASONING_SIGNATURE_PREFIX}${id}:${encrypted}`;
+/**
+ * `undefined` when the origin or id would make the signature ambiguous to split. The blob is then
+ * not carried at all: replaying it without its issuer is the one outcome worse than dropping it.
+ */
+export function encodeReasoningSignature(id: string, encrypted: string, origin: string): string | undefined {
+  if (!REASONING_ORIGIN.test(origin) || id.includes(":") || encrypted.length === 0) return undefined;
+  return `${REASONING_SIGNATURE_V2_PREFIX}${origin}:${id}:${encrypted}`;
 }
 
 export interface DecodedReasoningSignature {
   readonly id: string;
   readonly encrypted: string;
+  /** Absent for a v1 signature, which predates recording the issuer. */
+  readonly origin?: string;
 }
 
 /** `undefined` for anything this gateway did not write — including a real provider signature. */
 export function decodeReasoningSignature(signature: unknown): DecodedReasoningSignature | undefined {
-  if (typeof signature !== "string" || !signature.startsWith(REASONING_SIGNATURE_PREFIX)) {
-    return undefined;
+  if (typeof signature !== "string") return undefined;
+  if (signature.startsWith(REASONING_SIGNATURE_V2_PREFIX)) {
+    const body = signature.slice(REASONING_SIGNATURE_V2_PREFIX.length);
+    const originEnd = body.indexOf(":");
+    const idEnd = originEnd === -1 ? -1 : body.indexOf(":", originEnd + 1);
+    if (idEnd === -1) return undefined;
+    const origin = body.slice(0, originEnd);
+    const encrypted = body.slice(idEnd + 1);
+    return REASONING_ORIGIN.test(origin) && encrypted.length > 0
+      ? { origin, id: body.slice(originEnd + 1, idEnd), encrypted }
+      : undefined;
   }
-  const body = signature.slice(REASONING_SIGNATURE_PREFIX.length);
+  if (!signature.startsWith(REASONING_SIGNATURE_V1_PREFIX)) return undefined;
+  const body = signature.slice(REASONING_SIGNATURE_V1_PREFIX.length);
   const separator = body.indexOf(":");
   if (separator === -1) return undefined;
   const encrypted = body.slice(separator + 1);

@@ -400,7 +400,8 @@ function forXaiResponsesBackend(
       input.push(wireItem);
       continue;
     }
-    const { reasoning_encrypted: encrypted, reasoning_id: reasoningId } = item;
+    const encrypted = xaiReplayBlob(item);
+    const { reasoning_id: reasoningId } = item;
     const wireItem = withoutReplayMetadata(item);
     // The blob belongs to the turn that produced this item, so it is replayed as its own item
     // immediately before it — the position the wire emitted it in, and the one a prefix cache
@@ -425,12 +426,25 @@ function forXaiResponsesBackend(
   };
 }
 
+const XAI_REASONING_ORIGIN = "xai";
+
+/**
+ * The blob this wire may replay: its own, or one recorded before issuers were carried (a v1
+ * signature). Another provider's blob would be answered with a 200 that closes empty and cost a
+ * round trip to recover from, so it is never sent.
+ */
+function xaiReplayBlob(item: { reasoning_encrypted?: string; reasoning_origin?: string }): string | undefined {
+  const encrypted = item.reasoning_encrypted;
+  if (encrypted === undefined || encrypted.length === 0) return undefined;
+  return item.reasoning_origin === undefined || item.reasoning_origin === XAI_REASONING_ORIGIN
+    ? encrypted
+    : undefined;
+}
+
 /** Whether this request would replay any reasoning blob at all. */
 function replaysXaiReasoning(request: CanonicalResponseRequest): boolean {
   return request.input.some((item) =>
-    item.type !== "function_call_output"
-    && typeof item.reasoning_encrypted === "string"
-    && item.reasoning_encrypted.length > 0);
+    item.type !== "function_call_output" && xaiReplayBlob(item) !== undefined);
 }
 
 type XaiWireTool = Omit<NonNullable<CanonicalResponseRequest["tools"]>[number], "defer_loading">;
@@ -1236,6 +1250,7 @@ function outputItem(value: unknown): CanonicalOutputItem | undefined {
       id: typeof item.id === "string" ? item.id : "",
       type: "reasoning",
       encrypted_content: encrypted,
+      origin: XAI_REASONING_ORIGIN,
     };
   }
   return undefined;

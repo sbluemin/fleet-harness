@@ -8,6 +8,7 @@ import type {
 import { UpstreamProtocolError } from "../../../transport/upstream-sse.js";
 import { logRawWireEvent } from "../../../transport/wire-log.js";
 import {
+  ANTIGRAVITY_REASONING_ORIGIN,
   isAntigravitySignature,
   type AntigravitySignatureLedger,
   type ToolNameCodec,
@@ -198,6 +199,7 @@ export async function* translateAntigravityStream(
         id,
         type: "reasoning",
         ...(signature === undefined ? {} : { encrypted_content: signature }),
+        origin: ANTIGRAVITY_REASONING_ORIGIN,
       },
     };
     outputIndex += 1;

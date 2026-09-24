@@ -10,6 +10,7 @@ import type {
   CanonicalToolChoice,
   CanonicalUsage,
   CanonicalWebSearchAction,
+  DecodedReasoningSignature,
   ReasoningEffort,
 } from "../../../canonical/index.js";
 import {
@@ -483,7 +484,7 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
   const items: CanonicalResponseRequest["input"] = [];
   const parts: CanonicalInputContentPart[] = [];
   let reasoningContent = "";
-  let reasoningBlob: { id: string; encrypted: string } | undefined;
+  let reasoningBlob: DecodedReasoningSignature | undefined;
 
   // Text and blob are taken together and reset together: both describe the one reasoning trace
   // that preceded the item now being emitted, and the caller pairs them with it by position.
@@ -491,6 +492,7 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
     reasoning_content?: string;
     reasoning_encrypted?: string;
     reasoning_id?: string;
+    reasoning_origin?: string;
   } => {
     if (role !== "assistant") return {};
     const blob = reasoningBlob;
@@ -503,6 +505,7 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
       ...(blob === undefined ? {} : {
         reasoning_encrypted: blob.encrypted,
         ...(blob.id.length === 0 ? {} : { reasoning_id: blob.id }),
+        ...(blob.origin === undefined ? {} : { reasoning_origin: blob.origin }),
       }),
     };
   };
@@ -911,11 +914,11 @@ export async function collectAnthropicMessage(
         // The reasoning item closes carrying the provider's opaque blob. It rides back to the
         // client on the thinking block's signature, the one field a client returns verbatim.
         if (event.item.type === "reasoning") {
-          if (event.item.encrypted_content !== undefined) {
-            reasoningBlobs.set(
-              event.item.id,
-              encodeReasoningSignature(event.item.id, event.item.encrypted_content),
-            );
+          const signature = event.item.encrypted_content === undefined
+            ? undefined
+            : encodeReasoningSignature(event.item.id, event.item.encrypted_content, event.item.origin);
+          if (signature !== undefined) {
+            reasoningBlobs.set(event.item.id, signature);
             // A trace whose summary never streamed still has a blob worth carrying; an empty
             // thinking block is the only place to hang it, and clients render nothing for it.
             if (!thinking.has(event.item.id)) thinking.set(event.item.id, "");
@@ -1197,9 +1200,12 @@ export async function* encodeAnthropicSse(
       }
       case "response.output_item.done":
         if (event.item.type === "reasoning") {
-          if (event.item.encrypted_content !== undefined) {
+          const signature = event.item.encrypted_content === undefined
+            ? undefined
+            : encodeReasoningSignature(event.item.id, event.item.encrypted_content, event.item.origin);
+          if (signature !== undefined) {
             const key = reasoningBlockKey(event.item.id);
-            reasoningBlobs.set(key, encodeReasoningSignature(event.item.id, event.item.encrypted_content));
+            reasoningBlobs.set(key, signature);
             // The trace may have streamed no summary at all; the blob still needs a block to
             // ride out on, so open an empty thinking block for it and close it immediately.
             if (!blocks.has(key)) {

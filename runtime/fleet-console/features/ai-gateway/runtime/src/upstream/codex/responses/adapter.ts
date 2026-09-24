@@ -13,7 +13,8 @@ import type {
   CanonicalUsage,
   CanonicalWebSearchAction,
   CanonicalWebSearchCallOutputItem,
-  CanonicalWebSearchSource
+  CanonicalWebSearchSource,
+  WithoutReplayMetadata
 } from "../../../canonical/index.js";
 import { withoutReplayMetadata } from "../../../canonical/index.js";
 import {
@@ -37,6 +38,8 @@ export type { FetchLike };
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 /** ChatGPT 구독으로 Codex가 호출하는 백엔드. Platform API와 다른 표면이다. */
 export const CHATGPT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
+/** The origin the Codex subscription adapter stamps on, and alone replays, reasoning blobs. */
+const CODEX_REASONING_ORIGIN = "codex";
 const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 /**
  * Longest the upstream may send no bytes at all before the read is abandoned.
@@ -103,10 +106,26 @@ type OpenAIResponsesWireTool = OpenAIResponsesWireFunctionTool | OpenAIResponses
 
 type OpenAIResponsesWireToolChoice = CanonicalToolChoice | { type: "web_search" };
 
+/**
+ * A reasoning blob handed back to the backend that issued it. No id: under `store: false` the
+ * backend holds no item to look one up by, and it accepts the item without one (measured
+ * 2026-09-24, U2) — as oh-my-pi and codex-rs replay it.
+ */
+interface OpenAIResponsesWireReasoningItem {
+  type: "reasoning";
+  summary: [];
+  encrypted_content: string;
+}
+
+type OpenAIResponsesWireInputItem =
+  | WithoutReplayMetadata<CanonicalResponseRequest["input"][number]>
+  | OpenAIResponsesWireReasoningItem;
+
 type OpenAIResponsesWireRequest = Omit<
   CanonicalResponseRequest,
-  "tools" | "tool_choice" | "native_tools"
+  "tools" | "tool_choice" | "native_tools" | "input"
 > & {
+  input: OpenAIResponsesWireInputItem[];
   tools?: OpenAIResponsesWireTool[];
   tool_choice?: OpenAIResponsesWireToolChoice;
   /** Requests extra output fields, e.g. `web_search_call.action.sources` for hosted web search results. */
@@ -127,6 +146,11 @@ export interface OpenAIResponsesAdapterOptions {
   dropSamplingParams?: boolean;
   /** 호출자가 스트림 소비 중 안전하게 실행할 수 있는 도구. Codex Astra에만 적용한다. */
   asyncToolNames?: readonly string[];
+  /**
+   * The origin whose reasoning blobs this surface replays. Only the Codex subscription adapter
+   * sets it: the Platform API surface replays nothing, and no surface replays another origin's blob.
+   */
+  reasoningReplayOrigin?: string;
 }
 
 export class OpenAIResponsesAdapter implements AiGatewayAdapter {
@@ -138,11 +162,13 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
   private readonly extraHeaders: Readonly<Record<string, string>>;
   private readonly dropSamplingParams: boolean;
   private readonly asyncToolNames: ReadonlySet<string>;
+  private readonly reasoningReplayOrigin: string | undefined;
 
   constructor(options: OpenAIResponsesAdapterOptions = {}) {
     this.url = options.url ?? OPENAI_RESPONSES_URL;
     this.extraHeaders = options.headers ?? {};
     this.dropSamplingParams = options.dropSamplingParams ?? false;
+    this.reasoningReplayOrigin = options.reasoningReplayOrigin;
     this.asyncToolNames = new Set(options.asyncToolNames);
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.maxBodyBytes = positiveInteger(
@@ -173,7 +199,7 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
 
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
-    const payload = forOpenAIResponsesBackend(request, this.dropSamplingParams);
+    const payload = forOpenAIResponsesBackend(request, this.dropSamplingParams, this.reasoningReplayOrigin);
     if (this.dropSamplingParams && request.model === "gpt-6-astra"
       && request.parallel_tool_calls !== false && request.tool_choice !== "none") {
       let hasAsyncTools = false;
@@ -273,6 +299,7 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     super({
       url: CHATGPT_CODEX_RESPONSES_URL,
       dropSamplingParams: true,
+      reasoningReplayOrigin: CODEX_REASONING_ORIGIN,
       ...(options.asyncToolNames ? { asyncToolNames: options.asyncToolNames } : {}),
       headers: {
         ...(options.accountId ? { "chatgpt-account-id": options.accountId } : {}),
@@ -306,10 +333,14 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     // 최대 2회 호출 예산. fetch-level UND_ERR_SOCKET retry가 이 예산을 소모하면
     // stream-level retry는 허용하지 않아 3번째 호출을 막는다.
     let retryAvailable = true;
+    // A replay refusal is its own fault with its own budget, as xAI's adapter keeps its two: the
+    // socket budget covers a transport that failed, this one a blob the backend will not read.
+    // Once dropped, the replay stays dropped for every later attempt of this turn.
+    let activeRequest = request;
 
     let response: AdapterResponse;
     try {
-      response = await super.stream(request, callOptions);
+      response = await super.stream(activeRequest, callOptions);
     } catch (error) {
       if (!isRetryableCodexFetchSocketTermination(error, callOptions.signal, this.isMarkedFetchFailure)) {
         unlinkCallAbort();
@@ -324,10 +355,20 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       });
       try {
         await abortableDelay(CODEX_RETRY_DELAY_MS, callOptions.signal);
-        response = await super.stream(request, callOptions);
+        response = await super.stream(activeRequest, callOptions);
       } catch (retryError) {
         unlinkCallAbort();
         throw retryError;
+      }
+    }
+    if (!response.ok && replaysReasoning(activeRequest, CODEX_REASONING_ORIGIN) && isRefusedReasoningReplay(response)) {
+      activeRequest = withoutReplayedReasoning(activeRequest, CODEX_REASONING_ORIGIN);
+      wireLog("codex.replay.dropped", { status: response.status, code: CODEX_REFUSED_REPLAY_CODE });
+      try {
+        response = await super.stream(activeRequest, callOptions);
+      } catch (error) {
+        unlinkCallAbort();
+        throw error;
       }
     }
     if (!response.ok) {
@@ -338,13 +379,32 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       ...response,
       events: retryCodexStream(response.events, async (retrySignal) => {
         await abortableDelay(CODEX_RETRY_DELAY_MS, retrySignal);
-        const retried = await super.stream(request, { ...callOptions, signal: retrySignal });
+        const retried = await super.stream(activeRequest, { ...callOptions, signal: retrySignal });
         if (!retried.ok) {
           throw new UpstreamProtocolError(`Codex retry failed with status ${retried.status}`);
         }
         return retried.events;
       }, callController, unlinkCallAbort, retryAvailable),
     };
+  }
+}
+
+/**
+ * The backend's refusal of a replayed blob it cannot read — damaged, or not issued for this
+ * account. It arrives as a 400 before any stream opens, `{"error":{"code":
+ * "invalid_encrypted_content",…}}` (measured 2026-09-24, U4), so it is recognized by its code
+ * rather than inferred from an empty stream as xAI's must be. Left unhandled, the blob stays in
+ * the client's history and every later turn of the conversation fails the same way.
+ */
+const CODEX_REFUSED_REPLAY_CODE = "invalid_encrypted_content";
+
+function isRefusedReasoningReplay(response: Extract<AdapterResponse, { ok: false }>): boolean {
+  if (response.status !== 400) return false;
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(response.body));
+    return isRecord(parsed) && isRecord(parsed.error) && parsed.error.code === CODEX_REFUSED_REPLAY_CODE;
+  } catch {
+    return false;
   }
 }
 
@@ -528,7 +588,11 @@ function commitsCodexOutput(event: CanonicalResponseEvent): boolean {
     // 막지 않도록 lead 버퍼에 보류한다. function_call/web_search 추가와 message done은
     // 기존대로 출력을 확정한다.
     case "response.output_item.added":
-      return event.item.type !== "message";
+      return event.item.type !== "message" && event.item.type !== "reasoning";
+    // reasoning은 요약 delta와 같은 lead다. 그 done이 출력을 확정하면 reasoning 뒤에서 오는
+    // server_error가 retry되지 못한다.
+    case "response.output_item.done":
+      return event.item.type !== "reasoning";
     default:
       return true;
   }
@@ -606,25 +670,28 @@ async function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<vo
 function forOpenAIResponsesBackend(
   request: CanonicalResponseRequest,
   dropSamplingParams: boolean,
+  reasoningReplayOrigin: string | undefined,
 ): OpenAIResponsesWireRequest {
   const source = dropSamplingParams ? forChatGptBackend(request) : { ...request };
   const {
     tools: canonicalTools,
     tool_choice: canonicalToolChoice,
     native_tools: nativeTools,
+    input: _canonicalInput,
     ...rest
   } = source;
-  const payload: OpenAIResponsesWireRequest = { ...rest };
+  const payload: OpenAIResponsesWireRequest = { ...rest, input: [] };
 
   // Canonical-only input fields must never reach the wire. The Responses API rejects an
   // unknown input property with a 400 that fails the entire request — observed as
   // `Unknown parameter: 'input[N].reasoning_content'`, and as `…reasoning_encrypted` when a
   // conversation carrying another provider's reasoning blob continues on this backend — so every
-  // item is stripped here rather than at each producer. This backend replays none of that metadata.
-  payload.input = request.input.map((item) => {
+  // item is stripped here rather than at each producer.
+  for (const item of request.input) {
     const wireType = (item as { type?: unknown }).type;
     if (wireType === "compaction" || wireType === "compaction_trigger") {
-      return item;
+      payload.input.push(item as OpenAIResponsesWireInputItem);
+      continue;
     }
     if (item.type === "function_call_output") {
       const {
@@ -632,10 +699,18 @@ function forOpenAIResponsesBackend(
         tool_references: _toolReferences,
         ...wireItem
       } = item;
-      return wireItem;
+      payload.input.push(wireItem);
+      continue;
     }
-    return withoutReplayMetadata(item);
-  });
+    // The one piece of that metadata this backend takes back is its own reasoning blob, as a
+    // reasoning item placed immediately before the item it preceded — where the backend emitted
+    // it, and where a prefix cache matches it byte for byte on every later turn.
+    const blob = replayableReasoningBlob(item, reasoningReplayOrigin);
+    if (blob !== undefined) {
+      payload.input.push({ type: "reasoning", summary: [], encrypted_content: blob });
+    }
+    payload.input.push(withoutReplayMetadata(item));
+  }
 
   const wireTools: OpenAIResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
     const { defer_loading: _deferLoading, ...wireTool } = tool;
@@ -688,15 +763,49 @@ function forOpenAIResponsesBackend(
 
   // Hosted web search only reports its sources when explicitly requested via `include`.
   // Without this, `response.output_item.done` for `web_search_call` arrives with no `action.sources`.
-  if (hasHostedWebSearch) {
+  // A replaying surface asks for the reasoning blob the same way. The ChatGPT backend was measured
+  // returning it unasked (2026-09-24, U1), but that is undocumented; asking costs nothing.
+  const includes: string[] = [];
+  if (hasHostedWebSearch) includes.push("web_search_call.action.sources");
+  if (reasoningReplayOrigin !== undefined && request.reasoning !== undefined) {
+    includes.push("reasoning.encrypted_content");
+  }
+  if (includes.length > 0) {
     const rawInclude = (source as { include?: unknown }).include;
     const existingInclude = Array.isArray(rawInclude)
       ? rawInclude.filter((entry): entry is string => typeof entry === "string")
       : [];
-    payload.include = Array.from(new Set([...existingInclude, "web_search_call.action.sources"]));
+    payload.include = Array.from(new Set([...existingInclude, ...includes]));
   }
 
   return payload;
+}
+
+/** The item's reasoning blob when this surface replays blobs of its origin; otherwise nothing. */
+function replayableReasoningBlob(
+  item: { reasoning_encrypted?: string; reasoning_origin?: string },
+  reasoningReplayOrigin: string | undefined,
+): string | undefined {
+  if (reasoningReplayOrigin === undefined || item.reasoning_origin !== reasoningReplayOrigin) return undefined;
+  return item.reasoning_encrypted !== undefined && item.reasoning_encrypted.length > 0
+    ? item.reasoning_encrypted
+    : undefined;
+}
+
+/** Whether `request` would put any reasoning item on the wire of a surface replaying `origin`. */
+function replaysReasoning(request: CanonicalResponseRequest, origin: string): boolean {
+  return request.input.some((item) =>
+    item.type !== "function_call_output" && replayableReasoningBlob(item, origin) !== undefined);
+}
+
+/** `request` with this origin's blobs taken off every item, so nothing of it is replayed. */
+function withoutReplayedReasoning(request: CanonicalResponseRequest, origin: string): CanonicalResponseRequest {
+  return {
+    ...request,
+    input: request.input.map((item) => item.type === "function_call_output" || item.reasoning_origin !== origin
+      ? item
+      : withoutReplayMetadata(item) as typeof item),
+  };
 }
 
 /**
@@ -1224,6 +1333,17 @@ function outputItem(value: unknown): CanonicalOutputItem | undefined {
       type: "compaction",
       ...(typeof item.id === "string" ? { id: item.id } : {}),
       encrypted_content: string(item.encrypted_content, "item.encrypted_content"),
+    };
+  }
+  // Surfaced only for its blob, which the client carries back so the next turn continues this
+  // turn's reasoning instead of starting over. The summary already streamed as reasoning deltas.
+  if (item.type === "reasoning") {
+    if (typeof item.encrypted_content !== "string" || item.encrypted_content.length === 0) return undefined;
+    return {
+      id: typeof item.id === "string" ? item.id : "",
+      type: "reasoning",
+      encrypted_content: item.encrypted_content,
+      origin: CODEX_REASONING_ORIGIN,
     };
   }
   if (item.type === "web_search_call") {
