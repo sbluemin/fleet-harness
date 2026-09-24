@@ -116,12 +116,13 @@ describe("codex responses adapter", () => {
     expect(body).not.toHaveProperty("include");
   });
 
-  it("never forwards another provider's reasoning replay metadata onto the Codex wire", async () => {
+  it("replays only its own reasoning blobs, as an item before the call they preceded", async () => {
     // A conversation that reasoned on Grok carries its blobs in thinking signatures. Continued on
     // a Codex model without the client knowing (e.g. an operator model override), each blob lands
     // on the item it preceded; the backend refuses any unknown item field with a 400 that fails
-    // the whole request.
-    const signature = encodeReasoningSignature("rs_grok", "grok-opaque-blob");
+    // the whole request, and a foreign blob is one it cannot read. Its own blob it takes back.
+    const grok = encodeReasoningSignature("rs_grok", "grok-opaque-blob", "xai");
+    const codex = encodeReasoningSignature("rs_codex", "gAAAAAB-codex-blob", "codex");
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     await new AnthropicMessagesGateway(new CodexResponsesAdapter({ fetch: fetchMock })).stream({
       model: "claude-gateway--xai--grok-4.7",
@@ -130,28 +131,65 @@ describe("codex responses adapter", () => {
       messages: [
         { role: "user", content: "Read a.txt." },
         { role: "assistant", content: [
-          { type: "thinking", thinking: "Read it first.", signature },
+          { type: "thinking", thinking: "Read it first.", signature: grok },
           { type: "tool_use", id: "call_a", name: "Read", input: { file_path: "a.txt" } },
         ] },
         { role: "user", content: [{ type: "tool_result", tool_use_id: "call_a", content: "17" }] },
         { role: "assistant", content: [
-          { type: "thinking", thinking: "That is the answer.", signature },
-          { type: "text", text: "17" },
+          { type: "thinking", thinking: "Now b.", signature: codex },
+          { type: "tool_use", id: "call_b", name: "Read", input: { file_path: "b.txt" } },
         ] },
-        { role: "user", content: "And b.txt?" },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "call_b", content: "33" }] },
       ],
     } as never, { apiKey: "k", model: "gpt-6-sol" });
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { input: Array<Record<string, unknown>> };
+    const reasoning = body.input.filter((item) => item.type === "reasoning");
+    expect(reasoning).toEqual([{ type: "reasoning", summary: [], encrypted_content: "gAAAAAB-codex-blob" }]);
+    expect(body.input[body.input.indexOf(reasoning[0]!) + 1]).toMatchObject({ type: "function_call", call_id: "call_b" });
     expect(body.input.find((item) => item.type === "function_call"))
       .toMatchObject({ call_id: "call_a", name: "Read" });
-    expect(body.input.find((item) => item.type === "message" && item.role === "assistant"))
-      .toMatchObject({ content: "17" });
     for (const item of body.input) {
       expect(item).not.toHaveProperty("reasoning_encrypted");
       expect(item).not.toHaveProperty("reasoning_id");
       expect(item).not.toHaveProperty("reasoning_content");
+      expect(item).not.toHaveProperty("reasoning_origin");
     }
+  });
+
+  it("resends a turn without its reasoning replay when the backend refuses the blob", async () => {
+    // A damaged blob, or one issued for another account, is refused before any stream opens. It
+    // sits in the client's history, so without this every later turn would fail the same way.
+    const wireLogPath = wireLogFile();
+    const refused = new Response(JSON.stringify({ error: {
+      message: "The encrypted content gAAA...1Ea8 could not be verified.",
+      type: "invalid_request_error",
+      param: null,
+      code: "invalid_encrypted_content",
+    } }), { status: 400, headers: { "content-type": "application/json" } });
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(refused)
+      .mockResolvedValueOnce(sse(
+        `data: ${JSON.stringify({ type: "response.created", response: { id: "r", model: "gpt-6-sol" } })}\n\n`,
+        `data: ${JSON.stringify({ type: "response.completed", response: { id: "r", model: "gpt-6-sol", usage: { input_tokens: 1, output_tokens: 1 } } })}\n\n`,
+      ));
+    const events: CanonicalResponseEvent[] = [];
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      input: [
+        { type: "message", role: "user", content: "Read a.txt." },
+        { type: "function_call", call_id: "call_a", name: "Read", arguments: "{}", reasoning_encrypted: "gAAAAAB-damaged", reasoning_origin: "codex" },
+        { type: "function_call_output", call_id: "call_a", output: "17" },
+      ],
+    }), { apiKey: "k" });
+    if (!response.ok) throw new Error(`expected recovery, got ${response.status}`);
+    for await (const event of response.events) events.push(event);
+
+    const bodies = fetchMock.mock.calls.map((call) => JSON.parse(String(call[1]?.body)) as { input: Array<{ type?: string }> });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]?.input.some((item) => item.type === "reasoning")).toBe(true);
+    expect(bodies[1]?.input.some((item) => item.type === "reasoning")).toBe(false);
+    expect(events.at(-1)?.type).toBe("response.completed");
+    expect(readWireLogLines(wireLogPath).some((entry) => entry.event === "codex.replay.dropped")).toBe(true);
   });
 
   it("drops only the tool patterns the backend's regex engine rejects", async () => {
