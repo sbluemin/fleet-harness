@@ -1,5 +1,6 @@
 import { readStoredWhatsNewSeenVersion, evaluateAutomaticWhatsNew, remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists, writeStoredWhatsNewSeenVersion } from "../../../../features/updates/client/release-state.js";
 import { normalizeOperationOwner, partitionListedOperations } from "@fleet-console/sdk/operations/browser";
+import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
@@ -694,13 +695,7 @@ function deriveNestedRuntime(
     const root = raw[rootId];
     if (!root || root.lifecycle !== "live") continue;
     const members = memberIds.map((id) => raw[id]).filter((value): value is Extract<OperationRuntimeState, { lifecycle: "live" }> => value?.lifecycle === "live");
-    const activity = root.activity === "awaiting" || members.some((member) => member.activity === "awaiting")
-      ? "awaiting"
-      : root.activity === "running"
-        ? "running"
-        : root.activity === "background" || members.some((member) => member.activity === "running" || member.activity === "background")
-          ? "background"
-          : root.activity;
+    const activity = liftNestedActivity(root.activity, members.map((member) => member.activity));
     if (activity !== root.activity) result[rootId] = { lifecycle: "live", activity };
   }
   const rawIds = Object.keys(result);

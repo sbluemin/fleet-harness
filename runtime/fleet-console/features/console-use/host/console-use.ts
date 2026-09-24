@@ -7,6 +7,7 @@ import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTran
 import { createMcpToolRegistry, createMcpToolSnapshotStore, type AgentToolSpec, type AgentToolCtx } from "@fleet-console/agent-runtime/tools";
 import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { isListedOperation, type OperationNode } from "@fleet-console/sdk/operations";
+import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
 import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
 
 /**
@@ -260,7 +261,20 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         attention: observation?.attention ?? { kind: snapshotActivity === "awaiting" ? "input" : "unknown" },
       };
     });
-    return { snapshotAt: current?.takenAt ?? null, values };
+    // 사이드바처럼 부모 한 행이 구성원을 대표한다 — 구성원의 대기·실행을 부모 행에 끌어올린다(클라이언트 공개 활동 축과 같은 규칙).
+    // 구성원 행(nested)은 자기 활동 그대로다. 구성원의 대기로 대기가 된 부모 행은 그 구성원의 attention 을 싣는다.
+    const LIVE = new Set(["idle", "running", "awaiting", "background"]);
+    const membersOf = new Map<string, (typeof values)[number][]>();
+    for (const row of values) if (row.parentOperationId) membersOf.set(row.parentOperationId, [...(membersOf.get(row.parentOperationId) ?? []), row]);
+    const represented = membersOf.size === 0 ? values : values.map((row) => {
+      const members = membersOf.get(row.id)?.filter((member) => LIVE.has(member.activity));
+      if (!members?.length || !LIVE.has(row.activity)) return row;
+      const activity = liftNestedActivity(row.activity, members.map((member) => member.activity));
+      if (activity === row.activity) return row;
+      const waiting = activity === "awaiting" ? members.find((member) => member.activity === "awaiting") : undefined;
+      return { ...row, activity, ...(waiting ? { attention: waiting.attention } : {}) };
+    });
+    return { snapshotAt: current?.takenAt ?? null, values: represented };
   };
   const define = <S extends z.ZodType>(id: string, description: string, schema: S, run: (args: z.output<S>, ctx: AgentToolCtx) => unknown | Promise<unknown>): AgentToolSpec => ({
     id, tag: id, title: id, description, promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [],

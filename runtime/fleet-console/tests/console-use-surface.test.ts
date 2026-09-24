@@ -38,8 +38,9 @@ describe("Console Use surface boundaries", () => {
     const deps = { directory, operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }] };
     const control = createConsoleControl(deps);
     // 관측: 자식은 도는 중, 사람의 것은 유휴 터미널. 휴면은 프로세스를 죽이므로 유휴 터미널만 통과한다.
-    const observation = (activity: "running" | "idle") => ({ activity, lifecycle: "live" as const, observedAt: new Date().toISOString(), source: "host" as const, attention: { kind: "none" as const }, surface: "terminal" as const, supportedActions: [], output: { status: "unavailable" as const, outcome: "unknown" as const } });
-    control.attach({ observe: (id) => id === "op-child" ? observation("running") : id === "op-human" ? observation("idle") : null, execute: async () => { throw new Error("not used"); } });
+    // 부모(호출자)는 쉬고 그 구성원이 입력을 기다린다 — 스캔에서는 부모 행이 구성원의 대기를 대표해야 한다.
+    const observation = (activity: "running" | "idle" | "awaiting") => ({ activity, lifecycle: "live" as const, observedAt: new Date().toISOString(), source: "host" as const, attention: { kind: activity === "awaiting" ? "input" as const : "none" as const }, surface: "terminal" as const, supportedActions: [], output: { status: "unavailable" as const, outcome: "unknown" as const } });
+    control.attach({ observe: (id) => id === "op-child" ? observation("running") : id === "op-human" ? observation("idle") : id === "op-parent" ? observation("idle") : id === "op-member" ? observation("awaiting") : null, execute: async () => { throw new Error("not used"); } });
     let contributedCalls = 0;
     const calls: unknown[] = [];
     const hostWithCalls = createConsoleUseMcpHost({ ...deps, control, surface, language: () => "en", onCall: (event) => calls.push(event) });
@@ -88,7 +89,9 @@ describe("Console Use surface boundaries", () => {
     expect(contributedCalls).toBe(1);
     // 구성원은 스캔의 기본 목록에서 빠지고(부관·Admiral 이 평범한 행으로 보지 않는다) nested 로 물을 때만 부모와 함께 선다.
     expect((await call("op-parent", "console_operations", {})).operations.map((row: { id: string }) => row.id)).toEqual(["op-child", "op-human", "op-parent"]);
-    expect((await call("op-parent", "console_operations", { nested: true })).operations).toEqual(expect.arrayContaining([expect.objectContaining({ id: "op-member", parentOperationId: "op-parent" })]));
+    expect((await call("op-parent", "console_operations", { nested: true })).operations).toEqual(expect.arrayContaining([expect.objectContaining({ id: "op-member", parentOperationId: "op-parent", activity: "awaiting" })]));
+    // 기본 스캔의 부모 행은 구성원의 대기를 대표한다 — 사이드바처럼 「누가 기다리나」 스캔이 비지 않는다.
+    expect((await call("op-parent", "console_operations", { activity: "awaiting" })).operations).toEqual([expect.objectContaining({ id: "op-parent", activity: "awaiting", attention: { kind: "input" } })]);
     // console_operation 은 자식의 열린 질문과 계보를 함께 싣는다.
     expect(await call("op-parent", "console_operation", { operationId: "op-child" })).toMatchObject({ launchedBy: me, asks: [{ id: "ask-q", form: "question" }, { id: "ask-plan", form: "plan" }] });
     control.dispose();
