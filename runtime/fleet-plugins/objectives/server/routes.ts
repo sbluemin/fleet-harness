@@ -92,6 +92,29 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
 
   const groupsOf = (theaterId: string) => ctx.host.operations.groups?.list(theaterId) ?? [];
   const item = (value: ObjectiveItem) => ({ item: value });
+  const syncSidebarOrder = (moved: ObjectiveItem) => {
+    const reorder = ctx.host.operations.reorder;
+    if (!reorder) return;
+    const members = ctx.host.operations.list().filter((node) => node.theaterId === moved.theaterId && (node.groupId ?? null) === moved.groupId);
+    const memberIds = new Set(members.map((node) => node.id));
+    const boardIds = store.list(moved.theaterId).filter((entry) => entry.groupId === moved.groupId && memberIds.has(entry.id)).map((entry) => entry.id);
+    const objectives = new Set(boardIds);
+    // 목표가 차지한 자리만 재배열한다. 터미널·담당 Operation 은 기존 자리에 그대로 둔다.
+    const slots = members.map((node) => node.id);
+    let index = 0;
+    const desired = slots.map((id) => objectives.has(id) ? boardIds[index++]! : id);
+    if (desired.every((id, at) => id === slots[at])) return;
+    // 호스트 포트는 한 덩어리를 삽입하므로 앞에서부터 목표 하나씩 제자리로 옮긴다.
+    // 앞 멤버를 anchor 로 쓰면 이미 정렬된 접두부와 비목표 Operation 의 자리를 보존한다.
+    const current = [...slots];
+    for (let at = 0; at < desired.length; at += 1) {
+      const id = desired[at]!;
+      if (!objectives.has(id) || current[at] === id) continue;
+      reorder({ theaterId: moved.theaterId, groupId: moved.groupId, operationIds: [id], position: at === 0 ? "first" : { after: desired[at - 1]! } });
+      current.splice(current.indexOf(id), 1);
+      current.splice(at, 0, id);
+    }
+  };
   // 지휘관이 일하는 동안에도 계속 잠기는 것 — 구상·시작·제목과 일정·완료·삭제·일괄 재배선. 먼저 중단해야 한다.
   // 지휘관 자신의 도구 경로(console-tools)는 이 문을 지나지 않는다.
   const unlessBusy = <A extends { itemId: string }, R>(run: (body: A) => R) => (body: A): R => { if (launch.busy(body.itemId)) throw new ObjectiveStoreError("item_busy"); return run(body); };
@@ -134,10 +157,15 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       return current;
     }))) },
     // 순서는 내용이 아니다 — 지휘관이 일하는 동안에도 사람이 목록을 정리할 수 있게 busy 잠금을 지나지 않는다.
-    { name: "item/move", method: "POST", summary: "Reorder an objective before or after another objective of the same Theater.", handler: json(itemRef.extend({ beforeId: ids.optional(), afterId: ids.optional() }).refine((body) => (body.beforeId === undefined) !== (body.afterId === undefined)), ({ itemId, beforeId, afterId }) => item(store.move(itemId, beforeId !== undefined ? { beforeId } : { afterId: afterId! }))) },
+    { name: "item/move", method: "POST", summary: "Reorder an objective before or after another objective of the same Theater.", handler: json(itemRef.extend({ beforeId: ids.optional(), afterId: ids.optional() }).refine((body) => (body.beforeId === undefined) !== (body.afterId === undefined)), ({ itemId, beforeId, afterId }) => {
+      const moved = store.move(itemId, beforeId !== undefined ? { beforeId } : { afterId: afterId! });
+      // 보드의 저장은 이미 끝났다. 호스트 동기화 실패가 성공한 카드 이동을 실패로 보이게 해서는 안 된다.
+      try { syncSidebarOrder(moved); } catch (error) { console.warn(`[objectives] sidebar reorder failed: ${error instanceof Error ? error.message : String(error)}`); }
+      return item(moved);
+    }) },
     // 목표를 지우면 지휘관 Operation 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
     { name: "item/remove", method: "POST", summary: "Delete an objective by closing its Commander Operation (restorable during the undo window).", handler: json(itemRef, unlessBusy(({ itemId }) => item(launch.remove(itemId)))) },
-    { name: "item/complete", method: "POST", summary: "Complete an objective, or reopen it with undone.", handler: json(itemRef.extend({ undone: z.boolean().optional() }), unlessBusy(({ itemId, undone }) => item(undone ? store.reopen(itemId) : store.complete(itemId)))) },
+    { name: "item/complete", method: "POST", summary: "Complete an objective and put its Operations to sleep, or reopen it with undone.", handler: json(itemRef.extend({ undone: z.boolean().optional() }), unlessBusy(({ itemId, undone }) => item(undone ? store.reopen(itemId) : launch.complete(itemId)))) },
     { name: "step/add", method: "POST", summary: "Add a mission.", handler: json(itemRef.extend({ step: stepAddSchema }), steerable(({ step }) => step.assign === undefined, ({ itemId, step }) => edited(["steps"], () => launch.stepAdded(itemId, step, { by: "human" })))) },
     { name: "step/patch", method: "POST", summary: "Edit a mission (text, done, dependencies).", handler: json(stepRef.extend({ patch: stepPatchSchema }), steerable(({ itemId, stepId, patch }) => only(patch, ["text"]) && notStarted(itemId, stepId), ({ itemId, stepId, patch }) => edited(stepKinds(patch), () => launch.stepPatched(itemId, stepId, patch)))) },
     // 읽음은 편집이 아니다 — 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 것도 없다.

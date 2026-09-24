@@ -22,6 +22,8 @@ export interface LaunchService {
   create(input: { readonly theaterId: string; readonly title: string; readonly groupId: string | null } & ObjectiveInit, options?: LaunchOptions): Promise<ObjectiveItem>;
   /** 목표를 지운다 — 지휘관 Operation 을 닫는다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다). */
   remove(itemId: string): ObjectiveItem;
+  /** 완료를 먼저 기록한 뒤 지휘관과 담당 Operation을 비동기로 휴면시킨다. */
+  complete(itemId: string): ObjectiveItem;
   rename(itemId: string, title: string): ObjectiveItem;
   regroup(itemId: string, groupId: string | null): ObjectiveItem;
   /** 지휘관의 모델·강도 — 지휘관 Operation 에 쓴다(다음 깨움부터 쓰인다). */
@@ -166,6 +168,62 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return !!observation && observation.lifecycle !== "dormant" && WORKING.has(observation.activity);
   };
   const stoppable = (operationId: string) => { const observation = ctx.host.consoleControl?.observe(operationId); return !!observation && observation.lifecycle !== "dormant" && observation.activity !== "idle" && observation.activity !== "ended"; };
+  const settleIntervalMs = 100;
+  const settleDeadlineMs = 10_000;
+  const waitFor = async (ready: () => boolean, cancelled: () => boolean = () => false): Promise<boolean> => {
+    const deadline = Date.now() + settleDeadlineMs;
+    while (!ready()) {
+      if (cancelled() || Date.now() >= deadline) return false;
+      await new Promise<void>((resolve) => setTimeout(resolve, settleIntervalMs));
+    }
+    return true;
+  };
+  const sleepCompleted = async (current: ObjectiveItem): Promise<void> => {
+    const capability = ctx.host.consoleControl;
+    const sleep = capability?.sleep?.bind(capability);
+    if (!capability || !sleep) return;
+    const ids = new Set([current.id, ...current.steps.flatMap((candidate) => candidate.operationId ? [candidate.operationId] : [])]);
+    await Promise.all([...ids].map(async (operationId) => {
+      const warn = (reason: string) => console.warn(`[objectives] Could not sleep completed Operation ${operationId}: ${reason}`);
+      const stillCompleted = () => {
+        const latest = store.find(current.id);
+        return !!latest?.done && (operationId === current.id || latest.steps.some((candidate) => candidate.operationId === operationId));
+      };
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          if (!stillCompleted()) return; // 완료를 되돌렸거나 연결을 풀었다면 아직 시작하지 않은 휴면은 취소한다.
+          const observation = capability.observe(operationId);
+          if (!observation) { warn("observation_unavailable"); return; }
+          if (observation.lifecycle === "dormant") return;
+          if (observation.lifecycle !== "live") { warn("lifecycle_unknown"); return; }
+          if (observation.activity !== "idle") {
+            if (observation.activity === "ended" || observation.activity === "unknown") { warn(`activity_${observation.activity}`); return; }
+            try {
+              const receipt = await capability.request({ kind: "interrupt", operationId }, `objectives:complete:${randomUUID()}`);
+              if (receipt.status === "failed" || receipt.status === "rejected") { warn(receipt.error ?? "interrupt_failed"); return; }
+            } catch (error) {
+              // 관측과 접수 사이에 스스로 유휴가 된 경우는 중단 없이 바로 휴면을 시도한다.
+              if (!(error instanceof Error && error.message === "nothing_to_interrupt")) throw error;
+            }
+            if (!await waitFor(() => {
+              const next = capability.observe(operationId);
+              return next?.lifecycle === "dormant" || next?.lifecycle === "live" && next.activity === "idle";
+            }, () => !stillCompleted())) { if (stillCompleted()) warn("interrupt_timeout"); return; }
+          }
+          if (!stillCompleted()) return;
+          if (capability.observe(operationId)?.lifecycle === "dormant") return;
+          const result = await sleep(operationId);
+          if (!result.ok) {
+            if (result.error === "already_dormant") return;
+            if (result.error === "not_idle" && attempt === 0) continue;
+            warn(result.error); return;
+          }
+          if (result.lifecycle === "ending" && !await waitFor(() => capability.observe(operationId)?.lifecycle === "dormant", () => !stillCompleted()) && stillCompleted()) warn("sleep_timeout");
+          return;
+        }
+      } catch (error) { warn(error instanceof Error ? error.message : "unexpected_failure"); }
+    }));
+  };
   /** 지휘관이 한 번도 깨지 않았다 — 보드를 처음부터 읽으므로 앞서 쌓인 편집 기록은 뜻이 없다. */
   const neverStarted = (operationId: string) => { const node = ctx.host.operations.get(operationId); return !!node && !readOperationLaunch(node.payload).started; };
   /** 지휘관 Operation 이 담당들과 함께 서야 할 그룹으로 담당을 옮긴다. */
@@ -199,6 +257,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 레코드는 Operation 이 복원 불가로 사라질 때(operation:purged) 거둔다 — 유예 동안 복원하면 목표도 돌아온다.
       if (!ctx.host.operations.delete(itemId)) throw new ObjectiveStoreError("unknown_item");
       return current;
+    },
+
+    complete(itemId) {
+      const completed = store.complete(itemId);
+      // 기록이 먼저 확정된다. PTY 휴면 확정은 오래 걸릴 수 있으므로 HTTP 응답을 붙잡지 않는다.
+      void sleepCompleted(completed);
+      return completed;
     },
 
     rename(itemId, title) {

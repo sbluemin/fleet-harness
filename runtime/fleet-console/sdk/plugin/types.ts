@@ -738,12 +738,16 @@ export interface FleetPluginServerHost {
   origin(): string | null;
 }
 
+export type FleetPluginSidebarPosition = "first" | "last" | { readonly before: string } | { readonly after: string };
+
 export interface FleetPluginOperationsHost {
   list(): readonly OperationNode[];
   get(id: string): OperationNode | null;
   create(input: OperationCreateInput): OperationNode;
   patch(id: string, input: OperationPatchInput): OperationNode | null;
   delete(id: string): boolean;
+  /** 같은 Theater·사이드바 그룹 안에서 순서를 바꾼다. unknown_operation, mixed_sections, unknown_anchor는 오류로 던진다. */
+  reorder?(input: { readonly theaterId: string; readonly operationIds: readonly string[]; readonly position: FleetPluginSidebarPosition; readonly groupId: string | null }): { readonly operationIds: readonly string[]; readonly groupId: string | null; readonly members: readonly string[] };
   registerOperationType(type: string): () => void;
   registerPayloadSanitizer(pluginId: string, fields: readonly string[]): () => void;
   registerLaunchCatalog(pluginId: string, provider: OperationLaunchCatalogProvider): () => void;
@@ -784,6 +788,8 @@ export interface FleetPluginConsoleControlHost {
   request(input: ConsoleActionInput, requestId?: string): Promise<ConsoleActionReceipt>;
   /** 한 Operation 의 지금 관측 — 활동·생명주기·표면·마지막 산출. 모르면 null. */
   observe(operationId: string): ConsoleOperationObservation | null;
+  /** 유휴 Agent Operation을 휴면으로 보낸다. 진행 중이면 not_idle; ending이면 전이가 진행 중이므로 재관측한다. */
+  sleep?(operationId: string): Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
 }
 
 /**

@@ -34,15 +34,6 @@ const WandGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColo
 function todayIso(): string { return new Date().toISOString().slice(0, 10); }
 /** 한글 IME 조합 중의 Return 은 확정이지 제출이 아니다 — 조합 확정과 제출로 두 번 오는 keydown 중 앞의 것을 거른다. */
 function submitKey(event: ReactKeyboardEvent<HTMLElement>): boolean { return event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229; }
-function createdLabel(at: number, language: "en" | "ko"): string {
-  const date = new Date(at);
-  if (language === "ko") {
-    // "2026년 9월 23일 (수)" — 요일을 괄호로 감싼 한국어 표기. Intl 은 요일에 괄호를 치지 않는다.
-    const weekday = new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(date);
-    return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 (${weekday})`;
-  }
-  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(date);
-}
 /** 기록 시각 — 오늘이면 시:분, 아니면 월·일과 시:분. 옛 결과에서 옮긴 기록은 시각이 없다. */
 function recordTime(at: number | null, language: "en" | "ko", earlier: string): string {
   if (at === null) return earlier;
@@ -720,6 +711,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           <button type="button" className={`objectives-check${item.done ? " is-on" : ""}`} aria-label={t(item.done ? "objectives.item.reopen" : "objectives.item.complete")} disabled={busy} onClick={onComplete}><CheckGlyph /></button>
           <textarea className="objectives-detail-title" aria-label={t("objectives.item.titleAria")} value={title} rows={1} readOnly={!editable} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); } }} onBlur={() => { if (title.trim() && title !== item.title) void call("/item/patch", { itemId: item.id, patch: { title: title.trim() } }); }} />
           <button type="button" className={`objectives-star${item.important ? " is-on" : ""}`} aria-label={t("objectives.item.important")} aria-pressed={item.important} onClick={() => void call("/item/patch", { itemId: item.id, patch: { important: !item.important } })}>{item.important ? "★" : "☆"}</button>
+          {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.item.delete")} title={t("objectives.item.delete")} onClick={async () => { const removed = await call<{ item: ObjectiveItem }>("/item/remove", { itemId: item.id }); if (removed) toast(t("objectives.toast.deleted")); }}><TrashGlyph /></button> : null}
           {placeButton}
         </div>
         {busy ? <div className="objectives-busy-line" role="status"><i aria-hidden="true" /><span>{t(item.cooking ? "objectives.cooking" : "objectives.busy")}</span></div> : null}
@@ -894,23 +886,23 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         ) : null}
       </div>
 
-      {/* 메모 — 본문 아래 첨부 띠. 메모에 이미지를 붙여넣거나 메모 구획에 끌어오면 띠에 들어간다. */}
+      {/* 메모 — 첨부 띠는 본문 위에 머문다. 메모에 이미지를 붙여넣거나 메모 구획에 끌어오면 띠에 들어간다. */}
       <div
         className={`objectives-group objectives-note-group${dropping ? " is-drop" : ""}`}
         onDragOver={(event) => { if (touchable && [...event.dataTransfer.types].includes("Files")) { event.preventDefault(); setDropping(true); } }}
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
         onDrop={(event) => { if (!touchable) return; event.preventDefault(); setDropping(false); const files = imageFiles(event.dataTransfer.files); if (files.length) void attachments.upload(files); }}
       >
+        <NoteAttachments item={item} t={t} touchable={touchable} upload={attachments.upload} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />
         <textarea className="objectives-note" aria-label={t("objectives.item.memo")} placeholder={t("objectives.item.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)}
           onPaste={(event) => { if (!touchable) return; const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
-        <NoteAttachments item={item} t={t} touchable={touchable} upload={attachments.upload} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />
       </div>
 
       </div>
       <div className="objectives-detail-bottom">
       {/* 마지막 행동 한 자리 — 검토 대기면 「완료」, 누군가 사람의 결정을 기다리면 「결정 대기」(누르면 그 Operation으로),
           아니면 「시작」, 일하는 동안에는 「중단」 — 일하는 동안이나 검토 대기 중에 사람이 보드를 고쳤으면 그 자리가 「스티어링」이 된다.
-          같은 띠, 낱말만 다르다. 검토 대기의 「완료」는 목록 카드 고리에 남는다. */}
+          같은 버튼 자리, 낱말만 다르다. 검토 대기의 「완료」는 목록 카드 고리에 남는다. */}
       {steerPending ? (
         <div className="objectives-group objectives-start-group">
           <button type="button" className="objectives-start is-steer" title={t("objectives.steer.hint")} disabled={steering} onClick={() => void steer()}>
@@ -951,11 +943,6 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           </button>
         </div>
       ) : null}
-      <div className="objectives-detail-foot">
-        <button type="button" className="objectives-glyph" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={onClose}><ChevronGlyph /></button>
-        <span className="objectives-detail-created">{t("objectives.detail.created", { date: createdLabel(item.createdAt, language) })}</span>
-        {busy ? <span aria-hidden="true" className="objectives-detail-foot-spacer" /> : <button type="button" className="objectives-glyph is-danger is-large" aria-label={t("objectives.item.delete")} title={t("objectives.item.delete")} onClick={async () => { const removed = await call<{ item: ObjectiveItem }>("/item/remove", { itemId: item.id }); if (removed) toast(t("objectives.toast.deleted")); }}><TrashGlyph /></button>}
-      </div>
       </div>
     </aside>
   );

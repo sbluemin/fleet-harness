@@ -21,13 +21,14 @@
   width: 26px;
   height: 26px;
   padding: 0;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-xs);
-  background: var(--surface-panel-raised);
-  color: var(--text-secondary);
+  background: transparent;
+  color: var(--text-tertiary);
   cursor: pointer;
 }
-.objectives-place-button:hover, .objectives-place-button:focus-visible { color: var(--brass); border-color: var(--brass); outline: none; }
+.objectives-place-button:hover { color: var(--brass); }
+.objectives-place-button:focus-visible { color: var(--brass); outline: 1px solid var(--brass); outline-offset: 1px; }
 
 /* ── 목록 열 ── */
 .objectives-lists {
@@ -101,7 +102,8 @@
 .objectives-list-menu { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; width: min(240px, calc(100cqw - 28px)); max-height: min(440px, 65vh); overflow: auto; padding: 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); }
 .objectives-list-menu .objectives-lists-add { width: 100%; margin-top: 8px; }
 .objectives-place-detail { display: grid; }
-.objectives-root.has-detail .objectives-place-main, .objectives-glyph.objectives-detail-back { display: none; }
+.objectives-root.has-detail .objectives-place-main { display: none; }
+.objectives-glyph.objectives-detail-back { font-size: var(--t-xl); }
 .objectives-title h2 { margin: 0; font-family: var(--font-display); font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 1.2; }
 .objectives-title .objectives-sub { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-title .objectives-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
@@ -274,10 +276,10 @@
   container: objectives-detail / inline-size;
 }
 .objectives-detail-scroll { flex: 1; min-height: 0; overflow: auto; }
-.objectives-detail-bottom { flex: none; background: var(--surface-panel-raised); }
+.objectives-detail-bottom { flex: none; background: inherit; }
 .objectives-group { display: flex; flex-direction: column; padding: 6px 0; }
 .objectives-group + .objectives-group { border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
-.objectives-detail-head { display: flex; gap: 12px; align-items: flex-start; padding: 8px 20px 10px 22px; }
+.objectives-detail-head { display: flex; gap: 8px; align-items: flex-start; padding: 8px 20px 10px 22px; }
 .objectives-detail-head .objectives-check { margin-top: 3px; width: 18px; height: 18px; }
 .objectives-detail-head .objectives-check svg { width: 11px; height: 11px; }
 .objectives-detail-title {
@@ -298,7 +300,11 @@
   field-sizing: content;
 }
 .objectives-detail-title:focus { outline: none; }
-.objectives-detail-head .objectives-star { margin: 0 -4px 0 0; font-size: var(--t-lg); }
+.objectives-detail-head .objectives-star { margin: 0; font-size: var(--t-lg); }
+.objectives-detail-delete { flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; }
+.objectives-detail-delete svg { width: 16px; height: 16px; }
+.objectives-detail-delete:hover { color: var(--coral); }
+.objectives-detail-delete:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 
 /* 행 */
 .objectives-row { display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 0 20px 0 22px; width: 100%; background: transparent; border: 0; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: default; position: relative; }
@@ -403,12 +409,11 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-cook-send { flex: none; color: var(--brass); border-color: transparent; }
 .objectives-cook-send:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 14%, transparent); }
 /* 시작 — 세부 창의 마지막 행동. brass 워시 한 장, 낱말은 굵게, 부제는 dim, 오른쪽 끝에 화살. 일하는 동안 같은 자리가 「중단」. */
-/* 시작 구획은 바닥(생성일) 바로 위에 붙는다 — 메모 아래 빈 공간을 떠다니지 않게. */
+/* 시작 버튼은 스크롤 영역 아래에 놓되 별도 배경 띠 없이 세부 표면과 이어진다. */
 /* 검토 대기 — 지휘관이 넘긴 가승인. aurora 로 「사람 차례」를 말하고, 완료 버튼 하나만 둔다. */
 .objectives-check.is-linked.is-review { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 10%, transparent); }
 .objectives-check.is-linked.is-review i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--aurora); }
-.objectives-start-group { margin-top: auto; padding: 6px 14px 10px 16px; }
-.objectives-start-group + .objectives-detail-foot { margin-top: 0; }
+.objectives-start-group { padding: 8px 14px 2px 16px; border: 0; }
 .objectives-start { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; width: 100%; padding: 11px 14px; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 16%, transparent), color-mix(in oklch, var(--brass) 6%, transparent)); color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring); }
 .objectives-start:hover:not(:disabled) { border-color: var(--brass); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 24%, transparent), color-mix(in oklch, var(--brass) 10%, transparent)); }
 .objectives-start:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
@@ -583,6 +588,8 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-detail textarea.objectives-note {
   width: 100%;
   min-height: 110px;
+  max-height: 360px;
+  overflow-y: auto;
   resize: none;
   background: transparent;
   border: 0;
@@ -596,17 +603,6 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 }
 .objectives-detail textarea.objectives-note::placeholder { color: var(--text-tertiary); }
 
-/* 바닥 — 닫기 · 삭제 (MS 의 › · 🗑 자리) */
-/* 바닥 줄 — 닫기 › · 생성일(가운데) · 삭제 */
-.objectives-detail-foot { margin-top: auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 8px 14px 0 16px; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
-.objectives-detail-foot .objectives-glyph { border-color: transparent; }
-.objectives-detail-foot > :first-child { justify-self: start; }
-.objectives-detail-foot > :last-child { justify-self: end; }
-.objectives-detail-created { font-size: var(--t-xs); color: var(--text-tertiary); text-align: center; white-space: nowrap; }
-.objectives-detail-foot-spacer { width: 32px; height: 32px; }
-.objectives-glyph.is-large { width: 32px; height: 32px; }
-.objectives-glyph.is-large svg { width: 18px; height: 18px; }
-.objectives-glyph.is-danger:hover { color: var(--coral); }
 
 .objectives-banner {
   position: absolute;
@@ -651,7 +647,7 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
   .objectives-records-inner { padding-left: 38px; padding-right: 8px; }
   .objectives-graph-wrap { padding-left: 14px; padding-right: 12px; }
   .objectives-detail textarea.objectives-note { padding-left: 14px; padding-right: 12px; }
-  .objectives-detail-created { white-space: normal; }
+  .objectives-att { padding-left: 14px; padding-right: 12px; }
   .objectives-start { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 9px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -720,10 +716,10 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-dag .objectives-node.is-unplaced circle { stroke: var(--aurora); stroke-dasharray: 2 2; }
 .objectives-step-sub.is-unplaced { color: var(--aurora); }
 
-/* 메모 첨부 띠 — 본문 아래 붙인 순서대로 「이미지 n」 썸네일. 끌어오는 동안 메모 구획이 brass 로 받는다(위치의 표시). */
+/* 메모 첨부 띠 — 본문 위에 붙인 순서대로 「이미지 n」 썸네일. 본문 내부 스크롤과 분리된다. */
 .objectives-note-group { transition: background var(--duration-fast); }
 .objectives-note-group.is-drop { background: color-mix(in oklch, var(--brass) 8%, transparent); outline: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent); outline-offset: -4px; }
-.objectives-att { display: grid; gap: 6px; padding: 0 20px 12px 22px; }
+.objectives-att { display: grid; gap: 6px; padding: 8px 20px 0 22px; }
 .objectives-att-strip { display: flex; flex-wrap: wrap; gap: 10px 8px; }
 .objectives-att-thumb { position: relative; display: grid; gap: 3px; width: 72px; }
 .objectives-att-open { width: 72px; height: 52px; padding: 0; overflow: hidden; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); cursor: zoom-in; }

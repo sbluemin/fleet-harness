@@ -749,6 +749,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 화면 사건(보이기). 재개·뷰·대화·분석가는 실행층이 같은 객체에 채운다(`ctx.consoleActions`).
    */
   const consoleActions = createWorkspaceActions({ operations, deletionCoordinator, listOperationUse, patchOperation: (id, input) => pluginHostCapabilities.operations.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastOperationChanged });
+  // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.
+  let sleepOperation: ConsoleUseActions["sleep"];
   const consoleUse = createConsoleUseMcpHost({
     surface: consoleActions,
     onCall: (event) => publishPluginEvent(CONSOLE_CALL_EVENT_CHANNEL, event),
@@ -807,6 +809,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return operation;
       },
       delete: deleteOperationForPlugin,
+      reorder: (input) => consoleActions.reorder!(input),
       registerOperationType: (type) => {
         pluginOperationTypes.add(type);
         return () => {
@@ -965,6 +968,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         }
       },
       observe: (operationId) => consoleControl.observe(operationId),
+      sleep: async (operationId) => {
+        if (!operations.get(operationId)) return { ok: false, error: "unknown_operation" };
+        const observation = consoleControl.observe(operationId);
+        if (!observation || !sleepOperation) return { ok: false, error: "capability_unavailable" };
+        if (observation.lifecycle === "dormant") return { ok: false, error: "already_dormant" };
+        if (observation.activity !== "idle") return { ok: false, error: "not_idle" };
+        return sleepOperation(operationId);
+      },
     }),
     createAgentHost: (pluginId) => {
       const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp });
@@ -2158,6 +2169,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
         }), consoleActions, pluginHostCapabilities.storage);
         coreLaunchKinds = execution.launchKinds;
+        sleepOperation = execution.actions.sleep;
         consoleUse.activate({ ...consoleActions, ...execution.actions });
         await pluginHost.boot();
         // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면

@@ -7,7 +7,7 @@ import type { ObjectiveAttachment, ObjectiveItem } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
- * 메모 첨부 띠 — 메모 본문은 그대로 두고 그 아래에 붙인 순서대로 「이미지 n」 썸네일이 선다.
+ * 메모 첨부 띠 — 메모 본문 위에 붙인 순서대로 「이미지 n」 썸네일이 선다.
  * 메모에 붙여넣거나 끌어오면 여기로 들어오고, 누르면 크게 보고, × 로 지운다. 이미지는 id 로 받아 온다 — 경로는 브라우저에 오지 않는다.
  */
 
