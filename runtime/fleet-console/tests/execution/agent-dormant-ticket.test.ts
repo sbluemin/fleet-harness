@@ -42,7 +42,7 @@ describe("agent dormant ticket guards", () => {
     await vi.waitFor(() => expect(control.getAction(receipt.id)?.operationId).toBeTruthy());
     const id = control.getAction(receipt.id)!.operationId!;
     expect(harness.attach).not.toHaveBeenCalled();
-    expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "terminal", supportedActions: ["send"] });
+    expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "terminal", supportedActions: ["send", "resume"] });
     const operation = harness.operations.find((op) => op.id === id)!;
     expect(readOperationLaunch(operation.payload)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", started: false });
     harness.patch(id, { payload: withOperationLaunchPreset(operation.payload, { model: "sonnet", effort: "low" }) });
@@ -51,6 +51,18 @@ describe("agent dormant ticket guards", () => {
     expect(harness.attach).toHaveBeenCalledTimes(1);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId: id, model: "sonnet", effort: "low", sessionName: "commander", disableSubagents: true }));
     expect(harness.attach.mock.calls[0]![0]).not.toHaveProperty("resumeSessionId");
+  });
+
+  it("resumes a dormant member through Console control without a message", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createLiveSession();
+    await harness.transitionToDormant(sessionId);
+    const caller = { kind: "plugin" as const, pluginId: "objectives" };
+    expect(() => harness.control.request(caller, "resume-with-text", { kind: "resume", operationId: sessionId, text: "wrong" })).toThrow();
+    const receipt = harness.control.request(caller, "resume-member", { kind: "resume", operationId: sessionId });
+    await vi.waitFor(() => expect(harness.control.getAction(receipt.id)?.delivery).toBe("confirmed"));
+    expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId }));
+    expect(() => harness.control.request(caller, "resume-live", { kind: "resume", operationId: sessionId })).toThrow("not_dormant");
   });
 
   it("rejects ticket issuance for a dormant session with operation_dormant", async () => {

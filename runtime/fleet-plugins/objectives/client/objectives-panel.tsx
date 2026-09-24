@@ -1,15 +1,15 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
-import { coordinatorMode, stepReady, unseenRecords, type CoordinatorMode, type StepAssign, type StepRecord, type ObjectiveItem, type ObjectiveStep } from "../server/types.js";
+import { coordinatorMode, stepReady, unseenRecords, type CoordinatorMode, type ObjectiveMember, type StepRecord, type ObjectiveItem, type ObjectiveStep } from "../server/types.js";
 import { NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { LaunchControl, ProviderGlyph, launchWords, loadLaunchRows, useLaunchRows } from "./launch-control.js";
+import { LaunchControl, launchWords, useLaunchRows } from "./launch-control.js";
 import { dockObjective, expandObjective, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, type ObjectiveGroup } from "./objectives-state.js";
 
 export interface ObjectiveContext {
@@ -513,6 +513,108 @@ function LaunchWords({ item, rows, autoLabel, defaultLabel, state }: { item: Obj
   );
 }
 
+function memberModel(member: ObjectiveMember, t: T, rows: ReturnType<typeof useLaunchRows>): string {
+  if (member.launch.mode === "route") return t("objectives.assign.route");
+  if (member.launch.mode === "same") return t("objectives.assign.inherit");
+  const words = launchWords(rows, member.launch.model, member.launch.effort, t("objectives.coordinator.effortAuto"));
+  return `${words.model} · ${words.effort}`;
+}
+
+/** 구성원 표식의 색 — 명단 순번으로 정체성 톤(--id-*) 8가지를 돌려 쓴다. 명단·임무 줄·배정 메뉴가 같은 구성원에 같은 색을 쓴다. */
+const MEMBER_TONES = 8;
+const memberTone = (item: ObjectiveItem, memberId: string): number => Math.max(0, item.members.findIndex((member) => member.id === memberId)) % MEMBER_TONES;
+
+function MemberMark({ role, tone }: { role: string; tone: number }) {
+  return <span className={`objectives-member-mark is-tone-${tone}`} aria-hidden="true">{Array.from(role)[0] ?? "?"}</span>;
+}
+
+function MemberRoster({ item, t, call, operationState, rows, touchable }: { item: ObjectiveItem; t: T; call: DetailProps["call"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean }) {
+  // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
+  const remove = (member: ObjectiveMember) => void call("/member/remove", { itemId: item.id, memberId: member.id });
+  // 달성 기준·임무 줄과 같은 문법 — 글자 자체가 입력칸이고, 떠나면 저장한다. Enter 는 확정, Escape 는 되돌린다.
+  const inlineKeys = (original: string) => (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (submitKey(event)) event.currentTarget.blur();
+    else if (event.key === "Escape") { event.currentTarget.value = original; event.currentTarget.blur(); }
+  };
+  return <div className="objectives-members">
+    <div className="objectives-members-heading">{t("objectives.members.title")} <span>{item.members.length}</span></div>
+    {item.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
+    {item.members.map((member, index) => {
+      const count = item.steps.filter((step) => step.member === member.id).length;
+      const state = member.operationId ? operationState(member.operationId) : "closed";
+      const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.state.awaiting") : t("objectives.members.idle");
+      return (
+        <div key={member.id} className="objectives-member">
+          <MemberMark role={member.role} tone={memberTone(item, member.id)} />
+          <div className="objectives-member-body">
+            <span className="objectives-member-name">
+              {/* 너비는 글자 수가 아니라 실제 글자 폭으로 — 숨은 복제(data-value)가 칸을 잡는다(한글처럼 넓은 글자도 잘리지 않게). */}
+              <span key={`role:${member.role}`} className="objectives-member-role-fit" data-value={member.role}>
+                <input className="objectives-member-role" aria-label={t("objectives.members.roleAria", { n: index + 1 })} defaultValue={member.role} readOnly={!touchable} maxLength={40} size={1}
+                  onInput={(event) => { event.currentTarget.parentElement!.dataset.value = event.currentTarget.value; }}
+                  onKeyDown={inlineKeys(member.role)} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== member.role) void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { role: value } }); else { event.target.value = member.role; event.target.parentElement!.dataset.value = member.role; } }} />
+              </span>
+              {member.by === "commander" ? <span className="objectives-member-by">{t("objectives.members.proposed")}</span> : null}
+            </span>
+            <input key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" aria-label={t("objectives.members.briefAria", { role: member.role })} defaultValue={member.brief ?? ""} placeholder={touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
+              onKeyDown={inlineKeys(member.brief ?? "")} onBlur={(event) => { const value = event.target.value.trim(); if (value !== (member.brief ?? "")) void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { brief: value || null } }); }} />
+          </div>
+          <div className="objectives-member-meta">
+            <LaunchControl key={member.id} t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} triggerLabel={t("objectives.members.modelAria", { role: member.role })}
+              triggerText={member.launch.mode === "model" ? undefined : <span className="objectives-launch-model">{memberModel(member, t, rows)}</span>}
+              extras={[{ id: "route", label: t("objectives.assign.route"), hint: t("objectives.members.routeHint"), active: member.launch.mode === "route", onPick: () => void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { launch: null } }) }, { id: "same", label: t("objectives.assign.inherit"), active: member.launch.mode === "same", onPick: () => void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { launch: { mode: "same" } } }) }]}
+              onChange={(next) => { const model = next.model ?? (member.launch.mode === "model" ? member.launch.model : undefined); if (model) void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { launch: { mode: "model", model, effort: next.effort } } }); }} />
+            <span className={`objectives-member-status is-${state}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}</span>
+          </div>
+          {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
+        </div>
+      );
+    })}
+    {touchable ? (
+      <div className="objectives-row objectives-step-add">
+        <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+        <input aria-label={t("objectives.members.add")} placeholder={t("objectives.members.add")} maxLength={40} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const role = target.value.trim(); target.value = ""; void call("/member/add", { itemId: item.id, member: { role } }); } }} />
+      </div>
+    ) : null}
+  </div>;
+}
+
+function AssignControl({ t, item, step, onAssign, onCreate, label, rows }: { t: T; item: ObjectiveItem; step: ObjectiveStep; onAssign: (member: string | null) => void; onCreate: (role: string) => Promise<boolean>; label: string; rows: ReturnType<typeof useLaunchRows> }) {
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [role, setRole] = useState("");
+  const creatingRef = useRef(false);
+  const [pos, setPos] = useState<{ left: number; top: number }>({ left: -1000, top: -1000 });
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const menu = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const down = (event: PointerEvent) => { if (!menu.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) setOpen(false); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); } };
+    document.addEventListener("pointerdown", down, true); document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", down, true); document.removeEventListener("keydown", key); };
+  }, [open]);
+  useLayoutEffect(() => {
+    if (!open || !trigger.current) return;
+    const rect = trigger.current.getBoundingClientRect();
+    const height = menu.current?.offsetHeight ?? 250;
+    setPos({ left: Math.max(12, Math.min(rect.left, window.innerWidth - 228)), top: rect.bottom + height > window.innerHeight - 12 ? Math.max(12, rect.top - height - 6) : rect.bottom + 6 });
+  }, [open, creating, item.members.length]);
+  const pick = (id: string | null) => { onAssign(id); setOpen(false); };
+  return <>
+    <button ref={trigger} type="button" className="objectives-launch is-glyph objectives-glyph" aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => { setCreating(false); setOpen((value) => !value); }}><AssignGlyph /></button>
+    {open ? createPortal(<div ref={menu} className="objectives-menu objectives-assign-menu" role="menu" aria-label={label} style={{ ...pos, width: 216 }}>
+      <button type="button" role="menuitemradio" aria-checked={!step.member} className={`objectives-menu-item${!step.member ? " is-active" : ""}`} onClick={() => pick(null)}><span className="objectives-menu-label">{t("objectives.assign.self")}</span></button>
+      <div className="objectives-menu-divider" role="separator" />
+      <p className="objectives-menu-caption objectives-assign-caption">{t("objectives.members.title")}</p>
+      {item.members.map((member) => <button key={member.id} type="button" role="menuitemradio" aria-checked={step.member === member.id} className={`objectives-menu-item${step.member === member.id ? " is-active" : ""}`} onClick={() => pick(member.id)}><MemberMark role={member.role} tone={memberTone(item, member.id)} /><span className="objectives-menu-label">{member.role}</span><span className="objectives-assign-model">{memberModel(member, t, rows)}</span></button>)}
+      <div className="objectives-menu-divider" role="separator" />
+      {creating ? <div className="objectives-assign-new"><input autoFocus maxLength={40} aria-label={t("objectives.members.new")} placeholder={t("objectives.members.rolePlaceholder")} value={role} onChange={(event) => setRole(event.target.value)} onKeyDown={(event) => { if (submitKey(event) && role.trim() && !creatingRef.current) { creatingRef.current = true; void onCreate(role.trim()).then((created) => { if (created) { setOpen(false); setRole(""); } }).finally(() => { creatingRef.current = false; }); } }} /><span>{t("objectives.members.newHint")}</span></div>
+        : <button type="button" role="menuitem" className="objectives-menu-item objectives-assign-create" onClick={() => setCreating(true)}>{t("objectives.members.new")}</button>}
+    </div>, document.body) : null}
+  </>;
+}
+
 function OpChip({ state, label, title, onRemove, removeLabel }: { state: string; label: string; title?: string; onRemove?: () => void; removeLabel?: string }) {
   return (
     <span className={`objectives-op is-${state}`} title={title ?? label}>
@@ -597,30 +699,6 @@ const GoGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none
 
 const AssignGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="5" cy="5" r="2.2" /><circle cx="11" cy="11" r="2.2" /><path d="M7 5h3.5a1.5 1.5 0 0 1 1.5 1.5V8.8M9 11H5.5A1.5 1.5 0 0 1 4 9.5V7.2" /></svg>;
 
-/**
- * 단계의 사전 배정 — 지휘관 컨트롤과 같은 메뉴에 「지휘관 직접 · 라우팅 · 지휘관과 같게」가 먼저 서고, 그 아래 모델 목록.
- * 모델을 고르면 그 모델·강도로 담당이 뜨고, 라우팅은 시작할 때 AI Gateway 가 난이도로 고른다. `all` 은 열린 단계 전부에 같은 배정.
- */
-function AssignControl({ t, assign, onChange, label, all = false }: { readonly t: Translate<ObjectiveMessageKey>; readonly assign: StepAssign | null; readonly onChange: (assign: StepAssign | null) => void; readonly label: string; readonly all?: boolean }) {
-  return (
-    <LaunchControl
-      t={t}
-      model={assign?.mode === "model" ? assign.model : undefined}
-      effort={assign?.mode === "model" ? assign.effort : undefined}
-      locked={false}
-      startAtList
-      trigger={<AssignGlyph />}
-      triggerLabel={label}
-      extras={[
-        { id: "self", label: t("objectives.assign.self"), active: !assign || assign.mode === "self", onPick: () => onChange({ mode: "self" }) },
-        { id: "route", label: t("objectives.assign.route"), hint: t("objectives.assign.routeHint"), active: assign?.mode === "route", onPick: () => onChange({ mode: "route" }) },
-        ...(all ? [] : [{ id: "inherit", label: t("objectives.assign.inherit"), active: assign === null, onPick: () => onChange(null) }]),
-      ]}
-      onChange={(next) => onChange({ mode: "model", model: next.model ?? assign?.model, effort: next.effort ?? assign?.effort })}
-    />
-  );
-}
-
 function SendGlyph() {
   return <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" /></svg>;
 }
@@ -640,9 +718,9 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   // 한 번 깨어난 지휘관의 모델은 바꿀 수 없다 — 이미 그 모델로 도는 세션이다.
   const locked = item.commander.started;
   const editable = !item.done && !busy;
-  // 지휘관이 일하는 동안에도 받는 편집 — 단계 추가, 시작 전(끝나지 않고 담당이 없는) 단계의 문구·삭제·선행, 메모. 서버가 같은 기준으로 가른다.
+  // 지휘관이 일하는 동안에도 받는 편집 — 단계 추가, 끝나지 않은 단계의 문구·삭제·선행·담당, 메모. 구성원이 떠 있어도 임무는 끝나기 전까지 사람의 것이다. 서버가 같은 기준으로 가른다.
   const touchable = !item.done;
-  const notStarted = (step: ObjectiveStep) => !step.done && !step.operationId;
+  const notStarted = (step: ObjectiveStep) => !step.done;
   const canEditStep = (stepId: string) => { if (editable) return true; const target = item.steps.find((candidate) => candidate.id === stepId); return touchable && !!target && notStarted(target); };
   const [steering, setSteering] = useState(false);
   // 지휘관에게 알릴 편집이 쌓였다 — 지휘관이 일하는 중이거나, 일을 마쳐 검토 대기가 된 뒤다(지휘관은 그 편집을 아직 읽지 않았다).
@@ -744,6 +822,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           </button>
           <LaunchControl t={t} model={item.commander.model} effort={item.commander.effort} locked={locked || !editable} onChange={(next) => void call("/item/patch", { itemId: item.id, patch: { launch: next } })} />
         </div>
+        <MemberRoster item={item} t={t} call={call} operationState={operationState} rows={launchRows} touchable={touchable} />
         {/* 구상 — 누르면 그 자리에서 맥락 한 줄이 펼쳐진다. 비워 두고 Enter 해도 된다. */}
         {editable && launchAvailable ? (
           <>
@@ -776,6 +855,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <div className="objectives-steps">
           {item.steps.map((step, index) => {
             const ready = stepReady(item.steps, step);
+            const member = item.members.find((candidate) => candidate.id === step.member);
             const records = step.records;
             const recordsOpen = step.id in openRecords;
             const unseen = unseenRecords(step);
@@ -794,23 +874,20 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
                 <span className="objectives-step-num" aria-hidden="true">{index + 1}</span>
                 <div className="objectives-step-body">
                   <input className="objectives-step-text" aria-label={`${index + 1}`} defaultValue={step.text} readOnly={!(editable || (touchable && notStarted(step)))} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== step.text) void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { text: value } }); }} onKeyDown={(event) => { if (submitKey(event)) event.currentTarget.blur(); }} />
-                  {/* 배정된 모델은 단계 이름 아래 dim 한 줄 — 풀네임 · 강도. 담당은 상태 점, 예약은 ✦. */}
-                  {step.operationId ? <span className={`objectives-step-sub is-${operationState(step.operationId)}`} title={`${t("objectives.steps.assignee")} · ${operationTitle(step.operationId)}`}><ProviderGlyph model={step.model} /><span>{launchWords(launchRows, step.model, step.effort, t("objectives.coordinator.effortAuto")).model}</span>{step.effort ? <b>{launchWords(launchRows, step.model, step.effort, t("objectives.coordinator.effortAuto")).effort}</b> : null}</span>
-                    : step.unplaced && !step.done ? <span className="objectives-step-sub is-unplaced">{t("objectives.steps.unplaced")}</span>
-                    : !step.done ? <span className="objectives-step-sub is-assign">{!step.assign || step.assign.mode === "self" ? t("objectives.assign.self") : step.assign.mode === "route" ? t("objectives.assign.route") : <><ProviderGlyph model={step.assign.model} /><span>{launchWords(launchRows, step.assign.model, step.assign.effort, t("objectives.coordinator.effortAuto")).model}</span><b>{launchWords(launchRows, step.assign.model, step.assign.effort, t("objectives.coordinator.effortAuto")).effort}</b></>}</span> : null}
+                  <span className={`objectives-step-sub${step.operationId ? ` is-${operationState(step.operationId)}` : " is-assign"}`} title={step.operationId ? operationTitle(step.operationId) : undefined}>{member ? <><MemberMark role={member.role} tone={memberTone(item, member.id)} /><span className="objectives-step-member-name">{member.role}</span></> : t("objectives.assign.self")}</span>
+                  {step.unplaced && !step.done ? <span className="objectives-step-sub is-unplaced">{t("objectives.steps.unplaced")}</span> : null}
                 </div>
                 {records.length > 0 ? (
                   <button type="button" className={`objectives-records-count${unseen > 0 ? " is-unseen" : ""}`} aria-expanded={recordsOpen} aria-controls={recordsId} aria-label={`${t("objectives.records.count", { index: index + 1, count: records.length })}${unseen > 0 ? ` · ${t("objectives.records.unseen", { count: unseen })}` : ""}`} onClick={() => toggleRecords(step)}>
                     {unseen > 0 ? <i aria-hidden="true" /> : <ThreadGlyph />}{records.length}
                   </button>
                 ) : null}
-                {/* 무엇을 기다리는지 번호로 말한다 — 끝나지 않은 선행만. 담당이 있으면 담당 줄이 상태를 말한다. */}
-                {!step.operationId && !step.done && !step.unplaced ? (ready
+                {/* 무엇을 기다리는지 번호로 말한다 — 끝나지 않은 선행만. 구성원 상태는 담당 줄이 말한다. */}
+                {!step.done && !step.unplaced ? (ready
                   ? <span className="objectives-wait is-ready">{t("objectives.steps.ready")}</span>
                   : <span className="objectives-wait" title={t("objectives.steps.waiting")}>{t("objectives.steps.after", { steps: step.after.filter((id) => !item.steps.find((candidate) => candidate.id === id)?.done).map(numberOf).filter((n) => n > 0).join("·") })}</span>) : null}
                 <span className="objectives-step-tools">
-                  {!step.done && !step.operationId && editable ? <AssignControl t={t} assign={step.assign ?? null} onChange={(assign) => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { assign } })} label={t("objectives.steps.assign")} /> : null}
-                  {step.operationId && editable ? <button type="button" className="objectives-glyph" title={t("objectives.steps.unlink")} aria-label={t("objectives.steps.unlink")} onClick={() => void call("/step/unlink", { itemId: item.id, stepId: step.id })}>×</button> : null}
+                  {!step.done && touchable ? <AssignControl t={t} item={item} step={step} rows={launchRows} onAssign={(member) => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { member } })} onCreate={async (role) => { const result = await call<{ item: ObjectiveItem }>("/member/add", { itemId: item.id, member: { role } }); const member = result?.item.members.at(-1); return member ? !!(await call("/step/patch", { itemId: item.id, stepId: step.id, patch: { member: member.id } })) : false; }} label={t("objectives.steps.assign")} /> : null}
                   {notStarted(step) && touchable ? <button type="button" className="objectives-glyph" title={t("objectives.steps.remove")} aria-label={t("objectives.steps.remove")} onClick={() => void call("/step/remove", { itemId: item.id, stepId: step.id })}><TrashGlyph /></button> : null}
                 </span>
               </div>
@@ -823,9 +900,6 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           <div className="objectives-row objectives-step-add">
             <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
             <input aria-label={t("objectives.steps.add")} placeholder={t("objectives.steps.add")} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; void call("/step/add", { itemId: item.id, step: { text: target.value.trim() } }).then(() => { target.value = ""; }); } }} />
-            {editable && item.steps.some((step) => !step.done && !step.operationId) ? (
-              <AssignControl t={t} assign={null} all label={t("objectives.steps.assignAll")} onChange={async (assign) => { for (const step of item.steps) if (!step.done && !step.operationId) await call("/step/patch", { itemId: item.id, stepId: step.id, patch: { assign } }); }} />
-            ) : null}
           </div>
         ) : null}
         {item.steps.length > 0 ? (
@@ -931,7 +1005,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <div className="objectives-group objectives-start-group">
           <button type="button" className="objectives-start" disabled={!launchAvailable} title={launchAvailable ? undefined : t("objectives.coordinator.unavailable")} onClick={() => void start()}>
             <span className="objectives-start-word">{t("objectives.coordinator.start")}</span>
-            <span className="objectives-start-sub">{item.commander.started ? `${stateLabel(operationState(item.id))} · ${t("objectives.start.resume")}` : (() => { const open = item.steps.filter((step) => !step.done && !step.operationId); const workers = open.filter((step) => step.assign && step.assign.mode !== "self").length; return open.length <= 1 || workers === 0 ? t("objectives.start.direct") : t("objectives.start.workers", { count: workers }); })()}</span>
+            <span className="objectives-start-sub">{item.commander.started ? `${stateLabel(operationState(item.id))} · ${t("objectives.start.resume")}` : item.members.length ? t("objectives.start.members", { count: item.members.length }) : t("objectives.start.direct")}</span>
             <span className="objectives-start-arrow" aria-hidden="true">→</span>
           </button>
         </div>

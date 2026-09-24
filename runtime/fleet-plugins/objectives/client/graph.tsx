@@ -127,7 +127,7 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
         onPointerEnter={onFocusStep ? () => onFocusStep(step.id) : undefined}
         onPointerLeave={onFocusStep ? () => onFocusStep(null) : undefined}
         title={step.after.length ? t("objectives.graph.edgeAria", { from: steps.findIndex((candidate) => candidate.id === step.after[0]) + 1, to: index + 1 }) : undefined}>
-        <span className={`objectives-dag-dot${step.done ? " is-done" : step.operationId ? " is-assigned" : ""}`}>{index + 1}</span><span className="objectives-dag-step-name">{step.text}</span>
+        <span className={`objectives-dag-dot${step.done ? " is-done" : step.member ? " is-assigned" : ""}`}>{index + 1}</span><span className="objectives-dag-step-name">{step.text}</span>
       </div>)}
       <span hidden>{mode}</span>
     </div>

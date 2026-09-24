@@ -497,6 +497,53 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-menu-divider { height: 1px; margin: var(--space-1) var(--space-1); background: var(--surface-rim); }
 .objectives-menu-empty { padding: 6px var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
 
+/* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
+.objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
+.objectives-members-heading { display: flex; gap: 7px; align-items: baseline; padding: 6px 20px 6px 22px; font: var(--weight-bold) var(--t-2xs)/1.4 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-tertiary); }
+.objectives-members-heading span { color: var(--text-secondary); }
+.objectives-members-empty { margin: 0; padding: 5px 20px 9px 22px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
+.objectives-member { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 6px 14px 6px 22px; }
+.objectives-member:hover { background: var(--control-rest); }
+/* 구성원 표식 — 정체성 톤(--id-*)으로 구성원을 가른다. 신호색(brass·aurora·positive·coral·warn)은 상태를 뜻하므로 쓰지 않는다. */
+.objectives-member-mark { --member-tone: var(--id-teal); flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid color-mix(in oklch, var(--member-tone) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--member-tone) 14%, transparent); color: var(--member-tone); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
+.objectives-member-mark.is-tone-1 { --member-tone: var(--id-amber); }
+.objectives-member-mark.is-tone-2 { --member-tone: var(--id-plum); }
+.objectives-member-mark.is-tone-3 { --member-tone: var(--id-moss); }
+.objectives-member-mark.is-tone-4 { --member-tone: var(--id-cerulean); }
+.objectives-member-mark.is-tone-5 { --member-tone: var(--id-rose); }
+.objectives-member-mark.is-tone-6 { --member-tone: var(--id-indigo); }
+.objectives-member-mark.is-tone-7 { --member-tone: var(--id-crimson); }
+/* 달성 기준 줄과 같은 문법 — 역할 이름과 설명이 그 자리의 입력칸이다(테두리 없음, 포커스는 brass 밑줄). */
+.objectives-member-body { flex: 1; min-width: 0; display: grid; gap: 2px; padding: 4px 0; }
+.objectives-member-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.objectives-member-role, .objectives-member-brief { min-width: 0; padding: 0; border: 0; background: transparent; font: inherit; text-overflow: ellipsis; }
+/* 역할 칸은 글자 폭만큼 — 입력과 숨은 복제가 같은 칸(1/1)에 겹쳐, 복제의 폭이 칸 너비가 된다. */
+.objectives-member-role-fit { display: inline-grid; min-width: 0; max-width: 100%; font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.objectives-member-role-fit::after { content: attr(data-value) " "; grid-area: 1 / 1; visibility: hidden; white-space: pre; overflow: hidden; font: inherit; }
+.objectives-member-role { grid-area: 1 / 1; width: 100%; color: var(--text-primary); font-size: inherit; font-weight: inherit; }
+.objectives-member-role:focus, .objectives-member-brief:focus { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
+.objectives-member-brief { width: 100%; color: var(--text-tertiary); font-size: var(--t-xs); }
+.objectives-member-brief::placeholder { color: var(--text-tertiary); opacity: 0.7; }
+.objectives-member-remove { flex: none; opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
+.objectives-member:hover .objectives-member-remove, .objectives-member:focus-within .objectives-member-remove { opacity: 1; }
+.objectives-member-by { flex: none; padding: 2px 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora); font: var(--weight-bold) var(--t-2xs)/1 var(--font-mono); }
+.objectives-member-meta { display: grid; gap: 1px; justify-items: end; flex: none; max-width: 48%; }
+.objectives-member-meta .objectives-launch { margin: 0; max-width: 100%; }
+.objectives-member-meta .objectives-launch-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-member-status { font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); color: var(--text-tertiary); padding-right: 6px; }
+.objectives-member-status.is-running, .objectives-member-status.is-background { color: var(--aurora); }
+.objectives-member-status.is-idle { color: var(--positive); }
+.objectives-member-status.is-awaiting { color: var(--warn); }
+.objectives-assign-new input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-body); }
+.objectives-assign-new input:focus { outline: none; border-color: var(--brass); }
+.objectives-step-sub .objectives-member-mark, .objectives-assign-menu .objectives-member-mark { width: 16px; height: 16px; font-size: 9px; }
+.objectives-step-member-name { color: var(--text-secondary); font-family: var(--font-body); font-weight: var(--weight-medium); }
+.objectives-assign-caption { color: var(--text-tertiary); }
+.objectives-assign-model { flex: none; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-assign-create { color: var(--brass); }
+.objectives-assign-new { display: grid; gap: 5px; padding: 5px; }
+.objectives-assign-new span { color: var(--text-tertiary); font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); }
+
 /* 카드 오른쪽의 모델·강도 */
 .objectives-item-launch { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); white-space: nowrap; }
 .objectives-item-launch b { font-weight: var(--weight-medium); color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary)); text-transform: uppercase; }

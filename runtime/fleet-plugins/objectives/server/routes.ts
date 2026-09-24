@@ -8,7 +8,7 @@ import { z } from "zod";
 import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { createItemSchema, criterionAddSchema, criterionPatchSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type ObjectiveEditKind, type ObjectiveItem } from "./types.js";
+import { createItemSchema, criterionAddSchema, criterionPatchSchema, memberAddSchema, memberPatchSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type ObjectiveEditKind, type ObjectiveItem } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -41,7 +41,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     return true;
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
-    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_item", "unknown_step", "unknown_attachment", "unknown_criterion"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
+    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_item", "unknown_step", "unknown_member", "unknown_attachment", "unknown_criterion"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
     const code = error instanceof Error ? error.message : "todo_failed";
     ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "todo_failed" });
   };
@@ -126,17 +126,17 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
   const stepKinds = (patch: StepPatchInput): ObjectiveEditKind[] => [
     ...(patch.text !== undefined || patch.done !== undefined ? ["steps" as const] : []),
     ...(patch.after !== undefined || patch.why !== undefined ? ["recipe" as const] : []),
-    ...(patch.assign !== undefined ? ["assign" as const] : []),
+    ...(patch.member !== undefined ? ["assign" as const] : []),
   ];
   // 지휘관이 일하는 동안에도 받는 사람의 편집 — 허용 조건을 지나야 한다. 기록은 위 edited 가 맡고(지휘관이 있으면 쌓임), 쌓인 편집은 「스티어링」이 알린다.
-  // 허용: 단계 추가 · 아직 시작 전(끝나지 않았고 담당이 없는) 단계의 문구·삭제·선행 · 메모.
+  // 허용: 단계 추가 · 끝나지 않은 단계의 문구·삭제·선행·담당 · 명단 · 메모.
   const steerable = <A extends { itemId: string }, R>(allowed: (body: A) => boolean, run: (body: A) => R) => (body: A): R => {
     if (launch.busy(body.itemId) && !allowed(body)) throw new ObjectiveStoreError("item_busy");
     return run(body);
   };
   const notStarted = (itemId: string, stepId: string): boolean => {
     const target = store.find(itemId)?.steps.find((candidate) => candidate.id === stepId);
-    return !!target && !target.done && !target.operationId;
+    return !!target && !target.done;
   };
   const only = (patch: Record<string, unknown>, keys: readonly string[]): boolean => Object.keys(patch).every((key) => keys.includes(key));
 
@@ -166,8 +166,16 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     // 목표를 지우면 지휘관 Operation 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
     { name: "item/remove", method: "POST", summary: "Delete an objective by closing its Commander Operation (restorable during the undo window).", handler: json(itemRef, unlessBusy(({ itemId }) => item(launch.remove(itemId)))) },
     { name: "item/complete", method: "POST", summary: "Complete an objective and put its Operations to sleep, or reopen it with undone.", handler: json(itemRef.extend({ undone: z.boolean().optional() }), unlessBusy(({ itemId, undone }) => item(undone ? store.reopen(itemId) : launch.complete(itemId)))) },
-    { name: "step/add", method: "POST", summary: "Add a mission.", handler: json(itemRef.extend({ step: stepAddSchema }), steerable(({ step }) => step.assign === undefined, ({ itemId, step }) => edited(["steps"], () => launch.stepAdded(itemId, step, { by: "human" })))) },
-    { name: "step/patch", method: "POST", summary: "Edit a mission (text, done, dependencies).", handler: json(stepRef.extend({ patch: stepPatchSchema }), steerable(({ itemId, stepId, patch }) => only(patch, ["text"]) && notStarted(itemId, stepId), ({ itemId, stepId, patch }) => edited(stepKinds(patch), () => launch.stepPatched(itemId, stepId, patch)))) },
+    { name: "member/add", method: "POST", summary: "Add a member to the roster.", handler: json(itemRef.extend({ member: memberAddSchema }), steerable(() => true, ({ itemId, member }) => edited(["members"], () => store.memberAdd(itemId, member, "human")))) },
+    { name: "member/patch", method: "POST", summary: "Edit a member's role, brief or launch selection.", handler: json(itemRef.extend({ memberId: ids, patch: memberPatchSchema }), steerable(() => true, ({ itemId, memberId, patch }) => edited(["members"], () => store.memberPatch(itemId, memberId, patch)))) },
+    { name: "member/remove", method: "POST", summary: "Remove a member and return its mission ids for undo.", handler: json(itemRef.extend({ memberId: ids }), steerable(() => true, ({ itemId, memberId }) => {
+      const result = store.memberRemove(itemId, memberId);
+      if (result.removed.operationId) ctx.host.operations.delete(result.removed.operationId);
+      // 맡던 임무는 지휘관 직접으로 돌아간다 — 되돌리기는 없다(다시 더하고 배정한다).
+      return item(store.setEdited(itemId, ["members", ...(result.stepIds.length ? ["assign" as const] : [])]));
+    })) },
+    { name: "step/add", method: "POST", summary: "Add a mission.", handler: json(itemRef.extend({ step: stepAddSchema }), steerable(() => true, ({ itemId, step }) => edited(["steps", ...(step.member !== undefined ? ["assign" as const] : [])], () => store.stepAdd(itemId, step, { unplaced: step.after === undefined, by: "human" })))) },
+    { name: "step/patch", method: "POST", summary: "Edit a mission (text, done, dependencies, member).", handler: json(stepRef.extend({ patch: stepPatchSchema }), steerable(({ itemId, stepId, patch }) => only(patch, ["text", "member"]) && notStarted(itemId, stepId), ({ itemId, stepId, patch }) => edited(stepKinds(patch), () => store.stepPatch(itemId, stepId, patch, { by: "human" })))) },
     // 읽음은 편집이 아니다 — 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 것도 없다.
     { name: "step/seen", method: "POST", summary: "Mark every record of a mission as read by the person.", handler: json(stepRef, ({ itemId, stepId }) => item(store.stepSeen(itemId, stepId))) },
     { name: "step/remove", method: "POST", summary: "Remove a mission.", handler: json(stepRef, steerable(({ itemId, stepId }) => notStarted(itemId, stepId), ({ itemId, stepId }) => edited(["steps"], () => store.stepRemove(itemId, stepId)))) },
@@ -175,10 +183,9 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "edge/linear", method: "POST", summary: "Chain all missions in order.", handler: json(itemRef, unlessBusy(({ itemId }) => edited(["recipe"], () => store.edgesLinear(itemId)))) },
     { name: "edge/clear", method: "POST", summary: "Remove all mission dependencies.", handler: json(itemRef, unlessBusy(({ itemId }) => edited(["recipe"], () => store.edgesClear(itemId)))) },
     { name: "plan/request", method: "POST", summary: "Ask the Commander to plan the objective (starts one when missing): it lays out missions, prerequisites and delegation; nothing runs until Commence. Optional context travels with the request and is kept on the item.", handler: json(itemRef.extend({ context: z.string().max(4000).optional() }), unlessBusy(({ itemId, language, context }) => { if (context !== undefined) store.patch(itemId, { cook: context }); return launch.requestPlan(itemId, { language }); })) },
-    { name: "coordinator/stop", method: "POST", summary: "Interrupt the Commander and every assignee Operation of an objective (slots stay).", handler: json(itemRef, ({ itemId }) => launch.stop(itemId)) },
-    { name: "coordinator/start", method: "POST", summary: "Commence: start the Commander, which delegates missions to named assignee sessions as it sees fit.", handler: json(itemRef, unlessBusy(({ itemId, language }) => launch.startCoordinator(itemId, { language }))) },
+    { name: "coordinator/stop", method: "POST", summary: "Interrupt the Commander and every member Operation of an objective (roster stays).", handler: json(itemRef, ({ itemId }) => launch.stop(itemId)) },
+    { name: "coordinator/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn.", handler: json(itemRef, unlessBusy(({ itemId, language }) => launch.startCoordinator(itemId, { language }))) },
     { name: "coordinator/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line), clear the pending changes and the criteria it had judged met.", handler: json(itemRef, ({ itemId, language }) => launch.steer(itemId, { language }).then(item)) },
-    { name: "step/unlink", method: "POST", summary: "Detach a mission's assignee Operation (the Operation stays).", handler: json(stepRef, ({ itemId, stepId }) => item(launch.unlinkStep(itemId, stepId))) },
     { name: "group/create", method: "POST", summary: "Create an Operation group (the Objectives list).", handler: json(z.object({ theaterId: ids, language, name: z.string().trim().min(1).max(64), color: z.string().min(1).max(32) }), ({ theaterId, name, color }) => { const groups = ctx.host.operations.groups; if (!groups) throw new Error("groups_unavailable"); return { group: groups.create({ theaterId, name, color }) }; }) },
     { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();

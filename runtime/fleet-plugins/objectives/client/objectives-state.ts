@@ -45,9 +45,9 @@ const inflight = new Map<string, Promise<void>>();
 const fetching = new Set<string>();
 let knownOperationIds: ReadonlySet<string> = new Set();
 
-/** 담당 Operation — 목표가 아니라 어느 목표의 임무를 맡은 세션이다. */
+/** 구성원 Operation — 임무가 아직 없어도 목표가 아니며 명단에서 제외되어야 한다. */
 function assigneeIds(items: readonly ObjectiveItem[]): ReadonlySet<string> {
-  return new Set(items.flatMap((item) => item.steps.flatMap((step) => (step.operationId ? [step.operationId] : []))));
+  return new Set(items.flatMap((item) => item.members.flatMap((member) => member.operationId ? [member.operationId] : [])));
 }
 
 /**

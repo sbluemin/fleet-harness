@@ -9,7 +9,7 @@ type RootActivity = "idle" | "running" | "awaiting" | "background" | "ended" | n
 
 /**
  * 노드 줄 — 지휘관 패널 본문의 오른쪽 위에 세로로 쌓인 세션 버튼. 맨 위가 지휘관, 그 아래 Operation 이 떠 있는 단계마다
- * 「N 노드」 하나(N = 묶음 안의 단계 번호, 제목은 말풍선·낭독에만). 누르면 지휘관 패널의 본문만 그 세션으로 바뀌고
+ * 버튼 하나 — 구성원이 준 이름(`name`)이 있으면 그 이름, 없으면 「N 노드」(N = 묶음 안의 단계 번호). 제목은 말풍선·낭독에만. 누르면 지휘관 패널의 본문만 그 세션으로 바뀌고
  * 세션은 뒤에서 계속 돈다. 지금 보고 있는 버튼은 비활성화된 brass 워시로 서서 현재 자리를 말한다.
  *
  * 평소엔 흐리게 있다가 패널에 올리거나 포커스가 들어오면 선명해진다. 지휘관이 아닌 세션을 보는 동안과 결정을 기다리는
@@ -51,7 +51,8 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   };
   const chefLabel = t("cluster.picker.coordinator");
   const currentNode = nodes.find(({ member }) => member.operationId === current);
-  const currentLabel = currentNode ? t("cluster.nodes.node", { n: currentNode.n }) : chefLabel;
+  const nodeName = (node: { readonly member: { readonly name?: string }; readonly n: number }) => node.member.name ?? t("cluster.nodes.node", { n: node.n });
+  const currentLabel = currentNode ? nodeName(currentNode) : chefLabel;
   const awaiting = nodes.some(({ member }) => member.progress === "awaiting");
   const className = [
     "cluster-node-rail",
@@ -84,7 +85,8 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         {chefLabel}
       </button>
       <span className="cluster-node-sep" aria-hidden="true" />
-      {nodes.map(({ member, n }) => {
+      {nodes.map((node) => {
+        const { member } = node;
         const on = member.operationId === current;
         const word = stateWord(member.progress);
         const tip = word ? `${member.label} · ${word}` : member.label;
@@ -100,7 +102,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
             onClick={() => onPick(member.operationId)}
           >
             <i className={`cluster-node-dot is-${member.progress}`} aria-hidden="true" />
-            {t("cluster.nodes.node", { n })}
+            {nodeName(node)}
           </button>
         );
       })}
