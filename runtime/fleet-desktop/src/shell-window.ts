@@ -20,9 +20,12 @@ export interface DesktopViewStack {
   /** Console 앞, picker 아래 — 사용자가 보고 만지는 자리. */
   presentBrowser(view: WebContentsView): void;
   removeBrowser(view: WebContentsView): void;
-  /** 호스트 목록 덮개 — 항상 최상단. */
+  /** 호스트 목록 덮개 — 종료 인사 아래 최상단. */
   presentPicker(view: WebContentsView): void;
   removePicker(view: WebContentsView): void;
+  /** 종료 인사 — 모든 뷰 위. 떠나는 창에서는 무엇도 그 앞에 서지 않는다. */
+  presentVeil(view: WebContentsView): void;
+  removeVeil(view: WebContentsView): void;
 }
 
 export interface DesktopShellWindow {
@@ -53,12 +56,14 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   const parked = new Set<WebContentsView>();
   const presented = new Set<WebContentsView>();
   let picker: WebContentsView | null = null;
+  let veil: WebContentsView | null = null;
 
   /** 이미 붙은 뷰는 remove 없이 addChildView(index) 로만 재정렬한다 — CDP 스냅샷마다 renderer churn 을 막는다. */
   const relayout = (): void => {
     const root = base.contentView;
     const ordered: WebContentsView[] = [...parked, consoleView, ...presented];
     if (picker) ordered.push(picker);
+    if (veil) ordered.push(veil);
     for (let index = 0; index < ordered.length; index++) root.addChildView(ordered[index]!, index);
   };
 
@@ -101,6 +106,17 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     relayout();
   };
 
+  const presentVeilView = (view: WebContentsView): void => {
+    if (veil === view) return;
+    veil = view;
+    relayout();
+  };
+
+  const removeVeilView = (view: WebContentsView): void => {
+    if (veil === view) veil = null;
+    try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ }
+  };
+
   layoutConsole();
   base.contentView.addChildView(consoleView);
 
@@ -112,6 +128,8 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     removeBrowser,
     presentPicker: presentPickerView,
     removePicker: removePickerView,
+    presentVeil: presentVeilView,
+    removeVeil: removeVeilView,
   };
 }
 

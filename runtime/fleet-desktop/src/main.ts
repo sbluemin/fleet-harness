@@ -15,6 +15,7 @@ import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
 import { createHydratedDesktopEnvironment, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot } from "./entry-page.js";
+import { createQuitFarewell, farewellSnapshot } from "./quit-farewell.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopNotifier } from "./desktop-notices.js";
@@ -359,6 +360,27 @@ async function boot(): Promise<void> {
     attachBridge: (contents) => bridge.attachPicker(contents),
     log: (message) => logger.error(message),
   });
+  const entryLanguage = app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en";
+  /** Console을 보여 주고 있는 창만 인사한다 — 진입 화면에서 떠날 때는 이미 그 화면이 떠 있다. */
+  let consoleShown = false;
+  const farewell = createQuitFarewell({
+    shell: () => consoleShown && window && !window.isDestroyed() ? window : null,
+    createView: () => {
+      const view = new WebContentsView({
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
+      });
+      // 인사는 떠나는 Console 위에 합성된다 — 판이 차오를 때까지 아래 화면이 비친다.
+      view.setBackgroundColor("#00000000");
+      // 진입 화면처럼 수동적인 판이다. 어디로도 항해하지 않고 창도 열지 않는다.
+      view.webContents.on("will-navigate", (event) => event.preventDefault());
+      view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      return view;
+    },
+    entryPagePath: desktopResources.entryPagePath,
+    snapshot: (phase) => farewellSnapshot(entryLanguage, phase),
+    pushEntry: pushEntrySnapshot,
+    log: (message) => logger.error(message),
+  });
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
@@ -387,6 +409,7 @@ async function boot(): Promise<void> {
           } catch { /* already torn down */ }
           window = null;
           policy = null;
+          consoleShown = false;
         });
         controls.attachWindow(createdWindow);
         lifecycle.attachWindow(createdWindow);
@@ -430,7 +453,7 @@ async function boot(): Promise<void> {
         return createdWindow;
       },
       dev: !isPackaged,
-      lang: app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en",
+      lang: entryLanguage,
       desktopVersion: app.getVersion(),
       consoleVersion: () => isPackaged ? readInstalledVersion(runtimePaths.latest) : null,
       handoffOrigin: (origin) => {
@@ -441,14 +464,14 @@ async function boot(): Promise<void> {
       },
       synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
-      onConsoleLoaded: () => controls.onConsoleLoaded(),
+      onConsoleLoaded: () => { consoleShown = true; controls.onConsoleLoaded(); },
       onFirstRunFailure: async () => showFirstRunFailure(),
       onWindowReady: (push) => { pushRuntimeProgress = push; },
       pushEntry: pushEntrySnapshot,
       startOrAdopt: () => supervisor.startOrAdopt(),
     });
     return launch.start() as Promise<DesktopShellWindow>;
-  }, async () => { bridge.dispose(); await supervisor.stop(); });
+  }, () => farewell.run(async () => { bridge.dispose(); await supervisor.stop(); }));
   const consoleRelaunch = isPackaged
     ? createConsoleRelaunchController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",

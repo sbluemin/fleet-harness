@@ -121,6 +121,14 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
 .is-handoff .entry-stage, .is-handoff .versions, .is-handoff .dev-tag { opacity: 0; }
 .is-handoff .brand-mark-beacon { animation: none; }
 
+/* 종료 인사: 넘겨주기의 역재생. 투명한 판(is-veiled)에서 마크가 Console 브랜드 자리에 앉은 채 시작해,
+   바탕이 차오르는 동안 가운데로 돌아와 "종료 중"을 말한다. 아래의 Console은 판이 차오를 때까지 비친다. */
+.is-farewell body { transition: background-color var(--duration-fade) ease; }
+.is-veiled body { background-color: transparent; }
+.is-farewell .tagline { display: none; }
+.is-farewell .brand-mark, .is-farewell .wordmark { transition-delay: 60ms; }
+.is-instant, .is-instant * { transition: none !important; }
+
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--brass-glow); } 50% { box-shadow: 0 0 0 6px transparent; } }
 @keyframes beacon { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
