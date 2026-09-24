@@ -338,38 +338,38 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     // Once dropped, the replay stays dropped for every later attempt of this turn.
     let activeRequest = request;
 
+    // 첫 요청과 재생을 뺀 재전송이 같은 fetch-level 소켓 retry를 받는다. 예산은 하나라서
+    // 어느 쪽이 쓰든 이후 stream-level retry는 막힌다.
+    const fetchWithSocketRetry = async (attempt: CanonicalResponseRequest): Promise<AdapterResponse> => {
+      try {
+        return await super.stream(attempt, callOptions);
+      } catch (error) {
+        if (!retryAvailable || !isRetryableCodexFetchSocketTermination(error, callOptions.signal, this.isMarkedFetchFailure)) {
+          throw error;
+        }
+        // fetch-level retry 전에 예산을 소모한다. 이 뒤로 도착한 응답 스트림은
+        // retry 없이 원본 순서로만 노출된다.
+        retryAvailable = false;
+        wireLog("codex.retry.discarded", {
+          reason: "socket_termination",
+          phase: "fetch",
+        });
+        await abortableDelay(CODEX_RETRY_DELAY_MS, callOptions.signal);
+        return await super.stream(attempt, callOptions);
+      }
+    };
+
     let response: AdapterResponse;
     try {
-      response = await super.stream(activeRequest, callOptions);
+      response = await fetchWithSocketRetry(activeRequest);
+      if (!response.ok && replaysReasoning(activeRequest, CODEX_REASONING_ORIGIN) && isRefusedReasoningReplay(response)) {
+        activeRequest = withoutReplayedReasoning(activeRequest, CODEX_REASONING_ORIGIN);
+        wireLog("codex.replay.dropped", { status: response.status, code: CODEX_REFUSED_REPLAY_CODE });
+        response = await fetchWithSocketRetry(activeRequest);
+      }
     } catch (error) {
-      if (!isRetryableCodexFetchSocketTermination(error, callOptions.signal, this.isMarkedFetchFailure)) {
-        unlinkCallAbort();
-        throw error;
-      }
-      // fetch-level retry 전에 예산을 소모한다. 이 뒤로 도착한 응답 스트림은
-      // retry 없이 원본 순서로만 노출된다.
-      retryAvailable = false;
-      wireLog("codex.retry.discarded", {
-        reason: "socket_termination",
-        phase: "fetch",
-      });
-      try {
-        await abortableDelay(CODEX_RETRY_DELAY_MS, callOptions.signal);
-        response = await super.stream(activeRequest, callOptions);
-      } catch (retryError) {
-        unlinkCallAbort();
-        throw retryError;
-      }
-    }
-    if (!response.ok && replaysReasoning(activeRequest, CODEX_REASONING_ORIGIN) && isRefusedReasoningReplay(response)) {
-      activeRequest = withoutReplayedReasoning(activeRequest, CODEX_REASONING_ORIGIN);
-      wireLog("codex.replay.dropped", { status: response.status, code: CODEX_REFUSED_REPLAY_CODE });
-      try {
-        response = await super.stream(activeRequest, callOptions);
-      } catch (error) {
-        unlinkCallAbort();
-        throw error;
-      }
+      unlinkCallAbort();
+      throw error;
     }
     if (!response.ok) {
       unlinkCallAbort();
