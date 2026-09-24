@@ -3766,7 +3766,11 @@
   .cluster-node-rail { transition: none; }
   .cluster-node-dot.is-awaiting { animation: none; }
 }
-.canvas-operation-cluster-strip { margin-left: 2px; }
+.canvas-operation-cluster-strip {
+  margin-left: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
 
 /* 묶음 피커 — 지휘관 캡션의 단계 띠가 여는 작은 메뉴. 줄마다 진행 사각(신호 토큰) 하나, 고른 줄은 brass 워시. */
 .cluster-picker {
@@ -6762,7 +6766,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 /* 단계 띠 — 뿌리 고리 + 깊이 눈금 + 구성원 사각. 어느 표면에서나 같은 크기. */
 .cluster-strip {
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   align-items: center;
   gap: 3px;
   padding: 2px 3px;
@@ -6772,6 +6777,30 @@ body[data-companion-resizing="true"] .canvas-operation {
 .cluster-strip.is-interactive { cursor: pointer; }
 .cluster-strip.is-interactive:hover,
 .cluster-strip.is-interactive:focus-visible { background: color-mix(in oklch, var(--ink-spectral) 9%, transparent); outline: none; }
+.cluster-strip.is-dense {
+  gap: 1px;
+}
+.cluster-strip.is-dense .cluster-strip-cell {
+  gap: 1px;
+}
+.cluster-strip.is-dense .cluster-strip-step {
+  width: 3px;
+  height: 7px;
+  border-radius: 1px;
+}
+.cluster-strip-count {
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text-secondary);
+  padding: 0 2px;
+  white-space: nowrap;
+}
+.cluster-strip-count.is-done {
+  color: var(--positive);
+}
 .cluster-strip-root {
   display: block;
   width: 7px;
@@ -6804,7 +6833,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 /* 사이드바 칩의 셋째 줄 — 이름·위치 줄 아래 왼쪽 정렬. 띠 자체의 안쪽 여백만큼 물려 사각의 왼끝이 글자 왼끝과 맞는다. */
-.side-bar-chip-cluster-strip { align-self: flex-start; margin: 1px 0 0 -3px; }
+.side-bar-chip-cluster-strip { align-self: flex-start; margin: 1px 0 0 -3px; max-width: 100%; }
 .side-bar-chip--minimized .side-bar-chip-cluster-strip { opacity: 0.7; }
 
 .side-bar-chip-marks {
