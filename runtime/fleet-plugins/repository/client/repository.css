@@ -1187,15 +1187,20 @@
 .repository-ws-layout {
   display: grid;
   /* 트리는 설정폭을 따르되 좁은 패널에서는 45cqw로 클램프되어 중앙(History)에 폭을 양보한다. */
-  grid-template-columns: min(var(--ws-tree-width, 222px), 45cqw) 1px minmax(0, 1fr);
+  grid-template-columns: min(var(--ws-tree-width, 300px), 45cqw) 1px minmax(0, 1fr);
+  grid-template-rows: 44px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   flex: 1;
 }
 
-.repository-ws-tree-divider {
-  height: 100%;
-}
+.repository-ws-layout > .repository-workbar { grid-column: 1 / -1; grid-row: 1; }
+.repository-ws-layout > .repository-ws-tree { grid-column: 1; grid-row: 2; }
+.repository-ws-tree-divider { grid-column: 2; grid-row: 2; height: 100%; }
+.repository-ws-layout > .repository-work-area { grid-column: 3; grid-row: 2; }
+.repository-workbar-context { flex: none; min-width: 0; max-width: 22%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-family: var(--font-display); font-size: var(--t-md); font-weight: var(--weight-medium); }
+.repository-workbar-branch { display: inline-flex; align-items: center; gap: 5px; flex: none; min-width: 0; max-width: 17%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--brass-ink); font-family: var(--font-mono); font-size: var(--t-xs); }
+@container (max-width: 730px) { .repository-workbar-context { max-width: 18%; } .repository-workbar-branch { display: none; } }
 
 .repository-ws-tree {
   /* 컨텍스트 메뉴(absolute)의 containing block — 없으면 상위 positioned 조상 기준으로 오배치된다 */
@@ -1204,9 +1209,8 @@
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  border-right: 1px solid var(--surface-rim);
-  /* 열 구분은 오른쪽 헤어라인이 진다 — 열 전체를 어둡게 칠하면 면이 갈라진다(밴드 정합). */
-  background: transparent;
+  /* 열 경계는 SplitSeam 하나가 소유한다. */
+  background: color-mix(in oklch, var(--surface-panel) 92%, var(--surface-panel-raised));
 }
 
 .repository-ws-tree-scroll {
@@ -2726,7 +2730,7 @@
 
 /* 행 전체 선택은 유지하되 정체성 색으로 칠하지 않는다.
    테마의 본문 잉크를 표면에 얕게 섞어 밝은 테마에서는 낮추고 어두운 테마에서는 밝힌다. */
-.repository-unified.is-workspace { --repository-selection: color-mix(in oklab, var(--text-primary) 12%, var(--surface-panel-raised)); }
+.repository-unified.is-workspace { --repository-selection: color-mix(in oklch, var(--text-primary) 8%, var(--surface-panel)); background: var(--surface-panel); }
 .repository-unified .history-commit-row.is-selected { background: var(--repository-selection); box-shadow: none; }
 .repository-unified .history-commit-row.is-arrived { animation: none; }
 .repository-unified .history-commit-row.is-selected .history-commit-subject,
@@ -2735,7 +2739,7 @@
 .repository-unified .history-badge-mark { border-right: 0; padding: 0 3px; }
 .repository-unified .history-badge-label { padding: 0 5px 0 2px; }
 .repository-unified .history-commit-kind { font-weight: var(--weight-medium); }
-.repository-unified .repository-ws-tree { background: color-mix(in oklab, var(--surface-panel-raised) 94%, var(--ink-fog)); }
+.repository-unified .repository-ws-tree { background: color-mix(in oklch, var(--surface-panel) 92%, var(--surface-panel-raised)); }
 .repository-unified .repository-ws-section-head { font-size: var(--t-xs); font-weight: var(--weight-medium); letter-spacing: 0; color: var(--text-secondary); }
 .repository-unified .repository-ws-tree-row { border-radius: 3px; }
 .repository-unified .repository-ws-tree-row.is-active { background: var(--repository-selection); box-shadow: none; }
@@ -2743,21 +2747,21 @@
 .repository-unified .repository-source-navigation { padding: 5px 4px; gap: 1px; }
 .repository-unified .repository-source-navigation > button { min-height: 28px; border-radius: 3px; }
 .repository-unified .repository-source-navigation > button[aria-selected="true"] { background: var(--control-wash); color: var(--text-primary); }
-.repository-unified .repository-workbar { height: 42px; background: var(--surface-panel-raised); }
-.repository-unified .repository-sync-button { background: transparent; border-color: transparent; border-radius: 3px; }
-.repository-unified .repository-discovery { background: var(--surface-panel-raised); }
+.repository-unified .repository-workbar { height: 44px; background: var(--surface-panel); }
+.repository-unified .repository-sync-button { background: var(--control-rest); border-color: var(--surface-rim); border-radius: var(--radius-xs); }
+.repository-unified .repository-discovery { background: transparent; }
 .repository-unified .repository-filter-input, .repository-unified .history-filter-input { border-radius: 3px; font-size: var(--t-xs); }
 .repository-unified .repository-staging-row.is-cur, .repository-unified .repository-file-row.is-cur { background: var(--repository-selection); box-shadow: none; }
 .repository-unified .repository-stage-action { border-radius: 3px; padding: 4px 6px; }
 .repository-unified .repository-staging-head { color: var(--text-secondary); font-weight: var(--weight-medium); background: var(--surface-panel-raised); backdrop-filter: none; }
 .repository-unified .repository-staging-section { flex: 1 0 auto; min-height: 120px; }
 .repository-unified .repository-staging-viewbar { flex: none; }
-.repository-unified .repository-dock-head { background: var(--surface-panel-raised); }
+.repository-unified .repository-dock-head { background: transparent; }
 .repository-unified .repository-dock-tabs.repository-segmented { border: 0; background: transparent; border-radius: 0; }
 .repository-unified .repository-dock-tabs button { border-radius: 3px; }
 .repository-unified .history-inspector-subject { font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .repository-unified .history-author { font-size: var(--t-xs); }
-.repository-unified .repository-commit-box { padding: 10px 12px; gap: 5px; background: var(--surface-panel-raised); }
+.repository-unified .repository-commit-box { padding: 10px 12px; gap: 5px; background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised)); }
 .repository-unified .repository-commit-subject, .repository-unified .repository-commit-body { border: 1px solid var(--surface-rim); border-radius: 3px; font-family: var(--font-body); }
 .repository-unified .repository-commit-button { border-radius: 3px; }
 .repository-unified .repository-ref-context-menu, .repository-unified .repository-verb-menu { border-radius: 5px; background: var(--surface-panel-raised); }
@@ -2765,4 +2769,4 @@
 /* 비교 선택도 단일 선택과 같은 면을 쓴다. Shift 후 focus-visible은 중립 테두리로 구분한다. */
 .repository-unified .history-commit-row.is-picked { background: var(--repository-selection); box-shadow: none; }
 .repository-unified .history-commit-row.is-picked .history-commit-sha { color: var(--text-secondary); }
-.repository-unified .history-commit-row-main:focus-visible { outline: 1px solid var(--text-secondary); outline-offset: -2px; border-radius: 3px; }
+.repository-unified .history-commit-row-main:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; border-radius: var(--radius-xs); }

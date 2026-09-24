@@ -20,7 +20,7 @@ import { formatCommitTime, refBadges, shortRefName, splitCommitSubject, type Ref
 import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT, buildHistoryStackTemplate, buildInspectorChangesGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
 import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
 import { StashInspector } from "./stash-inspector.js";
-import { WORKSPACE_DOCK_MIN_HEIGHT, buildWorkspaceDockCollapsedTemplate, buildWorkspaceDockTemplate, detentForWorkspaceDockHeight, dragWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight, settleWorkspaceDockHeight, workspaceDockDetents, type WorkspaceDockDetent, type WorkspaceDockDragResult } from "./workspace-layout.js";
+import { WORKSPACE_DOCK_DEFAULT_RATIO, WORKSPACE_DOCK_MIN_HEIGHT, buildWorkspaceDockCollapsedTemplate, buildWorkspaceDockTemplate, detentForWorkspaceDockHeight, dragWorkspaceDockHeight, hasWorkspaceDockHeightPreference, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight, settleWorkspaceDockHeight, workspaceDockDetents, type WorkspaceDockDetent, type WorkspaceDockDragResult } from "./workspace-layout.js";
 import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
 
 type T = Translate<RepositoryMessageKey>;
@@ -505,7 +505,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
   const [commitViewport, setCommitViewport] = useState({ scrollTop: initialRestore?.scrollTop ?? 0, height: 0 });
   const [logHeight, setLogHeight] = useState(readLogPaneHeight);
   const [tab, setTab] = useState<InspectorTab>("details");
-  const [dockHeight, setDockHeight] = useState(() => readWorkspaceDockHeight("details"));
+  const [dockHeight, setDockHeight] = useState(() => readWorkspaceDockHeight("changes"));
+  const dockHeightCustomizedRef = useRef(hasWorkspaceDockHeightPreference("changes"));
   const [dockDetent, setDockDetent] = useState<WorkspaceDockDetent>("free");
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [dragResult, setDragResult] = useState<WorkspaceDockDragResult | null>(null);
@@ -899,8 +900,9 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     const normalize = () => {
       const height = root.getBoundingClientRect().height;
       const detents = workspaceDockDetents(height);
-      // 정착점에 앉은 독은 창 크기를 따라 정착점 값으로 다시 잰다 — 절반은 계속 절반이다.
-      const wanted = dockDetent === "half" ? detents.half : dockDetent === "full" ? detents.full : dockHeightRef.current;
+      // 저장된 높이가 없으면 첫 독은 작업면의 47%를 차지하고 창 크기를 따른다.
+      const wanted = !dockHeightCustomizedRef.current ? Math.round(height * WORKSPACE_DOCK_DEFAULT_RATIO)
+        : dockDetent === "half" ? detents.half : dockDetent === "full" ? detents.full : dockHeightRef.current;
       const next = normalizeWorkspaceDockHeight(wanted, height);
       if (next !== dockHeightRef.current) { dockHeightRef.current = next; setDockHeight(next); }
       // 저장값에서 되살아난 높이가 정착점과 같으면 그 정착점으로 읽는다 — 재마운트 뒤 토글·창 추종이 어긋나지 않게.
@@ -917,14 +919,16 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     if (!root || !workspace) return;
     const detents = workspaceDockDetents(root.getBoundingClientRect().height);
     const remembered = readWorkspaceDockHeight(nextTab);
-    const next = normalizeWorkspaceDockHeight(nextTab === "details" ? Math.min(remembered, detents.half) : Math.max(remembered, detents.half), root.getBoundingClientRect().height);
+    const firstHeight = Math.round(root.getBoundingClientRect().height * WORKSPACE_DOCK_DEFAULT_RATIO);
+    const next = normalizeWorkspaceDockHeight(hasWorkspaceDockHeightPreference(nextTab)
+      ? remembered : firstHeight, root.getBoundingClientRect().height);
     dockHeightRef.current = next;
     setDockHeight(next);
     setDockDetent(next === detents.full ? "full" : next === detents.half ? "half" : "free");
   }, [workspace]);
   const chooseTab = useCallback((nextTab: InspectorTab) => {
     if (nextTab === tabRef.current) return;
-    saveWorkspaceDockHeight(dockHeightRef.current, tabRef.current);
+    if (dockHeightCustomizedRef.current) saveWorkspaceDockHeight(dockHeightRef.current, tabRef.current);
     setTab(nextTab);
     applyDockForTab(nextTab);
   }, [applyDockForTab]);
@@ -932,6 +936,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     const root = rootRef.current;
     if (!root) return;
     const next = workspaceDockDetents(root.getBoundingClientRect().height)[detent];
+    dockHeightCustomizedRef.current = true;
     dockHeightRef.current = next;
     setDockHeight(next);
     setDockDetent(detent);
@@ -944,6 +949,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     const height = root.getBoundingClientRect().height;
     const detents = workspaceDockDetents(height);
     const next = normalizeWorkspaceDockHeight(dockHeightRef.current + delta, height);
+    dockHeightCustomizedRef.current = true;
     dockHeightRef.current = next;
     setDockHeight(next);
     setDockCollapsed(false);
@@ -955,6 +961,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     const root = rootRef.current;
     if (!root) return;
     const start = workspace ? dockHeightRef.current : logHeightRef.current;
+    if (workspace) dockHeightCustomizedRef.current = true;
     const startY = event.clientY;
     const height = root.getBoundingClientRect().height;
     dragDisposeRef.current?.();

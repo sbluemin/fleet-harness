@@ -18,7 +18,7 @@ import { clearSelectedFile } from "./repository-state.js";
 import { HistoryPanel } from "./history-panel.js";
 import { readRepoViewState, readWorkspaceTreeState, writeRepoViewState, writeWorkspaceTreeState } from "./repository-state.js";
 import { StagingView, guardMessageOf } from "./staging-view.js";
-import { WORKSPACE_TREE_MIN_WIDTH, buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth, workspaceTreeMaxWidth } from "./workspace-layout.js";
+import { WORKSPACE_TREE_COMPACT_WIDTH, WORKSPACE_TREE_MIN_WIDTH, buildWorkspaceTreeSections, clampWorkspaceTreeWidth, hasWorkspaceTreeWidthPreference, readWorkspaceTreeWidth, saveWorkspaceTreeWidth, workspaceTreeMaxWidth } from "./workspace-layout.js";
 import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
 import { activateRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
 
@@ -227,9 +227,11 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [source, setSourceState] = useState<Source>(readRepositorySource);
   const [treeWidth, setTreeWidth] = useState(readWorkspaceTreeWidth);
   const treeWidthRef = useRef(treeWidth);
+  const treeWidthCustomizedRef = useRef(hasWorkspaceTreeWidthPreference());
   const [isTreeDragging, setIsTreeDragging] = useState(false);
   const layoutRef = useRef<HTMLDivElement>(null);
   const layoutWidth = useSeamContainerSize(layoutRef, "width");
+  const effectiveTreeWidth = treeWidthCustomizedRef.current || layoutWidth === undefined || layoutWidth >= 1100 ? treeWidth : WORKSPACE_TREE_COMPACT_WIDTH;
   const [refFilter, setRefFilter] = useState<string | null>(initialRepoViewState?.refFilter ?? null);
   const [refs, setRefs] = useState<Refs>({ branches: [], remotes: [], tags: [], stashes: [] });
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
@@ -316,10 +318,11 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     const startX = event.clientX;
     // 저장 폭이 현재 컨테이너 최대치를 넘으면 CSS가 화면에서만 줄여 놓는다 — 그 숨은 초과분을
     // 기점으로 삼으면 첫 이동이 먹지 않으므로 실제 그려진 폭으로 기점을 맞춘다(독 파일 열과 같은 규칙).
-    const startWidth = clampWorkspaceTreeWidth(treeWidthRef.current, 0, containerWidth);
+    const startWidth = clampWorkspaceTreeWidth(effectiveTreeWidth, 0, containerWidth);
     if (startWidth === null) return;
     treeWidthRef.current = startWidth;
     setTreeWidth(startWidth);
+    treeWidthCustomizedRef.current = true;
     setIsTreeDragging(true);
     const onMove = (move: PointerEvent) => {
       const next = clampWorkspaceTreeWidth(startWidth, move.clientX - startX, containerWidth);
@@ -336,16 +339,17 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
-  }, []);
+  }, [effectiveTreeWidth]);
   const stepTreeWidth = useCallback((delta: number) => {
     const container = layoutRef.current;
     if (!container) return;
-    const next = clampWorkspaceTreeWidth(treeWidthRef.current, delta, container.getBoundingClientRect().width);
+    const next = clampWorkspaceTreeWidth(treeWidthCustomizedRef.current ? treeWidthRef.current : effectiveTreeWidth, delta, container.getBoundingClientRect().width);
     if (next === null) return;
+    treeWidthCustomizedRef.current = true;
     treeWidthRef.current = next;
     setTreeWidth(next);
     saveWorkspaceTreeWidth(next);
-  }, []);
+  }, [effectiveTreeWidth]);
   const repoViewSnapshotRef = useRef({ theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders });
   repoViewSnapshotRef.current = { theaterId: ctx.theaterId, repoRel, repoViewCacheKey, hydratedRepoViewCacheKey, filterText, refFilter, collapsedChangeFolders };
   const flushChangesCache = useCallback(() => {
@@ -886,43 +890,43 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <span className="repository-sr-only" role="status">{verbOutcome ? verbOutcome.text : ""}</span>
       <span className="repository-sr-only" role="status">{syncNoticeMessage ?? ""}</span>
       <span className="repository-sr-only" role="status">{rowNotice?.text ?? ""}</span>
-      <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
+      <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${effectiveTreeWidth}px` } as React.CSSProperties}>
+        <div className="repository-workbar">
+          <span className="repository-workbar-context" title={selectedRepo?.relPath ?? repoRel}>{selectedRepo?.name ?? repoRel}</span>
+          {workstate?.headBranch && <span className="repository-workbar-branch"><Icon name="branch" size={12} />{workstate.headBranch}</span>}
+          {/* 도구막대는 화면 폭을 쓰되 기록 필터는 기록에서만 표시한다. */}
+          <div ref={setHistoryToolbarHost} className="repository-workbar-tools repository-history-tools" hidden={source !== "history"} />
+          <span ref={verbClusterRef} className="repository-verb-cluster" onKeyDown={(event) => {
+            if (event.key !== "Escape" || !verbMenuOpen) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setVerbMenuOpen(false);
+            verbClusterRef.current?.querySelector<HTMLButtonElement>(".repository-verb-more")?.focus();
+          }}>
+            <span className="repository-verb-inline">
+              <button type="button" className={`repository-sync-button${syncing ? " is-busy" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><GlyphSlot name="fetch" settled={syncSettled} /><span className="repository-verb-label">{t("repository.sync.button")}</span>{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button>
+              <VerbToolbarButton icon="pull" label={t("repository.verb.pull")} title={t("repository.verb.pullTitle")} count={pullCount} disabled={verbDisabled} busy={verbBusy?.surface === "button" && verbBusy.verb === "pull"} outcome={verbOutcome?.verb === "pull" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "pull"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePull} />
+              <VerbToolbarButton icon="push" label={t("repository.verb.push")} title={t("repository.verb.pushTitle")} count={pushCount} disabled={verbDisabled} busy={verbBusy?.surface === "button" && verbBusy.verb === "push"} outcome={verbOutcome?.verb === "push" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "push"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePush} />
+              <VerbToolbarButton icon="stash" label={t("repository.verb.stash")} title={t("repository.verb.stashTitle")} count={null} disabled={verbDisabled} busy={verbBusy?.surface === "button" && verbBusy.verb === "stash"} outcome={verbOutcome?.verb === "stash" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "stash"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handleStash} />
+            </span>
+            <span className="repository-verb-overflow">
+              <button type="button" className={`repository-quiet-button repository-verb-more${syncing || verbBusy?.surface === "button" ? " is-busy" : ""}`} aria-label={t("repository.verb.more")} title={t("repository.verb.more")} aria-haspopup="menu" aria-expanded={verbMenuOpen} onClick={() => setVerbMenuOpen((value) => !value)}>
+                <GlyphSlot name="more" />
+                {(syncFailed || verbFailed) && <span className="repository-sync-dot" title={t("repository.verb.lastFailed")} aria-hidden="true" />}
+              </button>
+              {verbMenuOpen && <div className="repository-verb-menu" role="menu" aria-label={t("repository.verb.menu")}>
+                <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={syncing} onClick={() => { setVerbMenuOpen(false); void syncRepository(); }}><Icon name="fetch" />{t("repository.sync.button")}</button>
+                <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={verbDisabled} onClick={() => { setVerbMenuOpen(false); handlePull(); }}><Icon name="pull" />{t("repository.verb.pull")}{pullCount}</button>
+                <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={verbDisabled} onClick={() => { setVerbMenuOpen(false); handlePush(); }}><Icon name="push" />{t("repository.verb.push")}{pushCount}</button>
+                <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={verbDisabled} onClick={() => { setVerbMenuOpen(false); handleStash(); }}><Icon name="stash" />{t("repository.verb.stash")}</button>
+              </div>}
+            </span>
+            {stashPromptOpen && <StashSavePopover t={t} hostRef={verbClusterRef} onSave={handleStashSave} onClose={() => setStashPromptOpen(false)} />}
+          </span>
+        </div>
         <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={<>{picker}{sourceNavigation}</>} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked ? undefined : handlePull} pullBusy={verbBusy?.verb === "pull"} pullDisabled={verbBusy !== null} />
         <SplitSeam orientation="vertical" className="repository-ws-tree-divider" label={t("repository.common.resizeSourceTree")} value={treeWidth} min={WORKSPACE_TREE_MIN_WIDTH} max={layoutWidth === undefined ? undefined : workspaceTreeMaxWidth(layoutWidth)} dragging={isTreeDragging} readout={isTreeDragging ? `${Math.round(treeWidth)}px` : null} onPointerDown={handleTreeDividerDown} onStep={stepTreeWidth} />
         <div className="repository-work-area">
-          {/* 탐색은 소스 트리, Git 실행과 기록 필터는 한 도구막대에 둔다. */}
-          <div className="repository-workbar">
-            {/* 기록 필터·정렬·새로고침은 도구막대 왼쪽에, 원격 동사는 오른쪽에 — 한 줄로 합쳐 세로 공간을 아낀다. */}
-            <div ref={setHistoryToolbarHost} className="repository-workbar-tools repository-history-tools" hidden={source !== "history"} />
-            <span ref={verbClusterRef} className="repository-verb-cluster" onKeyDown={(event) => {
-              // 메뉴가 열린 채의 Escape는 메뉴만 닫는다 — 전파되면 표면 전체가 닫힌다.
-              if (event.key !== "Escape" || !verbMenuOpen) return;
-              event.preventDefault();
-              event.stopPropagation();
-              setVerbMenuOpen(false);
-              verbClusterRef.current?.querySelector<HTMLButtonElement>(".repository-verb-more")?.focus();
-            }}>
-              <span className="repository-verb-inline">
-                <button type="button" className={`repository-sync-button${syncing ? " is-busy" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><GlyphSlot name="fetch" settled={syncSettled} /><span className="repository-verb-label">{t("repository.sync.button")}</span>{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button>
-                <VerbToolbarButton icon="pull" label={t("repository.verb.pull")} title={t("repository.verb.pullTitle")} count={pullCount} disabled={verbDisabled} busy={verbBusy?.surface === "button" && verbBusy.verb === "pull"} outcome={verbOutcome?.verb === "pull" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "pull"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePull} />
-                <VerbToolbarButton icon="push" label={t("repository.verb.push")} title={t("repository.verb.pushTitle")} count={pushCount} disabled={verbDisabled} busy={verbBusy?.surface === "button" && verbBusy.verb === "push"} outcome={verbOutcome?.verb === "push" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "push"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePush} />
-                <VerbToolbarButton icon="stash" label={t("repository.verb.stash")} title={t("repository.verb.stashTitle")} count={null} disabled={verbDisabled} busy={verbBusy?.surface === "button" && verbBusy.verb === "stash"} outcome={verbOutcome?.verb === "stash" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "stash"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handleStash} />
-              </span>
-              <span className="repository-verb-overflow">
-                <button type="button" className={`repository-quiet-button repository-verb-more${syncing || verbBusy?.surface === "button" ? " is-busy" : ""}`} aria-label={t("repository.verb.more")} title={t("repository.verb.more")} aria-haspopup="menu" aria-expanded={verbMenuOpen} onClick={() => setVerbMenuOpen((value) => !value)}>
-                  <GlyphSlot name="more" />
-                  {(syncFailed || verbFailed) && <span className="repository-sync-dot" title={t("repository.verb.lastFailed")} aria-hidden="true" />}
-                </button>
-                {verbMenuOpen && <div className="repository-verb-menu" role="menu" aria-label={t("repository.verb.menu")}>
-                  <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={syncing} onClick={() => { setVerbMenuOpen(false); void syncRepository(); }}><Icon name="fetch" />{t("repository.sync.button")}</button>
-                  <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={verbDisabled} onClick={() => { setVerbMenuOpen(false); handlePull(); }}><Icon name="pull" />{t("repository.verb.pull")}{pullCount}</button>
-                  <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={verbDisabled} onClick={() => { setVerbMenuOpen(false); handlePush(); }}><Icon name="push" />{t("repository.verb.push")}{pushCount}</button>
-                  <button type="button" role="menuitem" className="repository-verb-menu-item" disabled={verbDisabled} onClick={() => { setVerbMenuOpen(false); handleStash(); }}><Icon name="stash" />{t("repository.verb.stash")}</button>
-                </div>}
-              </span>
-              {stashPromptOpen && <StashSavePopover t={t} hostRef={verbClusterRef} onSave={handleStashSave} onClose={() => setStashPromptOpen(false)} />}
-            </span>
-          </div>
           <div className="repository-work-panel" role="tabpanel" id={`${sourceTabsId}-panel`} aria-labelledby={`${sourceTabsId}-${source}`}>
         <HistoryPanel key={`${ctx.theaterId ?? ""}:${graphScope}`} cacheScope={`${ctx.theaterId ?? ""}:${graphScope}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} landingSeq={historyLandingSeq} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} toolbarHost={historyToolbarHost} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={handleStashRowAction} onReturnToHistory={() => setSource("history")} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
           </div>
