@@ -33,6 +33,11 @@ export interface OperationLaunchInfo {
   readonly started: boolean;
 }
 
+/** 휴면 launch로 태어난 Operation인지 나타내는 영속 마커. */
+export function wasOperationBornDormant(payload: Record<string, unknown>): boolean {
+  return payload.dormantBorn === true;
+}
+
 export function readOperationLaunch(payload: Record<string, unknown>): OperationLaunchInfo {
   const value = payload.session;
   const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
