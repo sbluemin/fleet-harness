@@ -35,7 +35,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   /** 지금 지휘관 패널이 보이는 세션 — 지휘관 자신이면 뿌리 id. */
   readonly current: string;
   readonly rootActivity: RootActivity;
-  readonly onPick: (operationId: string) => void;
+  readonly onPick: (operationId: string, options?: { readonly focusTerminal?: boolean }) => void;
 }) {
   const t = useT();
   const railRef = useRef<HTMLDivElement | null>(null);
@@ -193,7 +193,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         if (nextTab) {
           nextTab.focus();
           const targetOpId = nextTab.dataset.memberOpId ?? root;
-          onPick(targetOpId);
+          onPick(targetOpId, { focusTerminal: false });
         }
       }
     } else if (event.key === "Home") {
@@ -203,7 +203,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       if (firstTab) {
         firstTab.focus();
         const targetOpId = firstTab.dataset.memberOpId ?? root;
-        onPick(targetOpId);
+        onPick(targetOpId, { focusTerminal: false });
       }
     } else if (event.key === "End") {
       event.preventDefault();
@@ -212,8 +212,12 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       if (lastTab) {
         lastTab.focus();
         const targetOpId = lastTab.dataset.memberOpId ?? root;
-        onPick(targetOpId);
+        onPick(targetOpId, { focusTerminal: false });
       }
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      const targetOpId = (event.currentTarget as HTMLElement).dataset.memberOpId ?? root;
+      onPick(targetOpId, { focusTerminal: true });
     }
   };
 
@@ -239,7 +243,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         tabIndex={current === root ? 0 : -1}
         title={chefTip}
         aria-label={current === root ? chefTip + showingSuffix : chefTip}
-        onClick={() => onPick(root)}
+        onClick={() => onPick(root, { focusTerminal: true })}
         onKeyDown={onKeyDown}
       >
         <span className="cluster-member-glyph is-commander" aria-hidden="true">
@@ -269,7 +273,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
             title={tip}
             aria-label={on ? tip + showingSuffix : tip}
             data-member-op-id={member.operationId}
-            onClick={() => onPick(member.operationId)}
+            onClick={() => onPick(member.operationId, { focusTerminal: true })}
             onKeyDown={onKeyDown}
           >
             <span className={`cluster-member-glyph is-tone-${member.tone ?? "teal"}`} aria-hidden="true">
@@ -311,7 +315,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
                     className={`cluster-node-overflow-item${on ? " is-current" : ""}`}
                     onClick={() => {
                       setMoreOpen(false);
-                      onPick(member.operationId);
+                      onPick(member.operationId, { focusTerminal: true });
                     }}
                   >
                     <span className={`cluster-member-glyph is-tone-${member.tone ?? "teal"}`} aria-hidden="true">

@@ -1622,9 +1622,12 @@ export function OperationsCanvas({
                     layout={clusterRoot}
                     current={clusterRoot.formation.byOperationId.has(clusterBodySelection[operation.id] ?? "") ? clusterBodySelection[operation.id]! : operation.id}
                     rootActivity={resolveOperationActivity(operation, operationRuntime)}
-                    onPick={(operationId) => {
+                    onPick={(operationId, options) => {
                       selectNestedBody(operation.id, operationId);
                       setActiveOperation(operation.id);
+                      if (options?.focusTerminal !== false) {
+                        requestOperationKeyboardFocus(operation.id);
+                      }
                     }}
                   />
                 ),
