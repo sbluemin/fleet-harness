@@ -7,7 +7,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { RepositoryContext } from "./repository-context.js";
 
 import type { CommitResult, DiffFileEntry, LogCommitEntry, LogOrder, LogResult, WorktreeCheckout } from "../server/types.js";
-import { FileRow, FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
+import { FileRow, FilesViewToggle, readFilesViewMode, revealFocus, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
 import { CompareInspector } from "./compare-inspector.js";
 import { CommitBlobView, CommitTreeView, type CommitTreeSelection } from "./commit-tree.js";
 import { DiffTreeView } from "./repository-tree.js";
@@ -457,7 +457,7 @@ function CommitFiles({ files, truncated, selectedPath, additions, deletions, vie
     const next = files[files.indexOf(entry) + direction];
     if (!next) return;
     onSelect(next);
-    requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLButtonElement>(`.repository-file-row[title="${CSS.escape(next.path)}"]`)?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => revealFocus(scrollRef.current?.querySelector<HTMLButtonElement>(`.repository-file-row[title="${CSS.escape(next.path)}"]`)));
   };
   return <section className="history-commit-files"><div className="history-files-title"><span className="history-files-label">{t("repository.history.changedFiles")}</span><span className="history-files-stats">{files.length} <i>+{additions}</i> <em>−{deletions}</em></span><FilesViewToggle mode={viewMode} onMode={onViewMode} t={t} /></div><div ref={scrollRef} className="history-files-scroll">{viewMode === "tree" ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} /> : files.map((file, index) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedPath} tabStop={file.path === (selectedPath ?? files[0]?.path) || (!files.some((item) => item.path === selectedPath) && index === 0)} onNavigate={navigate} onSelect={onSelect} t={t} />)}</div>{truncated && <div className="history-truncated">{t("repository.commit.capped")}</div>}</section>;
 }

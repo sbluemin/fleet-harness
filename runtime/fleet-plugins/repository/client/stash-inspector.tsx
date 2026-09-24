@@ -4,7 +4,7 @@ import { Icon } from "./icons.js";
 import type { RepositoryContext } from "./repository-context.js";
 
 import type { DiffFileEntry } from "../server/types.js";
-import { FileRow } from "./changed-files.js";
+import { FileRow, revealFocus } from "./changed-files.js";
 import { getT, readErrorSentence } from "./i18n/index.js";
 import { HunkView } from "./hunk-view.js";
 import { WorkspaceDock } from "./workspace-dock.js";
@@ -124,7 +124,7 @@ export function StashInspector({ ctx, repoRel, stash, workspace, onAction, onClo
         {state.kind === "loading" && <div className="history-inspector-empty">{t("repository.common.loading")}</div>}
         {state.kind === "error" && <div className="history-inspector-empty history-inspector-error">{state.message === "stash_moved" ? t("repository.stash.moved") : `${t("repository.stash.showFailed")} ${readErrorSentence(t, state.message)}`}</div>}
         {state.kind === "ok" && state.files.length === 0 && <div className="history-inspector-empty">{t("repository.history.noChangedFiles")}</div>}
-        {state.kind === "ok" && state.files.map((file, index) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedFile?.path} tabStop={file.path === selectedFile?.path} onNavigate={(_, direction) => { const next = state.files[index + direction]; if (!next) return; setSelectedPath(next.path); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`.repository-stash-files .repository-file-row[title="${CSS.escape(next.path)}"]`)?.focus({ preventScroll: true })); }} onSelect={() => setSelectedPath(file.path)} t={t} />)}
+        {state.kind === "ok" && state.files.map((file, index) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedFile?.path} tabStop={file.path === selectedFile?.path} onNavigate={(_, direction) => { const next = state.files[index + direction]; if (!next) return; setSelectedPath(next.path); requestAnimationFrame(() => revealFocus(document.querySelector<HTMLButtonElement>(`.repository-stash-files .repository-file-row[title="${CSS.escape(next.path)}"]`))); }} onSelect={() => setSelectedPath(file.path)} t={t} />)}
         {state.kind === "ok" && state.truncated && <div className="history-truncated">{t("repository.commit.capped")}</div>}
       </div>
       </div>} main={<div className="repository-stash-diff">

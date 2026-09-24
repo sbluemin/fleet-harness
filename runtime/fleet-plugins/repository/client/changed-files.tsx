@@ -58,6 +58,16 @@ const STATUS_KEY: { [key: string]: RepositoryMessageKey } = {
 
 // ─── ChangedFiles (export) ────────────────────────────────────────────────────
 
+/**
+ * 화살표로 옮긴 파일 행에 초점을 두고, 목록 스크롤 안에서 보이게 한다.
+ * 초점 이동 자체는 바깥 페인을 흔들지 않도록 스크롤을 막고, 드러내기는 가장 가까운 위치로만 한다.
+ */
+export function revealFocus(element: HTMLElement | null | undefined): void {
+  if (!element) return;
+  element.focus({ preventScroll: true });
+  element.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 export function filterDiffFiles(files: readonly DiffFileEntry[], filterText: string): readonly DiffFileEntry[] {
   const normalizedFilter = filterText.toLowerCase();
 

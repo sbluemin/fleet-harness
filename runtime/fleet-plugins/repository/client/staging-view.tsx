@@ -7,7 +7,7 @@ import type { RepositoryContext } from "./repository-context.js";
 import type { CommitResult, DiffFileEntry, StatusResult, WorkstateResult } from "../server/types.js";
 import { getT, readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";
 import { readCommitDraft, writeCommitDraft } from "./repository-state.js";
-import { FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode, FilePathLabel } from "./changed-files.js";
+import { FilesViewToggle, readFilesViewMode, revealFocus, saveFilesViewMode, type FilesViewMode, FilePathLabel } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
@@ -349,7 +349,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
     if (!next) return;
     setFocusedFile(`${next.axis}:${next.entry.path}`);
     setSelection(next);
-    requestAnimationFrame(() => rootRef.current?.querySelector<HTMLButtonElement>(`.repository-staging-row-main[data-file-key="${CSS.escape(`${next.axis}:${next.entry.path}`)}"]`)?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => revealFocus(rootRef.current?.querySelector<HTMLButtonElement>(`.repository-staging-row-main[data-file-key="${CSS.escape(`${next.axis}:${next.entry.path}`)}"]`)));
   };
   const commitCount = staged.length;
   const commitDisabled = busy || writeLocked || !amendReady || subject.trim() === "" || (commitCount === 0 && !amend);
