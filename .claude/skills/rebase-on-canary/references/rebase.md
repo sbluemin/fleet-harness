@@ -71,6 +71,8 @@ cd <worktree_path> && pnpm --filter <pkg> typecheck && pnpm --filter <pkg> build
 
 Disclose absent scripts. A failed check makes the resolution suspect; do not publish the rewritten tip. For clean rebases, choose scoped checks and record why they suffice.
 
+When the branch contained a change that has since been merged into the base on its own — a stacked PR rebased after its lower PR landed — a file can merge without conflict and still hold both the base's copy of a block and the branch's revised copy. Compare every touched path, conflicted or not, against the pre-rebase tip: `git -C <worktree_path> diff <pre-rebase-tip> HEAD -- <path>` should show only the base's own later changes, never a duplicated declaration or block.
+
 ```bash
 git -C <worktree_path> status --short
 git -C <worktree_path> merge-base --is-ancestor <upstream> HEAD

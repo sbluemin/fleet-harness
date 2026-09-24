@@ -40,7 +40,7 @@ consistently, and replace `<e2e-dir>` / `<scratch>` / `<worktree>` / `<port>` th
 ## Serve with the capture and model levers already set
 
 Both env vars are read by the **Console server process**, because the AI Gateway runs
-in-process there (`runtime/fleet-console/core/host/ai-gateway/routes.ts`), not in a
+in-process there (`runtime/fleet-console/features/ai-gateway/host/start.ts`), not in a
 sidecar. Setting them on the spawned agent CLI is too late.
 
 ```bash
@@ -56,12 +56,13 @@ env -u CLAUDE_CODE_CHILD_SESSION \
 - `FLEET_GATEWAY_WIRE_LOG` — the request body and the argument JSON a model actually
   produced. **It is a fallback, not an override.** The Settings wire-log toggle wins
   whenever the Console has a stored value: on writes to
-  `<plugin-data-dir>/ai-gateway/wire-log.jsonl` — the *plugin* data directory, a different
-  root from the settings file above — and ignores the variable, off writes nothing at all,
-  and only an *unset* toggle falls through to the path you named
-  (`applyWireLog` in `runtime/fleet-console/core/host/bootstrap/execution.ts`). A fresh
-  `FLEET_CONSOLE_DATA_DIR` has no stored value, which is why the variable works there — until
-  someone touches the toggle. The file appears on the first gateway call, not at boot.
+  `<e2e-dir>/ai-gateway/wire-log.jsonl` (the Console slot) and ignores the variable, off
+  writes nothing at all, and only an *unset* toggle falls through to the path you named
+  (`applyWireLog` in `runtime/fleet-console/features/ai-gateway/host/start.ts`). The toggle
+  path rotates at 16 MB and keeps a single `.1` backup, so copy the lines you need right after
+  each run. A fresh `FLEET_CONSOLE_DATA_DIR` has no stored value, which is why the variable
+  works there — until someone touches the toggle. The file appears on the first gateway call,
+  not at boot.
 - `FLEET_AI_GATEWAY_MODEL` — pins every request to one model whatever the client asked for
   (`runtime/fleet-console/features/ai-gateway/runtime/src/router/router.ts`). Use the roster id verbatim,
   quoted so the shell leaves `[1m]` alone. Reach for it when you want one model forced for
@@ -129,7 +130,9 @@ resolved model and the latter exists only after gateway dispatch.
 Never print a process's full environment (`ps eww`, `/proc/<pid>/environ`, or an equivalent)
 and filter it afterward. Provider keys and local credentials have already crossed into tool
 output and the transcript before the filter runs, so post-processing cannot restore the
-secrecy boundary.
+secrecy boundary. The same holds for `console.lock`, `auth.json`, and other credential-bearing
+files: read only the keys you need with `node`/`jq`/`python3`, never `cat` or `sed`-mask them —
+BSD `sed` does not know `\s`, and one such mask printed a live Console token.
 
 ## Typing into the terminal
 
@@ -186,3 +189,46 @@ closing brace, independent of anything the gateway does. A single clean run prov
 
 Use the browser path when the question involves Console — launch wiring, PTY, plugin
 routes, what the operator actually sees.
+
+## Headless Claude Code through the built launcher
+
+Between the runner and a real Operation sits a headless Claude Code turn through a worktree's
+own `fleet` launcher. Use it when the behavior depends on what the real client sends back —
+its own thinking blocks and signatures, real tool results, multi-turn `--resume` — but not on
+Console UI. It needs no Console process: the launcher starts its own gateway on a temporary
+loopback port.
+
+Start it from a clean environment, because an agent session inherits its parent Console's
+slot variables and pnpm's `INIT_CWD` (see **Isolated Development Data** in
+`docs/fleet-development-reference.md`), and the launcher otherwise writes the real
+`~/.claude` (`cache/gateway-models.json`, `projects/`):
+
+```bash
+cd <run-dir> && env -i HOME="$HOME" PATH="$PATH" LANG="$LANG" TMPDIR="$TMPDIR" \
+  FLEET_DATA_DIR=<worktree>/.fleet/isolated FLEET_CONSOLE_DATA_DIR=<worktree>/.fleet/isolated/console \
+  CLAUDE_CONFIG_DIR=<worktree>/.fleet/claude-home ANTHROPIC_API_KEY=sk-ant-fleet-local \
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+  node <worktree>/runtime/fleet-console/dist/fleet.mjs -p '<prompt>' \
+  --model 'claude-gateway--<provider>--<model>' --effort <level> --output-format stream-json --verbose
+```
+
+- The placeholder key only has to carry the `sk-ant-` prefix: the gateway substitutes its own
+  provider credentials for gateway models. An isolated `CLAUDE_CONFIG_DIR` without it fails
+  with `401 Missing Anthropic credential`.
+- Pass `--effort` explicitly and confirm `reasoning.effort` in the request body. A slot's
+  `efforts` list controls what the picker offers; it does not pin the effort on the wire.
+- The launcher's wire log is `<slot>/logs/fleet-cli-gateway-wire.jsonl` when the slot's
+  toggle is on — not the Console's `ai-gateway/wire-log.jsonl`. It rotates at 16 MB with one
+  `.1` backup, and one tool-heavy run can write several MB: record the file's size and inode
+  before a run and slice from that offset afterwards, joining the `.1` tail if the inode changed.
+- Claude Code resends earlier thinking blocks only while the model is unchanged; after
+  `--resume --model <other>` it drops them. A defect that needs one provider's reasoning
+  metadata to reach another provider is therefore reproduced by keeping the Claude Code model
+  and switching the gateway underneath it with `FLEET_AI_GATEWAY_MODEL`.
+- Keep providers whose credentials live in the macOS keychain and refresh themselves (for
+  example Antigravity via `agy`) out of isolated runs unless the person agrees: reading them
+  can raise a keychain prompt or rotate the real token.
+- Afterwards, confirm the real `~/.claude` holds nothing new from the run by content — the run
+  directory or session id — within the run's time window, not by one file's mtime; other
+  sessions write the same cache. A direct `claude -p --no-session-persistence` run still creates
+  an empty `~/.claude/projects/<cwd>` folder.
