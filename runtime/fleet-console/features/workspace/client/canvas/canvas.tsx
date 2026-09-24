@@ -186,7 +186,12 @@ export function OperationsCanvas({
   const operationBodyPoolAvailable = useOperationBodyPoolAvailable();
   const triageActive = useTriageActive();
   const clusterBodySelection = state.nestedBodySelection;
-  const [clusterPicker, setClusterPicker] = useState<{ readonly rootId: string; readonly anchor: DOMRect } | null>(null);
+  const [clusterPicker, setClusterPicker] = useState<{
+    readonly rootId: string;
+    readonly anchor: DOMRect;
+    readonly targetOperationId?: string;
+    readonly panelRect?: { readonly left: number; readonly top: number; readonly width: number; readonly height: number; readonly bottom: number };
+  } | null>(null);
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
   const triageDeckZoom = useTriageDeckZoomControl();
@@ -1589,7 +1594,25 @@ export function OperationsCanvas({
             } : null,
             cluster: clusterRoot
               ? {
-                strip: <ClusterStrip layout={clusterRoot} rootActivity={resolveOperationActivity(operation, operationRuntime)} onOpen={(_, event) => setClusterPicker({ rootId: operation.id, anchor: (event?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0) })} className="canvas-operation-cluster-strip" />,
+                strip: (
+                  <ClusterStrip
+                    layout={clusterRoot}
+                    rootActivity={resolveOperationActivity(operation, operationRuntime)}
+                    onOpen={(operationId, event) => {
+                      const target = event?.currentTarget as HTMLElement | undefined;
+                      const panel = target?.closest<HTMLElement>("[data-operation-id]") ?? null;
+                      const anchor = target?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0);
+                      const panelRect = panel?.getBoundingClientRect();
+                      setClusterPicker({
+                        rootId: operation.id,
+                        targetOperationId: operationId,
+                        anchor,
+                        panelRect: panelRect ? { left: panelRect.left, top: panelRect.top, width: panelRect.width, height: panelRect.height, bottom: panelRect.bottom } : undefined,
+                      });
+                    }}
+                    className="canvas-operation-cluster-strip"
+                  />
+                ),
                 nodes: (
                   <ClusterNodeRail
                     layout={clusterRoot}
@@ -1842,6 +1865,8 @@ export function OperationsCanvas({
           <ClusterPicker
             layout={layout}
             anchor={clusterPicker.anchor}
+            panelRect={clusterPicker.panelRect}
+            targetOperationId={clusterPicker.targetOperationId}
             current={clusterBodySelection[clusterPicker.rootId] ?? null}
             rootActivity={rootNode ? resolveOperationActivity(rootNode, operationRuntime) : null}
             onPick={(operationId) => {

@@ -6,17 +6,34 @@ import type { OperationClusterMember } from "@fleet-console/sdk/plugin";
 import { useT } from "../../../core/client/src/i18n/index.js";
 import type { ClusterLayout } from "./operation-clusters.js";
 
+const ChevRight = () => (
+  <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true">
+    <path d="M3.5 2l3 3-3 3" />
+  </svg>
+);
+
 /**
- * 묶음 피커 — 지휘관 캡션의 단계 띠를 누르면 뜬다. 머리는 지휘관 행 하나(활동 낱말 + 완료 셈) — 제목은 바로 위
- * 캡션이 이미 말하므로 되풀이하지 않는다. 그 아래 편성 순서의 단계 전부: Operation 이 있는 단계를 고르면 호출자가
- * 정한 대로 그 본문이 지휘관 패널에 선다(단계는 어느 모드에서도 패널로 서지 않는다). 아직 Operation 이
- * 없는 단계는 흐린 글자로 자리를 지키고, 누르면 목표 표면의 그 단계로 간다. 오른쪽 낱말은 진행(실행 중·결정 대기·
- * 준비됨·n 뒤), 끝난 단계 아래엔 남긴 산출 한 줄. 마지막 줄은 목표 표면으로 가는 문. 색은 진행 사각(신호 토큰)뿐,
- * 고른 줄은 brass 워시.
+ * 묶음 피커 — 지휘관 캡션의 단계 띠를 누르면 뜬다.
+ * 목록을 「지금」(실행·대기) → 「다음」 → 「완료 N」(기본으로 접힘) 순서로 묶는다.
+ * 띠의 칸을 누르면 그 임무가 든 묶음을 펴고 그 행으로 스크롤해 brass로 강조한다.
+ * 위치: 폭은 min(420px, 패널 폭 − 16px), 높이는 제 패널 아래 끝에서 8px 위까지로 아래 패널을 덮지 않는다.
+ * 자리가 240px보다 좁으면 위로 연다.
  */
-export function ClusterPicker({ layout, anchor, current, rootActivity, onPick, onOpenItem, onClose }: {
+export function ClusterPicker({
+  layout,
+  anchor,
+  panelRect,
+  targetOperationId,
+  current,
+  rootActivity,
+  onPick,
+  onOpenItem,
+  onClose,
+}: {
   readonly layout: ClusterLayout;
   readonly anchor: DOMRect;
+  readonly panelRect?: { readonly left: number; readonly top: number; readonly width: number; readonly height: number; readonly bottom: number };
+  readonly targetOperationId?: string | null;
   /** 지금 지휘관 패널이 보이는 Operation(본문 교체) — 지휘관 자신이면 null. */
   readonly current: string | null;
   readonly rootActivity: "idle" | "running" | "awaiting" | "background" | "ended" | null;
@@ -27,85 +44,252 @@ export function ClusterPicker({ layout, anchor, current, rootActivity, onPick, o
 }) {
   const t = useT();
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const [placed, setPlaced] = useState<{ left: number; top: number } | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [placed, setPlaced] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+
+  const doneMembers = layout.cluster.members.filter((m) => m.progress === "done");
+  const nowMembers = layout.cluster.members.filter((m) => m.progress === "running" || m.progress === "awaiting");
+  const nextMembers = layout.cluster.members.filter((m) => m.progress === "open" || m.progress === "blocked");
+
+  const isTargetInDone = Boolean(targetOperationId && doneMembers.some((m) => m.operationId === targetOperationId));
+  const [doneExpanded, setDoneExpanded] = useState(isTargetInDone);
+  const [nowExpanded, setNowExpanded] = useState(true);
+  const [nextExpanded, setNextExpanded] = useState(true);
+
+  // 대상이 완료 묶음에 있으면 완료 묶음 펼치기
+  useEffect(() => {
+    if (isTargetInDone) {
+      setDoneExpanded(true);
+    }
+  }, [isTargetInDone]);
+
+  // 대상 임무 행으로 스크롤
+  useEffect(() => {
+    if (!targetOperationId) return;
+    const timer = setTimeout(() => {
+      const targetEl = cardRef.current?.querySelector<HTMLElement>(".cluster-picker-row.is-target");
+      if (targetEl) {
+        targetEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    }, 40);
+    return () => clearTimeout(timer);
+  }, [targetOperationId, doneExpanded]);
+
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card) return;
-    const rect = card.getBoundingClientRect();
-    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - rect.width - 8));
-    const below = anchor.bottom + 6;
-    const top = below + rect.height > window.innerHeight - 8 ? Math.max(8, anchor.top - rect.height - 6) : below;
-    setPlaced({ left, top });
-  }, [anchor]);
+
+    const panelW = panelRect?.width ?? window.innerWidth;
+    const panelBottom = panelRect?.bottom ?? (anchor.bottom + 400);
+    const panelTop = panelRect?.top ?? (anchor.top - 400);
+
+    const width = Math.max(220, Math.min(420, panelW - 16));
+    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
+
+    const belowTop = anchor.bottom + 6;
+    const spaceBelow = panelBottom - 8 - belowTop;
+
+    let top: number;
+    let maxHeight: number;
+
+    if (spaceBelow < 240) {
+      const spaceAbove = anchor.top - 6 - (panelTop + 8);
+      maxHeight = Math.max(180, Math.min(spaceAbove, 520));
+      top = Math.max(8, anchor.top - 6 - maxHeight);
+    } else {
+      maxHeight = Math.min(spaceBelow, 520);
+      top = belowTop;
+    }
+
+    setPlaced({ left, top, width, maxHeight });
+  }, [anchor, panelRect]);
+
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); onClose(); } };
-    const onDown = (event: PointerEvent) => { if (cardRef.current && !cardRef.current.contains(event.target as Node)) onClose(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    const onDown = (event: PointerEvent) => {
+      if (cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("pointerdown", onDown, true);
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("pointerdown", onDown, true); };
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onDown, true);
+    };
   }, [onClose]);
-  useEffect(() => { cardRef.current?.querySelector<HTMLButtonElement>("button[aria-checked='true']")?.focus(); }, []);
+
+  useEffect(() => {
+    cardRef.current?.querySelector<HTMLButtonElement>("button[aria-checked='true']")?.focus();
+  }, []);
+
   const total = layout.cluster.members.length;
-  const done = layout.cluster.members.filter((member) => member.progress === "done").length;
+  const done = doneMembers.length;
   const numberOf = new Map(layout.cluster.members.map((member, index) => [member.operationId, index + 1]));
+
   const stateOf = (member: OperationClusterMember): string | null => {
     if (member.progress === "running") return t("cluster.picker.state.running");
     if (member.progress === "awaiting") return t("cluster.picker.state.awaiting");
     if (member.progress === "open") return t("cluster.picker.state.open");
     if (member.progress === "blocked") {
-      const waiting = member.after.map((id) => layout.cluster.members.find((candidate) => candidate.operationId === id)).find((prior) => prior && prior.progress !== "done");
+      const waiting = member.after
+        .map((id) => layout.cluster.members.find((candidate) => candidate.operationId === id))
+        .find((prior) => prior && prior.progress !== "done");
       return waiting ? t("cluster.picker.state.blocked", { n: numberOf.get(waiting.operationId) ?? 0 }) : null;
     }
     return null;
   };
+
   const selected = current ?? layout.cluster.root;
+  const chefLabel = t("cluster.picker.coordinator");
+
+  const renderMemberRow = (member: OperationClusterMember) => {
+    const pending = member.pending === true;
+    const isTarget = member.operationId === targetOperationId;
+    const isCurrent = member.operationId === selected;
+    const state = stateOf(member);
+    const pick = pending
+      ? onOpenItem
+        ? () => {
+            onOpenItem(member.operationId);
+            onClose();
+          }
+        : undefined
+      : () => {
+          onPick(member.operationId);
+          onClose();
+        };
+
+    const rowClasses = [
+      "cluster-picker-row",
+      isCurrent ? "is-current" : "",
+      isTarget ? "is-target" : "",
+      pending ? "is-pending" : "",
+      member.progress === "done" ? "is-done" : "",
+    ].filter(Boolean).join(" ");
+
+    return (
+      <div key={member.operationId} className="cluster-picker-step">
+        <button
+          type="button"
+          role={pending ? "menuitem" : "menuitemradio"}
+          aria-checked={pending ? undefined : isCurrent}
+          className={rowClasses}
+          title={member.label}
+          disabled={!pick}
+          onClick={pick}
+        >
+          <i className={`cluster-picker-dot is-${member.progress}`} aria-hidden="true" />
+          <span className="cluster-picker-label">{member.label}</span>
+          {state ? <span className={`cluster-picker-state is-${member.progress}`}>{state}</span> : null}
+        </button>
+        {member.progress === "done" && member.result ? (
+          <div className="cluster-picker-result" title={member.result}>
+            {member.result}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderSection = (
+    title: string,
+    items: readonly OperationClusterMember[],
+    expanded: boolean,
+    onToggle: () => void,
+  ) => {
+    if (items.length === 0) return null;
+    return (
+      <div className="cluster-picker-group">
+        <button
+          type="button"
+          className="cluster-picker-sec"
+          aria-expanded={expanded}
+          onClick={onToggle}
+        >
+          <span className={`cluster-picker-sec-arrow${expanded ? " is-open" : ""}`} aria-hidden="true">
+            <ChevRight />
+          </span>
+          <span className="cluster-picker-sec-title">{title}</span>
+          <span className="cluster-picker-sec-count">{items.length}</span>
+        </button>
+        {expanded ? items.map((member) => renderMemberRow(member)) : null}
+      </div>
+    );
+  };
+
+  const style: CSSProperties = {
+    left: placed?.left ?? anchor.left,
+    top: placed?.top ?? anchor.bottom + 6,
+    width: placed?.width ?? Math.max(220, Math.min(420, (panelRect?.width ?? 400) - 16)),
+    maxHeight: placed?.maxHeight ?? 480,
+    visibility: placed ? "visible" : "hidden",
+  };
+
   return createPortal(
     <div
       ref={cardRef}
       className="cluster-picker"
       role="menu"
       aria-label={t("cluster.picker.aria", { title: layout.cluster.title })}
-      style={{ left: placed?.left ?? anchor.left, top: placed?.top ?? anchor.bottom + 6, visibility: placed ? "visible" : "hidden" } as CSSProperties}
+      style={style}
       data-canvas-blocker
     >
-      <button
-        type="button"
-        role="menuitemradio"
-        aria-checked={layout.cluster.root === selected}
-        className={`cluster-picker-row is-head${layout.cluster.root === selected ? " is-current" : ""}`}
-        onClick={() => { onPick(layout.cluster.root); onClose(); }}
-      >
-        <i className={`cluster-picker-dot is-${rootActivity ?? "unknown"}`} aria-hidden="true" />
-        <span className="cluster-picker-label">{t("cluster.picker.coordinator")}</span>
-        {rootActivity ? <span className={`cluster-picker-state is-${rootActivity}`}>{t(`cluster.picker.activity.${rootActivity}`)}</span> : null}
-        <span className="cluster-picker-count" aria-label={t("cluster.picker.count.aria", { done, total })}>{done}/{total}</span>
-      </button>
-      <div className="cluster-picker-list">
-        {layout.cluster.members.map((member) => {
-          const pending = member.pending === true;
-          const state = stateOf(member);
-          const pick = pending ? (onOpenItem ? () => { onOpenItem(member.operationId); onClose(); } : undefined) : () => { onPick(member.operationId); onClose(); };
-          return (
-            <div key={member.operationId} className="cluster-picker-step">
-              <button
-                type="button"
-                role={pending ? "menuitem" : "menuitemradio"}
-                aria-checked={pending ? undefined : member.operationId === selected}
-                className={`cluster-picker-row${member.operationId === selected ? " is-current" : ""}${pending ? " is-pending" : ""}${member.progress === "done" ? " is-done" : ""}`}
-                disabled={!pick}
-                onClick={pick}
-              >
-                <i className={`cluster-picker-dot is-${member.progress}`} aria-hidden="true" />
-                <span className="cluster-picker-label">{member.label}</span>
-                {state ? <span className={`cluster-picker-state is-${member.progress}`}>{state}</span> : null}
-              </button>
-              {member.progress === "done" && member.result ? <div className="cluster-picker-result" title={member.result}>{member.result}</div> : null}
-            </div>
-          );
-        })}
+      <div className="cluster-picker-head">
+        <button
+          type="button"
+          role="menuitemradio"
+          aria-checked={layout.cluster.root === selected}
+          className={`cluster-picker-head-btn${layout.cluster.root === selected ? " is-current" : ""}`}
+          onClick={() => {
+            onPick(layout.cluster.root);
+            onClose();
+          }}
+        >
+          <i className={`cluster-picker-dot is-${rootActivity ?? "unknown"}`} aria-hidden="true" />
+          <span className="cluster-picker-head-label">
+            <span className="cluster-picker-head-role">{chefLabel}</span>
+            {rootActivity ? <span className="cluster-picker-head-sep"> · </span> : null}
+            {rootActivity ? (
+              <span className={`cluster-picker-head-state is-${rootActivity}`}>
+                {t(`cluster.picker.activity.${rootActivity}`)}
+              </span>
+            ) : null}
+          </span>
+        </button>
+        <span className="cluster-picker-count" aria-label={t("cluster.picker.count.aria", { done, total })}>
+          {t("cluster.picker.group.done")} {done}/{total}
+        </span>
+        <button
+          type="button"
+          className="cluster-picker-close"
+          aria-label={t("cluster.picker.close")}
+          title={t("cluster.picker.close")}
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </div>
+      <div ref={listRef} className="cluster-picker-list">
+        {renderSection(t("cluster.picker.group.now"), nowMembers, nowExpanded, () => setNowExpanded((prev) => !prev))}
+        {renderSection(t("cluster.picker.group.next"), nextMembers, nextExpanded, () => setNextExpanded((prev) => !prev))}
+        {renderSection(t("cluster.picker.group.done"), doneMembers, doneExpanded, () => setDoneExpanded((prev) => !prev))}
       </div>
       {onOpenItem ? (
-        <button type="button" role="menuitem" className="cluster-picker-row is-link" onClick={() => { onOpenItem(); onClose(); }}>
+        <button
+          type="button"
+          role="menuitem"
+          className="cluster-picker-row is-link"
+          onClick={() => {
+            onOpenItem();
+            onClose();
+          }}
+        >
           <span className="cluster-picker-label">{t("cluster.picker.open")}</span>
           <span aria-hidden="true">↗</span>
         </button>

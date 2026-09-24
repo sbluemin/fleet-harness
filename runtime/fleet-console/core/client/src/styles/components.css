@@ -3944,25 +3944,38 @@
   min-width: 0;
 }
 
-/* 묶음 피커 — 지휘관 캡션의 단계 띠가 여는 작은 메뉴. 줄마다 진행 사각(신호 토큰) 하나, 고른 줄은 brass 워시. */
+/* 묶음 피커 — 지휘관 캡션의 단계 띠가 여는 팝오버. 상태별 그룹(지금·다음·완료), 두 줄 제목, 제 패널 안 위치 제한. */
 .cluster-picker {
   position: fixed;
   z-index: 1200;
   min-width: 220px;
-  max-width: 380px;
+  box-sizing: border-box;
   padding: 6px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-md);
   background: var(--surface-panel-raised);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
 }
-.cluster-picker-row {
+
+.cluster-picker-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 0;
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 4px;
+}
+
+.cluster-picker-head-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-primary);
@@ -3971,22 +3984,249 @@
   text-align: left;
   cursor: pointer;
 }
+
+.cluster-picker-head-btn:hover {
+  background: color-mix(in oklch, var(--ink-spectral) 9%, transparent);
+}
+
+.cluster-picker-head-btn.is-current {
+  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+.cluster-picker-head-label {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cluster-picker-head-role {
+  font-weight: var(--weight-bold);
+}
+
+.cluster-picker-head-sep {
+  color: var(--text-tertiary);
+}
+
+.cluster-picker-head-state {
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+.cluster-picker-head-state.is-running,
+.cluster-picker-head-state.is-background {
+  color: var(--warn);
+}
+
+.cluster-picker-head-state.is-awaiting {
+  color: var(--aurora);
+}
+
+.cluster-picker-count {
+  flex: none;
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cluster-picker-close {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--t-base);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cluster-picker-close:hover {
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--ink-spectral) 9%, transparent);
+}
+
+.cluster-picker-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cluster-picker-sec {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cluster-picker-sec:hover {
+  color: var(--text-primary);
+}
+
+.cluster-picker-sec-arrow {
+  display: inline-grid;
+  place-items: center;
+  width: 10px;
+  height: 10px;
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.cluster-picker-sec-arrow svg {
+  width: 8px;
+  height: 8px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+}
+
+.cluster-picker-sec-arrow.is-open {
+  transform: rotate(90deg);
+}
+
+.cluster-picker-sec-title {
+  flex: 1 1 auto;
+}
+
+.cluster-picker-sec-count {
+  flex: none;
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cluster-picker-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.cluster-picker-step {
+  display: flex;
+  flex-direction: column;
+}
+
+.cluster-picker-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
 .cluster-picker-row:hover,
-.cluster-picker-row:focus-visible { background: color-mix(in oklch, var(--ink-spectral) 9%, transparent); outline: none; }
-.cluster-picker-row.is-current { background: color-mix(in oklch, var(--brass) 12%, transparent); }
-.cluster-picker-row.is-link { color: var(--text-secondary); margin-top: 2px; border-top: 1px solid var(--hairline); border-radius: 0 0 var(--radius-xs) var(--radius-xs); }
-.cluster-picker-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cluster-picker-row.is-head { margin-bottom: 3px; border-bottom: 1px solid var(--hairline); border-radius: var(--radius-xs) var(--radius-xs) 0 0; }
-.cluster-picker-row.is-pending .cluster-picker-label, .cluster-picker-row.is-done .cluster-picker-label { color: var(--text-secondary); }
-.cluster-picker-row:disabled { cursor: default; }
-.cluster-picker-row:disabled:hover { background: transparent; }
-.cluster-picker-state { flex: none; font-size: var(--t-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.cluster-picker-state.is-running, .cluster-picker-state.is-background { color: var(--warn); }
-.cluster-picker-state.is-awaiting { color: var(--aurora); }
-.cluster-picker-count { flex: none; font-size: var(--t-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.cluster-picker-list { max-height: min(60vh, 520px); overflow-y: auto; }
-.cluster-picker-result { padding: 0 8px 5px 23px; font-size: var(--t-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cluster-picker-dot { display: block; width: 7px; height: 7px; border-radius: 2px; background: var(--text-tertiary); flex: none; }
+.cluster-picker-row:focus-visible {
+  background: color-mix(in oklch, var(--ink-spectral) 9%, transparent);
+  outline: none;
+}
+
+.cluster-picker-row.is-current {
+  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+/* 띠의 칸을 눌러 포커스된 대상 임무 행 — brass 강조 */
+.cluster-picker-row.is-target {
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+}
+
+.cluster-picker-row.is-link {
+  color: var(--text-secondary);
+  margin-top: 4px;
+  border-top: 1px solid var(--hairline);
+  border-radius: 0 0 var(--radius-xs) var(--radius-xs);
+  padding: 6px 8px 4px;
+}
+
+.cluster-picker-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.35;
+}
+
+.cluster-picker-row.is-pending .cluster-picker-label,
+.cluster-picker-row.is-done .cluster-picker-label {
+  color: var(--text-secondary);
+}
+
+.cluster-picker-row:disabled {
+  cursor: default;
+}
+
+.cluster-picker-row:disabled:hover {
+  background: transparent;
+}
+
+.cluster-picker-state {
+  flex: none;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.cluster-picker-state.is-running,
+.cluster-picker-state.is-background {
+  color: var(--warn);
+}
+
+.cluster-picker-state.is-awaiting {
+  color: var(--aurora);
+}
+
+.cluster-picker-result {
+  padding: 0 8px 4px 23px;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cluster-picker-dot {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--text-tertiary);
+  flex: none;
+  margin-top: 5px;
+}
+
 .cluster-picker-dot.is-running { background: var(--warn); }
 .cluster-picker-dot.is-awaiting { background: var(--aurora); }
 .cluster-picker-dot.is-done, .cluster-picker-dot.is-idle { background: var(--positive); }
