@@ -326,8 +326,8 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 .console-shell.is-zen .canvas-minimap,
 .console-shell.is-zen .canvas-minimap-fab,
 .console-shell.is-zen .canvas-shortcuts { display: none; }
-.console-shell.is-zen .right-rail { width: var(--right-rail-panel-width, 0px); }
-.console-shell.is-zen .right-rail::before { display: none; }
+.console-shell.is-zen:not(.is-zen-rail-revealed) .right-rail { width: var(--right-rail-panel-width, 0px); }
+.console-shell.is-zen:not(.is-zen-rail-revealed) .right-rail::before { display: none; }
 .zen-mode-attention {
   position: absolute;
   right: var(--space-4);
