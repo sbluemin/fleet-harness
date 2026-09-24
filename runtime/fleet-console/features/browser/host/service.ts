@@ -81,6 +81,51 @@ export class BrowserPolicyError extends Error {
   constructor(readonly code: string, message: string, readonly detail: Record<string, unknown> = {}) { super(message); this.name = "BrowserPolicyError"; }
 }
 
+/** 값이 있는 지정 방식. 검증기와 거부 문구가 같은 셈을 쓰도록 여기 한곳에 둔다. */
+function targetModes(target: BrowserTarget): string[] {
+  const modes: string[] = [];
+  if (target.ref) modes.push("ref");
+  if (target.selector) modes.push("selector");
+  if (target.role || target.name !== undefined) modes.push("role/name");
+  return modes;
+}
+
+/**
+ * 스키마와 같은 모양 규칙: 방식은 하나, ref 에는 within 이 없고, within 자리(scope)는 제 within 을 갖지 못한다.
+ * browser_batch 는 스키마 검증을 거치지 않고 도구를 부르므로 서비스가 같은 규칙을 한 번 더 지킨다.
+ */
+function targetShapeValid(target: BrowserTarget, scope: boolean): boolean {
+  if (targetModes(target).length !== 1) return false;
+  if (target.within === undefined) return true;
+  return !scope && !target.ref && targetShapeValid(target.within, true);
+}
+
+function targetProblems(target: unknown, scope: boolean): string[] {
+  if (typeof target !== "object" || target === null || Array.isArray(target)) return [`expected an object, got ${Array.isArray(target) ? "an array" : target === null ? "null" : typeof target}`];
+  const record = target as Record<string, unknown>;
+  const modes = targetModes(record as BrowserTarget);
+  const problems: string[] = [];
+  if (modes.length !== 1) problems.push(`got ${modes.length ? modes.join("+") : "none"}`);
+  if (!scope && record.within !== undefined && modes.includes("ref")) problems.push("a ref takes no within (a ref is already unique; drop within)");
+  if (record.exact !== undefined && !modes.includes("role/name")) problems.push("exact without role/name");
+  for (const key of ["ref", "selector", "role", "name"]) if (record[key] !== undefined && typeof record[key] !== "string") problems.push(`${key} must be a string`);
+  if (record.exact !== undefined && typeof record.exact !== "boolean") problems.push("exact must be a boolean");
+  const allowed = scope ? ["ref", "selector", "role", "name", "exact"] : ["ref", "selector", "role", "name", "exact", "within"];
+  const unknown = Object.keys(record).filter((key) => !allowed.includes(key));
+  if (unknown.length) problems.push(`${scope && unknown.includes("within") ? "within cannot nest; " : ""}unknown ${unknown.join(", ")}`);
+  if (!scope && record.within !== undefined) problems.push(...targetProblems(record.within, true).map((problem) => `within: ${problem}`));
+  return problems;
+}
+
+/**
+ * 거부 문구에 받은 필드를 싣는다 — 「정확히 하나」만으로는 모델이 무엇을 섞었는지 몰라 같은 인자를
+ * 수백 번 되풀이했다. `scope` 는 target.within 자리(제 within 을 갖지 못한다)다.
+ */
+export function invalidTargetMessage(target: unknown, scope = false): string {
+  const problems = targetProblems(target, scope);
+  return `Choose exactly one of ref, selector, or role/name; exact goes only with role/name${scope ? "; this within takes no within of its own" : "; within goes only with selector or role/name"}. ${problems.length ? problems.join("; ") : "got an invalid target"}.`;
+}
+
 interface Tab {
   readonly id: string;
   readonly targetId: string;
@@ -1223,8 +1268,8 @@ export class BrowserService {
   /** AX 이름을 사용하며 accessible name을 임의로 추측하지 않는다. 대상과 범위는 항상 유일해야 한다. */
   async targetRef(operationId: string, target: BrowserTarget, tabId?: string | null): Promise<string> {
     const op = this.operation(operationId), tab = this.tab(op, tabId), client = await this.engineClient();
-    const modes = Number(!!target.ref) + Number(!!target.selector) + Number(!!target.role || target.name !== undefined);
-    if (modes !== 1) throw new BrowserPolicyError("browser_target_invalid", "Choose exactly one of ref, selector, or role/name.");
+    // within 까지 여기서 한 번에 가린다 — 재귀 호출에서 거부하면 문구가 within 자리를 대상 자리로 잘못 부른다.
+    if (!targetShapeValid(target, false)) throw new BrowserPolicyError("browser_target_invalid", invalidTargetMessage(target));
     const scopeRef = target.within ? await this.targetRef(operationId, target.within, tabId) : null;
     const scope = scopeRef ? await this.resolveRef(client, tab, scopeRef) : null;
     let nodes: number[] = [];
