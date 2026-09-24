@@ -65,7 +65,14 @@ export function createQuitFarewell(deps: QuitFarewellDependencies): QuitFarewell
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
   function raise(shell: DesktopShellWindow): Veil {
-    const view = deps.createView();
+    let view: WebContentsView;
+    try {
+      view = deps.createView();
+    } catch (error) {
+      // 판을 만들지 못해도 종료는 인사 없이 제 길을 간다.
+      deps.log?.(`quit farewell could not be created: ${error instanceof Error ? error.message : String(error)}`);
+      return { ready: Promise.resolve(null), dismiss: () => undefined };
+    }
     const contents = view.webContents;
     let dismissed = false;
     const layout = (): void => { try { view.setBounds(shell.stack.layoutConsole()); } catch { /* 창이 먼저 닫혔다. */ } };
