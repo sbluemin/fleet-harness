@@ -968,12 +968,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         }
       },
       observe: (operationId) => consoleControl.observe(operationId),
-      sleep: async (operationId) => {
+      sleep: async (operationId, options) => {
         if (!operations.get(operationId)) return { ok: false, error: "unknown_operation" };
         const observation = consoleControl.observe(operationId);
         if (!observation || !sleepOperation) return { ok: false, error: "capability_unavailable" };
         if (observation.lifecycle === "dormant") return { ok: false, error: "already_dormant" };
-        if (observation.activity !== "idle") return { ok: false, error: "not_idle" };
+        // 터미널의 답 대기는 interrupt 로 풀 수 없다 — 호출자가 종결을 결정했을 때만 그 대기를 버리고 재운다.
+        const dropsPendingInput = options?.dropPendingInput === true && observation.surface === "terminal" && observation.activity === "awaiting";
+        if (observation.activity !== "idle" && !dropsPendingInput) return { ok: false, error: "not_idle" };
         return sleepOperation(operationId);
       },
     }),

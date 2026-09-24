@@ -68,7 +68,8 @@ function harness() {
         request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; model?: string; effort?: string; groupId?: string }) => {
           const receipt = { id: "r", requestId: "r", caller: { kind: "plugin", pluginId: "objectives" }, input, status: "running", createdAt: "", updatedAt: "", expiresAt: "" };
           if (input.kind === "send") { sent.push({ operationId: input.operationId!, text: input.text! }); return { ...receipt, operationId: input.operationId }; }
-          if (input.kind === "interrupt") { interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { ...receipt, operationId: input.operationId }; }
+          // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
+          if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { ...receipt, operationId: input.operationId }; }
           await new Promise((resolve) => setTimeout(resolve, 5));
           const id = `launched-${launches.length + 1}`;
           launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, groupId: input.groupId });
@@ -77,9 +78,13 @@ function harness() {
         },
         observe: (id: string) => {
           const state = activity.get(id);
-          return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state } : null;
+          return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: "terminal", supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
         },
-        sleep: async (id: string) => { slept.push(id); activity.set(id, "dormant"); return { ok: true, lifecycle: "dormant" }; },
+        sleep: async (id: string, options?: { dropPendingInput?: boolean }) => {
+          const state = activity.get(id);
+          if (state !== "idle" && !(options?.dropPendingInput && state === "awaiting")) return { ok: false, error: "not_idle" };
+          slept.push(id); activity.set(id, "dormant"); return { ok: true, lifecycle: "dormant" };
+        },
       },
       paths: { resolveTheaterPath: () => theaterPath },
     },
@@ -121,13 +126,13 @@ describe("Objectives contract", () => {
     store.stepDone(item.id, a!.id, ["a redone", "fixed the gap"]);
     await expect(launch.delegateStep(item.id, a!.id)).rejects.toMatchObject({ code: "step_done" });
     await launch.delegateStep(item.id, b!.id);
-    // 완료는 지휘관과 담당을 휴면시키되 연결을 풀지 않는다. 대기 중인 지휘관·실행 중인 담당도 중단한다.
+    // 완료는 지휘관과 담당을 휴면시키되 연결을 풀지 않는다. 답을 기다리는 터미널 지휘관은 그 대기를 버리고, 실행 중인 담당은 중단한 뒤 재운다.
     activity.set(item.id, "awaiting");
     activity.set("launched-2", "running");
     activity.set("launched-3", "idle");
     expect(launch.complete(item.id).done).toBeTruthy();
     await expect.poll(() => slept.length).toBe(3);
-    expect(interrupted.sort()).toEqual([item.id, "launched-2"].sort());
+    expect(interrupted).toEqual(["launched-2"]);
     expect(slept.sort()).toEqual([item.id, "launched-2", "launched-3"].sort());
     expect(store.reopen(item.id).steps.map((step) => step.operationId)).toEqual(["launched-2", "launched-3", null]);
     // 계획은 완료·위임된 단계를 보존하고 나머지를 바꾼다; 새 단계는 편성 순으로 선다.
