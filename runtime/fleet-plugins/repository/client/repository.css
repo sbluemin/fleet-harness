@@ -1160,7 +1160,8 @@
 }
 
 /* Repository sources mirror the approved unified explorer. */
-.repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
+/* 작업 줄(workbar)은 트리까지 걸친 전체 폭이라 작업면 컨테이너(repository-work) 밖에 선다 — 동사·정렬 접힘은 이 이름으로 묻는다. */
+.repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; container-name: repository-bar; }
 /* ── 밴드 정합 — 패널 안의 면은 하나다 ─────────────────────────────────
    캡·툴바는 전부 같은 위스퍼 워시 한 단(--ink-fog 5%)만 얹고 구획은 헤어라인이 말한다.
    스크롤 내용을 가려야 하는 스티키 헤더만 패널 채널(--glass-tint-panel)을 쓴다. */
@@ -2346,8 +2347,8 @@
 .repository-verb-menu-item .repository-verb-count { margin-left: auto; }
 .repository-verb-cluster .repository-stash-popover { top: calc(100% + 6px); }
 
-/* 점진적 접힘 — 라벨 → 아이콘 → 더 보기. 기록 필터·칩과 한 줄을 나눠 쓰므로 중간 폭에서 라벨을 되살리지 않는다. */
-@container repository-work (max-width: 880px) {
+/* 점진적 접힘 — 라벨 → 아이콘 → 더 보기. 작업 줄 전체 폭(선택기·브랜치·필터·정렬·동사)이 기준이며, 라벨이 들어갈 자리가 있는 동안은 라벨을 남긴다. */
+@container repository-bar (max-width: 820px) {
   .repository-verb-inline .repository-verb-label { display: none; }
   .repository-verb-inline .repository-sync-button { width: 24px; padding: 0; justify-content: center; }
   .repository-verb-inline .repository-verb-count {
@@ -2367,12 +2368,12 @@
     font-weight: var(--weight-bold);
   }
 }
-@container repository-work (max-width: 640px) {
+@container repository-bar (max-width: 700px) {
   .history-order-label { display: none; }
   .history-order-toggle { width: 24px; padding: 0; }
   .history-filter { flex-basis: 160px; }
 }
-@container repository-work (max-width: 520px) {
+@container repository-bar (max-width: 560px) {
   .repository-verb-inline { display: none; }
   .repository-verb-overflow { display: inline-flex; }
 }

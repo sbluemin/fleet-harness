@@ -1030,6 +1030,15 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
     "data-tree-key": key,
     onFocus: () => setFocusedTreeKey(key),
   });
+  // 행 위 비교 버튼은 Tab 정거장이 아니다 — 초점 행에서 c 키(커밋 목록과 같은 키)로 기본 base와 비교를 연다.
+  const compareKeyProps = (row: RepositoryRefRow) => refs?.defaultBase && row.ref && row.ref !== refs.defaultBase ? {
+    "aria-keyshortcuts": "C",
+    onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (event.key !== "c" || event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      onCompare(refs.defaultBase!, row.ref!);
+    },
+  } : {};
   const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const current = event.target as HTMLElement;
     if (!current.matches("[data-tree-key]") || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
@@ -1054,7 +1063,7 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
     className={`repository-ws-tree-row is-branch${remote ? " is-remote" : ""}${row.current ? " is-current" : ""}${source === "history" && row.ref === refFilter ? " is-active" : ""}`}
     onContextMenu={openRefMenu(row)}
   >
-    <button type="button" className="repository-ws-tree-row-main" {...treeRowProps(`ref:${row.key}`)} title={row.current ? t("repository.refs.current") : row.primary} onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}>
+    <button type="button" className="repository-ws-tree-row-main" {...treeRowProps(`ref:${row.key}`)} {...compareKeyProps(row)} title={row.current ? t("repository.refs.current") : row.primary} onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}>
       <Icon name={row.current ? "check" : "branch"} /><span>{row.primary}</span>
     </button>
     <AheadBehind t={t} row={row} />
@@ -1064,7 +1073,7 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
     </span>
   </div>;
   const tagRow = (row: RepositoryRefRow) => <div key={row.key} className={`repository-ws-tree-row is-tag${source === "history" && row.ref === refFilter ? " is-active" : ""}`} onContextMenu={openRefMenu(row)}>
-    <button type="button" className="repository-ws-tree-row-main" {...treeRowProps(`ref:${row.key}`)} onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}><Icon name="tag" /><span>{row.primary}</span></button>
+    <button type="button" className="repository-ws-tree-row-main" {...treeRowProps(`ref:${row.key}`)} {...compareKeyProps(row)} onClick={() => { setSelectedStashSha(null); onRef(row.ref!); }}><Icon name="tag" /><span>{row.primary}</span></button>
     <span className="repository-ws-tree-hover">{refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" tabIndex={-1} title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}><Icon name="compare" size={13} /></button> : null}</span>
   </div>;
   const stashRow = (row: RepositoryRefRow) => <button type="button" key={row.key} className={`repository-ws-tree-row is-stash${source === "history" && row.stashSha === selectedStashSha ? " is-active" : ""}`} {...treeRowProps(`stash:${row.key}`)} disabled={!row.stashSha} onClick={() => { if (row.stashSha) { setSelectedStashSha(row.stashSha); onStashInspect({ name: row.sub ?? row.key, sha: row.stashSha, subject: row.primary }); } }} onContextMenu={(event) => {
