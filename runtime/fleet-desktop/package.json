@@ -29,6 +29,8 @@
     "@electron/asar": "3.4.1",
     "@electron/fuses": "2.1.3",
     "@fleet-console/protocol": "workspace:*",
+    "@fontsource-variable/fraunces": "^5.2.9",
+    "@fontsource-variable/manrope": "^5.2.8",
     "electron": "43.1.0",
     "electron-builder": "26.15.3",
     "electron-updater": "6.6.2",
