@@ -7,6 +7,7 @@ import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTran
 import { createMcpToolRegistry, createMcpToolSnapshotStore, type AgentToolSpec, type AgentToolCtx } from "@fleet-console/agent-runtime/tools";
 import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { isListedOperation, type OperationNode } from "@fleet-console/sdk/operations";
+import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
 
 /**
  * Console 화면이 사람에게 여는 나머지 동사들의 호스트 어댑터. 각 묶음은 그것을 소유한 층이 채운다 —
@@ -120,7 +121,8 @@ const RESERVED_TOOL_NAMES = new Set<string>([
   // 재개편 전 이름 — 플러그인이 다시 차지하지 못하게 잠근다.
   "console_end", "console_theaters", "console_events", "console_interrupt", "console_action", "console_automation", "console_using", "console_transcript", "console_jobs", "console_catalog", "console_analyst_artifacts", "console_watch_last", "console_resume", "console_close", "console_rename", "console_view", "console_group", "console_accent", "console_reveal", "console_answer", "console_analyst_ask",
 ]);
-const ACCENTS = ["crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose"] as const;
+// 강조색·그룹 색 — 정체성 톤 키는 SDK 한 벌을 쓴다(목록 밖 색의 그룹은 영속 상태에서 버려진다).
+const ACCENTS = IDENTITY_TONES;
 const NEXT_ACTION: Record<string, string> = {
   nothing_to_interrupt: "No foreground turn is running. Do not wait or retry. Interrupt does not close or delete the Operation; use console_panel close for that.",
   cursor_expired: "Read a new snapshot and restart without a cursor.",
