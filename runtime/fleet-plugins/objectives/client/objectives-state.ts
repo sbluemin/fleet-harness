@@ -224,8 +224,9 @@ export interface ObjectiveViewState {
   readonly selected: string | null;
   readonly collapsed: Readonly<Record<string, boolean>>;
   readonly dueFilter: string;
+  readonly externalSelectionId?: string | null;
 }
-const VIEW_DEFAULT: ObjectiveViewState = { list: "all", selected: null, collapsed: { done: true }, dueFilter: "all" };
+const VIEW_DEFAULT: ObjectiveViewState = { list: "all", selected: null, collapsed: { done: true }, dueFilter: "all", externalSelectionId: null };
 const views = new Map<string, ObjectiveViewState>();
 const viewListeners = new Set<() => void>();
 export function readObjectiveView(theaterId: string | null): ObjectiveViewState {
@@ -235,7 +236,13 @@ export function patchObjectiveView(theaterId: string | null, patch: (current: Ob
   if (!theaterId) return;
   const current = readObjectiveView(theaterId);
   const next = { ...current, ...patch(current) };
-  if (next.list === current.list && next.selected === current.selected && next.collapsed === current.collapsed && next.dueFilter === current.dueFilter) return;
+  if (
+    next.list === current.list &&
+    next.selected === current.selected &&
+    next.collapsed === current.collapsed &&
+    next.dueFilter === current.dueFilter &&
+    next.externalSelectionId === current.externalSelectionId
+  ) return;
   views.set(theaterId, next);
   for (const listener of viewListeners) listener();
 }
@@ -245,6 +252,72 @@ export function useObjectiveView(theaterId: string | null): ObjectiveViewState {
     () => readObjectiveView(theaterId),
     () => readObjectiveView(theaterId),
   );
+}
+
+let latestSelectionToken = 0;
+
+/**
+ * 맵 모드의 frame 활성 또는 Fleet Map 점 선택 시 열려 있는 목표 레일 패널의 선택을 동기화한다.
+ * 레일이 닫혀 있거나 확장 전용 표면일 때는 자동 열기/전환 없이 조용히 무시하고, 미연결 Operation 은 기존 선택을 보존한다.
+ */
+export function handleMapOperationSelected(operationId: string): void {
+  if (!installed?.rail.isOpen("objectives")) return;
+  const token = ++latestSelectionToken;
+
+  const allOps = operationsSnapshot;
+  const op = allOps.find((candidate) => candidate.id === operationId)
+    ?? installed.consoleState.getOperations({ nested: true }).find((candidate) => candidate.id === operationId);
+
+  let targetTheaterId: string | null = op?.theaterId ?? null;
+  if (!targetTheaterId) {
+    for (const [tId, tState] of theaters) {
+      if (tState.items.some((item) => item.id === operationId || item.members.some((m) => m.operationId === operationId))) {
+        targetTheaterId = tId;
+        break;
+      }
+    }
+  }
+  if (!targetTheaterId) {
+    targetTheaterId = activeTheaterId();
+  }
+  if (!targetTheaterId) return;
+
+  const currentTheaterState = theaters.get(targetTheaterId);
+  if (currentTheaterState?.loaded) {
+    const matchingItem = currentTheaterState.items.find(
+      (item) => item.id === operationId || item.members.some((m) => m.operationId === operationId)
+    );
+    if (!matchingItem) return;
+
+    const nextList = matchingItem.groupId ? `group:${matchingItem.groupId}` : "ungrouped";
+    patchObjectiveView(targetTheaterId, (current) => {
+      if (current.selected === matchingItem.id && current.list === nextList && current.externalSelectionId === matchingItem.id) return current;
+      return { selected: matchingItem.id, list: nextList, externalSelectionId: matchingItem.id };
+    });
+    return;
+  }
+
+  const api = installed.api;
+  if (!api) return;
+  void loadTheater(api, targetTheaterId).then(() => {
+    if (token !== latestSelectionToken) return;
+    if (!installed?.rail.isOpen("objectives")) return;
+    if (activeTheaterId() !== targetTheaterId) return;
+
+    const loadedState = theaters.get(targetTheaterId);
+    if (!loadedState?.loaded) return;
+
+    const matchingItem = loadedState.items.find(
+      (item) => item.id === operationId || item.members.some((m) => m.operationId === operationId)
+    );
+    if (!matchingItem) return;
+
+    const nextList = matchingItem.groupId ? `group:${matchingItem.groupId}` : "ungrouped";
+    patchObjectiveView(targetTheaterId, (current) => {
+      if (current.selected === matchingItem.id && current.list === nextList && current.externalSelectionId === matchingItem.id) return current;
+      return { selected: matchingItem.id, list: nextList, externalSelectionId: matchingItem.id };
+    });
+  });
 }
 
 export function focusOperation(operationId: string): void {

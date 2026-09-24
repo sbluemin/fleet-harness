@@ -235,6 +235,10 @@ export interface ClientExecutionProvider {
    * 아는 플러그인이 내놓는다.
    */
   readonly experimentModelOptions?: () => Promise<readonly ExperimentModelOption[]>;
+  /**
+   * 맵 모드에서 명시적으로 frame 활성 선택 또는 Fleet Map 점 선택 시 호출된다.
+   */
+  readonly onMapOperationSelected?: (operationId: string) => void;
 }
 
 export interface FleetClientPlugin extends ClientExecutionProvider {

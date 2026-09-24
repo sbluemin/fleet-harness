@@ -173,6 +173,11 @@ export function OperationsCanvas({
   const [focusFadeTransitionReady, setFocusFadeTransitionReady] = useState(activePluginOperationId !== null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const registry = usePluginRegistry();
+  const notifyMapOperationSelected = useCallback((operationId: string) => {
+    for (const provider of registry.providers) {
+      provider.onMapOperationSelected?.(operationId);
+    }
+  }, [registry.providers]);
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -1628,6 +1633,7 @@ export function OperationsCanvas({
               // 선별 중에는 기록하지 않는다 — 무대는 슬롯 geometry이고, 외부 Theater 무대의 기록은
               // 활성 Theater 캔버스 store를 오염시킨다.
               if (!operationMaximized && !operationCompanion && !formationView && !triageActive) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
+              if (!formationView && !triageActive) notifyMapOperationSelected(operation.id);
             },
             onClose: () => {
               if (triageActive) dismissTriageOperation(operation.id);
@@ -1730,7 +1736,10 @@ export function OperationsCanvas({
             : getTheaterCanvasSnapshot(operation.theaterId).operations[operation.id] ?? operation.geometry ?? null}
           // 점을 고르면 그 Operation으로 내려간다 — 페이지의 포커스 경로가 Theater 전환과 줌 복귀를
           // 함께 지고, 포커스 줌 하한(0.25)이 지도 이탈 임계 위라 판은 그 자리에서 걷힌다.
-          onPick={onFocus}
+          onPick={(operationId) => {
+            onFocus(operationId);
+            notifyMapOperationSelected(operationId);
+          }}
           // 표석을 고르면 그 Theater가 올라온다 — 그 Theater의 저장 viewport가 판독 배율이면 판은
           // 그 자리에서 걷히고, 아직 지도 배율이면 활성 구역만 옮겨 앉는다.
           onSelectTheater={(theaterId) => {

@@ -111,7 +111,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const collapsed = view.collapsed;
   const dueFilter = view.dueFilter as DueFilter;
   const setList = useCallback((next: ListId) => patchObjectiveView(theaterId, () => ({ list: next })), [theaterId]);
-  const setSelected = useCallback((next: string | null | ((value: string | null) => string | null)) => patchObjectiveView(theaterId, (current) => ({ selected: typeof next === "function" ? next(current.selected) : next })), [theaterId]);
+  const setSelected = useCallback((next: string | null | ((value: string | null) => string | null)) => patchObjectiveView(theaterId, (current) => ({ selected: typeof next === "function" ? next(current.selected) : next, externalSelectionId: null })), [theaterId]);
   const setDueFilter = (next: DueFilter) => patchObjectiveView(theaterId, () => ({ dueFilter: next }));
   // 구획 접기 — 그룹 구획은 펼침이 기본, 맨 아래 「완료됨」은 접힘이 기본.
   const toggleSection = (key: string, defaultOpen: boolean) => patchObjectiveView(theaterId, (current) => ({ collapsed: { ...current.collapsed, [key]: key in current.collapsed ? !current.collapsed[key] : defaultOpen } }));
@@ -247,11 +247,12 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const itemsRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!selected) return;
+    if (view.externalSelectionId === selected) return;
     const frame = requestAnimationFrame(() => {
       if (mainRef.current && getComputedStyle(mainRef.current).display === "none") detailRef.current?.querySelector<HTMLElement>(".objectives-detail-back")?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [selected]);
+  }, [selected, view.externalSelectionId]);
   const closeDetail = () => {
     const id = selected;
     setSelected(null);
