@@ -196,9 +196,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
           if (!observation) { warn("observation_unavailable"); return; }
           if (observation.lifecycle === "dormant") return;
           if (observation.lifecycle !== "live") { warn("lifecycle_unknown"); return; }
-          // 터미널에서 사람의 답을 기다리는 세션은 멈출 턴이 없어 interrupt 를 받지 않는다 — 완료는 사람이 내린 종결이므로 그 대기를 버리고 바로 재운다.
-          const dropPendingInput = observation.activity === "awaiting" && !observation.supportedActions.includes("interrupt");
-          if (observation.activity !== "idle" && !dropPendingInput) {
+          // 터미널의 답 대기와 백그라운드 작업은 멈출 턴이 없어 interrupt 를 받지 않는다 — 완료는 사람이 내린 종결이므로 그 대기·작업을 끝내고 바로 재운다.
+          const endPendingWork = (observation.activity === "awaiting" || observation.activity === "background") && !observation.supportedActions.includes("interrupt");
+          if (observation.activity !== "idle" && !endPendingWork) {
             if (observation.activity === "ended" || observation.activity === "unknown") { warn(`activity_${observation.activity}`); return; }
             try {
               const receipt = await capability.request({ kind: "interrupt", operationId }, `objectives:complete:${randomUUID()}`);
@@ -214,7 +214,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
           }
           if (!stillCompleted()) return;
           if (capability.observe(operationId)?.lifecycle === "dormant") return;
-          const result = await sleep(operationId, dropPendingInput ? { dropPendingInput: true } : undefined);
+          const result = await sleep(operationId, endPendingWork ? { endPendingWork: true } : undefined);
           if (!result.ok) {
             if (result.error === "already_dormant") return;
             if (result.error === "not_idle" && attempt === 0) continue;

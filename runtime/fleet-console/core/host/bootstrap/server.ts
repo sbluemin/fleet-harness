@@ -973,9 +973,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const observation = consoleControl.observe(operationId);
         if (!observation || !sleepOperation) return { ok: false, error: "capability_unavailable" };
         if (observation.lifecycle === "dormant") return { ok: false, error: "already_dormant" };
-        // 터미널의 답 대기는 interrupt 로 풀 수 없다 — 호출자가 종결을 결정했을 때만 그 대기를 버리고 재운다.
-        const dropsPendingInput = options?.dropPendingInput === true && observation.surface === "terminal" && observation.activity === "awaiting";
-        if (observation.activity !== "idle" && !dropsPendingInput) return { ok: false, error: "not_idle" };
+        // 터미널의 답 대기와 백그라운드 작업은 interrupt 로 풀 수 없다 — 호출자가 종결을 결정했을 때만 그대로 재운다.
+        const endsPendingWork = options?.endPendingWork === true && ((observation.surface === "terminal" && observation.activity === "awaiting") || observation.activity === "background");
+        if (observation.activity !== "idle" && !endsPendingWork) return { ok: false, error: "not_idle" };
         return sleepOperation(operationId);
       },
     }),

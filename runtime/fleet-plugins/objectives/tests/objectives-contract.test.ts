@@ -80,9 +80,9 @@ function harness() {
           const state = activity.get(id);
           return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: "terminal", supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
         },
-        sleep: async (id: string, options?: { dropPendingInput?: boolean }) => {
+        sleep: async (id: string, options?: { endPendingWork?: boolean }) => {
           const state = activity.get(id);
-          if (state !== "idle" && !(options?.dropPendingInput && state === "awaiting")) return { ok: false, error: "not_idle" };
+          if (state !== "idle" && !(options?.endPendingWork && (state === "awaiting" || state === "background"))) return { ok: false, error: "not_idle" };
           slept.push(id); activity.set(id, "dormant"); return { ok: true, lifecycle: "dormant" };
         },
       },
@@ -126,10 +126,10 @@ describe("Objectives contract", () => {
     store.stepDone(item.id, a!.id, ["a redone", "fixed the gap"]);
     await expect(launch.delegateStep(item.id, a!.id)).rejects.toMatchObject({ code: "step_done" });
     await launch.delegateStep(item.id, b!.id);
-    // 완료는 지휘관과 담당을 휴면시키되 연결을 풀지 않는다. 답을 기다리는 터미널 지휘관은 그 대기를 버리고, 실행 중인 담당은 중단한 뒤 재운다.
+    // 완료는 지휘관과 담당을 휴면시키되 연결을 풀지 않는다. 답을 기다리는 터미널 지휘관과 백그라운드 작업이 남은 담당은 그대로 재우고, 실행 중인 담당은 중단한 뒤 재운다.
     activity.set(item.id, "awaiting");
     activity.set("launched-2", "running");
-    activity.set("launched-3", "idle");
+    activity.set("launched-3", "background");
     expect(launch.complete(item.id).done).toBeTruthy();
     await expect.poll(() => slept.length).toBe(3);
     expect(interrupted).toEqual(["launched-2"]);

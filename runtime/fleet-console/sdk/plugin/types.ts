@@ -790,10 +790,10 @@ export interface FleetPluginConsoleControlHost {
   observe(operationId: string): ConsoleOperationObservation | null;
   /**
    * 유휴 Agent Operation을 휴면으로 보낸다. 진행 중이면 not_idle; ending이면 전이가 진행 중이므로 재관측한다.
-   * `dropPendingInput` 은 사람의 답을 기다리는 터미널 세션(interrupt 가 없다)도 재우고 떠 있던 질문·허가 요청을 버린다 —
-   * 사람이 그 작업의 종결을 결정한 경우에만 쓴다.
+   * `endPendingWork` 는 interrupt 로 풀 수 없는 두 상태도 재운다 — 사람의 답을 기다리는 터미널 세션은 떠 있던 질문·허가 요청을 버리고,
+   * 백그라운드 작업이 남은 세션은 그 작업을 끝낸다. 사람이 그 작업의 종결을 결정한 경우에만 쓴다. 실행 중인 턴은 여전히 not_idle 이다.
    */
-  sleep?(operationId: string, options?: { readonly dropPendingInput?: boolean }): Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
+  sleep?(operationId: string, options?: { readonly endPendingWork?: boolean }): Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
 }
 
 /**
