@@ -55,6 +55,8 @@ export interface LaunchService {
 
 export interface LaunchOptions {
   readonly language?: PromptLanguage;
+  /** 사람이 개시·스티어링에 덧붙인 말 — 그 알림 아래 인용으로 한 번 간다(저장하지 않는다). 구상의 말은 목표의 `cook` 에 산다. */
+  readonly context?: string;
 }
 
 const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.language === "ko" ? "ko" : "en");
@@ -99,7 +101,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
-  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; dormant?: boolean; subagents?: boolean }): Promise<string> => {
+  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; dormant?: boolean; subagents?: boolean; parentOperationId?: string }): Promise<string> => {
     const receipt = await control().request({
       kind: "launch",
       theaterId: input.theaterId,
@@ -112,6 +114,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
       ...(input.groupId ? { groupId: input.groupId } : {}),
+      // 구성원은 태어날 때부터 지휘관 아래 선다 — 코어가 목록 표면에서 빼고 지휘관이 대표한다.
+      ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}),
     }, `objectives:launch:${randomUUID()}`);
     if (!receipt.operationId) throw new ObjectiveStoreError(receipt.error ?? "launch_failed");
     return receipt.operationId;
@@ -215,6 +219,26 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   };
   /** 지휘관이 한 번도 깨지 않았다 — 보드를 처음부터 읽으므로 앞서 쌓인 편집 기록은 뜻이 없다. */
   const neverStarted = (operationId: string) => { const node = ctx.host.operations.get(operationId); return !!node && !readOperationLaunch(node.payload).started; };
+  /**
+   * 첫 깨움의 「깨었음」은 CLI 가 뜬 뒤 세션 좌표가 Operation 에 적힐 때(capture hook) 비동기로 켜진다. 목표 레코드는 그대로라
+   * 화면에 방송이 나가지 않는다 — 그러면 화면은 개시 전 문구를 계속 보이고 사람은 개시를 다시 누르게 된다. 좌표가 적히는 대로
+   * 목표를 한 번 다시 방송한다. 응답을 붙잡지 않도록 뒤에서 돌고(띠의 「보내는 중…」은 응답까지만 선다), 상한을 넘기거나
+   * 지휘관이 사라지면 그만둔다.
+   */
+  const announceTimers = new Set<ReturnType<typeof setTimeout>>();
+  const ANNOUNCE_POLL_MS = 250;
+  const ANNOUNCE_DEADLINE_MS = 60_000;
+  const announceStarted = (itemId: string) => {
+    const deadline = Date.now() + ANNOUNCE_DEADLINE_MS;
+    const tick = () => {
+      if (!ctx.host.operations.get(itemId)) return;
+      if (!neverStarted(itemId)) { store.refresh(itemId); return; }
+      if (Date.now() >= deadline) return;
+      const timer = setTimeout(() => { announceTimers.delete(timer); tick(); }, ANNOUNCE_POLL_MS);
+      announceTimers.add(timer);
+    };
+    tick();
+  };
   /** 지휘관 Operation 이 담당들과 함께 서야 할 그룹으로 담당을 옮긴다. */
   const followGroup = (current: ObjectiveItem) => {
     for (const candidate of current.members) {
@@ -254,7 +278,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       let session = memberSession(current.commander.sessionName, number);
       while (used.has(session)) session = memberSession(current.commander.sessionName, ++number);
       const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
-      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: false }).catch(asStoreError);
+      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: false, parentOperationId: current.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(itemId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       try { current = store.setMemberOperation(itemId, member.id, launchedId); }
       catch (error) { ctx.host.operations.delete(launchedId); throw error; }
@@ -326,9 +350,11 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       await muster(itemId);
       current = item(itemId);
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
-      if (neverStarted(itemId)) current = store.setEdited(itemId, null);
-      const delivered = await send(itemId, startTurn(current, language));
+      const firstWake = neverStarted(itemId);
+      if (firstWake) current = store.setEdited(itemId, null);
+      const delivered = await send(itemId, startTurn(current, language, options?.context));
       if (!delivered) throw new ObjectiveStoreError("launch_failed");
+      if (firstWake) announceStarted(itemId);
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
       return { item: store.setEdited(itemId, null), operationId: itemId };
     }),
@@ -340,8 +366,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       rememberLanguage(itemId, language);
       // 구상은 계획과 메모만이다 — 단계 수행도, 담당 기동도 「시작」이 한다.
       if (!current.cooking) current = store.setCooking(itemId, true);
-      if (neverStarted(itemId)) current = store.setEdited(itemId, null);
+      const firstWake = neverStarted(itemId);
+      if (firstWake) current = store.setEdited(itemId, null);
       if (!(await send(itemId, cookTurn(current, language)))) throw new ObjectiveStoreError("launch_failed");
+      if (firstWake) announceStarted(itemId);
       return { item: current, operationId: itemId };
     }),
 
@@ -357,7 +385,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const current = item(itemId);
       if (current.done) throw new ObjectiveStoreError("item_done");
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
-      const receipt = await control().request({ kind: "send", operationId: itemId, text: steerTurn(current, languageOf(options)) }, `objectives:steer:${randomUUID()}`).catch(asStoreError);
+      const receipt = await control().request({ kind: "send", operationId: itemId, text: steerTurn(current, languageOf(options), options?.context) }, `objectives:steer:${randomUUID()}`).catch(asStoreError);
       if (receipt.status === "rejected" || receipt.status === "failed") asStoreError(new Error(receipt.error ?? "steer_failed"));
       // 지휘관에게 닿았다 — 쌓인 편집을 지우고, 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다.
       store.setEdited(itemId, null);
@@ -395,7 +423,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
     operationChanged: (operationId) => store.refresh(operationId),
 
-    dispose: () => undefined,
+    dispose: () => { for (const timer of announceTimers) clearTimeout(timer); announceTimers.clear(); },
   };
   return service;
 }

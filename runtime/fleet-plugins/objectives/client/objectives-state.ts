@@ -73,7 +73,8 @@ function reconcileOperations(api: ClientApiCapability): void {
     const known = new Set((theaters.get(theaterId) ?? state).items.map((item) => item.id));
     const assignees = assigneeIds(state.items);
     for (const operation of operationsSnapshot) {
-      if (operation.theaterId !== theaterId || operation.type !== "agent" || known.has(operation.id) || assignees.has(operation.id) || fetching.has(operation.id)) continue;
+      // 부모 아래 선 Operation(구성원)은 목표가 아니다 — 코어가 구성원으로 기록한 것은 묻지도 않는다.
+      if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || assignees.has(operation.id) || fetching.has(operation.id)) continue;
       fetching.add(operation.id);
       void post<{ item: ObjectiveItem }>(api, "/item/get", { itemId: operation.id })
         .then(({ item }) => {
@@ -132,11 +133,11 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   // 활성 Theater 가 바뀌면 그 Theater 의 항목을 미리 읽는다 — 캡션 칩은 표면이 닫혀 있어도 서야 한다.
   let lastTheater = ctx.consoleState.getActiveTheaterId();
   if (lastTheater) void loadTheater(ctx.api, lastTheater);
-  operationsSnapshot = ctx.consoleState.getOperations();
+  operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
   const offConsole = ctx.consoleState.subscribe(() => {
     const current = ctx.consoleState.getActiveTheaterId();
     if (current && current !== lastTheater) { lastTheater = current; void loadTheater(ctx.api, current); }
-    operationsSnapshot = ctx.consoleState.getOperations();
+    operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
     reconcileOperations(ctx.api);
     notify();
   });
@@ -163,7 +164,7 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
     .then((state) => {
       setTheater(theaterId, { items: state.items, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
       // 읽는 사이 생긴 Operation 도 목표로 — 스냅숏 기준으로 한 번 맞춘다.
-      if (installed) { knownOperationIds = new Set(); operationsSnapshot = installed.consoleState.getOperations(); reconcileOperations(installed.api); }
+      if (installed) { knownOperationIds = new Set(); operationsSnapshot = installed.consoleState.getOperations({ nested: true }); reconcileOperations(installed.api); }
     })
     .catch(() => { setTheater(theaterId, { loaded: true }); })
     .finally(() => { inflight.delete(theaterId); });

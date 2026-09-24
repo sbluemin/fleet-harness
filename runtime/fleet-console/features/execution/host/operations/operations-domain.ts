@@ -169,9 +169,20 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
     return nodes.get(id) ?? null;
   }
 
+  /**
+   * 부모는 한 층뿐이다 — 같은 Theater 의, 자기 부모가 없는 Operation 이어야 하고, 구성원을 거느린 Operation 은 구성원이 될 수 없다.
+   * 목록 판정(`isListedOperation`)이 한 층만 보므로 사슬을 만들면 판정 밖에 숨는 Operation 이 생긴다.
+   */
+  function assertParent(child: { readonly id: string; readonly theaterId: string }, parentId: string): void {
+    const parent = nodes.get(parentId);
+    if (!parent || parent.id === child.id || parent.theaterId !== child.theaterId || parent.parentOperationId) throw new Error("invalid_parent_operation");
+    for (const node of nodes.values()) if (node.parentOperationId === child.id) throw new Error("invalid_parent_operation");
+  }
+
   function create(input: OperationCreateInput): OperationNode {
     const id = input.id ?? crypto.randomUUID();
     if (nodes.has(id)) throw new Error("operation_exists");
+    if (input.parentOperationId) assertParent({ id, theaterId: input.theaterId }, input.parentOperationId);
     const node = normalizeCreateInput(input, id, now());
     nodes.set(node.id, node);
     return node;
@@ -194,6 +205,7 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
   function patch(id: string, input: OperationPatchInput): OperationNode | null {
     const existing = nodes.get(id);
     if (!existing) return null;
+    if (input.parentOperationId) assertParent(existing, input.parentOperationId);
     const updated = normalizePatch(existing, input, now());
     nodes.set(id, updated);
     grouped(existing, updated);
@@ -325,6 +337,7 @@ function normalizeCreateInput(input: OperationCreateInput, id: string, timestamp
     ...(input.accent ? { accent: input.accent.trim() } : {}),
     ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
     ...(input.order !== undefined ? { order: input.order } : {}),
+    ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}),
     payload: input.payload ?? {},
     geometry: input.geometry ?? null,
     ts: {
@@ -336,8 +349,13 @@ function normalizeCreateInput(input: OperationCreateInput, id: string, timestamp
 
 function normalizePatch(existing: OperationNode, input: OperationPatchInput, timestamp: number): OperationNode {
   const title = input.title?.trim();
+  if (input.parentOperationId === null && existing.parentOperationId) {
+    const { parentOperationId: _released, ...rest } = existing;
+    return normalizePatch(rest, { ...input, parentOperationId: undefined }, timestamp);
+  }
   return {
     ...existing,
+    ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}),
     ...(title !== undefined ? { title: title.length > 0 ? title : existing.title } : {}),
     ...(input.accent !== undefined ? { accent: input.accent && input.accent.trim() ? input.accent.trim() : undefined } : {}),
     ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),

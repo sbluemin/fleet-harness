@@ -26,18 +26,44 @@ export default definePlugin({
   id: "objectives",
   register(ctx) {
     const dirs = new Map<string, string>();
+    const unreadable = new Set<string>();
+    // 등록된 Theater 폴더가 지금 없을 수 있다(옮김·지움·외장 디스크 분리). 그 Theater 는 읽을 수 없는 것으로 두고
+    // 던지지 않는다 — 던지면 기동의 backfill 이 플러그인 등록을 깨 Console 전체가 뜨지 않는다. 실패는 캐시하지 않아
+    // 폴더가 돌아오면 다음 읽기가 다시 푼다.
     const dirOf = (theaterId: string): string | null => {
       const cached = dirs.get(theaterId);
       if (cached) return cached;
       const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
       if (!theaterPath) return null;
-      const dir = path.join(ctx.host.paths.ensureWorkspaceDirectory(theaterPath).path, "objectives");
+      let dir: string;
+      try { dir = path.join(ctx.host.paths.ensureWorkspaceDirectory(theaterPath).path, "objectives"); }
+      catch (error) {
+        // 폴더가 없을 때 말고도(예: 워크스페이스 식별 충돌) 여기로 온다 — 원인을 가릴 수 있게 Theater 마다 한 번 남긴다.
+        if (!unreadable.has(theaterId)) console.warn(`[objectives] theater ${theaterId} unreadable: ${error instanceof Error ? error.message : String(error)}`);
+        unreadable.add(theaterId);
+        return null;
+      }
+      unreadable.delete(theaterId);
       dirs.set(theaterId, dir);
       return dir;
     };
     const releaseChannel = ctx.host.events.registerSseChannel(OBJECTIVE_ITEM_CHANNEL);
     ctx.host.lifecycle.registerCleanup(releaseChannel);
     const store = createObjectiveStore({ dirOf, operations: ctx.host.operations, emit: (event) => ctx.host.events.publish(OBJECTIVE_ITEM_CHANNEL, event) });
+
+    // 부모 채우기 — 구성원은 태어날 때 지휘관을 부모로 받는다(launch). 그 전에 뜬 구성원은 여기서 한 번 채운다.
+    // 코어는 부모가 있는 Operation 을 목록 표면에서 빼고 지휘관이 대표하게 한다. 복원된 상태는 플러그인보다 먼저 선다.
+    // 최선 노력이다 — 어떤 실패도 플러그인 등록을 깨지 않는다(읽지 못한 Theater 의 구성원은 목록에 남을 뿐이다).
+    try {
+      for (const item of store.all()) {
+        for (const member of item.members) {
+          const node = member.operationId ? ctx.host.operations.get(member.operationId) : null;
+          if (!node || node.theaterId !== item.theaterId || node.parentOperationId === item.id) continue;
+          try { ctx.host.operations.patch(node.id, { parentOperationId: item.id }); }
+          catch (error) { console.warn(`[objectives] member parent backfill failed: ${error instanceof Error ? error.message : String(error)}`); }
+        }
+      }
+    } catch (error) { console.warn(`[objectives] member parent backfill skipped: ${error instanceof Error ? error.message : String(error)}`); }
 
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
     const launch = createLaunchService(ctx, store);

@@ -347,20 +347,10 @@ export function resetCanvasViewportSize(): void {
 }
 
 // ── 늘 숨은 패널 ────────────────────────────────────────────────────────────────
-// 묶음의 단계 Operation 은 최소화 여부와 무관하게 패널로 서지 않는다(지휘관 패널이 본문 교체로 보여 준다).
-// 묶음 색인은 플러그인 레지스트리(React 컨텍스트)에 살아 스토어가 직접 읽지 못하므로, 캔버스가 색인을 셀 때마다
-// 이 집합을 갈아 끼운다. 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)는 이 집합으로 숨은 패널을 거른다.
-let alwaysHiddenGeometryIds: ReadonlySet<string> = new Set();
-export function setAlwaysHiddenGeometryIds(ids: ReadonlySet<string>): void {
-  alwaysHiddenGeometryIds = ids;
-}
-export function getAlwaysHiddenGeometryIds(): ReadonlySet<string> {
-  return alwaysHiddenGeometryIds;
-}
+// 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)는 최소화한 패널을 거른다. 구성원은 기본 목록에 없어
+// 좌표를 받지 않고, 남은 좌표도 정리(pruneOperations)가 걷으므로 따로 셀 것이 없다.
 function hiddenGeometryIds(minimized: readonly string[] = state.minimized): Set<string> {
-  const hidden = new Set(minimized);
-  for (const id of alwaysHiddenGeometryIds) hidden.add(id);
-  return hidden;
+  return new Set(minimized);
 }
 
 export function fitAllOperations(): void {

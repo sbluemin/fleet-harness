@@ -299,6 +299,8 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
   const accent = readOptionalAccent(value.accent);
   const groupId = readOptionalGroupId(value.groupId);
   const order = readNonNegativeInteger(value.order);
+  // 부모는 id 한 칸뿐이다 — 부모가 사라졌거나 다른 Theater 면 목록 판정이 평범한 행으로 돌려 세우므로 여기서 짝을 맞추지 않는다.
+  const parentOperationId = readNonEmptyString(value.parentOperationId);
   return {
     id,
     theaterId,
@@ -310,6 +312,7 @@ function sanitizeOperationNode(value: unknown): OperationNode | null {
     ...(accent ? { accent } : {}),
     ...(groupId !== undefined ? { groupId } : {}),
     ...(order !== null ? { order } : {}),
+    ...(parentOperationId && parentOperationId !== id && parentOperationId.length <= 128 ? { parentOperationId } : {}),
     ts,
   };
 }

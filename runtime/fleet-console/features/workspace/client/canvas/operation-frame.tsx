@@ -38,6 +38,11 @@ interface OperationFrameProps {
   readonly theaterLabel?: string | null;
   /** 지휘관 패널의 묶음 장치 — 이름 뒤의 단계 띠(strip)와 본문 오른쪽 위의 노드 줄(nodes). */
   readonly cluster?: { readonly strip: ReactNode; readonly nodes: ReactNode } | null;
+  /**
+   * 지휘관 패널이 구성원의 본문을 보이는 동안의 주인 — 제목 뒤 「› 이름」으로 서고, 캡션 선반이 누구의 도구인지 말한다.
+   * 이름 바꾸기·창 컨트롤·메뉴는 여전히 이 프레임(지휘관)의 것이다. 정체성 톤은 제목 잉크로만 쓴다.
+   */
+  readonly subject?: { readonly name: string; readonly title: string; readonly tone: string | null } | null;
   readonly children: ReactNode;
   /**
    * 캡션 동작 선반 — 이 Operation의 플러그인이 채우는 마크 버튼들. 자리는 프레임이 정한다:
@@ -113,7 +118,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -149,6 +154,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   // 사용자 accent(정체성)는 제목 글자의 잉크만 소유한다. 캡션 채움은 액센트가 없을 때와 같다.
   // 패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용이다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
+  const subjectInk = subject?.tone ? resolveAccentColor(subject.tone) : null;
   // 그룹 소속은 개인 accent와 다른 축이므로 자기 마크(도트)와 중립 티어 이름으로 따로 선다 —
   // 색은 도트만 지고 이름은 캡션의 기존 중립 메타 티어를 그대로 상속한다.
   const groupLabelVisible = Boolean(groupName && groupColor);
@@ -602,6 +608,15 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
             {displayTitle}
           </button>
         )}
+        {subject ? (
+          <span
+            className="canvas-operation-identity-subject"
+            style={subjectInk ? { "--subject-ink": subjectInk } as CSSProperties : undefined}
+            title={t("canvas.frame.subjectTitle", { title: subject.title })}
+          >
+            <span aria-hidden="true">› </span>{subject.name}
+          </span>
+        ) : null}
         {cluster?.strip ?? null}
         {theaterLabelVisible ? (
           <span
@@ -617,7 +632,9 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
             목록에서 상태를 읽는 자리는 사이드바 칩이다. 이 자리는 그 Operation에 대한 동작을
             여는 문(사이드바 우클릭과 같은 메뉴)이 가져간다. */}
         {/* 플러그인 동작 선반 — 이 줄에서 마크만 서는 버튼은 전부 같은 말풍선을 쓴다. */}
-        {captionActions ? <span className="canvas-operation-caption-actions">{captionActions}</span> : null}
+        {captionActions ? (
+          <span className="canvas-operation-caption-actions" {...(subject ? { role: "group", "aria-label": t("canvas.frame.subjectTools", { name: subject.name }) } : {})}>{captionActions}</span>
+        ) : null}
         {onOpenMenu ? (
           <CaptionTipHost label={t("canvas.frame.openMenuTitle")}>
             <button

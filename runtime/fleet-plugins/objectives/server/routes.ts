@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type http from "node:http";
 
+import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { z } from "zod";
@@ -8,7 +9,7 @@ import { z } from "zod";
 import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { createItemSchema, criterionAddSchema, criterionPatchSchema, memberAddSchema, memberPatchSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type ObjectiveEditKind, type ObjectiveItem } from "./types.js";
+import { createItemSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type ObjectiveEditKind, type ObjectiveItem } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -26,6 +27,11 @@ const ids = z.string().min(1).max(128);
 const language = z.enum(["en", "ko"]).optional();
 const itemRef = z.object({ itemId: ids, language });
 const stepRef = z.object({ itemId: ids, stepId: ids, language });
+/** 사람이 지휘관에게 덧붙이는 말 — 구상·개시·스티어링이 같은 상한을 쓴다. */
+const context = z.string().max(MAX_CONTEXT).optional();
+/** 그룹 — 사이드바 그룹 그 자체. 색은 정체성 톤 키여야 영속 상태에 남는다(목록 밖 색의 그룹은 불러올 때 버려진다). */
+const groupName = z.string().trim().min(1).max(64);
+const groupColor = z.enum(IDENTITY_TONES);
 
 export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly ObjectiveRoute[] {
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>, req: http.IncomingMessage) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
@@ -41,7 +47,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     return true;
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
-    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_item", "unknown_step", "unknown_member", "unknown_attachment", "unknown_criterion"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
+    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_item", "unknown_step", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_group"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
     const code = error instanceof Error ? error.message : "todo_failed";
     ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "todo_failed" });
   };
@@ -182,11 +188,19 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "edge/toggle", method: "POST", summary: "Link or unlink two missions in the lineup.", handler: json(itemRef.extend({ from: ids, to: ids }), steerable(({ itemId, to }) => notStarted(itemId, to), ({ itemId, from, to }) => { const result = store.edgeToggle(itemId, from, to); return { item: store.setEdited(itemId, ["recipe"]), linked: result.linked }; })) },
     { name: "edge/linear", method: "POST", summary: "Chain all missions in order.", handler: json(itemRef, unlessBusy(({ itemId }) => edited(["recipe"], () => store.edgesLinear(itemId)))) },
     { name: "edge/clear", method: "POST", summary: "Remove all mission dependencies.", handler: json(itemRef, unlessBusy(({ itemId }) => edited(["recipe"], () => store.edgesClear(itemId)))) },
-    { name: "plan/request", method: "POST", summary: "Ask the Commander to plan the objective (starts one when missing): it lays out missions, prerequisites and delegation; nothing runs until Commence. Optional context travels with the request and is kept on the item.", handler: json(itemRef.extend({ context: z.string().max(4000).optional() }), unlessBusy(({ itemId, language, context }) => { if (context !== undefined) store.patch(itemId, { cook: context }); return launch.requestPlan(itemId, { language }); })) },
+    { name: "plan/request", method: "POST", summary: "Ask the Commander to plan the objective (starts one when missing): it lays out missions, prerequisites and delegation; nothing runs until Commence. Optional context travels with the request and is kept on the item.", handler: json(itemRef.extend({ context }), unlessBusy(({ itemId, language, context }) => { if (context !== undefined) store.patch(itemId, { cook: context }); return launch.requestPlan(itemId, { language }); })) },
     { name: "coordinator/stop", method: "POST", summary: "Interrupt the Commander and every member Operation of an objective (roster stays).", handler: json(itemRef, ({ itemId }) => launch.stop(itemId)) },
-    { name: "coordinator/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn.", handler: json(itemRef, unlessBusy(({ itemId, language }) => launch.startCoordinator(itemId, { language }))) },
-    { name: "coordinator/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line), clear the pending changes and the criteria it had judged met.", handler: json(itemRef, ({ itemId, language }) => launch.steer(itemId, { language }).then(item)) },
-    { name: "group/create", method: "POST", summary: "Create an Operation group (the Objectives list).", handler: json(z.object({ theaterId: ids, language, name: z.string().trim().min(1).max(64), color: z.string().min(1).max(32) }), ({ theaterId, name, color }) => { const groups = ctx.host.operations.groups; if (!groups) throw new Error("groups_unavailable"); return { group: groups.create({ theaterId, name, color }) }; }) },
+    { name: "coordinator/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once.", handler: json(itemRef.extend({ context }), unlessBusy(({ itemId, language, context: note }) => launch.startCoordinator(itemId, { language, context: note }))) },
+    { name: "coordinator/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(itemRef.extend({ context }), ({ itemId, language, context: note }) => launch.steer(itemId, { language, context: note }).then(item)) },
+    { name: "group/create", method: "POST", summary: "Create an Operation group (the Objectives list).", handler: json(z.object({ theaterId: ids, language, name: groupName, color: groupColor }), ({ theaterId, name, color }) => { const groups = ctx.host.operations.groups; if (!groups) throw new Error("groups_unavailable"); return { group: groups.create({ theaterId, name, color }) }; }) },
+    // 목표 표면의 그룹 메뉴 — 이름과 색만 바꾼다(사람의 사이드바 PATCH 와 같은 길: 영속 + group:changed). 해제·삭제는 사이드바의 몫이다.
+    { name: "group/patch", method: "POST", summary: "Rename or recolor an Operation group (the Objectives list).", handler: json(z.object({ groupId: ids, language, name: groupName.optional(), color: groupColor.optional() }).refine((body) => body.name !== undefined || body.color !== undefined), ({ groupId, name, color }) => {
+      const groups = ctx.host.operations.groups;
+      if (!groups) throw new Error("groups_unavailable");
+      const group = groups.patch(groupId, { ...(name !== undefined ? { name } : {}), ...(color !== undefined ? { color } : {}) });
+      if (!group) throw new ObjectiveStoreError("unknown_group");
+      return { group };
+    }) },
     { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();
       const hits = store.list(theaterId).filter((candidate) => !candidate.done && candidate.title.toLowerCase().includes(needle)).slice(0, limit ?? 20);

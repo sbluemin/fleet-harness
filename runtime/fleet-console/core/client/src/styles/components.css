@@ -7608,6 +7608,31 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--text-primary);
 }
 
+/* 지휘관 패널이 구성원의 본문을 보이는 동안 제목 뒤에 서는 「› 이름」 — 캡션 선반이 누구의 도구인지 말한다.
+   정체성 톤(--subject-ink ← --id-*)은 제목 잉크 규칙 그대로 글자에만 쓰고, 채움·테두리는 건드리지 않는다.
+   제목은 늘어나지 않고 이름이 남은 폭을 받아 둘이 붙어 선다. 언포커스는 제목과 같은 한 단계 물러남이다. */
+.canvas-operation-titlebar:has(.canvas-operation-identity-subject) .canvas-operation-identity-name {
+  flex: 0 1 auto;
+}
+
+.canvas-operation-identity-subject {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 0;
+  color: color-mix(in oklab, var(--subject-ink, var(--text-secondary)) 70%, var(--text-tertiary));
+  font-family: var(--font-body);
+  font-size: calc(var(--font-body-size) * 0.92);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-operation.is-active > .canvas-operation-titlebar .canvas-operation-identity-subject {
+  color: var(--subject-ink, var(--text-primary));
+}
+
 .canvas-operation-identity-name:focus-visible {
   outline: 2px solid color-mix(in oklch, var(--brass) 65%, transparent);
   outline-offset: -2px;

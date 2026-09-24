@@ -224,7 +224,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     let objectives = cache.get(theaterId);
     if (!objectives) {
       const dir = options.dirOf(theaterId);
-      objectives = dir ? readState(path.join(dir, STATE_FILE)) : [];
+      // 폴더를 풀 수 없는 Theater 는 빈 보드로 보이되 캐시하지 않는다 — 빈 목록을 붙들어 두면 폴더가 돌아온 뒤 첫 쓰기가
+      // 그 빈 목록으로 기존 state.json 을 덮는다. 쓰기는 dirFor 가 unknown_theater 로 막는다.
+      if (!dir) return [];
+      objectives = readState(path.join(dir, STATE_FILE));
       cache.set(theaterId, objectives);
     }
     return objectives;

@@ -1,13 +1,15 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
 import { coordinatorMode, stepReady, unseenRecords, type CoordinatorMode, type ObjectiveMember, type StepRecord, type ObjectiveItem, type ObjectiveStep } from "../server/types.js";
+import { ActionBand, type MemberAwaiting } from "./action-band.js";
 import { NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
+import { GroupMenu, opensGroupMenu, type GroupMenuAnchor, type GroupPatch } from "./group-menu.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, launchWords, useLaunchRows } from "./launch-control.js";
 import { dockObjective, expandObjective, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, type ObjectiveGroup } from "./objectives-state.js";
@@ -29,7 +31,11 @@ const ExpandGlyph = () => <svg viewBox="0 0 16 16" width="15" height="15" fill="
 const DockGlyph = () => <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12.5 2.5v11M3 8h7M7 5l3 3-3 3" /></svg>;
 const CheckGlyph = () => <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true"><path d="M2 5.2l2.2 2.2L8 3" /></svg>;
 const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" /></svg>;
-const WandGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 13l7-7M10 3l.6 1.6L12.2 5l-1.6.6L10 7.2 9.4 5.6 7.8 5l1.6-.6zM13 9l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4z" /></svg>;
+/** 브리핑 — 봉인된 작전 명령서. 문서 오른쪽 아래 모서리를 인장이 대신한다. */
+const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
+/** 임무 — 차례로 선 할 일. */
+const MissionsGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.6" cy="4" r="1.5" /><circle cx="3.6" cy="8" r="1.5" /><circle cx="3.6" cy="12" r="1.5" /><path d="M7 4h6.5M7 8h6.5M7 12h4.5" /></svg>;
+const MoreGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" /><circle cx="8" cy="8" r="1.2" /><circle cx="12.5" cy="8" r="1.2" /></svg>;
 
 function todayIso(): string { return new Date().toISOString().slice(0, 10); }
 /** 한글 IME 조합 중의 Return 은 확정이지 제출이 아니다 — 조합 확정과 제출로 두 번 오는 keydown 중 앞의 것을 거른다. */
@@ -80,7 +86,6 @@ const CoordGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentCol
 /** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const GraphGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.6" /><circle cx="12.5" cy="4" r="1.6" /><circle cx="12.5" cy="12" r="1.6" /><path d="M5 7.3l6-2.6M5 8.7l6 2.6" /></svg>;
-const StopGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>;
 const WORKING = new Set(["running", "background"]);
 const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>;
 function dueBucket(due: string | null): DueFilter | null {
@@ -123,6 +128,23 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const [listMenuOpen, setListMenuOpen] = useState(false);
   const listMenuRef = useRef<HTMLDivElement | null>(null);
   const listTriggerRef = useRef<HTMLButtonElement | null>(null);
+  // 그룹 메뉴 — 목록 열의 그룹 행·스마트 목록의 그룹 구획 머리·그룹 목록 제목 옆 「···」에서 연다(이름·색만).
+  const [groupMenu, setGroupMenu] = useState<{ groupId: string; anchor: GroupMenuAnchor; returnFocus: HTMLElement | null } | null>(null);
+  const openGroupMenu = (groupId: string, anchor: GroupMenuAnchor, returnFocus: HTMLElement | null) => setGroupMenu({ groupId, anchor, returnFocus });
+  /** 우클릭·Shift+F10·메뉴 키 — 우클릭은 커서 자리, 키보드는 요소의 왼쪽 아래. */
+  const groupMenuHandlers = (groupId: string) => ({
+    onContextMenu: (event: ReactMouseEvent<HTMLElement>) => { event.preventDefault(); openGroupMenu(groupId, { x: event.clientX, y: event.clientY }, event.currentTarget); },
+    onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => {
+      if (!opensGroupMenu(event)) return;
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      openGroupMenu(groupId, { x: rect.left + 12, y: rect.bottom + 4 }, event.currentTarget);
+    },
+  });
+  const moreButton = (group: ObjectiveGroup, className: string) => (
+    <button type="button" className={`objectives-glyph objectives-group-more ${className}`} aria-label={t("objectives.group.menu", { name: group.name })} title={t("objectives.group.menu", { name: group.name })} aria-haspopup="menu" aria-expanded={groupMenu?.groupId === group.id}
+      onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); openGroupMenu(group.id, { x: rect.left, y: rect.bottom + 4 }, event.currentTarget); }}><MoreGlyph /></button>
+  );
   const placeButton = (className: string) => <button type="button" className={`objectives-place-button ${className}`} aria-label={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} title={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} onClick={ctx.place === "rail" ? expandObjective : dockObjective}>
     {ctx.place === "rail" ? <ExpandGlyph /> : <DockGlyph />}
   </button>;
@@ -167,6 +189,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const operationOf = useCallback((operationId: string) => operations.find((candidate) => candidate.id === operationId) ?? null, [operations]);
   const operationTitle = useCallback((operationId: string) => operationOf(operationId)?.title ?? "—", [operationOf]);
   const operationState = useCallback((operationId: string): string => operationOf(operationId)?.activity ?? "closed", [operationOf]);
+  // 지휘관 자신의 활동 — 코어는 구성원의 대기·실행을 지휘관 활동으로 끌어올린다. 하단 한 자리는 지휘관 자신의 대기·실행과
+  // 구성원의 것을 가려야 하므로 끌어올리기 전 값(ownActivity)을 읽는다. 구성원·부모 아닌 Operation 은 activity 와 같다.
+  const operationOwnState = useCallback((operationId: string): string => { const operation = operationOf(operationId); return operation ? operation.ownActivity ?? operation.activity : "closed"; }, [operationOf]);
   // 항목의 활동 = 지휘관과 담당 가운데 가장 급한 것 — 호스트가 캔버스에서 지휘관을 그리는 셈법과 같다.
   const URGENCY: Record<string, number> = { awaiting: 0, running: 1, background: 2, idle: 3, ended: 4, unknown: 5 };
   const itemActivity = useCallback((item: ObjectiveItem) => {
@@ -176,10 +201,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 조율자가 일하는 동안 카드는 잠긴다 — 편집 대신 「중단」 하나만 남는다(서버도 같은 기준으로 거절한다).
   // 담당의 활동은 잠그지 않고, 조율자가 사람을 기다리는(awaiting) 동안도 잠그지 않는다 — 그때는 사람이 손을 대야 한다.
   const isBusy = useCallback((item: ObjectiveItem): boolean => !item.done && WORKING.has(operationState(item.id)), [operationState]);
-  const stopItem = async (item: ObjectiveItem) => {
-    const result = await call<{ interrupted: number }>("/coordinator/stop", { itemId: item.id });
-    if (result) toast(t("objectives.toast.stopped", { count: result.interrupted }));
-  };
+  // 하단 한 자리의 행동 — 실패를 삼키지 않고 코드를 던진다(띠가 원인 한 줄을 보이고 글을 지킨다).
+  const request = useCallback((path: string, body: Record<string, unknown>) => post<unknown>(ctx.api, path, { ...body, language }), [ctx.api, language]);
   const modeLabel = (mode: CoordinatorMode) => t(mode === "direct" ? "objectives.mode.direct" : mode === "coordinate" ? "objectives.mode.coordinate" : "objectives.mode.mixed");
   const stateLabel = (state: string) => t((["running", "awaiting", "idle", "background", "ended", "closed"].includes(state) ? `objectives.state.${state}` : "objectives.state.unknown") as Parameters<typeof t>[0]);
 
@@ -349,7 +372,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     else if (event.key === "ArrowUp") { event.preventDefault(); rows[index - 1]?.focus(); }
   };
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && selected && !listMenuOpen && !document.querySelector(".objectives-cal, .objectives-zoom-backdrop, .objectives-menu")) closeDetail(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !event.defaultPrevented && selected && !listMenuOpen && !document.querySelector(".objectives-cal, .objectives-zoom-backdrop, .objectives-menu")) closeDetail(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [selected, listMenuOpen]);
@@ -366,7 +389,10 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         <ListButton id="agent" current={list} onPick={setList} label={`◌ ${t("objectives.list.agent")}`} count={openCount((item) => !!item.addedBy)} />
         <div className="objectives-lists-hd" title={t("objectives.list.groupsHint")}>{t("objectives.list.groups")}</div>
         {state.groups.map((group) => (
-          <ListButton key={group.id} id={`group:${group.id}`} current={list} onPick={setList} drop over={drag?.over === `group:${group.id}`} label={group.name} swatch={group.color} count={openCount((item) => item.groupId === group.id)} />
+          <div key={group.id} className={`objectives-list-row${groupMenu?.groupId === group.id ? " is-menu" : ""}`}>
+            <ListButton id={`group:${group.id}`} current={list} onPick={setList} drop over={drag?.over === `group:${group.id}`} label={group.name} swatch={group.color} count={openCount((item) => item.groupId === group.id)} menuProps={groupMenuHandlers(group.id)} />
+            {moreButton(group, "is-row")}
+          </div>
         ))}
         <ListButton id="ungrouped" current={list} onPick={setList} drop over={drag?.over === "ungrouped"} label={t("objectives.list.ungrouped")} muted count={openCount((item) => !groupOf(item.groupId))} />
         <button type="button" className="objectives-lists-add" onClick={async () => { const result = await call<{ group: ObjectiveGroup }>("/group/create", { theaterId, name: t("objectives.list.newGroupName"), color: "teal" }); if (result) { setList(`group:${result.group.id}`); toast(t("objectives.toast.groupCreated")); } }}>+ {t("objectives.list.newGroup")}</button>
@@ -385,6 +411,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
             </div> : null}
           </div>
           <h2>{listTitle}</h2>
+          {list.startsWith("group:") && groupOf(list.slice(6)) ? moreButton(groupOf(list.slice(6))!, "is-title") : null}
           <span className="objectives-sub">{listSub}</span>
           {placeButton("objectives-place-main")}
         </div>
@@ -398,7 +425,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         <div ref={itemsRef} className="objectives-items" role="listbox" aria-label={listTitle}>
           {open.length === 0 && finished.length === 0 ? <div className="objectives-empty">{t("objectives.items.empty")}</div> : null}
           {sections.map((section) => { const expanded = isOpen(section.key, !section.done); return (<div key={section.key} data-section={section.key} className={`objectives-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}`}>
-          {section.label ? <button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span>{section.label}</span><span className="objectives-count">{section.items.length}</span></button> : null}
+          {section.label ? <button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)} {...(section.swatch && groupOf(section.key) ? groupMenuHandlers(section.key) : {})}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span>{section.label}</span><span className="objectives-count">{section.items.length}</span></button> : null}
           {expanded ? section.items.map((item) => {
             // 방향키 이웃은 같은 구획의 카드 행 기준 — 검토 대기가 빠져나가면 visible 순서와 구획 안 순서가 어긋난다.
             const index = section.items.indexOf(item);
@@ -465,14 +492,28 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           stateLabel={stateLabel}
           operationTitle={operationTitle}
           operationState={operationState}
+          operationOwnState={operationOwnState}
           busy={isBusy(current)}
-          onStop={() => stopItem(current)}
+          request={request}
+          sectionOpen={(key) => isOpen(key, true)}
+          onToggleSection={(key) => toggleSection(key, true)}
+          onOpenSection={(key) => patchObjectiveView(theaterId, (view) => ({ collapsed: { ...view.collapsed, [key]: false } }))}
           highlightStep={highlightStep}
           onClose={closeDetail}
           detailRef={detailRef}
           placeButton={placeButton("objectives-place-detail")}
           onComplete={() => completeItem(current)}
           onToggleEdge={(from, to) => toggleEdge(current, from, to)}
+        />
+      ) : null}
+      {groupMenu && groupOf(groupMenu.groupId) ? (
+        <GroupMenu
+          key={groupMenu.groupId}
+          group={groupOf(groupMenu.groupId)!}
+          anchor={groupMenu.anchor}
+          t={t}
+          onPatch={(patch: GroupPatch) => void call("/group/patch", { groupId: groupMenu.groupId, ...patch })}
+          onClose={(returnFocus) => { const back = groupMenu.returnFocus; setGroupMenu(null); if (returnFocus) back?.focus(); }}
         />
       ) : null}
       {/* 유령은 body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에서 어긋난다. */}
@@ -489,9 +530,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   );
 }
 
-function ListButton({ id, current, onPick, label, count, swatch, muted, drop, over, menu }: { id: ListId; current: ListId; onPick: (id: ListId) => void; label: string; count: number; swatch?: string; muted?: boolean; drop?: boolean; over?: boolean; menu?: boolean }) {
+function ListButton({ id, current, onPick, label, count, swatch, muted, drop, over, menu, menuProps }: { id: ListId; current: ListId; onPick: (id: ListId) => void; label: string; count: number; swatch?: string; muted?: boolean; drop?: boolean; over?: boolean; menu?: boolean; menuProps?: { onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void; onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void } }) {
   return (
-    <button type="button" className={`objectives-list-btn${muted ? " is-muted" : ""}${over ? " is-drop" : ""}`} role={menu ? "menuitemradio" : undefined} aria-checked={menu ? current === id : undefined} aria-current={current === id} onClick={() => onPick(id)} {...(drop ? { "data-drop-list": id } : {})}>
+    <button type="button" className={`objectives-list-btn${muted ? " is-muted" : ""}${over ? " is-drop" : ""}`} role={menu ? "menuitemradio" : undefined} aria-checked={menu ? current === id : undefined} aria-current={current === id} aria-haspopup={menuProps ? "menu" : undefined} onClick={() => onPick(id)} {...(drop ? { "data-drop-list": id } : {})} {...(menuProps ?? {})}>
       {swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}
       <span>{label}</span>
       <span className="objectives-count">{count}</span>
@@ -556,8 +597,8 @@ function MemberRoster({ item, t, call, operationState, rows, touchable }: { item
               </span>
               {member.by === "commander" ? <span className="objectives-member-by">{t("objectives.members.proposed")}</span> : null}
             </span>
-            <input key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" aria-label={t("objectives.members.briefAria", { role: member.role })} defaultValue={member.brief ?? ""} placeholder={touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
-              onKeyDown={inlineKeys(member.brief ?? "")} onBlur={(event) => { const value = event.target.value.trim(); if (value !== (member.brief ?? "")) void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { brief: value || null } }); }} />
+            <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} value={member.brief ?? ""} placeholder={touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
+              onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
           </div>
           <div className="objectives-member-meta">
             <LaunchControl key={member.id} t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} triggerLabel={t("objectives.members.modelAria", { role: member.role })}
@@ -625,6 +666,8 @@ function OpChip({ state, label, title, onRemove, removeLabel }: { state: string;
   );
 }
 
+type DetailSection = "detail:criteria" | "detail:missions";
+
 interface DetailProps {
   readonly item: ObjectiveItem;
   readonly t: T;
@@ -636,8 +679,14 @@ interface DetailProps {
   readonly stateLabel: (state: string) => string;
   readonly operationTitle: (operationId: string) => string;
   readonly operationState: (operationId: string) => string;
+  /** 끌어올리기 전 자기 활동 — 지휘관 자신의 대기·실행을 구성원 것과 가를 때. */
+  readonly operationOwnState: (operationId: string) => string;
   readonly busy: boolean;
-  readonly onStop: () => Promise<void>;
+  readonly request: (path: string, body: Record<string, unknown>) => Promise<unknown>;
+  /** 상세 섹션 접힘 — 보기 상태(Theater별)에 산다. 키는 `detail:criteria`·`detail:missions`, 기본은 펼침. */
+  readonly sectionOpen: (key: DetailSection) => boolean;
+  readonly onToggleSection: (key: DetailSection) => void;
+  readonly onOpenSection: (key: DetailSection) => void;
   readonly highlightStep: string | null;
   readonly onClose: () => void;
   readonly detailRef: RefObject<HTMLElement | null>;
@@ -647,7 +696,7 @@ interface DetailProps {
 }
 
 /**
- * 세부 — 입력 폼이 아니라 행의 목록이다. 일정 → 지휘관 → 구상 → 단계 → 편성 → 메모, 맨 아래 시작/중단/완료 띠와 닫기·삭제.
+ * 세부 — 입력 폼이 아니라 행의 목록이다. 일정 → 지휘관·구성원 → 브리핑 → 달성 기준 → 임무 → 편성, 맨 아래 하단 한 자리(action-band).
  * 값이 있는 행은 그 값을 말하고 × 로 지우며, 없는 행은 동사("기한 설정")로 선다. 테두리 친 입력은 없다 — 제목·단계·메모 모두 글 위에 바로 쓴다.
  */
 const ZoomGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" /></svg>;
@@ -699,20 +748,100 @@ const GoGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none
 
 const AssignGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="5" cy="5" r="2.2" /><circle cx="11" cy="11" r="2.2" /><path d="M7 5h3.5a1.5 1.5 0 0 1 1.5 1.5V8.8M9 11H5.5A1.5 1.5 0 0 1 4 9.5V7.2" /></svg>;
 
-function SendGlyph() {
-  return <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" /></svg>;
+/** 한 줄로 저장하는 문구 — 붙여넣은 줄바꿈은 저장 때 공백이 된다. */
+const oneLine = (text: string): string => text.replace(/\s*[\r\n]+\s*/g, " ").trim();
+/** `field-sizing: content` 가 없는 엔진(WebKit)은 글상자 높이를 직접 잰다. */
+const FIELD_SIZING = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
+function fitHeight(element: HTMLTextAreaElement | null): void {
+  if (!element || FIELD_SIZING) return;
+  element.style.height = "0px";
+  element.style.height = `${element.scrollHeight}px`;
 }
 
-function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, busy, onStop, highlightStep, onClose, detailRef, placeButton, onComplete, onToggleEdge }: DetailProps) {
+/**
+ * 임무·달성 기준·구성원 설명의 문구 — 한 줄 입력칸이 아니라 줄바꿈하는 글상자라 길어도 전문이 그 자리에서 보인다(제목·근거 줄과
+ * 같은 문법). 편집은 그대로: Enter 는 확정이고(줄바꿈이 아니다) 떠나면 저장한다. Esc 는 되돌리고 칸만 떠난다(상세는 닫지 않는다).
+ */
+function WrapText({ className, label, value, readOnly, maxLength, placeholder, onCommit }: {
+  readonly className: string;
+  readonly label: string;
+  readonly value: string;
+  readonly readOnly: boolean;
+  readonly maxLength?: number;
+  readonly placeholder?: string;
+  /** 줄바꿈을 공백으로 바꾼 값. 저장하지 않을 값이면 false 를 돌려 칸을 원래 글로 되돌린다. */
+  readonly onCommit: (value: string) => boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => { fitHeight(ref.current); }, [value]);
+  // 폴백 엔진에서는 폭이 바뀌면 줄 수도 바뀐다.
+  useEffect(() => {
+    const element = ref.current;
+    if (FIELD_SIZING || !element || typeof ResizeObserver === "undefined") return;
+    let width = element.clientWidth;
+    const observer = new ResizeObserver(() => { if (element.clientWidth !== width) { width = element.clientWidth; fitHeight(element); } });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <textarea
+      ref={ref}
+      className={className}
+      rows={1}
+      aria-label={label}
+      defaultValue={value}
+      readOnly={readOnly}
+      maxLength={maxLength}
+      placeholder={placeholder}
+      onInput={(event) => fitHeight(event.currentTarget)}
+      onKeyDown={(event) => {
+        if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); }
+        else if (event.key === "Escape") { event.preventDefault(); event.currentTarget.value = value; fitHeight(event.currentTarget); event.currentTarget.blur(); }
+      }}
+      onBlur={(event) => {
+        const next = oneLine(event.currentTarget.value);
+        event.currentTarget.value = onCommit(next) ? next : value;
+        fitHeight(event.currentTarget);
+      }}
+    />
+  );
+}
+
+/**
+ * 섹션 머리 — 글리프 열·라벨·오른쪽 셈과 도구. 접히는 섹션은 행 전체가 버튼이고 셰브런이 맨 끝에 선다(접힘 0°, 펼침 90°).
+ * 항목이 없으면 접지 않는다 — 추가 행이 늘 보이게 셰브런 없는 정적 머리로 둔다.
+ */
+function SectionHead({ glyph, label, tools, controls, expanded, onToggle }: {
+  readonly glyph: ReactNode;
+  readonly label: string;
+  readonly tools?: ReactNode;
+  /** 접히는 본문의 id — 없으면 정적 머리. */
+  readonly controls?: string;
+  readonly expanded?: boolean;
+  readonly onToggle?: () => void;
+}) {
+  const inner = <>
+    <span className="objectives-row-ic">{glyph}</span>
+    <span className="objectives-row-lab">{label}</span>
+    {tools ? <span className="objectives-row-tools">{tools}</span> : null}
+  </>;
+  if (!controls) return <div className="objectives-row is-static">{inner}</div>;
+  return (
+    <button type="button" className="objectives-row objectives-acc-hd" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}>
+      {inner}
+      <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
+    </button>
+  );
+}
+
+const BRIEF_LINES = 3;
+
+function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightStep, onClose, detailRef, placeButton, onComplete, onToggleEdge }: DetailProps) {
   const [note, setNote] = useState(item.note);
-  const [cook, setCook] = useState(item.cook ?? "");
-  const [cookOpen, setCookOpen] = useState(false);
   const [title, setTitle] = useState(item.title);
-  const [planning, setPlanning] = useState(false);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const launchRows = useLaunchRows();
   useEffect(() => { setNote(item.note); }, [item.note]);
-  useEffect(() => { setCook(item.cook ?? ""); }, [item.cook]);
   useEffect(() => { setTitle(item.title); }, [item.title]);
   const mode = coordinatorMode(item.steps);
   // 한 번 깨어난 지휘관의 모델은 바꿀 수 없다 — 이미 그 모델로 도는 세션이다.
@@ -722,9 +851,6 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const touchable = !item.done;
   const notStarted = (step: ObjectiveStep) => !step.done;
   const canEditStep = (stepId: string) => { if (editable) return true; const target = item.steps.find((candidate) => candidate.id === stepId); return touchable && !!target && notStarted(target); };
-  const [steering, setSteering] = useState(false);
-  // 지휘관에게 알릴 편집이 쌓였다 — 지휘관이 일하는 중이거나, 일을 마쳐 검토 대기가 된 뒤다(지휘관은 그 편집을 아직 읽지 않았다).
-  const steerPending = !item.done && !!item.edited && item.commander.started && (busy || item.awaitingReview);
   const attachments = useAttachmentUpload(item, t);
   const [dropping, setDropping] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
@@ -751,34 +877,73 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const focused = focusStep ? item.steps.find((step) => step.id === focusStep) ?? null : null;
   const numberOf = (stepId: string) => item.steps.findIndex((step) => step.id === stepId) + 1;
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
-  // 사람의 결정을 기다리는 세션 — 지휘관이 먼저, 다음은 단계 순서. 카드가 잠기지 않은 채 사람을 부르는 유일한 상태다.
-  const awaiting = item.done ? null : (() => {
-    if (operationState(item.id) === "awaiting") return { operationId: item.id, stepIndex: null as number | null };
-    const index = item.steps.findIndex((step) => step.operationId && operationState(step.operationId) === "awaiting");
-    return index >= 0 ? { operationId: item.steps[index]!.operationId!, stepIndex: index } : null;
+
+  // 사람을 부르는 세션 — 지휘관 자신이 먼저, 다음은 명단 순서의 구성원(임무가 없는 구성원의 질문도 본다).
+  // 지휘관 판정은 끌어올리기 전 자기 활동으로 한다 — 구성원만 묻고 있을 때 「지휘관이 기다립니다」로 서지 않게.
+  const commanderAwaiting = !item.done && operationOwnState(item.id) === "awaiting";
+  const memberAwaiting: MemberAwaiting | null = item.done ? null : (() => {
+    const member = item.members.find((candidate) => candidate.operationId && operationState(candidate.operationId) === "awaiting");
+    if (!member?.operationId) return null;
+    const mission = item.steps.findIndex((step) => !step.done && step.member === member.id);
+    return { operationId: member.operationId, role: member.role, mission: mission >= 0 ? mission + 1 : null };
   })();
+  // 작업 중 — 지휘관 자신이나 구성원 누군가가 돈다. 편집 잠금은 지금처럼 끌어올린 지휘관 활동(busy)이고, 하단 한 자리는
+  // 지휘관 자신의 실행과 구성원 각자의 실행을 따로 본다(구성원이 묻는 동안 끌어올린 값은 대기라 실행을 가린다).
+  const working = !item.done && (WORKING.has(operationOwnState(item.id)) || item.members.some((member) => !!member.operationId && WORKING.has(operationState(member.operationId))));
+
+  // 섹션 접힘 — 항목이 없으면 접지 않는다.
+  const criteriaCollapsible = item.criteria.length > 0;
+  const missionsCollapsible = item.steps.length > 0;
+  const criteriaOpen = !criteriaCollapsible || sectionOpen("detail:criteria");
+  const missionsOpen = !missionsCollapsible || sectionOpen("detail:missions");
+  // 「이 임무로」 — 임무 섹션을 펼치고 그 행으로 스크롤한다(편성 노드 호버로는 펼치지 않는다).
+  useEffect(() => { if (highlightStep && !missionsOpen) onOpenSection("detail:missions"); }, [highlightStep, missionsOpen, onOpenSection]);
+  useEffect(() => {
+    if (!highlightStep || !missionsOpen) return;
+    const frame = requestAnimationFrame(() => detailRef.current?.querySelector(`[data-step-id="${CSS.escape(highlightStep)}"]`)?.scrollIntoView({ block: "nearest" }));
+    return () => cancelAnimationFrame(frame);
+  }, [highlightStep, missionsOpen, detailRef]);
+  const unseenAny = item.steps.some((step) => unseenRecords(step) > 0);
+
+  // 브리핑 — 쉴 때 3줄, 넘치면 「더 보기」. 쓰는 동안(초점)은 다 보인다(360px 뒤로는 안에서 스크롤).
+  const noteRef = useRef<HTMLTextAreaElement | null>(null);
+  const [noteFocus, setNoteFocus] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteOverflow, setNoteOverflow] = useState(false);
+  const noteClamped = !noteOpen && !noteFocus;
+  // 빈 브리핑은 「브리핑 추가」 한 줄 — 누르거나 초점이 오면(또는 이미지를 끌어오면) 편집 칸과 첨부 띠가 펼쳐진다.
+  const [briefActive, setBriefActive] = useState(false);
+  const briefBlank = !note.trim() && item.attachments.length === 0;
+  const briefCollapsed = briefBlank && touchable && !briefActive && !dropping && !attachments.error && attachments.sending === 0;
+  const fitNote = useCallback(() => {
+    const element = noteRef.current;
+    if (!element) return;
+    const style = getComputedStyle(element);
+    const line = parseFloat(style.lineHeight) || 20;
+    const pad = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    const clampAt = line * BRIEF_LINES + pad;
+    element.style.height = "0px";
+    const full = element.scrollHeight;
+    element.style.height = `${Math.ceil(Math.min(full, noteClamped ? clampAt : 360))}px`;
+    setNoteOverflow(full > clampAt + 1);
+  }, [noteClamped]);
+  useLayoutEffect(() => { fitNote(); }, [note, fitNote]);
+  useEffect(() => {
+    const element = noteRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    let width = element.clientWidth;
+    const observer = new ResizeObserver(() => { if (element.clientWidth !== width) { width = element.clientWidth; fitNote(); } });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [fitNote]);
 
   const saveNote = (value: string) => {
     setNote(value);
     if (noteTimer.current) clearTimeout(noteTimer.current);
     noteTimer.current = setTimeout(() => { void call("/item/patch", { itemId: item.id, patch: { note: value } }); }, 600);
   };
-  const start = async () => {
-    const result = await call<{ operationId: string }>("/coordinator/start", { itemId: item.id });
-    if (result) { const words = launchWords(launchRows, item.commander.model, item.commander.effort, t("objectives.coordinator.effortAuto")); toast(t("objectives.toast.started", { model: `${words.model} · ${words.effort}` })); }
-  };
-  const steer = async () => {
-    setSteering(true);
-    await call("/coordinator/steer", { itemId: item.id });
-    setSteering(false);
-  };
-  const plan = async (context: string) => {
-    setPlanning(true);
-    const result = await call<{ operationId: string }>("/plan/request", { itemId: item.id, context });
-    setPlanning(false);
-    if (result) { setCookOpen(false); toast(t(item.commander.started ? "objectives.toast.planRequested" : "objectives.toast.planStarted")); }
-  };
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
+  const doneSteps = item.steps.filter((step) => step.done).length;
 
   return (
     <aside ref={detailRef} className={`objectives-detail${busy ? " is-busy" : ""}`} aria-label={item.title}>
@@ -813,8 +978,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         </div>
       </div>
 
+      {/* 지휘관·구성원 — 목표는 곧 지휘관 Operation 이다. 행을 누르면 그 Operation 으로 가고, 오른쪽 끝은 모델·강도(깨기 전까지 바꿀 수 있다). */}
       <div className="objectives-group">
-        {/* 지휘관 행 — 목표는 곧 지휘관 Operation 이다. 행을 누르면 그 Operation 으로 가고, 오른쪽 끝은 모델·강도(깨기 전까지 바꿀 수 있다). */}
         <div className={`objectives-row${item.commander.started ? " is-on" : ""}`}>
           <button type="button" className="objectives-row-main" title={t("objectives.item.goToOperation")} onClick={() => focusOperation(item.id)}>
             <span className="objectives-row-ic"><CoordGlyph /></span>
@@ -823,200 +988,168 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           <LaunchControl t={t} model={item.commander.model} effort={item.commander.effort} locked={locked || !editable} onChange={(next) => void call("/item/patch", { itemId: item.id, patch: { launch: next } })} />
         </div>
         <MemberRoster item={item} t={t} call={call} operationState={operationState} rows={launchRows} touchable={touchable} />
-        {/* 구상 — 누르면 그 자리에서 맥락 한 줄이 펼쳐진다. 비워 두고 Enter 해도 된다. */}
-        {editable && launchAvailable ? (
-          <>
-            <button type="button" className={`objectives-row${cookOpen ? " is-expanded" : ""}`} title={t("objectives.steps.planHint")} disabled={planning} aria-expanded={cookOpen} onClick={() => setCookOpen((value) => !value)}>
-              <span className="objectives-row-ic"><WandGlyph /></span>
-              <span className="objectives-row-lab">{t(planning ? "objectives.steps.planning" : "objectives.steps.plan")}</span>
-            </button>
-            {cookOpen ? (
-              <div className="objectives-cook-line">
-                <textarea
-                  className="objectives-cook"
-                  aria-label={t("objectives.coordinator.cookContext")}
-                  placeholder={t("objectives.coordinator.cookContext")}
-                  value={cook}
-                  rows={1}
-                  autoFocus
-                  disabled={planning}
-                  ref={(element) => { if (element) { element.style.height = "0px"; element.style.height = `${element.scrollHeight}px`; } }}
-                  onChange={(event) => { setCook(event.target.value); event.target.style.height = "0px"; event.target.style.height = `${event.target.scrollHeight}px`; }}
-                  onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setCookOpen(false); return; } if (submitKey(event) && !event.shiftKey) { event.preventDefault(); void plan(cook); } }}
-                />
-                <button type="button" className="objectives-glyph objectives-cook-send" aria-label={t("objectives.coordinator.cookSend")} title={t("objectives.coordinator.cookSend")} disabled={planning} onClick={() => void plan(cook)}><SendGlyph /></button>
-              </div>
-            ) : null}
-          </>
-        ) : null}
       </div>
 
-      <div className="objectives-group">
-        <div className="objectives-steps">
-          {item.steps.map((step, index) => {
-            const ready = stepReady(item.steps, step);
-            const member = item.members.find((candidate) => candidate.id === step.member);
-            const records = step.records;
-            const recordsOpen = step.id in openRecords;
-            const unseen = unseenRecords(step);
-            const recordsId = `objectives-records-${step.id}`;
-            return (
-              <Fragment key={step.id}>
-              <div
-                className={`objectives-step${step.done ? " is-done" : ""}${!step.done && ready ? " is-ready" : ""}${recordsOpen ? " is-expanded" : ""}${highlightStep === step.id ? " is-highlight" : ""}${focused?.id === step.id ? " is-focus" : focused?.after.includes(step.id) ? " is-pre" : ""}`}
-                onPointerEnter={() => setFocusStep(step.id)}
-                onPointerLeave={() => setFocusStep(null)}
-                onFocus={() => setFocusStep(step.id)}
-                onBlur={() => setFocusStep(null)}
-              >
-                <button type="button" className={`objectives-check${step.done ? " is-on" : ""}`} aria-label={t("objectives.steps.done")} disabled={!editable} onClick={() => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { done: !step.done } })}><CheckGlyph /></button>
-                {/* 번호는 편성 순서 — 그래프 노드와 같은 번호다. */}
-                <span className="objectives-step-num" aria-hidden="true">{index + 1}</span>
-                <div className="objectives-step-body">
-                  <input className="objectives-step-text" aria-label={`${index + 1}`} defaultValue={step.text} readOnly={!(editable || (touchable && notStarted(step)))} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== step.text) void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { text: value } }); }} onKeyDown={(event) => { if (submitKey(event)) event.currentTarget.blur(); }} />
-                  <span className={`objectives-step-sub${step.operationId ? ` is-${operationState(step.operationId)}` : " is-assign"}`} title={step.operationId ? operationTitle(step.operationId) : undefined}>{member ? <><MemberMark role={member.role} tone={memberTone(item, member.id)} /><span className="objectives-step-member-name">{member.role}</span></> : t("objectives.assign.self")}</span>
-                  {step.unplaced && !step.done ? <span className="objectives-step-sub is-unplaced">{t("objectives.steps.unplaced")}</span> : null}
-                </div>
-                {records.length > 0 ? (
-                  <button type="button" className={`objectives-records-count${unseen > 0 ? " is-unseen" : ""}`} aria-expanded={recordsOpen} aria-controls={recordsId} aria-label={`${t("objectives.records.count", { index: index + 1, count: records.length })}${unseen > 0 ? ` · ${t("objectives.records.unseen", { count: unseen })}` : ""}`} onClick={() => toggleRecords(step)}>
-                    {unseen > 0 ? <i aria-hidden="true" /> : <ThreadGlyph />}{records.length}
-                  </button>
-                ) : null}
-                {/* 무엇을 기다리는지 번호로 말한다 — 끝나지 않은 선행만. 구성원 상태는 담당 줄이 말한다. */}
-                {!step.done && !step.unplaced ? (ready
-                  ? <span className="objectives-wait is-ready">{t("objectives.steps.ready")}</span>
-                  : <span className="objectives-wait" title={t("objectives.steps.waiting")}>{t("objectives.steps.after", { steps: step.after.filter((id) => !item.steps.find((candidate) => candidate.id === id)?.done).map(numberOf).filter((n) => n > 0).join("·") })}</span>) : null}
-                <span className="objectives-step-tools">
-                  {!step.done && touchable ? <AssignControl t={t} item={item} step={step} rows={launchRows} onAssign={(member) => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { member } })} onCreate={async (role) => { const result = await call<{ item: ObjectiveItem }>("/member/add", { itemId: item.id, member: { role } }); const member = result?.item.members.at(-1); return member ? !!(await call("/step/patch", { itemId: item.id, stepId: step.id, patch: { member: member.id } })) : false; }} label={t("objectives.steps.assign")} /> : null}
-                  {notStarted(step) && touchable ? <button type="button" className="objectives-glyph" title={t("objectives.steps.remove")} aria-label={t("objectives.steps.remove")} onClick={() => void call("/step/remove", { itemId: item.id, stepId: step.id })}><TrashGlyph /></button> : null}
-                </span>
-              </div>
-              {records.length > 0 ? <StepRecords id={recordsId} records={records} seenAtOpen={openRecords[step.id] ?? EMPTY_IDS} open={recordsOpen} t={t} language={language} /> : null}
-              </Fragment>
-            );
-          })}
-        </div>
-        {touchable ? (
-          <div className="objectives-row objectives-step-add">
-            <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
-            <input aria-label={t("objectives.steps.add")} placeholder={t("objectives.steps.add")} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; void call("/step/add", { itemId: item.id, step: { text: target.value.trim() } }).then(() => { target.value = ""; }); } }} />
-          </div>
-        ) : null}
-        {item.steps.length > 0 ? (
-          <>
-            <div className="objectives-row is-static">
-              <span className="objectives-row-ic"><GraphGlyph /></span>
-              <span className="objectives-row-lab">{t("objectives.graph.title")}</span>
-              <span className="objectives-row-tools">
-                {item.steps.length > 1 && editable ? <>
-                  <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/linear", { itemId: item.id })) toast(t("objectives.toast.linear")); }}>{t("objectives.graph.linear")}</button>
-                  <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/clear", { itemId: item.id })) toast(t("objectives.toast.parallel")); }}>{t("objectives.graph.parallel")}</button>
-                </> : null}
-                <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>
-              </span>
-            </div>
-            <div className="objectives-graph-wrap">
-              <div className="objectives-graph-horizontal"><CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
-              <div className="objectives-graph-vertical"><CoordinationGraph vertical item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
-            </div>
-            {zoomOpen ? createPortal(
-              <LineupZoom t={t} title={item.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}>
-                <CoordinationGraph zoom item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} />
-              </LineupZoom>,
-              document.body,
-            ) : null}
-          </>
-        ) : null}
-      </div>
-
-      {/* 달성 기준 — 임무 아래의 섹션. 사람이 쓰고(비어 있으면 구상 때 지휘관이 제안), 마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져
-          근거와 함께 충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져 「미확인」으로 돌아간다. 모든 임무와 기준이 끝나면 저절로 검토 대기다. */}
-      <div className="objectives-group objectives-criteria-group">
-        <div className="objectives-row is-static">
-          <span className="objectives-row-ic"><CriteriaGlyph /></span>
-          <span className="objectives-row-lab">{t("objectives.criteria.title")}</span>
-          {item.criteria.length > 0 ? <span className="objectives-row-tools"><span className="objectives-criteria-count">{t("objectives.criteria.count", { met: item.criteria.filter((criterion) => !!criterion.met).length, total: item.criteria.length })}</span></span> : null}
-        </div>
-        {item.criteria.map((criterion, index) => {
-          const evidence = criterion.met;
-          return (
-            <div key={criterion.id} className={`objectives-criterion${evidence ? " is-met" : ""}`}>
-              <span className="objectives-criterion-mark" aria-hidden="true" />
-              <div className="objectives-criterion-body">
-                <input className="objectives-criterion-text" aria-label={t("objectives.criteria.itemAria", { n: index + 1 })} defaultValue={criterion.text} readOnly={!touchable} onBlur={(event) => { const value = event.target.value.trim(); if (value && value !== criterion.text) void call("/criterion/patch", { itemId: item.id, criterionId: criterion.id, patch: { text: value } }); else event.target.value = criterion.text; }} />
-                {evidence ? <span className="objectives-criterion-sub is-evidence">{t("objectives.criteria.evidence", { evidence })}</span>
-                  : criterion.by === "commander" ? <span className="objectives-criterion-sub">{t("objectives.criteria.proposed")}</span> : null}
-              </div>
-              <span className={`objectives-criterion-state${evidence ? " is-met" : ""}`}>{t(evidence ? "objectives.criteria.met" : "objectives.criteria.unchecked")}</span>
-              {touchable ? <button type="button" className="objectives-glyph objectives-criterion-remove" title={t("objectives.criteria.remove")} aria-label={t("objectives.criteria.remove")} onClick={() => void call("/criterion/remove", { itemId: item.id, criterionId: criterion.id })}><TrashGlyph /></button> : null}
-            </div>
-          );
-        })}
-        {touchable ? (
-          <div className="objectives-row objectives-step-add">
-            <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
-            <input aria-label={t("objectives.criteria.add")} placeholder={t("objectives.criteria.add")} maxLength={300} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const text = target.value.trim(); target.value = ""; void call("/criterion/add", { itemId: item.id, criterion: { text } }); } }} />
-          </div>
-        ) : null}
-      </div>
-
-      {/* 메모 — 첨부 띠는 본문 위에 머문다. 메모에 이미지를 붙여넣거나 메모 구획에 끌어오면 띠에 들어간다. */}
+      {/* 브리핑 — 사람이 쓴 요구. 첨부 띠는 본문 위에 머문다. 메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다. */}
       <div
         className={`objectives-group objectives-note-group${dropping ? " is-drop" : ""}`}
+        onFocus={() => setBriefActive(true)}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setBriefActive(false); }}
         onDragOver={(event) => { if (touchable && [...event.dataTransfer.types].includes("Files")) { event.preventDefault(); setDropping(true); } }}
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
         onDrop={(event) => { if (!touchable) return; event.preventDefault(); setDropping(false); const files = imageFiles(event.dataTransfer.files); if (files.length) void attachments.upload(files); }}
       >
-        <NoteAttachments item={item} t={t} touchable={touchable} upload={attachments.upload} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />
-        <textarea className="objectives-note" aria-label={t("objectives.item.memo")} placeholder={t("objectives.item.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)}
+        <SectionHead glyph={<BriefGlyph />} label={t("objectives.item.memo")} tools={item.attachments.length > 0 ? <span className="objectives-criteria-count">{t("objectives.brief.images", { count: item.attachments.length })}</span> : null} />
+        {briefCollapsed ? null : <NoteAttachments item={item} t={t} touchable={touchable} upload={attachments.upload} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />}
+        <textarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}${briefBlank && !briefCollapsed ? " is-writing" : ""}`} rows={1} aria-label={t("objectives.item.memo")} placeholder={t("objectives.item.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)}
+          onFocus={() => setNoteFocus(true)} onBlur={() => setNoteFocus(false)}
           onPaste={(event) => { if (!touchable) return; const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
+        {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
       </div>
+
+      {/* 달성 기준 — 사람이 쓰고(비어 있으면 구상 때 지휘관이 제안), 마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져 근거와 함께
+          충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져 「미확인」으로 돌아간다. 모든 임무와 기준이 끝나면 저절로 검토 대기다. */}
+      <div className="objectives-group objectives-criteria-group">
+        <SectionHead
+          glyph={<CriteriaGlyph />}
+          label={t("objectives.criteria.title")}
+          tools={criteriaCollapsible ? <span className="objectives-criteria-count">{t("objectives.criteria.count", { met: item.criteria.filter((criterion) => !!criterion.met).length, total: item.criteria.length })}</span> : null}
+          {...(criteriaCollapsible ? { controls: "objectives-sec-criteria", expanded: criteriaOpen, onToggle: () => onToggleSection("detail:criteria") } : {})}
+        />
+        <div id="objectives-sec-criteria" hidden={!criteriaOpen}>
+          {item.criteria.map((criterion, index) => {
+            const evidence = criterion.met;
+            return (
+              <div key={criterion.id} className={`objectives-criterion${evidence ? " is-met" : ""}`}>
+                <span className="objectives-criterion-mark" aria-hidden="true" />
+                <div className="objectives-criterion-body">
+                  <WrapText key={criterion.text} className="objectives-criterion-text" label={t("objectives.criteria.itemAria", { n: index + 1 })} value={criterion.text} readOnly={!touchable} maxLength={300}
+                    onCommit={(value) => { if (!value) return false; if (value !== criterion.text) void call("/criterion/patch", { itemId: item.id, criterionId: criterion.id, patch: { text: value } }); return true; }} />
+                  {evidence ? <span className="objectives-criterion-sub is-evidence">{t("objectives.criteria.evidence", { evidence })}</span>
+                    : criterion.by === "commander" ? <span className="objectives-criterion-sub">{t("objectives.criteria.proposed")}</span> : null}
+                </div>
+                <span className={`objectives-criterion-state${evidence ? " is-met" : ""}`}>{t(evidence ? "objectives.criteria.met" : "objectives.criteria.unchecked")}</span>
+                {touchable ? <button type="button" className="objectives-glyph objectives-criterion-remove" title={t("objectives.criteria.remove")} aria-label={t("objectives.criteria.remove")} onClick={() => void call("/criterion/remove", { itemId: item.id, criterionId: criterion.id })}><TrashGlyph /></button> : null}
+              </div>
+            );
+          })}
+          {touchable ? (
+            <div className="objectives-row objectives-step-add">
+              <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+              <input aria-label={t("objectives.criteria.add")} placeholder={t("objectives.criteria.add")} maxLength={300} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const text = target.value.trim(); target.value = ""; void call("/criterion/add", { itemId: item.id, criterion: { text } }); } }} />
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* 임무 — 편성 순. 머리 오른쪽은 완료 셈이고, 접혀도 남는다(접힌 임무에 안 읽은 기록이 있으면 셈 앞에 점 하나). */}
+      <div className="objectives-group objectives-missions-group">
+        <SectionHead
+          glyph={<MissionsGlyph />}
+          label={t("objectives.steps.title")}
+          tools={missionsCollapsible ? <>
+            {!missionsOpen && unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.steps.unseen")} /> : null}
+            <span className="objectives-criteria-count">{t("objectives.steps.count", { done: doneSteps, total: item.steps.length })}</span>
+          </> : null}
+          {...(missionsCollapsible ? { controls: "objectives-sec-missions", expanded: missionsOpen, onToggle: () => onToggleSection("detail:missions") } : {})}
+        />
+        <div id="objectives-sec-missions" hidden={!missionsOpen}>
+          <div className="objectives-steps">
+            {item.steps.map((step, index) => {
+              const ready = stepReady(item.steps, step);
+              const member = item.members.find((candidate) => candidate.id === step.member);
+              const records = step.records;
+              const recordsOpen = step.id in openRecords;
+              const unseen = unseenRecords(step);
+              const recordsId = `objectives-records-${step.id}`;
+              return (
+                <Fragment key={step.id}>
+                <div
+                  data-step-id={step.id}
+                  className={`objectives-step${step.done ? " is-done" : ""}${!step.done && ready ? " is-ready" : ""}${recordsOpen ? " is-expanded" : ""}${highlightStep === step.id ? " is-highlight" : ""}${focused?.id === step.id ? " is-focus" : focused?.after.includes(step.id) ? " is-pre" : ""}`}
+                  onPointerEnter={() => setFocusStep(step.id)}
+                  onPointerLeave={() => setFocusStep(null)}
+                  onFocus={() => setFocusStep(step.id)}
+                  onBlur={() => setFocusStep(null)}
+                >
+                  <button type="button" className={`objectives-check${step.done ? " is-on" : ""}`} aria-label={t("objectives.steps.done")} disabled={!editable} onClick={() => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { done: !step.done } })}><CheckGlyph /></button>
+                  {/* 번호는 편성 순서 — 그래프 노드와 같은 번호다. */}
+                  <span className="objectives-step-num" aria-hidden="true">{index + 1}</span>
+                  <div className="objectives-step-body">
+                    <WrapText key={step.text} className="objectives-step-text" label={`${index + 1}`} value={step.text} readOnly={!(editable || (touchable && notStarted(step)))} maxLength={200}
+                      onCommit={(value) => { if (!value) return false; if (value !== step.text) void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { text: value } }); return true; }} />
+                    <span className={`objectives-step-sub${step.operationId ? ` is-${operationState(step.operationId)}` : " is-assign"}`} title={step.operationId ? operationTitle(step.operationId) : undefined}>{member ? <><MemberMark role={member.role} tone={memberTone(item, member.id)} /><span className="objectives-step-member-name">{member.role}</span></> : t("objectives.assign.self")}</span>
+                    {step.unplaced && !step.done ? <span className="objectives-step-sub is-unplaced">{t("objectives.steps.unplaced")}</span> : null}
+                  </div>
+                  {records.length > 0 ? (
+                    <button type="button" className={`objectives-records-count${unseen > 0 ? " is-unseen" : ""}`} aria-expanded={recordsOpen} aria-controls={recordsId} aria-label={`${t("objectives.records.count", { index: index + 1, count: records.length })}${unseen > 0 ? ` · ${t("objectives.records.unseen", { count: unseen })}` : ""}`} onClick={() => toggleRecords(step)}>
+                      {unseen > 0 ? <i aria-hidden="true" /> : <ThreadGlyph />}{records.length}
+                    </button>
+                  ) : null}
+                  {/* 무엇을 기다리는지 번호로 말한다 — 끝나지 않은 선행만. 구성원 상태는 담당 줄이 말한다. */}
+                  {!step.done && !step.unplaced ? (ready
+                    ? <span className="objectives-wait is-ready">{t("objectives.steps.ready")}</span>
+                    : <span className="objectives-wait" title={t("objectives.steps.waiting")}>{t("objectives.steps.after", { steps: step.after.filter((id) => !item.steps.find((candidate) => candidate.id === id)?.done).map(numberOf).filter((n) => n > 0).join("·") })}</span>) : null}
+                  <span className="objectives-step-tools">
+                    {!step.done && touchable ? <AssignControl t={t} item={item} step={step} rows={launchRows} onAssign={(member) => void call("/step/patch", { itemId: item.id, stepId: step.id, patch: { member } })} onCreate={async (role) => { const result = await call<{ item: ObjectiveItem }>("/member/add", { itemId: item.id, member: { role } }); const member = result?.item.members.at(-1); return member ? !!(await call("/step/patch", { itemId: item.id, stepId: step.id, patch: { member: member.id } })) : false; }} label={t("objectives.steps.assign")} /> : null}
+                    {notStarted(step) && touchable ? <button type="button" className="objectives-glyph" title={t("objectives.steps.remove")} aria-label={t("objectives.steps.remove")} onClick={() => void call("/step/remove", { itemId: item.id, stepId: step.id })}><TrashGlyph /></button> : null}
+                  </span>
+                </div>
+                {records.length > 0 ? <StepRecords id={recordsId} records={records} seenAtOpen={openRecords[step.id] ?? EMPTY_IDS} open={recordsOpen} t={t} language={language} /> : null}
+                </Fragment>
+              );
+            })}
+          </div>
+          {touchable ? (
+            <div className="objectives-row objectives-step-add">
+              <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+              <input aria-label={t("objectives.steps.add")} placeholder={t("objectives.steps.add")} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; void call("/step/add", { itemId: item.id, step: { text: target.value.trim() } }).then(() => { target.value = ""; }); } }} />
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* 편성 — 임무의 순서와 담당. 접지 않는다. 임무가 없으면 서지 않는다. */}
+      {item.steps.length > 0 ? (
+        <div className="objectives-group">
+          <SectionHead
+            glyph={<GraphGlyph />}
+            label={t("objectives.graph.title")}
+            tools={<>
+              {item.steps.length > 1 && editable ? <>
+                <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/linear", { itemId: item.id })) toast(t("objectives.toast.linear")); }}>{t("objectives.graph.linear")}</button>
+                <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/clear", { itemId: item.id })) toast(t("objectives.toast.parallel")); }}>{t("objectives.graph.parallel")}</button>
+              </> : null}
+              <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>
+            </>}
+          />
+          <div className="objectives-graph-wrap">
+            <div className="objectives-graph-horizontal"><CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
+            <div className="objectives-graph-vertical"><CoordinationGraph vertical item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
+          </div>
+          {zoomOpen ? createPortal(
+            <LineupZoom t={t} title={item.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}>
+              <CoordinationGraph zoom item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} />
+            </LineupZoom>,
+            document.body,
+          ) : null}
+        </div>
+      ) : null}
 
       </div>
       <div className="objectives-detail-bottom">
-      {/* 마지막 행동 한 자리 — 검토 대기면 「완료」, 누군가 사람의 결정을 기다리면 「결정 대기」(누르면 그 Operation으로),
-          아니면 「시작」, 일하는 동안에는 「중단」 — 일하는 동안이나 검토 대기 중에 사람이 보드를 고쳤으면 그 자리가 「스티어링」이 된다.
-          같은 버튼 자리, 낱말만 다르다. 검토 대기의 「완료」는 목록 카드 고리에 남는다. */}
-      {steerPending ? (
-        <div className="objectives-group objectives-start-group">
-          <button type="button" className="objectives-start is-steer" title={t("objectives.steer.hint")} disabled={steering} onClick={() => void steer()}>
-            <span className="objectives-start-word">{t("objectives.steer")}</span>
-            <span className="objectives-start-sub" />
-            <span className="objectives-start-arrow" aria-hidden="true">→</span>
-          </button>
-        </div>
-      ) : item.awaitingReview && !item.done ? (
-        <div className="objectives-group objectives-start-group">
-          <button type="button" className="objectives-start is-review" onClick={onComplete}>
-            <span className="objectives-start-word">{t("objectives.review.complete")}</span>
-            <span className="objectives-start-sub">{t(item.criteria.length > 0 ? "objectives.review.subCriteria" : "objectives.review.sub")}</span>
-            <span className="objectives-start-arrow" aria-hidden="true">→</span>
-          </button>
-        </div>
-      ) : awaiting && !busy ? (
-        <div className="objectives-group objectives-start-group">
-          <button type="button" className="objectives-start is-awaiting" title={operationTitle(awaiting.operationId)} onClick={() => focusOperation(awaiting.operationId)}>
-            <span className="objectives-start-word"><i className="objectives-start-dot" aria-hidden="true" />{t("objectives.awaiting.word")}</span>
-            <span className="objectives-start-sub">{awaiting.stepIndex === null ? t("objectives.awaiting.commander") : t("objectives.awaiting.step", { index: awaiting.stepIndex + 1 })}</span>
-            <span className="objectives-start-arrow" aria-hidden="true">→</span>
-          </button>
-        </div>
-      ) : editable && !busy ? (
-        <div className="objectives-group objectives-start-group">
-          <button type="button" className="objectives-start" disabled={!launchAvailable} title={launchAvailable ? undefined : t("objectives.coordinator.unavailable")} onClick={() => void start()}>
-            <span className="objectives-start-word">{t("objectives.coordinator.start")}</span>
-            <span className="objectives-start-sub">{item.commander.started ? `${stateLabel(operationState(item.id))} · ${t("objectives.start.resume")}` : item.members.length ? t("objectives.start.members", { count: item.members.length }) : t("objectives.start.direct")}</span>
-            <span className="objectives-start-arrow" aria-hidden="true">→</span>
-          </button>
-        </div>
-      ) : busy ? (
-        <div className="objectives-group objectives-start-group">
-          <button type="button" className="objectives-start is-stop" title={t("objectives.stopHint")} onClick={() => void onStop()}>
-            <span className="objectives-start-word"><StopGlyph />{t("objectives.stop")}</span>
-            <span className="objectives-start-sub">{t("objectives.stopHint")}</span>
-          </button>
-        </div>
-      ) : null}
+        <ActionBand
+          item={item}
+          t={t}
+          busy={busy}
+          working={working}
+          commanderAwaiting={commanderAwaiting}
+          memberAwaiting={memberAwaiting}
+          launchAvailable={launchAvailable}
+          commanderState={stateLabel(operationState(item.id))}
+          request={request}
+          onFocusOperation={focusOperation}
+        />
       </div>
     </aside>
   );

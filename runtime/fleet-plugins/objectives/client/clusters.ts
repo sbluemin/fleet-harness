@@ -27,6 +27,13 @@ const liveProgress = (operationId: string, activity: Map<string, string>): Opera
   return "open";
 };
 
+/**
+ * 구성원의 정체성 톤 — 명단 순번으로 여덟 톤을 돌려 쓴다. 목표 표면의 구성원 표식(objectives.css `is-tone-N`)과 같은 순서라,
+ * 지휘관 캡션의 「› 이름」이 목표 화면의 그 구성원과 같은 색으로 선다.
+ */
+const MEMBER_TONE_KEYS = ["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"] as const;
+const memberToneOf = (item: ObjectiveItem, memberId: string): string => MEMBER_TONE_KEYS[Math.max(0, item.members.findIndex((member) => member.id === memberId)) % MEMBER_TONE_KEYS.length]!;
+
 /** 아직 Operation 이 없는(또는 대표가 아닌) 임무의 자리표시 id — 띠의 사각 하나가 된다. 호스트는 pending 을 보고 행·패널을 세우지 않는다. */
 const placeholderId = (stepId: string) => `step:${stepId}`;
 
@@ -52,16 +59,18 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
       const operationId = live(item.steps.find((step) => step.id === stepId)?.operationId);
       return operationId && representative.get(operationId) === stepId ? operationId : placeholderId(stepId);
     };
-    const roleOf = (operationId: string) => liveMembers.find((entry) => entry.operationId === operationId)?.member.role;
+    const memberOf = (operationId: string) => liveMembers.find((entry) => entry.operationId === operationId)?.member;
     const members: OperationClusterMember[] = item.steps.map((step) => {
       const id = idOf(step.id);
       const pending = id === placeholderId(step.id);
-      const name = pending ? undefined : roleOf(id);
+      const member = pending ? undefined : memberOf(id);
+      const name = member?.role;
       return {
         operationId: id,
         ...(pending ? { pending: true } : {}),
         // 노드 줄에는 구성원 이름으로 선다 — 「N 노드」가 아니라 「조사」.
         ...(name ? { name } : {}),
+        ...(member ? { tone: memberToneOf(item, member.id) } : {}),
         label: `${byStep.get(step.id)}. ${step.text}`,
         after: step.after.map(idOf),
         progress: pending ? (step.done ? "done" : stepReady(item.steps, step) ? "open" : "blocked") : progressOf(item, step.id, id, activity),
@@ -72,7 +81,7 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
     // 임무를 맡지 않은 구성원 — 역할 이름 칸으로 묶음에 든다.
     for (const { member, operationId } of liveMembers) {
       if (representative.has(operationId)) continue;
-      members.push({ operationId, label: member.role, name: member.role, after: [], progress: liveProgress(operationId, activity) });
+      members.push({ operationId, label: member.role, name: member.role, tone: memberToneOf(item, member.id), after: [], progress: liveProgress(operationId, activity) });
     }
     const open = (operationId?: string) => {
       const stepId = operationId
@@ -86,7 +95,7 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
   return out;
 }
 
-const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.label, member.after, member.progress, member.result ?? ""])]));
+const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.label, member.after, member.progress, member.result ?? ""])]));
 
 let cached: readonly OperationCluster[] = [];
 let cachedSignature = "";

@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { assertOperationNode, ApiError } from "../operations/browser.js";
-import type { OperationNode } from "../operations/types.js";
+import { partitionListedOperations, type OperationNode } from "../operations/types.js";
 import type {
   ClientApiCapability,
   ClientOperationRuntimeCapability,
@@ -194,7 +194,8 @@ export function useOperations(): UseOperationsResult {
     const response = await fetch("/api/v1/operations");
     if (!response.ok) throw new ApiError(response.status, `Operations request failed: ${response.status}`);
     const payload = await response.json() as { readonly operations?: readonly unknown[] };
-    setOperations(Array.isArray(payload.operations) ? payload.operations.map(assertOperationNode) : []);
+    // 사이드바와 같은 목록이다 — 부모가 대표하는 구성원은 빠진다(isListedOperation).
+    setOperations(Array.isArray(payload.operations) ? partitionListedOperations(payload.operations.map(assertOperationNode)).listed : []);
   }, []);
   React.useEffect(() => {
     void refresh();

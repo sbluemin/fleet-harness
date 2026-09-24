@@ -293,7 +293,7 @@ export function isMentionSelectable(activity: OperationActivityVisual): boolean 
 
 /**
  * 멘션 덱의 목록: messageOperation을 선언한 플러그인의 해당 타입 Operation만, Theater로 묶어서.
- * `hidden`(묶음의 단계 Operation)은 덱에서 뺀다. 명시 행선지 해소(resolveMentionEntry)는 거르지 않는다.
+ * 구성원(부모가 대표하는 Operation)은 스토어의 기본 목록에 없으므로 덱에도 서지 않는다.
  * 활동 분류는 팔레트와 같은 원천(resolveOperationActivity)을 쓰되 idle-arrival 화면 승격은 받지
  * 않는다 — 여기서 awaiting은 선택 차단 신호라, 표시용 승격이 섞이면 보낼 수 있는 대상이 막힌다.
  */
@@ -301,11 +301,10 @@ export function buildQuickLaunchMentionGroups(
   state: ConsoleState,
   messageableTypesByPlugin: ReadonlyMap<string | null, ReadonlySet<string>>,
   query: string,
-  hidden?: ReadonlySet<string>,
 ): readonly OperationSearchGroup[] {
   const mentionable = state.operations.filter((operation) => messageableTypesByPlugin.get(operation.pluginId)?.has(operation.type) === true);
   if (mentionable.length === 0) return [];
-  const entries = buildOperationSearchEntries({ ...state, operations: mentionable }, hidden);
+  const entries = buildOperationSearchEntries({ ...state, operations: mentionable });
   return groupOperationSearchEntries(filterOperationSearchEntries(entries, query));
 }
 
@@ -449,7 +448,8 @@ export function resolveMentionEntry(
   messageableTypesByPlugin: ReadonlyMap<string | null, ReadonlySet<string>>,
   operationId: string,
 ): OperationSearchEntry | null {
-  const entry = buildQuickLaunchMentionGroups(state, messageableTypesByPlugin, "")
+  // 명시 행선지는 한 Operation 을 가리키는 길이다 — 덱에 서지 않는 구성원(부모 패널이 본문으로 보이는)도 주소가 된다.
+  const entry = buildQuickLaunchMentionGroups({ ...state, operations: [...state.operations, ...state.nestedOperations] }, messageableTypesByPlugin, "")
     .flatMap((group) => group.entries)
     .find((candidate) => candidate.operationId === operationId);
   if (!entry || !isMentionSelectable(entry.activity)) return null;

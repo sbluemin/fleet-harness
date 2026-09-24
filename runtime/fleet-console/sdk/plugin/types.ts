@@ -159,10 +159,10 @@ export interface ClientExecutionProvider {
   /**
    * 한 실행 구조에 묶인 Operation 들 — 뿌리(조율자) 하나와 선후 관계를 가진 구성원(단계)들.
    *
-   * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아
-   * 뿌리 하나로 묶음을 대표한다 — 구성원 Operation 은 어느 모드에서도 따로 패널로 서지 않고 뒤에서 돌며, 뿌리의
+   * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아 뿌리의
    * 캡션에 진척도 띠(와 단계 목록), 뿌리 패널 본문에 구성원 세션으로 바꿔 보는 노드 줄(「N 노드」, N 은 members
-   * 선언 순서의 자리)을 그린다. 소유하지 않는 Operation 도 묶을 수 있고, 진실은 플러그인 쪽에 남는다.
+   * 선언 순서의 자리)을 그린다. 묶음은 그리기만 한다 — 구성원이 목록 표면에 서지 않게 하는 것은 코어의 부모 관계
+   * (`OperationNode.parentOperationId`, launch 의 `parentOperationId`)이고, 진행의 진실은 플러그인 쪽에 남는다.
    * `get()` 은 바뀌지 않았으면 같은 참조를 돌려줘야 한다(useSyncExternalStore).
    */
   readonly operationClusters?: OperationClusterSource;
@@ -386,8 +386,10 @@ export interface ClientConsoleStateCapability {
   /**
    * Operation 목록의 브라우저 DTO 몫 — 제목·Theater·종류·활동. 활동은 코어가 런타임 축에서 읽는
    * 값이며, 어느 플러그인이 그 축의 권위인지는 플러그인이 알 필요가 없다. transcript·경로는 없다.
+   * 사이드바와 같은 목록이라 부모가 대표하는 구성원(`parentOperationId`)은 빠진다 — 구성원을 거느리는
+   * 플러그인만 `{ nested: true }` 로 함께 읽는다.
    */
-  getOperations(): readonly ConsoleOperationSummary[];
+  getOperations(options?: { readonly nested?: boolean }): readonly ConsoleOperationSummary[];
   getActiveTheaterId(): string | null;
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
@@ -404,6 +406,13 @@ export interface ConsoleOperationSummary {
   readonly type: string;
   readonly title: string;
   readonly activity: "idle" | "running" | "awaiting" | "background" | "ended";
+  /** `{ nested: true }` 로 읽은 구성원만 — 이 Operation 을 대표하는 부모. */
+  readonly parentOperationId?: string;
+  /**
+   * `{ nested: true }` 로 읽은 부모(구성원을 거느린 Operation)만 — 구성원의 대기·실행을 끌어올리기 전 자기 활동이다.
+   * 부모 자신의 대기·실행을 구성원 것과 가를 때 쓴다(`ownActivity ?? activity`). `activity` 와 같은 규칙으로 센다.
+   */
+  readonly ownActivity?: "idle" | "running" | "awaiting" | "background" | "ended";
 }
 
 /**
@@ -475,9 +484,14 @@ export interface OperationClusterMember {
   readonly label: string;
   /**
    * 지휘관 패널의 노드 줄에 서는 이름("조사") — 이 세션이 누구인지 한 낱말로. 없으면 호스트가 선언 순서로 「N 노드」라 부른다.
-   * `label`(무엇을 하는지)은 말풍선·낭독에 그대로 남는다.
+   * `label`(무엇을 하는지)은 말풍선·낭독에 그대로 남는다. 지휘관 패널이 이 구성원의 본문을 보일 때 캡션 제목 뒤 「› 이름」도 이것이다.
    */
   readonly name?: string;
+  /**
+   * 이 구성원의 정체성 톤(`--id-<key>` 의 key, 예: "moss") — 지휘관 캡션 제목 뒤 「› 이름」의 잉크. 플러그인이 자기 화면의 구성원
+   * 표식과 같은 톤을 준다. 없으면 구성원 Operation 의 강조색, 그것도 없으면 제목의 중립 잉크다.
+   */
+  readonly tone?: string;
   /** 선행 구성원의 operationId. 전부 끝나야 이 구성원이 열린다. */
   readonly after: readonly string[];
   readonly progress: OperationClusterProgress;

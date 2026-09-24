@@ -52,7 +52,6 @@ import { getRailStoreSnapshot, openRailPanel, setRailChromeExpanded, toggleRailC
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
-import { hiddenClusterMembers, useClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";
 import {
   closeOperationSearch,
   focusOperation,
@@ -115,10 +114,7 @@ export function OperationSearch({
   const commandMode = mode === "commands";
   // 사이드바·커맨드 밴드와 같은 마크 축 — 안 본 채 끝난 Operation이 팔레트에서만 침묵하지 않게 한다.
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
-  // 묶음의 단계 Operation 은 사이드바처럼 여기서도 서지 않는다 — 지휘관 행이 묶음을 대표한다.
-  const clusterIndex = useClusterIndex();
-  const hiddenMembers = useMemo(() => hiddenClusterMembers(clusterIndex), [clusterIndex]);
-  const entries = useMemo(() => operationSearchEntries(state, hiddenMembers), [state, hiddenMembers]);
+  const entries = useMemo(() => operationSearchEntries(state), [state]);
   const filteredEntries = useMemo(
     () => mode === "operations"
       ? orderOperationSearchEntries(filterOperationSearchEntries(entries, text), state.activeTheaterId, searchTokens(text).length > 0)

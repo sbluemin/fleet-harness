@@ -9,7 +9,7 @@ import { resolveOperationActivity } from "../../../../features/execution/client/
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel } from "./operations-sse.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../chrome/rail/rail-store.js";
-import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation,
+import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
 export function createHostCapabilities(resync: () => void = () => undefined): PluginInstallContext {
@@ -46,14 +46,23 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
     },
     consoleState: {
       getTheaters: () => getState().theaters.map((theater) => ({ id: theater.id, label: theater.label })),
-      getOperations: () => {
+      // 기본은 사이드바와 같은 목록(구성원 제외)이다 — 부관단처럼 목록을 읽는 플러그인이 따로 거르지 않아도 된다.
+      // 구성원을 거느리는 플러그인(목표)만 nested 로 부모와 함께 읽는다.
+      // nested 읽기의 부모 요약은 끌어올리기 전 자기 활동(ownActivity)도 싣는다 — 같은 규칙(resolveOperationActivity)을 원 런타임에 쓴다.
+      getOperations: (options) => {
         const snapshot = getState();
-        return snapshot.operations.map((operation) => ({
+        const nested = options?.nested === true;
+        const operations = nested ? [...snapshot.operations, ...snapshot.nestedOperations] : snapshot.operations;
+        const parents = nested ? new Set(snapshot.nestedOperations.map((operation) => operation.parentOperationId)) : null;
+        const own = parents && parents.size > 0 ? ownOperationRuntime() : null;
+        return operations.map((operation) => ({
           id: operation.id,
           theaterId: operation.theaterId,
           type: operation.type,
           title: operation.title,
           activity: resolveOperationActivity(operation, snapshot.operationRuntime),
+          ...(nested && operation.parentOperationId ? { parentOperationId: operation.parentOperationId } : {}),
+          ...(own && parents!.has(operation.id) ? { ownActivity: resolveOperationActivity(operation, own) } : {}),
         }));
       },
       getActiveTheaterId: () => getState().activeTheaterId,

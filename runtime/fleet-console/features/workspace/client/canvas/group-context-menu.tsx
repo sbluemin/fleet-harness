@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
+import { AccentToneList } from "@fleet-console/sdk/components/accent-tone-list";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import type { OperationGroup, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { AccentToneList } from "./accent-tone-list.js";
-import { resolveAccentColor } from "./operation-accent.js";
+import { accentToneLabels, resolveAccentColor } from "./operation-accent.js";
 
 export interface GroupContextMenuChipActions {
   readonly onSetAccent: (key: string | null) => void;
@@ -200,6 +200,7 @@ function ChipMenuContent({
         label={t("canvas.groupMenu.sectionAccent")}
         accentKey={accentKey}
         includeNone
+        labels={accentToneLabels(t)}
         onSelect={(key) => { actions.onSetAccent(key); onClose(); }}
       />
     </>
@@ -252,6 +253,7 @@ function GroupHeaderMenuContent({
         label={t("canvas.groupMenu.sectionColor")}
         accentKey={group.color}
         includeNone={false}
+        labels={accentToneLabels(t)}
         onSelect={(key) => {
           if (key) actions.onSetColor(key);
           onClose();

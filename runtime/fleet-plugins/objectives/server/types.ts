@@ -17,6 +17,8 @@ export const MAX_STEP_TEXT = 200;
 export const MAX_CRITERIA = 20;
 export const MAX_CRITERION_TEXT = 300;
 export const MAX_EVIDENCE = 300;
+/** 사람이 지휘관에게 덧붙이는 말(구상·개시·스티어링) — 받는 상한과 프롬프트에 인용하는 상한이 같다. */
+export const MAX_CONTEXT = 2000;
 /** 단계 기록 한 건의 줄 — 첫 줄이 결론, 나머지는 근거·남은 것. 산문을 한 줄에 몰아넣지 못하게 줄마다 길이를 묶는다. */
 export const MAX_RECORD_LINES = 3;
 export const MAX_RECORD_LINE = 160;
@@ -352,7 +354,7 @@ export const createItemSchema = z.object({
 export const patchItemSchema = z.object({
   title: title.optional(),
   note: note.optional(),
-  cook: z.string().max(4000).optional(),
+  cook: z.string().max(MAX_CONTEXT).optional(),
   important: z.boolean().optional(),
   dueDate: dueDate.optional(),
   today: z.boolean().optional(),

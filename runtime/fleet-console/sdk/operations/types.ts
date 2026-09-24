@@ -20,9 +20,38 @@ export interface OperationNode {
   readonly title: string;
   /** 사이드바 그룹 — 없거나 null 이면 그룹 밖. */
   readonly groupId?: string | null;
+  /**
+   * 이 Operation 을 대표하는 부모 Operation(같은 Theater) — 목표의 구성원이 지휘관 아래 서는 자리. 코어가 소유하고
+   * 태어날 때 기록한다. 목록 표면에 서는지는 이 필드가 아니라 `isListedOperation` 하나가 판정한다.
+   */
+  readonly parentOperationId?: string;
   readonly payload: Record<string, unknown>;
   readonly geometry: OperationGeometry | null;
   readonly ts: OperationTimestamps;
+}
+
+type ListedProbe = { readonly id: string; readonly theaterId: string; readonly parentOperationId?: string | null };
+
+/**
+ * 목록 표면(사이드바·팔레트·@덱·War Room·함대 지도·알림·Console Use 스캔)에 따로 서는가 — 서버와 클라이언트가 같은 판정을 쓴다.
+ * 부모가 같은 Theater 에 있으면 서지 않고 부모가 대표한다. 부모가 없으면(지워짐·다른 Theater) 평범한 행으로 돌아와
+ * 어느 표면에서도 닿지 못하는 Operation 이 생기지 않는다.
+ */
+export function isListedOperation(node: ListedProbe, find: (id: string) => ListedProbe | null | undefined): boolean {
+  const parentId = node.parentOperationId;
+  if (!parentId || parentId === node.id) return true;
+  const parent = find(parentId);
+  return !parent || parent.theaterId !== node.theaterId;
+}
+
+/** 목록을 한 번에 가른다 — 보이는 목록과, 부모가 대표하는 구성원. 순서는 입력 그대로다. */
+export function partitionListedOperations<T extends ListedProbe>(nodes: readonly T[]): { readonly listed: readonly T[]; readonly nested: readonly T[] } {
+  if (!nodes.some((node) => node.parentOperationId)) return { listed: nodes, nested: [] };
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const listed: T[] = [];
+  const nested: T[] = [];
+  for (const node of nodes) (isListedOperation(node, (id) => byId.get(id)) ? listed : nested).push(node);
+  return { listed, nested };
 }
 
 export interface OperationLaunchInfo {
@@ -68,6 +97,8 @@ export interface OperationCreateInput {
   readonly payload?: Record<string, unknown>;
   readonly geometry?: OperationGeometry | null;
   readonly createdAt?: number;
+  /** 태어날 때부터 부모 아래 선다 — 같은 Theater 의, 부모가 없는 Operation 이어야 한다. */
+  readonly parentOperationId?: string;
 }
 
 export interface OperationPatchInput {
@@ -77,6 +108,8 @@ export interface OperationPatchInput {
   readonly groupId?: string | null;
   readonly geometry?: OperationGeometry | null;
   readonly payload?: Record<string, unknown>;
+  /** 부모를 두거나(`string`) 푼다(`null`). 기존 구성원을 채울 때 쓴다 — 새 구성원은 launch 에서 태어날 때 받는다. */
+  readonly parentOperationId?: string | null;
 }
 
 /**

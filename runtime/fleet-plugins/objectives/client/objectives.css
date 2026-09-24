@@ -69,6 +69,12 @@
 .objectives-list-btn .objectives-count { margin-left: auto; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-list-btn .objectives-swatch { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-tertiary); }
 .objectives-list-btn.is-muted { color: var(--text-tertiary); }
+/* 그룹 행 — 올리거나 초점이 들어오면 셈 자리에 「···」가 선다(그룹 메뉴: 색·이름). 메뉴가 열린 행은 테두리로 자리를 말한다. */
+.objectives-list-row { position: relative; }
+.objectives-group-more.is-row { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: none; }
+.objectives-list-row:hover .objectives-group-more.is-row, .objectives-list-row:focus-within .objectives-group-more.is-row, .objectives-list-row.is-menu .objectives-group-more.is-row { display: inline-grid; }
+.objectives-list-row:hover .objectives-count, .objectives-list-row:focus-within .objectives-count, .objectives-list-row.is-menu .objectives-count { visibility: hidden; }
+.objectives-list-row.is-menu .objectives-list-btn { border-color: color-mix(in oklch, var(--brass) 56%, var(--surface-rim)); }
 .objectives-lists-add {
   margin-top: auto;
   background: transparent;
@@ -327,7 +333,13 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-dot.is-awaiting { background: var(--warn); }
 .objectives-dot.is-idle, .objectives-dot.is-ended, .objectives-dot.is-closed, .objectives-dot.is-unknown { background: var(--text-tertiary); }
 .objectives-dot.is-background { background: var(--aurora); }
-.objectives-row-tools { margin-left: auto; display: inline-flex; gap: 4px; }
+.objectives-row-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+/* 접히는 섹션 머리(달성 기준·임무) — 행 전체가 버튼. 셰브런은 목록 구획 머리와 같은 뜻: 접힘 0°, 펼침 90°. 높이 모션은 없다. */
+button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
+.objectives-acc-hd .objectives-section-chev { margin-left: -6px; }
+.objectives-acc-hd[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
+/* 접힌 임무에 안 읽은 기록 — 기록 개수 칩의 안 읽음 점과 같은 표식. */
+.objectives-sec-unseen { width: 5px; height: 5px; border-radius: 50%; background: var(--brass); }
 .objectives-row-x { flex: none; width: 26px; height: 26px; margin-right: -8px; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-tertiary); font-size: var(--t-md); line-height: 1; cursor: pointer; position: relative; z-index: 1; }
 .objectives-row-x:hover { color: var(--coral); background: var(--control-rest); }
 .objectives-row.is-static { cursor: default; }
@@ -338,11 +350,12 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 /* 단계 — 36px 행, 도구는 오른쪽에 낮게 상주하고 올리면 밝아진다(MS 의 「…」 자리) */
 .objectives-steps { display: flex; flex-direction: column; }
 .objectives-steps:empty { display: none; }
-.objectives-step { display: flex; gap: 12px; align-items: center; min-height: 36px; padding: 0 14px 0 22px; font-size: var(--t-sm); }
+/* 문구가 줄바꿈하므로 곁의 것들은 첫 줄(위 6px + 한 줄 18px 의 가운데 = 15px)에 맞춘다. */
+.objectives-step { display: flex; gap: 12px; align-items: flex-start; min-height: 36px; padding: 0 14px 0 22px; font-size: var(--t-sm); }
 .objectives-step:hover { background: var(--control-rest); }
-.objectives-step .objectives-check { width: 16px; height: 16px; }
+.objectives-step .objectives-check { width: 16px; height: 16px; margin-top: 7px; }
 .objectives-step .objectives-check svg { width: 9px; height: 9px; }
-.objectives-step .objectives-step-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 0; }
+.objectives-step .objectives-step-text { flex: 1; min-width: 0; display: block; resize: none; overflow: hidden; field-sizing: content; overflow-wrap: anywhere; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; padding: 0; }
 .objectives-step .objectives-step-text:focus { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
 .objectives-step.is-done .objectives-step-text { text-decoration: line-through; color: var(--text-tertiary); }
 .objectives-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 6px 0; }
@@ -354,8 +367,8 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-step-sub.is-idle i, .objectives-step-sub.is-ended i, .objectives-step-sub.is-closed i, .objectives-step-sub.is-unknown i { background: var(--text-tertiary); }
 .objectives-step-sub.is-background i { background: var(--aurora); }
 .objectives-step-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary)); }
-/* 단계 기록 — 구상 입력 줄(.objectives-cook-line)과 같은 문법: 상자·배경 없이 단계 글자 선(22 + 확인 16 + 간격 12 = 50px)에서 펼쳐진다. */
-.objectives-records-count { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
+/* 단계 기록 — 상자·배경 없이 단계 글자 선(22 + 확인 16 + 간격 12 = 50px)에서 펼쳐진다. */
+.objectives-records-count { flex: none; margin-top: 6px; min-height: 18px; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
 .objectives-records-count svg { width: 12px; height: 12px; }
 .objectives-records-count i { width: 5px; height: 5px; border-radius: 50%; background: var(--brass); }
 .objectives-records-count:hover { background: var(--control-rest); color: var(--text-secondary); }
@@ -374,16 +387,16 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-record-line { color: var(--text-secondary); }
 .objectives-step-sub b::before { content: "·"; margin-right: 6px; color: var(--text-tertiary); font-weight: normal; }
 /* 편성 번호 — 체크 곁에 붙어 그래프 노드와 같은 번호를 말한다. */
-.objectives-step-num { flex: none; min-width: 14px; margin: 0 -6px 0 -4px; text-align: right; font-family: var(--font-mono); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.objectives-step-num { flex: none; min-width: 14px; margin: 6px -6px 0 -4px; line-height: 18px; text-align: right; font-family: var(--font-mono); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
 .objectives-step.is-ready .objectives-step-num { color: var(--aurora); }
 .objectives-step.is-done .objectives-step-num { opacity: 0.7; }
 /* 선행 대기는 「2·3 뒤」, 시작할 수 있으면 「준비됨」 */
-.objectives-step .objectives-wait { flex: none; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.objectives-step .objectives-wait { flex: none; margin-top: 6px; line-height: 18px; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
 .objectives-step .objectives-wait.is-ready { color: var(--aurora); }
 /* 짚은 임무와 그 선행 — 편성 노드와 함께 켜진다 */
 .objectives-step.is-focus { background: var(--control-rest); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 55%, transparent); }
 .objectives-step.is-pre { background: color-mix(in oklch, var(--aurora) 7%, transparent); }
-.objectives-step-tools { display: inline-flex; gap: 2px; opacity: 0.45; transition: opacity 120ms; }
+.objectives-step-tools { display: inline-flex; gap: 2px; margin-top: 4px; opacity: 0.45; transition: opacity 120ms; }
 .objectives-step-tools .objectives-glyph { border-color: transparent; }
 .objectives-step:hover .objectives-step-tools, .objectives-step:focus-within .objectives-step-tools { opacity: 1; }
 .objectives-step.is-highlight { box-shadow: inset 0 0 0 2px var(--brass); animation: objectives-pulse 1.2s ease-out 2; }
@@ -401,13 +414,6 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 /* 지휘관 행의 모델·강도는 행 가운데 — 라벨과 × 사이 남은 폭의 한가운데. */
 .objectives-row .objectives-launch { margin: 0 auto; flex: none; }
 .objectives-row.is-expanded .objectives-row-main { color: var(--text-primary); }
-/* 구상 맥락 — 구상 행 아래 한 줄. 비워 두고 보내도 된다. */
-.objectives-cook-line { display: flex; align-items: flex-end; gap: 6px; padding: 0 14px 8px 54px; }
-.objectives-cook { flex: 1; min-width: 0; min-height: 24px; resize: none; overflow: hidden; padding: 2px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; }
-.objectives-cook::placeholder { color: var(--text-tertiary); }
-.objectives-cook:focus-visible { outline: none; }
-.objectives-cook-send { flex: none; color: var(--brass); border-color: transparent; }
-.objectives-cook-send:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 14%, transparent); }
 /* 시작 — 세부 창의 마지막 행동. brass 워시 한 장, 낱말은 굵게, 부제는 dim, 오른쪽 끝에 화살. 일하는 동안 같은 자리가 「중단」. */
 /* 시작 버튼은 스크롤 영역 아래에 놓되 별도 배경 띠 없이 세부 표면과 이어진다. */
 /* 검토 대기 — 지휘관이 넘긴 가승인. aurora 로 「사람 차례」를 말하고, 완료 버튼 하나만 둔다. */
@@ -434,6 +440,43 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-start.is-awaiting:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
 .objectives-start.is-awaiting .objectives-start-word, .objectives-start.is-awaiting .objectives-start-arrow { color: var(--aurora); }
 .objectives-start-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent); animation: objectives-breathe 1.8s ease-in-out infinite; }
+/* 하단 한 자리 — 같은 상태에 다른 선택이 하나 더 있으면 띠 뒤로 한 장이 비친다. 누르면 이 자리가 위로 펼쳐진다. */
+.objectives-band { position: relative; }
+.objectives-band.has-alt::before { content: ""; position: absolute; left: 12px; right: 12px; top: -5px; height: 6px; border: 1px solid color-mix(in oklch, var(--brass) 28%, transparent); border-bottom: 0; border-radius: var(--radius-md) var(--radius-md) 0 0; background: color-mix(in oklch, var(--brass) 5%, var(--surface-panel)); }
+.objectives-band.has-alt.is-stop::before { border-color: color-mix(in oklch, var(--coral) 26%, transparent); }
+.objectives-band .objectives-start { position: relative; }
+.objectives-band-draft { margin-right: 6px; color: var(--text-primary); font-weight: var(--weight-medium); }
+.objectives-band-also { color: var(--text-tertiary); }
+.objectives-band-error { padding: 6px 4px 2px; font-size: var(--t-xs); line-height: 1.5; color: var(--coral); }
+/* 펼친 자리 — 띠가 위로 자라 한 장이 된다. 맨 아래 줄은 그대로 보내기 띠다. */
+.objectives-comp { overflow: hidden; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(180deg, color-mix(in oklch, var(--brass) 4%, var(--surface-panel)), color-mix(in oklch, var(--brass) 10%, var(--surface-panel))); animation: objectives-unfold 240ms var(--ease-spring); }
+.objectives-comp.is-stop { border-color: color-mix(in oklch, var(--coral) 40%, transparent); }
+@keyframes objectives-unfold { from { clip-path: inset(60% 0 0 0 round var(--radius-md)); opacity: 0.4; } to { clip-path: inset(0 0 0 0 round var(--radius-md)); opacity: 1; } }
+.objectives-comp-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 0 14px; font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-comp-fold { border-color: transparent; }
+.objectives-intents { display: grid; gap: 2px; padding: 4px 6px 2px; }
+.objectives-intent { display: grid; grid-template-columns: 6px 16px auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
+.objectives-intent:hover:not(:disabled) { background: var(--control-rest); }
+.objectives-intent[aria-checked="true"] { background: var(--control-wash); color: var(--text-primary); }
+.objectives-intent:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.objectives-intent-datum { width: 4px; height: 4px; border-radius: 50%; }
+.objectives-intent[aria-checked="true"] .objectives-intent-datum { background: var(--brass); }
+.objectives-intent-glyph { display: grid; place-items: center; color: var(--text-tertiary); }
+.objectives-intent-glyph svg { width: 14px; height: 14px; }
+.objectives-intent-glyph .objectives-start-dot { width: 6px; height: 6px; }
+.objectives-intent-word { font-weight: var(--weight-bold); white-space: nowrap; }
+.objectives-intent.is-stop .objectives-intent-word { color: var(--coral); }
+.objectives-intent-desc { min-width: 0; font-size: var(--t-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-comp-edits { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 8px 14px 0; font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-comp-chip { padding: 1px 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); }
+.objectives-comp-field { display: flex; gap: 8px; padding: 6px 14px 8px; }
+.objectives-comp-field textarea { flex: 1; min-width: 0; min-height: 40px; max-height: 132px; resize: none; overflow: auto; padding: 2px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; }
+.objectives-comp-field textarea::placeholder { color: var(--text-tertiary); }
+.objectives-comp-field textarea:focus-visible { outline: none; }
+.objectives-comp-count { align-self: flex-end; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-comp .objectives-band-error { padding: 0 14px 8px; }
+.objectives-comp .objectives-start { border: 0; border-top: 1px solid color-mix(in oklch, var(--brass) 22%, transparent); border-radius: 0; }
+.objectives-comp.is-stop .objectives-start { border-top-color: color-mix(in oklch, var(--coral) 22%, transparent); }
 .objectives-graph-wrap { padding: 2px 20px 8px 22px; }
 /* 조율자 모델·강도·표면 — 한 줄의 글. 누르면 캔버스 우클릭 메뉴와 같은 문법의 메뉴가 뜬다(글래스 언더레이·모노 xs·브라스 활성). */
 .objectives-launch { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
@@ -495,14 +538,20 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-menu-track .effort-track-value { display: none; }
 .objectives-menu-effort-word { font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass); }
 .objectives-menu-divider { height: 1px; margin: var(--space-1) var(--space-1); background: var(--surface-rim); }
+/* 그룹 메뉴 — 색(사이드바와 같은 SDK 스와치) → 이름 변경. */
+.objectives-group-menu { width: 212px; }
+.objectives-group-menu-name { margin: 0 10px 8px; padding: 6px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-body); }
+.objectives-group-menu-name:focus { outline: none; border-color: var(--brass); }
 .objectives-menu-empty { padding: 6px var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
 
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
 .objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
-.objectives-members-heading { display: flex; gap: 7px; align-items: baseline; padding: 6px 20px 6px 22px; font: var(--weight-bold) var(--t-2xs)/1.4 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-tertiary); }
+.objectives-members-heading { display: flex; gap: 7px; align-items: baseline; padding: 8px 20px 4px 22px; font: var(--weight-medium) var(--t-xs)/1.4 var(--font-body); color: var(--text-tertiary); }
 .objectives-members-heading span { color: var(--text-secondary); }
 .objectives-members-empty { margin: 0; padding: 5px 20px 9px 22px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
-.objectives-member { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 6px 14px 6px 22px; }
+.objectives-member { display: flex; align-items: flex-start; gap: 10px; min-height: 50px; padding: 6px 14px 6px 22px; }
+.objectives-member > .objectives-member-mark { margin-top: 3px; }
+.objectives-member > .objectives-member-remove { margin-top: 2px; }
 .objectives-member:hover { background: var(--control-rest); }
 /* 구성원 표식 — 정체성 톤(--id-*)으로 구성원을 가른다. 신호색(brass·aurora·positive·coral·warn)은 상태를 뜻하므로 쓰지 않는다. */
 .objectives-member-mark { --member-tone: var(--id-teal); flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid color-mix(in oklch, var(--member-tone) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--member-tone) 14%, transparent); color: var(--member-tone); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
@@ -522,7 +571,7 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-member-role-fit::after { content: attr(data-value) " "; grid-area: 1 / 1; visibility: hidden; white-space: pre; overflow: hidden; font: inherit; }
 .objectives-member-role { grid-area: 1 / 1; width: 100%; color: var(--text-primary); font-size: inherit; font-weight: inherit; }
 .objectives-member-role:focus, .objectives-member-brief:focus { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
-.objectives-member-brief { width: 100%; color: var(--text-tertiary); font-size: var(--t-xs); }
+.objectives-member-brief { display: block; width: 100%; resize: none; overflow: hidden; field-sizing: content; overflow-wrap: anywhere; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
 .objectives-member-brief::placeholder { color: var(--text-tertiary); opacity: 0.7; }
 .objectives-member-remove { flex: none; opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
 .objectives-member:hover .objectives-member-remove, .objectives-member:focus-within .objectives-member-remove { opacity: 1; }
@@ -536,7 +585,7 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-member-status.is-awaiting { color: var(--warn); }
 .objectives-assign-new input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-body); }
 .objectives-assign-new input:focus { outline: none; border-color: var(--brass); }
-.objectives-step-sub .objectives-member-mark, .objectives-assign-menu .objectives-member-mark { width: 16px; height: 16px; font-size: 9px; }
+.objectives-step-sub .objectives-member-mark, .objectives-assign-menu .objectives-member-mark { width: 16px; height: 16px; font-size: var(--t-2xs); }
 .objectives-step-member-name { color: var(--text-secondary); font-family: var(--font-body); font-weight: var(--weight-medium); }
 .objectives-assign-caption { color: var(--text-tertiary); }
 .objectives-assign-model { flex: none; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
@@ -595,6 +644,18 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
   .objectives-graph-horizontal { display: none; }
   .objectives-graph-vertical { display: block; }
 }
+/* 아주 좁은 상세(레일 분할 등 340px 미만) — 곁에 서던 값들을 아랫줄로 내려 글이 읽힐 폭을 남긴다.
+   구성원: 역할·설명이 한 줄을 다 쓰고, 모델·상태는 그 아래 줄(설명과 같은 들여쓰기). 지휘관: 모델·강도가 라벨 아래 줄. */
+@container objectives-detail (width < 340px) {
+  .objectives-member { flex-wrap: wrap; row-gap: 2px; }
+  .objectives-member > .objectives-member-body { flex: 1 1 0; }
+  .objectives-member > .objectives-member-remove { order: 2; }
+  .objectives-member > .objectives-member-meta { order: 3; flex: 1 0 100%; max-width: none; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding-left: 30px; }
+  .objectives-row:has(> .objectives-launch) { flex-wrap: wrap; row-gap: 0; padding-bottom: 6px; }
+  .objectives-row:has(> .objectives-launch) > .objectives-row-main { flex: 1 0 100%; min-height: 36px; }
+  .objectives-row > .objectives-launch { margin: 0 0 0 20px; }
+  .objectives-row-lab { overflow-wrap: normal; }
+}
 .objectives-dag-hint { text-align: center; padding: 0 10px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
 /* 확대본 — 빈 배경을 누르면 열린다(커서로 예고). 오버레이는 다른 팝오버와 같은 층(60), 카드는 넓은 폭에 같은 그래프를 다시 그린다. */
 .objectives-dag-box.can-zoom .objectives-dag { cursor: zoom-in; }
@@ -632,10 +693,10 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-hint { font-size: var(--t-2xs); color: var(--text-tertiary); margin-top: 3px; padding: 0 20px 0 22px; }
 
 /* 메모 — 테두리 없는 글판(MS 의 「메모 추가」) */
+/* 높이는 스크립트가 잰다 — 쉴 때 3줄(넘치면 「더 보기」), 쓰는 동안이나 펼치면 360px 까지, 비어 있으면 「브리핑 추가」 한 줄. */
 .objectives-detail textarea.objectives-note {
+  display: block;
   width: 100%;
-  min-height: 110px;
-  max-height: 360px;
   overflow-y: auto;
   resize: none;
   background: transparent;
@@ -644,10 +705,15 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
   font: inherit;
   font-size: var(--t-sm);
   line-height: 1.5;
-  padding: 8px 20px 8px 22px;
+  padding: 2px 20px 8px 22px;
   outline: none;
-  field-sizing: content;
 }
+.objectives-detail textarea.objectives-note.is-clamped { overflow: hidden; padding-bottom: 0; margin-bottom: 8px; }
+/* 빈 브리핑을 쓰기 시작하면 칸이 세 줄로 펼쳐진다(쉴 때는 「브리핑 추가」 한 줄). */
+.objectives-detail textarea.objectives-note.is-writing { min-height: calc(var(--t-sm) * 1.5 * 3 + 10px); }
+.objectives-note-more { align-self: flex-start; margin: -6px 0 6px 22px; padding: 2px 0; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.objectives-note-more:hover { color: var(--text-primary); }
+.objectives-note-more:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-detail textarea.objectives-note::placeholder { color: var(--text-tertiary); }
 
 
@@ -694,11 +760,13 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
   .objectives-records-inner { padding-left: 38px; padding-right: 8px; }
   .objectives-graph-wrap { padding-left: 14px; padding-right: 12px; }
   .objectives-detail textarea.objectives-note { padding-left: 14px; padding-right: 12px; }
+  .objectives-note-more { margin-left: 14px; }
   .objectives-att { padding-left: 14px; padding-right: 12px; }
   .objectives-start { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 9px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .objectives-step.is-highlight { animation: none; }
+  .objectives-comp { animation: none; }
 }
 
 /* 기한 달력 — 메뉴와 같은 카드 위에 월 하나. 숫자는 모노, 오늘은 고리, 고른 날은 brass 채움, 지난 날은 dim. */
@@ -797,17 +865,17 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 
 /* 달성 기준 — 임무 아래 섹션. 줄은 임무 줄과 같은 들여쓰기·높이, 표식은 미확인(점선 고리)과 충족(positive 점) 둘뿐이다. */
 .objectives-criteria-count { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.objectives-criterion { display: flex; gap: 12px; align-items: center; min-height: 36px; padding: 0 14px 0 22px; font-size: var(--t-sm); }
+.objectives-criterion { display: flex; gap: 12px; align-items: flex-start; min-height: 36px; padding: 0 14px 0 22px; font-size: var(--t-sm); }
 .objectives-criterion:hover { background: var(--control-rest); }
-.objectives-criterion-mark { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 1.5px dashed var(--text-tertiary); }
+.objectives-criterion-mark { flex: none; width: 12px; height: 12px; margin-top: 9px; border-radius: 50%; border: 1.5px dashed var(--text-tertiary); }
 .objectives-criterion.is-met .objectives-criterion-mark { border: 0; background: var(--positive); }
 .objectives-criterion-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 6px 0; }
-.objectives-criterion-text { width: 100%; min-width: 0; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 0; text-overflow: ellipsis; }
+.objectives-criterion-text { display: block; width: 100%; min-width: 0; resize: none; overflow: hidden; field-sizing: content; overflow-wrap: anywhere; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; padding: 0; }
 .objectives-criterion-text:focus { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
 /* 근거는 내용이다 — 잘리지 않고 줄바꿈한다. 제안 표시는 dim 한 줄. */
 .objectives-criterion-sub { font-size: var(--t-2xs); color: var(--text-tertiary); overflow-wrap: anywhere; }
 .objectives-criterion-sub.is-evidence { color: var(--text-secondary); }
-.objectives-criterion-state { flex: none; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
+.objectives-criterion-state { flex: none; margin-top: 6px; line-height: 18px; white-space: nowrap; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
 .objectives-criterion-state.is-met { color: var(--positive); }
-.objectives-criterion-remove { opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
+.objectives-criterion-remove { margin-top: 4px; opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
 .objectives-criterion:hover .objectives-criterion-remove, .objectives-criterion:focus-within .objectives-criterion-remove { opacity: 1; }

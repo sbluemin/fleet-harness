@@ -12,14 +12,14 @@ import { fetchOperations } from "../../../../core/client/src/integration/api.js"
 import { claimTheaterBootMinimization } from "../../../../core/client/src/integration/boot-minimization-session.js";
 import { availableCompanionPanels, isBlockingDialogOpen } from "../../../../core/client/src/integration/shortcuts.js";
 import { clearActiveOperation, isWarRoomEmptyReleaseTarget } from "../../../../core/client/src/integration/active-operation-surface.js";
-import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, operationOrderFromNodes, registerOperationFocusRedirect, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
+import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, operationOrderFromNodes, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, selectNestedBody, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
 import { createHostCapabilities } from "../../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { ClusterStrip } from "../cluster-strip.js";
 import { ClusterPicker } from "../cluster-picker.js";
 import { ClusterNodeRail } from "../cluster-node-rail.js";
-import { hiddenClusterMembers, selectClusterBody, useClusterBodySelection, useClusterIndex } from "../operation-clusters.js";
+import { useClusterIndex } from "../operation-clusters.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { clearIdleArrival, getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
@@ -27,7 +27,7 @@ import { pluginRuntimeState, resolveOperationActivity } from "../../../execution
 import type { ConsoleState, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { setAlwaysHiddenGeometryIds, snapOperationToArenaRect, calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, syncSnapHoldGeometry, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
+import { snapOperationToArenaRect, calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, syncSnapHoldGeometry, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -164,26 +164,11 @@ export function OperationsCanvas({
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const activePluginOperationId = state.activeOperationId;
   // ── 묶음 ────────────────────────────────────────────────────────────────
-  // 단계 Operation 은 어느 모드에서도 패널로 서지 않는다 — 뒤에서 돌고, 지휘관 패널이 본문 교체로 보여 준다.
+  // 구성원은 어느 모드에서도 패널로 서지 않는다 — 스토어의 기본 목록에 없고, 지휘관 패널이 본문 교체로 보여 준다.
+  // 구성원을 가리킨 포커스(목표의 「결정 대기」·팔레트·알림)도 스토어가 지휘관으로 돌리며 본문을 그 구성원으로 바꾼다.
+  // 묶음 색인은 띠·노드 줄·피커를 그리는 데만 쓴다.
   const clusterIndex = useClusterIndex();
-  const hiddenMembers = useMemo(() => hiddenClusterMembers(clusterIndex), [clusterIndex]);
-  // 스토어의 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)도 숨은 단계를 거르도록 같은 집합을 건넨다.
-  // 단계를 가리킨 포커스(목표의 「결정 대기」·팔레트·알림)는 지휘관으로 돌리고 지휘관 패널의 본문을 그 단계로 바꾼다.
-  useEffect(() => {
-    setAlwaysHiddenGeometryIds(hiddenMembers);
-    registerOperationFocusRedirect((operationId) => {
-      const member = clusterIndex.memberOf.get(operationId);
-      if (!member) return operationId;
-      const rootId = member.layout.cluster.root;
-      selectClusterBody(rootId, operationId);
-      return rootId;
-    });
-    return () => {
-      setAlwaysHiddenGeometryIds(new Set());
-      registerOperationFocusRedirect((operationId) => operationId);
-    };
-  }, [clusterIndex, hiddenMembers]);
-  // 지휘관의 공개 활동은 코어 스토어가 살아 있는 단계까지 반영한다 — 단계의 결정 대기도 지휘관을 대기로 올린다.
+  // 지휘관의 공개 활동은 코어 스토어가 살아 있는 구성원까지 반영한다 — 구성원의 결정 대기도 지휘관을 대기로 올린다.
   const operationRuntime = state.operationRuntime;
   const [focusFadeTransitionReady, setFocusFadeTransitionReady] = useState(activePluginOperationId !== null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
@@ -195,7 +180,7 @@ export function OperationsCanvas({
   const disabled = !state.activeTheaterId || state.addingTheater;
   const operationBodyPoolAvailable = useOperationBodyPoolAvailable();
   const triageActive = useTriageActive();
-  const clusterBodySelection = useClusterBodySelection();
+  const clusterBodySelection = state.nestedBodySelection;
   const [clusterPicker, setClusterPicker] = useState<{ readonly rootId: string; readonly anchor: DOMRect } | null>(null);
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
@@ -504,14 +489,7 @@ export function OperationsCanvas({
     onRefreshCatalog?.();
   };
 
-  // 숨은 단계 Operation 은 최소화 여부와 무관하게 화면 밖이다 — 미니맵·함대 지도·가시 기하가 최소화 집합 하나로
-  // 거르므로 그 집합에 함께 넣는다. 단계 자신의 최소화 플래그는 의미가 없다.
-  const withHiddenMembers = (flags: readonly string[]): Set<string> => {
-    const out = new Set(flags);
-    for (const id of hiddenMembers) out.add(id);
-    return out;
-  };
-  const minimizedSet = withHiddenMembers(minimized);
+  const minimizedSet = new Set(minimized);
   // 휴면으로 태어난 Operation은 좌표를 심는 effect보다 첫 렌더가 먼저 오므로, 좌표가 아직 없으면 최소화된 것으로 본다 —
   // 그 effect가 좌표와 최소화를 함께 확정할 때까지 한 프레임도 펼쳐 그리지 않는다.
   for (const operation of state.operations ?? []) {
@@ -520,19 +498,19 @@ export function OperationsCanvas({
   // War Room의 판은 전 Theater를 한 번에 얹으므로 최소화 판정도 Theater 경계를 넘는다. canvas 스냅샷은
   // 비활성 Theater에 쓸 때도 새 객체로 갈리므로(setTheaterOperationMinimized) 이 파생값이 함께 갱신된다.
   const triageMinimizedSet = triageActive
-    ? withHiddenMembers(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)))
+    ? new Set(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)))
     : minimizedSet;
   const visibleOperations = Object.fromEntries(
     Object.entries(canvas.operations).filter(([sessionId]) => !minimizedSet.has(sessionId)),
   );
-  const theaterOperations = (state.operations ?? []).filter((operation) => operation.theaterId === state.activeTheaterId && !hiddenMembers.has(operation.id));
+  const theaterOperations = (state.operations ?? []).filter((operation) => operation.theaterId === state.activeTheaterId);
   triageRuntimeRef.current = {
     operations: state.operations,
     operationRuntime: operationRuntime,
   };
   // 큐는 전역이다 — 활성 Theater와 무관하게 모든 대기 Operation을 처리 순서로 세운다.
-  // 묶음의 단계 Operation 은 큐에 들지 않는다: War Room 에서는 단계 활동이 반영된 지휘관이 묶음을 대표한다.
-  const triageOperations = clusterIndex.memberOf.size === 0 ? state.operations : state.operations.filter((operation) => !clusterIndex.memberOf.has(operation.id));
+  // 구성원은 기본 목록에 없어 큐에 들지 않는다: War Room 에서는 구성원 활동이 반영된 지휘관이 묶음을 대표한다.
+  const triageOperations = state.operations;
   const triageQueue = resolveTriageQueue(triageOperations, operationRuntime);
   const triageQueueIdSet = new Set(triageQueue.map((entry) => entry.operation.id));
   const triageIdleCount = triageOperations.filter((operation) =>
@@ -604,7 +582,7 @@ export function OperationsCanvas({
   // 곧 그 판이다. 내려간 항목은 사이드바 최소화 선반에서 되올린다.
   const triageDeckOperations = triageActive
     ? state.operations.filter((operation) => resolveOperationActivity(operation, operationRuntime) !== "ended"
-      && !triageMinimizedSet.has(operation.id) && !hiddenMembers.has(operation.id))
+      && !triageMinimizedSet.has(operation.id))
     : theaterOperations;
   const triageDeckOperationIdSet = new Set(triageDeckOperations.map((operation) => operation.id));
   const deckWasVisible = triageActive
@@ -954,8 +932,7 @@ export function OperationsCanvas({
   // 무엇이든 지도가 끼어들 자리가 없다. 렌더 중 ref 갱신은 같은 줌에 같은 답을 내는 순수 판정이라
   // 재렌더에 안전하다. 지도는 전 Theater를 얹으므로 최소화 판정도 Theater 경계를 넘는다.
   const cruiseSurface = !formationView && !triageActive && panelMaximized === null && panelCompanion === null && !disabled;
-  // 지도 점에도 숨은 단계는 서지 않는다 — 지휘관 점 하나가 묶음을 대표한다.
-  const fleetMapMinimizedSet = withHiddenMembers(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
+  const fleetMapMinimizedSet = new Set(getTheaterMinimizedIds(state.theaters.map((theater) => theater.id)));
   const fleetMapOperations = state.operations.filter((operation) => !fleetMapMinimizedSet.has(operation.id));
   fleetMapActiveRef.current = cruiseSurface && fleetMapOperations.length > 0
     && resolveFleetMapActive(fleetMapActiveRef.current, canvas.viewport.zoom);
@@ -1558,6 +1535,14 @@ export function OperationsCanvas({
           // Tactical/War Room/최대화는 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
           const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot && !deckSlot
             && screenViewport.y + frameGeometry.y * operationZoom < TITLEBAR_OUTSET_PX * operationZoom;
+          // 지휘관 패널은 고른 구성원의 본문을 보인다 — 프레임은 지휘관, 본문 마운트만 풀에서 옮겨 온다.
+          // 고를 수 있는 것은 이 패널이 대표하는 구성원뿐이다(코어의 부모 관계). 묶음 선언이 아직 오지 않은 Theater 에서도 같다.
+          // War Room 덱 칸에는 노드 줄이 없어 누구 본문인지 말할 수 없으므로 지휘관 자신의 본문을 둔다.
+          const chosenBody = clusterBodySelection[operation.id];
+          const bodyNode = chosenBody && !deckSlot
+            ? state.nestedOperations.find((candidate) => candidate.id === chosenBody && candidate.parentOperationId === operation.id) ?? null
+            : null;
+          const bodyMember = bodyNode ? clusterRoot?.formation.byOperationId.get(bodyNode.id)?.member ?? null : null;
           return renderPluginOperation(operation, {
             capabilities,
             active: activePluginOperationId === operation.id,
@@ -1573,15 +1558,13 @@ export function OperationsCanvas({
             // 런타임 축을 심지 않은 복원 Operation이 doctrine상 dormant인데도 캡션에서만 idle로 서서,
             // 같은 순간 사이드바는 휴면, 패널은 초록이라고 말한다.
             status: resolveOperationActivity(operation, operationRuntime),
-            // 지휘관 패널은 고른 단계의 본문을 보인다 — 프레임은 지휘관, 본문 마운트만 풀에서 옮겨 온다.
-            // War Room 덱 칸에는 노드 줄이 없어 누구 본문인지 말할 수 없으므로 지휘관 자신의 본문을 둔다.
-            bodyOperation: (() => {
-              if (!clusterRoot || deckSlot) return null;
-              const chosen = clusterBodySelection[operation.id];
-              if (!chosen || !clusterRoot.formation.byOperationId.has(chosen)) return null;
-              const node = state.operations?.find((candidate) => candidate.id === chosen) ?? null;
-              return node ? { operation: node, runtimeState: pluginRuntimeState(operationRuntime, state.operationRuntimeHydration, node.id) } : null;
-            })(),
+            bodyOperation: bodyNode ? { operation: bodyNode, runtimeState: pluginRuntimeState(operationRuntime, state.operationRuntimeHydration, bodyNode.id) } : null,
+            // 본문의 주인이 캡션 선반의 주인이다 — 제목 뒤 「› 이름」이 그 사실을 말한다. 이름·톤은 묶음이 준 것을 먼저 쓴다.
+            subject: bodyNode ? {
+              name: bodyMember?.name ?? nestedSubjectName(operation, bodyNode),
+              title: bodyNode.title,
+              tone: bodyMember?.tone ?? canvas.operationAccent[bodyNode.id] ?? operationAccentFromNode(bodyNode),
+            } : null,
             cluster: clusterRoot
               ? {
                 strip: <ClusterStrip layout={clusterRoot} rootActivity={resolveOperationActivity(operation, operationRuntime)} onOpen={(_, event) => setClusterPicker({ rootId: operation.id, anchor: (event?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0) })} className="canvas-operation-cluster-strip" />,
@@ -1591,7 +1574,7 @@ export function OperationsCanvas({
                     current={clusterRoot.formation.byOperationId.has(clusterBodySelection[operation.id] ?? "") ? clusterBodySelection[operation.id]! : operation.id}
                     rootActivity={resolveOperationActivity(operation, operationRuntime)}
                     onPick={(operationId) => {
-                      selectClusterBody(operation.id, operationId);
+                      selectNestedBody(operation.id, operationId);
                       setActiveOperation(operation.id);
                       requestOperationKeyboardFocus(operation.id);
                     }}
@@ -1837,7 +1820,7 @@ export function OperationsCanvas({
             rootActivity={rootNode ? resolveOperationActivity(rootNode, operationRuntime) : null}
             onPick={(operationId) => {
               // 단계는 어느 모드에서도 패널로 서지 않는다 — 지휘관 패널의 본문을 그 단계로 바꾼다(노드 줄과 같은 동작).
-              selectClusterBody(clusterPicker.rootId, operationId);
+              selectNestedBody(clusterPicker.rootId, operationId);
               setActiveOperation(clusterPicker.rootId);
               requestOperationKeyboardFocus(clusterPicker.rootId);
             }}
@@ -2126,6 +2109,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly cluster: { readonly strip: ReactNode; readonly nodes: ReactNode } | null;
   /** 이 프레임이 보일 본문의 주인 — 없으면 자기 자신. 묶음의 조율자 패널이 숨은 단계를 보일 때 쓴다. */
   readonly bodyOperation: { readonly operation: OperationNode; readonly runtimeState: OperationRuntimeState | null } | null;
+  readonly subject: { readonly name: string; readonly title: string; readonly tone: string | null } | null;
   readonly runtimeState: OperationRuntimeState | null;
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
@@ -2218,6 +2202,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         groupColor={options.groupColor}
         theaterLabel={options.theaterLabel}
         cluster={options.cluster}
+        subject={bodyOwner === operation ? null : options.subject}
         onActivate={options.onActivate}
         onClose={options.onClose}
         onMinimize={options.onMinimize}
@@ -2236,21 +2221,23 @@ function renderPluginOperation(operation: OperationNode, options: {
         // 정한다: 에이전트 사용 배지와 「사용 중」인 브라우저 버튼만 남고 나머지 액션은 숨는다.
         captionActions={(
           // 다른 플러그인의 표식(예: 연결된 목표)이 종류 소유자의 액션 앞에 선다. 그 다음이 소유자의 선반이다.
-          // 본문과 같은 context로 그린다 — 캡션이 본문과 다른 사실을 말하는 프레임이 나오지 않게.
+          // 본문과 같은 context로 그린다 — 캡션이 본문과 다른 사실을 말하는 프레임이 나오지 않게. 그래서 지휘관 패널이
+          // 구성원의 본문을 보이는 동안 선반(브라우저·분석가·보기 전환·Use 표식)도 그 구성원의 것이다. key 에 주인을
+          // 섞어 주인이 바뀌면 선반의 지역 상태가 새로 선다. 창 컨트롤·메뉴·그룹 칩·띠는 프레임(지휘관)의 것이다.
           // 실패해도 32px 밴드에 오류 상자를 세울 자리는 없으므로, 선반만 조용히 비운다.
           // (fallback을 생략하거나 null로 두면 `??`가 기본 오류 상자를 되살린다 — 빈 조각이라야 빈다.)
-          <>
-          <OperationCaptionContributions operation={operation} language={options.language} surface="caption" />
-          {descriptor.captionActions === undefined ? null : <PluginErrorBoundary fallback={<></>}>
+          <Fragment key={bodyOwner.id}>
+          <OperationCaptionContributions operation={bodyOwner} language={options.language} surface="caption" />
+          {bodyDescriptor.captionActions === undefined ? null : <PluginErrorBoundary fallback={<></>}>
             <PluginOperationRenderer
               active={options.active}
               capabilities={capabilities}
               geometry={geometry}
-              operation={operation}
+              operation={bodyOwner}
               theme={options.theme}
               language={options.language}
               viewportZoom={options.viewportZoom}
-              runtimeState={options.runtimeState}
+              runtimeState={bodyRuntimeState}
               onActivate={options.onActivate}
               onClose={options.onClose}
               onGeometryChange={options.onGeometryChange}
@@ -2259,10 +2246,10 @@ function renderPluginOperation(operation: OperationNode, options: {
               hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
               onSetCompanionPanelVisible={onSetCompanionPanelVisible}
               bodyLive={!options.minimized && !options.focusLayerHidden}
-              render={descriptor.captionActions}
+              render={bodyDescriptor.captionActions}
             />
           </PluginErrorBoundary>}
-          </>
+          </Fragment>
         )}
       >
         {options.operationBodyPoolAvailable ? (
@@ -2280,7 +2267,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               language: options.language,
               zoom: options.viewportZoom,
               onActivate: options.onActivate,
-              onClose: bodyOwner === operation ? options.onClose : () => selectClusterBody(operation.id, null),
+              onClose: bodyOwner === operation ? options.onClose : () => selectNestedBody(operation.id, null),
               onGeometryChange: options.onGeometryChange,
               onRequestCompanions,
               companionsOpen: options.companion,
@@ -2301,7 +2288,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               viewportZoom={options.viewportZoom}
               runtimeState={bodyRuntimeState}
               onActivate={options.onActivate}
-              onClose={bodyOwner === operation ? options.onClose : () => selectClusterBody(operation.id, null)}
+              onClose={bodyOwner === operation ? options.onClose : () => selectNestedBody(operation.id, null)}
               onGeometryChange={options.onGeometryChange}
               onRequestCompanions={onRequestCompanions}
               companionsOpen={options.companion}
@@ -2313,9 +2300,15 @@ function renderPluginOperation(operation: OperationNode, options: {
           </PluginErrorBoundary>
         )}
       </OperationFrame>
-      {options.companions.map((companion, index) => (
+      {options.companions.map((companion, index) => {
+        // 컴패니언(분석가·브라우저)도 본문의 주인 것이다 — 구성원의 본문을 보이는 동안 브라우저는 그 구성원의 탭을 연다.
+        // 자리(레이어·기하·보이기)는 프레임의 것이라 넘겨도 같은 칸에 선다. key 에 주인을 섞어 탭 선택·주석 같은 지역 상태가
+        // 주인마다 새로 서고, 떠나는 주인의 브라우저 뷰는 언마운트가 감춘다. 주인 종류가 그 컴패니언을 모르면 프레임 것을 둔다.
+        const companionOwner = bodyOwner === operation || bodyDescriptor.companions?.some((candidate) => candidate.id === companion.id) ? bodyOwner : operation;
+        const companionRuntimeState = companionOwner === operation ? options.runtimeState : bodyRuntimeState;
+        return (
         <CompanionFrame
-          key={companion.id}
+          key={`${companion.id}:${companionOwner.id}`}
           descriptor={companion}
           geometry={options.companionGeometries[index]!}
           language={options.language}
@@ -2327,11 +2320,11 @@ function renderPluginOperation(operation: OperationNode, options: {
                 active={options.active}
                 capabilities={capabilities}
                 geometry={geometry}
-                operation={operation}
+                operation={companionOwner}
                 theme={options.theme}
                 language={options.language}
                 viewportZoom={options.viewportZoom}
-                runtimeState={options.runtimeState}
+                runtimeState={companionRuntimeState}
                 onActivate={options.onActivate}
                 onClose={options.onClose}
                 onGeometryChange={options.onGeometryChange}
@@ -2349,11 +2342,11 @@ function renderPluginOperation(operation: OperationNode, options: {
               active={options.active}
               capabilities={capabilities}
               geometry={geometry}
-              operation={operation}
+              operation={companionOwner}
               theme={options.theme}
               language={options.language}
               viewportZoom={options.viewportZoom}
-              runtimeState={options.runtimeState}
+              runtimeState={companionRuntimeState}
               onActivate={options.onActivate}
               onClose={options.onClose}
               onGeometryChange={options.onGeometryChange}
@@ -2365,12 +2358,19 @@ function renderPluginOperation(operation: OperationNode, options: {
             />
           </PluginErrorBoundary>
         </CompanionFrame>
-      ))}
+        );
+      })}
     </Fragment>
   );
   // 덱 칸이 있으면 그 자리로 들여보낸다 — React 트리는 그대로라 상태·이벤트·pool 배선이 모두
   // 유지되고, 바뀌는 것은 DOM 상의 부모뿐이다. 자리가 사라지면 프레임은 캔버스로 되돌아온다.
   return options.deckSlot ? createPortal(frame, options.deckSlot, operation.id) : frame;
+}
+
+/** 묶음이 이름을 주지 않았을 때의 구성원 이름 — 「목표 › 역할」 제목이면 역할, 아니면 제목 그대로. */
+function nestedSubjectName(parent: OperationNode, member: OperationNode): string {
+  const prefix = `${parent.title} › `;
+  return member.title.startsWith(prefix) && member.title.length > prefix.length ? member.title.slice(prefix.length) : member.title;
 }
 
 function PluginOperationRenderer({
