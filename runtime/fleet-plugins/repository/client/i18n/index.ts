@@ -161,7 +161,6 @@ const repositoryEn = {
 
   // checkout containment labeling
   "repository.history.offHead": "Outside the highlighted history",
-  "repository.history.countLegend": "All refs · select a branch to locate its commit",
 
   // sync outcome surfacing (manual sync only; auto sync stays silent)
   "repository.sync.failedAuth": "Fetch failed — authentication. Check your credentials for the remote.",
@@ -173,6 +172,7 @@ const repositoryEn = {
   "repository.sync.upToDate": "No new commits on the remote",
   "repository.sync.dismiss": "Dismiss",
   "repository.sync.lastFailed": "Last fetch failed",
+  "repository.sync.refreshTitle": "Reload repository state and fetch the remote",
 
   // hunk
   "repository.hunk.diffTruncated": "Diff truncated",
@@ -266,6 +266,7 @@ const repositoryEn = {
   "repository.stash.cardTitle": "Stashed changes",
   "repository.stash.cardFiles": "Stashed files",
   "repository.stash.showFailed": "Could not read this stash's files.",
+  "repository.stash.untrackedPreview": "New file in this stash — content preview is unavailable.",
   "repository.stash.savePrompt": "Stash message",
   "repository.stash.savePlaceholder": "Leave empty for the automatic message",
   "repository.stash.saveConfirm": "Stash",
@@ -464,7 +465,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.compare.announceResult": "{base}와(과) {head}를 비교합니다.",
 
   "repository.history.offHead": "강조한 계보에 포함되지 않음",
-  "repository.history.countLegend": "전체 기록 · 브랜치를 선택하면 해당 커밋으로 이동",
 
   "repository.sync.failedAuth": "가져오기 실패 — 인증. 원격 자격 증명을 확인하세요.",
   "repository.sync.failedNetwork": "가져오기 실패 — 네트워크. 원격에 연결할 수 없습니다.",
@@ -475,6 +475,7 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.sync.upToDate": "원격에 새 커밋 없음",
   "repository.sync.dismiss": "닫기",
   "repository.sync.lastFailed": "마지막 가져오기 실패",
+  "repository.sync.refreshTitle": "저장소 상태를 새로 읽고 원격을 가져옵니다(fetch)",
 
   "repository.hunk.diffTruncated": "Diff가 잘림",
   "repository.hunk.close": "이 diff 닫기",
@@ -560,6 +561,7 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.stash.cardTitle": "치워 둔 변경",
   "repository.stash.cardFiles": "치워 둔 파일",
   "repository.stash.showFailed": "이 스태시의 파일을 읽지 못했습니다.",
+  "repository.stash.untrackedPreview": "스태시에 포함된 새 파일 — 내용 미리보기는 제공되지 않습니다.",
   "repository.stash.savePrompt": "스태시 메시지",
   "repository.stash.savePlaceholder": "비워 두면 자동 문구로 저장됩니다",
   "repository.stash.saveConfirm": "스태시",

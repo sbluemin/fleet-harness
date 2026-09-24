@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { GlyphSlot, Icon } from "./icons.js";
+import { Icon } from "./icons.js";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { RepositoryContext } from "./repository-context.js";
 
 import type { CommitResult, DiffFileEntry, LogCommitEntry, LogOrder, LogResult, WorktreeCheckout } from "../server/types.js";
-import { FileRow, FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
+import { FileRow, FilesViewToggle, readFilesViewMode, revealFocus, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
 import { CompareInspector } from "./compare-inspector.js";
 import { CommitBlobView, CommitTreeView, type CommitTreeSelection } from "./commit-tree.js";
 import { DiffTreeView } from "./repository-tree.js";
@@ -20,7 +20,7 @@ import { formatCommitTime, refBadges, shortRefName, splitCommitSubject, type Ref
 import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT, buildHistoryStackTemplate, buildInspectorChangesGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
 import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
 import { StashInspector } from "./stash-inspector.js";
-import { WORKSPACE_DOCK_MIN_HEIGHT, buildWorkspaceDockCollapsedTemplate, buildWorkspaceDockTemplate, detentForWorkspaceDockHeight, dragWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight, settleWorkspaceDockHeight, workspaceDockDetents, type WorkspaceDockDetent, type WorkspaceDockDragResult } from "./workspace-layout.js";
+import { WORKSPACE_DOCK_DEFAULT_RATIO, WORKSPACE_DOCK_MIN_HEIGHT, buildWorkspaceDockCollapsedTemplate, buildWorkspaceDockTemplate, detentForWorkspaceDockHeight, dragWorkspaceDockHeight, hasWorkspaceDockHeightPreference, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight, settleWorkspaceDockHeight, workspaceDockDetents, type WorkspaceDockDetent, type WorkspaceDockDragResult } from "./workspace-layout.js";
 import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
 
 type T = Translate<RepositoryMessageKey>;
@@ -79,7 +79,7 @@ const PREFS_HEADER_HEIGHT = "fleet-console.history.headerHeight";
 const PREFS_FILE_LIST_WIDTH = "fleet-console.history.fileListWidth";
 const LOG_PANE_DEFAULT_HEIGHT = 240;
 const HEADER_DEFAULT_HEIGHT = 214;
-const FILE_LIST_DEFAULT_WIDTH = 180;
+const FILE_LIST_DEFAULT_WIDTH = 320;
 const HISTORY_OVERSCAN_ROWS = 8;
 const HISTORY_PAGE_SIZE = 200;
 
@@ -227,7 +227,7 @@ function ResponsiveBadgeGroup({ identity, children }: { readonly identity: strin
 }
 
 
-export function CommitRow({ entry, checkouts, selected, picked = false, previewed = false, pin = null, graphNode, onRowActivate, onCompareAction, onSelect, rowRef, locale }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly picked?: boolean; readonly previewed?: boolean; readonly pin?: CompareAnchor | null; readonly graphNode: import("./graph.js").GraphNode; readonly onRowActivate?: (entry: LogCommitEntry, shiftKey: boolean) => void; readonly onCompareAction?: (entry: LogCommitEntry) => void; readonly onSelect?: (entry: LogCommitEntry) => void; readonly rowRef?: (node: HTMLButtonElement | null) => void; readonly locale?: ConsoleLocale }) {
+export function CommitRow({ entry, checkouts, selected, picked = false, previewed = false, pin = null, graphNode, onRowActivate, onCompareAction, onSelect, onNavigate, rowRef, tabStop = false, locale }: { readonly entry: LogCommitEntry; readonly checkouts: readonly WorktreeCheckout[]; readonly selected: boolean; readonly picked?: boolean; readonly previewed?: boolean; readonly pin?: CompareAnchor | null; readonly graphNode: import("./graph.js").GraphNode; readonly onRowActivate?: (entry: LogCommitEntry, shiftKey: boolean) => void; readonly onCompareAction?: (entry: LogCommitEntry) => void; readonly onSelect?: (entry: LogCommitEntry) => void; readonly onNavigate?: (entry: LogCommitEntry, direction: -1 | 1) => void; readonly rowRef?: (node: HTMLButtonElement | null) => void; readonly tabStop?: boolean; readonly locale?: ConsoleLocale }) {
   const t = getT(locale);
   const badges = refBadges(entry); const detached = findDetachedCheckout(entry, checkouts);
   const activateRow = onRowActivate ?? ((selectedEntry: LogCommitEntry) => onSelect?.(selectedEntry));
@@ -243,7 +243,7 @@ export function CommitRow({ entry, checkouts, selected, picked = false, previewe
   const subject = splitCommitSubject(entry.subject);
   // Fork 문법: refs 뱃지는 제목 왼쪽(그래프 바로 뒤)에서 커밋의 정체를 먼저 알린다.
   return <div className={`history-commit-row${selected ? " is-selected" : ""}${picked ? " is-picked" : ""}${previewed ? " is-previewed" : ""}`} >
-    <button ref={rowRef} type="button" className="history-commit-row-main" aria-pressed={selected || picked} onPointerDown={() => { controlGestureHandled.current = false; }} onClick={(event) => { if (event.ctrlKey) activateControlClick(); else activateRow(entry, event.shiftKey || event.metaKey); }} onContextMenu={(event) => { if (!event.ctrlKey) return; event.preventDefault(); activateControlClick(); }}>
+    <button ref={rowRef} type="button" tabIndex={tabStop ? 0 : -1} className="history-commit-row-main" aria-pressed={selected || picked} onPointerDown={() => { controlGestureHandled.current = false; }} onClick={(event) => { if (event.ctrlKey) activateControlClick(); else activateRow(entry, event.shiftKey || event.metaKey); }} onContextMenu={(event) => { if (!event.ctrlKey) return; event.preventDefault(); activateControlClick(); }} onKeyDown={(event) => { if (event.key === "c" && onCompareAction && !event.metaKey && !event.ctrlKey && !event.altKey) { event.preventDefault(); onCompareAction(entry); return; } if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return; event.preventDefault(); event.stopPropagation(); onNavigate?.(entry, event.key === "ArrowUp" ? -1 : 1); }}>
       <ResponsiveBadgeGroup identity={`${entry.fullHash}:${badges.map((badge) => `${badge.kind}:${badge.label}:${badge.hasRemote ? "remote" : "local"}`).join("|")}:${detached ? "detached" : "attached"}`}>
         {badges.map((badge) => <RefBadgeChip
           key={`${badge.kind}:${badge.label}`}
@@ -262,7 +262,7 @@ export function CommitRow({ entry, checkouts, selected, picked = false, previewe
       <span className="history-commit-time">{formatCommitTime(entry.authorAt, new Date(), locale)}</span>
       <span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} /></span>
     </button>
-    {onCompareAction && <button type="button" className="history-row-compare" aria-label={compareLabel} onClick={() => onCompareAction(entry)}><Icon name="compare" size={12} /></button>}
+    {onCompareAction && <button type="button" tabIndex={-1} className="history-row-compare" aria-label={compareLabel} onClick={() => onCompareAction(entry)}><Icon name="compare" size={12} /></button>}
   </div>;
 }
 
@@ -364,7 +364,7 @@ function CommitInspector({ ctx, repoRel, target, workspace, tab, onTab, lane, do
     setTreeSelection(null); /* 트리 선택은 커밋에 묶인다 — 다른 커밋으로 옮기면 옛 경로가 새 트리에서 file_not_found를 부른다 */
     ctx.api.fetch("repository", "commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ref: target.fullHash }) })
       .then(async (response) => { if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed"); return response.json() as Promise<CommitResult>; })
-      .then((result) => { if (!cancelled) { setState({ kind: "ok", result, fullHash: target.fullHash }); setSelectedPath(result.files[0]?.path ?? null); } })
+      .then((result) => { if (!cancelled) { setState({ kind: "ok", result, fullHash: target.fullHash }); setSelectedPath((current) => result.files.some((file) => file.path === current) ? current : result.files[0]?.path ?? null); } })
       .catch((error: unknown) => { if (!cancelled) setState({ kind: "error", message: error instanceof Error ? error.message : "unknown" }); })
       .finally(() => { if (!cancelled) setPending(false); });
     return () => { cancelled = true; };
@@ -451,7 +451,16 @@ function CommitHeader({ meta, entry, fullHash, copied, onCopy, onParent, locale,
   const longBody = overflowing;
   return <div className="history-inspector-head"><div className="history-inspector-subject" title={meta.subject}>{meta.subject}</div>{meta.body && <pre ref={bodyRef} className={`history-inspector-message${expanded ? " is-expanded" : " is-clamped"}`}>{meta.body}</pre>}{longBody && <button type="button" className="history-inspector-more" onClick={() => setExpanded((value) => !value)}>{t(expanded ? "repository.dock.showLess" : "repository.dock.showMore")}</button>}<div className="history-author"><span className="history-avatar">{initials(meta.authorName)}</span><span><b>{meta.authorName}</b><small>{meta.authorEmail}</small></span><time title={new Date(meta.authorAt * 1000).toLocaleString(localeTag(locale))}>{formatCommitTime(meta.authorAt, new Date(), locale)}</time></div><div className="history-inspector-ids"><button type="button" className={`history-sha-copy${copied ? " is-copied" : ""}`} onClick={onCopy}>{fullHash}<span>{copied ? t("repository.history.copied") : t("repository.history.copy")}</span></button>{meta.parents.map((parent) => <button type="button" className="history-parent" key={parent.full} onClick={() => onParent(parent.full)}>{t("repository.history.parent", { short: parent.short })}</button>)}</div>{entry && <div className="history-ref-chips">{refBadges(entry).map((badge) => <RefBadgeChip key={`${badge.kind}:${badge.label}`} badge={badge} remoteDescription={badge.hasRemote ? t("repository.history.remoteTracked") : undefined} />)}</div>}</div>;
 }
-function CommitFiles({ files, truncated, selectedPath, additions, deletions, viewMode, onViewMode, onSelect, t }: { readonly files: readonly DiffFileEntry[]; readonly truncated?: boolean; readonly selectedPath: string | null; readonly additions: number; readonly deletions: number; readonly viewMode: FilesViewMode; readonly onViewMode: (mode: FilesViewMode) => void; readonly onSelect: (file: DiffFileEntry) => void; readonly t: T }) { return <section className="history-commit-files"><div className="history-files-title"><span className="history-files-label">{t("repository.history.changedFiles")}</span><span className="history-files-stats">{files.length} <i>+{additions}</i> <em>−{deletions}</em></span><FilesViewToggle mode={viewMode} onMode={onViewMode} t={t} /></div><div className="history-files-scroll">{viewMode === "tree" ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} /> : files.map((file) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedPath} onSelect={onSelect} t={t} />)}</div>{truncated && <div className="history-truncated">{t("repository.commit.capped")}</div>}</section>; }
+function CommitFiles({ files, truncated, selectedPath, additions, deletions, viewMode, onViewMode, onSelect, t }: { readonly files: readonly DiffFileEntry[]; readonly truncated?: boolean; readonly selectedPath: string | null; readonly additions: number; readonly deletions: number; readonly viewMode: FilesViewMode; readonly onViewMode: (mode: FilesViewMode) => void; readonly onSelect: (file: DiffFileEntry) => void; readonly t: T }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const navigate = (entry: DiffFileEntry, direction: -1 | 1) => {
+    const next = files[files.indexOf(entry) + direction];
+    if (!next) return;
+    onSelect(next);
+    requestAnimationFrame(() => revealFocus(scrollRef.current?.querySelector<HTMLButtonElement>(`.repository-file-row[title="${CSS.escape(next.path)}"]`)));
+  };
+  return <section className="history-commit-files"><div className="history-files-title"><span className="history-files-label">{t("repository.history.changedFiles")}</span><span className="history-files-stats">{files.length} <i>+{additions}</i> <em>−{deletions}</em></span><FilesViewToggle mode={viewMode} onMode={onViewMode} t={t} /></div><div ref={scrollRef} className="history-files-scroll">{viewMode === "tree" ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} /> : files.map((file, index) => <FileRow key={file.path} entry={file} isSelected={file.path === selectedPath} tabStop={file.path === (selectedPath ?? files[0]?.path) || (!files.some((item) => item.path === selectedPath) && index === 0)} onNavigate={navigate} onSelect={onSelect} t={t} />)}</div>{truncated && <div className="history-truncated">{t("repository.commit.capped")}</div>}</section>;
+}
 
 interface HistoryPanelProps {
   readonly ctx: RepositoryContext;
@@ -504,8 +513,9 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [commitViewport, setCommitViewport] = useState({ scrollTop: initialRestore?.scrollTop ?? 0, height: 0 });
   const [logHeight, setLogHeight] = useState(readLogPaneHeight);
-  const [tab, setTab] = useState<InspectorTab>("details");
-  const [dockHeight, setDockHeight] = useState(() => readWorkspaceDockHeight("details"));
+  const [tab, setTab] = useState<InspectorTab>("changes");
+  const [dockHeight, setDockHeight] = useState(() => readWorkspaceDockHeight("changes"));
+  const dockHeightCustomizedRef = useRef(hasWorkspaceDockHeightPreference("changes"));
   const [dockDetent, setDockDetent] = useState<WorkspaceDockDetent>("free");
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [dragResult, setDragResult] = useState<WorkspaceDockDragResult | null>(null);
@@ -612,6 +622,11 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     }
     setPinFrom({ fullHash: entry.fullHash, shortHash: entry.shortHash });
   }, [comparePair, pin, runPair, setPinFrom, state, target, unpin]);
+  const navigateRow = useCallback((entry: LogCommitEntry, direction: -1 | 1) => {
+    const index = visible.findIndex((item) => item.fullHash === entry.fullHash);
+    const next = visible[index + direction];
+    if (next) onRowActivate(next, false);
+  }, [onRowActivate, visible]);
   const onCompareAction = useCallback((entry: LogCommitEntry) => {
     if (!pin) setPinFrom({ fullHash: entry.fullHash, shortHash: entry.shortHash });
     else if (pin.fullHash === entry.fullHash) unpin();
@@ -714,7 +729,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     }
     const row = rowRefs.current.get(target.fullHash);
     if (row) {
-      row.focus({ preventScroll: true });
+      // 사이드바·필터에서 건너온 선택은 원래 입력 포커스를 빼앗지 않는다.
+      if (document.activeElement === document.body || document.activeElement?.closest(".history-list")) row.focus({ preventScroll: true });
       row.scrollIntoView({ block: "nearest" });
       pendingRevealRef.current = null;
       return;
@@ -899,8 +915,9 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     const normalize = () => {
       const height = root.getBoundingClientRect().height;
       const detents = workspaceDockDetents(height);
-      // 정착점에 앉은 독은 창 크기를 따라 정착점 값으로 다시 잰다 — 절반은 계속 절반이다.
-      const wanted = dockDetent === "half" ? detents.half : dockDetent === "full" ? detents.full : dockHeightRef.current;
+      // 저장된 높이가 없으면 첫 독은 작업면의 47%를 차지하고 창 크기를 따른다.
+      const wanted = !dockHeightCustomizedRef.current ? Math.round(height * WORKSPACE_DOCK_DEFAULT_RATIO)
+        : dockDetent === "half" ? detents.half : dockDetent === "full" ? detents.full : dockHeightRef.current;
       const next = normalizeWorkspaceDockHeight(wanted, height);
       if (next !== dockHeightRef.current) { dockHeightRef.current = next; setDockHeight(next); }
       // 저장값에서 되살아난 높이가 정착점과 같으면 그 정착점으로 읽는다 — 재마운트 뒤 토글·창 추종이 어긋나지 않게.
@@ -917,14 +934,18 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     if (!root || !workspace) return;
     const detents = workspaceDockDetents(root.getBoundingClientRect().height);
     const remembered = readWorkspaceDockHeight(nextTab);
-    const next = normalizeWorkspaceDockHeight(nextTab === "details" ? Math.min(remembered, detents.half) : Math.max(remembered, detents.half), root.getBoundingClientRect().height);
+    const firstHeight = Math.round(root.getBoundingClientRect().height * WORKSPACE_DOCK_DEFAULT_RATIO);
+    const next = normalizeWorkspaceDockHeight(hasWorkspaceDockHeightPreference(nextTab)
+      ? remembered : firstHeight, root.getBoundingClientRect().height);
     dockHeightRef.current = next;
+    // 사용자 조정 여부는 탭마다 다르다 — 옮겨 간 탭의 저장값 유무로 다시 정해야 창 크기 추종이 저장된 높이를 47%로 덮지 않는다.
+    dockHeightCustomizedRef.current = hasWorkspaceDockHeightPreference(nextTab);
     setDockHeight(next);
     setDockDetent(next === detents.full ? "full" : next === detents.half ? "half" : "free");
   }, [workspace]);
   const chooseTab = useCallback((nextTab: InspectorTab) => {
     if (nextTab === tabRef.current) return;
-    saveWorkspaceDockHeight(dockHeightRef.current, tabRef.current);
+    if (dockHeightCustomizedRef.current) saveWorkspaceDockHeight(dockHeightRef.current, tabRef.current);
     setTab(nextTab);
     applyDockForTab(nextTab);
   }, [applyDockForTab]);
@@ -932,6 +953,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     const root = rootRef.current;
     if (!root) return;
     const next = workspaceDockDetents(root.getBoundingClientRect().height)[detent];
+    dockHeightCustomizedRef.current = true;
     dockHeightRef.current = next;
     setDockHeight(next);
     setDockDetent(detent);
@@ -944,6 +966,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     const height = root.getBoundingClientRect().height;
     const detents = workspaceDockDetents(height);
     const next = normalizeWorkspaceDockHeight(dockHeightRef.current + delta, height);
+    dockHeightCustomizedRef.current = true;
     dockHeightRef.current = next;
     setDockHeight(next);
     setDockCollapsed(false);
@@ -955,6 +978,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     const root = rootRef.current;
     if (!root) return;
     const start = workspace ? dockHeightRef.current : logHeightRef.current;
+    if (workspace) dockHeightCustomizedRef.current = true;
     const startY = event.clientY;
     const height = root.getBoundingClientRect().height;
     dragDisposeRef.current?.();
@@ -1092,6 +1116,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
         : dragResult.limit === "max" ? t("repository.dock.limitMax", { px: Math.round(rootRef.current ? workspaceDockDetents(rootRef.current.getBoundingClientRect().height).full : dockHeight) })
           : <>{Math.round(dragResult.height)}px · {rootRef.current ? Math.round(dragResult.height / rootRef.current.getBoundingClientRect().height * 100) : 0}%{dragResult.detent !== "free" && <em>{t(dragResult.detent === "full" ? "repository.dock.detentFull" : "repository.dock.detentHalf")}</em>}</>
     : null;
+  // 가상화된 커밋 목록은 현재 선택이 화면 밖이어도 렌더된 행 하나만 Tab 정거장으로 둔다.
+  const tabStopHash = windowRows.find(({ entry }) => entry.fullHash === target?.fullHash)?.entry.fullHash ?? windowRows[0]?.entry.fullHash;
   const handleRootKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       // 겹을 하나씩 벗긴다: 비교 무장 → 검사기/비교 → 핀.
@@ -1112,10 +1138,10 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
   return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}${stripCollapsed ? " is-dock-collapsed" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined} onKeyDown={handleRootKeyDown} onTransitionEnd={(event) => { if (event.propertyName !== "grid-template-rows" || !target) return; rowRefs.current.get(target.fullHash)?.scrollIntoView({ block: "nearest" }); }}>
     <div className="history-list-pane" hidden={workspace && workspaceMainVisible}>
       {(() => {
-        const toolbar = <div className="history-toolbar"><div className="history-filter"><Icon name="search" size={13} className="repository-discovery-glyph" /><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="repository-quiet-button history-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => setFilterText("")}><Icon name="close" size={12} /></button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}><Icon name="compare" size={12} /><span className="repository-ref-chip-label">{t("repository.compare.pinnedChip", { short: pin.shortHash })}</span><Icon name="close" size={11} /></button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}><Icon name="branch" size={12} /><span className="repository-ref-chip-label">{shortRefName(refFilter)}</span><Icon name="close" size={11} /></button>}{/* 정렬·새로고침은 조회 상태와 무관하게 자리를 지킨다 — 조회 중 사라지면 작업 줄이 매 갱신마다 줄었다 늘어난다. */}{state.kind === "ok" && <span className="history-count" title={t("repository.history.countLegend")}>{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span>}<button type="button" className="repository-quiet-button history-order-toggle" aria-label={t("repository.history.orderToggle")} title={t(order === "topo" ? "repository.history.orderTopoHint" : "repository.history.orderDateHint")} onClick={toggleOrder}><Icon name={order === "topo" ? "branch" : "clock"} size={13} /><span className="history-order-label">{t(order === "topo" ? "repository.history.orderTopo" : "repository.history.orderDate")}</span></button><button type="button" className={`repository-quiet-button history-refresh${reloading ? " is-busy" : ""}`} aria-label={t("repository.history.refresh")} title={t("repository.history.refresh")} aria-busy={reloading || undefined} onClick={refreshHistory}><GlyphSlot name="refresh" /></button><span className="repository-sr-only" role="status">{announce}</span></div>;
+        const toolbar = <div className="history-toolbar"><div className="history-filter"><Icon name="search" size={13} className="repository-discovery-glyph" /><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="repository-quiet-button history-filter-clear" aria-label={t("repository.discovery.clearSearch")} onClick={() => setFilterText("")}><Icon name="close" size={12} /></button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}><Icon name="compare" size={12} /><span className="repository-ref-chip-label">{t("repository.compare.pinnedChip", { short: pin.shortHash })}</span><Icon name="close" size={11} /></button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}><Icon name="branch" size={12} /><span className="repository-ref-chip-label">{shortRefName(refFilter)}</span><Icon name="close" size={11} /></button>}{/* 정렬은 조회 상태와 무관하게 자리를 지킨다 — 조회 중 사라지면 작업 줄이 매 갱신마다 줄었다 늘어난다. 새로고침은 작업 줄의 동사 묶음(Pull 왼쪽)이 fetch와 함께 맡는다. */}<button type="button" className="repository-quiet-button history-order-toggle" aria-label={t("repository.history.orderToggle")} title={t(order === "topo" ? "repository.history.orderTopoHint" : "repository.history.orderDateHint")} onClick={toggleOrder}><Icon name={order === "topo" ? "branch" : "clock"} size={13} /><span className="history-order-label">{t(order === "topo" ? "repository.history.orderTopo" : "repository.history.orderDate")}</span></button><span className="repository-sr-only" role="status">{announce}</span></div>;
         return toolbarHost ? createPortal(toolbar, toolbarHost) : toolbar;
       })()}
-      <div ref={listRef} className={`history-list${pin ? " is-arming" : ""}`} aria-busy={reloading || undefined} onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{readErrorSentence(t, state.message)}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} picked={pin?.fullHash === entry.fullHash || comparePair?.base === entry.fullHash || comparePair?.head === entry.fullHash} previewed={previewHash === entry.fullHash} pin={pin} graphNode={graphNode} onRowActivate={onRowActivate} onCompareAction={onCompareAction} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" disabled={reloading} onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{readErrorSentence(t, loadMoreError)}</span>}</div>}</div>
+      <div ref={listRef} className={`history-list${pin ? " is-arming" : ""}`} aria-busy={reloading || undefined} onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{readErrorSentence(t, state.message)}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} tabStop={entry.fullHash === tabStopHash} picked={pin?.fullHash === entry.fullHash || comparePair?.base === entry.fullHash || comparePair?.head === entry.fullHash} previewed={previewHash === entry.fullHash} pin={pin} graphNode={graphNode} onRowActivate={onRowActivate} onCompareAction={onCompareAction} onNavigate={navigateRow} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" disabled={reloading} onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{readErrorSentence(t, loadMoreError)}</span>}</div>}</div>
     </div>
     {workspaceMain !== undefined && <div className="repository-ws-main" hidden={!workspaceMainVisible}>{workspaceMain}</div>}
     {peekStrip && <div className="repository-ws-peek">
@@ -1128,11 +1154,11 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
       </button>
       <button type="button" className="repository-ws-peek-close" aria-label={t("repository.dock.peekClose")} title={t("repository.dock.peekClose")} onClick={closeDetail}><Icon name="close" /></button>
     </div>}
-    {detailOpen && !peekStrip && <>
-      {stripCollapsed
+    {detailOpen && <>
+      {!peekStrip && (stripCollapsed
         ? null
-        : <SplitSeam orientation="horizontal" className="repository-ws-dock-seam" label={workspace ? t("repository.history.resizeDock") : t("repository.history.resizeLog")} value={workspace ? dockHeight : logHeight} min={WORKSPACE_DOCK_MIN_HEIGHT} max={workspace && rootHeight !== undefined ? workspaceDockDetents(rootHeight).full : undefined} dragging={isDragging} readout={dragReadout} limit={dragResult?.limit !== null && dragResult?.limit !== undefined} onPointerDown={handleDivider} onStep={workspace ? stepDock : undefined} onJump={workspace ? (edge) => setDockTo(edge === "start" ? "half" : "full") : undefined} onToggle={workspace ? () => setDockTo(dockDetent === "full" ? "half" : "full") : undefined} />}
-      <div className="history-inspector-shelf">{comparePair ? <CompareInspector ctx={ctx} repoRel={repoRel} pair={comparePair} onSwap={() => setComparePair({ base: comparePair.head, head: comparePair.base, baseLabel: comparePair.headLabel, headLabel: comparePair.baseLabel })} onClose={() => setComparePair(null)} /> : target ? <CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} tab={tab} onTab={chooseTab} lane={targetLane} dock={dockControls} onSelectCommit={navigateTo} onPinCompare={() => armFromDock({ fullHash: target.fullHash, shortHash: target.entry?.shortHash ?? target.fullHash.slice(0, 9) })} onClose={closeDetail} onPreview={setPreviewHash} /> : stashTarget ? <StashInspector ctx={ctx} repoRel={repoRel} stash={stashTarget} workspace={workspace} onAction={onStashAction} onClose={() => setStashTarget(null)} /> : null}</div>
+        : <SplitSeam orientation="horizontal" className="repository-ws-dock-seam" label={workspace ? t("repository.history.resizeDock") : t("repository.history.resizeLog")} value={workspace ? dockHeight : logHeight} min={WORKSPACE_DOCK_MIN_HEIGHT} max={workspace && rootHeight !== undefined ? workspaceDockDetents(rootHeight).full : undefined} dragging={isDragging} readout={dragReadout} limit={dragResult?.limit !== null && dragResult?.limit !== undefined} onPointerDown={handleDivider} onStep={workspace ? stepDock : undefined} onJump={workspace ? (edge) => setDockTo(edge === "start" ? "half" : "full") : undefined} onToggle={workspace ? () => setDockTo(dockDetent === "full" ? "half" : "full") : undefined} />)}
+      <div className={`history-inspector-shelf${peekStrip ? " is-peek-hidden" : ""}`} inert={peekStrip}>{comparePair ? <CompareInspector ctx={ctx} repoRel={repoRel} pair={comparePair} onSwap={() => setComparePair({ base: comparePair.head, head: comparePair.base, baseLabel: comparePair.headLabel, headLabel: comparePair.baseLabel })} onClose={() => setComparePair(null)} /> : target ? <CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} tab={tab} onTab={chooseTab} lane={targetLane} dock={dockControls} onSelectCommit={navigateTo} onPinCompare={() => armFromDock({ fullHash: target.fullHash, shortHash: target.entry?.shortHash ?? target.fullHash.slice(0, 9) })} onClose={closeDetail} onPreview={setPreviewHash} /> : stashTarget ? <StashInspector ctx={ctx} repoRel={repoRel} stash={stashTarget} workspace={workspace} onAction={onStashAction} onClose={() => setStashTarget(null)} /> : null}</div>
     </>}
   </div>;
 }

@@ -7,8 +7,7 @@ import { REPOSITORY_SURFACE_ID } from "./repository-context.js";
 /**
  * 저장소 작업면 — 캔버스에 서는 한 덩어리.
  *
- * 레일 아이콘이 이 표면을 직접 여닫는다. 그래서 페인 머리의 닫기가 곧 아이콘을 다시 누른
- * 것과 같고, 그 사이 화면은 예전 레일 패널과 **같은 배치**를 유지한다 — 동사 줄 하나 위에
+ * 레일 아이콘이 이 표면을 직접 여닫는다. 그래서 페인 위에 따로 닫기를 띄우지 않고, 그 사이 화면은 예전 레일 패널과 **같은 배치**를 유지한다 — 동사 줄 하나 위에
  * 소스 트리와 작업면 두 열, 그리고 그 둘 사이의 분할선.
  */
 export const repositorySurface: ExpandedSurfaceDescriptor = {
@@ -17,6 +16,8 @@ export const repositorySurface: ExpandedSurfaceDescriptor = {
   // 트리 기본 폭(222px)과 작업면 독의 좌우 분할 최소치가 함께 들어가는 폭. 그보다 좁으면
   // 두 열이 아니라 한 줄이 되므로 분할선이 여기서 멈춘다.
   minPaneWidth: 620,
+  // 레일 아이콘이 여닫으므로 페인 위에 부유하는 닫기(X)는 띄우지 않는다 — Objectives와 같은 선택.
+  ownsClose: true,
   render: (ctx) => <RepositorySurfaceBody ctx={ctx} />,
 };
 

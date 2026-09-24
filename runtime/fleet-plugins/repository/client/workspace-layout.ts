@@ -3,6 +3,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RepositoryMessageKey } from "./i18n/index.js";
 
 export const WORKSPACE_DOCK_DEFAULT_HEIGHT = 230;
+export const WORKSPACE_DOCK_DEFAULT_RATIO = 0.47;
 export const WORKSPACE_DOCK_MIN_HEIGHT = 160;
 /** 접힌 독 — 머리줄 한 줄. 보던 커밋의 정체성만 남긴다. */
 export const WORKSPACE_DOCK_COLLAPSED_HEIGHT = 32;
@@ -12,7 +13,8 @@ export const WORKSPACE_LIST_KEEP_HEIGHT = 128;
 export const WORKSPACE_DOCK_SNAP_RADIUS = 24;
 /** 최소보다 이만큼 더 끌어내리면 "접겠다"는 뜻으로 읽는다. */
 export const WORKSPACE_DOCK_COLLAPSE_PULL = 40;
-export const WORKSPACE_TREE_DEFAULT_WIDTH = 222;
+export const WORKSPACE_TREE_DEFAULT_WIDTH = 300;
+export const WORKSPACE_TREE_COMPACT_WIDTH = 230;
 export const WORKSPACE_TREE_MIN_WIDTH = 148;
 /** 모든 분할 이음매의 트랙 폭. 선은 1px이고 잡는 영역은 CSS가 양쪽으로 넓힌다. */
 export const WORKSPACE_SEAM_WIDTH = 1;
@@ -23,7 +25,7 @@ const WORKSPACE_MAIN_MIN_WIDTH = 180;
 // 검사기 독(파일 목록 ⇔ diff)의 폭 축. 저장값은 CSS 변수로만 주입한다 — 인라인
 // grid-template-columns는 좁은 독을 세로 스택으로 바꾸는 컨테이너 쿼리를 이겨버려
 // main 열 0 붕괴(PR#516에서 고친 선존 결함)를 되살린다.
-export const WORKSPACE_DOCK_FILES_DEFAULT_WIDTH = 250;
+export const WORKSPACE_DOCK_FILES_DEFAULT_WIDTH = 320;
 export const WORKSPACE_DOCK_FILES_MIN_WIDTH = 150;
 export const WORKSPACE_DOCK_DIVIDER_WIDTH = WORKSPACE_SEAM_WIDTH;
 // diff 열의 최소 폭. CSS의 calc(100% - …) 보정값과 반드시 같은 값이어야 한다.
@@ -79,6 +81,13 @@ export function readWorkspaceTreeWidth(storage?: StorageLike): number {
   return WORKSPACE_TREE_DEFAULT_WIDTH;
 }
 
+export function hasWorkspaceTreeWidthPreference(storage?: StorageLike): boolean {
+  try {
+    const value = Number.parseFloat((storage ?? globalThis.localStorage).getItem(PREFS_WORKSPACE_TREE_WIDTH) ?? "");
+    return Number.isFinite(value) && value >= WORKSPACE_TREE_MIN_WIDTH;
+  } catch { return false; }
+}
+
 export function saveWorkspaceTreeWidth(width: number, storage?: StorageLike): void {
   try { (storage ?? globalThis.localStorage).setItem(PREFS_WORKSPACE_TREE_WIDTH, String(width)); }
   catch { /* best-effort preference */ }
@@ -130,6 +139,16 @@ export function readWorkspaceDockHeight(tab?: WorkspaceDockTab, storage?: Storag
     } catch { return null; }
   };
   return (tab ? read(`${PREFS_WORKSPACE_DOCK_HEIGHT}.${tab}`) : null) ?? read(PREFS_WORKSPACE_DOCK_HEIGHT) ?? WORKSPACE_DOCK_DEFAULT_HEIGHT;
+}
+
+export function hasWorkspaceDockHeightPreference(tab: WorkspaceDockTab, storage?: StorageLike): boolean {
+  try {
+    const store = storage ?? globalThis.localStorage;
+    return [`${PREFS_WORKSPACE_DOCK_HEIGHT}.${tab}`, PREFS_WORKSPACE_DOCK_HEIGHT].some((key) => {
+      const value = Number.parseFloat(store.getItem(key) ?? "");
+      return Number.isFinite(value) && value >= WORKSPACE_DOCK_MIN_HEIGHT;
+    });
+  } catch { return false; }
 }
 
 export function saveWorkspaceDockHeight(height: number, tab?: WorkspaceDockTab, storage?: StorageLike): void {

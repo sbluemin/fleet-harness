@@ -15,6 +15,7 @@ interface HunkViewProps {
   readonly mode: DiffFileMode;
   readonly commit?: CommitSelection | null;
   readonly compare?: CompareSelection | null;
+  readonly emptyDiffMessage?: string;
 }
 
 export interface CommitSelection {
@@ -47,7 +48,7 @@ function escapeHtml(s: string): string {
 
 // ─── HunkView ────────────────────────────────────────────────────────────────
 
-export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkViewProps) {
+export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffMessage }: HunkViewProps) {
   const t = getT(ctx.language);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   // 다른 파일로 옮기는 동안 — 이미 그린 diff는 새 답이 올 때까지 남기고 흐리게만 한다. 매번 "불러오는 중"으로
@@ -119,6 +120,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkView
   }
 
   const { result } = state;
+  if (emptyDiffMessage && !result.content.trim()) return <div className="history-inspector-empty">{emptyDiffMessage}</div>;
   const parsed = parseHunk(result.content);
   const lines = parsed.filter((l) => l.kind !== "file-label");
 

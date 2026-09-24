@@ -7,7 +7,7 @@ import type { RepositoryContext } from "./repository-context.js";
 import type { CommitResult, DiffFileEntry, StatusResult, WorkstateResult } from "../server/types.js";
 import { getT, readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";
 import { readCommitDraft, writeCommitDraft } from "./repository-state.js";
-import { FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode, FilePathLabel } from "./changed-files.js";
+import { FilesViewToggle, readFilesViewMode, revealFocus, saveFilesViewMode, type FilesViewMode, FilePathLabel } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
@@ -16,7 +16,7 @@ import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
 type T = Translate<RepositoryMessageKey>;
 
 const LIST_PANE_MIN_WIDTH = 220;
-const LIST_PANE_DEFAULT_WIDTH = 248;
+const LIST_PANE_DEFAULT_WIDTH = 320;
 const PREFS_LIST_PANE_WIDTH = "fleet-console.diff.listPaneWidth";
 // 제품 공용 파괴 동사 무장 시간 — 사이드바 칩·프레임 닫기와 같은 1.5s.
 const DISCARD_ARM_MS = 1500;
@@ -164,10 +164,15 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
           const moved = result[axis].find((entry) => entry.path === continuation.moved);
           if (moved) return { axis, entry: moved };
         }
-        if (!current) return current;
-        const pool = current.axis === "staged" ? result.staged : result.unstaged;
-        const kept = pool.find((entry) => entry.path === current.entry.path);
-        return kept ? { axis: current.axis, entry: kept } : null;
+        if (current) {
+          const pool = current.axis === "staged" ? result.staged : result.unstaged;
+          const kept = pool.find((entry) => entry.path === current.entry.path);
+          if (kept) return { axis: current.axis, entry: kept };
+        }
+        const unstaged = result.unstaged[0];
+        if (unstaged) return { axis: "unstaged", entry: unstaged };
+        const staged = result.staged[0];
+        return staged ? { axis: "staged", entry: staged } : null;
       });
     }).catch((error: unknown) => {
       if (cancelled || seq !== requestSeqRef.current) return;
@@ -334,6 +339,18 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
 
   const staged = status.kind === "ok" ? status.staged : [];
   const unstaged = status.kind === "ok" ? status.unstaged : [];
+  const [focusedFile, setFocusedFile] = useState<string | null>(null);
+  const allFiles = [...unstaged.map((entry) => ({ axis: "unstaged" as const, entry })), ...staged.map((entry) => ({ axis: "staged" as const, entry }))];
+  const tabFileKey = allFiles.some(({ axis, entry }) => `${axis}:${entry.path}` === focusedFile) ? focusedFile
+    : selection ? `${selection.axis}:${selection.entry.path}` : allFiles[0] ? `${allFiles[0].axis}:${allFiles[0].entry.path}` : null;
+  const navigateFile = (axis: Axis, entry: DiffFileEntry, direction: -1 | 1) => {
+    const index = allFiles.findIndex((item) => item.axis === axis && item.entry.path === entry.path);
+    const next = allFiles[index + direction];
+    if (!next) return;
+    setFocusedFile(`${next.axis}:${next.entry.path}`);
+    setSelection(next);
+    requestAnimationFrame(() => revealFocus(rootRef.current?.querySelector<HTMLButtonElement>(`.repository-staging-row-main[data-file-key="${CSS.escape(`${next.axis}:${next.entry.path}`)}"]`)));
+  };
   const commitCount = staged.length;
   const commitDisabled = busy || writeLocked || !amendReady || subject.trim() === "" || (commitCount === 0 && !amend);
   const hunkSelection = selection;
@@ -342,7 +359,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
 
   return <div ref={rootRef} className={`repository-staging${hunkSelection && !guardMessage && !notice && !(amend && !amendReady) ? " is-reviewing" : ""}`} style={{ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties}>
     {amend && !amendReady && <div className="repository-staging-guard" role="status">{t(!workstate || stateUnknown ? "repository.staging.amendChecking" : "repository.staging.amendHeadChanged")}</div>}
-    {guardMessage && <div className="repository-staging-guard is-locked" role="status">{guardMessage}</div>}
+    {guardMessage && <div className="repository-staging-guard is-locked" role="status"><span className="repository-guard-signal" aria-hidden="true" />{guardMessage}</div>}
     {notice && <div className={`repository-sync-toast is-${notice.kind}`} role="status"><span>{notice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setNotice(null)}><Icon name="close" /></button></div>}
     {/* 끌어서 정한 목록 폭은 인라인 grid-template-columns가 아니라 변수로 들어온다 — 인라인 값은
         좁은 폭에서 세로로 쌓는 컨테이너 쿼리를 이겨, 실측에서 본 목록 82px·파일명 폭 0px 붕괴를
@@ -375,14 +392,16 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             onAction={stageAll}
             actionBusy={pendingKey === "stage:all"}
             selectedPath={selection?.axis === "unstaged" ? selection.entry.path : null}
+            axis="unstaged" tabFileKey={tabFileKey} onFocusFile={setFocusedFile} onNavigateFile={navigateFile}
             onSelect={(entry) => setSelection({ axis: "unstaged", entry })}
-            rowActions={(entry) => <>
+            rowActions={(entry, inRow) => <>
               {/* 충돌 파일의 discard는 서버에서 무음 no-op이 된다 — 동사를 숨기고 충돌 표식으로 안내한다. */}
               {/* 추적되지 않는 파일의 ⌫는 되돌리기가 아니라 삭제다 — 같은 글리프·같은 문구로 두면
                   두 번째 클릭이 파일을 지운다는 사실이 어디에도 적혀 있지 않다. */}
               {!entry.conflicted && <button
                 type="button"
                 className={`repository-stage-action repository-discard-action${armedDiscard === entry.path ? " is-armed" : ""}${pendingKey === `discard:${entry.path}` ? " is-busy" : ""}`}
+                tabIndex={inRow ? -1 : undefined}
                 aria-label={entry.status === "U"
                   ? t("repository.staging.deleteUntracked", { path: entry.path })
                   : t("repository.staging.discardFile", { path: entry.path })}
@@ -397,6 +416,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
               <button
                 type="button"
                 className={`repository-stage-action${pendingKey === stageKeyOf(entry) ? " is-busy" : ""}`}
+                tabIndex={inRow ? -1 : undefined}
                 aria-label={t("repository.staging.stageFile", { path: entry.path })}
                 title={t("repository.staging.stageFile", { path: entry.path })}
                 aria-busy={pendingKey === stageKeyOf(entry) || undefined}
@@ -416,10 +436,12 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             onAction={unstageAll}
             actionBusy={pendingKey === "unstage:all"}
             selectedPath={selection?.axis === "staged" ? selection.entry.path : null}
+            axis="staged" tabFileKey={tabFileKey} onFocusFile={setFocusedFile} onNavigateFile={navigateFile}
             onSelect={(entry) => setSelection({ axis: "staged", entry })}
-            rowActions={(entry) => <button
+            rowActions={(entry, inRow) => <button
               type="button"
               className={`repository-stage-action${pendingKey === unstageKeyOf(entry) ? " is-busy" : ""}`}
+              tabIndex={inRow ? -1 : undefined}
               aria-label={t("repository.staging.unstageFile", { path: entry.path })}
                 title={t("repository.staging.unstageFile", { path: entry.path })}
               aria-busy={pendingKey === unstageKeyOf(entry) || undefined}
@@ -473,7 +495,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   </div>;
 }
 
-function StagingSection({ t, view, label, files, emptyLabel, actionLabel, actionDisabled, onAction, actionBusy, selectedPath, onSelect, rowActions }: {
+function StagingSection({ t, view, label, files, emptyLabel, actionLabel, actionDisabled, onAction, actionBusy, selectedPath, axis, tabFileKey, onFocusFile, onNavigateFile, onSelect, rowActions }: {
   readonly t: T;
   readonly view: FilesViewMode;
   readonly label: string;
@@ -484,8 +506,13 @@ function StagingSection({ t, view, label, files, emptyLabel, actionLabel, action
   readonly onAction: () => void;
   readonly actionBusy: boolean;
   readonly selectedPath: string | null;
+  readonly axis: Axis;
+  readonly tabFileKey: string | null;
+  readonly onFocusFile: (key: string) => void;
+  readonly onNavigateFile: (axis: Axis, entry: DiffFileEntry, direction: -1 | 1) => void;
   readonly onSelect: (entry: DiffFileEntry) => void;
-  readonly rowActions: (entry: DiffFileEntry) => React.ReactNode;
+  /** inRow: 목록 보기 행 안 — 행 도구는 Tab 정거장이 아니라 F2로 들어간다. 트리 보기는 기존처럼 Tab으로 닿는다. */
+  readonly rowActions: (entry: DiffFileEntry, inRow?: boolean) => React.ReactNode;
 }) {
   return <section className="repository-staging-section">
     <div className="repository-staging-head">
@@ -498,20 +525,24 @@ function StagingSection({ t, view, label, files, emptyLabel, actionLabel, action
         ? <div className="repository-empty-row">{emptyLabel}</div>
         : view === "tree"
           ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} renderActions={rowActions} conflictLabel={t("repository.staging.conflict")} />
-          : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} onSelect={onSelect} actions={rowActions(entry)} />)}
+          : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} tabStop={tabFileKey === `${axis}:${entry.path}`} fileKey={`${axis}:${entry.path}`} onFocusFile={onFocusFile} onNavigate={(direction) => onNavigateFile(axis, entry, direction)} onSelect={onSelect} actions={rowActions(entry, true)} />)}
     </div>
   </section>;
 }
 
-function StagingFileRow({ t, entry, isSelected, onSelect, actions }: {
+function StagingFileRow({ t, entry, isSelected, tabStop, fileKey, onFocusFile, onNavigate, onSelect, actions }: {
   readonly t: T;
   readonly entry: DiffFileEntry;
   readonly isSelected: boolean;
+  readonly tabStop: boolean;
+  readonly fileKey: string;
+  readonly onFocusFile: (key: string) => void;
+  readonly onNavigate: (direction: -1 | 1) => void;
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly actions: React.ReactNode;
 }) {
   return <div className={`repository-file-row repository-staging-row${isSelected ? " is-cur" : ""}`}>
-    <button type="button" className="repository-staging-row-main" title={entry.path} onClick={() => onSelect(entry)}>
+    <button type="button" className="repository-staging-row-main" title={entry.path} data-file-key={fileKey} tabIndex={tabStop ? 0 : -1} onFocus={() => onFocusFile(fileKey)} onKeyDown={(event) => { if (event.key === "F2") { event.preventDefault(); event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(".repository-stage-actions button:not(:disabled)")?.focus(); return; } if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return; event.preventDefault(); onNavigate(event.key === "ArrowUp" ? -1 : 1); }} onClick={() => onSelect(entry)}>
       <span className={`repository-status-glyph repository-status-${entry.status.toLowerCase()}`} aria-hidden="true">{entry.status}</span>
       <FilePathLabel path={entry.path} />
       <span className="repository-nums">
@@ -520,6 +551,16 @@ function StagingFileRow({ t, entry, isSelected, onSelect, actions }: {
         {entry.deletions > 0 && <span className="repository-deletions">−{entry.deletions}</span>}
       </span>
     </button>
-    <span className="repository-stage-actions">{actions}</span>
+    <span className="repository-stage-actions" onKeyDown={(event) => {
+      // F2로 들어온 행 도구 안에서는 ←→로 옮겨 다니고 Esc로 행에 돌아간다 — 도구는 Tab 순서에 없다.
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+        const index = buttons.indexOf(event.target as HTMLButtonElement);
+        const next = buttons[index + (event.key === "ArrowLeft" ? -1 : 1)];
+        if (index >= 0 && next) { event.preventDefault(); next.focus(); }
+        return;
+      }
+      if (event.key !== "Escape") return; event.preventDefault(); event.stopPropagation(); event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(".repository-staging-row-main")?.focus();
+    }}>{actions}</span>
   </div>;
 }

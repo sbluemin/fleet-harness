@@ -35,6 +35,8 @@ interface ListFileRowProps {
   readonly isSelected: boolean;
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly t: Translate<RepositoryMessageKey>;
+  readonly tabStop?: boolean;
+  readonly onNavigate?: (entry: DiffFileEntry, direction: -1 | 1) => void;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -55,6 +57,16 @@ const STATUS_KEY: { [key: string]: RepositoryMessageKey } = {
 };
 
 // ─── ChangedFiles (export) ────────────────────────────────────────────────────
+
+/**
+ * 화살표로 옮긴 파일 행에 초점을 두고, 목록 스크롤 안에서 보이게 한다.
+ * 초점 이동 자체는 바깥 페인을 흔들지 않도록 스크롤을 막고, 드러내기는 가장 가까운 위치로만 한다.
+ */
+export function revealFocus(element: HTMLElement | null | undefined): void {
+  if (!element) return;
+  element.focus({ preventScroll: true });
+  element.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
 
 export function filterDiffFiles(files: readonly DiffFileEntry[], filterText: string): readonly DiffFileEntry[] {
   const normalizedFilter = filterText.toLowerCase();
@@ -218,7 +230,7 @@ export function FilePathLabel({ path }: { readonly path: string }) {
     </span>
   );
 }
-export function FileRow({ entry, isSelected, onSelect, t }: ListFileRowProps) {
+export function FileRow({ entry, isSelected, onSelect, t, tabStop, onNavigate }: ListFileRowProps) {
   const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
   const statusKey = STATUS_KEY[entry.status];
   return (
@@ -226,6 +238,8 @@ export function FileRow({ entry, isSelected, onSelect, t }: ListFileRowProps) {
       type="button"
       className={`repository-file-row${isSelected ? " is-cur" : ""}`}
       title={entry.path}
+      tabIndex={tabStop === undefined ? undefined : tabStop ? 0 : -1}
+      onKeyDown={(event) => { if (!onNavigate || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return; event.preventDefault(); onNavigate(entry, event.key === "ArrowUp" ? -1 : 1); }}
       onClick={handleClick}
     >
       <span
