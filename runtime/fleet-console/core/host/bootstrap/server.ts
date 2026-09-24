@@ -765,7 +765,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // `auto`는 브라우저가 푸는 값이라 호스트는 못박은 경우에만 답한다.
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
-  const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport);
+  // 플러그인 MCP 도구의 호출자 — Console Use 와 같은 규칙으로 세션 라벨(`<operationId>` 또는 `chat:<operationId>`)을 Operation 으로 푼다.
+  const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport, {
+    resolveCaller: (label) => {
+      const operationId = label.startsWith("chat:") ? label.slice(5) : label;
+      return operations.get(operationId) ? { kind: "operation", operationId } : null;
+    },
+  });
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     agent: { createSession: () => Promise.reject(new Error("Agent execution requires a plugin context")) },
     consoleUse,

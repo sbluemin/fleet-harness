@@ -1,7 +1,7 @@
 import type { ObjectiveEditKind, ObjectiveItem } from "./types.js";
 
 /**
- * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `console_objectives` 도구 설명과 보드를 읽고
+ * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `fleet-objectives` 도구 설명과 보드를 읽고
  * 스스로 흐름을 잡는다. 담당 세션에는 아무 프롬프트도 가지 않는다 — 지휘관이 SendMessage 로 맥락을 담아 일을 시킨다.
  */
 
@@ -10,10 +10,15 @@ export type PromptLanguage = "en" | "ko";
 const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
 
 
-/** 구상 — 한 줄: 목표 id 와 「구상」. 사람이 함께 준 맥락이 있으면 그 아래 인용으로. */
+/**
+ * 구상 — 한 줄: 목표 id 와 「구상」. 편성은 보드에 올리고(plan·place_mission) 임무는 수행하지 않는다 — 「계획만」을 보드에
+ * 쓰지 말라는 뜻으로 읽으면 사람이 개시 전에 계획을 보지 못한다. 사람이 함께 준 맥락이 있으면 그 아래 인용으로.
+ */
 export function cookTurn(item: ObjectiveItem, language: PromptLanguage): string {
   const context = item.cook?.trim();
-  const word = language === "ko" ? `목표 \`${item.id}\` 을 구상하세요 — 계획만, 수행은 하지 마세요.` : `Plan objective \`${item.id}\` — plan only, do not carry it out.`;
+  const word = language === "ko"
+    ? `목표 \`${item.id}\` 을 구상하세요 — 편성(임무·선행·위임 의도)을 보드에 올리고, 임무는 수행하지 마세요.`
+    : `Plan objective \`${item.id}\` — lay the lineup (missions, prerequisites, delegation intent) out on the board; do not carry out any mission.`;
   return context ? `${word}\n\n> ${clip(context, 2000).split("\n").join("\n> ")}` : word;
 }
 
@@ -44,6 +49,6 @@ export function startTurn(item: ObjectiveItem, language: PromptLanguage): string
   const what = editedWords(item, language);
   if (!what) return word;
   return language === "ko"
-    ? `${word}\n\n마지막으로 읽은 뒤 사람이 목표를 바꿨습니다(${what}). 진행하기 전에 \`console_objectives\` 로 이 목표를 다시 읽으세요.`
-    : `${word}\n\nThe person changed this objective since you last read it (${what}). Read it again with \`console_objectives\` before you proceed.`;
+    ? `${word}\n\n마지막으로 읽은 뒤 사람이 목표를 바꿨습니다(${what}). 진행하기 전에 \`fleet-objectives\` 로 이 목표를 다시 읽으세요.`
+    : `${word}\n\nThe person changed this objective since you last read it (${what}). Read it again with \`fleet-objectives\` before you proceed.`;
 }

@@ -7,8 +7,8 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { imageInfo } from "../server/attachments.js";
-import { createObjectiveConsoleTools } from "../server/console-tools.js";
 import { createLaunchService } from "../server/launch.js";
+import { createObjectiveMcpTools } from "../server/objective-tools.js";
 import { createObjectiveStore, ObjectiveStoreError } from "../server/store.js";
 import type { ObjectiveItemEvent } from "../server/types.js";
 
@@ -78,8 +78,8 @@ function harness() {
   } as unknown as FleetPluginServerContext;
   const launch = createLaunchService(ctx, store);
   grouped.push((event) => launch.operationGrouped(event));
-  const [tool] = createObjectiveConsoleTools(ctx, store, launch);
-  const call = async (args: Record<string, unknown>, operationId?: string) => await tool!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
+  const tools = createObjectiveMcpTools(ctx, store, launch);
+  const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
   const stateFile = path.join(workspace, "objectives", "state.json");
   return { store, events, launch, call, operations, add, sent, launches, deleted, stateFile, workspace };
 }
@@ -94,7 +94,8 @@ describe("Objectives contract", () => {
     expect(launches).toEqual([expect.objectContaining({ dormant: true, viewMode: "terminal", title: "Release", groupId: "g-ship", text: undefined })]);
     const head = launches[0]!.sessionName!.replace(/-cmdr$/, "");
     expect(item).toMatchObject({ id: "launched-1", title: "Release", groupId: "g-ship", commander: { sessionName: `${head}-cmdr`, started: false }, note: "brief" });
-    expect(operations.get(item.id)!.payload.consoleUse).toMatchObject({ enabled: true });
+    // 목표가 띄우는 세션은 콘솔 사용을 켜지 않는다 — 일은 fleet-objectives 로 한다.
+    expect(operations.get(item.id)!.payload.consoleUse).toBeUndefined();
     const [a, b, c] = item.steps;
     // 순환은 저장 전에 거절된다.
     expect(() => store.stepPatch(item.id, a!.id, { after: [c!.id] })).toThrow(ObjectiveStoreError);
@@ -176,34 +177,46 @@ describe("Objectives contract", () => {
     expect(() => launch.regroup(item.id, "nope")).toThrow(ObjectiveStoreError);
   });
 
-  it("lets only the objective's own Commander Operation write, refuses stale plans, and places the person's missions", async () => {
+  it("lets only the objective's own Commander write, gives assignees read-only access and outsiders none, and keeps planning and the person's missions intact", async () => {
     const { store, call, launch } = harness();
     const item = await launch.create({ theaterId: "t1", title: "Guarded", groupId: null, steps: [{ text: "one" }, { text: "two", after: [0] }] });
     const commander = item.id;
     const other = (await launch.create({ theaterId: "t1", title: "Other", groupId: null })).id;
-    // 다른 목표의 지휘관은 이 목표에 쓸 수 없다.
-    expect((await call({ plan: { itemId: item.id, steps: [{ text: "p" }] } }, other)).structuredContent.error).toBe("not_item_operation");
-    expect((await call({ plan: { itemId: item.id, steps: [{ text: "p1", assign: "route" }, { text: "p2", after: [{ index: 0 }] }] } }, commander)).isError).toBe(false);
-    const delegated = await call({ step: { itemId: item.id, index: 0, delegate: true } }, commander);
-    const assignee = delegated.structuredContent.operationId as string;
-    // 담당은 자기 단계를 보지만 쓰지 못한다.
-    expect((await call({ view: "mine" }, assignee)).structuredContent).toMatchObject({ role: "step", itemId: item.id });
-    expect((await call({ view: "mine" }, commander)).structuredContent).toMatchObject({ role: "commander", itemId: item.id });
+    // 다른 목표의 지휘관은 이 목표를 쓰지도 읽지도 못한다.
+    expect((await call("plan", { itemId: item.id, steps: [{ text: "p" }] }, other)).structuredContent.error).toBe("not_participant");
+    expect((await call("read", { itemId: item.id }, other)).structuredContent.error).toBe("not_participant");
+    // 구상 중에는 편성만 — 계획·배치는 되고 임무 수행 쓰기는 거절된다.
+    store.setCooking(item.id, true);
+    expect((await call("plan", { itemId: item.id, steps: [{ text: "p1", assign: "route" }, { text: "p2", after: [{ index: 0 }] }] }, commander)).isError).toBe(false);
+    expect((await call("complete_mission", { itemId: item.id, index: 0, summary: ["early"] }, commander)).structuredContent.error).toBe("planning_only");
+    expect((await call("delegate_mission", { itemId: item.id, index: 0 }, commander)).structuredContent.error).toBe("planning_only");
+    store.setCooking(item.id, false);
+    // 위임 응답이 지휘관에게 담당은 읽기만 한다고 알린다.
+    const delegated = await call("delegate_mission", { itemId: item.id, index: 0 }, commander);
+    expect(delegated.structuredContent.assignee).toMatchObject({ access: "read-only" });
+    const assignee = (delegated.structuredContent.assignee as { operationId: string }).operationId;
+    // 담당은 제 목표를 읽지만 쓰지 못한다.
+    expect((await call("mine", {}, assignee)).structuredContent).toMatchObject({ role: "assignee", access: "read-only", itemId: item.id });
+    expect((await call("read", { itemId: item.id }, assignee)).isError).toBe(false);
+    expect((await call("mine", {}, commander)).structuredContent).toMatchObject({ role: "commander", itemId: item.id });
     // 사람이 선행 없이 더한 단계는 미분류 — 지휘관이 자리를 정하기 전까지 준비되지 않는다.
     launch.stepAdded(item.id, { text: "missed" }, { by: "human" });
-    const board = async () => ((await call({ view: "item", itemId: item.id }, commander)).structuredContent.item as { graph: { steps: { unplaced?: boolean; ready: boolean; after: number[] }[] } }).graph.steps;
-    // 지휘관이 읽기 전에 사람이 바꾼 보드로는 계획도 기준 판단도 쓸 수 없다.
+    const board = async () => ((await call("read", { itemId: item.id }, commander)).structuredContent.item as { graph: { steps: { unplaced?: boolean; ready: boolean; after: number[]; assign: string }[] } }).graph.steps;
+    // 지휘관이 읽기 전에 사람이 바꾼 보드로는 계획을 쓸 수 없다.
     store.setEdited(item.id, ["steps"]);
-    expect((await call({ plan: { itemId: item.id, steps: [{ text: "stale" }] } }, commander)).structuredContent.error).toBe("board_changed");
+    expect((await call("plan", { itemId: item.id, steps: [{ text: "stale" }] }, commander)).structuredContent.error).toBe("board_changed");
     const missed = (await board()).findIndex((step) => step.unplaced);
     expect((await board())[missed]).toMatchObject({ unplaced: true, ready: false });
-    expect((await call({ step: { itemId: item.id, index: missed, after: [0] } }, assignee)).structuredContent.error).toBe("not_item_operation");
-    expect((await call({ step: { itemId: item.id, index: missed, after: [0] } }, commander)).isError).toBe(false);
-    expect((await board()).find((step) => step.after.includes(0) && step.unplaced === undefined)).toBeTruthy();
-    // 완료는 결론 먼저 1–3줄의 기록과 함께이고, 산문 문단은 거절된다. 목표 자체의 완료는 도구에 없다.
-    expect((await call({ step: { itemId: item.id, doneIndex: 0, summary: ["x".repeat(400)] } }, commander)).structuredContent.error).toBe("summary_format");
-    expect((await call({ step: { itemId: item.id, doneIndex: 0, summary: ["shipped p1", "tests pass"] } }, commander)).isError).toBe(false);
-    expect((await call({ done: { itemId: item.id } }, commander)).isError).toBe(true);
+    // 계획이 남기는 임무를 같은 문구로 다시 만들어 두 벌을 세우지 못한다.
+    expect((await call("plan", { itemId: item.id, steps: [{ text: " Missed " }] }, commander)).structuredContent).toMatchObject({ error: "mission_kept", kept: [{ text: "missed", unplaced: true }] });
+    // 배치는 지휘관만 — 위임 의도(route)도 함께 남는다.
+    expect((await call("place_mission", { itemId: item.id, index: missed, after: [0] }, assignee)).structuredContent.error).toBe("not_commander");
+    expect((await call("place_mission", { itemId: item.id, index: missed, after: [0], assign: "route" }, commander)).isError).toBe(false);
+    expect((await board()).find((step) => step.after.includes(0) && step.unplaced === undefined && step.assign === "route")).toBeTruthy();
+    // 완료는 결론 먼저 1–3줄의 기록과 함께이고, 산문 문단은 거절된다. 담당은 완료하지 못한다.
+    expect((await call("complete_mission", { itemId: item.id, index: 0, summary: ["r"] }, assignee)).structuredContent.error).toBe("not_commander");
+    expect((await call("complete_mission", { itemId: item.id, index: 0, summary: ["x".repeat(400)] }, commander)).structuredContent.error).toBe("summary_format");
+    expect((await call("complete_mission", { itemId: item.id, index: 0, summary: ["shipped p1", "tests pass"] }, commander)).isError).toBe(false);
     // 같은 목표에 시작이 겹치면 하나만 간다.
     const results = await Promise.allSettled([launch.startCoordinator(other), launch.startCoordinator(other)]);
     expect(results.filter((result) => result.status === "fulfilled").length).toBe(1);
@@ -216,17 +229,16 @@ describe("Objectives contract", () => {
     store.criterionAdd(item.id, "tests pass", "human");
     store.criterionAdd(item.id, "copy unchanged", "human");
     // 사람이 쓴 기준이 있으면 지휘관은 기준을 덧붙이지 못한다.
-    expect((await call({ plan: { itemId: item.id, steps: [{ text: "fix" }], criteria: ["mine"] } }, as)).structuredContent.error).toBe("criteria_exist");
+    expect((await call("plan", { itemId: item.id, steps: [{ text: "patch" }], criteria: ["mine"] }, as)).structuredContent.error).toBe("criteria_exist");
     // 마지막 임무를 마치면 도구가 달성 점검을 되묻는다 — 아직 검토 대기가 아니다.
-    const done = await call({ step: { itemId: item.id, doneIndex: 0, summary: ["fixed"] } }, as);
+    const done = await call("complete_mission", { itemId: item.id, index: 0, summary: ["fixed"] }, as);
     expect(String(done.structuredContent.next)).toContain("copy unchanged");
     expect(store.find(item.id)!.awaitingReview).toBe(false);
     // 지휘관은 검토 대기를 쓰지 않는다 — 근거 없는 충족은 받지 않고, 기준마다 근거가 서면 저절로 검토 대기다.
-    expect((await call({ review: { itemId: item.id, summary: "done" } }, as)).isError).toBe(true);
-    expect((await call({ criterion: { itemId: item.id, n: 1, met: true } }, as)).structuredContent.error).toBe("evidence_required");
-    expect((await call({ criterion: { itemId: item.id, n: 1, met: true, evidence: "12/12" } }, as)).isError).toBe(false);
+    expect((await call("mark_criterion", { itemId: item.id, n: 1, met: true }, as)).structuredContent.error).toBe("evidence_required");
+    expect((await call("mark_criterion", { itemId: item.id, n: 1, met: true, evidence: "12/12" }, as)).isError).toBe(false);
     expect(store.find(item.id)!.awaitingReview).toBe(false);
-    const met = await call({ criterion: { itemId: item.id, n: 2, met: true, evidence: "diff shows no copy change" } }, as);
+    const met = await call("mark_criterion", { itemId: item.id, n: 2, met: true, evidence: "diff shows no copy change" }, as);
     expect(met.structuredContent.next).toBeTruthy();
     expect(store.find(item.id)).toMatchObject({ awaitingReview: true, criteria: [{ met: "12/12" }, { met: "diff shows no copy change" }] });
     // 기준 문구가 바뀌면 그 기준만, 새 임무가 생기면 모든 충족 판단이 거둬진다 — 검토 대기도 함께 풀린다.
