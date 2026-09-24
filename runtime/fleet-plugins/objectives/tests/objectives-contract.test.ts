@@ -41,6 +41,9 @@ function harness() {
   const grouped: ((event: OperationGroupedEvent) => void)[] = [];
   const deleted: string[] = [];
   const sent: { operationId: string; text: string }[] = [];
+  const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
+  const slept: string[] = [];
+  const interrupted: string[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; groupId?: string }[] = [];
   const operationsHost = {
     get: (id: string) => operations.get(id) ?? null,
@@ -65,13 +68,23 @@ function harness() {
         request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; model?: string; effort?: string; groupId?: string }) => {
           const receipt = { id: "r", requestId: "r", caller: { kind: "plugin", pluginId: "objectives" }, input, status: "running", createdAt: "", updatedAt: "", expiresAt: "" };
           if (input.kind === "send") { sent.push({ operationId: input.operationId!, text: input.text! }); return { ...receipt, operationId: input.operationId }; }
+          // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
+          if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { ...receipt, operationId: input.operationId }; }
           await new Promise((resolve) => setTimeout(resolve, 5));
           const id = `launched-${launches.length + 1}`;
           launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, groupId: input.groupId });
           add(id, { title: input.title ?? id, groupId: input.groupId ?? null, payload: { session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } } });
           return { ...receipt, operationId: id };
         },
-        observe: () => null,
+        observe: (id: string) => {
+          const state = activity.get(id);
+          return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: "terminal", supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
+        },
+        sleep: async (id: string, options?: { endPendingWork?: boolean }) => {
+          const state = activity.get(id);
+          if (state !== "idle" && !(options?.endPendingWork && (state === "awaiting" || state === "background"))) return { ok: false, error: "not_idle" };
+          slept.push(id); activity.set(id, "dormant"); return { ok: true, lifecycle: "dormant" };
+        },
       },
       paths: { resolveTheaterPath: () => theaterPath },
     },
@@ -81,14 +94,14 @@ function harness() {
   const tools = createObjectiveMcpTools(ctx, store, launch);
   const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
   const stateFile = path.join(workspace, "objectives", "state.json");
-  return { store, events, launch, call, operations, add, sent, launches, deleted, stateFile, workspace };
+  return { store, events, launch, call, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
 
 describe("Objectives contract", () => {
   it("creates an objective as a dormant Commander Operation and keeps only objective-owned values in the workspace state.json", async () => {
-    const { store, events, launch, operations, sent, launches, stateFile, workspace } = harness();
+    const { store, events, launch, operations, sent, launches, stateFile, workspace, activity, slept, interrupted } = harness();
     const item = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", steps: [{ text: "a" }, { text: "b", after: [0] }, { text: "c", after: [1] }] });
     // 목표 = 지휘관 Operation — 첫 프롬프트 없이 dormant 로, 이름 붙은 CLI 세션 사양과 그룹을 들고 태어난다.
     expect(launches).toEqual([expect.objectContaining({ dormant: true, viewMode: "terminal", title: "Release", groupId: "g-ship", text: undefined })]);
@@ -113,8 +126,14 @@ describe("Objectives contract", () => {
     store.stepDone(item.id, a!.id, ["a redone", "fixed the gap"]);
     await expect(launch.delegateStep(item.id, a!.id)).rejects.toMatchObject({ code: "step_done" });
     await launch.delegateStep(item.id, b!.id);
-    // 완료는 담당 연결을 풀지 않는다 — 되돌려도 그대로다.
-    store.complete(item.id);
+    // 완료는 지휘관과 담당을 휴면시키되 연결을 풀지 않는다. 답을 기다리는 터미널 지휘관과 백그라운드 작업이 남은 담당은 그대로 재우고, 실행 중인 담당은 중단한 뒤 재운다.
+    activity.set(item.id, "awaiting");
+    activity.set("launched-2", "running");
+    activity.set("launched-3", "background");
+    expect(launch.complete(item.id).done).toBeTruthy();
+    await expect.poll(() => slept.length).toBe(3);
+    expect(interrupted).toEqual(["launched-2"]);
+    expect(slept.sort()).toEqual([item.id, "launched-2", "launched-3"].sort());
     expect(store.reopen(item.id).steps.map((step) => step.operationId)).toEqual(["launched-2", "launched-3", null]);
     // 계획은 완료·위임된 단계를 보존하고 나머지를 바꾼다; 새 단계는 편성 순으로 선다.
     const planned = store.plan(item.id, { steps: [{ text: "x", after: [{ index: 1, why: "shares files" }] }, { text: "y", after: [{ stepId: a!.id, why: "builds on a" }] }] });
