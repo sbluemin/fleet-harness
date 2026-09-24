@@ -9,6 +9,7 @@ import type {
   CanonicalResponseSnapshot,
   CanonicalUsage,
 } from "../../../canonical/index.js";
+import { withoutReplayMetadata } from "../../../canonical/index.js";
 import {
   UpstreamProtocolError,
   linkAbortSignal,
@@ -399,12 +400,8 @@ function forXaiResponsesBackend(
       input.push(wireItem);
       continue;
     }
-    const {
-      reasoning_content: _reasoningContent,
-      reasoning_encrypted: encrypted,
-      reasoning_id: reasoningId,
-      ...wireItem
-    } = item;
+    const { reasoning_encrypted: encrypted, reasoning_id: reasoningId } = item;
+    const wireItem = withoutReplayMetadata(item);
     // The blob belongs to the turn that produced this item, so it is replayed as its own item
     // immediately before it — the position the wire emitted it in, and the one a prefix cache
     // can match byte for byte.
