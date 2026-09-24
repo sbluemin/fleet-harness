@@ -72,7 +72,8 @@ function reconcileOperations(api: ClientApiCapability): void {
       void post<{ item: ObjectiveItem }>(api, "/item/get", { itemId: operation.id })
         .then(({ item }) => {
           const latest = theaters.get(item.theaterId) ?? EMPTY;
-          if (!latest.items.some((candidate) => candidate.id === item.id)) setTheater(item.theaterId, { items: [item, ...latest.items] });
+          // 응답을 기다리는 사이 담당으로 연결됐으면 목표가 아니다.
+          if (!latest.items.some((candidate) => candidate.id === item.id) && !assigneeIds(latest.items).has(item.id)) setTheater(item.theaterId, { items: [item, ...latest.items] });
         })
         .catch(() => { /* 플러그인 소유이거나 담당이면 목표가 아니다 */ })
         .finally(() => { fetching.delete(operation.id); });
@@ -98,7 +99,10 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (event.op === "remove") { setTheater(event.theaterId, { items: current.items.filter((item) => item.id !== event.itemId) }); return; }
     if (!event.item) return;
     const exists = current.items.some((item) => item.id === event.itemId);
-    const items = exists ? current.items.map((item) => (item.id === event.itemId ? event.item! : item)) : [event.item, ...current.items];
+    const merged = exists ? current.items.map((item) => (item.id === event.itemId ? event.item! : item)) : [event.item, ...current.items];
+    // 위임 직후 담당 Operation 을 목표로 먼저 받아 왔을 수 있다 — 어느 목표의 담당이 된 Operation 은 목록에서 뺀다.
+    const assignees = assigneeIds(merged);
+    const items = assignees.size ? merged.filter((item) => !assignees.has(item.id)) : merged;
     // 순서가 함께 오면 서버의 줄을 따른다 — 목록에 없는 id 는 건너뛰고, 순서에 없는 항목은 뒤에 그대로 둔다.
     if (event.order) {
       const rank = new Map(event.order.map((id, index) => [id, index]));
