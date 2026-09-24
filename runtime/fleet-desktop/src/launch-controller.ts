@@ -27,8 +27,8 @@ export interface LaunchControllerDependencies {
   readonly desktopVersion?: string;
   /** 지금 설치돼 있는 관리형 Console 버전. 모르면 null — 버전 줄에서 뺀다. */
   readonly consoleVersion?: () => string | null;
-  /** 넘겨주기 전 브랜드가 상단 자리로 줄어드는 전환을 기다린다. 기본 HANDOFF_SETTLE_MS. */
-  readonly settleHandoff?: () => Promise<void>;
+  /** 넘겨주기 전 브랜드가 상단 자리로 줄어드는 전환을 기다린다. 기본은 settleEntryHandoff. */
+  readonly settleHandoff?: (contents: EntryPageWebContents) => Promise<void>;
   readonly onFirstRunFailure?: () => Promise<boolean>;
   readonly onWindowReady?: (push: (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>) => void;
 }
@@ -41,8 +41,18 @@ export interface LaunchController { start(): Promise<LaunchWindow>; }
  */
 export const HANDOFF_SETTLE_MS = 460;
 
+/**
+ * 동작 줄이기가 켜져 있으면 진입 CSS가 전환을 없애므로 기다릴 것이 없다 — 그 설정은 진입 렌더러의
+ * 미디어 쿼리가 가장 정확히 안다. 묻지 못하면 전환이 도는 쪽으로 보고 기다린다.
+ */
+export async function settleEntryHandoff(contents: EntryPageWebContents): Promise<void> {
+  let reduced = false;
+  try { reduced = await contents.executeJavaScript("matchMedia('(prefers-reduced-motion: reduce)').matches") === true; } catch { /* 렌더러가 답하지 못하면 기본 대기 */ }
+  if (!reduced) await new Promise<void>((resolve) => setTimeout(resolve, HANDOFF_SETTLE_MS));
+}
+
 export function createLaunchController(dependencies: LaunchControllerDependencies): LaunchController {
-  const settleHandoff = dependencies.settleHandoff ?? (() => new Promise<void>((resolve) => setTimeout(resolve, HANDOFF_SETTLE_MS)));
+  const settleHandoff = dependencies.settleHandoff ?? settleEntryHandoff;
   return {
     async start() {
       const window = await dependencies.createWindow();
@@ -75,7 +85,7 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       dependencies.handoffOrigin(origin);
       await dependencies.synchronizeTheme?.(origin);
       await push("starting", "ready");
-      if (!window.isDestroyed?.()) await settleHandoff();
+      if (!window.isDestroyed?.()) await settleHandoff(window.webContents);
       if (!window.isDestroyed?.()) {
         await window.loadURL(consoleUrl);
         if (!window.isDestroyed?.()) window.webContents.navigationHistory.clear();
