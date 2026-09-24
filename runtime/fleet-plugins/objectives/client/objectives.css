@@ -644,6 +644,18 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
   .objectives-graph-horizontal { display: none; }
   .objectives-graph-vertical { display: block; }
 }
+/* 아주 좁은 상세(레일 분할 등 340px 미만) — 곁에 서던 값들을 아랫줄로 내려 글이 읽힐 폭을 남긴다.
+   구성원: 역할·설명이 한 줄을 다 쓰고, 모델·상태는 그 아래 줄(설명과 같은 들여쓰기). 지휘관: 모델·강도가 라벨 아래 줄. */
+@container objectives-detail (width < 340px) {
+  .objectives-member { flex-wrap: wrap; row-gap: 2px; }
+  .objectives-member > .objectives-member-body { flex: 1 1 0; }
+  .objectives-member > .objectives-member-remove { order: 2; }
+  .objectives-member > .objectives-member-meta { order: 3; flex: 1 0 100%; max-width: none; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding-left: 30px; }
+  .objectives-row:has(> .objectives-launch) { flex-wrap: wrap; row-gap: 0; padding-bottom: 6px; }
+  .objectives-row:has(> .objectives-launch) > .objectives-row-main { flex: 1 0 100%; min-height: 36px; }
+  .objectives-row > .objectives-launch { margin: 0 0 0 20px; }
+  .objectives-row-lab { overflow-wrap: normal; }
+}
 .objectives-dag-hint { text-align: center; padding: 0 10px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
 /* 확대본 — 빈 배경을 누르면 열린다(커서로 예고). 오버레이는 다른 팝오버와 같은 층(60), 카드는 넓은 폭에 같은 그래프를 다시 그린다. */
 .objectives-dag-box.can-zoom .objectives-dag { cursor: zoom-in; }
