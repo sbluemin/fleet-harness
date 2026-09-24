@@ -159,10 +159,10 @@ export interface ClientExecutionProvider {
   /**
    * 한 실행 구조에 묶인 Operation 들 — 뿌리(조율자) 하나와 선후 관계를 가진 구성원(단계)들.
    *
-   * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아
-   * 뿌리 하나로 묶음을 대표한다 — 구성원 Operation 은 어느 모드에서도 따로 패널로 서지 않고 뒤에서 돌며, 뿌리의
+   * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아 뿌리의
    * 캡션에 진척도 띠(와 단계 목록), 뿌리 패널 본문에 구성원 세션으로 바꿔 보는 노드 줄(「N 노드」, N 은 members
-   * 선언 순서의 자리)을 그린다. 소유하지 않는 Operation 도 묶을 수 있고, 진실은 플러그인 쪽에 남는다.
+   * 선언 순서의 자리)을 그린다. 묶음은 그리기만 한다 — 구성원이 목록 표면에 서지 않게 하는 것은 코어의 부모 관계
+   * (`OperationNode.parentOperationId`, launch 의 `parentOperationId`)이고, 진행의 진실은 플러그인 쪽에 남는다.
    * `get()` 은 바뀌지 않았으면 같은 참조를 돌려줘야 한다(useSyncExternalStore).
    */
   readonly operationClusters?: OperationClusterSource;
@@ -386,8 +386,10 @@ export interface ClientConsoleStateCapability {
   /**
    * Operation 목록의 브라우저 DTO 몫 — 제목·Theater·종류·활동. 활동은 코어가 런타임 축에서 읽는
    * 값이며, 어느 플러그인이 그 축의 권위인지는 플러그인이 알 필요가 없다. transcript·경로는 없다.
+   * 사이드바와 같은 목록이라 부모가 대표하는 구성원(`parentOperationId`)은 빠진다 — 구성원을 거느리는
+   * 플러그인만 `{ nested: true }` 로 함께 읽는다.
    */
-  getOperations(): readonly ConsoleOperationSummary[];
+  getOperations(options?: { readonly nested?: boolean }): readonly ConsoleOperationSummary[];
   getActiveTheaterId(): string | null;
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
@@ -404,6 +406,8 @@ export interface ConsoleOperationSummary {
   readonly type: string;
   readonly title: string;
   readonly activity: "idle" | "running" | "awaiting" | "background" | "ended";
+  /** `{ nested: true }` 로 읽은 구성원만 — 이 Operation 을 대표하는 부모. */
+  readonly parentOperationId?: string;
 }
 
 /**

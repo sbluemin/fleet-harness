@@ -19,7 +19,7 @@ import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation
 import type { TriageDeckTheater } from "../canvas/triage-watch-deck.js";
 import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, type TriageQueueEntry } from "../canvas/triage-store.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
-import { clusterChipPropsFor, withoutClusterMembers } from "./cluster-rows.js";
+import { clusterChipPropsFor } from "./cluster-rows.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, theaterInitials, type StatusSection } from "./operations-side-bar.js";
 import { focusEdgeDockWhenPanelContainsActiveElement } from "../../../../core/client/src/integration/shortcuts.js";
@@ -88,8 +88,7 @@ export function TriageSideBar({
   onOpenOperationMenu,
 }: TriageSideBarProps) {
   const t = useT();
-  // 묶음: War Room 에서 단계 Operation 은 화면에도 목록에도 서지 않는다 — 큐와 목록은 지휘관만 알고,
-  // 지휘관은 단계의 상태가 아니라 자기 상태로만 무대에 오른다.
+  // 묶음 띠는 지휘관 행에 선다. 구성원은 스토어의 기본 목록에 없어 큐에도 목록에도 서지 않는다.
   const clusterIndex = useClusterIndex();
   // 지목·미룸·치워둠은 콘솔 상태를 바꾸지 않는 store 단독 변화다 — 캔버스와 같은 리비전 구독으로
   // 사이드바도 함께 리렌더한다. 유휴 도착도 awaiting 섹션 판정에 관여하므로 같이 구독한다.
@@ -183,14 +182,14 @@ export function TriageSideBar({
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
     });
   };
-  const queue = resolveTriageQueue(operations.filter((operation) => !clusterIndex.memberOf.has(operation.id)), operationRuntime);
+  const queue = resolveTriageQueue(operations, operationRuntime);
   const stagedOperationId = getTriagePick() ?? queue[0]?.operation.id ?? null;
   const theaterLabelById = new Map(theaters.map((theater) => [theater.id, theater.label]));
   const groupMarkByGroupId = new Map(groups.map((group) => {
     const color = resolveAccentColor(group.color);
     return [group.id, color ? { name: group.name, color } : null] as const;
   }));
-  const entries = withoutClusterMembers(theaters.flatMap((theater) => buildTheaterEntries({
+  const entries = theaters.flatMap((theater) => buildTheaterEntries({
     theaterId: theater.id,
     operations,
     operationOrder: operationOrderFromNodes(operations.filter((operation) => operation.theaterId === theater.id)),
@@ -198,7 +197,7 @@ export function TriageSideBar({
     activeOperationId: stagedOperationId,
     operationNotifications,
     operationRuntime,
-  })), clusterIndex);
+  }));
   // 최소화한 Operation은 상태 축에서 내려와 전용 선반으로 모인다 — 최소화는 활동 상태가 아니라
   // 표시 선택이므로 대기·실행 중·유휴 중 어디에도 새 칸을 만들지 않는다.
   // 휴면은 그대로 휴면 선반이 가져간다: 재개 대기는 사용자가 고른 상태가 아니라 세션의 상태다.

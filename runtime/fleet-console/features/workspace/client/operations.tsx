@@ -11,7 +11,7 @@ import { clearActiveOperation, shouldReleaseActiveOperation } from "../../../cor
 import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../../../core/client/src/integration/shortcuts.js";
 import { closeOperationCompletely, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
-import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getAlwaysHiddenGeometryIds, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
+import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "./canvas/coordinates.js";
 import { SNAP_FULL_ZONES, SNAP_MIN_ZOOM, SNAP_PRESETS, snapZoneHitFor } from "./canvas/snap-layouts.js";
 import { playRestoreFlight } from "./canvas/panel-motion.js";
@@ -355,8 +355,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         snapshot.groups.filter((g) => g.theaterId === snapshot.activeTheaterId),
         operationOrderFromNodes(theaterOperations),
         canvas.collapsedGroups,
-        // 패널로 서지 않는 단계 Operation 은 순환에서 뺀다 — 지휘관 하나가 묶음을 대표한다.
-        [...canvas.minimized, ...getAlwaysHiddenGeometryIds()],
+        canvas.minimized,
       );
       if (arrowAction === "maximize-toggle" || arrowAction === "minimize") {
         const operationId = snapshot.activeOperationId;
@@ -377,7 +376,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       const currentId = getCompanionOperationId() ?? getMaximizedOperationId() ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, arrowAction === "focus-next" ? 1 : -1);
       if (!nextId) return;
-      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusOperation(nextId), resumeIfDormant);
+      // 패널 사이를 걷는 이동이다 — 지휘관 패널이 보던 구성원 본문은 그대로 둔다.
+      void routeOperationFocus(nextId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusOperation(nextId, { keepBody: true }), resumeIfDormant);
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
@@ -484,6 +484,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
+  // 본문 풀은 구성원까지 싣는다 — 지휘관 패널이 본문 교체로 구성원의 세션을 보이려면 그 본문이 주차돼 있어야 한다.
+  const pooledOperations = useMemo(() => {
+    const inScope = (op: OperationNode) => triageActive || op.theaterId === state.activeTheaterId;
+    return [...state.operations.filter(inScope), ...state.nestedOperations.filter(inScope)];
+  }, [state.activeTheaterId, state.nestedOperations, state.operations, triageActive]);
   const renderKindIcon = useCallback((pluginId: string | null, kind: OperationLaunchKind): ReactNode => {
     const plugin = registry.providers.find((p) => p.id === pluginId);
     return plugin?.renderLaunchIcon?.(kind) ?? null;
@@ -939,7 +944,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   );
   return (
     <OperationBodyPool
-      operations={triageActive ? state.operations : theaterOperations}
+      operations={pooledOperations}
       operationKinds={registry.operationKinds}
       capabilities={poolCapabilities}
       defaultConfig={defaultBodyConfig}

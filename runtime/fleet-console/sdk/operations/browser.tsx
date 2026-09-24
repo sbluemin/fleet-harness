@@ -1,4 +1,4 @@
-export { normalizeOperationOwner, readOperationLaunch, wasOperationBornDormant } from "./types.js";
+export { isListedOperation, normalizeOperationOwner, partitionListedOperations, readOperationLaunch, wasOperationBornDormant } from "./types.js";
 import { normalizeOperationOwner } from "./types.js";
 import * as React from "react";
 

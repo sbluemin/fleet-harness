@@ -46,14 +46,18 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
     },
     consoleState: {
       getTheaters: () => getState().theaters.map((theater) => ({ id: theater.id, label: theater.label })),
-      getOperations: () => {
+      // 기본은 사이드바와 같은 목록(구성원 제외)이다 — 부관단처럼 목록을 읽는 플러그인이 따로 거르지 않아도 된다.
+      // 구성원을 거느리는 플러그인(목표)만 nested 로 부모와 함께 읽는다.
+      getOperations: (options) => {
         const snapshot = getState();
-        return snapshot.operations.map((operation) => ({
+        const operations = options?.nested === true ? [...snapshot.operations, ...snapshot.nestedOperations] : snapshot.operations;
+        return operations.map((operation) => ({
           id: operation.id,
           theaterId: operation.theaterId,
           type: operation.type,
           title: operation.title,
           activity: resolveOperationActivity(operation, snapshot.operationRuntime),
+          ...(options?.nested === true && operation.parentOperationId ? { parentOperationId: operation.parentOperationId } : {}),
         }));
       },
       getActiveTheaterId: () => getState().activeTheaterId,

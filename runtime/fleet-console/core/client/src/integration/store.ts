@@ -1,7 +1,7 @@
 import { readStoredWhatsNewSeenVersion, evaluateAutomaticWhatsNew, remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists, writeStoredWhatsNewSeenVersion } from "../../../../features/updates/client/release-state.js";
-import { normalizeOperationOwner } from "@fleet-console/sdk/operations/browser";
+import { normalizeOperationOwner, partitionListedOperations } from "@fleet-console/sdk/operations/browser";
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
-import type { OperationCluster, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { fetchOperations, putOperationOrder } from "./api.js";
@@ -55,9 +55,9 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 };
 
 const listeners = new Set<Listener>();
-// 플러그인의 관측값은 원천으로 보존한다. 공개 축만 묶음 구성원의 살아 있는 활동을 반영한다.
+// 플러그인의 관측값은 원천으로 보존한다. 공개 축만 부모가 대표하는 구성원의 살아 있는 활동을 반영한다.
 let rawOperationRuntime: Readonly<Record<string, OperationRuntimeState>> = {};
-let clusterMembersByRoot: ReadonlyMap<string, readonly string[]> = new Map();
+let nestedMembersByParent: ReadonlyMap<string, readonly string[]> = new Map();
 
 let notificationSeq = 0;
 
@@ -82,6 +82,8 @@ let state: ConsoleState = {
   portHonored: true,
   theaters: [],
   operations: [],
+  nestedOperations: [],
+  nestedBodySelection: {},
   operationsHydrated: false,
   groups: [],
   activeTheaterId: null,
@@ -148,8 +150,85 @@ export function subscribe(listener: Listener): () => void {
 }
 
 export function setState(patch: Partial<ConsoleState>): void {
-  state = { ...state, ...patch };
+  state = { ...state, ...partitionOperationsPatch(patch) };
   emit();
+}
+
+/**
+ * `operations` 를 싣는 쓰기는 언제나 **전체** 목록이다 — 여기서 한 번 갈라 목록 표면이 쓰는 기본 목록(`operations`)과
+ * 부모가 대표하는 구성원(`nestedOperations`)으로 나눈다. 판정은 SDK `isListedOperation` 하나라 서버의 Console Use 스캔과 같다.
+ * 구성원 구성이 바뀌면 부모의 공개 활동(구성원의 대기·실행 끌어올리기)도 여기서 다시 센다.
+ */
+function partitionOperationsPatch(patch: Partial<ConsoleState>): Partial<ConsoleState> {
+  if (!patch.operations) {
+    if (!("nestedOperations" in patch)) return patch;
+    const { nestedOperations: _derived, ...rest } = patch;
+    return rest;
+  }
+  const { listed, nested } = partitionListedOperations(patch.operations);
+  const members = membersByParent(nested);
+  const membersChanged = !sameMembersByParent(members, nestedMembersByParent);
+  nestedMembersByParent = members;
+  const derived = membersChanged && !("operationRuntime" in patch) ? deriveNestedRuntime(rawOperationRuntime, members, state.operationRuntime) : null;
+  return { ...patch, operations: listed, nestedOperations: nested, ...(derived && derived !== state.operationRuntime ? { operationRuntime: derived } : {}) };
+}
+
+function membersByParent(nested: readonly OperationNode[]): ReadonlyMap<string, readonly string[]> {
+  const next = new Map<string, string[]>();
+  for (const operation of nested) {
+    const parentId = operation.parentOperationId!;
+    const list = next.get(parentId);
+    if (list) list.push(operation.id); else next.set(parentId, [operation.id]);
+  }
+  return next;
+}
+
+function sameMembersByParent(left: ReadonlyMap<string, readonly string[]>, right: ReadonlyMap<string, readonly string[]>): boolean {
+  return left.size === right.size && [...left].every(([parentId, members]) => {
+    const other = right.get(parentId);
+    return other?.length === members.length && members.every((id, index) => id === other[index]);
+  });
+}
+
+/**
+ * 전체 목록 — 구성원까지. 스토어 안의 쓰기는 구성원을 떨어뜨리지 않도록 이것을 고쳐 `operations` 로 다시 싣고,
+ * 밖에서는 id 로 한 Operation 을 찾는 소비자(호출자 이름·제스처 대상)만 명시적으로 쓴다. 목록 표면은 `operations` 다.
+ */
+export function operationsIncludingNested(current: ConsoleState = state): readonly OperationNode[] {
+  return current.nestedOperations.length === 0 ? current.operations : [...current.operations, ...current.nestedOperations];
+}
+const allOperations = operationsIncludingNested;
+
+/** id 로 찾는다 — 기본 목록에 없는 구성원도 찾는다. 목록이 아니라 한 Operation 을 가리키는 소비자의 길이다. */
+export function findOperation(operationId: string, current: ConsoleState = state): OperationNode | null {
+  return current.operations.find((operation) => operation.id === operationId)
+    ?? current.nestedOperations.find((operation) => operation.id === operationId)
+    ?? null;
+}
+
+/** 부모가 대표하는 구성원 — 부모 패널의 본문 교체·노드 줄처럼 구성원을 명시적으로 보는 자리가 읽는다. */
+export function nestedOperationsOf(parentOperationId: string, current: ConsoleState = state): readonly OperationNode[] {
+  return current.nestedOperations.filter((operation) => operation.parentOperationId === parentOperationId);
+}
+
+/** 부모 패널의 본문을 구성원으로 바꾸거나(`operationId`) 부모 자신으로 돌린다(`null`·부모 id). 세션은 그대로다. */
+export function selectNestedBody(parentOperationId: string, operationId: string | null): void {
+  const body = withNestedBody(parentOperationId, operationId);
+  if ("nestedBodySelection" in body) setState(body);
+}
+
+/** 구성원을 가리킨 포커스는 부모 패널로 가고, 부모 패널이 그 구성원의 본문을 보인다. */
+function nestedTarget(operationId: string): OperationNode | null {
+  return state.nestedOperations.find((operation) => operation.id === operationId) ?? null;
+}
+
+function withNestedBody(parentOperationId: string, bodyOperationId: string | null): Pick<ConsoleState, "nestedBodySelection"> | Record<string, never> {
+  const current = state.nestedBodySelection[parentOperationId];
+  const next = bodyOperationId && bodyOperationId !== parentOperationId ? bodyOperationId : undefined;
+  if (current === next) return {};
+  const nestedBodySelection = { ...state.nestedBodySelection };
+  if (next) nestedBodySelection[parentOperationId] = next; else delete nestedBodySelection[parentOperationId];
+  return { nestedBodySelection };
 }
 
 export function setConnectionState(next: ConnectionState): void {
@@ -414,7 +493,7 @@ export function hydrateOperations(operations: readonly OperationNode[]): void {
 // 초기 요청 응답이 늦는 동안 launch 수화가 먼저 도착할 수 있다. 그 패널을 초기 응답이 덮어쓰지 않게 합친다.
 export function hydrateInitialOperations(operations: readonly OperationNode[]): void {
   const initialIds = new Set(operations.map((operation) => operation.id));
-  const launchedBeforeInitialHydration = state.operations.filter((operation) => !initialIds.has(operation.id));
+  const launchedBeforeInitialHydration = allOperations().filter((operation) => !initialIds.has(operation.id));
   setState({ operations: [...operations.map(normalizeOperationOwner), ...launchedBeforeInitialHydration], operationsHydrated: true });
   migrateLegacyOperationOrders(operations);
 }
@@ -466,7 +545,7 @@ export function setOperationOrder(theaterId: string, ids: readonly string[]): vo
   const positions = new Map(orderedIds.map((id, index) => [id, index]));
   const revision = (orderRevisions.get(theaterId) ?? 0) + 1;
   orderRevisions.set(theaterId, revision);
-  setState({ operations: state.operations.map((operation) => operation.theaterId !== theaterId ? operation : {
+  setState({ operations: allOperations().map((operation) => operation.theaterId !== theaterId ? operation : {
     ...operation,
     order: positions.get(operation.id),
   }) });
@@ -500,12 +579,13 @@ const suppressedOrders = new Set<string>();
 
 export function applyOperationUpdate(operation: OperationNode, confirmedOrder = false): void {
   // 내 요청이 진행 중일 때 서버가 이전 순서의 개별 SSE를 보내도 낙관적 배치를 되돌리지 않는다.
-  if (!confirmedOrder && pendingOrders.has(operation.theaterId) && operation.order !== state.operations.find((op) => op.id === operation.id)?.order) {
+  if (!confirmedOrder && pendingOrders.has(operation.theaterId) && operation.order !== findOperation(operation.id)?.order) {
     suppressedOrders.add(operation.theaterId);
-    operation = { ...operation, order: state.operations.find((op) => op.id === operation.id)?.order };
+    operation = { ...operation, order: findOperation(operation.id)?.order };
   }
-  const index = state.operations.findIndex((op) => op.id === operation.id);
-  const operations = [...state.operations];
+  const all = allOperations();
+  const index = all.findIndex((op) => op.id === operation.id);
+  const operations = [...all];
   // MCP·다른 창에서 생성한 Operation은 로컬 launch 응답이 없다. 같은 이벤트로 추가·갱신한다.
   if (index === -1) operations.push(normalizeOperationOwner(operation));
   else operations[index] = normalizeOperationOwner(operation);
@@ -517,11 +597,15 @@ export function applyOperationUpdate(operation: OperationNode, confirmedOrder = 
  * 활성 대상이었다면 비운다: 없는 패널을 겨눈 채 두면 캔버스가 사라진 카드를 기다린다.
  */
 export function applyOperationRemoved(operationId: string): void {
-  if (!state.operations.some((operation) => operation.id === operationId)) return;
-  const operations = state.operations.filter((operation) => operation.id !== operationId);
+  const all = allOperations();
+  if (!all.some((operation) => operation.id === operationId)) return;
+  const operations = all.filter((operation) => operation.id !== operationId);
   const operationNotifications = removeNotificationForOperation(state.operationNotifications, operationId);
   const activeOperationId = state.activeOperationId === operationId ? null : state.activeOperationId;
-  setState({ operations, operationNotifications, activeOperationId, ...(activeOperationId === null ? { activeOperationAcknowledged: true } : {}) });
+  // 사라진 구성원을 보이던 부모 패널은 부모 자신으로 돌아온다. 부모가 사라지면 그 선택도 거둔다.
+  const selection = Object.entries(state.nestedBodySelection).filter(([parentId, bodyId]) => parentId !== operationId && bodyId !== operationId);
+  const nestedBodySelection = selection.length === Object.keys(state.nestedBodySelection).length ? state.nestedBodySelection : Object.fromEntries(selection);
+  setState({ operations, operationNotifications, activeOperationId, nestedBodySelection, ...(activeOperationId === null ? { activeOperationAcknowledged: true } : {}) });
 }
 
 export function hydrateGroups(groups: readonly OperationGroup[]): void {
@@ -547,22 +631,14 @@ export function setActiveTheater(theaterId: string | null): void {
   setState({ activeTheaterId: theaterId });
 }
 
-// 화면에 패널로 서지 않는 Operation(목표 묶음의 단계)을 가리킨 포커스를 대표 Operation(지휘관)으로 돌리는 포트 —
-// store 는 묶음을 모른다(플러그인 레지스트리는 React 컨텍스트). 캔버스가 묶음 색인을 셀 때마다 갈아 끼우고,
-// 돌려받은 id 가 실제로 활성화된다(본문 교체 같은 부수 효과는 등록한 쪽이 진다).
-let redirectOperationFocus: (operationId: string) => string = (operationId) => operationId;
-
-export function registerOperationFocusRedirect(redirect: (operationId: string) => string): void {
-  redirectOperationFocus = redirect;
-}
-
+// 구성원은 패널로 서지 않는다 — 구성원을 가리킨 포커스는 부모 패널로 가고, 부모 패널이 그 구성원의 본문을 보인다.
+// 판정은 스토어의 구성원 목록 하나라 캔버스가 마운트되지 않은 화면(모바일)에서도 같다.
 export function setActiveOperation(
   requestedOperationId: string | null,
   options?: { readonly acknowledged?: boolean },
 ): void {
-  const operationId = requestedOperationId === null ? null : redirectOperationFocus(requestedOperationId);
-  // 돌려진 포커스라도 사용자가 가리킨 것은 요청한 Operation 이다 — 그 도착 표식을 먼저 확인 처리한다.
-  if (requestedOperationId !== null && requestedOperationId !== operationId && options?.acknowledged !== false) acknowledgeIdleArrival(requestedOperationId);
+  const nested = requestedOperationId === null ? null : nestedTarget(requestedOperationId);
+  const operationId = nested ? nested.parentOperationId! : requestedOperationId;
   const acknowledged = operationId === null
     ? true
     : options?.acknowledged === false
@@ -571,8 +647,9 @@ export function setActiveOperation(
   // 캔버스·사이드바·모바일 셸의 보통 포커스는 여기로 온다 — 팔레트의 「최근」 순서가 그 손길에도 반응하려면
   // 교차 Theater 전용 경로(focusOperation)만이 아니라 이 공용 활성화에서도 기록해야 한다.
   if (operationId !== null) noteOperationFocused(operationId);
-  if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged) return;
-  setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged });
+  const body = nested ? withNestedBody(nested.parentOperationId!, nested.id) : {};
+  if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged && !("nestedBodySelection" in body)) return;
+  setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged, ...body });
 }
 
 export function setOperationRuntime(operationId: string, next: OperationRuntimeState): void {
@@ -581,7 +658,7 @@ export function setOperationRuntime(operationId: string, next: OperationRuntimeS
   // "플러그인이 관측한 live idle"과 "미관측"은 구분되어야 한다.
   if (sameRuntimeState(rawOperationRuntime[operationId], next)) return;
   rawOperationRuntime = { ...rawOperationRuntime, [operationId]: next };
-  setState({ operationRuntime: deriveClusterRuntime(rawOperationRuntime, clusterMembersByRoot, state.operationRuntime) });
+  setState({ operationRuntime: deriveNestedRuntime(rawOperationRuntime, nestedMembersByParent, state.operationRuntime) });
 }
 
 function sameRuntimeState(current: OperationRuntimeState | undefined, next: OperationRuntimeState): boolean {
@@ -595,26 +672,11 @@ export function clearOperationRuntime(operationId: string): void {
   const next = { ...rawOperationRuntime };
   delete next[operationId];
   rawOperationRuntime = next;
-  setState({ operationRuntime: deriveClusterRuntime(rawOperationRuntime, clusterMembersByRoot, state.operationRuntime) });
+  setState({ operationRuntime: deriveNestedRuntime(rawOperationRuntime, nestedMembersByParent, state.operationRuntime) });
 }
 
-/** 코어 합성 지점이 묶음 원천을 구독해 밀어 넣는 위상 포트. 진행·표제 변화는 런타임 위상이 아니다. */
-export function setOperationRuntimeClusters(clusters: readonly OperationCluster[]): void {
-  const next = new Map<string, readonly string[]>();
-  for (const cluster of clusters) {
-    const members = cluster.members.filter((member) => !member.pending).map((member) => member.operationId);
-    next.set(cluster.root, [...(next.get(cluster.root) ?? []), ...members]);
-  }
-  if (next.size === clusterMembersByRoot.size && [...next].every(([root, members]) => {
-    const previous = clusterMembersByRoot.get(root);
-    return previous?.length === members.length && members.every((id, index) => id === previous[index]);
-  })) return;
-  clusterMembersByRoot = next;
-  const operationRuntime = deriveClusterRuntime(rawOperationRuntime, next, state.operationRuntime);
-  if (operationRuntime !== state.operationRuntime) setState({ operationRuntime });
-}
-
-function deriveClusterRuntime(
+/** 부모의 공개 활동 — 살아 있는 구성원이 기다리면 부모도 대기, 일하면 부모는 백그라운드다. 부모 자신의 실행이 먼저다. */
+function deriveNestedRuntime(
   raw: Readonly<Record<string, OperationRuntimeState>>,
   membersByRoot: ReadonlyMap<string, readonly string[]>,
   previous: Readonly<Record<string, OperationRuntimeState>>,
@@ -650,6 +712,7 @@ export function setOperationRuntimeHydration(next: OperationRuntimeHydration, er
 
 export function raiseOperationNotification(input: ClientNotification): void {
   if (!input.operationId) return;
+  // 기본 목록의 Operation 만 알림을 쌓는다 — 구성원의 대기는 부모의 공개 활동(대기)이 이미 대표한다.
   const operation = state.operations.find((item) => item.id === input.operationId);
   if (!operation) return;
   const theaterId = operation.theaterId ?? null;
@@ -705,24 +768,28 @@ export function registerFocusTheaterSwitchSuppression(guard: () => boolean): voi
   focusTheaterSwitchSuppressed = guard;
 }
 
-export function focusOperation(requestedOperationId: string): void {
-  const operationId = redirectOperationFocus(requestedOperationId);
+/**
+ * 이동 — 팔레트·알림·목표 표면·플러그인의 「이 Operation 으로」. 본문이 이동을 따른다: 구성원을 가리키면 부모 패널이 그 구성원의
+ * 본문을, 부모를 가리키면 부모 자신의 본문을 보인다(보던 구성원 본문에 가려 부모의 질문이 안 보이던 자리). Alt 순환처럼
+ * 패널 사이를 걷는 이동은 `keepBody` 로 보던 본문을 그대로 둔다.
+ */
+export function focusOperation(requestedOperationId: string, options?: { readonly keepBody?: boolean }): void {
+  const nested = nestedTarget(requestedOperationId);
+  const operationId = nested ? nested.parentOperationId! : requestedOperationId;
   const operation = state.operations.find((item) => item.id === operationId);
   if (!operation) return;
   noteOperationFocused(operationId);
   const suppressSwitch = focusTheaterSwitchSuppressed() && operation.theaterId !== state.activeTheaterId;
   if (!suppressSwitch) writeStoredActiveTheaterId(operation.theaterId);
-  // 돌려진 포커스(숨은 단계 → 지휘관)라도 사용자가 따라온 알림·도착 표식은 요청한 Operation 의 것이다 — 둘 다 치운다.
-  const redirected = requestedOperationId !== operationId;
-  if (redirected) acknowledgeIdleArrival(requestedOperationId);
   const activeOperationAcknowledged = acknowledgeIdleArrival(operationId);
-  const withoutRequested = redirected ? removeNotificationForOperation(state.operationNotifications, requestedOperationId) : state.operationNotifications;
+  const body = options?.keepBody === true && !nested ? {} : withNestedBody(operationId, nested ? nested.id : null);
   setState({
     ...(suppressSwitch ? {} : { activeTheaterId: operation.theaterId }),
     activeOperationId: operationId,
     activeOperationAcknowledged,
     pendingOperationFocus: operationId,
-    operationNotifications: removeNotificationForOperation(withoutRequested, operationId),
+    operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
+    ...body,
   });
 }
 
@@ -1154,7 +1221,7 @@ export function removeTheater(theaterId: string): void {
   const theaters = state.theaters.filter((theater) => theater.id !== theaterId);
   const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId === theaterId ? null : state.activeTheaterId);
   const operationNotifications = pruneNotificationsForTheater(state.operationNotifications, theaterId);
-  const removedOperationIds = new Set(state.operations.filter((operation) => operation.theaterId === theaterId).map((operation) => operation.id));
+  const removedOperationIds = new Set(allOperations().filter((operation) => operation.theaterId === theaterId).map((operation) => operation.id));
   const activeOperationId = state.activeOperationId && removedOperationIds.has(state.activeOperationId) ? null : state.activeOperationId;
   const activeOperationAcknowledged = activeOperationId === null ? true : state.activeOperationAcknowledged;
   // 사라진 Theater를 겨눈 Quick Launch 요청은 여기서 함께 버린다. 소비 조건이
@@ -1175,8 +1242,8 @@ export function activeTheater(current: ConsoleState): TheaterInfo | null {
   return current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
 }
 
-export function operationSearchEntries(current: ConsoleState, hidden?: ReadonlySet<string>) {
-  return buildOperationSearchEntries(current, hidden);
+export function operationSearchEntries(current: ConsoleState) {
+  return buildOperationSearchEntries(current);
 }
 
 function emit(): void {

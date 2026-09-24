@@ -20,7 +20,6 @@ import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../../.
 import type { QuickLaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
 import { theaterInitials } from "../../../workspace/client/sidebar/operations-side-bar.js";
 import { isTriageActive } from "../../../workspace/client/canvas/triage-store.js";
-import { hiddenClusterMembers, useClusterIndex } from "../../../workspace/client/operation-clusters.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../../../../core/client/src/integration/store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { OperationNameMark } from "./operation-name-mark.js";
@@ -236,12 +235,9 @@ export function QuickLaunch() {
   mentionFocusedRef.current = mentionFocused;
   const mentionTargetRef = useRef(mentionTarget);
   mentionTargetRef.current = mentionTarget;
-  // 묶음의 단계 Operation 은 덱에 서지 않는다 — 사이드바·팔레트와 같은 집합이다.
-  const clusterIndex = useClusterIndex();
-  const hiddenMembers = useMemo(() => hiddenClusterMembers(clusterIndex), [clusterIndex]);
   const mentionGroups = useMemo(
-    () => (mentionToken === null ? [] : buildQuickLaunchMentionGroups(state, messageableTypesByPlugin, mentionToken.query, hiddenMembers)),
-    [mentionToken, state, messageableTypesByPlugin, hiddenMembers],
+    () => (mentionToken === null ? [] : buildQuickLaunchMentionGroups(state, messageableTypesByPlugin, mentionToken.query)),
+    [mentionToken, state, messageableTypesByPlugin],
   );
   const mentionEntries = useMemo(() => mentionGroups.flatMap((group) => group.entries), [mentionGroups]);
   // 플러그인 기여 행선지는 덱이 열릴 때마다 다시 읽는다 — 설정에서 켜고 끈 결과가 그대로 반영된다.

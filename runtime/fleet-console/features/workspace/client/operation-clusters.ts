@@ -7,8 +7,8 @@ import { usePluginRegistry } from "../../../core/client/src/integration/plugin-r
 /**
  * 묶음 — 플러그인이 선언한 실행 구조를 네 모드가 같은 셈법으로 읽는 자리.
  *
- * 단계 Operation 은 어느 모드에서도 패널로 서지 않는다 — 지휘관 하나가 묶음을 대표하고, 지휘관 패널이 본문 교체로 단계를 보인다.
- * 여기서 계산하는 것은 순서·깊이·행뿐이다. 색과 모션은 각 표면의 CSS 가, 진실은 플러그인이 진다.
+ * 구성원이 목록에 서지 않는 것은 묶음이 아니라 코어의 부모 관계(`parentOperationId`)가 정한다 — 여기서 숨기지 않는다.
+ * 여기서 계산하는 것은 띠·노드 줄·피커가 쓰는 순서·깊이·행뿐이다. 색과 모션은 각 표면의 CSS 가, 진행의 진실은 플러그인이 진다.
  */
 
 export interface ClusterLaidMember {
@@ -20,7 +20,7 @@ export interface ClusterLaidMember {
   readonly order: number;
 }
 
-/** Operation 이 선 구성원만의 배치 — 숨김·본문 교체·노드 줄이 읽는다. 자리표시(pending) 단계는 열도 행도 차지하지 않는다. */
+/** Operation 이 선 구성원만의 배치 — 노드 줄·피커가 읽는다. 자리표시(pending) 단계는 열도 행도 차지하지 않는다. */
 export interface ClusterFormation {
   readonly members: readonly ClusterLaidMember[];
   readonly byOperationId: ReadonlyMap<string, ClusterLaidMember>;
@@ -100,26 +100,24 @@ export interface ClusterIndex {
   readonly layouts: ReadonlyMap<string, ClusterLayout>;
   /** operationId → 그 Operation 이 뿌리인 묶음. */
   readonly rootOf: ReadonlyMap<string, ClusterLayout>;
-  /** operationId → 그 Operation 이 구성원인 묶음과 자리. */
-  readonly memberOf: ReadonlyMap<string, { readonly layout: ClusterLayout; readonly laid: ClusterLaidMember }>;
 }
 
-const EMPTY_INDEX: ClusterIndex = { clusters: [], layouts: new Map(), rootOf: new Map(), memberOf: new Map() };
+const EMPTY_INDEX: ClusterIndex = { clusters: [], layouts: new Map(), rootOf: new Map() };
 
 export function indexClusters(clusters: readonly OperationCluster[]): ClusterIndex {
   if (clusters.length === 0) return EMPTY_INDEX;
   const layouts = new Map<string, ClusterLayout>();
   const rootOf = new Map<string, ClusterLayout>();
-  const memberOf = new Map<string, { layout: ClusterLayout; laid: ClusterLaidMember }>();
+  // 한 Operation 은 한 묶음에만 선다 — 이미 구성원으로 선 Operation 은 다른 묶음의 뿌리가 되지 않는다.
+  const memberOf = new Set<string>();
   for (const cluster of clusters) {
     const layout = layoutCluster(cluster);
     layouts.set(cluster.id, layout);
     // 한 Operation 은 한 묶음에만 선다 — 먼저 선언된 묶음이 이긴다.
     if (!rootOf.has(cluster.root) && !memberOf.has(cluster.root)) rootOf.set(cluster.root, layout);
-    // 구성원 색인은 Operation 이 선 단계 기준 — 자리표시는 색인에도 없고, 깊이도 Operation 이 선 선행만 센다.
-    for (const laid of layout.formation.members) if (!memberOf.has(laid.member.operationId) && !rootOf.has(laid.member.operationId)) memberOf.set(laid.member.operationId, { layout, laid });
+    for (const laid of layout.formation.members) if (!rootOf.has(laid.member.operationId)) memberOf.add(laid.member.operationId);
   }
-  return { clusters, layouts, rootOf, memberOf };
+  return { clusters, layouts, rootOf };
 }
 
 export function useOperationClusters(): readonly OperationCluster[] {
@@ -130,30 +128,4 @@ export function useOperationClusters(): readonly OperationCluster[] {
 export function useClusterIndex(): ClusterIndex {
   const clusters = useOperationClusters();
   return useMemo(() => indexClusters(clusters), [clusters]);
-}
-
-// ── 구성원 숨김 ────────────────────────────────────────────────────────────────────────────────────
-/**
- * 화면에서 접히는 구성원 — 모든 모드에서 전부. 단계 Operation 은 뒤에서 돌고 패널을 세우지 않으며(본문은 풀에 대기),
- * 지휘관 패널이 노드 줄·진척도 목록의 본문 교체로 그들을 보여 준다.
- */
-export function hiddenClusterMembers(index: ClusterIndex): ReadonlySet<string> {
-  return new Set(index.memberOf.keys());
-}
-
-// ── 본문 선택 ──────────────────────────────────────────────────────────────────────────────────────
-// 지휘관 패널이 어느 Operation 의 본문(PTY·채팅뷰)을 보이는가. 세션은 그대로고 마운트만 이 프레임의 슬롯으로 옮겨 온다.
-// 세션 안에서만 산다 — 새로 열면 지휘관 자신으로 돌아온다.
-let bodySelection: Readonly<Record<string, string>> = {};
-const bodyListeners = new Set<() => void>();
-export function selectClusterBody(rootId: string, operationId: string | null): void {
-  const next = { ...bodySelection };
-  if (!operationId || operationId === rootId) delete next[rootId]; else next[rootId] = operationId;
-  bodySelection = next;
-  for (const listener of bodyListeners) listener();
-}
-const subscribeBody = (listener: () => void) => { bodyListeners.add(listener); return () => { bodyListeners.delete(listener); }; };
-const readBody = () => bodySelection;
-export function useClusterBodySelection(): Readonly<Record<string, string>> {
-  return useSyncExternalStore(subscribeBody, readBody, readBody);
 }

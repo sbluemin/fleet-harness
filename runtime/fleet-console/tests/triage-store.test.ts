@@ -15,7 +15,7 @@ import {
   markIdleArrival,
   resetIdleArrivalForTests,
 } from "../features/execution/client/operation-marks.js";
-import { clearOperationRuntime, focusOperation, getState, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setOperationRuntime, setOperationRuntimeClusters, setState as setConsoleState } from "../core/client/src/integration/store.js";
+import { clearOperationRuntime, findOperation, focusOperation, getState, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setOperationRuntime, setState as setConsoleState } from "../core/client/src/integration/store.js";
 import {
   clearFormationView,
   forceDropCompanionOperationId,
@@ -131,44 +131,49 @@ afterEach(() => {
 });
 
 describe("triage store", () => {
-  it("keeps a Commander off the idle arrival and triage queue until its live step stops", () => {
+  it("keeps a member under its Commander: off every list, on the Commander's activity, and reachable by id", () => {
     const commander = operation("commander", 1);
-    const step = operation("step", 2);
-    setConsoleState({ operations: [commander, step], activeTheaterId: THEATER_ID, activeOperationId: null });
-    setOperationRuntimeClusters([{ id: "objectives:item", theaterId: THEATER_ID, title: "Item", root: commander.id, members: [
-      { operationId: step.id, label: "Step", after: [], progress: "running" },
-      { operationId: "pending", pending: true, label: "Next", after: [], progress: "open" },
-    ] }]);
+    const member = { ...operation("member", 2), parentOperationId: commander.id };
+    setConsoleState({ operations: [commander, member], activeTheaterId: THEATER_ID, activeOperationId: null });
     const off = subscribeOperationActivityTracking();
     try {
+      // 기본 목록은 사이드바·팔레트·War Room·부관단이 함께 읽는 원천이다 — 구성원은 거기 없고 id 로는 닿는다.
+      expect(getState().operations.map((entry) => entry.id)).toEqual([commander.id]);
+      expect(findOperation(member.id)?.parentOperationId).toBe(commander.id);
+
       setOperationRuntime(commander.id, { lifecycle: "live", activity: "running" });
-      setOperationRuntime(step.id, { lifecycle: "live", activity: "running" });
+      setOperationRuntime(member.id, { lifecycle: "live", activity: "running" });
       setOperationRuntime(commander.id, { lifecycle: "live", activity: "idle" });
       expect(getState().operationRuntime[commander.id]).toEqual({ lifecycle: "live", activity: "background" });
       expect(getIdleArrivalIds().has(commander.id)).toBe(false);
-      expect(resolveTriageQueue([commander], getState().operationRuntime)).toEqual([]);
+      expect(resolveTriageQueue(getState().operations, getState().operationRuntime)).toEqual([]);
 
-      setOperationRuntime(step.id, { lifecycle: "live", activity: "awaiting" });
+      setOperationRuntime(member.id, { lifecycle: "live", activity: "awaiting" });
       expect(getState().operationRuntime[commander.id]).toEqual({ lifecycle: "live", activity: "awaiting" });
-      expect(getState().operationRuntime[step.id]).toEqual({ lifecycle: "live", activity: "awaiting" });
-      expect(resolveTriageQueue([commander], getState().operationRuntime).map((entry) => entry.operation.id)).toEqual([commander.id]);
+      expect(resolveTriageQueue(getState().operations, getState().operationRuntime).map((entry) => entry.operation.id)).toEqual([commander.id]);
 
+      // 구성원 구성이 그대로인 쓰기(제목 바뀜)는 공개 활동을 다시 세지 않는다.
       const unchangedRuntime = getState().operationRuntime;
-      setOperationRuntimeClusters([{ id: "objectives:item", theaterId: THEATER_ID, title: "Renamed", root: commander.id, members: [
-        { operationId: step.id, label: "Step", after: [], progress: "awaiting" },
-        { operationId: "pending", pending: true, label: "Next", after: [], progress: "open" },
-      ] }]);
+      setConsoleState({ operations: [commander, { ...member, title: "renamed" }] });
       expect(getState().operationRuntime).toBe(unchangedRuntime);
 
-      setOperationRuntime(step.id, { lifecycle: "live", activity: "idle" });
+      // 구성원이 끝나면 도착은 지휘관의 것이다 — 숨은 구성원은 도착 표식을 남기지 않는다(보이지 않는 Theater 틱의 원천).
+      setOperationRuntime(member.id, { lifecycle: "live", activity: "idle" });
       expect(getState().operationRuntime[commander.id]).toEqual({ lifecycle: "live", activity: "idle" });
       expect(getIdleArrivalIds().has(commander.id)).toBe(true);
-      expect(resolveTriageQueue([commander], getState().operationRuntime).map((entry) => entry.operation.id)).toEqual([commander.id]);
+      expect(getIdleArrivalIds().has(member.id)).toBe(false);
+
+      // 구성원을 가리킨 이동은 지휘관 패널로 가서 그 본문을 보이고, 지휘관을 가리킨 이동은 지휘관 본문으로 돌린다.
+      focusOperation(member.id);
+      expect(getState().activeOperationId).toBe(commander.id);
+      expect(getState().nestedBodySelection[commander.id]).toBe(member.id);
+      focusOperation(commander.id);
+      expect(getState().nestedBodySelection[commander.id]).toBeUndefined();
     } finally {
       off();
-      setOperationRuntimeClusters([]);
+      setConsoleState({ operations: [], nestedBodySelection: {}, activeOperationId: null });
       clearOperationRuntime(commander.id);
-      clearOperationRuntime(step.id);
+      clearOperationRuntime(member.id);
       resetIdleArrivalForTests();
     }
   });

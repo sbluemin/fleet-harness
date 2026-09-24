@@ -28,7 +28,7 @@ import {
   type SideBarOperationMenuAction,
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
-import { clusterChipPropsFor, withoutClusterMembers } from "./cluster-rows.js";
+import { clusterChipPropsFor } from "./cluster-rows.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarNarrowToggle, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
@@ -406,7 +406,7 @@ export function OperationsSideBar({
     launchMenuRequest,
   } = useConsoleState();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
-  // 묶음은 지휘관 한 행이 대표한다 — 단계 Operation 은 사이드바(펼친 목록·레일)에 서지 않고, 지휘관 행의 상태는 지휘관 자신의 것이다.
+  // 묶음 띠(임무 점)는 지휘관 행의 셋째 줄에 선다. 구성원 행은 스토어의 기본 목록에 없어 여기서 거를 것이 없다.
   const clusterIndex = useClusterIndex();
 
   useLayoutEffect(() => {
@@ -433,10 +433,8 @@ export function OperationsSideBar({
       mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),
     };
   });
-  // 단계 행은 섹션을 나누기 전에 뺀다 — 섹션 entries 가 곧 드롭 인덱스(entryIds)와 DOM 순서의 원천이다.
-  const listedEntries = withoutClusterMembers(allEntries, clusterIndex);
-  const groupedSections = groupOperations(listedEntries, activeGroups, activeOperationOrder);
-  const statusGrouped = groupTheaterStatusEntries(listedEntries, minimizedSet, getStatusTransitionTick, t);
+  const groupedSections = groupOperations(allEntries, activeGroups, activeOperationOrder);
+  const statusGrouped = groupTheaterStatusEntries(allEntries, minimizedSet, getStatusTransitionTick, t);
   const statusSections = statusGrouped.living;
   const { minimized: minimizedSection, dormant: dormantSection } = statusGrouped;
   const clusterPropsFor = (entry: SideBarEntry) => clusterChipPropsFor(entry, clusterIndex);
@@ -992,7 +990,7 @@ export function OperationsSideBar({
         <ol className="side-bar-rail-sections" aria-label={t("sidebar.view.railAria")}>
           {theaters.map((theater) => {
             const theaterCanvas = theater.id === activeTheaterId ? canvas : getTheaterCanvasSnapshot(theater.id);
-            const railEntries = withoutClusterMembers(theater.id === activeTheaterId ? allEntries : buildTheaterEntries({
+            const railEntries = theater.id === activeTheaterId ? allEntries : buildTheaterEntries({
               theaterId: theater.id,
               operations,
               operationOrder: operationOrderFromNodes(operations.filter((operation) => operation.theaterId === theater.id)),
@@ -1000,7 +998,7 @@ export function OperationsSideBar({
               activeOperationId: null,
               operationNotifications,
               operationRuntime,
-            }), clusterIndex);
+            });
             const isActiveTheater = theater.id === activeTheaterId;
             return (
               <li key={theater.id} className={`side-bar-rail-section side-bar-rail-section--theater${isActiveTheater ? " is-active" : ""}`}>

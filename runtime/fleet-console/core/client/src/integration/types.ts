@@ -161,6 +161,8 @@ export interface OperationNode {
   readonly accent?: string | null;
   // 사용자 지정 그룹 id(서버 영속). null이면 Ungrouped, 미설정 시 부재(Ungrouped와 동일 취급).
   readonly groupId?: string | null;
+  // 이 Operation 을 대표하는 부모(서버 영속, 코어 소유). 목록에 서는지는 SDK isListedOperation 이 판정한다.
+  readonly parentOperationId?: string;
   readonly ts: {
     readonly createdAt: number;
     readonly updatedAt: number;
@@ -245,7 +247,15 @@ export interface ConsoleState {
   readonly effectivePort: number;
   readonly portHonored: boolean;
   readonly theaters: readonly TheaterInfo[];
+  /**
+   * 목록 표면이 쓰는 Operation — 부모가 대표하는 구성원은 빠진다(SDK `isListedOperation`). 새 표면은 이것만 읽으면 된다.
+   * id 로 찾을 때는 `findOperation`, 부모의 구성원은 `nestedOperationsOf` 로 명시적으로 연다.
+   */
   readonly operations: readonly OperationNode[];
+  /** 부모가 대표하는 구성원 Operation — 본문 풀·본문 교체·활동 끌어올리기처럼 구성원을 봐야 하는 소비자만 읽는다. */
+  readonly nestedOperations: readonly OperationNode[];
+  /** 부모 패널이 지금 어느 구성원의 본문을 보이는가(부모 id → 구성원 id). 세션 안에서만 산다 — 새로 열면 부모 자신이다. */
+  readonly nestedBodySelection: Readonly<Record<string, string>>;
   readonly operationsHydrated: boolean;
   readonly groups: readonly OperationGroup[];
   readonly activeTheaterId: string | null;
