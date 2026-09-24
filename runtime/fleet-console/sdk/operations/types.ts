@@ -25,6 +25,34 @@ export interface OperationNode {
   readonly ts: OperationTimestamps;
 }
 
+export interface OperationLaunchInfo {
+  readonly sessionName: string | null;
+  readonly model?: string;
+  readonly effort?: string;
+  /** launch 때 예약한 좌표가 아니라 첫 턴의 provider 세션이 실제로 잡혔는가. */
+  readonly started: boolean;
+}
+
+export function readOperationLaunch(payload: Record<string, unknown>): OperationLaunchInfo {
+  const value = payload.session;
+  const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return {
+    sessionName: typeof session.sessionName === "string" && session.sessionName.length > 0 ? session.sessionName : null,
+    ...(typeof session.model === "string" && session.model.length > 0 ? { model: session.model } : {}),
+    ...(typeof session.effort === "string" && session.effort.length > 0 ? { effort: session.effort } : {}),
+    started: typeof session.id === "string" && session.id.length > 0
+      && typeof session.capturedAt === "string" && session.capturedAt.length > 0
+      && session.source !== "launch",
+  };
+}
+
+/** 기존 세션 좌표·이름·실행 정책을 유지하면서 다음 시작의 모델과 강도만 교체한다. */
+export function withOperationLaunchPreset(payload: Record<string, unknown>, preset: { readonly model?: string; readonly effort?: string }): Record<string, unknown> {
+  const value = payload.session;
+  const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return { ...payload, session: { ...session, ...(preset.model !== undefined ? { model: preset.model } : {}), ...(preset.effort !== undefined ? { effort: preset.effort } : {}) } };
+}
+
 export interface OperationCreateInput {
   readonly id?: string;
   readonly theaterId: string;

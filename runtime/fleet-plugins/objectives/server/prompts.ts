@@ -1,4 +1,4 @@
-import { stepReady, type ObjectiveEditKind, type ObjectiveItem, type ObjectiveStep } from "./types.js";
+import type { ObjectiveEditKind, ObjectiveItem } from "./types.js";
 
 /**
  * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `console_objectives` 도구 설명과 보드를 읽고
@@ -9,15 +9,6 @@ export type PromptLanguage = "en" | "ko";
 
 const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
 
-/** 세션 이름 — 다른 세션이 이 세션을 부르는 주소. 항목 id 앞 여섯 글자로 항목을 가른다. */
-export const sessionNames = (item: ObjectiveItem) => {
-  const head = `objective-${item.id.slice(0, 6)}`;
-  return { coordinator: `${head}-cmdr`, step: (index: number) => `${head}-mission-${index}` };
-};
-
-export function readySteps(item: ObjectiveItem): readonly ObjectiveStep[] {
-  return item.steps.filter((step) => !step.done && stepReady(item, step));
-}
 
 /** 구상 — 한 줄: 목표 id 와 「구상」. 사람이 함께 준 맥락이 있으면 그 아래 인용으로. */
 export function cookTurn(item: ObjectiveItem, language: PromptLanguage): string {

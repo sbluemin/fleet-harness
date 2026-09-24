@@ -528,7 +528,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.viewMode !== "terminal" ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.dormant ? { dormant: true } : input.viewMode !== "terminal" ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -1055,7 +1055,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
@@ -1095,14 +1095,23 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           harness: "claude-code",
           ...(launchOptions.model ? { model: launchOptions.model } : {}),
           ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
+          ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
+          ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
         },
         // 채팅으로 태어난 Operation은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
         // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
         ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
+        ...(launchOptions.dormant ? { dormantBorn: true } : {}),
       },
       ...(launchOptions.geometry ? { geometry: launchOptions.geometry } : {}),
       createdAt: session.createdAt,
     });
+    if (launchOptions.dormant) {
+      const dormant = injectOperation(ctx.host.operations.get(sessionId)!);
+      observability.notifySessionUpdated(dormant);
+      reply(200, dormant);
+      return;
+    }
     if (launchOptions.chatBorn) {
       await startChatBornSession(sessionId, reply, launchOptions);
       return;
@@ -1258,9 +1267,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const { fresh, providerSession } = options;
     // launchModel 도입 전 Operation은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
     // 신규 Quick Launch와 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
-    const launchModel = readAgentSession(node.payload)?.model
+    const launchSession = readAgentSession(node.payload);
+    const launchModel = launchSession?.model
       || (cliId === "claude" ? "opus[1m]" : undefined);
-    const launchEffort = readAgentSession(node.payload)?.effort || undefined;
+    const launchEffort = launchSession?.effort || undefined;
     // cwd 해석은 상태 전이 전에 끝낸다 — 'starting'으로 올린 뒤 404로 빠지면 catch의 dormant
     // 복귀를 건너뛰어 세션이 starting에 고착된다.
     const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
@@ -1276,11 +1286,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다.
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
-        const launchSession = readAgentSession(node.payload);
         payloadWithoutProvider.session = {
           harness: "claude-code",
           ...(launchSession?.model ? { model: launchSession.model } : {}),
           ...(launchSession?.effort ? { effort: launchSession.effort } : {}),
+          ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
+          ...(launchSession?.disableSubagents ? { disableSubagents: true } : {}),
         };
         ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
       }
@@ -1294,6 +1305,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         cliId,
         ...(launchModel ? { model: launchModel } : {}),
         ...(launchEffort ? { effort: launchEffort } : {}),
+        ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
+        ...(launchSession?.disableSubagents ? { disableSubagents: true } : {}),
         ...(fresh ? {} : { resumeSessionId: providerSession?.id }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
@@ -1505,14 +1518,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // dormant 대상은 재기동 후 전달한다(제품 결정). providerSession이 없으면 이어붙일 세션이 없다.
     const cliId = CLAUDE_HARNESS_ID;
     const providerSession = readProviderSession(node.payload);
-    if (!cliId || !providerSession) {
+    if (!providerSession && node.payload.dormantBorn !== true) {
       if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
       settleAttachments(false);
       reply(409, { error: "resume_unavailable" });
       return true;
     }
     assertCurrent();
-    const result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh: false, providerSession });
+    const fresh = !providerSession || providerSession.source === "launch";
+    const result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh, providerSession });
     if (!result.ok) {
       if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
       settleAttachments(false);
@@ -2438,7 +2452,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const onChatSurface = operation.payload[CHAT_BORN_PAYLOAD_KEY] === true
         || operation.payload[CHAT_MODE_PAYLOAD_KEY] === true;
       if (observability.getTerminalSessionInfo(operation.id)) continue;
-      if (!providerSession && !onChatSurface) {
+      if (!providerSession && !onChatSurface && operation.payload.dormantBorn !== true) {
         ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, restoredDormant: true } });
         continue;
       }

@@ -117,7 +117,7 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
     onToggleEdge(drag.from, target);
   };
 
-  const mode = coordinatorMode(item);
+  const mode = coordinatorMode(item.steps);
   if (vertical) return (
     <div className="objectives-dag-box objectives-dag-vertical">
       <div className="objectives-dag-row is-root"><span className="objectives-dag-dot" aria-hidden="true" /><span>{t("objectives.graph.coordinator")}</span></div>
@@ -127,7 +127,7 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
         onPointerEnter={onFocusStep ? () => onFocusStep(step.id) : undefined}
         onPointerLeave={onFocusStep ? () => onFocusStep(null) : undefined}
         title={step.after.length ? t("objectives.graph.edgeAria", { from: steps.findIndex((candidate) => candidate.id === step.after[0]) + 1, to: index + 1 }) : undefined}>
-        <span className={`objectives-dag-dot${step.done ? " is-done" : step.slot ? " is-assigned" : ""}`}>{index + 1}</span><span className="objectives-dag-step-name">{step.text}</span>
+        <span className={`objectives-dag-dot${step.done ? " is-done" : step.operationId ? " is-assigned" : ""}`}>{index + 1}</span><span className="objectives-dag-step-name">{step.text}</span>
       </div>)}
       <span hidden>{mode}</span>
     </div>
@@ -190,16 +190,16 @@ export function CoordinationGraph({ item, t, modeLabel, onToggleEdge, onCycle, o
           </g>
         ) : null}
         {drag ? <path className="objectives-edge is-ghost" d={`M${drag.x0},${drag.y0} L${drag.x},${drag.y}`} pointerEvents="none" /> : null}
-        <g className={`objectives-node is-root${item.slot ? " is-assigned" : ""}`}>
+        <g className="objectives-node is-root is-assigned">
           <circle cx={root.x} cy={root.y} r={9} />
           {/* 뿌리 라벨은 항상 「조율자」 — 모드는 조율자 행이 말하고, 긴 모드명은 그래프 왼쪽 가장자리에서 잘린다. */}
           <text x={root.x} y={root.y + 21} textAnchor="middle">{t("objectives.graph.coordinator")}</text>
-          {item.slot ? <title>{`${operationTitle(item.slot.operationId)} · ${modeLabel}`}</title> : null}
+          <title>{`${operationTitle(item.id)} · ${modeLabel}`}</title>
         </g>
         {steps.map((step, index) => {
           const p = pos.get(step.id)!;
           const unplaced = loose.includes(step);
-          const cls = step.done ? "is-done" : step.slot ? "is-assigned" : unplaced ? "is-unplaced" : stepReady(item, step) ? "is-ready" : "is-wait";
+          const cls = step.done ? "is-done" : step.operationId ? "is-assigned" : unplaced ? "is-unplaced" : stepReady(item.steps, step) ? "is-ready" : "is-wait";
           // 노드 곁에는 단계 제목을 줄여 쓴다 — 모델·강도는 단계 행이 말한다.
           // 짝수 열은 위, 홀수 열은 아래 — 첫 열이 위로 가야 뿌리의 「지휘관」 라벨과 같은 줄에 놓이지 않는다.
           const above = stagger && (depth.get(step.id) ?? 0) % 2 === 0;

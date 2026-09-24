@@ -9,6 +9,7 @@ import type { ObjectiveItem, ObjectiveItemEvent } from "../server/types.js";
  *
  * 화면은 응답이 아니라 사건으로 갱신된다 — 자기 변경도 `objectives:item` 프레임으로 들어온다. 그룹은 코어의
  * `group:changed`/`group:removed` 를 같은 스트림에서 듣는다. Operation 의 활동은 호스트 consoleState 가 진실이다.
+ * 목표는 곧 에이전트 Operation 이라, Console 어디서든 Operation 이 생기면 그 목표를 받아 오고 사라지면 목록에서 뺀다.
  */
 
 export interface ObjectiveGroup {
@@ -40,6 +41,44 @@ let reveal: RevealTarget | null = null;
 // useSyncExternalStore 는 스냅샷의 참조가 같아야 멈춘다 — 호스트의 getOperations 가 매번 새 배열을 줄 수 있으므로 여기서 한 번만 받아 둔다.
 let operationsSnapshot: readonly ConsoleOperationSummary[] = [];
 const inflight = new Map<string, Promise<void>>();
+/** 받으러 간 목표 — 같은 Operation 을 두 번 묻지 않는다. */
+const fetching = new Set<string>();
+let knownOperationIds: ReadonlySet<string> = new Set();
+
+/** 담당 Operation — 목표가 아니라 어느 목표의 임무를 맡은 세션이다. */
+function assigneeIds(items: readonly ObjectiveItem[]): ReadonlySet<string> {
+  return new Set(items.flatMap((item) => item.steps.flatMap((step) => (step.operationId ? [step.operationId] : []))));
+}
+
+/**
+ * Operation 목록과 목표를 맞춘다 — 읽어 둔 Theater 에 처음 보는 에이전트 Operation 이 있으면 그 목표를 받아 오고,
+ * 목록에서 빠진 Operation(닫힘·삭제 유예)의 목표는 뺀다. 복원되면 다시 처음 보는 Operation 이 되어 돌아온다.
+ */
+function reconcileOperations(api: ClientApiCapability): void {
+  const current = new Set(operationsSnapshot.map((operation) => operation.id));
+  const gone = [...knownOperationIds].filter((id) => !current.has(id));
+  knownOperationIds = current;
+  for (const [theaterId, state] of theaters) {
+    if (!state.loaded) continue;
+    if (gone.length) {
+      const drop = new Set(gone);
+      if (state.items.some((item) => drop.has(item.id))) setTheater(theaterId, { items: state.items.filter((item) => !drop.has(item.id)) });
+    }
+    const known = new Set((theaters.get(theaterId) ?? state).items.map((item) => item.id));
+    const assignees = assigneeIds(state.items);
+    for (const operation of operationsSnapshot) {
+      if (operation.theaterId !== theaterId || operation.type !== "agent" || known.has(operation.id) || assignees.has(operation.id) || fetching.has(operation.id)) continue;
+      fetching.add(operation.id);
+      void post<{ item: ObjectiveItem }>(api, "/item/get", { itemId: operation.id })
+        .then(({ item }) => {
+          const latest = theaters.get(item.theaterId) ?? EMPTY;
+          if (!latest.items.some((candidate) => candidate.id === item.id)) setTheater(item.theaterId, { items: [item, ...latest.items] });
+        })
+        .catch(() => { /* 플러그인 소유이거나 담당이면 목표가 아니다 */ })
+        .finally(() => { fetching.delete(operation.id); });
+    }
+  }
+}
 
 function notify(): void {
   for (const listener of listeners) listener();
@@ -88,6 +127,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     const current = ctx.consoleState.getActiveTheaterId();
     if (current && current !== lastTheater) { lastTheater = current; void loadTheater(ctx.api, current); }
     operationsSnapshot = ctx.consoleState.getOperations();
+    reconcileOperations(ctx.api);
     notify();
   });
   return () => { offItem(); offGroup(); offRemoved(); offConsole(); if (installed === ctx) installed = null; };
@@ -110,7 +150,11 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
   const pending = inflight.get(theaterId);
   if (pending) return pending;
   const task = post<{ items: ObjectiveItem[]; groups: ObjectiveGroup[]; launch: { available: boolean } }>(api, "/state", { theaterId })
-    .then((state) => { setTheater(theaterId, { items: state.items, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available }); })
+    .then((state) => {
+      setTheater(theaterId, { items: state.items, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
+      // 읽는 사이 생긴 Operation 도 목표로 — 스냅숏 기준으로 한 번 맞춘다.
+      if (installed) { knownOperationIds = new Set(); operationsSnapshot = installed.consoleState.getOperations(); reconcileOperations(installed.api); }
+    })
     .catch(() => { setTheater(theaterId, { loaded: true }); })
     .finally(() => { inflight.delete(theaterId); });
   inflight.set(theaterId, task);

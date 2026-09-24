@@ -38,6 +38,8 @@ export interface AgentSession {
   readonly harness: "claude-code";
   readonly model?: string;
   readonly effort?: string;
+  readonly sessionName?: string;
+  readonly disableSubagents?: boolean;
   readonly id?: string;
   readonly transcriptPath?: string;
   readonly source?: string;

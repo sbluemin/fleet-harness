@@ -440,12 +440,6 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-launch-model { color: var(--text-primary); }
 .objectives-launch-dot { color: var(--text-tertiary); }
 .objectives-launch-effort { color: var(--brass); text-transform: uppercase; }
-.objectives-launch-view { display: inline-grid; place-items: center; width: 14px; height: 14px; color: var(--text-tertiary); margin-left: 2px; }
-.objectives-launch-view svg { width: 14px; height: 14px; }
-/* 표면 표식은 트리거 안에서 바로 바꾼다 — 메뉴는 모델·강도만 말한다. */
-.objectives-launch-view.is-switch { width: 20px; height: 20px; border-radius: var(--radius-xs); cursor: pointer; }
-.objectives-launch-view.is-switch:hover { color: var(--brass); background: color-mix(in oklch, var(--brass) 16%, transparent); }
-.objectives-launch-view.is-switch:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 .objectives-launch-caret { color: var(--text-tertiary); line-height: 1; margin-top: -3px; }
 .objectives-menu {
   position: fixed;
@@ -633,9 +627,6 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-banner .objectives-banner-undo { margin-left: auto; }
 
 /* 연결 선택 */
-.objectives-pick { display: flex; flex-direction: column; gap: 4px; padding: 4px 20px 8px 54px; max-height: 180px; overflow: auto; }
-.objectives-pick button { text-align: left; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 4px 6px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
-.objectives-pick button:hover { border-color: var(--brass); }
 
 @container objectives-panel (width < 960px) {
   .objectives-root, .objectives-root.has-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

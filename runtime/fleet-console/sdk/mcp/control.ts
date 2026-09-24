@@ -25,6 +25,8 @@ export interface ConsoleActionInput {
   readonly sessionName?: string;
   /** launch 전용 — 이 세션의 서브에이전트(Claude Code `Agent` 도구, fleet:execute 포함)를 모두 끈다. 이미 분배된 일을 맡은 세션이 다시 나누지 않게. */
   readonly disableSubagents?: boolean;
+  /** launch 전용 — Operation만 만들고 첫 send 때 새 세션으로 깨운다. */
+  readonly dormant?: boolean;
 }
 
 export interface ConsoleOperationObservation {
