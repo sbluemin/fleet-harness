@@ -693,11 +693,11 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       {/* 덱 칸에 선 패널의 본문은 읽는 자리다 — 승격 면이 포인터를 가로채는 것만으로는 절반이고,
           키보드는 그 면을 지나쳐 살아 있는 body(터미널 textarea·에이전트 컴포저)로 바로 들어간다.
           본문만 inert로 빼면 캡션의 창 컨트롤과 승격 면은 탭 순서에 그대로 남는다. */}
+      {/* 덱 칸의 본문은 읽는 자리라 세션을 바꿀 문도 두지 않는다. 캡션 바로 아래 frame 흐름 안에 26px 가로 탭 줄로 배치한다. */}
+      {cluster && !deckTile ? cluster.nodes : null}
       <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker inert={deckTile ? true : undefined}>
         {children}
       </div>
-      {/* 덱 칸의 본문은 읽는 자리라 세션을 바꿀 문도 두지 않는다. */}
-      {cluster && !deckTile ? cluster.nodes : null}
       {/* 최대화 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —
           외곽 hover 시 resize 커서가 뜨거나 포인터를 가로채는 일이 없도록 한다. */}
       {!maximized && !interactionDisabled && RESIZE_DIRECTIONS.map((direction) => (

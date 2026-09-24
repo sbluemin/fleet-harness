@@ -3695,76 +3695,248 @@
   white-space: nowrap;
 }
 
-/* 노드 줄 — 지휘관 패널 본문의 오른쪽 위, 세션마다 버튼 하나를 세로로. 평소엔 흐리고, 패널에 올리거나 포커스가 들어오면
-   선명해진다. 지금 보는 세션 버튼은 비활성화된 brass 워시(자리), 점은 진행(신호 토큰)만 말한다. */
-.cluster-node-rail {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 1px;
-  min-width: 84px;
-  max-height: calc(100% - 20px);
-  padding: 3px;
-  overflow-y: auto;
-  scrollbar-width: none;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-md);
-  /* 유리 채널이 꺼져 있으면 흐림이 없으므로 뒤 글자가 비치지 않을 만큼 불투명하게 둔다. */
-  background: color-mix(in oklch, var(--surface-panel-raised) 92%, transparent);
-  backdrop-filter: var(--glass-backdrop-soft);
-  opacity: 0.55;
-  transition: opacity var(--duration-base) var(--ease-spring);
+/* 세션 줄 — 지휘관 패널 본문 위에 서는 26px 가로 탭 줄. 지휘관 + 구성원. 누르면 본문 전환.
+   패널 frame 흐름 안에서 캡션 아래, 본문(터미널) 위에 위치하며 본문을 가리지 않는다. */
+.canvas-operation:has(> .cluster-node-rail) {
+  grid-template-rows: auto minmax(0, 1fr);
 }
-.cluster-node-rail::-webkit-scrollbar { display: none; }
-.canvas-operation:hover .cluster-node-rail,
-.cluster-node-rail:focus-within,
-.cluster-node-rail.is-away,
-.cluster-node-rail.has-await { opacity: 1; }
-/* 본문에 타이핑하는 동안은 비켜 선다 — 포인터가 움직이면 돌아온다. */
-.cluster-node-rail.is-typing:not(:focus-within) { opacity: 0; pointer-events: none; }
-.cluster-node {
-  display: inline-flex;
+
+.cluster-node-rail {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  min-height: 26px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--surface-rim);
+  background: var(--surface-panel);
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.cluster-node-tab {
   flex: none;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 22px;
-  padding: 0 10px 0 7px;
+  height: 20px;
+  padding: 0 8px 0 6px;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
-  font: inherit;
+  font-family: var(--font-body);
   font-size: var(--t-xs);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  font-weight: var(--weight-medium);
+  line-height: 1;
   cursor: pointer;
+  white-space: nowrap;
   transition:
-    background var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring);
 }
-.cluster-node:hover:not(:disabled),
-.cluster-node:focus-visible { color: var(--text-primary); border-color: var(--control-hover-rim); background: var(--control-hover-fill); outline: none; }
-.cluster-node:disabled {
-  cursor: default;
+
+.cluster-node-tab:hover {
   color: var(--text-primary);
+  background: color-mix(in oklch, var(--text-secondary) 9%, transparent);
+}
+
+.cluster-node-tab:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 65%, transparent);
+  outline-offset: -1px;
+}
+
+/* 지금 보고 있는 탭: brass 워시와 테두리 전체 (왼쪽 강조 띠 금지) */
+.cluster-node-tab.is-current,
+.cluster-node-tab[aria-selected="true"] {
+  color: var(--text-primary);
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  cursor: default;
+}
+
+.cluster-node-div {
+  flex: none;
+  width: 1px;
+  height: 12px;
+  margin: 0 3px;
+  background: var(--hairline-strong);
+}
+
+/* 구성원 글리프 표식 — MemberMark와 동일한 톤(--id-*)과 형태(역할 첫 글자) */
+.cluster-member-glyph {
+  --member-tone: var(--id-teal);
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border: 1px solid color-mix(in oklch, var(--member-tone) 50%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--member-tone) 14%, transparent);
+  color: var(--member-tone);
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.cluster-member-glyph.is-tone-teal { --member-tone: var(--id-teal); }
+.cluster-member-glyph.is-tone-amber { --member-tone: var(--id-amber); }
+.cluster-member-glyph.is-tone-plum { --member-tone: var(--id-plum); }
+.cluster-member-glyph.is-tone-moss { --member-tone: var(--id-moss); }
+.cluster-member-glyph.is-tone-cerulean { --member-tone: var(--id-cerulean); }
+.cluster-member-glyph.is-tone-rose { --member-tone: var(--id-rose); }
+.cluster-member-glyph.is-tone-indigo { --member-tone: var(--id-indigo); }
+.cluster-member-glyph.is-tone-crimson { --member-tone: var(--id-crimson); }
+
+/* 지휘관 글리프 표식 — Objectives 패널 CoordGlyph와 일치 */
+.cluster-member-glyph.is-commander {
+  border-color: var(--hairline-strong);
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  color: var(--text-primary);
+}
+
+.cluster-member-glyph.is-commander svg {
+  display: block;
+  width: 11px;
+  height: 11px;
+}
+
+/* 상태 배지 점 — 글리프 우하단에 서서 신호 토큰으로 상태를 말한다 */
+.cluster-member-status {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  box-shadow: 0 0 0 1px var(--surface-panel);
+}
+
+.cluster-member-status.is-running { background: var(--warn); }
+.cluster-member-status.is-background { background: transparent; box-shadow: inset 0 0 0 1px var(--warn); }
+.cluster-member-status.is-done,
+.cluster-member-status.is-idle { background: var(--positive); }
+.cluster-member-status.is-blocked,
+.cluster-member-status.is-ended { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.cluster-member-status.is-open { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+
+/* 허용 요청 표시는 aurora — 늘 눈에 띄게 맥동과 글로우를 준다 */
+.cluster-member-status.is-awaiting {
+  right: -3px;
+  bottom: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--aurora);
+  box-shadow: 0 0 0 1.5px var(--surface-panel), 0 0 6px var(--aurora);
+  animation: cluster-strip-pulse 1.8s ease-in-out infinite;
+}
+
+/* +N 더보기 버튼 및 팝오버 메뉴 */
+.cluster-node-more {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.cluster-node-more:hover,
+.cluster-node-more[aria-expanded="true"] {
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--text-secondary) 9%, transparent);
+}
+
+.cluster-node-more.has-awaiting {
+  border-color: color-mix(in oklch, var(--aurora) 50%, transparent);
+  color: var(--aurora);
+}
+
+.cluster-node-more svg {
+  width: 8px;
+  height: 8px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+}
+
+.cluster-node-overflow-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 8px;
+  z-index: 20;
+  min-width: 180px;
+  max-width: 260px;
+  padding: 4px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel-raised);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cluster-node-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cluster-node-overflow-item:hover {
+  background: color-mix(in oklch, var(--text-secondary) 9%, transparent);
+}
+
+.cluster-node-overflow-item.is-current {
   border-color: color-mix(in oklch, var(--brass) 42%, transparent);
   background: color-mix(in oklch, var(--brass) 14%, transparent);
 }
-.cluster-node-sep { flex: none; height: 1px; margin: 2px 4px; background: var(--hairline-strong); }
-.cluster-node-dot { display: block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); }
-.cluster-node-dot.is-running { background: var(--warn); }
-.cluster-node-dot.is-background { background: transparent; box-shadow: inset 0 0 0 1px var(--warn); }
-.cluster-node-dot.is-awaiting { background: var(--aurora); animation: cluster-strip-pulse 1.8s ease-in-out infinite; }
-.cluster-node-dot.is-done, .cluster-node-dot.is-idle { background: var(--positive); }
-.cluster-node-dot.is-blocked, .cluster-node-dot.is-ended { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
-@media (prefers-reduced-motion: reduce) {
-  .cluster-node-rail { transition: none; }
-  .cluster-node-dot.is-awaiting { animation: none; }
+
+.cluster-node-overflow-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cluster-node-overflow-state {
+  flex: none;
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
+
+.cluster-node-overflow-state.is-awaiting {
+  color: var(--aurora);
+  font-weight: var(--weight-bold);
 }
 .canvas-operation-cluster-strip {
   margin-left: 2px;
