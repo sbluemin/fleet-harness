@@ -6,6 +6,12 @@ import type { WebContents } from "electron";
  */
 export type EntryTone = "busy" | "done" | "warning" | "failed";
 
+/**
+ * 종료 인사 — 넘겨주기의 역재생. veiled는 투명한 판 위에서 마크가 Console 상단 브랜드 자리에 앉은
+ * 모습(전환 없이 곧바로), shown은 바탕이 차오르며 마크와 워드마크가 가운데로 돌아온 모습이다.
+ */
+export type EntryFarewell = "veiled" | "shown";
+
 export interface EntryPageSnapshot {
   readonly platform: string;
   readonly lang: "ko" | "en";
@@ -20,6 +26,7 @@ export interface EntryPageSnapshot {
   readonly versions: string;
   /** true면 마크와 워드마크가 Console 상단 브랜드 자리로 줄어들고 나머지는 사라진다. */
   readonly handoff?: boolean;
+  readonly farewell?: EntryFarewell;
 }
 
 export interface EntryPageWebContents {
@@ -53,6 +60,13 @@ const ENTRY_RENDERER = String.raw`(() => {
   bar.classList.toggle("is-indeterminate", progress === "indeterminate");
   fill.setAttribute("style", typeof progress === "number" ? "width: " + progress + "%" : "");
   if (snapshot.handoff) root.classList.add("is-handoff");
+  if (snapshot.farewell === "veiled") {
+    // 전환을 끈 채 상단 자리로 옮기고 스타일을 한 번 확정한 뒤에야 전환을 되살린다.
+    root.classList.add("is-instant", "is-handoff", "is-veiled", "is-farewell");
+    void root.offsetWidth;
+    root.classList.remove("is-instant");
+  }
+  if (snapshot.farewell === "shown") root.classList.remove("is-handoff", "is-veiled");
 })();`;
 
 export async function pushEntrySnapshot(contents: EntryPageWebContents | WebContents, snapshot: EntryPageSnapshot): Promise<void> {
