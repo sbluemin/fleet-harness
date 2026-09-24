@@ -1,68 +1,35 @@
 import type { Translate } from "@fleet-console/sdk/i18n";
+import { normalizeIdentityTone, type IdentityTone } from "@fleet-console/sdk/operations/identity-tones";
 
 import type { CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 
-export interface AccentOption {
-  readonly key: string;
-  readonly label: string;
-  readonly color: string;
-}
-
-type AccentDef = {
-  readonly key: string;
-  readonly labelKey: CoreMessageKey;
-  readonly color: string;
+// 8톤 정체성 팔레트 — 키 목록은 SDK(`identity-tones`)가 한 벌로 소유하고, 여기서는 theme.css의 --id-* 토큰과
+// 호스트 문구만 잇는다. 정체성은 제목 잉크·틱·도트 채널만 소유하고, 보더/링/beacon/glow는 상태 신호 전용이다.
+const TONE_LABEL_KEYS: Readonly<Record<IdentityTone, CoreMessageKey>> = {
+  crimson: "canvas.accent.crimson",
+  amber: "canvas.accent.amber",
+  moss: "canvas.accent.moss",
+  teal: "canvas.accent.teal",
+  cerulean: "canvas.accent.cerulean",
+  indigo: "canvas.accent.indigo",
+  plum: "canvas.accent.plum",
+  rose: "canvas.accent.rose",
 };
 
-// 8톤 정체성 팔레트 — theme.css의 --id-* 토큰을 참조해 테마별 채도 봉투를 그대로 추종한다.
-// 정체성은 제목 잉크·틱·도트 채널만 소유하고, 보더/링/beacon/glow는 상태 신호 전용이다.
-const OPERATION_ACCENT_DEFS: readonly AccentDef[] = [
-  { key: "crimson", labelKey: "canvas.accent.crimson", color: "var(--id-crimson)" },
-  { key: "amber", labelKey: "canvas.accent.amber", color: "var(--id-amber)" },
-  { key: "moss", labelKey: "canvas.accent.moss", color: "var(--id-moss)" },
-  { key: "teal", labelKey: "canvas.accent.teal", color: "var(--id-teal)" },
-  { key: "cerulean", labelKey: "canvas.accent.cerulean", color: "var(--id-cerulean)" },
-  { key: "indigo", labelKey: "canvas.accent.indigo", color: "var(--id-indigo)" },
-  { key: "plum", labelKey: "canvas.accent.plum", color: "var(--id-plum)" },
-  { key: "rose", labelKey: "canvas.accent.rose", color: "var(--id-rose)" },
-];
-
-export function buildOperationAccents(t: Translate<CoreMessageKey>): readonly AccentOption[] {
-  return OPERATION_ACCENT_DEFS.map((accent) => ({
-    key: accent.key,
-    label: t(accent.labelKey),
-    color: accent.color,
-  }));
+/** 톤 피커(`@fleet-console/sdk/components/accent-tone-list`)에 넘기는 호스트 문구. */
+export function accentToneLabels(t: Translate<CoreMessageKey>) {
+  return {
+    tone: (key: IdentityTone) => t(TONE_LABEL_KEYS[key]),
+    none: t("canvas.accent.none"),
+    noneAria: t("canvas.accent.noneAria"),
+  };
 }
 
-// 구 16키 → 8톤 매핑(hue 최근접). durable 스키마는 불변 — 저장된 구키는 읽기 시점에 변환되고,
-// 새 선택은 8톤 키로 저장된다. 미지 키는 null(accent 없음)로 폴백한다.
-const LEGACY_ACCENT_KEYS: Readonly<Record<string, string>> = {
-  red: "crimson",
-  orange: "amber",
-  yellow: "amber",
-  lime: "moss",
-  green: "moss",
-  emerald: "teal",
-  cyan: "teal",
-  sky: "cerulean",
-  blue: "cerulean",
-  violet: "plum",
-  purple: "plum",
-  magenta: "rose",
-};
-
-export function normalizeAccentKey(accentKey: string | null | undefined): string | null {
-  if (typeof accentKey !== "string" || accentKey.length === 0) return null;
-  if (OPERATION_ACCENT_DEFS.some((accent) => accent.key === accentKey)) return accentKey;
-  return LEGACY_ACCENT_KEYS[accentKey] ?? null;
-}
-
+/** 저장된 키(구 16키 포함)의 색 토큰 — 모르는 키는 null(accent 없음). */
 export function resolveAccentColor(accentKey: string): string | null {
-  const normalized = normalizeAccentKey(accentKey);
-  if (!normalized) return null;
-  return OPERATION_ACCENT_DEFS.find((accent) => accent.key === normalized)?.color ?? null;
+  const normalized = normalizeIdentityTone(accentKey);
+  return normalized ? `var(--id-${normalized})` : null;
 }
 
 export function operationAccentFromNode(operation: OperationNode): string | null {

@@ -30,6 +30,11 @@
       "import": "./operations/launch-variants.ts",
       "default": "./operations/launch-variants.ts"
     },
+    "./operations/identity-tones": {
+      "types": "./operations/identity-tones.ts",
+      "import": "./operations/identity-tones.ts",
+      "default": "./operations/identity-tones.ts"
+    },
     "./version": {
       "types": "./version.ts",
       "import": "./version.ts",
@@ -167,6 +172,12 @@
       "browser": "./components/shell-glyph.tsx",
       "import": "./components/shell-glyph.tsx",
       "default": "./components/shell-glyph.tsx"
+    },
+    "./components/accent-tone-list": {
+      "types": "./components/accent-tone-list.tsx",
+      "browser": "./components/accent-tone-list.tsx",
+      "import": "./components/accent-tone-list.tsx",
+      "default": "./components/accent-tone-list.tsx"
     },
     "./composer": {
       "types": "./composer/index.ts",
