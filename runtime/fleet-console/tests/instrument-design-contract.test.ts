@@ -4561,8 +4561,9 @@ describe("War Room deck panel grammar", () => {
     // 분석가·전환·읽기 폭은 캡션 선반으로 옮겨 갔다. 카드에도 선반은 넘기되(에이전트 사용 표식이 카드에서도
     // 서야 한다) CSS가 표식이 아닌 컨트롤을 감춘다 — 카드의 캡션은 조작면이 아니라 표식면이다.
     // 소유자가 아닌 플러그인의 표식(연결된 목표 칩)이 선반 앞에 서고, 소유자의 선반은 그 뒤에 조건부로 선다.
-    expect(canvas).toContain('<OperationCaptionContributions operation={operation} language={options.language} surface="caption" />');
-    expect(canvas).toContain("descriptor.captionActions === undefined ? null");
+    // 둘 다 본문의 주인 것이다 — 지휘관 패널이 구성원의 본문을 보이는 동안 선반도 그 구성원의 것이다.
+    expect(canvas).toContain('<OperationCaptionContributions operation={bodyOwner} language={options.language} surface="caption" />');
+    expect(canvas).toContain("bodyDescriptor.captionActions === undefined ? null");
     const componentsCss = fs.readFileSync(fileURLToPath(new URL("../core/client/src/styles/components.css", import.meta.url)), "utf8");
     expect(componentsCss).toContain(".canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action:not(.is-agent) { display: none; }");
     expect(componentsCss).toContain(".canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action.is-agent { pointer-events: none; }");

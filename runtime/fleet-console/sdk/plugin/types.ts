@@ -479,9 +479,14 @@ export interface OperationClusterMember {
   readonly label: string;
   /**
    * 지휘관 패널의 노드 줄에 서는 이름("조사") — 이 세션이 누구인지 한 낱말로. 없으면 호스트가 선언 순서로 「N 노드」라 부른다.
-   * `label`(무엇을 하는지)은 말풍선·낭독에 그대로 남는다.
+   * `label`(무엇을 하는지)은 말풍선·낭독에 그대로 남는다. 지휘관 패널이 이 구성원의 본문을 보일 때 캡션 제목 뒤 「› 이름」도 이것이다.
    */
   readonly name?: string;
+  /**
+   * 이 구성원의 정체성 톤(`--id-<key>` 의 key, 예: "moss") — 지휘관 캡션 제목 뒤 「› 이름」의 잉크. 플러그인이 자기 화면의 구성원
+   * 표식과 같은 톤을 준다. 없으면 구성원 Operation 의 강조색, 그것도 없으면 제목의 중립 잉크다.
+   */
+  readonly tone?: string;
   /** 선행 구성원의 operationId. 전부 끝나야 이 구성원이 열린다. */
   readonly after: readonly string[];
   readonly progress: OperationClusterProgress;
