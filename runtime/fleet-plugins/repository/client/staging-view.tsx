@@ -394,13 +394,14 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             selectedPath={selection?.axis === "unstaged" ? selection.entry.path : null}
             axis="unstaged" tabFileKey={tabFileKey} onFocusFile={setFocusedFile} onNavigateFile={navigateFile}
             onSelect={(entry) => setSelection({ axis: "unstaged", entry })}
-            rowActions={(entry) => <>
+            rowActions={(entry, inRow) => <>
               {/* 충돌 파일의 discard는 서버에서 무음 no-op이 된다 — 동사를 숨기고 충돌 표식으로 안내한다. */}
               {/* 추적되지 않는 파일의 ⌫는 되돌리기가 아니라 삭제다 — 같은 글리프·같은 문구로 두면
                   두 번째 클릭이 파일을 지운다는 사실이 어디에도 적혀 있지 않다. */}
               {!entry.conflicted && <button
                 type="button"
                 className={`repository-stage-action repository-discard-action${armedDiscard === entry.path ? " is-armed" : ""}${pendingKey === `discard:${entry.path}` ? " is-busy" : ""}`}
+                tabIndex={inRow ? -1 : undefined}
                 aria-label={entry.status === "U"
                   ? t("repository.staging.deleteUntracked", { path: entry.path })
                   : t("repository.staging.discardFile", { path: entry.path })}
@@ -415,6 +416,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
               <button
                 type="button"
                 className={`repository-stage-action${pendingKey === stageKeyOf(entry) ? " is-busy" : ""}`}
+                tabIndex={inRow ? -1 : undefined}
                 aria-label={t("repository.staging.stageFile", { path: entry.path })}
                 title={t("repository.staging.stageFile", { path: entry.path })}
                 aria-busy={pendingKey === stageKeyOf(entry) || undefined}
@@ -436,9 +438,10 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             selectedPath={selection?.axis === "staged" ? selection.entry.path : null}
             axis="staged" tabFileKey={tabFileKey} onFocusFile={setFocusedFile} onNavigateFile={navigateFile}
             onSelect={(entry) => setSelection({ axis: "staged", entry })}
-            rowActions={(entry) => <button
+            rowActions={(entry, inRow) => <button
               type="button"
               className={`repository-stage-action${pendingKey === unstageKeyOf(entry) ? " is-busy" : ""}`}
+              tabIndex={inRow ? -1 : undefined}
               aria-label={t("repository.staging.unstageFile", { path: entry.path })}
                 title={t("repository.staging.unstageFile", { path: entry.path })}
               aria-busy={pendingKey === unstageKeyOf(entry) || undefined}
@@ -508,7 +511,8 @@ function StagingSection({ t, view, label, files, emptyLabel, actionLabel, action
   readonly onFocusFile: (key: string) => void;
   readonly onNavigateFile: (axis: Axis, entry: DiffFileEntry, direction: -1 | 1) => void;
   readonly onSelect: (entry: DiffFileEntry) => void;
-  readonly rowActions: (entry: DiffFileEntry) => React.ReactNode;
+  /** inRow: 목록 보기 행 안 — 행 도구는 Tab 정거장이 아니라 F2로 들어간다. 트리 보기는 기존처럼 Tab으로 닿는다. */
+  readonly rowActions: (entry: DiffFileEntry, inRow?: boolean) => React.ReactNode;
 }) {
   return <section className="repository-staging-section">
     <div className="repository-staging-head">
@@ -521,7 +525,7 @@ function StagingSection({ t, view, label, files, emptyLabel, actionLabel, action
         ? <div className="repository-empty-row">{emptyLabel}</div>
         : view === "tree"
           ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} renderActions={rowActions} conflictLabel={t("repository.staging.conflict")} />
-          : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} tabStop={tabFileKey === `${axis}:${entry.path}`} fileKey={`${axis}:${entry.path}`} onFocusFile={onFocusFile} onNavigate={(direction) => onNavigateFile(axis, entry, direction)} onSelect={onSelect} actions={rowActions(entry)} />)}
+          : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} tabStop={tabFileKey === `${axis}:${entry.path}`} fileKey={`${axis}:${entry.path}`} onFocusFile={onFocusFile} onNavigate={(direction) => onNavigateFile(axis, entry, direction)} onSelect={onSelect} actions={rowActions(entry, true)} />)}
     </div>
   </section>;
 }
@@ -547,6 +551,16 @@ function StagingFileRow({ t, entry, isSelected, tabStop, fileKey, onFocusFile, o
         {entry.deletions > 0 && <span className="repository-deletions">−{entry.deletions}</span>}
       </span>
     </button>
-    <span className="repository-stage-actions" onKeyDown={(event) => { if (event.key !== "Escape") return; event.preventDefault(); event.stopPropagation(); event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(".repository-staging-row-main")?.focus(); }}>{actions}</span>
+    <span className="repository-stage-actions" onKeyDown={(event) => {
+      // F2로 들어온 행 도구 안에서는 ←→로 옮겨 다니고 Esc로 행에 돌아간다 — 도구는 Tab 순서에 없다.
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+        const index = buttons.indexOf(event.target as HTMLButtonElement);
+        const next = buttons[index + (event.key === "ArrowLeft" ? -1 : 1)];
+        if (index >= 0 && next) { event.preventDefault(); next.focus(); }
+        return;
+      }
+      if (event.key !== "Escape") return; event.preventDefault(); event.stopPropagation(); event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(".repository-staging-row-main")?.focus();
+    }}>{actions}</span>
   </div>;
 }

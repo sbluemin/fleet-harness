@@ -938,6 +938,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, land
     const next = normalizeWorkspaceDockHeight(hasWorkspaceDockHeightPreference(nextTab)
       ? remembered : firstHeight, root.getBoundingClientRect().height);
     dockHeightRef.current = next;
+    // 사용자 조정 여부는 탭마다 다르다 — 옮겨 간 탭의 저장값 유무로 다시 정해야 창 크기 추종이 저장된 높이를 47%로 덮지 않는다.
+    dockHeightCustomizedRef.current = hasWorkspaceDockHeightPreference(nextTab);
     setDockHeight(next);
     setDockDetent(next === detents.full ? "full" : next === detents.half ? "half" : "free");
   }, [workspace]);
