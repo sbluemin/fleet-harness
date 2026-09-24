@@ -189,6 +189,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const operationOf = useCallback((operationId: string) => operations.find((candidate) => candidate.id === operationId) ?? null, [operations]);
   const operationTitle = useCallback((operationId: string) => operationOf(operationId)?.title ?? "—", [operationOf]);
   const operationState = useCallback((operationId: string): string => operationOf(operationId)?.activity ?? "closed", [operationOf]);
+  // 지휘관 자신의 활동 — 코어는 구성원의 대기·실행을 지휘관 활동으로 끌어올린다. 하단 한 자리는 지휘관 자신의 대기·실행과
+  // 구성원의 것을 가려야 하므로 끌어올리기 전 값(ownActivity)을 읽는다. 구성원·부모 아닌 Operation 은 activity 와 같다.
+  const operationOwnState = useCallback((operationId: string): string => { const operation = operationOf(operationId); return operation ? operation.ownActivity ?? operation.activity : "closed"; }, [operationOf]);
   // 항목의 활동 = 지휘관과 담당 가운데 가장 급한 것 — 호스트가 캔버스에서 지휘관을 그리는 셈법과 같다.
   const URGENCY: Record<string, number> = { awaiting: 0, running: 1, background: 2, idle: 3, ended: 4, unknown: 5 };
   const itemActivity = useCallback((item: ObjectiveItem) => {
@@ -489,6 +492,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           stateLabel={stateLabel}
           operationTitle={operationTitle}
           operationState={operationState}
+          operationOwnState={operationOwnState}
           busy={isBusy(current)}
           request={request}
           sectionOpen={(key) => isOpen(key, true)}
@@ -675,6 +679,8 @@ interface DetailProps {
   readonly stateLabel: (state: string) => string;
   readonly operationTitle: (operationId: string) => string;
   readonly operationState: (operationId: string) => string;
+  /** 끌어올리기 전 자기 활동 — 지휘관 자신의 대기·실행을 구성원 것과 가를 때. */
+  readonly operationOwnState: (operationId: string) => string;
   readonly busy: boolean;
   readonly request: (path: string, body: Record<string, unknown>) => Promise<unknown>;
   /** 상세 섹션 접힘 — 보기 상태(Theater별)에 산다. 키는 `detail:criteria`·`detail:missions`, 기본은 펼침. */
@@ -830,7 +836,7 @@ function SectionHead({ glyph, label, tools, controls, expanded, onToggle }: {
 
 const BRIEF_LINES = 3;
 
-function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightStep, onClose, detailRef, placeButton, onComplete, onToggleEdge }: DetailProps) {
+function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightStep, onClose, detailRef, placeButton, onComplete, onToggleEdge }: DetailProps) {
   const [note, setNote] = useState(item.note);
   const [title, setTitle] = useState(item.title);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -872,16 +878,18 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const numberOf = (stepId: string) => item.steps.findIndex((step) => step.id === stepId) + 1;
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  // 사람을 부르는 세션 — 지휘관이 먼저, 다음은 명단 순서의 구성원(임무가 없는 구성원의 질문도 본다).
-  const commanderAwaiting = !item.done && operationState(item.id) === "awaiting";
+  // 사람을 부르는 세션 — 지휘관 자신이 먼저, 다음은 명단 순서의 구성원(임무가 없는 구성원의 질문도 본다).
+  // 지휘관 판정은 끌어올리기 전 자기 활동으로 한다 — 구성원만 묻고 있을 때 「지휘관이 기다립니다」로 서지 않게.
+  const commanderAwaiting = !item.done && operationOwnState(item.id) === "awaiting";
   const memberAwaiting: MemberAwaiting | null = item.done ? null : (() => {
     const member = item.members.find((candidate) => candidate.operationId && operationState(candidate.operationId) === "awaiting");
     if (!member?.operationId) return null;
     const mission = item.steps.findIndex((step) => !step.done && step.member === member.id);
     return { operationId: member.operationId, role: member.role, mission: mission >= 0 ? mission + 1 : null };
   })();
-  // 작업 중 — 지휘관이나 구성원 누군가가 돈다. 편집 잠금은 지휘관 기준(busy)이고, 하단 한 자리는 이 넓은 기준을 본다.
-  const working = !item.done && (busy || item.members.some((member) => !!member.operationId && WORKING.has(operationState(member.operationId))));
+  // 작업 중 — 지휘관 자신이나 구성원 누군가가 돈다. 편집 잠금은 지금처럼 끌어올린 지휘관 활동(busy)이고, 하단 한 자리는
+  // 지휘관 자신의 실행과 구성원 각자의 실행을 따로 본다(구성원이 묻는 동안 끌어올린 값은 대기라 실행을 가린다).
+  const working = !item.done && (WORKING.has(operationOwnState(item.id)) || item.members.some((member) => !!member.operationId && WORKING.has(operationState(member.operationId))));
 
   // 섹션 접힘 — 항목이 없으면 접지 않는다.
   const criteriaCollapsible = item.criteria.length > 0;
@@ -903,6 +911,10 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteOverflow, setNoteOverflow] = useState(false);
   const noteClamped = !noteOpen && !noteFocus;
+  // 빈 브리핑은 「브리핑 추가」 한 줄 — 누르거나 초점이 오면(또는 이미지를 끌어오면) 편집 칸과 첨부 띠가 펼쳐진다.
+  const [briefActive, setBriefActive] = useState(false);
+  const briefBlank = !note.trim() && item.attachments.length === 0;
+  const briefCollapsed = briefBlank && touchable && !briefActive && !dropping && !attachments.error && attachments.sending === 0;
   const fitNote = useCallback(() => {
     const element = noteRef.current;
     if (!element) return;
@@ -981,13 +993,15 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
       {/* 브리핑 — 사람이 쓴 요구. 첨부 띠는 본문 위에 머문다. 메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다. */}
       <div
         className={`objectives-group objectives-note-group${dropping ? " is-drop" : ""}`}
+        onFocus={() => setBriefActive(true)}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setBriefActive(false); }}
         onDragOver={(event) => { if (touchable && [...event.dataTransfer.types].includes("Files")) { event.preventDefault(); setDropping(true); } }}
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
         onDrop={(event) => { if (!touchable) return; event.preventDefault(); setDropping(false); const files = imageFiles(event.dataTransfer.files); if (files.length) void attachments.upload(files); }}
       >
         <SectionHead glyph={<BriefGlyph />} label={t("objectives.item.memo")} tools={item.attachments.length > 0 ? <span className="objectives-criteria-count">{t("objectives.brief.images", { count: item.attachments.length })}</span> : null} />
-        <NoteAttachments item={item} t={t} touchable={touchable} upload={attachments.upload} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />
-        <textarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}`} rows={1} aria-label={t("objectives.item.memo")} placeholder={t("objectives.item.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)}
+        {briefCollapsed ? null : <NoteAttachments item={item} t={t} touchable={touchable} upload={attachments.upload} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />}
+        <textarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}${briefBlank && !briefCollapsed ? " is-writing" : ""}`} rows={1} aria-label={t("objectives.item.memo")} placeholder={t("objectives.item.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)}
           onFocus={() => setNoteFocus(true)} onBlur={() => setNoteFocus(false)}
           onPaste={(event) => { if (!touchable) return; const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
         {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}

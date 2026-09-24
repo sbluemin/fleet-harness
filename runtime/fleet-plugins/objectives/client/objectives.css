@@ -697,6 +697,8 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
   outline: none;
 }
 .objectives-detail textarea.objectives-note.is-clamped { overflow: hidden; padding-bottom: 0; margin-bottom: 8px; }
+/* 빈 브리핑을 쓰기 시작하면 칸이 세 줄로 펼쳐진다(쉴 때는 「브리핑 추가」 한 줄). */
+.objectives-detail textarea.objectives-note.is-writing { min-height: calc(var(--t-sm) * 1.5 * 3 + 10px); }
 .objectives-note-more { align-self: flex-start; margin: -6px 0 6px 22px; padding: 2px 0; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
 .objectives-note-more:hover { color: var(--text-primary); }
 .objectives-note-more:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }

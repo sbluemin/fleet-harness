@@ -40,10 +40,11 @@ export interface MemberAwaiting {
 export interface ActionBandProps {
   readonly item: ObjectiveItem;
   readonly t: T;
-  /** 지휘관이 일한다(running·background). */
+  /** 지휘관이 일한다(running·background, 구성원 활동을 끌어올린 값) — 편집 잠금과 같은 기준. */
   readonly busy: boolean;
-  /** 지휘관이나 구성원 누군가가 일한다. */
+  /** 지휘관 자신이나 구성원 누군가가 일한다. */
   readonly working: boolean;
+  /** 지휘관 자신이 사람의 결정을 기다린다(끌어올리기 전 값 — 구성원의 대기는 memberAwaiting). */
   readonly commanderAwaiting: boolean;
   readonly memberAwaiting: MemberAwaiting | null;
   readonly launchAvailable: boolean;
