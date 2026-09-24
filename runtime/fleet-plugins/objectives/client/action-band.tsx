@@ -115,7 +115,10 @@ export function ActionBand(props: ActionBandProps) {
   const [intent, setIntent] = useState<IntentKey | null>(null);
   const [draft, setDraftState] = useState(() => drafts.get(item.id) ?? "");
   const setDraft = (next: string) => { if (next) drafts.set(item.id, next); else drafts.delete(item.id); setDraftState(next); };
-  const [sending, setSending] = useState(false);
+  // 보내는 중인 할 일 — 응답이 오기 전에 상태(사다리)가 먼저 바뀌어도 띠는 지금 진행 중인 그 행동을 말한다.
+  // 예: 「중단」은 서버가 구상 국면을 먼저 풀어 사다리가 곧바로 「개시」가 되지만, 응답(중단 확인)은 한참 뒤에 온다.
+  const [pending, setPending] = useState<IntentKey | null>(null);
+  const sending = pending !== null;
   const [error, setError] = useState<string | null>(null);
   const bandRef = useRef<HTMLButtonElement | null>(null);
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
@@ -150,7 +153,7 @@ export function ActionBand(props: ActionBandProps) {
 
   // 펼친 사이 상태가 바뀌어 고른 할 일이 사라지면 — 주행동이 말 거는 행동이면 그리로 옮기고, 아니면 접는다(초안은 남는다).
   useEffect(() => {
-    if (!open || !intent || choices.includes(intent)) return;
+    if (pending || !open || !intent || choices.includes(intent)) return;
     if (primary && intents[primary].talk) setIntent(primary);
     else setOpen(false);
   });
@@ -162,7 +165,7 @@ export function ActionBand(props: ActionBandProps) {
     field.style.height = `${Math.min(field.scrollHeight, 132)}px`;
   }, [draft, open, intent]);
 
-  if (!primary) return null;
+  if (!primary && !pending) return null;
   const current = open && intent ? intents[intent] : null;
   const unavailable = (key: IntentKey) => intents[key].talk && !props.launchAvailable;
 
@@ -184,7 +187,7 @@ export function ActionBand(props: ActionBandProps) {
   const run = async (key: IntentKey) => {
     const chosen = intents[key];
     if (sending || unavailable(key)) return;
-    setSending(true);
+    setPending(key);
     setError(null);
     try {
       await chosen.run(chosen.talk ? draft.trim() : "");
@@ -196,10 +199,11 @@ export function ActionBand(props: ActionBandProps) {
       const reason = REASONS[code] ? t(REASONS[code]!) : t("objectives.band.reason.other", { code });
       setError(t(chosen.talk ? "objectives.band.failed" : "objectives.band.failedAction", { reason }));
     } finally {
-      setSending(false);
+      setPending(null);
     }
   };
   const press = () => {
+    if (!primary) return;
     const main = intents[primary];
     if (main.talk || alts.length > 0) { setOpen(true); pick(primary, "field"); return; }
     void run(primary);
@@ -215,30 +219,36 @@ export function ActionBand(props: ActionBandProps) {
     // Esc 는 칸만 접는다 — 상세를 닫는 창 처리기로 올라가지 않게 막는다. 두 번째 Esc 가 상세를 닫는다.
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); fold(true); }
   };
+  /** 보내는 동안의 부제 — 중단은 「중단하는 중…」, 나머지는 「보내는 중…」. */
+  const pendingText = (key: IntentKey) => t(key === "stop" ? "objectives.band.stopping" : "objectives.band.sending");
   const word = (entry: Intent) => <span className="objectives-start-word">{entry.tone ? entry.glyph : null}{entry.word}</span>;
   const errorLine = error ? <div className="objectives-band-error" role="alert">{error}</div> : null;
 
   if (!current || !intent) {
-    const main = intents[primary];
-    const opens = main.talk || alts.length > 0;
-    const hasDraft = main.talk && !!draft.trim();
+    // 보내는 동안은 진행 중인 그 행동을 보이고(다른 선택은 감춘다), 잠근다. 응답이 오면 사다리로 돌아간다.
+    const shown = pending ?? primary!;
+    const main = intents[shown];
+    const others = pending ? [] : alts;
+    const opens = !pending && (main.talk || others.length > 0);
+    const hasDraft = !pending && main.talk && !!draft.trim();
     return (
       <div className="objectives-group objectives-start-group">
-        <div className={`objectives-band${alts.length ? " has-alt" : ""}${main.tone === "stop" ? " is-stop" : ""}`}>
+        <div className={`objectives-band${others.length ? " has-alt" : ""}${main.tone === "stop" ? " is-stop" : ""}`}>
           <button
             ref={bandRef}
             type="button"
-            className={`objectives-start${main.tone ? ` is-${main.tone === "aurora" ? (primary === "complete" ? "review" : "awaiting") : "stop"}` : ""}${primary === "steer" || primary === "steerIdle" ? " is-steer" : ""}`}
-            disabled={sending || unavailable(primary)}
-            title={unavailable(primary) ? t("objectives.coordinator.unavailable") : opens ? t("objectives.band.opens") : undefined}
+            className={`objectives-start${main.tone ? ` is-${main.tone === "aurora" ? (shown === "complete" ? "review" : "awaiting") : "stop"}` : ""}${shown === "steer" || shown === "steerIdle" ? " is-steer" : ""}`}
+            disabled={sending || unavailable(shown)}
+            aria-busy={sending || undefined}
+            title={unavailable(shown) ? t("objectives.coordinator.unavailable") : opens ? t("objectives.band.opens") : undefined}
             aria-expanded={opens ? false : undefined}
             onClick={press}
           >
             {word(main)}
             <span className="objectives-start-sub">
               {hasDraft ? <b className="objectives-band-draft">{t("objectives.band.draft")}</b> : null}
-              {sending ? t("objectives.band.sending") : main.desc}
-              {alts.length ? <span className="objectives-band-also"> · {t("objectives.band.also", { words: alts.map((key) => `「${intents[key].word}」`).join("") })}</span> : null}
+              {pending ? pendingText(pending) : main.desc}
+              {others.length ? <span className="objectives-band-also"> · {t("objectives.band.also", { words: others.map((key) => `「${intents[key].word}」`).join("") })}</span> : null}
             </span>
             {main.tone === "stop" ? <span /> : <span className="objectives-start-arrow" aria-hidden="true">→</span>}
           </button>
@@ -302,7 +312,7 @@ export function ActionBand(props: ActionBandProps) {
           onClick={() => void run(intent)}
         >
           {word(current)}
-          <span className="objectives-start-sub">{sending ? t("objectives.band.sending") : current.talk ? t("objectives.band.keys") : current.desc}</span>
+          <span className="objectives-start-sub">{pending ? pendingText(pending) : current.talk ? t("objectives.band.keys") : current.desc}</span>
           <span className="objectives-start-arrow" aria-hidden="true">→</span>
         </button>
       </div>
