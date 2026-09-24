@@ -147,6 +147,20 @@ export function App() {
     if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
     else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
   }, [zenActive]);
+  // Zen 단축키로 한쪽 크롬을 숨길 때, 포커스가 그 안에 있었다면 위 Zen 진입과 같은 복귀 규칙을
+  // 따른다. 숨길 영역 밖의 포커스는 건드리지 않는다.
+  const hideZenChromeRestoringFocus = useCallback((regionSelector: string, hide: () => boolean) => {
+    const focused = document.activeElement;
+    const focusInside = focused instanceof HTMLElement && focused.closest(regionSelector) !== null;
+    if (hide() || !focusInside) return;
+    requestAnimationFrame(() => {
+      const now = document.activeElement;
+      if (now instanceof HTMLElement && now !== document.body && !now.closest("[inert], [hidden]")) return;
+      const target = workFocusRef.current;
+      if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
+      else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
+    });
+  }, []);
 
   /*
    * 모바일 여부는 폭만으로 정해지지 않는다 — Fleet Console 앱은 UA로, 사용자는 명시 선호로 켤 수
@@ -397,7 +411,7 @@ export function App() {
       setSideBarCollapsed: (collapsed) => {
         // Zen은 /operations 데스크톱에서만 켜진다. 그 안의 토글은 Zen을 유지한 채 좌측만 드러낸다.
         if (isZenMode() && resolvePanelShortcut() === "apply") {
-          toggleZenSideBar();
+          hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar);
           return;
         }
         setZenMode(false);
@@ -419,7 +433,7 @@ export function App() {
       },
       toggleRailChrome: () => {
         if (isZenMode() && resolvePanelShortcut() === "apply") {
-          toggleZenRail();
+          hideZenChromeRestoringFocus(".right-rail", toggleZenRail);
           return;
         }
         setZenMode(false);
