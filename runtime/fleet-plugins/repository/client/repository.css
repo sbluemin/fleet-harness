@@ -377,7 +377,7 @@
    행 전체가 위치색으로 물들어 과하다는 실기 판정). 라운드 행 기하는 유지한다. */
 .repository-file-row.is-cur {
   background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
-  box-shadow: inset 2px 0 0 var(--brass);
+  box-shadow: inset 0 0 0 1px var(--surface-rim-strong);
 }
 
 /* 상태 글리프는 맨글자가 아니라 칩이다 — currentColor 틴트 한 겹이 글자 색과 같은 신호
@@ -811,7 +811,7 @@
 
 .history-commit-row.is-selected {
   background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
-  box-shadow: inset 2px 0 0 var(--brass);
+  box-shadow: inset 0 0 0 1px var(--surface-rim-strong);
 }
 
 /* 현재 체크아웃 브랜치에서 도달 불가능한 커밋은 본문만 강등 — 그래프/배지는 유지.
@@ -1442,7 +1442,7 @@
 .history-commit-row:focus-within .history-commit-time { visibility: hidden; }
 .history-row-compare:hover,
 .history-row-compare:focus-visible { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--ink-mid)); color: var(--text-primary); outline: none; }
-.history-commit-row.is-picked { background: color-mix(in oklch, var(--aurora) 9%, transparent); box-shadow: inset 2px 0 0 var(--aurora); }
+.history-commit-row.is-picked { background: color-mix(in oklch, var(--aurora) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--aurora) 55%, transparent); }
 .history-commit-row.is-picked .history-commit-sha { color: var(--aurora); }
 .repository-pin-chip { flex: none; border: 1px solid color-mix(in oklch, var(--aurora) 42%, transparent); border-radius: var(--radius-xs); color: var(--aurora); cursor: pointer; }
 .repository-pin-chip:hover { background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--text-primary); }
@@ -1884,8 +1884,8 @@
 /* 무장 중 행 호버 — 클릭 한 번이 비교를 완성함을 ⇆ 단서로 미리 말한다. */
 .history-list.is-arming .history-commit-row:hover .history-row-compare { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--ink-mid)); }
 /* 부모/자식 버튼 호버 미리보기 — 도착 행에 외곽선. 목록이 선택보다 먼저 목적지를 보여 준다. */
-.history-commit-row.is-previewed { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 65%, transparent), inset 2px 0 0 var(--brass); }
-.history-commit-row.is-selected.is-previewed { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 65%, transparent), inset 2px 0 0 var(--brass); }
+.history-commit-row.is-previewed { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 65%, transparent); }
+.history-commit-row.is-selected.is-previewed { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 65%, transparent); }
 /* 독이 열릴 때 선택 행이 한 번 맥동한다 — "이 행이다". */
 .history-commit-row.is-arrived { animation: history-row-arrive 700ms var(--ease-glide); }
 @keyframes history-row-arrive { from { background: color-mix(in oklch, var(--brass) 26%, transparent); } to { background: color-mix(in oklch, var(--ink-fog) 12%, transparent); } }
@@ -2111,28 +2111,32 @@
 
 /* ── 1층 · 동사 칩 ── */
 .repository-verb-cluster { position: relative; display: inline-flex; align-items: center; flex: none; margin-left: auto; overflow: visible; }
-.repository-verb-inline { display: inline-flex; align-items: center; gap: 4px; }
+.repository-verb-inline { display: inline-flex; align-items: center; gap: 2px; }
 .repository-sync-button {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px 0 8px;
-  border: 1px solid var(--surface-rim);
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px 0 6px;
+  border: 0;
   border-radius: var(--radius-xs);
-  background: var(--control-rest);
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   flex: none;
   font: inherit;
   font-family: var(--font-body);
   font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
+  line-height: 1;
   white-space: nowrap;
-  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
 }
-.repository-sync-button:hover:not(:disabled) { border-color: var(--surface-rim-strong); background: var(--control-rest-hover); color: var(--text-primary); }
+/* 동사 줄은 버튼 상자 없이 새로고침·정렬과 같은 조용한 글리프 줄이다 — 문구는 글리프 옆에서 한 단계 흐리게 선다. */
+.repository-sync-button .repository-verb-label { color: var(--text-tertiary); transition: color var(--duration-fast) var(--ease-glide); }
+.repository-sync-button:hover:not(:disabled) { background: var(--control-rest-hover); color: var(--text-primary); }
+.repository-sync-button:hover:not(:disabled) .repository-verb-label { color: var(--text-secondary); }
 .repository-sync-button:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 .repository-sync-button:disabled { cursor: default; opacity: .55; }
 /* ── 진행 문법 · 물결 착지 ─────────────────────────────────────────────
@@ -2346,7 +2350,7 @@
 /* 점진적 접힘 — 라벨 → 아이콘 → 더 보기. 기록 필터·칩과 한 줄을 나눠 쓰므로 중간 폭에서 라벨을 되살리지 않는다. */
 @container repository-work (max-width: 880px) {
   .repository-verb-inline .repository-verb-label { display: none; }
-  .repository-verb-inline .repository-sync-button { width: 28px; padding: 0; justify-content: center; }
+  .repository-verb-inline .repository-sync-button { width: 24px; padding: 0; justify-content: center; }
   .repository-verb-inline .repository-verb-count {
     position: absolute;
     top: -6px;
@@ -2405,8 +2409,6 @@
 .repository-context-trigger:hover:not(:disabled) { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); }
 .repository-context-trigger:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 .repository-context-trigger:disabled { cursor: default; }
-/* 중첩 저장소 컨텍스트 = 위치 채널(brass) 인셋 */
-.repository-context-trigger.is-subcontext { box-shadow: inset 2px 0 0 var(--brass); }
 .repository-context-glyph { color: var(--text-secondary); }
 /* 이름이 브랜치보다 먼저다 — 좁으면 브랜치 칩이 먼저 줄어든다. */
 .repository-context-trigger strong { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: var(--t-md); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
@@ -2758,7 +2760,6 @@
 .repository-unified .repository-source-navigation > button { min-height: 30px; border: 1px solid transparent; border-radius: var(--radius-xs); }
 .repository-unified .repository-source-navigation > button[aria-selected="true"] { background: var(--control-wash); border-color: var(--surface-rim-strong); color: var(--text-primary); }
 .repository-unified .repository-workbar { height: 44px; background: var(--surface-panel); }
-.repository-unified .repository-sync-button { background: var(--control-rest); border-color: var(--surface-rim); border-radius: var(--radius-xs); }
 .repository-unified .repository-discovery { background: transparent; }
 .repository-unified .repository-filter-input, .repository-unified .history-filter-input { border-radius: 3px; font-size: var(--t-xs); }
 .repository-unified .repository-staging-row.is-cur, .repository-unified .repository-file-row.is-cur { background: var(--repository-selection); box-shadow: inset 0 0 0 1px var(--surface-rim-strong); border-radius: var(--radius-xs); }

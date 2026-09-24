@@ -173,6 +173,7 @@ const repositoryEn = {
   "repository.sync.upToDate": "No new commits on the remote",
   "repository.sync.dismiss": "Dismiss",
   "repository.sync.lastFailed": "Last fetch failed",
+  "repository.sync.refreshTitle": "Reload repository state and fetch the remote",
 
   // hunk
   "repository.hunk.diffTruncated": "Diff truncated",
@@ -476,6 +477,7 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.sync.upToDate": "원격에 새 커밋 없음",
   "repository.sync.dismiss": "닫기",
   "repository.sync.lastFailed": "마지막 가져오기 실패",
+  "repository.sync.refreshTitle": "저장소 상태를 새로 읽고 원격을 가져옵니다(fetch)",
 
   "repository.hunk.diffTruncated": "Diff가 잘림",
   "repository.hunk.close": "이 diff 닫기",
