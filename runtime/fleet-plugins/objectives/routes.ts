@@ -26,6 +26,7 @@ export default definePlugin({
   id: "objectives",
   register(ctx) {
     const dirs = new Map<string, string>();
+    const unreadable = new Set<string>();
     // 등록된 Theater 폴더가 지금 없을 수 있다(옮김·지움·외장 디스크 분리). 그 Theater 는 읽을 수 없는 것으로 두고
     // 던지지 않는다 — 던지면 기동의 backfill 이 플러그인 등록을 깨 Console 전체가 뜨지 않는다. 실패는 캐시하지 않아
     // 폴더가 돌아오면 다음 읽기가 다시 푼다.
@@ -36,7 +37,13 @@ export default definePlugin({
       if (!theaterPath) return null;
       let dir: string;
       try { dir = path.join(ctx.host.paths.ensureWorkspaceDirectory(theaterPath).path, "objectives"); }
-      catch { return null; }
+      catch (error) {
+        // 폴더가 없을 때 말고도(예: 워크스페이스 식별 충돌) 여기로 온다 — 원인을 가릴 수 있게 Theater 마다 한 번 남긴다.
+        if (!unreadable.has(theaterId)) console.warn(`[objectives] theater ${theaterId} unreadable: ${error instanceof Error ? error.message : String(error)}`);
+        unreadable.add(theaterId);
+        return null;
+      }
+      unreadable.delete(theaterId);
       dirs.set(theaterId, dir);
       return dir;
     };
