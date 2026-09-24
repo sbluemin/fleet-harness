@@ -1,11 +1,26 @@
 import { randomUUID } from "node:crypto";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
-import type { AdmiralMcpSession, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { AdmiralMcpSession, ConsoleCaller, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
+export interface PluginAdmiralMcpHostOptions {
+  /**
+   * 세션 라벨(연결 접두사를 벗긴 것)을 호출자 Operation 으로 푼다. 모르는 라벨은 null — 호출자 없이 부른다(fail-closed).
+   * 모델 인자나 토큰 밖의 값으로 호출자를 정하지 않는다.
+   */
+  readonly resolveCaller?: (label: string) => ConsoleCaller | null;
+}
+
+/** 연결마다 붙인 접두사(`<uuid>:`)를 벗긴다 — uuid 에는 콜론이 없으므로 첫 콜론까지가 접두사다. */
+const unscopedLabel = (label: string | undefined): string | null => {
+  if (!label) return null;
+  const at = label.indexOf(":");
+  return at > 0 ? label.slice(at + 1) : null;
+};
+
 /** 호스트 인스턴스가 소유한다. 플러그인 번들의 모듈 사본과 상태를 공유하지 않는다. */
-export function createPluginAdmiralMcpHost(transport?: McpHttpTransport) {
+export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options: PluginAdmiralMcpHostOptions = {}) {
   type Registration = { manager: ReturnType<typeof createExecutorSessionManager>; stop(): Promise<void> };
   const registrations = new Map<string, Registration>();
   const retiring = new Set<Promise<void>>();
@@ -30,7 +45,9 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport) {
             if (controller.signal.aborted) return { content: [{ type: "text", text: "Plugin MCP is unavailable" }], isError: true };
             const parsed = schema.safeParse(args);
             if (!parsed.success) return { content: [{ type: "text", text: "Invalid MCP arguments" }], isError: true };
-            return tool.execute(parsed.data, { ...context, signal: context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal });
+            const label = unscopedLabel(context.sessionLabel);
+            const caller = label && options.resolveCaller ? options.resolveCaller(label) : null;
+            return tool.execute(parsed.data, { ...context, ...(caller ? { caller } : {}), signal: context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal });
           },
         });
       }

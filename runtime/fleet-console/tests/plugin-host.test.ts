@@ -82,7 +82,7 @@ afterEach(() => {
 
 describe("plugin host", () => {
 
-  it("binds plugin MCP names and isolates sessions through registration and teardown", async () => {
+  it("binds plugin MCP names, isolates sessions, and resolves the caller Operation through registration and teardown", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-plugin-mcp-"));
     tempDirs.push(dir);
     writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
@@ -91,7 +91,8 @@ describe("plugin host", () => {
     const listener = http.createServer((req, res) => { if (!transport.handle(req, res)) { res.writeHead(404); res.end(); } });
     await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
     origin = `http://127.0.0.1:${(listener.address() as { port: number }).port}`;
-    const mcp = createPluginAdmiralMcpHost(transport.transport);
+    // 호출자는 세션 라벨로만 푼다 — 모르는 라벨은 호출자 없이(fail-closed).
+    const mcp = createPluginAdmiralMcpHost(transport.transport, { resolveCaller: (label) => (label === "op-1" ? { kind: "operation", operationId: "op-1" } : null) });
     const first = mcp.connect();
     const second = mcp.connect();
     const cleanups: Array<() => void | Promise<void>> = [];
@@ -101,7 +102,7 @@ describe("plugin host", () => {
       host: { ...noopHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { cleanups.push(cleanup); return () => {}; } } },
       importModule: async () => ({ register: (ctx) => {
         ctx.host.admiralMcp.register([{ name: "project", description: "Read session project", inputSchema: { type: "object", properties: {} },
-          execute: async (_args, context) => ({ content: [{ type: "text", text: context.cwd }], isError: false }),
+          execute: async (_args, context) => ({ content: [{ type: "text", text: `${context.cwd}|${context.caller?.kind === "operation" ? context.caller.operationId : "-"}` }], isError: false }),
         }]);
       } }),
     });
@@ -112,19 +113,21 @@ describe("plugin host", () => {
       expect(new URL(endpoint.servers[0]!.url).origin).toBe(origin);
       expect((await fetch(endpoint.servers[0]!.url, { method: "POST" })).status).toBe(401);
       expect((await fetch(endpoint.servers[0]!.url, { method: "POST", headers: { Origin: origin, Authorization: "Bearer fake" } })).status).toBe(404);
-      const one = first.issueSessionToken({ label: "same", cwd: "/first" })[0]!;
-      const two = second.issueSessionToken({ label: "same", cwd: "/second" })[0]!;
+      const one = first.issueSessionToken({ label: "op-1", cwd: "/first" })[0]!;
+      const two = second.issueSessionToken({ label: "op-1", cwd: "/second" })[0]!;
+      const ghost = first.issueSessionToken({ label: "ghost", cwd: "/ghost" })[0]!;
       const call = async (token: string) => {
         const response = await fetch(endpoint.servers[0]!.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "project", arguments: {} } }),
         });
         return { status: response.status, body: await response.json() };
       };
-      expect((await call(one.token)).body).toMatchObject({ result: { content: [{ text: "/first" }] } });
-      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second" }] } });
+      expect((await call(one.token)).body).toMatchObject({ result: { content: [{ text: "/first|op-1" }] } });
+      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });
+      expect((await call(ghost.token)).body).toMatchObject({ result: { content: [{ text: "/ghost|-" }] } });
       first.cleanup();
       expect((await call(one.token)).body).toMatchObject({ error: { code: -32602 } });
-      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second" }] } });
+      expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });
       for (const cleanup of cleanups) await cleanup();
       expect((await second.getEndpoint()).servers).toEqual([]);
     } finally {

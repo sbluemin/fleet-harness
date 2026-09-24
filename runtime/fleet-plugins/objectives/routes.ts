@@ -5,6 +5,7 @@ import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import { createObjectiveConsoleTools } from "./server/console-tools.js";
 import { createLaunchService } from "./server/launch.js";
+import { createObjectiveMcpTools } from "./server/objective-tools.js";
 import { createObjectiveRoutes } from "./server/routes.js";
 import { createObjectiveStore } from "./server/store.js";
 import { OBJECTIVE_ITEM_CHANNEL } from "./server/types.js";
@@ -13,8 +14,8 @@ import { OBJECTIVE_ITEM_CHANNEL } from "./server/types.js";
  * 목표 — Theater 의 에이전트 Operation 하나하나가 목표다.
  *
  * 목표 고유값은 프로젝트의 워크스페이스 디렉터리(`workspaces/<프로젝트>/objectives/state.json`)에, 제목·그룹·세션은
- * Operation 에 산다. 목록의 그룹은 Operation 그룹 그 자체이고, 변경은 전부 `objectives:item` 사건으로 브라우저와
- * Console Use 에 닿는다.
+ * Operation 에 산다. 목록의 그룹은 Operation 그룹 그 자체이고, 변경은 전부 `objectives:item` 사건으로 브라우저에 닿는다.
+ * 목표를 수행하는 세션은 `fleet-objectives` 로, Console Use 는 `console_objectives` 로 보드를 쓴다.
  */
 const operationIdOf = (payload: unknown): string | null => {
   const operationId = (payload as { operationId?: unknown } | null)?.operationId;
@@ -66,7 +67,9 @@ export default definePlugin({
       registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
     }
 
+    // 두 표면 — Console Use 의 보드(`console_objectives`, 사람처럼 보고 더한다)와 목표 수행 세션의 작업 도구(`fleet-objectives`).
     const releaseConsoleTools = ctx.host.consoleUse.contribute?.(createObjectiveConsoleTools(ctx, store, launch));
     if (releaseConsoleTools) ctx.host.lifecycle.registerCleanup(releaseConsoleTools);
+    ctx.host.lifecycle.registerCleanup(ctx.host.admiralMcp.register(createObjectiveMcpTools(ctx, store, launch)));
   },
 });

@@ -100,13 +100,20 @@ export interface PluginMcpTool {
     readonly sessionLabel?: string;
     readonly toolCallId?: string;
     readonly signal?: AbortSignal;
-    /** 이 호출을 한 Console Use 호출자 — 호출자 Operation 또는 플러그인. 계보·권한을 가르는 도구가 읽는다. */
+    /**
+     * 이 호출을 한 호출자 — 계보·권한을 가르는 도구가 읽는다. Console Use 기여 도구는 호출자 Operation 또는 플러그인,
+     * 플러그인 MCP(`fleet-{pluginId}`) 도구는 세션이 묶인 Operation 이다. 풀리지 않으면 비어 있다(fail-closed).
+     */
     readonly caller?: ConsoleCaller;
   }): Promise<unknown>;
 }
 
 export interface PluginAdmiralMcpHost {
-  /** 호출 플러그인의 id로 fleet-{pluginId} 서버를 등록한다. 다른 플러그인의 이름은 지정할 수 없다. */
+  /**
+   * 호출 플러그인의 id로 fleet-{pluginId} 서버를 등록한다. 다른 플러그인의 이름은 지정할 수 없다. 이 서버는 Console Use
+   * 토글과 무관하게 모든 Operation 세션에 실린다 — 호출자에 따른 권한은 도구가 `context.caller` 로 스스로 가른다.
+   * 화면 제스처는 없다(제스처는 Console Use 도구의 것이다).
+   */
   register(tools: readonly PluginMcpTool[]): () => void;
   /** 등록 순서와 무관하게 세션을 만들 때 활성 플러그인의 MCP를 연결한다. */
   connect(): AdmiralMcpSession;

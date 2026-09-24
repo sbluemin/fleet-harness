@@ -82,11 +82,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const patchOperation = (operationId: string, patch: { title?: string; groupId?: string | null; payload?: Record<string, unknown> }) => {
     if (!ctx.host.operations.patch(operationId, patch)) throw new ObjectiveStoreError("unknown_item");
   };
-  /** 콘솔 사용 표식 — 지휘관과 담당이 `console_objectives` 를 부를 수 있게. */
-  const allowConsoleUse = (operationId: string, language: PromptLanguage) => {
+  /**
+   * 알림 문구의 언어를 그 Operation 에 남긴다. 콘솔 사용은 켜지 않는다 — 지휘관과 담당은 `fleet-objectives` 로 일하고
+   * (지휘관은 읽고 쓰고, 담당은 읽기만), Console 이 필요하면 사람이 그 Operation 에서 허용한다.
+   */
+  const rememberLanguage = (operationId: string, language: PromptLanguage) => {
     const node = ctx.host.operations.get(operationId);
-    const current = node?.payload.consoleUse as { enabled?: unknown; language?: unknown } | undefined;
-    if (node && !(current?.enabled === true && current.language === language)) ctx.host.operations.patch(operationId, { payload: { ...node.payload, consoleUse: { enabled: true, language } } });
+    if (node && node.payload.objectiveLanguage !== language) ctx.host.operations.patch(operationId, { payload: { ...node.payload, objectiveLanguage: language } });
   };
 
   /** 전달됐는지를 돌려준다 — 못 닿은 알림에 기대 상태를 지우면 다음 시작이 같은 변경을 말하지 못한다. */
@@ -182,7 +184,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     async create(input, options) {
       const language = languageOf(options);
       const operationId = await launch({ theaterId: input.theaterId, title: input.title, sessionName: commanderSession(), ...COMMANDER_PRESET, groupId: input.groupId, dormant: true }).catch(asStoreError);
-      allowConsoleUse(operationId, language);
+      rememberLanguage(operationId, language);
       try {
         return store.adopt(operationId, input);
       } catch (error) {
@@ -226,7 +228,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       let current = item(itemId);
       if (current.done) throw new ObjectiveStoreError("item_done");
       // 따로 만든 Operation 도 지휘관이 될 수 있다 — 보드를 읽고 쓰려면 콘솔 사용이 켜져 있어야 한다.
-      allowConsoleUse(itemId, language);
+      rememberLanguage(itemId, language);
       // 시작은 구상을 끝낸다 — 여기서부터 계획·단계 추가가 담당을 띄울 수 있다.
       if (current.cooking) current = store.setCooking(itemId, false);
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
@@ -241,7 +243,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const language = languageOf(options);
       let current = item(itemId);
       if (current.done) throw new ObjectiveStoreError("item_done");
-      allowConsoleUse(itemId, language);
+      rememberLanguage(itemId, language);
       // 구상은 계획과 메모만이다 — 단계 수행도, 담당 기동도 「시작」이 한다.
       if (!current.cooking) current = store.setCooking(itemId, true);
       if (neverStarted(itemId)) current = store.setEdited(itemId, null);
@@ -263,7 +265,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const session = missionSession(current.commander.sessionName, index);
       const chosen = await stepLaunchPreset(current, target, index);
       const operationId = await launch({ theaterId: current.theaterId, title: workerTitle(current.title, index, target.text), sessionName: session, model: chosen.model, effort: chosen.effort, groupId: current.groupId, subagents: false }).catch(asStoreError);
-      allowConsoleUse(operationId, language);
+      rememberLanguage(operationId, language);
       return { item: store.setStepOperation(itemId, target.id, operationId), operationId, session };
     }),
 
