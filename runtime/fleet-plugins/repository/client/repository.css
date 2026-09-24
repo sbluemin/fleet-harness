@@ -1182,6 +1182,9 @@
 .repository-wip-row span { float: right; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); }
 /* hidden 속성은 UA display:none이라 .repository-root의 display:grid에 진다 — 소스 상호 배제 가드 */
 .repository-unified [hidden] { display: none !important; }
+/* 보기 왕복에서는 검사기를 마운트한 채 화면 밖으로 치워 파일 선택·diff 스크롤을 지킨다. */
+.repository-unified .history-inspector-shelf.is-peek-hidden { position: absolute; left: -10000px; top: 0; width: 1px; height: 1px; visibility: hidden; pointer-events: none; }
+.repository-unified .history-inspector-shelf.is-peek-hidden .history-inspector { width: 1px; height: 1px; }
 
 /* Repository workspace — 레일 소속을 유지한 기본 레이아웃. */
 .repository-ws-layout {
@@ -1198,9 +1201,13 @@
 .repository-ws-layout > .repository-ws-tree { grid-column: 1; grid-row: 2; }
 .repository-ws-tree-divider { grid-column: 2; grid-row: 2; height: 100%; }
 .repository-ws-layout > .repository-work-area { grid-column: 3; grid-row: 2; }
-.repository-workbar-context { flex: none; min-width: 0; max-width: 22%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-family: var(--font-display); font-size: var(--t-md); font-weight: var(--weight-medium); }
+.repository-workbar > .repository-context-picker { flex: 0 1 auto; min-width: 90px; max-width: min(300px, 28%); }
+.repository-workbar .repository-context-trigger { height: 32px; padding: 0 8px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); }
+.repository-workbar .repository-context-trigger strong { font-family: var(--font-display); }
+.repository-workbar .repository-context-branch { display: none; }
+.repository-workbar .repository-context-popover { left: 0; width: min(360px, calc(100vw - 48px)); }
 .repository-workbar-branch { display: inline-flex; align-items: center; gap: 5px; flex: none; min-width: 0; max-width: 17%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); color: var(--brass-ink); font-family: var(--font-mono); font-size: var(--t-xs); }
-@container (max-width: 730px) { .repository-workbar-context { max-width: 18%; } .repository-workbar-branch { display: none; } }
+@container (max-width: 730px) { .repository-workbar > .repository-context-picker { max-width: 26%; } .repository-workbar-branch { display: none; } }
 
 .repository-ws-tree {
   /* 컨텍스트 메뉴(absolute)의 containing block — 없으면 상위 positioned 조상 기준으로 오배치된다 */
@@ -1430,6 +1437,9 @@
 }
 .history-commit-row:hover .history-row-compare,
 .history-commit-row:focus-within .history-row-compare { display: inline-flex; }
+/* 비교 버튼은 끝열 위에 뜨므로 그 상태에서 날짜를 숨겨 겹치는 글자를 만들지 않는다. */
+.history-commit-row:hover .history-commit-time,
+.history-commit-row:focus-within .history-commit-time { visibility: hidden; }
 .history-row-compare:hover,
 .history-row-compare:focus-visible { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--ink-mid)); color: var(--text-primary); outline: none; }
 .history-commit-row.is-picked { background: color-mix(in oklch, var(--aurora) 9%, transparent); box-shadow: inset 2px 0 0 var(--aurora); }

@@ -828,6 +828,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     }));
   }, [setSource]);
   const openStashInspect = useCallback((stashRow: { readonly name: string; readonly sha: string; readonly subject: string }) => {
+    setRefFilter(null);
     setSource("history");
     setStashRequest((prev) => ({ ...stashRow, seq: (prev?.seq ?? 0) + 1 }));
   }, [setSource]);
@@ -892,7 +893,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <span className="repository-sr-only" role="status">{rowNotice?.text ?? ""}</span>
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${effectiveTreeWidth}px` } as React.CSSProperties}>
         <div className="repository-workbar">
-          <span className="repository-workbar-context" title={selectedRepo?.relPath ?? repoRel}>{selectedRepo?.name ?? repoRel}</span>
+          {picker}
           {workstate?.headBranch && <span className="repository-workbar-branch"><Icon name="branch" size={12} />{workstate.headBranch}</span>}
           {/* 도구막대는 화면 폭을 쓰되 기록 필터는 기록에서만 표시한다. */}
           <div ref={setHistoryToolbarHost} className="repository-workbar-tools repository-history-tools" hidden={source !== "history"} />
@@ -924,7 +925,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
             {stashPromptOpen && <StashSavePopover t={t} hostRef={verbClusterRef} onSave={handleStashSave} onClose={() => setStashPromptOpen(false)} />}
           </span>
         </div>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={<>{picker}{sourceNavigation}</>} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked ? undefined : handlePull} pullBusy={verbBusy?.verb === "pull"} pullDisabled={verbBusy !== null} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={sourceNavigation} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} reloading={refsPending || changedFilesPending || worktreesPending} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked ? undefined : handlePull} pullBusy={verbBusy?.verb === "pull"} pullDisabled={verbBusy !== null} />
         <SplitSeam orientation="vertical" className="repository-ws-tree-divider" label={t("repository.common.resizeSourceTree")} value={treeWidth} min={WORKSPACE_TREE_MIN_WIDTH} max={layoutWidth === undefined ? undefined : workspaceTreeMaxWidth(layoutWidth)} dragging={isTreeDragging} readout={isTreeDragging ? `${Math.round(treeWidth)}px` : null} onPointerDown={handleTreeDividerDown} onStep={stepTreeWidth} />
         <div className="repository-work-area">
           <div className="repository-work-panel" role="tabpanel" id={`${sourceTabsId}-panel`} aria-labelledby={`${sourceTabsId}-${source}`}>
