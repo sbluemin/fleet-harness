@@ -161,7 +161,6 @@ const repositoryEn = {
 
   // checkout containment labeling
   "repository.history.offHead": "Outside the highlighted history",
-  "repository.history.countLegend": "All refs · select a branch to locate its commit",
 
   // sync outcome surfacing (manual sync only; auto sync stays silent)
   "repository.sync.failedAuth": "Fetch failed — authentication. Check your credentials for the remote.",
@@ -466,7 +465,6 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.compare.announceResult": "{base}와(과) {head}를 비교합니다.",
 
   "repository.history.offHead": "강조한 계보에 포함되지 않음",
-  "repository.history.countLegend": "전체 기록 · 브랜치를 선택하면 해당 커밋으로 이동",
 
   "repository.sync.failedAuth": "가져오기 실패 — 인증. 원격 자격 증명을 확인하세요.",
   "repository.sync.failedNetwork": "가져오기 실패 — 네트워크. 원격에 연결할 수 없습니다.",

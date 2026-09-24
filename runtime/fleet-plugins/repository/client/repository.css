@@ -2100,7 +2100,6 @@
 .history-filter-input { height: 28px; padding-left: 28px; font-family: var(--font-body); }
 .repository-discovery-glyph { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); pointer-events: none; }
 .history-filter-clear { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; }
-.history-count { flex: none; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 .history-order-toggle { width: auto; padding: 0 8px 0 6px; }
 .history-order-label { font-size: var(--t-sm); }
 .repository-ref-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: var(--radius-xs); font-size: var(--t-xs); cursor: pointer; }
@@ -2369,7 +2368,6 @@
   }
 }
 @container repository-work (max-width: 640px) {
-  .history-count { display: none; }
   .history-order-label { display: none; }
   .history-order-toggle { width: 24px; padding: 0; }
   .history-filter { flex-basis: 160px; }
