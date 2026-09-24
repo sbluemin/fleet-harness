@@ -43,13 +43,17 @@ describe("desktop package boundary", () => {
   it("keeps the entry page scriptless and independent from Console renderer assets", () => {
     const html = fs.readFileSync(path.join(entryRoot, "index.html"), "utf8");
     const css = fs.readFileSync(path.join(entryRoot, "entry.css"), "utf8");
-    expect(html).toContain("default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'");
+    expect(html).toContain("default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'");
     expect(html).not.toMatch(/<(script|button|a|form|input)\b|contenteditable|tabindex/i);
     expect(html).not.toMatch(/https?:|runtime\/fleet-console/i);
     expect(css).toContain("--brass:");
     expect(css).toContain("--positive:");
     expect(css).toContain("--coral:");
     expect(css).toContain("--chrome-band-height");
-    expect(css).not.toMatch(/@import|url\(/i);
+    expect(css).not.toMatch(/@import/i);
+    // 허용되는 url()은 옆에 번들한 글꼴 파일뿐이다 — Console 자산이나 원격 자원을 끌어오지 않는다.
+    const urls = [...css.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)].map((match) => match[1]);
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) expect(url).toMatch(/^fonts\/[a-z0-9-]+\.woff2$/);
   });
 });

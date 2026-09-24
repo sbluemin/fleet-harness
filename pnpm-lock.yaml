@@ -412,6 +412,12 @@ importers:
       '@fleet-console/protocol':
         specifier: workspace:*
         version: link:../fleet-console/protocol
+      '@fontsource-variable/fraunces':
+        specifier: ^5.2.9
+        version: 5.2.9
+      '@fontsource-variable/manrope':
+        specifier: ^5.2.8
+        version: 5.2.8
       electron:
         specifier: 43.1.0
         version: 43.1.0

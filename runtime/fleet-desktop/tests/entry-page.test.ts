@@ -1,22 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { clampProgress, createEntrySnapshotScript, normalizeEntrySnapshot, pushEntrySnapshot, type EntryPageSnapshot } from "../src/entry-page.js";
+import { createEntrySnapshotScript, type EntryPageSnapshot } from "../src/entry-page.js";
 
 const DAILY: EntryPageSnapshot = {
   platform: "darwin",
-  foot: "shell 1.23.0",
+  lang: "en",
   dev: false,
-  steps: [
-    { name: "Runtime ready", sub: "node v22.23.1 · runtime/console/latest 1.25.0", state: "complete", result: "ok" },
-    { name: "Checking for updates", sub: "registry.npmjs.org", state: "active", result: "up to date" },
-    { name: "Starting console", sub: "dist/cli.mjs serve", state: "waiting" },
-  ],
+  tagline: "Agent work, on one screen",
+  tone: "busy",
+  title: "Checking for updates",
+  versions: "Desktop 0.13.4 · Console 1.107.0",
 };
 
 describe("entry page snapshots", () => {
 
   it("serializes text safely without renderer-controlled markup", () => {
-    const source = createEntrySnapshotScript({ ...DAILY, foot: "</script><img src=x>", steps: [{ name: "<step>", sub: "&", state: "active" }] });
+    const source = createEntrySnapshotScript({ ...DAILY, title: "</script><img src=x>", detail: "<step>", versions: "&" });
     expect(source).toContain("\\u003c/script\\u003e");
     expect(source).toContain("\\u003cstep\\u003e");
     expect(source).toContain("textContent");

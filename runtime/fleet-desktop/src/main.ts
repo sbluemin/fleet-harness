@@ -430,6 +430,9 @@ async function boot(): Promise<void> {
         return createdWindow;
       },
       dev: !isPackaged,
+      lang: app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en",
+      desktopVersion: app.getVersion(),
+      consoleVersion: () => isPackaged ? readInstalledVersion(runtimePaths.latest) : null,
       handoffOrigin: (origin) => {
         localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);
@@ -521,7 +524,7 @@ async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRun
     // 다운로드(오프라인 시 실패)로 가기 전에 유효한 이전 런타임을 복원한다(console latest.rollback과 대칭).
     await reconcileNodeRuntime(runtimePaths.node);
     if (!(await isManagedNodeRuntimeValid(runtimePaths.node, manifest, process.platform))) {
-      await progress("node", "checksum verified", 0);
+      await progress("node", undefined, 0);
       await bootstrapNodeRuntime({ destination: runtimePaths.node, manifest, platform: process.platform, architecture: process.arch });
     }
     await reconcileConsoleInstallations(runtimePaths, createInstallerFileSystem());
@@ -536,12 +539,12 @@ async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRun
         await installConsole({ paths: runtimePaths, nodeRoot: runtimePaths.node, packageName: PACKAGE_NAME, version, nodeRuntimeVersion: manifest.version, platform: process.platform });
       } catch (error) {
         if (!installedVersion) throw error;
-        await progress("offline", "update failed — installed latest");
+        await progress("offline", "install-failed");
       }
     } else if (!installedVersion) {
       throw new Error("console_runtime_unavailable");
     } else if (result.unavailable) {
-      await progress("offline", "registry unreachable — installed latest");
+      await progress("offline", "unreachable");
     }
     const serviceVersion = readInstalledVersion(runtimePaths.latest);
     if (!serviceVersion) throw new Error("console_runtime_unavailable");

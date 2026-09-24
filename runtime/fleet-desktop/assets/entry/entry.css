@@ -1,9 +1,24 @@
-/* Passive entry surface — self-contained by contract (no Console CSS import, CSP blocks webfonts).
-   The mini palette below mirrors the current Instrument charter in theme.css; when the charter
-   moves, re-sync values here by hand. Channel rules apply as in the Console: signal tokens carry
-   state only (positive=complete, coral=danger, brass=location/progress), identity/environment
-   badges stay on neutral ink. Font stacks resolve to system fallbacks unless the faces are
-   installed locally — the Pretendard fallback keeps Korean glyph weight aligned when present. */
+/* Passive entry surface — self-contained by contract (no Console CSS import; the only url()s are the
+   bundled font files next to this sheet, allowed by CSP font-src 'self'). The mini palette mirrors
+   the current Instrument charter in theme.css; when the charter moves, re-sync values here by hand.
+   Channel rules apply as in the Console: signal tokens carry state only (positive=done, coral=danger,
+   brass=progress), identity/environment badges stay on neutral ink. Korean glyphs fall back to
+   Pretendard when installed, then to the system face — the bundled faces are Latin subsets. */
+@font-face {
+  font-family: "Fraunces Variable";
+  src: url("fonts/fraunces-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Manrope Variable";
+  src: url("fonts/manrope-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
   --ink-abyss: oklch(13% 0.014 245);
@@ -11,50 +26,105 @@
   --ink-veil: oklch(23.5% 0.02 245);
   --ink-rim: oklch(29% 0.018 245);
   --ink-fog: oklch(52% 0.012 245);
+  --ink-muted: oklch(64% 0.012 245);
   --ink-spectral: oklch(70% 0.012 245);
   --ink-pearl: oklch(94% 0.008 90);
   --brass: oklch(80% 0.085 78);
-  --brass-glow: oklch(80% 0.085 78 / 13%);
+  --brass-glow: oklch(80% 0.085 78 / 16%);
+  --aurora: oklch(77% 0.085 200);
   --positive: oklch(76% 0.11 160);
+  --positive-glow: oklch(76% 0.11 160 / 16%);
   --coral: oklch(68% 0.13 25);
+  --coral-glow: oklch(68% 0.13 25 / 16%);
   --hairline: oklch(29% 0.018 245);
+  --hairline-strong: oklch(37% 0.02 245);
   --radius-xs: 6px;
   --chrome-band-height: 36px;
   --font-display: "Fraunces Variable", "Fraunces", "Pretendard Variable", ui-serif, Georgia, serif;
   --font-body: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
-  --duration-base: 220ms;
-  --duration-slow: 360ms;
+  --duration-fade: 200ms;
+  /* launch-controller.ts HANDOFF_SETTLE_MS와 짝 — 이 전환이 끝난 뒤에 Console 문서로 바뀐다. */
+  --handoff-duration: 420ms;
+  /* 넘겨줄 때 마크·워드마크가 도착하는 자리. Console command band의 브랜드 위치를 그대로 옮겼다
+     (layout.css: .command-band-left 패딩 + .command-band-brand 패딩, 글리프 16px, 간격 7px).
+     macOS는 신호등 76px를 비운다. */
+  --brand-glyph-left: 13px;
+  --brand-mark-size: 72px;
 }
+:root[data-platform="darwin"] { --brand-glyph-left: 93px; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { display: grid; grid-template-rows: var(--chrome-band-height) 1fr auto; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-body); }
-.chrome-band { height: var(--chrome-band-height); display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--hairline); background: var(--ink-deep); -webkit-app-region: drag; }
-.brand { display: flex; align-items: baseline; gap: 8px; margin-left: 88px; }
-.brand strong { color: var(--ink-pearl); font-family: var(--font-display); font-size: 17px; font-weight: 600; }
-.brand span { color: var(--ink-fog); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
-/* 환경 배지는 정체성이지 상태가 아니다 — 신호색 없이 중립 잉크 칩으로 선다. */
-.dev-tag { display: none; margin-left: auto; color: var(--ink-spectral); border: 1px solid var(--ink-rim); border-radius: var(--radius-xs); background: none; padding: 2px 10px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; }
+body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
+
+/* 창을 끌 수 있는 자리. Console의 command band와 같은 높이라, 넘겨줄 때 밑줄만 켜지면 그대로 이어진다. */
+.drag-strip { position: fixed; inset: 0 0 auto; height: var(--chrome-band-height); border-bottom: 1px solid transparent; -webkit-app-region: drag; transition: border-color var(--handoff-duration) var(--ease-spring); }
+
+.brand-mark {
+  position: fixed;
+  top: calc(50% - 116px);
+  left: calc(50% - var(--brand-mark-size) / 2);
+  width: var(--brand-mark-size);
+  height: var(--brand-mark-size);
+  border-radius: var(--radius-xs);
+  transition: top var(--handoff-duration) var(--ease-spring), left var(--handoff-duration) var(--ease-spring), width var(--handoff-duration) var(--ease-spring), height var(--handoff-duration) var(--ease-spring);
+}
+.brand-mark-tile { fill: var(--ink-deep); stroke: var(--hairline-strong); stroke-width: 2; }
+.brand-mark-ring { fill: none; stroke: var(--brass); stroke-width: 3.5; }
+.brand-mark-inner { fill: none; stroke: var(--brass); stroke-width: 1.8; opacity: 0.55; }
+.brand-mark-ticks { fill: none; stroke: var(--brass); stroke-width: 3; stroke-linecap: round; }
+.brand-mark-pip { fill: var(--brass); }
+.brand-mark-beacon { fill: var(--aurora); transform-box: fill-box; transform-origin: center; }
+:root[data-tone="busy"] .brand-mark-beacon { animation: beacon 1.8s ease-in-out infinite; }
+
+.wordmark {
+  position: fixed;
+  top: calc(50% - 26px);
+  left: 50%;
+  margin: 0;
+  transform: translateX(-50%);
+  color: var(--ink-pearl);
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  transition: top var(--handoff-duration) var(--ease-spring), left var(--handoff-duration) var(--ease-spring), transform var(--handoff-duration) var(--ease-spring), font-size var(--handoff-duration) var(--ease-spring), letter-spacing var(--handoff-duration) var(--ease-spring);
+}
+
+.entry-stage { position: fixed; top: calc(50% + 30px); left: 24px; right: 24px; display: grid; justify-items: center; gap: 10px; text-align: center; transition: opacity var(--duration-fade) ease; }
+.tagline { margin: 0 0 14px; color: var(--ink-spectral); font-size: 14px; }
+.status { display: inline-flex; align-items: center; gap: 9px; color: var(--ink-pearl); font-size: 13.5px; font-weight: 500; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 3px var(--brass-glow); }
+:root[data-tone="busy"] .status-dot { animation: pulse 1.6s ease-in-out infinite; }
+:root[data-tone="done"] .status-dot { background: var(--positive); box-shadow: 0 0 0 3px var(--positive-glow); }
+:root[data-tone="warning"] .status-dot, :root[data-tone="failed"] .status-dot { background: var(--coral); box-shadow: 0 0 0 3px var(--coral-glow); }
+.bar { display: none; position: relative; width: min(240px, 70vw); height: 2px; overflow: hidden; border-radius: 2px; background: var(--ink-veil); }
+.bar.is-visible { display: block; }
+.bar-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--brass); transition: width 240ms linear; }
+.bar.is-indeterminate .bar-fill { width: 34%; animation: sweep 1.3s var(--ease-spring) infinite; }
+.detail { margin: 0; min-height: 1.4em; color: var(--ink-muted); font-size: 12px; }
+
+.versions { position: fixed; left: 0; right: 0; bottom: 22px; color: var(--ink-fog); font-family: var(--font-mono); font-size: 11px; text-align: center; letter-spacing: 0.02em; transition: opacity var(--duration-fade) ease; }
+/* 개발 빌드 배지 — 정체성이지 상태가 아니므로 신호색 없이 중립 잉크 칩. Windows 캡션 버튼과
+   겹치지 않도록 위가 아니라 오른쪽 아래에 둔다. */
+.dev-tag { display: none; position: fixed; right: 16px; bottom: 18px; padding: 2px 9px; border: 1px solid var(--ink-rim); border-radius: var(--radius-xs); color: var(--ink-spectral); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; }
 .dev-tag.is-visible { display: inline-block; }
-.entry-body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding: 40px 24px 28px; }
-.boot-stack { width: min(480px, 100%); }
-.boot-step { display: grid; grid-template-columns: 22px 1fr auto; align-items: baseline; gap: 10px; padding: 9px 2px; opacity: .38; transition: opacity var(--duration-slow) var(--ease-spring); }
-.boot-step.active, .boot-step.complete, .boot-step.warning, .boot-step.failed { opacity: 1; }
-.boot-dot { width: 9px; height: 9px; border: 1.5px solid var(--ink-rim); border-radius: 50%; align-self: center; justify-self: center; }
-.boot-step.active .boot-dot { border-color: var(--brass); box-shadow: 0 0 0 3px var(--brass-glow); }
-.boot-step.complete .boot-dot { border-color: var(--positive); background: var(--positive); }
-.boot-step.warning .boot-dot, .boot-step.failed .boot-dot { border-color: var(--coral); background: var(--coral); }
-.boot-name { color: var(--ink-pearl); font-size: 13px; }
-.boot-sub, .boot-result { display: block; margin-top: 1px; color: var(--ink-fog); font-family: var(--font-mono); font-size: 11px; }
-.boot-result { align-self: baseline; }
-.boot-step.complete .boot-result { color: var(--positive); }
-.boot-step.warning .boot-result, .boot-step.failed .boot-result { color: var(--coral); }
-.boot-bar { grid-column: 2 / 4; height: 3px; margin-top: 7px; overflow: hidden; border-radius: 2px; background: var(--ink-veil); }
-.boot-bar-fill { height: 100%; background: var(--brass); transition: width var(--duration-base) linear; }
-.handoff { margin: 20px 0 0; padding: 11px 14px; border: 1px dashed color-mix(in oklab, var(--positive) 45%, transparent); border-radius: var(--radius-xs); color: var(--positive); font-family: var(--font-mono); font-size: 11px; opacity: 0; transition: opacity var(--duration-slow); }
-.handoff.is-visible { opacity: 1; }
-.entry-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--hairline); background: var(--ink-deep); color: var(--ink-rim); font-family: var(--font-mono); font-size: 11px; }
-.entry-foot span:last-child { margin-left: auto; text-align: right; }
-@media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; } }
+
+/* 넘겨주기: 마크와 워드마크가 Console 상단 브랜드 자리로 줄어들고, 나머지는 먼저 사라진다. */
+.is-handoff .drag-strip { border-bottom-color: var(--hairline); }
+.is-handoff .brand-mark { top: 9.5px; left: var(--brand-glyph-left); width: 16px; height: 16px; }
+.is-handoff .wordmark { top: 11px; left: calc(var(--brand-glyph-left) + 23px); transform: translateX(0); font-size: 13px; letter-spacing: 0.01em; }
+.is-handoff .entry-stage, .is-handoff .versions, .is-handoff .dev-tag { opacity: 0; }
+.is-handoff .brand-mark-beacon { animation: none; }
+
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--brass-glow); } 50% { box-shadow: 0 0 0 6px transparent; } }
+@keyframes beacon { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: .01ms !important; animation: none !important; }
+}

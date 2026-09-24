@@ -3,19 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'none'; connect-src 'none'; img-src 'none'; font-src 'self'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Fleet Console Desktop</title>
   <link rel="stylesheet" href="entry.css">
 </head>
 <body>
-  <header class="chrome-band">
-    <div class="brand"><strong>Fleet</strong><span>Console Desktop</span></div>
-    <span class="dev-tag" id="dev-tag">LOCAL BUILD · DEV</span>
-  </header>
-  <main class="entry-body">
-    <section class="boot-stack" id="boot-stack" aria-live="polite"></section>
-    <p class="handoff" id="handoff"></p>
+  <header class="drag-strip" aria-hidden="true"></header>
+  <!-- Console 상단 브랜드(command-band-brand-glyph)와 같은 조형이다 — 넘겨줄 때 그 자리로 줄어든다. -->
+  <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+    <rect class="brand-mark-tile" x="2" y="2" width="60" height="60" rx="14" />
+    <circle class="brand-mark-ring" cx="32" cy="32" r="18.5" />
+    <circle class="brand-mark-inner" cx="32" cy="32" r="10.5" />
+    <path class="brand-mark-ticks" d="M32 9v8M32 47v8M9 32h8M47 32h8" />
+    <circle class="brand-mark-pip" cx="32" cy="32" r="3" />
+    <circle class="brand-mark-beacon" cx="44.7" cy="19.3" r="5" />
+  </svg>
+  <h1 class="wordmark">Fleet</h1>
+  <main class="entry-stage">
+    <p class="tagline" id="tagline"></p>
+    <section class="status" aria-live="polite">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span class="status-title" id="status-title"></span>
+    </section>
+    <div class="bar" id="bar" aria-hidden="true"><span class="bar-fill" id="bar-fill"></span></div>
+    <p class="detail" id="detail"></p>
   </main>
-  <footer class="entry-foot"><span id="foot-left"></span><span id="foot-right">console updates install automatically at launch</span></footer>
+  <footer class="versions" id="versions"></footer>
+  <span class="dev-tag" id="dev-tag">LOCAL BUILD</span>
 </body>
 </html>
