@@ -9,6 +9,7 @@ import {
   CHATGPT_CODEX_RESPONSES_URL,
   CodexResponsesAdapter,
   encodeAnthropicSse,
+  encodeReasoningSignature,
   setWireLogTarget,
 } from "../../../../src/index.js";
 import type { CanonicalResponseEvent, CanonicalResponseRequest } from "../../../../src/index.js";
@@ -113,6 +114,44 @@ describe("codex responses adapter", () => {
     expect(body).not.toHaveProperty("tool_choice");
     expect(body).not.toHaveProperty("parallel_tool_calls");
     expect(body).not.toHaveProperty("include");
+  });
+
+  it("never forwards another provider's reasoning replay metadata onto the Codex wire", async () => {
+    // A conversation that reasoned on Grok carries its blobs in thinking signatures. Continued on
+    // a Codex model without the client knowing (e.g. an operator model override), each blob lands
+    // on the item it preceded; the backend refuses any unknown item field with a 400 that fails
+    // the whole request.
+    const signature = encodeReasoningSignature("rs_grok", "grok-opaque-blob");
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new AnthropicMessagesGateway(new CodexResponsesAdapter({ fetch: fetchMock })).stream({
+      model: "claude-gateway--xai--grok-4.7",
+      max_tokens: 64,
+      stream: true,
+      messages: [
+        { role: "user", content: "Read a.txt." },
+        { role: "assistant", content: [
+          { type: "thinking", thinking: "Read it first.", signature },
+          { type: "tool_use", id: "call_a", name: "Read", input: { file_path: "a.txt" } },
+        ] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "call_a", content: "17" }] },
+        { role: "assistant", content: [
+          { type: "thinking", thinking: "That is the answer.", signature },
+          { type: "text", text: "17" },
+        ] },
+        { role: "user", content: "And b.txt?" },
+      ],
+    } as never, { apiKey: "k", model: "gpt-6-sol" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { input: Array<Record<string, unknown>> };
+    expect(body.input.find((item) => item.type === "function_call"))
+      .toMatchObject({ call_id: "call_a", name: "Read" });
+    expect(body.input.find((item) => item.type === "message" && item.role === "assistant"))
+      .toMatchObject({ content: "17" });
+    for (const item of body.input) {
+      expect(item).not.toHaveProperty("reasoning_encrypted");
+      expect(item).not.toHaveProperty("reasoning_id");
+      expect(item).not.toHaveProperty("reasoning_content");
+    }
   });
 
   it("drops only the tool patterns the backend's regex engine rejects", async () => {

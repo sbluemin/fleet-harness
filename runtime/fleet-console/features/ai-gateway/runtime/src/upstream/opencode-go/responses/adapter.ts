@@ -13,6 +13,7 @@ import type {
   CanonicalWebSearchCallOutputItem,
   CanonicalWebSearchSource,
 } from "../../../canonical/index.js";
+import { withoutReplayMetadata } from "../../../canonical/index.js";
 import {
   UpstreamProtocolError,
   linkAbortSignal,
@@ -199,8 +200,7 @@ function forOpenCodeGoResponsesBackend(
   // Canonical-only input fields must never reach the wire. The Responses API rejects an
   // unknown input property with a 400 that fails the entire request — observed as
   // `Unknown parameter: 'input[N].reasoning_content'` — so every item is stripped here
-  // rather than at each producer. `reasoning_content` is replay metadata only the Chat
-  // Completions path consumes; this backend takes reasoning back as its own items.
+  // rather than at each producer. This backend replays none of that metadata.
   payload.input = request.input.map((item) => {
     if (item.type === "function_call_output") {
       const {
@@ -210,8 +210,7 @@ function forOpenCodeGoResponsesBackend(
       } = item;
       return wireItem;
     }
-    const { reasoning_content: _reasoningContent, ...wireItem } = item;
-    return wireItem;
+    return withoutReplayMetadata(item);
   });
 
   const wireTools: OpenCodeResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
