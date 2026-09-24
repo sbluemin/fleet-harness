@@ -525,10 +525,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (input.kind === "launch") {
         const cwd = ctx.host.paths.resolveTheaterPath(input.theaterId!);
         if (!cwd) throw new ConsoleControlError("unknown_theater");
+        // 부모는 세션을 만들기 전에 따진다 — 저장소도 거절하지만, 그때는 이미 세운 대기 세션이 남는다.
+        if (input.parentOperationId) {
+          const parent = ctx.host.operations.get(input.parentOperationId);
+          if (!parent || parent.theaterId !== input.theaterId || parent.parentOperationId) throw new ConsoleControlError("invalid_parent_operation");
+        }
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.dormant ? { dormant: true } : input.viewMode !== "terminal" ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : input.viewMode !== "terminal" ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -1062,7 +1067,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1112,6 +1117,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(launchOptions.dormant ? { dormantBorn: true } : {}),
       },
       ...(launchOptions.geometry ? { geometry: launchOptions.geometry } : {}),
+      // 부모는 태어날 때 함께 — 생성 방송(operation:changed)이 부모 없는 행을 한 번이라도 실으면 목록에 선다.
+      ...(launchOptions.parentOperationId ? { parentOperationId: launchOptions.parentOperationId } : {}),
       createdAt: session.createdAt,
     });
     if (launchOptions.dormant) {

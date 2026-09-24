@@ -6,7 +6,7 @@ import type { UseHoldOutcome, UseRequestBroker } from "./use-requests.js";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore, type AgentToolSpec, type AgentToolCtx } from "@fleet-console/agent-runtime/tools";
 import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
-import type { OperationNode } from "@fleet-console/sdk/operations";
+import { isListedOperation, type OperationNode } from "@fleet-console/sdk/operations";
 
 /**
  * Console 화면이 사람에게 여는 나머지 동사들의 호스트 어댑터. 각 묶음은 그것을 소유한 층이 채운다 —
@@ -227,15 +227,19 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       const rank = groupId ? groupRank.get(groupId) : undefined;
       return rank && rank.theaterId === op.theaterId ? rank.index : Number.MAX_SAFE_INTEGER;
     };
+    // 구성원(부모가 대표하는 Operation)은 사이드바에 서지 않는다 — 자리 번호도 보이는 행끼리만 센다. 구성원 행은 부모의 자리를 진다.
+    const byId = new Map(all.map((op) => [op.id, op]));
+    const listed = (op: OperationNode) => isListedOperation(op, (id) => byId.get(id));
     const sidebarOrders = new Map<string, number>();
     const theaterPositions = new Map<string, number>();
-    for (const op of [...all].sort((a, b) => section(a) - section(b) || listIndex.get(a.id)! - listIndex.get(b.id)!)) {
+    for (const op of all.filter(listed).sort((a, b) => section(a) - section(b) || listIndex.get(a.id)! - listIndex.get(b.id)!)) {
       const position = theaterPositions.get(op.theaterId) ?? 0;
       theaterPositions.set(op.theaterId, position + 1);
       sidebarOrders.set(op.id, position);
     }
     const values = all.map((op) => {
-      const sidebarOrder = sidebarOrders.get(op.id) ?? 0;
+      const nested = !listed(op);
+      const sidebarOrder = sidebarOrders.get(nested ? op.parentOperationId! : op.id) ?? 0;
       const observation = control?.observe(op.id);
       const snapshotActivity = activities.get(op.id);
       const stale = !observation && !!current?.takenAt && (!Number.isFinite(Date.parse(current.takenAt)) || Date.now() - Date.parse(current.takenAt) > 60_000);
@@ -249,6 +253,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         accent: typeof host.accent === "string" ? host.accent : null,
         createdAt: new Date(op.ts.createdAt).toISOString(), lastActiveAt,
         ...(by && typeof by === "object" ? { launchedBy: by } : {}),
+        ...(nested ? { parentOperationId: op.parentOperationId! } : {}),
         observation: { source: observation ? "host" : snapshotActivity ? "snapshot" : "unavailable", observedAt: observation?.observedAt ?? current?.takenAt ?? null, stale },
         attention: observation?.attention ?? { kind: snapshotActivity === "awaiting" ? "input" : "unknown" },
       };
@@ -293,7 +298,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
   // ---------------------------------------------------------------------------------------------
   const specs: AgentToolSpec[] = [
     define("console_context", "Start or refresh your Console Use session: caller identity, registered Theaters (id and name, no paths), who is using the Console/computer/browser, and capabilities. The person sees your caption light up while you use the Console. Caller is not the browser focus.", empty, (_args, ctx) => {
-      const all = rows().values;
+      const all = rows().values.filter((r) => !("parentOperationId" in r));
       const callerId = caller(ctx);
       gesture(ctx, "console_context", "Console 사용 시작", "wait");
       return {
@@ -308,16 +313,16 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
         semantics: { idle: "not proof of success", ended: "no live process; not proof of success", unseen: "viewer-owned, unavailable here", gestures: "Every call is shown on the person's Console: the target you read or change (Operation row and panel, Theater, group, Repository/File panel) is wrapped in a Console use pulse with your name; nothing is written on your own caption." },
       };
     }),
-    define("console_operations", "Scan the sidebar: Operations with activity, group, accent, lineage, last activity and order (zero-based position in the Theater's sidebar: groups in their order, then ungrouped); groups include sidebar-ordered members. Operation rows remain ID-sorted for pagination. Host observation is preferred; unknown is not idle. With waitMs, waits (up to 25 s) for the list or an activity to change before answering. Cursor expires when the matching list or its order changes.", z.object({ theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional(), waitMs: z.number().int().min(0).max(25_000).optional() }).strict(), async (args, ctx) => {
+    define("console_operations", "Scan the sidebar: Operations with activity, group, accent, lineage, last activity and order (zero-based position in the Theater's sidebar: groups in their order, then ungrouped); groups include sidebar-ordered members. Operations represented by a parent (an objective's members under its Commander) are left out like the sidebar does; nested: true adds them with parentOperationId and the parent's order. Operation rows remain ID-sorted for pagination. Host observation is preferred; unknown is not idle. With waitMs, waits (up to 25 s) for the list or an activity to change before answering. Cursor expires when the matching list or its order changes.", z.object({ theaterId: ids.optional(), groupId: ids.nullable().optional(), activity: z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]).optional(), kind: ids.optional(), query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(300).optional(), waitMs: z.number().int().min(0).max(25_000).optional(), nested: z.boolean().optional() }).strict(), async (args, ctx) => {
       if (args.waitMs && control) {
         gesture(ctx, "console_operations", "변화를 기다리는 중", "wait", args.theaterId ? { kind: "theater", theaterId: args.theaterId } : undefined);
         const head = await control.readEvents(undefined, 0);
         await control.readEvents(head.cursor, args.waitMs, ctx.signal);
       }
       const { snapshotAt, values } = rows();
-      const scope = values.filter((r) => (!args.theaterId || r.theaterId === args.theaterId) && (!args.kind || r.kind === args.kind) && (args.groupId === undefined || r.groupId === args.groupId) && (!args.query || r.title.toLowerCase().includes(args.query.toLowerCase()))).sort((a, b) => a.id.localeCompare(b.id));
+      const scope = values.filter((r) => (args.nested === true || !("parentOperationId" in r)) && (!args.theaterId || r.theaterId === args.theaterId) && (!args.kind || r.kind === args.kind) && (args.groupId === undefined || r.groupId === args.groupId) && (!args.query || r.title.toLowerCase().includes(args.query.toLowerCase()))).sort((a, b) => a.id.localeCompare(b.id));
       const filtered = scope.filter((r) => !args.activity || r.activity === args.activity);
-      const generation = createHash("sha256").update(JSON.stringify([args.activity, args.theaterId, args.kind, args.groupId, args.query, filtered.map((r) => [r.id, r.order, r.groupId])])).digest("hex").slice(0, 16);
+      const generation = createHash("sha256").update(JSON.stringify([args.activity, args.theaterId, args.kind, args.groupId, args.query, args.nested === true, filtered.map((r) => [r.id, r.order, r.groupId])])).digest("hex").slice(0, 16);
       let offset = 0;
       if (args.cursor) { const [key, raw] = args.cursor.split(":"); offset = Number(raw); if (key !== generation || !Number.isSafeInteger(offset) || offset < 0 || offset > filtered.length) throw new ConsoleControlError("cursor_expired"); }
       const limit = args.limit ?? 50;

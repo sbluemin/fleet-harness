@@ -25,6 +25,8 @@ describe("Console Use surface boundaries", () => {
       { id: "op-parent", title: "Parent", theaterId: "theater-a", type: "agent", pluginId: null, payload: { consoleUse: { enabled: true, language: "en" } } as Record<string, unknown>, geometry: null, ts: { createdAt: 1, updatedAt: 1 } },
       { id: "op-child", title: "Child", theaterId: "theater-a", type: "agent", pluginId: null, payload: { launchedBy: me } as Record<string, unknown>, geometry: null, ts: { createdAt: 2, updatedAt: 2 } },
       { id: "op-human", title: "Human's", theaterId: "theater-a", type: "agent", pluginId: null, payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 3, updatedAt: 3 } },
+      // 부모가 대표하는 구성원 — 사이드바처럼 스캔에서도 빠지고, 명시적으로 물을 때만 선다.
+      { id: "op-member", title: "Parent › Member", theaterId: "theater-a", type: "agent", pluginId: null, parentOperationId: "op-parent", payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 4, updatedAt: 4 } },
     ];
     const answered: string[] = [];
     const slept: string[] = [];
@@ -84,6 +86,9 @@ describe("Console Use surface boundaries", () => {
     releaseContribution();
     expect((await call("op-parent", "console_repo", { theaterId: "theater-a", view: "status" })).error).toBe("plugin_tool_unavailable");
     expect(contributedCalls).toBe(1);
+    // 구성원은 스캔의 기본 목록에서 빠지고(부관·Admiral 이 평범한 행으로 보지 않는다) nested 로 물을 때만 부모와 함께 선다.
+    expect((await call("op-parent", "console_operations", {})).operations.map((row: { id: string }) => row.id)).toEqual(["op-child", "op-human", "op-parent"]);
+    expect((await call("op-parent", "console_operations", { nested: true })).operations).toEqual(expect.arrayContaining([expect.objectContaining({ id: "op-member", parentOperationId: "op-parent" })]));
     // console_operation 은 자식의 열린 질문과 계보를 함께 싣는다.
     expect(await call("op-parent", "console_operation", { operationId: "op-child" })).toMatchObject({ launchedBy: me, asks: [{ id: "ask-q", form: "question" }, { id: "ask-plan", form: "plan" }] });
     control.dispose();

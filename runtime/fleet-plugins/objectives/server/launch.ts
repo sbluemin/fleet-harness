@@ -101,7 +101,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
-  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; dormant?: boolean; subagents?: boolean }): Promise<string> => {
+  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; dormant?: boolean; subagents?: boolean; parentOperationId?: string }): Promise<string> => {
     const receipt = await control().request({
       kind: "launch",
       theaterId: input.theaterId,
@@ -114,6 +114,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
       ...(input.groupId ? { groupId: input.groupId } : {}),
+      // 구성원은 태어날 때부터 지휘관 아래 선다 — 코어가 목록 표면에서 빼고 지휘관이 대표한다.
+      ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}),
     }, `objectives:launch:${randomUUID()}`);
     if (!receipt.operationId) throw new ObjectiveStoreError(receipt.error ?? "launch_failed");
     return receipt.operationId;
@@ -256,7 +258,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       let session = memberSession(current.commander.sessionName, number);
       while (used.has(session)) session = memberSession(current.commander.sessionName, ++number);
       const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
-      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: false }).catch(asStoreError);
+      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: false, parentOperationId: current.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(itemId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       try { current = store.setMemberOperation(itemId, member.id, launchedId); }
       catch (error) { ctx.host.operations.delete(launchedId); throw error; }

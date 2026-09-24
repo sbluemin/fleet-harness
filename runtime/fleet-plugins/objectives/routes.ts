@@ -39,6 +39,17 @@ export default definePlugin({
     ctx.host.lifecycle.registerCleanup(releaseChannel);
     const store = createObjectiveStore({ dirOf, operations: ctx.host.operations, emit: (event) => ctx.host.events.publish(OBJECTIVE_ITEM_CHANNEL, event) });
 
+    // 부모 채우기 — 구성원은 태어날 때 지휘관을 부모로 받는다(launch). 그 전에 뜬 구성원은 여기서 한 번 채운다.
+    // 코어는 부모가 있는 Operation 을 목록 표면에서 빼고 지휘관이 대표하게 한다. 복원된 상태는 플러그인보다 먼저 선다.
+    for (const item of store.all()) {
+      for (const member of item.members) {
+        const node = member.operationId ? ctx.host.operations.get(member.operationId) : null;
+        if (!node || node.theaterId !== item.theaterId || node.parentOperationId === item.id) continue;
+        try { ctx.host.operations.patch(node.id, { parentOperationId: item.id }); }
+        catch (error) { console.warn(`[objectives] member parent backfill failed: ${error instanceof Error ? error.message : String(error)}`); }
+      }
+    }
+
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
     const launch = createLaunchService(ctx, store);
     ctx.host.lifecycle.registerCleanup(() => launch.dispose());

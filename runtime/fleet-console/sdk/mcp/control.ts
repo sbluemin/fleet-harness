@@ -27,6 +27,11 @@ export interface ConsoleActionInput {
   readonly disableSubagents?: boolean;
   /** launch 전용 — Operation만 만들고 첫 send 때 새 세션으로 깨운다. */
   readonly dormant?: boolean;
+  /**
+   * launch 전용 — 태어날 때부터 이 Operation 아래 선다(목표의 구성원 → 지휘관). 같은 Theater 의, 부모가 없는 Operation 이어야 한다.
+   * 태어난 뒤에 붙이면 첫 방송에 부모 없는 행이 실려 목록에 한 번 선다 — 그래서 기록은 생성과 함께다.
+   */
+  readonly parentOperationId?: string;
 }
 
 export interface ConsoleOperationObservation {
