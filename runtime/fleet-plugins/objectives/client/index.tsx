@@ -6,7 +6,7 @@ import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 import { objectivesClusterSource } from "./clusters.js";
 import { getT } from "./i18n/index.js";
 import { ObjectivePanel } from "./objectives-panel.js";
-import { activeTheaterId, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealItem, objectivesApi, toggleObjectivePlace } from "./objectives-state.js";
+import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealItem, objectivesApi, toggleObjectivePlace } from "./objectives-state.js";
 import "./objectives.css";
 
 export const OBJECTIVE_SURFACE_ID = "objectives";
@@ -65,6 +65,7 @@ const objectivesPlugin = definePlugin({
     if (theaterId) void loadTheater(ctx.api, theaterId);
     return dispose;
   },
+  onMapOperationSelected: handleMapOperationSelected,
   railEntries: [objectivesEntry],
   panes: [objectivesPane],
   expandedSurfaces: [objectivesSurface],
