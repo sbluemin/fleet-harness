@@ -2751,9 +2751,9 @@
 .repository-unified .repository-sync-button { background: var(--control-rest); border-color: var(--surface-rim); border-radius: var(--radius-xs); }
 .repository-unified .repository-discovery { background: transparent; }
 .repository-unified .repository-filter-input, .repository-unified .history-filter-input { border-radius: 3px; font-size: var(--t-xs); }
-.repository-unified .repository-staging-row.is-cur, .repository-unified .repository-file-row.is-cur { background: var(--repository-selection); box-shadow: none; }
-.repository-unified .repository-stage-action { border-radius: 3px; padding: 4px 6px; }
-.repository-unified .repository-staging-head { color: var(--text-secondary); font-weight: var(--weight-medium); background: var(--surface-panel-raised); backdrop-filter: none; }
+.repository-unified .repository-staging-row.is-cur, .repository-unified .repository-file-row.is-cur { background: var(--repository-selection); box-shadow: inset 0 0 0 1px var(--surface-rim-strong); border-radius: var(--radius-xs); }
+.repository-unified .repository-stage-action { border-radius: var(--radius-xs); padding: 4px 6px; }
+.repository-unified .repository-staging-head { color: var(--text-secondary); font-weight: var(--weight-medium); background: var(--surface-panel); backdrop-filter: none; }
 .repository-unified .repository-staging-section { flex: 1 0 auto; min-height: 120px; }
 .repository-unified .repository-staging-viewbar { flex: none; }
 .repository-unified .repository-dock-head { background: transparent; }
@@ -2762,8 +2762,12 @@
 .repository-unified .history-inspector-subject { font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .repository-unified .history-author { font-size: var(--t-xs); }
 .repository-unified .repository-commit-box { padding: 10px 12px; gap: 5px; background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised)); }
-.repository-unified .repository-commit-subject, .repository-unified .repository-commit-body { border: 1px solid var(--surface-rim); border-radius: 3px; font-family: var(--font-body); }
-.repository-unified .repository-commit-button { border-radius: 3px; }
+.repository-unified .repository-commit-subject, .repository-unified .repository-commit-body { border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); font-family: var(--font-body); }
+.repository-unified .repository-commit-button { border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-primary); }
+.repository-unified .repository-commit-button:not(:disabled):hover { background: var(--control-rest-hover); border-color: var(--brass); }
+.repository-unified .repository-staging-guard.is-locked { color: var(--text-secondary); background: var(--surface-panel); border-bottom-color: var(--surface-rim); }
+.repository-guard-signal { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--warn); }
+.repository-unified .repository-staging.is-reviewing { grid-template-columns: minmax(220px, min(var(--staging-list-width, 320px), calc(100% - 341px))) 1px minmax(0, 1fr); }
 .repository-unified .repository-ref-context-menu, .repository-unified .repository-verb-menu { border-radius: var(--radius-md); background: var(--surface-panel-raised); }
 
 /* 비교 선택도 단일 선택과 같은 면을 쓴다. Shift 후 focus-visible은 중립 테두리로 구분한다. */

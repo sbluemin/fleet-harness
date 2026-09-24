@@ -16,7 +16,7 @@ import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
 type T = Translate<RepositoryMessageKey>;
 
 const LIST_PANE_MIN_WIDTH = 220;
-const LIST_PANE_DEFAULT_WIDTH = 248;
+const LIST_PANE_DEFAULT_WIDTH = 320;
 const PREFS_LIST_PANE_WIDTH = "fleet-console.diff.listPaneWidth";
 // 제품 공용 파괴 동사 무장 시간 — 사이드바 칩·프레임 닫기와 같은 1.5s.
 const DISCARD_ARM_MS = 1500;
@@ -164,10 +164,15 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
           const moved = result[axis].find((entry) => entry.path === continuation.moved);
           if (moved) return { axis, entry: moved };
         }
-        if (!current) return current;
-        const pool = current.axis === "staged" ? result.staged : result.unstaged;
-        const kept = pool.find((entry) => entry.path === current.entry.path);
-        return kept ? { axis: current.axis, entry: kept } : null;
+        if (current) {
+          const pool = current.axis === "staged" ? result.staged : result.unstaged;
+          const kept = pool.find((entry) => entry.path === current.entry.path);
+          if (kept) return { axis: current.axis, entry: kept };
+        }
+        const unstaged = result.unstaged[0];
+        if (unstaged) return { axis: "unstaged", entry: unstaged };
+        const staged = result.staged[0];
+        return staged ? { axis: "staged", entry: staged } : null;
       });
     }).catch((error: unknown) => {
       if (cancelled || seq !== requestSeqRef.current) return;
@@ -342,7 +347,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
 
   return <div ref={rootRef} className={`repository-staging${hunkSelection && !guardMessage && !notice && !(amend && !amendReady) ? " is-reviewing" : ""}`} style={{ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties}>
     {amend && !amendReady && <div className="repository-staging-guard" role="status">{t(!workstate || stateUnknown ? "repository.staging.amendChecking" : "repository.staging.amendHeadChanged")}</div>}
-    {guardMessage && <div className="repository-staging-guard is-locked" role="status">{guardMessage}</div>}
+    {guardMessage && <div className="repository-staging-guard is-locked" role="status"><span className="repository-guard-signal" aria-hidden="true" />{guardMessage}</div>}
     {notice && <div className={`repository-sync-toast is-${notice.kind}`} role="status"><span>{notice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setNotice(null)}><Icon name="close" /></button></div>}
     {/* 끌어서 정한 목록 폭은 인라인 grid-template-columns가 아니라 변수로 들어온다 — 인라인 값은
         좁은 폭에서 세로로 쌓는 컨테이너 쿼리를 이겨, 실측에서 본 목록 82px·파일명 폭 0px 붕괴를
