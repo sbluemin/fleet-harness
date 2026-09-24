@@ -15,7 +15,7 @@ const sameCaller = (a: ConsoleCaller, b: ConsoleCaller) => a.kind === "operation
   ? a.operationId === b.operationId : a.kind === "plugin" && b.kind === "plugin" && a.pluginId === b.pluginId;
 const activity = z.enum(["idle", "running", "awaiting", "background", "ended", "unknown"]);
 const actionObjectSchema = z.object({
-  kind: z.enum(["launch", "send", "interrupt"]),
+  kind: z.enum(["launch", "send", "interrupt", "resume"]),
   theaterId: z.string().min(1).max(128).optional(), operationId: z.string().min(1).max(128).optional(),
   text: z.string().min(1).max(32_000).optional(), model: z.string().max(200).optional(), effort: z.string().max(32).optional(),
   viewMode: z.enum(["chat", "terminal"]).optional(),
@@ -30,6 +30,7 @@ export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.dormant !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "interrupt" && (value.text || value.display || value.displayFormat)) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
+  if (value.kind === "resume" && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_resume" });
   if (value.text !== undefined && !sanitizeLaunchPrompt(value.text)) ctx.addIssue({ code: "custom", message: "empty_prompt" });
 });
 export const automationSchema = z.object({
@@ -146,6 +147,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (!op || (theaterId && op.theaterId !== theaterId)) return fail("unknown_operation");
       const observation = observe(op.id);
       if (input.kind === "interrupt" && (observation?.activity === "idle" || observation?.activity === "ended")) fail("nothing_to_interrupt");
+      if (input.kind === "resume" && observation?.lifecycle !== "dormant") fail("not_dormant");
       if (!observation?.supportedActions.includes(input.kind)) fail("capability_unavailable");
     }
   }

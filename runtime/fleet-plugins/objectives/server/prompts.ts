@@ -17,14 +17,14 @@ const clip = (value: string, max: number) => (value.length > max ? `${value.slic
 export function cookTurn(item: ObjectiveItem, language: PromptLanguage): string {
   const context = item.cook?.trim();
   const word = language === "ko"
-    ? `목표 \`${item.id}\` 을 구상하세요 — 편성(임무·선행·위임 의도)을 보드에 올리고, 임무는 수행하지 마세요.`
-    : `Plan objective \`${item.id}\` — lay the lineup (missions, prerequisites, delegation intent) out on the board; do not carry out any mission.`;
+    ? `목표 \`${item.id}\` 을 구상하세요 — 편성(구성원·임무·선행·담당)을 보드에 올리고, 임무는 수행하지 마세요.`
+    : `Plan objective \`${item.id}\` — lay the lineup (members, missions, prerequisites and assignments) out on the board; do not carry out any mission.`;
   return context ? `${word}\n\n> ${clip(context, 2000).split("\n").join("\n> ")}` : word;
 }
 
 const EDIT_WORDS: Record<PromptLanguage, Record<ObjectiveEditKind, string>> = {
-  ko: { title: "제목", note: "브리핑", steps: "임무", recipe: "선행 관계", assign: "배정", criteria: "달성 기준" },
-  en: { title: "title", note: "brief", steps: "missions", recipe: "dependencies", assign: "assignment", criteria: "success criteria" },
+  ko: { title: "제목", note: "브리핑", steps: "임무", recipe: "선행 관계", members: "구성원", assign: "배정", criteria: "달성 기준" },
+  en: { title: "title", note: "brief", steps: "missions", recipe: "dependencies", members: "members", assign: "assignment", criteria: "success criteria" },
 };
 
 const editedWords = (item: ObjectiveItem, language: PromptLanguage): string => (item.edited?.kinds ?? []).map((kind) => EDIT_WORDS[language][kind]).join(language === "ko" ? "·" : ", ");

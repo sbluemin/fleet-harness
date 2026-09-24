@@ -473,6 +473,11 @@ export interface OperationClusterMember {
   readonly pending?: boolean;
   /** 묶음 안에서 제목 대신 부르는 짧은 이름("1. package.json name 읽기"). */
   readonly label: string;
+  /**
+   * 지휘관 패널의 노드 줄에 서는 이름("조사") — 이 세션이 누구인지 한 낱말로. 없으면 호스트가 선언 순서로 「N 노드」라 부른다.
+   * `label`(무엇을 하는지)은 말풍선·낭독에 그대로 남는다.
+   */
+  readonly name?: string;
   /** 선행 구성원의 operationId. 전부 끝나야 이 구성원이 열린다. */
   readonly after: readonly string[];
   readonly progress: OperationClusterProgress;

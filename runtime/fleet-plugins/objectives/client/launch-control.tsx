@@ -111,10 +111,12 @@ interface LaunchControlProps {
   readonly effort: string | undefined;
   readonly locked: boolean;
   readonly onChange: (next: { model?: string; effort?: string }) => void;
-  /** 트리거를 글리프 하나로 — 단계 배정처럼 낱말을 쓸 자리가 없을 때. */
+  /** 트리거를 글리프 하나로 — 모델 낱말을 쓸 자리가 없을 때. */
   readonly trigger?: ReactNode;
   readonly triggerLabel?: string;
-  /** 모델 목록 위에 서는 특별 항목(지휘관 직접 · 라우팅 · 지휘관과 같게). 고르면 메뉴가 닫힌다. */
+  /** 라우팅·지휘관과 같게처럼 모델 id가 아닌 선택 방식의 표시 낱말. */
+  readonly triggerText?: ReactNode;
+  /** 모델 목록 위에 서는 선택 방식(라우팅 · 지휘관과 같게). 고르면 메뉴가 닫힌다. */
   readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly onPick: () => void }[];
   /** 열 때 모델 목록(1단계)부터 — 배정 메뉴는 특별 항목을 먼저 보여야 한다. */
   readonly startAtList?: boolean;
@@ -123,11 +125,11 @@ interface LaunchControlProps {
 const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
 
-export function LaunchControl({ t, model, effort, locked, onChange, trigger, triggerLabel, extras, startAtList = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, trigger, triggerLabel, triggerText, extras, startAtList = false }: LaunchControlProps) {
   const groups = useLaunchGroups();
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
-  const currentEffort = effort ?? (model ? undefined : DEFAULT_LAUNCH.effort);
+  const currentEffort = effort ?? (model || extras?.length ? undefined : DEFAULT_LAUNCH.effort);
   const words = launchWords(rows, model, effort, t("objectives.coordinator.effortAuto"));
   const [open, setOpen] = useState(false);
   // 2단계 — 고른 모델 한 줄과 강도 트랙. 메뉴는 여기서 열리고, 모델명을 누르면 목록(1단계)으로 간다.
@@ -167,7 +169,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, trigger, tri
       <span className="objectives-launch-effort">{words.effort}</span>
     </>
   );
-  if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={t("objectives.coordinator.locked")}>{text}</span>;
+  if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={t("objectives.coordinator.locked")}>{triggerText ?? text}</span>;
 
   const chosenRow = rows.find((row) => row.launch.model === currentModel) ?? null;
   const providerOf = (row: OperationLaunchVariantRow) => groups.find((group) => group.rows.includes(row))?.provider ?? null;
@@ -175,7 +177,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, trigger, tri
   return (
     <>
       <button ref={triggerRef} type="button" className={`objectives-launch${trigger ? " is-glyph objectives-glyph" : ""}`} aria-haspopup="menu" aria-expanded={open} aria-label={triggerLabel ?? t("objectives.launch.menuAria")} title={trigger ? triggerLabel : undefined} onClick={() => { setFocused(!startAtList); setOpen((value) => !value); }}>
-        {trigger ?? text}
+        {trigger ?? triggerText ?? text}
       </button>
       {/* body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에 갇히고 overflow 에 잘린다(캔버스 메뉴와 같은 이유). */}
       {open ? createPortal(

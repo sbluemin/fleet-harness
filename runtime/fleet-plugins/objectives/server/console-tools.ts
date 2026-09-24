@@ -36,7 +36,7 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
 
   const tool: PluginMcpTool = {
     name: "console_objectives",
-    description: "The Objectives board of a Theater, as the person sees it. Every agent Operation of the Theater is an objective — the objective id is its Commander Operation id — carried out by missions. Read with view groups | items (filter today|due|all|agent) | item (brief, attachments, missions, success criteria). Write with add (a new objective with optional missions; its Commander Operation is created dormant until the person presses Plan or Commence). Carrying an objective out — planning, delegating, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools, not here. Completing an objective and writing the brief are the person's acts on the screen.",
+    description: "The Objectives board of a Theater, as the person sees it. Every agent Operation of the Theater is an objective — the objective id is its Commander Operation id — carried out by missions. Read with view groups | items (filter today|due|all|agent) | item (brief, attachments, missions, success criteria). Write with add (a new objective with optional missions; its Commander Operation is created dormant until the person presses Plan or Commence). Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools, not here. Completing an objective and writing the brief are the person's acts on the screen.",
     // 노출 스키마는 모르는 키를 막지 않는다 — 호스트가 이 스키마로 먼저 검사하므로, strict 이면 옛 인자가 execute 에 닿지 못해
     // 새 자리 안내(moved_to_fleet_objectives) 대신 invalid_arguments 로 끝난다. 엄격한 검사는 execute 가 안내 뒤에 한다.
     inputSchema: z.toJSONSchema(argsSchema.loose()),
@@ -55,7 +55,7 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
     },
     execute: async (raw, context) => {
       const moved = raw && typeof raw === "object" ? [...MOVED_KEYS.filter((key) => key in raw), ...((raw as { view?: unknown }).view === "mine" ? ["view: mine"] : [])] : [];
-      if (moved.length > 0) return refuse("moved_to_fleet_objectives", { moved, hint: "Carrying out an objective moved to the fleet-objectives tools (mine, read, plan, add_mission, place_mission, delegate_mission, complete_mission, mark_criterion)." });
+      if (moved.length > 0) return refuse("moved_to_fleet_objectives", { moved, hint: "Carrying out an objective moved to the fleet-objectives tools (mine, read, plan, add_mission, place_mission, muster, complete_mission, mark_criterion)." });
       const parsed = argsSchema.safeParse(raw ?? {});
       if (!parsed.success) return refuse("invalid_arguments");
       const args: Args = parsed.data;

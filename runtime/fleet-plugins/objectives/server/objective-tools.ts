@@ -4,25 +4,23 @@ import { z } from "zod";
 
 import type { LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, assignModeOf, recordLines, type ObjectiveItem, type ObjectiveStep } from "./types.js";
+import { MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, recordLines, stepReady, type ObjectiveItem, type ObjectiveStep } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
 
 /**
- * `fleet-objectives` — 목표를 수행하는 세션(지휘관·담당)의 작업 도구. Console Use 토글과 무관하게 모든 Operation 에 실리므로
- * 권한은 호스트가 넘긴 호출자(`context.caller`)로 여기서 가른다: 읽기는 그 목표의 참여자(지휘관·담당)만, 쓰기는 지휘관만.
- * 담당은 읽기만 한다 — 결과는 지휘관에게 SendMessage 로 보고하고 지휘관이 기록한다. 화면 제스처는 없다(Console Use 의 것).
- * 구상 중(「구상」을 누른 뒤 「개시」 전)에는 편성만 쓴다 — 임무 수행 쓰기(완료·위임)는 거절한다.
+ * `fleet-objectives` — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Operation 에 실리므로
+ * 권한은 호스트가 넘긴 호출자(`context.caller`)로 여기서 가른다: 읽기는 그 목표의 참여자만, 쓰기는 지휘관만.
+ * 구성원은 읽기만 한다 — 결과는 지휘관에게 SendMessage 로 보고하고 지휘관이 기록한다. 화면 제스처는 없다.
+ * 구상 중(「구상」을 누른 뒤 「개시」 전)에는 편성만 쓴다 — 임무 완료·기동은 거절한다.
  */
 
 const ids = z.string().min(1).max(128);
 const mission = { itemId: ids, stepId: ids.optional(), index: z.number().int().min(0).optional() };
-const assign = z.enum(["self", "route"]);
-
-const ASSIGNEE_ACCESS = "The assignee can only read this objective (fleet-objectives mine/read). It reports to you by SendMessage; you record its result with complete_mission.";
-const PLANNING_ONLY = "This objective is being planned, not carried out: lay the lineup out on the board (plan, add_mission, place_mission) and stop. Missions are done and delegated after the person presses Commence.";
+const memberReference = z.string().trim().min(1).max(128);
+const PLANNING_ONLY = "This objective is being planned, not carried out: lay the lineup out on the board (plan, add_mission, place_mission) and stop. Missions are carried out and members launched after the person presses Commence.";
 
 export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService): readonly PluginMcpTool[] {
-  const { itemView, languageOf } = createBoardViews(ctx, store);
+  const { itemView } = createBoardViews(ctx, store);
   const find = (itemId: string): ObjectiveItem => {
     const item = store.find(itemId);
     if (!item) throw new ObjectiveStoreError("unknown_item");
@@ -32,6 +30,11 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     const found = ref.stepId ? item.steps.find((step) => step.id === ref.stepId) : ref.index !== undefined ? item.steps[ref.index] : undefined;
     if (!found) throw new ObjectiveStoreError("unknown_step");
     return found;
+  };
+  const resolveMember = (item: ObjectiveItem, reference: string): string => {
+    const member = item.members.find((candidate) => candidate.id === reference || candidate.role === reference);
+    if (!member) throw new ObjectiveStoreError("unknown_member");
+    return member.id;
   };
   /** 지휘관이 제 목표를 읽었다 — 그 뒤의 계획·충족 판단은 사람의 변경을 다시 막지 않는다. */
   const readView = (item: ObjectiveItem, caller: ConsoleCaller | undefined) => itemView(roleIn(item, caller)?.role === "commander" ? store.setEdited(item.id, null) : item);
@@ -50,64 +53,64 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     tool(name, `Commander only. ${description}`, schema, (args, caller) => {
       const item = find((args as { itemId: string }).itemId);
       const role = roleIn(item, caller);
-      if (role?.role === "assignee") return refuse("not_commander", { hint: "You are an assignee: you can read this objective but not change it. Report your result to the Commander by SendMessage." });
+      if (role?.role === "member") return refuse("not_commander", { hint: "Members can read this objective but cannot change it. Report to the Commander by SendMessage." });
       if (!role) return refuse("not_participant");
       return run(args, item, caller!);
     });
 
   return [
-    tool("mine", "Your objective and your role in it: commander or assignee. Start here. An objective is carried out by missions in a dependency lineup (after = prerequisite indexes; a mission is ready when they are done). The Commander plans, delegates, records results and marks the success criteria; assignees can only read and report to the Commander by SendMessage. planning: true means the person asked for a plan only — lay the lineup out on the board and stop. When the person edits the objective while you work, you receive one line saying it changed — read it again and continue from what it now says.", z.object({}).strict(), (_args, caller) => {
+    tool("mine", "Your objective and your role in it: commander or member. Start here. An objective is carried out by missions in a dependency lineup (after = prerequisite indexes; a mission is ready when they are done); each mission names the member who does it, or none when the Commander does it. The Commander plans, briefs members, records results and marks the success criteria; members only read — a member sees its role, brief and assigned missions — and report to the Commander by SendMessage. planning: true means the person asked for a plan only — lay the lineup out on the board and stop. When the person edits the objective while you work, you receive one line saying it changed — read it again and continue from what it now says.", z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findAssignee(caller.operationId);
       if (assigned) {
-        const stepIndex = assigned.item.steps.findIndex((step) => step.id === assigned.stepId);
-        return text({ role: "assignee", access: "read-only", itemId: assigned.item.id, stepIndex, stepId: assigned.stepId, item: itemView(assigned.item) });
+        const member = assigned.item.members.find((candidate) => candidate.id === assigned.memberId)!;
+        return text({ role: "member", access: "read-only", itemId: assigned.item.id,
+          member: { id: member.id, role: member.role, ...(member.brief ? { brief: member.brief } : {}) },
+          missions: assigned.item.steps.flatMap((step, index) => step.member === member.id ? [{ index, stepId: step.id, text: step.text, ready: !step.done && stepReady(assigned.item.steps, step), done: step.done }] : []),
+          item: itemView(assigned.item) });
       }
       const own = store.find(caller.operationId);
       if (!own) return refuse("not_participant");
       return text({ role: "commander", itemId: own.id, item: readView(own, caller) });
     }),
-    tool("read", "Read an objective you take part in: the person's brief (note) and image attachments ('image n' in the brief is attachment n; absolute paths — open with Read, and pass the path, not the image, to an assignee), missions with dependencies, assignment, readiness, assignee sessions and each mission's latest record, and the success criteria with met: your evidence or null. Indexes follow lineup order and shift when missions change — prefer stepId.", z.object({ itemId: ids }).strict(), ({ itemId }, caller) => {
+    tool("read", "Read an objective you take part in: the person's brief and image attachment paths, roster, missions and their member assignments, dependencies, readiness, latest records, and success criteria. Indexes shift when missions change; stepId is stable. Members have read-only access and report by SendMessage.", z.object({ itemId: ids }).strict(), ({ itemId }, caller) => {
       const item = find(itemId);
       if (!roleIn(item, caller)) return refuse("not_participant");
       return text({ item: readView(item, caller) });
     }),
-    commanderTool("plan", "Replace the open, undelegated missions. steps: text, after (prerequisites by index or stepId, each with why), assign: self (you do it) | route (you intend to delegate). Missions that are done, delegated, or added by the person (unplaced: true) stay on the board — never repeat them in steps; refer to them by stepId in after, and place each unplaced one with place_mission. If the person already listed every mission, skip plan and just place them. criteria: propose success criteria only when there are none. Refused with board_changed if the person edited the objective since you last read it.",
-      z.object({ itemId: ids, steps: z.array(z.object({ text: z.string().trim().min(1).max(200), after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).optional(), assign: assign.optional() })).min(1).max(40), criteria: z.array(z.string().trim().min(1).max(MAX_CRITERION_TEXT)).max(MAX_CRITERIA).optional() }).strict(),
+    commanderTool("plan", "Replace open missions without records or human-owned assignments. steps: text, after (prerequisites by index or stepId, each with why), optional member (roster id or role; omitted means Commander). Done, unplaced, recorded, and human-assigned missions stay on the board; refer to them by stepId. members proposes roles and briefs only when the roster is empty (otherwise members_exist). criteria proposes success criteria only when none exist. A person's later edit causes board_changed until you read again.",
+      z.object({ itemId: ids, steps: z.array(z.object({ text: z.string().trim().min(1).max(200), after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional() }).strict()).max(40).optional(), criteria: z.array(z.string().trim().min(1).max(MAX_CRITERION_TEXT)).max(MAX_CRITERIA).optional() }).strict(),
       (args, item) => {
         if (item.edited) return refuse("board_changed", { hint: "The person changed this objective since you last read it. Read it again, then plan." });
-        // 계획이 남기는 임무(완료·위임·사람이 더한 미분류)를 같은 문구로 다시 만들면 보드에 두 벌이 선다 — 거절하고 참조하게 한다.
+        // 완료·미분류·기록이 있는 임무를 같은 문구로 다시 만들면 보드에 두 벌이 선다.
         const same = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
-        const repeated = item.steps.filter((step) => (step.done || step.operationId || step.unplaced) && args.steps.some((planned) => same(planned.text) === same(step.text)));
+        const repeated = item.steps.filter((step) => (step.done || step.unplaced || step.records.length > 0 || step.memberBy === "human") && args.steps.some((planned) => same(planned.text) === same(step.text)));
         if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((step) => ({ stepId: step.id, text: step.text, ...(step.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board. Leave them out of steps; refer to them by stepId in after, and place unplaced ones with place_mission." });
         // 달성 기준은 사람의 것이다 — 비어 있을 때만 지휘관이 제안한다. 스스로 정한 기준을 스스로 통과시키면 점검의 뜻이 옅어진다.
         const proposed = args.criteria ?? [];
         if (proposed.length > 0 && item.criteria.length > 0) return refuse("criteria_exist", { hint: "The person already wrote the success criteria; leave criteria out." });
-        let planned = launch.planApplied(item.id, { steps: args.steps });
+        let planned = launch.planApplied(item.id, { steps: args.steps, ...(args.members ? { members: args.members } : {}) });
         for (const criterion of proposed) planned = store.criterionAdd(item.id, criterion, "commander");
         return text({ ok: true, item: itemView(planned) });
       }),
-    commanderTool("add_mission", "Append a mission that became necessary, with assign: self | route. Place it with place_mission.", z.object({ itemId: ids, text: z.string().trim().min(1).max(200), assign: assign.optional() }).strict(),
-      (args, item) => text({ ok: true, item: itemView(launch.stepAdded(item.id, { text: args.text, ...(args.assign ? { assign: { mode: args.assign } } : {}) })) })),
-    commanderTool("place_mission", "Set one open mission's prerequisites: after = indexes ([] = it can start now), and optionally assign: self | route to record whether you intend to delegate it. Missions the person added arrive unplaced (unplaced: true, never ready) — place each before you continue, and rewire open missions that should now wait for it. A mission the person pinned to a model keeps that assignment.",
-      z.object({ ...mission, after: z.array(z.number().int().min(0)).max(40), assign: assign.optional() }).strict(),
+    commanderTool("add_mission", "Append a mission with optional member (roster id or role; omitted means Commander).", z.object({ itemId: ids, text: z.string().trim().min(1).max(200), member: memberReference.optional() }).strict(),
+      (args, item) => text({ ok: true, item: itemView(launch.stepAdded(item.id, { text: args.text, ...(args.member ? { member: resolveMember(item, args.member) } : {}) })) })),
+    commanderTool("place_mission", "Set an open mission's prerequisites: after = indexes ([] = ready now). Optional member is a roster id or role, null means Commander; a human-assigned member is preserved. The person's unplaced missions are not ready until placed.",
+      z.object({ ...mission, after: z.array(z.number().int().min(0)).max(40), member: memberReference.nullable().optional() }).strict(),
       (args, item) => {
         const target = missionOf(item, args);
         if (target.done) return refuse("step_done");
         const prerequisites = args.after.map((index) => item.steps[index]?.id);
         if (prerequisites.some((id) => !id)) return refuse("unknown_step");
-        // 사람이 모델까지 골라 둔 배정은 지휘관이 덮지 않는다 — 위임 의도(self·route)만 적는다.
-        const assignment = args.assign && assignModeOf(target) !== "model" ? { assign: { mode: args.assign } } : {};
+        const assignment = args.member !== undefined && target.memberBy !== "human" ? { member: args.member === null ? null : resolveMember(item, args.member) } : {};
         const next = launch.stepPatched(item.id, target.id, { after: prerequisites.filter((id): id is string => !!id && id !== target.id), ...assignment });
         return text({ ok: true, item: itemView(next) });
       }),
-    commanderTool("delegate_mission", `Missions assigned self are your own work; whether to delegate one is your call when you reach it. Launch the mission's assignee session now. It starts empty: brief it by SendMessage with the full context — objective, exact mission text, prerequisites' latest records, constraints from the brief, paths, what not to touch, and the report you expect. ${ASSIGNEE_ACCESS}`,
-      z.object(mission).strict(),
-      async (args, item, caller) => {
+    commanderTool("muster", "Launch every missing member as a waiting session without a first message, resume dormant members in their existing sessions, and leave live members unchanged. Waiting sessions have no model cost until their first message. SendMessage and ListAgents reach live sessions; worked sessions may become dormant after 60 minutes idle. A newly launched member starts with no context: brief it by SendMessage with the objective, the exact mission text, prerequisites' latest records, constraints from the brief, paths, what not to touch and the report you expect. A member retains context across missions and can read this objective with mine/read but cannot write it; reports travel by SendMessage.",
+      z.object({ itemId: ids }).strict(),
+      async ({ itemId }, item) => {
         if (item.cooking) return refuse("planning_only", { hint: PLANNING_ONLY });
-        const target = missionOf(item, args);
-        const delegated = await launch.delegateStep(item.id, target.id, { language: languageOf(caller) });
-        return text({ ok: true, assignee: { session: delegated.session, operationId: delegated.operationId, access: "read-only", note: ASSIGNEE_ACCESS }, item: itemView(delegated.item) });
+        return text({ members: await launch.muster(itemId) });
       }),
     commanderTool("complete_mission", `Mark a mission done with its record. summary: 1–${MAX_RECORD_LINES} lines, conclusion first, each at most ${MAX_RECORD_LINE} characters — no paragraphs. The person reads every record; the next mission receives the latest. Completing again after rework adds a record. After the last mission you receive a criteria check.`,
       z.object({ ...mission, summary: z.array(z.string().max(2000)).min(1).max(20) }).strict(),

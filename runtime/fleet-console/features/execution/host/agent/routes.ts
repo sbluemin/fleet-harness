@@ -502,7 +502,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const operation = ctx.host.operations.get(operationId);
         return operation?.payload.restoredDormant === true ? {
           activity: "ended", lifecycle: "dormant", observedAt: new Date().toISOString(), source: "host",
-          attention: { kind: "none" }, surface: "terminal", supportedActions: [], output: { status: "unavailable", outcome: "unknown" },
+          attention: { kind: "none" }, surface: "terminal", supportedActions: ["resume"], output: { status: "unavailable", outcome: "unknown" },
         } : null;
       }
       const runtime = sessionRuntime(session);
@@ -515,7 +515,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         lifecycle: runtime.lifecycle, observedAt: consoleObservationTimes.get(operationId) ?? new Date(session.createdAt).toISOString(), source: "host",
         attention: { kind: session.status === "error" ? "failure" : session.attentionPending ? consoleAttentionReasons.get(operationId) ?? "input" : "none" },
         surface: chatSurface ? "chat" : "terminal",
-        supportedActions: ["send", ...(runtime.lifecycle === "live" && (runtime.activity === "running" || (session.chatActive && runtime.activity === "awaiting")) && (session.chatActive || terminalRuntime.getSessionLastActivityAt(operationId) !== null) ? ["interrupt" as const] : [])],
+        supportedActions: ["send", ...(runtime.lifecycle === "dormant" ? ["resume" as const] : []), ...(runtime.lifecycle === "live" && (runtime.activity === "running" || (session.chatActive && runtime.activity === "awaiting")) && (session.chatActive || terminalRuntime.getSessionLastActivityAt(operationId) !== null) ? ["interrupt" as const] : [])],
         output: chatSurface ? chat?.readConsoleOutput() ?? { status: "unavailable", outcome: "unknown" } : consoleTerminal.read(operationId),
       };
     },
@@ -545,6 +545,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const targetSession = observability.getTerminalSessionInfo(operationId);
       const targetChat = targetSession?.chatActive === true;
       assertCurrent();
+      if (input.kind === "resume") {
+        if (ctx.consoleControl?.observe(operationId)?.lifecycle !== "dormant") throw new ConsoleControlError("not_dormant");
+        const result = await resumeOperation(operationId, false);
+        if (!result.ok) throw new ConsoleControlError(result.error);
+        settled("completed");
+        return { operationId, delivery: "confirmed" };
+      }
       if (input.kind === "interrupt") {
         const confirmed = targetChat
           ? await chatRegistry.get(operationId)?.interruptForConsole()

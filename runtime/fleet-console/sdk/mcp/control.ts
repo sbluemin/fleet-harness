@@ -1,5 +1,5 @@
 export type ConsoleActivity = "idle" | "running" | "awaiting" | "background" | "ended" | "unknown";
-export type ConsoleActionKind = "launch" | "send" | "interrupt";
+export type ConsoleActionKind = "launch" | "send" | "interrupt" | "resume";
 export type ConsoleCaller = { readonly kind: "operation"; readonly operationId: string } | { readonly kind: "plugin"; readonly pluginId: string };
 
 export interface ConsoleActionInput {

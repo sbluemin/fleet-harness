@@ -25,14 +25,25 @@ export const MAX_RECORDS = 20;
 
 export type SlotBy = "human" | { readonly operationId: string };
 
-export interface StepAssign {
-  readonly mode: "self" | "route" | "model";
+export type MemberLaunch = { readonly mode: "same" } | { readonly mode: "model"; readonly model: string; readonly effort?: string };
+export type MemberSelection = MemberLaunch | { readonly mode: "route" };
+
+export interface StoredMember {
+  readonly id: string;
+  readonly role: string;
+  readonly brief?: string;
+  readonly launch?: MemberLaunch;
+  readonly by: "human" | "commander";
+  readonly operationId?: string;
+}
+
+export interface ObjectiveMember extends Omit<StoredMember, "launch"> {
+  readonly launch: MemberSelection;
+  readonly sessionName: string | null;
   readonly model?: string;
   readonly effort?: string;
 }
 
-/** 단계의 위임 — 배정이 없는 단계는 「지휘관 직접」으로 읽는다. 새 단계의 기본값도 같다. */
-export const assignModeOf = (step: { readonly assign?: StepAssign }): StepAssign["mode"] => step.assign?.mode ?? "self";
 
 /**
  * 메모에 붙인 이미지 — 파일은 목표 저장소의 `attachments/<operationId>/` 에 id 이름으로 있다. 브라우저에 가는 항목에는 경로를
@@ -51,7 +62,7 @@ export interface ObjectiveAttachment {
 }
 
 /** 지휘관에게 알릴 만한 사람의 편집 — 일정·중요 표시·모델 같은 지휘관의 일과 무관한 값은 넣지 않는다. */
-export type ObjectiveEditKind = "title" | "note" | "steps" | "recipe" | "assign" | "criteria";
+export type ObjectiveEditKind = "title" | "note" | "steps" | "recipe" | "members" | "assign" | "criteria";
 
 // ═══ 저장 모양 (state.json) ══════════════════════════════════════════════════
 
@@ -74,15 +85,15 @@ export interface StoredStep {
   readonly text: string;
   readonly done?: true;
   readonly after: readonly StoredEdge[];
-  /** 사전 배정 — 없으면 지휘관 직접(self). */
-  readonly assign?: StepAssign;
+  /** 담당 구성원 id — 없으면 지휘관 직접. */
+  readonly member?: string;
+  /** 사람이 담당을 직접 정했다(지휘관 직접 지정도 포함) — 도구가 덮지 않는다. */
+  readonly memberBy?: "human";
   /**
    * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 단계. 준비되지 않으며, 지휘관이 선행을 정하거나
    * 사람이 편성에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다.
    */
   readonly unplaced?: true;
-  /** 담당 Operation — 지휘관이 위임했을 때만. 모델·세션 이름은 그 Operation 이 들고 있다. */
-  readonly operationId?: string;
   readonly records?: readonly StoredRecord[];
   /** 사람이 읽은 기록 수 — 이보다 많으면 안 읽은 기록이 있다. */
   readonly seen?: number;
@@ -121,11 +132,12 @@ export interface StoredObjective {
   /** 목표 완료 — 완료는 늘 사람이 누른다. */
   readonly done?: { readonly at: number };
   readonly criteria?: readonly StoredCriterion[];
+  readonly members?: readonly StoredMember[];
   readonly steps: readonly StoredStep[];
 }
 
 export interface ObjectivesFile {
-  readonly version: 2;
+  readonly version: 3;
   /** 배열 순서가 보드 순서다. */
   readonly objectives: readonly StoredObjective[];
 }
@@ -148,7 +160,8 @@ export interface ObjectiveStep {
   readonly after: readonly string[];
   /** 선행마다 붙는 이유 한 줄(선행 id → why). */
   readonly why: Readonly<Record<string, string>>;
-  readonly assign?: StepAssign;
+  readonly member: string | null;
+  readonly memberBy?: "human";
   readonly unplaced?: true;
   /** 담당 Operation — 위임했을 때만. */
   readonly operationId: string | null;
@@ -190,6 +203,7 @@ export interface ObjectiveItem {
   /** 검토 대기 — 끝나지 않은 목표의 모든 임무와 모든 달성 기준이 끝났다. 저장하지 않고 계산한다. 완료는 사람이 누른다. */
   readonly awaitingReview: boolean;
   readonly criteria: readonly ObjectiveCriterion[];
+  readonly members: readonly ObjectiveMember[];
   readonly steps: readonly ObjectiveStep[];
 }
 
@@ -238,10 +252,10 @@ export function stepReady(steps: readonly GraphStep[], step: GraphStep): boolean
 /** 조율자의 모드 — 라벨이 아니라 매번 그래프에서 계산한다. */
 export type CoordinatorMode = "direct" | "coordinate" | "mixed";
 
-export function coordinatorMode(steps: readonly { readonly done?: boolean; readonly operationId?: string | null }[]): CoordinatorMode {
+export function coordinatorMode(steps: readonly { readonly done?: boolean; readonly member?: string | null }[]): CoordinatorMode {
   const open = steps.filter((step) => !step.done);
   if (open.length === 0) return "direct";
-  const assigned = open.filter((step) => step.operationId).length;
+  const assigned = open.filter((step) => step.member).length;
   if (assigned === 0) return "direct";
   return assigned === open.length ? "coordinate" : "mixed";
 }
@@ -347,19 +361,24 @@ export const patchItemSchema = z.object({
   launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional() }).strict().optional(),
 }).strict();
 
-export const stepAssignSchema = z.object({ mode: z.enum(["self", "route", "model"]), model: z.string().max(128).optional(), effort: z.string().max(32).optional() }).strict();
+export const memberLaunchSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("same") }).strict(),
+  z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().max(32).optional() }).strict(),
+]);
+export const memberAddSchema = z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional(), launch: memberLaunchSchema.optional() }).strict();
+export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.optional(), brief: z.string().max(300).nullable().optional(), launch: memberLaunchSchema.nullable().optional() }).strict();
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
 export const criterionAddSchema = z.object({ text: criterionText }).strict();
 export const criterionPatchSchema = z.object({ text: criterionText }).strict();
 
-export const stepAddSchema = z.object({ text: stepText, after: z.array(ids).max(MAX_STEPS).optional(), assign: stepAssignSchema.nullable().optional() }).strict();
+export const stepAddSchema = z.object({ text: stepText, after: z.array(ids).max(MAX_STEPS).optional(), member: ids.nullable().optional() }).strict();
 export const stepPatchSchema = z.object({
   text: stepText.optional(),
   done: z.boolean().optional(),
   after: z.array(ids).max(MAX_STEPS).optional(),
   why: z.record(ids, z.string().max(300)).optional(),
-  /** null 이면 배정을 지운다(지휘관 직접). */
-  assign: stepAssignSchema.nullable().optional(),
+  /** null 이면 지휘관 직접. */
+  member: ids.nullable().optional(),
 }).strict();
 
 export const planSchema = z.object({
@@ -367,9 +386,10 @@ export const planSchema = z.object({
     text: stepText,
     // index 는 이 plan 의 steps 순서, stepId 는 이미 있는(완료·배정된) 단계 — 새 단계가 기존 단계 뒤에 설 수 있다.
     after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).max(MAX_STEPS).optional(),
-    /** 지휘관의 위임 판단 — self 는 직접, route 는 라우팅으로 담당을 띄움. 없으면 self. */
-    assign: z.enum(["self", "route"]).optional(),
+    /** 구성원 id 또는 역할 이름. 없으면 지휘관 직접. */
+    member: ids.optional(),
   })).min(1).max(MAX_STEPS),
+  members: z.array(memberAddSchema.pick({ role: true, brief: true })).max(MAX_STEPS).optional(),
 }).strict();
 
 export type CreateItemInput = z.output<typeof createItemSchema>;

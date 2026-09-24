@@ -18,6 +18,8 @@ import {
   type ObjectiveEditKind,
   type ObjectiveItem,
   type ObjectiveItemEvent,
+  type MemberLaunch,
+  type StoredMember,
   type ObjectivesFile,
   type PlanInput,
   type StepAddInput,
@@ -77,8 +79,8 @@ export interface ObjectiveStore {
   find(itemId: string): ObjectiveItem | null;
   /** 지휘관의 담당 Operation 들 — 지휘관 Operation 이 이미 사라진 뒤에도 레코드에서 찾는다. */
   assigneesOf(commanderId: string): readonly string[];
-  /** 이 Operation 이 담당인 목표와 단계. */
-  findAssignee(operationId: string): { readonly item: ObjectiveItem; readonly stepId: string } | null;
+  /** 이 Operation 이 맡은 목표와 구성원. */
+  findAssignee(operationId: string): { readonly item: ObjectiveItem; readonly memberId: string; readonly stepId: string | null } | null;
   /** 지휘관 Operation 을 이미 만든 뒤 — 그 Operation 의 목표 고유값을 채운다(보드 맨 위). */
   adopt(operationId: string, init: ObjectiveInit): ObjectiveItem;
   patch(itemId: string, input: ObjectivePatch): ObjectiveItem;
@@ -91,15 +93,17 @@ export interface ObjectiveStore {
   complete(itemId: string): ObjectiveItem;
   reopen(itemId: string): ObjectiveItem;
   /** `unplaced` — 사람이 선행 없이 더한 단계는 미분류로 들어간다(지휘관이 자리를 잡는다). */
-  stepAdd(itemId: string, input: StepAddInput, options?: { readonly unplaced?: boolean }): ObjectiveItem;
-  stepPatch(itemId: string, stepId: string, input: StepPatchInput): ObjectiveItem;
+  stepAdd(itemId: string, input: StepAddInput, options?: { readonly unplaced?: boolean; readonly by?: "human" }): ObjectiveItem;
+  stepPatch(itemId: string, stepId: string, input: StepPatchInput, options?: { readonly by?: "human" }): ObjectiveItem;
   /** 지휘관의 완료 — 완료로 두고 기록 한 건을 더한다. */
   stepDone(itemId: string, stepId: string, lines: readonly string[]): ObjectiveItem;
   /** 사람이 이 단계의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
   stepSeen(itemId: string, stepId: string): ObjectiveItem;
   stepRemove(itemId: string, stepId: string): ObjectiveItem;
-  /** 담당 Operation 을 단계에 잇거나(위임) 푼다. */
-  setStepOperation(itemId: string, stepId: string, operationId: string | null): ObjectiveItem;
+  memberAdd(itemId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch }, by: "human" | "commander"): ObjectiveItem;
+  memberPatch(itemId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null }): ObjectiveItem;
+  memberRemove(itemId: string, memberId: string): { readonly item: ObjectiveItem; readonly removed: StoredMember; readonly stepIds: readonly string[] };
+  setMemberOperation(itemId: string, memberId: string, operationId: string | null): ObjectiveItem;
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(itemId: string, from: string, to: string, why?: string): { readonly item: ObjectiveItem; readonly linked: boolean };
   edgesLinear(itemId: string): ObjectiveItem;
@@ -129,11 +133,45 @@ const bareRecord = (operationId: string): StoredObjective => ({ operationId, not
 /** 목표가 되는 Operation — Console 이 띄우는 에이전트 세션(플러그인 소유 Operation 은 아니다). */
 export const isObjectiveOperation = (node: Pick<OperationNode, "type" | "pluginId">): boolean => node.type === "agent" && node.pluginId === null;
 
+interface LegacyStep extends Omit<StoredStep, "member"> {
+  readonly assign?: { readonly mode: "self" | "route" | "model"; readonly model?: string; readonly effort?: string };
+  readonly operationId?: string;
+}
+interface LegacyObjective extends Omit<StoredObjective, "steps" | "members"> { readonly steps?: readonly LegacyStep[] }
+
+/** 이전 단계별 담당을 구성원으로 올리고, 기록·선행·읽음 수는 그대로 둔다. */
+function migrate(objective: LegacyObjective): StoredObjective {
+  const members: StoredMember[] = [];
+  const pending = new Map<string, string>();
+  const steps = (objective.steps ?? []).map((step, index): StoredStep => {
+    let member: string | undefined;
+    if (step.operationId) {
+      // 이미 떠 있는 담당은 임무 번호별 역할로 보존한다(동일 Operation 이 여러 임무를 맡았다면 같은 구성원).
+      const previous = members.find((candidate) => candidate.operationId === step.operationId);
+      member = previous?.id ?? randomUUID();
+      if (!previous) members.push({ id: member, role: `담당 ${index + 1}`, by: "commander", operationId: step.operationId, ...(step.assign?.mode === "model" && step.assign.model ? { launch: { mode: "model", model: step.assign.model, ...(step.assign.effort ? { effort: step.assign.effort } : {}) } as const } : {}) });
+    } else if (!step.done && (step.assign?.mode === "route" || step.assign?.mode === "model")) {
+      const key = step.assign.mode === "route" ? "route" : `model:${JSON.stringify([step.assign.model, step.assign.effort])}`;
+      member = pending.get(key);
+      if (!member) {
+        member = randomUUID();
+        pending.set(key, member);
+        members.push({ id: member, role: step.assign.mode === "route" ? "위임" : step.assign.model ?? "모델", by: step.assign.mode === "model" ? "human" : "commander", ...(step.assign.mode === "model" && step.assign.model ? { launch: { mode: "model", model: step.assign.model, ...(step.assign.effort ? { effort: step.assign.effort } : {}) } as const } : {}) });
+      }
+    }
+    const { assign: _assign, operationId: _operationId, ...rest } = step;
+    return { ...rest, ...(member ? { member } : {}), ...(step.assign?.mode === "model" ? { memberBy: "human" as const } : {}) };
+  });
+  return { ...objective, ...(members.length ? { members } : {}), steps };
+}
+
 function readState(file: string): StoredObjective[] {
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<ObjectivesFile>;
-    // 빈 브리핑·빈 임무는 쓰지 않으므로 읽을 때 채운다.
-    if (parsed && parsed.version === 2 && Array.isArray(parsed.objectives)) return parsed.objectives.map((entry) => ({ ...bareRecord(entry.operationId), ...entry }));
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<ObjectivesFile> & { version?: number; objectives?: readonly LegacyObjective[] };
+    if (parsed && Array.isArray(parsed.objectives)) {
+      if (parsed.version === 3) return parsed.objectives.map((entry) => ({ ...bareRecord(entry.operationId), ...entry, steps: entry.steps ?? [] })) as StoredObjective[];
+      if (parsed.version === 2) return parsed.objectives.map((entry) => migrate({ ...bareRecord(entry.operationId), ...entry }));
+    }
   } catch (error) {
     // 없는 파일은 빈 보드다. 깨진 파일은 덮어쓰지 않고 .broken 으로 비켜 둔다.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
@@ -145,7 +183,7 @@ function readState(file: string): StoredObjective[] {
 function writeStateAtomic(file: string, objectives: readonly StoredObjective[]): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify({ version: 2, objectives: objectives.map(compact) } satisfies ObjectivesFile, null, 2)}\n`, "utf8");
+  fs.writeFileSync(tmp, `${JSON.stringify({ version: 3, objectives: objectives.map(compact) } satisfies ObjectivesFile, null, 2)}\n`, "utf8");
   fs.renameSync(tmp, file);
 }
 
@@ -156,13 +194,14 @@ function compact(objective: StoredObjective): StoredObjective {
   for (const key of ["cooking", "important", "today"] as const) if (out[key] !== true) delete out[key];
   if (!(objective.attachments?.length)) delete out.attachments;
   if (!(objective.criteria?.length)) delete out.criteria;
+  if (!objective.members?.length) delete out.members;
+  else out.members = objective.members.map((member) => ({ ...member, ...(member.brief ? {} : { brief: undefined }), ...(member.launch ? {} : { launch: undefined }), ...(member.operationId ? {} : { operationId: undefined }) }));
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
   out.steps = objective.steps.map((step) => {
     const next: Record<string, unknown> = { ...step };
     if (step.done !== true) delete next.done;
-    if (!step.assign || step.assign.mode === "self") delete next.assign;
-    if (!step.operationId) delete next.operationId;
+    if (!step.member) delete next.member;
     if (!step.records?.length) { delete next.records; delete next.seen; }
     else if (!step.seen) delete next.seen;
     next.after = step.after.map((edge) => (edge.why ? edge : { id: edge.id }));
@@ -198,6 +237,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const project = (stored: StoredObjective, node: OperationNode): ObjectiveItem => {
     const launch = readOperationLaunch(node.payload);
     const addedBy = stored.addedBy ? { operationId: stored.addedBy, title: options.operations.get(stored.addedBy)?.title ?? null } : null;
+    const members = (stored.members ?? []).map((member) => {
+      const assignee = member.operationId ? options.operations.get(member.operationId) : null;
+      const preset = assignee ? readOperationLaunch(assignee.payload) : null;
+      return { ...member, launch: member.launch ?? { mode: "route" as const }, sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: preset.model } : {}), ...(preset?.effort ? { effort: preset.effort } : {}) };
+    });
+    const byMember = new Map(members.map((member) => [member.id, member]));
     return {
       id: stored.operationId,
       theaterId: node.theaterId,
@@ -217,21 +262,22 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       done: stored.done ?? null,
       awaitingReview: awaitingReview(stored),
       criteria: (stored.criteria ?? []).map((criterion) => ({ ...criterion })),
+      members,
       steps: stored.steps.map((step) => {
-        const assignee = step.operationId ? options.operations.get(step.operationId) : null;
-        const assigneeLaunch = assignee ? readOperationLaunch(assignee.payload) : null;
+        const member = step.member ? byMember.get(step.member) : null;
         return {
           id: step.id,
           text: step.text,
           done: step.done === true,
           after: step.after.map((edge) => edge.id),
           why: Object.fromEntries(step.after.flatMap((edge) => (edge.why ? [[edge.id, edge.why]] : []))),
-          ...(step.assign && step.assign.mode !== "self" ? { assign: step.assign } : {}),
+          member: member?.id ?? null,
+          ...(step.memberBy ? { memberBy: step.memberBy } : {}),
           ...(step.unplaced ? { unplaced: true as const } : {}),
-          operationId: step.operationId ?? null,
-          sessionName: assigneeLaunch?.sessionName ?? null,
-          ...(assigneeLaunch?.model ? { model: assigneeLaunch.model } : {}),
-          ...(assigneeLaunch?.effort ? { effort: assigneeLaunch.effort } : {}),
+          operationId: member?.operationId ?? null,
+          sessionName: member?.sessionName ?? null,
+          ...(member?.launch.mode === "model" && member.model ? { model: member.model } : {}),
+          ...(member?.launch.mode === "model" && member.effort ? { effort: member.effort } : {}),
           records: (step.records ?? []).map((record, index) => ({ ...record, kind: index === 0 ? "done" as const : "redone" as const })),
           seen: step.seen ?? 0,
         };
@@ -239,7 +285,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     };
   };
   /** 담당 Operation — 목표가 아니라 목표의 임무를 맡은 세션이다. */
-  const assigneeIds = (objectives: readonly StoredObjective[]): ReadonlySet<string> => new Set(objectives.flatMap((entry) => entry.steps.flatMap((step) => (step.operationId ? [step.operationId] : []))));
+  const assigneeIds = (objectives: readonly StoredObjective[]): ReadonlySet<string> => new Set(objectives.flatMap((entry) => (entry.members ?? []).flatMap((member) => (member.operationId ? [member.operationId] : []))));
   /** 목표가 되는 Operation 인가 — 이 Theater 의 에이전트 Operation 이고 다른 목표의 담당이 아니다. */
   const objectiveNode = (theaterId: string, operationId: string): OperationNode | null => {
     const node = options.operations.get(operationId);
@@ -318,14 +364,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     assigneesOf(commanderId) {
       for (const theaterId of theaterIds()) {
         const stored = load(theaterId).find((entry) => entry.operationId === commanderId);
-        if (stored) return stored.steps.flatMap((step) => (step.operationId ? [step.operationId] : []));
+        if (stored) return (stored.members ?? []).flatMap((member) => (member.operationId ? [member.operationId] : []));
       }
       return [];
     },
     findAssignee(operationId) {
       for (const item of store.all()) {
-        const step = item.steps.find((candidate) => candidate.operationId === operationId);
-        if (step) return { item, stepId: step.id };
+        const member = item.members.find((candidate) => candidate.operationId === operationId);
+        if (member) return { item, memberId: member.id, stepId: item.steps.find((step) => step.member === member.id)?.id ?? null };
       }
       return null;
     },
@@ -373,7 +419,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       }
       // 담당 Operation 이 바뀌었다(세션 이름 등) — 그 단계가 있는 목표를 다시 방송한다.
       for (const owner of load(node.theaterId)) {
-        if (!owner.steps.some((step) => step.operationId === operationId)) continue;
+        if (!(owner.members ?? []).some((member) => member.operationId === operationId)) continue;
         const item = view(node.theaterId, owner);
         if (item) options.emit({ op: "upsert", theaterId: node.theaterId, itemId: item.id, item });
       }
@@ -391,8 +437,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         }
         for (let ix = 0; ix < objectives.length; ix += 1) {
           const owner = objectives[ix]!;
-          if (!owner.steps.some((step) => step.operationId === operationId)) continue;
-          const next = { ...owner, steps: owner.steps.map((step) => (step.operationId === operationId ? { ...step, operationId: undefined } : step)) };
+          if (!(owner.members ?? []).some((member) => member.operationId === operationId)) continue;
+          const next = { ...owner, members: owner.members?.map((member) => (member.operationId === operationId ? { ...member, operationId: undefined } : member)) };
           objectives[ix] = next;
           commit(theaterId, objectives, next);
         }
@@ -423,12 +469,13 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const after = (input.after ?? []).filter((id) => known.has(id)).map((id): StoredEdge => ({ id }));
       // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 단계뿐이다.
       const unplaced = addOptions?.unplaced === true && input.after === undefined;
-      const step: StoredStep = { id: randomUUID(), text: input.text, after, ...(input.assign ? { assign: input.assign } : {}), ...(unplaced ? { unplaced: true as const } : {}) };
+      if (input.member && !(stored.members ?? []).some((member) => member.id === input.member)) throw new ObjectiveStoreError("unknown_member");
+      const step: StoredStep = { id: randomUUID(), text: input.text, after, ...(input.member ? { member: input.member } : {}), ...(addOptions?.by === "human" && input.member !== undefined ? { memberBy: "human" as const } : {}), ...(unplaced ? { unplaced: true as const } : {}) };
       // 새 일이 생겼다 — 앞선 충족 판단은 옛 보드에 대한 것이다.
       return withoutMet({ ...stored, steps: [...stored.steps, step] });
     }),
 
-    stepPatch: (itemId, stepId, input) => update(itemId, (stored) => {
+    stepPatch: (itemId, stepId, input, patchOptions) => update(itemId, (stored) => {
       const { at, step } = stepOf(stored, stepId);
       const known = new Set(stored.steps.map((candidate) => candidate.id));
       const why = (id: string) => input.why?.[id] ?? step.after.find((edge) => edge.id === id)?.why;
@@ -437,12 +484,13 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const after = input.after !== undefined
         ? input.after.filter((id) => known.has(id) && id !== stepId).map((id) => ({ id, ...(why(id) ? { why: why(id)! } : {}) }))
         : input.why ? step.after.map((edge) => ({ id: edge.id, ...(why(edge.id) ? { why: why(edge.id)! } : {}) })) : step.after;
+      if (input.member && !(stored.members ?? []).some((member) => member.id === input.member)) throw new ObjectiveStoreError("unknown_member");
       const next: StoredStep = {
         ...base,
         after,
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.done !== undefined ? { done: input.done ? true as const : undefined } : {}),
-        ...(input.assign !== undefined ? { assign: input.assign ?? undefined } : {}),
+        ...(input.member !== undefined ? { member: input.member ?? undefined, memberBy: patchOptions?.by === "human" ? "human" as const : undefined } : {}),
       };
       const replaced = replaceStep(stored, at, next);
       // 끝난 단계를 되돌리면 새 일이다 — 충족 판단을 거둔다.
@@ -470,9 +518,29 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { ...stored, steps: stored.steps.filter((step) => step.id !== stepId).map((step) => withoutEdge(step, stepId)) };
     }),
 
-    setStepOperation: (itemId, stepId, operationId) => update(itemId, (stored) => {
-      const { at, step } = stepOf(stored, stepId);
-      return (step.operationId ?? null) === operationId ? stored : replaceStep(stored, at, { ...step, operationId: operationId ?? undefined });
+    memberAdd: (itemId, input, by) => update(itemId, (stored) => {
+      if ((stored.members?.length ?? 0) >= MAX_STEPS) throw new ObjectiveStoreError("too_many_members");
+      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(input.launch ? { launch: input.launch } : {}), by }] };
+    }),
+    memberPatch: (itemId, memberId, patch) => update(itemId, (stored) => {
+      if (!(stored.members ?? []).some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
+      return { ...stored, members: stored.members!.map((member) => member.id === memberId ? {
+        ...member, ...(patch.role !== undefined ? { role: patch.role.trim() } : {}),
+        ...(patch.brief !== undefined ? { brief: patch.brief || undefined } : {}),
+        ...(patch.launch !== undefined ? { launch: patch.launch ?? undefined } : {}),
+      } : member) };
+    }),
+    memberRemove(itemId, memberId) {
+      const found = locate(itemId).stored;
+      const removed = (found.members ?? []).find((member) => member.id === memberId);
+      if (!removed) throw new ObjectiveStoreError("unknown_member");
+      const stepIds = found.steps.filter((step) => step.member === memberId).map((step) => step.id);
+      const item = update(itemId, (stored) => ({ ...stored, members: stored.members?.filter((member) => member.id !== memberId), steps: stored.steps.map((step) => step.member === memberId ? { ...step, member: undefined, memberBy: undefined } : step) }));
+      return { item, removed, stepIds };
+    },
+    setMemberOperation: (itemId, memberId, operationId) => update(itemId, (stored) => {
+      if (!(stored.members ?? []).some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
+      return { ...stored, members: stored.members!.map((member) => member.id === memberId ? { ...member, operationId: operationId ?? undefined } : member) };
     }),
 
     edgeToggle(itemId, from, to, why) {
@@ -498,8 +566,16 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     edgesClear: (itemId) => update(itemId, (stored) => ({ ...stored, steps: stored.steps.map((step) => ({ ...placed(step), after: [] })) })),
 
     plan: (itemId, input) => update(itemId, (stored) => {
-      // 완료·위임된 단계와 사람이 더한 미분류 단계는 보존한다. 나머지는 지휘관의 계획으로 바꾼다.
-      const kept = stored.steps.filter((step) => step.done || step.operationId || step.unplaced);
+      if (input.members !== undefined && stored.members?.length) throw new ObjectiveStoreError("members_exist");
+      const members = input.members?.length ? input.members.map((member): StoredMember => ({ id: randomUUID(), role: member.role, ...(member.brief ? { brief: member.brief } : {}), by: "commander" })) : stored.members ?? [];
+      const resolve = (reference: string | undefined): string | undefined => {
+        if (!reference) return undefined;
+        const member = members.find((entry) => entry.id === reference || entry.role === reference);
+        if (!member) throw new ObjectiveStoreError("unknown_member");
+        return member.id;
+      };
+      // 구성원 기동은 임무 수행의 증거가 아니다. 완료·미분류·기록이 있는 임무만 보존한다.
+      const kept = stored.steps.filter((step) => step.done || step.unplaced || !!step.records?.length || step.memberBy === "human");
       const keptIds = new Set(kept.map((step) => step.id));
       const freshIds = input.steps.map(() => randomUUID());
       const fresh: StoredStep[] = input.steps.map((step, ix) => {
@@ -510,9 +586,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           if (!targetId || after.some((entry) => entry.id === targetId)) continue;
           after.push({ id: targetId, ...(edge.why ? { why: edge.why } : {}) });
         }
-        return { id: freshIds[ix]!, text: step.text, after, ...(step.assign === "route" ? { assign: { mode: "route" as const } } : {}) };
+        const member = resolve(step.member);
+        return { id: freshIds[ix]!, text: step.text, after, ...(member ? { member } : {}) };
       });
-      return withoutMet({ ...stored, steps: [...kept.map((step) => ({ ...step, after: step.after.filter((edge) => keptIds.has(edge.id)) })), ...fresh] });
+      return withoutMet({ ...stored, members, steps: [...kept.map((step) => ({ ...step, after: step.after.filter((edge) => keptIds.has(edge.id)) })), ...fresh] });
     }),
 
     setCooking: (itemId, cooking) => update(itemId, (stored) => (!!stored.cooking === cooking ? stored : { ...stored, cooking: cooking ? true as const : undefined })),

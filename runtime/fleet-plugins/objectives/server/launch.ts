@@ -6,7 +6,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { cookTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import type { ObjectiveItem, ObjectiveStep, PlanInput, SlotBy, StepAddInput, StepPatchInput } from "./types.js";
+import type { ObjectiveItem, ObjectiveMember, PlanInput, SlotBy, StepAddInput, StepPatchInput } from "./types.js";
 
 /**
  * 기동·통지 — 목표의 지휘관 Operation 을 만들고 깨우고, 담당 Operation 을 띄운다.
@@ -34,9 +34,8 @@ export interface LaunchService {
   /** 사람이 더한 단계(`by: "human"`)는 선행을 함께 주지 않았다면 미분류로 들어간다 — 지휘관의 추가는 지휘관이 이미 자리를 안다. */
   stepAdded(itemId: string, input: StepAddInput, options?: { readonly by?: SlotBy }): ObjectiveItem;
   planApplied(itemId: string, plan: PlanInput): ObjectiveItem;
-  /** 위임 — 지휘관이 이 단계를 맡길 때 그 단계의 담당 세션을 띄운다(프롬프트 없음, Console Use 켬). */
-  delegateStep(itemId: string, stepId: string, options?: LaunchOptions): Promise<{ readonly item: ObjectiveItem; readonly operationId: string; readonly session: string }>;
-  unlinkStep(itemId: string, stepId: string): ObjectiveItem;
+  /** 구성원 명단을 대기 기동하거나 휴면 세션째 재개한다. */
+  muster(itemId: string): Promise<readonly { readonly id: string; readonly role: string; readonly session: string; readonly operationId: string; readonly state: "live" | "launched" | "resumed" | "unknown" }[]>;
   /** 지휘관 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. */
   busy(itemId: string): boolean;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
@@ -63,7 +62,7 @@ const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.langua
 const COMMANDER_PRESET = { model: "opus[1m]", effort: "high" } as const;
 /** 세션 이름 — 다른 세션이 이 세션을 부르는 주소. 담당 이름은 지휘관 이름의 머리를 잇는다. */
 const commanderSession = () => `objective-${randomUUID().slice(0, 6)}-cmdr`;
-const missionSession = (commander: string | null, index: number) => `${(commander ?? `objective-${randomUUID().slice(0, 6)}-cmdr`).replace(/-cmdr$/, "")}-mission-${index}`;
+const memberSession = (commander: string | null, index: number) => `${(commander ?? `objective-${randomUUID().slice(0, 6)}-cmdr`).replace(/-cmdr$/, "")}-member-${index}`;
 
 export function createLaunchService(ctx: FleetPluginServerContext, store: ObjectiveStore): LaunchService {
   const control = () => {
@@ -74,11 +73,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const item = (itemId: string) => {
     const found = store.find(itemId);
     if (!found) throw new ObjectiveStoreError("unknown_item");
-    return found;
-  };
-  const step = (current: ObjectiveItem, stepId: string): ObjectiveStep => {
-    const found = current.steps.find((candidate) => candidate.id === stepId);
-    if (!found) throw new ObjectiveStoreError("unknown_step");
     return found;
   };
   const patchOperation = (operationId: string, patch: { title?: string; groupId?: string | null; payload?: Record<string, unknown> }) => {
@@ -123,11 +117,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return receipt.operationId;
   };
 
-  // 호스트의 제목 한도(120자) 안에서 「항목 › n. 단계」.
-  const workerTitle = (title: string, index: number, text: string): string => {
-    const cut = (value: string, max: number) => (value.length > max ? `${value.slice(0, Math.max(1, max - 1))}…` : value);
-    return cut(`${cut(title, 48)} › ${index}. ${text}`, 120);
-  };
+  // 호스트의 제목 한도(120자) 안에서 「목표 › 역할」.
+  const memberTitle = (title: string, role: string): string => `${title} › ${role}`.slice(0, 120);
   // 같은 목표에 기동 요청이 겹치면 Operation 이 둘 뜬다 — 기동이 끝날 때까지 자리를 잡아 둔다.
   const pending = new Set<string>();
   const claim = async <T,>(key: string, run: () => Promise<T>): Promise<T> => {
@@ -136,11 +127,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     try { return await run(); } finally { pending.delete(key); }
   };
 
-  /**
-   * 단계의 모델·강도 — 사전 배정이 정한다. route 는 AI Gateway 라우팅에 단계 본문을 보내 난이도에 맞는 모델을 받는다
-   * (라우팅이 꺼져 있거나 실패하면 지휘관 프리셋으로). model 은 그 모델·강도, 없으면 지휘관 프리셋.
-   */
-  const routeStep = async (current: ObjectiveItem, target: ObjectiveStep, index: number): Promise<{ model?: string; effort?: string }> => {
+  /** 라우팅이 없거나 실패하면 지휘관 프리셋으로 돌아간다. 역할·설명을 라우터에 건넨다. */
+  const routeMember = async (current: ObjectiveItem, member: ObjectiveMember): Promise<{ model?: string; effort?: string }> => {
     const fallback = { model: current.commander.model, effort: current.commander.effort };
     const origin = (ctx.host as { server?: { origin?: () => string | null } }).server?.origin?.() ?? null;
     if (!origin) return fallback;
@@ -148,7 +136,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const response = await fetch(`${origin}/api/v1/ai-gateway/routing-test`, {
         method: "POST",
         headers: { "content-type": "application/json", origin },
-        body: JSON.stringify({ prompt: `${current.title}\n\n${index}. ${target.text}\n${current.note.slice(0, 2000)}` }),
+        body: JSON.stringify({ prompt: `${current.title}\n\n${member.role}\n${member.brief ?? ""}\n${current.note.slice(0, 2000)}` }),
         signal: AbortSignal.timeout(45_000),
       });
       if (!response.ok) return fallback;
@@ -156,11 +144,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return decision.model ? { model: decision.model, effort: decision.effort ?? fallback.effort } : fallback;
     } catch { return fallback; }
   };
-  const stepLaunchPreset = async (current: ObjectiveItem, target: ObjectiveStep, index: number): Promise<{ model?: string; effort?: string }> => {
-    if (target.assign?.mode === "model") return { model: target.assign.model ?? current.commander.model, effort: target.assign.effort ?? current.commander.effort };
-    if (target.assign?.mode === "route") return routeStep(current, target, index);
-    return { model: current.commander.model, effort: current.commander.effort };
-  };
+  const memberPreset = (current: ObjectiveItem, member: ObjectiveMember) => member.launch.mode === "model"
+    ? { model: member.launch.model, effort: member.launch.effort }
+    : { model: current.commander.model, effort: current.commander.effort };
 
   const WORKING = new Set(["running", "background"]);
   const working = (operationId: string): boolean => {
@@ -182,12 +168,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const capability = ctx.host.consoleControl;
     const sleep = capability?.sleep?.bind(capability);
     if (!capability || !sleep) return;
-    const ids = new Set([current.id, ...current.steps.flatMap((candidate) => candidate.operationId ? [candidate.operationId] : [])]);
+    // 지휘관과 명단의 모든 구성원 — 임무를 맡지 않은 구성원도 함께 재운다.
+    const ids = new Set([current.id, ...current.members.flatMap((candidate) => candidate.operationId ? [candidate.operationId] : [])]);
     await Promise.all([...ids].map(async (operationId) => {
       const warn = (reason: string) => console.warn(`[objectives] Could not sleep completed Operation ${operationId}: ${reason}`);
       const stillCompleted = () => {
         const latest = store.find(current.id);
-        return !!latest?.done && (operationId === current.id || latest.steps.some((candidate) => candidate.operationId === operationId));
+        return !!latest?.done && (operationId === current.id || latest.members.some((candidate) => candidate.operationId === operationId));
       };
       try {
         for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -230,13 +217,51 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const neverStarted = (operationId: string) => { const node = ctx.host.operations.get(operationId); return !!node && !readOperationLaunch(node.payload).started; };
   /** 지휘관 Operation 이 담당들과 함께 서야 할 그룹으로 담당을 옮긴다. */
   const followGroup = (current: ObjectiveItem) => {
-    for (const candidate of current.steps) {
+    for (const candidate of current.members) {
       const operationId = candidate.operationId;
       const node = operationId ? ctx.host.operations.get(operationId) : null;
       if (!node || node.theaterId !== current.theaterId || (node.groupId ?? null) === current.groupId) continue;
       ctx.host.operations.patch(node.id, { groupId: current.groupId });
     }
   };
+
+  const muster = (itemId: string): ReturnType<LaunchService["muster"]> => claim(`${itemId}:muster`, async () => {
+    let current = item(itemId);
+    if (current.cooking) throw new ObjectiveStoreError("planning_only");
+    if (current.done) throw new ObjectiveStoreError("item_done");
+    const members: Array<{ id: string; role: string; session: string; operationId: string; state: "live" | "launched" | "resumed" | "unknown" }> = [];
+    for (let index = 0; index < current.members.length; index += 1) {
+      const member = current.members[index]!;
+      const operationId = member.operationId;
+      const observation = operationId ? ctx.host.consoleControl?.observe(operationId) : null;
+      const node = operationId ? ctx.host.operations.get(operationId) : null;
+      if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
+      if (operationId && node && observation?.lifecycle === "live") {
+        members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "live" });
+        continue;
+      }
+      if (operationId && node && observation?.lifecycle === "dormant") {
+        const receipt = await control().request({ kind: "resume", operationId }, `objectives:resume:${randomUUID()}`).catch(asStoreError);
+        if (receipt.status === "failed" || receipt.status === "rejected") throw new ObjectiveStoreError(receipt.error ?? "resume_failed");
+        members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "resumed" });
+        continue;
+      }
+      // 관측이 없는 Operation 은 세울지 판단할 수 없다 — 그 구성원만 건너뛰고 알린다(한 구성원 때문에 개시 전체를 막지 않는다).
+      if (operationId && node) { members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "unknown" }); continue; }
+      if (operationId) current = store.setMemberOperation(itemId, member.id, null);
+      const used = new Set(current.members.flatMap((candidate) => candidate.sessionName ? [candidate.sessionName] : []));
+      let number = index + 1;
+      let session = memberSession(current.commander.sessionName, number);
+      while (used.has(session)) session = memberSession(current.commander.sessionName, ++number);
+      const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
+      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: false }).catch(asStoreError);
+      rememberLanguage(launchedId, ctx.host.operations.get(itemId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
+      try { current = store.setMemberOperation(itemId, member.id, launchedId); }
+      catch (error) { ctx.host.operations.delete(launchedId); throw error; }
+      members.push({ id: member.id, role: member.role, session, operationId: launchedId, state: "launched" });
+    }
+    return members;
+  });
 
   const service: LaunchService = {
     describe: () => ({ available: !!ctx.host.consoleControl }),
@@ -296,8 +321,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (current.done) throw new ObjectiveStoreError("item_done");
       // 따로 만든 Operation 도 지휘관이 될 수 있다 — 보드를 읽고 쓰려면 콘솔 사용이 켜져 있어야 한다.
       rememberLanguage(itemId, language);
-      // 시작은 구상을 끝낸다 — 여기서부터 계획·단계 추가가 담당을 띄울 수 있다.
+      // 개시는 구상을 끝내고 구성원을 먼저 대기 기동·재개한다.
       if (current.cooking) current = store.setCooking(itemId, false);
+      await muster(itemId);
+      current = item(itemId);
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
       if (neverStarted(itemId)) current = store.setEdited(itemId, null);
       const delivered = await send(itemId, startTurn(current, language));
@@ -319,24 +346,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     }),
 
     stepPatched: (itemId, stepId, patch) => store.stepPatch(itemId, stepId, patch),
-    stepAdded: (itemId, input, options) => store.stepAdd(itemId, input, { unplaced: options?.by === "human" }),
+    stepAdded: (itemId, input, options) => store.stepAdd(itemId, input, { unplaced: options?.by === "human", ...(options?.by === "human" ? { by: "human" as const } : {}) }),
     planApplied: (itemId, plan) => store.plan(itemId, plan),
 
-    delegateStep: (itemId, stepId, options) => claim(`${itemId}:${stepId}`, async () => {
-      const language = languageOf(options);
-      const current = item(itemId);
-      const target = step(current, stepId);
-      if (target.done) throw new ObjectiveStoreError("step_done");
-      if (target.operationId) throw new ObjectiveStoreError("slot_taken");
-      const index = current.steps.indexOf(target) + 1;
-      const session = missionSession(current.commander.sessionName, index);
-      const chosen = await stepLaunchPreset(current, target, index);
-      const operationId = await launch({ theaterId: current.theaterId, title: workerTitle(current.title, index, target.text), sessionName: session, model: chosen.model, effort: chosen.effort, groupId: current.groupId, subagents: false }).catch(asStoreError);
-      rememberLanguage(operationId, language);
-      return { item: store.setStepOperation(itemId, target.id, operationId), operationId, session };
-    }),
-
-    unlinkStep: (itemId, stepId) => store.setStepOperation(itemId, stepId, null),
+    muster,
 
     busy: (itemId) => working(item(itemId).id),
 
@@ -354,7 +367,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     async stop(itemId) {
       let current = item(itemId);
       if (current.cooking) current = store.setCooking(itemId, false);
-      const ids = [current.id, ...current.steps.flatMap((candidate) => (candidate.operationId ? [candidate.operationId] : []))];
+      const ids = [current.id, ...current.members.flatMap((candidate) => (candidate.operationId ? [candidate.operationId] : []))];
       let interrupted = 0;
       for (const operationId of ids) {
         if (!stoppable(operationId)) continue;
