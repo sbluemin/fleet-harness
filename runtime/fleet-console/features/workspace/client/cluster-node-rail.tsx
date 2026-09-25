@@ -145,19 +145,15 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       }
 
       if (baseWidth + reservedForPriority + moreWidth > railWidth) {
-        // 필수 유지 탭마저도 가용 폭을 넘는 극단적인 경우(current 도 못 남김):
-        // awaiting 을 우선 남기고 current 를 포함해 뒤에서부터 넘긴다
-        let reservedAwaitingOnly = 0;
-        for (const node of currentNodes) {
-          if (node.member.progress === "awaiting") {
-            const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
-            reservedAwaitingOnly += w + 2;
-          }
-        }
-        const avail = railWidth - baseWidth - reservedAwaitingOnly - moreWidth;
+        // 필수 유지 탭마저도 가용 폭을 넘는 극단적인 경우: 허용 요청 탭부터 들어가는 만큼만 남기고,
+        // 남은 자리에 나머지를 순서대로 채운다. 넘긴 허용 요청은 +N 버튼의 has-awaiting 표시가 대신 알린다.
+        const avail = railWidth - baseWidth - moreWidth;
         let acc = 0;
-        for (const node of currentNodes) {
-          if (node.member.progress === "awaiting") continue;
+        const awaitingFirst = [
+          ...currentNodes.filter((node) => node.member.progress === "awaiting"),
+          ...currentNodes.filter((node) => node.member.progress !== "awaiting"),
+        ];
+        for (const node of awaitingFirst) {
           const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
           if (acc + w > avail) {
             hidden.add(node.member.operationId);

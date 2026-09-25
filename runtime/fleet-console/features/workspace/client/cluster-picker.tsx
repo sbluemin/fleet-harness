@@ -83,7 +83,8 @@ export function ClusterPicker({
     if (!card) return;
 
     const panelW = panelRect?.width ?? window.innerWidth;
-    const panelBottom = panelRect ? (panelRect.bottom - 8) : (window.innerHeight - 8);
+    // 패널이 뷰포트 아래로 넘어가 있으면 보이는 아래 끝까지만 제 패널 공간으로 친다.
+    const panelBottom = Math.min(panelRect ? panelRect.bottom : window.innerHeight, window.innerHeight) - 8;
 
     const width = Math.max(220, Math.min(420, panelW - 16));
     const maxLeft = panelRect
