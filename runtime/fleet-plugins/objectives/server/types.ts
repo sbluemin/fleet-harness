@@ -4,25 +4,25 @@ import { z } from "zod";
  * 목표 도메인 — 저장 모양과 화면 모양을 가른다.
  *
  * 목표는 곧 그 지휘관 Operation 이다. 목표의 식별자·제목·그룹·Theater·만든 시각·모델 프리셋·세션 이름은 Operation 이
- * 이미 들고 있으므로 저장하지 않는다 — `state.json` 에는 목표에만 있는 값(브리핑·임무·기준·일정)만 남고, 화면과 지휘관
- * 도구가 보는 `ObjectiveItem` 은 서버가 Operation 과 합쳐 만든다. 검토 대기도 저장하지 않는다 — 모든 임무와 기준이
- * 끝났는지에서 매번 계산한다.
+ * 이미 들고 있으므로 저장하지 않는다 — `objective.json` 에는 목표에만 있는 값(브리핑·임무·기준·일정·보드 자리)만 남고,
+ * 화면과 지휘관 도구가 보는 `Objective` 은 서버가 Operation 과 합쳐 만든다. 검토 대기도 저장하지 않는다 — 모든 임무와
+ * 기준이 끝났는지에서 매번 계산한다.
  */
 
 export const MAX_TITLE = 120;
 export const MAX_NOTE = 20_000;
-export const MAX_STEPS = 40;
-export const MAX_STEP_TEXT = 200;
+export const MAX_MISSIONS = 40;
+export const MAX_MISSION_TEXT = 200;
 /** 달성 기준 — 목표가 이루어졌다고 말할 조건. 개수와 길이, 충족 근거 한 줄의 길이. */
 export const MAX_CRITERIA = 20;
 export const MAX_CRITERION_TEXT = 300;
 export const MAX_EVIDENCE = 300;
 /** 사람이 지휘관에게 덧붙이는 말(구상·개시·스티어링) — 받는 상한과 프롬프트에 인용하는 상한이 같다. */
 export const MAX_CONTEXT = 2000;
-/** 단계 기록 한 건의 줄 — 첫 줄이 결론, 나머지는 근거·남은 것. 산문을 한 줄에 몰아넣지 못하게 줄마다 길이를 묶는다. */
+/** 임무 기록 한 건의 줄 — 첫 줄이 결론, 나머지는 근거·남은 것. 산문을 한 줄에 몰아넣지 못하게 줄마다 길이를 묶는다. */
 export const MAX_RECORD_LINES = 3;
 export const MAX_RECORD_LINE = 160;
-/** 한 단계에 남기는 기록 수 — 오래된 것부터 밀려난다. */
+/** 한 임무에 남기는 기록 수 — 오래된 것부터 밀려난다. */
 export const MAX_RECORDS = 20;
 /**
  * 후속 후보 — 진행 중 범위 밖에서 찾은 결함·개선점. 지휘관만 올리고, 사람이 완료하며 고른 것만 새 휴면 목표가 된다.
@@ -67,8 +67,8 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagent
 
 
 /**
- * 메모에 붙인 이미지 — 파일은 목표 저장소의 `attachments/<operationId>/` 에 id 이름으로 있다. 브라우저에 가는 항목에는 경로를
- * 싣지 않는다(파일은 id 로 받아 온다). 절대 경로는 지휘관의 도구 응답에만 실린다.
+ * 메모에 붙인 이미지 — 파일은 그 목표의 디렉터리 안 `attachments/<attachmentId>.<확장자>` 에 있다. 브라우저에 가는 항목에는
+ * 경로를 싣지 않는다(파일은 id 로 받아 온다). 절대 경로는 지휘관의 도구 응답에만 실린다.
  */
 export interface ObjectiveAttachment {
   readonly id: string;
@@ -83,17 +83,17 @@ export interface ObjectiveAttachment {
 }
 
 /** 지휘관에게 알릴 만한 사람의 편집 — 일정·중요 표시·모델 같은 지휘관의 일과 무관한 값은 넣지 않는다. */
-export type ObjectiveEditKind = "title" | "note" | "steps" | "recipe" | "members" | "assign" | "criteria";
+export type ObjectiveEditKind = "title" | "note" | "missions" | "lineup" | "members" | "member" | "criteria";
 
-// ═══ 저장 모양 (state.json) ══════════════════════════════════════════════════
+// ═══ 저장 모양 (목표마다 objective.json) ═════════════════════════════════════
 
-/** 선행 하나 — 선행 단계 id 와, 있으면 그 선행을 둔 이유 한 줄. 사람이 이은 간선은 "human". */
+/** 선행 하나 — 선행 임무 id 와, 있으면 그 선행을 둔 이유 한 줄. 사람이 이은 간선은 "human". */
 export interface StoredEdge {
   readonly id: string;
   readonly why?: string;
 }
 
-/** 단계 기록 — 지휘관이 이 단계를 완료로 표시할 때마다 한 건. 남기는 것은 늘 그 목표의 지휘관이고, 종류(처음·다시)는 위치로 안다. */
+/** 임무 기록 — 지휘관이 이 임무를 완료로 표시할 때마다 한 건. 남기는 것은 늘 그 목표의 지휘관이고, 종류(처음·다시)는 위치로 안다. */
 export interface StoredRecord {
   readonly id: string;
   readonly at: number;
@@ -101,17 +101,17 @@ export interface StoredRecord {
   readonly lines: readonly string[];
 }
 
-export interface StoredStep {
+export interface StoredMission {
   readonly id: string;
   readonly text: string;
   readonly done?: true;
-  readonly after: readonly StoredEdge[];
+  readonly prerequisites: readonly StoredEdge[];
   /** 담당 구성원 id — 없으면 지휘관 직접. */
   readonly member?: string;
   /** 사람이 담당을 직접 정했다(지휘관 직접 지정도 포함) — 도구가 덮지 않는다. */
   readonly memberBy?: "human";
   /**
-   * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 단계. 준비되지 않으며, 지휘관이 선행을 정하거나
+   * 미분류 — 사람이 더했고 아직 아무도 선행을 정하지 않은 임무. 준비되지 않으며, 지휘관이 선행을 정하거나
    * 사람이 편성에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다.
    */
   readonly unplaced?: true;
@@ -206,20 +206,25 @@ export interface FollowupHistory {
 
 /** 후속으로 태어난 목표의 출처 — 원본 목표와 후보. 근거는 새 지휘관이 읽는다. */
 export interface StoredOrigin {
-  readonly itemId: string;
+  readonly objectiveId: string;
   readonly candidateId: string;
   readonly batchId: string;
   readonly evidence: readonly FollowupEvidence[];
 }
 
 export interface StoredObjective {
-  /** 지휘관 Operation id — 목표의 유일한 식별자. */
+  /** 지휘관 Operation id — 목표의 유일한 식별자이자 이 목표 디렉터리의 이름. */
   readonly operationId: string;
+  /**
+   * 보드 자리 — 유한 실수 하나. 보드는 이 값의 오름차순이고 동률은 만든 시각으로 가른다. 옮기면 이웃 사이의 중간값을
+   * 받으므로 그 목표의 파일 한 건만 바뀐다(중간값이 더 나오지 않을 때만 전체를 정수로 다시 번호 붙인다).
+   */
+  readonly rank: number;
   readonly note: string;
-  /** 구상에 함께 주는 맥락 — 조율자가 단계를 짤 때 읽는 사람의 프롬프트. */
-  readonly cook?: string;
-  /** 구상 중 — 지휘관이 단계·메모만 짜는 국면. 시작·중지·완료가 끝낸다. */
-  readonly cooking?: true;
+  /** 구상에 함께 주는 맥락 — 지휘관이 임무를 짤 때 읽는 사람의 프롬프트. */
+  readonly planRequest?: string;
+  /** 구상 중 — 지휘관이 임무·메모만 짜는 국면. 시작·중지·완료가 끝낸다. */
+  readonly planning?: true;
   /** 사람의 명시적인 구상 요청에서만 켜고, 스티어링·개시·중지·완료에서 끈다. */
   readonly criteriaOpen?: true;
   readonly attachments?: readonly ObjectiveAttachment[];
@@ -242,31 +247,38 @@ export interface StoredObjective {
   readonly followupBatches?: readonly StoredFollowupBatch[];
   readonly followupHistory?: FollowupHistory;
   readonly origin?: StoredOrigin;
-  readonly steps: readonly StoredStep[];
+  readonly missions: readonly StoredMission[];
 }
 
-export interface ObjectivesFile {
-  readonly version: 3;
-  /** 배열 순서가 보드 순서다. */
-  readonly objectives: readonly StoredObjective[];
-}
+/**
+ * 저장 구조 — Theater 의 목표 폴더는 목표마다 디렉터리 하나다.
+ *
+ * ```
+ * workspaces/<프로젝트>/objectives/<objectiveId>/objective.json
+ * workspaces/<프로젝트>/objectives/<objectiveId>/attachments/<attachmentId>.<확장자>
+ * ```
+ *
+ * `objective.json` 은 `StoredObjective` 그대로이고, 디렉터리 이름은 그 안의 `operationId` 와 같아야 한다(어긋나거나 깨진
+ * 파일은 `objective.json.broken-<ts>` 로 비켜 두고 그 목표만 빈 목표로 본다). 목표 목록은 이 폴더를 한 번 읽어 올린다.
+ */
+export const OBJECTIVE_FILE = "objective.json";
 
 // ═══ 화면 모양 (서버가 Operation 과 합쳐 만든다) ═══════════════════════════
 
-export interface StepRecord {
+export interface MissionRecord {
   readonly id: string;
   readonly at: number;
-  /** 처음 완료인지, 기록이 이미 있는 단계를 다시 완료한 것인지 — 위치에서 나온다. */
+  /** 처음 완료인지, 기록이 이미 있는 임무를 다시 완료한 것인지 — 위치에서 나온다. */
   readonly kind: "done" | "redone";
   readonly lines: readonly string[];
 }
 
-export interface ObjectiveStep {
+export interface ObjectiveMission {
   readonly id: string;
   readonly text: string;
   readonly done: boolean;
-  /** 선행 단계 id. 전부 완료돼야 이 단계가 준비된다. */
-  readonly after: readonly string[];
+  /** 선행 임무 id. 전부 완료돼야 이 임무가 준비된다. */
+  readonly prerequisites: readonly string[];
   /** 선행마다 붙는 이유 한 줄(선행 id → why). */
   readonly why: Readonly<Record<string, string>>;
   readonly member: string | null;
@@ -278,7 +290,7 @@ export interface ObjectiveStep {
   readonly sessionName: string | null;
   readonly model?: string;
   readonly effort?: string;
-  readonly records: readonly StepRecord[];
+  readonly records: readonly MissionRecord[];
   readonly seen: number;
 }
 
@@ -290,7 +302,7 @@ export interface ObjectiveCriterion {
   readonly met?: string;
 }
 
-export interface ObjectiveItem {
+export interface Objective {
   /** 지휘관 Operation id. */
   readonly id: string;
   readonly theaterId: string;
@@ -301,8 +313,8 @@ export interface ObjectiveItem {
   readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean };
   readonly note: string;
   readonly attachments: readonly ObjectiveAttachment[];
-  readonly cook?: string;
-  readonly cooking: boolean;
+  readonly planRequest?: string;
+  readonly planning: boolean;
   readonly criteriaOpen: boolean;
   readonly edited?: { readonly at: number; readonly kinds: readonly ObjectiveEditKind[] };
   readonly important: boolean;
@@ -315,14 +327,14 @@ export interface ObjectiveItem {
   readonly criteria: readonly ObjectiveCriterion[];
   readonly criteriaProposals: readonly ObjectiveCriterionProposal[];
   readonly members: readonly ObjectiveMember[];
-  readonly steps: readonly ObjectiveStep[];
+  readonly missions: readonly ObjectiveMission[];
   /** 후속 후보 — open·selected·discarded. discarded 는 제목·요약만. */
   readonly followups: readonly ObjectiveFollowup[];
   /** 완료 때 고른 묶음과 생성 결과(영속). */
   readonly followupBatches: readonly ObjectiveFollowupBatch[];
   readonly followupHistory: FollowupHistory | null;
   /** 이 목표가 후속으로 태어났다면 원본과 후보. 원본이 사라졌으면 title 은 null. */
-  readonly origin: { readonly itemId: string; readonly title: string | null; readonly candidateId: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] } | null;
+  readonly origin: { readonly objectiveId: string; readonly title: string | null; readonly candidateId: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] } | null;
 }
 
 export interface ObjectiveFollowupEvidenceView {
@@ -374,8 +386,8 @@ export const evidenceView = (evidence: FollowupEvidence): ObjectiveFollowupEvide
 /** 끝난 배치 항목 — 더는 바뀌지 않는다(failed·confirming 은 재시도·재조회가 남았다). */
 export const followupSettled = (state: FollowupItemState): boolean => state === "created" || state === "deleted" || state === "abandoned";
 
-export const latestRecord = (step: { readonly records: readonly StepRecord[] }): StepRecord | null => step.records.at(-1) ?? null;
-export const unseenRecords = (step: { readonly records: readonly StepRecord[]; readonly seen: number }): number => Math.max(0, step.records.length - step.seen);
+export const latestRecord = (mission: { readonly records: readonly MissionRecord[] }): MissionRecord | null => mission.records.at(-1) ?? null;
+export const unseenRecords = (mission: { readonly records: readonly MissionRecord[]; readonly seen: number }): number => Math.max(0, mission.records.length - mission.seen);
 
 /**
  * 지휘관의 요약을 기록의 줄로 — 빈 줄은 버리고, 1–3줄이며 줄마다 160자 이하여야 한다. 맞지 않으면 null(도구가 거절한다).
@@ -387,9 +399,9 @@ export function recordLines(summary: readonly string[]): readonly string[] | nul
 }
 
 /** 검토 대기 — 임무가 하나 이상 있고 모두 끝났으며, 달성 기준이 모두 충족으로 표시됐다. */
-export function awaitingReview(objective: Pick<StoredObjective, "done" | "steps" | "criteria" | "criteriaProposals">): boolean {
-  if (objective.done || objective.steps.length === 0 || objective.criteriaProposals?.length) return false;
-  return objective.steps.every((step) => step.done) && (objective.criteria ?? []).every((criterion) => !!criterion.met);
+export function awaitingReview(objective: Pick<StoredObjective, "done" | "missions" | "criteria" | "criteriaProposals">): boolean {
+  if (objective.done || objective.missions.length === 0 || objective.criteriaProposals?.length) return false;
+  return objective.missions.every((mission) => mission.done) && (objective.criteria ?? []).every((criterion) => !!criterion.met);
 }
 
 /** 기준의 충족 표시를 모두 거둔다 — 새 작업이 생기면 앞선 판단은 옛 보드에 대한 것이다. */
@@ -400,37 +412,37 @@ export function withoutMet<T extends Pick<StoredObjective, "criteria">>(objectiv
 
 // ═══ 편성(의존 그래프) ═══════════════════════════════════════════════════════
 
-/** 그래프 계산이 보는 단계의 최소 모양 — 저장 단계와 화면 단계 모두 이 모양으로 읽힌다. */
-export interface GraphStep {
+/** 그래프 계산이 보는 임무의 최소 모양 — 저장 임무와 화면 임무 모두 이 모양으로 읽힌다. */
+export interface GraphMission {
   readonly id: string;
   readonly done?: boolean;
-  readonly after: readonly string[];
+  readonly prerequisites: readonly string[];
   readonly unplaced?: true;
 }
 
-export const graphOf = (steps: readonly StoredStep[]): readonly GraphStep[] => steps.map((step) => ({ id: step.id, done: !!step.done, after: step.after.map((edge) => edge.id), ...(step.unplaced ? { unplaced: true as const } : {}) }));
+export const graphOf = (missions: readonly StoredMission[]): readonly GraphMission[] => missions.map((mission) => ({ id: mission.id, done: !!mission.done, prerequisites: mission.prerequisites.map((edge) => edge.id), ...(mission.unplaced ? { unplaced: true as const } : {}) }));
 
-/** 준비 — 미분류 단계는 자리가 정해질 때까지 준비되지 않는다. 선행 없는 단계가 곧 「병렬」로 읽히는 것을 막는다. */
-export function stepReady(steps: readonly GraphStep[], step: GraphStep): boolean {
-  if (step.unplaced) return false;
-  return step.after.every((id) => steps.find((candidate) => candidate.id === id)?.done ?? true);
+/** 준비 — 미분류 임무는 자리가 정해질 때까지 준비되지 않는다. 선행 없는 임무가 곧 「병렬」로 읽히는 것을 막는다. */
+export function missionReady(missions: readonly GraphMission[], mission: GraphMission): boolean {
+  if (mission.unplaced) return false;
+  return mission.prerequisites.every((id) => missions.find((candidate) => candidate.id === id)?.done ?? true);
 }
 
-/** 조율자의 모드 — 라벨이 아니라 매번 그래프에서 계산한다. */
-export type CoordinatorMode = "direct" | "coordinate" | "mixed";
+/** 지휘관의 모드 — 라벨이 아니라 매번 그래프에서 계산한다. */
+export type CommanderMode = "direct" | "coordinate" | "mixed";
 
-export function coordinatorMode(steps: readonly { readonly done?: boolean; readonly member?: string | null }[]): CoordinatorMode {
-  const open = steps.filter((step) => !step.done);
+export function commanderMode(missions: readonly { readonly done?: boolean; readonly member?: string | null }[]): CommanderMode {
+  const open = missions.filter((mission) => !mission.done);
   if (open.length === 0) return "direct";
-  const assigned = open.filter((step) => step.member).length;
+  const assigned = open.filter((mission) => mission.member).length;
   if (assigned === 0) return "direct";
   return assigned === open.length ? "coordinate" : "mixed";
 }
 
 /** 간선 추가가 순환을 만드는지 — `from` 이 `to` 의 후손이면 순환. */
-export function wouldCycle(steps: readonly GraphStep[], from: string, to: string): boolean {
+export function wouldCycle(missions: readonly GraphMission[], from: string, to: string): boolean {
   if (from === to) return true;
-  const byId = new Map(steps.map((step) => [step.id, step]));
+  const byId = new Map(missions.map((mission) => [mission.id, mission]));
   const seen = new Set<string>();
   const stack = [from];
   while (stack.length) {
@@ -438,62 +450,62 @@ export function wouldCycle(steps: readonly GraphStep[], from: string, to: string
     if (current === to) return true;
     if (seen.has(current)) continue;
     seen.add(current);
-    for (const parent of byId.get(current)?.after ?? []) stack.push(parent);
+    for (const parent of byId.get(current)?.prerequisites ?? []) stack.push(parent);
   }
   return false;
 }
 
-/** 편성에 아직 자리가 없는 단계 — 사람이 선행 없이 더했고 끝나지 않았다. 그래프의 「미분류」 칸과 목록 맨 아래에 선다. */
-export const isLoose = (step: GraphStep): boolean => !!step.unplaced && !step.done;
+/** 편성에 아직 자리가 없는 임무 — 사람이 선행 없이 더했고 끝나지 않았다. 그래프의 「미분류」 칸과 목록 맨 아래에 선다. */
+export const isLoose = (mission: GraphMission): boolean => !!mission.unplaced && !mission.done;
 
 /**
- * 편성 열 — 가장 긴 선행 사슬의 길이(선행 없음 = 0). 그래프의 열 배치와 단계 순서가 같은 값을 쓴다.
+ * 편성 열 — 가장 긴 선행 사슬의 길이(선행 없음 = 0). 그래프의 열 배치와 임무 순서가 같은 값을 쓴다.
  */
-export function stepDepths(steps: readonly GraphStep[]): Map<string, number> {
-  const byId = new Map(steps.map((step) => [step.id, step]));
+export function missionDepths(missions: readonly GraphMission[]): Map<string, number> {
+  const byId = new Map(missions.map((mission) => [mission.id, mission]));
   const depth = new Map<string, number>();
   const depthOf = (id: string, seen: Set<string>): number => {
     const cached = depth.get(id);
     if (cached !== undefined) return cached;
     if (seen.has(id)) return 0;
     seen.add(id);
-    const step = byId.get(id);
-    const value = step && step.after.length ? Math.max(...step.after.map((parent) => (byId.has(parent) ? depthOf(parent, seen) + 1 : 0))) : 0;
+    const mission = byId.get(id);
+    const value = mission && mission.prerequisites.length ? Math.max(...mission.prerequisites.map((parent) => (byId.has(parent) ? depthOf(parent, seen) + 1 : 0))) : 0;
     depth.set(id, value);
     return value;
   };
-  for (const step of steps) if (!isLoose(step)) depthOf(step.id, new Set());
+  for (const mission of missions) if (!isLoose(mission)) depthOf(mission.id, new Set());
   return depth;
 }
 
 /**
  * 편성 순 — 목록·번호·지휘관 도구의 index·담당 세션 이름이 모두 이 순서를 쓴다.
- * 열(깊이)이 앞선 단계가 먼저, 같은 열이면 지금 순서를 지킨다. 미분류 단계는 지금 순서대로 맨 아래.
+ * 열(깊이)이 앞선 임무가 먼저, 같은 열이면 지금 순서를 지킨다. 미분류 임무는 지금 순서대로 맨 아래.
  * 이미 편성 순이면 같은 배열을 돌려준다.
  */
-export function lineupOrder<S extends StoredStep>(steps: readonly S[]): readonly S[] {
-  const graph = graphOf(steps);
-  const depth = stepDepths(graph);
-  const at = new Map(steps.map((step, index) => [step.id, index]));
-  const rank = (step: S, index: number) => (isLoose(graph[index]!) ? Number.MAX_SAFE_INTEGER : depth.get(step.id) ?? 0);
-  const ranked = steps.map((step, index) => ({ step, rank: rank(step, index) }));
-  const sorted = [...ranked].sort((a, b) => a.rank - b.rank || at.get(a.step.id)! - at.get(b.step.id)!).map((entry) => entry.step);
-  return sorted.every((step, index) => step === steps[index]) ? steps : sorted;
+export function lineupOrder<S extends StoredMission>(missions: readonly S[]): readonly S[] {
+  const graph = graphOf(missions);
+  const depth = missionDepths(graph);
+  const at = new Map(missions.map((mission, index) => [mission.id, index]));
+  const rank = (mission: S, index: number) => (isLoose(graph[index]!) ? Number.MAX_SAFE_INTEGER : depth.get(mission.id) ?? 0);
+  const ranked = missions.map((mission, index) => ({ mission, rank: rank(mission, index) }));
+  const sorted = [...ranked].sort((a, b) => a.rank - b.rank || at.get(a.mission.id)! - at.get(b.mission.id)!).map((entry) => entry.mission);
+  return sorted.every((mission, index) => mission === missions[index]) ? missions : sorted;
 }
 
-export function hasCycle(steps: readonly GraphStep[]): boolean {
-  const byId = new Map(steps.map((step) => [step.id, step]));
+export function hasCycle(missions: readonly GraphMission[]): boolean {
+  const byId = new Map(missions.map((mission) => [mission.id, mission]));
   const state = new Map<string, 1 | 2>();
   const visit = (id: string): boolean => {
     const mark = state.get(id);
     if (mark === 1) return true;
     if (mark === 2) return false;
     state.set(id, 1);
-    for (const parent of byId.get(id)?.after ?? []) if (byId.has(parent) && visit(parent)) return true;
+    for (const parent of byId.get(id)?.prerequisites ?? []) if (byId.has(parent) && visit(parent)) return true;
     state.set(id, 2);
     return false;
   };
-  return steps.some((step) => visit(step.id));
+  return missions.some((mission) => visit(mission.id));
 }
 
 // ═══ wire schemas ═════════════════════════════════════════════════════════════
@@ -501,10 +513,10 @@ export function hasCycle(steps: readonly GraphStep[]): boolean {
 const ids = z.string().min(1).max(128);
 const title = z.string().trim().min(1).max(MAX_TITLE);
 const note = z.string().max(MAX_NOTE);
-const stepText = z.string().trim().min(1).max(MAX_STEP_TEXT);
+const missionText = z.string().trim().min(1).max(MAX_MISSION_TEXT);
 const dueDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
 
-export const createItemSchema = z.object({
+export const createObjectiveSchema = z.object({
   theaterId: ids,
   viewMode: z.enum(["terminal", "chat"]).optional(),
   language: z.enum(["en", "ko"]).optional(),
@@ -514,13 +526,14 @@ export const createItemSchema = z.object({
   important: z.boolean().optional(),
   dueDate: dueDate.optional(),
   today: z.boolean().optional(),
-  steps: z.array(z.object({ text: stepText, after: z.array(z.number().int().min(0)).optional() })).max(MAX_STEPS).optional(),
+  /** 선행은 이 목록 안의 1-based 임무 번호 — 앞에 선 임무만 가리킨다. */
+  missions: z.array(z.object({ text: missionText, prerequisites: z.array(z.number().int().min(1)).optional() })).max(MAX_MISSIONS).optional(),
 }).strict();
 
-export const patchItemSchema = z.object({
+export const patchObjectiveSchema = z.object({
   title: title.optional(),
   note: note.optional(),
-  cook: z.string().max(MAX_CONTEXT).optional(),
+  planRequest: z.string().max(MAX_CONTEXT).optional(),
   important: z.boolean().optional(),
   dueDate: dueDate.optional(),
   today: z.boolean().optional(),
@@ -545,25 +558,25 @@ export const criterionProposalSchema = z.union([
 ]);
 export type CriterionProposalInput = z.output<typeof criterionProposalSchema>;
 
-export const stepAddSchema = z.object({ text: stepText, after: z.array(ids).max(MAX_STEPS).optional(), member: ids.nullable().optional() }).strict();
-export const stepPatchSchema = z.object({
-  text: stepText.optional(),
+export const missionAddSchema = z.object({ text: missionText, prerequisites: z.array(ids).max(MAX_MISSIONS).optional(), member: ids.nullable().optional() }).strict();
+export const missionPatchSchema = z.object({
+  text: missionText.optional(),
   done: z.boolean().optional(),
-  after: z.array(ids).max(MAX_STEPS).optional(),
+  prerequisites: z.array(ids).max(MAX_MISSIONS).optional(),
   why: z.record(ids, z.string().max(300)).optional(),
   /** null 이면 지휘관 직접. */
   member: ids.nullable().optional(),
 }).strict();
 
 export const planSchema = z.object({
-  steps: z.array(z.object({
-    text: stepText,
-    // index 는 이 plan 의 steps 순서, stepId 는 이미 있는(완료·배정된) 단계 — 새 단계가 기존 단계 뒤에 설 수 있다.
-    after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).max(MAX_STEPS).optional(),
+  missions: z.array(z.object({
+    text: missionText,
+    // n 은 이 plan 의 missions 안 1-based 번호, missionId 는 이미 있는(완료·배정된) 임무 — 새 임무가 기존 임무 뒤에 설 수 있다.
+    prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() })).max(MAX_MISSIONS).optional(),
     /** 구성원 id 또는 역할 이름. 없으면 지휘관 직접. */
     member: ids.optional(),
-  })).min(1).max(MAX_STEPS),
-  members: z.array(memberAddSchema.pick({ role: true, brief: true })).max(MAX_STEPS).optional(),
+  })).min(1).max(MAX_MISSIONS),
+  members: z.array(memberAddSchema.pick({ role: true, brief: true })).max(MAX_MISSIONS).optional(),
   criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
 }).strict();
 
@@ -597,20 +610,20 @@ export const followupSelectionSchema = z.object({
   followups: z.array(z.object({ id: ids, rev: z.number().int().min(1) }).strict()).min(1).max(MAX_FOLLOWUPS),
 });
 
-export type CreateItemInput = z.output<typeof createItemSchema>;
-export type PatchItemInput = z.output<typeof patchItemSchema>;
+export type CreateObjectiveInput = z.output<typeof createObjectiveSchema>;
+export type PatchObjectiveInput = z.output<typeof patchObjectiveSchema>;
 export type MemberPatchInput = z.output<typeof memberPatchSchema>;
-export type StepAddInput = z.output<typeof stepAddSchema>;
-export type StepPatchInput = z.output<typeof stepPatchSchema>;
+export type MissionAddInput = z.output<typeof missionAddSchema>;
+export type MissionPatchInput = z.output<typeof missionPatchSchema>;
 export type PlanInput = z.output<typeof planSchema>;
 
 /** 브라우저·Console Use 양쪽으로 나가는 사건 프레임. */
-export const OBJECTIVE_ITEM_CHANNEL = "objectives:item";
-export interface ObjectiveItemEvent {
+export const OBJECTIVE_CHANNEL = "objectives:objective";
+export interface ObjectiveEvent {
   readonly op: "upsert" | "remove";
   readonly theaterId: string;
-  readonly itemId: string;
-  readonly item?: ObjectiveItem;
+  readonly objectiveId: string;
+  readonly objective?: Objective;
   /** 순서가 바뀌었을 때만 — 그 Theater 항목 id 의 새 순서 전체. 받는 쪽은 이 순서로 다시 줄 세운다. */
   readonly order?: readonly string[];
 }

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as Rea
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { MAX_CONTEXT, type ObjectiveEditKind, type ObjectiveItem } from "../server/types.js";
+import { MAX_CONTEXT, type ObjectiveEditKind, type Objective } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import {
   clearSelection,
@@ -53,7 +53,7 @@ export interface MemberAwaiting {
 }
 
 export interface ActionBandProps {
-  readonly item: ObjectiveItem;
+  readonly objective: Objective;
   readonly t: T;
   /** 지휘관이 일한다(running·background, 구성원 활동을 끌어올린 값) — 편집 잠금과 같은 기준. */
   readonly busy: boolean;
@@ -92,20 +92,20 @@ const sendKey = (event: ReactKeyboardEvent<HTMLElement>): boolean => event.key =
 const EDIT_KEYS: Readonly<Record<ObjectiveEditKind, ObjectiveMessageKey>> = {
   title: "objectives.edit.title",
   note: "objectives.edit.note",
-  steps: "objectives.edit.steps",
-  recipe: "objectives.edit.recipe",
+  missions: "objectives.edit.missions",
+  lineup: "objectives.edit.lineup",
   members: "objectives.edit.members",
-  assign: "objectives.edit.assign",
+  member: "objectives.edit.member",
   criteria: "objectives.edit.criteria",
 };
 
 const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
-  item_busy: "objectives.band.reason.busy",
+  objective_busy: "objectives.band.reason.busy",
   slot_taken: "objectives.band.reason.taken",
   session_awaiting_input: "objectives.band.reason.awaiting",
   launch_failed: "objectives.band.reason.undelivered",
   launch_unavailable: "objectives.band.reason.unavailable",
-  item_done: "objectives.band.reason.done",
+  objective_done: "objectives.band.reason.done",
   criteria_pending: "objectives.band.reason.criteriaPending",
   criteria_not_planning: "objectives.band.reason.criteriaNotPlanning",
   followup_changed: "objectives.band.reason.followupChanged",
@@ -118,44 +118,44 @@ const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
 
 /** 지금 상태의 주행동과, 펼치면 함께 고르는 것. 제안이 남아 잠긴 개시·스티어링은 gated 가 말한다(주행동은 「다시 구상」). */
 function choose(props: ActionBandProps): { readonly primary: IntentKey | null; readonly alts: readonly IntentKey[]; readonly gated?: true } {
-  const { item, working, commanderAwaiting, memberAwaiting } = props;
-  if (item.done) return { primary: null, alts: [] };
-  const started = item.commander.started;
+  const { objective, working, commanderAwaiting, memberAwaiting } = props;
+  if (objective.done) return { primary: null, alts: [] };
+  const started = objective.commander.started;
   // 한 번도 깨지 않은 지휘관은 보드를 처음부터 읽는다 — 그 전의 편집은 알릴 것이 아니다.
-  const edited = started && (item.edited?.kinds.length ?? 0) > 0;
+  const edited = started && (objective.edited?.kinds.length ?? 0) > 0;
   if (commanderAwaiting) return { primary: "decide", alts: [] };
   if (working) return edited ? { primary: "steer", alts: ["stop"] } : { primary: "stop", alts: [] };
   if (memberAwaiting) return { primary: "decideMember", alts: [] };
-  if (item.criteriaProposals.length > 0) return { primary: "replan", alts: [], gated: true };
-  if (item.awaitingReview) return edited ? { primary: "steer", alts: ["replan"] } : { primary: "complete", alts: [] };
+  if (objective.criteriaProposals.length > 0) return { primary: "replan", alts: [], gated: true };
+  if (objective.awaitingReview) return edited ? { primary: "steer", alts: ["replan"] } : { primary: "complete", alts: [] };
   // 구상이 끝나 개시를 기다린다 — 편집이 있으면 편성을 이어서 짜게 알리고(스티어링), 개시도 여기서 고른다.
-  if (started && item.cooking) return edited ? { primary: "steer", alts: ["start"] } : { primary: "start", alts: ["replan"] };
+  if (started && objective.planning) return edited ? { primary: "steer", alts: ["start"] } : { primary: "start", alts: ["replan"] };
   if (started) return edited ? { primary: "steerIdle", alts: ["replan"] } : { primary: "resume", alts: ["replan"] };
-  return item.steps.length === 0 ? { primary: "plan", alts: ["start"] } : { primary: "start", alts: ["plan"] };
+  return objective.missions.length === 0 ? { primary: "plan", alts: ["start"] } : { primary: "start", alts: ["plan"] };
 }
 
 export function ActionBand(props: ActionBandProps) {
-  const { item, t, request } = props;
+  const { objective, t, request } = props;
   const { primary, alts, gated } = choose(props);
   // 후속 후보(A안) — 검토 대기 + 후보 1건 이상 + edited 아님이 `complete` 와 겹치면 띠는 바로 완료하지 않고 위로 펼쳐 고른다.
   // 후보가 없으면 기존 완료 띠 그대로다. 선택은 완료를 누르기 전까지 로컬 초안이다.
-  const followupCandidates = openFollowups(item);
-  const followupAvailable = primary === "complete" && !gated && isFollowupSelectable(item) && followupCandidates.length > 0;
-  const followupSelection = useFollowupSelection(item.id);
-  const followupOpen = useFollowupOpen(item.id);
+  const followupCandidates = openFollowups(objective);
+  const followupAvailable = primary === "complete" && !gated && isFollowupSelectable(objective) && followupCandidates.length > 0;
+  const followupSelection = useFollowupSelection(objective.id);
+  const followupOpen = useFollowupOpen(objective.id);
   const [followupOpenId, setFollowupOpenId] = useState<string | null>(null);
   const followupIdsKey = followupCandidates.map((candidate) => `${candidate.id}:${candidate.rev}`).join(",");
   // 목록에서 사라진 id 는 초안에서 거두고, rev 가 바뀐 id 는 선택을 풀어 새로 고친 본문을 확인한 뒤 다시 고르게 한다.
   useEffect(() => {
     const openRevs = new Map(followupIdsKey ? followupIdsKey.split(",").map((entry) => { const at = entry.lastIndexOf(":"); return [entry.slice(0, at), Number(entry.slice(at + 1))] as const; }) : []);
-    pruneSelection(item.id, openRevs);
-  }, [item.id, followupIdsKey]);
-  useEffect(() => { setFollowupOpenId(null); }, [item.id]);
+    pruneSelection(objective.id, openRevs);
+  }, [objective.id, followupIdsKey]);
+  useEffect(() => { setFollowupOpenId(null); }, [objective.id]);
   const choices: readonly IntentKey[] = primary ? [primary, ...alts] : [];
   const [open, setOpen] = useState(false);
   const [intent, setIntent] = useState<IntentKey | null>(null);
-  const [draft, setDraftState] = useState(() => drafts.get(item.id) ?? "");
-  const setDraft = (next: string) => { if (next) drafts.set(item.id, next); else drafts.delete(item.id); setDraftState(next); };
+  const [draft, setDraftState] = useState(() => drafts.get(objective.id) ?? "");
+  const setDraft = (next: string) => { if (next) drafts.set(objective.id, next); else drafts.delete(objective.id); setDraftState(next); };
   // 보내는 중인 할 일 — 응답이 오기 전에 상태(사다리)가 먼저 바뀌어도 띠는 지금 진행 중인 그 행동을 말한다.
   // 예: 「중단」은 서버가 구상 국면을 먼저 풀어 사다리가 곧바로 「개시」가 되지만, 응답(중단 확인)은 한참 뒤에 온다.
   const [pending, setPending] = useState<IntentKey | null>(null);
@@ -165,34 +165,34 @@ export function ActionBand(props: ActionBandProps) {
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
   const compRef = useRef<HTMLDivElement | null>(null);
 
-  const kinds = (item.edited?.kinds ?? []).map((kind) => t(EDIT_KEYS[kind]));
+  const kinds = (objective.edited?.kinds ?? []).map((kind) => t(EDIT_KEYS[kind]));
   const kindText = kinds.join("·");
-  const itemId = item.id;
-  const members = item.members.length;
-  const proposals = item.criteriaProposals.length;
-  const annotated = item.criteriaProposals.filter((proposal) => !!proposal.annotation).length;
+  const objectiveId = objective.id;
+  const members = objective.members.length;
+  const proposals = objective.criteriaProposals.length;
+  const annotated = objective.criteriaProposals.filter((proposal) => !!proposal.annotation).length;
   const replanDesc = gated ? (annotated ? t("objectives.band.replan.annotated", { count: annotated }) : t("objectives.band.replan.pending")) : t("objectives.band.replan.desc");
   const intents: Record<IntentKey, Intent> = {
-    plan: { word: t("objectives.band.plan"), desc: t("objectives.band.plan.desc"), talk: true, glyph: <WandGlyph />, placeholder: t("objectives.coordinator.cookContext"), run: (context) => request("/plan/request", { itemId, context }) },
-    replan: { word: t("objectives.band.replan"), desc: replanDesc, talk: true, glyph: <WandGlyph />, placeholder: t("objectives.band.replan.ph"), run: (context) => request("/plan/request", { itemId, context }) },
-    start: { word: t("objectives.coordinator.start"), desc: members ? t("objectives.start.members", { count: members }) : item.steps.length ? t("objectives.start.direct") : t("objectives.band.start.bare"), talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.start.ph"), run: (context) => request("/coordinator/start", { itemId, ...(context ? { context } : {}) }) },
-    resume: { word: t("objectives.coordinator.start"), desc: `${props.commanderState} · ${t("objectives.start.resume")}`, talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.resume.ph"), run: (context) => request("/coordinator/start", { itemId, ...(context ? { context } : {}) }) },
+    plan: { word: t("objectives.band.plan"), desc: t("objectives.band.plan.desc"), talk: true, glyph: <WandGlyph />, placeholder: t("objectives.commander.planContext"), run: (context) => request("/plan/request", { objectiveId, context }) },
+    replan: { word: t("objectives.band.replan"), desc: replanDesc, talk: true, glyph: <WandGlyph />, placeholder: t("objectives.band.replan.ph"), run: (context) => request("/plan/request", { objectiveId, context }) },
+    start: { word: t("objectives.commander.start"), desc: members ? t("objectives.start.members", { count: members }) : objective.missions.length ? t("objectives.start.direct") : t("objectives.band.start.bare"), talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.start.ph"), run: (context) => request("/commander/start", { objectiveId, ...(context ? { context } : {}) }) },
+    resume: { word: t("objectives.commander.start"), desc: `${props.commanderState} · ${t("objectives.start.resume")}`, talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.resume.ph"), run: (context) => request("/commander/start", { objectiveId, ...(context ? { context } : {}) }) },
     steer: {
       word: t("objectives.steer"),
-      desc: item.cooking && !props.working ? t("objectives.band.steer.planning", { kinds: kindText }) : `${t("objectives.band.steer.desc", { kinds: kindText })}${item.awaitingReview ? t("objectives.band.steer.review") : ""}`,
+      desc: objective.planning && !props.working ? t("objectives.band.steer.planning", { kinds: kindText }) : `${t("objectives.band.steer.desc", { kinds: kindText })}${objective.awaitingReview ? t("objectives.band.steer.review") : ""}`,
       talk: true, glyph: <SteerGlyph />, placeholder: t("objectives.band.steer.ph"),
-      run: (context) => request("/coordinator/steer", { itemId, ...(context ? { context } : {}) }),
+      run: (context) => request("/commander/steer", { objectiveId, ...(context ? { context } : {}) }),
     },
-    steerIdle: { word: t("objectives.steer"), desc: t("objectives.band.steerIdle.desc", { kinds: kindText }), talk: true, glyph: <SteerGlyph />, placeholder: t("objectives.band.steer.ph"), run: (context) => request("/coordinator/start", { itemId, ...(context ? { context } : {}) }) },
-    complete: { word: t("objectives.review.complete"), desc: t(item.criteria.length > 0 ? "objectives.review.subCriteria" : "objectives.review.sub"), talk: false, tone: "aurora", run: () => request("/item/complete", { itemId }) },
-    decide: { word: t("objectives.awaiting.word"), desc: t("objectives.awaiting.commander"), talk: false, tone: "aurora", glyph: <DecideDot />, run: async () => props.onFocusOperation(itemId) },
+    steerIdle: { word: t("objectives.steer"), desc: t("objectives.band.steerIdle.desc", { kinds: kindText }), talk: true, glyph: <SteerGlyph />, placeholder: t("objectives.band.steer.ph"), run: (context) => request("/commander/start", { objectiveId, ...(context ? { context } : {}) }) },
+    complete: { word: t("objectives.review.complete"), desc: t(objective.criteria.length > 0 ? "objectives.review.subCriteria" : "objectives.review.sub"), talk: false, tone: "aurora", run: () => request("/objective/complete", { objectiveId }) },
+    decide: { word: t("objectives.awaiting.word"), desc: t("objectives.awaiting.commander"), talk: false, tone: "aurora", glyph: <DecideDot />, run: async () => props.onFocusOperation(objectiveId) },
     decideMember: {
       word: t("objectives.awaiting.word"),
       desc: props.memberAwaiting?.mission ? t("objectives.band.decideMemberMission", { role: props.memberAwaiting.role, index: props.memberAwaiting.mission }) : t("objectives.band.decideMember", { role: props.memberAwaiting?.role ?? "" }),
       talk: false, tone: "aurora", glyph: <DecideDot />,
       run: async () => { if (props.memberAwaiting) props.onFocusOperation(props.memberAwaiting.operationId); },
     },
-    stop: { word: t("objectives.stop"), desc: item.cooking && props.busy ? t("objectives.band.stopPlanning") : t("objectives.stopHint"), talk: false, tone: "stop", glyph: <StopGlyph />, run: () => request("/coordinator/stop", { itemId }) },
+    stop: { word: t("objectives.stop"), desc: objective.planning && props.busy ? t("objectives.band.stopPlanning") : t("objectives.stopHint"), talk: false, tone: "stop", glyph: <StopGlyph />, run: () => request("/commander/stop", { objectiveId }) },
   };
 
   // 펼친 사이 상태가 바뀌어 고른 할 일이 사라지면 — 주행동이 말 거는 행동이면 그리로 옮기고, 아니면 접는다(초안은 남는다).
@@ -217,7 +217,7 @@ export function ActionBand(props: ActionBandProps) {
     setIntent(key);
     setError(null);
     // 구상의 맥락은 목표에 남아 있다 — 칸이 비었으면 지난번 말로 미리 채운다.
-    if ((key === "plan" || key === "replan") && !draft && item.cook) setDraft(item.cook);
+    if ((key === "plan" || key === "replan") && !draft && objective.planRequest) setDraft(objective.planRequest);
     requestAnimationFrame(() => {
       if (focus === "field" && intents[key].talk) { const field = fieldRef.current; if (field && !field.disabled) { field.focus(); field.setSelectionRange(field.value.length, field.value.length); } }
       else compRef.current?.querySelector<HTMLElement>(`[data-intent="${key}"]`)?.focus();
@@ -226,7 +226,7 @@ export function ActionBand(props: ActionBandProps) {
   const fold = (focusBand: boolean) => {
     setOpen(false);
     setError(null);
-    setFollowupOpen(item.id, false);
+    setFollowupOpen(objective.id, false);
     if (focusBand) requestAnimationFrame(() => bandRef.current?.focus());
   };
   const run = async (key: IntentKey) => {
@@ -250,16 +250,16 @@ export function ActionBand(props: ActionBandProps) {
   /** 후속 묶음 완료 — 선택 순간의 rev 로 한 번만 보낸다. 바뀌었으면 서버가 followup_changed 로 거절한다. 고른 게 없으면 지금 완료 그대로다. */
   const runFollowups = async () => {
     if (sending) return;
-    const stored = readSelectionRevs(item.id);
-    const live = new Set(openFollowups(item).map((candidate) => candidate.id));
+    const stored = readSelectionRevs(objective.id);
+    const live = new Set(openFollowups(objective).map((candidate) => candidate.id));
     const picked = [...stored].filter(([id]) => live.has(id));
     setPending("complete");
     setError(null);
     try {
       if (picked.length === 0) await intents.complete.run("");
-      else await request("/item/complete", { itemId, batchId: newBatchId(), followups: picked.map(([id, rev]) => ({ id, rev })) });
-      clearSelection(itemId);
-      setFollowupOpen(item.id, false);
+      else await request("/objective/complete", { objectiveId, batchId: newBatchId(), followups: picked.map(([id, rev]) => ({ id, rev })) });
+      clearSelection(objectiveId);
+      setFollowupOpen(objective.id, false);
       setFollowupOpenId(null);
       requestAnimationFrame(() => bandRef.current?.focus());
     } catch (failure) {
@@ -271,7 +271,7 @@ export function ActionBand(props: ActionBandProps) {
     }
   };
   const discardFollowup = (candidateId: string) => {
-    void request("/followup/discard", { itemId, candidateId }).catch((failure: unknown) => {
+    void request("/followup/discard", { objectiveId, candidateId }).catch((failure: unknown) => {
       const code = failure instanceof Error ? failure.message : "unknown";
       const reason = REASONS[code] ? t(REASONS[code]!) : t("objectives.band.reason.other", { code });
       setError(t("objectives.band.failedAction", { reason }));
@@ -282,7 +282,7 @@ export function ActionBand(props: ActionBandProps) {
     // 후보가 있으면 완료하지 않고 펼친다 — 한 번 누름으로 후보 검토를 건너뛰는 길을 없앤다.
     if (primary === "complete" && followupAvailable) {
       setFollowupOpenId(null);
-      setFollowupOpen(item.id, true);
+      setFollowupOpen(objective.id, true);
       setError(null);
       requestAnimationFrame(() => { compRef.current?.querySelector<HTMLElement>("[data-followup-sel]")?.focus(); });
       return;
@@ -292,10 +292,10 @@ export function ActionBand(props: ActionBandProps) {
     void run(primary);
   };
   const onRadioKey = (event: ReactKeyboardEvent<HTMLButtonElement>, key: IntentKey) => {
-    const step = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
+    const mission = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0;
+    if (!mission) return;
     event.preventDefault();
-    const next = choices[(choices.indexOf(key) + step + choices.length) % choices.length]!;
+    const next = choices[(choices.indexOf(key) + mission + choices.length) % choices.length]!;
     pick(next, "radio");
   };
   const onCompKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -309,7 +309,7 @@ export function ActionBand(props: ActionBandProps) {
   // 잠긴 개시 — 누를 수 없는 한 줄. 편집 뒤면 낱말은 「스티어링」이다. 결정은 위의 기준 줄에서 한다.
   const lockedLine = gated ? (
     <div className="objectives-start is-locked" role="note">
-      <span className="objectives-start-word"><LockGlyph />{t(item.commander.started && (item.edited?.kinds.length ?? 0) > 0 ? "objectives.steer" : "objectives.coordinator.start")}</span>
+      <span className="objectives-start-word"><LockGlyph />{t(objective.commander.started && (objective.edited?.kinds.length ?? 0) > 0 ? "objectives.steer" : "objectives.commander.start")}</span>
       <span className="objectives-start-sub">{t("objectives.band.gated", { count: proposals })}</span>
       <span className="objectives-start-arrow" aria-hidden="true">→</span>
     </div>
@@ -325,11 +325,11 @@ export function ActionBand(props: ActionBandProps) {
     return (
       <div className={`objectives-group objectives-start-group${gated ? " is-gated" : ""}`}>
         {lockedLine}
-        <div ref={compRef} className="objectives-comp is-review" role="group" aria-label={t("objectives.followup.pick")} onKeyDown={onCompKey} data-followup-comp={item.id}>
+        <div ref={compRef} className="objectives-comp is-review" role="group" aria-label={t("objectives.followup.pick")} onKeyDown={onCompKey} data-followup-comp={objective.id}>
           <div className="objectives-comp-top">
             <span>{t("objectives.followup.pick")} · <span className="objectives-followup-count" aria-live="polite">{t("objectives.followup.count", { k: picked, n: total })}</span></span>
             <span className="objectives-comp-tools">
-              <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.item.goToOperation")} title={t("objectives.item.goToOperation")} onClick={() => props.onFocusOperation(item.id)}><GoGlyph /></button>
+              <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button>
               <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.band.fold")} title={t("objectives.band.fold")} onClick={() => fold(true)}><CloseGlyph /></button>
             </span>
           </div>
@@ -339,14 +339,14 @@ export function ActionBand(props: ActionBandProps) {
               selectable
               selection={followupSelection}
               t={t}
-              idPrefix={`band-${item.id}`}
+              idPrefix={`band-${objective.id}`}
               openId={followupOpenId}
               onOpenChange={setFollowupOpenId}
-              onToggleCheck={(candidateId, checked) => { const rev = followupCandidates.find((candidate) => candidate.id === candidateId)?.rev ?? 1; toggleFollowupSelection(item.id, candidateId, checked, rev); setError(null); }}
+              onToggleCheck={(candidateId, checked) => { const rev = followupCandidates.find((candidate) => candidate.id === candidateId)?.rev ?? 1; toggleFollowupSelection(objective.id, candidateId, checked, rev); setError(null); }}
               onDiscard={discardFollowup}
             />
           </div>
-          <FollowupDiscardedTrace discarded={discardedFollowups(item)} t={t} />
+          <FollowupDiscardedTrace discarded={discardedFollowups(objective)} t={t} />
           {errorLine}
           <button
             type="button"
@@ -375,7 +375,7 @@ export function ActionBand(props: ActionBandProps) {
     // 결정 대기(decide·decideMember)는 띠 자체가 이동이다 — 분할 칸 없이 끝의 → 자리에 이동 글리프가 선다.
     const decide = shown === "decide" || shown === "decideMember";
     const toneCls = main.tone ? ` is-${main.tone === "stop" ? "stop" : shown === "complete" ? "review" : "awaiting"}` : "";
-    const goLabel = t("objectives.item.goToOperation");
+    const goLabel = t("objectives.objective.goToOperation");
     const bandCls = `objectives-band${others.length || followupExpands ? " has-alt" : ""}${main.tone === "stop" ? " is-stop" : ""}${followupExpands ? " is-review" : ""}`;
     const mainButton = (
       <button
@@ -384,7 +384,7 @@ export function ActionBand(props: ActionBandProps) {
         className={`objectives-start${gated ? " is-secondary" : ""}${toneCls}${shown === "steer" || shown === "steerIdle" ? " is-steer" : ""}`}
         disabled={sending || unavailable(shown)}
         aria-busy={sending || undefined}
-        title={unavailable(shown) ? t("objectives.coordinator.unavailable") : opens ? t("objectives.band.opens") : undefined}
+        title={unavailable(shown) ? t("objectives.commander.unavailable") : opens ? t("objectives.band.opens") : undefined}
         aria-expanded={opens ? false : undefined}
         aria-label={decide ? `${main.word} — ${goLabel}` : undefined}
         onClick={press}
@@ -406,7 +406,7 @@ export function ActionBand(props: ActionBandProps) {
           <div className={bandCls}>
             <div className={`objectives-split${toneCls}`}>
               {mainButton}
-              <button type="button" className="objectives-split-goto" aria-label={goLabel} title={goLabel} onClick={() => props.onFocusOperation(item.id)}><GoGlyph /></button>
+              <button type="button" className="objectives-split-goto" aria-label={goLabel} title={goLabel} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button>
             </div>
           </div>
           {errorLine}
@@ -432,7 +432,7 @@ export function ActionBand(props: ActionBandProps) {
         <div className="objectives-comp-top">
           <span>{t(many ? "objectives.band.choose" : "objectives.band.send")}</span>
           <span className="objectives-comp-tools">
-            <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.item.goToOperation")} title={t("objectives.item.goToOperation")} onClick={() => props.onFocusOperation(item.id)}><GoGlyph /></button>
+            <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button>
             <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.band.fold")} title={t("objectives.band.fold")} onClick={() => fold(true)}><CloseGlyph /></button>
           </span>
         </div>
@@ -478,7 +478,7 @@ export function ActionBand(props: ActionBandProps) {
           type="button"
           className={`objectives-start objectives-comp-send${current.tone ? ` is-${current.tone === "aurora" ? "review" : "stop"}` : ""}`}
           disabled={sending || unavailable(intent)}
-          title={unavailable(intent) ? t("objectives.coordinator.unavailable") : undefined}
+          title={unavailable(intent) ? t("objectives.commander.unavailable") : undefined}
           onClick={() => void run(intent)}
         >
           {word(current)}

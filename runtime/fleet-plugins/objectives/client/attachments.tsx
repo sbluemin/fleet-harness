@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { AttachImageIcon } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { ObjectiveAttachment, ObjectiveItem } from "../server/types.js";
+import type { ObjectiveAttachment, Objective } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
@@ -19,20 +19,20 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_COUNT = 20;
 type T = Translate<ObjectiveMessageKey>;
 
-const fileUrl = (item: Pick<ObjectiveItem, "id">, attachment: Pick<ObjectiveAttachment, "id">) => `/plugins/objectives/attachment/file?itemId=${encodeURIComponent(item.id)}&attachmentId=${encodeURIComponent(attachment.id)}`;
+const fileUrl = (objective: Pick<Objective, "id">, attachment: Pick<ObjectiveAttachment, "id">) => `/plugins/objectives/attachment/file?objectiveId=${encodeURIComponent(objective.id)}&attachmentId=${encodeURIComponent(attachment.id)}`;
 
 /** 클립보드·끌어놓기에서 이미지 파일만 고른다. */
 export function imageFiles(list: FileList | readonly File[] | null | undefined): File[] {
   return [...(list ?? [])].filter((file) => file.type.startsWith("image/"));
 }
 
-/** 올리기 — 형식·크기·개수를 먼저 보고 하나씩 보낸다. 항목 갱신은 응답이 아니라 `objectives:item` 사건으로 들어온다. */
-export function useAttachmentUpload(item: ObjectiveItem, t: T) {
+/** 올리기 — 형식·크기·개수를 먼저 보고 하나씩 보낸다. 항목 갱신은 응답이 아니라 `objectives:objective` 사건으로 들어온다. */
+export function useAttachmentUpload(objective: Objective, t: T) {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(0);
   const upload = useCallback(async (files: readonly File[]) => {
     setError(null);
-    let room = MAX_COUNT - (item.attachments?.length ?? 0);
+    let room = MAX_COUNT - (objective.attachments?.length ?? 0);
     for (const file of files) {
       if (!TYPES.has(file.type)) { setError(t("objectives.att.errType", { name: file.name })); continue; }
       if (file.size > MAX_BYTES) { setError(t("objectives.att.errSize", { name: file.name })); continue; }
@@ -40,7 +40,7 @@ export function useAttachmentUpload(item: ObjectiveItem, t: T) {
       room -= 1;
       setSending((value) => value + 1);
       try {
-        const response = await fetch(`/plugins/objectives/attachment/add?itemId=${encodeURIComponent(item.id)}&name=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": file.type }, body: file });
+        const response = await fetch(`/plugins/objectives/attachment/add?objectiveId=${encodeURIComponent(objective.id)}&name=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": file.type }, body: file });
         if (!response.ok) {
           const code = ((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? `http_${response.status}`;
           setError(code === "attachment_type" ? t("objectives.att.errType", { name: file.name }) : code === "attachment_too_large" ? t("objectives.att.errSize", { name: file.name }) : code === "too_many_attachments" ? t("objectives.att.errCount") : t("objectives.att.errFailed", { name: file.name, code }));
@@ -48,7 +48,7 @@ export function useAttachmentUpload(item: ObjectiveItem, t: T) {
       } catch { setError(t("objectives.att.errFailed", { name: file.name, code: "network" })); }
       finally { setSending((value) => value - 1); }
     }
-  }, [item.attachments?.length, item.id, t]);
+  }, [objective.attachments?.length, objective.id, t]);
   return { upload, error, sending };
 }
 
@@ -58,8 +58,8 @@ const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="n
  * 브리핑 머리의 첨부 글리프 — 파일 픽커 입구. 이름은 aria-label 에, 형식·크기 안내는 hover·focus 로 여닫는 말풍선에 싣는다
  * (Scuttlebutt 머리 조작·설정 도움말과 같은 계약). 말풍선은 문서 끝으로 포털한다 — 패널이 backdrop-filter 를 지면 안의 말풍선은 흐려 보인다.
  */
-export function AttachButton({ item, t, upload, sending }: {
-  readonly item: ObjectiveItem;
+export function AttachButton({ objective, t, upload, sending }: {
+  readonly objective: Objective;
   readonly t: T;
   readonly upload: (files: readonly File[]) => Promise<void>;
   readonly sending: number;
@@ -69,7 +69,7 @@ export function AttachButton({ item, t, upload, sending }: {
   const tipId = useId();
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ readonly top: number; readonly right: number } | null>(null);
-  const full = (item.attachments?.length ?? 0) >= MAX_COUNT;
+  const full = (objective.attachments?.length ?? 0) >= MAX_COUNT;
   const label = t("objectives.att.addAria");
   useLayoutEffect(() => {
     if (!open) return;
@@ -99,8 +99,8 @@ export function AttachmentDropVeil({ t }: { readonly t: T }) {
   return <div className="objectives-att-drop" aria-hidden="true"><span><AttachImageIcon />{t("objectives.att.drop")}</span></div>;
 }
 
-export function NoteAttachments({ item, t, touchable, error, sending, onRemove }: {
-  readonly item: ObjectiveItem;
+export function NoteAttachments({ objective, t, touchable, error, sending, onRemove }: {
+  readonly objective: Objective;
   readonly t: T;
   readonly touchable: boolean;
   readonly error: string | null;
@@ -109,7 +109,7 @@ export function NoteAttachments({ item, t, touchable, error, sending, onRemove }
 }) {
   const [open, setOpen] = useState<ObjectiveAttachment | null>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
-  const attachments = item.attachments ?? [];
+  const attachments = objective.attachments ?? [];
   const label = (attachment: ObjectiveAttachment) => t("objectives.att.label", { n: attachment.n });
   if (attachments.length === 0 && sending === 0 && !error) return null;
   return (
@@ -119,7 +119,7 @@ export function NoteAttachments({ item, t, touchable, error, sending, onRemove }
           {attachments.map((attachment) => (
             <div key={attachment.id} className="objectives-att-thumb">
               <button type="button" className="objectives-att-open" aria-label={t("objectives.att.open", { label: label(attachment), name: attachment.name })} title={`${label(attachment)} · ${attachment.name}`} onClick={(event) => { openerRef.current = event.currentTarget; setOpen(attachment); }}>
-                <img src={fileUrl(item, attachment)} alt="" loading="lazy" draggable={false} />
+                <img src={fileUrl(objective, attachment)} alt="" loading="lazy" draggable={false} />
               </button>
               <span className="objectives-att-n" aria-hidden="true">{attachment.n}</span>
               {touchable ? <button type="button" className="objectives-att-x" aria-label={t("objectives.att.remove", { label: label(attachment) })} title={t("objectives.att.remove", { label: label(attachment) })} onClick={() => onRemove(attachment)}><CloseGlyph /></button> : null}
@@ -133,7 +133,7 @@ export function NoteAttachments({ item, t, touchable, error, sending, onRemove }
         </div>
       ) : null}
       {error ? <div className="objectives-att-err" role="alert">{error}</div> : null}
-      {open ? createPortal(<AttachmentView t={t} src={fileUrl(item, open)} caption={`${label(open)} · ${open.name}${open.width && open.height ? ` · ${open.width}×${open.height}` : ""}`} onClose={() => { setOpen(null); openerRef.current?.focus(); }} />, document.body) : null}
+      {open ? createPortal(<AttachmentView t={t} src={fileUrl(objective, open)} caption={`${label(open)} · ${open.name}${open.width && open.height ? ` · ${open.width}×${open.height}` : ""}`} onClose={() => { setOpen(null); openerRef.current?.focus(); }} />, document.body) : null}
     </div>
   );
 }

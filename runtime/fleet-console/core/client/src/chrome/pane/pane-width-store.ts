@@ -9,9 +9,6 @@ import { useSyncExternalStore } from "react";
  */
 
 const PREFS_PREFIX = "fleet-console.pane.width.";
-/** 이름이 바뀐 페인의 옛 id → 새 id. 사용자가 정한 폭이 이름 변경으로 사라지지 않게 한 번 옮긴다(모듈 로드 때 읽으므로 위에 둔다). */
-const RENAMED_PANE_IDS: Readonly<Record<string, string>> = { todo: "objectives" };
-
 type Listener = () => void;
 
 const listeners = new Set<Listener>();
@@ -79,24 +76,7 @@ function readStoredWidths(): Readonly<Record<string, number>> {
   } catch {
     // localStorage를 못 읽으면 서술자 기본값으로 시작한다.
   }
-  adoptRenamedPaneWidths(result);
   return result;
-}
-
-function adoptRenamedPaneWidths(result: Record<string, number>): void {
-  for (const [legacy, current] of Object.entries(RENAMED_PANE_IDS)) {
-    const width = result[legacy];
-    if (width === undefined) continue;
-    delete result[legacy];
-    const carried = result[current] === undefined;
-    if (carried) result[current] = width;
-    try {
-      if (carried) localStorage.setItem(PREFS_PREFIX + current, String(width));
-      localStorage.removeItem(PREFS_PREFIX + legacy);
-    } catch {
-      // 옮겨 적지 못하면 이번 세션만 옛 폭을 쓴다.
-    }
-  }
 }
 
 /** 테스트 전용 — 모듈 스코프 상태를 초기화한다. */
