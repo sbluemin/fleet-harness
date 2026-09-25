@@ -322,8 +322,9 @@ export function handleMapOperationSelected(operationId: string): void {
 
 export function focusOperation(operationId: string): void {
   // 목표 표면은 닫고 간다 — 확장 표면이 무대를 덮은 채로는 옮겨간 Operation 이 보이지 않는다.
+  // 착지는 Snap 전체다 — 스냅할 수 없는 모드·화면에서는 호스트가 같은 일반 이동으로 폴백한다.
   if (installed?.surfaces.isOpen("objectives")) installed.surfaces.closeSurface("objectives");
-  installed?.operations.focus(operationId);
+  installed?.operations.focus(operationId, { snap: "full" });
 }
 
 const OBJECTIVE_PANEL_ID = "objectives";

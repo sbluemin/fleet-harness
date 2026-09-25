@@ -128,6 +128,7 @@ let state: ConsoleState = {
   onboardingOpen: false,
   bootstrapped: false,
   pendingOperationFocus: null,
+  pendingOperationFocusSnap: false,
   keyboardFocusRequest: null,
   pendingSideBarAddTheater: false,
   pendingSideBarTheaterLaunch: null,
@@ -776,7 +777,7 @@ export function registerFocusTheaterSwitchSuppression(guard: () => boolean): voi
  * 본문을, 부모를 가리키면 부모 자신의 본문을 보인다(보던 구성원 본문에 가려 부모의 질문이 안 보이던 자리). Alt 순환처럼
  * 패널 사이를 걷는 이동은 `keepBody` 로 보던 본문을 그대로 둔다.
  */
-export function focusOperation(requestedOperationId: string, options?: { readonly keepBody?: boolean }): void {
+export function focusOperation(requestedOperationId: string, options?: { readonly keepBody?: boolean; readonly snapFull?: boolean }): void {
   const nested = nestedTarget(requestedOperationId);
   const operationId = nested ? nested.parentOperationId! : requestedOperationId;
   const operation = state.operations.find((item) => item.id === operationId);
@@ -791,6 +792,7 @@ export function focusOperation(requestedOperationId: string, options?: { readonl
     activeOperationId: operationId,
     activeOperationAcknowledged,
     pendingOperationFocus: operationId,
+    pendingOperationFocusSnap: options?.snapFull === true,
     operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
     ...body,
   });
@@ -798,7 +800,7 @@ export function focusOperation(requestedOperationId: string, options?: { readonl
 
 export function consumeOperationFocus(): void {
   if (state.pendingOperationFocus === null) return;
-  setState({ pendingOperationFocus: null });
+  setState({ pendingOperationFocus: null, pendingOperationFocusSnap: false });
 }
 
 // 커맨드 밴드 → 사이드바 단방향 요청 신호 — 사이드바가 effect로 소비(consume)한다.

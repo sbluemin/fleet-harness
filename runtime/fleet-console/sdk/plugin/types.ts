@@ -370,8 +370,9 @@ export interface ClientOperationsCapability {
   create(input: { readonly theaterId: string; readonly type: string; readonly pluginId: string | null; readonly title: string; readonly payload?: Record<string, unknown>; readonly geometry?: OperationGeometry | null }): Promise<OperationNode>;
   rename(operationId: string, title: string): Promise<OperationNode>;
   remove(operationId: string): Promise<void>;
-  /** 그 Operation 으로 간다 — 활성으로 세우고, 접혀 있으면 펴고, 키보드 초점을 준다. 어느 모드에서든 호스트가 자리를 정한다. */
-  focus(operationId: string): void;
+  /** 그 Operation 으로 간다 — 활성으로 세우고, 접혀 있으면 펴고, 키보드 초점을 준다. 어느 모드에서든 호스트가 자리를 정한다.
+   * `snap: "full"` 은 Cruise 화면에서 Snap 전체 칸으로 앉힌다 — 스냅할 수 없는 모드·화면에서는 같은 일반 이동으로 폴백한다. */
+  focus(operationId: string, options?: { readonly snap?: "full" }): void;
 }
 
 /**

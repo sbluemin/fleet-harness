@@ -480,9 +480,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       return;
     }
     // loadForTheater effect가 먼저 도착 Theater의 focus layer와 Formation underlay를 복원한다.
+    // Snap 전체 힌트가 있으면 먼저 앉혀 보고, 앉힐 수 없으면 같은 일반 이동으로 폴백한다.
+    if (state.pendingOperationFocusSnap === true && trySnapFullFocus(operationId, resumeIfDormant)) {
+      consumeOperationFocus();
+      return;
+    }
     void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
     consumeOperationFocus();
-  }, [focusMapOperation, registry.operationKinds, resumeIfDormant, state.activeTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
+  }, [focusMapOperation, registry.operationKinds, resumeIfDormant, state.activeTheaterId, state.operations, state.pendingOperationFocus, state.pendingOperationFocusSnap, viewMode.effective]);
 
   const canLaunch = !!state.activeTheaterId && !state.addingTheater;
   const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
@@ -1030,6 +1035,39 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
   }
   focusMap();
   requestOperationKeyboardFocus(operationId);
+}
+
+// Snap 전체 이동 — 플러그인의 focus(id, { snap: "full" })가 여기로 온다. 키보드 스냅(⌘⌥↑)과 같은 칸 수식·
+// 줌 정책·durable 쓰기를 쓰고, 앉힐 수 없는 모드·화면(Tactical·War Room 선별·Fleet Map 저줌·Theater 미로드·
+// 아레나 없음)에서는 false를 돌려 일반 이동(routeOperationFocus)으로 폴백한다. 최대화·companion은 대상
+// Theater(로드된 Theater)의 것만 정리한다 — 이어받으면 「기존 전체화면이 아님」을 어긴다.
+function trySnapFullFocus(operationId: string, resumeIfDormant: (operationId: string) => void): boolean {
+  if (isTriageActive() || getFormationView()) return false;
+  const snapshot = getState();
+  const operation = snapshot.operations.find((candidate) => candidate.id === operationId);
+  if (!operation || operation.theaterId !== snapshot.activeTheaterId || getLoadedTheaterId() !== operation.theaterId) return false;
+  const arena = getCanvasSnapArenaRect();
+  if (!arena || getCanvasSnapshot().viewport.zoom < SNAP_MIN_ZOOM) return false;
+  // companion 해제가 최대화로 돌아오면 그것도 함께 정리한다.
+  if (getCompanionOperationId() !== null) clearCompanionOperationId();
+  if (getMaximizedOperationId() !== null) clearMaximizedOperationId();
+  const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
+  if (wasMinimized) playRestoreFlight(operationId);
+  const hit = snapZoneHitFor(arena, SNAP_FULL_ZONES, 0);
+  snapOperationToArenaRect(operationId, hit.zone, { presetId: hit.set.id, zones: hit.set.zones, zoneIndex: hit.zoneIndex });
+  setActiveOperation(operationId);
+  requestOperationKeyboardFocus(operationId);
+  if (wasMinimized) resumeIfDormant(operationId);
+  const geometry = getCanvasSnapshot().operations[operationId];
+  // 캔버스의 드래그 커밋·키보드 스냅과 같은 durable 쓰기 — 기하는 patchOperation의 클라이언트 입력이 아니다.
+  if (geometry) {
+    void fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ geometry }),
+    }).catch(() => undefined);
+  }
+  return true;
 }
 
 // formation 뷰의 열기 경로. 복원 비행·복원·활성화를 한 동기 실행으로 끝내고, 최소화 선반에서

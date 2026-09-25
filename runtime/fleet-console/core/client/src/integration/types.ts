@@ -325,6 +325,8 @@ export interface ConsoleState {
   readonly onboardingOpen: boolean;
   readonly bootstrapped: boolean;
   readonly pendingOperationFocus: string | null;
+  /** pendingOperationFocus 와 같은 요청에 딸린 Snap 전체 힌트 — consume 때 함께 치운다. */
+  readonly pendingOperationFocusSnap: boolean;
   readonly keyboardFocusRequest: { readonly operationId: string; readonly requestId: number } | null;
   readonly pendingSideBarAddTheater: boolean;
   readonly pendingSideBarTheaterLaunch: string | null;
