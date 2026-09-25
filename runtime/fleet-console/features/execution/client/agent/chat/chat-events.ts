@@ -1516,6 +1516,11 @@ function foldSegment(
     // 이웃한 완료 스텝의 집계는 끊지 않는다.
     const thought = step.type === "thought";
     if (thought) continue;
+    // 변경 장부가 이미 그 파일의 이름과 줄 수로 말한 쓰기는 집계 절을 만들지 않는다 —
+    // "파일 3개 씀"과 파일 세 줄이 나란히 서면 접기로 줄인 소음이 그대로 돌아온다. 펼침의
+    // 잎도 같은 이유로 비운다: 그 잎이 말할 것(도구 이름과 파일)이 장부 줄과 한 글자도 다르지
+    // 않다. 실패했거나 결과 없이 닫힌 쓰기는 장부에 오르지 않으므로 여기 남아 자기 절을 지킨다.
+    if (agentChatChangeLedgerStep(step)) continue;
     // 잡을 낳은 호출은 결과를 기다리지 않고 접힌다. 호출 자체는 잡을 띄우자마자 돌아오므로
     // 그 상태가 무엇이든(`ok`·`done`·아직 `running`) 원장이 말할 것은 하나다: 여기서 잡이 태어났다.
     // 그 잡이 어떻게 끝났는지는 호출의 상태가 아니라 잡 자신의 결말이고, 그 결말은 절이 진다.
@@ -1568,14 +1573,24 @@ function foldSegment(
   return { ...(note !== undefined ? { note } : {}), parts };
 }
 
+/**
+ * 변경 장부에 오르는 스텝인가.
+ *
+ * 결과가 ok로 돌아온 쓰기만 장부에 오른다. 실패한 쓰기는 남지 않은 변경이고, 결과 없이
+ * 끝난 쓰기(턴이 중간에 닫혀 done으로 가라앉은 스텝)는 일어났는지 자체를 모른다 —
+ * 모르는 것을 "바뀌었다"로 세우면 이 원장이 고치려던 거짓말을 다시 하는 셈이다.
+ *
+ * 집계 줄도 같은 눈금을 쓴다: 장부가 이미 이름과 줄 수로 말한 쓰기를 집계가 다시 세지 않는다.
+ */
+export function agentChatChangeLedgerStep(item: AgentChatTurnItem): boolean {
+  return item.change !== undefined && item.state === "ok";
+}
+
 /** 같은 파일을 여러 번 쓴 턴은 파일 하나로 합산한다 — 장부는 파일 단위다. */
 function collectChanges(items: readonly AgentChatTurnItem[]): readonly AgentChatChange[] {
   const byFile = new Map<string, { file: string; added: number; removed: number }>();
   for (const item of items) {
-    // 결과가 ok로 돌아온 쓰기만 장부에 오른다. 실패한 쓰기는 남지 않은 변경이고, 결과 없이
-    // 끝난 쓰기(턴이 중간에 닫혀 done으로 가라앉은 스텝)는 일어났는지 자체를 모른다 —
-    // 모르는 것을 "바뀌었다"로 세우면 이 원장이 고치려던 거짓말을 다시 하는 셈이다.
-    if (!item.change || item.state !== "ok") continue;
+    if (!item.change || !agentChatChangeLedgerStep(item)) continue;
     const entry = byFile.get(item.change.file);
     if (entry) {
       entry.added += item.change.added;

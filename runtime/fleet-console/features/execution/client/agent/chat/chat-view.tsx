@@ -1166,6 +1166,11 @@ function ChatTurn({
   const t = getT(language);
   const view = splitAgentChatTurn(turn);
   const working = turn.state === "working";
+  // 변경 목록의 펼침은 턴이 진다 — 라이브 목록과 접힘 안 목록은 서로 다른 자리에 서므로 목록
+  // 자신이 들고 있으면 완료로 넘어가는 순간 remount되어 다시 접힌다. 턴 노드는 그 전환을 건너
+  // 살아남고, 다음 턴은 제 노드이므로 접힌 채로 시작한다.
+  const [changesOpened, setChangesOpened] = React.useState(false);
+  const toggleChanges = React.useCallback(() => { setChangesOpened((open) => !open); }, []);
   const continuityItem = useFastShellContinuity(turn);
   const holdingContinuity = continuityItem !== null;
   // 이 턴이 낳은 잡 중 아직 도는 것. 접힘 줄이 이 수를 말하지 않으면, 접힘이 "다 끝났다"를
@@ -1224,7 +1229,7 @@ function ChatTurn({
             ) : null}
             {working ? (
               <>
-                <ChangeStrip changes={view.changes} language={language} />
+                <ChangeStrip changes={view.changes} language={language} opened={changesOpened} onToggle={toggleChanges} />
                 {/* 아무 스텝도 돌지 않고 글자도 흐르지 않는 구간이 실제로 길다(실측 34초) —
                     모델이 다음 도구 호출을 짓는 동안이다. 그 사이 원장이 비면 패널은 멈춘 것처럼
                     읽히므로, 라이브 줄의 꼬리가 "생각 중…"을 말한다(내용은 싣지 않는다). 별도의
@@ -1266,10 +1271,11 @@ function ChatTurn({
                 error={turn.state === "error"}
                 stopped={turn.state === "stopped"}
                 contextGrew={contextGrew}
+                changes={view.changes}
                 language={language}
                 leadsToAnswer={view.answer !== null}
               >
-                <ChangeStrip changes={view.changes} language={language} />
+                <ChangeStrip changes={view.changes} language={language} opened={changesOpened} onToggle={toggleChanges} />
                 <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} onAnswer={onAnswer} />
               </WorkFold>
             ) : null}
@@ -1323,30 +1329,107 @@ function TurnElapsedLabel({
   );
 }
 
+/** 목록이 원장을 밀어내기 시작하는 지점. 그 위는 접고, 편 상태는 이 턴이 화면에 있는 동안만 산다. */
+const CHANGE_ROWS_VISIBLE = 6;
+
+/** 큰 것부터 — 이 턴이 무엇을 크게 건드렸는지가 먼저 읽힌다. 같은 몫이면 이름 순으로 자리를 굳힌다. */
+function orderedChanges(changes: readonly AgentChatChange[]): readonly AgentChatChange[] {
+  return [...changes].sort((a, b) => {
+    const weight = (b.added + b.removed) - (a.added + a.removed);
+    return weight !== 0 ? weight : a.file.localeCompare(b.file);
+  });
+}
+
+/**
+ * 경로의 허리를 접는다 — 줄 끝을 자르는 ellipsis는 하필 파일명을 먹고, 파일명은 이 줄이
+ * 말하려는 것 자체다. 첫 마디와 마지막 마디는 "어느 갈래의 어느 자리"를 말하므로 남긴다.
+ * 접힌 줄에도 전체 경로는 hover로 남는다.
+ */
+function foldedDirectory(file: string): string {
+  const cut = file.lastIndexOf("/");
+  if (cut < 0) return "";
+  const segments = file.slice(0, cut).split("/");
+  if (segments.length <= 2) return `${segments.join("/")}/`;
+  return `${segments[0]}/…/${segments.at(-1)}/`;
+}
+
 /**
  * 이 턴이 건드린 파일 — 원장 맨 위에 선다. 도구의 나열보다 먼저 읽히는 것은 "무엇이 남았는가"다.
  * 줄 수는 쓰기 도구의 입력에서 서버가 접어 보낸 값이고, 파일 본문은 스트림에 실리지 않는다.
+ *
+ * 파일 하나가 한 줄이다. 칩으로 흩어 놓으면 wrap 때문에 같은 자리에 오는 숫자가 없어 "어느
+ * 파일이 컸는가"를 눈이 세어야 했다 — 지금은 두 열이 오른쪽에 고정되고 0은 숫자를 쓰지 않는다.
+ *
+ * 펼침은 자기 것이 아니라 턴의 것이다. 라이브 목록과 접힘 안 목록은 트리의 다른 자리에 서므로
+ * 턴이 완료로 넘어가는 순간 이 컴포넌트는 remount된다 — 상태를 안에 두면 방금 펼친 목록이
+ * 그 전환 한 번에 다시 접힌다. 턴이 들고 있으면 같은 턴 안에서 살아남고, 다음 턴은 제 상태로 시작한다.
  */
 function ChangeStrip({
   changes,
   language,
+  opened,
+  onToggle,
 }: {
   readonly changes: readonly AgentChatChange[];
   readonly language: "en" | "ko";
+  readonly opened: boolean;
+  readonly onToggle: () => void;
 }) {
   const t = getT(language);
   if (changes.length === 0) return null;
+  const ordered = orderedChanges(changes);
+  const hidden = ordered.length - CHANGE_ROWS_VISIBLE;
+  const rows = opened || hidden <= 0 ? ordered : ordered.slice(0, CHANGE_ROWS_VISIBLE);
   return (
     <div className="agent-chat-changes" aria-label={t("terminal.chat.changesAria")}>
-      {changes.map((change) => (
-        <span key={change.file} className="agent-chat-change">
-          <span className="agent-chat-change-file">{change.file}</span>
-          {change.added > 0 ? <span className="agent-chat-change-add">+{change.added}</span> : null}
-          {change.removed > 0 ? <span className="agent-chat-change-del">−{change.removed}</span> : null}
-        </span>
-      ))}
+      {rows.map((change) => {
+        const directory = foldedDirectory(change.file);
+        return (
+          // 숫자가 무엇을 센 것인지는 이 줄이 직접 말한다 — git이 잰 diff가 아니라 쓰기 도구의
+          // 입력이라, 같은 자리를 두 번 고치면 두 번 다 더해진다. 그 사실을 감추면 숫자가 거짓말이 된다.
+          <div key={change.file} className="agent-chat-change" title={t("terminal.chat.changeCounts")}>
+            <span className="agent-chat-change-path" title={change.file}>
+              {directory.length > 0 ? <span className="agent-chat-change-dir">{directory}</span> : null}
+              <span className="agent-chat-change-name">{change.file.slice(change.file.lastIndexOf("/") + 1)}</span>
+            </span>
+            {/* 0은 자리를 지키되 수를 세지 않는다 — "+0"은 일어난 일처럼 읽히고, 칸을 비우면
+                두 열의 정렬이 무너진다. 낭독에서는 그 점을 건너뛴다. */}
+            {change.added > 0
+              ? <span className="agent-chat-change-add">+{change.added}</span>
+              : <span className="agent-chat-change-nil" aria-hidden="true">·</span>}
+            {change.removed > 0
+              ? <span className="agent-chat-change-del">−{change.removed}</span>
+              : <span className="agent-chat-change-nil" aria-hidden="true">·</span>}
+          </div>
+        );
+      })}
+      {hidden > 0 ? (
+        <button
+          type="button"
+          className="agent-chat-changes-more"
+          aria-expanded={opened}
+          onClick={onToggle}
+        >
+          {opened
+            ? t("terminal.chat.changesFewer")
+            : hidden === 1
+              ? t("terminal.chat.changesMore_one", { count: hidden })
+              : t("terminal.chat.changesMore_other", { count: hidden })}
+        </button>
+      ) : null}
     </div>
   );
+}
+
+/** 접힌 뒤에도 남는 한 줄 — 파일 수와 두 합. 목록 자체는 접힘 안에 있다. */
+function changeTotals(changes: readonly AgentChatChange[]): { files: number; added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const change of changes) {
+    added += change.added;
+    removed += change.removed;
+  }
+  return { files: changes.length, added, removed };
 }
 
 /**
@@ -2145,6 +2228,7 @@ function WorkFold({
   error,
   stopped,
   contextGrew,
+  changes,
   language,
   leadsToAnswer,
   children,
@@ -2158,6 +2242,8 @@ function WorkFold({
   readonly stopped: boolean;
   /** 이 턴이 문맥 창에 더한 토큰. 앞 턴의 좌표가 없으면 undefined이고, 그때는 서지 않는다. */
   readonly contextGrew: number | undefined;
+  /** 이 턴이 남긴 변경. 목록은 접힘 안에 있고, 머리줄에는 그 합만 선다. */
+  readonly changes: readonly AgentChatChange[];
   readonly language: "en" | "ko";
   /** 확정 응답이 바로 뒤에 서는가 — 그때만 접힘과 Answer를 한 완료 경계로 잇는다. */
   readonly leadsToAnswer: boolean;
@@ -2167,6 +2253,7 @@ function WorkFold({
   const label = durationMs !== undefined
     ? t("terminal.chat.workedFor", { duration: formatDuration(durationMs) })
     : t("terminal.chat.workedLabel");
+  const totals = changeTotals(changes);
   return (
     <details className={`agent-chat-fold${leadsToAnswer ? " leads-to-answer" : ""}`} {...(running > 0 ? { open: true } : {})}>
       <summary>
@@ -2174,6 +2261,20 @@ function WorkFold({
           <span className={`agent-chat-completion-node${running > 0 ? " is-running" : error ? " is-error" : stopped ? " is-stopped" : ""}`} aria-hidden="true" />
         ) : null}
         <span className="agent-chat-fold-label">{label}</span>
+        {/* 접힌 뒤에도 이 턴이 무엇을 남겼는지는 보여야 한다 — 접힘이 변경을 통째로 삼키면,
+            원장을 열어 보기 전에는 파일이 바뀌었다는 사실 자체를 알 수 없다. 목록은 안에 있고
+            여기 서는 것은 그 합 하나다. */}
+        {totals.files > 0 ? (
+          <span className="agent-chat-fold-changes" title={t("terminal.chat.changeCounts")}>
+            <span className="agent-chat-fold-changed-files">
+              {totals.files === 1
+                ? t("terminal.chat.changedFiles_one", { count: totals.files })
+                : t("terminal.chat.changedFiles_other", { count: totals.files })}
+            </span>
+            {totals.added > 0 ? <span className="agent-chat-change-add">+{totals.added}</span> : null}
+            {totals.removed > 0 ? <span className="agent-chat-change-del">−{totals.removed}</span> : null}
+          </span>
+        ) : null}
         {running > 0 ? <span className="agent-chat-fold-running">{t("terminal.chat.foldRunning", { count: running })}</span> : null}
         {stopped ? <span className="agent-chat-fold-stopped">{t("terminal.chat.foldTurnStopped")}</span> : null}
         {error ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldTurnFailed")}</span> : null}

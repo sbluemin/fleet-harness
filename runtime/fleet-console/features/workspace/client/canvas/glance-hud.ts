@@ -1,6 +1,6 @@
 export type GlanceHudMessageKey =
-  | "canvas.glance.maximize"
-  | "canvas.glance.restore"
+  | "canvas.glance.snapFull"
+  | "canvas.glance.snapFullRestore"
   | "canvas.glance.minimize"
   | "canvas.glance.defer"
   | "canvas.glance.setAside";
@@ -21,7 +21,8 @@ export function resolveGlanceHudModel(input: {
   readonly mode: "map" | "triage";
   readonly index: number;
   readonly total?: number;
-  readonly maximized?: boolean;
+  /** 이 패널이 스냅 전체 칸을 쥐고 있는가 — ↑ 자리가 「직전 자리로」로 바뀐다. */
+  readonly snapFull?: boolean;
   readonly companionOpen?: boolean;
   readonly setAsideArmed?: boolean;
 }): GlanceHudModel {
@@ -40,13 +41,12 @@ export function resolveGlanceHudModel(input: {
       ],
     };
   }
+  // 전체 칸을 쥔 패널의 ↑는 이미 그 칸이라 할 일이 없고, ↓가 직전 자리로 되돌린다(최소화 대신).
+  if (input.snapFull) return { index, hints: [{ key: "↓", messageKey: "canvas.glance.snapFullRestore" }] };
   return {
     index,
     hints: [
-      {
-        key: "↑",
-        messageKey: input.maximized ? "canvas.glance.restore" : "canvas.glance.maximize",
-      },
+      { key: "↑", messageKey: "canvas.glance.snapFull" },
       { key: "↓", messageKey: "canvas.glance.minimize" },
     ],
   };

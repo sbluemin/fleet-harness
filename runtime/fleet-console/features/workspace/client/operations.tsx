@@ -12,9 +12,10 @@ import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlock
 import { closeOperationCompletely, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
-import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getAlignAll, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleAlignAll, useCompanionOperationId, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
+import { claimTopZIndex, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getAlignAll, getLoadedTheaterId, getSnapFullOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, restoreSnapFullOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setTheaterOperationGeometry, toggleAlignAll, useCompanionOperationId, useMinimized, useSnapFullOperationId, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "./canvas/coordinates.js";
-import { SNAP_FULL_ZONES, SNAP_MIN_ZOOM, SNAP_PRESETS, snapZoneHitFor } from "./canvas/snap-layouts.js";
+import { SNAP_MIN_ZOOM, SNAP_PRESETS, snapZoneHitFor } from "./canvas/snap-layouts.js";
+import { closeCompanionLayer, snapOperationToFullZone } from "./canvas/snap-full.js";
 import { playRestoreFlight } from "./canvas/panel-motion.js";
 import { OperationsCanvas } from "./canvas/canvas.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./canvas/group-context-menu.js";
@@ -59,7 +60,7 @@ interface OperationsProps {
 
 export function Operations({ state, claimBootPanelMinimization, onDeferredDeletion, deletionToast }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const maximizedOperationId = useMaximizedOperationId();
+  const snapFullOperationId = useSnapFullOperationId();
   const companionOperationId = useCompanionOperationId();
   const minimized = useMinimized();
   const registry = usePluginRegistry();
@@ -236,12 +237,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         disarmTriageSetAside();
         return;
       }
-      // Cruise 스냅 — 활성 패널을 반쪽·전체 칸에. 캡션 메뉴와 같은 칸 수식이고 줌 정책도 같다.
+      // Cruise 스냅 — 활성 패널을 반쪽 칸에. 캡션 메뉴와 같은 칸 수식이고 줌 정책도 같다.
       // 모두 정렬 중에는 유지 슬롯을 정렬이 소유하므로 수동 스냅은 그 패널을 빼내고 칸에 유지 없이 앉힌다.
-      const snapCommand = (["operations.snap-left", "operations.snap-right", "operations.snap-full"] as const)
+      const snapCommand = (["operations.snap-left", "operations.snap-right"] as const)
         .find((command) => matchesShortcutCommand(event, command));
       if (snapCommand) {
-        if (isTriageActive() || getMaximizedOperationId() !== null || getCompanionOperationId() !== null) return;
+        if (isTriageActive() || getCompanionOperationId() !== null) return;
         // 정렬 중 스냅 단축키는 배치 대신 안내만 띄운다 — 자리 바꾸기는 캡션 드래그가 소유한다.
         if (getAlignAll()) {
           event.preventDefault();
@@ -255,20 +256,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         if (!stateRef.current.operations.some((operation) => operation.id === operationId && operation.theaterId === stateRef.current.activeTheaterId)) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        const hit = snapCommand === "operations.snap-full"
-          ? snapZoneHitFor(arena, SNAP_FULL_ZONES, 0)
-          : snapZoneHitFor(arena, SNAP_PRESETS[0]!, snapCommand === "operations.snap-left" ? 0 : 1);
+        const hit = snapZoneHitFor(arena, SNAP_PRESETS[0]!, snapCommand === "operations.snap-left" ? 0 : 1);
         // 키보드 스냅도 유지에 든다 — 다만 후보 판은 캔버스의 드래그·메뉴 스냅만 연다.
         snapOperationToArenaRect(operationId, hit.zone, { presetId: hit.set.id, zones: hit.set.zones, zoneIndex: hit.zoneIndex });
-        const geometry = getCanvasSnapshot().operations[operationId];
-        // 캔버스의 드래그 커밋과 같은 durable 쓰기 — 기하는 patchOperation의 클라이언트 입력이 아니다.
-        if (geometry) {
-          void fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ geometry }),
-          }).catch(() => undefined);
-        }
+        commitSnappedGeometry(operationId);
         return;
       }
       if (matchesShortcutCommand(event, "operations.fit-all")) {
@@ -336,7 +327,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         for (const change of toggle.visibilityChanges) {
           setCompanionPanelVisible(activeOperation.id, change.id, change.visible);
         }
-        if (toggle.closeLayer) clearCompanionOperationId();
+        if (toggle.closeLayer) closeCompanionLayer();
         return;
       }
       // Alt+화살표 넷은 한 문법 묶음이라 재배정 대상이 아니다 — 여기서만 Alt를 직접 본다.
@@ -347,10 +338,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       if (arrowAction === null) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (event.repeat && (arrowAction === "maximize-toggle"
+      if (event.repeat && (arrowAction === "snap-full"
         || arrowAction === "minimize"
         || arrowAction === "triage-set-aside")) return;
-      if ((arrowAction === "maximize-toggle" || arrowAction === "minimize" || arrowAction === "triage-noop" || arrowAction === "triage-set-aside")
+      if ((arrowAction === "snap-full" || arrowAction === "minimize" || arrowAction === "triage-noop" || arrowAction === "triage-set-aside")
         && getCompanionOperationId() !== null) return;
       if (triageActive) {
         if (arrowAction === "triage-noop") return;
@@ -380,12 +371,19 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         canvas.collapsedGroups,
         canvas.minimized,
       );
-      if (arrowAction === "maximize-toggle" || arrowAction === "minimize") {
+      if (arrowAction === "snap-full" || arrowAction === "minimize") {
         const operationId = snapshot.activeOperationId;
         if (!operationId || !theaterOperations.some((operation) => operation.id === operationId) || canvas.minimized.includes(operationId)) return;
-        if (arrowAction === "maximize-toggle") {
-          if (getMaximizedOperationId() === operationId) clearMaximizedOperationId();
-          else setMaximizedOperationId(operationId);
+        // 모두 정렬·War Room은 배치를 쥐고 있어 전체 칸이 없다 — ↑는 아무 일도 하지 않고, ↓는 최소화로 남는다.
+        const snapFullAvailable = !getAlignAll();
+        if (arrowAction === "snap-full") {
+          if (!snapFullAvailable || !snapOperationToFullZone(operationId)) return;
+          commitSnappedGeometry(operationId);
+          return;
+        }
+        // ↓는 전체 칸을 쥔 패널이면 직전 자리로 되돌리고(캡션 ⤡·더블클릭과 같은 복원), 아니면 최소화한다.
+        if (snapFullAvailable && restoreSnapFullOperation(operationId)) {
+          commitSnappedGeometry(operationId);
           return;
         }
         const currentIndex = order.indexOf(operationId);
@@ -396,7 +394,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         return;
       }
       if (order.length === 0) return;
-      const currentId = getCompanionOperationId() ?? getMaximizedOperationId() ?? stateRef.current.activeOperationId;
+      const currentId = getCompanionOperationId() ?? getSnapFullOperationId() ?? stateRef.current.activeOperationId;
       const nextId = nextOperationId(order, currentId, arrowAction === "focus-next" ? 1 : -1);
       if (!nextId) return;
       // 패널 사이를 걷는 이동이다 — 지휘관 패널이 보던 구성원 본문은 그대로 둔다.
@@ -404,7 +402,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [companionOperationId, maximizedOperationId, registry.operationKinds, resumeIfDormant, viewMode.effective]);
+  }, [companionOperationId, registry.operationKinds, resumeIfDormant, snapFullOperationId, viewMode.effective]);
 
   // Map이 아닌 곳(좌·우 사이드바, 레일, 커맨드 밴드 크롬 등)을 누르면 패널 활성화를 푼다.
   // 칩·브레드크럼·패널은 가드가 유지하고, 빈 바다 해제는 캔버스 onClick이 맡는다.
@@ -442,7 +440,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       stateRef.current.pendingOperationFocus,
       resumeBootProtection,
       getCompanionOperationId(),
-      getMaximizedOperationId(),
+      getSnapFullOperationId(),
     ].filter((id): id is string => id !== null));
     minimizeOperations(bootOperationIds.filter((id) => !protectedIds.has(id)));
   }, [claimBootPanelMinimization, operationOrder, state.activeTheaterId, state.operationsHydrated, viewMode.effective]);
@@ -1037,22 +1035,41 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
     if (operationWasMinimized) resumeIfDormant(operationId);
     return;
   }
-  if (getMaximizedOperationId() !== null) {
+  // 전체 칸이 서 있는 동안의 포커스 이동은 그 칸을 새 패널에게 넘긴다 — 있던 패널은 자기가 기억한
+  // 자리로 돌아가 감춰진다(스토어가 밀려난 패널만 되돌리므로, 각 패널의 복원 메모는 서로 덮이지 않는다).
+  // 앉힐 수 없으면(아레나 미측정) 승계를 접고 아래 일반 경로로 내려간다.
+  if (getSnapFullOperationId() !== null && !getAlignAll()) {
     const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
     setActiveOperation(operationId);
-    setMaximizedOperationId(operationId);
-    requestOperationKeyboardFocus(operationId);
-    if (wasMinimized) resumeIfDormant(operationId);
-    return;
+    if (snapOperationToFullZone(operationId)) {
+      commitSnappedGeometry(operationId);
+      requestOperationKeyboardFocus(operationId);
+      if (wasMinimized) resumeIfDormant(operationId);
+      return;
+    }
   }
   focusMap();
   requestOperationKeyboardFocus(operationId);
 }
 
-// Snap 전체 이동 — 플러그인의 focus(id, { snap: "full" })가 여기로 온다. 키보드 스냅(⌘⌥↑)과 같은 칸 수식·
-// 줌 정책·durable 쓰기를 쓰고, 앉힐 수 없는 화면(War Room 선별·Fleet Map 저줌·Theater 미로드·
-// 아레나 없음)에서는 false를 돌려 일반 이동(routeOperationFocus)으로 폴백한다. 최대화·companion은 대상
-// Theater(로드된 Theater)의 것만 정리한다 — 이어받으면 「기존 전체화면이 아님」을 어긴다.
+// 스냅 기하의 durable 쓰기 — 캔버스의 드래그 커밋과 같은 경로다. 기하는 patchOperation의 클라이언트
+// 입력이 아니라 서버가 받는 geometry 필드이므로 여기서 직접 PATCH한다. 진입구가 여럿(키보드 스냅·
+// Alt↑·포커스 승계·플러그인 focus)이라 한 곳에 모은다.
+function commitSnappedGeometry(operationId: string): void {
+  const geometry = getCanvasSnapshot().operations[operationId];
+  if (!geometry) return;
+  void fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ geometry }),
+  }).catch(() => undefined);
+}
+
+// Snap 전체 이동 — 플러그인의 focus(id, { snap: "full" })가 여기로 온다. 캡션 ⤢·Alt↑와 같은 진입구
+// (snapOperationToFullZone)를 쓰고, 앉힐 수 없는 모드·화면(War Room 선별·Theater 미로드·아레나
+// 없음)에서는 false를 돌려 일반 이동(routeOperationFocus)으로 폴백한다. Fleet Map 저줌은 막지 않는다 —
+// 스냅이 줌을 100%로 되돌리므로 결과는 언제나 작업 크기의 한 칸이다(드래그 스냅의 저줌 금지는 별개).
+// companion은 대상 Theater(로드된 Theater)의 것만 정리한다 — 이어받으면 「기존 전체화면이 아님」을 어긴다.
 // 모두 정렬 중에는 묶음을 깨지 않고 활성화만 한다 — 칸 이동은 드롭·토글이 소유한다.
 function trySnapFullFocus(operationId: string, resumeIfDormant: (operationId: string) => void): boolean {
   if (isTriageActive()) return false;
@@ -1068,27 +1085,16 @@ function trySnapFullFocus(operationId: string, resumeIfDormant: (operationId: st
     if (wasMinimized) resumeIfDormant(operationId);
     return true;
   }
-  const arena = getCanvasSnapArenaRect();
-  if (!arena || getCanvasSnapshot().viewport.zoom < SNAP_MIN_ZOOM) return false;
-  // companion 해제가 최대화로 돌아오면 그것도 함께 정리한다.
-  if (getCompanionOperationId() !== null) clearCompanionOperationId();
-  if (getMaximizedOperationId() !== null) clearMaximizedOperationId();
+  if (!getCanvasSnapArenaRect()) return false;
+  // companion 레이어가 전체 칸 위에 열려 있었다면 닫는 것으로 끝내지 않고, 이 패널이 그 칸을 받는다.
+  if (getCompanionOperationId() !== null) forceDropCompanionOperationId();
   const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
   if (wasMinimized) playRestoreFlight(operationId);
-  const hit = snapZoneHitFor(arena, SNAP_FULL_ZONES, 0);
-  snapOperationToArenaRect(operationId, hit.zone, { presetId: hit.set.id, zones: hit.set.zones, zoneIndex: hit.zoneIndex });
+  if (!snapOperationToFullZone(operationId)) return false;
   setActiveOperation(operationId);
   requestOperationKeyboardFocus(operationId);
   if (wasMinimized) resumeIfDormant(operationId);
-  const geometry = getCanvasSnapshot().operations[operationId];
-  // 캔버스의 드래그 커밋·키보드 스냅과 같은 durable 쓰기 — 기하는 patchOperation의 클라이언트 입력이 아니다.
-  if (geometry) {
-    void fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ geometry }),
-    }).catch(() => undefined);
-  }
+  commitSnappedGeometry(operationId);
   return true;
 }
 
@@ -1186,19 +1192,18 @@ async function createLaunchedOperation(
   // 플러그인 persist와 별개로 생성 좌표를 그 Theater 캔버스에 먼저 심는다. hydrate 뒤
   // ensureDefaultGeometry가 cascade(index×40)로 덮는 창을 없애기 위함이다.
   setTheaterOperationGeometry(theaterId, newOperationId, geometry);
-  // 최대화 패널이 떠 있는 상태에서 새 Operation을 만들면 최대화를 유지하고 새 패널을 최대화 대상으로 승계한다.
-  // focusOperation은 pendingOperationFocus 경로로 clearMaximizedOperationId를 부르므로(최대화 해제), 최대화 중에는 호출하지 않는다.
-  // handleFocus(operations.tsx)·Alt+←/→ 순환과 동일 정책으로, 새 패널로 렌더 전용 포커스 레이어를 승계한다.
+  // 전체 한 칸이 서 있는 상태에서 새 Operation을 만들면 그 칸을 새 패널이 이어받는다 — handleFocus·
+  // Alt+←/→ 순환과 같은 승계 정책이다(있던 패널은 자기가 기억한 자리로 돌아가 감춰진다).
   //
-  // 단, 비동기 launch 동안 사용자가 다른 Theater로 전환했을 수 있다. getMaximizedOperationId/setMaximizedOperationId는
-  // canvas 스토어가 로드한 Theater 기준으로 동작하므로, 그 로드된 Theater가 launch 시점 Theater와 같을 때만 승계해야 한다.
-  // 다르면 setMaximizedOperationId가 다른 Theater에 타 Theater 소속 op를 최대화 대상으로 잘못 등록해 패널 상태를 망가뜨린다.
+  // 단, 비동기 launch 동안 사용자가 다른 Theater로 전환했을 수 있다. 스냅 유지는 canvas 스토어가 로드한
+  // Theater 기준이므로, 그 로드된 Theater가 launch 시점 Theater와 같을 때만 승계해야 한다. 다르면 타 Theater
+  // 소속 op를 이 Theater의 칸에 앉혀 패널 상태를 망가뜨린다.
   // store.activeTheaterId가 아니라 getLoadedTheaterId()를 보는 이유: loadForTheater가 passive effect라 store보다 늦게
   // 갱신되어, A→B→A 왕복 시 store는 A인데 canvas는 아직 B인 desync 창이 생기기 때문이다.
   const stillOnLaunchTheater = getLoadedTheaterId() === theaterId;
   // fetchOperations 실패(.catch)로 hydrate가 누락되면 store에 newOperationId가 없다. 이때 승계하면
   // 존재하지 않는 포커스 대상을 가리켜 빈 화면이 박제된다.
-  // hydrate된 경우에만 승계하고, 아니면 focusOperation(op 부재 시 안전하게 no-op)으로 기존 최대화 패널을 그대로 둔다.
+  // hydrate된 경우에만 승계하고, 아니면 focusOperation(op 부재 시 안전하게 no-op)으로 기존 전체 칸을 그대로 둔다.
   const operationHydrated = getState().operations.some((operation) => operation.id === newOperationId);
   // Analyze는 명시적인 사용자 focus만 따라간다. 새 Operation 생성은 열린 분석 대상을 승계하지 않는다.
   if (isTriageActive()) {
@@ -1206,9 +1211,9 @@ async function createLaunchedOperation(
     return;
   }
   if (getTheaterCompanionOperationId(theaterId) !== null) return;
-  if (stillOnLaunchTheater && operationHydrated && getMaximizedOperationId() !== null) {
+  if (stillOnLaunchTheater && operationHydrated && getSnapFullOperationId() !== null && snapOperationToFullZone(newOperationId)) {
     setActiveOperation(newOperationId);
-    setMaximizedOperationId(newOperationId);
+    commitSnappedGeometry(newOperationId);
   } else {
     // Theater가 다르거나 hydrate 누락이면 Theater-aware한 focusOperation으로 처리한다(launch Theater로 복귀·포커스, 부재 시 no-op).
     focusOperation(newOperationId);

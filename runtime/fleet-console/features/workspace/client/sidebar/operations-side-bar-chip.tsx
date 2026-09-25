@@ -19,6 +19,7 @@ import {
 } from "./interaction.js";
 import { OperationDetailCard } from "./operation-detail-card.js";
 import { getLoadedTheaterId, useSnapHold } from "../canvas/canvas-store.js";
+import { SnapMark } from "../canvas/snap-mark.js";
 
 /** 포인터가 잠깐 지나가는 것과 겨누는 것을 가르는 시간. 목록을 훑는 동안 카드가 따라 뜨면 안 된다. */
 const DETAIL_HOVER_DELAY_MS = 400;
@@ -158,12 +159,12 @@ export function OperationsSideBarChip({
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   // Console Use — 에이전트가 이 Operation 을 읽거나 만지면 행 전체가 그 채널 색으로 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => (preview ? null : getOperationWrap(operation.id)), () => null);
-  // 스냅 유지 — 활성 Theater의 묶음에 든 패널은 이름 뒤에 ▣이 선다(캡션과 같은 표식).
+  // 스냅 유지 — 활성 Theater의 묶음에 든 패널은 이름 뒤에 칸 모양 표식이 선다(캡션과 같은 컴포넌트).
   const snapHold = useSnapHold();
-  const snapHeld = snapHold !== null && operation.theaterId === getLoadedTheaterId() && operation.id in snapHold.assignments;
+  const snapZoneIndex = snapHold !== null && operation.theaterId === getLoadedTheaterId() ? snapHold.assignments[operation.id] : undefined;
+  const snapZone = snapZoneIndex !== undefined ? snapHold?.zones[snapZoneIndex] ?? null : null;
   const chipClassName = [
     "side-bar-chip",
-    snapHeld ? "side-bar-chip--snapped" : "",
     consoleUseWrapClassName(wrap),
     active ? "side-bar-chip--active" : "",
     minimized ? "side-bar-chip--minimized" : "",
@@ -351,21 +352,28 @@ export function OperationsSideBarChip({
         <OperationNameMark operation={operation} status={markVisual} className="side-bar-chip-status" />
       </span>
       <span className="side-bar-chip-text">
-        {rename.renaming ? (
-          <input
-            className="side-bar-chip-rename-input"
-            ref={rename.inputRef}
-            value={rename.draftTitle}
-            aria-label={t("sidebar.chip.renameAria", { title })}
-            onChange={(e) => rename.setDraftTitle(e.target.value)}
-            onKeyDown={rename.handleKeyDown}
-            onBlur={rename.handleBlur}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
-        )}
+        {/* 이름 줄 — 스냅 표식은 이름의 생략 부호 밖에 서므로 제목이 길어도 잘리지 않는다.
+            이름을 고치는 동안에는 입력이 줄을 다 쓴다. */}
+        <span className="side-bar-chip-name-row">
+          {rename.renaming ? (
+            <input
+              className="side-bar-chip-rename-input"
+              ref={rename.inputRef}
+              value={rename.draftTitle}
+              aria-label={t("sidebar.chip.renameAria", { title })}
+              onChange={(e) => rename.setDraftTitle(e.target.value)}
+              onKeyDown={rename.handleKeyDown}
+              onBlur={rename.handleBlur}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <>
+              <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
+              {snapZone ? <SnapMark zone={snapZone} /> : null}
+            </>
+          )}
+        </span>
         {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
         {/* 묶음의 단계 띠는 이름·위치 줄 아래 셋째 줄 — 이름 옆에 세우면 제목이 밀려 잘린다. */}
         {cluster ? cluster.strip : null}

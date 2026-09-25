@@ -39,9 +39,9 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "operations.toggle-triage", group: "operations", descriptionKey: "shortcuts.map.toggleTriage", defaults: ["Alt+KeyT"] },
   { id: "operations.fit-all", group: "operations", descriptionKey: "shortcuts.map.fitAll", defaults: ["Shift+Digit1"] },
   // Cruise 스냅 — 캡션 메뉴와 같은 칸을 키보드로. Alt+화살표는 포커스 순환이 예약했으므로 Mod를 더한다.
+  // 전체 한 칸은 Alt↑ 하나가 맡는다(재배정 대상이 아닌 Alt+화살표 묶음) — 여기에 중복 명령을 두지 않는다.
   { id: "operations.snap-left", group: "operations", descriptionKey: "shortcuts.map.snapLeft", defaults: ["Mod+Alt+ArrowLeft"] },
   { id: "operations.snap-right", group: "operations", descriptionKey: "shortcuts.map.snapRight", defaults: ["Mod+Alt+ArrowRight"] },
-  { id: "operations.snap-full", group: "operations", descriptionKey: "shortcuts.map.snapFull", defaults: ["Mod+Alt+ArrowUp"] },
 ];
 
 const CORE_COMMANDS_BY_ID = new Map(CORE_SHORTCUT_COMMANDS.map((command) => [command.id, command]));

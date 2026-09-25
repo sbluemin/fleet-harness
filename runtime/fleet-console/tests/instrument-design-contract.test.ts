@@ -647,7 +647,7 @@ describe("Instrument core design contract", () => {
     expect(tip).toContain("right: 0;");
     expect(tip).toContain("pointer-events: none;");
 
-    // 이름표는 겨누는 동안만 뜬다 — 클릭이 남긴 포커스로 열면 눌러도 그 자리에 남는 버튼(최대화)에서
+    // 이름표는 겨누는 동안만 뜬다 — 클릭이 남긴 포커스로 열면 눌러도 그 자리에 남는 버튼(전체 칸)에서
     // 풍선이 붙박이가 된다. 키보드로 짚어 온 포커스만 겨눔으로 친다.
     const tipReveal = components.match(/\.fleet-caption-slot:hover \.fleet-caption-tip,\n[^{]*\{[^}]*\}/)?.[0] ?? "";
     expect(tipReveal).toContain(":has(:focus-visible)");
@@ -797,7 +797,7 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).toContain("if (prefersReducedMotion()) return;");
   });
 
-  it("keeps minimap navigation and collapse controls while hiding Map in maximize", () => {
+  it("keeps minimap navigation and collapse controls while hiding Map in companion", () => {
     const minimap = source("../../../features/workspace/client/canvas/canvas-minimap.tsx");
     const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
     const components = source("styles/components.css");
@@ -811,28 +811,18 @@ describe("Instrument core design contract", () => {
     expect(minimap).toContain("canvas-minimap-fab");
     expect(minimap).toContain("canvas-minimap-toggle");
     expect(canvas).toContain("<CanvasMinimap");
-    expect(canvas).not.toContain("{!panelMaximized ? (");
     // 정렬 중에는 지도만 숨기고 접기 컨트롤은 남긴다 — 임시 접힘은 저장하지 않고 끝나면 복원한다.
     expect(minimap).toContain("useAlignAll");
     expect(minimap).toContain("collapsedBeforeAlignRef");
-    expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap,");
-    expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap-fab {");
-    // 모드 프레임은 최대화 아래에서만 물러난다 — 최대화 geometry는 캔버스 전체라 프레임의 10px
-    // 인셋을 네 변 모두 넘고, 프레임은 z-index 76이라 패널 위에 브래킷을 찍는다. companion은
-    // 프레임이 뜨는 두 모드에서 18px 인셋 슬롯에 머무르므로 경계를 지울 이유가 없다.
-    expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-mode-frame {");
+    // companion은 프레임이 뜨는 두 모드에서 18px 인셋 슬롯에 머무르므로 경계를 지울 이유가 없다.
     expect(components).not.toContain(".operations-canvas.is-companion-layout .canvas-mode-frame");
-    // 물러남은 즉시, 복귀는 패널 geometry가 슬롯으로 돌아온 뒤다 — display 토글로 되돌리면
-    // 복원 전환 동안 브래킷이 다시 패널 위에 찍힌다.
+    // 프레임의 물러남은 즉시, 복귀는 패널 geometry가 제자리로 돌아온 뒤다 — display 토글로
+    // 되돌리면 복원 전환 동안 브래킷이 줄어드는 패널 위에 다시 찍힌다.
     const modeFrameBlock = components.match(/\.canvas-mode-frame \{[^}]*\}/)?.[0] ?? "";
     expect(modeFrameBlock).toContain("transition: opacity var(--duration-base) var(--ease-glide) var(--duration-slow);");
     expect(modeFrameBlock).not.toContain("display:");
-    const maximizedFrameBlock = components.match(/\.operations-canvas\.is-panel-maximized \.canvas-mode-frame \{[^}]*\}/)?.[0] ?? "";
-    expect(maximizedFrameBlock).toContain("opacity: 0;");
-    expect(maximizedFrameBlock).toContain("transition-delay: 0s;");
-    expect(maximizedFrameBlock).not.toContain("display: none;");
     for (const sharedModeClass of [
       "canvas-mode-frame",
       "canvas-mode-bracket",
@@ -1813,12 +1803,13 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".side-bar-chip .side-bar-chip-close.is-armed {\n    animation: none;");
   });
 
-  it("keeps align-all and maximize store contracts without the retired formation mode", () => {
+  // 「한 패널만 크게」는 스냅 유지의 전체 칸이 진다 — 옛 최대화 상태를 들고 있는지 묻던 계약은
+  // 퇴역했고, 그 자리는 전체 칸 진입·복원의 행동 계약(tests/canvas-snap-full.store.test.ts)이 받는다.
+  it("keeps align-all store contracts without the retired formation mode", () => {
     const store = source("../../../features/workspace/client/canvas/canvas-store.ts");
     expect(store).toContain("toggleAlignAll");
     expect(store).not.toContain("toggleFormationView");
     expect(store).not.toContain("MapFullscreen");
-    expect(store).toContain("setMaximizedOperationId");
   });
 
   it("pins the non-durable STATUS regroup signal and identity channel grammar", () => {
@@ -3657,7 +3648,7 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".canvas-operation-glance-hud.is-armed-set-aside {");
     expect(components).toContain("/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며");
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
-    // War Room/최대화는 슬롯을 32px 내려 캡션을 본문 밖에 둔다.
+    // War Room/스냅 칸은 슬롯을 32px 내려 캡션을 본문 밖에 둔다.
     // 스냅·정렬 칸은 같은 32px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
     expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 32");
     // Station Keeping도 같은 32px를 충돌 상자에 넣는다 — 본문 AABB만 보면 아래 캡션이 위를 침범한다.
@@ -3669,8 +3660,7 @@ describe("Instrument core design contract", () => {
     expect(canvasZoom).toContain("TITLEBAR_OUTSET_PX * operationZoom");
     expect(canvasZoom).toContain("const operationZoom = focusLayerHidden");
     expect(canvasZoom).toContain("? canvas.viewport.zoom");
-    expect(canvasZoom).toContain("triageActive || operationMaximized || operationCompanion");
-    expect(canvasZoom).not.toContain("const effectiveZoom = panelMaximized");
+    expect(canvasZoom).toContain("triageActive || operationCompanion");
     // Operation 재질은 visible 패널 수에 반응하지 않는다. Cruise·War Room 카드가 모두
     // 같은 60% 투명 면과 무블러 계약을 공유하며, 다패널 War Room의 LOD는 Map 전환만 맡는다.
     expect(canvasZoom).not.toContain("visiblePanelCount");
