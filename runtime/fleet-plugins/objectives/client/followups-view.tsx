@@ -266,7 +266,7 @@ export function FollowupBatchResults({ batches, leftover, historyTotal, language
           ) : null}
         </div>
       ) : null}
-      {historyTotal && historyTotal.batches > batches.length ? (
+      {historyTotal && historyTotal.batches > 0 ? (
         <p className="objectives-followup-history">{t("objectives.followup.history", { b: historyTotal.batches, c: historyTotal.created, d: historyTotal.deleted, a: historyTotal.abandoned })}</p>
       ) : null}
     </div>

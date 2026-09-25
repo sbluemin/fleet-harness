@@ -304,6 +304,16 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           document.querySelector<HTMLElement>(".objectives-detail-bottom .objectives-start")?.focus();
         });
       });
+    } else if (n > 0) {
+      // 읽기용 보기(openTip) — 상세가 이미 열려 있어도 접힌 구획을 펴고 머리까지 스크롤·포커스해 반응을 보인다.
+      patchObjectiveView(theaterId, (view) => ({ collapsed: { ...view.collapsed, "detail:followups": false } }));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const head = document.querySelector<HTMLElement>('[aria-controls="objectives-sec-followups"]');
+          head?.scrollIntoView({ block: "nearest" });
+          head?.focus();
+        });
+      });
     }
   };
   const followupTip = (target: ObjectiveItem, n: number): string => {
@@ -1207,7 +1217,17 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
             if (selectable) openFollowupComp();
             else if (steerFirst) detailRef.current?.querySelector<HTMLElement>(".objectives-detail-bottom .objectives-start")?.focus();
             else if (n > 0 && followupGateKind === "criteria") onOpenSection("detail:criteria");
-            else if (n > 0) return;
+            else if (n > 0) {
+              // 읽기용 보기 — 접힌 후속 구획을 펴고 머리까지 스크롤·포커스한다.
+              onOpenSection("detail:followups");
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  const head = detailRef.current?.querySelector<HTMLElement>('[aria-controls="objectives-sec-followups"]');
+                  head?.scrollIntoView({ block: "nearest" });
+                  head?.focus();
+                });
+              });
+            }
             else onComplete();
           }}><CheckGlyph /></button>
             );
