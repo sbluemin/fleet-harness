@@ -47,8 +47,9 @@ const MUSE_CODE_REASONING_INCLUDE = "reasoning.encrypted_content";
  * contributor, 2턴 도구 루프)은 이 요청 형태가 받아들여지는 것까지 확인했다: function 도구, strict 없음,
  * `tool_choice` 생략, `store:false`, `include`. 거부 사례(custom 도구, `auto` 외 선택)는 직접 확인하지 않았다.
  *
- * - function 도구만 보내고 strict는 쓰지 않는다. 참고 소스는 `custom` 도구가 400이라 기록하고,
- *   strict 허용 근거는 없다. strict 재작성과 null 제거는 한 쌍이라 둘 다 없고, 인자 delta는 그대로 흘린다.
+ * - function 도구만 보내며 Fleet이 strict를 추가하거나 스키마를 재작성하지 않는다. 호출자가 보낸
+ *   strict는 그대로 보존하되, 이 엔드포인트의 strict:true 수락은 미검증이다. 참고 소스는 `custom`
+ *   도구가 400이라 기록한다. strict 재작성과 null 제거는 둘 다 없고, 인자 delta는 그대로 흘린다.
  * - `tool_choice`는 참고 소스상 `auto`만 허용된다(나머지 400). 제약을 `auto`로 약화하지 않는다:
  *   `none`은 도구를 싣지 않는 것으로 지키고, 강제 선택은 동등 표현이 없어 전송 전에 거절한다.
  * - `metadata`·`service_tier`·호스티드 도구는 허용 근거가 없어 보내지 않는다.
