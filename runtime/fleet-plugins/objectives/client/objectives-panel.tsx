@@ -6,7 +6,7 @@ import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
 import { coordinatorMode, stepReady, unseenRecords, type CoordinatorMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type StepRecord, type ObjectiveItem, type ObjectiveStep } from "../server/types.js";
 import { ActionBand, type MemberAwaiting } from "./action-band.js";
-import { NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
+import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { GroupMenu, opensGroupMenu, type GroupMenuAnchor, type GroupPatch } from "./group-menu.js";
@@ -1080,10 +1080,10 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteOverflow, setNoteOverflow] = useState(false);
   const noteClamped = !noteOpen && !noteFocus;
-  // 빈 브리핑은 「브리핑 추가」 한 줄 — 누르거나 초점이 오면(또는 이미지를 끌어오면) 편집 칸과 첨부 띠가 펼쳐진다.
+  // 빈 브리핑은 「브리핑 추가」 한 줄 — 누르거나 초점이 오면 편집 칸이 아래로 세 줄 펼쳐진다. 끌어오는 동안은 겹판만 서고 자리는 그대로다.
   const [briefActive, setBriefActive] = useState(false);
   const briefBlank = !note.trim() && item.attachments.length === 0;
-  const briefCollapsed = briefBlank && touchable && !briefActive && !dropping && !attachments.error && attachments.sending === 0;
+  const briefCollapsed = briefBlank && touchable && !briefActive && !attachments.error && attachments.sending === 0;
   const fitNote = useCallback(() => {
     const element = noteRef.current;
     if (!element) return;
@@ -1159,20 +1159,25 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         <MemberRoster item={item} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable} />
       </div>
 
-      {/* 브리핑 — 사람이 쓴 요구. 첨부 띠는 본문 위에 머문다. 메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다. */}
+      {/* 브리핑 — 사람이 쓴 요구. 붙이는 입구는 머리의 첨부 글리프이고, 첨부 띠는 이미지가 있을 때만 본문 위에 선다.
+          메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다 — 끌어오는 동안은 자리를 밀지 않는 겹판이 선다. */}
       <div
-        className={`objectives-group objectives-note-group${dropping ? " is-drop" : ""}`}
+        className="objectives-group objectives-note-group"
         onFocus={() => setBriefActive(true)}
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setBriefActive(false); }}
         onDragOver={(event) => { if (touchable && [...event.dataTransfer.types].includes("Files")) { event.preventDefault(); setDropping(true); } }}
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
         onDrop={(event) => { if (!touchable) return; event.preventDefault(); setDropping(false); const files = imageFiles(event.dataTransfer.files); if (files.length) void attachments.upload(files); }}
       >
-        <SectionHead glyph={<BriefGlyph />} label={t("objectives.item.memo")} tools={item.attachments.length > 0 ? <span className="objectives-criteria-count">{t("objectives.brief.images", { count: item.attachments.length })}</span> : null} />
-        {briefCollapsed ? null : <NoteAttachments item={item} t={t} touchable={touchable} upload={attachments.upload} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />}
+        <SectionHead glyph={<BriefGlyph />} label={t("objectives.item.memo")} tools={item.attachments.length > 0 || touchable ? <>
+          {item.attachments.length > 0 ? <span className="objectives-criteria-count">{t("objectives.brief.images", { count: item.attachments.length })}</span> : null}
+          {touchable ? <AttachButton item={item} t={t} upload={attachments.upload} sending={attachments.sending} /> : null}
+        </> : null} />
+        <NoteAttachments item={item} t={t} touchable={touchable} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { itemId: item.id, attachmentId: attachment.id })} />
         <textarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}${briefBlank && !briefCollapsed ? " is-writing" : ""}`} rows={1} aria-label={t("objectives.item.memo")} placeholder={t("objectives.item.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)}
           onFocus={() => setNoteFocus(true)} onBlur={() => setNoteFocus(false)}
           onPaste={(event) => { if (!touchable) return; const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
+        {dropping ? <AttachmentDropVeil t={t} /> : null}
         {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
       </div>
 
