@@ -189,6 +189,7 @@ export function OperationsCanvas({
   const [clusterPicker, setClusterPicker] = useState<{
     readonly rootId: string;
     readonly anchor: DOMRect;
+    readonly canvasTop?: number;
     readonly targetOperationId?: string;
     readonly panelRect?: { readonly left: number; readonly top: number; readonly width: number; readonly height: number; readonly bottom: number };
   } | null>(null);
@@ -1607,10 +1608,13 @@ export function OperationsCanvas({
                       const panel = target?.closest<HTMLElement>("[data-operation-id]") ?? null;
                       const anchor = target?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0);
                       const panelRect = panel?.getBoundingClientRect();
+                      const canvasRect = canvasRef.current?.getBoundingClientRect();
+                      const canvasTop = (canvasRect?.top ?? 0) + (arenaInsets?.top ?? 0);
                       setClusterPicker({
                         rootId: operation.id,
                         targetOperationId: operationId,
                         anchor,
+                        canvasTop,
                         panelRect: panelRect ? { left: panelRect.left, top: panelRect.top, width: panelRect.width, height: panelRect.height, bottom: panelRect.bottom } : undefined,
                       });
                     }}
@@ -1622,12 +1626,10 @@ export function OperationsCanvas({
                     layout={clusterRoot}
                     current={clusterRoot.formation.byOperationId.has(clusterBodySelection[operation.id] ?? "") ? clusterBodySelection[operation.id]! : operation.id}
                     rootActivity={resolveOperationActivity(operation, operationRuntime)}
-                    onPick={(operationId, options) => {
+                    onPick={(operationId) => {
                       selectNestedBody(operation.id, operationId);
                       setActiveOperation(operation.id);
-                      if (options?.focusTerminal !== false) {
-                        requestOperationKeyboardFocus(operation.id);
-                      }
+                      requestOperationKeyboardFocus(operation.id);
                     }}
                   />
                 ),
@@ -1872,6 +1874,7 @@ export function OperationsCanvas({
             layout={layout}
             anchor={clusterPicker.anchor}
             panelRect={clusterPicker.panelRect}
+            canvasTop={clusterPicker.canvasTop}
             targetOperationId={clusterPicker.targetOperationId}
             current={clusterBodySelection[clusterPicker.rootId] ?? null}
             rootActivity={rootNode ? resolveOperationActivity(rootNode, operationRuntime) : null}

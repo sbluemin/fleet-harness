@@ -23,6 +23,7 @@ export function ClusterPicker({
   layout,
   anchor,
   panelRect,
+  canvasTop,
   targetOperationId,
   current,
   rootActivity,
@@ -33,6 +34,7 @@ export function ClusterPicker({
   readonly layout: ClusterLayout;
   readonly anchor: DOMRect;
   readonly panelRect?: { readonly left: number; readonly top: number; readonly width: number; readonly height: number; readonly bottom: number };
+  readonly canvasTop?: number;
   readonly targetOperationId?: string | null;
   /** 지금 지휘관 패널이 보이는 Operation(본문 교체) — 지휘관 자신이면 null. */
   readonly current: string | null;
@@ -90,19 +92,35 @@ export function ClusterPicker({
     const minLeft = panelRect ? Math.max(8, panelRect.left + 8) : 8;
     const left = Math.max(minLeft, Math.min(anchor.left, maxLeft));
 
+    // N2 위치 보정:
+    // 1) 팝오버는 앵커(띠)와 앱 상단 바를 덮지 않는다.
+    //    앱 상단 바 경계: canvasTop(캔버스 영역의 top) 또는 36px.
+    const appTopBound = Math.max(8, canvasTop ?? 36);
     const belowTop = anchor.bottom + 6;
-    const spaceBelow = panelBottom - 8 - belowTop;
+    const viewportBottom = window.innerHeight - 8;
+
+    // 2) 위쪽 가용 공간: 앱 상단 바 아래 ~ 앵커 위
+    const spaceAbove = Math.max(0, anchor.top - 6 - appTopBound);
+
+    // 3) 아래쪽 가용 공간:
+    //    제 패널 아래 끝까지를 우선하되, 그 높이가 240px 미만이면 뷰포트 아래 −8까지 확장
+    const spaceBelowInPanel = Math.max(0, panelBottom - 8 - belowTop);
+    const spaceBelow = spaceBelowInPanel >= 240
+      ? spaceBelowInPanel
+      : Math.max(0, viewportBottom - belowTop);
+
+    // 4) 아래와 위 중 더 넓은 쪽으로 연다
+    const openDownward = spaceBelow >= spaceAbove;
 
     let top: number;
     let maxHeight: number;
 
-    if (spaceBelow < 240) {
-      const spaceAbove = anchor.top - 6 - (panelTop + 8);
-      maxHeight = Math.max(180, Math.min(spaceAbove, 520));
-      top = Math.max(8, anchor.top - 6 - maxHeight);
-    } else {
-      maxHeight = Math.min(spaceBelow, 520);
+    if (openDownward) {
       top = belowTop;
+      maxHeight = Math.min(spaceBelow, 520);
+    } else {
+      maxHeight = Math.min(spaceAbove, 520);
+      top = Math.max(appTopBound, anchor.top - 6 - maxHeight);
     }
 
     setPlaced((prev) => {
@@ -111,7 +129,7 @@ export function ClusterPicker({
       }
       return { left, top, width, maxHeight };
     });
-  }, [anchor, panelRect]);
+  }, [anchor, panelRect, canvasTop]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

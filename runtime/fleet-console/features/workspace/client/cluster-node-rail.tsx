@@ -3,7 +3,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import type { OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
-import { TERMINAL_FOCUS_HOLD_ATTR } from "../../execution/client/terminal/shared/terminal-surface.js";
 import type { ClusterLayout } from "./operation-clusters.js";
 
 type RootActivity = "idle" | "running" | "awaiting" | "background" | "ended" | null;
@@ -28,16 +27,16 @@ const EMPTY_HIDDEN_IDS: ReadonlySet<string> = new Set();
 
 /**
  * 본문 위 세션 줄 — 캡션 바로 아래 frame 흐름 안에 26px 높이로 서는 가로 탭 줄.
- * 지휘관 + 살아 있는 구성원 세션으로 이루어지며, 누르면 패널 본문(selectNestedBody)을 전환한다.
- * 지금 보고 있는 탭은 brass 워시와 테두리 전체로 표시된다(왼쪽 강조 띠 금지).
- * 폭이 좁으면 뒤쪽 탭을 「+N」 메뉴로 넘기되, 허용 요청(awaiting)이 있는 구성원은 넘기지 않고 앞에 남긴다.
+ * WAI-ARIA APG 수동 활성화(Manual Activation) 방식:
+ * 방향키(←/→/Home/End)는 탭 사이의 포커스(roving tabindex)만 이동하며, 본문은 바꾸지 않는다.
+ * 클릭이나 Enter/Space 입력 시에만 활성화(onPick)되어 본문 전환 및 터미널 포커스가 일어난다.
  */
 export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   readonly layout: ClusterLayout;
   /** 지금 지휘관 패널이 보이는 세션 — 지휘관 자신이면 뿌리 id. */
   readonly current: string;
   readonly rootActivity: RootActivity;
-  readonly onPick: (operationId: string, options?: { readonly focusTerminal?: boolean }) => void;
+  readonly onPick: (operationId: string) => void;
 }) {
   const t = useT();
   const railRef = useRef<HTMLDivElement | null>(null);
@@ -47,9 +46,13 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
 
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(EMPTY_HIDDEN_IDS);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [focusHold, setFocusHold] = useState(false);
+  const [focusedId, setFocusedId] = useState<string>(current);
   const naturalWidthsRef = useRef(new Map<string, number>());
-  const expectedFocusRef = useRef<string | null>(null);
+
+  // current 변경 시 focusedId 도 동기화
+  useEffect(() => {
+    setFocusedId(current);
+  }, [current]);
 
   const root = layout.cluster.root;
   // 구성원 세션 순서는 Objectives 명단(roster) 선언 순서를 따른다.
@@ -88,18 +91,6 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
     });
   };
 
-  // 화살표 키 탐색 후 포커스를 탭 목록 안에 안정적으로 유지
-  useLayoutEffect(() => {
-    if (expectedFocusRef.current !== null) {
-      const targetOpId = expectedFocusRef.current;
-      expectedFocusRef.current = null;
-      const tab = targetOpId === root
-        ? commanderTabRef.current
-        : railRef.current?.querySelector<HTMLButtonElement>(`[data-member-op-id="${targetOpId}"]`);
-      tab?.focus();
-    }
-  }, [current, root]);
-
   // 폭 측정 및 +N 접힘 계산
   useLayoutEffect(() => {
     const rail = railRef.current;
@@ -137,14 +128,13 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
 
       // 2단계: 다 들어가지 않는 경우 — +N 버튼 공간(44px)을 확보하고 넘치는 탭 가리기.
       // 우선순위:
-      // 1) 지휘관 (baseWidth에 포함)
+      // 1) 지휘관 (baseWidth 에 포함)
       // 2) 허용 요청(awaiting) 탭 (반드시 포함)
       // 3) 현재 선택된 탭(current) (반드시 포함)
-      // 나머지 탭들을 가용 폭 안에서 뒤에서부터 숨긴다.
+      // 4) 현재 포커스된 탭(focusedId) (가능하면 포함)
       const moreWidth = 44;
       const hidden = new Set<string>();
 
-      // 필수 유지 탭(awaiting + current) 너비 합산
       let reservedForPriority = 0;
       for (const node of currentNodes) {
         const isPriority = node.member.progress === "awaiting" || node.member.operationId === current;
@@ -155,8 +145,8 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       }
 
       if (baseWidth + reservedForPriority + moreWidth > railWidth) {
-        // 필수 유지 탭마저도 가용 폭을 넘는 극단적인 경우(current도 못 남김):
-        // awaiting을 우선 남기고 current를 포함해 뒤에서부터 넘긴다
+        // 필수 유지 탭마저도 가용 폭을 넘는 극단적인 경우(current 도 못 남김):
+        // awaiting 을 우선 남기고 current 를 포함해 뒤에서부터 넘긴다
         let reservedAwaitingOnly = 0;
         for (const node of currentNodes) {
           if (node.member.progress === "awaiting") {
@@ -176,7 +166,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
           }
         }
       } else {
-        // 일반적인 경우: awaiting과 current는 무조건 남기고, 나머지 비우선순위 탭만 뒤에서부터 넘긴다
+        // 일반적인 경우: awaiting 과 current 는 무조건 남기고, 나머지 비우선순위 탭만 뒤에서부터 넘긴다
         const availableForRest = railWidth - baseWidth - reservedForPriority - moreWidth;
         let acc = 0;
         for (const node of currentNodes) {
@@ -237,16 +227,12 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const chefTip = rootActivity ? `${chefLabel} · ${t(`cluster.picker.activity.${rootActivity}`)}` : chefLabel;
   const showingSuffix = ` · ${t("cluster.nodes.current")}`;
 
-  const stop = (event: ReactPointerEvent) => {
-    event.stopPropagation();
-    setFocusHold(false);
-  };
+  const stop = (event: ReactPointerEvent) => event.stopPropagation();
 
-  // W3C ARIA Tablist 화살표 키(←/→, Home, End) 내비게이션
+  // W3C ARIA Tablist 수동 활성화: 방향키는 탭 간 포커스만 이동, Enter/Space 는 본문 전환
   const onKeyDown = (event: ReactKeyboardEvent) => {
     if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
       event.preventDefault();
-      setFocusHold(true);
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
       const currentIndex = tabs.indexOf(event.currentTarget as HTMLButtonElement);
       if (currentIndex >= 0) {
@@ -254,38 +240,33 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
         const nextTab = tabs[nextIndex];
         if (nextTab) {
-          const targetOpId = nextTab.dataset.memberOpId ?? root;
-          expectedFocusRef.current = targetOpId;
           nextTab.focus();
-          onPick(targetOpId, { focusTerminal: false });
+          const nextId = nextTab.dataset.memberOpId ?? root;
+          setFocusedId(nextId);
         }
       }
     } else if (event.key === "Home") {
       event.preventDefault();
-      setFocusHold(true);
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
       const firstTab = tabs[0];
       if (firstTab) {
-        expectedFocusRef.current = root;
         firstTab.focus();
-        onPick(root, { focusTerminal: false });
+        setFocusedId(root);
       }
     } else if (event.key === "End") {
       event.preventDefault();
-      setFocusHold(true);
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
       const lastTab = tabs[tabs.length - 1];
       if (lastTab) {
-        const targetOpId = lastTab.dataset.memberOpId ?? root;
-        expectedFocusRef.current = targetOpId;
         lastTab.focus();
-        onPick(targetOpId, { focusTerminal: false });
+        const lastId = lastTab.dataset.memberOpId ?? root;
+        setFocusedId(lastId);
       }
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      setFocusHold(false);
       const targetOpId = (event.currentTarget as HTMLElement).dataset.memberOpId ?? root;
-      onPick(targetOpId, { focusTerminal: true });
+      setFocusedId(targetOpId);
+      onPick(targetOpId);
     }
   };
 
@@ -294,18 +275,16 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const moreHasAwaiting = hiddenNodes.some(({ member }) => member.progress === "awaiting");
   const moreHasCurrent = hiddenNodes.some(({ member }) => member.operationId === current);
 
+  // Roving tabindex: 포커스된 탭이 가시 영역에 있으면 그 탭이 tabIndex=0, 없으면 current(가시 시) 또는 root 가 0
+  const visibleOpIds = [root, ...nodes.filter((n) => !hiddenIds.has(n.member.operationId)).map((n) => n.member.operationId)];
+  const activeFocusId = visibleOpIds.includes(focusedId) ? focusedId : (visibleOpIds.includes(current) ? current : root);
+
   return (
     <div
       ref={railRef}
       className="cluster-node-rail"
       role="tablist"
       aria-label={t("cluster.nodes.aria", { current: currentLabel })}
-      {...(focusHold ? { [TERMINAL_FOCUS_HOLD_ATTR]: "true" } : {})}
-      onBlur={(event) => {
-        if (!railRef.current?.contains(event.relatedTarget as Node | null)) {
-          setFocusHold(false);
-        }
-      }}
       onPointerDown={stop}
       data-canvas-blocker
     >
@@ -315,10 +294,13 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         role="tab"
         className={`cluster-node-tab${current === root ? " is-current" : ""}`}
         aria-selected={current === root}
-        tabIndex={current === root ? 0 : -1}
+        tabIndex={activeFocusId === root ? 0 : -1}
         title={chefTip}
         aria-label={current === root ? chefTip + showingSuffix : chefTip}
-        onClick={() => onPick(root, { focusTerminal: true })}
+        onClick={() => {
+          setFocusedId(root);
+          onPick(root);
+        }}
         onKeyDown={onKeyDown}
       >
         <span className="cluster-member-glyph is-commander" aria-hidden="true">
@@ -344,11 +326,14 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
             hidden={isHidden}
             className={`cluster-node-tab${on ? " is-current" : ""}`}
             aria-selected={on}
-            tabIndex={on ? 0 : -1}
+            tabIndex={activeFocusId === member.operationId ? 0 : -1}
             title={tip}
             aria-label={on ? tip + showingSuffix : tip}
             data-member-op-id={member.operationId}
-            onClick={() => onPick(member.operationId, { focusTerminal: true })}
+            onClick={() => {
+              setFocusedId(member.operationId);
+              onPick(member.operationId);
+            }}
             onKeyDown={onKeyDown}
           >
             <span className={`cluster-member-glyph is-tone-${member.tone ?? "teal"}`} aria-hidden="true">
@@ -390,9 +375,9 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
                     role="menuitem"
                     className={`cluster-node-overflow-item${on ? " is-current" : ""}`}
                     onClick={() => {
-                      setFocusHold(false);
+                      setFocusedId(member.operationId);
                       setMoreOpen(false);
-                      onPick(member.operationId, { focusTerminal: true });
+                      onPick(member.operationId);
                     }}
                   >
                     <span className={`cluster-member-glyph is-tone-${member.tone ?? "teal"}`} aria-hidden="true">
