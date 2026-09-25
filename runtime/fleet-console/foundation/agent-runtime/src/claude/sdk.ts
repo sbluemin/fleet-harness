@@ -200,6 +200,9 @@ export async function createClaudeGatewaySdk(
         assertKnownSessionKeys(request);
         const model = resolveTurnModel(request.model, accepted, options.modelPolicy.resolve);
         const env = await prepareLaunch();
+        // 기동 준비를 기다리는 사이 dispose가 슬롯을 거뒀으면 자식을 띄우지 않는다 — 띄운 뒤 닫으면
+        // 그 짧은 순간 같은 Claude 세션을 이어 쓰는 다음 필자와 겹친다.
+        if (active !== reservation) throw new Error("This Claude gateway SDK instance has been disposed.");
         const session = runVendorSession({ options: vendorRunOptions(request, model, env) });
 
         // 세션의 슬롯은 `close()`로만 돌아온다. 턴과 달리 스트림이 스스로 끝나지 않기 때문이며,
