@@ -141,9 +141,10 @@
 .objectives-items { display: flex; flex-direction: column; gap: 5px; flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
 .objectives-empty { color: var(--text-tertiary); font-size: var(--t-sm); padding: 24px 8px; text-align: center; }
 .objectives-item {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 6px;
   align-items: center;
   padding: 8px 10px;
   border: 1px solid var(--surface-rim);
@@ -153,6 +154,14 @@
   position: relative;
   transition: border-color var(--duration-fast);
 }
+/* 좁은 카드에서 제목이 한 글자 세로줄로 무너지지 않게 — 가운데 칸이 0까지 눌리면
+   오른쪽 묶음이 제목 아래 줄로 내려간다(고정 px 분기 없이 내용 폭에 따라 접힘).
+   넓은 폭에서는 이전과 같은 한 줄 배치가 유지된다. */
+.objectives-item > .objectives-check { flex: none; margin-inline: 3px; }
+.objectives-item > .objectives-check-tip { flex: none; width: 22px; }
+.objectives-item-body { flex: 1 1 160px; min-width: 0; }
+.objectives-item-side { min-width: 0; max-width: 100%; margin-left: auto; }
+.objectives-item-side > .objectives-goto, .objectives-item-side > .objectives-star { flex: none; }
 .objectives-item:hover { border-color: var(--hairline-strong); }
 .objectives-item:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-item[aria-selected="true"] { border-color: var(--brass); }
@@ -616,7 +625,10 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-assign-new span { color: var(--text-tertiary); font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); }
 
 /* 카드 오른쪽의 모델·강도 */
-.objectives-item-launch { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); white-space: nowrap; }
+.objectives-item-launch { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); white-space: nowrap; }
+/* 긴 모델명은 줄임표로 접는다 — 글리프·강도는 자리를 지킨다. 풀네임은 title. */
+.objectives-item-launch > .objectives-item-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-item-launch > b, .objectives-item-launch > .objectives-item-view { flex: none; }
 .objectives-item-launch b { font-weight: var(--weight-medium); color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary)); text-transform: uppercase; }
 .objectives-item-launch i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); }
 .objectives-item-launch.is-awaiting i { background: var(--warn); }

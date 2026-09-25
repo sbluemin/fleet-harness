@@ -452,7 +452,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                     </span>
                   ); })()
                   : <button type="button" className={`objectives-check${item.done ? " is-on" : ""}`} aria-label={t(item.done ? "objectives.item.reopen" : "objectives.item.complete")} disabled={busy} onClick={(event) => { event.stopPropagation(); void completeItem(item); }}><CheckGlyph /></button>}
-                <div>
+                <div className="objectives-item-body">
                   <div className="objectives-item-title">{item.title}</div>
                   <div className="objectives-item-meta">
                     {item.steps.length ? <span>✓ {item.steps.filter((step) => step.done).length}/{item.steps.length}</span> : null}
@@ -554,7 +554,7 @@ function LaunchWords({ item, t, rows, autoLabel, defaultLabel, state }: { item: 
   return (
     <span className={`objectives-item-launch${state ? ` is-${state}` : ""}`} title={`${words.model} · ${words.effort}`}>
       {item.commander.viewMode === "chat" ? <span className="objectives-item-view" role="img" aria-label={startViewLabel(t, "chat")} title={startViewLabel(t, "chat")}><StartViewGlyph view="chat" /></span> : null}
-      <span>{words.model}</span>
+      <span className="objectives-item-model">{words.model}</span>
       <b>{words.effort}</b>
     </span>
   );
