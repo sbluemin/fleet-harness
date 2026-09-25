@@ -530,6 +530,10 @@ span.objectives-row-main { cursor: default; }
 .objectives-comp .objectives-start { border: 0; border-top: 1px solid color-mix(in oklch, var(--brass) 22%, transparent); border-radius: 0; }
 .objectives-comp.is-stop .objectives-start { border-top-color: color-mix(in oklch, var(--coral) 22%, transparent); }
 .objectives-graph-wrap { padding: 2px 20px 8px 22px; }
+/* 그래프 도구 — 그래프 상자 안 오른쪽 위에 선다. 상자는 위쪽에 도구 줄만큼 자리를 비워 노드·제목과 겹치지 않는다. 확대본(포털)은 이 틀 밖이다. */
+.objectives-graph-frame { position: relative; }
+.objectives-graph-tools { position: absolute; top: 4px; right: 5px; z-index: 1; display: inline-flex; align-items: center; gap: 4px; }
+.objectives-graph-frame .objectives-dag-box { padding-top: 30px; }
 /* 조율자 모델·강도·표면 — 한 줄의 글. 누르면 캔버스 우클릭 메뉴와 같은 문법의 메뉴가 뜬다(글래스 언더레이·모노 xs·브라스 활성). */
 .objectives-launch { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; margin-left: -6px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.04em; cursor: pointer; }
 .objectives-launch:hover, .objectives-launch[aria-expanded="true"] { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 10%, transparent); }

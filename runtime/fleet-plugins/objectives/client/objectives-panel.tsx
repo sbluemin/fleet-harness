@@ -34,8 +34,6 @@ const StarGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColo
 const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" /></svg>;
 /** 브리핑 — 봉인된 작전 명령서. 문서 오른쪽 아래 모서리를 인장이 대신한다. */
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
-/** 임무 — 차례로 선 할 일. */
-const MissionsGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.6" cy="4" r="1.5" /><circle cx="3.6" cy="8" r="1.5" /><circle cx="3.6" cy="12" r="1.5" /><path d="M7 4h6.5M7 8h6.5M7 12h4.5" /></svg>;
 const MoreGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" /><circle cx="8" cy="8" r="1.2" /><circle cx="12.5" cy="8" r="1.2" /></svg>;
 
 function todayIso(): string { return new Date().toISOString().slice(0, 10); }
@@ -788,9 +786,9 @@ function LineupZoom({ t, title, onClose, children }: { readonly t: Translate<Obj
   }, []);
   return (
     <div className="objectives-zoom-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={cardRef} className="objectives-zoom" role="dialog" aria-modal="true" aria-label={`${t("objectives.graph.title")} · ${title}`} tabIndex={-1}>
+      <div ref={cardRef} className="objectives-zoom" role="dialog" aria-modal="true" aria-label={`${t("objectives.steps.title")} · ${title}`} tabIndex={-1}>
         <div className="objectives-zoom-head">
-          <span className="objectives-zoom-title">{t("objectives.graph.title")}<span className="objectives-zoom-item">{title}</span></span>
+          <span className="objectives-zoom-title">{t("objectives.steps.title")}<span className="objectives-zoom-item">{title}</span></span>
           <button type="button" className="objectives-glyph" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={onClose}><CloseGlyph /></button>
         </div>
         {children}
@@ -1225,10 +1223,11 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         </div>
       </div>
 
-      {/* 임무 — 편성 순. 머리 오른쪽은 완료 셈이고, 접혀도 남는다(접힌 임무에 안 읽은 기록이 있으면 셈 앞에 점 하나). */}
+      {/* 임무 — 목록과 편성 그래프를 한 섹션에 둔다. 머리 오른쪽은 완료 셈이고, 접혀도 남는다(접힌 임무에 안 읽은 기록이 있으면 셈 앞에 점 하나).
+          머리를 접으면 목록과 추가 입력만 접히고, 그래프는 접지 않는다 — 접어도 진행이 한눈에 보인다. 임무가 없으면 그래프는 서지 않는다. */}
       <div className="objectives-group objectives-missions-group">
         <SectionHead
-          glyph={<MissionsGlyph />}
+          glyph={<GraphGlyph />}
           label={t("objectives.steps.title")}
           tools={missionsCollapsible ? <>
             {!missionsOpen && unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.steps.unseen")} /> : null}
@@ -1290,34 +1289,29 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
             </div>
           ) : null}
         </div>
-      </div>
-
-      {/* 편성 — 임무의 순서와 담당. 접지 않는다. 임무가 없으면 서지 않는다. */}
-      {item.steps.length > 0 ? (
-        <div className="objectives-group">
-          <SectionHead
-            glyph={<GraphGlyph />}
-            label={t("objectives.graph.title")}
-            tools={<>
-              {item.steps.length > 1 && editable ? <>
-                <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/linear", { itemId: item.id })) toast(t("objectives.toast.linear")); }}>{t("objectives.graph.linear")}</button>
-                <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/clear", { itemId: item.id })) toast(t("objectives.toast.parallel")); }}>{t("objectives.graph.parallel")}</button>
-              </> : null}
-              <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>
-            </>}
-          />
+        {item.steps.length > 0 ? (
           <div className="objectives-graph-wrap">
-            <div className="objectives-graph-horizontal"><CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
-            <div className="objectives-graph-vertical"><CoordinationGraph vertical item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
+            {/* 그래프 도구는 그래프 상자 안 오른쪽 위 — 확대가 맨 끝, 일렬·병렬은 그 왼쪽. */}
+            <div className="objectives-graph-frame">
+              <div className="objectives-graph-tools">
+                {item.steps.length > 1 && editable ? <>
+                  <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/linear", { itemId: item.id })) toast(t("objectives.toast.linear")); }}>{t("objectives.graph.linear")}</button>
+                  <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/clear", { itemId: item.id })) toast(t("objectives.toast.parallel")); }}>{t("objectives.graph.parallel")}</button>
+                </> : null}
+                <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>
+              </div>
+              <div className="objectives-graph-horizontal"><CoordinationGraph item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
+              <div className="objectives-graph-vertical"><CoordinationGraph vertical item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} /></div>
+            </div>
           </div>
-          {zoomOpen ? createPortal(
-            <LineupZoom t={t} title={item.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}>
-              <CoordinationGraph zoom item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} />
-            </LineupZoom>,
-            document.body,
-          ) : null}
-        </div>
-      ) : null}
+        ) : null}
+        {zoomOpen && item.steps.length > 0 ? createPortal(
+          <LineupZoom t={t} title={item.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}>
+            <CoordinationGraph zoom item={item} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} canEdit={canEditStep} focusStepId={focusStep} onFocusStep={setFocusStep} />
+          </LineupZoom>,
+          document.body,
+        ) : null}
+      </div>
 
       </div>
       <div className="objectives-detail-bottom">
