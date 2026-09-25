@@ -604,8 +604,6 @@ span.objectives-row-main { cursor: default; }
 
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
 .objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
-.objectives-members-heading { display: flex; gap: 7px; align-items: baseline; padding: 8px 20px 4px 22px; font: var(--weight-medium) var(--t-xs)/1.4 var(--font-body); color: var(--text-tertiary); }
-.objectives-members-heading span { color: var(--text-secondary); }
 .objectives-members-empty { margin: 0; padding: 5px 20px 9px 22px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
 .objectives-member { display: flex; align-items: flex-start; gap: 10px; min-height: 50px; padding: 6px 14px 6px 22px; }
 .objectives-member > .objectives-member-mark { margin-top: 3px; }

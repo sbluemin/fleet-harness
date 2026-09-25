@@ -3677,8 +3677,7 @@
 .canvas-operation-cluster-row {
   position: relative;
   z-index: 5;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(48px, 30%, 240px);
+  display: flex;
   align-items: center;
   min-width: 0;
   height: 26px;
@@ -3689,15 +3688,17 @@
 }
 
 .canvas-operation-cluster-progress {
-  grid-column: 2;
   display: flex;
+  flex: 0 1 auto;
   justify-content: flex-end;
   min-width: 0;
+  max-width: min(30%, 240px);
 }
 
 .cluster-node-rail {
   position: relative;
   display: flex;
+  flex: 1 1 0;
   align-items: center;
   gap: 2px;
   min-width: 0;
@@ -3764,6 +3765,44 @@
   border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent);
   background: color-mix(in oklch, var(--brass) 14%, transparent);
   cursor: default;
+}
+
+/* 글리프 폭은 고정하고 이름은 스크롤 영역 밖의 말풍선에 표시한다. */
+.cluster-node-tab.is-member,
+.cluster-node-tab.is-commander {
+  gap: 0;
+  padding: 0 6px;
+}
+
+.cluster-node-tooltip {
+  position: fixed;
+  z-index: 1200;
+  max-width: min(240px, calc(100vw - 16px));
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised);
+  color: var(--text-primary);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 12%);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-3px);
+  transition: opacity 160ms ease, transform 180ms var(--ease-glide), visibility 0s 180ms;
+}
+.cluster-node-tooltip.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition-delay: 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cluster-node-tooltip { transition: none; transform: none; }
 }
 
 .cluster-node-div {
@@ -3850,144 +3889,62 @@
   to { scale: 1; opacity: 1; }
 }
 
-/* +N 더보기 버튼 및 팝오버 메뉴 */
-.cluster-node-more {
-  flex: none;
-  display: inline-flex;
+/* 지휘관·임무 칩 사이의 구성원만 가로로 이동한다. */
+.cluster-node-members {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 6px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
-  cursor: pointer;
-  margin-left: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 25px;
 }
 
-.cluster-node-more:hover,
-.cluster-node-more[aria-expanded="true"] {
-  color: var(--text-primary);
-  background: color-mix(in oklch, var(--text-secondary) 9%, transparent);
+.cluster-node-viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
 }
+.cluster-node-viewport::-webkit-scrollbar { display: none; }
 
-.cluster-node-more.has-awaiting {
-  border-color: color-mix(in oklch, var(--aurora) 40%, transparent);
-  background: color-mix(in oklch, var(--aurora) 7%, transparent);
-  color: var(--text-secondary);
-}
-.cluster-node-more.has-awaiting:hover,
-.cluster-node-more.has-awaiting[aria-expanded="true"] {
-  background: color-mix(in oklch, var(--aurora) 12%, transparent);
-}
-.cluster-node-await-mark {
-  display: none;
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 1.5px;
-  transform: rotate(45deg);
-  background: var(--aurora);
-}
-.cluster-node-more.has-awaiting .cluster-node-await-mark { display: block; }
-/* 실제 +N의 자릿수·대기 표식을 미리 재되, 레일 배치와 접근성 트리에는 참여하지 않는다. */
-.cluster-node-more-measure {
-  position: absolute;
-  left: 0;
-  top: 0;
+.cluster-node-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   width: max-content;
-  margin-left: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-.cluster-node-more-measure .cluster-node-await-mark { display: block; }
-
-.cluster-node-more.is-current {
-  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
-  color: var(--text-primary);
+  height: 25px;
 }
 
-.cluster-node-more svg {
-  width: 8px;
-  height: 8px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.6;
-}
-
-.cluster-node-overflow-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 8px;
-  z-index: 20;
-  min-width: 180px;
-  max-width: 260px;
-  padding: 4px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel-raised);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.cluster-node-overflow-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 26px;
-  padding: 0 8px;
+.cluster-node-scroll {
+  flex: 0 0 20px;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
-  text-align: left;
+  color: var(--text-secondary);
   cursor: pointer;
-  width: 100%;
-  box-sizing: border-box;
 }
-
-.cluster-node-overflow-item:hover {
-  background: color-mix(in oklch, var(--text-secondary) 9%, transparent);
+.cluster-node-scroll[hidden] { display: none; }
+.cluster-node-scroll svg { width: 12px; height: 12px; }
+.cluster-node-scroll:hover:not([aria-disabled="true"]) {
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
 }
-
-.cluster-node-overflow-item.is-awaiting:not(.is-current) {
+.cluster-node-scroll:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 65%, transparent);
+  outline-offset: -1px;
+}
+.cluster-node-scroll[aria-disabled="true"] { opacity: 0.3; cursor: default; }
+.cluster-node-scroll.has-awaiting {
   border-color: color-mix(in oklch, var(--aurora) 40%, transparent);
-  background: color-mix(in oklch, var(--aurora) 7%, transparent);
-}
-.cluster-node-overflow-item.is-awaiting:not(.is-current):hover {
-  background: color-mix(in oklch, var(--aurora) 12%, transparent);
-}
-.cluster-node-overflow-item.is-current {
-  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
-}
-
-.cluster-node-overflow-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cluster-node-overflow-state {
-  flex: none;
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-}
-
-.cluster-node-overflow-state.is-awaiting {
   color: var(--aurora);
-  font-weight: var(--weight-bold);
 }
+
 .canvas-triage-clear {
   position: absolute;
   /* 덱과 같은 아레나 기준 — 전면 캔버스에서 박스 기준 인셋은 CLEAR 카피를 프레임 중심이
@@ -6956,10 +6913,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 @media (forced-colors: active) {
   .cluster-node-tab.is-awaiting:not(.is-current),
-  .cluster-node-more.has-awaiting,
-  .cluster-node-overflow-item.is-awaiting:not(.is-current) { border-color: Highlight; }
-  .cluster-member-status.is-awaiting,
-  .cluster-node-await-mark { background: Highlight; forced-color-adjust: none; }
+  .cluster-node-scroll.has-awaiting { border-color: Highlight; }
+  .cluster-member-status.is-awaiting { background: Highlight; forced-color-adjust: none; }
 }
 
 /* 사이드바 칩의 셋째 줄 — 이름·위치 줄 아래 왼쪽 정렬. 띠 자체의 안쪽 여백만큼 물려 사각의 왼끝이 글자 왼끝과 맞는다. */

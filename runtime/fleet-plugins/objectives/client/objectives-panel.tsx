@@ -664,7 +664,7 @@ function CommanderMark() {
   return <span className="objectives-member-mark is-commander" aria-hidden="true"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2.2l1.75 3.55 3.92.57-2.84 2.77.67 3.9L8 11.15l-3.5 1.84.67-3.9-2.84-2.77 3.92-.57z" /></svg></span>;
 }
 
-function MemberRoster({ objective, t, call, request, operationState, rows, touchable }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean }) {
+function MemberRoster({ objective, t, call, request, operationState, rows, touchable, expanded, onToggle }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; expanded: boolean; onToggle: () => void }) {
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
   const remove = (member: ObjectiveMember) => void call("/member/remove", { objectiveId: objective.id, memberId: member.id });
   const saving = useRef(new Set<string>());
@@ -699,7 +699,9 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     else if (event.key === "Escape") { event.currentTarget.value = original; event.currentTarget.blur(); }
   };
   return <div className="objectives-members">
-    <div className="objectives-members-heading">{t("objectives.members.title")} <span>{objective.members.length}</span></div>
+    <SectionHead glyph={<CoordGlyph />} label={t("objectives.members.title")} tools={<span>{objective.members.length}</span>}
+      {...(objective.members.length > 0 ? { controls: "objectives-sec-members", expanded, onToggle } : {})} />
+    <div id="objectives-sec-members" hidden={!expanded}>
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
     {objective.members.map((member, index) => {
       const count = objective.missions.filter((mission) => mission.member === member.id).length;
@@ -745,6 +747,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         <input aria-label={t("objectives.members.add")} placeholder={t("objectives.members.add")} maxLength={40} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const role = target.value.trim(); target.value = ""; void call("/member/add", { objectiveId: objective.id, member: { role } }); } }} />
       </div>
     ) : null}
+    </div>
     <p className="objectives-sr" aria-live="polite">{announce}</p>
   </div>;
 }
@@ -795,7 +798,7 @@ function OpChip({ state, label, title, onRemove, removeLabel }: { state: string;
   );
 }
 
-type DetailSection = "detail:criteria" | "detail:missions" | "detail:followups";
+type DetailSection = "detail:criteria" | "detail:missions" | "detail:followups" | "detail:members";
 
 interface DetailProps {
   readonly objective: Objective;
@@ -812,7 +815,7 @@ interface DetailProps {
   readonly operationOwnState: (operationId: string) => string;
   readonly busy: boolean;
   readonly request: (path: string, body: Record<string, unknown>) => Promise<unknown>;
-  /** 상세 섹션 접힘 — 보기 상태(Theater별)에 산다. 키는 `detail:criteria`·`detail:missions`, 기본은 펼침. */
+  /** 상세 섹션 접힘 — Theater별 메모리 보기 상태에 보존하며 기본은 펼침. */
   readonly sectionOpen: (key: DetailSection) => boolean;
   readonly onToggleSection: (key: DetailSection) => void;
   readonly onOpenSection: (key: DetailSection) => void;
@@ -1298,7 +1301,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           </span>
           <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} viewMode={objective.commander.viewMode ?? "terminal"} onViewChange={(viewMode) => void call("/objective/patch", { objectiveId: objective.id, patch: { launch: { viewMode } } })} locked={locked || !editable} onChange={(next) => void call("/objective/patch", { objectiveId: objective.id, patch: { launch: next } })} />
         </div>
-        <MemberRoster objective={objective} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable} />
+        <MemberRoster objective={objective} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable}
+          expanded={objective.members.length === 0 || sectionOpen("detail:members")} onToggle={() => onToggleSection("detail:members")} />
       </div>
 
       {/* 브리핑 — 사람이 쓴 요구. 붙이는 입구는 머리의 첨부 글리프이고, 첨부 띠는 이미지가 있을 때만 본문 위에 선다.

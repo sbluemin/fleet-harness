@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 
 import type { OperationClusterMember, OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
@@ -16,210 +17,188 @@ const CoordGlyph = () => (
   </svg>
 );
 
-const ChevDown = () => (
-  <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true">
-    <path d="M2 3.5l3 3 3-3" />
-  </svg>
-);
-
 const TONE_ORDER: readonly string[] = ["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"];
-const EMPTY_HIDDEN_IDS: ReadonlySet<string> = new Set();
 /** 생략한 구형 생산자만 progress를 대기 신호로 사용한다. 명시 false는 우선한다. */
 const awaitingInput = (member: OperationClusterMember): boolean => member.awaitingInput ?? member.progress === "awaiting";
 const chipProgress = (member: OperationClusterMember): OperationClusterProgress =>
   awaitingInput(member) ? "awaiting" : member.progress === "awaiting" ? "open" : member.progress;
 
-/**
- * 본문 위 세션 줄 — 캡션 바로 아래 frame 흐름 안에 26px 높이로 서는 가로 탭 줄.
- * WAI-ARIA APG 수동 활성화(Manual Activation) 방식:
- * 방향키(←/→/Home/End)는 탭 사이의 포커스(roving tabindex)만 이동하며, 본문은 바꾸지 않는다.
- * 클릭이나 Enter/Space 입력 시에만 활성화(onPick)되어 본문 전환 및 터미널 포커스가 일어난다.
- */
+/** 방향키는 포커스만 옮기고 클릭·Enter·Space만 본문을 전환하는 수동 활성화 탭 줄. */
 export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   readonly layout: ClusterLayout;
-  /** 지금 지휘관 패널이 보이는 세션 — 지휘관 자신이면 뿌리 id. */
   readonly current: string;
   readonly rootActivity: RootActivity;
   readonly onPick: (operationId: string) => void;
 }) {
   const t = useT();
   const railRef = useRef<HTMLDivElement | null>(null);
-  const commanderTabRef = useRef<HTMLButtonElement | null>(null);
-  const moreBtnRef = useRef<HTMLButtonElement | null>(null);
-  const moreMeasureRef = useRef<HTMLSpanElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(EMPTY_HIDDEN_IDS);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [focusedId, setFocusedId] = useState<string>(current);
-  const naturalWidthsRef = useRef(new Map<string, number>());
-
-  // current 변경 시 focusedId 도 동기화
-  useEffect(() => {
-    setFocusedId(current);
-  }, [current]);
-
+  const membersRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const scrollDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [focusedId, setFocusedId] = useState(current);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const tooltipAnchorRef = useRef<HTMLElement | null>(null);
+  const [tooltipName, setTooltipName] = useState("");
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [scrollState, setScrollState] = useState({ overflow: false, left: false, right: false, awaitingLeft: 0, awaitingRight: 0 });
   const root = layout.cluster.root;
-  // 구성원 세션 순서는 Objectives 명단(roster) 선언 순서를 따른다.
-  const nodes = useMemo(() => {
-    return layout.cluster.members
-      .map((member, index) => ({ member, n: index + 1 }))
-      .filter(({ member }) => layout.formation.byOperationId.has(member.operationId))
-      .sort((a, b) => {
-        if (a.member.order !== undefined && b.member.order !== undefined) {
-          return a.member.order - b.member.order;
-        }
-        if (a.member.tone && b.member.tone) {
-          return TONE_ORDER.indexOf(a.member.tone) - TONE_ORDER.indexOf(b.member.tone);
-        }
-        return a.n - b.n;
-      });
-  }, [layout.cluster.members, layout.formation.byOperationId]);
-
-  const nodesRef = useRef(nodes);
-  nodesRef.current = nodes;
-
-  const nodesKey = useMemo(
-    () => nodes.map((n) => `${n.member.operationId}:${awaitingInput(n.member)}:${n.member.name}:${n.member.order}`).join("|"),
-    [nodes],
-  );
-
+  const nodes = useMemo(() => layout.cluster.members
+    .map((member, index) => ({ member, n: index + 1 }))
+    .filter(({ member }) => layout.formation.byOperationId.has(member.operationId))
+    .sort((a, b) => {
+      if (a.member.order !== undefined && b.member.order !== undefined) return a.member.order - b.member.order;
+      if (a.member.tone && b.member.tone) return TONE_ORDER.indexOf(a.member.tone) - TONE_ORDER.indexOf(b.member.tone);
+      return a.n - b.n;
+    }), [layout.cluster.members, layout.formation.byOperationId]);
+  const nodesKey = nodes.map(({ member }) => `${member.operationId}:${member.name}:${awaitingInput(member)}`).join("|");
   const nodeName = (node: { readonly member: { readonly name?: string }; readonly n: number }) =>
     node.member.name ?? t("cluster.nodes.node", { n: node.n });
 
-  const applyHidden = (next: Set<string>) => {
-    setHiddenIds((prev) => {
-      if (prev.size === next.size && (prev.size === 0 || [...prev].every((id) => next.has(id)))) {
-        return prev;
-      }
-      return next;
-    });
+  const positionTooltip = () => {
+    const tooltip = tooltipRef.current;
+    const anchor = tooltipAnchorRef.current;
+    if (!tooltip || !anchor?.isConnected) return;
+    const rect = anchor.getBoundingClientRect();
+    tooltip.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - tooltip.offsetWidth - 8))}px`;
+    tooltip.style.top = `${rect.bottom + tooltip.offsetHeight + 6 <= window.innerHeight
+      ? rect.bottom + 5 : Math.max(8, rect.top - tooltip.offsetHeight - 5)}px`;
+  };
+  const showName = (anchor: HTMLElement, name: string) => {
+    tooltipAnchorRef.current = anchor;
+    setTooltipName(name);
+    setTooltipVisible(true);
+    positionTooltip();
+  };
+  useLayoutEffect(positionTooltip, [tooltipName, tooltipVisible]);
+  useEffect(() => {
+    const hide = () => setTooltipVisible(false);
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") hide(); };
+    window.addEventListener("resize", hide);
+    window.addEventListener("blur", hide);
+    window.addEventListener("pointerdown", hide, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("resize", hide);
+      window.removeEventListener("blur", hide);
+      window.removeEventListener("pointerdown", hide, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  const stopScroll = () => {
+    if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+    if (scrollDelayRef.current !== null) clearTimeout(scrollDelayRef.current);
+    scrollFrameRef.current = null;
+    scrollDelayRef.current = null;
   };
 
-  // 폭 측정 및 +N 접힘 계산
+  const keepVisible = (tab: HTMLElement) => {
+    const viewport = viewportRef.current;
+    if (!viewport || !trackRef.current?.contains(tab)) return;
+    if (tab.offsetLeft < viewport.scrollLeft) viewport.scrollLeft = tab.offsetLeft;
+    else if (tab.offsetLeft + tab.offsetWidth > viewport.scrollLeft + viewport.clientWidth) {
+      viewport.scrollLeft = tab.offsetLeft + tab.offsetWidth - viewport.clientWidth;
+    }
+  };
+
+  const measureScroll = () => {
+    const members = membersRef.current;
+    const viewport = viewportRef.current;
+    const track = trackRef.current;
+    if (!members || !viewport || !track) return;
+    const end = viewport.scrollLeft + viewport.clientWidth;
+    const awaiting = Array.from(track.querySelectorAll<HTMLElement>(".is-awaiting"));
+    // 화살표를 제외한 전체 가용 폭과 비교해야 표시 자체가 overflow를 유지하지 않는다.
+    const next = {
+      overflow: track.scrollWidth > members.clientWidth + 1,
+      left: viewport.scrollLeft > 1,
+      right: viewport.scrollWidth - end > 1,
+      awaitingLeft: awaiting.filter((tab) => tab.offsetLeft < viewport.scrollLeft - 1).length,
+      awaitingRight: awaiting.filter((tab) => tab.offsetLeft + tab.offsetWidth > end + 1).length,
+    };
+    setScrollState((prev) => Object.keys(next).every((key) => prev[key as keyof typeof next] === next[key as keyof typeof next]) ? prev : next);
+  };
+
   useLayoutEffect(() => {
-    const rail = railRef.current;
-    if (!rail) return;
-
-    const measure = () => {
-      const railWidth = rail.clientWidth;
-      if (railWidth <= 0) return;
-      const currentNodes = nodesRef.current;
-
-      const tabEls = Array.from(rail.querySelectorAll<HTMLElement>("[data-member-op-id]"));
-      for (const el of tabEls) {
-        const opId = el.dataset.memberOpId;
-        if (opId && el.offsetWidth > 0) {
-          naturalWidthsRef.current.set(opId, el.offsetWidth);
-        }
-      }
-
-      const commanderWidth = commanderTabRef.current?.offsetWidth || 76;
-      const dividerWidth = 7;
-      const padding = 16;
-      const baseWidth = commanderWidth + dividerWidth + padding;
-
-      // 1단계: 모든 탭이 +N 버튼 없이 전부 들어가는지 먼저 확인
-      let totalNeeded = baseWidth;
-      for (const node of currentNodes) {
-        const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
-        totalNeeded += w + 2;
-      }
-
-      if (totalNeeded <= railWidth) {
-        applyHidden(EMPTY_HIDDEN_IDS as Set<string>);
-        return;
-      }
-
-      // 2단계: 다 들어가지 않는 경우 — 숨은 수의 자릿수와 대기 표식을 모두 포함한 +N 최대 폭을 확보한다.
-      // 우선순위:
-      // 1) 지휘관 (baseWidth 에 포함)
-      // 2) 허용 요청(awaiting) 탭 (반드시 포함)
-      // 3) 현재 선택된 탭(current) (반드시 포함)
-      // 4) 현재 포커스된 탭(focusedId) (가능하면 포함)
-      // 실제 버튼의 hidden 수/has-awaiting에 따라 폭이 왕복하지 않도록, 같은 글꼴·패딩의
-      // 비표시 측정 칸에서 최대 숨김 수와 대기 표식을 고정해 읽는다. 뒤의 2px은 rail gap.
-      const moreWidth = Math.ceil(moreMeasureRef.current?.getBoundingClientRect().width ?? 44) + 2;
-      const hidden = new Set<string>();
-
-      let reservedForPriority = 0;
-      for (const node of currentNodes) {
-        const isPriority = awaitingInput(node.member) || node.member.operationId === current;
-        if (isPriority) {
-          const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
-          reservedForPriority += w + 2;
-        }
-      }
-
-      if (baseWidth + reservedForPriority + moreWidth > railWidth) {
-        // 필수 유지 탭마저도 가용 폭을 넘는 극단적인 경우: 허용 요청 탭부터 들어가는 만큼만 남기고,
-        // 남은 자리에 나머지를 순서대로 채운다. 넘긴 허용 요청은 +N 버튼의 has-awaiting 표시가 대신 알린다.
-        const avail = railWidth - baseWidth - moreWidth;
-        let acc = 0;
-        const awaitingFirst = [
-          ...currentNodes.filter((node) => awaitingInput(node.member)),
-          ...currentNodes.filter((node) => !awaitingInput(node.member)),
-        ];
-        for (const node of awaitingFirst) {
-          const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
-          if (acc + w > avail) {
-            hidden.add(node.member.operationId);
-          } else {
-            acc += w + 2;
-          }
-        }
-      } else {
-        // 일반적인 경우: awaiting 과 current 는 무조건 남기고, 나머지 비우선순위 탭만 뒤에서부터 넘긴다
-        const availableForRest = railWidth - baseWidth - reservedForPriority - moreWidth;
-        let acc = 0;
-        for (const node of currentNodes) {
-          const isPriority = awaitingInput(node.member) || node.member.operationId === current;
-          if (isPriority) continue;
-          const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
-          if (acc + w > availableForRest) {
-            hidden.add(node.member.operationId);
-          } else {
-            acc += w + 2;
-          }
-        }
-      }
-
-      applyHidden(hidden);
-    };
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(rail);
-    if (moreMeasureRef.current) observer.observe(moreMeasureRef.current);
+    const track = trackRef.current;
+    const members = membersRef.current;
+    const viewport = viewportRef.current;
+    if (!track || !members || !viewport) return;
+    measureScroll();
+    const observer = new ResizeObserver(measureScroll);
+    observer.observe(members);
+    observer.observe(viewport);
+    observer.observe(track);
     return () => observer.disconnect();
-  }, [nodesKey, current]);
+  }, [nodesKey]);
 
-  // 바깥 클릭 / Escape 로 +N 팝오버 닫기
+  useLayoutEffect(() => {
+    setFocusedId(current);
+    setTooltipVisible(false);
+    const tab = Array.from(trackRef.current?.querySelectorAll<HTMLElement>("[data-member-op-id]") ?? [])
+      .find((candidate) => candidate.dataset.memberOpId === current);
+    if (tab) keepVisible(tab);
+  }, [current, nodesKey]);
+
   useEffect(() => {
-    if (!moreOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!menuRef.current?.contains(target) && !moreBtnRef.current?.contains(target)) {
-        setMoreOpen(false);
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMoreOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKey, true);
-    };
-  }, [moreOpen]);
+    window.addEventListener("blur", stopScroll);
+    return () => { stopScroll(); window.removeEventListener("blur", stopScroll); };
+  }, []);
+
+  const startScroll = (direction: -1 | 1) => {
+    stopScroll();
+    // 클릭 전에 움직이지 않게 짧게 기다린 뒤, hover 동안만 연속 이동한다.
+    scrollDelayRef.current = setTimeout(() => {
+      scrollDelayRef.current = null;
+      let last = performance.now();
+      const tick = (now: number) => {
+        const viewport = viewportRef.current;
+        if (!viewport) return;
+        viewport.scrollLeft += direction * Math.min(now - last, 40) * 0.18;
+        last = now;
+        if ((direction === -1 && viewport.scrollLeft <= 0)
+          || (direction === 1 && viewport.scrollLeft >= viewport.scrollWidth - viewport.clientWidth - 1)) {
+          stopScroll();
+          return;
+        }
+        scrollFrameRef.current = requestAnimationFrame(tick);
+      };
+      scrollFrameRef.current = requestAnimationFrame(tick);
+    }, 180);
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
+    const index = tabs.indexOf(event.currentTarget);
+    let next: HTMLButtonElement | undefined;
+    if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length];
+    else if (event.key === "ArrowLeft") next = tabs[(index - 1 + tabs.length) % tabs.length];
+    else if (event.key === "Home") next = tabs[0];
+    else if (event.key === "End") next = tabs[tabs.length - 1];
+    else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      const id = event.currentTarget.dataset.memberOpId ?? root;
+      setFocusedId(id);
+      onPick(id);
+      return;
+    }
+    if (next) {
+      event.preventDefault();
+      next.focus({ preventScroll: true });
+      setFocusedId(next.dataset.memberOpId ?? root);
+      keepVisible(next);
+    }
+  };
 
   if (nodes.length === 0) return null;
-
   const chefLabel = t("cluster.picker.coordinator");
   const currentNode = nodes.find(({ member }) => member.operationId === current);
-  const currentLabel = currentNode ? nodeName(currentNode) : chefLabel;
-
+  const chefTip = rootActivity ? `${chefLabel} · ${t(`cluster.picker.activity.${rootActivity}`)}` : chefLabel;
+  const showingSuffix = ` · ${t("cluster.nodes.current")}`;
+  const ids = [root, ...nodes.map(({ member }) => member.operationId)];
+  const activeFocusId = ids.includes(focusedId) ? focusedId : ids.includes(current) ? current : root;
   const stateWord = (progress: OperationClusterProgress): string | null => {
     if (progress === "done") return t("cluster.nodes.state.done");
     if (progress === "running") return t("cluster.picker.state.running");
@@ -227,183 +206,82 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
     if (progress === "open") return t("cluster.picker.state.open");
     return null;
   };
-
-  const chefTip = rootActivity ? `${chefLabel} · ${t(`cluster.picker.activity.${rootActivity}`)}` : chefLabel;
-  const showingSuffix = ` · ${t("cluster.nodes.current")}`;
-
-  const stop = (event: ReactPointerEvent) => event.stopPropagation();
-
-  // W3C ARIA Tablist 수동 활성화: 방향키는 탭 간 포커스만 이동, Enter/Space 는 본문 전환
-  const onKeyDown = (event: ReactKeyboardEvent) => {
-    if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-      event.preventDefault();
-      const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
-      const currentIndex = tabs.indexOf(event.currentTarget as HTMLButtonElement);
-      if (currentIndex >= 0) {
-        const delta = event.key === "ArrowRight" ? 1 : -1;
-        const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
-        const nextTab = tabs[nextIndex];
-        if (nextTab) {
-          nextTab.focus();
-          const nextId = nextTab.dataset.memberOpId ?? root;
-          setFocusedId(nextId);
-        }
-      }
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
-      const firstTab = tabs[0];
-      if (firstTab) {
-        firstTab.focus();
-        setFocusedId(root);
-      }
-    } else if (event.key === "End") {
-      event.preventDefault();
-      const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
-      const lastTab = tabs[tabs.length - 1];
-      if (lastTab) {
-        lastTab.focus();
-        const lastId = lastTab.dataset.memberOpId ?? root;
-        setFocusedId(lastId);
-      }
-    } else if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      const targetOpId = (event.currentTarget as HTMLElement).dataset.memberOpId ?? root;
-      setFocusedId(targetOpId);
-      onPick(targetOpId);
-    }
+  const scrollButton = (direction: -1 | 1) => {
+    const enabled = direction === -1 ? scrollState.left : scrollState.right;
+    const awaiting = direction === -1 ? scrollState.awaitingLeft : scrollState.awaitingRight;
+    const label = t(direction === -1 ? "cluster.nodes.scrollLeft" : "cluster.nodes.scrollRight");
+    return <button
+      type="button"
+      hidden={!scrollState.overflow}
+      className={`cluster-node-scroll${awaiting ? " has-awaiting" : ""}`}
+      aria-label={awaiting ? `${label} · ${t("cluster.nodes.scrollAwaiting", { count: awaiting })}` : label}
+      aria-disabled={!enabled}
+      onPointerEnter={(event) => { if (enabled && event.pointerType === "mouse") startScroll(direction); }}
+      onPointerLeave={stopScroll}
+      onPointerDown={stopScroll}
+      onPointerCancel={stopScroll}
+      onClick={() => {
+        stopScroll();
+        const viewport = viewportRef.current;
+        if (enabled && viewport) viewport.scrollBy({ left: direction * Math.max(80, viewport.clientWidth * 0.65), behavior: "instant" });
+      }}
+    >
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true">
+        <path d={direction === -1 ? "M8 2 4 6l4 4" : "m4 2 4 4-4 4"} />
+      </svg>
+    </button>;
   };
 
-  const hiddenNodes = nodes.filter(({ member }) => hiddenIds.has(member.operationId));
-  const hiddenCount = hiddenNodes.length;
-  const hiddenAwaitingCount = hiddenNodes.filter(({ member }) => awaitingInput(member)).length;
-  const moreHasAwaiting = hiddenAwaitingCount > 0;
-  const moreHasCurrent = hiddenNodes.some(({ member }) => member.operationId === current);
-
-  // Roving tabindex: 포커스된 탭이 가시 영역에 있으면 그 탭이 tabIndex=0, 없으면 current(가시 시) 또는 root 가 0
-  const visibleOpIds = [root, ...nodes.filter((n) => !hiddenIds.has(n.member.operationId)).map((n) => n.member.operationId)];
-  const activeFocusId = visibleOpIds.includes(focusedId) ? focusedId : (visibleOpIds.includes(current) ? current : root);
-
   return (
-    <div
-      ref={railRef}
-      className="cluster-node-rail"
-      role="tablist"
-      aria-label={t("cluster.nodes.aria", { current: currentLabel })}
-      onPointerDown={stop}
-      data-canvas-blocker
-    >
-      <span ref={moreMeasureRef} className="cluster-node-more cluster-node-more-measure" aria-hidden="true">
-        <i className="cluster-node-await-mark" aria-hidden="true" />
-        <span>+{nodes.length}</span>
-        <ChevDown />
-      </span>
-      <button
-        ref={commanderTabRef}
-        type="button"
-        role="tab"
-        className={`cluster-node-tab${current === root ? " is-current" : ""}${rootActivity === "awaiting" ? " is-awaiting" : ""}`}
-        aria-selected={current === root}
-        tabIndex={activeFocusId === root ? 0 : -1}
-        title={chefTip}
+    <div ref={railRef} className="cluster-node-rail" role="tablist"
+      aria-label={t("cluster.nodes.aria", { current: currentNode ? nodeName(currentNode) : chefLabel })}
+      onPointerDown={(event) => event.stopPropagation()} data-canvas-blocker>
+      <button type="button" role="tab"
+        className={`cluster-node-tab is-commander${current === root ? " is-current" : ""}${rootActivity === "awaiting" ? " is-awaiting" : ""}`}
+        aria-selected={current === root} tabIndex={activeFocusId === root ? 0 : -1}
         aria-label={current === root ? chefTip + showingSuffix : chefTip}
-        onClick={() => {
-          setFocusedId(root);
-          onPick(root);
-        }}
-        onKeyDown={onKeyDown}
-      >
-        <span className="cluster-member-glyph is-commander" aria-hidden="true">
-          <CoordGlyph />
-          <i className={`cluster-member-status is-${rootActivity ?? "unknown"}`} />
-        </span>
-        <span>{chefLabel}</span>
+        onPointerEnter={(event) => { if (event.pointerType !== "touch") showName(event.currentTarget, chefLabel); }}
+        onPointerLeave={(event) => { if (!event.currentTarget.matches(":focus-visible")) setTooltipVisible(false); }}
+        onFocus={(event) => showName(event.currentTarget, chefLabel)}
+        onBlur={() => setTooltipVisible(false)}
+        onClick={() => { setFocusedId(root); onPick(root); }} onKeyDown={onKeyDown}>
+        <span className="cluster-member-glyph is-commander" aria-hidden="true"><CoordGlyph /><i className={`cluster-member-status is-${rootActivity ?? "unknown"}`} /></span>
       </button>
       <span className="cluster-node-div" aria-hidden="true" />
-      {nodes.map((node) => {
-        const { member } = node;
-        const on = member.operationId === current;
-        const isHidden = hiddenIds.has(member.operationId);
-        const word = stateWord(chipProgress(member));
-        const name = nodeName(node);
-        const tip = word ? `${member.label} · ${word}` : member.label;
-        const firstChar = Array.from(name)[0] ?? "?";
-        return (
-          <button
-            key={member.operationId}
-            type="button"
-            role="tab"
-            hidden={isHidden}
-            className={`cluster-node-tab${on ? " is-current" : ""}${awaitingInput(member) ? " is-awaiting" : ""}`}
-            aria-selected={on}
-            tabIndex={activeFocusId === member.operationId ? 0 : -1}
-            title={tip}
-            aria-label={on ? tip + showingSuffix : tip}
-            data-member-op-id={member.operationId}
-            onClick={() => {
-              setFocusedId(member.operationId);
-              onPick(member.operationId);
-            }}
-            onKeyDown={onKeyDown}
-          >
-            <span className={`cluster-member-glyph is-tone-${member.tone ?? "teal"}`} aria-hidden="true">
-              {firstChar}
-              <i className={`cluster-member-status is-${chipProgress(member)}`} />
-            </span>
-            <span>{name}</span>
-          </button>
-        );
-      })}
-      {hiddenCount > 0 ? (
-        <>
-          <button
-            ref={moreBtnRef}
-            type="button"
-            className={`cluster-node-more${moreHasAwaiting ? " has-awaiting" : ""}${moreHasCurrent ? " is-current" : ""}`}
-            aria-haspopup="menu"
-            aria-expanded={moreOpen}
-            aria-selected={moreHasCurrent ? "true" : undefined}
-            aria-label={moreHasAwaiting ? `${t("cluster.nodes.more", { count: hiddenCount })} · ${t("cluster.nodes.moreAwaiting", { count: hiddenAwaitingCount })}` : t("cluster.nodes.more", { count: hiddenCount })}
-            title={t("cluster.nodes.more", { count: hiddenCount })}
-            onClick={() => setMoreOpen((prev) => !prev)}
-          >
-            <i className="cluster-node-await-mark" aria-hidden="true" />
-            <span>+{hiddenCount}</span>
-            <ChevDown />
-          </button>
-          {moreOpen ? (
-            <div ref={menuRef} className="cluster-node-overflow-menu" role="menu">
-              {hiddenNodes.map((node) => {
-                const { member } = node;
-                const on = member.operationId === current;
-                const word = stateWord(chipProgress(member));
-                const name = nodeName(node);
-                const firstChar = Array.from(name)[0] ?? "?";
-                return (
-                  <button
-                    key={member.operationId}
-                    type="button"
-                    role="menuitem"
-                    className={`cluster-node-overflow-item${on ? " is-current" : ""}${awaitingInput(member) ? " is-awaiting" : ""}`}
-                    onClick={() => {
-                      setFocusedId(member.operationId);
-                      setMoreOpen(false);
-                      onPick(member.operationId);
-                    }}
-                  >
-                    <span className={`cluster-member-glyph is-tone-${member.tone ?? "teal"}`} aria-hidden="true">
-                      {firstChar}
-                      <i className={`cluster-member-status is-${chipProgress(member)}`} />
-                    </span>
-                    <span className="cluster-node-overflow-name">{name}</span>
-                    {word ? <span className={`cluster-node-overflow-state is-${chipProgress(member)}`}>{word}</span> : null}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-        </>
-      ) : null}
+      <div ref={membersRef} className="cluster-node-members" onPointerLeave={stopScroll}>
+        {scrollButton(-1)}
+        <div ref={viewportRef} className="cluster-node-viewport" onScroll={() => {
+          measureScroll();
+          if (tooltipAnchorRef.current?.matches(":focus-visible")) positionTooltip();
+          else setTooltipVisible(false);
+        }}>
+          <div ref={trackRef} className="cluster-node-track">
+            {nodes.map((node) => {
+              const { member } = node;
+              const on = member.operationId === current;
+              const name = nodeName(node);
+              const word = stateWord(chipProgress(member));
+              const description = name === member.label ? name : `${name} · ${member.label}`;
+              const tip = word ? `${description} · ${word}` : description;
+              return <button key={member.operationId} type="button" role="tab"
+                className={`cluster-node-tab is-member${on ? " is-current" : ""}${awaitingInput(member) ? " is-awaiting" : ""}`}
+                aria-selected={on} tabIndex={activeFocusId === member.operationId ? 0 : -1}
+                aria-label={on ? tip + showingSuffix : tip} data-member-op-id={member.operationId}
+                onPointerEnter={(event) => { if (event.pointerType !== "touch") showName(event.currentTarget, name); }}
+                onPointerLeave={(event) => { if (!event.currentTarget.matches(":focus-visible")) setTooltipVisible(false); }}
+                onFocus={(event) => { keepVisible(event.currentTarget); showName(event.currentTarget, name); }}
+                onBlur={() => setTooltipVisible(false)}
+                onClick={() => { setFocusedId(member.operationId); onPick(member.operationId); }} onKeyDown={onKeyDown}>
+                <span className={`cluster-member-glyph is-tone-${member.tone ?? "teal"}`} aria-hidden="true">
+                  {Array.from(name)[0] ?? "?"}<i className={`cluster-member-status is-${chipProgress(member)}`} />
+                </span>
+              </button>;
+            })}
+          </div>
+        </div>
+        {scrollButton(1)}
+      </div>
+      {createPortal(<div ref={tooltipRef} className={`cluster-node-tooltip${tooltipVisible ? " is-visible" : ""}`} aria-hidden="true">{tooltipName}</div>, document.body)}
     </div>
   );
 }
