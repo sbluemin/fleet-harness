@@ -826,7 +826,8 @@ span.objectives-row-main { cursor: default; }
   .objectives-graph-wrap { padding-left: 14px; padding-right: 12px; }
   .objectives-detail textarea.objectives-note { padding-left: 14px; padding-right: 12px; }
   .objectives-note-more { margin-left: 14px; }
-  .objectives-att { padding-left: 14px; padding-right: 12px; }
+  /* 기본 규칙이 이 블록 뒤에 서므로 한 단 높여야 좁은 폭의 14px 선이 이긴다 — 머리 글리프·본문과 같은 선. */
+  .objectives-detail .objectives-att { padding-left: 14px; padding-right: 12px; }
   .objectives-start { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 9px; }
   .objectives-split .objectives-start { gap: 6px; padding: 9px 10px; }
 }
@@ -906,31 +907,68 @@ span.objectives-row-main { cursor: default; }
 .objectives-dag .objectives-node.is-unplaced circle { stroke: var(--aurora); stroke-dasharray: 2 2; }
 .objectives-step-sub.is-unplaced { color: var(--aurora); }
 
-/* 메모 첨부 띠 — 본문 위에 붙인 순서대로 「이미지 n」 썸네일. 본문 내부 스크롤과 분리된다. */
-.objectives-note-group { transition: background var(--duration-fast); }
-.objectives-note-group.is-drop { background: color-mix(in oklch, var(--brass) 8%, transparent); outline: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent); outline-offset: -4px; }
-.objectives-att { display: grid; gap: 6px; padding: 8px 20px 0 22px; }
-.objectives-att-strip { display: flex; flex-wrap: wrap; gap: 10px 8px; }
-.objectives-att-thumb { position: relative; display: grid; gap: 3px; width: 72px; }
-.objectives-att-open { width: 72px; height: 52px; padding: 0; overflow: hidden; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); cursor: zoom-in; }
+/* 브리핑 첨부 — 입구는 머리의 첨부 글리프(채팅 컴포저와 같은 그림·같은 문법), 띠는 이미지가 있을 때만 본문 위에 선다.
+   번호는 캡션 대신 썸네일 모서리 배지가 진다 — 지휘관이 브리핑에서 가리키는 「이미지 n」 이름은 버튼 이름에 그대로 남는다. */
+.objectives-note-group { position: relative; }
+.objectives-att { display: grid; gap: 6px; padding: 6px 20px 8px 22px; }
+.objectives-att-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+.objectives-att-thumb { position: relative; }
+.objectives-att-open { display: grid; place-items: center; width: 64px; height: 48px; padding: 0; overflow: hidden; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel-raised); cursor: zoom-in; transition: border-color var(--duration-fast); }
 .objectives-att-open:hover, .objectives-att-open:focus-visible { border-color: var(--brass); outline: none; }
+.objectives-att-thumb.is-sending .objectives-att-open { cursor: progress; }
 .objectives-att-open img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.objectives-att-label { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-att-n { position: absolute; left: 4px; bottom: 4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; background: color-mix(in oklch, var(--ink-abyss) 72%, transparent); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; pointer-events: none; }
 .objectives-att-x { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--surface-rim-strong); border-radius: 50%; background: var(--surface-panel); color: var(--text-secondary); cursor: pointer; opacity: 0; transition: opacity var(--duration-fast); }
 .objectives-att-x svg { width: 10px; height: 10px; }
 .objectives-att-thumb:hover .objectives-att-x, .objectives-att-x:focus-visible { opacity: 1; }
 .objectives-att-x:hover { color: var(--coral); border-color: var(--coral); }
-.objectives-att-add { display: grid; place-items: center; width: 72px; height: 52px; border: 1px dashed var(--surface-rim-strong); border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); cursor: pointer; }
-.objectives-att-add:hover:not(:disabled), .objectives-att-add:focus-visible { border-color: var(--brass); color: var(--brass); outline: none; }
+/* 누를 수만 있는 기기에는 hover 가 없다 — 지우기 과녁은 늘 보인다. */
+@media (hover: none) { .objectives-att-x { opacity: 1; } }
+.objectives-att-slot { display: inline-flex; }
+.objectives-att-add { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-right: -5px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
+.objectives-att-add svg { width: 16px; height: 16px; }
+.objectives-att-add:hover:not(:disabled), .objectives-att-add:focus-visible { color: var(--brass-ink); background: var(--brass-glow); outline: none; }
+.objectives-att-add:disabled { cursor: default; opacity: 0.6; }
+.objectives-att-tip {
+  position: fixed;
+  /* 문서 끝으로 포털된 잠깐의 설명 — 부유 패널 위에도 서야 해서 overlay 단을 쓴다(Scuttlebutt 머리 말풍선과 같은 계약). */
+  z-index: calc(var(--z-overlay) + 1);
+  pointer-events: none;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 32px));
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)), var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-regular);
+  line-height: 1.6;
+  text-align: left;
+}
+.objectives-att-tip[hidden] { display: none; }
+.objectives-att-tip b { color: var(--text-primary); font-weight: var(--weight-medium); }
+/* 끌어놓기 — 구획 전체 테두리와 워시, 가운데 한 줄. 겹판이라 본문 자리를 밀지 않는다. */
+.objectives-att-drop { position: absolute; inset: 4px; z-index: 2; display: grid; place-items: center; border-radius: var(--radius-md); background: color-mix(in oklch, var(--brass) 9%, color-mix(in oklch, var(--surface-panel) 90%, transparent)); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 60%, transparent); color: var(--brass-ink); font-size: var(--t-sm); pointer-events: none; }
+.objectives-att-drop span { display: inline-flex; align-items: center; gap: 8px; }
+.objectives-att-drop svg { width: 16px; height: 16px; }
 .objectives-att-spin { width: 12px; height: 12px; border: 1.5px solid var(--text-tertiary); border-top-color: transparent; border-radius: 50%; animation: objectives-att-spin 0.9s linear infinite; }
 @keyframes objectives-att-spin { to { transform: rotate(360deg); } }
-.objectives-att-hint { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-att-err { font-size: var(--t-xs); color: var(--coral); }
-.objectives-att-view { position: relative; display: grid; gap: 8px; justify-items: center; margin: 0; max-width: min(1100px, 100%); }
-.objectives-att-view img { display: block; max-width: 100%; max-height: 80vh; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--surface-panel); }
-.objectives-att-view figcaption { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); text-align: center; overflow-wrap: anywhere; }
-.objectives-att-view-close { position: absolute; top: -34px; right: 0; }
-@media (prefers-reduced-motion: reduce) { .objectives-att-spin { animation: none; } }
+/* 크게 보기 — 채팅 첨부 보기와 같은 틀(유리 틀·모서리 원형 닫기). */
+.objectives-att-view { position: relative; display: grid; gap: var(--space-2); justify-items: center; margin: 0; max-width: min(960px, 100%); padding: var(--space-2); border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); box-shadow: var(--shadow-floating); }
+.objectives-att-view img { display: block; max-width: 100%; max-height: calc(100dvh - 120px); object-fit: contain; border-radius: var(--radius-xs); }
+.objectives-att-view figcaption { padding-bottom: 2px; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); text-align: center; overflow-wrap: anywhere; }
+.objectives-att-view-close { position: absolute; top: calc(var(--space-2) * -1 - 10px); right: calc(var(--space-2) * -1 - 10px); display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 1px solid var(--surface-rim-strong); border-radius: 50%; background: var(--glass-tint-panel); color: var(--text-secondary); cursor: pointer; }
+.objectives-att-view-close:hover { color: var(--text-primary); }
+.objectives-att-view-close svg { width: 12px; height: 12px; }
+@media (prefers-reduced-motion: reduce) { .objectives-att-spin { animation: none; } .objectives-att-add, .objectives-att-open, .objectives-att-x { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .objectives-records.is-open .objectives-records-inner { animation: none; } }
 
 /* 짚은 임무(목록 행과 함께) — 그 노드는 brass, 선행은 aurora, 들어오는 선도 aurora */
