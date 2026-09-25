@@ -4,7 +4,7 @@
     {
       "client": "claude",
       "sessionId": "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103",
-      "model": "claude-gateway--cursor--claude-opus-5",
+      "model": "claude-gateway--codex--claude-opus-5",
       "input": 10,
       "output": 2,
       "cacheRead": 0,

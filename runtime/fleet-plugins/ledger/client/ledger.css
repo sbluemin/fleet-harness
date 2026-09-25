@@ -371,11 +371,6 @@
   color: var(--provider-codex);
 }
 
-.ledger-client-mark.is-cursor,
-.ledger-backend-slice.is-cursor {
-  color: var(--provider-cursor);
-}
-
 .ledger-client-mark.is-opencode,
 .ledger-backend-slice.is-opencode {
   color: var(--provider-opencode);

@@ -4,8 +4,8 @@ branch: remove-cursor-provider-0a20be
 
 ### fleet-console
 #### Breaking Changes
-- Removed the Cursor provider from AI Gateway, including saved model selections, usage, and diagnostics. Existing Cursor model sessions are no longer supported; start a new Operation with another provider.
-  ko: AI Gateway의 Cursor 공급자와 저장된 모델 선택·사용량·진단 기능을 제거했습니다. 기존 Cursor 모델 세션은 더 이상 지원하지 않으므로 다른 공급자로 새 Operation을 시작하세요.
+- Removed the Cursor provider from AI Gateway, including saved model selections, usage, and diagnostics. Existing Cursor model sessions are no longer supported; start a new Operation with another provider. Ledger spending totals no longer include past Cursor usage.
+  ko: AI Gateway의 Cursor 공급자와 저장된 모델 선택·사용량·진단 기능을 제거했습니다. 기존 Cursor 모델 세션은 더 이상 지원하지 않으므로 다른 공급자로 새 Operation을 시작하세요. Ledger 지출 합계에서도 과거 Cursor 사용분이 빠집니다.
 
 ### fleet-cli
 #### Breaking Changes

@@ -1,4 +1,4 @@
-import { canonicalModelIdentity, normalizeModelKey } from "./identity.js";
+import { canonicalModelIdentity, normalizeModelKey, parseModelIdentity } from "./identity.js";
 import type {
   LedgerDailyDetailDto,
   LedgerDailyPoint,
@@ -36,6 +36,13 @@ class AggregateOverflowError extends Error {}
 
 const MAX_DAILY_DAYS = 366;
 const MAX_MODEL_ROWS = 80;
+
+/** Removed Gateway provider: historical Cursor rows never enter totals, rows, or daily costs. */
+const CURSOR_GATEWAY_PROVIDER = "cursor";
+
+function isCursorGatewayEntry(entry: TokscaleModelEntry): boolean {
+  return parseModelIdentity(entry.modelId).provider === CURSOR_GATEWAY_PROVIDER;
+}
 
 function emptyAccumulator(): Accumulator {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0 };
@@ -209,8 +216,11 @@ export function buildSummary(
     });
   }
 
+  // Cursor Gateway rows are intentionally out of scope (provider removed in #1196):
+  // drop them before every total so no window or period can reintroduce them.
+  // They are not corrupt data, so skippedEntries / degraded status must not count them.
+  const entries = modelBreakdown.entries.filter((entry) => !isCursorGatewayEntry(entry));
   try {
-    const entries = modelBreakdown.entries;
     const totals = emptyAccumulator();
     for (const entry of entries) addModelEntry(totals, entry);
     const modelRows = aggregateRows(entries);
@@ -274,7 +284,7 @@ export function buildSummary(
       status: "unreadable",
       models: "unreadable",
       report: reportStatus,
-      skippedEntries: modelBreakdown.skippedEntries + modelBreakdown.entries.length,
+      skippedEntries: modelBreakdown.skippedEntries + entries.length,
       skippedSessions,
     });
   }
