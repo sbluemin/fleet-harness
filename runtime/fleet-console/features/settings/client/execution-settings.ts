@@ -16,7 +16,7 @@ export interface AiGatewaySettings {
   readonly providerPriority?: readonly AiGatewayProviderId[];
 }
 
-export type AiGatewayProviderId = "antigravity" | "codex" | "opencode" | "xai" | "claude";
+export type AiGatewayProviderId = "antigravity" | "codex" | "opencode" | "xai" | "claude" | "muse-code";
 
 /** Absent / null is Auto. `"early"` / `"late"` are 88 / 97. A number is Custom 70–99. */
 export type CompactCeiling = "early" | "late" | number;

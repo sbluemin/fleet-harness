@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-23T00:00:00Z",
+  "updatedAt": "2026-09-25T00:00:00Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
@@ -652,6 +652,47 @@
           "capabilityClass": "standard",
           "wire": "responses",
           "contextWindow": 200000
+        }
+      ]
+    },
+    "muse-code": {
+      "name": "Muse Code",
+      "defaultModel": "muse-spark-1.3-contributor",
+      "source": "Fleet 실측(2026-09-25): 제품 라우터로 muse-spark-1.3-contributor 도구 루프 2턴(tool_use→tool_result→end_turn)이 HTTP 200 SSE로 성공했다. muse-spark-1.3과 아래 나머지 사양은 소스 기반이다. 모델 ID: Muse Code CLI 로그인 키로 GET https://api.meta.ai/v1/models 1회 실측(2026-09-25) — muse-spark-1.1/1.2/1.2-contributor/1.3/1.3-contributor와 비채팅 sam-3.1·muse-image-1.0·muse-voice-transcribe-1.0, capability 필드 없음. 현세대 1.3만 등록한다. 사양: oh-my-pi catalog rules meta.kdl·muse-code.kdl(2026-09-25 열람) — context 1048576, 최대 출력 131072, text+image, effort minimal~xhigh(1.3 standard만 max 추가). minimal은 Fleet 노출 사다리 밖이라 low부터 노출한다. contributor는 같은 모델의 학습 동의 할인 SKU라는 서술에 따라 variantOf로 잇는다. 와이어: https://api.meta.ai/v1/responses, x-api-version 1.0.0, tool_choice auto·function 도구만 허용(참고 소스 oh-my-pi 기록 2026-09-05/09-10; 거부 사례는 직접 미검증). 기본 모델 contributor는 비용을 보수적으로 잡은 Fleet 설계 선택이다. 벤치마크는 결합하지 않는다.",
+      "models": [
+        {
+          "modelId": "muse-spark-1.3",
+          "name": "Muse-Spark-1.3",
+          "capabilityClass": "flagship",
+          "wire": "responses",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        },
+        {
+          "modelId": "muse-spark-1.3-contributor",
+          "name": "Muse-Spark-1.3-Contributor",
+          "capabilityClass": "flagship",
+          "variantOf": "muse-spark-1.3",
+          "wire": "responses",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
         }
       ]
     },

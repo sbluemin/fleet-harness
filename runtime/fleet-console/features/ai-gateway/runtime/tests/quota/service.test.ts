@@ -5,6 +5,14 @@ import { OPENCODE_AUTH_PROVIDER_ID } from "../../src/upstream/opencode-go/index.
 import { getJson } from "../../src/quota/windows.js";
 import type { ProviderSuccess } from "../../src/quota/types.js";
 
+const museAuth = vi.hoisted(() => ({
+  resolveMuseAuth: vi.fn(async () => ({
+    status: "ok" as const,
+    credentials: { accountToken: "muse-account-token", method: "keychain" as const },
+  })),
+}));
+vi.mock("../../src/upstream/muse-code/credentials.js", () => museAuth);
+
 function ok(fetchedAt: number, usedPercent = 10): ProviderSuccess {
   return { status: "ok", fetchedAt, windows: [{ id: "session", usedPercent }] };
 }
@@ -136,5 +144,72 @@ describe("quota service", () => {
     const error = (await service.getSummary()).providers.claude;
     expect(error.status).toBe("error");
     expect(error).not.toHaveProperty("windows");
+  });
+  it("keeps only Muse Code usage from the key response and never lets a forced refresh bypass backoff", async () => {
+    let now = Date.parse("2026-09-25T00:00:00.000Z");
+    let status = 200;
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(
+      JSON.stringify({
+        api_key: "minted-secret-key",
+        user_email: "person@example.com",
+        user_full_name: "Person",
+        is_subs_active: true,
+        subs_tier_name: "pro",
+        subs_usage: {
+          window: { used_percent: 12.4, window_duration_mins: 300, resets_at: "2026-09-25T03:00:00.000Z" },
+          weekly: { used_percent: 30, resets_at: 1_759_363_200 },
+        },
+      }),
+      { status, headers: { "Content-Type": "application/json" } },
+    ));
+    const collectors = createAiGatewayQuotaCollectors({
+      authService: { getApiKey: async () => undefined, setApiKey: async () => undefined, deleteApiKey: async () => false, listProviderIds: async () => [] },
+      fetch: fetchImpl as typeof fetch,
+      now: () => now,
+    });
+    const service = createQuotaService({
+      now: () => now,
+      isClaudeConnected: async () => false,
+      fetchClaude: async () => ({ status: "signed_out" }),
+      fetchCodex: async () => ({ status: "signed_out" }),
+      fetchOpencode: async () => ({ status: "signed_out" }),
+      fetchMuseCode: collectors.fetchMuseCode,
+    });
+
+    const muse = (await service.getSummary()).providers["muse-code"];
+    const [url, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(url).toBe("https://api.meta.ai/muse-code/key");
+    expect(init).toMatchObject({ method: "POST", body: "{}" });
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer muse-account-token");
+    expect(new Headers(init?.headers).get("x-api-version")).toBe("1.0.0");
+    expect(muse).toMatchObject({
+      status: "ok",
+      method: "keychain",
+      plan: "Pro",
+      windows: [
+        { id: "session", usedPercent: 12, resetsAt: Date.parse("2026-09-25T03:00:00.000Z"), period: { durationMs: 18_000_000, durationBasis: "upstream" } },
+        { id: "weekly", usedPercent: 30, resetsAt: 1_759_363_200_000 },
+      ],
+    });
+    expect(muse.windows?.[1]).not.toHaveProperty("period");
+    expect(JSON.stringify(muse)).not.toMatch(/minted-secret-key|person@example\.com|Person/);
+
+    // 응답 직후의 새로고침은 upstream에 다시 닿지 않는다.
+    await service.getSummary({ force: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    // 29분 된 성공값 뒤의 429: stale은 1분 뒤 만료되지만 5분 backoff는 일반·강제 조회 모두에 유지된다.
+    now += 29 * 60_000;
+    status = 429;
+    expect((await service.getSummary({ force: true })).providers["muse-code"]).toMatchObject({ status: "stale", plan: "Pro" });
+    now += 120_000;
+    expect((await service.getSummary()).providers["muse-code"]).toMatchObject({ status: "error" });
+    await service.getSummary({ force: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    now += 180_000;
+    status = 401;
+    expect((await service.getSummary({ force: true })).providers["muse-code"]).toMatchObject({ status: "expired", method: "keychain" });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 });

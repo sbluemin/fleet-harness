@@ -33,6 +33,7 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   codex: "terminal.settings.aiGatewayProviderCodex",
   opencode: "terminal.settings.aiGatewayProviderOpencode",
   xai: "terminal.settings.aiGatewayProviderXai",
+  "muse-code": "terminal.settings.aiGatewayProviderMuseCode",
 } as const;
 
 /**

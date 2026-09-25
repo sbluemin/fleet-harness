@@ -23,7 +23,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_GATEWAY_REQUEST_BODY_BYTES,
+  MUSE_CODE_RESPONSES_URL,
   OPENCODE_MESSAGES_URL,
+  encodeReasoningSignature,
   XAI_CLI_RESPONSES_URL,
   XAI_RESPONSES_URL,
   buildAnthropicModelList,
@@ -978,6 +980,138 @@ describe("OpenCode conversation routing", () => {
     } finally {
       router.dispose();
     }
+  });
+});
+
+describe("Muse Code routing", () => {
+  const MUSE_KEY = "LLM|muse-model-key";
+  const MUSE_MODEL = "claude-gateway--muse-code--muse-spark-1.3-contributor";
+  const signedIn = () => ({ status: "ok" as const, credentials: { apiKey: MUSE_KEY, accountToken: "acct", method: "keychain" as const } });
+  // Muse가 실제로 보내는 reasoning id 형태(콜론 포함)를 쓴다.
+  const REASONING_ID = "rs_n1:rs_n2";
+  const museFrames = [
+    { type: "response.created", response: { id: "r1", model: "muse-spark-1.3-contributor", usage: null } },
+    { type: "response.reasoning_text.delta", item_id: REASONING_ID, output_index: 0, delta: "check a.ts" },
+    { type: "response.output_item.done", output_index: 0, item: { type: "reasoning", id: REASONING_ID, encrypted_content: "muse-blob-new", summary: [] } },
+    { type: "response.output_item.added", output_index: 1, item: { type: "function_call", id: "fc_1", call_id: "call_1", name: "Read", arguments: "" } },
+    { type: "response.function_call_arguments.delta", item_id: "fc_1", output_index: 1, delta: '{"file_path":' },
+    { type: "response.function_call_arguments.delta", item_id: "fc_1", output_index: 1, delta: '"/a.ts"}' },
+    { type: "response.function_call_arguments.done", item_id: "fc_1", output_index: 1, arguments: '{"file_path":"/a.ts"}' },
+    { type: "response.output_item.done", output_index: 1, item: { type: "function_call", id: "fc_1", call_id: "call_1", name: "Read", arguments: '{"file_path":"/a.ts"}' } },
+    { type: "response.completed", response: { id: "r1", model: "muse-spark-1.3-contributor", usage: { input_tokens: 10, output_tokens: 5 } } },
+  ];
+
+  it("runs a tool loop on the sign-in key and replays only its own reasoning, under its original id", async () => {
+    const calls: Array<{ url: string; headers: Headers; redirect?: RequestRedirect; body: Record<string, any> }> = [];
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      calls.push({ url: String(url), headers: new Headers(init?.headers), redirect: init?.redirect, body: JSON.parse(String(init?.body)) });
+      return new Response(museFrames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""), {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
+    const tools = [
+      ...SEARCH_CATALOG,
+      { name: "Artifact", input_schema: { type: "object", properties: { file_paths: { type: "array", items: { type: "string", pattern: "^[^\\0]*$" } } } } },
+    ];
+    const firstTurn = [
+      { role: "user", content: "read b.ts" },
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "", signature: encodeReasoningSignature("rs_foreign", "xai-blob", "xai") },
+          { type: "text", text: "Now a.ts." },
+        ],
+      },
+      { role: "user", content: "go on" },
+    ];
+    const first = response();
+    const second = response();
+    try {
+      await router.handle(ctx({ res: first, token: ANTHROPIC_CRED, model: MUSE_MODEL, tools, toolChoice: { type: "auto" }, messages: firstTurn }));
+
+      expect(first.status).toBe(200);
+      const [call] = calls;
+      expect(call!.url).toBe(MUSE_CODE_RESPONSES_URL);
+      // 키가 실린 요청은 고정 엔드포인트 밖으로 리다이렉트되어 재전송되지 않는다.
+      expect(call!.redirect).toBe("error");
+      expect(call!.headers.get("authorization")).toBe(`Bearer ${MUSE_KEY}`);
+      expect(call!.headers.get("x-api-version")).toBe("1.0.0");
+      expect(call!.body.model).toBe("muse-spark-1.3-contributor");
+      expect(call!.body.tool_choice).toBeUndefined();
+      expect(call!.body.tools.map((tool: { name: string }) => tool.name)).toEqual(["Read", "Grep", "Glob", "Artifact"]);
+      expect(call!.body.tools.every((tool: Record<string, unknown>) => tool.type === "function" && tool.strict === undefined)).toBe(true);
+      expect(JSON.stringify(call!.body.tools)).not.toContain("pattern");
+      // 다른 공급자의 blob은 이 와이어에 실리지 않는다.
+      expect(call!.body.input.some((item: { type: string }) => item.type === "reasoning")).toBe(false);
+      expect(JSON.stringify(call!.body)).not.toContain("xai-blob");
+
+      expect(first.body).toContain('"name":"Read"');
+      expect(first.body).toContain('"partial_json":"{\\"file_path\\":"');
+      // reasoning 텍스트와 blob이 자리표시 서명이 아닌 하나의 thinking 블록으로 닫힌다.
+      expect(first.body).toContain("check a.ts");
+      expect(first.body).not.toContain('"signature":"gateway_');
+      const signature = /"signature":"(fleet-reasoning:v2:muse-code:[^"]+)"/.exec(first.body)?.[1];
+      expect(signature).toBeDefined();
+      expect(first.body).not.toContain(MUSE_KEY);
+
+      await router.handle(ctx({
+        res: second,
+        token: ANTHROPIC_CRED,
+        model: MUSE_MODEL,
+        tools,
+        messages: [
+          ...firstTurn,
+          {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "check a.ts", signature },
+              { type: "tool_use", id: "call_1", name: "Read", input: { file_path: "/a.ts" } },
+            ],
+          },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "a" }] },
+        ],
+      }));
+
+      expect(second.status).toBe(200);
+      const replayed = calls[1]!.body.input.filter((item: { type: string }) => item.type === "reasoning");
+      expect(replayed).toEqual([{ type: "reasoning", id: REASONING_ID, summary: [], encrypted_content: "muse-blob-new" }]);
+      expect(JSON.stringify(calls[1]!.body.input)).not.toContain("reasoning_origin");
+    } finally {
+      router.dispose();
+    }
+  });
+
+  it("refuses before spending a request when the sign-in or a forced tool choice cannot be honored", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({ error: { message: `bad key ${MUSE_KEY}`, type: "invalid_api_key" } }),
+      { status: 401, headers: { "content-type": "application/json" } },
+    ));
+
+    const signedOut = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: () => ({ status: "signed_out" }) });
+    const signedOutRes = response();
+    await signedOut.handle(ctx({ res: signedOutRes, token: ANTHROPIC_CRED, model: MUSE_MODEL }));
+    expect(signedOutRes.status).toBe(401);
+    expect(signedOutRes.body).toContain("muse login");
+
+    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
+    const forcedRes = response();
+    await router.handle(ctx({
+      res: forcedRes, token: ANTHROPIC_CRED, model: MUSE_MODEL,
+      tools: SEARCH_CATALOG, toolChoice: { type: "tool", name: "Read" },
+    }));
+    expect(forcedRes.status).toBe(400);
+    expect(forcedRes.body).toContain("automatic tool choice");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const refusedRes = response();
+    await router.handle(ctx({ res: refusedRes, token: ANTHROPIC_CRED, model: MUSE_MODEL }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(refusedRes.status).toBe(401);
+    expect(refusedRes.body).toContain("muse login");
+    expect(refusedRes.body).not.toContain(MUSE_KEY);
+    signedOut.dispose();
+    router.dispose();
   });
 });
 
