@@ -3702,6 +3702,11 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+/* 상단 접힘(is-top-edge)에서는 캡션이 루트 top 0에 겹쳐 서므로, 세션 줄을 캡션 높이만큼 내려 탭을 가리지 않는다. */
+.canvas-operation.is-top-edge > .cluster-node-rail {
+  margin-top: 32px;
+}
+
 .cluster-node-rail {
   position: relative;
   z-index: 5;
