@@ -15,6 +15,7 @@ type T = Translate<ObjectiveMessageKey>;
  * 우선순위 — 사람이 지금 무엇을 해야 하나: 완료됨 > 지휘관 결정 대기 > 작업 중(구성원 실행 포함) > 구성원 결정 대기 >
  * 검토 대기 > 깨운 뒤 유휴 > 개시 전. 지휘관이 마지막으로 읽은 뒤 사람이 보드를 고쳤으면 낱말은 상태와 상관없이 「스티어링」이고,
  * 서버 경로는 상태가 고른다(쉬는 구성원까지 깨워야 하는 유휴는 개시 경로, 작업 중·검토 대기·구상 중은 스티어링 경로).
+ * 달성 기준 제안이 남아 있으면 개시·스티어링은 잠긴 띠로 서고(서버가 criteria_pending 으로 거부한다), 그 아래 「다시 구상」만 열린다.
  */
 
 type IntentKey = "plan" | "replan" | "start" | "resume" | "steer" | "steerIdle" | "complete" | "decide" | "decideMember" | "stop";
@@ -58,6 +59,7 @@ export interface ActionBandProps {
 const WandGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 13l7-7M10 3l.6 1.6L12.2 5l-1.6.6L10 7.2 9.4 5.6 7.8 5l1.6-.6zM13 9l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4z" /></svg>;
 const StartGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 3.5l8 4.5-8 4.5z" /></svg>;
 const SteerGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 11.5c2-4 5-6 11-6M10.5 2.5l3 3-3 3" /></svg>;
+const LockGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg>;
 const StopGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>;
 const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
 const DecideDot = () => <i className="objectives-start-dot" aria-hidden="true" />;
@@ -88,10 +90,12 @@ const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   launch_failed: "objectives.band.reason.undelivered",
   launch_unavailable: "objectives.band.reason.unavailable",
   item_done: "objectives.band.reason.done",
+  criteria_pending: "objectives.band.reason.criteriaPending",
+  criteria_not_planning: "objectives.band.reason.criteriaNotPlanning",
 };
 
-/** 지금 상태의 주행동과, 펼치면 함께 고르는 것. */
-function choose(props: ActionBandProps): { readonly primary: IntentKey | null; readonly alts: readonly IntentKey[] } {
+/** 지금 상태의 주행동과, 펼치면 함께 고르는 것. 제안이 남아 잠긴 개시·스티어링은 gated 가 말한다(주행동은 「다시 구상」). */
+function choose(props: ActionBandProps): { readonly primary: IntentKey | null; readonly alts: readonly IntentKey[]; readonly gated?: true } {
   const { item, working, commanderAwaiting, memberAwaiting } = props;
   if (item.done) return { primary: null, alts: [] };
   const started = item.commander.started;
@@ -100,6 +104,7 @@ function choose(props: ActionBandProps): { readonly primary: IntentKey | null; r
   if (commanderAwaiting) return { primary: "decide", alts: [] };
   if (working) return edited ? { primary: "steer", alts: ["stop"] } : { primary: "stop", alts: [] };
   if (memberAwaiting) return { primary: "decideMember", alts: [] };
+  if (item.criteriaProposals.length > 0) return { primary: "replan", alts: [], gated: true };
   if (item.awaitingReview) return edited ? { primary: "steer", alts: ["replan"] } : { primary: "complete", alts: [] };
   // 구상이 끝나 개시를 기다린다 — 편집이 있으면 편성을 이어서 짜게 알리고(스티어링), 개시도 여기서 고른다.
   if (started && item.cooking) return edited ? { primary: "steer", alts: ["start"] } : { primary: "start", alts: ["replan"] };
@@ -109,7 +114,7 @@ function choose(props: ActionBandProps): { readonly primary: IntentKey | null; r
 
 export function ActionBand(props: ActionBandProps) {
   const { item, t, request } = props;
-  const { primary, alts } = choose(props);
+  const { primary, alts, gated } = choose(props);
   const choices: readonly IntentKey[] = primary ? [primary, ...alts] : [];
   const [open, setOpen] = useState(false);
   const [intent, setIntent] = useState<IntentKey | null>(null);
@@ -128,9 +133,12 @@ export function ActionBand(props: ActionBandProps) {
   const kindText = kinds.join("·");
   const itemId = item.id;
   const members = item.members.length;
+  const proposals = item.criteriaProposals.length;
+  const annotated = item.criteriaProposals.filter((proposal) => !!proposal.annotation).length;
+  const replanDesc = gated ? (annotated ? t("objectives.band.replan.annotated", { count: annotated }) : t("objectives.band.replan.pending")) : t("objectives.band.replan.desc");
   const intents: Record<IntentKey, Intent> = {
     plan: { word: t("objectives.band.plan"), desc: t("objectives.band.plan.desc"), talk: true, glyph: <WandGlyph />, placeholder: t("objectives.coordinator.cookContext"), run: (context) => request("/plan/request", { itemId, context }) },
-    replan: { word: t("objectives.band.replan"), desc: t("objectives.band.replan.desc"), talk: true, glyph: <WandGlyph />, placeholder: t("objectives.band.replan.ph"), run: (context) => request("/plan/request", { itemId, context }) },
+    replan: { word: t("objectives.band.replan"), desc: replanDesc, talk: true, glyph: <WandGlyph />, placeholder: t("objectives.band.replan.ph"), run: (context) => request("/plan/request", { itemId, context }) },
     start: { word: t("objectives.coordinator.start"), desc: members ? t("objectives.start.members", { count: members }) : item.steps.length ? t("objectives.start.direct") : t("objectives.band.start.bare"), talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.start.ph"), run: (context) => request("/coordinator/start", { itemId, ...(context ? { context } : {}) }) },
     resume: { word: t("objectives.coordinator.start"), desc: `${props.commanderState} · ${t("objectives.start.resume")}`, talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.resume.ph"), run: (context) => request("/coordinator/start", { itemId, ...(context ? { context } : {}) }) },
     steer: {
@@ -223,6 +231,14 @@ export function ActionBand(props: ActionBandProps) {
   const pendingText = (key: IntentKey) => t(key === "stop" ? "objectives.band.stopping" : "objectives.band.sending");
   const word = (entry: Intent) => <span className="objectives-start-word">{entry.tone ? entry.glyph : null}{entry.word}</span>;
   const errorLine = error ? <div className="objectives-band-error" role="alert">{error}</div> : null;
+  // 잠긴 개시 — 누를 수 없는 한 줄. 편집 뒤면 낱말은 「스티어링」이다. 결정은 위의 기준 줄에서 한다.
+  const lockedLine = gated ? (
+    <div className="objectives-start is-locked" role="note">
+      <span className="objectives-start-word"><LockGlyph />{t(item.commander.started && (item.edited?.kinds.length ?? 0) > 0 ? "objectives.steer" : "objectives.coordinator.start")}</span>
+      <span className="objectives-start-sub">{t("objectives.band.gated", { count: proposals })}</span>
+      <span className="objectives-start-arrow" aria-hidden="true">→</span>
+    </div>
+  ) : null;
 
   if (!current || !intent) {
     // 보내는 동안은 진행 중인 그 행동을 보이고(다른 선택은 감춘다), 잠근다. 응답이 오면 사다리로 돌아간다.
@@ -232,12 +248,13 @@ export function ActionBand(props: ActionBandProps) {
     const opens = !pending && (main.talk || others.length > 0);
     const hasDraft = !pending && main.talk && !!draft.trim();
     return (
-      <div className="objectives-group objectives-start-group">
+      <div className={`objectives-group objectives-start-group${gated ? " is-gated" : ""}`}>
+        {lockedLine}
         <div className={`objectives-band${others.length ? " has-alt" : ""}${main.tone === "stop" ? " is-stop" : ""}`}>
           <button
             ref={bandRef}
             type="button"
-            className={`objectives-start${main.tone ? ` is-${main.tone === "aurora" ? (shown === "complete" ? "review" : "awaiting") : "stop"}` : ""}${shown === "steer" || shown === "steerIdle" ? " is-steer" : ""}`}
+            className={`objectives-start${gated ? " is-secondary" : ""}${main.tone ? ` is-${main.tone === "aurora" ? (shown === "complete" ? "review" : "awaiting") : "stop"}` : ""}${shown === "steer" || shown === "steerIdle" ? " is-steer" : ""}`}
             disabled={sending || unavailable(shown)}
             aria-busy={sending || undefined}
             title={unavailable(shown) ? t("objectives.coordinator.unavailable") : opens ? t("objectives.band.opens") : undefined}
@@ -260,7 +277,8 @@ export function ActionBand(props: ActionBandProps) {
 
   const many = choices.length > 1;
   return (
-    <div className="objectives-group objectives-start-group">
+    <div className={`objectives-group objectives-start-group${gated ? " is-gated" : ""}`}>
+      {lockedLine}
       <div ref={compRef} className={`objectives-comp${current.tone === "stop" ? " is-stop" : ""}`} role="group" aria-label={t("objectives.band.send")} onKeyDown={onCompKey}>
         <div className="objectives-comp-top">
           <span>{t(many ? "objectives.band.choose" : "objectives.band.send")}</span>

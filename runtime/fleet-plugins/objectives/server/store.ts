@@ -14,6 +14,8 @@ import {
   hasCycle,
   lineupOrder,
   withoutMet,
+  type CriterionProposalInput,
+  type ObjectiveCriterionProposal,
   type ObjectiveAttachment,
   type ObjectiveEditKind,
   type ObjectiveItem,
@@ -110,6 +112,7 @@ export interface ObjectiveStore {
   edgesClear(itemId: string): ObjectiveItem;
   plan(itemId: string, input: PlanInput): ObjectiveItem;
   setCooking(itemId: string, cooking: boolean): ObjectiveItem;
+  setCriteriaOpen(itemId: string, open: boolean): ObjectiveItem;
   /** 새 작업(스티어링)이 생겼다 — 앞선 충족 판단을 모두 거둔다. */
   clearMet(itemId: string): ObjectiveItem;
   criterionAdd(itemId: string, text: string, by: "human" | "commander"): ObjectiveItem;
@@ -117,6 +120,10 @@ export interface ObjectiveStore {
   criterionRemove(itemId: string, criterionId: string): ObjectiveItem;
   /** 지휘관이 기준 하나를 충족(근거와 함께) 또는 미충족으로 표시한다. */
   criterionMet(itemId: string, criterionId: string, evidence: string | null): ObjectiveItem;
+  proposalApprove(itemId: string, proposalId: string): ObjectiveItem;
+  proposalsApproveAll(itemId: string): ObjectiveItem;
+  proposalReject(itemId: string, proposalId: string): ObjectiveItem;
+  proposalAnnotate(itemId: string, proposalId: string, annotation: string): ObjectiveItem;
   /** 사람의 편집을 쌓는다 · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
   setEdited(itemId: string, kinds: readonly ObjectiveEditKind[] | null): ObjectiveItem;
   attachmentAdd(itemId: string, input: { readonly name: string; readonly type: ObjectiveAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly item: ObjectiveItem; readonly attachment: ObjectiveAttachment };
@@ -191,9 +198,10 @@ function writeStateAtomic(file: string, objectives: readonly StoredObjective[]):
 function compact(objective: StoredObjective): StoredObjective {
   const out: Record<string, unknown> = { ...objective };
   for (const key of ["note", "cook", "dueDate", "addedBy"] as const) if (!out[key]) delete out[key];
-  for (const key of ["cooking", "important", "today"] as const) if (out[key] !== true) delete out[key];
+  for (const key of ["cooking", "criteriaOpen", "important", "today"] as const) if (out[key] !== true) delete out[key];
   if (!(objective.attachments?.length)) delete out.attachments;
   if (!(objective.criteria?.length)) delete out.criteria;
+  if (!(objective.criteriaProposals?.length)) delete out.criteriaProposals;
   if (!objective.members?.length) delete out.members;
   else out.members = objective.members.map((member) => ({ ...member, ...(member.brief ? {} : { brief: undefined }), ...(member.launch ? {} : { launch: undefined }), ...(member.operationId ? {} : { operationId: undefined }), ...(member.subagents === true ? {} : { subagents: undefined }) }));
   if (!objective.edited) delete out.edited;
@@ -257,6 +265,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       attachments: stored.attachments ?? [],
       ...(stored.cook ? { cook: stored.cook } : {}),
       cooking: stored.cooking === true,
+      criteriaOpen: stored.criteriaOpen === true,
       ...(stored.edited ? { edited: stored.edited } : {}),
       important: stored.important === true,
       dueDate: stored.dueDate ?? null,
@@ -265,6 +274,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       done: stored.done ?? null,
       awaitingReview: awaitingReview(stored),
       criteria: (stored.criteria ?? []).map((criterion) => ({ ...criterion })),
+      criteriaProposals: (stored.criteriaProposals ?? []).map((proposal) => ({ ...proposal })),
       members,
       steps: stored.steps.map((step) => {
         const member = step.member ? byMember.get(step.member) : null;
@@ -359,6 +369,35 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   /** 자리가 정해졌다 — 미분류 표시를 뗀다. */
   const placed = (step: StoredStep): StoredStep => (step.unplaced ? (({ unplaced: _unplaced, ...rest }) => rest)(step) : step);
   const withoutEdge = (step: StoredStep, id: string): StoredStep => ({ ...step, after: step.after.filter((edge) => edge.id !== id) });
+  const proposalsOf = (stored: StoredObjective, input: readonly CriterionProposalInput[]): readonly ObjectiveCriterionProposal[] => {
+    const criteria = stored.criteria ?? [];
+    const added = input.filter((proposal) => "text" in proposal && !("revise" in proposal)).length;
+    if (criteria.length + added > MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria");
+    const targets = new Set<string>();
+    return input.map((proposal): ObjectiveCriterionProposal => {
+      const id = randomUUID();
+      if (!("revise" in proposal) && !("retire" in proposal)) return { id, kind: "add", text: proposal.text };
+      const reference = "revise" in proposal ? proposal.revise : proposal.retire;
+      const target = typeof reference === "number" ? criteria[reference - 1] : criteria.find((criterion) => criterion.id === reference);
+      if (!target) throw new ObjectiveStoreError("unknown_criterion");
+      if (targets.has(target.id)) throw new ObjectiveStoreError("duplicate_criterion_proposal");
+      targets.add(target.id);
+      return "revise" in proposal
+        ? { id, kind: "revise", target: target.id, text: proposal.text }
+        : { id, kind: "retire", target: target.id, reason: proposal.reason };
+    });
+  };
+  const approve = (stored: StoredObjective, proposal: ObjectiveCriterionProposal): StoredObjective => {
+    const criteria = stored.criteria ?? [];
+    if (proposal.kind === "add") {
+      if (criteria.length >= MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria");
+      return { ...stored, criteria: [...criteria, { id: randomUUID(), text: proposal.text!, by: "commander" }] };
+    }
+    if (!criteria.some((criterion) => criterion.id === proposal.target)) throw new ObjectiveStoreError("unknown_criterion");
+    return { ...stored, criteria: proposal.kind === "retire"
+      ? criteria.filter((criterion) => criterion.id !== proposal.target)
+      : criteria.map((criterion) => criterion.id === proposal.target ? { id: criterion.id, text: proposal.text!, by: criterion.by } : criterion) };
+  };
 
   const store: ObjectiveStore = {
     list: (theaterId) => visible(theaterId).map(({ stored, node }) => project(stored, node)),
@@ -464,7 +503,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     // 완료는 상태이지 연결 해제가 아니다 — 담당 연결은 그대로 남아 묶음·이동이 살아 있다.
-    complete: (itemId) => update(itemId, (stored) => (stored.done ? stored : { ...stored, done: { at: now() }, cooking: undefined })),
+    complete: (itemId) => update(itemId, (stored) => (stored.done ? stored : { ...stored, done: { at: now() }, cooking: undefined, criteriaOpen: undefined })),
     reopen: (itemId) => update(itemId, (stored) => (stored.done ? { ...stored, done: undefined } : stored)),
 
     stepAdd: (itemId, input, addOptions) => update(itemId, (stored) => {
@@ -570,6 +609,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     edgesClear: (itemId) => update(itemId, (stored) => ({ ...stored, steps: stored.steps.map((step) => ({ ...placed(step), after: [] })) })),
 
     plan: (itemId, input) => update(itemId, (stored) => {
+      if (input.criteria !== undefined && !stored.criteriaOpen) throw new ObjectiveStoreError("criteria_not_planning");
+      // 검증과 편성 변경은 한 번의 update 안에서 끝난다 — 실패하면 기준 제안도 임무도 바뀌지 않는다.
+      const proposals = input.criteria === undefined ? stored.criteriaProposals : proposalsOf(stored, input.criteria);
       if (input.members !== undefined && stored.members?.length) throw new ObjectiveStoreError("members_exist");
       const members = input.members?.length ? input.members.map((member): StoredMember => ({ id: randomUUID(), role: member.role, ...(member.brief ? { brief: member.brief } : {}), by: "commander" })) : stored.members ?? [];
       const resolve = (reference: string | undefined): string | undefined => {
@@ -593,10 +635,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const member = resolve(step.member);
         return { id: freshIds[ix]!, text: step.text, after, ...(member ? { member } : {}) };
       });
-      return withoutMet({ ...stored, members, steps: [...kept.map((step) => ({ ...step, after: step.after.filter((edge) => keptIds.has(edge.id)) })), ...fresh] });
+      return withoutMet({ ...stored, members, criteriaProposals: proposals, steps: [...kept.map((step) => ({ ...step, after: step.after.filter((edge) => keptIds.has(edge.id)) })), ...fresh] });
     }),
 
     setCooking: (itemId, cooking) => update(itemId, (stored) => (!!stored.cooking === cooking ? stored : { ...stored, cooking: cooking ? true as const : undefined })),
+    setCriteriaOpen: (itemId, open) => update(itemId, (stored) => (!!stored.criteriaOpen === open ? stored : { ...stored, criteriaOpen: open ? true as const : undefined })),
     clearMet: (itemId) => update(itemId, (stored) => withoutMet(stored)),
 
     setEdited(itemId, kinds) {
@@ -625,15 +668,36 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     criterionRemove: (itemId, criterionId) => update(itemId, (stored) => {
       const criteria = stored.criteria ?? [];
       if (!criteria.some((entry) => entry.id === criterionId)) throw new ObjectiveStoreError("unknown_criterion");
-      return { ...stored, criteria: criteria.filter((entry) => entry.id !== criterionId) };
+      return { ...stored, criteria: criteria.filter((entry) => entry.id !== criterionId), criteriaProposals: stored.criteriaProposals?.filter((proposal) => proposal.target !== criterionId) };
     }),
     criterionMet: (itemId, criterionId, evidence) => update(itemId, (stored) => {
+      if (stored.criteriaProposals?.length) throw new ObjectiveStoreError("criteria_pending");
       const criteria = stored.criteria ?? [];
       const target = criteria.find((entry) => entry.id === criterionId);
       if (!target) throw new ObjectiveStoreError("unknown_criterion");
       const met = evidence?.trim() || undefined;
       if (target.met === met) return stored;
       return { ...stored, criteria: criteria.map((entry) => (entry.id === criterionId ? { id: entry.id, text: entry.text, by: entry.by, ...(met ? { met } : {}) } : entry)) };
+    }),
+    proposalApprove: (itemId, proposalId) => update(itemId, (stored) => {
+      const proposal = stored.criteriaProposals?.find((entry) => entry.id === proposalId);
+      if (!proposal) throw new ObjectiveStoreError("unknown_proposal");
+      const next = approve(stored, proposal);
+      return { ...next, criteriaProposals: stored.criteriaProposals?.filter((entry) => entry.id !== proposalId) };
+    }),
+    proposalsApproveAll: (itemId) => update(itemId, (stored) => {
+      if (!stored.criteriaProposals?.length) return stored;
+      const next = stored.criteriaProposals.reduce(approve, stored);
+      return { ...next, criteriaProposals: undefined };
+    }),
+    proposalReject: (itemId, proposalId) => update(itemId, (stored) => {
+      if (!stored.criteriaProposals?.some((entry) => entry.id === proposalId)) throw new ObjectiveStoreError("unknown_proposal");
+      return { ...stored, criteriaProposals: stored.criteriaProposals.filter((entry) => entry.id !== proposalId) };
+    }),
+    proposalAnnotate: (itemId, proposalId, annotation) => update(itemId, (stored) => {
+      if (!stored.criteriaProposals?.some((entry) => entry.id === proposalId)) throw new ObjectiveStoreError("unknown_proposal");
+      if (annotation.length > 300) throw new ObjectiveStoreError("annotation_too_long");
+      return { ...stored, criteriaProposals: stored.criteriaProposals.map((entry) => entry.id === proposalId ? { ...entry, annotation: annotation.trim() || undefined } : entry) };
     }),
 
     attachmentAdd(itemId, input) {

@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
-import { coordinatorMode, stepReady, unseenRecords, type CoordinatorMode, type ObjectiveMember, type StepRecord, type ObjectiveItem, type ObjectiveStep } from "../server/types.js";
+import { coordinatorMode, stepReady, unseenRecords, type CoordinatorMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type StepRecord, type ObjectiveItem, type ObjectiveStep } from "../server/types.js";
 import { ActionBand, type MemberAwaiting } from "./action-band.js";
 import { NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
@@ -889,6 +889,108 @@ function SectionHead({ glyph, label, tools, controls, expanded, onToggle }: {
   );
 }
 
+const PROPOSAL_PLACEHOLDER: Readonly<Record<ObjectiveCriterionProposal["kind"], ObjectiveMessageKey>> = {
+  add: "objectives.proposal.ph.add",
+  revise: "objectives.proposal.ph.revise",
+  retire: "objectives.proposal.ph.retire",
+};
+
+/**
+ * 지휘관의 달성 기준 제안 한 줄 — 바뀔 기준 자리에 점선 테두리로 선다. 추가는 새 문구, 수정은 원문(취소선) 아래 새 문구,
+ * 삭제는 원문 전체 취소선과 이유. 사람은 제안 문구를 고치지 않는다 — 승인·거절하거나 어노테이션을 달아 다시 구상하게 한다.
+ * 어노테이션은 스티어링이 아니다: 저장만 하고, 다음 「다시 구상」 때 지휘관이 보드에서 읽는다.
+ */
+function ProposalRow({ proposal, target, n, itemId, t, call, touchable, annotating, onAnnotate }: {
+  readonly proposal: ObjectiveCriterionProposal;
+  /** 수정·삭제 대상인 승인된 기준 — 추가면 null. */
+  readonly target: ObjectiveCriterion | null;
+  /** 대상 기준의 번호(1부터) — 추가면 쓰지 않는다. */
+  readonly n: number;
+  readonly itemId: string;
+  readonly t: T;
+  readonly call: <R,>(path: string, body: Record<string, unknown>) => Promise<R | null>;
+  readonly touchable: boolean;
+  /** 어노테이션 칸이 열린 제안 id — 한 번에 하나. */
+  readonly annotating: string | null;
+  readonly onAnnotate: (proposalId: string | null) => void;
+}) {
+  const fieldRef = useRef<HTMLTextAreaElement | null>(null);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+  // 키나 버튼으로 이미 끝낸 칸 — 떼어질 때 뒤늦게 오는 blur 가 다시 저장(Esc 면 되돌린 글을 저장)하지 않게.
+  const settled = useRef(false);
+  const open = touchable && annotating === proposal.id;
+  const saved = proposal.annotation ?? "";
+  const label = proposal.kind === "add" ? t("objectives.proposal.add") : t(proposal.kind === "revise" ? "objectives.proposal.revise" : "objectives.proposal.retire", { n });
+  const decide = (path: "/criterion/approve" | "/criterion/reject") => void call(path, { itemId, proposalId: proposal.id });
+  /** 칸의 글을 저장한다 — 바뀌었을 때만. 빈 글은 어노테이션을 지운다. */
+  const save = () => {
+    const value = fieldRef.current?.value.trim();
+    if (value !== undefined && value !== saved) void call("/criterion/annotate", { itemId, proposalId: proposal.id, annotation: value });
+  };
+  const close = (focusToggle: boolean) => {
+    settled.current = true;
+    onAnnotate(null);
+    if (focusToggle) requestAnimationFrame(() => toggleRef.current?.focus());
+  };
+  return (
+    <div className={`objectives-proposal is-${proposal.kind}`} role="group" aria-label={label}>
+      <div className="objectives-criterion">
+        <span className="objectives-criterion-mark" aria-hidden="true" />
+        <div className="objectives-criterion-body">
+          <span className="objectives-proposal-kind">{label}</span>
+          {proposal.kind === "revise" && target ? <del className="objectives-proposal-text is-old">{target.text}</del> : null}
+          {proposal.kind === "retire"
+            ? <>
+              <del className="objectives-proposal-text">{target?.text ?? ""}</del>
+              {proposal.reason ? <span className="objectives-criterion-sub">{t("objectives.proposal.reason", { reason: proposal.reason })}</span> : null}
+            </>
+            : <span className="objectives-proposal-text">{proposal.text ?? ""}</span>}
+        </div>
+        <span className="objectives-criterion-state is-proposal">{t("objectives.proposal.state")}</span>
+      </div>
+      {touchable ? (
+        <div className="objectives-proposal-acts">
+          <button type="button" className="objectives-btn is-small is-approve" onClick={() => decide("/criterion/approve")}><span aria-hidden="true">✓</span>{t("objectives.proposal.approve")}</button>
+          <button type="button" className="objectives-btn is-small is-reject" onClick={() => decide("/criterion/reject")}><span aria-hidden="true">✕</span>{t("objectives.proposal.reject")}</button>
+          <button
+            ref={toggleRef}
+            type="button"
+            className="objectives-btn is-small is-note"
+            aria-expanded={open}
+            // 열린 칸을 닫을 때 칸이 먼저 blur 로 닫혔다가 이 누름에 다시 열리지 않게 — 초점을 옮기지 않고 여기서 저장해 닫는다.
+            onPointerDown={(event) => { if (open) event.preventDefault(); }}
+            onClick={() => { if (open) { save(); close(false); } else { settled.current = false; onAnnotate(proposal.id); } }}
+          >
+            {t(saved ? "objectives.proposal.annotateEdit" : "objectives.proposal.annotate")}
+          </button>
+        </div>
+      ) : null}
+      {open ? (
+        <div className="objectives-proposal-note">
+          <textarea
+            ref={fieldRef}
+            autoFocus
+            rows={2}
+            maxLength={300}
+            defaultValue={saved}
+            placeholder={t(PROPOSAL_PLACEHOLDER[proposal.kind])}
+            aria-label={t("objectives.proposal.annotationAria")}
+            onKeyDown={(event) => {
+              // Enter 는 저장하고 닫는다(Shift+Enter 는 줄바꿈). Esc 는 되돌리고 칸만 닫는다 — 상세는 닫지 않는다.
+              if (submitKey(event) && !event.shiftKey) { event.preventDefault(); save(); close(true); }
+              else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); }
+            }}
+            onBlur={() => { if (settled.current) return; save(); close(false); }}
+          />
+          <span className="objectives-proposal-hint">{t("objectives.proposal.annotationHint")}</span>
+        </div>
+      ) : saved ? (
+        <div className="objectives-proposal-chip"><b>{t("objectives.proposal.annotation")}</b><span>{saved}</span></div>
+      ) : null}
+    </div>
+  );
+}
+
 const BRIEF_LINES = 3;
 
 function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightStep, onClose, detailRef, placeButton, onComplete, onToggleEdge }: DetailProps) {
@@ -946,11 +1048,23 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   // 지휘관 자신의 실행과 구성원 각자의 실행을 따로 본다(구성원이 묻는 동안 끌어올린 값은 대기라 실행을 가린다).
   const working = !item.done && (WORKING.has(operationOwnState(item.id)) || item.members.some((member) => !!member.operationId && WORKING.has(operationState(member.operationId))));
 
+  // 달성 기준 제안 — 결정(승인·거절)과 어노테이션은 줄마다 한다. 열린 어노테이션 칸은 한 번에 하나다.
+  const proposals = item.criteriaProposals;
+  const [annotating, setAnnotating] = useState<string | null>(null);
+  useEffect(() => { setAnnotating(null); }, [item.id]);
+  const proposalProps = { itemId: item.id, t, call, touchable, annotating, onAnnotate: setAnnotating } as const;
+
   // 섹션 접힘 — 항목이 없으면 접지 않는다.
-  const criteriaCollapsible = item.criteria.length > 0;
+  const criteriaCollapsible = item.criteria.length + proposals.length > 0;
   const missionsCollapsible = item.steps.length > 0;
   const criteriaOpen = !criteriaCollapsible || sectionOpen("detail:criteria");
   const missionsOpen = !missionsCollapsible || sectionOpen("detail:missions");
+  // 제안이 새로 서면 접힌 기준 섹션을 편다 — 개시가 잠긴 까닭이 보여야 한다. 제안 목록이 바뀔 때 한 번만 펴서
+  // 사람이 다시 접을 수 있게 둔다. onOpenSection 은 렌더마다 새로 만들어지므로 ref 로 읽는다(의존성에 넣으면 무한 렌더).
+  const proposalKey = proposals.map((proposal) => proposal.id).join(",");
+  const openSectionRef = useRef(onOpenSection);
+  openSectionRef.current = onOpenSection;
+  useEffect(() => { if (proposalKey) openSectionRef.current("detail:criteria"); }, [proposalKey]);
   // 「이 임무로」 — 임무 섹션을 펼치고 그 행으로 스크롤한다(편성 노드 호버로는 펼치지 않는다).
   useEffect(() => { if (highlightStep && !missionsOpen) onOpenSection("detail:missions"); }, [highlightStep, missionsOpen, onOpenSection]);
   useEffect(() => {
@@ -1062,17 +1176,25 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
       </div>
 
-      {/* 달성 기준 — 사람이 쓰고(비어 있으면 구상 때 지휘관이 제안), 마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져 근거와 함께
-          충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져 「미확인」으로 돌아간다. 모든 임무와 기준이 끝나면 저절로 검토 대기다. */}
+      {/* 달성 기준 — 사람이 쓰고, 사람이 구상을 청한 턴에 지휘관이 추가·수정·삭제를 제안한다. 제안은 바뀔 기준 바로 그 줄에 서고
+          (추가는 끝에 새 줄) 사람이 줄마다 승인·거절하거나 어노테이션을 달아 다시 구상하게 한다. 제안이 남아 있으면 개시·스티어링은 잠긴다.
+          마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져 근거와 함께 충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져
+          「미확인」으로 돌아간다. 모든 임무와 기준이 끝나면 저절로 검토 대기다. */}
       <div className="objectives-group objectives-criteria-group">
-        <SectionHead
-          glyph={<CriteriaGlyph />}
-          label={t("objectives.criteria.title")}
-          tools={criteriaCollapsible ? <span className="objectives-criteria-count">{t("objectives.criteria.count", { met: item.criteria.filter((criterion) => !!criterion.met).length, total: item.criteria.length })}</span> : null}
-          {...(criteriaCollapsible ? { controls: "objectives-sec-criteria", expanded: criteriaOpen, onToggle: () => onToggleSection("detail:criteria") } : {})}
-        />
+        <div className="objectives-criteria-head">
+          <SectionHead
+            glyph={<CriteriaGlyph />}
+            label={t("objectives.criteria.title")}
+            tools={proposals.length > 0 ? <span className="objectives-criteria-count is-pending">{t("objectives.criteria.pending", { count: proposals.length })}</span>
+              : criteriaCollapsible ? <span className="objectives-criteria-count">{t("objectives.criteria.count", { met: item.criteria.filter((criterion) => !!criterion.met).length, total: item.criteria.length })}</span> : null}
+            {...(criteriaCollapsible ? { controls: "objectives-sec-criteria", expanded: criteriaOpen, onToggle: () => onToggleSection("detail:criteria") } : {})}
+          />
+          {proposals.length > 1 && touchable ? <button type="button" className="objectives-btn is-small objectives-approve-all" onClick={() => void call("/criterion/approve-all", { itemId: item.id })}>{t("objectives.criteria.approveAll")}</button> : null}
+        </div>
         <div id="objectives-sec-criteria" hidden={!criteriaOpen}>
           {item.criteria.map((criterion, index) => {
+            const proposal = proposals.find((candidate) => candidate.target === criterion.id);
+            if (proposal) return <ProposalRow key={proposal.id} proposal={proposal} target={criterion} n={index + 1} {...proposalProps} />;
             const evidence = criterion.met;
             return (
               <div key={criterion.id} className={`objectives-criterion${evidence ? " is-met" : ""}`}>
@@ -1088,6 +1210,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
               </div>
             );
           })}
+          {proposals.filter((proposal) => proposal.kind === "add").map((proposal) => <ProposalRow key={proposal.id} proposal={proposal} target={null} n={0} {...proposalProps} />)}
           {touchable ? (
             <div className="objectives-row objectives-step-add">
               <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>

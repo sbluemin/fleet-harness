@@ -24,7 +24,9 @@ export function cookTurn(item: ObjectiveItem, language: PromptLanguage): string 
   const word = language === "ko"
     ? `목표 \`${item.id}\` 을 구상하세요 — 편성(구성원·임무·선행·담당)을 보드에 올리고, 임무는 수행하지 마세요.`
     : `Plan objective \`${item.id}\` — lay the lineup (members, missions, prerequisites and assignments) out on the board; do not carry out any mission.`;
-  return `${word}${quoted(item.cook)}`;
+  const annotated = item.criteriaProposals.filter((proposal) => !!proposal.annotation).length;
+  const notice = annotated ? (language === "ko" ? ` 제안 ${annotated}건에 사람의 어노테이션이 있습니다 — 보드에서 읽으세요.` : ` ${annotated} proposals have the person's annotations — read them on the board.`) : "";
+  return `${word}${notice}${quoted(item.cook)}`;
 }
 
 const EDIT_WORDS: Record<PromptLanguage, Record<ObjectiveEditKind, string>> = {

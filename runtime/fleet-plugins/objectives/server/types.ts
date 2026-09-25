@@ -105,15 +105,21 @@ export interface StoredStep {
   readonly seen?: number;
 }
 
-/**
- * 달성 기준 — 사람이 쓰고, 비어 있으면 구상 때 지휘관이 제안한다(by). `met` 은 지휘관이 스스로 따져 충족이라고 판단한
- * 근거 한 줄이다 — 문구가 바뀌거나 새 작업이 생기면 지워진다.
- */
+/** 승인된 달성 기준. `met` 은 지휘관이 스스로 따져 충족이라고 판단한 근거 한 줄이다. */
 export interface StoredCriterion {
   readonly id: string;
   readonly text: string;
   readonly by: "human" | "commander";
   readonly met?: string;
+}
+
+export interface ObjectiveCriterionProposal {
+  readonly id: string;
+  readonly kind: "add" | "revise" | "retire";
+  readonly target?: string;
+  readonly text?: string;
+  readonly reason?: string;
+  readonly annotation?: string;
 }
 
 export interface StoredObjective {
@@ -124,6 +130,8 @@ export interface StoredObjective {
   readonly cook?: string;
   /** 구상 중 — 지휘관이 단계·메모만 짜는 국면. 시작·중지·완료가 끝낸다. */
   readonly cooking?: true;
+  /** 사람의 명시적인 구상 요청에서만 켜고, 스티어링·개시·중지·완료에서 끈다. */
+  readonly criteriaOpen?: true;
   readonly attachments?: readonly ObjectiveAttachment[];
   readonly important?: true;
   readonly dueDate?: string;
@@ -138,6 +146,7 @@ export interface StoredObjective {
   /** 목표 완료 — 완료는 늘 사람이 누른다. */
   readonly done?: { readonly at: number };
   readonly criteria?: readonly StoredCriterion[];
+  readonly criteriaProposals?: readonly ObjectiveCriterionProposal[];
   readonly members?: readonly StoredMember[];
   readonly steps: readonly StoredStep[];
 }
@@ -200,6 +209,7 @@ export interface ObjectiveItem {
   readonly attachments: readonly ObjectiveAttachment[];
   readonly cook?: string;
   readonly cooking: boolean;
+  readonly criteriaOpen: boolean;
   readonly edited?: { readonly at: number; readonly kinds: readonly ObjectiveEditKind[] };
   readonly important: boolean;
   readonly dueDate: string | null;
@@ -209,6 +219,7 @@ export interface ObjectiveItem {
   /** 검토 대기 — 끝나지 않은 목표의 모든 임무와 모든 달성 기준이 끝났다. 저장하지 않고 계산한다. 완료는 사람이 누른다. */
   readonly awaitingReview: boolean;
   readonly criteria: readonly ObjectiveCriterion[];
+  readonly criteriaProposals: readonly ObjectiveCriterionProposal[];
   readonly members: readonly ObjectiveMember[];
   readonly steps: readonly ObjectiveStep[];
 }
@@ -226,8 +237,8 @@ export function recordLines(summary: readonly string[]): readonly string[] | nul
 }
 
 /** 검토 대기 — 임무가 하나 이상 있고 모두 끝났으며, 달성 기준이 모두 충족으로 표시됐다. */
-export function awaitingReview(objective: Pick<StoredObjective, "done" | "steps" | "criteria">): boolean {
-  if (objective.done || objective.steps.length === 0) return false;
+export function awaitingReview(objective: Pick<StoredObjective, "done" | "steps" | "criteria" | "criteriaProposals">): boolean {
+  if (objective.done || objective.steps.length === 0 || objective.criteriaProposals?.length) return false;
   return objective.steps.every((step) => step.done) && (objective.criteria ?? []).every((criterion) => !!criterion.met);
 }
 
@@ -377,6 +388,12 @@ export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.opt
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
 export const criterionAddSchema = z.object({ text: criterionText }).strict();
 export const criterionPatchSchema = z.object({ text: criterionText }).strict();
+export const criterionProposalSchema = z.union([
+  z.object({ text: criterionText }).strict(),
+  z.object({ revise: z.union([z.number().int().min(1), ids]), text: criterionText }).strict(),
+  z.object({ retire: z.union([z.number().int().min(1), ids]), reason: criterionText }).strict(),
+]);
+export type CriterionProposalInput = z.output<typeof criterionProposalSchema>;
 
 export const stepAddSchema = z.object({ text: stepText, after: z.array(ids).max(MAX_STEPS).optional(), member: ids.nullable().optional() }).strict();
 export const stepPatchSchema = z.object({
@@ -397,6 +414,7 @@ export const planSchema = z.object({
     member: ids.optional(),
   })).min(1).max(MAX_STEPS),
   members: z.array(memberAddSchema.pick({ role: true, brief: true })).max(MAX_STEPS).optional(),
+  criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
 }).strict();
 
 export type CreateItemInput = z.output<typeof createItemSchema>;
