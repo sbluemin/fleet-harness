@@ -7,6 +7,7 @@ import { readOperationLaunch, type OperationNode } from "@fleet-console/sdk/oper
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import {
   MAX_CRITERIA,
+  MAX_CRITERION_TEXT,
   MAX_RECORDS,
   MAX_STEPS,
   awaitingReview,
@@ -63,6 +64,8 @@ export interface ObjectiveInit {
   readonly dueDate?: string | null;
   readonly today?: boolean;
   readonly steps?: readonly { readonly text: string; readonly after?: readonly number[] }[];
+  /** Console Use 가 함께 받은 달성 기준 문장 — 저장될 때 기본 요구사항으로 by "human" 이 된다. */
+  readonly criteria?: readonly string[];
   readonly addedBy?: string;
 }
 
@@ -429,6 +432,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         text: step.text,
         after: (step.after ?? []).filter((index) => index >= 0 && index < ix).map((index) => ({ id: stepIds[index]! })),
       }));
+      // 함께 받은 달성 기준은 같은 저장에 기본 요구사항(by "human")으로 남는다 — 한 건이라도 맞지 않으면 목표 자체를 세우지 않는다.
+      const criteriaTexts = (init.criteria ?? []).map((entry) => entry.trim());
+      if (criteriaTexts.length > MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria");
+      if (criteriaTexts.some((entry) => entry.length === 0 || entry.length > MAX_CRITERION_TEXT)) throw new ObjectiveStoreError("invalid_criteria");
       const stored: StoredObjective = {
         operationId,
         note: init.note ?? "",
@@ -436,6 +443,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(init.dueDate ? { dueDate: init.dueDate } : {}),
         ...(init.today ? { today: true as const } : {}),
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
+        ...(criteriaTexts.length ? { criteria: criteriaTexts.map((text) => ({ id: randomUUID(), text, by: "human" as const })) } : {}),
         steps: [...lineupOrder(steps)],
       };
       objectives.unshift(stored);
