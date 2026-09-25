@@ -268,6 +268,11 @@ export interface ClaudeGatewayTurn {
   readonly forkSession?: boolean;
   /** false면 SDK 세션 기록을 디스크에 저장하지 않으며 이후 재개할 수 없다. */
   readonly persistSession?: boolean;
+  /**
+   * 자식 세션의 표시 이름 — CLI의 `-n`/`--name`. 다른 세션이 `SendMessage`로 이 세션을 부르는
+   * 주소이며, 주지 않으면 CLI가 작업 폴더 이름으로 스스로 짓는다.
+   */
+  readonly sessionName?: string;
   readonly maxTurns?: number;
   readonly maxBudgetUsd?: number;
   /** 호출자가 소유하는 구조화 응답 스키마. vendor의 outputFormat으로 전달한다. */
@@ -325,6 +330,7 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "sessionId",
   "forkSession",
   "persistSession",
+  "sessionName",
   "maxTurns",
   "maxBudgetUsd",
   "outputFormat",

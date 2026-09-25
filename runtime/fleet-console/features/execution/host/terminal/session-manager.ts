@@ -156,6 +156,16 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     return true;
   }
 
+  async function terminateAndWait(sessionId: string, timeoutMs: number): Promise<boolean> {
+    const session = sessions.get(sessionId);
+    if (!session) return true;
+    // 종료 통지는 kill 신호를 보낸 직후 나간다 — 같은 Claude 세션을 이어 쓸 다음 필자는 프로세스가
+    // 실제로 사라진 것을 확인한 뒤에야 설 수 있다. pid를 모르면 확인할 수 없으므로 false다.
+    const pid = session.pty.pid;
+    removeSession(session);
+    return typeof pid === "number" ? waitForProcessExit(pid, timeoutMs) : false;
+  }
+
   function getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined {
     return sessions.get(sessionId)?.messagePolicy;
   }
@@ -444,7 +454,21 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, stop, writeToSession };
+  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, terminateAndWait, stop, writeToSession };
+}
+
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      // ESRCH만 "없다"이다. 권한 거부(EPERM)는 다른 소유자의 프로세스가 그 pid를 쓰고 있다는 뜻이라 끝났다고 볼 수 없다.
+      return (error as NodeJS.ErrnoException).code === "ESRCH";
+    }
+    if (Date.now() >= deadline) return false;
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

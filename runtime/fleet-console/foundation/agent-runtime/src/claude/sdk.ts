@@ -117,6 +117,8 @@ export async function createClaudeGatewaySdk(
     ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
     ...(request.forkSession === undefined ? {} : { forkSession: request.forkSession }),
     ...(request.persistSession === undefined ? {} : { persistSession: request.persistSession }),
+    // SDK에는 이름 필드가 없어 CLI 인자로 싣는다. 임의 인자 통로(`extraArgs`)는 계약에 열지 않고 이 한 키만 옮긴다.
+    ...(request.sessionName === undefined ? {} : { extraArgs: { name: request.sessionName } }),
     ...(request.maxTurns === undefined ? {} : { maxTurns: request.maxTurns }),
     ...(request.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: request.maxBudgetUsd }),
     ...(request.outputFormat === undefined ? {} : { outputFormat: request.outputFormat }),
@@ -198,6 +200,9 @@ export async function createClaudeGatewaySdk(
         assertKnownSessionKeys(request);
         const model = resolveTurnModel(request.model, accepted, options.modelPolicy.resolve);
         const env = await prepareLaunch();
+        // 기동 준비를 기다리는 사이 dispose가 슬롯을 거뒀으면 자식을 띄우지 않는다 — 띄운 뒤 닫으면
+        // 그 짧은 순간 같은 Claude 세션을 이어 쓰는 다음 필자와 겹친다.
+        if (active !== reservation) throw new Error("This Claude gateway SDK instance has been disposed.");
         const session = runVendorSession({ options: vendorRunOptions(request, model, env) });
 
         // 세션의 슬롯은 `close()`로만 돌아온다. 턴과 달리 스트림이 스스로 끝나지 않기 때문이며,

@@ -472,7 +472,7 @@ describe("console static and terminal ticket boundary", () => {
     let destroyed = 0;
     const handler = createPluginTerminalUpgradeHandler({
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, attachViewer: () => false, renegotiateSockets: () => {}, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, getSessionLastActivityAt: () => null, resolveSessionIdentity: async () => null, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
+      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, attachViewer: () => false, renegotiateSockets: () => {}, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, getSessionLastActivityAt: () => null, resolveSessionIdentity: async () => null, terminate: () => false, terminateAndWait: async () => true, stop: async () => undefined, writeToSession: () => false },
       isAuthorized: () => true,
     });
 

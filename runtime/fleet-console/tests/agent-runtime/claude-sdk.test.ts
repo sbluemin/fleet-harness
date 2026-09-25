@@ -105,6 +105,14 @@ describe("fail-closed refusals", () => {
     await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));
     await sdk.dispose();
   });
+
+  it("never spawns a session child once disposal lands during launch preparation", async () => {
+    const sdk = await createClaudeGatewaySdk({ modelPolicy: claudeGatewayModelPolicy, baseUrl: BASE_URL, models: [LUNA] });
+    const opening = sdk.openSession({ model: LUNA });
+    await sdk.dispose();
+    await expect(opening).rejects.toThrow(/disposed/);
+    expect(runVendorSession).not.toHaveBeenCalled();
+  });
 });
 
 describe("system prompt channel", () => {

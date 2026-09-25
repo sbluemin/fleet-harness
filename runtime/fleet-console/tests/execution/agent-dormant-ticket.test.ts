@@ -178,6 +178,7 @@ async function createHarness(options: {
     attach,
     write: () => true,
     terminate: () => true,
+    terminateAndWait: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     getSessionLastActivityAt: () => null,

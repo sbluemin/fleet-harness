@@ -107,6 +107,8 @@ const CLAUDE_HARNESS_ID = "claude";
 const MAX_CHAT_ANSWER_MESSAGE_CHARS = 2_000;
 /** Console Use 의 sleep 이 PTY 종료 → 휴면 전이를 기다려 주는 상한. 넘기면 `ending` 으로 답한다. */
 const SLEEP_SETTLE_MS = 5_000;
+/** 터미널을 넘겨받은 채팅이 옛 CLI의 실제 종료를 기다리는 한도. 넘기면 첫 메시지가 자식을 연다. */
+const ADOPTED_CHAT_EXIT_WAIT_MS = 5_000;
 
 /**
  * 사용자의 실제 Claude 홈. 터미널로 띄운 CLI와 Chat Mode의 SDK가 **같이** 쓰는 한 곳이며,
@@ -1042,6 +1044,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     } catch {
       return rollback(503, "chat_unavailable");
     }
+    // 프롬프트 없이 태어난 채팅도 자식을 바로 세운다 — 그래야 첫 프롬프트 전에도 다른 세션이 부를 수 있다.
+    chat.open();
     if (launchOptions.prompt) {
       chat.send(
         launchOptions.prompt,
@@ -1612,7 +1616,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const adopted = observability.setTerminalSessionChatActive(operationId, true);
     if (adopted) observability.notifySessionUpdated(adopted);
     try {
-      await chatRegistry.ensure(operationId, () => seed.seed);
+      // 깨운 채팅도 첫 메시지를 기다리지 않고 자식을 세운다. 휴면한 채팅에는 PTY가 없으므로 이중 필자가 될 수 없다.
+      (await chatRegistry.ensure(operationId, () => seed.seed)).open();
     } catch {
       const reverted = observability.setTerminalSessionChatActive(operationId, false);
       if (reverted) observability.notifySessionUpdated(reverted);
@@ -1689,11 +1694,33 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     ctx.host.operations.patch(sessionId, { payload: { ...node.payload, [CHAT_MODE_PAYLOAD_KEY]: true } });
     const activated = observability.setTerminalSessionChatActive(sessionId, true);
     if (activated) observability.notifySessionUpdated(activated);
+    // 넘겨받은 채팅도 첫 프롬프트를 기다리지 않고 자식을 세운다 — 전환 전 터미널이 받던 메시지를
+    // 전환 뒤에도 받아야 한다. 다만 옛 CLI가 실제로 사라진 뒤에만 연다: 같은 Claude 세션의 두 필자가
+    // 겹치면 안 되고, 확인하지 못하면 여느 채팅처럼 첫 메시지가 연다.
+    // 세대는 기다리기 **전에** 잡는다 — 기다리는 사이 복귀와 재전환이 일어나면 새 전환의 세대를 옛 대기가 넘겨받는다.
+    const generation = chatRegistry.generation(sessionId);
     if (live) {
       terminalRuntime.invalidateTicketsForSession(sessionId);
-      terminalRuntime.terminate(sessionId);
+      void terminalRuntime.terminateAndWait(sessionId, ADOPTED_CHAT_EXIT_WAIT_MS)
+        .then((exited) => (exited ? openAdoptedChat(sessionId, generation) : undefined))
+        .catch(() => undefined);
+    } else {
+      void openAdoptedChat(sessionId, generation).catch(() => undefined);
     }
     return { ok: true, mode: "chat", changed: true };
+  }
+
+  /** 표면을 넘겨받은 채팅의 자식을 연다. 전환 시점의 세대에서 벗어났으면 열지 않고, 실패는 첫 메시지가 다시 시도한다. */
+  async function openAdoptedChat(sessionId: string, generation: number): Promise<void> {
+    // 채팅 마커는 터미널 복귀가 dispose를 **마친 뒤에야** 걷힌다 — 떠났는지는 접기와 함께 오르는 세대로 판정한다.
+    const stillAdopted = () => chatRegistry.generation(sessionId) === generation
+      && ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true;
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || !stillAdopted()) return;
+    const seed = await resolveChatSeed(node);
+    if (!seed.ok || !stillAdopted()) return;
+    const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+    if (stillAdopted()) chat.open();
   }
 
   /**
@@ -1972,6 +1999,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // resume core와 같은 좌표 정책: launchModel이 없던 구세대 Operation은 native Opus 1M로 계속된다.
     const model = readAgentSession(node.payload)?.model || "opus[1m]";
     const launchEffort = resolveChatLaunchEffort(readAgentSession(node.payload)?.effort ?? "");
+    // 터미널 런치가 `-n`으로 싣는 것과 같은 이름 — 다른 세션이 이 세션을 부르는 주소다.
+    const sessionName = readAgentSession(node.payload)?.sessionName;
     // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
     // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트 모드도 PTY 경로와 같은 전역 설정을 읽는다.
     const claudeConfigDir = resolveClaudeConfigDir();
@@ -2032,6 +2061,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(gatewayCompactCeiling === undefined ? {} : { compactCeiling: gatewayCompactCeiling }),
         ...(launchEffort ? { effort: launchEffort.effort } : {}),
         cwd,
+        ...(sessionName ? { sessionName } : {}),
         claudeConfigDir,
         origin: sessionOrigin,
         resolveFleetMcpServers: async () => {

@@ -288,7 +288,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
       // 라우팅은 오래 걸릴 수 있으므로 실제 기동 요청 직전에 저장된 허용값을 읽는다.
       const allowed = item(itemId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
-      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: allowed ? undefined : false, parentOperationId: current.id }).catch(asStoreError);
+      // 구성원은 지휘관이 지금 쓰는 표면으로 뜬다 — 채팅과 터미널은 권한 모드가 달라, 섞이면 서로의 메시지가 승인 대기에 묶인다.
+      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, viewMode: item(itemId).commander.viewMode, subagents: allowed ? undefined : false, parentOperationId: current.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(itemId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       try { current = store.setMemberOperation(itemId, member.id, launchedId); }
       catch (error) { ctx.host.operations.delete(launchedId); throw error; }

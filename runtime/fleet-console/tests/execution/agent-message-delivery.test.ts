@@ -150,6 +150,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
       return true;
     },
     terminate: () => true,
+    terminateAndWait: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
