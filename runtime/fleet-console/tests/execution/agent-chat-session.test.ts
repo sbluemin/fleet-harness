@@ -272,8 +272,8 @@ function withoutSnapshotEnd(events: readonly AgentChatJournalEvent[]): readonly 
 describe("AgentChatRegistry — chat-born sessions", () => {
   it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
     const home = tempDir("chat-home-");
-    const { factory, openSession, sends } = createFakeSdkFactory([
-      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
+    const { factory, openSession, sends, liveSession } = createFakeSdkFactory([
+      { messages: [{ type: "assistant", message: { content: [{ type: "tool_use", id: "read-1", name: "Read", input: { file_path: "source.ts" } }] } }] },
     ]);
     const registry = new AgentChatRegistry(factory);
     const cancelComputerUse = vi.fn();
@@ -284,7 +284,18 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     expect(kinds(events)).toEqual(["replay-start", "replay-end", "snapshot-end"]);
 
     session.send("let us talk about the render path");
+    await vi.waitFor(() => expect(events.some(({ event }) => event.kind === "tool")).toBe(true));
+    session.noteReceived({ id: "during", from: "commander", text: "While working." });
+    liveSession()!.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 10 });
     await drainTurn(registry, "op-1");
+    session.noteReceived({ id: "after", from: "commander", text: "After completion." });
+    expect(events.filter(({ event }) => event.kind === "received").map(({ event }) => event)).toMatchObject([
+      { id: "during", inTurn: true }, { id: "after", inTurn: false },
+    ]);
+    const restored: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => restored.push(entry))();
+    const fold = (entries: readonly AgentChatJournalEvent[]) => entries.reduce((log, entry) => reduceAgentChatLog(log, { ...entry.event, receivedAt: entry.at }), initialAgentChatLogState);
+    expect(fold(restored).turns).toEqual(fold(events).turns);
 
     expect(cancelComputerUse).toHaveBeenCalledTimes(1);
     expect(sends).toEqual(["let us talk about the render path"]);

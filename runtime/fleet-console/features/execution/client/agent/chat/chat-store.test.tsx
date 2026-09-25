@@ -144,15 +144,20 @@ describe("useAgentChatStream", () => {
     // 다른 세션의 수신은 도구 사이·최종 답변 직후·정비 명령 도중에 독립적으로 끼어든다.
     // 재접속도 같은 저널을 읽으므로 턴 경계와 답변·명령의 순서를 바꾸면 안 된다.
     const events: AgentChatStreamEvent[] = [
+      // 답하기 전에 종료된 과거 지시는 turn-end가 없다. 재접속이 내부 replay 경계를 빼도 수신은 별도 머리다.
+      { kind: "replay-start" },
+      { kind: "dispatch", text: "unfinished history" },
+      { kind: "replay-end", turns: 1 },
+      { kind: "received", id: "after-history", from: "commander", text: "Resume work.", inTurn: false },
       { kind: "dispatch", text: "hello" },
       { kind: "turn-start" },
       { kind: "tool", id: "tool-1", name: "Read", detail: "file" },
-      { kind: "received", id: "mid", from: "commander", text: "Check this too." },
+      { kind: "received", id: "mid", from: "commander", text: "Check this too.", inTurn: true },
       { kind: "text", text: "FINAL" },
-      { kind: "received", id: "late", from: "commander", text: "Next task." },
+      { kind: "received", id: "late", from: "commander", text: "Next task.", inTurn: true },
       { kind: "turn-end", ok: true, answer: "FINAL" },
       { kind: "command", name: "compact" },
-      { kind: "received", id: "command", from: "commander", text: "After compact." },
+      { kind: "received", id: "command", from: "commander", text: "After compact.", inTurn: false },
       { kind: "command-progress", phase: "compacting" },
     ];
     const journal = events.map((event, index) => ({ seq: index + 1, event }));
@@ -160,19 +165,21 @@ describe("useAgentChatStream", () => {
       first!.open();
       for (const frame of journal) first!.onmessage?.({ data: JSON.stringify(frame) });
     });
-    expect(latest?.turns).toHaveLength(4);
-    expect(latest?.turns[0]?.dispatch?.text).toBe("hello");
-    expect(latest?.turns[0]?.items.map((item) => item.type)).toEqual(["tool", "received", "text"]);
-    const view = splitAgentChatTurn(latest!.turns[0]!);
+    expect(latest?.turns).toHaveLength(6);
+    expect(latest?.turns[0]?.items).toHaveLength(0);
+    expect(latest?.turns[1]?.items[0]?.id).toBe("after-history");
+    expect(latest?.turns[2]?.dispatch?.text).toBe("hello");
+    expect(latest?.turns[2]?.items.map((item) => item.type)).toEqual(["tool", "received", "text"]);
+    const view = splitAgentChatTurn(latest!.turns[2]!);
     expect(view.answer).toBe("FINAL");
     expect(view.ledger.map((item) => item.type)).toEqual(["tool", "received"]);
-    expect(latest?.turns[1]?.items[0]?.id).toBe("late");
-    expect(latest?.turns[2]).toMatchObject({ state: "working", command: { name: "compact", phase: "compacting" } });
-    expect(latest?.turns[3]?.items[0]?.id).toBe("command");
+    expect(latest?.turns[3]?.items[0]?.id).toBe("late");
+    expect(latest?.turns[4]).toMatchObject({ state: "working", command: { name: "compact", phase: "compacting" } });
+    expect(latest?.turns[5]?.items[0]?.id).toBe("command");
     const end = { seq: journal.length + 1, event: { kind: "command-end" as const, ok: true, summary: "compacted" } };
     journal.push(end);
     act(() => first!.onmessage?.({ data: JSON.stringify(end) }));
-    expect(latest?.turns[2]).toMatchObject({ state: "done", command: { summary: "compacted" } });
+    expect(latest?.turns[4]).toMatchObject({ state: "done", command: { summary: "compacted" } });
     const liveTurns = latest!.turns;
 
     act(() => {
@@ -186,7 +193,9 @@ describe("useAgentChatStream", () => {
     act(() => {
       second!.open();
       second!.onmessage?.({ data: JSON.stringify({ seq: 0, event: { kind: "replay-start" } }) });
-      for (const frame of journal) second!.onmessage?.({ data: JSON.stringify(frame) });
+      for (const frame of journal) {
+        if (frame.event.kind !== "replay-start" && frame.event.kind !== "replay-end") second!.onmessage?.({ data: JSON.stringify(frame) });
+      }
       second!.onmessage?.({ data: JSON.stringify({ seq: journal.length + 1, event: { kind: "replay-end", turns: 1 } }) });
     });
     expect(latest?.turns).toEqual(liveTurns);

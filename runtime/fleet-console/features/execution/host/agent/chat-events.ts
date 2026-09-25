@@ -221,7 +221,7 @@ export type AgentChatStreamEvent =
    * 트랜스크립트 재생에서는 절대 만들어지지 않는다 — 기록을 되읽어 세우면 지난 발신이 오늘의
    * 수신으로 다시 서고, 메모리 원장과 재생본이 서로 다른 원장이 된다.
    */
-  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly text: string; readonly at?: number }
+  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
   /**
    * 모델이 멈춰 서서 사용자를 기다린다. 저널에 남는 이벤트여야 하는 이유는 만료가 없기 때문이다 —
    * 재접속한 브라우저가 이 이벤트로 같은 카드를 다시 세우지 못하면, 대기는 영영 보이지 않는 채로

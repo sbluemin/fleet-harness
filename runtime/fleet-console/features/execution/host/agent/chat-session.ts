@@ -2454,7 +2454,8 @@ class AgentChatSession {
     const from = maskChatText(entry.from, { cwd: this.seed.cwd }).text;
     const text = maskChatText(entry.text, { cwd: this.seed.cwd }).text;
     if (from.length === 0 || text.length === 0) return;
-    this.push({ kind: "received", id: entry.id, from, text, at: Date.now() });
+    // 수신 당시 열린 턴인지 원장에 남긴다. 재접속 때 과거 재생 경계로 위치를 추측하지 않는다.
+    this.push({ kind: "received", id: entry.id, from, text, inTurn: this.turnOpen, at: Date.now() });
   }
 
   /**

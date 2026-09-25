@@ -128,7 +128,7 @@ export type AgentChatStreamEvent =
    * 다른 세션이 이 세션에 보낸 메시지. 서버가 보낸 쪽의 성공한 도구 호출을 관측해 확정한다 —
    * `from`은 서버가 확정한 보낸 세션 이름, `text`는 서버가 가리고 자른 본문이다. `id`는 중복 없는 좌표다.
    */
-  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly text: string; readonly at?: number }
+  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
   /** 자식이 문맥을 비웠다. 서버가 저널을 비우고 `cleared`를 내므로 화면은 이것을 그리지 않는다. */
   | { readonly kind: "reset"; readonly at?: number }
   /** 이 세션의 기록을 비웠다 — 화면의 원장도 함께 비운다. */
@@ -280,7 +280,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       if (typeof event.id !== "string" || event.id.length === 0) return null;
       if (typeof event.from !== "string" || event.from.length === 0) return null;
       if (typeof event.text !== "string") return null;
-      return { ...journal, event: { kind: "received", id: event.id, from: event.from, text: event.text, ...atField(event.at) } };
+      return { ...journal, event: { kind: "received", id: event.id, from: event.from, text: event.text, inTurn: event.inTurn === true, ...atField(event.at) } };
     case "reset":
       return { ...journal, event: { kind: "reset", ...atField(event.at) } };
     case "cleared":
@@ -646,8 +646,6 @@ export interface AgentChatTurn {
    * 지어내지 않고 빈칸으로 둔다.
    */
   readonly contextBefore?: number;
-  /** 재생 중에는 열린 턴도 done으로 보이므로 실제 turn-end 도착을 따로 기억한다. */
-  readonly closed?: true;
   /**
    * 이 항목은 대화의 턴이 아니라 **정비 명령**이다. 있으면 원장은 턴 문법을 통째로 쓰지 않는다.
    *
@@ -991,9 +989,8 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       // 서버가 중복을 걸러 보내지만, 같은 좌표가 두 번 서면 한 메시지가 두 번 온 것으로 읽힌다.
       if (state.turns.some((turn) => turn.items.some((existing) => existing.type === "received" && existing.id === event.id))) return state;
       const last = state.turns.at(-1);
-      // 재생의 done은 표시 상태이지 turn-end가 아니다. 같은 저널은 같은 턴에 수신을 세워야 한다.
-      const open = last !== undefined && !last.command && last.closed !== true && !receivedHead(last)
-        && (last.state === "working" || state.replaying);
+      // 수신 당시 서버의 턴 상태를 그대로 따른다. 과거 재생 경계가 생략돼도 위치는 바뀌지 않는다.
+      const open = event.inTurn && last !== undefined && !last.command && !receivedHead(last);
       if (open) return appendItem(wakeLastTurn(state, now), item);
       // 닫힌 턴이나 명령 뒤의 수신은 다음 턴의 머리다. 수신만으로 진행 중 명령을 닫거나 순서를 바꾸지 않는다.
       const head: AgentChatTurn = { dispatch: null, items: [item], state: "done", toolCount: 0, draft: "" };
@@ -1195,7 +1192,6 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         state: event.stopped === true ? "stopped" : event.ok ? "done" : "error",
         ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
         ...(event.answer !== undefined ? { answer: event.answer } : {}),
-        closed: true as const,
       }));
       return moved.length > 0
         ? { ...closed, turns: [...closed.turns, { dispatch: null, items: moved, state: "done" as const, toolCount: 0, draft: "" }] }
