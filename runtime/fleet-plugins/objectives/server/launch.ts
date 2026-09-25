@@ -6,7 +6,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { cookTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import type { ObjectiveItem, ObjectiveMember, PlanInput, SlotBy, StepAddInput, StepPatchInput } from "./types.js";
+import type { MemberPatchInput, ObjectiveItem, ObjectiveMember, PlanInput, SlotBy, StepAddInput, StepPatchInput } from "./types.js";
 
 /**
  * 기동·통지 — 목표의 지휘관 Operation 을 만들고 깨우고, 담당 Operation 을 띄운다.
@@ -36,6 +36,8 @@ export interface LaunchService {
   planApplied(itemId: string, plan: PlanInput): ObjectiveItem;
   /** 구성원 명단을 대기 기동하거나 휴면 세션째 재개한다. */
   muster(itemId: string): Promise<readonly { readonly id: string; readonly role: string; readonly session: string; readonly operationId: string; readonly state: "live" | "launched" | "resumed" | "unknown" }[]>;
+  /** 사람 경로의 구성원 수정. 서브에이전트 허용이 바뀌면 다음 기동 정책만 호스트에 알리고, 떠 있는 프로세스는 건드리지 않는다. */
+  memberPatched(itemId: string, memberId: string, patch: MemberPatchInput): ObjectiveItem;
   /** 지휘관 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. */
   busy(itemId: string): boolean;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
@@ -109,7 +111,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       viewMode: input.viewMode ?? "terminal",
       sessionName: input.sessionName,
       ...(input.dormant ? { dormant: true } : {}),
-      // 담당은 이미 분배된 일을 맡았다 — 서브에이전트(fleet:execute 포함)로 다시 나누지 않는다.
+      // 허용하지 않은 구성원만 태어날 때 서브에이전트(fleet:execute 포함)를 끈다. 허용은 전역 정책을 그대로 쓴다.
       ...(input.subagents === false ? { disableSubagents: true } : {}),
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
@@ -147,6 +149,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const decision = await response.json() as { model?: string; effort?: string };
       return decision.model ? { model: decision.model, effort: decision.effort ?? fallback.effort } : fallback;
     } catch { return fallback; }
+  };
+  /** 다음 프로세스 기동에 쓸 정책. 세션 payload를 직접 고치지 않고, 떠 있는 프로세스는 중단하지 않는다. */
+  const rememberSubagentSpawn = (operationId: string, allowed: boolean) => {
+    ctx.host.consoleControl?.setSubagentSpawn?.(operationId, allowed ? "default" : "blocked");
   };
   const memberPreset = (current: ObjectiveItem, member: ObjectiveMember) => member.launch.mode === "model"
     ? { model: member.launch.model, effort: member.launch.effort }
@@ -265,6 +271,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         continue;
       }
       if (operationId && node && observation?.lifecycle === "dormant") {
+        rememberSubagentSpawn(operationId, member.subagents === true);
         const receipt = await control().request({ kind: "resume", operationId }, `objectives:resume:${randomUUID()}`).catch(asStoreError);
         if (receipt.status === "failed" || receipt.status === "rejected") throw new ObjectiveStoreError(receipt.error ?? "resume_failed");
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "resumed" });
@@ -278,10 +285,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       let session = memberSession(current.commander.sessionName, number);
       while (used.has(session)) session = memberSession(current.commander.sessionName, ++number);
       const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
-      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: false, parentOperationId: current.id }).catch(asStoreError);
+      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: member.subagents === true ? undefined : false, parentOperationId: current.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(itemId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       try { current = store.setMemberOperation(itemId, member.id, launchedId); }
       catch (error) { ctx.host.operations.delete(launchedId); throw error; }
+      // 라우팅·기동을 기다리는 동안 사람이 허용을 바꿀 수 있다. 그때는 Operation이 아직 없어 포트가 무시되므로, 연결 직후 저장된 값으로 다음 기동 정책만 다시 맞춘다. 방금 뜬 프로세스는 중단하지 않는다.
+      const linked = current.members.find((candidate) => candidate.id === member.id);
+      if (linked?.operationId) rememberSubagentSpawn(linked.operationId, linked.subagents === true);
       members.push({ id: member.id, role: member.role, session, operationId: launchedId, state: "launched" });
     }
     return members;
@@ -381,6 +391,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     planApplied: (itemId, plan) => store.plan(itemId, plan),
 
     muster,
+    memberPatched(itemId, memberId, patch) {
+      const next = store.memberPatch(itemId, memberId, patch);
+      if (patch.subagents !== undefined) {
+        const operationId = next.members.find((member) => member.id === memberId)?.operationId;
+        if (operationId) rememberSubagentSpawn(operationId, patch.subagents === true);
+      }
+      return next;
+    },
 
     busy: (itemId) => working(item(itemId).id),
 

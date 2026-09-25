@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import { buildDisabledSkillOverrides, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId, type PtyInputChunk } from "@fleet-console/agent-runtime/fleet";
+import { ALL_SUBAGENTS, buildDisabledSkillOverrides, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId, type PtyInputChunk } from "@fleet-console/agent-runtime/fleet";
 import { writeGatewayModelCacheForHome } from "@fleet-console/ai-gateway";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { ensureWorkspaceDirectory, withDirectoryLock, type AgentOptionsService } from "@fleet-console/infra";
@@ -12,7 +12,7 @@ import { CONSOLE_CONTROL_TOOLS, type ConsoleCaller } from "@fleet-console/sdk/mc
 import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
 import { createConsoleTerminalObserver } from "./console-terminal.js";
 import { ConsoleControlError } from "../../../console-use/host/console-control.js";
-import type { OperationGeometry, OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
+import { retainSubagentSpawn, subagentSpawnBlocked, withSubagentSpawn, type OperationGeometry, type OperationLaunchKind, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "../context.js";
 import type { ConsoleRuntimeContext } from "../context.js";
 import { readSocketRole, readTicketChannel } from "../terminal/index.js";
@@ -1096,26 +1096,28 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 호출자가 제목을 들고 왔으면 사람이 붙인 이름으로 태어난다 — 자동 작명이 덮지 않고, rename 사건도 나지 않는다.
     const titled = launchOptions.title ? observability.renameTerminalSession(sessionId, launchOptions.title) : null;
     const namedSession = titled ?? named?.session ?? session;
+    const bornPayload = {
+      ...toOperationPayload(undefined, cwd, namedSession),
+      session: {
+        harness: "claude-code",
+        ...(launchOptions.model ? { model: launchOptions.model } : {}),
+        ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
+        ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
+        ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
+      },
+      // 채팅으로 태어난 Operation은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
+      // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
+      ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
+      ...(launchOptions.dormant ? { dormantBorn: true } : {}),
+    };
     ctx.host.operations.create({
       id: session.sessionId,
       theaterId,
       type: AGENT_OPERATION_TYPE,
       pluginId: null,
       title: namedSession.label ?? session.label ?? path.basename(cwd),
-      payload: {
-        ...toOperationPayload(undefined, cwd, namedSession),
-        session: {
-          harness: "claude-code",
-          ...(launchOptions.model ? { model: launchOptions.model } : {}),
-          ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
-          ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
-          ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
-        },
-        // 채팅으로 태어난 Operation은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
-        // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
-        ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
-        ...(launchOptions.dormant ? { dormantBorn: true } : {}),
-      },
+      // 태어날 때의 강제 차단은 세션 스냅샷과 별개인 다음 기동 정책에도 남긴다. 허용 기동은 전역 정책만 쓴다.
+      payload: launchOptions.disableSubagents ? withSubagentSpawn(bornPayload, "blocked") : bornPayload,
       ...(launchOptions.geometry ? { geometry: launchOptions.geometry } : {}),
       // 부모는 태어날 때 함께 — 생성 방송(operation:changed)이 부모 없는 행을 한 번이라도 실으면 목록에 선다.
       ...(launchOptions.parentOperationId ? { parentOperationId: launchOptions.parentOperationId } : {}),
@@ -1283,6 +1285,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // launchModel 도입 전 Operation은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
     // 신규 Quick Launch와 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
     const launchSession = readAgentSession(node.payload);
+    // 이번 기동의 강제 차단은 진입 시점의 다음 기동 정책이다. 세션 스냅샷의 옛 true는 명시 정책이 있으면 지지 못한다.
+    const blockSubagents = subagentSpawnBlocked(node.payload);
     const launchModel = launchSession?.model
       || (cliId === "claude" ? "opus[1m]" : undefined);
     const launchEffort = launchSession?.effort || undefined;
@@ -1306,7 +1310,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchSession?.model ? { model: launchSession.model } : {}),
           ...(launchSession?.effort ? { effort: launchSession.effort } : {}),
           ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
-          ...(launchSession?.disableSubagents ? { disableSubagents: true } : {}),
+          ...(blockSubagents ? { disableSubagents: true } : {}),
         };
         ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
       }
@@ -1321,7 +1325,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(launchModel ? { model: launchModel } : {}),
         ...(launchEffort ? { effort: launchEffort } : {}),
         ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
-        ...(launchSession?.disableSubagents ? { disableSubagents: true } : {}),
+        ...(blockSubagents ? { disableSubagents: true } : {}),
         ...(fresh ? {} : { resumeSessionId: providerSession?.id }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
@@ -1333,7 +1337,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다.
       const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
       const effectiveProviderSession = fresh ? readProviderSession(currentPayload) : providerSession;
-      const resumedPayload = toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle);
+      const resumedPayload = retainSubagentSpawn(toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle), ctx.host.operations.get(sessionId)?.payload);
       // Legacy fallback도 첫 성공 뒤에는 Operation의 확정 launch 좌표가 된다 — 매 resume마다
       // fallback 정책을 다시 적용해 향후 기본값 변경에 따라 같은 Operation이 흔들리지 않게 한다.
       if (!readAgentSession(resumedPayload)?.model && launchModel) {
@@ -1350,7 +1354,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (fresh && providerSession) {
         // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
         // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다.
-        const rollbackPayload = { ...(ctx.host.operations.get(sessionId)?.payload ?? {}) };
+        const livePayload = ctx.host.operations.get(sessionId)?.payload;
+        const rollbackPayload = retainSubagentSpawn({ ...(livePayload ?? {}) }, livePayload);
         rollbackPayload.session = providerSession;
         ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
         observability.updateTerminalSessionProviderSession(sessionId, providerSession);
@@ -2002,7 +2007,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const chatGlobalOptions = deps.agentOptionsService.load();
     const chatClaudeCodeSystemPrompt = resolveClaudeCodeSystemPrompt(chatGlobalOptions);
     const chatClaudeCodeCustomSystemPrompt = resolveClaudeCodeCustomSystemPrompt(chatGlobalOptions);
-    const chatClaudeCodeDisabledAgents = resolveClaudeCodeDisabledAgents(chatGlobalOptions);
+    const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node.payload)
+      ? [ALL_SUBAGENTS]
+      : resolveClaudeCodeDisabledAgents(chatGlobalOptions);
     const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
@@ -2267,6 +2274,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
     const cliId = operation ? CLAUDE_HARNESS_ID : undefined;
+    const blockSubagents = operation ? subagentSpawnBlocked(operation.payload) : context?.disableSubagents === true;
     const providerSession = readProviderSession(operation?.payload)?.id;
     // prompt는 spawn-only. Operation payload·브라우저 DTO에 넣지 않는다(FORBIDDEN_BROWSER_PAYLOAD_KEYS).
     return launchResolver(cwd, {
@@ -2280,7 +2288,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ...(context?.effort ? { effort: context.effort } : {}),
       ...(context?.prompt ? { prompt: context.prompt } : {}),
       ...(context?.sessionName ? { sessionName: context.sessionName } : {}),
-      ...(context?.disableSubagents ? { disableSubagents: true } : {}),
+      ...(blockSubagents ? { disableSubagents: true } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });
   }

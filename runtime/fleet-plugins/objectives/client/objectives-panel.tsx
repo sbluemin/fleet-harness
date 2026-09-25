@@ -578,6 +578,9 @@ function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, t: T, r
 }
 /** 사라진 Operation 은 실행값을 읽을 곳이 없다 — 띄우기 전처럼 설정 선택을 보인다(다음 개시가 연결을 새로 세운다). */
 const memberLaunched = (member: ObjectiveMember, operationState: (operationId: string) => string): boolean => !!member.operationId && operationState(member.operationId) !== "closed";
+/** 저장값만. false와 키 없음은 꺼짐. 실행 중 세션에 적용됐는지는 여기서 말하지 않는다. */
+const memberSubagents = (member: ObjectiveMember): boolean => member.subagents === true;
+const MEMBER_LIVE = new Set(["running", "background", "idle", "awaiting"]);
 
 /** 구성원 표식의 색 — 명단 순번으로 정체성 톤(--id-*) 8가지를 돌려 쓴다. 명단·임무 줄·배정 메뉴가 같은 구성원에 같은 색을 쓴다. */
 const MEMBER_TONES = 8;
@@ -587,9 +590,35 @@ function MemberMark({ role, tone }: { role: string; tone: number }) {
   return <span className={`objectives-member-mark is-tone-${tone}`} aria-hidden="true">{Array.from(role)[0] ?? "?"}</span>;
 }
 
-function MemberRoster({ item, t, call, operationState, rows, touchable }: { item: ObjectiveItem; t: T; call: DetailProps["call"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean }) {
+function MemberRoster({ item, t, call, request, operationState, rows, touchable }: { item: ObjectiveItem; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean }) {
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
   const remove = (member: ObjectiveMember) => void call("/member/remove", { itemId: item.id, memberId: member.id });
+  const saving = useRef(new Set<string>());
+  const [fault, setFault] = useState<{ id: string; code: string } | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [announce, setAnnounce] = useState("");
+  const noteTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (noteTimer.current !== null) window.clearTimeout(noteTimer.current); }, []);
+  const toggleSubagents = (member: ObjectiveMember, live: boolean) => {
+    if (saving.current.has(member.id)) return;
+    const next = !memberSubagents(member);
+    saving.current.add(member.id);
+    void request("/member/patch", { itemId: item.id, memberId: member.id, patch: { subagents: next } }).then((payload) => {
+      saving.current.delete(member.id);
+      const saved = payload as { item?: ObjectiveItem } | null;
+      const echoed = saved?.item?.members.find((entry) => entry.id === member.id);
+      if (!echoed || memberSubagents(echoed) !== next) { setFault({ id: member.id, code: "not_stored" }); return; }
+      setFault((current) => current?.id === member.id ? null : current);
+      setAnnounce(`${t(next ? "objectives.members.subagentsSaved" : "objectives.members.subagentsCleared", { role: member.role })}${live ? ` ${t("objectives.members.subagentsLive")}` : ""}`);
+      if (!live) { setNoteFor((current) => current === member.id ? null : current); return; }
+      setNoteFor(member.id);
+      if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
+      noteTimer.current = window.setTimeout(() => setNoteFor((current) => current === member.id ? null : current), 10_000);
+    }, (error: unknown) => {
+      saving.current.delete(member.id);
+      setFault({ id: member.id, code: error instanceof Error ? error.message : "unknown" });
+    });
+  };
   // 달성 기준·임무 줄과 같은 문법 — 글자 자체가 입력칸이고, 떠나면 저장한다. Enter 는 확정, Escape 는 되돌린다.
   const inlineKeys = (original: string) => (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (submitKey(event)) event.currentTarget.blur();
@@ -603,8 +632,10 @@ function MemberRoster({ item, t, call, operationState, rows, touchable }: { item
       const state = member.operationId ? operationState(member.operationId) : "closed";
       const display = memberLaunchDisplay(member, memberLaunched(member, operationState), t, rows);
       const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.state.awaiting") : t("objectives.members.idle");
+      const allowed = memberSubagents(member);
       return (
-        <div key={member.id} className="objectives-member">
+        <div key={member.id} className="objectives-member-slot">
+        <div className="objectives-member">
           <MemberMark role={member.role} tone={memberTone(item, member.id)} />
           <div className="objectives-member-body">
             <span className="objectives-member-name">
@@ -623,10 +654,14 @@ function MemberRoster({ item, t, call, operationState, rows, touchable }: { item
             <LaunchControl key={member.id} t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} triggerLabel={t("objectives.members.modelAria", { role: member.role })}
               triggerText={display.text} triggerTitle={display.title}
               extras={[{ id: "route", label: t("objectives.assign.route"), hint: t("objectives.members.routeHint"), active: member.launch.mode === "route", onPick: () => void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { launch: null } }) }, { id: "same", label: t("objectives.assign.inherit"), active: member.launch.mode === "same", onPick: () => void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { launch: { mode: "same" } } }) }]}
+              subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
               onChange={(next) => { const model = next.model ?? (member.launch.mode === "model" ? member.launch.model : undefined); if (model) void call("/member/patch", { itemId: item.id, memberId: member.id, patch: { launch: { mode: "model", model, effort: next.effort } } }); }} />
-            <span className={`objectives-member-status is-${state}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}</span>
+            <span className={`objectives-member-status is-${state}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}{allowed ? <span className="objectives-member-subagents">{t("objectives.members.subagentsMark")}</span> : null}</span>
           </div>
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
+        </div>
+        {noteFor === member.id ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
+        {fault?.id === member.id ? <p className="objectives-member-note is-error" role="alert">{t("objectives.toast.failed", { code: fault.code })}</p> : null}
         </div>
       );
     })}
@@ -636,6 +671,7 @@ function MemberRoster({ item, t, call, operationState, rows, touchable }: { item
         <input aria-label={t("objectives.members.add")} placeholder={t("objectives.members.add")} maxLength={40} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const role = target.value.trim(); target.value = ""; void call("/member/add", { itemId: item.id, member: { role } }); } }} />
       </div>
     ) : null}
+    <p className="objectives-sr" aria-live="polite">{announce}</p>
   </div>;
 }
 
@@ -1006,7 +1042,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           </button>
           <LaunchControl t={t} model={item.commander.model} effort={item.commander.effort} viewMode={item.commander.viewMode ?? "terminal"} onViewChange={(viewMode) => void call("/item/patch", { itemId: item.id, patch: { launch: { viewMode } } })} locked={locked || !editable} onChange={(next) => void call("/item/patch", { itemId: item.id, patch: { launch: next } })} />
         </div>
-        <MemberRoster item={item} t={t} call={call} operationState={operationState} rows={launchRows} touchable={touchable} />
+        <MemberRoster item={item} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable} />
       </div>
 
       {/* 브리핑 — 사람이 쓴 요구. 첨부 띠는 본문 위에 머문다. 메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다. */}

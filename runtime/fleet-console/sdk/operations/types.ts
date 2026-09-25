@@ -82,6 +82,48 @@ export function readOperationLaunch(payload: Record<string, unknown>): Operation
   };
 }
 
+/**
+ * 다음 프로세스 기동에 쓸 서브에이전트 정책. 세션 스냅샷(`session.disableSubagents`)과 분리한다.
+ * `blocked`는 Agent/Task 강제 차단, `default`는 그 차단을 걷고 전역 정책만 적용한다.
+ */
+export type SubagentSpawn = "blocked" | "default";
+
+export function readSubagentSpawn(payload: Record<string, unknown> | undefined): SubagentSpawn | null {
+  const value = payload?.subagentSpawn;
+  return value === "blocked" || value === "default" ? value : null;
+}
+
+/**
+ * 다음 기동에서 서브에이전트를 강제 차단할지.
+ * 명시 정책이 있으면 그것이 이기고, 없을 때만 옛 세션 스냅샷의 `disableSubagents`를 차단으로 읽는다.
+ */
+export function subagentSpawnBlocked(payload: Record<string, unknown> | undefined): boolean {
+  const policy = readSubagentSpawn(payload);
+  if (policy === "blocked") return true;
+  if (policy === "default") return false;
+  const session = payload?.session;
+  return !!session && typeof session === "object" && !Array.isArray(session) && (session as Record<string, unknown>).disableSubagents === true;
+}
+
+/** 다른 payload 키와 세션 스냅샷은 그대로 두고 다음 기동 정책만 바꾼다. 값이 같으면 같은 객체를 돌려준다. */
+export function withSubagentSpawn(payload: Record<string, unknown>, policy: SubagentSpawn): Record<string, unknown> {
+  if (payload.subagentSpawn === policy) return payload;
+  return { ...payload, subagentSpawn: policy };
+}
+
+/**
+ * 기동 성공·실패가 진입 때 잡아 둔 payload로 세션을 다시 써도, 그 사이 바뀐 다음 기동 정책은 지금 payload의 값만 남긴다.
+ * 지금 payload에 정책이 없으면 스냅샷이 가지고 있던 정책도 되살리지 않는다.
+ */
+export function retainSubagentSpawn(written: Record<string, unknown>, live: Record<string, unknown> | undefined): Record<string, unknown> {
+  const policy = readSubagentSpawn(live);
+  if (policy) return written.subagentSpawn === policy ? written : { ...written, subagentSpawn: policy };
+  if (!("subagentSpawn" in written)) return written;
+  const next = { ...written };
+  delete next.subagentSpawn;
+  return next;
+}
+
 /** 기존 세션 좌표·이름·실행 정책을 유지하며 프리셋을 바꾼다. 시작 뷰 변경은 첫 실행 전 호출자가 제한한다. */
 export function withOperationLaunchPreset(payload: Record<string, unknown>, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Record<string, unknown> {
   const value = payload.session;

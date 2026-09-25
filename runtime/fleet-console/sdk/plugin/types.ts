@@ -819,6 +819,12 @@ export interface FleetPluginConsoleControlHost {
    * 백그라운드 작업이 남은 세션은 그 작업을 끝낸다. 사람이 그 작업의 종결을 결정한 경우에만 쓴다. 실행 중인 턴은 여전히 not_idle 이다.
    */
   sleep?(operationId: string, options?: { readonly endPendingWork?: boolean }): Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
+  /**
+   * 이미 있는 Operation의 다음 프로세스 기동(휴면 재개·채팅을 새로 띄우는 실행)에 쓸 서브에이전트 정책.
+   * live 프로세스는 중단하지 않고, 세션 스냅샷도 바꾸지 않는다. 없는 Operation은 무시한다.
+   * `blocked`는 강제 차단, `default`는 그 차단을 걷고 전역 정책만 적용한다.
+   */
+  setSubagentSpawn?(operationId: string, policy: "blocked" | "default"): void;
 }
 
 /**

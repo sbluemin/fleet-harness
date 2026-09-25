@@ -100,8 +100,8 @@ export interface ObjectiveStore {
   /** 사람이 이 단계의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
   stepSeen(itemId: string, stepId: string): ObjectiveItem;
   stepRemove(itemId: string, stepId: string): ObjectiveItem;
-  memberAdd(itemId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch }, by: "human" | "commander"): ObjectiveItem;
-  memberPatch(itemId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null }): ObjectiveItem;
+  memberAdd(itemId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: "human" | "commander"): ObjectiveItem;
+  memberPatch(itemId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): ObjectiveItem;
   memberRemove(itemId: string, memberId: string): { readonly item: ObjectiveItem; readonly removed: StoredMember; readonly stepIds: readonly string[] };
   setMemberOperation(itemId: string, memberId: string, operationId: string | null): ObjectiveItem;
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
@@ -195,7 +195,7 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!(objective.attachments?.length)) delete out.attachments;
   if (!(objective.criteria?.length)) delete out.criteria;
   if (!objective.members?.length) delete out.members;
-  else out.members = objective.members.map((member) => ({ ...member, ...(member.brief ? {} : { brief: undefined }), ...(member.launch ? {} : { launch: undefined }), ...(member.operationId ? {} : { operationId: undefined }) }));
+  else out.members = objective.members.map((member) => ({ ...member, ...(member.brief ? {} : { brief: undefined }), ...(member.launch ? {} : { launch: undefined }), ...(member.operationId ? {} : { operationId: undefined }), ...(member.subagents === true ? {} : { subagents: undefined }) }));
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
   out.steps = objective.steps.map((step) => {
@@ -243,7 +243,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const members = (stored.members ?? []).map((member) => {
       const assignee = member.operationId ? options.operations.get(member.operationId) : null;
       const preset = assignee ? readOperationLaunch(assignee.payload) : null;
-      return { ...member, launch: member.launch ?? { mode: "route" as const }, sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: preset.model } : {}), ...(preset?.effort ? { effort: preset.effort } : {}) };
+      return { ...member, subagents: member.subagents === true, launch: member.launch ?? { mode: "route" as const }, sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: preset.model } : {}), ...(preset?.effort ? { effort: preset.effort } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     return {
@@ -523,7 +523,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
     memberAdd: (itemId, input, by) => update(itemId, (stored) => {
       if ((stored.members?.length ?? 0) >= MAX_STEPS) throw new ObjectiveStoreError("too_many_members");
-      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(input.launch ? { launch: input.launch } : {}), by }] };
+      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(input.launch ? { launch: input.launch } : {}), ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
     }),
     memberPatch: (itemId, memberId, patch) => update(itemId, (stored) => {
       if (!(stored.members ?? []).some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
@@ -531,6 +531,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...member, ...(patch.role !== undefined ? { role: patch.role.trim() } : {}),
         ...(patch.brief !== undefined ? { brief: patch.brief || undefined } : {}),
         ...(patch.launch !== undefined ? { launch: patch.launch ?? undefined } : {}),
+        ...(patch.subagents !== undefined ? { subagents: patch.subagents ? true as const : undefined } : {}),
       } : member) };
     }),
     memberRemove(itemId, memberId) {

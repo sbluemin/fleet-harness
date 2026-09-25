@@ -23,7 +23,7 @@ export interface ConsoleActionInput {
   readonly title?: string;
   /** launch 전용 — CLI 세션의 표시 이름. 세션 목록·터미널 제목에 서고, 다른 세션이 이 세션에 메시지를 보낼 주소가 된다. */
   readonly sessionName?: string;
-  /** launch 전용 — 이 세션의 서브에이전트(Claude Code `Agent` 도구, fleet:execute 포함)를 모두 끈다. 이미 분배된 일을 맡은 세션이 다시 나누지 않게. */
+  /** launch 전용 — 태어날 때 서브에이전트(Claude Code `Agent` 도구, fleet:execute 포함)를 모두 끈다. 이후 변경은 `setSubagentSpawn`이며 이미 뜬 프로세스는 다음 기동까지 그대로다. */
   readonly disableSubagents?: boolean;
   /** launch 전용 — Operation만 만들고 첫 send 때 새 세션으로 깨운다. */
   readonly dormant?: boolean;

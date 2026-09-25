@@ -35,12 +35,16 @@ export interface StoredMember {
   readonly role: string;
   readonly brief?: string;
   readonly launch?: MemberLaunch;
+  /** 서브에이전트 허용. 없거나 false면 강제 차단이다. true만 저장한다. */
+  readonly subagents?: true;
   readonly by: "human" | "commander";
   readonly operationId?: string;
 }
 
-export interface ObjectiveMember extends Omit<StoredMember, "launch"> {
+export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents"> {
   readonly launch: MemberSelection;
+  /** 저장된 허용. 키 없음은 false. */
+  readonly subagents: boolean;
   readonly sessionName: string | null;
   readonly model?: string;
   readonly effort?: string;
@@ -368,8 +372,8 @@ export const memberLaunchSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("same") }).strict(),
   z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().max(32).optional() }).strict(),
 ]);
-export const memberAddSchema = z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional(), launch: memberLaunchSchema.optional() }).strict();
-export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.optional(), brief: z.string().max(300).nullable().optional(), launch: memberLaunchSchema.nullable().optional() }).strict();
+export const memberAddSchema = z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional(), launch: memberLaunchSchema.optional(), subagents: z.boolean().optional() }).strict();
+export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.optional(), brief: z.string().max(300).nullable().optional(), launch: memberLaunchSchema.nullable().optional(), subagents: z.boolean().optional() }).strict();
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
 export const criterionAddSchema = z.object({ text: criterionText }).strict();
 export const criterionPatchSchema = z.object({ text: criterionText }).strict();
@@ -397,6 +401,7 @@ export const planSchema = z.object({
 
 export type CreateItemInput = z.output<typeof createItemSchema>;
 export type PatchItemInput = z.output<typeof patchItemSchema>;
+export type MemberPatchInput = z.output<typeof memberPatchSchema>;
 export type StepAddInput = z.output<typeof stepAddSchema>;
 export type StepPatchInput = z.output<typeof stepPatchSchema>;
 export type PlanInput = z.output<typeof planSchema>;

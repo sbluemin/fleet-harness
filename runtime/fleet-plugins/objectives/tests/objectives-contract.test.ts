@@ -47,6 +47,7 @@ function harness() {
   const interrupted: string[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; groupId?: string }[] = [];
   const resumed: string[] = [];
+  const subagentSpawns: { operationId: string; policy: "blocked" | "default" }[] = [];
   const operationsHost = {
     get: (id: string) => operations.get(id) ?? null,
     list: () => [...operations.values()],
@@ -86,6 +87,7 @@ function harness() {
           const state = activity.get(id);
           return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: "terminal", supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
         },
+        setSubagentSpawn: (operationId: string, policy: "blocked" | "default") => { subagentSpawns.push({ operationId, policy }); },
         sleep: async (id: string, options?: { endPendingWork?: boolean }) => {
           const state = activity.get(id);
           if (state !== "idle" && !(options?.endPendingWork && (state === "awaiting" || state === "background"))) return { ok: false, error: "not_idle" };
@@ -100,12 +102,48 @@ function harness() {
   const tools = createObjectiveMcpTools(ctx, store, launch);
   const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
   const stateFile = path.join(workspace, "objectives", "state.json");
-  return { store, events, launch, call, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed };
+  return { store, events, launch, call, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed, subagentSpawns };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
 
 describe("Objectives contract", () => {
+  it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
+    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, stateFile } = harness();
+    const item = await launch.create({ theaterId: "t1", title: "Opt in", groupId: null, note: "brief" });
+    const allowed = store.memberAdd(item.id, { role: "build", subagents: true }, "human").members[0]!;
+    const blocked = store.memberAdd(item.id, { role: "research" }, "human").members[1]!;
+    expect(store.find(item.id)!.members.map((member) => member.subagents)).toEqual([true, false]);
+    await launch.muster(item.id);
+    expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
+    const roster = store.find(item.id)!;
+    const blockedOperationId = roster.members.find((member) => member.id === blocked.id)!.operationId!;
+    activity.set(blockedOperationId, "dormant");
+    launch.memberPatched(item.id, blocked.id, { subagents: true });
+    expect(store.find(item.id)!.members.find((member) => member.id === blocked.id)!.subagents).toBe(true);
+    const allowedOperationId = roster.members.find((member) => member.id === allowed.id)!.operationId!;
+    expect(subagentSpawns).toEqual([
+      { operationId: allowedOperationId, policy: "default" },
+      { operationId: blockedOperationId, policy: "blocked" },
+      { operationId: blockedOperationId, policy: "default" },
+    ]);
+    expect(interrupted).toEqual([]);
+    subagentSpawns.length = 0;
+    expect((await launch.muster(item.id)).find((member) => member.id === blocked.id)!.state).toBe("resumed");
+    expect(subagentSpawns).toEqual([{ operationId: blockedOperationId, policy: "default" }]);
+    expect(resumed).toEqual([blockedOperationId]);
+    launch.memberPatched(item.id, allowed.id, { subagents: false });
+    expect(store.find(item.id)!.members.find((member) => member.id === allowed.id)!.subagents).toBe(false);
+    expect(subagentSpawns.at(-1)).toEqual({ operationId: roster.members.find((member) => member.id === allowed.id)!.operationId, policy: "blocked" });
+    const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { objectives: { members: { role: string; subagents?: boolean }[] }[] };
+    const stored = saved.objectives[0]!.members;
+    expect(stored.find((member) => member.role === "research")!.subagents).toBe(true);
+    expect(stored.find((member) => member.role === "build")).not.toHaveProperty("subagents");
+    const refused = await call("plan", { itemId: item.id, steps: [{ text: "next" }], members: [{ role: "extra", subagents: true }] }, item.id);
+    expect(refused.isError).toBe(true);
+    expect(refused.structuredContent.error).toBe("invalid_arguments");
+  });
+
   it("creates an objective as a dormant Commander Operation and keeps only objective-owned values in the workspace state.json", async () => {
     const { store, events, launch, operations, sent, launches, stateFile, workspace, activity, slept, interrupted, resumed } = harness();
     const item = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", steps: [{ text: "a" }, { text: "b", after: [0] }, { text: "c", after: [1] }] });

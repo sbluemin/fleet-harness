@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, promises as fs, rmSync, writeFileSync } from "n
 import os from "node:os";
 import path from "node:path";
 
-import { readOperationLaunch, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, withSubagentSpawn, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -94,7 +94,7 @@ describe("agent chat mode routes", () => {
     await vi.waitFor(() => expect(harness.consoleControl.getAction(launch.id)).toMatchObject({ status: "finished", outcome: "completed" }));
   });
   it("routes an opted-in Console message through the existing Chat session and records its result", async () => {
-    const harness = await createHarness();
+    const harness = await createHarness({ disabledAgents: ["Plan"] });
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
@@ -114,7 +114,7 @@ describe("agent chat mode routes", () => {
     expect(harness.operation(launched.operationId!)?.payload.chatBorn).toBe(true);
     expect(harness.sends).toEqual(["Inspect the build", "Run the next check"]);
     // 목표의 지휘관은 휴면 채팅으로 태어나고, 첫 send가 PTY가 아닌 Chat 세션을 깨운다.
-    const dormant = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-dormant", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander" });
+    const dormant = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-dormant", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander", disableSubagents: true });
     await vi.waitFor(() => expect(harness.consoleControl.getAction(dormant.id)?.operationId).toBeDefined());
     const commander = harness.consoleControl.getAction(dormant.id)!.operationId!;
     expect(harness.consoleControl.observe(commander)).toMatchObject({ lifecycle: "dormant", surface: "chat" });
@@ -124,6 +124,16 @@ describe("agent chat mode routes", () => {
     expect(harness.sends.at(-1)).toBe("Begin the objective");
     expect(harness.consoleControl.observe(commander)?.surface).toBe("chat");
     await vi.waitFor(() => expect(readOperationLaunch(harness.operation(commander)!.payload).started).toBe(true));
+    // 태어날 때의 강제 차단은 채팅 프로세스의 SDK 입력에도 실린다.
+    expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task"] });
+    // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스는 전역 옵트아웃만 쓴다 — 허용이 전역 제한까지 걷지 않는다.
+    const optedIn = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-opted-in", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(optedIn.id)?.operationId).toBeDefined());
+    const member = harness.consoleControl.getAction(optedIn.id)!.operationId!;
+    harness.setSubagentSpawn(member, "default");
+    const memberWake = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-member-wake", { kind: "send", operationId: member, text: "Start the mission" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(memberWake.id)?.status).toBe("finished"));
+    expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent(Plan)"] });
     const command = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "console-command", { kind: "send", operationId: sessionId, text: "/compact" });
     await vi.waitFor(() => expect(harness.consoleControl.getAction(command.id)).toMatchObject({ status: "finished", outcome: "succeeded" }));
   });
@@ -260,7 +270,7 @@ describe("agent chat mode routes", () => {
   });
 });
 
-async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean } = {}) {
+async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly disabledAgents?: readonly string[] } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir);
@@ -371,7 +381,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   };
   const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Project" }] });
   lifecycleCleanups.push(() => consoleControl.dispose());
-  const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null }), update: (mutate) => mutate({}) };
+  const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null, ...(options.disabledAgents ? { claudeCodeDisabledAgents: options.disabledAgents } : {}) }), update: (mutate) => mutate({}) };
   const ctx = {
     consoleControl,
     dataDir: fleetDataDir,
@@ -562,6 +572,12 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
       const operation = operations.find((candidate) => candidate.id === sessionId);
       if (!operation) throw new Error("Operation not found");
       operation.payload.cliId = value;
+    },
+    /** 호스트 포트(setSubagentSpawn)와 같은 SDK 헬퍼로 다음 기동 정책만 바꾼다. */
+    setSubagentSpawn: (sessionId: string, policy: "blocked" | "default") => {
+      const index = operations.findIndex((candidate) => candidate.id === sessionId);
+      if (index < 0) throw new Error("Operation not found");
+      operations[index] = { ...operations[index]!, payload: withSubagentSpawn(operations[index]!.payload, policy) };
     },
     /** 채팅으로 태어난 Operation의 durable 표식을 세운다. */
     markChatBorn: (sessionId: string) => {

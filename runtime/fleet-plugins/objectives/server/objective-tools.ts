@@ -69,7 +69,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (assigned) {
         const member = assigned.item.members.find((candidate) => candidate.id === assigned.memberId)!;
         return text({ role: "member", access: "read-only", itemId: assigned.item.id,
-          member: { id: member.id, role: member.role, ...(member.brief ? { brief: member.brief } : {}) },
+          member: { id: member.id, role: member.role, subagents: member.subagents, ...(member.brief ? { brief: member.brief } : {}) },
           missions: assigned.item.steps.flatMap((step, index) => step.member === member.id ? [{ index, stepId: step.id, text: step.text, ready: !step.done && stepReady(assigned.item.steps, step), done: step.done }] : []),
           item: itemView(assigned.item) });
       }
