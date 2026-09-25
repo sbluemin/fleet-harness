@@ -2235,6 +2235,51 @@
   line-height: 1.55;
 }
 
+/* ── 구성원 첫 화면 ────────────────────────────────────────────────────
+   입력 틀이 없으므로 히어로는 위 1 : 아래 1.38 받침으로 자리를 지킨다 — 빈 패널의
+   무게 중심이 컴포저가 있을 때와 같은 약 42% 지점에 선다. is-member는 로그의 auto
+   여백 흡수를 끊는다(받침 둘이 그 몫을 진다). 첫 메시지가 오면 받침과 함께 사라지고
+   대화가 그 자리에 서므로 내려앉는 움직임은 없다. */
+.agent-chat-member-spring-top {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.agent-chat-member-spring-bottom {
+  flex: 1.38 1 0;
+  min-height: 0;
+}
+
+.agent-chat-hero.is-member {
+  margin-block: 0;
+}
+
+/* ── 구성원 바닥 줄 ────────────────────────────────────────────────────
+   입력 틀이 빠진 자리에 남는 한 줄. 안은 컴포저 표시줄과 같은 세 칸 그리드(클래스 공유)라
+   좌표 · 선반 · 도구 묶음이 같은 리듬으로 선다. 겉은 패널 바닥을 알리는 헤어라인 하나만 두른다 —
+   밴드(배경이 올라간 구분선)를 두면 패널 안에 또 하나의 패널이 생긴다(컴포저와 같은 규율). */
+.agent-chat-member-foot {
+  flex: none;
+  border-top: 1px solid var(--hairline);
+  padding: var(--space-2) var(--space-3);
+}
+
+.agent-chat-member-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: end;
+  flex: none;
+  height: 30px;
+}
+
+/* 구성원 섹션의 포인터 포커스에는 초점 링을 그리지 않는다 — tabindex가 있어 포커스는
+   받되 Tab 순서에는 들지 않으므로, :focus-visible(키보드)이 아닌 초점의 링은 포인터가
+   준 것이다. 안쪽 컨트롤의 :focus-visible 규칙은 그대로 산다. */
+.agent-chat[tabindex]:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* Follow 칩 — 자리를 세운 동안만 로그 하단 중앙에 선다. aurora는 "바닥을 놓쳤다"는
    상태 신호다. brass는 hover/focus의 위치 채널이다.
    떠 있는 줄은 이제 이것 하나다. 작업 스트립이 컴포저 경계로 내려가면서 로그 위에 두 층으로
@@ -2316,7 +2361,8 @@
 .canvas-operation.is-deck-tile .agent-chat-settle,
 .canvas-operation.is-deck-tile .agent-chat-ledge,
 .canvas-operation.is-deck-tile .agent-chat-sheet,
-.canvas-operation.is-deck-tile .agent-chat-composer {
+.canvas-operation.is-deck-tile .agent-chat-composer,
+.canvas-operation.is-deck-tile .agent-chat-member-foot {
   display: none;
 }
 

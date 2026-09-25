@@ -29,7 +29,8 @@ import { discardLaunchAttachment, messageAgentSession, readAgentChatCatalog, upl
 import { drainComposerInbox, subscribeComposerInbox } from "./composer-inbox.js";
 
 // 폭 글리프의 말풍선과 설정 Select가 같은 이름을 쓴다 — 한 선호의 두 표면이 다른 어휘를 갖지 않게 한다.
-const READING_WIDTH_LABEL_KEY = {
+// 구성원 바닥 줄의 폭 글리프가 같은 말을 쓰므로 chat-view와 공유한다.
+export const READING_WIDTH_LABEL_KEY = {
   reading: "terminal.chat.readingWidth.reading",
   wide: "terminal.chat.readingWidth.wide",
   full: "terminal.chat.readingWidth.full",
@@ -46,8 +47,11 @@ const WIDE_OVER_READING = 1.4;
  * 그대로 세 단을 돌리면 눌러도 화면이 그대로인 단계가 생기므로, 접히는 단계는 순환에서 뺀다.
  * 재는 자리는 컴포저의 content box다 — 로그 컬럼보다 좌우 여백이 좁아, 여기서 접히면 두 면이
  * 모두 접힌 것이다.
+ *
+ * 구성원 바닥 줄(MemberChatFooter)이 같은 순환을 쓰므로 공유한다 — 재는 자리는 그때 바닥 줄의
+ * content box가 된다.
  */
-function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | null>): readonly ChatReadingWidth[] {
+export function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | null>): readonly ChatReadingWidth[] {
   const [choices, setChoices] = React.useState<readonly ChatReadingWidth[]>(CHAT_READING_WIDTHS);
   React.useEffect(() => {
     const host = hostRef.current;

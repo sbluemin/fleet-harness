@@ -2763,7 +2763,9 @@ describe("Instrument core design contract", () => {
     expect(chatComposer0).toContain("rows={1}");
     expect(chatComposer0).not.toContain("rows={3}");
     expect(chatView0).toContain('className={`agent-chat-ledge${running ? "" : " is-rest"}${compact ? " is-compact" : ""}`}');
-    expect(chatView0).toContain("ledge={hasJobs ?");
+    // 선반은 잡이 하나라도 태어난 세션에서만 넘긴다 — 컴포저와 구성원 바닥 줄이 같은 노드를 나눠 쓴다.
+    expect(chatView0).toContain("const ledgeNode = hasJobs ?");
+    expect(chatView0).toContain("ledge={ledgeNode}");
     // 컴포저 글리프는 없다 — 글리프의 카운트는 선반의 말이 되고 그 상태 전체가 여닫는 표면이다.
     expect(chatComposer0).not.toContain("agent-chat-composer-work");
     expect(chat).not.toContain(".agent-chat-composer-work");
@@ -4571,10 +4573,12 @@ describe("War Room deck panel grammar", () => {
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-follow");
     // 카드뷰에서는 컴포저가 스트립조차 서지 않는다 — 입력은 무대에 올라야 가능한 행동이다.
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-composer");
+    // 구성원 바닥 줄도 카드에서는 서지 않는다 — 컴포저와 같은 조작면이다.
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-member-foot");
     // 컴포저가 물러난 자리에는 그 받침(중앙 배치용 비율)도 함께 물러난다 — 남겨 두면 대화가
     // 카드 위쪽으로 몰린다.
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-settle");
-    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,[\s\S]{0,400}?\.canvas-operation\.is-deck-tile \.agent-chat-composer \{[^}]*\}/)?.[0] ?? "";
+    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,[\s\S]{0,600}?\.canvas-operation\.is-deck-tile \.agent-chat-member-foot \{[^}]*\}/)?.[0] ?? "";
     expect(hide).toContain("display: none;");
     // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 지도 확대창 클래스에 묶이면 카드이면서
     // 선택된 칸, 또는 판 위로 끌어올린 칸에서 다시 그려진다.
