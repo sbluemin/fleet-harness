@@ -43,7 +43,7 @@ function breakdown(
 }
 
 describe("Claude Code provider attribution", () => {
-  it("uses every Claude Code model-ledger row as the single source of every total", () => {
+  it("uses every in-scope Claude Code model-ledger row as the single source of every total", () => {
     const at = localTime(2026, 8, 14);
     const dto = buildSummary(
       [session(sessionA, at)],
@@ -53,8 +53,10 @@ describe("Claude Code provider attribution", () => {
       0,
       breakdown([
         entry(),
-        entry({ modelId: "claude-gateway--cursor--claude-opus-5", input: 1_000, costUsd: 99 }),
+        entry({ modelId: "claude-gateway--codex--claude-opus-5", input: 1_000, costUsd: 99 }),
         entry({ modelId: "gpt-5", input: 2_000, costUsd: 88 }),
+        // Removed Cursor provider: historical rows stay out of every total without touching skipped metrics.
+        entry({ modelId: "claude-gateway--cursor--claude-opus-5", input: 9_999, costUsd: 777 }),
       ]),
     );
 
@@ -67,12 +69,14 @@ describe("Claude Code provider attribution", () => {
       messages: 12,
     });
     expect(dto.modelRows.map((row) => ({ modelId: row.modelId, provider: row.provider, costUsd: row.costUsd }))).toEqual([
-      { modelId: "claude-gateway--cursor--claude-opus-5", provider: "cursor", costUsd: 99 },
+      { modelId: "claude-gateway--codex--claude-opus-5", provider: "codex", costUsd: 99 },
       { modelId: "gpt-5", provider: "unknown", costUsd: 88 },
       { modelId: "claude-opus-5", provider: "anthropic", costUsd: 1.25 },
     ]);
+    expect(dto.modelCount).toBe(3);
     expect(dto.daily).toEqual([{ day: "2026-08-14", costUsd: 188.25 }]);
     expect(dto.dailyDetails[0]?.models).toEqual(dto.modelRows);
+    expect(dto.source.skippedEntries).toBe(0);
   });
 });
 

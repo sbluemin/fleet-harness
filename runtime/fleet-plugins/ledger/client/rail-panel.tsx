@@ -70,7 +70,6 @@ const PROVIDER_LABELS: Readonly<Record<string, string>> = {
   anthropic: "Anthropic",
   claude: "Anthropic",
   codex: "Codex",
-  cursor: "Cursor",
   opencode: "OpenCode",
   xai: "xAI",
 };
