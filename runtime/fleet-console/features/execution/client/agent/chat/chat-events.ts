@@ -646,6 +646,8 @@ export interface AgentChatTurn {
    * 지어내지 않고 빈칸으로 둔다.
    */
   readonly contextBefore?: number;
+  /** 재생 중에는 열린 턴도 done으로 보이므로 실제 turn-end 도착을 따로 기억한다. */
+  readonly closed?: true;
   /**
    * 이 항목은 대화의 턴이 아니라 **정비 명령**이다. 있으면 원장은 턴 문법을 통째로 쓰지 않는다.
    *
@@ -989,15 +991,14 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       // 서버가 중복을 걸러 보내지만, 같은 좌표가 두 번 서면 한 메시지가 두 번 온 것으로 읽힌다.
       if (state.turns.some((turn) => turn.items.some((existing) => existing.type === "received" && existing.id === event.id))) return state;
       const last = state.turns.at(-1);
-      // 도는 턴이 받았다 — 그 턴의 스텝으로 선다.
-      if (last !== undefined && last.state === "working" && !last.command) return appendItem(wakeLastTurn(state, now), item);
-      // 닫힌 턴 뒤에 도착했다. 닫힌 턴에 넣으면 접힘 속으로 사라지므로 다음 턴의 머리를 연다 —
-      // 이 메시지가 깨운 턴이 뒤따르면 turn-start가 이 머리를 이어받는다(`receivedHead`).
-      // 정비 명령이 도는 중이면 그 명령 줄이 마지막 자리를 지켜야 명령의 결말이 짝을 찾는다.
+      // 재생의 done은 표시 상태이지 turn-end가 아니다. 같은 저널은 같은 턴에 수신을 세워야 한다.
+      const open = last !== undefined && !last.command && last.closed !== true && !receivedHead(last)
+        && (last.state === "working" || state.replaying);
+      if (open) return appendItem(wakeLastTurn(state, now), item);
+      // 닫힌 턴이나 명령 뒤의 수신은 다음 턴의 머리다. 수신만으로 진행 중 명령을 닫거나 순서를 바꾸지 않는다.
       const head: AgentChatTurn = { dispatch: null, items: [item], state: "done", toolCount: 0, draft: "" };
-      if (last?.command && last.state === "working") return { ...state, turns: [...state.turns.slice(0, -1), head, last] };
       if (receivedHead(last)) return withLastTurn(state, (turn) => ({ ...turn, items: [...turn.items, item] }));
-      return { ...state, turns: [...settleLastTurn(state), head] };
+      return { ...state, turns: [...(last?.command ? state.turns : settleLastTurn(state)), head] };
     }
     // 자식의 초기화 신호 자체는 화면이 그리지 않는다 — 서버가 그것을 받아 저널을 비우고
     // `cleared`를 내며, 화면은 그 결과만 따른다. 두 곳에서 각자 지우면 재생과 라이브가 갈린다.
@@ -1019,32 +1020,36 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       return { ...state, turns: [...settleLastTurn(state), turn] };
     }
     case "command-progress": {
-      const last = state.turns.at(-1);
-      if (!last?.command) return state;
+      const at = commandTurnIndex(state.turns);
+      const last = state.turns[at];
+      const command = last?.command;
+      if (!last || !command) return state;
       return {
         ...state,
-        turns: [...state.turns.slice(0, -1), { ...last, command: { ...last.command, phase: event.phase } }],
+        turns: state.turns.map((turn, index) => index === at ? { ...last, command: { ...command, phase: event.phase } } : turn),
       };
     }
     case "command-end": {
-      const last = state.turns.at(-1);
-      if (!last?.command) return state;
+      const at = commandTurnIndex(state.turns);
+      const last = state.turns[at];
+      const command = last?.command;
+      if (!last || !command) return state;
       // 스킬을 다시 읽은 명령이 끝났다 — 컴포저가 들고 있는 카탈로그 사본은 이 시점부터 낡았다.
-      const catalogEpoch = last.command.name === "reload-skills" && event.ok
+      const catalogEpoch = command.name === "reload-skills" && event.ok
         ? state.catalogEpoch + 1
         : state.catalogEpoch;
       return {
         ...state,
         catalogEpoch,
-        turns: [...state.turns.slice(0, -1), {
+        turns: state.turns.map((turn, index) => index !== at ? turn : {
           ...last,
           state: event.ok ? "done" : "error",
           command: {
-            name: last.command.name,
+            name: command.name,
             ...(event.summary === undefined ? {} : { summary: event.summary }),
             ...(event.compact === undefined ? {} : { compact: event.compact }),
           },
-        }],
+        }),
       };
     }
     case "turn-start": {
@@ -1171,9 +1176,17 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       // 마지막 도는 스텝이 결과를 받으면 공백이 열린다 — 다음 호출을 짓는 시간이 여기서 잰다.
       return merged ? restLastTurn(merged, now) : state;
     }
-    case "turn-end":
+    case "turn-end": {
+      // 최종 text와 결말 사이에 낀 수신은 답변 승격을 가리지 않도록 답변 뒤의 머리 줄로 남긴다.
+      const ending = state.turns.at(-1);
+      let tail = ending?.items.length ?? 0;
+      while (tail > 0 && ending?.items[tail - 1]?.type === "received") tail -= 1;
+      const moved = ending?.draft.length === 0 && ending.items[tail - 1]?.type === "text"
+        ? ending.items.slice(tail) : [];
+      const trimmed = moved.length > 0
+        ? withLastTurn(state, (turn) => ({ ...turn, items: turn.items.slice(0, -moved.length) })) : state;
       // 마지막 공백은 흔적을 남기지 않는다 — 턴이 닫히는 것은 활동이 아니라 결말이다.
-      return withLastTurn(state, (turn) => ({
+      const closed = withLastTurn(trimmed, (turn) => ({
         ...withoutIdle(turn),
         // 델타만 받고 완성 text 없이 턴이 끝나면(스트림 조기 종료) 버퍼를 아이템으로 회수한다.
         ...(turn.draft.length > 0
@@ -1182,7 +1195,12 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         state: event.stopped === true ? "stopped" : event.ok ? "done" : "error",
         ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
         ...(event.answer !== undefined ? { answer: event.answer } : {}),
+        closed: true as const,
       }));
+      return moved.length > 0
+        ? { ...closed, turns: [...closed.turns, { dispatch: null, items: moved, state: "done" as const, toolCount: 0, draft: "" }] }
+        : closed;
+    }
     case "job": {
       const existing = state.jobs.find((job) => job.id === event.id);
       const next: AgentChatJob = {
@@ -1684,6 +1702,13 @@ function restTurn(turn: AgentChatTurn, now: number | undefined): AgentChatTurn {
 
 function restLastTurn(state: AgentChatLogState, now: number | undefined): AgentChatLogState {
   return withLastTurn(state, (turn) => restTurn(turn, now));
+}
+
+/** 명령 뒤에 수신 머리가 붙어도 명령의 진행·결말은 원래 명령에 돌려준다. */
+function commandTurnIndex(turns: readonly AgentChatTurn[]): number {
+  let at = turns.length - 1;
+  while (at >= 0 && receivedHead(turns[at])) at -= 1;
+  return turns[at]?.command ? at : -1;
 }
 
 /** 닫힌 턴 뒤에 도착한 받은 메시지만 서 있는, 아직 시작하지 않은 턴인가. */
