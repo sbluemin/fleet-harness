@@ -993,3 +993,7 @@ del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
 .objectives-start.is-secondary { padding-block: 8px; background: transparent; }
 /* 잠긴 띠 아래의 「다시 구상」 설명도 잠긴 띠처럼 감긴다 — 두 띠가 같은 폭 규칙을 따른다. */
 .objectives-start-group.is-gated .objectives-start.is-secondary .objectives-start-sub { white-space: normal; }
+/* 잠긴 상태의 분할 칸 — 틀의 채움을 없애 테두리만 남은 한 단 낮은 띠로 되돌린다. hover 테두리·주행동 8%는 그대로다. */
+.objectives-start-group.is-gated .objectives-split { background: transparent; }
+/* 레일에서 두 줄이 되는 부제는 띄어쓰기 단위로 고르게 나눈다. */
+.objectives-start-group.is-gated .objectives-split .objectives-start-sub { text-wrap: balance; word-break: keep-all; }
