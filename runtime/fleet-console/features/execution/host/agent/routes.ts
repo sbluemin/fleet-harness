@@ -107,6 +107,8 @@ const CLAUDE_HARNESS_ID = "claude";
 const MAX_CHAT_ANSWER_MESSAGE_CHARS = 2_000;
 /** Console Use 의 sleep 이 PTY 종료 → 휴면 전이를 기다려 주는 상한. 넘기면 `ending` 으로 답한다. */
 const SLEEP_SETTLE_MS = 5_000;
+/** 터미널을 넘겨받은 채팅이 옛 CLI의 실제 종료를 기다리는 한도. 넘기면 첫 메시지가 자식을 연다. */
+const ADOPTED_CHAT_EXIT_WAIT_MS = 5_000;
 
 /**
  * 사용자의 실제 Claude 홈. 터미널로 띄운 CLI와 Chat Mode의 SDK가 **같이** 쓰는 한 곳이며,
@@ -1692,23 +1694,32 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     ctx.host.operations.patch(sessionId, { payload: { ...node.payload, [CHAT_MODE_PAYLOAD_KEY]: true } });
     const activated = observability.setTerminalSessionChatActive(sessionId, true);
     if (activated) observability.notifySessionUpdated(activated);
+    // 넘겨받은 채팅도 첫 프롬프트를 기다리지 않고 자식을 세운다 — 전환 전 터미널이 받던 메시지를
+    // 전환 뒤에도 받아야 한다. 다만 옛 CLI가 실제로 사라진 뒤에만 연다: 같은 Claude 세션의 두 필자가
+    // 겹치면 안 되고, 확인하지 못하면 여느 채팅처럼 첫 메시지가 연다.
     if (live) {
       terminalRuntime.invalidateTicketsForSession(sessionId);
-      terminalRuntime.terminate(sessionId);
+      void terminalRuntime.terminateAndWait(sessionId, ADOPTED_CHAT_EXIT_WAIT_MS)
+        .then((exited) => (exited ? openAdoptedChat(sessionId) : undefined))
+        .catch(() => undefined);
+    } else {
+      void openAdoptedChat(sessionId).catch(() => undefined);
     }
-    // 넘겨받은 채팅도 첫 프롬프트를 기다리지 않고 자식을 세운다 — 전환 전 터미널이 받던 메시지를
-    // 전환 뒤에도 받아야 한다. PTY를 먼저 접은 뒤이므로 사용자가 곧바로 보낸 첫 메시지와 같은 자리다.
-    void openAdoptedChat(sessionId).catch(() => undefined);
     return { ok: true, mode: "chat", changed: true };
   }
 
   /** 표면을 넘겨받은 채팅의 자식을 연다. 그 사이 터미널로 돌아갔으면 열지 않고, 실패는 첫 메시지가 다시 시도한다. */
   async function openAdoptedChat(sessionId: string): Promise<void> {
+    // 채팅 마커는 터미널 복귀가 dispose를 **마친 뒤에야** 걷힌다 — 떠났는지는 접기와 함께 오르는 세대로 판정한다.
+    const generation = chatRegistry.generation(sessionId);
+    const stillAdopted = () => chatRegistry.generation(sessionId) === generation
+      && ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true;
     const node = ctx.host.operations.get(sessionId);
-    if (!node || node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return;
+    if (!node || !stillAdopted()) return;
     const seed = await resolveChatSeed(node);
-    if (!seed.ok || ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return;
-    (await chatRegistry.ensure(sessionId, () => seed.seed)).open();
+    if (!seed.ok || !stillAdopted()) return;
+    const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+    if (stillAdopted()) chat.open();
   }
 
   /**

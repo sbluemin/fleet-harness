@@ -18,6 +18,8 @@ export interface TerminalRuntime {
   attach(context: TerminalTicketContext): Promise<void>;
   write(operationId: string, data: string): boolean;
   terminate(operationId: string): boolean;
+  /** PTY를 접고 그 자식 프로세스가 실제로 끝날 때까지 기다린다. 제한 시간 안에 확인하지 못하면 false. */
+  terminateAndWait(operationId: string, timeoutMs: number): Promise<boolean>;
   getMessagePolicy(operationId: string): CliMessagePolicy | undefined;
   getRenameCommand(operationId: string): string | undefined;
   getSessionLastActivityAt(operationId: string): number | null;
@@ -83,6 +85,7 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
     },
     write: (operationId, data) => sessions.writeToSession(operationId, data),
     terminate: (operationId) => sessions.terminate(operationId),
+    terminateAndWait: (operationId, timeoutMs) => sessions.terminateAndWait(operationId, timeoutMs),
     getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
     getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
     getSessionLastActivityAt: (operationId) => sessions.getSessionLastActivityAt(operationId),

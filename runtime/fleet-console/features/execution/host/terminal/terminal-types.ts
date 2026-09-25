@@ -90,6 +90,8 @@ export interface TerminalPtyDataDisposable {
 
 export interface TerminalPtyHandle {
   readonly fd?: number;
+  /** PTY 자식의 프로세스 id. 종료를 확인할 때만 쓴다. */
+  readonly pid?: number;
   onData(callback: (data: string) => void): TerminalPtyDataDisposable;
   onExit(callback: () => void): TerminalPtyDataDisposable;
   write(data: string | Buffer): void;
@@ -130,6 +132,8 @@ export interface TerminalSessionManager {
   getSessionLastActivityAt(sessionId: string): number | null;
   resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null>;
   terminate(sessionId: string): boolean;
+  /** `terminate`와 같이 접고, PTY 자식 프로세스가 실제로 끝날 때까지 기다린다. 제한 시간 안에 확인하지 못하면 false. */
+  terminateAndWait(sessionId: string, timeoutMs: number): Promise<boolean>;
   stop(): Promise<void>;
   writeToSession(sessionId: string, data: string): boolean;
 }

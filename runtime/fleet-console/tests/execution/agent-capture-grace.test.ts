@@ -95,6 +95,7 @@ async function createHarness(body: Record<string, unknown>) {
     attach,
     write,
     terminate,
+    terminateAndWait: async () => terminate(),
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     getSessionLastActivityAt: () => null,

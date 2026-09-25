@@ -1242,6 +1242,9 @@ class AgentChatSession {
     this.workflowRunListing = null;
     for (const wake of this.workflowReadWaiters.splice(0)) wake();
     this.abandonAsks("The chat session closed before the question was answered.");
+    // 날고 있는 자식 열기를 먼저 착지시킨다. 그 비행은 disposed를 보고 연 자식을 스스로 닫지만,
+    // 기다리지 않으면 아래에서 SDK를 접은 뒤에 비행이 새 SDK를 세워 주인 없는 자식이 남는다.
+    if (this.sessionFlight) await this.sessionFlight.catch(() => undefined);
     // 세션과 SDK를 먼저 접는다 — 자식이 죽어야 리더 스트림이 끝나고 대기 중인 디스패치가 풀린다.
     // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을
     // 무기한 막는다. 살아 있던 백그라운드 작업도 자식과 함께 거둬진다 — 터미널 세션을 닫는 것과
@@ -2834,6 +2837,7 @@ export class AgentChatRegistry {
   private readonly ensureFlights = new Map<string, Promise<AgentChatSession>>();
   /** dispose 진행 중 tombstone — 이 창에서의 ensure 재진입이 두 번째 필자를 만든다. */
   private readonly disposals = new Map<string, Promise<void>>();
+  private readonly generations = new Map<string, number>();
   private readonly createSdk: CreateChatSdk;
 
   constructor(createSdk: CreateChatSdk = (options) => createClaudeGatewaySdk({ ...options, modelPolicy: claudeGatewayModelPolicy })) {
@@ -2873,7 +2877,16 @@ export class AgentChatRegistry {
     return this.sessions.get(operationId);
   }
 
+  /**
+   * 이 Operation의 채팅이 접힌 횟수. 접기가 시작되는 순간 오른다 — 비동기로 자식을 여는 쪽이
+   * 시작할 때 읽은 값과 비교해, 그 사이 채팅을 떠났으면 열지 않는다.
+   */
+  generation(operationId: string): number {
+    return this.generations.get(operationId) ?? 0;
+  }
+
   async dispose(operationId: string): Promise<void> {
+    this.generations.set(operationId, this.generation(operationId) + 1);
     const pending = this.disposals.get(operationId);
     if (pending) return pending;
     // tombstone은 동기로 먼저 세운다 — 이후 도착하는 ensure는 전부 거부되고, 이미 in-flight인
