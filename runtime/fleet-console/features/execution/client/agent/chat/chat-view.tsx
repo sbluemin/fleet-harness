@@ -6,7 +6,8 @@ import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provid
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
 
 import { getT } from "../i18n/index.js";
-import { useChatReadingWidth, useTerminalFontFamily } from "../../terminal/shared/terminal-preferences.js";
+import { useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth, useTerminalFontFamily } from "../../terminal/shared/terminal-preferences.js";
+import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
 import { agentChatAttachmentPreviewUrl, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { AgentGlyph } from "../agent-glyphs.js";
@@ -36,7 +37,7 @@ import {
   chatOriginLabel,
 } from "./chat-events.js";
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
-import { AgentChatComposer, type AgentChatQueueCancelOutcome } from "./composer.js";
+import { AgentChatComposer, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
@@ -113,6 +114,11 @@ function hasCopyableSelection(): boolean {
  * 접힌 줄은 **그 턴의 결말**만 말한다 — 끝내 실패했는지, 사용자가 끊었는지, 아직 도는 잡이
  * 있는지. 도중에 넘어진 스텝은 결말이 아니라 과정이므로 그 수를 접힌 줄에 싣지 않고,
  * 펼침 안에서 ✕와 실패 사유로 온전히 선다.
+ *
+ * 구성원 모드 — 이 뷰는 채팅 표면(chatMode)에서만 서므로, `parentOperationId`가 있으면
+ * Objectives 구성원이다. 그때는 입력 틀·예약 목록·이미지 투입구를 빼고 바닥 줄(좌표 ·
+ * 선반 · 문맥 계기 · 중지 · 채팅 폭)만 남긴다. 터미널 표면의 구성원과 일반 Operation,
+ * 휴면 카드(DormantChatView — index.tsx)는 이 분기를 타지 않는다.
  */
 export function AgentChatView({
   context,
@@ -128,6 +134,9 @@ export function AgentChatView({
   // 대화 컬럼과 입력창이 이 값 하나를 함께 따른다.
   const readingWidth = useChatReadingWidth();
   const terminalFontFamily = useTerminalFontFamily();
+  // 구성원 모드 — 채팅으로 열린 Objectives 구성원(parentOperationId)뿐이다. 이 뷰 자체가
+  // chatMode 분기에서만 마운트되므로 터미널(CLI) 구성원은 여기에 오지 않는다.
+  const isMemberChat = typeof context.operation.parentOperationId === "string" && context.operation.parentOperationId.length > 0;
   // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
   // 동안만 정직해지고, 패널을 닫는 순간 사이드바가 다시 휴면으로 돌아간다. 축이 degraded면 호스트가
   // null 을 건네므로 진행 중이라고 주장하지 않는다(그 사실은 전역 배너가 말한다).
@@ -478,12 +487,22 @@ export function AgentChatView({
       setSleepArmed(false);
       return;
     }
-    if (!workOpen) return;
+    if (workOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      collapseWork();
+      ledgeToggleRef.current?.focus();
+      return;
+    }
+    // 구성원 Esc. 입력 틀과 그 프레임 리스너가 없는 구성원 모드에서 도는 턴을 끊는 자리다.
+    // 섹션 버블 단계에서만 듣는 것은 그대로라 초점이 이 패널 안에 있을 때만 동작하고, 한 화면에
+    // 열린 다른 패널의 턴은 건드리지 않는다. 문맥 계기 팝오버가 열려 있으면 그쪽이 capture 단계에서
+    // 전파를 끊어 먼저 닫히므로 여기까지 닿지 않는다.
+    if (!isMemberChat || !turnRunning || stopping) return;
     event.preventDefault();
     event.stopPropagation();
-    collapseWork();
-    ledgeToggleRef.current?.focus();
-  }, [workOpen, collapseWork, sleepArmed]);
+    void handleStop();
+  }, [workOpen, collapseWork, sleepArmed, isMemberChat, turnRunning, stopping, handleStop]);
 
   /**
    * Ctrl+C 제스처. 듣는 자리는 문서이고, 듣는 조건은 **이 Operation이 활성일 때**다 — 사람이
@@ -532,6 +551,23 @@ export function AgentChatView({
     collapseWork();
   }, [workOpen, collapseWork]);
 
+  // 좌표·선반·문맥 계기 — 컴포저와 구성원 바닥 줄이 같은 것을 그린다. 어느 쪽이든 사실 표시에
+  // 불과하므로 같은 노드를 나눠 쓴다.
+  const coordinateNode = <SessionCoordinate coordinates={coordinates} t={t} />;
+  const ledgeNode = hasJobs ? (compact: boolean) => (
+    <WorkLedge
+      jobs={state.jobs}
+      openJobs={openJobs}
+      open={workOpen}
+      controlsId={`${paneId}-work`}
+      language={language}
+      compact={compact}
+      toggleRef={ledgeToggleRef}
+      onToggle={toggleWork}
+    />
+  ) : undefined;
+  const meterNode = <ContextMeterChip context={state.context} working={turnRunning} language={language} openSignal={meterOpenSignal} />;
+
   return (
     <section
       ref={panelRef}
@@ -539,6 +575,9 @@ export function AgentChatView({
       data-reading-width={readingWidth}
       /* 터미널 글꼴을 Chat 로컬 토큰으로만 흘린다 — 전역 --font-mono를 덮으면 Codex·파일 탐색기·
          마크다운 코드까지 따라 바뀐다. 이 토큰의 소비처는 chat.css 하나다. */
+      /* 구성원 모드에서만 초점을 받을 수 있다 — tabIndex=-1이라 패널 안을 누르면 브라우저가
+         초점을 준다. Tab 순서에는 들지 않는다. 일반 모드에는 속성을 두지 않는다. */
+      {...(isMemberChat ? { tabIndex: -1 } : {})}
       style={{ "--agent-chat-font": terminalFontFamily } as React.CSSProperties}
       aria-label={t("terminal.chat.aria")}
       onKeyDown={onPanelKeyDown}
@@ -569,11 +608,23 @@ export function AgentChatView({
           "아직 아무것도 없는 제품"으로 읽힌다 — 이 한 덩어리가 그 자리를 지고, 바로 아래
           가운데에 선 컴포저가 다음 행동을 말한다. 첫 턴이 오면 함께 사라진다. */}
       {awaitingFirstTurn ? (
-        <div className="agent-chat-hero">
-          <span className="agent-chat-hero-sigil" aria-hidden="true">✳</span>
-          <h2 className="agent-chat-hero-title">{t("terminal.chat.heroTitle")}</h2>
-          <p className="agent-chat-hero-body">{t("terminal.chat.heroBody")}</p>
-        </div>
+        isMemberChat ? (
+          <>
+            <div className="agent-chat-member-spring-top" aria-hidden="true" />
+            <div className="agent-chat-hero is-member">
+              <span className="agent-chat-hero-sigil" aria-hidden="true">✳</span>
+              <h2 className="agent-chat-hero-title">{t("terminal.chat.memberHeroTitle")}</h2>
+              <p className="agent-chat-hero-body">{t("terminal.chat.memberHeroBody")}</p>
+            </div>
+            <div className="agent-chat-member-spring-bottom" aria-hidden="true" />
+          </>
+        ) : (
+          <div className="agent-chat-hero">
+            <span className="agent-chat-hero-sigil" aria-hidden="true">✳</span>
+            <h2 className="agent-chat-hero-title">{t("terminal.chat.heroTitle")}</h2>
+            <p className="agent-chat-hero-body">{t("terminal.chat.heroBody")}</p>
+          </div>
+        )
       ) : null}
       {/* 시드를 못 세운 세션은 스트림이 오류 하나를 쓰고 닫는다 — 그 뒤로 아무 이벤트도 오지
           않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
@@ -705,39 +756,45 @@ export function AgentChatView({
             전달은 여전히 살아 있는 별도 경로다.
 
             선반은 잡이 하나라도 태어난 세션에서만 넘긴다 — 컴포저 표시줄의 가운데 칸이 그
-            자리이고, 아무것도 없으면 그 칸은 비어 좌표와 폭 글리프가 예전처럼 양 끝을 지킨다. */}
-        <AgentChatComposer
-          context={context}
-          coordinate={<SessionCoordinate coordinates={coordinates} t={t} />}
-          ledge={hasJobs ? (compact: boolean) => (
-            <WorkLedge
-              jobs={state.jobs}
-              openJobs={openJobs}
-              open={workOpen}
-              controlsId={`${paneId}-work`}
-              language={language}
-              compact={compact}
-              toggleRef={ledgeToggleRef}
-              onToggle={toggleWork}
-            />
-          ) : undefined}
-          meter={<ContextMeterChip context={state.context} working={turnRunning} language={language} openSignal={meterOpenSignal} />}
-          coordinates={coordinates}
-          onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
-          catalogEpoch={state.catalogEpoch}
-          tourAnchor={tourAnchors}
-          turnRunning={turnRunning}
-          stopping={stopping}
-          queue={state.queue}
-          onStop={handleStop}
-          onCancelQueued={handleCancelQueued}
-        />
+            자리이고, 아무것도 없으면 그 칸은 비어 좌표와 폭 글리프가 예전처럼 양 끝을 지킨다.
+
+            구성원 모드에서는 이 자리 대신 바닥 줄(MemberChatFooter)이 선다 — 입력 틀·예약
+            목록·이미지 투입구는 없고, 좌표 · 선반 · 문맥 계기 · 중지 · 채팅 폭만 남는다. */}
+        {isMemberChat ? (
+          <MemberChatFooter
+            coordinate={coordinateNode}
+            ledge={ledgeNode}
+            meter={meterNode}
+            language={language}
+            turnRunning={turnRunning}
+            stopping={stopping}
+            onStop={handleStop}
+          />
+        ) : (
+          <AgentChatComposer
+            context={context}
+            coordinate={coordinateNode}
+            ledge={ledgeNode}
+            meter={meterNode}
+            coordinates={coordinates}
+            onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
+            catalogEpoch={state.catalogEpoch}
+            tourAnchor={tourAnchors}
+            turnRunning={turnRunning}
+            stopping={stopping}
+            queue={state.queue}
+            onStop={handleStop}
+            onCancelQueued={handleCancelQueued}
+          />
+        )}
 
         {/* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며
             컴포저가 하단으로 내려앉는다 — 움직이는 것은 컴포저 하나이고, 컴포저 자신은 언제나
             in-flow라 대화의 마지막 줄을 덮지 않는다. 높이를 직접 애니메이션하지 않는 이유는
-            패널 높이가 사용자 손에 달려 있어서다: 비율로 두면 어떤 높이에서도 같은 자리다. */}
-        <div className={`agent-chat-settle${awaitingFirstTurn ? " is-inviting" : ""}`} aria-hidden="true" />
+            패널 높이가 사용자 손에 달려 있어서다: 비율로 두면 어떤 높이에서도 같은 자리다.
+            구성원 모드에서는 히어로가 위 1 : 아래 1.38 받침으로 같은 자리를 지키므로 이 받침은
+            서지 않는다 — 첫 메시지가 오면 제자리에서 대화로 바뀐다(내려앉는 움직임 없음). */}
+        <div className={isMemberChat || !awaitingFirstTurn ? "agent-chat-settle" : "agent-chat-settle is-inviting"} aria-hidden="true" />
       </div>
     </section>
   );
@@ -788,6 +845,99 @@ function SessionCoordinate({
       <span className="agent-chat-coord-sep" aria-hidden="true">·</span>
       <span className="agent-chat-coord-effort" data-effort-level={coordinates.effortLevel}>{effort}</span>
     </span>
+  );
+}
+
+/**
+ * 구성원 바닥 줄 — 입력 틀이 빠진 자리에 남는 한 줄이다. 순서는 좌표 · 선반 ·
+ * [문맥 계기][중지][채팅 폭 글리프]. 컴포저 표시줄과 같은 세 칸 그리드와 같은 글리프
+ * 규격을 쓰므로(CSS 클래스 공유), 두 표면이 같은 과녁과 같은 리듬을 지킨다.
+ *
+ * 함께 빠지는 것: 입력 틀, 예약 목록(예약할 입력이 없다), 이미지 투입구. 허용 요청 카드와
+ * 작업 시트·선반은 이 줄 밖에 살아 있다.
+ */
+function MemberChatFooter({
+  coordinate,
+  ledge,
+  meter,
+  language,
+  turnRunning,
+  stopping,
+  onStop,
+}: {
+  readonly coordinate: React.ReactNode;
+  readonly ledge: ((compact: boolean) => React.ReactNode) | undefined;
+  readonly meter: React.ReactNode;
+  readonly language: "en" | "ko";
+  readonly turnRunning: boolean;
+  readonly stopping: boolean;
+  readonly onStop: () => Promise<boolean>;
+}) {
+  const t = getT(language);
+  const footRef = React.useRef<HTMLDivElement | null>(null);
+  return (
+    <div className="agent-chat-member-foot" ref={footRef}>
+      <div className="agent-chat-composer-meta">
+        {coordinate}
+        {ledge !== undefined ? ledge(false) : <span className="agent-chat-composer-gap" aria-hidden="true" />}
+        <span className="agent-chat-member-tools">
+          {meter}
+          {/* 멈추기는 쓰기가 아니다 — 구성원 턴이 엉뚱한 방향으로 갈 때 이 패널에서 바로
+              끊는다. 도는 동안에만 서고, 끝나면 물러난다. 같은 일을 Esc도 함께 진다(패널
+              리스너). */}
+          {turnRunning ? (
+            <button
+              type="button"
+              className="agent-chat-composer-stop"
+              disabled={stopping}
+              onClick={() => { void onStop(); }}
+              aria-label={t("terminal.chat.stopAria")}
+              title={t("terminal.chat.stopTitle")}
+            >
+              <span className="agent-chat-composer-stop-mark" aria-hidden="true" />
+            </button>
+          ) : null}
+          <MemberWidthButton hostRef={footRef} language={language} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 채팅 폭 글리프 — 컴포저 표시줄의 그것과 같은 순환을 바닥 줄에서 잇는다. 읽는 폭과 쓰는 폭을
+ * 함께 지는 하나의 문이라 입력 틀이 없어도 남는다. 같은 폭으로 접힌 단은 건너뛰고, 전부 접히면
+ * 물러나 선다(컴포저와 같은 계약).
+ */
+function MemberWidthButton({
+  hostRef,
+  language,
+}: {
+  readonly hostRef: React.RefObject<HTMLDivElement | null>;
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const readingWidth = useChatReadingWidth();
+  const widthChoices = useDistinctChatWidths(hostRef);
+  const widthCollapsed = widthChoices.length < 2;
+  return (
+    <button
+      type="button"
+      className="agent-chat-composer-width"
+      onClick={() => {
+        if (widthCollapsed) return;
+        setChatReadingWidth(nextChatReadingWidth(readingWidth, widthChoices));
+      }}
+      aria-disabled={widthCollapsed || undefined}
+      aria-label={widthCollapsed
+        ? t("terminal.chat.widthSame")
+        : t("terminal.chat.widthCycleAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
+      title={widthCollapsed
+        ? t("terminal.chat.widthSame")
+        : t("terminal.chat.widthCycleAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
+    >
+      <CaptionReadingWidthGlyph preset={readingWidth} />
+    </button>
   );
 }
 
