@@ -1,7 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-import { readCanvasModeSession, rememberFormationTheaters } from "./canvas-mode-session.js";
-
 
 export interface OperationGeometry {
   readonly x: number;
@@ -60,7 +58,8 @@ export interface CanvasWorldRect {
  * 어떻게 바뀌든 "지금 보이는 아레나"의 그 칸에 다시 깔리고, 비어 있는 칸은 다음 패널을 받는다.
  * 칸은 프리셋에서 시작하되 유지 패널 사이 경계를 끌면 이웃과 함께 변한다. 자유 패널은 영향받지 않는다.
  * Cruise에서 줌을 만지면 전부 풀리고, 유지 패널을 칸 밖에 놓거나 최소화·닫으면 그 패널만 풀린다.
- * Tactical·War Room은 자기 기하로 덮을 뿐이라 왕복해도 남는다.
+ * War Room은 자기 기하로 덮을 뿐이라 왕복해도 남는다. 모두 정렬도 유지의 한 종류라 Theater별
+ * CanvasState에 그대로 남아 Theater를 다녀오거나 새로고침해도 이어진다.
  */
 export type SnapZoneFraction = readonly [number, number, number, number];
 export interface SnapHold {
@@ -68,16 +67,22 @@ export interface SnapHold {
   readonly zones: readonly SnapZoneFraction[];
   /** 세션 id → zones 인덱스. */
   readonly assignments: Readonly<Record<string, number>>;
+  /** 모두 정렬이 켜져 있으면 이 묶음은 자동 채움이다 — 칸은 보이는 패널 수와 레이아웃에서 다시 나눈다. */
+  readonly alignAll?: AlignAllMeta | null;
 }
 
-export interface GridSlotGeometry {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
+/** 모두 정렬의 칸 나누기 — 격자·열·행. 켜져 있는 동안 캡슐 버튼으로 바꾼다. */
+export type AlignAllLayout = "grid" | "columns" | "rows";
 
-export type FormationLayout = "grid" | "columns" | "rows";
+export interface AlignAllMeta {
+  readonly layout: AlignAllLayout;
+  /** 켜기 직전 각 패널의 Cruise 자리. 켠 뒤 들어온 패널은 여기에 없어 끌 때 기본 자리로 보낸다. */
+  readonly savedGeometries: Readonly<Record<string, OperationGeometry>>;
+  /** 켜기 직전 수동 유지 묶음 — 끌 때 자리와 함께 복원한다. */
+  readonly savedSnapHold: SnapHold | null;
+  /** 묶음에서 뺀 패널 id — 바깥에 둔 채 두며, 다시 넣거나 끄기 전까지 자동 채움에 들지 않는다. */
+  readonly detached: readonly string[];
+}
 
 type Listener = () => void;
 export type FocusLayerState =
@@ -86,15 +91,15 @@ export type FocusLayerState =
 type CompanionPanelVisibilityOverrides = Record<string, Readonly<Record<string, boolean>>>;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
-const FORMATION_LAYOUT_STORAGE_KEY = "fleet-console.formation-layout";
+const ALIGN_ALL_LAYOUT_STORAGE_KEY = "fleet-console.align-all-layout";
+// 퇴역한 Tactical 레이아웃 키 — 첫 읽기에서 새 키로 한 번 이관하고 지운다.
+const LEGACY_FORMATION_LAYOUT_STORAGE_KEY = "fleet-console.formation-layout";
 const SAVE_DELAY_MS = 400;
 const DEFAULT_OPERATION_WIDTH = 640;
 const DEFAULT_OPERATION_HEIGHT = 400;
 const DEFAULT_OPERATION_OFFSET = 40;
 export const MIN_OPERATION_WIDTH = 320;
 export const MIN_OPERATION_HEIGHT = 200;
-const OPERATION_GRID_GAP = 8;
-const OPERATION_GRID_PADDING = 0;
 // 본문 위에 붙는 창 캡션 높이. CSS top:-32px / height:32px 와 한 값이다.
 // grid/rows 행 보폭에 넣어 아래 행 캡션이 위 행 본문을 침범하지 않게 한다.
 export const OPERATION_WINDOW_CAPTION_HEIGHT = 32;
@@ -121,28 +126,25 @@ export const STATION_KEEPING_GAP = 16;
 const listeners = new Set<Listener>();
 const focusLayerListeners = new Set<Listener>();
 const companionPanelVisibilityListeners = new Set<Listener>();
-const formationViewListeners = new Set<Listener>();
-const formationLayoutListeners = new Set<Listener>();
+const alignLayoutListeners = new Set<Listener>();
 const focusLayersByTheater = new Map<string, FocusLayerState>();
-// 탭 세션에 남아 있던 Tactical Theater 목록으로 시작한다 — 콘솔 전환·새로고침으로 모듈 메모리가
-// 사라져도 Tactical로 보던 Theater가 Cruise로 떨어지지 않게 한다(canvas-mode-session).
-const formationViewsByTheater = new Map<string, true>(
-  readCanvasModeSession().formationTheaters.map((theaterId) => [theaterId, true] as const),
-);
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
 let focusLayer: FocusLayerState | null = null;
 let focusLayerRevision = 0;
 let companionPanelVisibilityOverrides: CompanionPanelVisibilityOverrides = {};
-let formationView = false;
-let formationLayout = readStoredFormationLayout();
+// 모두 정렬이 꺼져 있을 때 캡슐이 가리키는 나누기 — 켜져 있는 동안은 유지 묶음 안의 layout이 진실이다.
+// 옛 formation-layout 키에 남아 있던 선택은 첫 읽기에서 한 번 이관하고 그 키는 지운다.
+let alignLayout = readStoredAlignLayout();
 let canvasViewportSize: CanvasViewportSize = { width: 0, height: 0 };
 let fitAllOperationsPending = false;
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
 let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
 let zoomRaf: number | null = null;
-let beforeFormationViewActivation: ((theaterId: string) => void) | null = null;
+// 모두 정렬 진입 직전에 한 번 부른다 — War Room이 선별 중이면 여기서 끝낸다.
+// 등록은 triage-store가 맡아 스토어 순환 참조 없이 진입 계약을 한 곳에 둔다.
+let beforeAlignAllActivation: ((theaterId: string) => void) | null = null;
 // 모든 Operation이 공유하는 단조 증가 z-index 발급기.
 // 두 레지스트리가 같은 카운터에서 값을 받아 "활성화한 Operation이 최상단"이 Operation 종류를 가로질러 성립한다.
 let topZIndex = 0;
@@ -192,15 +194,16 @@ export function setTheaterFocusLayerSnapshot(theaterId: string, nextFocusLayer: 
   emitFocusLayer();
 }
 
-export function getFormationView(): boolean {
-  return formationView;
+/** 모두 정렬 메타 — 꺼져 있으면 null. Theater별 CanvasState에 살아 Theater를 다녀와도 이어진다. */
+export function getAlignAll(): AlignAllMeta | null {
+  return state.snapHold?.alignAll ?? null;
 }
 
-export function getFormationLayout(): FormationLayout {
-  return formationLayout;
+export function getAlignLayout(): AlignAllLayout {
+  return state.snapHold?.alignAll?.layout ?? alignLayout;
 }
 
-// canvas 스토어가 현재 로드한 Theater id. focus layer와 Formation 상태는 이 Theater 기준으로
+// canvas 스토어가 현재 로드한 Theater id. focus layer 상태는 이 Theater 기준으로
 // 동작하므로 관련 가드는 store.activeTheaterId가 아니라 이 값을 기준으로 삼아야 한다.
 // (loadForTheater가 passive effect로 갱신되어 store.activeTheaterId보다 한 박자 늦을 수 있다.)
 export function getLoadedTheaterId(): string | null {
@@ -238,12 +241,12 @@ export function setCompanionPanelVisible(operationId: string, companionPanelId: 
   emitCompanionPanelVisibility();
 }
 
-export function useFormationView(): boolean {
-  return useSyncExternalStore(subscribeFormationView, getFormationView, getFormationView);
+export function useAlignAll(): AlignAllMeta | null {
+  return useSyncExternalStore(subscribe, getAlignAll, getAlignAll);
 }
 
-export function useFormationLayout(): FormationLayout {
-  return useSyncExternalStore(subscribeFormationLayout, getFormationLayout, getFormationLayout);
+export function useAlignLayout(): AlignAllLayout {
+  return useSyncExternalStore(subscribeAlignLayout, getAlignLayout, getAlignLayout);
 }
 
 // 최소화 목록은 CanvasState의 일부라 메인 listeners/emit을 그대로 공유한다(별도 채널 불필요).
@@ -354,8 +357,8 @@ function hiddenGeometryIds(minimized: readonly string[] = state.minimized): Set<
 }
 
 export function fitAllOperations(): void {
-  if (formationView || focusLayer !== null || canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return;
-  // 맞춤도 줌이다 — 유지를 푼다.
+  if (focusLayer !== null || canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return;
+  // 맞춤도 줌이다 — 유지를 푼다(모두 정렬이면 켜기 전 자리 복원 없이 그 자리에 남는다).
   releaseSnapHold();
   // 분모와 중심은 캔버스 박스가 아니라 아레나다 — 전면 캔버스에서 박스 크기로 맞추면
   // 가장자리 패널이 부유 크롬 밑에 착지하고 그 중심이 viewport로 영속된다.
@@ -477,77 +480,25 @@ export function getTheaterMinimizedIds(theaterIds: readonly string[]): readonly 
   return ids;
 }
 
-// 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 마지막 행에 슬롯이 모자라면
-// 남은 패널들이 그 행의 전체 폭을 나눠 채워 빈 셀을 남기지 않는다. 최소 크기는 실제 가용 폭·높이로
-// 캡해, 좁은 Formation 캔버스에서도 panel chrome이 clip되지 않게 한다.
-// grid/rows 행 보폭은 본문 높이 + gap + 캡션이다. 캡션은 본문 위(top: -32px)에 붙으므로
-// 피치에 넣지 않으면 아래 행이 위 행 본문을 침범한다. columns는 한 줄이라 첫 행 여백만
-// 호출부가 지고, 이 함수는 가로 gap만 쓴다.
-export function calculateGridSlots(
-  rect: CanvasWorldRect,
-  count: number,
-  minimumWidth = MIN_OPERATION_WIDTH,
-  minimumHeight = MIN_OPERATION_HEIGHT,
-  gap = OPERATION_GRID_GAP,
-  padding = OPERATION_GRID_PADDING,
-  layout: FormationLayout = "grid",
-): readonly GridSlotGeometry[] {
+// 모두 정렬 칸 나누기 — 보이는 패널 수만큼 스냅 칸 분수를 만든다.
+// grid: 열은 ceil(sqrt(n)), 행은 ceil(n / cols)이며 마지막 행은 남은 패널 수로 폭을
+// 재분배해 빈칸을 만들지 않는다. columns는 세로 띠 n개, rows는 가로 띠 n개다.
+// 분수라 snapZonesFor가 수동 스냅과 같은 18px 인셋·8px 간격·캡션 32px 문법으로 편다.
+export function alignZonesFor(count: number, layout: AlignAllLayout = "grid"): readonly SnapZoneFraction[] {
   if (!Number.isFinite(count) || count <= 0) return [];
-  const innerWidth = Math.max(0, rect.width - padding * 2);
-  const innerHeight = Math.max(0, rect.height - padding * 2);
   if (layout === "columns") {
-    const availableWidth = Math.max(0, innerWidth - gap * (count - 1));
-    const naturalWidth = availableWidth / count;
-    const effectiveMinWidth = Math.min(minimumWidth, naturalWidth);
-    const width = Math.min(Math.max(effectiveMinWidth, naturalWidth), availableWidth);
-    const naturalHeight = innerHeight;
-    const effectiveMinHeight = Math.min(minimumHeight, naturalHeight);
-    const height = Math.min(Math.max(effectiveMinHeight, naturalHeight), innerHeight);
-    return Array.from({ length: count }, (_, index) => ({
-      x: rect.x + padding + index * (width + gap),
-      y: rect.y + padding,
-      width,
-      height,
-    }));
+    return Array.from({ length: count }, (_, index) => [index / count, 0, 1 / count, 1] as SnapZoneFraction);
   }
   if (layout === "rows") {
-    const naturalWidth = innerWidth;
-    const effectiveMinWidth = Math.min(minimumWidth, naturalWidth);
-    const width = Math.min(Math.max(effectiveMinWidth, naturalWidth), innerWidth);
-    const rowStride = gap + OPERATION_WINDOW_CAPTION_HEIGHT;
-    const availableHeight = Math.max(0, innerHeight - rowStride * (count - 1));
-    const naturalHeight = availableHeight / count;
-    const effectiveMinHeight = Math.min(minimumHeight, naturalHeight);
-    const height = Math.min(Math.max(effectiveMinHeight, naturalHeight), availableHeight);
-    return Array.from({ length: count }, (_, index) => ({
-      x: rect.x + padding,
-      y: rect.y + padding + index * (height + rowStride),
-      width,
-      height,
-    }));
+    return Array.from({ length: count }, (_, index) => [0, index / count, 1, 1 / count] as SnapZoneFraction);
   }
   const columns = Math.ceil(Math.sqrt(count));
   const rows = Math.ceil(count / columns);
-  const rowStride = gap + OPERATION_WINDOW_CAPTION_HEIGHT;
-  const availableHeight = Math.max(0, innerHeight - rowStride * (rows - 1));
-  const naturalHeight = availableHeight / rows;
-  const effectiveMinHeight = Math.min(minimumHeight, naturalHeight);
-  const height = Math.min(Math.max(effectiveMinHeight, naturalHeight), availableHeight);
   return Array.from({ length: count }, (_, index) => {
     const row = Math.floor(index / columns);
     const column = index % columns;
-    // 마지막 행은 남은 패널 수 기준으로 폭을 재분배한다 — 3패널 2×2 그리드의 빈 셀 같은 공백을 없앤다.
     const columnsInRow = row === rows - 1 ? count - (rows - 1) * columns : columns;
-    const availableWidth = Math.max(0, innerWidth - gap * (columnsInRow - 1));
-    const naturalWidth = availableWidth / columnsInRow;
-    const effectiveMinWidth = Math.min(minimumWidth, naturalWidth);
-    const width = Math.min(Math.max(effectiveMinWidth, naturalWidth), availableWidth);
-    return {
-      x: rect.x + padding + column * (width + gap),
-      y: rect.y + padding + row * (height + rowStride),
-      width,
-      height,
-    };
+    return [column / columnsInRow, row / rows, 1 / columnsInRow, 1 / rows] as SnapZoneFraction;
   });
 }
 
@@ -667,7 +618,7 @@ interface StationKeepingRect {
   readonly height: number;
 }
 
-// Formation 가이드와 같은 시각 프레임 — 캡션은 본문 위(top:-32px)에 붙으므로 본문 AABB만
+// 스냅 칸과 같은 시각 프레임 — 캡션은 본문 위(top:-32px)에 붙으므로 본문 AABB만
 // 보면 아래 패널 캡션이 위 패널 본문·캡션을 침범해도 규율이 침묵한다.
 function stationKeepingFrameFor(body: StationKeepingRect): StationKeepingRect {
   return {
@@ -824,6 +775,12 @@ export interface SnapHoldTarget {
 }
 
 export function snapOperationToArenaRect(sessionId: string, bodyRect: CanvasWorldRect, target?: SnapHoldTarget): void {
+  // 모두 정렬이 켜져 있으면 유지 슬롯은 정렬이 소유한다 — 수동 스냅은 그 패널을 묶음에서
+  // 빼고(나머지는 다시 나눈다) 칸 자리에는 유지 없이 앉힌다. 정렬 자체는 계속된다.
+  if (state.snapHold?.alignAll) {
+    snapFreePanelToArenaRect(sessionId, bodyRect);
+    return;
+  }
   const zIndex = claimTopZIndex();
   // 줌 100% 프레임 — 지금 아레나 좌상단이 가리키는 월드 점을 원점으로 칸을 1:1로 놓는다.
   const originX = -state.viewport.x / state.viewport.zoom;
@@ -879,12 +836,177 @@ export function releaseSnapHold(): void {
 }
 
 export function releaseSnapHoldOperation(sessionId: string): void {
+  // 모두 정렬 중에는 묶음에서 빼고 나머지를 다시 나눈다 — 렌더의 reconcile이 칸을 고친다.
+  if (state.snapHold?.alignAll) {
+    detachAlignAllPanel(sessionId);
+    return;
+  }
   const next = snapHoldWithout(state.snapHold, [sessionId]);
   if (next !== state.snapHold) setState({ snapHold: next });
 }
 
-function snapHoldWithout(hold: SnapHold | null, sessionIds: readonly string[]): SnapHold | null {
-  if (!hold) return null;
+// ── 모두 정렬 ────────────────────────────────────────────────────────────────
+// 스냅 유지의 자동 채움 종류다. 켜면 보이는 패널 전부가 사이드바 순서로 칸을 받고, 끄면
+// 켜기 전 자리로 돌아간다. 칸 할당은 렌더가 쥔 사이드바 순서에서 파생되므로 스토어는 묶음의
+// 골격(칸·빼낸 패널·켜기 전 기억)만 진다. 최소화·추가·닫힘·순서 변경·자리 교환·빼내기는
+// reconcile이 같은 규칙으로 다시 나눈다.
+
+/** 모두 정렬 토글 — 켜면 기억하고 묶고, 끄면 켜기 전 자리(수동 묶음 포함)로 돌려놓는다. */
+export function toggleAlignAll(): void {
+  if (!activeTheaterId) return;
+  const hold = state.snapHold;
+  if (hold?.alignAll) {
+    turnAlignAllOff(hold);
+    return;
+  }
+  beforeAlignAllActivation?.(activeTheaterId);
+  const savedGeometries = { ...state.operations };
+  const savedSnapHold = hold ? { ...hold, assignments: { ...hold.assignments } } : null;
+  setState({
+    snapHold: {
+      presetId: "align-all",
+      zones: [],
+      assignments: {},
+      alignAll: { layout: alignLayout, savedGeometries, savedSnapHold, detached: [] },
+    },
+  });
+  // 정렬도 스냅 가족이라 줌 100%다 — 지금 보이는 화면을 그대로 두고 배율만 돌린다.
+  if (Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON) {
+    animateViewportTo({ x: state.viewport.x / state.viewport.zoom, y: state.viewport.y / state.viewport.zoom, zoom: 1 });
+  }
+}
+
+function turnAlignAllOff(hold: SnapHold): void {
+  const meta = hold.alignAll!;
+  // 다음 켜기도 같은 나누기로 — 캡슐이 가리키는 전역 기억도 함께 둔다.
+  setAlignLayout(meta.layout);
+  const assigned = new Set(Object.keys(hold.assignments));
+  const operations = { ...state.operations };
+  let freshIndex = Object.keys(operations).length;
+  for (const sessionId of assigned) {
+    const current = operations[sessionId];
+    if (!current) continue;
+    const saved = meta.savedGeometries[sessionId];
+    // 켠 뒤 들어온 패널은 기억된 자리가 없다 — 처음 생성될 때 받았을 기본 자리로 보낸다.
+    operations[sessionId] = saved
+      ? { ...saved, zIndex: current.zIndex }
+      : {
+          x: freshIndex * DEFAULT_OPERATION_OFFSET,
+          y: freshIndex * DEFAULT_OPERATION_OFFSET,
+          width: DEFAULT_OPERATION_WIDTH,
+          height: DEFAULT_OPERATION_HEIGHT,
+          zIndex: claimTopZIndex(),
+        };
+    freshIndex += 1;
+  }
+  // 켜기 전 수동 묶음 복원 — 없어졌거나 최소화된 패널은 빼고, 빈 묶음은 두지 않는다.
+  let snapHold: SnapHold | null = null;
+  if (meta.savedSnapHold) {
+    const assignments = Object.fromEntries(Object.entries(meta.savedSnapHold.assignments)
+      .filter(([sessionId]) => sessionId in operations && !state.minimized.includes(sessionId)));
+    if (Object.keys(assignments).length > 0) {
+      snapHold = { presetId: meta.savedSnapHold.presetId, zones: meta.savedSnapHold.zones, assignments };
+    }
+  }
+  setState({ operations, snapHold });
+}
+
+/** 정렬 중 나누기 바꾸기 — 같은 나누기를 다시 누르면 무시한다. 끄는 길은 토글(Alt+F·캡슐·⌘K)이 소유한다. */
+export function setAlignAllLayout(layout: AlignAllLayout): void {
+  setAlignLayout(layout);
+  const hold = state.snapHold;
+  if (hold?.alignAll && hold.alignAll.layout !== layout) {
+    setState({ snapHold: { ...hold, alignAll: { ...hold.alignAll, layout } } });
+  }
+}
+
+/**
+ * 묶음 멤버십·칸 재계산 — 렌더가 사이드바 순서의 보이는 id 목록을 들고 매번 부른다.
+ * 빼낸(detached) 패널은 건너뛰고, 새로 보이게 된 패널은 순서 자리에 앉힌다.
+ * 자리 교환은 사이드바 순서 교환으로 이미 반영되므로 여기서 덮어쓸 것이 없다.
+ * 같으면 손대지 않아 렌더 effect와 발산하지 않는다.
+ */
+export function reconcileAlignAll(orderedIds: readonly string[]): void {
+  const hold = state.snapHold;
+  const meta = hold?.alignAll;
+  if (!meta) return;
+  const detached = new Set(meta.detached);
+  const members = orderedIds.filter((sessionId) => !detached.has(sessionId));
+  const zones = alignZonesFor(members.length, meta.layout);
+  const assignments: Record<string, number> = {};
+  members.forEach((sessionId, index) => { assignments[sessionId] = index; });
+  if (snapZonesEqual(hold.zones, zones) && assignmentsEqual(hold.assignments, assignments)) return;
+  setState({ snapHold: { ...hold, zones, assignments } });
+}
+
+/** 패널을 묶음에서 빼낸다 — 칸 밖 드롭. 나머지는 reconcile이 다시 나눈다. */
+export function detachAlignAllPanel(sessionId: string): void {
+  const hold = state.snapHold;
+  if (!hold?.alignAll || !(sessionId in hold.assignments)) return;
+  setState({ snapHold: detachAlignHold(hold, sessionId) });
+}
+
+function detachAlignHold(hold: SnapHold, sessionId: string): SnapHold {
+  const meta = hold.alignAll!;
+  const assignments = Object.fromEntries(Object.entries(hold.assignments).filter(([id]) => id !== sessionId));
+  const detached = meta.detached.includes(sessionId) ? meta.detached : [...meta.detached, sessionId];
+  return { ...hold, assignments, alignAll: { ...meta, detached } };
+}
+
+/** 빼낸 패널을 다시 넣는다 — 정렬 칸에 드롭. 자리는 사이드바 순서가 정한다. */
+export function rejoinAlignAllPanel(sessionId: string): void {
+  const hold = state.snapHold;
+  if (!hold?.alignAll || !hold.alignAll.detached.includes(sessionId)) return;
+  setState({
+    snapHold: { ...hold, alignAll: { ...hold.alignAll, detached: hold.alignAll.detached.filter((id) => id !== sessionId) } },
+  });
+}
+
+/**
+ * 정렬 해제 — 켜기 전 자리 복원 없이 그 자리에 남긴다. 줌·fit-all·Station Keeping 진입 같은
+ * "카메라·규율을 움직이려는 의도"가 부른다. 명시적 끄기(토글)는 turnAlignAllOff가 맡는다.
+ */
+export function releaseAlignAll(): void {
+  if (state.snapHold?.alignAll) setState({ snapHold: null });
+}
+
+/**
+ * 유지 없는 스냅 배치 — 정렬이 유지 슬롯을 소유한 동안 수동 스냅(캡션 메뉴·단축키)이 부른다.
+ * 묶음에 든 패널이면 먼저 빼내고, 칸 자리에는 유지 없이 앉힌다. 정렬 자체는 계속된다.
+ */
+export function snapFreePanelToArenaRect(sessionId: string, bodyRect: CanvasWorldRect): void {
+  const zIndex = claimTopZIndex();
+  // 줌 100% 프레임 — 지금 아레나 좌상단이 가리키는 월드 점을 원점으로 칸을 1:1로 놓는다.
+  const originX = -state.viewport.x / state.viewport.zoom;
+  const originY = -state.viewport.y / state.viewport.zoom;
+  const world = { x: originX + bodyRect.x, y: originY + bodyRect.y, width: bodyRect.width, height: bodyRect.height, zIndex };
+  let snapHold = state.snapHold;
+  if (snapHold?.alignAll && sessionId in snapHold.assignments) snapHold = detachAlignHold(snapHold, sessionId);
+  setState({
+    operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(world, zIndex), zIndex } },
+    minimized: state.minimized.includes(sessionId) ? state.minimized.filter((id) => id !== sessionId) : state.minimized,
+    snapHold,
+  });
+  if (Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON || Math.abs(state.viewport.x + originX) > ZOOM_TWEEN_POSITION_EPSILON || Math.abs(state.viewport.y + originY) > ZOOM_TWEEN_POSITION_EPSILON) {
+    animateViewportTo({ x: -originX, y: -originY, zoom: 1 });
+  }
+}
+
+function assignmentsEqual(left: Readonly<Record<string, number>>, right: Readonly<Record<string, number>>): boolean {
+  const leftEntries = Object.entries(left);
+  if (leftEntries.length !== Object.keys(right).length) return false;
+  return leftEntries.every(([sessionId, index]) => right[sessionId] === index);
+}
+
+// 꺼져 있을 때 캡슐이 가리키는 나누기 — 켜져 있는 동안 유지 묶음 안의 layout이 진실이라 둘은 같이 간다.
+function setAlignLayout(layout: AlignAllLayout): void {
+  if (alignLayout === layout) return;
+  alignLayout = layout;
+  writeStoredAlignLayout(layout);
+  emitAlignLayout();
+}
+
+function snapHoldWithout(hold: SnapHold | null, sessionIds: readonly string[]): SnapHold | null {  if (!hold) return null;
   const drop = sessionIds.filter((id) => id in hold.assignments);
   if (drop.length === 0) return hold;
   const assignments = Object.fromEntries(Object.entries(hold.assignments).filter(([id]) => !drop.includes(id)));
@@ -949,7 +1071,24 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   // companion은 목록 부재만으로 즉시 정리하지 않는다 — ops 푸시 레이스로 일시 부재가 흔하며,
   // 지속 부재의 정리는 캔버스 렌더 측 유예 효과가 소유한다. 최소화는 사용자 확정 액션이라 즉시 닫는다.
   if (companionOperationId && minimized.includes(companionOperationId)) forceDropCompanionOperationId();
-  const snapHold = snapHoldWithout(state.snapHold, Object.keys(state.snapHold?.assignments ?? {}).filter((sessionId) => !valid.has(sessionId)));
+  const prunedIds = Object.keys(state.snapHold?.assignments ?? {}).filter((sessionId) => !valid.has(sessionId));
+  let snapHold = snapHoldWithout(state.snapHold, prunedIds);
+  // 닫힌 패널의 자취를 정렬 기억에서도 걷는다 — 켜기 전 자리·빼낸 목록·복원 묶음에 유령 id가 남지 않게 한다.
+  if (snapHold?.alignAll) {
+    const meta = snapHold.alignAll;
+    const savedGeometries = Object.fromEntries(Object.entries(meta.savedGeometries).filter(([sessionId]) => valid.has(sessionId)));
+    const detached = meta.detached.filter((sessionId) => valid.has(sessionId));
+    let savedSnapHold = meta.savedSnapHold;
+    if (savedSnapHold) {
+      const assignments = Object.fromEntries(Object.entries(savedSnapHold.assignments).filter(([sessionId]) => valid.has(sessionId)));
+      savedSnapHold = Object.keys(assignments).length > 0 ? { ...savedSnapHold, assignments } : null;
+    }
+    if (Object.keys(savedGeometries).length !== Object.keys(meta.savedGeometries).length
+      || detached.length !== meta.detached.length
+      || savedSnapHold !== meta.savedSnapHold) {
+      snapHold = { ...snapHold, alignAll: { ...meta, savedGeometries, detached, savedSnapHold } };
+    }
+  }
   if (changed || minimizedChanged || accentChanged || snapHold !== state.snapHold) {
     setState({ operations, minimized, operationAccent, snapHold });
   }
@@ -968,9 +1107,7 @@ export function loadForTheater(theaterId: string | null): void {
   const nextFocusLayer = theaterId ? focusLayersByTheater.get(theaterId) ?? null : null;
   const focusLayerChanged = !focusLayersEqual(focusLayer, nextFocusLayer);
   focusLayer = nextFocusLayer;
-  const nextFormationView = theaterId ? formationViewsByTheater.has(theaterId) : false;
-  const formationChanged = formationView !== nextFormationView;
-  formationView = nextFormationView;
+  // 모두 정렬은 Theater별 CanvasState(유지 묶음)에 살아 Theater를 다녀와도 이어진다 — 별도 복원이 없다.
   targetViewport = state.viewport;
   // 복원된 Operation의 최대 zIndex 위로 카운터를 끌어올린다 — 새로고침/Theater 전환 후에도 활성화→최상단을 보장한다.
   topZIndex = Math.max(topZIndex, maxZIndexOf(state.operations));
@@ -986,7 +1123,6 @@ export function loadForTheater(theaterId: string | null): void {
   }
   emit();
   if (focusLayerChanged) emitFocusLayer();
-  if (formationChanged) emitFormationView();
 }
 
 // 포커스(사이드바·검색 점프·Alt+화살표)는 카메라를 패널로 보내지 않고 패널을 지금 보는 화면으로 부른다.
@@ -995,7 +1131,7 @@ export function loadForTheater(theaterId: string | null): void {
 //
 // 두 예외는 카메라 쪽이 맞다. Fleet Map(줌이 판독 한계 아래)에서 점을 고른 것은 "그 패널로 내려가자"라
 // 지도 위에서 좌표만 옮기면 아무 일도 안 일어난 것처럼 보이므로, 예전처럼 패널을 향해 줌인한다.
-// Tactical·최대화·companion은 저장된 Cruise 좌표를 렌더에서 덮고 있을 뿐이라 보이지 않는 뷰포트를
+// 최대화·companion은 저장된 Cruise 좌표를 렌더에서 덮고 있을 뿐이라 보이지 않는 뷰포트를
 // 기준으로 좌표를 고쳐 쓰면 Cruise로 돌아왔을 때 손으로 놓은 자리가 사라진다 — 활성화·복원만 한다.
 export function focusOperation(sessionId: string, viewportSize: CanvasViewportSize): void {
   const geometry = state.operations[sessionId];
@@ -1003,9 +1139,9 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
   const zIndex = claimTopZIndex();
   const wasMinimized = state.minimized.includes(sessionId);
   const unminimize = wasMinimized ? { minimized: state.minimized.filter((id) => id !== sessionId) } : {};
-  // Tactical·최대화·companion은 Cruise 좌표와 카메라를 렌더에서 덮고 있을 뿐이다 — 숨은 뷰포트도 기하도
+  // 최대화·companion은 Cruise 좌표와 카메라를 렌더에서 덮고 있을 뿐이다 — 숨은 뷰포트도 기하도
   // 건드리지 않고 활성화·복원만 한다. 돌아왔을 때 떠난 그대로의 Cruise가 있어야 한다.
-  const projected = formationView || focusLayer !== null;
+  const projected = focusLayer !== null;
   if (!projected && state.viewport.zoom < FOCUS_READABLE_ZOOM) {
     const zoom = Math.max(FOCUS_READABLE_ZOOM, Math.min(FOCUS_MAX_ZOOM, Math.min(
       (viewportSize.width - OPERATION_FOCUS_PADDING) / geometry.width,
@@ -1075,7 +1211,7 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
 export function setMaximizedOperationId(operationId: string): void {
   const nextFocusLayer = { mode: "maximized", operationId } as const;
   if (activeTheaterId) focusLayersByTheater.set(activeTheaterId, nextFocusLayer);
-  // 최대화는 underlay(Map 또는 Formation)를 바꾸지 않는 렌더 전용 포커스 레이어다.
+  // 최대화는 underlay(Map 또는 스냅 유지)를 바꾸지 않는 렌더 전용 포커스 레이어다.
   // 대상만 실제 최소화 목록에서 꺼내 보이게 하고, peer의 실제 최소화 상태는 그대로 둔다.
   setFocusLayer(nextFocusLayer);
 }
@@ -1138,100 +1274,16 @@ export function forceDropCompanionOperationId(): void {
   emitFocusLayer();
 }
 
-export function toggleFormationView(): void {
-  if (!activeTheaterId) return;
-  if (getCompanionOperationId() !== null) {
-    beforeFormationViewActivation?.(activeTheaterId);
-    forceDropCompanionOperationId();
-    if (!formationView) {
-      markFormationTheater(activeTheaterId);
-      formationView = true;
-      emitFormationView();
-    }
-    return;
-  }
-  if (formationView) {
-    clearFormationView();
-    return;
-  }
-  beforeFormationViewActivation?.(activeTheaterId);
-  clearMaximizedOperationId();
-  forceDropCompanionOperationId();
-  markFormationTheater(activeTheaterId);
-  formationView = true;
-  emitFormationView();
-}
-
-export function selectFormationLayout(layout: FormationLayout): void {
-  if (!activeTheaterId) return;
-  if (getCompanionOperationId() !== null) {
-    setFormationLayout(layout);
-    beforeFormationViewActivation?.(activeTheaterId);
-    forceDropCompanionOperationId();
-    if (!formationView) {
-      markFormationTheater(activeTheaterId);
-      formationView = true;
-      emitFormationView();
-    }
-    return;
-  }
-  if (formationView && formationLayout === layout) {
-    clearFormationView();
-    return;
-  }
-  setFormationLayout(layout);
-  if (!formationView) {
-    beforeFormationViewActivation?.(activeTheaterId);
-    clearMaximizedOperationId();
-    forceDropCompanionOperationId();
-    markFormationTheater(activeTheaterId);
-    formationView = true;
-    emitFormationView();
-  }
-}
-
-export function clearFormationView(theaterId = activeTheaterId): void {
-  if (theaterId) unmarkFormationTheater(theaterId);
-  if (activeTheaterId !== theaterId || !formationView) return;
-  formationView = false;
-  emitFormationView();
-}
-
-// Tactical은 Theater별 상태라 목록으로 기억한다. 모듈 메모리와 탭 세션을 한 지점에서만 갱신해
-// 두 기록이 갈라지지 않게 한다.
-function markFormationTheater(theaterId: string): void {
-  if (formationViewsByTheater.has(theaterId)) return;
-  formationViewsByTheater.set(theaterId, true);
-  rememberFormationTheaters(formationViewsByTheater.keys());
-}
-
-function unmarkFormationTheater(theaterId: string): void {
-  if (!formationViewsByTheater.delete(theaterId)) return;
-  rememberFormationTheaters(formationViewsByTheater.keys());
-}
-
-export function registerBeforeFormationViewActivation(listener: (theaterId: string) => void): void {
-  beforeFormationViewActivation = listener;
-}
-
-export function setFormationLayout(layout: FormationLayout): void {
-  formationLayout = layout;
-  writeStoredFormationLayout(layout);
-  emitFormationLayout();
-}
-
-function subscribeFormationView(listener: Listener): () => void {
-  formationViewListeners.add(listener);
+function subscribeAlignLayout(listener: Listener): () => void {
+  alignLayoutListeners.add(listener);
   return () => {
-    formationViewListeners.delete(listener);
+    alignLayoutListeners.delete(listener);
   };
 }
 
-function subscribeFormationLayout(listener: Listener): () => void {
-  formationLayoutListeners.add(listener);
-  return () => {
-    formationLayoutListeners.delete(listener);
-  };
+/** 모두 정렬 진입 직전 훅 — 선별 중이면 War Room을 먼저 끝낸다. 단일 리스너(마지막 등록이 이긴다). */
+export function registerBeforeAlignAllActivation(listener: (theaterId: string) => void): void {
+  beforeAlignAllActivation = listener;
 }
 
 function emit(): void {
@@ -1268,12 +1320,8 @@ function clearCompanionPanelVisibilityOverrides(operationId: string): void {
   emitCompanionPanelVisibility();
 }
 
-function emitFormationView(): void {
-  for (const listener of formationViewListeners) listener();
-}
-
-function emitFormationLayout(): void {
-  for (const listener of formationLayoutListeners) listener();
+function emitAlignLayout(): void {
+  for (const listener of alignLayoutListeners) listener();
 }
 
 function getMinimizedSnapshot(): readonly string[] {
@@ -1387,22 +1435,32 @@ function writeStoredState(theaterId: string | null, value: CanvasState): void {
   }
 }
 
-function readStoredFormationLayout(): FormationLayout {
+function readStoredAlignLayout(): AlignAllLayout {
   if (typeof window === "undefined") return "grid";
   try {
-    const stored = window.localStorage.getItem(FORMATION_LAYOUT_STORAGE_KEY);
-    return stored === "columns" || stored === "rows" || stored === "grid" ? stored : "grid";
+    const stored = window.localStorage.getItem(ALIGN_ALL_LAYOUT_STORAGE_KEY);
+    if (stored === "columns" || stored === "rows" || stored === "grid") return stored;
+    // 퇴역한 formation-layout 키는 한 번만 이관한다 — 사용자 선택을 살리고 그 키는 지운다.
+    // 즉시 삭제하는 이유: 죽은 키가 남으면 다음 구현이 "살아 있는 계약"으로 오해하고,
+    // 유예해도 읽을 일이 다시는 없으므로 잔류는 혼란만 남긴다.
+    const legacy = window.localStorage.getItem(LEGACY_FORMATION_LAYOUT_STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_FORMATION_LAYOUT_STORAGE_KEY);
+    if (legacy === "columns" || legacy === "rows" || legacy === "grid") {
+      window.localStorage.setItem(ALIGN_ALL_LAYOUT_STORAGE_KEY, legacy);
+      return legacy;
+    }
+    return "grid";
   } catch {
     return "grid";
   }
 }
 
-function writeStoredFormationLayout(layout: FormationLayout): void {
+function writeStoredAlignLayout(layout: AlignAllLayout): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(FORMATION_LAYOUT_STORAGE_KEY, layout);
+    window.localStorage.setItem(ALIGN_ALL_LAYOUT_STORAGE_KEY, layout);
   } catch {
-    // 저장 실패는 Formation 레이아웃 복구성만 낮추므로 런타임 흐름을 막지 않는다.
+    // 저장 실패는 나누기 기억만 잃으므로 런타임 흐름을 막지 않는다.
   }
 }
 
@@ -1424,7 +1482,7 @@ function normalizeCanvasState(value: unknown): CanvasState {
   };
 }
 
-function normalizeSnapHold(value: unknown, operations: Record<string, OperationGeometry>): SnapHold | null {
+function normalizeSnapHold(value: unknown, operations: Record<string, OperationGeometry>, allowAlignAll = true): SnapHold | null {
   if (!isRecord(value) || typeof value.presetId !== "string" || !Array.isArray(value.zones) || !isRecord(value.assignments)) return null;
   const zones: SnapZoneFraction[] = [];
   for (const zone of value.zones) {
@@ -1436,8 +1494,29 @@ function normalizeSnapHold(value: unknown, operations: Record<string, OperationG
     if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= zones.length || !(id in operations)) continue;
     assignments[id] = index;
   }
+  // 모두 정렬은 칸이 비어도 묶음으로 산다 — 멤버십은 렌더의 reconcile이 다시 채운다.
+  const alignAll = allowAlignAll ? normalizeAlignAll(value.alignAll, operations) : null;
+  if (alignAll) return { presetId: value.presetId, zones, assignments, alignAll };
   if (zones.length === 0 || Object.keys(assignments).length === 0) return null;
   return { presetId: value.presetId, zones, assignments };
+}
+
+function normalizeAlignAll(value: unknown, operations: Record<string, OperationGeometry>): AlignAllMeta | null {
+  if (!isRecord(value)) return null;
+  const layout = value.layout;
+  if (layout !== "grid" && layout !== "columns" && layout !== "rows") return null;
+  const savedGeometries: Record<string, OperationGeometry> = {};
+  if (isRecord(value.savedGeometries)) {
+    for (const [sessionId, geometry] of Object.entries(value.savedGeometries)) {
+      savedGeometries[sessionId] = normalizeOperationGeometry(geometry, 0);
+    }
+  }
+  // 켜기 전 수동 묶음은 중첩 정렬을 갖지 않는다 — 있어도 무시한다.
+  const savedSnapHold = normalizeSnapHold(value.savedSnapHold, operations, false);
+  const detached = Array.isArray(value.detached)
+    ? value.detached.filter((sessionId): sessionId is string => typeof sessionId === "string")
+    : [];
+  return { layout, savedGeometries, savedSnapHold, detached };
 }
 
 // 서버 order가 아직 없는 Theater에서만 호출되는 구 브라우저 순서의 이관 전용 읽기다.

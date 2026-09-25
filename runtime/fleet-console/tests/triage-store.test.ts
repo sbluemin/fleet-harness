@@ -18,20 +18,19 @@ import {
 import { clearOperationRuntime, findOperation, focusOperation, getState, hydrateOperations, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setOperationRuntime, setState as setConsoleState } from "../core/client/src/integration/store.js";
 import { fetchOperations } from "../core/client/src/integration/api.js";
 import {
-  clearFormationView,
   forceDropCompanionOperationId,
+  getAlignAll,
   getCompanionOperationId,
   clearMaximizedOperationId,
-  getFormationView,
   getMaximizedOperationId,
   getTheaterFocusLayerSnapshot,
   loadForTheater,
   minimizeOperation,
+  releaseAlignAll,
   setMaximizedOperationId,
   setCompanionOperationId,
-  setOperationGeometry,
   setTheaterFocusLayerSnapshot,
-  toggleFormationView,
+  toggleAlignAll,
 } from "../features/workspace/client/canvas/canvas-store.js";
 import {
   requestSideBarOperationAction,
@@ -108,7 +107,7 @@ beforeEach(() => {
   resetTriageDeckZoomForTests();
   resetIdleArrivalForTests();
   resetSideBarStatusSectionCollapseForTests();
-  clearFormationView();
+  releaseAlignAll();
   clearMaximizedOperationId();
   forceDropCompanionOperationId();
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -119,7 +118,7 @@ afterEach(() => {
   resetTriageSpotlightForTests();
   resetTriageDeckZoomForTests();
   forceDropCompanionOperationId();
-  clearFormationView();
+  releaseAlignAll();
   clearMaximizedOperationId();
   loadForTheater(null);
   if (triagePlateRoot) {
@@ -182,22 +181,26 @@ describe("triage store", () => {
     }
   });
 
-  it("keeps Formation view and Triage mutually exclusive in both directions", () => {
-    toggleFormationView();
-    expect(getFormationView()).toBe(true);
+  it("keeps align-all across Triage round-trips, and align entry exits Triage", () => {
+    toggleAlignAll();
+    expect(getAlignAll()).not.toBeNull();
 
+    // 선별 진입은 정렬을 걷지 않는다 — War Room을 다녀와도 정렬이 남는다.
     setTriageActive(true);
     expect(isTriageActive()).toBe(true);
-    expect(getFormationView()).toBe(false);
+    expect(getAlignAll()).not.toBeNull();
 
     setTriageActive(false);
-    setOperationGeometry("picked", { x: 0, y: 0, width: 640, height: 400, zIndex: 1 });
-    setMaximizedOperationId("picked");
+    expect(getAlignAll()).not.toBeNull();
+
+    // 정렬 진입은 선별을 끝낸다.
+    toggleAlignAll();
+    expect(getAlignAll()).toBeNull();
     setTriageActive(true);
-    toggleFormationView();
-    expect(getFormationView()).toBe(true);
+    expect(isTriageActive()).toBe(true);
+    toggleAlignAll();
+    expect(getAlignAll()).not.toBeNull();
     expect(isTriageActive()).toBe(false);
-    expect(getMaximizedOperationId()).toBeNull();
   });
 
   it("acknowledges only the active Operation when Triage exits", () => {

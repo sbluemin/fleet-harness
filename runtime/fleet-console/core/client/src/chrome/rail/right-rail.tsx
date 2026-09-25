@@ -187,7 +187,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   }, [railChromeExpanded]);
 
   // 아레나 계산의 원료 — 레일이 캔버스 위에서 점유하는 실측 폭을 스토어로 보고한다.
-  // fit-all·Tactical 슬롯·War Room 무대가 이 값으로 열린 카드를 피해 계산된다.
+  // fit-all·스냅 칸·War Room 무대가 이 값으로 열린 카드를 피해 계산된다.
   // 슬롯 총폭(카드+extra)도 예산으로 캡한다 — 카드 상한만 사이드바를 빼면 MIN 바닥(240)과
   // 가산 extra(예: Codex 리더 360)가 상한을 도로 뚫어 좁은 창에서 두 카드가 겹친다
   // (Codex 리뷰 확정). extra는 best-effort다: 페인 본문은 컨테이너 쿼리로 스스로 열화한다.

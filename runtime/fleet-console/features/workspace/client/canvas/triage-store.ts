@@ -10,12 +10,11 @@ import { clearSideBarOperationAction } from "../sidebar/interaction.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import { readCanvasModeSession, rememberWarRoomActive } from "./canvas-mode-session.js";
 import {
-  clearFormationView,
   forceDropCompanionOperationId,
   getLoadedTheaterId,
   getTheaterCanvasSnapshot,
   getTheaterFocusLayerSnapshot,
-  registerBeforeFormationViewActivation,
+  registerBeforeAlignAllActivation,
   setTheaterFocusLayerSnapshot,
   setTheaterOperationMinimized,
   type FocusLayerState,
@@ -213,8 +212,9 @@ function persistTriageDeckZoom(zoom: number): void {
 // 마운트이므로 지목만으로 무대가 서고, 전환하면 목적지의 저장 focus layer가 부활한다.
 registerFocusTheaterSwitchSuppression(() => triageActive);
 
-// Formation 진입은 어느 Theater에서든 전역 선별 처리를 끝낸다.
-registerBeforeFormationViewActivation(() => setTriageActive(false));
+// 모두 정렬 진입은 어느 Theater에서든 전역 선별 처리를 끝낸다 — 정렬은 Cruise 위의 유지라
+// 무대와 겹쳐 설 수 없다. 반대로 선별 진입은 정렬을 걷지 않고 그대로 둔다(War Room 왕복 보존).
+registerBeforeAlignAllActivation(() => setTriageActive(false));
 
 export function isTriageActive(): boolean {
   return triageActive;
@@ -223,7 +223,7 @@ export function isTriageActive(): boolean {
 export function setTriageActive(active: boolean): void {
   if (active) {
     const { activeTheaterId } = getState();
-    clearFormationView();
+    // 모두 정렬은 스냅 유지라 War Room 왕복에 남는다 — 진입이 걷지 않는다.
     if (!triageActive) {
       triageActive = true;
       rememberWarRoomActive(true);
@@ -336,9 +336,6 @@ export function useTriageActive(): boolean {
 export function visitTriageTheater(theaterId: string): void {
   captureFocusLayerBeforeTriage(theaterId);
   setTheaterFocusLayerSnapshot(theaterId, null);
-  // 방문 Theater에 남아 있던 Formation 플래그는 loadForTheater가 그대로 복원해
-  // 선별과 Formation의 상호배제를 깬다 — 진입 경로처럼 목적지의 Formation도 걷어낸다.
-  clearFormationView(theaterId);
   if (getState().activeTheaterId !== theaterId) setActiveTheater(theaterId);
 }
 

@@ -38,7 +38,7 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
 export type PaletteGlyphId =
   | "theater-monogram" | "theater-add" | "operation-new"
   | "operation-open" | "operation-resume" | "operation-close" | "operation-rename" | "operation-group" | "operation-accent" | "operation-minimize"
-  | "view-minimize-all" | "view-fit" | "view-war-room" | "view-tactical" | "view-station-keeping" | "view-status-axis"
+  | "view-minimize-all" | "view-fit" | "view-war-room" | "view-align-all" | "view-station-keeping" | "view-status-axis"
   | "rail-entry" | "console-sidebar" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
 
 export type PaletteCommandAction =
@@ -137,10 +137,10 @@ export function buildPaletteCommands(
   // 별칭은 표시 언어와 다른 쪽 라벨이다. 영어 UI에서는 한국어 라벨이 별칭이 되어 한글 입력도 맞는다.
   const alias = getT(language === "ko" ? "en" : "ko");
   const push = (
-    entry: Omit<PaletteCommandEntry, "aliases" | "current"> & { readonly current?: boolean; readonly aliasLabel: string },
+    entry: Omit<PaletteCommandEntry, "aliases" | "current"> & { readonly current?: boolean; readonly aliasLabel: string; readonly extraAliases?: readonly string[] },
   ) => {
-    const { aliasLabel, ...rest } = entry;
-    commands.push({ ...rest, current: entry.current ?? false, aliases: aliasLabel === rest.label ? [] : [aliasLabel] });
+    const { aliasLabel, extraAliases, ...rest } = entry;
+    commands.push({ ...rest, current: entry.current ?? false, aliases: [...(aliasLabel === rest.label ? [] : [aliasLabel]), ...(extraAliases ?? [])] });
   };
   const activeTheater = current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
   const activeOperation = current.operations.find(
@@ -175,7 +175,7 @@ export function buildPaletteCommands(
       push({ commandId: "fit-all-panels", label: t("palette.fitAllPanels"), aliasLabel: alias("palette.fitAllPanels"), action: { kind: "fit-all-panels" }, group: "view", glyph: "view-fit", shortcut: "operations.fit-all" });
     }
     push({ commandId: "toggle-triage-mode", label: t("palette.toggleTriage"), aliasLabel: alias("palette.toggleTriage"), action: { kind: "toggle-triage-mode" }, group: "view", glyph: "view-war-room", shortcut: "operations.toggle-triage" });
-    push({ commandId: "toggle-formation", label: t("palette.toggleFormation"), aliasLabel: alias("palette.toggleFormation"), action: { kind: "toggle-formation" }, group: "view", glyph: "view-tactical", shortcut: "operations.toggle-formation" });
+    push({ commandId: "toggle-formation", label: t("palette.toggleFormation"), aliasLabel: alias("palette.toggleFormation"), extraAliases: ["tactical"], action: { kind: "toggle-formation" }, group: "view", glyph: "view-align-all", shortcut: "operations.toggle-formation" });
     push({ commandId: "toggle-station-keeping", label: t("palette.toggleStationKeeping"), aliasLabel: alias("palette.toggleStationKeeping"), action: { kind: "toggle-station-keeping" }, group: "view", glyph: "view-station-keeping" });
     push({ commandId: "toggle-status-axis", label: t("palette.toggleStatusAxis"), aliasLabel: alias("palette.toggleStatusAxis"), action: { kind: "toggle-status-axis" }, group: "view", glyph: "view-status-axis", shortcut: "operations.sort-by-status" });
   }

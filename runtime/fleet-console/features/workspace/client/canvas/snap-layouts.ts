@@ -2,7 +2,7 @@
 //
 // 칸은 항상 "지금 보이는 아레나"의 화면 픽셀로 잰다. 놓는 순간 줌 100% 프레임으로 환산하고 카메라를
 // 그 프레임으로 당긴다(canvas-store.snapOperationToArenaRect) — 무슨 줌에서 끌었든 결과는 작업 크기다.
-// 칸 나누기 규칙은 Tactical 슬롯(calculateGridSlots)과 같은 가족이다 — 모드 프레임 여백 18px,
+// 칸 나누기 규칙은 모두 정렬(alignZonesFor)과 같은 가족이다 — 모드 프레임 여백 18px,
 // 칸 사이 8px, 캡션 32px는 칸 위 띠를 캡션이 채운다는 전제로 본문에서 뺀다.
 
 import { OPERATION_WINDOW_CAPTION_HEIGHT } from "./canvas-store.js";
@@ -47,7 +47,7 @@ export const SNAP_PRESETS: readonly SnapPreset[] = [
   { id: "stack", zones: [[0, 0, 1 / 2, 1], [1 / 2, 0, 1 / 2, 1 / 2], [1 / 2, 1 / 2, 1 / 2, 1 / 2]] },
 ];
 
-// 모드 프레임 여백(Tactical 슬롯과 같은 18px)과 칸 사이 간격.
+// 모드 프레임 여백(정렬 칸과 같은 18px)과 칸 사이 간격.
 export const SNAP_FRAME_INSET = 18;
 export const SNAP_GAP = 8;
 // 끌던 패널이 이 띠(아레나 위쪽)에 닿으면 레이아웃 바가 내려온다. 열린 뒤에는 히스테리시스만큼 더 참는다.
@@ -197,7 +197,7 @@ function clamp01(value: number): number {
 
 /**
  * 가장자리·모서리 핫존 — 포인터가 보이는 아레나(`hitArena`)의 좌우 28px 안이면 반쪽, 모서리면 사분면.
- * 칸 자체는 `zoneArena`(모드 아레나)로 편다 — 핫존은 눈에 보이는 가장자리의 것이고 칸은 Tactical 슬롯과
+ * 칸 자체는 `zoneArena`(모드 아레나)로 편다 — 핫존은 눈에 보이는 가장자리의 것이고 칸은 정렬 칸과
  * 같은 상자의 것이라 둘이 다르다. 위쪽 띠는 레이아웃 바의 몫이라 여기서 다루지 않는다.
  */
 export function snapEdgeHitFor(point: SnapPoint, hitArena: SnapRect, zoneArena: SnapRect = hitArena): SnapZoneHit | null {

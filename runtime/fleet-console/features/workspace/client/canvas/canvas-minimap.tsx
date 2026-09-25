@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { useFormationView, type CanvasViewport, type OperationGeometry } from "./canvas-store.js";
+import type { CanvasViewport, OperationGeometry } from "./canvas-store.js";
 import type { CanvasPoint } from "./coordinates.js";
 
 interface PluginOperationEntry {
@@ -39,23 +39,7 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
   const t = useT();
   const innerRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
-  const collapsedBeforeFormationRef = useRef<boolean | null>(null);
   const [collapsed, setCollapsed] = useState(readCollapsed);
-  const formationView = useFormationView();
-
-  useEffect(() => {
-    if (formationView) {
-      if (collapsedBeforeFormationRef.current === null) {
-        collapsedBeforeFormationRef.current = collapsed;
-        setCollapsed(true);
-      }
-      return;
-    }
-    if (collapsedBeforeFormationRef.current === null) return;
-    // Formation의 임시 접힘은 저장하지 않고, 진입 전 Map 상태를 복원한다.
-    setCollapsed(collapsedBeforeFormationRef.current);
-    collapsedBeforeFormationRef.current = null;
-  }, [collapsed, formationView]);
 
   if (canvasSize.width <= 0 || canvasSize.height <= 0 || viewport.zoom <= 0) return null;
 
@@ -69,8 +53,7 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
   const toggle = () => {
     setCollapsed((value) => {
       const next = !value;
-      // Formation 중 수동 전환은 종료 시 원래 상태를 복원하므로 선호를 저장하지 않는다.
-      if (!formationView) writeCollapsed(next);
+      writeCollapsed(next);
       return next;
     });
   };

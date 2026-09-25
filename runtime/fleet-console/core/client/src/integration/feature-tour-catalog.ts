@@ -158,7 +158,7 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
   {
     id: "cruise-snap",
     // 앵커는 Cruise에서 펼쳐진 패널의 캡션 — 스냅은 캡션을 끄는 동작에서 시작하므로 그 자리에서
-    // 짚는다. Tactical·War Room·최대화·companion·Fleet Map에서는 캡션 드래그가 잠겨 스냅이 없으니
+    // 짚는다. War Room·최대화·companion·Fleet Map에서는 캡션 드래그가 잠겨 스냅이 없으니
     // 캔버스 상태 클래스로 Cruise만 남긴다. 덱 카드·최소화 패널의 캡션은 보이지 않으므로 뺀다.
     // 두 번째 스텝은 캡션의 최대화 버튼 — 머무르면 같은 프리셋 메뉴가 열린다(data-snap-tour).
     // 첫 방문의 모드 투어와 겹치지 않게 한 박자 미룬다.
@@ -166,12 +166,12 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     deferAfterAnotherTour: true,
     walkthrough: [
       {
-        anchor: ".operations-canvas:not(.is-formation-view):not(.is-triage):not(.is-panel-maximized):not(.is-companion-layout):not(.is-fleet-map) .canvas-operation:not(.is-deck-tile):not(.is-minimized) .canvas-operation-titlebar",
+        anchor: ".operations-canvas:not(.is-triage):not(.is-panel-maximized):not(.is-companion-layout):not(.is-fleet-map) .canvas-operation:not(.is-deck-tile):not(.is-minimized) .canvas-operation-titlebar",
         titleKey: "featureTour.cruiseSnap.step1Title",
         bodyKey: "featureTour.cruiseSnap.step1Body",
       },
       {
-        anchor: '.operations-canvas:not(.is-formation-view):not(.is-triage):not(.is-panel-maximized):not(.is-companion-layout):not(.is-fleet-map) .canvas-operation:not(.is-deck-tile):not(.is-minimized) [data-snap-tour="menu"]',
+        anchor: '.operations-canvas:not(.is-triage):not(.is-panel-maximized):not(.is-companion-layout):not(.is-fleet-map) .canvas-operation:not(.is-deck-tile):not(.is-minimized) [data-snap-tour="menu"]',
         titleKey: "featureTour.cruiseSnap.step2Title",
         bodyKey: "featureTour.cruiseSnap.step2Body",
       },

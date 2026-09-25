@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
    - activePanelId: 카드에 상주하는 유일한 패널. localStorage에 영속.
    - 아이콘 클릭은 배타 전환이다: 켜진 패널을 다시 누르면 닫히고, 다른 패널을 누르면 교체된다.
    - push/overlay 이원의 퇴역과 아레나 인셋 승계는 스택 시절 그대로다 — 열린 패널 폭이 캔버스
-     아레나에서 항상 제외되므로 fit-all·Tactical 슬롯·War Room 무대가 패널을 피해 계산된다. */
+     아레나에서 항상 제외되므로 fit-all·스냅 칸·War Room 무대가 패널을 피해 계산된다. */
 interface RailStore {
   readonly activePanelId: string | null;
   readonly railChromeExpanded: boolean;

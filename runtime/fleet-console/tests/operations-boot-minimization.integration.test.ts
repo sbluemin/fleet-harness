@@ -8,7 +8,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setStationKeeping, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../features/workspace/client/canvas/canvas-store.js";
+import { clearCompanionOperationId, clearMaximizedOperationId, getCompanionOperationId, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setStationKeeping, setViewport, subscribe as subscribeCanvas } from "../features/workspace/client/canvas/canvas-store.js";
 import { BOOT_MINIMIZATION_STORAGE_KEY, resetBootMinimizationSession } from "../core/client/src/integration/boot-minimization-session.js";
 import { CANVAS_MODE_STORAGE_KEY } from "../features/workspace/client/canvas/canvas-mode-session.js";
 import { armTriageSetAside, getTriageSetAsideArmedId, isTriageActive, resetTriageTheater, setTriageActive } from "../features/workspace/client/canvas/triage-store.js";
@@ -169,7 +169,6 @@ beforeEach(() => {
   setStationKeeping(false);
   clearMaximizedOperationId();
   clearCompanionOperationId();
-  clearFormationView();
   loadForTheater(null);
   setState({ activeOperationId: null, activeTheaterId: null, groups: [], keyboardFocusRequest: null, operations: [], operationsHydrated: false, theaters: [] });
   container = document.createElement("div");
@@ -208,11 +207,9 @@ afterEach(() => {
   loadForTheater("theater-a");
   clearCompanionOperationId();
   clearMaximizedOperationId();
-  clearFormationView();
   loadForTheater("theater-b");
   clearCompanionOperationId();
   clearMaximizedOperationId();
-  clearFormationView();
   loadForTheater(null);
   container?.remove();
   root = null;
@@ -282,11 +279,10 @@ describe("Operations boot minimization", () => {
     expect(resumeOperation).toHaveBeenCalledTimes(1);
     expect(resumeOperation).toHaveBeenCalledWith("stowed");
 
-    // 패널을 꺼내는 방식은 분기마다 다르다 — formation은 캔버스 복원으로, 최대화는 focus layer
+    // 패널을 꺼내는 방식은 분기마다 다르다 — 일반 열기는 캔버스 복원으로, 최대화는 focus layer
     // 승계로 최소화 목록에서 꺼낸다. 어느 쪽이든 사용자에게는 같은 "패널 열기"이므로 같은 재개를 받는다.
     await act(async () => {
       minimizeOperation("stowed");
-      toggleFormationView();
       sideBarMocks.onFocus?.("stowed");
       await Promise.resolve();
     });
@@ -294,7 +290,6 @@ describe("Operations boot minimization", () => {
     expect(resumeOperation).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      clearFormationView();
       setMaximizedOperationId("visible");
       minimizeOperation("stowed");
       sideBarMocks.onFocus?.("stowed");

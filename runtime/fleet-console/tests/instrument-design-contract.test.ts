@@ -157,11 +157,6 @@ const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   // Canvas injects each frame's identity accent through TSX inline styles.
   "--user-accent",
-  // Canvas injects stagger timing through CSSStyleDeclaration.setProperty at runtime.
-  "--panel-stagger-delay",
-  // Formation injects guide and landing sequence indices through TSX/runtime styles.
-  "--gi",
-  "--li",
   // Sidebar TSX injects its measured width for the shell layout.
   "--side-bar-width",
   // Sidebar TSX injects transient drag offsets for chips and group headers; the fleet map's
@@ -718,13 +713,12 @@ describe("Instrument core design contract", () => {
     // Map의 두 바닥은 채널을 소비만 한다 — 연출 리터럴이 여기로 돌아오면 세 다크가 다시 한 판을 쓴다.
     expect(components).toContain(".operations-canvas-sea {\n  background: var(--canvas-field);\n}");
     expect(components).toContain(".operations-canvas.is-triage {\n  background: var(--canvas-field-triage);");
-    expect(components).toContain(".operations-canvas.is-formation-view {\n  background: var(--canvas-field-formation);");
+    expect(components).not.toContain("is-formation-view");
 
     // 모드 바닥은 색이지 그 위에 덮는 층이 아니다. 캔버스 전면 의사요소는 패널 세계
     // (.operations-canvas-world, z-index auto) 위에 놓여 무대에 오른 패널을 통째로 어둡게 하므로
     // 어떤 모드에서도 두지 않는다 — 진입은 스크림 없이 제목(.canvas-mode-title)만 띄운다.
     expect(components).not.toMatch(/^\.operations-canvas\.is-triage::(after|before) \{/m);
-    expect(components).not.toMatch(/^\.operations-canvas\.is-formation-view::(after|before) \{/m);
 
     // 줌 곱셈은 격자 요소에서 일어나야 한다: :root 커스텀 속성 안에 중첩한 var()는 선언 지점인
     // :root에서 해석돼 컴포넌트가 넘긴 줌을 영원히 보지 못한다.
@@ -749,12 +743,9 @@ describe("Instrument core design contract", () => {
     expect(triageGrid).toContain("--canvas-weave-zoom: calc(4 / 3) !important;");
     expect(triageGrid).toContain("--canvas-weave-minor: var(--canvas-weave-major) !important;");
     expect(triageGrid).not.toMatch(/1\.3333/);
-    const formationGrid = components.match(/\.operations-canvas\.is-formation-view \.operations-canvas-grid \{[^}]*\}/)?.[0] ?? "";
-    expect(formationGrid).toContain("--canvas-weave-zoom: 1 !important;");
-    expect(formationGrid).toContain("--canvas-weave-minor: var(--canvas-weave-major) !important;");
 
     // 세 다크가 각자의 지형을 선언한다 — base(Instrument) + maritime + carbon.
-    for (const token of ["--canvas-field:", "--canvas-weave:", "--canvas-field-formation:", "--canvas-field-triage:"]) {
+    for (const token of ["--canvas-field:", "--canvas-weave:", "--canvas-field-triage:"]) {
       expect(theme.match(new RegExp(`\\n  \\${token}`, "g"))).toHaveLength(3);
     }
     // Instrument 지형은 오늘의 화면 그대로다 — 이 값이 곧 Instrument 사양이다.
@@ -806,7 +797,7 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).toContain("if (prefersReducedMotion()) return;");
   });
 
-  it("keeps minimap navigation and collapse controls while hiding Map in Formation and maximize", () => {
+  it("keeps minimap navigation and collapse controls while hiding Map in maximize", () => {
     const minimap = source("../../../features/workspace/client/canvas/canvas-minimap.tsx");
     const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
     const components = source("styles/components.css");
@@ -820,9 +811,7 @@ describe("Instrument core design contract", () => {
     expect(minimap).toContain("canvas-minimap-fab");
     expect(minimap).toContain("canvas-minimap-toggle");
     expect(canvas).toContain("<CanvasMinimap");
-    expect(canvas).not.toContain("{!formationView && !panelMaximized ? (");
-    expect(components).toContain(".operations-canvas.is-formation-view .canvas-minimap,");
-    expect(components).toContain(".operations-canvas.is-formation-view .canvas-minimap-fab,");
+    expect(canvas).not.toContain("{!panelMaximized ? (");
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap,");
@@ -848,7 +837,7 @@ describe("Instrument core design contract", () => {
       expect(canvas).toContain(sharedModeClass);
       expect(components).toContain(`.${sharedModeClass}`);
     }
-    // 모드 전환 제목은 스크림 없이 세 줄만 띄우고, 세 모드(Cruise 복귀 포함)가 같은 컴포넌트를 쓴다 —
+    // 모드 전환 제목은 스크림 없이 세 줄만 띄우고, 세 진입(War Room·모두 정렬·Cruise 복귀)이 같은 컴포넌트를 쓴다 —
     // 패널은 진입 첫 프레임부터 보여야 하므로 진입 중 패널을 숨기거나 착지를 미루는 규칙은 없다.
     const overlays = source("../../../features/workspace/client/canvas/canvas-overlays.tsx");
     for (const modeTitleClass of ["canvas-mode-title", "canvas-mode-title-kicker", "canvas-mode-title-ruler", "canvas-mode-title-word", "canvas-mode-title-body"]) {
@@ -858,7 +847,7 @@ describe("Instrument core design contract", () => {
     expect(canvas.split("<ModeTitle").length - 1).toBe(3);
     expect(components).not.toContain("canvas-mode-curtain");
     expect(components.match(/\.canvas-mode-title \{[^}]*\}/)?.[0] ?? "").not.toContain("background");
-    expect(components).not.toMatch(/\.is-formation-entering \.canvas-operation \{/);
+    expect(components).not.toMatch(/\.is-triage-entering \.canvas-operation \{/);
     expect(canvas).not.toContain("canvas-mode-hud");
     expect(components).not.toContain(".canvas-mode-hud");
     // 하단 대기 레일은 제거됐다 — 사이드바 '대기'가 이미 같은 순서를 쥐고 있어, 두 곳이 동시에
@@ -873,11 +862,10 @@ describe("Instrument core design contract", () => {
     // 치워두기의 두 번 눌러 확정 안내는 패널 안 HUD가 소유한다 — 레일이 사라져도 이 기능은 그대로다.
     expect(canvas).toContain("setAsideArmed");
     expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain|sweep)/);
-    // Formation 판의 중앙은 대기광 채널이, 둘레는 워시 채널이 정한다 — 유리가 굴절할 빛을
-    // 패널 뒤에 놓기 위해서다. 두 채널 모두 기본값이 현행 sea라 게이트가 닫히면 원래 픽셀이다.
+    // 빈칸 번호 가이드는 퇴역했다 — 모두 정렬은 빈칸 없이 마지막 행을 넓힌다.
     // 연출 자체는 Map 지형 채널로 옮겨 갔으므로, 이 문장의 근거는 theme.css의 Instrument 사양이 진다.
-    expect(source("styles/theme.css")).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-wash-mid) 78%)");
-    expect(components).toContain(".canvas-formation-guide {");
+    expect(source("styles/theme.css")).toContain("radial-gradient(66% 52% at 50% 46%, var(--canvas-wash-mid), var(--canvas-wash-far) 74%)");
+    expect(components).not.toContain(".canvas-formation-guide {");
     // 캡션은 순번을 싣지 않는다 — 번호는 빈 자리를 가리키는 가이드만 진다.
     expect(components).not.toContain(".canvas-operation-formation-slot {");
     expect(contextMenu).not.toContain("canvas-context-menu-head");
@@ -1159,8 +1147,7 @@ describe("Instrument core design contract", () => {
         const selector = masked.slice(selectorStart, blockStart);
         // Mode instrument chrome has host-approved literal brass/fog blends; adjacent CSS doctrine
         // comments distinguish these decorative labels from semantic body-copy color.
-        if (selector.includes(".canvas-mode-title-kicker")
-          || selector.includes(".canvas-formation-guide-index")) continue;
+        if (selector.includes(".canvas-mode-title-kicker")) continue;
         const line = lineAt(css, declaration.index);
         violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
       }
@@ -1690,14 +1677,13 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     // (a) 공통 모션 레이어의 duration/easing은 토큰 표기만 — 리터럴 ms 진입 금지.
     const baseBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
-    // stagger는 geometry 4속성 전용 CSS 변수 채널로만 흐른다 — inline transition-delay는
-    // 존재 전환(opacity/visibility)의 per-property 지연을 덮어쓰므로 그 진입 자체를 봉인한다.
+    // 재배치는 같은 물리로 함께 움직인다 — geometry 4속성에 per-property 지연 채널을 두지 않는다.
     for (const property of ["left", "top", "width", "height"]) {
-      expect(baseBlock).toContain(`${property} var(--duration-slow) var(--ease-glide) var(--panel-stagger-delay, 0s)`);
+      expect(baseBlock).toContain(`${property} var(--duration-slow) var(--ease-glide),`);
     }
     expect(baseBlock).toContain("opacity var(--duration-base) var(--ease-glide),");
     expect(baseBlock).toContain("transform var(--duration-base) var(--ease-glide),");
-    expect(baseBlock).not.toContain("opacity var(--duration-base) var(--ease-glide) var(--panel-stagger-delay");
+    expect(baseBlock).not.toContain("panel-stagger-delay");
     expect(baseBlock).toContain("visibility 0s linear 0s");
     expect(baseBlock).not.toMatch(/\d+ms/);
     const minimizedBlock = components.match(/\.canvas-operation\.is-minimized \{[^}]*\}/)?.[0] ?? "";
@@ -1824,9 +1810,10 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".side-bar-chip .side-bar-chip-close.is-armed {\n    animation: none;");
   });
 
-  it("keeps Formation and maximize store contracts without the retired focus mode", () => {
+  it("keeps align-all and maximize store contracts without the retired formation mode", () => {
     const store = source("../../../features/workspace/client/canvas/canvas-store.ts");
-    expect(store).toContain("toggleFormationView");
+    expect(store).toContain("toggleAlignAll");
+    expect(store).not.toContain("toggleFormationView");
     expect(store).not.toContain("MapFullscreen");
     expect(store).toContain("setMaximizedOperationId");
   });
@@ -1863,7 +1850,7 @@ describe("Instrument core design contract", () => {
     expect(triageSidebar).toContain("{minimizedEntries.length > 0 ? (");
     // 선반은 목록 뒤에 흐른다 — 카드 바닥에 고정하면 목록과 선반 사이가 War Room 사이드바의 구멍이 된다.
     expect(components).toMatch(/\.triage-side-bar \.side-bar-wide > \.operations-side-bar-chips \{[^}]*flex: 0 1 auto;/);
-    // 좁힌 레일은 두 사이드바가 같은 문법으로 쓴다 — War Room은 상태 묶음, Cruise/Tactical은 Theater 묶음.
+    // 좁힌 레일은 두 사이드바가 같은 문법으로 쓴다 — War Room은 상태 묶음, Cruise는 Theater 묶음.
     expect(sidebar).toContain('className="side-bar-rail-sections"');
     expect(triageSidebar).toContain('className="side-bar-rail-sections"');
     expect(sidebar).toContain("<SideBarNarrowToggle narrow={mapNarrow}");
@@ -2252,11 +2239,10 @@ describe("Instrument core design contract", () => {
     // 모드는 글리프 하나로 말하고 이름은 설명 문자열(title/aria-label)이 진다 — 낱말과 아이콘을
     // 함께 두면 클러스터가 375px까지 벌어져 1280px 밴드에서 중앙이 무너진다(2026-08 실측).
     expect(commandBand).toContain('{ id: "cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseModeIcon },');
-    expect(commandBand).toContain('{ id: "tactical", titleKey: "chrome.commandBand.modeTactical", Icon: TacticalModeIcon },');
     expect(commandBand).toContain('{ id: "warRoom", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomModeIcon },');
-    expect(commandBand).toContain("<mode.Icon layout={formationLayout} />");
+    expect(commandBand).toContain("<mode.Icon />");
     expect(commandBand).toContain("aria-label={t(mode.titleKey)}");
-    expect(commandBand).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";');
+    expect(commandBand).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : "cruise";');
     expect(commandBand).toContain('aria-pressed={canvasMode === mode.id}');
     // 모드 도구는 활성 세그먼트 아래 캡슐 하나에 활성 모드의 것만 마운트한다 — 비활성 모드 도구는
     // disabled가 아니라 부재다. 캡슐은 활성 세그먼트의 hover·포커스·클릭만 열고, 닫힌 동안은
@@ -2266,7 +2252,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
     expect(commandBand).toContain('{canvasMode === "cruise" ? <>');
     expect(commandBand).toContain('{canvasMode === "warRoom" ? <>');
-    expect(commandBand).toContain('{canvasMode === "tactical" ? TACTICAL_LAYOUTS.map((layout) => (');
+    expect(commandBand).toContain('{ALIGN_LAYOUTS.map((layout) => (');
     expect(commandBand).toContain("onClick={cycleTriageDeckZoomPreset}");
     expect(commandBand).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");
     // 값은 남기되 낱말은 두지 않는다 — 아이콘 + 배율 수치.
@@ -2274,12 +2260,15 @@ describe("Instrument core design contract", () => {
     // 안내 앵커(.command-band-mode-tray, data-war-room-tool)가 닫힌 캡슐 안에 있을 때는 CSS가 강제로 펼친다.
     expect(layout).toContain(".command-band-mode-tray:has(.is-feature-tour-anchor)");
     expect(commandBand).toContain('<span className="command-band-center-divider" aria-hidden="true" />');
-    // 같은 레이아웃 재클릭은 무시한다 — selectFormationLayout은 동일 레이아웃에서 모드를 끄는데,
-    // 모드 이탈 권한은 Cruise 세그먼트만 갖는다.
-    expect(commandBand).toContain("onClick={() => { if (formationLayout !== layout.id) selectFormationLayout(layout.id); }}");
-    expect(commandBand).toContain("aria-pressed={formationLayout === layout.id}");
-    // Tactical은 Theater별 상태라 활성 Theater로, War Room은 전역 모드라 등록된 Theater 존재로 게이트한다.
-    expect(commandBand).toContain('disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}');
+    // 같은 나누기 재클릭은 무시한다 — 끄는 길은 토글(Alt+F·캡슐 정렬 버튼·⌘K)이 소유한다.
+    expect(commandBand).toContain("if (layout !== alignMeta.layout) setAlignAllLayout(layout);");
+    expect(commandBand).toContain("aria-pressed={alignLayout === layout.id}");
+    expect(commandBand).toContain('aria-label={t("chrome.commandBand.alignAll")}');
+    expect(commandBand).toContain("onClick={toggleAlignAll}");
+    // 정렬이 켜지면 Cruise 세그먼트에 brass 점이 켜진다 — 캡슐 안 토글과 같은 채널이다.
+    expect(commandBand).toContain("stationKeeping || alignOn");
+    // 모드 스위치는 Theater 등록 여부로만 게이트한다 — 정렬 토글은 활성 Theater로 게이트한다.
+    expect(commandBand).toContain("disabled={state.theaters.length === 0}");
     // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
     expect(commandBand).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
     const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
@@ -3660,10 +3649,9 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".canvas-operation-glance-hud.is-armed-set-aside {");
     expect(components).toContain("/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며");
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
-    // Tactical/War Room/최대화는 슬롯을 32px 내려 캡션을 본문 밖에 둔다.
-    // Tactical grid/rows 행 보폭은 같은 32px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
+    // War Room/최대화는 슬롯을 32px 내려 캡션을 본문 밖에 둔다.
+    // 스냅·정렬 칸은 같은 32px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
     expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 32");
-    expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("const rowStride = gap + OPERATION_WINDOW_CAPTION_HEIGHT");
     // Station Keeping도 같은 32px를 충돌 상자에 넣는다 — 본문 AABB만 보면 아래 캡션이 위를 침범한다.
     expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("function stationKeepingFrameFor");
     expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("function resolveStationKeepingPosition");
@@ -3673,9 +3661,9 @@ describe("Instrument core design contract", () => {
     expect(canvasZoom).toContain("TITLEBAR_OUTSET_PX * operationZoom");
     expect(canvasZoom).toContain("const operationZoom = focusLayerHidden");
     expect(canvasZoom).toContain("? canvas.viewport.zoom");
-    expect(canvasZoom).toContain("formationView || triageActive || operationMaximized || operationCompanion");
+    expect(canvasZoom).toContain("triageActive || operationMaximized || operationCompanion");
     expect(canvasZoom).not.toContain("const effectiveZoom = panelMaximized");
-    // Operation 재질은 visible 패널 수에 반응하지 않는다. Cruise·Tactical·War Room 카드가 모두
+    // Operation 재질은 visible 패널 수에 반응하지 않는다. Cruise·War Room 카드가 모두
     // 같은 60% 투명 면과 무블러 계약을 공유하며, 다패널 War Room의 LOD는 Map 전환만 맡는다.
     expect(canvasZoom).not.toContain("visiblePanelCount");
     expect(canvasZoom).not.toContain("adaptivePanelMaterial");
@@ -3683,8 +3671,8 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".operations-canvas.is-panel-density-high");
     expect(source("../../../features/workspace/client/canvas/coordinates.ts")).toContain("y: arena.y + 18 + OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("../../../features/workspace/client/canvas/coordinates.ts")).toContain("arena.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT");
-    expect(source("../../../features/workspace/client/canvas/coordinates.ts")).toContain("export function operationWindowFrameFor");
-    expect(source("../../../features/workspace/client/canvas/canvas.tsx")).toContain("operationWindowFrameFor(geometry)");
+    expect(source("../../../features/workspace/client/canvas/coordinates.ts")).not.toContain("operationWindowFrameFor");
+    expect(source("../../../features/workspace/client/canvas/canvas.tsx")).not.toContain("operationWindowFrameFor");
     expect(source("../../../features/workspace/client/canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");
     expect(source("../../../features/workspace/client/canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
     expect(components).toContain(".canvas-operation-more-button {");
@@ -4524,7 +4512,7 @@ describe("War Room deck panel grammar", () => {
     // 예외는 반드시 이음새 규칙 뒤에 온다 — 앞에 두면 같은 승부를 다시 진다.
     expect(components.indexOf(tileSeamExemption))
       .toBeGreaterThan(components.indexOf(".canvas-operation:has(> .canvas-operation-titlebar) {"));
-    // 떠 있는 캡션(Cruise·Tactical·companion)의 계약은 그대로다.
+    // 떠 있는 캡션(Cruise·War Room·companion)의 계약은 그대로다.
     const tileCaption = components.match(/^\.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(tileCaption).toContain("border: 0;");
   });

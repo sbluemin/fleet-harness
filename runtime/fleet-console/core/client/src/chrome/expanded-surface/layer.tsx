@@ -29,8 +29,8 @@ import {
  *
  * 선언된 최소폭은 희망이지 물리가 아니다. 두 페인을 합쳐도 둘의 최소폭을 못 담는 좁은
  * 캔버스에서 최소폭을 그대로 지키면 분할선이 통째로 얼어붙어, 사용자에게는 고장으로
- * 읽힌다. 그럴 때는 비율을 지키며 함께 물러난다 — Formation 페인이 최소치를 실제 가용
- * 폭으로 캡하는 것과 같은 규칙이다(canvas-store의 calculateGridSlots).
+ * 읽힌다. 그럴 때는 비율을 지키며 함께 물러난다 — 정렬 칸이 최소치를 실제 가용
+ * 폭으로 캡하는 것과 같은 규칙이다(스냅 칸 나누기).
  */
 function fitMinimums(left: number, right: number, pair: number): readonly [number, number] {
   const total = left + right;

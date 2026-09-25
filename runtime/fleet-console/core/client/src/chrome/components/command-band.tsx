@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { fetchConsoleEnvironment } from "../../integration/api.js";
-import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { animateViewportTo, fitAllOperations, releaseAlignAll, setAlignAllLayout, setStationKeeping, toggleAlignAll, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../../../../../features/workspace/client/canvas/triage-watch-deck.js";
 import { commandBandCenterFits, commandBandCenterGutter } from "./command-band-guards.js";
@@ -27,15 +27,14 @@ interface CommandBandProps {
   readonly operationsViewVisible: boolean;
 }
 
-// Cruise / Tactical / War Room은 번역하지 않는 제품 고유 명칭이다 — 로케일이 바뀌어도
+// Cruise / War Room은 번역하지 않는 제품 고유 명칭이다 — 로케일이 바뀌어도
 // 모드 이름은 그대로고, 설명(title/aria)만 번역된다.
-type CanvasMode = "cruise" | "tactical" | "warRoom";
+type CanvasMode = "cruise" | "warRoom";
 
 interface CanvasModeSegment {
   readonly id: CanvasMode;
   readonly titleKey: CoreMessageKey;
-  // Tactical 글리프는 선택된 레이아웃(격자·열·행)을 따라 바뀐다 — 다른 모드는 layout을 무시한다.
-  readonly Icon: (props: { readonly layout: FormationLayout }) => ReactElement;
+  readonly Icon: () => ReactElement;
 }
 
 // 모드는 글리프 하나로 말한다 — 이름은 title/aria-label(모드 설명 문자열)이 진다. 낱말과
@@ -43,7 +42,6 @@ interface CanvasModeSegment {
 // 글리프 단독 스위치는 98px로 낱말 스위치(213px)의 절반 이하다(2026-09-15 실측).
 const CANVAS_MODES: readonly CanvasModeSegment[] = [
   { id: "cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseModeIcon },
-  { id: "tactical", titleKey: "chrome.commandBand.modeTactical", Icon: TacticalModeIcon },
   { id: "warRoom", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomModeIcon },
 ];
 
@@ -51,14 +49,16 @@ const CANVAS_MODES: readonly CanvasModeSegment[] = [
 // 깜빡이지 않게 한다.
 const MODE_TOOLS_CLOSE_DELAY_MS = 220;
 
-const TACTICAL_LAYOUTS: readonly {
-  readonly id: FormationLayout;
+// 모두 정렬 나누기 — Cruise 캡슐의 격자·열·행 버튼. 켜져 있을 때 누르면 나누기를 바꾸고,
+// 꺼져 있을 때 누르면 그 나누기로 정렬을 켠다. 같은 나누기 재클릭은 무시한다.
+const ALIGN_LAYOUTS: readonly {
+  readonly id: AlignAllLayout;
   readonly titleKey: CoreMessageKey;
   readonly Icon: () => ReactElement;
 }[] = [
-  { id: "grid", titleKey: "chrome.commandBand.tacticalGrid", Icon: FormationGridIcon },
-  { id: "columns", titleKey: "chrome.commandBand.tacticalColumns", Icon: FormationColumnsIcon },
-  { id: "rows", titleKey: "chrome.commandBand.tacticalRows", Icon: FormationRowsIcon },
+  { id: "grid", titleKey: "chrome.commandBand.alignGrid", Icon: AlignGridIcon },
+  { id: "columns", titleKey: "chrome.commandBand.alignColumns", Icon: AlignColumnsIcon },
+  { id: "rows", titleKey: "chrome.commandBand.alignRows", Icon: AlignRowsIcon },
 ];
 
 export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
@@ -72,25 +72,33 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 패널 접기 토글은 밴드에서 퇴역했다(Periscope 문법) — 접기는 각 패널의 자기 컨트롤이,
   // 접힌 뒤의 복귀는 화면 엣지 독(brass 필라멘트 + 호버 픽)이 진다. ⌘B·⌘⌥B는 의미 불변이며
   // /operations 밖의 "돌아가 펼침"은 단축키 핸들러(app.tsx resolvePanelShortcut)가 계속 소유한다.
-  const formationLayout = useFormationLayout();
-  const formationView = useFormationView();
+  const alignLayout = useAlignLayout();
+  const alignMeta = useAlignAll();
+  const alignOn = alignMeta !== null;
   const triageActive = useTriageActive();
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   const stationKeeping = useStationKeeping();
   const triageDeckZoomLive = useTriageDeckZoomLive();
-  const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";
+  const canvasMode: CanvasMode = triageActive ? "warRoom" : "cruise";
   const selectCanvasMode = (mode: CanvasMode) => {
     if (mode === canvasMode) return;
     if (mode === "warRoom") {
       enterTriage(focusedTriageOperationId(document.activeElement));
       return;
     }
+    // Cruise 세그먼트는 War Room에서만 나온다 — 모두 정렬은 Cruise 위의 유지라 그대로 둔다.
     if (triageActive) setTriageActive(false);
-    if (mode === "tactical") {
-      if (!formationView) toggleFormationView();
+  };
+  // 모두 정렬 나누기 선택 — 꺼져 있으면 그 나누기로 켜고, 켜져 있으면 나누기를 바꾼다.
+  // 같은 나누기 재클릭은 무시한다. 끄는 길은 토글(Alt+F·캡슐 정렬 버튼·⌘K)이 소유한다.
+  const pickAlignLayout = (layout: AlignAllLayout) => {
+    if (state.activeTheaterId === null) return;
+    if (!alignOn) {
+      setAlignAllLayout(layout);
+      toggleAlignAll();
       return;
     }
-    if (formationView) clearFormationView();
+    if (layout !== alignMeta.layout) setAlignAllLayout(layout);
   };
   // 모드 도구 캡슐 — 활성 세그먼트의 hover·포커스·클릭(터치)만 연다. 비활성 세그먼트는 모드
   // 전환만 하고 캡슐을 열지 않는다. 닫힘은 유예를 두고, Escape는 즉시 닫고 활성 세그먼트로
@@ -132,7 +140,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     focusFirstModeTool();
   }, [modeToolsOpen]);
   const modeToolEcho = (mode: CanvasMode): boolean =>
-    mode === "cruise" ? stationKeeping : mode === "warRoom" ? !triageSpotlightEnabled || triageDeckZoomLive !== 1.0 : false;
+    mode === "cruise" ? stationKeeping || alignOn : mode === "warRoom" ? !triageSpotlightEnabled || triageDeckZoomLive !== 1.0 : false;
   // 캡슐은 활성 세그먼트의 가로 중심 아래에 선다. 세그먼트를 감싸는 positioned 래퍼는
   // SegmentedThumb의 offset 좌표계를 깨뜨리므로, 스위치에 절대 배치하고 중심만 잰다.
   useLayoutEffect(() => {
@@ -385,7 +393,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
               className="command-band-mode-seg"
               data-canvas-mode={mode.id}
               data-tool-echo={modeToolEcho(mode.id) || undefined}
-              disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}
+              disabled={state.theaters.length === 0}
               aria-pressed={canvasMode === mode.id}
               aria-label={t(mode.titleKey)}
               title={t(mode.titleKey)}
@@ -419,7 +427,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 if (modeToolsOpen) closeModeTools(); else openModeTools();
               }}
             >
-              <mode.Icon layout={formationLayout} />
+              <mode.Icon />
             </button>
           ))}
           {/* 캡슐은 활성 모드의 도구만 마운트한다 — 비활성 모드 도구는 disabled가 아니라 부재다.
@@ -427,7 +435,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           <div
             className={`command-band-mode-tray${modeToolsOpen ? " is-open" : ""}`}
             role="group"
-            aria-label={t(canvasMode === "cruise" ? "chrome.commandBand.cruiseTools" : canvasMode === "tactical" ? "chrome.commandBand.tacticalTools" : "chrome.commandBand.warRoomTools")}
+            aria-label={t(canvasMode === "cruise" ? "chrome.commandBand.cruiseTools" : "chrome.commandBand.warRoomTools")}
             inert={modeToolsOpen ? undefined : true}
             onPointerEnter={cancelModeToolsClose}
           >
@@ -442,8 +450,31 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 disabled={state.activeTheaterId === null || !state.operationsHydrated}
                 aria-label={t("chrome.commandBand.stationKeeping")}
                 title={t("chrome.commandBand.stationKeeping")}
-                onClick={() => setStationKeeping(!stationKeeping)}
+                // 규율을 켜는 길은 정렬을 걷는다 — 펼쳐진 규율이 정렬 칸에 가려 무음으로 끝나지 않게 한다.
+                onClick={() => { if (!stationKeeping) releaseAlignAll(); setStationKeeping(!stationKeeping); }}
               ><StationKeepingIcon /></button>
+              <button
+                type="button"
+                className="command-band-mode-tool"
+                data-cruise-tool="align-all"
+                aria-pressed={alignOn}
+                disabled={state.activeTheaterId === null || !state.operationsHydrated}
+                aria-label={t("chrome.commandBand.alignAll")}
+                title={t("chrome.commandBand.alignAll")}
+                onClick={toggleAlignAll}
+              ><AlignAllIcon /></button>
+              {ALIGN_LAYOUTS.map((layout) => (
+                <button
+                  key={layout.id}
+                  type="button"
+                  className="command-band-mode-tool"
+                  disabled={state.activeTheaterId === null || !state.operationsHydrated}
+                  onClick={() => pickAlignLayout(layout.id)}
+                  aria-pressed={alignLayout === layout.id}
+                  aria-label={t(layout.titleKey)}
+                  title={t(layout.titleKey)}
+                ><layout.Icon /></button>
+              ))}
             </> : null}
             {canvasMode === "warRoom" ? <>
               {/* data-war-room-tool은 화면 안내가 짚는 자리다 — 라벨이나 순서가 바뀌어도
@@ -467,19 +498,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 onClick={cycleTriageDeckZoomPreset}
               ><DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span></button>
             </> : null}
-            {canvasMode === "tactical" ? TACTICAL_LAYOUTS.map((layout) => (
-              <button
-                key={layout.id}
-                type="button"
-                className="command-band-mode-tool"
-                // 이미 켜진 레이아웃을 다시 누르면 selectFormationLayout이 모드를 꺼버린다 —
-                // 모드 이탈은 Cruise 세그먼트만 소유하므로 같은 레이아웃 클릭은 무시한다.
-                onClick={() => { if (formationLayout !== layout.id) selectFormationLayout(layout.id); }}
-                aria-pressed={formationLayout === layout.id}
-                aria-label={t(layout.titleKey)}
-                title={t(layout.titleKey)}
-              ><layout.Icon /></button>
-            )) : null}
           </div>
         </div> : null}
         {/* 글리프 스위치와 전역 유틸리티(검색·Zen)는 하나의 구분선으로 나뉜다 — 모드 도구가
@@ -607,16 +625,9 @@ function CruiseModeIcon() {
   return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="7.5" height="5.5" rx="1.2" /><rect x="6.5" y="7.5" width="7" height="5.5" rx="1.2" /></svg>;
 }
 
-// Tactical: 한 창을 칸으로 나눈다 — 캡슐의 레이아웃 아이콘(별개 사각형들)과 구분한다. 분할선은
-// 선택된 레이아웃을 따른다: 격자는 십자, 열은 세로 둘, 행은 가로 둘.
-const TACTICAL_MODE_DIVIDERS: Readonly<Record<FormationLayout, string>> = {
-  grid: "M8 2.5v11M2.5 8h11",
-  columns: "M6.17 2.5v11M9.83 2.5v11",
-  rows: "M2.5 6.17h11M2.5 9.83h11",
-};
-
-function TacticalModeIcon({ layout }: { readonly layout: FormationLayout }) {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5" /><path d={TACTICAL_MODE_DIVIDERS[layout]} /></svg>;
+// 모두 정렬 — 보이는 패널 전부를 한 번에 정렬했다가 원래 자리로 돌린다.
+function AlignAllIcon() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="5" height="5" rx="1" /><rect x="9" y="2.5" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>;
 }
 
 // War Room: 앞에 선 한 장과 뒤의 대기열(대기 중인 패널을 한 건씩).
@@ -641,7 +652,7 @@ function DensityIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11M2.5 7h11M2.5 9.6h11M2.5 12h11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
 }
 
-function FormationGridIcon() {
+function AlignGridIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
@@ -658,11 +669,11 @@ function StationKeepingIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="6" height="6" fill="none" stroke="currentColor" strokeWidth="1.25" /><rect x="1.75" y="1.75" width="12.5" height="12.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2.2" opacity="0.75" /></svg>;
 }
 
-function FormationColumnsIcon() {
+function AlignColumnsIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h3v11h-3zM6.5 2.5h3v11h-3zM10.5 2.5h3v11h-3z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
-function FormationRowsIcon() {
+function AlignRowsIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v3h-11zM2.5 6.5h11v3h-11zM2.5 10.5h11v3h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 

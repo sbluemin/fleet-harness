@@ -245,7 +245,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
 
   // Operation 본체는 body pool에서 createPortal로 렌더된 뒤 DOM만 이 슬롯으로 이식된다. React 합성
   // 이벤트는 DOM 트리가 아니라 React 트리를 따라 전파하므로 아래 onPointerDown(stopOperationPointer)은
-  // 본체 클릭에서는 영원히 호출되지 않는다 — 본체가 화면 대부분인 Formation에서는 선택이 통째로 죽는다.
+  // 본체 클릭에서는 영원히 호출되지 않는다 — 본체가 화면 대부분인 정렬 칸에서는 선택이 통째로 죽는다.
   // 네이티브 리스너는 DOM 버블링을 타므로 이식된 본체 클릭까지 닿는다. 전파를 끊으면 React root의 위임
   // 리스너까지 막히므로 여기서는 활성화만 하고, 직접 자식 경로를 소유한 React 핸들러는 그대로 둔다.
   useEffect(() => {
@@ -519,7 +519,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     rename.handleKeyDown(event);
   };
 
-  // 최소화 커밋과 동시에 formation slot·maximize·companion 레이아웃이 해제되면 라이브 geometry가
+  // 최소화 커밋과 동시에 스냅 칸·maximize·companion 레이아웃이 해제되면 라이브 geometry가
   // 저장된 map 좌표로 회귀해, 페이드로 가시가 유지되는 동안 패널이 엉뚱한 위치에서 사라진다 —
   // 마지막 가시 geometry를 동결해 사라진 자리에서 페이드하고, 복원은 그 자리에서 목표 슬롯으로 미끄러진다.
   if (!minimized) lastVisibleGeometryRef.current = geometry;

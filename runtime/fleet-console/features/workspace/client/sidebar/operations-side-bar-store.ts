@@ -41,7 +41,7 @@ let sideBarState: SideBarState = {
 // 레일로 돌아오고, 새 페이지 로드에서도 레일부터 시작한다.
 let queueRailPinned = false;
 const queueRailPinnedListeners = new Set<() => void>();
-// Cruise/Tactical의 레일로 좁히기는 접힘처럼 사용자가 고른 크롬 배치라 localStorage에 남는다.
+// Cruise의 레일로 좁히기는 접힘처럼 사용자가 고른 크롬 배치라 localStorage에 남는다.
 const STORAGE_KEY_NARROW = "fleet-console.operations.side-narrow";
 let mapNarrow = readInitialMapNarrow();
 const mapNarrowListeners = new Set<() => void>();
