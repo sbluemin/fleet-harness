@@ -252,7 +252,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       groupId: node.groupId ?? null,
       title: node.title,
       createdAt: node.ts.createdAt,
-      commander: { sessionName: launch.sessionName, ...(launch.model ? { model: launch.model } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started },
+      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: launch.model } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started },
       note: stored.note,
       attachments: stored.attachments ?? [],
       ...(stored.cook ? { cook: stored.cook } : {}),

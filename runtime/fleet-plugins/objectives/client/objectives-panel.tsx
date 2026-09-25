@@ -11,7 +11,7 @@ import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { GroupMenu, opensGroupMenu, type GroupMenuAnchor, type GroupPatch } from "./group-menu.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { LaunchControl, launchWords, useLaunchRows } from "./launch-control.js";
+import { LaunchControl, launchWords, useLaunchRows, StartViewGlyph, StartViewPicker, startViewLabel, type StartView } from "./launch-control.js";
 import { dockObjective, expandObjective, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, type ObjectiveGroup } from "./objectives-state.js";
 
 export interface ObjectiveContext {
@@ -30,6 +30,7 @@ type T = Translate<ObjectiveMessageKey>;
 const ExpandGlyph = () => <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" /></svg>;
 const DockGlyph = () => <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12.5 2.5v11M3 8h7M7 5l3 3-3 3" /></svg>;
 const CheckGlyph = () => <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true"><path d="M2 5.2l2.2 2.2L8 3" /></svg>;
+const StarGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" aria-hidden="true"><path d="M8 2.4l1.8 3.75 4.1.55-3 2.85.75 4.07L8 11.68l-3.65 1.94.75-4.07-3-2.85 4.1-.55z" /></svg>;
 const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" /></svg>;
 /** 브리핑 — 봉인된 작전 명령서. 문서 오른쪽 아래 모서리를 인장이 대신한다. */
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
@@ -119,6 +120,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const [highlightStep, setHighlightStep] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ text: string; undo?: () => Promise<void> } | null>(null);
   const launchRows = useLaunchRows();
+  const [nextView, setNextView] = useState<StartView>(() => { try { return localStorage.getItem("fleet.objectives.start-view") === "chat" ? "chat" : "terminal"; } catch { return "terminal"; } });
+  const chooseNextView = (value: StartView) => { setNextView(value); try { localStorage.setItem("fleet.objectives.start-view", value); } catch { /* 저장을 차단한 브라우저에서도 선택은 유지한다. */ } };
   // 끌기 — 카드를 왼쪽 목록 위에 놓으면 그 목록으로 옮기고, 같은 구획의 카드 사이에 놓으면 순서를 바꾼다.
   // 원래 자리는 빈 홈으로 남고 카드 유령이 커서를 따르며, 순서를 바꿀 자리에는 삽입선이 선다.
   const [drag, setDrag] = useState<{ itemId: string; x: number; y: number; over: ListId | null; insert: Insert | null; offX: number; offY: number; width: number; compact: boolean } | null>(null);
@@ -275,7 +278,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     title = title.replace(/(^|\s)!\S*/g, "$1").trim();
     if (!title || !theaterId) return;
     const groupId = list.startsWith("group:") ? list.slice(6) : null;
-    await call("/item/create", { theaterId, groupId, title, important, today: list === "today", dueDate: list === "due" ? todayIso() : null });
+    await call("/item/create", { theaterId, groupId, title, important, viewMode: nextView, today: list === "today", dueDate: list === "due" ? todayIso() : null });
   };
   const toggleEdge = async (item: ObjectiveItem, from: string, to: string) => {
     const result = await call<{ item: ObjectiveItem; linked: boolean }>("/edge/toggle", { itemId: item.id, from, to });
@@ -459,7 +462,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                   </div>
                 </div>
                 <div className="objectives-item-side">
-                  <LaunchWords item={item} rows={launchRows} autoLabel={t("objectives.coordinator.effortAuto")} defaultLabel={t("objectives.launch.default")} state={item.commander.started ? operationState(item.id) : null} />
+                  <LaunchWords item={item} t={t} rows={launchRows} autoLabel={t("objectives.coordinator.effortAuto")} defaultLabel={t("objectives.launch.default")} state={item.commander.started ? operationState(item.id) : null} />
                   <button type="button" className="objectives-glyph objectives-goto" aria-label={t("objectives.item.goToOperation")} title={t("objectives.item.goToOperation")} onClick={(event) => { event.stopPropagation(); focusOperation(item.id); }}><GoGlyph /></button>
                   <button type="button" className={`objectives-star${item.important ? " is-on" : ""}`} aria-label={t("objectives.item.important")} aria-pressed={item.important} onClick={(event) => { event.stopPropagation(); void call("/item/patch", { itemId: item.id, patch: { important: !item.important } }); }}>{item.important ? "★" : "☆"}</button>
                 </div>
@@ -471,6 +474,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         <div className="objectives-add">
           <span className="objectives-plus" aria-hidden="true">+</span>
           <input aria-label={t("objectives.items.add")} placeholder={t("objectives.items.add")} onKeyDown={(event) => { if (submitKey(event)) { const target = event.currentTarget; void addItem(target.value).then(() => { target.value = ""; }); } }} />
+          <StartViewPicker t={t} value={nextView} onChange={chooseNextView} />
         </div>
         {banner ? (
           <div className="objectives-banner" role="status">
@@ -542,13 +546,14 @@ function ListButton({ id, current, onPick, label, count, swatch, muted, drop, ov
 }
 
 /** 카드 오른쪽의 지휘관 모델·강도 — 지휘관 Operation 의 값. 살아 있으면 점이 켜진다. */
-function LaunchWords({ item, rows, autoLabel, defaultLabel, state }: { item: ObjectiveItem; rows: ReturnType<typeof useLaunchRows>; autoLabel: string; defaultLabel: string; state: string | null }) {
+function LaunchWords({ item, t, rows, autoLabel, defaultLabel, state }: { item: ObjectiveItem; t: T; rows: ReturnType<typeof useLaunchRows>; autoLabel: string; defaultLabel: string; state: string | null }) {
   // 모델이 비어 있으면 Console 기본값으로 뜨는 Operation 이다(사이드바에서 따로 만든 것).
   const words = !item.commander.model
     ? { model: defaultLabel, effort: item.commander.effort?.toUpperCase() ?? autoLabel }
     : launchWords(rows, item.commander.model, item.commander.effort, autoLabel);
   return (
     <span className={`objectives-item-launch${state ? ` is-${state}` : ""}`} title={`${words.model} · ${words.effort}`}>
+      {item.commander.viewMode === "chat" ? <span className="objectives-item-view" role="img" aria-label={startViewLabel(t, "chat")} title={startViewLabel(t, "chat")}><StartViewGlyph view="chat" /></span> : null}
       <span>{words.model}</span>
       <b>{words.effort}</b>
     </span>
@@ -954,7 +959,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           <button type="button" className="objectives-glyph objectives-detail-back" aria-label={t("objectives.detail.backToList")} title={t("objectives.detail.backToList")} onClick={onClose}>‹</button>
           <button type="button" className={`objectives-check${item.done ? " is-on" : ""}`} aria-label={t(item.done ? "objectives.item.reopen" : "objectives.item.complete")} disabled={busy} onClick={onComplete}><CheckGlyph /></button>
           <textarea className="objectives-detail-title" aria-label={t("objectives.item.titleAria")} value={title} rows={1} readOnly={!editable} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); } }} onBlur={() => { if (title.trim() && title !== item.title) void call("/item/patch", { itemId: item.id, patch: { title: title.trim() } }); }} />
-          <button type="button" className={`objectives-star${item.important ? " is-on" : ""}`} aria-label={t("objectives.item.important")} aria-pressed={item.important} onClick={() => void call("/item/patch", { itemId: item.id, patch: { important: !item.important } })}>{item.important ? "★" : "☆"}</button>
+          <button type="button" className={`objectives-star${item.important ? " is-on" : ""}`} aria-label={t("objectives.item.important")} aria-pressed={item.important} onClick={() => void call("/item/patch", { itemId: item.id, patch: { important: !item.important } })}><StarGlyph /></button>
           {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.item.delete")} title={t("objectives.item.delete")} onClick={async () => { const removed = await call<{ item: ObjectiveItem }>("/item/remove", { itemId: item.id }); if (removed) toast(t("objectives.toast.deleted")); }}><TrashGlyph /></button> : null}
           {placeButton}
         </div>
@@ -986,7 +991,7 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
             <span className="objectives-row-ic"><CoordGlyph /></span>
             <span className="objectives-row-lab">{t("objectives.coordinator.title")}</span>
           </button>
-          <LaunchControl t={t} model={item.commander.model} effort={item.commander.effort} locked={locked || !editable} onChange={(next) => void call("/item/patch", { itemId: item.id, patch: { launch: next } })} />
+          <LaunchControl t={t} model={item.commander.model} effort={item.commander.effort} viewMode={item.commander.viewMode ?? "terminal"} onViewChange={(viewMode) => void call("/item/patch", { itemId: item.id, patch: { launch: { viewMode } } })} locked={locked || !editable} onChange={(next) => void call("/item/patch", { itemId: item.id, patch: { launch: next } })} />
         </div>
         <MemberRoster item={item} t={t} call={call} operationState={operationState} rows={launchRows} touchable={touchable} />
       </div>

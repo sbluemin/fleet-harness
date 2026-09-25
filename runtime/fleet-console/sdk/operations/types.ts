@@ -56,6 +56,7 @@ export function partitionListedOperations<T extends ListedProbe>(nodes: readonly
 
 export interface OperationLaunchInfo {
   readonly sessionName: string | null;
+  readonly viewMode?: "terminal" | "chat";
   readonly model?: string;
   readonly effort?: string;
   /** launch 때 예약한 좌표가 아니라 첫 턴의 provider 세션이 실제로 잡혔는가. */
@@ -72,6 +73,7 @@ export function readOperationLaunch(payload: Record<string, unknown>): Operation
   const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   return {
     sessionName: typeof session.sessionName === "string" && session.sessionName.length > 0 ? session.sessionName : null,
+    viewMode: payload.chatMode === true ? "chat" : "terminal",
     ...(typeof session.model === "string" && session.model.length > 0 ? { model: session.model } : {}),
     ...(typeof session.effort === "string" && session.effort.length > 0 ? { effort: session.effort } : {}),
     started: typeof session.id === "string" && session.id.length > 0
@@ -80,11 +82,16 @@ export function readOperationLaunch(payload: Record<string, unknown>): Operation
   };
 }
 
-/** 기존 세션 좌표·이름·실행 정책을 유지하면서 다음 시작의 모델과 강도만 교체한다. */
-export function withOperationLaunchPreset(payload: Record<string, unknown>, preset: { readonly model?: string; readonly effort?: string }): Record<string, unknown> {
+/** 기존 세션 좌표·이름·실행 정책을 유지하며 프리셋을 바꾼다. 시작 뷰 변경은 첫 실행 전 호출자가 제한한다. */
+export function withOperationLaunchPreset(payload: Record<string, unknown>, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Record<string, unknown> {
   const value = payload.session;
   const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  return { ...payload, session: { ...session, ...(preset.model !== undefined ? { model: preset.model } : {}), ...(preset.effort !== undefined ? { effort: preset.effort } : {}) } };
+  const next: Record<string, unknown> = { ...payload, session: { ...session, ...(preset.model !== undefined ? { model: preset.model } : {}), ...(preset.effort !== undefined ? { effort: preset.effort } : {}) } };
+  if (preset.viewMode !== undefined) {
+    if (preset.viewMode === "chat") { next.chatMode = true; next.chatBorn = true; }
+    else { delete next.chatMode; delete next.chatBorn; }
+  }
+  return next;
 }
 
 export interface OperationCreateInput {

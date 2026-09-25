@@ -12,8 +12,7 @@ import type { ObjectiveMessageKey } from "./i18n/index.js";
 /**
  * 지휘관의 모델·강도 — 한 줄의 글("Opus · HIGH")이고, 누르면 **맵 우클릭 메뉴와 같은 문법**의 메뉴가 뜬다:
  * 공급자 띠(글리프 + 이름) 아래 모델 행(이름 · 강도 게이지 · ›). 행을 고르면 목록이 접히고 그 모델 한 줄과
- * 강도 트랙만 남는다(2단계); 모델 이름을 다시 누르면 목록으로 돌아간다. 값은 지휘관 Operation 에 산다 — 표면(CLI·채팅)은
- * 그 Operation 의 캡션이 바꾼다.
+ * 강도 트랙만 남는다(2단계); 모델 이름을 다시 누르면 목록으로 돌아간다. 지휘관은 첫 실행 전에 시작 뷰도 고른다.
  */
 
 export const DEFAULT_LAUNCH = { model: "opus[1m]", effort: "high" } as const;
@@ -105,12 +104,30 @@ function prettyModelId(id: string): string {
 
 const Chevron = ({ back }: { readonly back?: boolean }) => <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{back ? <path d="M7.5 2.5L4 6l3.5 3.5" /> : <path d="M4.5 2.5L8 6l-3.5 3.5" />}</svg>;
 
+export type StartView = "terminal" | "chat";
+export const StartViewGlyph = ({ view }: { readonly view: StartView }) => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{view === "chat" ? <path d="M2.75 4.25c0-.83.67-1.5 1.5-1.5h7.5c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5H7.2L4.5 13.1v-2.35h-.25c-.83 0-1.5-.67-1.5-1.5z" /> : <path d="M3 4.5 6.5 8 3 11.5M8 12h5" />}</svg>;
+export const startViewLabel = (t: Translate<ObjectiveMessageKey>, view: StartView) => t(view === "chat" ? "objectives.view.chat" : "objectives.view.terminal");
+
+export function StartViewPicker({ t, value, onChange }: { readonly t: Translate<ObjectiveMessageKey>; readonly value: StartView; readonly onChange: (view: StartView) => void }) {
+  return <div className="objectives-view-picker" role="radiogroup" aria-label={t("objectives.view.label")}>
+    {(["terminal", "chat"] as const).map((view) => <button key={view} type="button" role="radio" aria-checked={value === view} tabIndex={value === view ? 0 : -1} aria-label={startViewLabel(t, view)} title={startViewLabel(t, view)} onClick={() => onChange(view)} onKeyDown={(event) => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault();
+      const next = view === "chat" ? "terminal" : "chat";
+      onChange(next);
+      event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-view="${next}"]`)?.focus();
+    }} data-view={view}><StartViewGlyph view={view} />{value === view ? <span>{t(view === "chat" ? "objectives.view.chatShort" : "objectives.view.terminalShort")}</span> : null}</button>)}
+  </div>;
+}
+
 interface LaunchControlProps {
   readonly t: Translate<ObjectiveMessageKey>;
   readonly model: string | undefined;
   readonly effort: string | undefined;
   readonly locked: boolean;
   readonly onChange: (next: { model?: string; effort?: string }) => void;
+  readonly viewMode?: StartView;
+  readonly onViewChange?: (view: StartView) => void;
   /** 트리거를 글리프 하나로 — 모델 낱말을 쓸 자리가 없을 때. */
   readonly trigger?: ReactNode;
   readonly triggerLabel?: string;
@@ -125,13 +142,14 @@ interface LaunchControlProps {
 const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
 
-export function LaunchControl({ t, model, effort, locked, onChange, trigger, triggerLabel, triggerText, extras, startAtList = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, extras, startAtList = false }: LaunchControlProps) {
   const groups = useLaunchGroups();
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
   const currentEffort = effort ?? (model || extras?.length ? undefined : DEFAULT_LAUNCH.effort);
   const words = launchWords(rows, model, effort, t("objectives.coordinator.effortAuto"));
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (locked) setOpen(false); }, [locked]);
   // 2단계 — 고른 모델 한 줄과 강도 트랙. 메뉴는 여기서 열리고, 모델명을 누르면 목록(1단계)으로 간다.
   const [focused, setFocused] = useState(!startAtList);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -154,7 +172,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, trigger, tri
       const target = event.target as Node;
       if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
     };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); triggerRef.current?.focus(); } };
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey); };
@@ -163,6 +181,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, trigger, tri
   const chosenProvider = groups.find((group) => group.rows.some((row) => row.launch.model === currentModel))?.provider ?? launchProviderFromModelId(currentModel);
   const text = (
     <>
+      {viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} />{startViewLabel(t, viewMode)}</span><span className="objectives-launch-separator" aria-hidden="true" /></> : null}
       {chosenProvider ? <span className={`operation-launch-provider-glyph objectives-launch-provider is-${chosenProvider}`} aria-hidden="true">{launchProviderGlyph(chosenProvider)}</span> : null}
       <span className="objectives-launch-model">{words.model}</span>
       <span className="objectives-launch-dot" aria-hidden="true">·</span>
@@ -239,6 +258,11 @@ export function LaunchControl({ t, model, effort, locked, onChange, trigger, tri
               {groups.length === 0 ? <div className="objectives-menu-empty">{t("objectives.launch.loading")}</div> : null}
             </>
           )}
+          {viewMode && onViewChange ? <div className="objectives-menu-group">
+            <div className="objectives-menu-divider" role="separator" />
+            <p className="objectives-menu-caption">{t("objectives.view.label")}</p>
+            {(["terminal", "chat"] as const).map((view) => <button key={view} type="button" role="menuitemradio" aria-checked={viewMode === view} className={`objectives-menu-item${viewMode === view ? " is-active" : ""}`} onClick={() => onViewChange(view)}><span className="objectives-launch-view"><StartViewGlyph view={view} /></span><span className="objectives-menu-label">{startViewLabel(t, view)}</span></button>)}
+          </div> : null}
         </div>,
         document.body,
       ) : null}
