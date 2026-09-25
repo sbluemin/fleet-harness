@@ -8792,27 +8792,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   to { opacity: 1; transform: none; }
 }
 
-.canvas-snap-assist-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-}
-
-.canvas-snap-assist-head kbd {
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  padding: 0 5px;
-  border: 1px solid var(--surface-rim);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  color: var(--ink-muted);
-}
-
 /* 칸은 자리이지 그림이 아니다 — War Room 덱 칸과 같은 계약으로 캔버스가 실제 패널을 여기로 portal한다.
    칸 크기가 곧 타일 크기다. 밀도는 고정(덱 줌 없음): 후보는 최대 6개라 판 안에서 넘치지 않는다. */
 .canvas-snap-assist-cells {
@@ -8894,13 +8873,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 .canvas-snap-assist-pick:focus-visible {
   outline: 2px solid color-mix(in oklch, var(--brass) 65%, transparent);
   outline-offset: -2px;
-}
-
-.canvas-snap-assist-none,
-.canvas-snap-assist-more {
-  margin: 0;
-  font-size: var(--t-sm);
-  color: var(--ink-muted);
 }
 
 .canvas-snap-menu {

@@ -982,11 +982,23 @@ export function OperationsCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapHoldSyncKey]);
   const closeSnapAssist = useCallback(() => setSnapAssist(false), []);
-  // 후보 판은 캔버스 어디를 눌러도 걷힌다 — 판 안의 타일만 예외다.
+  // 후보 카드와 판의 실제 스크롤바만 예외다. 판 여백·다른 화면 영역은 닫는다.
   useEffect(() => {
     if (!snapAssist) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Element && event.target.closest(".canvas-snap-assist")) return;
+      if (event.target instanceof Element && event.target.closest(".canvas-snap-assist-cell")) return;
+      if (event.target instanceof HTMLElement && event.target.classList.contains("canvas-snap-assist")
+        && event.target.scrollHeight > event.target.clientHeight) {
+        const section = event.target;
+        const rect = section.getBoundingClientRect();
+        const x = (event.clientX - rect.left) * section.offsetWidth / rect.width;
+        const border = getComputedStyle(section);
+        const left = parseFloat(border.borderLeftWidth);
+        const right = section.offsetWidth - parseFloat(border.borderRightWidth);
+        // clientLeft에는 왼쪽 스크롤바가, clientWidth에는 어느 쪽 스크롤바도 포함되지 않는다.
+        if ((x >= left && x < section.clientLeft)
+          || (x >= section.clientLeft + section.clientWidth && x < right)) return;
+      }
       setSnapAssist(false);
     };
     window.addEventListener("pointerdown", onPointerDown, true);
@@ -1129,16 +1141,21 @@ export function OperationsCanvas({
     const geometry = getCanvasSnapshot().operations[operationId];
     if (geometry) void updatePluginOperationGeometry(operationId, geometry);
   };
-  // 후보 — 이 Theater의 다른 패널. 보이는 자유 패널이 최근 활성 순으로 앞서고 최소화된 패널이 뒤따른다.
+  // 후보 — 이 Theater에서 보이는 자유 패널을 최근 활성 순으로 권한다.
   const snapAssistCandidates: readonly SnapAssistCandidate[] = snapAssist && snapHoldActive && snapHold
     ? theaterOperations
-        // 그릴 수 없는 Operation(플러그인 부재·render 없음)은 후보가 아니다 — 고르면 보이지 않는 패널이 칸을 쥔다.
-        .filter((operation) => !(operation.id in snapHold.assignments)
+        // 최소화되거나 그릴 수 없는 Operation은 선택해도 보이는 패널을 채울 수 없다.
+        .filter((operation) => !minimizedSet.has(operation.id)
+          && !(operation.id in snapHold.assignments)
           && operationKindRegistry.some((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type && Boolean(kind.render)))
-        .map((operation) => ({ id: operation.id, title: operation.title, minimized: minimizedSet.has(operation.id), z: canvas.operations[operation.id]?.zIndex ?? 0 }))
-        .sort((a, b) => Number(a.minimized) - Number(b.minimized) || b.z - a.z)
+        .map((operation) => ({ id: operation.id, title: operation.title, z: canvas.operations[operation.id]?.zIndex ?? 0 }))
+        .sort((a, b) => b.z - a.z)
         .map(({ id, title }) => ({ id, title }))
     : [];
+  // 남은 후보가 없으면 빈 가이드를 남기거나, 나중에 패널이 복귀할 때 판을 다시 열지 않는다.
+  useEffect(() => {
+    if (snapAssist && snapAssistCandidates.length === 0) setSnapAssist(false);
+  }, [snapAssist, snapAssistCandidates.length]);
   const snapAssistZones = snapAssist && snapHoldActive
     ? snapHoldBodies.flatMap((body, index) => (snapHoldTakenExcept(null).has(index) ? [] : [{ index, rect: arenaRectToBox(frameOf(body)) }]))
     : [];
@@ -1870,7 +1887,7 @@ export function OperationsCanvas({
         {/* 손잡이는 Command Band 아랫변(아레나 윗변)에 물려 내려오고, 아레나 폭의 절반쯤(360~760px)을 차지한다. */}
         <SnapHandle visible={snapDragging && !snapBar.open} anchorX={arena.x + arena.width / 2} anchorY={arena.y} width={snapHandleWidth} />
         <SnapLayoutBar ref={snapBarRef} open={snapBar.open} hover={snapBar.hover} full={snapBar.full} anchorX={arena.x + arena.width / 2} anchorY={arena.y + SNAP_TOP_FULL_EDGE} />
-        {snapAssistZones.length > 0 ? <SnapAssist zones={snapAssistZones} candidates={snapAssistCandidates} onPanelSlotRef={registerSnapAssistSlot} onPick={pickSnapAssist} onClose={closeSnapAssist} /> : null}
+        {snapAssistZones.length > 0 && snapAssistCandidates.length > 0 ? <SnapAssist zones={snapAssistZones} candidates={snapAssistCandidates} onPanelSlotRef={registerSnapAssistSlot} onPick={pickSnapAssist} onClose={closeSnapAssist} /> : null}
         {snapMenu ? (
           <SnapLayoutMenu
             title={state.operations.find((operation) => operation.id === snapMenu.operationId)?.title ?? ""}
