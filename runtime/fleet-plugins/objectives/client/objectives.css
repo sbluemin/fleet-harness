@@ -495,7 +495,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-band { position: relative; }
 .objectives-band.has-alt::before { content: ""; position: absolute; left: 12px; right: 12px; top: -5px; height: 6px; border: 1px solid color-mix(in oklch, var(--brass) 28%, transparent); border-bottom: 0; border-radius: var(--radius-md) var(--radius-md) 0 0; background: color-mix(in oklch, var(--brass) 5%, var(--surface-panel)); }
 .objectives-band.has-alt.is-stop::before { border-color: color-mix(in oklch, var(--coral) 26%, transparent); }
-.objectives-band .objectives-start { position: relative; }
+/* 띠의 틀은 뒤로 비치는 한 장(::before) 위에 선다 — 틀이 분할 칸으로 옮아도 윗 테두리가 그 한 장에 덮이지 않게. */
+.objectives-band .objectives-start, .objectives-band .objectives-split { position: relative; }
 .objectives-band-draft { margin-right: 6px; color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-band-also { color: var(--text-tertiary); }
 .objectives-band-error { padding: 6px 4px 2px; font-size: var(--t-xs); line-height: 1.5; color: var(--coral); }
