@@ -3909,6 +3909,17 @@
   background: var(--aurora);
 }
 .cluster-node-more.has-awaiting .cluster-node-await-mark { display: block; }
+/* 실제 +N의 자릿수·대기 표식을 미리 재되, 레일 배치와 접근성 트리에는 참여하지 않는다. */
+.cluster-node-more-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  margin-left: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.cluster-node-more-measure .cluster-node-await-mark { display: block; }
 
 .cluster-node-more.is-current {
   border-color: color-mix(in oklch, var(--brass) 42%, transparent);

@@ -46,6 +46,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const railRef = useRef<HTMLDivElement | null>(null);
   const commanderTabRef = useRef<HTMLButtonElement | null>(null);
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
+  const moreMeasureRef = useRef<HTMLSpanElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(EMPTY_HIDDEN_IDS);
@@ -130,13 +131,15 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         return;
       }
 
-      // 2단계: 다 들어가지 않는 경우 — +N 버튼 공간(44px)을 확보하고 넘치는 탭 가리기.
+      // 2단계: 다 들어가지 않는 경우 — 숨은 수의 자릿수와 대기 표식을 모두 포함한 +N 최대 폭을 확보한다.
       // 우선순위:
       // 1) 지휘관 (baseWidth 에 포함)
       // 2) 허용 요청(awaiting) 탭 (반드시 포함)
       // 3) 현재 선택된 탭(current) (반드시 포함)
       // 4) 현재 포커스된 탭(focusedId) (가능하면 포함)
-      const moreWidth = 44;
+      // 실제 버튼의 hidden 수/has-awaiting에 따라 폭이 왕복하지 않도록, 같은 글꼴·패딩의
+      // 비표시 측정 칸에서 최대 숨김 수와 대기 표식을 고정해 읽는다. 뒤의 2px은 rail gap.
+      const moreWidth = Math.ceil(moreMeasureRef.current?.getBoundingClientRect().width ?? 44) + 2;
       const hidden = new Set<string>();
 
       let reservedForPriority = 0;
@@ -187,6 +190,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(rail);
+    if (moreMeasureRef.current) observer.observe(moreMeasureRef.current);
     return () => observer.disconnect();
   }, [nodesKey, current]);
 
@@ -289,6 +293,11 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       onPointerDown={stop}
       data-canvas-blocker
     >
+      <span ref={moreMeasureRef} className="cluster-node-more cluster-node-more-measure" aria-hidden="true">
+        <i className="cluster-node-await-mark" aria-hidden="true" />
+        <span>+{nodes.length}</span>
+        <ChevDown />
+      </span>
       <button
         ref={commanderTabRef}
         type="button"
