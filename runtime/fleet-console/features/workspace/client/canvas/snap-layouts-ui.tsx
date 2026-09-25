@@ -7,7 +7,7 @@ import { forwardRef, useEffect, useRef, type CSSProperties } from "react";
 import { useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { SNAP_PRESETS, type SnapPreset, type SnapPresetId, type SnapRect } from "./snap-layouts.js";
 
-// 빈 칸이 권하는 후보는 이만큼까지 — 넘치면 개수만 알린다(⌘K가 찾기의 자리다).
+// 빈 칸이 권하는 후보는 이만큼까지 보여 준다(나머지는 ⌘K에서 찾는다).
 const SNAP_ASSIST_MAX = 6;
 
 const PRESET_LABEL_KEY: Readonly<Record<SnapPresetId, CoreMessageKey>> = {
@@ -223,7 +223,7 @@ interface SnapAssistProps {
 
 /**
  * Snap Assist — 스냅 직후 한 번, 빈 칸 자체가 후보 판이 된다. 판의 칸은 자리이지 그림이 아니다: War Room 덱처럼
- * 캔버스가 그 Operation의 실제 패널(캡션·본문)을 칸으로 들여보내고, 누르면 그 칸에 앉힌다. Esc·캔버스 클릭·
+ * 캔버스가 그 Operation의 실제 패널(캡션·본문)을 칸으로 들여보내고, 누르면 그 칸에 앉힌다. Esc·후보 밖 클릭·
  * 다른 드래그로 사라지고, 사라진 빈 칸에는 아무것도 남지 않는다(격자를 남기는 안은 기각됐다).
  * 후보 칸의 mount는 첫 빈 칸에만 선다 — 같은 패널을 두 자리에 세울 수 없다. 나머지 빈 칸은 이름만 든다.
  */
@@ -250,7 +250,6 @@ export function SnapAssist({ zones, candidates, onPanelSlotRef, onPick, onClose 
     return callback;
   };
   const shown = candidates.slice(0, SNAP_ASSIST_MAX);
-  const overflow = candidates.length - shown.length;
   return <>
     {zones.map(({ index, rect }, zoneOrder) => (
       <section
@@ -260,34 +259,25 @@ export function SnapAssist({ zones, candidates, onPanelSlotRef, onPick, onClose 
         aria-label={t("canvas.snap.assistAria")}
         data-canvas-blocker
       >
-        <header className="canvas-snap-assist-head">
-          <span>{t("canvas.snap.assistTitle")}</span>
-          <kbd>Esc</kbd>
-        </header>
-        {shown.length > 0 ? (
-          <div className="canvas-snap-assist-cells">
-            {shown.map((candidate) => (
-              <div
-                key={candidate.id}
-                className="canvas-snap-assist-cell"
-                onClick={() => onPick(candidate.id, index)}
-              >
-                {zoneOrder === 0
-                  ? <div className="canvas-snap-assist-mount" data-fallback-title={candidate.title} ref={slotRefFor(candidate.id)} />
-                  : <div className="canvas-snap-assist-mount" data-fallback-title={candidate.title} />}
-                <button
-                  type="button"
-                  className="canvas-snap-assist-pick"
-                  aria-label={t("canvas.snap.assistPickTitle", { title: candidate.title })}
-                  onClick={(event) => { event.stopPropagation(); onPick(candidate.id, index); }}
-                />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="canvas-snap-assist-none">{t("canvas.snap.assistNone")}</p>
-        )}
-        {overflow > 0 ? <p className="canvas-snap-assist-more">{t("canvas.snap.assistMore", { count: overflow })}</p> : null}
+        <div className="canvas-snap-assist-cells">
+          {shown.map((candidate) => (
+            <div
+              key={candidate.id}
+              className="canvas-snap-assist-cell"
+              onClick={() => onPick(candidate.id, index)}
+            >
+              {zoneOrder === 0
+                ? <div className="canvas-snap-assist-mount" data-fallback-title={candidate.title} ref={slotRefFor(candidate.id)} />
+                : <div className="canvas-snap-assist-mount" data-fallback-title={candidate.title} />}
+              <button
+                type="button"
+                className="canvas-snap-assist-pick"
+                aria-label={t("canvas.snap.assistPickTitle", { title: candidate.title })}
+                onClick={(event) => { event.stopPropagation(); onPick(candidate.id, index); }}
+              />
+            </div>
+          ))}
+        </div>
       </section>
     ))}
   </>;
