@@ -19,6 +19,7 @@ import {
   createClaudeCodexCompactionStore,
   readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
+  readMuseCodeSubscriptionAuth,
   readXaiSubscriptionToken,
 } from "@fleet-console/ai-gateway";
 import type { AiGatewayRouteDeps } from "@fleet-console/ai-gateway";
@@ -27,8 +28,8 @@ export { AI_GATEWAY_ROUTE_SEGMENT } from "@fleet-console/ai-gateway";
 
 export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,
-  "originator" | "readModelOverride" | "readAuth" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken"
-> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "assignRouting">>;
+  "originator" | "readModelOverride" | "readAuth" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth"
+> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken" | "readMuseCodeAuth" | "assignRouting">>;
 
 export function registerAiGatewayRoutes(
   ctx: GatewayHostContext,
@@ -65,6 +66,7 @@ export function registerAiGatewayRoutes(
     readAntigravityToken: deps.readAntigravityToken ?? (() => readAntigravitySubscriptionToken()),
     renewAntigravityToken: deps.renewAntigravityToken
       ?? (() => readAntigravitySubscriptionToken({ forceRenew: true })),
+    readMuseCodeAuth: deps.readMuseCodeAuth ?? (() => readMuseCodeSubscriptionAuth()),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
   });
   ctx.host.lifecycle.registerCleanup(async () => {

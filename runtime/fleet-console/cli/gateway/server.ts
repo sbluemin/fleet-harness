@@ -9,6 +9,7 @@ import {
   createClaudeCodexCompactionStore,
   readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
+  readMuseCodeSubscriptionAuth,
   readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
   type AuthService,
@@ -49,6 +50,7 @@ export async function startGatewayHttpServer(deps: {
     readXaiToken: () => readXaiSubscriptionToken(),
     readAntigravityToken: () => readAntigravitySubscriptionToken(),
     renewAntigravityToken: () => readAntigravitySubscriptionToken({ forceRenew: true }),
+    readMuseCodeAuth: () => readMuseCodeSubscriptionAuth(),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
   });
   const routePath = "/ai-gateway";

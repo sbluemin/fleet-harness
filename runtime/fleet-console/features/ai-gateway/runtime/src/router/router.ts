@@ -24,6 +24,8 @@ import { compactCodexConversation } from "../upstream/codex/compaction.js";
 import type { ClaudeCodexCompactionStore } from "../upstream/codex/compaction-store.js";
 import { resolveCodexCredentials } from "../upstream/codex/credentials.js";
 import { resolveXaiCliCredentials } from "../upstream/xai/credentials.js";
+import { museInferenceKey, resolveMuseAuth, type MuseAuthResult } from "../upstream/muse-code/credentials.js";
+import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
 import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
 import {
   GATEWAY_MODELS,
@@ -143,6 +145,11 @@ export async function readAntigravitySubscriptionToken(
   return credentials?.accessToken ?? null;
 }
 
+/** Muse Code CLI(`muse login`)가 남긴 로그인. 읽기만 하며 갱신·기록하지 않는다. */
+export async function readMuseCodeSubscriptionAuth(): Promise<MuseAuthResult> {
+  return resolveMuseAuth(defaultCredentialDeps);
+}
+
 export async function readCodexSubscriptionAuth(): Promise<CodexSubscriptionAuth | null> {
   const credentials = await resolveCodexCredentials(defaultCredentialDeps);
   if (!credentials?.accountId) return null;
@@ -182,6 +189,8 @@ export interface AiGatewayRouteDeps {
    */
   readonly renewAntigravityToken?: () => string | null | Promise<string | null>;
   readonly readOpencodeApiKey?: () => Promise<string | undefined>;
+  /** Muse Code 로그인 판정. 미주입이면 Muse Code 모델은 미로그인으로 거절된다. */
+  readonly readMuseCodeAuth?: () => MuseAuthResult | Promise<MuseAuthResult>;
   readonly readModelOverride?: () => string | undefined;
   /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
   readonly compactionStore?: ClaudeCodexCompactionStore;
@@ -548,6 +557,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       credential = xaiToken;
+    } else if (target?.provider === "muse-code") {
+      const museKey = museInferenceKey(await deps.readMuseCodeAuth?.());
+      if (museKey.apiKey === undefined) {
+        writeAnthropicError(res, 401, "authentication_error", museKey.message);
+        return true;
+      }
+      credential = museKey.apiKey;
     } else if (target?.provider === "antigravity") {
       const antigravityToken = await deps.readAntigravityToken?.();
       if (!antigravityToken) {
@@ -621,7 +637,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
             }))
             : target.provider === "antigravity"
               ? antigravityGateway()
-              : new AnthropicMessagesGateway(codexAdapter!));
+              : target.provider === "muse-code"
+                ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({ fetch: fetchImpl }))
+                : new AnthropicMessagesGateway(codexAdapter!));
       const modelContextWindow = typeof target.contextWindow === "number"
         && Number.isFinite(target.contextWindow)
         && target.contextWindow > 0

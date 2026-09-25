@@ -26,6 +26,7 @@ const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   antigravity: "Antigravity",
   claude: "Claude Code",
   codex: "Codex",
+  "muse-code": "Muse Code",
   opencode: "OpenCode Go",
   xai: "xAI",
 };
@@ -34,6 +35,7 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.antigravity.signedOut",
   claude: "quota.claude.signedOut",
   codex: "quota.codex.signedOut",
+  "muse-code": "quota.museCode.signedOut",
   opencode: "quota.opencode.signedOut",
   xai: "quota.xai.signedOut",
 };
@@ -42,6 +44,7 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.expired.antigravity",
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
+  "muse-code": "quota.expired.museCode",
   opencode: "quota.expired.opencode",
   xai: "quota.expired.xai",
 };
@@ -52,9 +55,25 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
   antigravity: "quota.noSubscription",
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
+  "muse-code": "quota.noSubscription",
   opencode: "quota.opencode.noSubscription",
   xai: "quota.noSubscription",
 };
+
+const CREDENTIAL_UNAVAILABLE_KEY: Readonly<Record<string, QuotaMessageKey>> = {
+  keychain_denied: "quota.error.credentials.denied",
+  keychain_timeout: "quota.error.credentials.timeout",
+  malformed: "quota.error.credentials.malformed",
+};
+
+/** Gateway가 자격 증명 저장소를 읽지 못했을 때 보내는 고정 문구를 안내 키로 옮긴다. */
+export function credentialUnavailableKey(message: string | undefined): QuotaMessageKey | undefined {
+  const reason = message?.match(/^Credential store unavailable \(([a-z_]+)\)$/)?.[1];
+  return reason === undefined ? undefined : CREDENTIAL_UNAVAILABLE_KEY[reason];
+}
+
+/** 이 Gateway가 아직 보고하지 않는 공급자 — 카드를 빼지 않고 읽을 수 없음으로 둔다. */
+const UNREPORTED_PROVIDER: ProviderDto = { status: "error" };
 
 function isConnectable(id: ProviderId): id is ConnectableProviderId {
   return id === "claude";
@@ -621,8 +640,13 @@ function ProviderCard({
       {provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
       {provider.status === "error" ? (() => {
         const match = provider.message?.match(/^Certificate verification failed \(([A-Za-z0-9_]+)\)$/);
-        return match?.[1] !== undefined
-          ? <StatusStrip kind="error">{t("quota.error.tls", { provider: name, code: match[1] })}</StatusStrip>
+        if (match?.[1] !== undefined) {
+          return <StatusStrip kind="error">{t("quota.error.tls", { provider: name, code: match[1] })}</StatusStrip>;
+        }
+        // 로그인이 없는 것과 저장소를 읽지 못한 것은 다른 조치를 부른다 — 로그인하라고 하면 틀린 지시가 된다.
+        const credentialKey = credentialUnavailableKey(provider.message);
+        return credentialKey
+          ? <StatusStrip kind="error">{t(credentialKey, { provider: name })}</StatusStrip>
           : <div className="quota-error">{t("quota.error", { provider: name })}</div>;
       })() : null}
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
@@ -941,6 +965,7 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
     data?.providers.antigravity.fetchedAt ?? 0,
     data?.providers.claude.fetchedAt ?? 0,
     data?.providers.codex.fetchedAt ?? 0,
+    data?.providers["muse-code"]?.fetchedAt ?? 0,
     data?.providers.opencode.fetchedAt ?? 0,
     data?.providers.xai.fetchedAt ?? 0,
   );
@@ -965,7 +990,7 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
           <ProviderCard
             key={id}
             id={id}
-            provider={data.providers[id]}
+            provider={data.providers[id] ?? UNREPORTED_PROVIDER}
             now={now}
             locale={ctx.language ?? "en"}
             t={t}

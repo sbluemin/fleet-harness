@@ -4,7 +4,7 @@ import benchmarksData from "../benchmarks.json" with { type: "json" };
 import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
-export const GATEWAY_PROVIDERS = ["codex", "xai", "opencode", "antigravity", "claude"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "opencode", "antigravity", "muse-code", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -191,6 +191,7 @@ const GatewayModelsRegistrySchema = z.object({
     opencode: GatewayProviderSchema,
     xai: GatewayProviderSchema,
     antigravity: GatewayProviderSchema,
+    "muse-code": GatewayProviderSchema,
     claude: GatewayProviderSchema,
   }).strict(),
   pricing: GatewayPricingRegistrySchema,
@@ -227,7 +228,7 @@ export interface GatewayModel {
   /** Model id sent to the selected upstream provider. */
   readonly upstreamId?: string;
   readonly serviceTier?: "priority";
-  /** Upstream wire protocol; OpenCode Go only. Omission means `anthropic`. */
+  /** 공급자가 선언한 업스트림 와이어 프로토콜. 생략하면 `anthropic`이다. */
   readonly wire?: GatewayModelWire;
   /** Provider-stated lineup positioning; absent only on routing aliases. */
   readonly capabilityClass?: GatewayCapabilityClass;
@@ -692,9 +693,9 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       if (model.serviceTier && provider !== "codex") {
         throw new Error(`Gateway service tier is only supported by Codex: ${provider}/${model.modelId}`);
       }
-      // OpenCode Go selects among several wires per model; xAI's Grok CLI subscription
-      // is fixed to Responses but declares it so routing never falls back to Anthropic.
-      if (model.wire && provider !== "opencode" && provider !== "xai") {
+      // OpenCode Go는 모델마다 와이어를 고른다. xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만
+      // 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
+      if (model.wire && provider !== "opencode" && provider !== "xai" && provider !== "muse-code") {
         throw new Error(`Gateway model wire is not supported by provider: ${provider}/${model.modelId}`);
       }
       if (model.effort?.supported) {

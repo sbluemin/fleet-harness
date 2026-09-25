@@ -71,6 +71,7 @@ export interface QuotaSummaryDto {
     readonly antigravity: ProviderDto;
     readonly claude: ProviderDto;
     readonly codex: ProviderDto;
+    readonly "muse-code": ProviderDto;
     readonly opencode: ProviderDto;
     readonly xai: ProviderDto;
   };
