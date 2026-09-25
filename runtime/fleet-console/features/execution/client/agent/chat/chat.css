@@ -3890,6 +3890,59 @@
   margin-top: var(--space-4);
 }
 
+/* 세션 간 수신은 B안의 전폭 카드로 구분한다. Console Use 말풍선은 바꾸지 않는다.
+   중립 머리줄이 전달 사실을 말하며, 턴 도중 수신도 별도 신호색이나 왼쪽 강조 띠를 쓰지 않는다. */
+.agent-chat-peer {
+  align-self: stretch;
+  min-width: 0;
+  max-width: var(--agent-chat-measure);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  overflow: hidden;
+}
+.agent-chat-peer-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-panel-raised);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.agent-chat-peer.is-mid-turn .agent-chat-peer-head { background: transparent; }
+.agent-chat-peer-glyph { width: 14px; height: 14px; flex: none; color: var(--text-tertiary); }
+.agent-chat-peer-heading { color: var(--text-primary); font-weight: var(--weight-medium); }
+.agent-chat-peer-name { min-width: 0; color: var(--text-secondary); }
+/* 받은 카드의 머리줄에서도 작은 지휘관 이름을 읽을 수 있게 한다. 기존 Console Use 배지는 그대로 둔다. */
+.agent-chat-peer-head > .chat-by-agent { color: color-mix(in oklch, var(--console-use-badge) 40%, var(--text-primary)); }
+.agent-chat-peer-time { margin-left: auto; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.agent-chat-peer-info {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  cursor: pointer;
+}
+.agent-chat-peer-info:hover, .agent-chat-peer-info[aria-expanded="true"] { color: var(--text-primary); border-color: var(--hairline-strong); }
+.agent-chat-peer-info:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.agent-chat-peer-explanation { padding: var(--space-2) var(--space-3) 0; color: var(--text-secondary); font-size: var(--t-xs); }
+.agent-chat-peer-body { padding: var(--space-2) var(--space-3); font-size: var(--font-body-size); word-break: keep-all; overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  .agent-chat-peer-info { width: 44px; height: 44px; }
+}
+
 /* 도는 턴이 도중에 집어간 사용자의 말.
 
    턴을 여는 말풍선과 같은 모양을 쓰지 않는 이유는 뜻이 다르기 때문이다 — 그 모양은 "여기서

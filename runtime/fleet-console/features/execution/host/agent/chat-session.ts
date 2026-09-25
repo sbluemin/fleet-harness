@@ -147,6 +147,7 @@ export interface AgentChatSessionSeed {
    * 턴의 첨부는 바이트 없는 자리로 그려진다 — 경로는 어느 쪽이든 브라우저로 가지 않는다.
    */
   readonly resolveAttachmentId?: (filePath: string) => string | null;
+  readonly resolvePeerOrigin?: ChatEventMapOptions["resolvePeerOrigin"];
   readonly cancelComputerUse?: () => void;
   /**
    * 이 Operation이 사람에게 묻지 않는가. 새 세션은 도구 목록에서 이미 빠지지만, 정책이 막히기 전에 연 세션은 도구를
@@ -486,6 +487,8 @@ class AgentChatSession {
    * 돌려받을 수 없는 말 위에도 서게 된다.
    */
   private readonly hostedDispatches = new Map<string, HostedDispatch>();
+  /** SDK가 같은 수신 uuid를 다시 흘려도 같은 말은 원장에 한 번만 선다. */
+  private readonly receivedPeerIds = new Set<string>();
   private disposed = false;
   /**
    * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Operation이 열려 있는 동안**
@@ -680,6 +683,9 @@ class AgentChatSession {
       : null;
   }
 
+  /** 살아 있는 소유 자식만 대조한다. 재생 기록의 PID로 현재 세션을 찾지 않는다. */
+  get processId(): number | undefined { return this.disposed ? undefined : this.session?.processId; }
+
   get busy(): boolean {
     return this.pendingTurns > 0;
   }
@@ -703,12 +709,14 @@ class AgentChatSession {
     // 시각 차이다. 이것이 없으면 접힘 줄이 과거 턴에서만 시간을 잃는다.
     let turnAt: number | null = null;
     let lastAt: number | null = null;
+    let replayTurnOpen = false;
     const closeReplayedTurn = (): void => {
       if (turnAt !== null && lastAt !== null && lastAt > turnAt) {
         this.push({ kind: "turn-end", ok: true, durationMs: lastAt - turnAt }, lastAt);
       }
       turnAt = null;
       lastAt = null;
+      replayTurnOpen = false;
     };
     // 사람 발화로는 서지 않지만 모델을 깨우는 주입 운반체는 말풍선 없는 여는 이벤트로 온다.
     // 그것을 곧바로 발행하지 않고 붙잡아 두는 이유는 두 가지다.
@@ -726,6 +734,7 @@ class AgentChatSession {
       closeReplayedTurn();
       turns += 1;
       turnAt = at;
+      replayTurnOpen = true;
       this.push(at === null ? { kind: "turn-start" } : { kind: "turn-start", at }, at ?? Date.now());
     };
     try {
@@ -733,7 +742,12 @@ class AgentChatSession {
       for (const line of raw.split("\n")) {
         if (line.trim().length === 0) continue;
         const mapped = chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames, ...(this.seed.resolveAttachmentId ? { resolveAttachmentId: this.seed.resolveAttachmentId } : {}) });
-        for (const event of mapped.events) {
+        for (let event of mapped.events) {
+          if (event.kind === "dispatch" && event.by?.kind === "peer" && !this.rememberPeerId(mapped.messageId)) continue;
+          // 도구 라운드 사이에 들어온 peer는 같은 턴의 수신 카드다. end_turn 뒤에는 새 턴을 연다.
+          if (event.kind === "dispatch" && event.by?.kind === "peer" && replayTurnOpen && pendingOpenAt === undefined) {
+            event = { ...event, kind: "turn-inject" };
+          }
           if (event.kind === "turn-start") {
             // 묶음의 첫 줄만 시작 시각으로 남긴다.
             if (pendingOpenAt === undefined) pendingOpenAt = mapped.at ?? null;
@@ -745,6 +759,7 @@ class AgentChatSession {
             closeReplayedTurn();
             turns += 1;
             turnAt = mapped.at ?? null;
+            replayTurnOpen = true;
           } else {
             openPendingTurn();
           }
@@ -755,6 +770,7 @@ class AgentChatSession {
         }
         // 붙잡아 둔 운반체는 아직 턴이 아니다 — 그 줄의 시각으로 앞 턴의 끝을 늘리지 않는다.
         if (mapped.events.length > 0 && mapped.at !== undefined && pendingOpenAt === undefined) lastAt = mapped.at;
+        if (mapped.endsTurn) replayTurnOpen = false;
       }
       closeReplayedTurn();
     } catch {
@@ -2290,6 +2306,7 @@ class AgentChatSession {
           // **첫** 좌표가 영영 심기지 않는다 — 그 id는 처음부터 알고 있었으므로 바뀌지 않는다.
           if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
         }
+        if (message.type === "user" && typeof message.uuid === "string" && this.receivedPeerIds.has(message.uuid)) continue;
         this.trackHandover(message);
         this.rememberSkillNames(message);
         this.invalidateCatalog(message);
@@ -2301,8 +2318,18 @@ class AgentChatSession {
           cwd: this.seed.cwd,
           toolNames: this.toolNames,
           toolTitles: this.toolTitles,
+          resolvePeerOrigin: this.seed.resolvePeerOrigin,
         };
         for (const event of chatEventsFromSdkMessage(message, mapOptions)) {
+          if (event.kind === "dispatch" && event.by?.kind === "peer") {
+            if (!this.rememberPeerId(typeof message.uuid === "string" ? message.uuid : undefined)) continue;
+            if (this.turnOpen) this.push({ ...event, kind: "turn-inject" });
+            else {
+              this.push(event);
+              this.openTurn({ dispatched: false });
+            }
+            continue;
+          }
           if (event.kind === "job-progress") {
             this.ingestWorkflowProgress(event, message, mapOptions);
             continue;
@@ -2316,6 +2343,14 @@ class AgentChatSession {
     } finally {
       this.retireSession(session);
     }
+  }
+
+  private rememberPeerId(id: string | undefined): boolean {
+    if (!id) return true;
+    if (this.receivedPeerIds.has(id)) return false;
+    this.receivedPeerIds.add(id);
+    if (this.receivedPeerIds.size > JOURNAL_CAP) this.receivedPeerIds.delete(this.receivedPeerIds.values().next().value!);
+    return true;
   }
 
   /**

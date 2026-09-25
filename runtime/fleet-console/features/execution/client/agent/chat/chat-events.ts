@@ -29,15 +29,23 @@ export type AgentChatAskForm = "question" | "plan";
 export type AgentChatAskOutcome = "answered" | "dismissed" | "approved" | "revised";
 
 /** 사람이 아닌 발화자 — Console Use 로 보낸·답한 다른 Operation. 제목만 온다. */
-export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
+export type AgentChatPeerOrigin = { readonly kind: "peer"; readonly role: "commander" | "session" | "unknown"; readonly title?: string };
+export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string } | AgentChatPeerOrigin;
 export function readChatOrigin(value: unknown): AgentChatOrigin | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   if (record.kind === "operation" && typeof record.operationId === "string") return { kind: "operation", operationId: record.operationId, title: typeof record.title === "string" ? record.title : record.operationId };
   if (record.kind === "plugin" && typeof record.pluginId === "string") return { kind: "plugin", pluginId: record.pluginId };
+  if (record.kind === "peer") {
+    const role = record.role === "commander" || record.role === "session" ? record.role : "unknown";
+    return { kind: "peer", role, ...(role !== "unknown" && typeof record.title === "string" ? { title: record.title } : {}) };
+  }
   return undefined;
 }
-export function chatOriginLabel(origin: AgentChatOrigin): string { return origin.kind === "operation" ? origin.title : origin.pluginId; }
+export function chatOriginLabel(origin: AgentChatOrigin): string {
+  if (origin.kind === "plugin") return origin.pluginId;
+  return origin.title ?? "";
+}
 
 /**
  * 사용자가 함께 보낸 이미지 하나. 브라우저가 쥐는 것은 미리보기 라우트의 좌표뿐이다 — 호스트

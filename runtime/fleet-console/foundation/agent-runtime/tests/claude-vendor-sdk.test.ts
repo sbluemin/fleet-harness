@@ -1,3 +1,5 @@
+import { once } from "node:events";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -50,6 +52,31 @@ function seedProbe(
 
 afterEach(() => {
   query.mockReset();
+});
+
+describe("runVendorSession process ownership", () => {
+  it("exposes only its live child and preserves EOF shutdown", async () => {
+    let child: ChildProcessWithoutNullStreams | undefined;
+    const stderr: string[] = [];
+    query.mockImplementation(({ options }) => {
+      child = options.spawnClaudeCodeProcess({ command: process.execPath, args: ["-e", "process.stderr.write('ready'); process.stdin.resume(); process.stdin.on('end', () => process.exit(0));"], env: process.env, signal: new AbortController().signal });
+      return { ...makeVendorRun(async () => undefined), close: () => child!.stdin.end() };
+    });
+    const session = runVendorSession({ options: { stderr: (text: string) => stderr.push(text) } });
+    try {
+      expect(session.processId).toBe(child!.pid);
+      expect(session.processId).toBeGreaterThan(0);
+      await vi.waitFor(() => expect(stderr.join("")).toBe("ready"));
+      const exited = once(child!, "exit");
+      session.close();
+      expect(session.processId).toBeUndefined();
+      expect(await exited).toEqual([0, null]);
+      expect(child!.killed).toBe(false);
+    } finally {
+      session.close();
+      if (child?.exitCode === null && child.signalCode === null) child.kill();
+    }
+  });
 });
 
 describe("runVendorQuery close", () => {
