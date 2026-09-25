@@ -154,7 +154,6 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     terminateAndWait: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getSessionProcessId: () => undefined,
     getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
     resolveSessionIdentity: async () => null,
     onExit: () => () => {},

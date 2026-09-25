@@ -36,6 +36,7 @@ import {
   chatSubagentIdentity,
   chatSubagentTrailFromTranscript,
   chatWorkflowAgentSlots,
+  maskChatText,
   overlayWorkflowActualModels,
   readChatCommandLaneName,
   readJobKind,
@@ -147,7 +148,14 @@ export interface AgentChatSessionSeed {
    * 턴의 첨부는 바이트 없는 자리로 그려진다 — 경로는 어느 쪽이든 브라우저로 가지 않는다.
    */
   readonly resolveAttachmentId?: (filePath: string) => string | null;
-  readonly resolvePeerOrigin?: ChatEventMapOptions["resolvePeerOrigin"];
+  /**
+   * 이 세션이 다른 세션으로 **성공적으로 보낸** 말 한 통. 받는 쪽의 원장에 수신 줄을 세우는 유일한 문이다.
+   *
+   * 이 경로는 어느 쪽 트랜스크립트도 읽지 않는다. 서버가 여기서 쓰는 사실은 하나뿐이다: 보낸 세션의
+   * 라이브 스트림에서 도구 호출과 그 성공 결과를 보았다. 대상 해석과 전달은 이 훅을 배선한 쪽(호스트
+   * 라우트)이 한다 — 세션은 레지스트리를 모른다.
+   */
+  readonly onSessionMessageSent?: (sent: { readonly to: string; readonly text: string; readonly toolUseId: string }) => void;
   readonly cancelComputerUse?: () => void;
   /**
    * 이 Operation이 사람에게 묻지 않는가. 새 세션은 도구 목록에서 이미 빠지지만, 정책이 막히기 전에 연 세션은 도구를
@@ -247,6 +255,19 @@ const USER_QUESTIONS_OFF = "Asking the person is turned off for this session. Se
 
 const JOURNAL_CAP = 2_000;
 /**
+ * 세션 간 메시지를 보내는 도구. 이 이름의 **top-level** 호출만 관측한다 — 서브에이전트가 부른
+ * 것은 `parent_tool_use_id`를 달고 오며, 그것을 부모 세션의 발신으로 세우면 사람이 보내지 않은
+ * 말이 부모 이름으로 남는다.
+ */
+const SESSION_MESSAGE_TOOL = "SendMessage";
+/** 결말을 기다리는 발신 호출의 상한. 도구 결과는 보통 곧바로 오므로 넉넉한 창이다. */
+const PENDING_SENT_MESSAGE_CAP = 64;
+/**
+ * 수신 줄 중복 방지 창. 같은 발신 호출이 두 번 관측되는 일은 그 호출 근처에서만 일어나므로 최근
+ * 창이면 충분하다 — 저널 상한과는 별개의 값이고, 오래 산 세션에서 이 집합만 무한히 자라지 않게 한다.
+ */
+const RECEIVED_MESSAGE_ID_CAP = 512;
+/**
  * 예약 칩이 화면에 세우는 문면의 상한. 전문은 서버가 그대로 들고 있다가 자기 차례에 보내고,
  * 브라우저로는 한 줄에 들어갈 만큼만 나간다 — 6만 자짜리 초안이 큐 스냅숏마다 소켓을 지나면
  * 예약 하나가 대화 전체보다 무거워진다.
@@ -311,6 +332,7 @@ function countReplayedTurns(entries: readonly AgentChatJournalEvent[]): number {
     } else if (event.kind === "text"
       || event.kind === "tool-start"
       || event.kind === "tool"
+      || event.kind === "received"
       || event.kind === "ask") {
       // 상한이 턴 중간을 자르면 첫 retained 이벤트가 내용일 수 있다. 클라이언트 appendItem이
       // 만드는 bubbleless 턴과 같은 한 턴을 여기서도 센다.
@@ -433,6 +455,28 @@ async function readFileTail(file: string, windowBytes: number): Promise<{ readon
  * 백그라운드 맥박은 턴이 닫힌 뒤에도 계속 흐르는 것이 정상이고, 그것으로 턴을 열면 아무 말도
  * 없는 빈 턴이 선다.
  */
+/**
+ * 세션 간 메시지 도구가 **실패를 본문으로 말했는가**. `is_error` 없이 `{"success":false}` 하나로
+ * 돌아오는 거절이 있어(상대가 없거나 이름이 중복인 경로) 그 모양만 따로 읽는다. 읽을 수 없는
+ * 본문은 실패로 보지 않는다 — 성공한 전달을 침묵시키는 쪽이 더 나쁜 오류다.
+ */
+function sentMessageFailed(content: unknown): boolean {
+  const texts = typeof content === "string" ? [content]
+    : Array.isArray(content)
+      ? content.flatMap((part) => (part && typeof part === "object" && (part as { readonly type?: unknown }).type === "text"
+        && typeof (part as { readonly text?: unknown }).text === "string" ? [(part as { readonly text: string }).text] : []))
+      : [];
+  for (const text of texts) {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && (parsed as { readonly success?: unknown }).success === false) return true;
+    } catch {
+      // JSON이 아닌 결과 본문은 판정 근거가 없다.
+    }
+  }
+  return false;
+}
+
 function opensChatTurn(event: AgentChatStreamEvent): boolean {
   return event.kind === "text" || event.kind === "text-delta" || event.kind === "tool" || event.kind === "tool-start";
 }
@@ -487,8 +531,15 @@ class AgentChatSession {
    * 돌려받을 수 없는 말 위에도 서게 된다.
    */
   private readonly hostedDispatches = new Map<string, HostedDispatch>();
-  /** SDK가 같은 수신 uuid를 다시 흘려도 같은 말은 원장에 한 번만 선다. */
-  private readonly receivedPeerIds = new Set<string>();
+  /**
+   * 아직 결말을 못 본 세션 간 메시지 호출(tool_use id → 보낼 곳과 본문).
+   *
+   * 호출만으로 수신 줄을 세우지 않는 이유는 실패가 조용하기 때문이다 — 이름이 틀렸거나 상대가
+   * 없으면 도구는 오류를 돌려주는데, 그때 이미 세운 줄은 오지 않은 말을 받은 것으로 보인다.
+   */
+  private readonly pendingSentMessages = new Map<string, { readonly to: string; readonly text: string }>();
+  /** 이미 원장에 세운 수신 줄의 좌표. 같은 호출이 두 번 관측돼도 줄은 하나다. */
+  private readonly receivedMessageIds = new Set<string>();
   private disposed = false;
   /**
    * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Operation이 열려 있는 동안**
@@ -683,9 +734,6 @@ class AgentChatSession {
       : null;
   }
 
-  /** 살아 있는 소유 자식만 대조한다. 재생 기록의 PID로 현재 세션을 찾지 않는다. */
-  get processId(): number | undefined { return this.disposed ? undefined : this.session?.processId; }
-
   get busy(): boolean {
     return this.pendingTurns > 0;
   }
@@ -709,14 +757,12 @@ class AgentChatSession {
     // 시각 차이다. 이것이 없으면 접힘 줄이 과거 턴에서만 시간을 잃는다.
     let turnAt: number | null = null;
     let lastAt: number | null = null;
-    let replayTurnOpen = false;
     const closeReplayedTurn = (): void => {
       if (turnAt !== null && lastAt !== null && lastAt > turnAt) {
         this.push({ kind: "turn-end", ok: true, durationMs: lastAt - turnAt }, lastAt);
       }
       turnAt = null;
       lastAt = null;
-      replayTurnOpen = false;
     };
     // 사람 발화로는 서지 않지만 모델을 깨우는 주입 운반체는 말풍선 없는 여는 이벤트로 온다.
     // 그것을 곧바로 발행하지 않고 붙잡아 두는 이유는 두 가지다.
@@ -734,7 +780,6 @@ class AgentChatSession {
       closeReplayedTurn();
       turns += 1;
       turnAt = at;
-      replayTurnOpen = true;
       this.push(at === null ? { kind: "turn-start" } : { kind: "turn-start", at }, at ?? Date.now());
     };
     try {
@@ -742,12 +787,7 @@ class AgentChatSession {
       for (const line of raw.split("\n")) {
         if (line.trim().length === 0) continue;
         const mapped = chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames, ...(this.seed.resolveAttachmentId ? { resolveAttachmentId: this.seed.resolveAttachmentId } : {}) });
-        for (let event of mapped.events) {
-          if (event.kind === "dispatch" && event.by?.kind === "peer" && !this.rememberPeerId(mapped.messageId)) continue;
-          // 도구 라운드 사이에 들어온 peer는 같은 턴의 수신 카드다. end_turn 뒤에는 새 턴을 연다.
-          if (event.kind === "dispatch" && event.by?.kind === "peer" && replayTurnOpen && pendingOpenAt === undefined) {
-            event = { ...event, kind: "turn-inject" };
-          }
+        for (const event of mapped.events) {
           if (event.kind === "turn-start") {
             // 묶음의 첫 줄만 시작 시각으로 남긴다.
             if (pendingOpenAt === undefined) pendingOpenAt = mapped.at ?? null;
@@ -759,7 +799,6 @@ class AgentChatSession {
             closeReplayedTurn();
             turns += 1;
             turnAt = mapped.at ?? null;
-            replayTurnOpen = true;
           } else {
             openPendingTurn();
           }
@@ -770,7 +809,6 @@ class AgentChatSession {
         }
         // 붙잡아 둔 운반체는 아직 턴이 아니다 — 그 줄의 시각으로 앞 턴의 끝을 늘리지 않는다.
         if (mapped.events.length > 0 && mapped.at !== undefined && pendingOpenAt === undefined) lastAt = mapped.at;
-        if (mapped.endsTurn) replayTurnOpen = false;
       }
       closeReplayedTurn();
     } catch {
@@ -2306,7 +2344,7 @@ class AgentChatSession {
           // **첫** 좌표가 영영 심기지 않는다 — 그 id는 처음부터 알고 있었으므로 바뀌지 않는다.
           if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
         }
-        if (message.type === "user" && typeof message.uuid === "string" && this.receivedPeerIds.has(message.uuid)) continue;
+        this.trackSentMessages(message);
         this.trackHandover(message);
         this.rememberSkillNames(message);
         this.invalidateCatalog(message);
@@ -2318,18 +2356,8 @@ class AgentChatSession {
           cwd: this.seed.cwd,
           toolNames: this.toolNames,
           toolTitles: this.toolTitles,
-          resolvePeerOrigin: this.seed.resolvePeerOrigin,
         };
         for (const event of chatEventsFromSdkMessage(message, mapOptions)) {
-          if (event.kind === "dispatch" && event.by?.kind === "peer") {
-            if (!this.rememberPeerId(typeof message.uuid === "string" ? message.uuid : undefined)) continue;
-            if (this.turnOpen) this.push({ ...event, kind: "turn-inject" });
-            else {
-              this.push(event);
-              this.openTurn({ dispatched: false });
-            }
-            continue;
-          }
           if (event.kind === "job-progress") {
             this.ingestWorkflowProgress(event, message, mapOptions);
             continue;
@@ -2345,12 +2373,89 @@ class AgentChatSession {
     }
   }
 
-  private rememberPeerId(id: string | undefined): boolean {
-    if (!id) return true;
-    if (this.receivedPeerIds.has(id)) return false;
-    this.receivedPeerIds.add(id);
-    if (this.receivedPeerIds.size > JOURNAL_CAP) this.receivedPeerIds.delete(this.receivedPeerIds.values().next().value!);
-    return true;
+  /**
+   * 이 세션이 다른 세션에 말을 보냈는가 — **보내는 쪽의 라이브 스트림**에서만 읽는다.
+   *
+   * 여기가 유일한 관측 지점인 이유는 이 경로가 트랜스크립트를 전혀 읽지 않기 때문이다. 세우는 근거는
+   * 보내는 자식이 라이브로 부른 도구 호출과 그 결과, 그 둘뿐이다.
+   *
+   * 호출과 결말을 잇는 것은 `tool_use` id다. 호출만 보고 세우지 않는 이유는 실패가 조용하기
+   * 때문이고(이름이 틀리면 오류가 돌아온다), 결말만 보고 세울 수 없는 이유는 결과에 본문이 없기
+   * 때문이다. 그래서 둘을 붙잡아 두었다가 성공한 쌍만 내보낸다.
+   *
+   * 매퍼(`chatEventsFromSdkMessage`)에 두지 않는 이유는 그 문이 트랜스크립트 재생과 공유이기
+   * 때문이다 — 거기 두면 재생이 지난 발신을 오늘의 수신으로 다시 세운다.
+   */
+  private trackSentMessages(message: ClaudeGatewayMessage): void {
+    if (this.seed.onSessionMessageSent === undefined) return;
+    // 서브에이전트의 발신은 부모의 것이 아니다. 부모 이름으로 세우면 사람이 보내지 않은 말이
+    // 부모가 보낸 것으로 남으므로, 자식 호출이 달고 오는 좌표가 있으면 통째로 지나간다.
+    if (message["parent_tool_use_id"] != null) return;
+    if (message.type === "assistant") {
+      const content = (message as { readonly message?: { readonly content?: unknown } }).message?.content;
+      if (!Array.isArray(content)) return;
+      for (const block of content) {
+        if (!block || typeof block !== "object") continue;
+        const record = block as { readonly type?: unknown; readonly name?: unknown; readonly id?: unknown; readonly input?: unknown };
+        if (record.type !== "tool_use" || record.name !== SESSION_MESSAGE_TOOL) continue;
+        if (typeof record.id !== "string" || record.id.length === 0) continue;
+        const input = record.input;
+        if (!input || typeof input !== "object" || Array.isArray(input)) continue;
+        const { to, message: body } = input as { readonly to?: unknown; readonly message?: unknown };
+        // 본문 없는 호출은 말이 아니다 — 같은 도구가 알림 구독에도 쓰이며, 그 호출에는 보낼 말이 없다.
+        if (typeof to !== "string" || to.length === 0) continue;
+        if (typeof body !== "string" || body.trim().length === 0) continue;
+        this.pendingSentMessages.set(record.id, { to, text: body });
+        if (this.pendingSentMessages.size > PENDING_SENT_MESSAGE_CAP) {
+          const oldest = this.pendingSentMessages.keys().next();
+          if (!oldest.done) this.pendingSentMessages.delete(oldest.value);
+        }
+      }
+      return;
+    }
+    if (message.type !== "user" || this.pendingSentMessages.size === 0) return;
+    const content = (message as { readonly message?: { readonly content?: unknown } }).message?.content;
+    if (!Array.isArray(content)) return;
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      const record = block as { readonly type?: unknown; readonly tool_use_id?: unknown; readonly is_error?: unknown; readonly content?: unknown };
+      if (record.type !== "tool_result" || typeof record.tool_use_id !== "string") continue;
+      const sent = this.pendingSentMessages.get(record.tool_use_id);
+      if (sent === undefined) continue;
+      this.pendingSentMessages.delete(record.tool_use_id);
+      if (record.is_error === true || sentMessageFailed(record.content)) continue;
+      try {
+        this.seed.onSessionMessageSent({ to: sent.to, text: sent.text, toolUseId: record.tool_use_id });
+      } catch {
+        // 전달 배선이 넘어져도 보낸 세션은 계속 산다 — 이 관측은 대화의 곁가지지 대화 자체가 아니다.
+      }
+    }
+  }
+
+  /**
+   * 다른 세션이 보낸 말 하나를 이 세션의 원장에 세운다. 대상 해석을 끝낸 호스트만 부른다.
+   *
+   * 턴을 열지 않는다. 이 줄은 **관측**이지 이 세션의 자식이 지금 무엇을 한다는 신호가 아니며,
+   * 여기서 턴을 열면 아무도 닫지 않아 받기만 한 세션이 영영 일하는 것으로 보인다. 자식이 실제로
+   * 그 말을 읽고 움직이면 그때 흐르는 내용이 제 턴을 연다.
+   *
+   * 본문과 출처는 **둘 다** 같은 문(`maskChatText`)을 지난다. 런치 이름도 사람이 짓는 값이라 경로나
+   * 자격증명 모양이 섞일 수 있고, 브라우저로 나가는 값에 masking 없는 자리를 하나라도 두지 않는다.
+   */
+  noteReceived(entry: { readonly id: string; readonly from: string; readonly text: string }): void {
+    if (this.disposed) return;
+    if (entry.id.length === 0 || entry.from.length === 0) return;
+    if (this.receivedMessageIds.has(entry.id)) return;
+    this.receivedMessageIds.add(entry.id);
+    if (this.receivedMessageIds.size > RECEIVED_MESSAGE_ID_CAP) {
+      const oldest = this.receivedMessageIds.values().next();
+      if (!oldest.done) this.receivedMessageIds.delete(oldest.value);
+    }
+    const from = maskChatText(entry.from, { cwd: this.seed.cwd }).text;
+    const text = maskChatText(entry.text, { cwd: this.seed.cwd }).text;
+    if (from.length === 0 || text.length === 0) return;
+    // 수신 당시 열린 턴인지 원장에 남긴다. 재접속 때 과거 재생 경계로 위치를 추측하지 않는다.
+    this.push({ kind: "received", id: entry.id, from, text, inTurn: this.turnOpen, at: Date.now() });
   }
 
   /**

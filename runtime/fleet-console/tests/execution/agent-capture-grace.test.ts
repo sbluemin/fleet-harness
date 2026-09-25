@@ -98,7 +98,6 @@ async function createHarness(body: Record<string, unknown>) {
     terminateAndWait: async () => terminate(),
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getSessionProcessId: () => undefined,
     getSessionLastActivityAt: () => null,
     resolveSessionIdentity: async () => null,
     onExit: (callback) => {

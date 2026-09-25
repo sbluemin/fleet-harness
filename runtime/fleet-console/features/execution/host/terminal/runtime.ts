@@ -23,8 +23,6 @@ export interface TerminalRuntime {
   getMessagePolicy(operationId: string): CliMessagePolicy | undefined;
   getRenameCommand(operationId: string): string | undefined;
   getSessionLastActivityAt(operationId: string): number | null;
-  /** 서버 내부의 peer 출처 대조 전용. */
-  getSessionProcessId(operationId: string): number | undefined;
   resolveSessionIdentity(operationId: string, providerSessionId: string): Promise<string | null>;
   onExit(callback: (operationId: string) => void | Promise<void>): () => void;
   onTitle(operationType: string, callback: TerminalTitleListener): () => void;
@@ -91,7 +89,6 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
     getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
     getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
     getSessionLastActivityAt: (operationId) => sessions.getSessionLastActivityAt(operationId),
-    getSessionProcessId: (operationId) => sessions.getSessionProcessId(operationId),
     resolveSessionIdentity: (operationId, providerSessionId) => sessions.resolveSessionIdentity(operationId, providerSessionId),
     onExit: (callback) => {
       terminalExitListeners.add(callback);

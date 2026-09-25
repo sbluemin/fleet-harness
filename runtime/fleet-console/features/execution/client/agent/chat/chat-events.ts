@@ -29,23 +29,15 @@ export type AgentChatAskForm = "question" | "plan";
 export type AgentChatAskOutcome = "answered" | "dismissed" | "approved" | "revised";
 
 /** 사람이 아닌 발화자 — Console Use 로 보낸·답한 다른 Operation. 제목만 온다. */
-export type AgentChatPeerOrigin = { readonly kind: "peer"; readonly role: "commander" | "session" | "unknown"; readonly title?: string };
-export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string } | AgentChatPeerOrigin;
+export type AgentChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
 export function readChatOrigin(value: unknown): AgentChatOrigin | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   if (record.kind === "operation" && typeof record.operationId === "string") return { kind: "operation", operationId: record.operationId, title: typeof record.title === "string" ? record.title : record.operationId };
   if (record.kind === "plugin" && typeof record.pluginId === "string") return { kind: "plugin", pluginId: record.pluginId };
-  if (record.kind === "peer") {
-    const role = record.role === "commander" || record.role === "session" ? record.role : "unknown";
-    return { kind: "peer", role, ...(role !== "unknown" && typeof record.title === "string" ? { title: record.title } : {}) };
-  }
   return undefined;
 }
-export function chatOriginLabel(origin: AgentChatOrigin): string {
-  if (origin.kind === "plugin") return origin.pluginId;
-  return origin.title ?? "";
-}
+export function chatOriginLabel(origin: AgentChatOrigin): string { return origin.kind === "operation" ? origin.title : origin.pluginId; }
 
 /**
  * 사용자가 함께 보낸 이미지 하나. 브라우저가 쥐는 것은 미리보기 라우트의 좌표뿐이다 — 호스트
@@ -132,6 +124,11 @@ export type AgentChatStreamEvent =
   | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
   /** 도는 턴이 사용자의 말 하나를 집어갔다 — 새 턴을 열지 않고 그 턴 안에 선다. */
   | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
+  /**
+   * 다른 세션이 이 세션에 보낸 메시지. 서버가 보낸 쪽의 성공한 도구 호출을 관측해 확정한다 —
+   * `from`은 서버가 확정한 보낸 세션 이름, `text`는 서버가 가리고 자른 본문이다. `id`는 중복 없는 좌표다.
+   */
+  | { readonly kind: "received"; readonly id: string; readonly from: string; readonly text: string; readonly inTurn: boolean; readonly at?: number }
   /** 자식이 문맥을 비웠다. 서버가 저널을 비우고 `cleared`를 내므로 화면은 이것을 그리지 않는다. */
   | { readonly kind: "reset"; readonly at?: number }
   /** 이 세션의 기록을 비웠다 — 화면의 원장도 함께 비운다. */
@@ -279,6 +276,11 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       const attachments = readChatAttachments(event.attachments);
       return { ...journal, event: { kind: "turn-inject", text: event.text, ...(event.format === "markdown" ? { format: "markdown" as const } : {}), ...(attachments.length > 0 ? { attachments } : {}), ...atField(event.at), ...(readChatOrigin(event.by) ? { by: readChatOrigin(event.by) } : {}) } };
     }
+    case "received":
+      if (typeof event.id !== "string" || event.id.length === 0) return null;
+      if (typeof event.from !== "string" || event.from.length === 0) return null;
+      if (typeof event.text !== "string") return null;
+      return { ...journal, event: { kind: "received", id: event.id, from: event.from, text: event.text, inTurn: event.inTurn === true, ...atField(event.at) } };
     case "reset":
       return { ...journal, event: { kind: "reset", ...atField(event.at) } };
     case "cleared":
@@ -580,7 +582,11 @@ export interface AgentChatTurnItem {
    * `inject`는 도는 턴이 도중에 집어간 사용자의 말이다. 턴을 여는 `dispatch`와 달리 이미
    * 돌던 턴 **안에** 서며, 그 자리가 곧 "여기서 방향이 바뀌었다"는 좌표다.
    */
-  readonly type: "text" | "tool" | "ask" | "thought" | "inject";
+  /**
+   * `received`는 다른 세션이 보낸 메시지다. 도구 줄과 같은 한 줄로 서고 펼치면 본문이 보인다.
+   * 도는 턴에 도착하면 그 턴의 스텝이고, 닫힌 뒤에 도착하면 다음 턴의 머리에 선다.
+   */
+  readonly type: "text" | "tool" | "ask" | "thought" | "inject" | "received";
   /** type="thought"의 길이. */
   readonly durationMs?: number;
   /** type="ask"일 때의 카드. 대기 중이면 누를 수 있고, 결말이 붙으면 한 줄로 접힌다. */
@@ -603,7 +609,9 @@ export interface AgentChatTurnItem {
   readonly attachments?: readonly AgentChatAttachment[];
   /** type="inject"를 보낸 저자 — 사람이 아니면 실린다. */
   readonly by?: AgentChatOrigin;
-  /** type="inject"의 수신 시각. */
+  /** type="received"를 보낸 세션 이름 — 서버가 확정한 값이다. */
+  readonly from?: string;
+  /** type="inject"·"received"의 수신 시각. */
   readonly at?: number;
 }
 
@@ -970,6 +978,25 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         ...(event.at !== undefined ? { at: event.at } : {}),
       });
     }
+    case "received": {
+      const item: AgentChatTurnItem = {
+        type: "received",
+        id: event.id,
+        from: event.from,
+        text: event.text,
+        ...(event.at !== undefined ? { at: event.at } : {}),
+      };
+      // 서버가 중복을 걸러 보내지만, 같은 좌표가 두 번 서면 한 메시지가 두 번 온 것으로 읽힌다.
+      if (state.turns.some((turn) => turn.items.some((existing) => existing.type === "received" && existing.id === event.id))) return state;
+      const last = state.turns.at(-1);
+      // 수신 당시 서버의 턴 상태를 그대로 따른다. 과거 재생 경계가 생략돼도 위치는 바뀌지 않는다.
+      const open = event.inTurn && last !== undefined && !last.command && !receivedHead(last);
+      if (open) return appendItem(wakeLastTurn(state, now), item);
+      // 닫힌 턴이나 명령 뒤의 수신은 다음 턴의 머리다. 수신만으로 진행 중 명령을 닫거나 순서를 바꾸지 않는다.
+      const head: AgentChatTurn = { dispatch: null, items: [item], state: "done", toolCount: 0, draft: "" };
+      if (receivedHead(last)) return withLastTurn(state, (turn) => ({ ...turn, items: [...turn.items, item] }));
+      return { ...state, turns: [...(last?.command ? state.turns : settleLastTurn(state)), head] };
+    }
     // 자식의 초기화 신호 자체는 화면이 그리지 않는다 — 서버가 그것을 받아 저널을 비우고
     // `cleared`를 내며, 화면은 그 결과만 따른다. 두 곳에서 각자 지우면 재생과 라이브가 갈린다.
     case "reset":
@@ -990,32 +1017,36 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       return { ...state, turns: [...settleLastTurn(state), turn] };
     }
     case "command-progress": {
-      const last = state.turns.at(-1);
-      if (!last?.command) return state;
+      const at = commandTurnIndex(state.turns);
+      const last = state.turns[at];
+      const command = last?.command;
+      if (!last || !command) return state;
       return {
         ...state,
-        turns: [...state.turns.slice(0, -1), { ...last, command: { ...last.command, phase: event.phase } }],
+        turns: state.turns.map((turn, index) => index === at ? { ...last, command: { ...command, phase: event.phase } } : turn),
       };
     }
     case "command-end": {
-      const last = state.turns.at(-1);
-      if (!last?.command) return state;
+      const at = commandTurnIndex(state.turns);
+      const last = state.turns[at];
+      const command = last?.command;
+      if (!last || !command) return state;
       // 스킬을 다시 읽은 명령이 끝났다 — 컴포저가 들고 있는 카탈로그 사본은 이 시점부터 낡았다.
-      const catalogEpoch = last.command.name === "reload-skills" && event.ok
+      const catalogEpoch = command.name === "reload-skills" && event.ok
         ? state.catalogEpoch + 1
         : state.catalogEpoch;
       return {
         ...state,
         catalogEpoch,
-        turns: [...state.turns.slice(0, -1), {
+        turns: state.turns.map((turn, index) => index !== at ? turn : {
           ...last,
           state: event.ok ? "done" : "error",
           command: {
-            name: last.command.name,
+            name: command.name,
             ...(event.summary === undefined ? {} : { summary: event.summary }),
             ...(event.compact === undefined ? {} : { compact: event.compact }),
           },
-        }],
+        }),
       };
     }
     case "turn-start": {
@@ -1033,6 +1064,15 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       const opensCarrier = state.replaying
         && last?.dispatch !== null
         && (last?.items.length ?? 0) > 0;
+      // 받은 메시지만 선 머리 턴은 이 턴의 시작이다 — 그 메시지가 깨운 턴이 거기 이어진다.
+      if (receivedHead(last)) {
+        return withLastTurn(state, (turn) => ({
+          ...turn,
+          state: settled,
+          ...(event.at !== undefined ? { startedAt: event.at } : {}),
+          ...(now !== undefined ? { idleSince: now } : {}),
+        }));
+      }
       if (!last || last.state !== "working" || opensCarrier) {
         const turn: AgentChatTurn = {
           dispatch: null,
@@ -1133,9 +1173,17 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       // 마지막 도는 스텝이 결과를 받으면 공백이 열린다 — 다음 호출을 짓는 시간이 여기서 잰다.
       return merged ? restLastTurn(merged, now) : state;
     }
-    case "turn-end":
+    case "turn-end": {
+      // 최종 text와 결말 사이에 낀 수신은 답변 승격을 가리지 않도록 답변 뒤의 머리 줄로 남긴다.
+      const ending = state.turns.at(-1);
+      let tail = ending?.items.length ?? 0;
+      while (tail > 0 && ending?.items[tail - 1]?.type === "received") tail -= 1;
+      const moved = ending?.draft.length === 0 && ending.items[tail - 1]?.type === "text"
+        ? ending.items.slice(tail) : [];
+      const trimmed = moved.length > 0
+        ? withLastTurn(state, (turn) => ({ ...turn, items: turn.items.slice(0, -moved.length) })) : state;
       // 마지막 공백은 흔적을 남기지 않는다 — 턴이 닫히는 것은 활동이 아니라 결말이다.
-      return withLastTurn(state, (turn) => ({
+      const closed = withLastTurn(trimmed, (turn) => ({
         ...withoutIdle(turn),
         // 델타만 받고 완성 text 없이 턴이 끝나면(스트림 조기 종료) 버퍼를 아이템으로 회수한다.
         ...(turn.draft.length > 0
@@ -1145,6 +1193,10 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
         ...(event.answer !== undefined ? { answer: event.answer } : {}),
       }));
+      return moved.length > 0
+        ? { ...closed, turns: [...closed.turns, { dispatch: null, items: moved, state: "done" as const, toolCount: 0, draft: "" }] }
+        : closed;
+    }
     case "job": {
       const existing = state.jobs.find((job) => job.id === event.id);
       const next: AgentChatJob = {
@@ -1260,6 +1312,8 @@ export interface AgentChatTurnView {
   readonly changes: readonly AgentChatChange[];
   /** 아직 답하지 않은 카드가 있는가 — 이 턴은 일하는 중이 아니라 기다리는 중이다. */
   readonly awaiting: boolean;
+  /** 턴 머리에 선 받은 메시지 — 원장에서 빠지고 접힘 밖에 선다. */
+  readonly received: readonly AgentChatTurnItem[];
 }
 
 /**
@@ -1268,49 +1322,57 @@ export interface AgentChatTurnView {
  * turn-end 이벤트가 없으므로 말미 승격 규칙이 곧 Answer 판정이다.
  */
 export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
-  const last = turn.items.at(-1);
+  // 턴 머리에 선 받은 메시지는 과정이 아니다 — 접힘 밖에서 이 턴을 연 것으로 선다.
+  let headCount = 0;
+  while (turn.items[headCount]?.type === "received") headCount += 1;
+  const received = turn.items.slice(0, headCount);
+  const items = headCount > 0 ? turn.items.slice(headCount) : turn.items;
+  const last = items.at(-1);
   const trailingText = last?.type === "text" ? last.text ?? "" : null;
-  const changes = collectChanges(turn.items);
-  const awaiting = turn.items.some((item) => item.type === "ask" && item.ask?.outcome === undefined);
+  const changes = collectChanges(items);
+  const awaiting = items.some((item) => item.type === "ask" && item.ask?.outcome === undefined);
   if (turn.state === "working") {
     const streaming = (trailingText ?? "") + turn.draft;
     return {
-      ledger: trailingText !== null ? turn.items.slice(0, -1) : turn.items,
+      ledger: trailingText !== null ? items.slice(0, -1) : items,
       answer: null,
       streamingText: streaming.length > 0 ? streaming : null,
       changes,
       awaiting,
+      received,
     };
   }
   if (turn.state === "error") {
-    return { ledger: turn.items, answer: null, streamingText: null, changes, awaiting };
+    return { ledger: items, answer: null, streamingText: null, changes, awaiting, received };
   }
   // 중지된 턴에서 흐르던 글은 Answer가 아니다 — 끝까지 쓰이지 않았으므로 그 이름을 줄 수 없다.
   // 그렇다고 접힘 속에 넣지도 않는다: 방금 멈춘 사람이 가장 먼저 보려는 것이 그 글이고,
   // 접어 두면 자기가 무엇을 멈췄는지 확인하려고 한 번 더 눌러야 한다.
   if (turn.state === "stopped") {
     return {
-      ledger: trailingText !== null ? turn.items.slice(0, -1) : turn.items,
+      ledger: trailingText !== null ? items.slice(0, -1) : items,
       answer: null,
       streamingText: trailingText !== null && trailingText.length > 0 ? trailingText : null,
       changes,
       awaiting,
+      received,
     };
   }
   if (turn.answer !== undefined) {
     const promoted = trailingText !== null && trailingText.trim() === turn.answer.trim();
     return {
-      ledger: promoted ? turn.items.slice(0, -1) : turn.items,
+      ledger: promoted ? items.slice(0, -1) : items,
       answer: turn.answer,
       streamingText: null,
       changes,
       awaiting,
+      received,
     };
   }
   if (trailingText !== null && trailingText.length > 0) {
-    return { ledger: turn.items.slice(0, -1), answer: trailingText, streamingText: null, changes, awaiting };
+    return { ledger: items.slice(0, -1), answer: trailingText, streamingText: null, changes, awaiting, received };
   }
-  return { ledger: turn.items, answer: null, streamingText: null, changes, awaiting };
+  return { ledger: items, answer: null, streamingText: null, changes, awaiting, received };
 }
 
 /**
@@ -1636,6 +1698,23 @@ function restTurn(turn: AgentChatTurn, now: number | undefined): AgentChatTurn {
 
 function restLastTurn(state: AgentChatLogState, now: number | undefined): AgentChatLogState {
   return withLastTurn(state, (turn) => restTurn(turn, now));
+}
+
+/** 명령 뒤에 수신 머리가 붙어도 명령의 진행·결말은 원래 명령에 돌려준다. */
+function commandTurnIndex(turns: readonly AgentChatTurn[]): number {
+  let at = turns.length - 1;
+  while (at >= 0 && receivedHead(turns[at])) at -= 1;
+  return turns[at]?.command ? at : -1;
+}
+
+/** 닫힌 턴 뒤에 도착한 받은 메시지만 서 있는, 아직 시작하지 않은 턴인가. */
+function receivedHead(turn: AgentChatTurn | undefined): boolean {
+  return turn !== undefined
+    && turn.dispatch === null
+    && !turn.command
+    && turn.state !== "working"
+    && turn.items.length > 0
+    && turn.items.every((item) => item.type === "received");
 }
 
 function withoutIdle(turn: AgentChatTurn): AgentChatTurn {
