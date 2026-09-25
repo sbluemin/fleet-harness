@@ -25,8 +25,8 @@ Review semantic changes by assembling an entrypoint with **only references selec
 
 | Representative request/condition | Expected route and contract |
 |---|---|
-| Escape from a Console modal reaches a background shortcut | console-e2e browser route; Fleet Browser, setup/verification, actual focus and shortcut checks |
-| Browser verification with Fleet Browser unavailable or explicit headless/pre-navigation instrumentation required | console-e2e browser fallback; record reason, agent-browser init/owned-session cleanup, no permission bypass |
+| Escape from a Console modal reaches a background shortcut | console-e2e browser route; agent-browser with init instrumentation, setup/verification, actual focus and shortcut checks, owned-session cleanup |
+| Browser verification with agent-browser unavailable | console-e2e browser fallback; record reason, Fleet Browser owned-tab cleanup, no permission bypass |
 | Verify a Console modal inside Electron | console-e2e Desktop route; keep owned CDP renderer for SPA checks, do not substitute a browser tab |
 | Give me a URL to try this branch myself | console-handoff; verify seed/PID, open in this Operation's Fleet Browser, leave server and tab running |
 | Reopen a closed Windows Desktop window from the tray | console-e2e Desktop native lane; Windows headed evidence, not macOS/CDP substitution |

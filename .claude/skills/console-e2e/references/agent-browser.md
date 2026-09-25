@@ -1,10 +1,10 @@
-# Browser fallback — agent-browser
+# Browser route — agent-browser
 
-Read only when Fleet Browser is unavailable or cannot provide evidence required by the scenario. Record the missing capability or actual error before switching. A permission denial is not permission to bypass that boundary with another tool.
+Default driver for Console browser E2E. Switch to [Fleet Browser](fleet-browser.md) only when agent-browser cannot run here (missing binary, blocked install, unusable daemon), recording the error first.
 
-## Load the agent-browser contract
+## Load the contract
 
-Record the test host OS/architecture before choosing an agent-browser binary. If the host is Windows ARM64, the native wrapper is unavailable, or the result depends on platform-specific input behavior, read [the platform automation reference](platform-automation.md) completely before running browser commands. Never silently substitute an unofficial binary or report an emulated automation client as native ARM64 evidence.
+Record the host OS/architecture. On Windows ARM64, when the native wrapper is unavailable, or when the result depends on platform-specific input, read [the platform automation reference](platform-automation.md) before running browser commands.
 
 Load the `agent-browser` skill, then the installed CLI workflow:
 
@@ -17,15 +17,11 @@ ab skills get core --full
 ab skills get dogfood
 ```
 
-Choose one unique literal session id matching `^fleet-console-e2e-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`. Repeat that exact literal in every independent browser call; never store it in a shell variable or rely on shell state crossing tool calls. The examples use `fleet-console-e2e-20260725-a7c3`; replace it consistently before running them.
+Choose one unique session id matching `^fleet-console-e2e-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$` and repeat that literal in every call; shell variables, `ab()`, and cwd do not survive between tool calls. The examples use `fleet-console-e2e-20260725-a7c3`, `<worktree>`, `<scratchpad>`, and `<port>`: substitute recorded absolute values consistently.
 
-Agent-browser defaults to headless. Set the 30-minute owned-daemon idle timeout and pass `--headed false` on the first `open` to override user or project configuration:
+## Open with instrumentation
 
-The navigation example uses `/console/operations`; replace that literal only when the scenario targets another route.
-
-## Instrument before navigation
-
-Register errors, rejections, and WebSocket lifecycle before the first page load:
+Register errors, rejections, and WebSocket lifecycle before the first page load (prefer the Write tool for the script file):
 
 ```bash
 INIT="<scratchpad>/fleet-console-e2e-init-<unique-id>.js"
@@ -52,8 +48,14 @@ AGENT_BROWSER_IDLE_TIMEOUT_MS=1800000 ab --session fleet-console-e2e-20260725-a7
 ab --session fleet-console-e2e-20260725-a7c3 wait --load domcontentloaded
 ```
 
-**`--headed false` is ignored because a daemon is already running -> stop and report when headless proof is required; never claim the run was headless or use `close --all`/kill an unknown daemon -> sessions isolate browser state, not daemon launch mode.**
+Replace `/console/operations` only when the scenario targets another route. `--headed false` overrides a user/project `headed` config; pass `--headed` instead when the task requires a headed visual gate. The launch mode belongs to the daemon: if a running daemon ignores the flag, report the actual mode rather than claiming the requested one, and never `close --all` or kill an unknown daemon to reset it.
 
-Replace `<worktree>` and `<scratchpad>` with this session's absolute paths. Shell variables and `ab()` do not survive independent calls: redeclare required values or use recorded literals. Prefer the available Write tool to create script files.
+## Cleanup
 
-After the first `open` attempt, run `node <worktree>/.claude/skills/console-e2e/scripts/close-owned-session.mjs <session>` on every success and failure path. It must verify both session and recorded PID disappearance. Never apply this helper to a Fleet Browser tab or Desktop CDP session.
+After the first `open` attempt, run on every success and failure path:
+
+```bash
+node <worktree>/.claude/skills/console-e2e/scripts/close-owned-session.mjs fleet-console-e2e-20260725-a7c3
+```
+
+Cleanup succeeds only when the helper reports that both the session and its recorded PID disappeared, not from a raw `close` exit code. The helper is for standalone agent-browser sessions only, not Fleet Browser tabs or a Desktop CDP session.

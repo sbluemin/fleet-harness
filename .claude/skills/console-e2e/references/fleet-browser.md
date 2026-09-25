@@ -1,25 +1,20 @@
-# Browser route — Fleet Browser
+# Browser fallback — Fleet Browser
 
-Use `mcp__fleet-browser__*` for Console browser E2E. This is the Operation's Browser pane, not the Electron application under test and not an agent-browser daemon.
+Use `mcp__fleet-browser__*` only when [agent-browser](agent-browser.md) cannot run here. Record the agent-browser error and affected scope before switching. A failed product assertion is not a reason to switch drivers, and a permission denial is not permission to route around it. Fleet Browser is this Operation's Browser pane, not the Electron application under test.
 
 ## Connection and ownership
 
-1. Discover/load the available Fleet Browser tools and inspect `tabs_context` before navigation. Create a fresh tab with `tabs_create`, record its returned ID, and pass that ID explicitly to subsequent calls. Existing tabs belong to the user unless explicitly assigned to this run.
-2. Navigate only the owned tab to the isolated Console URL established by [setup](setup.md). Verify the final URL and loaded page, not just transport success. Do not import user cookies or point at the canonical Console to simplify setup.
-3. Record host OS/architecture, browser engine and actual display mode. Fleet Browser does not expose the agent-browser `--headed false` contract: never label its evidence headless by assumption. Explicit headless requirements need a supported capability or the [fallback](agent-browser.md). For a headed visual gate, confirm the visible pane and capture its screenshot; a DOM snapshot alone does not satisfy that gate.
+1. Inspect `tabs_context` before navigation. Create a fresh tab with `tabs_create`, record its ID, and pass that ID explicitly afterwards. Existing tabs belong to the user unless explicitly assigned to this run.
+2. Navigate only the owned tab to the isolated Console URL from [setup](setup.md). Verify the final URL and loaded page, not just transport success. Do not import user cookies or point at the canonical Console.
+3. Record host OS/architecture, browser engine, and actual display mode. The pane is visible, so never label its evidence headless; a claim that requires headless or pre-navigation instrumentation stays unverified on this route.
 
 ## Observe and interact
 
-- Use `read_page`/`find` for fresh accessible references, `computer` for real pointer/keyboard input and screenshots, and `form_input` for supported form controls. Inspect each tool's schema instead of assuming agent-browser command syntax. Refresh references after navigation or rerenders.
-- Use `javascript_tool` for read-only DOM/state/geometry inspection and debugging, not to implement UI changes or replace the interaction being tested with DOM mutation or synthetic `.click()`.
-- Use filtered `read_console_messages` and `read_network_requests` for scenario diagnostics. Start from a fresh owned tab, capture a baseline before acting, and distinguish existing entries from new ones on a repeat run. Do not assume a clear-logs API or that every socket event/unhandled rejection is recorded.
-- Screenshots, real input, and visible postconditions establish focus, hit testing, transitions, and canvas-terminal behavior. An accepted input call alone does not prove the UI received it.
-- If the claim requires errors/rejections/WebSocket instrumentation from before the first navigation and the available tools cannot install it, use the fallback's init-script workflow. Post-load injection misses startup events and is not equivalent evidence.
+- Use `read_page`/`find` for fresh references, `computer` for real pointer/keyboard input and screenshots, and `form_input` for supported form controls. Read each tool's schema rather than assuming agent-browser syntax.
+- Use `javascript_tool` for read-only DOM/state/geometry inspection, not to replace the interaction under test with DOM mutation or synthetic `.click()`.
+- Use filtered `read_console_messages` and `read_network_requests`. Capture a baseline before acting and distinguish new entries on a repeat run; the tools do not promise a clear operation or complete socket/rejection capture.
+- An accepted input call does not prove the UI received it; confirm with a screenshot or visible postcondition.
 
-## Fallback and cleanup
+## Cleanup
 
-Fall back to agent-browser only for an unavailable/unusable Fleet Browser connection or a concrete missing capability needed by the scenario (for example explicit headless execution or pre-navigation instrumentation). Record the error/capability and affected scope. Do not switch because a product assertion failed, and do not route around permission denial. Stop repeated failing browser calls after 2–3 attempts; use the documented fallback when appropriate, otherwise report the blocker.
-
-After any tab creation, close only recorded owned tabs using `tabs_close` on both success and failure paths, then confirm their absence with `tabs_context`. Do not close the Browser pane, pre-existing tabs, or its host app. An actual Console instance left for the user to try belongs to `console-handoff`; a standalone proposal tab belongs to `product-proposal`. Keep these handoff resources separate from E2E verification resources and follow their owning skill's retention contract. If the connection prevents cleanup, report the remaining tab IDs rather than claiming cleanup. Before switching drivers, clean up the Fleet Browser tabs; the owned isolated Console may remain for the same scenario.
-
-Stop the verified owned isolated Console after verification, following [verification](verification.md). Never invoke `close-owned-session.mjs` for Fleet Browser: it owns no agent-browser session or daemon PID.
+Close only recorded owned tabs with `tabs_close` on success and failure, then confirm their absence with `tabs_context`. Do not close the Browser pane, pre-existing tabs, or tabs owned by `console-handoff` or `product-proposal`. If the connection prevents cleanup, report the remaining tab IDs. Stop the owned isolated Console as [verification](verification.md) describes.

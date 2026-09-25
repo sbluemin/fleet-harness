@@ -90,7 +90,7 @@ The contract worth pinning, in this order:
 4. `POST /api/v1/join {}` with the pairing cookie -> `204`. **No link, no token.** This is the return path.
 5. `DELETE /api/v1/paired-devices/:id` -> `204`. Now the same resume answers `401` and clears the cookie with `Max-Age=0`.
 
-Step 4 is the one that regressed historically: when the session *was* the credential, every way it ended also destroyed the device's way back, and the link had already burned.
+Step 4 is the fragile one: if the session is treated as the credential, every way it ends also destroys the device's way back, and the link has already burned.
 
 ## What the owner's screen must show
 
@@ -103,7 +103,7 @@ The browser side is where the guest becomes visible. Settings -> Remote access -
 }))
 ```
 
-A connected device reads `Connected now` and carries **two** buttons — disconnect (reversible) and remove (permanent). After a disconnect the row stays, its time cell becomes relative, and only remove is left. A row that vanishes on disconnect is the old contract returning.
+A connected device reads `Connected now` and carries **two** buttons — disconnect (reversible) and remove (permanent). After a disconnect the row stays, its time cell becomes relative, and only remove is left. A row that vanishes on disconnect is a regression.
 
 Check `remote/paired-devices.json` under the isolated `FLEET_CONSOLE_DATA_DIR` too: it must contain the device but never the cookie secret.
 

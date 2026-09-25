@@ -1,4 +1,4 @@
 interface:
   display_name: "Fleet Console E2E"
-  short_description: "Verify Console in Fleet Browser or Electron Desktop"
-  default_prompt: "Choose the requested browser or Desktop runtime and load only relevant references. Use Fleet Browser first for browser verification, recording a concrete reason before agent-browser fallback. Keep Electron CDP/native/package workflows for Desktop. Verify the isolated target build and finish with observed evidence, unverified boundaries, and owned-resource cleanup results."
+  short_description: "Verify Console in agent-browser or Electron Desktop"
+  default_prompt: "Choose the requested browser or Desktop runtime and load only relevant references. Use agent-browser for browser verification, recording a concrete reason before Fleet Browser fallback. Keep Electron CDP/native/package workflows for Desktop. Verify the isolated target build and finish with observed evidence, unverified boundaries, and owned-resource cleanup results."

@@ -7,12 +7,11 @@ reproducing a provider-specific tool-call defect, or measuring what a model actu
 on the wire.
 
 The base skill still owns isolation, instrumentation, and cleanup. This page only adds
-what the agent-CLI path needs on top, and every item below was paid for by a failed
-attempt.
+what the agent-CLI path needs on top.
 
 ## Browser driver
 
-Keep the driver selected by the base skill. The `ab` examples and measured CLI quirks below apply only to agent-browser fallback or Desktop CDP; they do not require switching away from Fleet Browser. For Fleet Browser use its page, form, pointer, keyboard, screenshot, and read-only inspection tools. Select combobox options with real input, not JavaScript mutation. For canvas terminals focus the terminal, send input through the driver, and verify the resulting screenshot; do not assume DOM text or an input acknowledgement proves delivery.
+Keep the driver selected by the base skill. The `ab` examples below are agent-browser or Desktop CDP commands; on the Fleet Browser fallback use its page, form, pointer, keyboard, screenshot, and read-only inspection tools, select combobox options with real input rather than JavaScript mutation, and confirm canvas-terminal input by screenshot.
 
 ## Absolute paths, or you test the wrong build
 
@@ -31,11 +30,9 @@ Confirm what actually booted before trusting any result:
 ps -p "$(python3 -c "import json;print(json.load(open('<e2e-dir>/console.lock'))['pid'])")" -o command=
 ```
 
-Every `<placeholder>` below is spelled out on each call, never carried in a shell variable —
-cwd and shell state reset between tool calls, so a variable set in one call is empty in the
-next. That includes the browser session id: the base skill requires the same **literal** id in
-every independent `ab` call. The examples use `fleet-console-e2e-20260807-strict`; replace it
-consistently, and replace `<e2e-dir>` / `<scratch>` / `<worktree>` / `<port>` the same way.
+Spell every `<placeholder>` out on each call, including the literal session id
+(`fleet-console-e2e-20260807-strict` in the examples) and `<e2e-dir>` / `<scratch>` /
+`<worktree>` / `<port>`; shell state does not carry between tool calls.
 
 ## Serve with the capture and model levers already set
 
@@ -84,7 +81,7 @@ Settings → **AI Gateway** (Terminal) → the provider's row in the gateway mod
 the model in that row's combobox → the add-model action (use its current localized label). Launch the Operation afterwards and the
 entry appears, e.g. `OpenCode-DeepSeek-V4-Flash (1M Context) · From gateway`.
 
-That combobox resists automation in four separate ways, measured 2026-08-07:
+That combobox resists automation in four ways:
 
 - `scrollintoview` first, or the click lands nowhere and `aria-expanded` stays `false`.
 - Its options never reach the accessibility tree — `snapshot` shows none even while open.
@@ -132,7 +129,7 @@ and filter it afterward. Provider keys and local credentials have already crosse
 output and the transcript before the filter runs, so post-processing cannot restore the
 secrecy boundary. The same holds for `console.lock`, `auth.json`, and other credential-bearing
 files: read only the keys you need with `node`/`jq`/`python3`, never `cat` or `sed`-mask them —
-BSD `sed` does not know `\s`, and one such mask printed a live Console token.
+BSD `sed` does not know `\s`, so such a mask can print a live token.
 
 ## Typing into the terminal
 
@@ -183,9 +180,9 @@ Import the built adapter directly only when the runner cannot express the bespok
 shape being tested. Requires a fresh package build — workspace `dist/` is gitignored, so a
 stale or absent build silently tests the previous revision.
 
-Run any live probe **several times**. Provider behavior here is not deterministic: measuring
-tool-call arguments on this wire, roughly 1 run in 5 returned truncated JSON with no
-closing brace, independent of anything the gateway does. A single clean run proves nothing.
+Run any live probe **several times**. Provider behavior is not deterministic — tool-call
+arguments on this wire have returned truncated JSON in roughly 1 run in 5, independent of the
+gateway — so a single clean run proves nothing.
 
 Use the browser path when the question involves Console — launch wiring, PTY, plugin
 routes, what the operator actually sees.

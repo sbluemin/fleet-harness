@@ -58,7 +58,7 @@ It cannot by itself verify:
 - Authenticode, signing, or release trust;
 - physical IME and scan-code behavior.
 
-Use Playwright Electron, platform-native inspection, package verification, or a manual headed check for those claims. A CDP `press` is not native accelerator evidence. Record artifact architecture from the package output or executable metadata, not from agent-browser.
+Use platform-native inspection, package verification, or a manual headed check for those claims. A CDP `press` is not native accelerator evidence. Record artifact architecture from the package output or executable metadata, not from agent-browser.
 
 Report the fallback explicitly. Example:
 
