@@ -142,7 +142,18 @@ describe("agent chat mode routes", () => {
       message: { content: [{ type: "tool_use", id, name: "SendMessage", input: { to, message: text } }] },
       ...extra,
     });
-    const settled = (id: string, ok: boolean) => ({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: JSON.stringify({ success: ok }) }] } });
+    // 실제 SDK가 돌려주는 모양 그대로다: 결과 본문은 문자열이 아니라 text 블록 배열이고, 거절도
+    // `is_error` 없이 그 배열 안의 `success: false` 하나로 온다.
+    const settled = (id: string, ok: boolean) => ({
+      type: "user",
+      message: {
+        content: [{
+          type: "tool_result",
+          tool_use_id: id,
+          content: [{ type: "text", text: JSON.stringify({ success: ok, message: ok ? "delivered" : "no such session" }) }],
+        }],
+      },
+    });
     harness.emitToLatest(sent("call-1", "commander", "Check the mobile layout."));
     harness.emitToLatest(settled("call-1", true));
     // 같은 호출을 다시 관측해도, 실패한 호출·서브에이전트 발신·이 Console이 모르는 이름도 줄을 세우지 않는다.
