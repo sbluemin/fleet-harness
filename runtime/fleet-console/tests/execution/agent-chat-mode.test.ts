@@ -9,6 +9,7 @@ import type { ConsoleRuntimeContext } from "../../features/execution/host/contex
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { chatOriginLabel, readChatJournalEvent, type AgentChatOrigin } from "../../features/execution/client/agent/chat/chat-events.js";
 import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";
 import { createConsoleControl } from "../../features/console-use/host/console-control.js";
 import { resolveAgentCliBinary } from "../../features/execution/host/agent/agent-cli-paths.js";
@@ -134,8 +135,8 @@ describe("agent chat mode routes", () => {
     const memberWake = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-member-wake", { kind: "send", operationId: member, text: "Start the mission" });
     await vi.waitFor(() => expect(harness.consoleControl.getAction(memberWake.id)?.status).toBe("finished"));
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent(Plan)"] });
-    // 세션 간 메시지는 CLI 소켓으로 직접 오가 받는 쪽 스트림에는 아무것도 남지 않는다. 서버가 보는
-    // 것은 **보낸** 자식의 도구 호출뿐이고, 성공한 그 호출만이 받는 쪽 원장에 줄 하나를 세운다.
+    // 수신 줄의 근거는 **보낸** 자식의 라이브 도구 호출과 그 결과, 그 둘뿐이다. 이 경로는 어느 쪽
+    // 트랜스크립트도 읽지 않으며, 성공한 호출만이 받는 쪽 원장에 줄 하나를 세운다.
     const frames = await harness.openChatSocket(commander);
     const sent = (id: string, to: string, text: string, extra: Record<string, unknown> = {}) => ({
       type: "assistant",
@@ -173,6 +174,21 @@ describe("agent chat mode routes", () => {
     expect(received()[1]).toMatchObject({ text: "Last word." });
     // Console Use 발신은 그대로 Operation 출처의 지시로 선다 — 수신 줄로 두 번 서지 않는다.
     expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Begin the objective", by: expect.objectContaining({ kind: "operation", operationId: sessionId }) }));
+    // 플러그인 발신도 같은 자리에서 제 출처를 지킨다. 서버가 실은 값에서 끝내지 않고 브라우저가 읽는
+    // 문까지 통과시킨다 — 화면이 세우는 라벨이 같은 pluginId여야 "누가 보냈는가"가 보존된 것이다.
+    const byPlugin = harness.consoleControl.request({ kind: "plugin", pluginId: "fleet-todo" }, "plugin-message", { kind: "send", operationId: commander, text: "Take the next step." });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(byPlugin.id)).toMatchObject({ status: "finished", outcome: "succeeded" }));
+    const pluginFrame = await vi.waitFor(() => {
+      const frame = frames.find(({ event }) => event.kind === "dispatch" && (event as { readonly text?: string }).text === "Take the next step.");
+      expect(frame).toBeDefined();
+      return frame!;
+    });
+    const journalEvent = readChatJournalEvent(pluginFrame.raw)?.event;
+    expect(journalEvent).toMatchObject({ kind: "dispatch", by: { kind: "plugin", pluginId: "fleet-todo" } });
+    const origin = (journalEvent as { readonly by?: AgentChatOrigin } | undefined)?.by;
+    expect(origin && chatOriginLabel(origin)).toBe("fleet-todo");
+    // 그 지시는 수신 줄을 만들지 않는다 — Console 발신과 세션 간 메시지는 서로 다른 문이다.
+    expect(received()).toHaveLength(2);
     const command = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "console-command", { kind: "send", operationId: sessionId, text: "/compact" });
     await vi.waitFor(() => expect(harness.consoleControl.getAction(command.id)).toMatchObject({ status: "finished", outcome: "succeeded" }));
   });
@@ -421,7 +437,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     },
     stop: async () => {},
   };
-  const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Project" }] });
+  const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: (pluginId) => pluginId === "fleet-todo" });
   lifecycleCleanups.push(() => consoleControl.dispose());
   const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null, ...(options.disabledAgents ? { claudeCodeDisabledAgents: options.disabledAgents } : {}) }), update: (mutate) => mutate({}) };
   const ctx = {
@@ -588,7 +604,9 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         pathname: "/api/v1/agent/ticket",
       });
     },
-    openChatSocket: async (sessionId: string): Promise<Array<{ seq: number; event: { kind: string } }>> => {
+    // 원본 프레임도 함께 남긴다 — 브라우저가 실제로 읽는 문(readChatJournalEvent)을 통과시켜야
+    // 서버가 실은 값과 화면이 세우는 값이 같은지 말할 수 있다.
+    openChatSocket: async (sessionId: string): Promise<Array<{ seq: number; event: { kind: string }; raw: string }>> => {
       if (!route) throw new Error("Agent route was not registered");
       await route({
         req: { method: "POST", url: "/api/v1/agent/ticket", __body: { operationId: sessionId, channel: "chat" } } as unknown as TestRequest,
@@ -599,10 +617,10 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
       if (!ticket) throw new Error("Chat ticket was not issued");
       const context = tickets.consume(ticket);
       if (!context || !chatAttach) throw new Error("Chat attach was not bound");
-      const frames: Array<{ seq: number; event: { kind: string } }> = [];
+      const frames: Array<{ seq: number; event: { kind: string }; raw: string }> = [];
       const socket = createTestChatSocket((raw) => {
         const parsed = JSON.parse(raw) as { seq?: number; event?: { kind: string } };
-        if (typeof parsed.seq === "number" && parsed.event) frames.push({ seq: parsed.seq, event: parsed.event });
+        if (typeof parsed.seq === "number" && parsed.event) frames.push({ seq: parsed.seq, event: parsed.event, raw });
       });
       chatAttach(socket, context);
       await vi.waitFor(() => {
