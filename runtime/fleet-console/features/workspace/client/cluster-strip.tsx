@@ -72,8 +72,10 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen, missionN
     return () => observer.disconnect();
   }, [membersKey, missionNavigation]);
 
-  const done = layout.members.filter((laid) => laid.member.progress === "done").length;
-  const label = t("cluster.strip.aria", { title: layout.cluster.title, done, total: layout.members.length });
+  const missions = layout.members.filter(({ member }) => member.missionNumber !== undefined);
+  const done = missions.filter(({ member }) => member.progress === "done").length;
+  const total = missions.length;
+  const label = t("cluster.strip.aria", { title: layout.cluster.title, done, total });
   const open = onOpen ? (event: MouseEvent | KeyboardEvent, operationId?: string) => {
     event.stopPropagation();
     event.preventDefault();
@@ -94,7 +96,7 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen, missionN
   };
   const isAwaiting = rootActivity === "awaiting" || layout.members.some((laid) => laid.member.progress === "awaiting");
   const rootClass = `cluster-strip-root is-${isAwaiting ? "awaiting" : rootActivity ?? "unknown"}`;
-  const allDone = done === layout.members.length && layout.members.length > 0;
+  const allDone = done === total && total > 0;
   const stripClassName = [
     "cluster-strip", mode === "dense" ? "is-dense" : mode === "count" ? "is-count" : "",
     missionNavigation && open ? "is-mission-navigation" : open ? "is-interactive" : "", className ?? "",
@@ -108,7 +110,7 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen, missionN
         onClick={open ? (event) => open(event) : undefined}
         onKeyDown={open ? (event) => { if (event.key === "Enter" || event.key === " ") open(event); } : undefined}>
         <i className={rootClass} aria-hidden="true" />
-        <span className={`cluster-strip-count${allDone ? " is-done" : ""}`}>{done}/{layout.members.length}</span>
+        <span className={`cluster-strip-count${allDone ? " is-done" : ""}`}>{done}/{total}</span>
       </span>
     );
   }
@@ -135,12 +137,14 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen, missionN
         const separator = laid.depth !== lastDepth;
         lastDepth = laid.depth;
         const member = laid.member;
-        const number = layout.cluster.members.findIndex((candidate) => candidate.operationId === member.operationId) + 1;
-        const title = member.label.replace(/^\d+\.\s*/, "");
+        const number = member.missionNumber;
+        const title = number === undefined ? member.label : member.label.replace(/^\d+\.\s*/, "");
         const state = member.progress === "blocked"
           ? t("cluster.strip.blocked")
           : member.progress === "done" ? t("cluster.nodes.state.done") : t(`cluster.picker.state.${member.progress}`);
-        const tip = t("cluster.strip.missionTip", { n: number, title, state });
+        const tip = number === undefined
+          ? t("cluster.strip.memberTip", { title, state })
+          : t("cluster.strip.missionTip", { n: number, title, state });
         return (
           <span key={member.operationId} className={`cluster-strip-cell${missionNavigation && open ? " is-navigation" : ""}`}
             role={missionNavigation && open ? "button" : undefined} tabIndex={missionNavigation && open ? activeMemberId === member.operationId ? 0 : -1 : undefined}

@@ -487,6 +487,8 @@ export interface OperationClusterMember {
   readonly pending?: boolean;
   /** 묶음 안에서 제목 대신 부르는 짧은 이름("1. package.json name 읽기"). */
   readonly label: string;
+  /** 실제 임무 칸의 표시 번호(1부터 시작). 임무 없는 구성원 칸에는 없다. */
+  readonly missionNumber?: number;
   /**
    * 지휘관 패널의 노드 줄에 서는 이름("조사") — 이 세션이 누구인지 한 낱말로. 없으면 호스트가 선언 순서로 「N 노드」라 부른다.
    * `label`(무엇을 하는지)은 말풍선·낭독에 그대로 남는다. 지휘관 패널이 이 구성원의 본문을 보일 때 캡션 제목 뒤 「› 이름」도 이것이다.

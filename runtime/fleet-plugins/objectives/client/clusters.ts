@@ -74,6 +74,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
         ...(member ? { tone: memberToneOf(objective, member.id) } : {}),
         ...(memberIndex >= 0 ? { order: memberIndex } : {}),
         label: `${byMission.get(mission.id)}. ${mission.text}`,
+        missionNumber: byMission.get(mission.id)!,
         after: mission.prerequisites.map(idOf),
         progress: pending ? (mission.done ? "done" : missionReady(objective.missions, mission) ? "open" : "blocked") : progressOf(objective, mission.id, id, activity),
         ...(!pending ? { awaitingInput: activity.get(id) === "awaiting" } : {}),
@@ -108,7 +109,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
   return out;
 }
 
-const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
+const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 let cached: readonly OperationCluster[] = [];
 let cachedSignature = "";
