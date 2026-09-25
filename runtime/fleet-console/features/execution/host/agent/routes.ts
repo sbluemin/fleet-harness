@@ -535,7 +535,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -1071,7 +1071,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1113,6 +1113,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
       ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
       ...(launchOptions.dormant ? { dormantBorn: true } : {}),
+      // 멱등 기동 키 — 생성과 같은 영속 저장에 실려야 「없음」이 「만든 적 없음」으로 확정된다. 브라우저 DTO 에서는 빠진다.
+      ...(launchOptions.launchKey ? { launchKey: launchOptions.launchKey } : {}),
     };
     ctx.host.operations.create({
       id: session.sessionId,

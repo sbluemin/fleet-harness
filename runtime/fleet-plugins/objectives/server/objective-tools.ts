@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import type { LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, recordLines, stepReady, type ObjectiveItem, type ObjectiveStep } from "./types.js";
+import { criterionProposalSchema, followupBodySchema, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, recordLines, stepReady, type ObjectiveItem, type ObjectiveStep } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
 
 /**
@@ -128,6 +128,15 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         // 마지막 임무를 마쳤다 — 검토 대기로 넘어가기 전에 달성 기준을 스스로 다시 따지게 한다.
         const next = done.steps.every((step) => step.done) ? criteriaCheckPrompt(done) : undefined;
         return text({ ok: true, ...(next ? { next } : {}), item: itemView(done) });
+      }),
+    commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. add a candidate {title, summary (one line), brief, criteria (1–10), evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective carrying that title, brief and criteria and no missions, and its evidence reaches that objective's Commander. A picked candidate is frozen; the person can also discard candidates.`,
+      z.object({ itemId: ids, add: followupBodySchema.optional(), revise: followupReviseSchema.extend({ id: ids }).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
+      (args, item) => {
+        const actions = [args.add, args.revise, args.withdraw].filter((value) => value !== undefined);
+        if (actions.length !== 1) return refuse("invalid_arguments", { hint: "Exactly one of add, revise or withdraw." });
+        if (args.add) return text({ ok: true, item: itemView(store.followupAdd(item.id, args.add)) });
+        if (args.revise) { const { id, ...patch } = args.revise; return text({ ok: true, item: itemView(store.followupRevise(item.id, id, patch)) }); }
+        return text({ ok: true, item: itemView(store.followupWithdraw(item.id, args.withdraw!.id)) });
       }),
     commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. The objective reaches the person's review by itself once every mission is done and every criterion is met; the person completes it. New or reopened missions and the person's edits clear every mark. A mark made on a board the person has since edited is refused as board_changed.",
       z.object({ itemId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_EVIDENCE).optional() }).strict(),

@@ -7,6 +7,8 @@ import type { OperationNode } from "@fleet-console/sdk/operations";
 import type { ConsoleCaller, ConsoleActionInput, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
+import { LaunchKeyError, type LaunchKeyLedger, type LaunchKeyState } from "./launch-keys.js";
+
 const callerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("operation"), operationId: z.string().min(1).max(128) }).strict(),
   z.object({ kind: z.literal("plugin"), pluginId: z.string().min(1).max(128) }).strict(),
@@ -24,11 +26,12 @@ const actionObjectSchema = z.object({
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
   disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
   parentOperationId: z.string().min(1).max(128).optional(),
+  launchKey: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
 }).strict();
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && !value.text)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.launchKey !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "interrupt" && (value.text || value.display || value.displayFormat)) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
   if (value.kind === "resume" && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_resume" });
@@ -71,6 +74,8 @@ export interface ConsoleControlDeps {
   readonly operations: () => readonly OperationNode[];
   readonly theaters: () => readonly { readonly id: string; readonly name: string }[];
   readonly pluginAvailable?: (pluginId: string) => boolean;
+  /** 멱등 기동 키 원장 — 없으면 키 붙은 기동은 capability_unavailable. */
+  readonly launchKeys?: LaunchKeyLedger;
   readonly now?: () => number;
 }
 interface SavedState { version: 2; actions: ConsoleActionReceipt[]; automations: ConsoleAutomation[] }
@@ -152,6 +157,39 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (!observation?.supportedActions.includes(input.kind)) fail("capability_unavailable");
     }
   }
+  /**
+   * 키 붙은 기동 — 같은 키로는 Operation 이 많아야 하나 생긴다. 살아 있으면 새로 띄우지 않고 그 Operation 을 돌려주고, 사람이
+   * 지웠으면(유예 중이든 purge 됐든) 다시 만들지 않는다. 같은 키의 기동이 진행 중이면 그 영수증에 합류한다.
+   * 아니면 키를 예약(용량 검사)하고 새 기동으로 진행한다 — 키는 Operation payload 에 실려 생성과 함께 영속된다.
+   */
+  function keyedLaunch(caller: ConsoleCaller, input: ConsoleActionInput): ConsoleActionReceipt | null {
+    if (caller.kind !== "plugin") fail("invalid_launch_option");
+    const ledger = deps.launchKeys;
+    if (!ledger) return fail("capability_unavailable");
+    const owner = (caller as { pluginId: string }).pluginId;
+    const found = launchKeyState(caller, input.theaterId!, input.launchKey!);
+    if (found.state === "live") return { id: randomUUID(), requestId: `launch-key:${input.launchKey}`, caller, input, status: "finished", createdAt: stamp(), updatedAt: stamp(), expiresAt: stamp(), operationId: found.operationId! };
+    if (found.state === "deleting" || found.state === "purged") fail("launch_key_deleted");
+    if (found.state === "pending") return pendingKeyed(caller, input.launchKey!)!;
+    try { ledger.reserve(owner, input.theaterId!, [input.launchKey!]); }
+    catch (error) { if (error instanceof LaunchKeyError) fail(error.code); throw error; }
+    return null;
+  }
+  function pendingKeyed(caller: ConsoleCaller, key: string) {
+    return state.actions.find((a) => sameCaller(a.caller, caller) && a.input.launchKey === key && pendingStatuses.has(a.status) && !a.operationId) ?? null;
+  }
+  /** 키의 지금 상태 — 살아 있음·유예·purge 가 진행 중 기동보다 먼저다(생성 직후 영수증에 id 가 붙기 전에도 live 로 읽힌다). */
+  function launchKeyState(caller: ConsoleCaller, theaterId: string, key: string): { readonly state: LaunchKeyState | "pending"; readonly operationId?: string } {
+    if (caller.kind !== "plugin") fail("invalid_launch_option");
+    const ledger = deps.launchKeys;
+    if (!ledger) return fail("capability_unavailable");
+    if (!deps.theaters().some((t) => t.id === theaterId)) fail("unknown_theater");
+    let found: ReturnType<LaunchKeyLedger["state"]>;
+    try { found = ledger.state((caller as { pluginId: string }).pluginId, theaterId, key); }
+    catch (error) { if (error instanceof LaunchKeyError) return fail(error.code); throw error; }
+    if (found.state === "live" || found.state === "deleting" || found.state === "purged") return found;
+    return pendingKeyed(caller, key) ? { state: "pending" } : found;
+  }
   function updateAction(id: string, patch: Partial<ConsoleActionReceipt>) {
     const index = state.actions.findIndex((a) => a.id === id);
     if (index < 0) return fail("action_not_found");
@@ -183,6 +221,10 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       return duplicate;
     }
     validTarget(input);
+    if (input.launchKey !== undefined) {
+      const existing = keyedLaunch(caller, input);
+      if (existing) return existing;
+    }
     state.actions = state.actions.filter((a) => now() - Date.parse(a.createdAt) < RETENTION_DAYS * 86_400_000 || pendingStatuses.has(a.status));
     if (state.actions.length >= ACTION_LIMIT) fail("action_capacity");
     const receipt: ConsoleActionReceipt = { id: randomUUID(), requestId, caller, input, status: "accepted", createdAt: stamp(), updatedAt: stamp(), expiresAt: new Date(now() + 15 * 60_000).toISOString(), ...(policyId ? { policyId } : {}) };
@@ -214,6 +256,11 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       updateAction(id, outcome === "unknown" ? { status: "outcome_unknown" } : { status: "finished", outcome });
       if (entry.policyId && outcome !== "succeeded" && outcome !== "completed") updateAutomation(entry.policyId, { status: "paused", lastError: outcome });
     }, entry.caller).then((result) => {
+      // 키 붙은 기동이 섰다 — 호스트 상태가 나중에 비워져도 그 키를 「만든 적 없음」으로 답하지 않게 원장에 남긴다.
+      if (entry.input.launchKey && entry.caller.kind === "plugin") {
+        try { deps.launchKeys?.recordCreated(entry.caller.pluginId, entry.input.launchKey, result.operationId); }
+        catch { /* 예약으로 남는다 — Operation payload 의 키가 여전히 live 를 말한다. */ }
+      }
       const current = state.actions.find((a) => a.id === id)!;
       updateAction(id, { status: current.status === "accepted" ? "running" : current.status, operationId: result.operationId, delivery: result.delivery });
     }, (error) => {
@@ -314,6 +361,18 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   return {
     attach(value: ConsoleExecutionAdapter) { if (adapter) throw new Error("Console execution already attached"); adapter = value; return () => { if (adapter === value) adapter = null; }; },
     observe, request, automation, readEvents, briefing, tick,
+    launchKeyState,
+    reserveLaunchKeys(caller: ConsoleCaller, theaterId: string, keys: readonly string[]) {
+      if (caller.kind !== "plugin") return fail("invalid_launch_option");
+      if (!deps.launchKeys) return fail("capability_unavailable");
+      if (!deps.theaters().some((t) => t.id === theaterId)) fail("unknown_theater");
+      try { deps.launchKeys.reserve(caller.pluginId, theaterId, keys); }
+      catch (error) { if (error instanceof LaunchKeyError) fail(error.code); throw error; }
+    },
+    launchKeyUsage(caller: ConsoleCaller) {
+      if (caller.kind !== "plugin" || !deps.launchKeys) return fail("capability_unavailable");
+      return deps.launchKeys.usage(caller.pluginId);
+    },
     getAction(id: string, caller?: ConsoleCaller) { return state.actions.find((a) => a.id === id && (!caller || sameCaller(a.caller, caller))) ?? null; },
     listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },
     pauseAutomation(id: string, caller: ConsoleCaller) { const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },

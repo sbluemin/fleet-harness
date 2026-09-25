@@ -80,9 +80,11 @@ export default definePlugin({
       ctx.host.lifecycle.registerCleanup(off);
     };
     // 지휘관이 닫히면 담당도 함께 닫는다. 레코드는 복원 불가로 확정될 때(purged) 거둔다 — 유예 동안 복원하면 목표도 돌아온다.
-    on("operation:deleted", (operationId) => launch.operationDeleted(operationId));
-    on("operation:purged", (operationId) => launch.operationPurged(operationId));
-    on("operation:restored", (operationId) => launch.operationChanged(operationId));
+    // 후속으로 만든 Operation 이 지워지거나 돌아오면 그 원본의 배치 표시(생성됨·삭제됨)도 다시 방송한다.
+    on("operation:deleted", (operationId) => { launch.operationDeleted(operationId); launch.followupTargetChanged(operationId); });
+    on("operation:purged", (operationId) => { launch.operationPurged(operationId); launch.followupTargetChanged(operationId); });
+    // 원본이 복원되면 멈춰 있던 후속 생성을 같은 키로 이어 간다(지운 동안에는 만들지 않는다).
+    on("operation:restored", (operationId) => { launch.operationChanged(operationId); launch.resumeFollowups(operationId); launch.followupTargetChanged(operationId); });
     on("operation:renamed", (operationId) => launch.operationChanged(operationId));
     // 목표의 그룹은 지휘관 Operation 의 그룹이다 — 옮겨지면(사이드바·Console Use·목표 화면) 담당이 따라가고 화면을 다시 방송한다.
     on(OPERATION_GROUPED_EVENT_CHANNEL, (_operationId, payload) => {
@@ -90,6 +92,10 @@ export default definePlugin({
       if (typeof event.theaterId !== "string" || (event.groupId !== null && typeof event.groupId !== "string")) return;
       launch.operationGrouped(event as OperationGroupedEvent);
     });
+
+    // 끝나지 않은 후속 생성 — 재시작 전에 creating 으로 남은 항목을 같은 키로 이어 간다(키 원장이 중복과 삭제 번복을 막는다).
+    try { launch.resumeFollowups(); }
+    catch (error) { console.warn(`[objectives] follow-up resume skipped: ${error instanceof Error ? error.message : String(error)}`); }
 
     const routes = createObjectiveRoutes(ctx, store, launch);
     for (const route of routes) {

@@ -55,6 +55,11 @@ function harness(routingOrigin: () => string | null = () => null) {
   const userQuestions: { operationId: string; policy: "blocked" | "default" }[] = [];
   // 호스트처럼 표면은 채팅 표식이 말하고, 살아 있는 세션은 지금 보이는 표면으로 덮을 수 있다.
   const surfaces = new Map<string, "chat" | "terminal">();
+  // 호스트의 멱등 기동 키 — 키 하나에 Operation 하나, 지운 키는 다시 만들지 않는다. hostFault 는 생성 뒤 응답을 잃는 장애다.
+  const keyed = new Map<string, string>();
+  const deletedKeys = new Set<string>();
+  const reservedKeys = new Set<string>();
+  const hostFault = { afterCreate: 0 };
   const operationsHost = {
     get: (id: string) => operations.get(id) ?? null,
     list: () => [...operations.values()],
@@ -66,7 +71,8 @@ function harness(routingOrigin: () => string | null = () => null) {
       if (input.groupId !== undefined && (node.groupId ?? null) !== input.groupId) { const previousGroupId = node.groupId ?? null; node.groupId = input.groupId; for (const listener of grouped) listener({ operationId: id, theaterId: node.theaterId, groupId: input.groupId, previousGroupId }); }
       return node;
     },
-    delete: (id: string) => { deleted.push(id); return operations.delete(id); },
+    // 호스트처럼 지운 Operation 의 기동 키는 삭제로 읽힌다(유예·purge).
+    delete: (id: string) => { deleted.push(id); for (const [key, target] of keyed) if (target === id) deletedKeys.add(key); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
   const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++ });
@@ -80,19 +86,25 @@ function harness(routingOrigin: () => string | null = () => null) {
       server: { origin: routingOrigin },
       operations: operationsHost,
       consoleControl: {
-        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string }) => {
+        launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
+        reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
+        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string }) => {
           const receipt = { id: "r", requestId: "r", caller: { kind: "plugin", pluginId: "objectives" }, input, status: "running", createdAt: "", updatedAt: "", expiresAt: "" };
           if (input.kind === "send") { sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { ...receipt, operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
           if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { ...receipt, operationId: input.operationId }; }
           // resume 은 휴면만 세션째 되살린다.
           if (input.kind === "resume") { if (activity.get(input.operationId!) !== "dormant") throw new Error("not_dormant"); resumed.push(input.operationId!); activity.set(input.operationId!, "idle"); return { ...receipt, operationId: input.operationId }; }
+          if (input.launchKey && deletedKeys.has(input.launchKey)) throw new Error("launch_key_deleted");
+          if (input.launchKey && keyed.has(input.launchKey)) return { ...receipt, operationId: keyed.get(input.launchKey) };
           await new Promise((resolve) => setTimeout(resolve, 5));
           const id = `launched-${launches.length + 1}`;
+          if (input.launchKey) keyed.set(input.launchKey, id);
           launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableUserQuestions: input.disableUserQuestions, groupId: input.groupId });
           // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
           activity.set(id, input.dormant ? "dormant" : "idle");
-          add(id, { title: input.title ?? id, groupId: input.groupId ?? null, payload: { session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } } });
+          add(id, { title: input.title ?? id, groupId: input.groupId ?? null, payload: { ...(input.viewMode === "chat" ? { chatMode: true } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } } });
+          if (input.launchKey && hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
           return { ...receipt, operationId: id };
         },
         observe: (id: string) => {
@@ -123,7 +135,7 @@ function harness(routingOrigin: () => string | null = () => null) {
     return routeResult as { status: number; value: Record<string, unknown> };
   };
   const stateFile = path.join(workspace, "objectives", "state.json");
-  return { store, events, launch, call, consoleTool, route, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces };
+  return { store, events, launch, call, consoleTool, route, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -538,6 +550,105 @@ describe("Objectives contract", () => {
     await plan([{ revise: second.id, text: "new copy" }]);
     store.criterionRemove(as, second.id);
     expect(store.find(as)!.criteriaProposals).toEqual([]); // 대상 기준 삭제와 제안 삭제는 같은 보드 변경이다.
+  });
+
+  it("records evidenced follow-ups from the Commander only and turns the picked ones into dormant objectives exactly once", async () => {
+    const { store, call, route, launch, launches, keyed, deletedKeys, reservedKeys, hostFault, stateFile, operations } = harness();
+    const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", steps: [{ text: "fix" }], viewMode: "chat" });
+    const member = store.memberAdd(source.id, { role: "review" }, "human").members[0]!;
+    store.setMemberOperation(source.id, member.id, "member-op");
+    const candidate = (title: string) => ({ title, summary: `${title} in one line`, brief: `${title} brief`, criteria: [`${title} holds`], evidence: [{ kind: "file", path: "src/a.ts", line: 3 }, { kind: "command", text: "pnpm test a" }] });
+    const followup = (args: Record<string, unknown>, operationId = source.id) => call("followup", { itemId: source.id, ...args }, operationId);
+    // 쓰기는 지휘관만, 근거는 필수이고 경로는 Theater 상대만 받는다.
+    expect((await followup({ add: candidate("member") }, "member-op")).structuredContent.error).toBe("not_commander");
+    expect((await followup({ add: { ...candidate("bare"), evidence: [] } })).structuredContent.error).toBe("invalid_arguments");
+    expect((await followup({ add: { ...candidate("abs"), evidence: [{ kind: "file", path: "/Users/me/secret.ts" }] } })).structuredContent.error).toBe("invalid_arguments");
+    for (const title of ["A", "B", "C"]) expect((await followup({ add: candidate(title) })).isError).toBe(false);
+    let [a, b, c] = store.find(source.id)!.followups;
+    await followup({ revise: { id: a!.id, summary: "A, sharper" } });
+    expect((await route("followup/discard", { itemId: source.id, candidateId: c!.id })).status).toBe(200);
+    [a, b, c] = store.find(source.id)!.followups;
+    expect(a).toMatchObject({ rev: 2, state: "open" });
+    expect(c).toMatchObject({ state: "discarded", brief: "", evidence: [], discarded: { by: "human" } });
+
+    // 고른 완료는 검토 대기에서만, 사람의 편집(스티어링 우선)과 옛 rev 는 서버가 거절한다 — 아무것도 쓰거나 예약하지 않는다.
+    const pick = (batchId: string, picks: { id: string; rev: number }[]) => route("item/complete", { itemId: source.id, batchId, followups: picks });
+    const batchId = "3f1c8f3e-1111-4a8b-9c0d-000000000001";
+    expect((await pick(batchId, [{ id: a!.id, rev: 2 }])).value.error).toBe("not_in_review");
+    store.stepDone(source.id, store.find(source.id)!.steps[0]!.id, ["fixed"]);
+    // 스티어링은 깬 적 있는 지휘관에게만 — 세션 좌표가 적힌 지휘관으로 만든다.
+    const commander = operations.get(source.id)!;
+    commander.payload = { ...commander.payload, session: { ...(commander.payload.session as object), id: "session-1", capturedAt: "2026-09-25T00:00:00Z", source: "hook" } };
+    store.setEdited(source.id, ["note"]);
+    expect((await pick(batchId, [{ id: a!.id, rev: 2 }])).value.error).toBe("steer_required");
+    store.setEdited(source.id, null);
+    expect((await pick(batchId, [{ id: a!.id, rev: 1 }])).value.error).toBe("followup_changed");
+    expect(reservedKeys.size).toBe(0);
+    expect(store.find(source.id)!.done).toBeNull();
+
+    // 첫 기동은 Operation 을 세운 뒤 응답을 잃는다 — 성공으로 치지 않고, 같은 키의 재조회가 그 Operation 을 입양한다.
+    hostFault.afterCreate = 1;
+    const launched = launches.length;
+    expect((await pick(batchId, [{ id: a!.id, rev: 2 }, { id: b!.id, rev: 1 }])).status).toBe(200);
+    expect((await pick(batchId, [{ id: a!.id, rev: 2 }, { id: b!.id, rev: 1 }])).status).toBe(200); // 같은 배치는 멱등이다.
+    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items.every((entry) => entry.state !== "creating")).toBe(true));
+    const [first, second] = store.find(source.id)!.followupBatches[0]!.items;
+    const unconfirmed = first!.state === "confirming" ? first! : second!;
+    expect(unconfirmed).toMatchObject({ state: "confirming", error: "request_timeout" });
+    expect((await route("followup/abandon", { itemId: source.id, batchId, candidateId: unconfirmed.candidateId })).value.error).toBe("followup_not_failed");
+    expect((await route("followup/retry", { itemId: source.id, batchId, candidateId: unconfirmed.candidateId })).status).toBe(200);
+    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items.every((entry) => entry.state === "created")).toBe(true));
+    expect(launches.length - launched).toBe(2); // 후보 둘에 Operation 둘 — 재조회는 새로 띄우지 않았다.
+    expect(new Set(keyed.values()).size).toBe(2);
+
+    const done = store.find(source.id)!;
+    expect(done.done).not.toBeNull();
+    // 끝난 후보는 목록에서 빠지고 배치에 남는다. 폐기 흔적은 그대로.
+    expect(done.followups.map((entry) => entry.state)).toEqual(["discarded"]);
+    const created = store.find(done.followupBatches[0]!.items.find((entry) => entry.candidateId === a!.id)!.operationId!)!;
+    expect(created).toMatchObject({ title: "A", note: "A brief", steps: [], members: [], groupId: "g-a", commander: { viewMode: "chat", started: false },
+      addedBy: { operationId: source.id }, origin: { itemId: source.id, title: "Source", candidateId: a!.id, evidence: [{ kind: "file", path: "src/a.ts", line: 3 }, { kind: "command", text: "pnpm test a" }] } });
+    expect(created.criteria).toMatchObject([{ text: "A holds", by: "human" }]);
+    // 만든 뒤 사람이 지운 후속은 원본에서 「삭제됨」으로 보이고, 돌아오면 다시 「생성됨」이다(저장은 그대로).
+    const createdNode = operations.get(created.id)!;
+    operations.delete(created.id);
+    expect(store.find(source.id)!.followupBatches[0]!.items.find((entry) => entry.candidateId === a!.id)!.state).toBe("deleted");
+    operations.set(created.id, createdNode);
+    expect(store.find(source.id)!.followupBatches[0]!.items.find((entry) => entry.candidateId === a!.id)!.state).toBe("created");
+    // 사람이 지운 키는 다시 만들지 않는다 — 다시 연 목표에서 고른 후보라도 삭제로 끝난다.
+    expect((await route("item/complete", { itemId: source.id, undone: true })).status).toBe(200);
+    await followup({ add: candidate("D") });
+    const d = store.find(source.id)!.followups.find((entry) => entry.title === "D")!;
+    deletedKeys.add(`objectives.followup:${d.id}`);
+    const before = launches.length;
+    expect((await pick("3f1c8f3e-1111-4a8b-9c0d-000000000002", [{ id: d.id, rev: 1 }])).status).toBe(200);
+    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[1]!.items[0]!.state).toBe("deleted"));
+    expect(launches.length).toBe(before);
+    // 남은 후보가 있으면 고르지 않은 완료(목록 체크)도 스티어링 우선을 지난다. 정상 검토에서는 0건 완료가 되고 후보는 남는다.
+    expect((await route("item/complete", { itemId: source.id, undone: true })).status).toBe(200);
+    await followup({ add: candidate("E") });
+    store.setEdited(source.id, ["note"]);
+    expect((await route("item/complete", { itemId: source.id })).value.error).toBe("steer_required");
+    store.setEdited(source.id, null);
+    expect((await route("item/complete", { itemId: source.id })).status).toBe(200);
+    expect(store.find(source.id)!.followups.find((entry) => entry.title === "E")).toMatchObject({ state: "open" });
+    // 기동을 기다리는 사이 원본을 지우면 이 요청이 막 만든 대상만 닫는다 — 원본을 되돌려도 같은 키로 다시 만들지 않는다.
+    expect((await route("item/complete", { itemId: source.id, undone: true })).status).toBe(200);
+    const e = store.find(source.id)!.followups.find((entry) => entry.title === "E")!;
+    const racing = launches.length;
+    expect((await pick("3f1c8f3e-1111-4a8b-9c0d-000000000003", [{ id: e.id, rev: 1 }])).status).toBe(200);
+    const sourceNode = operations.get(source.id)!;
+    operations.delete(source.id);
+    await vi.waitFor(() => expect(launches.length).toBe(racing + 1));
+    const raced = `launched-${racing + 1}`;
+    await vi.waitFor(() => expect(operations.has(raced)).toBe(false));
+    operations.set(source.id, sourceNode);
+    launch.resumeFollowups(source.id);
+    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches.at(-1)!.items[0]!.state).toBe("deleted"));
+    expect(launches.length).toBe(racing + 1);
+    const saved = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    expect(saved.objectives.find((entry: { operationId: string }) => entry.operationId === source.id).followupBatches[0].items).toHaveLength(2);
+    expect(JSON.stringify(saved)).not.toContain("objectives.followup:");
   });
 
   it("registers even when a registered Theater folder is gone, and still gives the present Theater's members their Commander", async () => {

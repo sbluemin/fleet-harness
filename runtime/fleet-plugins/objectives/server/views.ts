@@ -63,6 +63,13 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     members: item.members.map((member) => ({ id: member.id, role: member.role, brief: member.brief ?? null, by: member.by, subagents: member.subagents, model: member.model ?? null, effort: member.effort ?? null, session: member.sessionName,
       ...(member.operationId ? observe(member.operationId) : { operationId: null, state: "missing" as const }) })),
     done: !!item.done, awaitingReview: item.awaitingReview, addedBy: item.addedBy, graph: graph(item),
+    // 후속 후보 — 지휘관이 고치거나 거둘 수 있는 것은 open 뿐이다. 폐기 흔적은 제목·요약만.
+    followups: item.followups.map((candidate) => (candidate.state === "discarded"
+      ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary }
+      : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence })),
+    followupBatches: item.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error })) })),
+    // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
+    origin: item.origin,
   });
   const rowView = (item: ObjectiveItem) => ({ id: item.id, groupId: item.groupId, title: item.title, done: !!item.done, awaitingReview: item.awaitingReview, important: item.important, dueDate: item.dueDate, today: item.today, steps: `${item.steps.filter((step) => step.done).length}/${item.steps.length}`, mode: coordinatorMode(item.steps), addedBy: item.addedBy?.operationId ?? null });
   /** 알림 문구의 언어 — 목표가 띄운 세션은 objectiveLanguage 에, 그 전 판의 세션은 콘솔 사용 표식에 남아 있다. */

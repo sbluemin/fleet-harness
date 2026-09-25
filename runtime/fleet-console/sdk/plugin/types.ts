@@ -833,6 +833,19 @@ export interface FleetPluginConsoleControlHost {
    * 남은 질문 호출을 카드 없이 거절한다. 떠 있는 터미널 프로세스는 중단하지 않는다. 없는 Operation은 무시한다.
    */
   setUserQuestions?(operationId: string, policy: "blocked" | "default"): void;
+  /**
+   * 이 플러그인의 멱등 기동 키(`ConsoleActionInput.launchKey`) 상태 — absent(영속된 적 없음) · reserved(예약만) · pending(이 호스트에서
+   * 기동 중) · live · deleting(삭제 유예) · purged. 다른 Theater 에 선 키는 `launch_key_conflict` 로 거절하고 그 Operation 을
+   * 드러내지 않는다. 원장을 읽을 수 없으면 `storage_unavailable` 을 던진다(absent 로 추측하지 않는다).
+   */
+  launchState?(input: { readonly theaterId: string; readonly key: string }): { readonly state: "absent" | "reserved" | "pending" | "live" | "deleting" | "purged"; readonly operationId?: string };
+  /**
+   * 키들을 한꺼번에 예약한다(전부 또는 전무) — 새 키만 용량을 쓰고, 넘치면 `launch_key_capacity`. 수락한 키는 만료하지 않으며
+   * 그 키의 삭제 기록·조회·같은 키 재기동은 용량과 무관하다.
+   */
+  reserveLaunchKeys?(input: { readonly theaterId: string; readonly keys: readonly string[] }): void;
+  /** 이 플러그인이 쓴 키 수와 상한. */
+  launchKeyUsage?(): { readonly used: number; readonly limit: number };
 }
 
 /**

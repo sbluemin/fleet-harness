@@ -9,7 +9,7 @@ import { z } from "zod";
 import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { createItemSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type ObjectiveEditKind, type ObjectiveItem } from "./types.js";
+import { createItemSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchItemSchema, planSchema, stepAddSchema, stepPatchSchema, type StepPatchInput, type ObjectiveEditKind, type ObjectiveItem } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -47,7 +47,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     return true;
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
-    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_item", "unknown_step", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_proposal", "unknown_group"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
+    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_item", "unknown_step", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_proposal", "unknown_group", "unknown_followup"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
     const code = error instanceof Error ? error.message : "todo_failed";
     ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "todo_failed" });
   };
@@ -171,7 +171,17 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     }) },
     // 목표를 지우면 지휘관 Operation 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
     { name: "item/remove", method: "POST", summary: "Delete an objective by closing its Commander Operation (restorable during the undo window).", handler: json(itemRef, unlessBusy(({ itemId }) => item(launch.remove(itemId)))) },
-    { name: "item/complete", method: "POST", summary: "Complete an objective and put its Operations to sleep, or reopen it with undone.", handler: json(itemRef.extend({ undone: z.boolean().optional() }), unlessBusy(({ itemId, undone }) => item(undone ? store.reopen(itemId) : launch.complete(itemId)))) },
+    // 후속 후보를 고른 완료는 새 경계다 — 검토 대기·스티어링 우선·제안 대기를 서버가 원자적으로 다시 따진다. 고른 것이 없으면 지금 완료 그대로.
+    { name: "item/complete", method: "POST", summary: "Complete an objective and put its Operations to sleep, or reopen it with undone. With followups (and a batchId), the chosen follow-up candidates become dormant objectives.", handler: json(itemRef.extend({ undone: z.boolean().optional(), batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }), unlessBusy(({ itemId, undone, batchId, followups, language }) => {
+      if (undone) return item(store.reopen(itemId));
+      if (!followups?.length) return item(launch.complete(itemId));
+      if (!batchId) throw new ObjectiveStoreError("invalid_request");
+      return item(launch.completeWithFollowups(itemId, { batchId, followups }, { language }));
+    })) },
+    // 후속 후보에 대한 사람의 판단 — 지휘관이 알아야 할 보드 편집이 아니므로 edited 를 쌓지 않는다(기준 제안의 거절과 같다).
+    { name: "followup/discard", method: "POST", summary: "Discard an open follow-up candidate; its title and summary stay as a trace.", handler: json(itemRef.extend({ candidateId: ids }), ({ itemId, candidateId }) => item(store.followupDiscard(itemId, candidateId))) },
+    { name: "followup/retry", method: "POST", summary: "Re-check or re-create a failed or unconfirmed follow-up with the same snapshot and key.", handler: json(itemRef.extend({ batchId: ids, candidateId: ids }), ({ itemId, batchId, candidateId }) => item(launch.retryFollowup(itemId, batchId, candidateId))) },
+    { name: "followup/abandon", method: "POST", summary: "Give up a failed follow-up; the candidate returns to open.", handler: json(itemRef.extend({ batchId: ids, candidateId: ids }), ({ itemId, batchId, candidateId }) => item(store.followupAbandon(itemId, batchId, candidateId))) },
     { name: "member/add", method: "POST", summary: "Add a member to the roster.", handler: json(itemRef.extend({ member: memberAddSchema }), steerable(() => true, ({ itemId, member }) => edited(["members"], () => store.memberAdd(itemId, member, "human")))) },
     { name: "member/patch", method: "POST", summary: "Edit a member's role, brief, launch selection, or subagent opt-in.", handler: json(itemRef.extend({ memberId: ids, patch: memberPatchSchema }), steerable(() => true, ({ itemId, memberId, patch }) => edited(["members"], () => launch.memberPatched(itemId, memberId, patch)))) },
     { name: "member/remove", method: "POST", summary: "Remove a member and return its mission ids for undo.", handler: json(itemRef.extend({ memberId: ids }), steerable(() => true, ({ itemId, memberId }) => {

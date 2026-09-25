@@ -24,6 +24,21 @@ export const MAX_RECORD_LINES = 3;
 export const MAX_RECORD_LINE = 160;
 /** 한 단계에 남기는 기록 수 — 오래된 것부터 밀려난다. */
 export const MAX_RECORDS = 20;
+/**
+ * 후속 후보 — 진행 중 범위 밖에서 찾은 결함·개선점. 지휘관만 올리고, 사람이 완료하며 고른 것만 새 휴면 목표가 된다.
+ * 활성(open + 진행 중 selected) 수·본문 길이·근거 수는 저장 무결성을 위한 상한이다.
+ */
+export const MAX_FOLLOWUPS = 10;
+export const MAX_FOLLOWUP_SUMMARY = 160;
+export const MAX_FOLLOWUP_BRIEF = 4000;
+export const MAX_FOLLOWUP_CRITERIA = 10;
+export const MAX_FOLLOWUP_EVIDENCE = 5;
+export const MAX_FOLLOWUP_EVIDENCE_TEXT = 300;
+export const MAX_FOLLOWUP_NOTE = 200;
+/** 폐기 흔적(제목·요약만) — 지휘관이 같은 후보를 다시 올리지 않게 남긴다. 넘치면 오래된 흔적부터 정리한다. */
+export const MAX_FOLLOWUP_DISCARDED = 20;
+/** 보존하는 완료 배치 — 넘치면 가장 오래된 종결 배치를 누계로 접는다. 진행 중 배치는 접지 않는다. */
+export const MAX_FOLLOWUP_BATCHES = 50;
 
 export type SlotBy = "human" | { readonly operationId: string };
 
@@ -122,6 +137,81 @@ export interface ObjectiveCriterionProposal {
   readonly annotation?: string;
 }
 
+/**
+ * 후속 근거 — 발견 위치. 경로는 Theater 루트 기준 상대 경로만 받는다(절대·`~`·`..` 거절). `command` 의 text 는 지휘관이
+ * 쓴 재현 명령 원문이라 브리핑·기준과 같은 본문 경계를 따른다.
+ */
+export type FollowupEvidence =
+  | { readonly kind: "file"; readonly path: string; readonly line?: number; readonly note?: string }
+  | { readonly kind: "command"; readonly text: string; readonly note?: string }
+  | { readonly kind: "artifact"; readonly path: string; readonly note?: string };
+
+/** 후속 후보 본문 — 새 목표의 제목·브리핑·기준이 되고, 요약·근거는 고르는 사람과 새 지휘관이 읽는다. */
+export interface FollowupBody {
+  readonly title: string;
+  readonly summary: string;
+  readonly brief: string;
+  readonly criteria: readonly string[];
+  readonly evidence: readonly FollowupEvidence[];
+}
+
+/**
+ * 저장된 후보. open 은 지휘관이 고치거나 거둘 수 있고, selected 는 배치에 동결돼 잠기며, discarded 는 사람이 버린 흔적이다
+ * (제목·요약만 남는다). 생성이 끝나면(created·deleted) 후보는 목록에서 빠지고 배치 기록에만 남는다.
+ */
+export interface StoredFollowup extends FollowupBody {
+  readonly id: string;
+  readonly rev: number;
+  readonly state: "open" | "selected" | "discarded";
+  readonly at: number;
+  readonly updatedAt: number;
+  readonly batchId?: string;
+  /** 사람이 버린 시각 — 버리는 것은 늘 사람이다. */
+  readonly discardedAt?: number;
+}
+
+/**
+ * 배치 항목의 생성 상태. confirming 은 결과를 확정하지 못한 상태(호스트 조회 불가·저장 실패 등)로, 실패와 다르다 — 같은 키의
+ * 재조회만 허용한다. failed 는 호스트가 이 키로 만든 Operation 이 없음을 확정한 실패라 같은 키로 다시 만들 수 있다.
+ */
+export type FollowupItemState = "creating" | "confirming" | "created" | "failed" | "deleted" | "abandoned";
+
+/** 배치 항목 — 고른 순간의 동결본과 그 생성 결과. 재시도는 같은 스냅샷·같은 키만 쓴다. */
+export interface StoredFollowupItem {
+  readonly candidateId: string;
+  readonly rev: number;
+  readonly snapshot: FollowupBody;
+  readonly state: FollowupItemState;
+  readonly operationId?: string;
+  readonly error?: string;
+  readonly attempts: number;
+  readonly settledAt?: number;
+}
+
+/** 완료 한 번에 고른 후보 묶음 — 원본 목표에 남는 영속 생성 기록. id 는 화면이 만든 멱등 키다. */
+export interface StoredFollowupBatch {
+  readonly id: string;
+  readonly at: number;
+  /** 고른 순간 동결한 기동 조건 — 원본의 그룹·지휘관 뷰와 알림 언어. 재시도도 이 값을 쓴다. */
+  readonly launch: { readonly groupId: string | null; readonly viewMode: "terminal" | "chat"; readonly language: "en" | "ko" };
+  readonly items: readonly StoredFollowupItem[];
+}
+
+export interface FollowupHistory {
+  readonly batches: number;
+  readonly created: number;
+  readonly deleted: number;
+  readonly abandoned: number;
+}
+
+/** 후속으로 태어난 목표의 출처 — 원본 목표와 후보. 근거는 새 지휘관이 읽는다. */
+export interface StoredOrigin {
+  readonly itemId: string;
+  readonly candidateId: string;
+  readonly batchId: string;
+  readonly evidence: readonly FollowupEvidence[];
+}
+
 export interface StoredObjective {
   /** 지휘관 Operation id — 목표의 유일한 식별자. */
   readonly operationId: string;
@@ -148,6 +238,10 @@ export interface StoredObjective {
   readonly criteria?: readonly StoredCriterion[];
   readonly criteriaProposals?: readonly ObjectiveCriterionProposal[];
   readonly members?: readonly StoredMember[];
+  readonly followups?: readonly StoredFollowup[];
+  readonly followupBatches?: readonly StoredFollowupBatch[];
+  readonly followupHistory?: FollowupHistory;
+  readonly origin?: StoredOrigin;
   readonly steps: readonly StoredStep[];
 }
 
@@ -222,7 +316,63 @@ export interface ObjectiveItem {
   readonly criteriaProposals: readonly ObjectiveCriterionProposal[];
   readonly members: readonly ObjectiveMember[];
   readonly steps: readonly ObjectiveStep[];
+  /** 후속 후보 — open·selected·discarded. discarded 는 제목·요약만. */
+  readonly followups: readonly ObjectiveFollowup[];
+  /** 완료 때 고른 묶음과 생성 결과(영속). */
+  readonly followupBatches: readonly ObjectiveFollowupBatch[];
+  readonly followupHistory: FollowupHistory | null;
+  /** 이 목표가 후속으로 태어났다면 원본과 후보. 원본이 사라졌으면 title 은 null. */
+  readonly origin: { readonly itemId: string; readonly title: string | null; readonly candidateId: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] } | null;
 }
+
+export interface ObjectiveFollowupEvidenceView {
+  readonly kind: FollowupEvidence["kind"];
+  readonly path: string | null;
+  readonly line: number | null;
+  readonly text: string | null;
+  readonly note: string | null;
+}
+
+export interface ObjectiveFollowup {
+  readonly id: string;
+  readonly rev: number;
+  readonly state: StoredFollowup["state"];
+  readonly title: string;
+  readonly summary: string;
+  readonly brief: string;
+  readonly criteria: readonly string[];
+  readonly evidence: readonly ObjectiveFollowupEvidenceView[];
+  readonly at: number;
+  readonly updatedAt: number;
+  readonly batchId: string | null;
+  readonly discarded: { readonly at: number; readonly by: "human" } | null;
+}
+
+export interface ObjectiveFollowupBatch {
+  readonly id: string;
+  readonly at: number;
+  readonly items: readonly {
+    readonly candidateId: string;
+    readonly rev: number;
+    readonly snapshot: { readonly title: string; readonly summary: string; readonly brief: string; readonly criteria: readonly string[]; readonly evidence: readonly ObjectiveFollowupEvidenceView[] };
+    readonly state: FollowupItemState;
+    readonly operationId: string | null;
+    readonly error: string | null;
+    readonly attempts: number;
+    readonly settledAt: number | null;
+  }[];
+}
+
+/** 근거의 화면 모양 — 종류별 필드를 한 모양으로 편다. 경로는 저장 때 이미 Theater 상대로 검사됐다. */
+export const evidenceView = (evidence: FollowupEvidence): ObjectiveFollowupEvidenceView => ({
+  kind: evidence.kind,
+  path: evidence.kind === "command" ? null : evidence.path,
+  line: evidence.kind === "file" ? evidence.line ?? null : null,
+  text: evidence.kind === "command" ? evidence.text : null,
+  note: evidence.note ?? null,
+});
+/** 끝난 배치 항목 — 더는 바뀌지 않는다(failed·confirming 은 재시도·재조회가 남았다). */
+export const followupSettled = (state: FollowupItemState): boolean => state === "created" || state === "deleted" || state === "abandoned";
 
 export const latestRecord = (step: { readonly records: readonly StepRecord[] }): StepRecord | null => step.records.at(-1) ?? null;
 export const unseenRecords = (step: { readonly records: readonly StepRecord[]; readonly seen: number }): number => Math.max(0, step.records.length - step.seen);
@@ -416,6 +566,36 @@ export const planSchema = z.object({
   members: z.array(memberAddSchema.pick({ role: true, brief: true })).max(MAX_STEPS).optional(),
   criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
 }).strict();
+
+/** 한 줄 본문 — 줄바꿈·제어 문자 없이. */
+const oneLine = (max: number) => z.string().trim().min(1).max(max).regex(/^[^\u0000-\u001f\u007f]+$/);
+/**
+ * Theater 루트 기준 상대 경로 — 어휘 검사만 한다(파일을 열지 않는다). 절대 경로·홈(`~`)·드라이브·역슬래시·`..` 구간은
+ * 받지 않는다. 브라우저에 가는 근거에 이 기계의 경로가 실리지 않게 하는 경계다.
+ */
+export const relativePath = oneLine(MAX_FOLLOWUP_EVIDENCE_TEXT).refine((value) => !/^[/~\\]/.test(value) && !/^[A-Za-z]:/.test(value) && !value.includes("\\") && !value.split("/").some((segment) => segment === ".."), { message: "relative_path" });
+const evidenceNote = oneLine(MAX_FOLLOWUP_NOTE).optional();
+export const followupEvidenceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("file"), path: relativePath, line: z.number().int().min(1).optional(), note: evidenceNote }).strict(),
+  z.object({ kind: z.literal("command"), text: oneLine(MAX_FOLLOWUP_EVIDENCE_TEXT), note: evidenceNote }).strict(),
+  z.object({ kind: z.literal("artifact"), path: relativePath, note: evidenceNote }).strict(),
+]);
+const followupFields = {
+  title,
+  summary: oneLine(MAX_FOLLOWUP_SUMMARY),
+  brief: z.string().trim().min(1).max(MAX_FOLLOWUP_BRIEF),
+  criteria: z.array(z.string().trim().min(1).max(MAX_CRITERION_TEXT)).min(1).max(MAX_FOLLOWUP_CRITERIA),
+  evidence: z.array(followupEvidenceSchema).min(1).max(MAX_FOLLOWUP_EVIDENCE),
+};
+export const followupBodySchema = z.object(followupFields).strict();
+export const followupReviseSchema = z.object({ title: followupFields.title.optional(), summary: followupFields.summary.optional(), brief: followupFields.brief.optional(), criteria: followupFields.criteria.optional(), evidence: followupFields.evidence.optional() }).strict();
+export type FollowupBodyInput = z.output<typeof followupBodySchema>;
+export type FollowupReviseInput = z.output<typeof followupReviseSchema>;
+/** 완료와 함께 고른 후보 — 화면이 본 rev 와 함께. batchId 는 화면이 만든 멱등 키(UUID). */
+export const followupSelectionSchema = z.object({
+  batchId: z.string().uuid(),
+  followups: z.array(z.object({ id: ids, rev: z.number().int().min(1) }).strict()).min(1).max(MAX_FOLLOWUPS),
+});
 
 export type CreateItemInput = z.output<typeof createItemSchema>;
 export type PatchItemInput = z.output<typeof patchItemSchema>;
