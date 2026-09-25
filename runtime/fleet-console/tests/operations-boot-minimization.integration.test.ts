@@ -290,16 +290,30 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).toEqual([]);
     expect(resumeOperation).toHaveBeenCalledTimes(2);
 
+    // 인계는 두 패널의 기하를 바꾼다 — 칸에 들어오는 패널과, 직전 자리로 되돌려 칸 뒤에 감춰지는 패널.
+    // 되돌린 자리를 서버에 적지 않으면 다른 client·새로고침은 떠난 패널을 계속 전체 크기로 되살린다.
+    const VISIBLE_RESTING = { x: 60, y: 80, width: 420, height: 260, zIndex: 2 };
+    const geometryPatches: { readonly id: string; readonly geometry: { readonly width: number; readonly height: number } }[] = [];
+    vi.stubGlobal("fetch", (input: unknown, init?: { readonly body?: string }) => {
+      const path = String(input);
+      if (init?.body) geometryPatches.push({ id: decodeURIComponent(path.slice(path.lastIndexOf("/") + 1)), geometry: JSON.parse(init.body).geometry });
+      return Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
     await act(async () => {
       setCanvasViewportSize({ width: 1200, height: 800 });
-      snapOperationToFullZone("visible");
+      setOperationGeometry("visible", VISIBLE_RESTING);
+      snapOperationToFullZone("visible", () => undefined);
       minimizeOperation("stowed");
+      geometryPatches.length = 0;
       sideBarMocks.onFocus?.("stowed");
       await Promise.resolve();
     });
     expect(getSnapFullOperationId()).toBe("stowed");
     expect(getSnapshot().minimized).toEqual([]);
     expect(resumeOperation).toHaveBeenCalledTimes(3);
+    expect([...geometryPatches].map((patch) => patch.id).sort()).toEqual(["stowed", "visible"]);
+    expect(geometryPatches.find((patch) => patch.id === "visible")?.geometry).toMatchObject({ width: VISIBLE_RESTING.width, height: VISIBLE_RESTING.height });
+    vi.unstubAllGlobals();
 
     // 런타임 축이 권위를 얻기 전의 휴면 표시는 관측이 아니라 폭백이다 — 그 위에서 재개하지 않지만,
     // 여는 제스처를 버리지도 않는다. 축이 자리잡으면 관측된 사실로 다시 판정해 그때 재개한다.

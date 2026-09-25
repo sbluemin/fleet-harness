@@ -379,10 +379,20 @@ export function resetCanvasViewportSize(): void {
 }
 
 // ── 늘 숨은 패널 ────────────────────────────────────────────────────────────────
-// 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)는 최소화한 패널을 거른다. 구성원은 기본 목록에 없어
+// 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)는 보이지 않는 패널을 거른다. 구성원은 기본 목록에 없어
 // 좌표를 받지 않고, 남은 좌표도 정리(pruneOperations)가 걷으므로 따로 셀 것이 없다.
-function hiddenGeometryIds(minimized: readonly string[] = state.minimized): Set<string> {
-  return new Set(minimized);
+//
+// 최소화가 그 하나였고, 전체 칸이 서 있는 동안의 나머지 패널도 같다 — 그 칸을 쥔 패널만 그려지고 이웃은
+// 뒤에 남아(renderHidden) 아레나에 자리를 차지하지 않는다. 이 경계를 규율과 나누면, 규율이 아레나 크기의
+// 사각형을 실재 장애물로 보고 가려진 이웃을 아레나 밖으로 밀어낸 뒤 그 좌표를 영속시킨다(Theater를
+// 다녀오면 이웃이 화면 밖에 있다). 전체 칸은 자유 배치가 아니라 배치의 일시 정지이므로, 칸이 서 있는
+// 동안 규율은 아무것도 옮기지 않고 칸을 떠난 뒤 다시 정착한다.
+function hiddenGeometryIds(source: Pick<CanvasState, "operations" | "minimized" | "snapHold"> = state): Set<string> {
+  const hidden = new Set(source.minimized);
+  const fullHolder = snapFullHolderOf(source.snapHold);
+  if (fullHolder === null) return hidden;
+  for (const sessionId of Object.keys(source.operations)) if (sessionId !== fullHolder) hidden.add(sessionId);
+  return hidden;
 }
 
 export function fitAllOperations(): void {
@@ -866,7 +876,10 @@ export function useSnapHold(): SnapHold | null {
  * 전체 나누기는 칸이 하나라 배정도 하나뿐이다(같은 칸에 들어온 패널이 앞 패널을 밀어낸다).
  */
 export function getSnapFullOperationId(): string | null {
-  const hold = state.snapHold;
+  return snapFullHolderOf(state.snapHold);
+}
+
+function snapFullHolderOf(hold: SnapHold | null): string | null {
   if (!hold || hold.presetId !== SNAP_FULL_PRESET_ID) return null;
   for (const [sessionId, zoneIndex] of Object.entries(hold.assignments)) if (zoneIndex === 0) return sessionId;
   return null;
@@ -1178,7 +1191,7 @@ export function resolveLaunchGeometry(theaterId: string, geometry: OperationGeom
   const snapshot = activeTheaterId === theaterId ? state : readStoredState(theaterId);
   if (!snapshot.stationKeeping) return geometry;
   // 최소화한 지휘관의 숨은 단계는 장애물이 아니다 — 보이는 빈자리를 두고 새 패널이 밀려나면 안 된다.
-  const minimizedSet = hiddenGeometryIds(snapshot.minimized);
+  const minimizedSet = hiddenGeometryIds(snapshot);
   const obstacles = Object.entries(snapshot.operations)
     .filter(([sessionId]) => !minimizedSet.has(sessionId))
     .map(([, existing]) => existing);

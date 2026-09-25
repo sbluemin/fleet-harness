@@ -12,10 +12,10 @@ import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlock
 import { closeOperationCompletely, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
-import { claimTopZIndex, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getAlignAll, getLoadedTheaterId, getSnapFullOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, restoreSnapFullOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setTheaterOperationGeometry, toggleAlignAll, useCompanionOperationId, useMinimized, useSnapFullOperationId, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
+import { claimTopZIndex, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getAlignAll, getLoadedTheaterId, getSnapFullOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, restoreSnapFullOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setTheaterOperationGeometry, toggleAlignAll, useCompanionOperationId, useMinimized, useSnapFullOperationId, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "./canvas/coordinates.js";
 import { SNAP_MIN_ZOOM, SNAP_PRESETS, snapZoneHitFor } from "./canvas/snap-layouts.js";
-import { closeCompanionLayer, snapOperationToFullZone } from "./canvas/snap-full.js";
+import { applySnapZone, closeCompanionLayer, snapOperationToFullZone } from "./canvas/snap-full.js";
 import { playRestoreFlight } from "./canvas/panel-motion.js";
 import { OperationsCanvas } from "./canvas/canvas.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./canvas/group-context-menu.js";
@@ -258,8 +258,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         event.stopImmediatePropagation();
         const hit = snapZoneHitFor(arena, SNAP_PRESETS[0]!, snapCommand === "operations.snap-left" ? 0 : 1);
         // 키보드 스냅도 유지에 든다 — 다만 후보 판은 캔버스의 드래그·메뉴 스냅만 연다.
-        snapOperationToArenaRect(operationId, hit.zone, { presetId: hit.set.id, zones: hit.set.zones, zoneIndex: hit.zoneIndex });
-        commitSnappedGeometry(operationId);
+        applySnapZone(operationId, hit, commitSnappedGeometry);
         return;
       }
       if (matchesShortcutCommand(event, "operations.fit-all")) {
@@ -327,7 +326,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         for (const change of toggle.visibilityChanges) {
           setCompanionPanelVisible(activeOperation.id, change.id, change.visible);
         }
-        if (toggle.closeLayer) closeCompanionLayer();
+        if (toggle.closeLayer) closeCompanionLayer(commitSnappedGeometry);
         return;
       }
       // Alt+화살표 넷은 한 문법 묶음이라 재배정 대상이 아니다 — 여기서만 Alt를 직접 본다.
@@ -377,8 +376,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         // 모두 정렬·War Room은 배치를 쥐고 있어 전체 칸이 없다 — ↑는 아무 일도 하지 않고, ↓는 최소화로 남는다.
         const snapFullAvailable = !getAlignAll();
         if (arrowAction === "snap-full") {
-          if (!snapFullAvailable || !snapOperationToFullZone(operationId)) return;
-          commitSnappedGeometry(operationId);
+          if (snapFullAvailable) snapOperationToFullZone(operationId, commitSnappedGeometry);
           return;
         }
         // ↓는 전체 칸을 쥔 패널이면 직전 자리로 되돌리고(캡션 ⤡·더블클릭과 같은 복원), 아니면 최소화한다.
@@ -1041,8 +1039,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
   if (getSnapFullOperationId() !== null && !getAlignAll()) {
     const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
     setActiveOperation(operationId);
-    if (snapOperationToFullZone(operationId)) {
-      commitSnappedGeometry(operationId);
+    if (snapOperationToFullZone(operationId, commitSnappedGeometry)) {
       requestOperationKeyboardFocus(operationId);
       if (wasMinimized) resumeIfDormant(operationId);
       return;
@@ -1054,7 +1051,8 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
 
 // 스냅 기하의 durable 쓰기 — 캔버스의 드래그 커밋과 같은 경로다. 기하는 patchOperation의 클라이언트
 // 입력이 아니라 서버가 받는 geometry 필드이므로 여기서 직접 PATCH한다. 진입구가 여럿(키보드 스냅·
-// Alt↑·포커스 승계·플러그인 focus)이라 한 곳에 모은다.
+// Alt↑·포커스 승계·플러그인 focus)이라 한 곳에 모아, 스냅 funnel(applySnapZone)에 이 쓰기를 넘긴다 —
+// funnel이 들어가는 패널과 전체 칸에서 밀려난 패널을 모두 이 경로로 적는다.
 function commitSnappedGeometry(operationId: string): void {
   const geometry = getCanvasSnapshot().operations[operationId];
   if (!geometry) return;
@@ -1090,11 +1088,10 @@ function trySnapFullFocus(operationId: string, resumeIfDormant: (operationId: st
   if (getCompanionOperationId() !== null) forceDropCompanionOperationId();
   const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
   if (wasMinimized) playRestoreFlight(operationId);
-  if (!snapOperationToFullZone(operationId)) return false;
+  if (!snapOperationToFullZone(operationId, commitSnappedGeometry)) return false;
   setActiveOperation(operationId);
   requestOperationKeyboardFocus(operationId);
   if (wasMinimized) resumeIfDormant(operationId);
-  commitSnappedGeometry(operationId);
   return true;
 }
 
@@ -1211,9 +1208,8 @@ async function createLaunchedOperation(
     return;
   }
   if (getTheaterCompanionOperationId(theaterId) !== null) return;
-  if (stillOnLaunchTheater && operationHydrated && getSnapFullOperationId() !== null && snapOperationToFullZone(newOperationId)) {
+  if (stillOnLaunchTheater && operationHydrated && getSnapFullOperationId() !== null && snapOperationToFullZone(newOperationId, commitSnappedGeometry)) {
     setActiveOperation(newOperationId);
-    commitSnappedGeometry(newOperationId);
   } else {
     // Theater가 다르거나 hydrate 누락이면 Theater-aware한 focusOperation으로 처리한다(launch Theater로 복귀·포커스, 부재 시 no-op).
     focusOperation(newOperationId);

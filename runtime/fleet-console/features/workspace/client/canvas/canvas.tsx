@@ -26,8 +26,8 @@ import { pluginRuntimeState, resolveOperationActivity } from "../../../execution
 import type { ConsoleState, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { snapOperationToArenaRect, animateViewportTo, claimTopZIndex, clearCompanionOperationId, consumeAlignOffRestored, consumeAlignStayedRelease, consumePendingFitAllOperations, consumeStayedReleaseGeometries, detachAlignAllPanel, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getAlignOffRestoredCount, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, reconcileAlignAll, rejoinAlignAllPanel, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, SNAP_FULL_PRESET_ID, syncSnapHoldGeometry, useAlignActivationNonce, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useMinimized, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
-import { closeCompanionLayer, toggleOperationSnapFull } from "./snap-full.js";
+import { animateViewportTo, claimTopZIndex, consumeAlignOffRestored, consumeAlignStayedRelease, consumePendingFitAllOperations, consumeStayedReleaseGeometries, detachAlignAllPanel, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getAlignOffRestoredCount, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, reconcileAlignAll, rejoinAlignAllPanel, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, SNAP_FULL_PRESET_ID, syncSnapHoldGeometry, useAlignActivationNonce, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useMinimized, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
+import { applySnapZone, closeCompanionLayer, toggleOperationSnapFull } from "./snap-full.js";
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -1047,7 +1047,8 @@ export function OperationsCanvas({
     if (snapAssist && snapAssistEmptyCount === 0) setSnapAssist(false);
   }, [snapAssist, snapAssistEmptyCount]);
   const snapIntoZone = (operationId: string, hit: SnapZoneHit) => {
-    snapOperationToArenaRect(operationId, hit.zone, { presetId: hit.set.id, zones: hit.set.zones, zoneIndex: hit.zoneIndex });
+    // 배치와 durable 쓰기는 한 입구다 — 전체 칸에서 밀려난 패널의 되돌린 기하까지 funnel이 함께 적는다.
+    applySnapZone(operationId, hit, commitOperationGeometry);
     // 빈 칸이 남으면 후보를 권한다 — 전체 한 칸이면 권할 칸이 없다.
     setSnapAssist(hit.set.zones.length > 1);
   };
@@ -1238,15 +1239,11 @@ export function OperationsCanvas({
     if (!menu || !snapEnabled) return;
     setActiveOperation(menu.operationId);
     snapIntoZone(menu.operationId, snapZoneHitFor(snapArena, SNAP_PRESETS[zone.presetIndex]!, zone.zoneIndex));
-    const geometry = getCanvasSnapshot().operations[menu.operationId];
-    if (geometry) void updatePluginOperationGeometry(menu.operationId, geometry);
   };
   const pickSnapAssist = (operationId: string, zoneIndex: number) => {
     if (!snapHoldActive || !snapHoldSet) return;
     setActiveOperation(operationId);
     snapIntoZone(operationId, snapZoneHitFor(snapArena, snapHoldSet, zoneIndex));
-    const geometry = getCanvasSnapshot().operations[operationId];
-    if (geometry) void updatePluginOperationGeometry(operationId, geometry);
   };
   // 후보 — 이 Theater에서 보이는 자유 패널을 최근 활성 순으로 권한다.
   const snapAssistCandidates: readonly SnapAssistCandidate[] = snapAssist && snapHoldActive && snapHold
@@ -1742,8 +1739,7 @@ export function OperationsCanvas({
             // 같은 durable 쓰기를 함께 보낸다. 모두 정렬·War Room은 배치를 쥐고 있어 버튼 자체가 없다.
             onToggleSnapFull: alignMeta !== null || triageActive ? undefined : () => {
               if (!operationSnapFull) setActiveOperation(operation.id);
-              if (!toggleOperationSnapFull(operation.id)) return;
-              void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? frameGeometry);
+              toggleOperationSnapFull(operation.id, commitOperationGeometry);
             },
             onRename: (title) => {
               onRename(operation.id, title);
@@ -1788,10 +1784,8 @@ export function OperationsCanvas({
               }
               const persistGeometry = alignMeta === null || freedWhileAlign;
               // 스냅 표적이 있으면 그 칸이 자리다 — 사용자가 고른 칸이라 Station Keeping 정착을 건너뛴다.
-              if (consumed) {
-                if (persistGeometry) void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
-                return;
-              }
+              // 일반 스냅은 funnel이 이미 저장했고, 정렬 교환은 로컬 유지에만 남긴다.
+              if (consumed) return;
               // 유지 패널의 크기 조절 커밋 — 칸은 이미 바뀌었고 좌표는 칸에서 되쓴 값이 맞다.
               if (getCanvasSnapshot().snapHold?.assignments[operation.id] !== undefined) {
                 if (persistGeometry) void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
@@ -2229,7 +2223,7 @@ function renderPluginOperation(operation: OperationNode, options: {
     if (open) {
       setActiveOperation(operation.id);
       setCompanionOperationId(operation.id);
-    } else closeCompanionLayer();
+    } else closeCompanionLayer(commitOperationGeometry);
   };
   const onSetCompanionPanelVisible = (companionPanelId: string, visible: boolean) => {
     setCompanionPanelVisible(operation.id, companionPanelId, visible);
@@ -2242,7 +2236,7 @@ function renderPluginOperation(operation: OperationNode, options: {
     const overrides = getCompanionPanelVisibilityOverrides(operation.id);
     const stillVisible = availableCompanionPanels(descriptor.companions ?? [], operation)
       .some((panel) => overrides[panel.id] ?? !panel.defaultHidden);
-    if (!stillVisible) closeCompanionLayer();
+    if (!stillVisible) closeCompanionLayer(commitOperationGeometry);
   };
   const frame = (
     <Fragment key={operation.id}>
@@ -2534,6 +2528,13 @@ function CompanionFrame({ descriptor, geometry, language, caption, children }: {
       </div>
     </article>
   );
+}
+
+// 스냅 funnel에 넘기는 쓰기 — 스토어에 든 기하를 id로 읽어 적으므로, 앉는 패널과 전체 칸에서 밀려난
+// 패널을 같은 경로로 적을 수 있다.
+function commitOperationGeometry(operationId: string): void {
+  const geometry = getCanvasSnapshot().operations[operationId];
+  if (geometry) void updatePluginOperationGeometry(operationId, geometry);
 }
 
 async function updatePluginOperationGeometry(operationId: string, geometry: OperationGeometry): Promise<void> {
