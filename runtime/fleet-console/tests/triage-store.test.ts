@@ -247,6 +247,30 @@ describe("triage store", () => {
     expect(getCanvasSnapshot().snapHold?.assignments).toEqual({ a: 0 });
   });
 
+  // 빼낸 채로 끄면 묶음만 복원되고 빼낸 패널은 놓은 자리에 남는다 — 풀린 순간부터
+  // 자유 패널이라 드롭 좌표가 새 Cruise 자리다(서버 커밋은 렌더가 드롭 시점에 맡는다).
+  it("keeps the detached panel where it was dropped when align-all turns off", () => {
+    setOperationGeometry("b", { x: 700, y: 20, width: 640, height: 400, zIndex: 2 });
+    setOperationGeometry("a", { x: 10, y: 20, width: 640, height: 400, zIndex: 1 });
+    const before = getCanvasSnapshot().operations;
+
+    toggleAlignAll();
+    reconcileAlignAll(["a", "b"]);
+    syncSnapHoldGeometry([
+      { sessionId: "a", rect: { x: 0, y: 0, width: 100, height: 100 } },
+      { sessionId: "b", rect: { x: 100, y: 0, width: 100, height: 100 } },
+    ]);
+    detachAlignAllPanel("b");
+    // 드롭 자리에 놓은 좌표가 그대로라고 둔다.
+    const dropped = { x: 500, y: 500, width: 640, height: 400, zIndex: 2 };
+    setOperationGeometry("b", dropped);
+
+    toggleAlignAll();
+    expect(getAlignAll()).toBeNull();
+    expect(getCanvasSnapshot().operations.a).toEqual(before.a);
+    expect(getCanvasSnapshot().operations.b).toMatchObject({ x: 500, y: 500 });
+  });
+
   it("acknowledges only the active Operation when Triage exits", () => {
     const active = operation("active", 1);
     const waiting = operation("waiting", 2);

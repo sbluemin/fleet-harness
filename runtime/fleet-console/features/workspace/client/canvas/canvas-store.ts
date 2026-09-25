@@ -127,6 +127,7 @@ const listeners = new Set<Listener>();
 const focusLayerListeners = new Set<Listener>();
 const companionPanelVisibilityListeners = new Set<Listener>();
 const alignLayoutListeners = new Set<Listener>();
+const modeTrayListeners = new Set<Listener>();
 const focusLayersByTheater = new Map<string, FocusLayerState>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
@@ -137,8 +138,7 @@ let companionPanelVisibilityOverrides: CompanionPanelVisibilityOverrides = {};
 // 모두 정렬이 꺼져 있을 때 캡슐이 가리키는 나누기 — 켜져 있는 동안은 유지 묶음 안의 layout이 진실이다.
 // 옛 formation-layout 키에 남아 있던 선택은 첫 읽기에서 한 번 이관하고 그 키는 지운다.
 let alignLayout = readStoredAlignLayout();
-let canvasViewportSize: CanvasViewportSize = { width: 0, height: 0 };
-let fitAllOperationsPending = false;
+let canvasViewportSize: CanvasViewportSize = { width: 0, height: 0 };let fitAllOperationsPending = false;
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
 let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
 let zoomRaf: number | null = null;
@@ -148,6 +148,11 @@ let beforeAlignAllActivation: ((theaterId: string) => void) | null = null;
 // 명시적 끄기(자리 복원)로 정렬이 끝났는지의 래치 — 끄기 제목·안내가 복원 해제와
 // 줌·fit-all·SK 해제(조용한 풀림)를 가르는 기준이다. 한 번 읽으면 내려간다.
 let alignOffRestored = false;
+// 자리 복원 없이 풀렸는지의 래치 — 자유 패널이 된 묶음의 최종 기하를 서버에 한 번
+// 커밋하는 기준이다. 정렬 중 PATCH 금지는 그대로 두고 풀리는 순간에만 쓴다.
+let alignStayedReleased = false;
+// 마지막으로 실제로 복원된 패널 수(빼낸 패널 제외) — 해제 문구의 N이 읽는다.
+let alignOffRestoredCount = 0;
 // 모든 Operation이 공유하는 단조 증가 z-index 발급기.
 // 두 레지스트리가 같은 카운터에서 값을 받아 "활성화한 Operation이 최상단"이 Operation 종류를 가로질러 성립한다.
 let topZIndex = 0;
@@ -835,7 +840,10 @@ export function setSnapHoldZones(zones: readonly SnapZoneFraction[]): void {
 }
 
 export function releaseSnapHold(): void {
-  if (state.snapHold?.alignAll) alignOffRestored = false;
+  if (state.snapHold?.alignAll) {
+    alignOffRestored = false;
+    alignStayedReleased = true;
+  }
   if (state.snapHold) setState({ snapHold: null });
 }
 
@@ -876,11 +884,36 @@ export function toggleAlignAll(): void {
 }
 
 function turnAlignAllOff(hold: SnapHold): void {
+  const restored = computeAlignOffState(hold);
+  alignOffRestored = true;
+  alignStayedReleased = false;
+  alignOffRestoredCount = restored.restoredCount;
+  setState({ operations: restored.operations, snapHold: restored.snapHold });
+}
+
+/**
+ * 정렬 해제 + 켜기 전 자리로 조용히 복귀 (제목·래치 없음). Station Keeping 진입이 쓴다 —
+ * 켜진 채 펼치면 빽빽한 칸 좌표에서 규율이 패널을 화면 밖까지 밀어낸다.
+ */
+export function releaseAlignAllToSaved(): void {
+  const hold = state.snapHold;
+  if (!hold?.alignAll) return;
+  const restored = computeAlignOffState(hold);
+  alignOffRestored = false;
+  alignStayedReleased = false;
+  alignOffRestoredCount = restored.restoredCount;
+  setState({ operations: restored.operations, snapHold: restored.snapHold });
+}
+
+// 켜기 전 자리·수동 묶음으로 되돌린 다음 상태와 실제로 복원된 패널 수(빼낸 패널 제외).
+function computeAlignOffState(hold: SnapHold): { readonly operations: Record<string, OperationGeometry>; readonly snapHold: SnapHold | null; readonly restoredCount: number } {
   const meta = hold.alignAll!;
   // 다음 켜기도 같은 나누기로 — 캡슐이 가리키는 전역 기억도 함께 둔다.
-  setAlignLayout(meta.layout);  const assigned = new Set(Object.keys(hold.assignments));
+  setAlignLayout(meta.layout);
+  const assigned = new Set(Object.keys(hold.assignments));
   const operations = { ...state.operations };
   let freshIndex = Object.keys(operations).length;
+  let restoredCount = 0;
   for (const sessionId of assigned) {
     const current = operations[sessionId];
     if (!current) continue;
@@ -896,6 +929,7 @@ function turnAlignAllOff(hold: SnapHold): void {
           zIndex: claimTopZIndex(),
         };
     freshIndex += 1;
+    restoredCount += 1;
   }
   // 켜기 전 수동 묶음 복원 — 없어졌거나 최소화된 패널은 빼고, 빈 묶음은 두지 않는다.
   let snapHold: SnapHold | null = null;
@@ -906,8 +940,7 @@ function turnAlignAllOff(hold: SnapHold): void {
       snapHold = { presetId: meta.savedSnapHold.presetId, zones: meta.savedSnapHold.zones, assignments };
     }
   }
-  alignOffRestored = true;
-  setState({ operations, snapHold });
+  return { operations, snapHold, restoredCount };
 }
 
 /** 정렬 중 나누기 바꾸기 — 같은 나누기를 다시 누르면 무시한다. 끄는 길은 토글(Alt+F·캡슐·⌘K)이 소유한다. */
@@ -962,12 +995,13 @@ export function rejoinAlignAllPanel(sessionId: string): void {
 }
 
 /**
- * 정렬 해제 — 켜기 전 자리 복원 없이 그 자리에 남긴다. 줌·fit-all·Station Keeping 진입 같은
- * "카메라·규율을 움직이려는 의도"가 부른다. 명시적 끄기(토글)는 turnAlignAllOff가 맡는다.
+ * 정렬 해제 — 켜기 전 자리 복원 없이 그 자리에 남긴다. 줌·fit-all 진입 같은
+ * "카메라를 움직이려는 의도"가 부른다. 명시적 끄기(토글)는 turnAlignAllOff가 맡는다.
  */
 export function releaseAlignAll(): void {
   if (state.snapHold?.alignAll) {
     alignOffRestored = false;
+    alignStayedReleased = true;
     setState({ snapHold: null });
   }
 }
@@ -977,6 +1011,18 @@ export function consumeAlignOffRestored(): boolean {
   const restored = alignOffRestored;
   alignOffRestored = false;
   return restored;
+}
+
+/** 자리 복원 없이 풀렸으면 true를 한 번 돌려준다 — 풀린 묶음의 최종 기하를 서버에 커밋하게 한다. */
+export function consumeAlignStayedRelease(): boolean {
+  const stayed = alignStayedReleased;
+  alignStayedReleased = false;
+  return stayed;
+}
+
+/** 마지막으로 실제로 복원된 패널 수 — 해제 문구가 빼낸 패널을 세지 않게 한다. */
+export function getAlignOffRestoredCount(): number {
+  return alignOffRestoredCount;
 }
 
 /**
@@ -1113,6 +1159,7 @@ export function loadForTheater(theaterId: string | null): void {
   // 정렬도 자리 복원 없이 풀린다.
   if (state.snapHold && Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON) {
     alignOffRestored = false;
+    if (state.snapHold.alignAll) alignStayedReleased = true;
     state = { ...state, snapHold: null };
   }
   // maximize와 companion은 상호 배타적인 focus layer다. Theater별 단일 상태로 보존·복원해
@@ -1291,6 +1338,31 @@ function subscribeAlignLayout(listener: Listener): () => void {
   alignLayoutListeners.add(listener);
   return () => {
     alignLayoutListeners.delete(listener);
+  };
+}
+
+// Command Band 모드 캡슐 열림 — 정렬 중에는 열린 캡슐 아래로 정렬 아레나 윗변을 내려
+// 왼쪽 위 칸의 캡션 버튼이 가려지지 않게 한다. 평소 스냅에는 손대지 않는다.
+let modeTrayOpen = false;
+
+export function useModeTrayOpen(): boolean {
+  return useSyncExternalStore(subscribeModeTray, getModeTrayOpen, getModeTrayOpen);
+}
+
+function getModeTrayOpen(): boolean {
+  return modeTrayOpen;
+}
+
+export function setModeTrayOpen(open: boolean): void {
+  if (modeTrayOpen === open) return;
+  modeTrayOpen = open;
+  for (const listener of modeTrayListeners) listener();
+}
+
+function subscribeModeTray(listener: Listener): () => void {
+  modeTrayListeners.add(listener);
+  return () => {
+    modeTrayListeners.delete(listener);
   };
 }
 

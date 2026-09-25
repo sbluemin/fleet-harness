@@ -2252,7 +2252,7 @@ describe("Instrument core design contract", () => {
     // inert로 포커스에서 빠지되 DOM에 남아 안내(feature tour)가 앵커를 찾는다.
     expect(commandBand).toContain('className={`command-band-mode-tray${modeToolsOpen ? " is-open" : ""}`}');
     expect(commandBand).toContain("inert={modeToolsOpen ? undefined : true}");
-    expect(commandBand).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse" || alignOn) return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
+    expect(commandBand).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
     expect(commandBand).toContain('{canvasMode === "cruise" ? <>');
     expect(commandBand).toContain('{canvasMode === "warRoom" ? <>');
     expect(commandBand).toContain('{ALIGN_LAYOUTS.map((layout) => (');
@@ -2270,8 +2270,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("if (layout === alignMeta.layout) {");
     expect(commandBand).not.toContain("chrome.commandBand.alignAll");
     expect(commandBand).not.toContain("AlignAllIcon");
-    // 정렬 중 hover로는 캡슐을 열지 않는다 — 열린 캡슐이 왼쪽 위 칸의 캡션 버튼을 가린다.
-    // (아래 onPointerEnter 계약이 hover 억제를 고정한다.)
+    // 열린 캡슐이 왼쪽 위 칸 캡션 버튼을 가리지 않게 캡슐 열림을 캔버스에 알린다 —
+    // 정렬 중에는 그 아래로 아레나 윗변을 내린다. hover 동작은 canary와 같다.
+    expect(commandBand).toContain("setModeTrayOpen(modeToolsOpen);");
     // 정렬이 켜지면 Cruise 세그먼트에 brass 점이 켜진다 — 캡슐 안 나누기와 같은 채널이다.
     expect(commandBand).toContain("stationKeeping || alignOn");
     // 모드 스위치는 Theater 등록 여부로만 게이트한다 — 정렬 토글은 활성 Theater로 게이트한다.

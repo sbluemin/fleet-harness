@@ -27,6 +27,8 @@ interface OperationFrameProps {
   readonly snapHeld?: boolean;
   /** 크기 조절 잠금 — 정렬 칸처럼 크기를 자동 채움이 소유할 때 핸들을 숨긴다(드래그는 그대로 둔다). */
   readonly resizeDisabled?: boolean;
+  /** 모두 정렬 묶음에 든 패널 — 스냅 투어 앵커에서 빠진다. */
+  readonly alignHeld?: boolean;
   readonly interactionDisabled?: boolean;
   readonly triageStage?: boolean;
   readonly triagePicked?: boolean;
@@ -120,7 +122,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, resizeDisabled = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, resizeDisabled = false, alignHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -175,6 +177,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     deckTile ? "is-deck-tile" : "",
     topEdge ? "is-top-edge" : "",
     snapHeld ? "is-snap-held" : "",
+    alignHeld ? "is-align-held" : "",
     dragging ? "is-dragging" : "",
     consoleUseWrapClassName(wrap),
     frameStatusClass(status),

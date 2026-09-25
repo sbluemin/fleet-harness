@@ -100,6 +100,9 @@ export function snapFullZone(arena: SnapRect): SnapRect {
  * snapZonesFor는 칸마다 안쪽 변에만 반간격을 빼서 가장자리 칸이 4px씩 넓어지는데,
  * 정렬은 빈칸 없이 꽉 채우므로 그 4px가 눈에 띈다. 줄·열 범위를 재서
  * 간격을 균등 분배한다. 수동 스냅에는 손대지 않는다(기존 나누기를 바꾸지 않기 위해서).
+ *
+ * 세로 보폭은 간격에 캡션 높이를 더한다 — 본문 rect 기준이라 아래 칸 캡션 띠(32px)가
+ * 본문 피치에 들어가지 않으면 아래 행 캡션이 위 행 본문에 묻힌다.
  */
 export function evenAlignBodies(bodies: readonly SnapRect[]): SnapRect[] {
   const next = bodies.map((body) => ({ ...body }));
@@ -129,7 +132,9 @@ export function evenAlignBodies(bodies: readonly SnapRect[]): SnapRect[] {
       next[index] = { ...body, x: start + position * (width + SNAP_GAP), width };
     });
   }
-  // 같은 열: 위부터 아래까지 재서 높이를 균등 분배한다.
+  // 같은 열: 위부터 아래까지 재서 높이를 균등 분배한다. 본문 사이에는 간격 8px에
+  // 아래 칸 캡션 띠 32px가 들어가므로 보폭은 둘의 합이다.
+  const ALIGN_ROW_STRIDE = SNAP_GAP + OPERATION_WINDOW_CAPTION_HEIGHT;
   for (const indices of cluster((body) => `${Math.round(body.x)}:${Math.round(body.width)}`)) {
     const ordered = [...indices].sort((a, b) => (next[a]?.y ?? 0) - (next[b]?.y ?? 0));
     const first = next[ordered[0] ?? -1];
@@ -138,11 +143,11 @@ export function evenAlignBodies(bodies: readonly SnapRect[]): SnapRect[] {
     const start = first.y;
     const end = last.y + last.height;
     const count = ordered.length;
-    const height = Math.max(0, (end - start - SNAP_GAP * (count - 1)) / count);
+    const height = Math.max(0, (end - start - ALIGN_ROW_STRIDE * (count - 1)) / count);
     ordered.forEach((index, position) => {
       const body = next[index];
       if (!body) return;
-      next[index] = { ...body, y: start + position * (height + SNAP_GAP), height };
+      next[index] = { ...body, y: start + position * (height + ALIGN_ROW_STRIDE), height };
     });
   }
   return next;

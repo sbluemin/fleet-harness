@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { fetchConsoleEnvironment } from "../../integration/api.js";
-import { animateViewportTo, fitAllOperations, releaseAlignAll, setAlignAllLayout, setStationKeeping, toggleAlignAll, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { animateViewportTo, fitAllOperations, releaseAlignAllToSaved, setAlignAllLayout, setModeTrayOpen, setStationKeeping, toggleAlignAll, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../../../../../features/workspace/client/canvas/triage-watch-deck.js";
 import { commandBandCenterFits, commandBandCenterGutter } from "./command-band-guards.js";
@@ -122,7 +122,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   };
   const openModeTools = () => { cancelModeToolsClose(); setModeToolsOpen(true); };
   const closeModeTools = () => { cancelModeToolsClose(); setModeToolsOpen(false); };
-  const scheduleModeToolsClose = () => {
+  // 캡슐 열림을 캔버스에 알린다 — 정렬 중에는 열린 캡슐 아래로 정렬 아레나 윗변을 내려
+  // 왼쪽 위 칸의 캡션 버튼을 비운다.
+  useEffect(() => {
+    setModeTrayOpen(modeToolsOpen);
+  }, [modeToolsOpen]);  const scheduleModeToolsClose = () => {
     cancelModeToolsClose();
     modeToolsCloseTimerRef.current = window.setTimeout(() => {
       modeToolsCloseTimerRef.current = null;
@@ -404,9 +408,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
               onMouseDown={(event) => event.preventDefault()}
               // hover는 마우스만의 것이다 — 터치·펜은 접촉과 함께 pointerenter를 내므로 여기서 열면
               // 뒤따르는 click 토글이 곧바로 닫아 버린다. 터치는 click 경로만 쓴다.
-              // 정렬 중에는 hover로 열지 않는다 — 밴드 아래 열린 캡슐이 왼쪽 위 칸의 캡션 버튼을
-              // 가린다. 나누기 전환은 세그먼트 클릭으로 연다.
-              onPointerEnter={(event) => { if (event.pointerType !== "mouse" || alignOn) return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}
+              onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}
               onFocus={() => {
                 if (suppressNextFocusOpenRef.current) { suppressNextFocusOpenRef.current = false; return; }
                 if (mode.id === canvasMode) openModeTools();
@@ -456,8 +458,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 disabled={state.activeTheaterId === null || !state.operationsHydrated}
                 aria-label={t("chrome.commandBand.stationKeeping")}
                 title={t("chrome.commandBand.stationKeeping")}
-                // 규율을 켜는 길은 정렬을 걷는다 — 펼쳐진 규율이 정렬 칸에 가려 무음으로 끝나지 않게 한다.
-                onClick={() => { if (!stationKeeping) releaseAlignAll(); setStationKeeping(!stationKeeping); }}
+                // 규율을 켜는 길은 정렬을 걷는다 — 켜기 전 자리로 되돌리고 펼친다.
+                // 빽빽한 칸 좌표에서 펼치면 패널이 화면 밖까지 밀려난다.
+                onClick={() => { if (!stationKeeping) releaseAlignAllToSaved(); setStationKeeping(!stationKeeping); }}
               ><StationKeepingIcon /></button>
               {/* 모두 정렬 나누기 — 꺼져 있으면 켜고, 켜져 있으면 바꾸고, 눌린 것을 다시 누르면 끈다.
                   눌림 표시는 켜져 있을 때만 보인다. */}
