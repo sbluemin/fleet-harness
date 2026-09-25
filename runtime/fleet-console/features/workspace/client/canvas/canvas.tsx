@@ -17,7 +17,6 @@ import { createHostCapabilities } from "../../../../core/client/src/integration/
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { ClusterStrip } from "../cluster-strip.js";
-import { ClusterPicker } from "../cluster-picker.js";
 import { ClusterNodeRail } from "../cluster-node-rail.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
@@ -193,13 +192,6 @@ export function OperationsCanvas({
   const operationBodyPoolAvailable = useOperationBodyPoolAvailable();
   const triageActive = useTriageActive();
   const clusterBodySelection = state.nestedBodySelection;
-  const [clusterPicker, setClusterPicker] = useState<{
-    readonly rootId: string;
-    readonly anchor: DOMRect;
-    readonly canvasTop?: number;
-    readonly targetOperationId?: string;
-    readonly panelRect?: { readonly left: number; readonly top: number; readonly width: number; readonly height: number; readonly bottom: number };
-  } | null>(null);
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
   const triageDeckZoom = useTriageDeckZoomControl();
@@ -373,11 +365,9 @@ export function OperationsCanvas({
     // 모두 정렬은 Cruise 위의 유지라 끌기·팬·줌을 허용한다(줌은 유지를 푼다).
     disabled: disabled || companionOperationId !== null || triageActive,
     onViewportChange: (viewport) => {
-      setClusterPicker(null);
       setViewport(storedViewportFromScreen(viewport));
     },
     onZoom: (viewport, screen) => {
-      setClusterPicker(null);
       // 줌은 유지를 푼다 — 카메라를 움직이려는 첫 의도다. 패널은 그 자리에 자유 패널로 남는다.
       releaseSnapHold();
       // 판 위의 줌은 커서 아래 월드가 아니라 커서가 겨눈 점을 앵커로 잡는다 — 판 위의 커서는
@@ -1655,21 +1645,8 @@ export function OperationsCanvas({
                   <ClusterStrip
                     layout={clusterRoot}
                     rootActivity={resolveOperationActivity(operation, operationRuntime)}
-                    onOpen={(operationId, event) => {
-                      const target = event?.currentTarget as HTMLElement | undefined;
-                      const panel = target?.closest<HTMLElement>("[data-operation-id]") ?? null;
-                      const anchor = target?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0);
-                      const panelRect = panel?.getBoundingClientRect();
-                      const canvasRect = canvasRef.current?.getBoundingClientRect();
-                      const canvasTop = (canvasRect?.top ?? 0) + (arenaInsets?.top ?? 0);
-                      setClusterPicker({
-                        rootId: operation.id,
-                        targetOperationId: operationId,
-                        anchor,
-                        canvasTop,
-                        panelRect: panelRect ? { left: panelRect.left, top: panelRect.top, width: panelRect.width, height: panelRect.height, bottom: panelRect.bottom } : undefined,
-                      });
-                    }}
+                    missionNavigation
+                    onOpen={clusterRoot.cluster.open}
                   />
                 ),
                 nodes: (
@@ -1918,30 +1895,6 @@ export function OperationsCanvas({
         onOperationContextMenu={onOpenOperationMenu}
         onTheaterContextMenu={openTriageTheaterLaunchMenu}
       />
-      {clusterPicker ? (() => {
-        const layout = clusterIndex.rootOf.get(clusterPicker.rootId);
-        if (!layout) return null;
-        const rootNode = state.operations?.find((candidate) => candidate.id === clusterPicker.rootId) ?? null;
-        return (
-          <ClusterPicker
-            layout={layout}
-            anchor={clusterPicker.anchor}
-            panelRect={clusterPicker.panelRect}
-            canvasTop={clusterPicker.canvasTop}
-            targetOperationId={clusterPicker.targetOperationId}
-            current={clusterBodySelection[clusterPicker.rootId] ?? null}
-            rootActivity={rootNode ? resolveOperationActivity(rootNode, operationRuntime) : null}
-            onPick={(operationId) => {
-              // 단계는 어느 모드에서도 패널로 서지 않는다 — 지휘관 패널의 본문을 그 단계로 바꾼다(노드 줄과 같은 동작).
-              selectNestedBody(clusterPicker.rootId, operationId);
-              setActiveOperation(clusterPicker.rootId);
-              requestOperationKeyboardFocus(clusterPicker.rootId);
-            }}
-            onOpenItem={layout.cluster.open ? (operationId) => layout.cluster.open?.(operationId) : undefined}
-            onClose={() => setClusterPicker(null)}
-          />
-        );
-      })() : null}
       {cruiseEntering ? (
         <ModeTitle
           kicker={t(cruiseReturnFromAlignRef.current ? "canvas.align.modeKicker" : "canvas.cruise.modeKicker")}

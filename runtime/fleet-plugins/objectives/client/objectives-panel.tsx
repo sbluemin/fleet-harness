@@ -129,6 +129,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const toggleSection = (key: string, defaultOpen: boolean) => patchObjectiveView(theaterId, (current) => ({ collapsed: { ...current.collapsed, [key]: key in current.collapsed ? !current.collapsed[key] : defaultOpen } }));
   const isOpen = (key: string, defaultOpen: boolean) => (key in collapsed ? !collapsed[key] : defaultOpen);
   const [highlightMission, setHighlightMission] = useState<string | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); }, []);
   const [banner, setBanner] = useState<{ text: string; undo?: () => Promise<void> } | null>(null);
   const launchRows = useLaunchRows();
   const [nextView, setNextView] = useState<StartView>(() => { try { return localStorage.getItem("fleet.objectives.start-view") === "chat" ? "chat" : "terminal"; } catch { return "terminal"; } });
@@ -187,7 +189,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     takeReveal();
     setSelected(objective.id);
     setList(objective.groupId ? `group:${objective.groupId}` : "ungrouped");
-    if (reveal.missionId) { setHighlightMission(reveal.missionId); setTimeout(() => setHighlightMission(null), 2400); }
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    setHighlightMission(reveal.missionId ?? null);
+    if (reveal.missionId) highlightTimer.current = setTimeout(() => { setHighlightMission(null); highlightTimer.current = null; }, 2400);
   }, [reveal, state.objectives]);
 
   // 중앙 하단 알림은 두지 않는다 — 결과는 화면 자체가 말한다(행·비콘·목록). 호출부는 남겨 두되 아무것도 띄우지 않는다.
@@ -439,7 +443,13 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
   const pickList = (next: ListId) => { setList(next); setListMenuOpen(false); listTriggerRef.current?.focus(); };
   return (
-    <div className="objectives-container"><div className={`objectives-root${current ? " has-detail" : ""}`}>
+    <div className="objectives-container" onPointerDownCapture={(event) => {
+      if (highlightMission && !(event.target as Element).closest(`[data-mission-id="${CSS.escape(highlightMission)}"]`)) {
+        if (highlightTimer.current) clearTimeout(highlightTimer.current);
+        highlightTimer.current = null;
+        setHighlightMission(null);
+      }
+    }}><div className={`objectives-root${current ? " has-detail" : ""}`}>
       <nav className={`objectives-lists${drag ? " is-dragging" : ""}`} aria-label={t("objectives.panel.title")}>
         <ListButton id="today" current={list} onPick={setList} drop over={drag?.over === "today"} label={`☀ ${t("objectives.list.today")}`} count={openCount((objective) => objective.today)} />
         <ListButton id="due" current={list} onPick={setList} drop over={drag?.over === "due"} label={t("objectives.list.due")} count={openCount((objective) => !!objective.dueDate)} />

@@ -1,7 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
-import type { OperationClusterProgress } from "@fleet-console/sdk/plugin";
-
 import { useT } from "../../../core/client/src/i18n/index.js";
 import type { ClusterLaidMember, ClusterLayout } from "./operation-clusters.js";
 
@@ -18,42 +16,37 @@ export function requiredWidth(members: readonly ClusterLaidMember[], mode: Strip
     }
   }
   const n = members.length;
-  if (mode === "dense") {
-    return 13 + n * 4 + separators * 4;
-  }
+  if (mode === "dense") return 13 + n * 4 + separators * 4;
   return 13 + n * 9 + separators * 6;
 }
 
-/** 띠가 쓸 수 있는 폭. 아직 잴 수 없으면(배치 전·숨은 칩) null — 0은 「자리가 없다」는 측정값이다. */
+/** 배치 전·숨은 칩에서는 측정값이 없다. */
 function computeBudget(element: HTMLElement | null): number | null {
   if (!element) return null;
-  const sideBarText = element.closest<HTMLElement>(".side-bar-chip-text") ?? element.parentElement;
-  if (sideBarText) {
-    return sideBarText.clientWidth > 0 ? sideBarText.clientWidth : null;
-  }
-  return null;
+  const container = element.closest<HTMLElement>(".side-bar-chip-text") ?? element.parentElement;
+  return container && container.clientWidth > 0 ? container.clientWidth : null;
 }
 
-/**
- * 단계 띠 — 묶음을 한 줄로 요약하는 글리프.
- * 폭에 맞춰 가장 자세한 모드를 고른다: full(기본) → dense(촘촘한 칸) → count(고리 + 셈).
- * 뿌리 고리 하나, 깊이 경계마다 눈금, 구성원마다 사각 하나.
- * 색은 진행(구조 안의 자리)이지 세션 활동이 아니다 — 활동은 비콘이 진다.
- */
-export function ClusterStrip({ layout, rootActivity, className, onOpen }: {
+/** 캡션은 칸마다 임무로 이동하고, 사이드바에서는 줄 클릭을 방해하지 않는 장식이다. */
+export function ClusterStrip({ layout, rootActivity, className, onOpen, missionNavigation = false, decorative = false }: {
   readonly layout: ClusterLayout;
-  /** 뿌리(조율자) 세션의 활동 — 고리 색. */
   readonly rootActivity?: "idle" | "running" | "awaiting" | "background" | "ended" | null;
   readonly className?: string;
-  readonly onOpen?: (operationId: string | undefined, event?: MouseEvent | KeyboardEvent) => void;
+  readonly onOpen?: (operationId?: string) => void;
+  readonly missionNavigation?: boolean;
+  readonly decorative?: boolean;
 }) {
   const t = useT();
   const stripRef = useRef<HTMLSpanElement | null>(null);
   const [mode, setMode] = useState<StripMode>("full");
-
+  // 한 번의 Tab 정지만 유지한다. 사라진 임무를 가리키던 기억은 지휘관 고리로 돌아간다.
+  const [focusedMemberId, setFocusedMemberId] = useState<string | null>(null);
+  const activeMemberId = layout.members.some(({ member }) => member.operationId === focusedMemberId) ? focusedMemberId : null;
+  useLayoutEffect(() => {
+    if (focusedMemberId !== null && activeMemberId === null) setFocusedMemberId(null);
+  }, [focusedMemberId, activeMemberId]);
   const membersRef = useRef(layout.members);
   membersRef.current = layout.members;
-
   const membersKey = useMemo(
     () => layout.members.map((m) => `${m.member.operationId}:${m.member.progress}:${m.depth}`).join("|"),
     [layout.members],
@@ -62,11 +55,8 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen }: {
   useLayoutEffect(() => {
     const el = stripRef.current;
     if (!el) return;
-    const target =
-      el.closest<HTMLElement>(".side-bar-chip-text") ??
-      el.parentElement;
+    const target = el.closest<HTMLElement>(".side-bar-chip-text") ?? el.parentElement;
     if (!target) return;
-
     const update = () => {
       const budget = computeBudget(el);
       if (budget === null) return;
@@ -76,85 +66,100 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen }: {
       const nextMode: StripMode = fullW <= budget ? "full" : denseW <= budget ? "dense" : "count";
       setMode((prev) => (prev !== nextMode ? nextMode : prev));
     };
-
     update();
-
     const observer = new ResizeObserver(update);
     observer.observe(target);
     return () => observer.disconnect();
-  }, [membersKey]);
+  }, [membersKey, missionNavigation]);
 
-  const done = layout.members.filter((laid) => laid.member.progress === "done").length;
-  const label = t("cluster.strip.aria", { title: layout.cluster.title, done, total: layout.members.length });
+  const missions = layout.members.filter(({ member }) => member.missionNumber !== undefined);
+  const done = missions.filter(({ member }) => member.progress === "done").length;
+  const total = missions.length;
+  const label = t("cluster.strip.aria", { title: layout.cluster.title, done, total });
   const open = onOpen ? (event: MouseEvent | KeyboardEvent, operationId?: string) => {
     event.stopPropagation();
     event.preventDefault();
-    onOpen(operationId, event);
+    onOpen(operationId);
   } : undefined;
-
+  const onCellKeyDown = (event: KeyboardEvent<HTMLElement>, operationId?: string) => {
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      event.stopPropagation();
+      const cells = Array.from(stripRef.current?.querySelectorAll<HTMLElement>("[data-cluster-cell]") ?? []);
+      const index = cells.indexOf(event.currentTarget);
+      const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? cells.length - 1
+        : index + (event.key === "ArrowRight" ? 1 : -1);
+      cells[nextIndex]?.focus();
+    } else if (event.key === "Enter" || event.key === " ") {
+      open?.(event, operationId);
+    }
+  };
   const isAwaiting = rootActivity === "awaiting" || layout.members.some((laid) => laid.member.progress === "awaiting");
   const rootClass = `cluster-strip-root is-${isAwaiting ? "awaiting" : rootActivity ?? "unknown"}`;
-  const allDone = done === layout.members.length && layout.members.length > 0;
-
+  const allDone = done === total && total > 0;
   const stripClassName = [
-    "cluster-strip",
-    mode === "dense" ? "is-dense" : mode === "count" ? "is-count" : "",
-    open ? "is-interactive" : "",
-    className ?? "",
+    "cluster-strip", mode === "dense" ? "is-dense" : mode === "count" ? "is-count" : "",
+    missionNavigation && open ? "is-mission-navigation" : open ? "is-interactive" : "", className ?? "",
   ].filter(Boolean).join(" ");
 
   if (mode === "count") {
     return (
-      <span
-        ref={stripRef}
-        className={stripClassName}
-        role={open ? "button" : "img"}
-        tabIndex={open ? 0 : undefined}
-        aria-label={label}
-        title={layout.cluster.title}
-        data-mode={mode}
+      <span ref={stripRef} className={stripClassName} role={decorative ? undefined : open ? "button" : "img"} tabIndex={open ? 0 : undefined}
+        aria-label={decorative ? undefined : label} aria-hidden={decorative ? "true" : undefined}
+        title={decorative ? undefined : layout.cluster.title} data-mode={mode}
         onClick={open ? (event) => open(event) : undefined}
-        onKeyDown={open ? (event) => { if (event.key === "Enter" || event.key === " ") { open(event); } } : undefined}
-      >
+        onKeyDown={open ? (event) => { if (event.key === "Enter" || event.key === " ") open(event); } : undefined}>
         <i className={rootClass} aria-hidden="true" />
-        <span className={`cluster-strip-count${allDone ? " is-done" : ""}`}>
-          {done}/{layout.members.length}
-        </span>
+        <span className={`cluster-strip-count${allDone ? " is-done" : ""}`}>{done}/{total}</span>
       </span>
     );
   }
 
   let lastDepth = -1;
   return (
-    <span
-      ref={stripRef}
-      className={stripClassName}
-      role={open ? "button" : "img"}
-      tabIndex={open ? 0 : undefined}
-      aria-label={label}
-      title={layout.cluster.title}
-      data-mode={mode}
-      onClick={open ? (event) => open(event) : undefined}
-      onKeyDown={open ? (event) => { if (event.key === "Enter" || event.key === " ") { open(event); } } : undefined}
-    >
-      <i className={rootClass} aria-hidden="true" />
+    <span ref={stripRef} className={stripClassName} role={decorative ? undefined : missionNavigation ? "group" : open ? "button" : "img"}
+      tabIndex={!missionNavigation && open ? 0 : undefined} aria-label={decorative ? undefined : label}
+      aria-hidden={decorative ? "true" : undefined}
+      title={missionNavigation || decorative ? undefined : layout.cluster.title} data-mode={mode}
+      onClick={open ? (event) => { if (!missionNavigation || event.target === event.currentTarget) open(event); } : undefined}
+      onKeyDown={!missionNavigation && open ? (event) => { if (event.key === "Enter" || event.key === " ") open(event); } : undefined}>
+      <span className={missionNavigation && open ? "cluster-strip-cell is-navigation" : "cluster-strip-cell"}
+        role={missionNavigation && open ? "button" : undefined} tabIndex={missionNavigation && open ? activeMemberId === null ? 0 : -1 : undefined}
+        data-cluster-cell={missionNavigation && open ? "" : undefined}
+        aria-label={missionNavigation && open ? t("cluster.picker.coordinator") : undefined}
+        title={missionNavigation ? t("cluster.picker.coordinator") : undefined}
+        onFocus={missionNavigation && open ? () => setFocusedMemberId(null) : undefined}
+        onClick={missionNavigation && open ? (event) => { setFocusedMemberId(null); open(event); } : undefined}
+        onKeyDown={missionNavigation && open ? (event) => onCellKeyDown(event) : undefined}>
+        <i className={rootClass} aria-hidden="true" />
+      </span>
       {layout.members.map((laid) => {
         const separator = laid.depth !== lastDepth;
         lastDepth = laid.depth;
+        const member = laid.member;
+        const number = member.missionNumber;
+        const title = number === undefined ? member.label : member.label.replace(/^\d+\.\s*/, "");
+        const state = member.progress === "blocked"
+          ? t("cluster.strip.blocked")
+          : member.progress === "done" ? t("cluster.nodes.state.done") : t(`cluster.picker.state.${member.progress}`);
+        const tip = number === undefined
+          ? t("cluster.strip.memberTip", { title, state })
+          : t("cluster.strip.missionTip", { n: number, title, state });
         return (
-          <span
-            key={laid.member.operationId}
-            className="cluster-strip-cell"
-            aria-hidden="true"
-            onClick={open ? (event) => open(event, laid.member.operationId) : undefined}
-          >
-            {separator ? <i className="cluster-strip-tick" /> : null}
-            <i className={`cluster-strip-step is-${laid.member.progress}`} title={laid.member.label} />
+          <span key={member.operationId} className={`cluster-strip-cell${missionNavigation && open ? " is-navigation" : ""}`}
+            role={missionNavigation && open ? "button" : undefined} tabIndex={missionNavigation && open ? activeMemberId === member.operationId ? 0 : -1 : undefined}
+            data-cluster-cell={missionNavigation && open ? "" : undefined}
+            aria-label={missionNavigation && open ? tip : undefined}
+            aria-hidden={missionNavigation ? undefined : "true"}
+            title={missionNavigation ? tip : undefined}
+            onFocus={missionNavigation && open ? () => setFocusedMemberId(member.operationId) : undefined}
+            onClick={open ? (event) => { if (missionNavigation) setFocusedMemberId(member.operationId); open(event, member.operationId); } : undefined}
+            onKeyDown={missionNavigation && open ? (event) => onCellKeyDown(event, member.operationId) : undefined}>
+            {separator ? <i className="cluster-strip-tick" aria-hidden="true" /> : null}
+            <i className={`cluster-strip-step is-${member.progress}`} title={missionNavigation ? undefined : member.label} aria-hidden="true" />
           </span>
         );
       })}
     </span>
   );
 }
-
-export const progressOrder: readonly OperationClusterProgress[] = ["awaiting", "running", "open", "blocked", "done"];
