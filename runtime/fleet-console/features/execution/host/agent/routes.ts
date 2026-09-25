@@ -1042,6 +1042,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     } catch {
       return rollback(503, "chat_unavailable");
     }
+    // 프롬프트 없이 태어난 채팅도 자식을 바로 세운다 — 그래야 첫 프롬프트 전에도 다른 세션이 부를 수 있다.
+    chat.open();
     if (launchOptions.prompt) {
       chat.send(
         launchOptions.prompt,
@@ -1612,7 +1614,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const adopted = observability.setTerminalSessionChatActive(operationId, true);
     if (adopted) observability.notifySessionUpdated(adopted);
     try {
-      await chatRegistry.ensure(operationId, () => seed.seed);
+      // 깨운 채팅도 첫 메시지를 기다리지 않고 자식을 세운다. 휴면한 채팅에는 PTY가 없으므로 이중 필자가 될 수 없다.
+      (await chatRegistry.ensure(operationId, () => seed.seed)).open();
     } catch {
       const reverted = observability.setTerminalSessionChatActive(operationId, false);
       if (reverted) observability.notifySessionUpdated(reverted);
@@ -1972,6 +1975,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // resume core와 같은 좌표 정책: launchModel이 없던 구세대 Operation은 native Opus 1M로 계속된다.
     const model = readAgentSession(node.payload)?.model || "opus[1m]";
     const launchEffort = resolveChatLaunchEffort(readAgentSession(node.payload)?.effort ?? "");
+    // 터미널 런치가 `-n`으로 싣는 것과 같은 이름 — 다른 세션이 이 세션을 부르는 주소다.
+    const sessionName = readAgentSession(node.payload)?.sessionName;
     // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
     // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트 모드도 PTY 경로와 같은 전역 설정을 읽는다.
     const claudeConfigDir = resolveClaudeConfigDir();
@@ -2032,6 +2037,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(gatewayCompactCeiling === undefined ? {} : { compactCeiling: gatewayCompactCeiling }),
         ...(launchEffort ? { effort: launchEffort.effort } : {}),
         cwd,
+        ...(sessionName ? { sessionName } : {}),
         claudeConfigDir,
         origin: sessionOrigin,
         resolveFleetMcpServers: async () => {

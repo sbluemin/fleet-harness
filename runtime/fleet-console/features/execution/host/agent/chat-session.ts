@@ -110,6 +110,11 @@ export interface AgentChatSessionSeed {
   readonly ultracode?: true;
   readonly cwd: string;
   /**
+   * 자식 세션의 표시 이름(`-n`). 터미널 런치가 CLI에 싣는 것과 같은 Operation의 세션 이름이며,
+   * 다른 세션이 `SendMessage`로 이 세션을 부르는 주소다.
+   */
+  readonly sessionName?: string;
+  /**
    * 사용자의 실제 Claude 홈(`CLAUDE_CONFIG_DIR` 또는 `~/.claude`). 터미널로 띄운 CLI가 쓰는
    * 바로 그 홈이며, 트랜스크립트가 한 자리에서 자라는 근거다.
    */
@@ -2048,6 +2053,19 @@ class AgentChatSession {
   }
 
   /**
+   * 첫 턴을 기다리지 않고 자식을 연다. 자식이 떠 있어야 세션 목록에 이름으로 등록되고, 그래야
+   * 다른 세션의 `SendMessage`가 프롬프트를 받기 전인 채팅에도 닿는다 — 터미널 패널이 뜨자마자
+   * CLI가 서는 것과 같은 자리다.
+   *
+   * 기다리지 않고 실패도 삼킨다. 여기서 못 연 세션은 첫 메시지가 같은 비행으로 다시 열고, 그
+   * 실패는 그 턴이 채팅 저널에 말한다.
+   */
+  open(): void {
+    if (this.disposed) return;
+    void this.ensureSession().catch(() => undefined);
+  }
+
+  /**
    * 자식 하나를 열고, 그 스트림을 끝까지 소진하는 리더를 세운다. 세션당 한 번이다.
    *
    * 턴이 아니라 세션이 실행 정책을 소유한다 — 모델·강도·doctrine·도구 좌표·cwd는 자식이 사는
@@ -2070,6 +2088,7 @@ class AgentChatSession {
           ...(this.seed.effort ? { effort: this.seed.effort } : {}),
           ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
           cwd: this.seed.cwd,
+          ...(this.seed.sessionName ? { sessionName: this.seed.sessionName } : {}),
           // 이어붙일 좌표는 admiral이 세션을 준비할 때 이미 확정했다. 채팅으로 태어난 세션도
           // 마찬가지다 — 자식이 만든 id를 받아 적는 대신 우리가 못박았으므로, 첫 턴을 기다리지
           // 않고도 이 세션의 좌표를 안다. 시스템 프롬프트 정책도 같은 자리에서 나온다.

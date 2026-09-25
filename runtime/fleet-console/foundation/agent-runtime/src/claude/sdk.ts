@@ -117,6 +117,8 @@ export async function createClaudeGatewaySdk(
     ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
     ...(request.forkSession === undefined ? {} : { forkSession: request.forkSession }),
     ...(request.persistSession === undefined ? {} : { persistSession: request.persistSession }),
+    // SDK에는 이름 필드가 없어 CLI 인자로 싣는다. 임의 인자 통로(`extraArgs`)는 계약에 열지 않고 이 한 키만 옮긴다.
+    ...(request.sessionName === undefined ? {} : { extraArgs: { name: request.sessionName } }),
     ...(request.maxTurns === undefined ? {} : { maxTurns: request.maxTurns }),
     ...(request.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: request.maxBudgetUsd }),
     ...(request.outputFormat === undefined ? {} : { outputFormat: request.outputFormat }),
