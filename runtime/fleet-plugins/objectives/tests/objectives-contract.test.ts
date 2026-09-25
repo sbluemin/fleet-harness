@@ -335,6 +335,8 @@ describe("Objectives contract", () => {
     // 저장 무결성 — 파일에서 다시 읽어도 기준이 기본 요구사항으로 남는다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect(reloaded.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
+    // 오타 등 옛 키가 아닌 중첩 키는 선검사에서 막혀 권한 요청까지 가지 않는다 — 옛 키는 통과해 이유 안내를 받는다.
+    expect(gate.safeParse({ add: { title: "Typo", criterai: ["x"] } }).success).toBe(false);
     // 금지 입력은 선검사를 통과해도 이유 있게 거절되고, 기동도 Operation 도 레코드도 늘지 않는다.
     const fenced = { launches: launches.length, operations: operations.size, listed: store.list("t1").length };
     for (const args of [

@@ -43,11 +43,15 @@ const argsSchema = z.object({
 }).strict();
 type Args = z.output<typeof argsSchema>;
 /**
- * 호스트 선검사에 내보내는 스키마 — 최상위와 add 모두 모르는 키를 통과시킨다. strict 인 add 가 그대로 나가면
- * 옛 추가 인자가 선검사에서 일반 invalid_arguments 로 막혀 execute 의 역할 경계 거절(add_brief_criteria_only)에
- * 닿지 못한다. 허용 입력의 엄격한 검사는 execute 가 안내 뒤에 한다(부작용 없는 거절 유지).
+ * 호스트 선검사에 내보내는 add — strict 를 유지하되 역할 경계 거절에 필요한 옛 키만 선언해 통과시킨다.
+ * add 전체를 loose 로 풀면 오타(criterai 등)까지 선검사를 통과해 사람에게 권한 요청을 띄운 뒤에야 거절된다 —
+ * 호스트는 실행 불가 호출에 권한 요청을 띄우지 않는 것이 정책이므로, 옛 키 외의 중첩 키는 선검사에서 막는다.
+ * 허용 입력의 엄격한 검사는 execute 가 안내 뒤에 한다(부작용 없는 거절 유지).
  */
-const exposedSchema = argsSchema.extend({ add: addSchema.loose().optional() }).loose();
+const exposedAddSchema = addSchema.extend(
+  Object.fromEntries(ADD_REJECTED_KEYS.map((key) => [key, z.unknown().optional()])),
+).strict();
+const exposedSchema = argsSchema.extend({ add: exposedAddSchema.optional() }).loose();
 
 export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly PluginMcpTool[] {
   const { itemView, rowView, languageOf } = createBoardViews(ctx, store);
@@ -58,9 +62,10 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
   const tool: PluginMcpTool = {
     name: "console_objectives",
     description: "The Objectives board of a Theater, as the person sees it. Every agent Operation of the Theater is an objective — the objective id is its Commander Operation id — carried out by missions. Read with view groups | items (filter today|due|all|agent) | item (note = the brief, attachments, steps = missions, criteria = success criteria, members). Write with add: title; optional note (the brief), criteria (success-criterion sentences); at most 10 adds per caller per 10 minutes. The new objective carries no missions and follows the calling Operation's group; importance, due dates and grouping stay the person's acts on the screen. The new objective's Commander Operation is created dormant until the person presses Plan or Commence. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools, not here. Completing an objective and editing its brief after creation are the person's acts on the screen.",
-    // 노출 스키마는 최상위와 add 모두 모르는 키를 막지 않는다 — 호스트가 이 스키마로 먼저 검사하므로, strict 이면 옛 인자가
-    // execute 에 닿지 못해 새 자리 안내(moved_to_fleet_objectives)·역할 경계 거절(add_brief_criteria_only) 대신
-    // invalid_arguments 로 끝난다. 엄격한 검사는 execute 가 안내 뒤에 한다.
+    // 노출 스키마는 최상위의 모르는 키를 막지 않고, add 안에서는 역할 경계 거절에 필요한 옛 키만 통과시킨다 —
+    // 호스트가 이 스키마로 먼저 검사하므로, 옛 인자가 execute 에 닿지 못하면 새 자리 안내(moved_to_fleet_objectives)·
+    // 역할 경계 거절(add_brief_criteria_only) 대신 invalid_arguments 로 끝나고, 반대로 add 를 전부 풀면 오타까지
+    // 권한 요청을 띄운 뒤에야 거절된다. 엄격한 검사는 execute 가 안내 뒤에 한다.
     inputSchema: z.toJSONSchema(exposedSchema),
     surface: {
       panelId: "objectives",
