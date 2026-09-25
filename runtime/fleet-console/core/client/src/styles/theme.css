@@ -416,8 +416,13 @@
   --duration-slow: 360ms;
 
   /* 상호작용 컨트롤의 상태 recipe(Quiet Controls C′) — rest는 침묵이 아니라 낮은 목소리다:
-     동사·컨트롤은 쉬는 상태에서도 극저대비 rest 채널(--control-rest + 헤어라인)로 자기 몸을
-     알린다. 완전 투명 rest는 2026-09-01 저장소 실측(주 동사 4종의 시각 신호 0개)으로 기각됐다.
+     동사·컨트롤은 쉬는 상태에서 면(--control-rest)만으로 자기 몸을 알린다. 테두리는 상태가
+     소유한다. 완전 투명 rest는 2026-09-01 저장소 실측(주 동사 4종의 시각 신호 0개)으로
+     기각됐다 — 면이 없는 쉬는 컨트롤은 허용하지 않는다.
+     입력 필드는 예외다. 필드는 --control-field 면 + 헤어라인을 유지한다 — 빈 입력칸은
+     경계가 식별 수단이다. hover는 테두리를 새로 그리지 않는다: brass 예고는
+     --control-hover-fill 면과 잉크 상승으로 말한다(세그먼트 hover는 --control-wash-hover 그대로).
+     forced-colors에서는 면이 걷히므로 테두리를 ButtonBorder로 되살린다.
      focus는 입력 수단의 별도 외곽 링이다. "지속" 상태는 accent가 아니라 세 문장으로 갈린다:
      배타 선택 = 극저대비 중립 워시(--control-wash) + 잉크 대비 + 2px brass 다텀 한 점,
      독립 ON = 잉크(--control-tint-* 저채도 워시), 불리언 ON = 워시 + brass 글리프.

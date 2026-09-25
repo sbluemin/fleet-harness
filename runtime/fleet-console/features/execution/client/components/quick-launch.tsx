@@ -111,6 +111,9 @@ export function QuickLaunch() {
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
 
   const cardRef = useRef<HTMLElement | null>(null);
+  // 도킹 inset용으로 마지막에 잰 펼친 카드 높이. 접힌 동안과 전이 동안에는 이 값을 고정해 쓴다.
+  // 고정 해제 때는 버린다(다음 고정에서 다시 잰다).
+  const lastExpandedInsetRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // `ultracode` 하이라이트를 그리는 미러 레이어. textarea가 스크롤하면 같은 만큼 따라가야 글자가
   // 어긋나지 않는다(6줄 클램프 뒤로는 실제로 스크롤한다).
@@ -1429,6 +1432,122 @@ export function QuickLaunch() {
     event.preventDefault();
     submit();
   }, [activeCommandRow, activeMention, applyCommandPrompt, clearMention, commandDeckHasRows, commandDeckOpen, commandInput, commandRowsFlat.length, deckHasRows, mentionDeckOpen, mentionTarget, pickMention, prompt, selectableMentions.length, submit, ultracodeArmed]);
+
+  // 도킹 카드가 작업 면 아래를 덮지 않게, 카드가 차지하는 높이에 여백(--space-4)을 더한 값을
+  // document 루트에 알린다. 작업 면(formation 격자·최대화 프레임)은 이 값만큼 하단 안쪽 여백을
+  // 비워 겹침을 0으로 만든다. 쓰는 값은 펼친 높이로 고정한다 — 접힘·펼침마다 작업 면이 다시
+  // 흐르면 QL에 글을 쓰는 동안 패널이 튄다.
+  //
+  // 기억값은 안정 상태에서만 갱신한다. 펼친 안정 상태에서 잰 높이를 ref에 두고, 접힌 동안과
+  // field·bar의 max-height/padding 전이 동안에는 ref를 고정해 쓴다. 전이 중에 잰 값(접힘 커밋의
+  // strip 가산분, 펼침 전이의 중간 높이)이 ref를 오염시키면 inset이 189·69처럼 튄다.
+  //
+  // 전이 판정은 field·bar의 전이 이벤트다. 클래스 변경의 원인(접힘·펼침·거절 표시)과 무관하게
+  // 전이 구간에만 동결하므로, effect 의존성에 없는 holdsMessage로 카드가 커져도 어긋나지 않는다.
+  // effect 안에서는 getAnimations()으로 씨를 뿌리고(커밋과 같은 태스크라 이벤트를 놓칠 수 없다),
+  // 이후에는 transitionrun/end/cancel로 잇는다. end/cancel 때는 무조건 끄지 않고 다시 재서,
+  // 여러 속성의 전이가 겹치거나 방향이 바뀌어도 남는 전이를 놓치지 않는다. 끝 이벤트를 놓치면
+  // 영영 동결되므로, 오래된 동결은 write에서 감시(watchdog)로 푼다.
+  //
+  // 접힘 판정은 카드의 is-collapsed 클래스다 — 조기 반환 뒤에서 계산되는
+  // showStrip(pinned·collapsed·holdsMessage의 합)과 같은 커밋에 붙으므로, 거절 표시로 펼쳐지는
+  // 경우까지 같은 신호로 읽는다. 고정할 때 처음부터 접혀 잰 값이 없으면 scrollHeight에 눌린
+  // 상하 패딩을 되살려 추정한다(field 상 space-3·하 space-2, bar 상 space-2·하 space-3 —
+  // bar의 1px 테두리는 chrome에 이미 들어 있다). 고정 해제·설정 화면·언마운트 때는 걷는다.
+  //
+  // 이 effect는 조기 반환(`if (!open) return null`)보다 앞에 선다 — 뒤에 두면 닫힌 렌더와
+  // 열린 렌더의 hook 수가 달라져 트리가 통째로 내린다(React #310).
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!pinned) {
+      lastExpandedInsetRef.current = null;
+      root.style.removeProperty("--quick-launch-dock-inset");
+      return;
+    }
+    const card = cardRef.current;
+    if (!card) return;
+    const field = card.querySelector<HTMLElement>(".quick-launch-field");
+    const bar = card.querySelector<HTMLElement>(".quick-launch-bar");
+    const rootStyle = getComputedStyle(root);
+    const space4 = parseFloat(rootStyle.getPropertyValue("--space-4")) || 0;
+    const collapsedPadV = 2 * ((parseFloat(rootStyle.getPropertyValue("--space-2")) || 0)
+      + (parseFloat(rootStyle.getPropertyValue("--space-3")) || 0));
+    // 접힘을 접고 펴는 기하 전이에 속하는 속성. opacity는 기하를 바꾸지 않으므로 뺀다.
+    const isFoldProp = (property: string): boolean =>
+      property === "max-height" || property.startsWith("padding");
+    const foldRunningNow = (element: HTMLElement | null): boolean => {
+      if (!element || typeof CSSTransition === "undefined") return false;
+      try {
+        return element.getAnimations().some(
+          (animation) => animation instanceof CSSTransition && isFoldProp(animation.transitionProperty),
+        );
+      } catch {
+        return false;
+      }
+    };
+    let folding = foldRunningNow(field) || foldRunningNow(bar);
+    let foldingAt = Date.now();
+    const onFoldEvent = (event: Event): void => {
+      const transition = event as TransitionEvent;
+      const target = transition.target;
+      if (target !== field && target !== bar) return;
+      if (!isFoldProp(transition.propertyName)) return;
+      if (event.type === "transitionrun") {
+        folding = true;
+        foldingAt = Date.now();
+      } else {
+        // transitionend/cancel — 남는 전이를 다시 재서 겹친 전이·역전을 놓치지 않는다.
+        folding = foldRunningNow(field) || foldRunningNow(bar);
+        foldingAt = Date.now();
+        writeInset();
+      }
+    };
+    const estimateExpanded = (): number => {
+      const strip = card.querySelector<HTMLElement>(".quick-launch-strip");
+      const chrome = card.offsetHeight
+        - (strip?.offsetHeight ?? 0) - (field?.offsetHeight ?? 0) - (bar?.offsetHeight ?? 0);
+      return (field?.scrollHeight ?? 0) + (bar?.scrollHeight ?? 0) + chrome + collapsedPadV;
+    };
+    const writeInset = (): void => {
+      // 끝 이벤트를 놓치면 영영 동결되므로 오래된 동결은 푼다. 줄어든 값이 ref를 오염시킬 일은
+      // 없다 — 동결이 풀린 뒤에도 아래 분기는 접힘(ref)·펼친 안정(실측)을 가른다.
+      if (folding && Date.now() - foldingAt > 2000) folding = false;
+      const collapsedAtWrite = card.classList.contains("is-collapsed");
+      let expanded: number;
+      if (folding) {
+        expanded = lastExpandedInsetRef.current ?? estimateExpanded();
+      } else if (!collapsedAtWrite) {
+        // 펼친 안정 상태 — 여기서만 기억값을 갱신한다. 입력하며 줄어도 안정 상태의 실측이라
+        // 정확하고, 다음 접힘의 고정값이 된다.
+        expanded = card.offsetHeight;
+        lastExpandedInsetRef.current = expanded;
+      } else {
+        expanded = lastExpandedInsetRef.current ?? estimateExpanded();
+      }
+      root.style.setProperty("--quick-launch-dock-inset", `${Math.max(0, expanded + space4)}px`);
+    };
+    writeInset();
+    card.addEventListener("transitionrun", onFoldEvent);
+    card.addEventListener("transitionend", onFoldEvent);
+    card.addEventListener("transitioncancel", onFoldEvent);
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        card.removeEventListener("transitionrun", onFoldEvent);
+        card.removeEventListener("transitionend", onFoldEvent);
+        card.removeEventListener("transitioncancel", onFoldEvent);
+        root.style.removeProperty("--quick-launch-dock-inset");
+      };
+    }
+    const observer = new ResizeObserver(writeInset);
+    observer.observe(card);
+    return () => {
+      observer.disconnect();
+      card.removeEventListener("transitionrun", onFoldEvent);
+      card.removeEventListener("transitionend", onFoldEvent);
+      card.removeEventListener("transitioncancel", onFoldEvent);
+      root.style.removeProperty("--quick-launch-dock-inset");
+    };
+  }, [pinned, collapsed]);
 
   if (!open) return null;
 

@@ -643,9 +643,9 @@
   gap: 3px;
   min-height: 28px;
   padding: 0 var(--space-2);
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
-  background: transparent;
+  background: var(--control-rest);
   color: var(--text-primary);
   cursor: pointer;
 }
@@ -659,8 +659,10 @@
   font-size: var(--t-xs);
 }
 
-.global-settings-shortcut-chord:hover:not(:disabled) {
-  border-color: var(--control-hover-rim);
+/* 녹음 중은 상태가 소유하므로 hover에서 뺀다 — 빼지 않으면 누른 직후(포인터가 칩 위)
+   brass 테두리와 glow가 hover 면에 묻혀 녹음이 문구로만 드러난다. */
+.global-settings-shortcut-chord:hover:not(:disabled):not(.is-recording) {
+  border-color: transparent;
   background: var(--control-hover-fill);
 }
 
@@ -718,9 +720,9 @@
   width: 17px;
   height: 17px;
   padding: 0;
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  background: none;
+  background: var(--control-rest);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -732,7 +734,7 @@
 .settings-help-tip__glyph:hover:not([aria-expanded="true"]) {
   color: var(--text-secondary);
   background: var(--control-hover-fill);
-  border-color: var(--control-hover-rim);
+  border-color: transparent;
 }
 
 .settings-help-tip__glyph:focus-visible {
@@ -11329,6 +11331,36 @@ body[data-companion-resizing="true"] .canvas-operation {
   transition: width var(--duration-slow) var(--ease-spring);
 }
 
+/* QL 카드 안의 강도 값은 채팅 좌표와 같은 본문 문법으로 읽힌다 — 등폭·자간·대문자 격식을 걷는다.
+   영문 단계 이름(LOW·MED…)은 그대로 두므로 uppercase는 유지한다. */
+.quick-launch-card .effort-track-value {
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  letter-spacing: 0;
+}
+
+/* QL 카드 안의 강도 트랙 — 쉬는 컨트롤은 면만(Quiet Controls C′). 공용 .effort-track
+   기본 블록은 건드리지 않는다. */
+.quick-launch-card .effort-track {
+  border-color: transparent;
+  background: var(--control-rest);
+}
+
+/* apex 점선 토글 — 「더 펼칠 수 있음」의 어포던스는 ✦ 글리프가 맡고, 쉬는 테두리는 뺀다.
+   펼쳐진 상태의 기존 규칙과 hover의 apex 잉크·halo는 그대로 둔다. */
+.quick-launch-card .effort-track-apex-toggle {
+  border-color: transparent;
+}
+
+.quick-launch-card .effort-track-apex-toggle:hover {
+  border-color: transparent;
+}
+
+/* 고대비(forced-colors) — 면이 걷히는 환경에서는 쉬는 컨트롤의 테두리를 시스템색으로 되살린다
+   (Quiet Controls C′). 개별 면 규칙의 forced-colors 블록과 별도로 G 대상을 한데 모은다.
+   아래 규칙들보다 뒤에 서야 한다 — 같은 특정도라 순서가 이기므로, 앞으로 옮기면 쉬는 면 규칙의
+   transparent이 이겨 고대비 경계가 사라진다. 파일 끝의 G 블록이 이 자리의 후계다. */
+
 @media (prefers-reduced-motion: reduce) {
   .effort-track[data-at-max="true"] .effort-track-fill::after {
     animation: none;
@@ -14232,9 +14264,9 @@ body[data-codex-side="true"] .command-card {
   place-items: center;
   width: 28px;
   height: 28px;
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
-  background: transparent;
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--t-sm);
@@ -14246,7 +14278,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .fc-settings-slider__stepper:hover:not(:disabled) {
-  border-color: var(--control-hover-rim);
+  border-color: transparent;
   background: var(--control-hover-fill);
   color: var(--text-primary);
 }
@@ -14279,9 +14311,9 @@ body[data-codex-side="true"] .command-card {
   flex: none;
   height: 28px;
   padding: 0 var(--space-3);
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
-  background: transparent;
+  background: var(--control-rest);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
@@ -14295,7 +14327,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 .fc-settings-reset:hover:not(:disabled) {
-  border-color: var(--control-hover-rim);
+  border-color: transparent;
   background: var(--control-hover-fill);
   color: var(--text-primary);
 }
@@ -14682,9 +14714,9 @@ body[data-codex-side="true"] .command-card {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
-  background: transparent;
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
   cursor: pointer;
@@ -14697,7 +14729,7 @@ body[data-codex-side="true"] .command-card {
 .codex-reader-tool:hover:not(:disabled),
 .codex-reader-tool:focus-visible {
   color: var(--text-primary);
-  border-color: var(--control-hover-rim);
+  border-color: transparent;
   background: var(--control-hover-fill);
 }
 
@@ -15437,7 +15469,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   width: 26px;
   height: 26px;
   padding: 0;
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--glass-tint-strong) 82%, var(--ink-deep));
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -15458,7 +15490,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 
 .expanded-surface-pane-close:hover,
 .expanded-surface-pane-close:focus-visible {
-  border-color: var(--control-hover-rim);
+  border-color: transparent;
   background: var(--control-hover-fill);
   color: var(--text-primary);
 }
@@ -16533,7 +16565,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
      뷰포트 밖으로 밀어낸다(모바일 375px에서 실측). 0으로 눌러 상한을 실제 상한으로 만든다. */
   min-width: 0;
   max-width: 100%;
-  border: 1px solid var(--surface-rim-strong);
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   /* 유리는 루트가 아니라 자식 없는 .quick-launch-glass가 진다 — 루트 backdrop-filter는 backdrop root가
      되어 안쪽 앵커 팝업(멘션 덱·명령 덱·theater/model 팝오버)의 blur가 카드 밖 화면을 샘플링하지
@@ -16911,8 +16943,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .quick-launch-pin svg,
 .quick-launch-mention-focus svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 
 .quick-launch-pin:hover,
@@ -16964,7 +16996,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   background: transparent;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: var(--t-lg);
+  /* 세션 입력과 같은 값. 미러(.quick-launch-highlight)도 같은 메트릭으로 함께 간다. */
+  font-size: var(--font-body-size);
   line-height: 1.55;
   resize: none;
   overflow-y: auto;
@@ -16987,7 +17020,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding: 0;
   border: 0;
   font-family: inherit;
-  font-size: var(--t-lg);
+  /* 입력과 같은 메트릭 — 값이 다르면 미러가 글자와 어긋난다. */
+  font-size: var(--font-body-size);
   line-height: 1.55;
   /* textarea는 UA 기본값이라 조상의 자간을 물려받지 않는다. 미러만 물려받으면 긴 줄에서
      글자가 조금씩 밀린다(-0.07px 실측). 같은 기준으로 눕힌다. */
@@ -17197,8 +17231,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-attach svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 
 /* 드래그 중 카드 강조 — brass는 위치/포커스 채널이라 "여기 놓으라"는 지시에 맞는 색이다. */
@@ -17568,9 +17602,9 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-refine-confirm,
 .quick-launch-refine-skip {
   padding: 2px var(--space-2);
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  background: none;
+  background: var(--control-rest);
   color: var(--text-secondary);
   font: inherit;
   font-size: var(--t-xs);
@@ -17579,8 +17613,9 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .quick-launch-suggest-apply,
 .quick-launch-refine-confirm {
-  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
-  color: var(--brass);
+  border-color: transparent;
+  background: var(--control-tint-fill);
+  color: var(--brass-ink);
 }
 
 .quick-launch-suggest-apply:hover,
@@ -17588,7 +17623,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-refine-confirm:hover,
 .quick-launch-refine-skip:hover {
   background: var(--control-hover-fill);
-  border-color: var(--control-hover-rim);
+  border-color: transparent;
 }
 
 .quick-launch-suggest-apply:focus-visible,
@@ -17964,9 +17999,10 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   min-width: 92px;
   max-width: 100%;
   padding: 6px 11px;
-  border: 1px solid var(--surface-rim);
+  /* 쉬는 컨트롤은 면만 — 테두리는 상태가 소유한다(Quiet Controls C′). */
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--surface-pillar) 40%, transparent);
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-family: inherit;
   font-size: var(--t-md);
@@ -17982,8 +18018,11 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   min-width: 108px;
 }
 
-.quick-launch-chip:hover:not(:disabled) {
-  border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim));
+/* 열림 상태는 상태가 소유하므로 hover에서 뺀다 — 빼지 않으면 열린 칩 위에서
+   brass 테두리와 glow가 hover 면에 묻힌다. */
+.quick-launch-chip:hover:not(:disabled):not([aria-expanded="true"]) {
+  border-color: transparent;
+  background: var(--control-rest-hover);
   color: var(--text-primary);
 }
 
@@ -18004,7 +18043,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-primary);
-  font-weight: var(--weight-bold);
+  font-weight: var(--weight-medium);
 }
 
 
@@ -18068,8 +18107,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-submit svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 
 /* 보낼 것이 없을 때는 흐린 brass가 아니라 조용한 표면이 된다 — 반투명하게만 두면 곧 눌릴 것처럼
@@ -19021,4 +19060,24 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   .is-console-use-wrapped:not(.canvas-operation) { box-shadow: 0 0 0 1px color-mix(in oklch, var(--console-use-wrap) 60%, transparent); background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 12%, transparent), color-mix(in oklch, var(--console-use-wrap) 12%, transparent)); }
   .is-console-use-wrapped.is-leaving:not(.canvas-operation) { box-shadow: none; background-image: none; }
   .canvas-operation.is-console-use-wrapped.is-leaving::before { border-color: transparent; }
+}
+
+/* ── G Quiet Controls 고대비 경계 ─────────────────────────────────────────
+   파일 끝자리에 둔다 — 같은 특정도라 순서가 이기므로, 쉬는 면 규칙보다 앞에 서면
+   transparent이 이겨 고대비 경계가 사라진다. 상태 규칙(is-recording·aria-expanded·
+   aria-pressed 등)은 특정도가 높아 어디에 있어도 이긴다. */
+@media (forced-colors: active) {
+  .global-settings-shortcut-chord,
+  .settings-help-tip__glyph,
+  .fc-settings-slider__stepper,
+  .fc-settings-reset,
+  .codex-reader-tool,
+  .expanded-surface-pane-close,
+  .quick-launch-suggest-apply,
+  .quick-launch-suggest-dismiss,
+  .quick-launch-refine-confirm,
+  .quick-launch-refine-skip,
+  .quick-launch-chip,
+  .quick-launch-card .effort-track,
+  .quick-launch-card .effort-track-apex-toggle { border-color: ButtonBorder; }
 }

@@ -385,10 +385,16 @@
 .session-watch-bubble.is-reveal { border-color: color-mix(in oklch, var(--console-use-badge) 55%, transparent); color: var(--text-primary); }
 .session-watch-bubble.is-alert::before { border-color: color-mix(in oklch, var(--warn) 55%, transparent); }
 .session-watch-bubble.is-failed { border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
-.session-watch-bubble__toggle { margin-inline-start: auto; padding: 0 var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); background: none; color: var(--text-secondary); font: inherit; cursor: pointer; }
-.session-watch-bubble__toggle:hover { color: var(--brass); border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.session-watch-bubble__toggle { margin-inline-start: auto; padding: 0 var(--space-2); border: 1px solid transparent; border-radius: var(--radius-pill); background: var(--control-rest); color: var(--text-secondary); font: inherit; cursor: pointer; }
+.session-watch-bubble__toggle:hover { color: var(--brass); border-color: transparent; background: var(--control-hover-fill); }
 .session-watch-bubble__toggle:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .session-watch-bubble__body { flex-basis: 100%; margin: 0; font-family: var(--font-body); font-size: var(--t-sm); letter-spacing: 0; color: var(--text-primary); white-space: pre-wrap; }
+
+/* 고대비(forced-colors) — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다
+   (Quiet Controls C′). */
+@media (forced-colors: active) {
+  .session-watch-bubble__toggle { border-color: ButtonBorder; }
+}
 
 /* 이전 대화 밴드 — 스크롤 컨테이너의 첫 자식. 아래 목록과의 간격만 진다. */
 .session-analyst__chat > .fc-history-band + ol { margin-top: var(--space-3); }

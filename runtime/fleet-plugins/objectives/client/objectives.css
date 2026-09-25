@@ -65,7 +65,7 @@
 }
 .objectives-list-btn:hover { background: var(--control-rest); }
 .objectives-list-btn:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.objectives-list-btn[aria-current="true"] { background: var(--control-rest); color: var(--text-primary); border-color: var(--surface-rim); }
+.objectives-list-btn[aria-current="true"] { background: var(--control-wash); color: var(--text-primary); border-color: transparent; font-weight: var(--weight-medium); }
 .objectives-list-btn .objectives-count { margin-left: auto; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-list-btn .objectives-swatch { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-tertiary); }
 .objectives-list-btn.is-muted { color: var(--text-tertiary); }
@@ -251,7 +251,7 @@
 /* ── 버튼 ── */
 .objectives-btn {
   background: var(--control-rest);
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   color: var(--text-primary);
   border-radius: var(--radius-xs);
   font: inherit;
@@ -261,7 +261,7 @@
   transition: border-color var(--duration-fast), background var(--duration-fast);
   white-space: nowrap;
 }
-.objectives-btn:hover { border-color: var(--brass); }
+.objectives-btn:hover { border-color: transparent; background: var(--control-rest-hover); color: var(--brass-ink); }
 .objectives-btn:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-btn:disabled { opacity: 0.45; cursor: default; }
 .objectives-btn.is-primary { background: var(--brass); color: var(--text-on-brass); border-color: transparent; }
@@ -519,7 +519,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-intent.is-stop .objectives-intent-word { color: var(--coral); }
 .objectives-intent-desc { min-width: 0; font-size: var(--t-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-comp-edits { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 8px 14px 0; font-size: var(--t-xs); color: var(--text-tertiary); }
-.objectives-comp-chip { padding: 1px 7px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); }
+.objectives-comp-chip { padding: 1px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); }
 .objectives-comp-field { display: flex; gap: 8px; padding: 6px 14px 8px; }
 .objectives-comp-field textarea { flex: 1; min-width: 0; min-height: 40px; max-height: 132px; resize: none; overflow: auto; padding: 2px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; }
 .objectives-comp-field textarea::placeholder { color: var(--text-tertiary); }
@@ -997,3 +997,10 @@ del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
 .objectives-start-group.is-gated .objectives-split { background: transparent; }
 /* 레일에서 두 줄이 되는 부제는 띄어쓰기 단위로 고르게 나눈다. */
 .objectives-start-group.is-gated .objectives-split .objectives-start-sub { text-wrap: balance; word-break: keep-all; }
+
+/* 고대비(forced-colors) — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다
+   (Quiet Controls C′). 파일 끝자리에 둔다 — 같은 특정도라 순서가 이긴다. */
+@media (forced-colors: active) {
+  .objectives-btn,
+  .objectives-comp-chip { border-color: ButtonBorder; }
+}

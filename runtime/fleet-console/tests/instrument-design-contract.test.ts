@@ -512,8 +512,8 @@ describe("Instrument core design contract", () => {
     const theme = source("styles/theme.css");
     const root = theme.match(/^:root \{[\s\S]*?^\}/m)?.[0] ?? "";
     // Quiet Controls C′: rest는 침묵이 아니라 낮은 목소리다(2026-09-01 저장소 실측 재가) —
-    // 동사·컨트롤은 rest 채널(--control-rest)로 쉬는 몸을 알리고, 입력 필드는 우물 대신
-    // --control-field로 표면 위에 떠오른다. 지속 상태는 accent가 아니라 세 문장으로 갈린다 —
+    // 동사·컨트롤은 rest 채널(--control-rest)의 면만으로 쉬는 몸을 알리고, 테두리는 상태가
+    // 소유한다. 입력 필드만 --control-field 면 + 헤어라인을 유지한다. 지속 상태는 accent가 아니라 세 문장으로 갈린다 —
     // 배타 선택 = 극저대비 워시(wash) + 잉크 대비 + 2px brass 다텀, 독립 ON = 잉크(tint),
     // 불리언 ON = 워시 + brass 글리프. 열림·focus-within은 open-rim이 진다.
     for (const token of [
@@ -2827,9 +2827,11 @@ describe("Instrument core design contract", () => {
     // 칩 줄의 @container 기준은 여전히 대화 면이고, 패널 루트도 컨테이너로 남는다.
     expect(chatRootBlock).toContain("container-type: inline-size;");
     // 읽기 폭 프리셋은 measure 변수 하나만 갈아끼운다 — 로그 컬럼·하단 스트립·덱 타일 스트립이
-    // 전부 이 변수를 경유하므로, 세 값(100ch/140ch/100%)이 표면을 한 몸으로 묶는 계약이다.
-    expect(chatRootBlock).toContain("--agent-chat-measure: 100ch;");
-    expect(chat).toMatch(/\.agent-chat\[data-reading-width="wide"\] \{\s*--agent-chat-measure: 140ch;\s*\}/);
+    // 전부 이 변수를 경유하므로, 세 값(reading/wide/full)이 표면을 한 몸으로 묶는 계약이다.
+    // measure는 ch가 아니라 UI 글자 크기에 자릿수를 곱한 값이라 굵기·서체·테마가 폭을 흔들지 않는다.
+    expect(chatRootBlock).toContain("--agent-chat-reading-measure: calc(var(--font-body-size) * 57);");
+    expect(chatRootBlock).toContain("--agent-chat-measure: var(--agent-chat-reading-measure);");
+    expect(chat).toMatch(/\.agent-chat\[data-reading-width="wide"\] \{\s*--agent-chat-measure: calc\(var\(--agent-chat-reading-measure\) \* 1\.4\);\s*\}/);
     expect(chat).toMatch(/\.agent-chat\[data-reading-width="full"\] \{\s*--agent-chat-measure: 100%;\s*\}/);
     // 쉬는(정착만 남은) 선반은 신호 채널을 쓰지 않는다 — aurora는 "지금 돈다"이고, 정지 도트에는
     // 그 사실이 없다. 중립 도트는 hairline-strong만 쓰고, 쉬는 카운트는 중립 잉크다.

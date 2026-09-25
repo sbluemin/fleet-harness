@@ -21,7 +21,7 @@ export function isTerminalInactiveFlush(value: unknown): value is TerminalInacti
 }
 
 // 채팅 폭 프리셋. 대화 컬럼과 입력창이 함께 따르는 하나의 값이고, chat.css의 data-reading-width
-// 오버라이드와 한 벌이다 — reading이 기존의 100ch 중앙 컬럼이다. 폰트처럼 서버 영속(플러그인
+// 오버라이드와 한 벌이다 — reading이 UI 글자 크기에 자릿수를 곱한 중앙 컬럼이다. 폰트처럼 서버 영속(플러그인
 // 설정)이라 콘솔을 따라다닌다.
 export type ChatReadingWidth = "reading" | "wide" | "full";
 
@@ -37,7 +37,7 @@ export function isChatReadingWidth(value: unknown): value is ChatReadingWidth {
  * 순환의 다음 단계.
  *
  * `choices`는 지금 이 판면에서 **서로 다른 폭으로 그려지는** 프리셋만 담은 목록이다. 좁은
- * 패널에서는 100ch·140ch·전체가 같은 폭으로 접히므로, 그대로 세 단을 돌리면 눌러도 아무 일이
+ * 패널에서는 reading·넓게·전체가 같은 폭으로 접히므로, 그대로 세 단을 돌리면 눌러도 아무 일이
  * 없는 단계가 생긴다. 무엇이 접히는지는 판면의 실제 폭을 아는 쪽(컴포저)이 재서 건넨다.
  */
 export function nextChatReadingWidth(
