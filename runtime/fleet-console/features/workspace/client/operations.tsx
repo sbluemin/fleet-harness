@@ -1,6 +1,6 @@
 import { pluginRuntimeState } from "../../execution/client/operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useT } from "../../../core/client/src/i18n/index.js";
+import { useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT, wasOperationBornDormant } from "@fleet-console/sdk/operations/browser";
@@ -11,6 +11,7 @@ import { clearActiveOperation, shouldReleaseActiveOperation } from "../../../cor
 import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../../../core/client/src/integration/shortcuts.js";
 import { closeOperationCompletely, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
+import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getAlignAll, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleAlignAll, useCompanionOperationId, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "./canvas/coordinates.js";
 import { SNAP_FULL_ZONES, SNAP_MIN_ZOOM, SNAP_PRESETS, snapZoneHitFor } from "./canvas/snap-layouts.js";
@@ -76,6 +77,17 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     readonly fromSidebar?: boolean;
   } | null>(null);
   const triageActive = useTriageActive();
+
+  // 정렬 중 안내 — 그룹 경계 거부·스냅 단축키 안내를 토스트로 띄운다. 삭제 토스트와 같은 호스트에 산다.
+  const [alignNotice, setAlignNotice] = useState<{ readonly key: CoreMessageKey; readonly nonce: number } | null>(null);
+  useEffect(() => {
+    if (!alignNotice) return;
+    const timer = window.setTimeout(() => setAlignNotice(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [alignNotice]);
+  const handleAlignNotice = useCallback((key: CoreMessageKey) => {
+    setAlignNotice({ key, nonce: Date.now() });
+  }, []);
 
   // ── 아레나 인셋 ─────────────────────────────────────────────────────────────
   // 전면 캔버스 위 부유 크롬(사이드바·레일 카드)의 점유 폭. 크롬 구성의 소유자인 이 페이지가
@@ -230,6 +242,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         .find((command) => matchesShortcutCommand(event, command));
       if (snapCommand) {
         if (isTriageActive() || getMaximizedOperationId() !== null || getCompanionOperationId() !== null) return;
+        // 정렬 중 스냅 단축키는 배치 대신 안내만 띄운다 — 자리 바꾸기는 캡션 드래그가 소유한다.
+        if (getAlignAll()) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setAlignNotice({ key: "canvas.align.dragToSwap", nonce: Date.now() });
+          return;
+        }
         const operationId = stateRef.current.activeOperationId;
         const arena = getCanvasSnapArenaRect();
         if (operationId === null || !arena || getCanvasSnapshot().viewport.zoom < SNAP_MIN_ZOOM) return;
@@ -920,10 +939,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onOpenOperationMenu={openOperationMenu}
           openMenuOperationId={operationMenu?.operationId ?? null}
           onDismissOperationMenu={dismissOperationMenu}
+          onAlignNotice={handleAlignNotice}
         />
       </div>
       <div className="operations-toast-region" style={{ left: arenaInsets.left, right: arenaInsets.right }}>
-        <div className="app-toast-host">{deletionToast}</div>
+        <div className="app-toast-host">{deletionToast}{alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}</div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
       {/* 접힌 패널의 문 — 각 카드가 소멸한 자리의 엣지에 서고, 두 사이드바(Map·War Room)가

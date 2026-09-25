@@ -90,7 +90,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     if (triageActive) setTriageActive(false);
   };
   // 모두 정렬 나누기 선택 — 꺼져 있으면 그 나누기로 켜고, 켜져 있으면 나누기를 바꾼다.
-  // 같은 나누기 재클릭은 무시한다. 끄는 길은 토글(Alt+F·캡슐 정렬 버튼·⌘K)이 소유한다.
+  // 눌린 나누기를 다시 누르면 끈다. 별도 토글은 두지 않는다 — 세 버튼이 곧 토글이다.
   const pickAlignLayout = (layout: AlignAllLayout) => {
     if (state.activeTheaterId === null) return;
     if (!alignOn) {
@@ -98,7 +98,11 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       toggleAlignAll();
       return;
     }
-    if (layout !== alignMeta.layout) setAlignAllLayout(layout);
+    if (layout === alignMeta.layout) {
+      toggleAlignAll();
+      return;
+    }
+    setAlignAllLayout(layout);
   };
   // 모드 도구 캡슐 — 활성 세그먼트의 hover·포커스·클릭(터치)만 연다. 비활성 세그먼트는 모드
   // 전환만 하고 캡슐을 열지 않는다. 닫힘은 유예를 두고, Escape는 즉시 닫고 활성 세그먼트로
@@ -400,7 +404,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
               onMouseDown={(event) => event.preventDefault()}
               // hover는 마우스만의 것이다 — 터치·펜은 접촉과 함께 pointerenter를 내므로 여기서 열면
               // 뒤따르는 click 토글이 곧바로 닫아 버린다. 터치는 click 경로만 쓴다.
-              onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}
+              // 정렬 중에는 hover로 열지 않는다 — 밴드 아래 열린 캡슐이 왼쪽 위 칸의 캡션 버튼을
+              // 가린다. 나누기 전환은 세그먼트 클릭으로 연다.
+              onPointerEnter={(event) => { if (event.pointerType !== "mouse" || alignOn) return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}
               onFocus={() => {
                 if (suppressNextFocusOpenRef.current) { suppressNextFocusOpenRef.current = false; return; }
                 if (mode.id === canvasMode) openModeTools();
@@ -453,16 +459,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 // 규율을 켜는 길은 정렬을 걷는다 — 펼쳐진 규율이 정렬 칸에 가려 무음으로 끝나지 않게 한다.
                 onClick={() => { if (!stationKeeping) releaseAlignAll(); setStationKeeping(!stationKeeping); }}
               ><StationKeepingIcon /></button>
-              <button
-                type="button"
-                className="command-band-mode-tool"
-                data-cruise-tool="align-all"
-                aria-pressed={alignOn}
-                disabled={state.activeTheaterId === null || !state.operationsHydrated}
-                aria-label={t("chrome.commandBand.alignAll")}
-                title={t("chrome.commandBand.alignAll")}
-                onClick={toggleAlignAll}
-              ><AlignAllIcon /></button>
+              {/* 모두 정렬 나누기 — 꺼져 있으면 켜고, 켜져 있으면 바꾸고, 눌린 것을 다시 누르면 끈다.
+                  눌림 표시는 켜져 있을 때만 보인다. */}
               {ALIGN_LAYOUTS.map((layout) => (
                 <button
                   key={layout.id}
@@ -470,7 +468,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                   className="command-band-mode-tool"
                   disabled={state.activeTheaterId === null || !state.operationsHydrated}
                   onClick={() => pickAlignLayout(layout.id)}
-                  aria-pressed={alignLayout === layout.id}
+                  aria-pressed={alignOn && alignLayout === layout.id}
                   aria-label={t(layout.titleKey)}
                   title={t(layout.titleKey)}
                 ><layout.Icon /></button>
@@ -623,11 +621,6 @@ function BrandMarkIcon() {
 // Cruise: 겹쳐 놓인 두 패널(원하는 자리에 그대로).
 function CruiseModeIcon() {
   return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="7.5" height="5.5" rx="1.2" /><rect x="6.5" y="7.5" width="7" height="5.5" rx="1.2" /></svg>;
-}
-
-// 모두 정렬 — 보이는 패널 전부를 한 번에 정렬했다가 원래 자리로 돌린다.
-function AlignAllIcon() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="5" height="5" rx="1" /><rect x="9" y="2.5" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>;
 }
 
 // War Room: 앞에 선 한 장과 뒤의 대기열(대기 중인 패널을 한 건씩).

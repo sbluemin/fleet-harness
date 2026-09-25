@@ -25,6 +25,8 @@ interface OperationFrameProps {
   readonly topEdge?: boolean;
   /** 스냅 유지 중 — 캡션에 ▣가 서고 프레임이 칸에 붙어 있음을 말한다. */
   readonly snapHeld?: boolean;
+  /** 크기 조절 잠금 — 정렬 칸처럼 크기를 자동 채움이 소유할 때 핸들을 숨긴다(드래그는 그대로 둔다). */
+  readonly resizeDisabled?: boolean;
   readonly interactionDisabled?: boolean;
   readonly triageStage?: boolean;
   readonly triagePicked?: boolean;
@@ -118,7 +120,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, resizeDisabled = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -419,7 +421,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   useEffect(() => clearSnapMenuTimer, []);
 
   const beginResize = (direction: ResizeDirection, event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized || interactionDisabled) return;
+    if (maximized || interactionDisabled || resizeDisabled) return;
     event.preventDefault();
     event.stopPropagation();
     onActivate();
@@ -702,9 +704,9 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker inert={deckTile ? true : undefined}>
         {children}
       </div>
-      {/* 최대화 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —
+      {/* 최대화·크기 잠금 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —
           외곽 hover 시 resize 커서가 뜨거나 포인터를 가로채는 일이 없도록 한다. */}
-      {!maximized && !interactionDisabled && RESIZE_DIRECTIONS.map((direction) => (
+      {!maximized && !interactionDisabled && !resizeDisabled && RESIZE_DIRECTIONS.map((direction) => (
         <div
           key={direction}
           className={`canvas-operation-resize canvas-operation-resize--${direction}`}

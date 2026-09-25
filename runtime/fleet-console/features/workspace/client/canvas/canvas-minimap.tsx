@@ -1,7 +1,7 @@
-import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import type { CanvasViewport, OperationGeometry } from "./canvas-store.js";
+import { useAlignAll, type CanvasViewport, type OperationGeometry } from "./canvas-store.js";
 import type { CanvasPoint } from "./coordinates.js";
 
 interface PluginOperationEntry {
@@ -39,7 +39,24 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
   const t = useT();
   const innerRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
+  const collapsedBeforeAlignRef = useRef<boolean | null>(null);
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  const alignOn = useAlignAll() !== null;
+
+  // 정렬 중에는 지도만 숨기고 접기 컨트롤은 남긴다 — 칸을 가리지 않으면서 길잡이는 살아 있다.
+  // 임시 접힘은 저장하지 않고, 정렬이 끝나면 진입 전 펼침으로 복원한다.
+  useEffect(() => {
+    if (alignOn) {
+      if (collapsedBeforeAlignRef.current === null) {
+        collapsedBeforeAlignRef.current = collapsed;
+        setCollapsed(true);
+      }
+      return;
+    }
+    if (collapsedBeforeAlignRef.current === null) return;
+    setCollapsed(collapsedBeforeAlignRef.current);
+    collapsedBeforeAlignRef.current = null;
+  }, [collapsed, alignOn]);
 
   if (canvasSize.width <= 0 || canvasSize.height <= 0 || viewport.zoom <= 0) return null;
 
@@ -53,7 +70,8 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
   const toggle = () => {
     setCollapsed((value) => {
       const next = !value;
-      writeCollapsed(next);
+      // 정렬 중 접힘 전환은 임시 표시라 선호를 저장하지 않는다 — 끄면 원래 펼침으로 돌아온다.
+      if (!alignOn) writeCollapsed(next);
       return next;
     });
   };

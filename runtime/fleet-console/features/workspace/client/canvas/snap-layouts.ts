@@ -95,6 +95,59 @@ export function snapFullZone(arena: SnapRect): SnapRect {
   return snapZonesFor(arena, SNAP_FULL_ZONES)[0]!;
 }
 
+/**
+ * 정렬 칸 본문 균등화 — 같은 줄의 칸이 같은 폭을, 같은 열의 칸이 같은 높이를 갖게 한다.
+ * snapZonesFor는 칸마다 안쪽 변에만 반간격을 빼서 가장자리 칸이 4px씩 넓어지는데,
+ * 정렬은 빈칸 없이 꽉 채우므로 그 4px가 눈에 띈다. 줄·열 범위를 재서
+ * 간격을 균등 분배한다. 수동 스냅에는 손대지 않는다(기존 나누기를 바꾸지 않기 위해서).
+ */
+export function evenAlignBodies(bodies: readonly SnapRect[]): SnapRect[] {
+  const next = bodies.map((body) => ({ ...body }));
+  const cluster = (keyOf: (body: SnapRect) => string): number[][] => {
+    const groups = new Map<string, number[]>();
+    next.forEach((body, index) => {
+      const key = keyOf(body);
+      const list = groups.get(key) ?? [];
+      list.push(index);
+      groups.set(key, list);
+    });
+    return [...groups.values()].filter((indices) => indices.length > 1);
+  };
+  // 같은 줄: 시작점부터 끝점까지 재서 폭을 균등 분배한다.
+  for (const indices of cluster((body) => `${Math.round(body.y)}:${Math.round(body.height)}`)) {
+    const ordered = [...indices].sort((a, b) => (next[a]?.x ?? 0) - (next[b]?.x ?? 0));
+    const first = next[ordered[0] ?? -1];
+    const last = next[ordered[ordered.length - 1] ?? -1];
+    if (!first || !last) continue;
+    const start = first.x;
+    const end = last.x + last.width;
+    const count = ordered.length;
+    const width = Math.max(0, (end - start - SNAP_GAP * (count - 1)) / count);
+    ordered.forEach((index, position) => {
+      const body = next[index];
+      if (!body) return;
+      next[index] = { ...body, x: start + position * (width + SNAP_GAP), width };
+    });
+  }
+  // 같은 열: 위부터 아래까지 재서 높이를 균등 분배한다.
+  for (const indices of cluster((body) => `${Math.round(body.x)}:${Math.round(body.width)}`)) {
+    const ordered = [...indices].sort((a, b) => (next[a]?.y ?? 0) - (next[b]?.y ?? 0));
+    const first = next[ordered[0] ?? -1];
+    const last = next[ordered[ordered.length - 1] ?? -1];
+    if (!first || !last) continue;
+    const start = first.y;
+    const end = last.y + last.height;
+    const count = ordered.length;
+    const height = Math.max(0, (end - start - SNAP_GAP * (count - 1)) / count);
+    ordered.forEach((index, position) => {
+      const body = next[index];
+      if (!body) return;
+      next[index] = { ...body, y: start + position * (height + SNAP_GAP), height };
+    });
+  }
+  return next;
+}
+
 export interface SnapZoneHit {
   readonly zone: SnapRect;
   /** 어느 나누기의 몇 번째 칸인가 — 스냅 유지가 이 셋으로 묶음을 만든다. */

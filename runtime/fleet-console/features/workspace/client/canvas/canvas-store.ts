@@ -145,6 +145,9 @@ let zoomRaf: number | null = null;
 // 모두 정렬 진입 직전에 한 번 부른다 — War Room이 선별 중이면 여기서 끝낸다.
 // 등록은 triage-store가 맡아 스토어 순환 참조 없이 진입 계약을 한 곳에 둔다.
 let beforeAlignAllActivation: ((theaterId: string) => void) | null = null;
+// 명시적 끄기(자리 복원)로 정렬이 끝났는지의 래치 — 끄기 제목·안내가 복원 해제와
+// 줌·fit-all·SK 해제(조용한 풀림)를 가르는 기준이다. 한 번 읽으면 내려간다.
+let alignOffRestored = false;
 // 모든 Operation이 공유하는 단조 증가 z-index 발급기.
 // 두 레지스트리가 같은 카운터에서 값을 받아 "활성화한 Operation이 최상단"이 Operation 종류를 가로질러 성립한다.
 let topZIndex = 0;
@@ -832,15 +835,11 @@ export function setSnapHoldZones(zones: readonly SnapZoneFraction[]): void {
 }
 
 export function releaseSnapHold(): void {
+  if (state.snapHold?.alignAll) alignOffRestored = false;
   if (state.snapHold) setState({ snapHold: null });
 }
 
 export function releaseSnapHoldOperation(sessionId: string): void {
-  // 모두 정렬 중에는 묶음에서 빼고 나머지를 다시 나눈다 — 렌더의 reconcile이 칸을 고친다.
-  if (state.snapHold?.alignAll) {
-    detachAlignAllPanel(sessionId);
-    return;
-  }
   const next = snapHoldWithout(state.snapHold, [sessionId]);
   if (next !== state.snapHold) setState({ snapHold: next });
 }
@@ -879,8 +878,7 @@ export function toggleAlignAll(): void {
 function turnAlignAllOff(hold: SnapHold): void {
   const meta = hold.alignAll!;
   // 다음 켜기도 같은 나누기로 — 캡슐이 가리키는 전역 기억도 함께 둔다.
-  setAlignLayout(meta.layout);
-  const assigned = new Set(Object.keys(hold.assignments));
+  setAlignLayout(meta.layout);  const assigned = new Set(Object.keys(hold.assignments));
   const operations = { ...state.operations };
   let freshIndex = Object.keys(operations).length;
   for (const sessionId of assigned) {
@@ -908,6 +906,7 @@ function turnAlignAllOff(hold: SnapHold): void {
       snapHold = { presetId: meta.savedSnapHold.presetId, zones: meta.savedSnapHold.zones, assignments };
     }
   }
+  alignOffRestored = true;
   setState({ operations, snapHold });
 }
 
@@ -967,7 +966,17 @@ export function rejoinAlignAllPanel(sessionId: string): void {
  * "카메라·규율을 움직이려는 의도"가 부른다. 명시적 끄기(토글)는 turnAlignAllOff가 맡는다.
  */
 export function releaseAlignAll(): void {
-  if (state.snapHold?.alignAll) setState({ snapHold: null });
+  if (state.snapHold?.alignAll) {
+    alignOffRestored = false;
+    setState({ snapHold: null });
+  }
+}
+
+/** 명시적 끄기로 끝났으면 true를 한 번 돌려준다 — 끄기 제목이 복원 해제만을 알리게 한다. */
+export function consumeAlignOffRestored(): boolean {
+  const restored = alignOffRestored;
+  alignOffRestored = false;
+  return restored;
 }
 
 /**
@@ -1101,7 +1110,11 @@ export function loadForTheater(theaterId: string | null): void {
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
   // 유지는 줌 100%의 것이다 — 다른 줌으로 저장된 상태(구버전·손상)면 자유 배치로 떨어진다.
-  if (state.snapHold && Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON) state = { ...state, snapHold: null };
+  // 정렬도 자리 복원 없이 풀린다.
+  if (state.snapHold && Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON) {
+    alignOffRestored = false;
+    state = { ...state, snapHold: null };
+  }
   // maximize와 companion은 상호 배타적인 focus layer다. Theater별 단일 상태로 보존·복원해
   // 같은 Theater가 다시 로드돼도 현재 레이아웃 모드와 대상 Operation을 함께 유지한다.
   const nextFocusLayer = theaterId ? focusLayersByTheater.get(theaterId) ?? null : null;

@@ -812,6 +812,9 @@ describe("Instrument core design contract", () => {
     expect(minimap).toContain("canvas-minimap-toggle");
     expect(canvas).toContain("<CanvasMinimap");
     expect(canvas).not.toContain("{!panelMaximized ? (");
+    // 정렬 중에는 지도만 숨기고 접기 컨트롤은 남긴다 — 임시 접힘은 저장하지 않고 끝나면 복원한다.
+    expect(minimap).toContain("useAlignAll");
+    expect(minimap).toContain("collapsedBeforeAlignRef");
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap,");
@@ -2249,7 +2252,7 @@ describe("Instrument core design contract", () => {
     // inert로 포커스에서 빠지되 DOM에 남아 안내(feature tour)가 앵커를 찾는다.
     expect(commandBand).toContain('className={`command-band-mode-tray${modeToolsOpen ? " is-open" : ""}`}');
     expect(commandBand).toContain("inert={modeToolsOpen ? undefined : true}");
-    expect(commandBand).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
+    expect(commandBand).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse" || alignOn) return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
     expect(commandBand).toContain('{canvasMode === "cruise" ? <>');
     expect(commandBand).toContain('{canvasMode === "warRoom" ? <>');
     expect(commandBand).toContain('{ALIGN_LAYOUTS.map((layout) => (');
@@ -2260,12 +2263,16 @@ describe("Instrument core design contract", () => {
     // 안내 앵커(.command-band-mode-tray, data-war-room-tool)가 닫힌 캡슐 안에 있을 때는 CSS가 강제로 펼친다.
     expect(layout).toContain(".command-band-mode-tray:has(.is-feature-tour-anchor)");
     expect(commandBand).toContain('<span className="command-band-center-divider" aria-hidden="true" />');
-    // 같은 나누기 재클릭은 무시한다 — 끄는 길은 토글(Alt+F·캡슐 정렬 버튼·⌘K)이 소유한다.
-    expect(commandBand).toContain("if (layout !== alignMeta.layout) setAlignAllLayout(layout);");
-    expect(commandBand).toContain("aria-pressed={alignLayout === layout.id}");
-    expect(commandBand).toContain('aria-label={t("chrome.commandBand.alignAll")}');
-    expect(commandBand).toContain("onClick={toggleAlignAll}");
-    // 정렬이 켜지면 Cruise 세그먼트에 brass 점이 켜진다 — 캡슐 안 토글과 같은 채널이다.
+    // 세 버튼이 곧 토글이다 — 꺼져 있으면 켜고, 다른 나누기면 바꾸고, 눌린 것을 다시 누르면 끈다.
+    // 눌림 표시는 켜져 있을 때만 보인다. 별도 토글 버튼은 두지 않는다.
+    expect(commandBand).toContain("onClick={() => pickAlignLayout(layout.id)}");
+    expect(commandBand).toContain("aria-pressed={alignOn && alignLayout === layout.id}");
+    expect(commandBand).toContain("if (layout === alignMeta.layout) {");
+    expect(commandBand).not.toContain("chrome.commandBand.alignAll");
+    expect(commandBand).not.toContain("AlignAllIcon");
+    // 정렬 중 hover로는 캡슐을 열지 않는다 — 열린 캡슐이 왼쪽 위 칸의 캡션 버튼을 가린다.
+    // (아래 onPointerEnter 계약이 hover 억제를 고정한다.)
+    // 정렬이 켜지면 Cruise 세그먼트에 brass 점이 켜진다 — 캡슐 안 나누기와 같은 채널이다.
     expect(commandBand).toContain("stationKeeping || alignOn");
     // 모드 스위치는 Theater 등록 여부로만 게이트한다 — 정렬 토글은 활성 Theater로 게이트한다.
     expect(commandBand).toContain("disabled={state.theaters.length === 0}");
