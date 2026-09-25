@@ -611,7 +611,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-member > .objectives-member-mark { margin-top: 3px; }
 .objectives-member > .objectives-member-remove { margin-top: 2px; }
 .objectives-member:hover { background: var(--control-rest); }
-/* 구성원 표식 — 정체성 톤(--id-*)으로 구성원을 가른다. 신호색(brass·aurora·positive·coral·warn)은 상태를 뜻하므로 쓰지 않는다. */
+/* 구성원 표식 — 정체성 톤(--id-*)으로 구성원을 가른다. 신호색(brass·aurora·positive·coral·warn)은 상태·지휘관을 뜻하므로 쓰지 않는다. */
 .objectives-member-mark { --member-tone: var(--id-teal); flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid color-mix(in oklch, var(--member-tone) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--member-tone) 14%, transparent); color: var(--member-tone); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
 .objectives-member-mark.is-tone-1 { --member-tone: var(--id-amber); }
 .objectives-member-mark.is-tone-2 { --member-tone: var(--id-plum); }
@@ -653,6 +653,10 @@ span.objectives-row-main { cursor: default; }
 .objectives-assign-new input:focus { outline: none; border-color: var(--brass); }
 .objectives-mission-sub .objectives-member-mark, .objectives-assign-menu .objectives-member-mark { width: 16px; height: 16px; font-size: var(--t-2xs); }
 .objectives-mission-member-name { color: var(--text-secondary); font-family: var(--font-body); font-weight: var(--weight-medium); }
+/* 지휘관 표식 — 구성원이 쓰지 않는 brass 는 지휘관 행 아이콘·그래프 뿌리 노드와 같은 지휘관의 색이다. 둥근 원이 각진 구성원 칸과 모양으로도 가른다. */
+.objectives-member-mark.is-commander { --member-tone: var(--brass); border-radius: 50%; }
+.objectives-member-mark.is-commander svg { width: 10px; height: 10px; }
+.objectives-mission-member-name.is-commander, .objectives-menu-label.is-commander { color: color-mix(in oklch, var(--brass) 85%, var(--text-primary)); }
 .objectives-assign-caption { color: var(--text-tertiary); }
 .objectives-assign-model { flex: none; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-assign-create { color: var(--brass); }
