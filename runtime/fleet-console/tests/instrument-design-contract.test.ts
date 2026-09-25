@@ -2270,9 +2270,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("if (layout === alignMeta.layout) {");
     expect(commandBand).not.toContain("chrome.commandBand.alignAll");
     expect(commandBand).not.toContain("AlignAllIcon");
-    // 열린 캡슐이 왼쪽 위 칸 캡션 버튼을 가리지 않게 캡슐 열림을 캔버스에 알린다 —
-    // 정렬 중에는 그 아래로 아레나 윗변을 내린다. hover 동작은 canary와 같다.
-    expect(commandBand).toContain("setModeTrayOpen(modeToolsOpen);");
+    // 캡슐 트레이는 칸 위에 겹쳐 열린다 — 기하를 움직이지 않는 오버레이이며, Tactical도 같았다.
+    // hover 동작은 canary와 같고, 열린 캡슐이 칸을 미는 배선은 두지 않는다.
+    expect(commandBand).not.toContain("setModeTrayOpen");
     // 정렬이 켜지면 Cruise 세그먼트에 brass 점이 켜진다 — 캡슐 안 나누기와 같은 채널이다.
     expect(commandBand).toContain("stationKeeping || alignOn");
     // 모드 스위치는 Theater 등록 여부로만 게이트한다 — 정렬 토글은 활성 Theater로 게이트한다.

@@ -27,7 +27,7 @@ import { pluginRuntimeState, resolveOperationActivity } from "../../../execution
 import type { ConsoleState, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { snapOperationToArenaRect, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumeAlignOffRestored, consumeAlignStayedRelease, consumePendingFitAllOperations, detachAlignAllPanel, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getAlignOffRestoredCount, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, reconcileAlignAll, rejoinAlignAllPanel, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, syncSnapHoldGeometry, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useMaximizedOperationId, useMinimized, useModeTrayOpen, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
+import { snapOperationToArenaRect, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumeAlignOffRestored, consumeAlignStayedRelease, consumePendingFitAllOperations, consumeStayedReleaseGeometries, detachAlignAllPanel, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getAlignOffRestoredCount, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, reconcileAlignAll, rejoinAlignAllPanel, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, syncSnapHoldGeometry, useAlignActivationNonce, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -52,9 +52,6 @@ const FLEET_MAP_LEAVE_MS = 320;
 // 모드 전환 제목(킥커·제목·설명)이 서 있는 길이. 패널 glide(--duration-slow + 슬롯 stagger)와
 // 제목의 낱말 진입·퇴장이 모두 이 안에서 끝난다 — CSS의 mode-title 키프레임 길이와 같은 값.
 const MODE_TITLE_DURATION_MS = 1_350;
-// 정렬 중 열린 캡슐 트레이 아래로 아레나 윗변을 내리는 양(px). 트레이(약 34px)가 왼쪽 위 칸의
-// 캡션 버튼을 가리지 않게 한다. 평소 스냅 아레나에는 손대지 않는다.
-const ALIGN_TRAY_CLEARANCE_PX = 40;
 // 모드 전환 flight의 슬롯 stagger와 출발 rect의 유효 기간 — 덱 칸은 슬롯 등록 뒤 두 번째 커밋에서야
 // 패널을 받으므로, 첫 커밋에서 못 날린 패널을 다음 커밋까지 기다린다.
 const MODE_FLIGHT_STAGGER_MS = 40;
@@ -160,7 +157,7 @@ export function OperationsCanvas({
   const [snapAssist, setSnapAssist] = useState(false);
   const alignMeta = canvas.snapHold?.alignAll ?? null;
   const alignOn = alignMeta !== null;
-  const trayOpen = useModeTrayOpen();
+  const alignActivationNonce = useAlignActivationNonce();
   const maximizedOperationId = useMaximizedOperationId();
   const companionOperationId = useCompanionOperationId();
   const companionPanelVisibilityOverrides = useCompanionPanelVisibilityOverrides(companionOperationId);
@@ -284,6 +281,8 @@ export function OperationsCanvas({
   }, [triageActive]);
 
   useEffect(() => {
+    // 세대 번호를 함께 본다 — 끄고 바로 켜는 batch에서는 불리언이 바뀌지 않은 채 한 번만
+    // 렌더되므로, 불리언만 deps에 두면 진입 전이가 사라져 제목이 뜨지 않는다.
     if (!alignOn || !state.activeTheaterId) {
       setAlignEntering(false);
       return;
@@ -293,7 +292,8 @@ export function OperationsCanvas({
       setAlignEntering(false);
     }, MODE_TITLE_DURATION_MS);
     return () => window.clearTimeout(timer);
-  }, [alignOn, state.activeTheaterId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alignOn, alignActivationNonce, state.activeTheaterId]);
 
   // 모드 이탈도 진입과 같은 무게로 알린다 — 명시적 끄기(자리 복원)의 복귀 역시 같은 세 줄로 도착을 선언한다.
   // 줌·fit-all·Station Keeping 해제는 조용히 풀린다.
@@ -987,9 +987,8 @@ export function OperationsCanvas({
   const snapHandleWidth = Math.max(360, Math.min(760, Math.round(arena.width * 0.5)));
   // 칸은 이 렌더의 인셋 prop(modeArena)에서 바로 편다 — 스토어의 인셋은 passive effect가 뒤늦게 갱신하므로,
   // 사이드바를 여닫은 직후 렌더에서 스토어를 읽으면 이전 크롬 폭의 칸이 나온다.
-  // 정렬 중 캡슐이 열리면 아레나 윗변을 트레이 아래로 내려 왼쪽 위 칸 캡션 버튼을 비운다.
-  const alignTopClearance = alignOn && trayOpen ? ALIGN_TRAY_CLEARANCE_PX : 0;
-  const snapArena: SnapRect = { x: modeArena.x - arena.x, y: alignTopClearance, width: modeArena.width, height: Math.max(0, arena.height - alignTopClearance) };
+  // 캡슐 트레이는 칸 위에 겹쳐 열린다 — 기하를 움직이지 않는 오버레이이며, Tactical도 같았다.
+  const snapArena: SnapRect = { x: modeArena.x - arena.x, y: 0, width: modeArena.width, height: arena.height };
   const arenaRectToBox = (rect: SnapRect): SnapRect => ({ x: rect.x + arena.x, y: rect.y + arena.y, width: rect.width, height: rect.height });
   const frameOf = (body: SnapRect): SnapRect => ({ x: body.x, y: body.y - OPERATION_WINDOW_CAPTION_HEIGHT, width: body.width, height: body.height + OPERATION_WINDOW_CAPTION_HEIGHT });
   // ── 스냅 유지 ──
@@ -1359,9 +1358,12 @@ export function OperationsCanvas({
     }
     const prev = prevAlignIdsRef.current;
     prevAlignIdsRef.current = null;
+    // 풀리는 순간에 굳힌 기하를 쓴다 — SK 진입처럼 해제와 펼침이 한 틱에 뭉치면
+    // 해제 뒤 좌표가 아니라 해제 순간 좌표가 최종 기하다.
     if (prev && prev.length > 0 && consumeAlignStayedRelease()) {
+      const snapshot = consumeStayedReleaseGeometries();
       for (const sessionId of prev) {
-        const geometry = getCanvasSnapshot().operations[sessionId];
+        const geometry = snapshot?.[sessionId] ?? getCanvasSnapshot().operations[sessionId];
         if (geometry) void updatePluginOperationGeometry(sessionId, geometry).catch(() => undefined);
       }
     }
@@ -1792,6 +1794,8 @@ export function OperationsCanvas({
               // 정렬 중에는 서버 기하를 절대 건드리지 않는다 — 칸 좌표는 localStorage 유지에만 쓰고,
               // 서버의 Cruise 진실은 켜기 전 자리 그대로 둔다(저장 무결성).
               // 단, 정렬에서 빠지는 순간 그 패널은 자유 패널이라 최종 기하를 한 번 커밋한다.
+              // 빼내기 표식은 consumeSnapDrag 안의 detach가 세우므로, 호출한 뒤에 읽고 즉시 비운다.
+              const consumed = consumeSnapDrag(operation.id);
               let freedWhileAlign = false;
               if (alignFreedRef.current === operation.id) {
                 alignFreedRef.current = null;
@@ -1799,7 +1803,7 @@ export function OperationsCanvas({
               }
               const persistGeometry = alignMeta === null || freedWhileAlign;
               // 스냅 표적이 있으면 그 칸이 자리다 — 사용자가 고른 칸이라 Station Keeping 정착을 건너뛴다.
-              if (consumeSnapDrag(operation.id)) {
+              if (consumed) {
                 if (persistGeometry) void updatePluginOperationGeometry(operation.id, getCanvasSnapshot().operations[operation.id] ?? geometry);
                 return;
               }

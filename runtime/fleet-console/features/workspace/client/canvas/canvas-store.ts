@@ -127,7 +127,7 @@ const listeners = new Set<Listener>();
 const focusLayerListeners = new Set<Listener>();
 const companionPanelVisibilityListeners = new Set<Listener>();
 const alignLayoutListeners = new Set<Listener>();
-const modeTrayListeners = new Set<Listener>();
+const alignActivationListeners = new Set<Listener>();
 const focusLayersByTheater = new Map<string, FocusLayerState>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
@@ -151,6 +151,9 @@ let alignOffRestored = false;
 // 자리 복원 없이 풀렸는지의 래치 — 자유 패널이 된 묶음의 최종 기하를 서버에 한 번
 // 커밋하는 기준이다. 정렬 중 PATCH 금지는 그대로 두고 풀리는 순간에만 쓴다.
 let alignStayedReleased = false;
+// 풀리는 순간의 전체 기하 스냅샷 — SK 진입처럼 해제와 펼침이 한 틱에 뭉치면 effect가
+// 펼쳐진 뒤 좌표를 읽게 되므로, 해제 시점에 값을 굳혀 둔다.
+let stayedReleaseGeometries: Readonly<Record<string, OperationGeometry>> | null = null;
 // 마지막으로 실제로 복원된 패널 수(빼낸 패널 제외) — 해제 문구의 N이 읽는다.
 let alignOffRestoredCount = 0;
 // 모든 Operation이 공유하는 단조 증가 z-index 발급기.
@@ -843,6 +846,7 @@ export function releaseSnapHold(): void {
   if (state.snapHold?.alignAll) {
     alignOffRestored = false;
     alignStayedReleased = true;
+    stayedReleaseGeometries = { ...state.operations };
   }
   if (state.snapHold) setState({ snapHold: null });
 }
@@ -869,6 +873,8 @@ export function toggleAlignAll(): void {
   beforeAlignAllActivation?.(activeTheaterId);
   const savedGeometries = { ...state.operations };
   const savedSnapHold = hold ? { ...hold, assignments: { ...hold.assignments } } : null;
+  alignActivationNonce += 1;
+  emitAlignActivation();
   setState({
     snapHold: {
       presetId: "align-all",
@@ -886,20 +892,6 @@ export function toggleAlignAll(): void {
 function turnAlignAllOff(hold: SnapHold): void {
   const restored = computeAlignOffState(hold);
   alignOffRestored = true;
-  alignStayedReleased = false;
-  alignOffRestoredCount = restored.restoredCount;
-  setState({ operations: restored.operations, snapHold: restored.snapHold });
-}
-
-/**
- * 정렬 해제 + 켜기 전 자리로 조용히 복귀 (제목·래치 없음). Station Keeping 진입이 쓴다 —
- * 켜진 채 펼치면 빽빽한 칸 좌표에서 규율이 패널을 화면 밖까지 밀어낸다.
- */
-export function releaseAlignAllToSaved(): void {
-  const hold = state.snapHold;
-  if (!hold?.alignAll) return;
-  const restored = computeAlignOffState(hold);
-  alignOffRestored = false;
   alignStayedReleased = false;
   alignOffRestoredCount = restored.restoredCount;
   setState({ operations: restored.operations, snapHold: restored.snapHold });
@@ -1002,6 +994,7 @@ export function releaseAlignAll(): void {
   if (state.snapHold?.alignAll) {
     alignOffRestored = false;
     alignStayedReleased = true;
+    stayedReleaseGeometries = { ...state.operations };
     setState({ snapHold: null });
   }
 }
@@ -1018,6 +1011,13 @@ export function consumeAlignStayedRelease(): boolean {
   const stayed = alignStayedReleased;
   alignStayedReleased = false;
   return stayed;
+}
+
+/** 풀리는 순간에 굳힌 기하 — effect가 해제 뒤 좌표가 아니라 이 값을 커밋한다. 읽으면 비운다. */
+export function consumeStayedReleaseGeometries(): Readonly<Record<string, OperationGeometry>> | null {
+  const snapshot = stayedReleaseGeometries;
+  stayedReleaseGeometries = null;
+  return snapshot;
 }
 
 /** 마지막으로 실제로 복원된 패널 수 — 해제 문구가 빼낸 패널을 세지 않게 한다. */
@@ -1159,7 +1159,10 @@ export function loadForTheater(theaterId: string | null): void {
   // 정렬도 자리 복원 없이 풀린다.
   if (state.snapHold && Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON) {
     alignOffRestored = false;
-    if (state.snapHold.alignAll) alignStayedReleased = true;
+    if (state.snapHold.alignAll) {
+      alignStayedReleased = true;
+      stayedReleaseGeometries = { ...state.operations };
+    }
     state = { ...state, snapHold: null };
   }
   // maximize와 companion은 상호 배타적인 focus layer다. Theater별 단일 상태로 보존·복원해
@@ -1341,29 +1344,27 @@ function subscribeAlignLayout(listener: Listener): () => void {
   };
 }
 
-// Command Band 모드 캡슐 열림 — 정렬 중에는 열린 캡슐 아래로 정렬 아레나 윗변을 내려
-// 왼쪽 위 칸의 캡션 버튼이 가려지지 않게 한다. 평소 스냅에는 손대지 않는다.
-let modeTrayOpen = false;
+// 모두 정렬 켜기 세대 번호 — 끄고 바로 켜는 batch에서도 진입 제목이 빠지지 않게 한다.
+// on/off 불리언만 보면 합쳐진 렌더에서 전이가 사라져 제목이 뜨지 않는 경우가 있다.
+let alignActivationNonce = 0;
 
-export function useModeTrayOpen(): boolean {
-  return useSyncExternalStore(subscribeModeTray, getModeTrayOpen, getModeTrayOpen);
+export function useAlignActivationNonce(): number {
+  return useSyncExternalStore(subscribeAlignActivation, getAlignActivationNonce, getAlignActivationNonce);
 }
 
-function getModeTrayOpen(): boolean {
-  return modeTrayOpen;
+function getAlignActivationNonce(): number {
+  return alignActivationNonce;
 }
 
-export function setModeTrayOpen(open: boolean): void {
-  if (modeTrayOpen === open) return;
-  modeTrayOpen = open;
-  for (const listener of modeTrayListeners) listener();
-}
-
-function subscribeModeTray(listener: Listener): () => void {
-  modeTrayListeners.add(listener);
+function subscribeAlignActivation(listener: Listener): () => void {
+  alignActivationListeners.add(listener);
   return () => {
-    modeTrayListeners.delete(listener);
+    alignActivationListeners.delete(listener);
   };
+}
+
+function emitAlignActivation(): void {
+  for (const listener of alignActivationListeners) listener();
 }
 
 /** 모두 정렬 진입 직전 훅 — 선별 중이면 War Room을 먼저 끝낸다. 단일 리스너(마지막 등록이 이긴다). */

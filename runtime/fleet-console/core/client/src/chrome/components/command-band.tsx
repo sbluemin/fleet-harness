@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { fetchConsoleEnvironment } from "../../integration/api.js";
-import { animateViewportTo, fitAllOperations, releaseAlignAllToSaved, setAlignAllLayout, setModeTrayOpen, setStationKeeping, toggleAlignAll, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { animateViewportTo, fitAllOperations, releaseAlignAll, setAlignAllLayout, setStationKeeping, toggleAlignAll, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../../../../../features/workspace/client/canvas/triage-watch-deck.js";
 import { commandBandCenterFits, commandBandCenterGutter } from "./command-band-guards.js";
@@ -121,12 +121,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     }
   };
   const openModeTools = () => { cancelModeToolsClose(); setModeToolsOpen(true); };
-  const closeModeTools = () => { cancelModeToolsClose(); setModeToolsOpen(false); };
-  // 캡슐 열림을 캔버스에 알린다 — 정렬 중에는 열린 캡슐 아래로 정렬 아레나 윗변을 내려
-  // 왼쪽 위 칸의 캡션 버튼을 비운다.
-  useEffect(() => {
-    setModeTrayOpen(modeToolsOpen);
-  }, [modeToolsOpen]);  const scheduleModeToolsClose = () => {
+  const closeModeTools = () => { cancelModeToolsClose(); setModeToolsOpen(false); };  const scheduleModeToolsClose = () => {
     cancelModeToolsClose();
     modeToolsCloseTimerRef.current = window.setTimeout(() => {
       modeToolsCloseTimerRef.current = null;
@@ -458,9 +453,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 disabled={state.activeTheaterId === null || !state.operationsHydrated}
                 aria-label={t("chrome.commandBand.stationKeeping")}
                 title={t("chrome.commandBand.stationKeeping")}
-                // 규율을 켜는 길은 정렬을 걷는다 — 켜기 전 자리로 되돌리고 펼친다.
-                // 빽빽한 칸 좌표에서 펼치면 패널이 화면 밖까지 밀려난다.
-                onClick={() => { if (!stationKeeping) releaseAlignAllToSaved(); setStationKeeping(!stationKeeping); }}
+                // 규율을 켜는 길은 정렬을 걷는다 — 줌·fit-all과 같이 그 자리에 남긴다.
+                onClick={() => { if (!stationKeeping) releaseAlignAll(); setStationKeeping(!stationKeeping); }}
               ><StationKeepingIcon /></button>
               {/* 모두 정렬 나누기 — 꺼져 있으면 켜고, 켜져 있으면 바꾸고, 눌린 것을 다시 누르면 끈다.
                   눌림 표시는 켜져 있을 때만 보인다. */}
