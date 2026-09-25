@@ -495,7 +495,9 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-launch:hover, .objectives-launch[aria-expanded="true"] { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 10%, transparent); }
 .objectives-launch:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-launch.is-locked { cursor: default; opacity: 0.75; }
+/* 트리거·구성원 줄의 공급자 글리프 — 메뉴의 칩 상자 없이 글리프 자체만 공급자 톤으로 칠한다. */
 .objectives-launch-provider { display: inline-grid; place-items: center; width: 14px; height: 14px; }
+.operation-launch-provider-glyph.objectives-launch-provider { border: 0; background: none; }
 .objectives-launch-provider svg { width: 14px; height: 14px; }
 .objectives-launch-model { color: var(--text-primary); }
 .objectives-launch-dot { color: var(--text-tertiary); }
@@ -540,12 +542,12 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-menu-back .objectives-menu-effort-word { flex: none; }
 .objectives-menu-item .objectives-menu-label { padding-left: 4px; }
 .objectives-menu-provider { margin-left: 2px; }
-.objectives-menu-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
-.objectives-menu-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
-.objectives-menu-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
-.objectives-menu-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.objectives-menu-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
-.objectives-menu-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
+.objectives-menu-provider.is-claude, .objectives-launch-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
+.objectives-menu-provider.is-codex, .objectives-launch-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
+.objectives-menu-provider.is-xai, .objectives-launch-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
+.objectives-menu-provider.is-cursor, .objectives-launch-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.objectives-menu-provider.is-opencode, .objectives-launch-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+.objectives-menu-provider.is-antigravity, .objectives-launch-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .objectives-menu-track { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px var(--space-2) 10px; }
 .objectives-menu-track .effort-track-value { display: none; }
 .objectives-menu-effort-word { font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass); }
@@ -588,9 +590,13 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-member-remove { flex: none; opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
 .objectives-member:hover .objectives-member-remove, .objectives-member:focus-within .objectives-member-remove { opacity: 1; }
 .objectives-member-by { flex: none; padding: 2px 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora); font: var(--weight-bold) var(--t-2xs)/1 var(--font-mono); }
-.objectives-member-meta { display: grid; gap: 1px; justify-items: end; flex: none; max-width: 48%; }
-.objectives-member-meta .objectives-launch { margin: 0; max-width: 100%; }
-.objectives-member-meta .objectives-launch-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 긴 실행 모델명(게이트웨이 모델 등)은 이름만 줄임표로 접는다 — 글리프·강도·상태·삭제 버튼은 자리를 지킨다. 풀네임은 title. */
+.objectives-member-meta { display: grid; grid-template-columns: minmax(0, max-content); gap: 1px; justify-items: end; flex: 0 1 auto; min-width: 0; max-width: 48%; }
+.objectives-member-meta > * { min-width: 0; max-width: 100%; }
+.objectives-member-meta .objectives-launch { margin: 0; }
+.objectives-member-meta .objectives-launch > * { flex: none; }
+.objectives-member-meta .objectives-launch > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-member-status { white-space: nowrap; }
 .objectives-member-status { font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); color: var(--text-tertiary); padding-right: 6px; }
 .objectives-member-status.is-running, .objectives-member-status.is-background { color: var(--aurora); }
 .objectives-member-status.is-idle { color: var(--positive); }
