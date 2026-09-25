@@ -186,7 +186,13 @@ export function OperationsCanvas({
   const operationBodyPoolAvailable = useOperationBodyPoolAvailable();
   const triageActive = useTriageActive();
   const clusterBodySelection = state.nestedBodySelection;
-  const [clusterPicker, setClusterPicker] = useState<{ readonly rootId: string; readonly anchor: DOMRect } | null>(null);
+  const [clusterPicker, setClusterPicker] = useState<{
+    readonly rootId: string;
+    readonly anchor: DOMRect;
+    readonly canvasTop?: number;
+    readonly targetOperationId?: string;
+    readonly panelRect?: { readonly left: number; readonly top: number; readonly width: number; readonly height: number; readonly bottom: number };
+  } | null>(null);
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
   const triageDeckZoom = useTriageDeckZoomControl();
@@ -344,8 +350,12 @@ export function OperationsCanvas({
     // Formation은 읽기 전용 감독 그리드다 — 슬롯 사이 빈 공간에서 숨은 viewport를 팬/줌하거나
     // 오래된 월드 좌표로 생성하는 일이 없도록 캔버스 제스처를 통째로 게이트한다.
     disabled: disabled || formationView || companionOperationId !== null || triageActive,
-    onViewportChange: (viewport) => setViewport(storedViewportFromScreen(viewport)),
+    onViewportChange: (viewport) => {
+      setClusterPicker(null);
+      setViewport(storedViewportFromScreen(viewport));
+    },
     onZoom: (viewport, screen) => {
+      setClusterPicker(null);
       // 줌은 유지를 푼다 — 카메라를 움직이려는 첫 의도다. 패널은 그 자리에 자유 패널로 남는다.
       releaseSnapHold();
       // 판 위의 줌은 커서 아래 월드가 아니라 커서가 겨눈 점을 앵커로 잡는다 — 판 위의 커서는
@@ -1589,7 +1599,28 @@ export function OperationsCanvas({
             } : null,
             cluster: clusterRoot
               ? {
-                strip: <ClusterStrip layout={clusterRoot} rootActivity={resolveOperationActivity(operation, operationRuntime)} onOpen={(_, event) => setClusterPicker({ rootId: operation.id, anchor: (event?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0) })} className="canvas-operation-cluster-strip" />,
+                strip: (
+                  <ClusterStrip
+                    layout={clusterRoot}
+                    rootActivity={resolveOperationActivity(operation, operationRuntime)}
+                    onOpen={(operationId, event) => {
+                      const target = event?.currentTarget as HTMLElement | undefined;
+                      const panel = target?.closest<HTMLElement>("[data-operation-id]") ?? null;
+                      const anchor = target?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0);
+                      const panelRect = panel?.getBoundingClientRect();
+                      const canvasRect = canvasRef.current?.getBoundingClientRect();
+                      const canvasTop = (canvasRect?.top ?? 0) + (arenaInsets?.top ?? 0);
+                      setClusterPicker({
+                        rootId: operation.id,
+                        targetOperationId: operationId,
+                        anchor,
+                        canvasTop,
+                        panelRect: panelRect ? { left: panelRect.left, top: panelRect.top, width: panelRect.width, height: panelRect.height, bottom: panelRect.bottom } : undefined,
+                      });
+                    }}
+                    className="canvas-operation-cluster-strip"
+                  />
+                ),
                 nodes: (
                   <ClusterNodeRail
                     layout={clusterRoot}
@@ -1842,6 +1873,9 @@ export function OperationsCanvas({
           <ClusterPicker
             layout={layout}
             anchor={clusterPicker.anchor}
+            panelRect={clusterPicker.panelRect}
+            canvasTop={clusterPicker.canvasTop}
+            targetOperationId={clusterPicker.targetOperationId}
             current={clusterBodySelection[clusterPicker.rootId] ?? null}
             rootActivity={rootNode ? resolveOperationActivity(rootNode, operationRuntime) : null}
             onPick={(operationId) => {
