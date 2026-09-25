@@ -7,6 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import objectivesPlugin from "../routes.js";
+import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../server/attachments.js";
 import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
@@ -242,6 +243,12 @@ describe("Objectives contract", () => {
     expect(store.find(item.id)!.commander.viewMode).toBe("terminal");
     // 위임할 때마다 새 Operation 을 만들지 않는다 — 같은 구성원의 임무는 같은 Operation 이다.
     expect(store.find(item.id)!.steps.map((step) => step.operationId)).toEqual(["launched-2", "launched-3", "launched-3"]);
+    // 임무 진행(blocked/done)은 그대로 두되, 실제 구성원 입력 대기를 별도 신호로 cluster 서술자에 전달한다.
+    const clusterMember = (id: string) => clustersOf([store.find(item.id)!], new Map([...activity].map(([key, value]) => [key, value])))[0]!.members.find((member) => member.operationId === id)!;
+    activity.set("launched-3", "awaiting");
+    expect(clusterMember("launched-3")).toMatchObject({ progress: "blocked", awaitingInput: true });
+    activity.set("launched-3", "idle");
+    expect(clusterMember("launched-3")).toMatchObject({ progress: "blocked", awaitingInput: false });
     // 다시 세워도 살아 있는 구성원은 그대로, 휴면한 구성원은 새로 띄우지 않고 세션째 재개한다.
     activity.set("launched-2", "dormant");
     expect((await launch.muster(item.id)).map((member) => member.state)).toEqual(["resumed", "live"]);
@@ -249,6 +256,9 @@ describe("Objectives contract", () => {
     // 다시 작업해 다시 완료하면 기록이 쌓인다(종류는 위치로).
     store.stepDone(item.id, a!.id, ["a done"]);
     store.stepDone(item.id, a!.id, ["a redone", "fixed the gap"]);
+    activity.set("launched-2", "awaiting");
+    expect(clusterMember("launched-2")).toMatchObject({ progress: "done", awaitingInput: true });
+    activity.set("launched-2", "idle");
     // 완료는 지휘관과 구성원을 휴면시키되 연결을 풀지 않는다. 답을 기다리는 터미널 지휘관과 백그라운드 작업이 남은 구성원은 그대로 재우고, 실행 중인 구성원은 중단한 뒤 재운다.
     activity.set(item.id, "awaiting");
     activity.set("launched-2", "running");

@@ -76,6 +76,7 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
         label: `${byStep.get(step.id)}. ${step.text}`,
         after: step.after.map(idOf),
         progress: pending ? (step.done ? "done" : stepReady(item.steps, step) ? "open" : "blocked") : progressOf(item, step.id, id, activity),
+        ...(!pending ? { awaitingInput: activity.get(id) === "awaiting" } : {}),
         // 캡션 피커의 한 줄 — 가장 최근 기록의 결론.
         ...((latest) => (latest ? { result: latest.lines[0] ?? "" } : {}))(latestRecord(step)),
       };
@@ -92,6 +93,7 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
         ...(memberIndex >= 0 ? { order: memberIndex } : {}),
         after: [],
         progress: liveProgress(operationId, activity),
+        awaitingInput: activity.get(operationId) === "awaiting",
       });
     }
     const open = (operationId?: string) => {
@@ -106,7 +108,7 @@ export function clustersOf(items: readonly ObjectiveItem[], activity: Map<string
   return out;
 }
 
-const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.after, member.progress, member.result ?? ""])]));
+const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root, cluster.title, cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 let cached: readonly OperationCluster[] = [];
 let cachedSignature = "";

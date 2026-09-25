@@ -501,6 +501,8 @@ export interface OperationClusterMember {
   /** 선행 구성원의 operationId. 전부 끝나야 이 구성원이 열린다. */
   readonly after: readonly string[];
   readonly progress: OperationClusterProgress;
+  /** 살아 있는 구성원 세션의 입력·결정 대기. 임무 진행(done/blocked)과 별개이며, 생략 시 옛 progress awaiting만 사용한다. */
+  readonly awaitingInput?: boolean;
   /** 끝난 구성원이 남긴 산출 요약 한 줄 — War Room 무대가 직전 단계의 것을 보여준다. */
   readonly result?: string;
 }

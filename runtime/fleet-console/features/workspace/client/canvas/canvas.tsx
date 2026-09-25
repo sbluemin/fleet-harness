@@ -12,7 +12,7 @@ import { fetchOperations } from "../../../../core/client/src/integration/api.js"
 import { claimTheaterBootMinimization } from "../../../../core/client/src/integration/boot-minimization-session.js";
 import { availableCompanionPanels, isBlockingDialogOpen } from "../../../../core/client/src/integration/shortcuts.js";
 import { clearActiveOperation, isWarRoomEmptyReleaseTarget } from "../../../../core/client/src/integration/active-operation-surface.js";
-import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, operationOrderFromNodes, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, selectNestedBody, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
+import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, operationOrderFromNodes, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, ownOperationRuntime, selectNestedBody, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
 import { createHostCapabilities } from "../../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
@@ -1625,7 +1625,7 @@ export function OperationsCanvas({
                   <ClusterNodeRail
                     layout={clusterRoot}
                     current={clusterRoot.formation.byOperationId.has(clusterBodySelection[operation.id] ?? "") ? clusterBodySelection[operation.id]! : operation.id}
-                    rootActivity={resolveOperationActivity(operation, operationRuntime)}
+                    rootActivity={resolveOperationActivity(operation, ownOperationRuntime())}
                     onPick={(operationId) => {
                       selectNestedBody(operation.id, operationId);
                       setActiveOperation(operation.id);

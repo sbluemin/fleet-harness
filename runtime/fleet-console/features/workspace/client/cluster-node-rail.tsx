@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 
-import type { OperationClusterProgress } from "@fleet-console/sdk/plugin";
+import type { OperationClusterMember, OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import type { ClusterLayout } from "./operation-clusters.js";
@@ -24,6 +24,10 @@ const ChevDown = () => (
 
 const TONE_ORDER: readonly string[] = ["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"];
 const EMPTY_HIDDEN_IDS: ReadonlySet<string> = new Set();
+/** 생략한 구형 생산자만 progress를 대기 신호로 사용한다. 명시 false는 우선한다. */
+const awaitingInput = (member: OperationClusterMember): boolean => member.awaitingInput ?? member.progress === "awaiting";
+const chipProgress = (member: OperationClusterMember): OperationClusterProgress =>
+  awaitingInput(member) ? "awaiting" : member.progress === "awaiting" ? "open" : member.progress;
 
 /**
  * 본문 위 세션 줄 — 캡션 바로 아래 frame 흐름 안에 26px 높이로 서는 가로 탭 줄.
@@ -42,6 +46,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const railRef = useRef<HTMLDivElement | null>(null);
   const commanderTabRef = useRef<HTMLButtonElement | null>(null);
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
+  const moreMeasureRef = useRef<HTMLSpanElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(EMPTY_HIDDEN_IDS);
@@ -75,7 +80,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   nodesRef.current = nodes;
 
   const nodesKey = useMemo(
-    () => nodes.map((n) => `${n.member.operationId}:${n.member.progress}:${n.member.name}:${n.member.order}`).join("|"),
+    () => nodes.map((n) => `${n.member.operationId}:${awaitingInput(n.member)}:${n.member.name}:${n.member.order}`).join("|"),
     [nodes],
   );
 
@@ -126,18 +131,20 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         return;
       }
 
-      // 2단계: 다 들어가지 않는 경우 — +N 버튼 공간(44px)을 확보하고 넘치는 탭 가리기.
+      // 2단계: 다 들어가지 않는 경우 — 숨은 수의 자릿수와 대기 표식을 모두 포함한 +N 최대 폭을 확보한다.
       // 우선순위:
       // 1) 지휘관 (baseWidth 에 포함)
       // 2) 허용 요청(awaiting) 탭 (반드시 포함)
       // 3) 현재 선택된 탭(current) (반드시 포함)
       // 4) 현재 포커스된 탭(focusedId) (가능하면 포함)
-      const moreWidth = 44;
+      // 실제 버튼의 hidden 수/has-awaiting에 따라 폭이 왕복하지 않도록, 같은 글꼴·패딩의
+      // 비표시 측정 칸에서 최대 숨김 수와 대기 표식을 고정해 읽는다. 뒤의 2px은 rail gap.
+      const moreWidth = Math.ceil(moreMeasureRef.current?.getBoundingClientRect().width ?? 44) + 2;
       const hidden = new Set<string>();
 
       let reservedForPriority = 0;
       for (const node of currentNodes) {
-        const isPriority = node.member.progress === "awaiting" || node.member.operationId === current;
+        const isPriority = awaitingInput(node.member) || node.member.operationId === current;
         if (isPriority) {
           const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
           reservedForPriority += w + 2;
@@ -150,8 +157,8 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         const avail = railWidth - baseWidth - moreWidth;
         let acc = 0;
         const awaitingFirst = [
-          ...currentNodes.filter((node) => node.member.progress === "awaiting"),
-          ...currentNodes.filter((node) => node.member.progress !== "awaiting"),
+          ...currentNodes.filter((node) => awaitingInput(node.member)),
+          ...currentNodes.filter((node) => !awaitingInput(node.member)),
         ];
         for (const node of awaitingFirst) {
           const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
@@ -166,7 +173,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         const availableForRest = railWidth - baseWidth - reservedForPriority - moreWidth;
         let acc = 0;
         for (const node of currentNodes) {
-          const isPriority = node.member.progress === "awaiting" || node.member.operationId === current;
+          const isPriority = awaitingInput(node.member) || node.member.operationId === current;
           if (isPriority) continue;
           const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
           if (acc + w > availableForRest) {
@@ -183,6 +190,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(rail);
+    if (moreMeasureRef.current) observer.observe(moreMeasureRef.current);
     return () => observer.disconnect();
   }, [nodesKey, current]);
 
@@ -268,7 +276,8 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
 
   const hiddenNodes = nodes.filter(({ member }) => hiddenIds.has(member.operationId));
   const hiddenCount = hiddenNodes.length;
-  const moreHasAwaiting = hiddenNodes.some(({ member }) => member.progress === "awaiting");
+  const hiddenAwaitingCount = hiddenNodes.filter(({ member }) => awaitingInput(member)).length;
+  const moreHasAwaiting = hiddenAwaitingCount > 0;
   const moreHasCurrent = hiddenNodes.some(({ member }) => member.operationId === current);
 
   // Roving tabindex: 포커스된 탭이 가시 영역에 있으면 그 탭이 tabIndex=0, 없으면 current(가시 시) 또는 root 가 0
@@ -284,11 +293,16 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       onPointerDown={stop}
       data-canvas-blocker
     >
+      <span ref={moreMeasureRef} className="cluster-node-more cluster-node-more-measure" aria-hidden="true">
+        <i className="cluster-node-await-mark" aria-hidden="true" />
+        <span>+{nodes.length}</span>
+        <ChevDown />
+      </span>
       <button
         ref={commanderTabRef}
         type="button"
         role="tab"
-        className={`cluster-node-tab${current === root ? " is-current" : ""}`}
+        className={`cluster-node-tab${current === root ? " is-current" : ""}${rootActivity === "awaiting" ? " is-awaiting" : ""}`}
         aria-selected={current === root}
         tabIndex={activeFocusId === root ? 0 : -1}
         title={chefTip}
@@ -310,7 +324,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         const { member } = node;
         const on = member.operationId === current;
         const isHidden = hiddenIds.has(member.operationId);
-        const word = stateWord(member.progress);
+        const word = stateWord(chipProgress(member));
         const name = nodeName(node);
         const tip = word ? `${member.label} · ${word}` : member.label;
         const firstChar = Array.from(name)[0] ?? "?";
@@ -320,7 +334,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
             type="button"
             role="tab"
             hidden={isHidden}
-            className={`cluster-node-tab${on ? " is-current" : ""}`}
+            className={`cluster-node-tab${on ? " is-current" : ""}${awaitingInput(member) ? " is-awaiting" : ""}`}
             aria-selected={on}
             tabIndex={activeFocusId === member.operationId ? 0 : -1}
             title={tip}
@@ -334,7 +348,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
           >
             <span className={`cluster-member-glyph is-tone-${member.tone ?? "teal"}`} aria-hidden="true">
               {firstChar}
-              <i className={`cluster-member-status is-${member.progress}`} />
+              <i className={`cluster-member-status is-${chipProgress(member)}`} />
             </span>
             <span>{name}</span>
           </button>
@@ -349,10 +363,11 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
             aria-haspopup="menu"
             aria-expanded={moreOpen}
             aria-selected={moreHasCurrent ? "true" : undefined}
-            aria-label={t("cluster.nodes.more", { count: hiddenCount })}
+            aria-label={moreHasAwaiting ? `${t("cluster.nodes.more", { count: hiddenCount })} · ${t("cluster.nodes.moreAwaiting", { count: hiddenAwaitingCount })}` : t("cluster.nodes.more", { count: hiddenCount })}
             title={t("cluster.nodes.more", { count: hiddenCount })}
             onClick={() => setMoreOpen((prev) => !prev)}
           >
+            <i className="cluster-node-await-mark" aria-hidden="true" />
             <span>+{hiddenCount}</span>
             <ChevDown />
           </button>
@@ -361,7 +376,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
               {hiddenNodes.map((node) => {
                 const { member } = node;
                 const on = member.operationId === current;
-                const word = stateWord(member.progress);
+                const word = stateWord(chipProgress(member));
                 const name = nodeName(node);
                 const firstChar = Array.from(name)[0] ?? "?";
                 return (
@@ -369,7 +384,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
                     key={member.operationId}
                     type="button"
                     role="menuitem"
-                    className={`cluster-node-overflow-item${on ? " is-current" : ""}`}
+                    className={`cluster-node-overflow-item${on ? " is-current" : ""}${awaitingInput(member) ? " is-awaiting" : ""}`}
                     onClick={() => {
                       setFocusedId(member.operationId);
                       setMoreOpen(false);
@@ -378,10 +393,10 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
                   >
                     <span className={`cluster-member-glyph is-tone-${member.tone ?? "teal"}`} aria-hidden="true">
                       {firstChar}
-                      <i className={`cluster-member-status is-${member.progress}`} />
+                      <i className={`cluster-member-status is-${chipProgress(member)}`} />
                     </span>
                     <span className="cluster-node-overflow-name">{name}</span>
-                    {word ? <span className={`cluster-node-overflow-state is-${member.progress}`}>{word}</span> : null}
+                    {word ? <span className={`cluster-node-overflow-state is-${chipProgress(member)}`}>{word}</span> : null}
                   </button>
                 );
               })}
