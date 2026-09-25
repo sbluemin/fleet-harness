@@ -118,6 +118,14 @@ describe("Objectives contract", () => {
     const [a, b, c] = item.steps;
     // 순환은 저장 전에 거절된다.
     expect(() => store.stepPatch(item.id, a!.id, { after: [c!.id] })).toThrow(ObjectiveStoreError);
+    // 첫 실행 전 뷰는 Operation 프리셋에만 저장하고, 모델·세션 이름은 유지한다.
+    expect(launch.setPreset(item.id, { viewMode: "chat" }).commander).toMatchObject({ viewMode: "chat", model: "opus[1m]", sessionName: `${head}-cmdr` });
+    // 수동 재개된 유휴 채팅은 아직 provider 좌표가 없어도 이미 프리셋을 읽었다.
+    activity.set(item.id, "idle");
+    expect(() => launch.setPreset(item.id, { viewMode: "terminal" })).toThrow("item_busy");
+    expect(() => launch.setPreset(item.id, { model: "sonnet" })).toThrow("item_busy");
+    activity.set(item.id, "dormant");
+    expect(launch.setPreset(item.id, { viewMode: "terminal" }).commander.viewMode).toBe("terminal");
     // 구성원 명단 — 임무는 구성원만 가리킨다. 두 임무가 한 구성원을 나눠 쓴다.
     const research = store.memberAdd(item.id, { role: "research" }, "human").members[0]!.id;
     const build = store.memberAdd(item.id, { role: "build" }, "human").members[1]!.id;
@@ -131,6 +139,11 @@ describe("Objectives contract", () => {
       expect.objectContaining({ sessionName: `${head}-member-1`, dormant: undefined, disableSubagents: true, text: undefined }),
       expect.objectContaining({ sessionName: `${head}-member-2`, dormant: undefined, disableSubagents: true, text: undefined }),
     ]);
+    // 첫 세션이 잡힌 뒤에는 유휴 상태여도 모델·뷰를 바꾸지 못한다.
+    const node = operations.get(item.id)!;
+    node.payload.session = { ...(node.payload.session as object), id: "captured-session", capturedAt: "2026-09-25T00:00:00Z", source: "hook" };
+    expect(() => launch.setPreset(item.id, { viewMode: "chat" })).toThrow("item_busy");
+    expect(store.find(item.id)!.commander.viewMode).toBe("terminal");
     // 위임할 때마다 새 Operation 을 만들지 않는다 — 같은 구성원의 임무는 같은 Operation 이다.
     expect(store.find(item.id)!.steps.map((step) => step.operationId)).toEqual(["launched-2", "launched-3", "launched-3"]);
     // 다시 세워도 살아 있는 구성원은 그대로, 휴면한 구성원은 새로 띄우지 않고 세션째 재개한다.

@@ -191,7 +191,7 @@ export interface ObjectiveItem {
   readonly title: string;
   readonly createdAt: number;
   /** 지휘관 세션 — 이름·모델·강도·한 번이라도 깨었는지는 지휘관 Operation 에서 읽는다. */
-  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly started: boolean };
+  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean };
   readonly note: string;
   readonly attachments: readonly ObjectiveAttachment[];
   readonly cook?: string;
@@ -341,6 +341,7 @@ const dueDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
 
 export const createItemSchema = z.object({
   theaterId: ids,
+  viewMode: z.enum(["terminal", "chat"]).optional(),
   language: z.enum(["en", "ko"]).optional(),
   groupId: ids.nullable().optional(),
   title,
@@ -360,7 +361,7 @@ export const patchItemSchema = z.object({
   today: z.boolean().optional(),
   groupId: ids.nullable().optional(),
   /** 지휘관 모델·강도 — 지휘관 Operation 에 쓴다. */
-  launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional() }).strict().optional(),
+  launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["terminal", "chat"]).optional() }).strict().optional(),
 }).strict();
 
 export const memberLaunchSchema = z.discriminatedUnion("mode", [

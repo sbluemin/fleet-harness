@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, promises as fs, rmSync, writeFileSync } from "n
 import os from "node:os";
 import path from "node:path";
 
-import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -113,6 +113,17 @@ describe("agent chat mode routes", () => {
     expect(launched.operationId).not.toBe(sessionId);
     expect(harness.operation(launched.operationId!)?.payload.chatBorn).toBe(true);
     expect(harness.sends).toEqual(["Inspect the build", "Run the next check"]);
+    // 목표의 지휘관은 휴면 채팅으로 태어나고, 첫 send가 PTY가 아닌 Chat 세션을 깨운다.
+    const dormant = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-dormant", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(dormant.id)?.operationId).toBeDefined());
+    const commander = harness.consoleControl.getAction(dormant.id)!.operationId!;
+    expect(harness.consoleControl.observe(commander)).toMatchObject({ lifecycle: "dormant", surface: "chat" });
+    expect(harness.sends).toHaveLength(2);
+    const wake = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-wake", { kind: "send", operationId: commander, text: "Begin the objective" });
+    await vi.waitFor(() => expect(harness.consoleControl.getAction(wake.id)?.status).toBe("finished"));
+    expect(harness.sends.at(-1)).toBe("Begin the objective");
+    expect(harness.consoleControl.observe(commander)?.surface).toBe("chat");
+    await vi.waitFor(() => expect(readOperationLaunch(harness.operation(commander)!.payload).started).toBe(true));
     const command = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "console-command", { kind: "send", operationId: sessionId, text: "/compact" });
     await vi.waitFor(() => expect(harness.consoleControl.getAction(command.id)).toMatchObject({ status: "finished", outcome: "succeeded" }));
   });
@@ -253,6 +264,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir);
+  vi.stubEnv("CLAUDE_CONFIG_DIR", fleetDataDir);
   // 실제 Chat 런치의 cwd로 쓸 Theater 루트를 준비한다.
   mkdirSync(path.join(fleetDataDir, "theater"), { recursive: true });
   // 원 세션 트랜스크립트 픽스처 — providerSession.transcriptPath가 가리킨다.

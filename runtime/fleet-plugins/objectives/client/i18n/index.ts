@@ -3,6 +3,11 @@ import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 
 export const objectivesEn = {
   "objectives.panel.title": "Objectives",
+  "objectives.view.label": "Start view",
+  "objectives.view.terminal": "Terminal view",
+  "objectives.view.chat": "Chat view",
+  "objectives.view.terminalShort": "Terminal",
+  "objectives.view.chatShort": "Chat",
   "objectives.panel.expand": "Expand",
   "objectives.panel.dock": "Dock to rail",
   "objectives.list.select": "Choose a list",
@@ -251,6 +256,11 @@ export const objectivesEn = {
 
 export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.panel.title": "목표",
+  "objectives.view.label": "시작 뷰",
+  "objectives.view.terminal": "터미널뷰",
+  "objectives.view.chat": "채팅뷰",
+  "objectives.view.terminalShort": "터미널",
+  "objectives.view.chatShort": "채팅",
   "objectives.panel.expand": "확대",
   "objectives.panel.dock": "레일에 붙이기",
   "objectives.list.select": "목록 선택",

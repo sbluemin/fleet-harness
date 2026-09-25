@@ -19,7 +19,7 @@ import type { ObjectiveItem, ObjectiveMember, PlanInput, SlotBy, StepAddInput, S
 export interface LaunchService {
   describe(): { readonly available: boolean };
   /** 목표를 만든다 — 지휘관 Operation 을 dormant 로 먼저 만들고 그 id 로 목표 레코드를 세운다. */
-  create(input: { readonly theaterId: string; readonly title: string; readonly groupId: string | null } & ObjectiveInit, options?: LaunchOptions): Promise<ObjectiveItem>;
+  create(input: { readonly theaterId: string; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat" } & ObjectiveInit, options?: LaunchOptions): Promise<ObjectiveItem>;
   /** 목표를 지운다 — 지휘관 Operation 을 닫는다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다). */
   remove(itemId: string): ObjectiveItem;
   /** 완료를 먼저 기록한 뒤 지휘관과 담당 Operation을 비동기로 휴면시킨다. */
@@ -27,7 +27,7 @@ export interface LaunchService {
   rename(itemId: string, title: string): ObjectiveItem;
   regroup(itemId: string, groupId: string | null): ObjectiveItem;
   /** 지휘관의 모델·강도 — 지휘관 Operation 에 쓴다(다음 깨움부터 쓰인다). */
-  setPreset(itemId: string, preset: { readonly model?: string; readonly effort?: string }): ObjectiveItem;
+  setPreset(itemId: string, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): ObjectiveItem;
   startCoordinator(itemId: string, options?: LaunchOptions): Promise<{ readonly item: ObjectiveItem; readonly operationId: string }>;
   requestPlan(itemId: string, options?: LaunchOptions): Promise<{ readonly item: ObjectiveItem; readonly operationId: string }>;
   stepPatched(itemId: string, stepId: string, patch: StepPatchInput): ObjectiveItem;
@@ -101,12 +101,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
-  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; dormant?: boolean; subagents?: boolean; parentOperationId?: string }): Promise<string> => {
+  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; parentOperationId?: string }): Promise<string> => {
     const receipt = await control().request({
       kind: "launch",
       theaterId: input.theaterId,
       title: input.title,
-      viewMode: "terminal",
+      viewMode: input.viewMode ?? "terminal",
       sessionName: input.sessionName,
       ...(input.dormant ? { dormant: true } : {}),
       // 담당은 이미 분배된 일을 맡았다 — 서브에이전트(fleet:execute 포함)로 다시 나누지 않는다.
@@ -292,7 +292,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
     async create(input, options) {
       const language = languageOf(options);
-      const operationId = await launch({ theaterId: input.theaterId, title: input.title, sessionName: commanderSession(), ...COMMANDER_PRESET, groupId: input.groupId, dormant: true }).catch(asStoreError);
+      const operationId = await launch({ theaterId: input.theaterId, title: input.title, sessionName: commanderSession(), ...COMMANDER_PRESET, groupId: input.groupId, viewMode: input.viewMode, dormant: true }).catch(asStoreError);
       rememberLanguage(operationId, language);
       try {
         return store.adopt(operationId, input);
@@ -334,6 +334,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     setPreset(itemId, preset) {
       const node = ctx.host.operations.get(itemId);
       if (!node) throw new ObjectiveStoreError("unknown_item");
+      // 수동 재개는 첫 메시지 전에도 세션을 초기화한다 — 살아 있는 세션의 프리셋을 뒤에서 바꾸지 않는다.
+      if (readOperationLaunch(node.payload).started || pending.has(itemId) || control().observe(itemId)?.lifecycle === "live" || service.busy(itemId)) throw new ObjectiveStoreError("item_busy");
+      if (item(itemId).done) throw new ObjectiveStoreError("item_done");
       patchOperation(itemId, { payload: withOperationLaunchPreset(node.payload, preset) });
       store.refresh(itemId);
       return item(itemId);

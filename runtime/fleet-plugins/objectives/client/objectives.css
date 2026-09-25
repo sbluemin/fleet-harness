@@ -228,6 +228,16 @@
 .objectives-add input { flex: 1; background: transparent; border: 0; color: var(--text-primary); font: inherit; outline: none; min-width: 0; }
 .objectives-add .objectives-plus { color: var(--brass); font-size: var(--t-lg); line-height: 1; }
 .objectives-add:focus-within { border-color: var(--brass); }
+.objectives-view-picker { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: var(--radius-xs); background: var(--control-rest); }
+.objectives-view-picker button { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; }
+.objectives-view-picker button[aria-checked="true"] { background: var(--surface-panel); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.objectives-view-picker button[aria-checked="true"] svg { color: var(--brass); }
+.objectives-view-picker button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-view-picker svg, .objectives-launch-view svg { width: 12px; height: 12px; flex: none; }
+.objectives-launch-view { display: inline-flex; align-items: center; gap: 4px; color: var(--text-tertiary); white-space: nowrap; }
+.objectives-launch-separator { height: 11px; width: 1px; background: var(--hairline-strong); margin: 0 2px; }
+.objectives-item-view { display: inline-flex; }
+.objectives-item-view svg { width: 11px; height: 11px; }
 
 /* ── 버튼 ── */
 .objectives-btn {
@@ -306,7 +316,9 @@
   field-sizing: content;
 }
 .objectives-detail-title:focus { outline: none; }
-.objectives-detail-head .objectives-star { margin: 0; font-size: var(--t-lg); }
+.objectives-detail-head .objectives-star { flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; margin: 0; border-radius: var(--radius-xs); }
+.objectives-detail-head .objectives-star svg { width: 16px; height: 16px; }
+.objectives-detail-head .objectives-star.is-on svg { fill: currentColor; }
 .objectives-detail-delete { flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; }
 .objectives-detail-delete svg { width: 16px; height: 16px; }
 .objectives-detail-delete:hover { color: var(--coral); }
