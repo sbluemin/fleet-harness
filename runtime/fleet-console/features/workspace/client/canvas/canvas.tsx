@@ -1618,7 +1618,6 @@ export function OperationsCanvas({
                         panelRect: panelRect ? { left: panelRect.left, top: panelRect.top, width: panelRect.width, height: panelRect.height, bottom: panelRect.bottom } : undefined,
                       });
                     }}
-                    className="canvas-operation-cluster-strip"
                   />
                 ),
                 nodes: (
