@@ -18,20 +18,26 @@ import {
 import { clearOperationRuntime, findOperation, focusOperation, getState, hydrateOperations, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setOperationRuntime, setState as setConsoleState } from "../core/client/src/integration/store.js";
 import { fetchOperations } from "../core/client/src/integration/api.js";
 import {
-  clearFormationView,
+  detachAlignAllPanel,
   forceDropCompanionOperationId,
+  getAlignAll,
   getCompanionOperationId,
   clearMaximizedOperationId,
-  getFormationView,
   getMaximizedOperationId,
+  getSnapshot as getCanvasSnapshot,
   getTheaterFocusLayerSnapshot,
   loadForTheater,
   minimizeOperation,
+  reconcileAlignAll,
+  rejoinAlignAllPanel,
+  releaseAlignAll,
   setMaximizedOperationId,
   setCompanionOperationId,
   setOperationGeometry,
   setTheaterFocusLayerSnapshot,
-  toggleFormationView,
+  snapOperationToArenaRect,
+  syncSnapHoldGeometry,
+  toggleAlignAll,
 } from "../features/workspace/client/canvas/canvas-store.js";
 import {
   requestSideBarOperationAction,
@@ -108,7 +114,7 @@ beforeEach(() => {
   resetTriageDeckZoomForTests();
   resetIdleArrivalForTests();
   resetSideBarStatusSectionCollapseForTests();
-  clearFormationView();
+  releaseAlignAll();
   clearMaximizedOperationId();
   forceDropCompanionOperationId();
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -119,7 +125,7 @@ afterEach(() => {
   resetTriageSpotlightForTests();
   resetTriageDeckZoomForTests();
   forceDropCompanionOperationId();
-  clearFormationView();
+  releaseAlignAll();
   clearMaximizedOperationId();
   loadForTheater(null);
   if (triagePlateRoot) {
@@ -182,22 +188,87 @@ describe("triage store", () => {
     }
   });
 
-  it("keeps Formation view and Triage mutually exclusive in both directions", () => {
-    toggleFormationView();
-    expect(getFormationView()).toBe(true);
+  it("keeps align-all across Triage round-trips, and align entry exits Triage", () => {    toggleAlignAll();
+    expect(getAlignAll()).not.toBeNull();
 
+    // 선별 진입은 정렬을 걷지 않는다 — War Room을 다녀와도 정렬이 남는다.
     setTriageActive(true);
     expect(isTriageActive()).toBe(true);
-    expect(getFormationView()).toBe(false);
+    expect(getAlignAll()).not.toBeNull();
 
     setTriageActive(false);
-    setOperationGeometry("picked", { x: 0, y: 0, width: 640, height: 400, zIndex: 1 });
-    setMaximizedOperationId("picked");
+    expect(getAlignAll()).not.toBeNull();
+
+    // 정렬 진입은 선별을 끝낸다.
+    toggleAlignAll();
+    expect(getAlignAll()).toBeNull();
     setTriageActive(true);
-    toggleFormationView();
-    expect(getFormationView()).toBe(true);
+    expect(isTriageActive()).toBe(true);
+    toggleAlignAll();
+    expect(getAlignAll()).not.toBeNull();
     expect(isTriageActive()).toBe(false);
-    expect(getMaximizedOperationId()).toBeNull();
+  });
+
+  // 저장 무결성: 정렬 중 칸 동기화·빼내기·다시 넣기가 켜기 전 기억을 오염시키지 않고,
+  // 끄면 그 자리와 켜기 전 수동 묶음이 정확히 돌아온다. 복원이 로컬 기억만으로 닫히므로
+  // 서버 Cruise 기하는 정렬 내내 손대지 않는 것이 전제다(네트워크 무PATCH는 격리 실기로 확인).
+  it("restores pre-align geometry and the prior hold exactly when align-all turns off", () => {
+    setOperationGeometry("b", { x: 700, y: 20, width: 640, height: 400, zIndex: 2 });
+    snapOperationToArenaRect("a", { x: 0, y: 0, width: 100, height: 100 }, {
+      presetId: "half",
+      zones: [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]],
+      zoneIndex: 0,
+    });
+    const before = getCanvasSnapshot().operations;
+
+    toggleAlignAll();
+    const meta = getAlignAll();
+    expect(meta).not.toBeNull();
+    // 켜기 전 기억은 손대기 전 그대로다.
+    expect(meta!.savedGeometries).toEqual(before);
+    expect(meta!.savedSnapHold?.assignments).toEqual({ a: 0 });
+
+    // 멤버십 재계산·칸 동기화·빼내기·다시 넣기가 기억을 오염시키지 않는다.
+    reconcileAlignAll(["a", "b"]);
+    expect(getCanvasSnapshot().snapHold?.assignments).toEqual({ a: 0, b: 1 });
+    syncSnapHoldGeometry([
+      { sessionId: "a", rect: { x: 0, y: 0, width: 100, height: 100 } },
+      { sessionId: "b", rect: { x: 100, y: 0, width: 100, height: 100 } },
+    ]);
+    detachAlignAllPanel("b");
+    expect(getAlignAll()!.savedGeometries).toEqual(before);
+    rejoinAlignAllPanel("b");
+    reconcileAlignAll(["a", "b"]);
+
+    // 끄면 켜기 전 자리와 수동 묶음이 정확히 돌아온다.
+    toggleAlignAll();
+    expect(getAlignAll()).toBeNull();
+    expect(getCanvasSnapshot().operations).toEqual(before);
+    expect(getCanvasSnapshot().snapHold?.assignments).toEqual({ a: 0 });
+  });
+
+  // 빼낸 채로 끄면 묶음만 복원되고 빼낸 패널은 놓은 자리에 남는다 — 풀린 순간부터
+  // 자유 패널이라 드롭 좌표가 새 Cruise 자리다(서버 커밋은 렌더가 드롭 시점에 맡는다).
+  it("keeps the detached panel where it was dropped when align-all turns off", () => {
+    setOperationGeometry("b", { x: 700, y: 20, width: 640, height: 400, zIndex: 2 });
+    setOperationGeometry("a", { x: 10, y: 20, width: 640, height: 400, zIndex: 1 });
+    const before = getCanvasSnapshot().operations;
+
+    toggleAlignAll();
+    reconcileAlignAll(["a", "b"]);
+    syncSnapHoldGeometry([
+      { sessionId: "a", rect: { x: 0, y: 0, width: 100, height: 100 } },
+      { sessionId: "b", rect: { x: 100, y: 0, width: 100, height: 100 } },
+    ]);
+    detachAlignAllPanel("b");
+    // 드롭 자리에 놓은 좌표가 그대로라고 둔다.
+    const dropped = { x: 500, y: 500, width: 640, height: 400, zIndex: 2 };
+    setOperationGeometry("b", dropped);
+
+    toggleAlignAll();
+    expect(getAlignAll()).toBeNull();
+    expect(getCanvasSnapshot().operations.a).toEqual(before.a);
+    expect(getCanvasSnapshot().operations.b).toMatchObject({ x: 500, y: 500 });
   });
 
   it("acknowledges only the active Operation when Triage exits", () => {

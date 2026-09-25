@@ -32,13 +32,13 @@ const UI = {
   metaProviders: { ko: "Gateway providers", en: "Gateway providers" },
   metaProvidersV: { ko: "구독과 API 키", en: "Subscriptions & API keys" },
   metaModes: { ko: "Canvas modes", en: "Canvas modes" },
-  metaModesV: { ko: "Cruise · Tactical · War Room", en: "Cruise · Tactical · War Room" },
+  metaModesV: { ko: "Cruise · War Room", en: "Cruise · War Room" },
   metaScreens: { ko: "Screens", en: "Screens" },
   metaScreensV: { ko: "브라우저 · 데스크톱 · Android", en: "Browser · Desktop · Android" },
   bootTitle: { ko: "fleet — zsh", en: "fleet — zsh" },
   heroCap: {
-    ko: "이전 버전의 실제 화면 — 이 저장소 위에서 세 에이전트가 나란히 도는 Tactical 캔버스. 화면 속 Cursor Gateway 세션은 현재 버전에서 시작할 수 없습니다.",
-    en: "Real capture from an earlier version — three agents running side by side on the Tactical canvas. The Cursor Gateway session pictured can no longer be started in the current version.",
+    ko: "이전 버전의 실제 화면 — 이 저장소 위에서 세 에이전트가 나란히 정렬된 캔버스. 화면 속 Cursor Gateway 세션은 현재 버전에서 시작할 수 없습니다.",
+    en: "Real capture from an earlier version — three agents running side by side on an aligned canvas. The Cursor Gateway session pictured can no longer be started in the current version.",
   },
 
   thesis1: { ko: "서버가 세션을 소유하면, ", en: "When the server owns the session, " },
@@ -224,20 +224,21 @@ const MODES = [
       { ko: "**무한 캔버스** — 패널마다 위치·크기를 기억한다.", en: "**An infinite canvas** — every panel remembers its own position and size." },
       { ko: "**분할 배치** — 패널을 위쪽으로 끌면 분할 프리셋이 내려오고, 좌우·모서리로 끌면 반쪽·사분면에 앉는다. 스냅하면 줌이 100%로 돌아온다.", en: "**Snap layouts** — drag a panel to the top for split presets, or to a side or corner for a half or quarter; snapping brings zoom back to 100%." },
       { ko: "**⌘K**로 모든 Theater에 걸쳐 검색, **⌘P**로 커맨드 팔레트.", en: "**⌘K** searches across every Theater; **⌘P** opens the command palette." },
+      { ko: "**Alt+S**로 사이드바를 Operation 상태 기준으로 정렬한다.", en: "**Alt+S** sorts the sidebar by operation status." },
     ],
   },
   {
-    name: "Tactical",
+    name: "Align all",
     tag: { ko: "Alt+F", en: "Alt+F" },
     kr: { ko: "한 번에 정렬", en: "Lay them all out" },
     keys: ["Alt", "F"],
     desc: {
-      ko: "열려 있는 패널을 그리드·열·행으로 한 번에 정렬해 전부 한 화면에 세운다. 무엇이 떠 있는지부터 확인하고 싶을 때 쓰는 모드다.",
-      en: "Lays every open panel out at once — grid, columns, or rows — so the whole set is on screen. This is the mode for finding out what is running before deciding where to look.",
+      ko: "열려 있는 패널을 격자·열·행 칸에 한 번에 정렬해 전부 한 화면에 세운다. 다시 누르면 켜기 전 자리로 돌아간다. 무엇이 떠 있는지부터 확인하고 싶을 때 쓰는 Cruise 도구다.",
+      en: "Lays every open panel out at once — grid, columns, or rows — so the whole set is on screen, and drops every panel back where it was when you toggle it off. The Cruise tool for finding out what is running before deciding where to look.",
     },
     points: [
-      { ko: "**전체 자동 정렬** — 직접 배치한 좌표는 보존되고, Cruise로 돌아오면 되살아난다.", en: "**Everything arranged at once** — hand-placed coordinates survive and come back with Cruise." },
-      { ko: "**Alt+S**로 사이드바를 Operation 상태 기준으로 정렬한다.", en: "**Alt+S** sorts the sidebar by operation status." },
+      { ko: "**전체 자동 정렬** — 최소화·추가·순서 변경에 다시 나뉘고, 빈칸은 남기지 않는다.", en: "**Everything arranged at once** — re-divides on minimize, add, or reorder, with no empty slots left behind." },
+      { ko: "**원래 자리 복원** — 끄면 켜기 전 자리로 돌아가고, War Room을 다녀와도 정렬이 남는다.", en: "**Restores your layout** — toggling off returns every panel, and the arrangement survives a War Room round-trip." },
     ],
   },
   {

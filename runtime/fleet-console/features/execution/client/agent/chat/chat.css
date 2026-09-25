@@ -55,11 +55,10 @@
   --agent-chat-measure: 100%;
 }
 
-/* 도킹한 Quick Launch가 차지하는 높이만큼 작업 면 아래를 비운다 — formation 격자
-   (Tactical·War Room)와 Cruise 최대화 프레임이 대상이다. 자유 배치 캔버스의 떠 있는
-   패널은 사용자가 둔 자리라 대상이 아니다. 값은 QL이 펼친 높이 + --space-4를 재서
+/* 도킹한 Quick Launch가 차지하는 높이만큼 작업 면 아래를 비운다 — War Room 무대와
+   Cruise 최대화 프레임이 대상이다. 자유 배치 캔버스의 떠 있는 패널(정렬 칸 포함)은
+   사용자가 둔 자리라 대상이 아니다. 값은 QL이 펼친 높이 + --space-4를 재서
    document 루트에 쓰며, 없으면 0으로 떨어진다. */
-.operations-canvas.is-formation-view .canvas-operation .agent-chat,
 .operations-canvas.is-panel-maximized .canvas-operation.is-maximized .agent-chat {
   bottom: var(--quick-launch-dock-inset, 0px);
 }

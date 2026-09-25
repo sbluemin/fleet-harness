@@ -29,7 +29,7 @@ const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-monogram" | 
   "view-minimize-all": <Glyph><path d="M3 4h10M3 8h10M3 12h6" /><path d="M13 10.5v3M11.5 12h3" /></Glyph>,
   "view-fit": <Glyph><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" /><rect x="5.5" y="5.5" width="5" height="5" rx="1" /></Glyph>,
   "view-war-room": <Glyph><rect x="2.5" y="8.5" width="11" height="5" rx="1.5" /><path d="M4.5 6h7M6 3.5h4" /></Glyph>,
-  "view-tactical": <Glyph><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" /><rect x="9" y="2.5" width="4.5" height="4.5" rx="1" /><rect x="2.5" y="9" width="4.5" height="4.5" rx="1" /><rect x="9" y="9" width="4.5" height="4.5" rx="1" /></Glyph>,
+  "view-align-all": <Glyph><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" /><rect x="9" y="2.5" width="4.5" height="4.5" rx="1" /><rect x="2.5" y="9" width="4.5" height="4.5" rx="1" /><rect x="9" y="9" width="4.5" height="4.5" rx="1" /></Glyph>,
   "view-station-keeping": <Glyph><path d="M4 2.5v6a4 4 0 0 0 8 0v-6" /><path d="M4 2.5h2.6v6a1.4 1.4 0 0 0 2.8 0v-6H12" /><path d="M4 5.5h2.6M9.4 5.5H12" /></Glyph>,
   "view-status-axis": <Glyph><rect x="2.5" y="2.5" width="11" height="3.2" rx="1" /><rect x="2.5" y="6.4" width="11" height="3.2" rx="1" /><rect x="2.5" y="10.3" width="11" height="3.2" rx="1" /></Glyph>,
   "console-sidebar": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M5.5 2.5v11" /></Glyph>,
@@ -47,7 +47,7 @@ const SECTION_GLYPHS: Readonly<Record<"recent" | PaletteCommandGroup, ReactNode>
   recent: <Glyph><circle cx="8" cy="8" r="6" /><path d="M8 4.8V8l2.2 1.4" /></Glyph>,
   "current-operation": <Glyph><rect x="3" y="3" width="10" height="10" rx="2" /></Glyph>,
   theater: <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" /><path d="M5.5 10.5V6.2m0 0h2.6m-2.6 2.1h2.1" /></Glyph>,
-  view: LINE_GLYPHS["view-tactical"],
+  view: LINE_GLYPHS["view-align-all"],
   panel: LINE_GLYPHS["console-rail"],
   console: LINE_GLYPHS["console-settings"],
 };

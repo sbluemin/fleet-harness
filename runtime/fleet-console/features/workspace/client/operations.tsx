@@ -1,6 +1,6 @@
 import { pluginRuntimeState } from "../../execution/client/operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useT } from "../../../core/client/src/i18n/index.js";
+import { useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT, wasOperationBornDormant } from "@fleet-console/sdk/operations/browser";
@@ -11,7 +11,8 @@ import { clearActiveOperation, shouldReleaseActiveOperation } from "../../../cor
 import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../../../core/client/src/integration/shortcuts.js";
 import { closeOperationCompletely, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
-import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
+import { Toast } from "../../../core/client/src/chrome/components/toast.js";
+import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getAlignAll, getCanvasArenaInsets, getCanvasSnapArenaRect, snapOperationToArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleAlignAll, useCompanionOperationId, useMaximizedOperationId, useMinimized, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "./canvas/coordinates.js";
 import { SNAP_FULL_ZONES, SNAP_MIN_ZOOM, SNAP_PRESETS, snapZoneHitFor } from "./canvas/snap-layouts.js";
 import { playRestoreFlight } from "./canvas/panel-motion.js";
@@ -60,7 +61,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const maximizedOperationId = useMaximizedOperationId();
   const companionOperationId = useCompanionOperationId();
-  const formationView = useFormationView();
   const minimized = useMinimized();
   const registry = usePluginRegistry();
   const viewMode = useViewMode();
@@ -78,10 +78,21 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   } | null>(null);
   const triageActive = useTriageActive();
 
+  // 정렬 중 안내 — 그룹 경계 거부·스냅 단축키 안내를 토스트로 띄운다. 삭제 토스트와 같은 호스트에 산다.
+  const [alignNotice, setAlignNotice] = useState<{ readonly key: CoreMessageKey; readonly nonce: number } | null>(null);
+  useEffect(() => {
+    if (!alignNotice) return;
+    const timer = window.setTimeout(() => setAlignNotice(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [alignNotice]);
+  const handleAlignNotice = useCallback((key: CoreMessageKey) => {
+    setAlignNotice({ key, nonce: Date.now() });
+  }, []);
+
   // ── 아레나 인셋 ─────────────────────────────────────────────────────────────
   // 전면 캔버스 위 부유 크롬(사이드바·레일 카드)의 점유 폭. 크롬 구성의 소유자인 이 페이지가
   // 단일 원천으로 계산해 캔버스(prop)와 스토어(fit-all)에 같은 값을 심는다 — 주입구가 갈리면
-  // Cruise는 인셋을 알고 Tactical은 모르는 감사 실패 양식이 재발한다.
+  // 한쪽만 인셋을 아는 감사 실패 양식이 재발한다.
   const zenMode = useZenMode();
   useEffect(() => {
     if (!zenMode || !operationMenu?.fromSidebar) return;
@@ -95,7 +106,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const mapNarrow = useSideBarMapNarrow();
   // 왼쪽 열은 64px 레일로 좁혀 설 수 있다. War Room은 레일이 기본이다 — 덱이 이미 Theater 띠와
   // 건수를 말하므로 순서와 비콘만 남기고, 고정(펼친 채 두기)하면 세션 안에서 사용자 폭이다.
-  // Cruise/Tactical은 사용자가 고른 배치(localStorage)다. 호버 펼침은 오버레이라 인셋에 불참한다.
+  // Cruise는 사용자가 고른 배치(localStorage)다. 호버 펼침은 오버레이라 인셋에 불참한다.
   useEffect(() => {
     setSideBarNarrow(triageActive ? !queueRailPinned : mapNarrow);
   }, [triageActive, queueRailPinned, mapNarrow]);
@@ -226,10 +237,18 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         return;
       }
       // Cruise 스냅 — 활성 패널을 반쪽·전체 칸에. 캡션 메뉴와 같은 칸 수식이고 줌 정책도 같다.
+      // 모두 정렬 중에는 유지 슬롯을 정렬이 소유하므로 수동 스냅은 그 패널을 빼내고 칸에 유지 없이 앉힌다.
       const snapCommand = (["operations.snap-left", "operations.snap-right", "operations.snap-full"] as const)
         .find((command) => matchesShortcutCommand(event, command));
       if (snapCommand) {
-        if (isTriageActive() || getFormationView() || getMaximizedOperationId() !== null || getCompanionOperationId() !== null) return;
+        if (isTriageActive() || getMaximizedOperationId() !== null || getCompanionOperationId() !== null) return;
+        // 정렬 중 스냅 단축키는 배치 대신 안내만 띄운다 — 자리 바꾸기는 캡션 드래그가 소유한다.
+        if (getAlignAll()) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setAlignNotice({ key: "canvas.align.dragToSwap", nonce: Date.now() });
+          return;
+        }
         const operationId = stateRef.current.activeOperationId;
         const arena = getCanvasSnapArenaRect();
         if (operationId === null || !arena || getCanvasSnapshot().viewport.zoom < SNAP_MIN_ZOOM) return;
@@ -272,7 +291,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       if (matchesShortcutCommand(event, "operations.toggle-formation")) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        toggleFormationView();
+        // 모두 정렬 토글 — 단축키 ID는 사용자 바인딩 호환을 위해 유지한다.
+        // War Room 선별 중이면 진입 훅이 선별을 먼저 끝낸다.
+        toggleAlignAll();
         return;
       }
       if (matchesShortcutCommand(event, "operations.toggle-triage")) {
@@ -383,7 +404,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds, resumeIfDormant, viewMode.effective]);
+  }, [companionOperationId, maximizedOperationId, registry.operationKinds, resumeIfDormant, viewMode.effective]);
 
   // Map이 아닌 곳(좌·우 사이드바, 레일, 커맨드 밴드 크롬 등)을 누르면 패널 활성화를 푼다.
   // 칩·브레드크럼·패널은 가드가 유지하고, 빈 바다 해제는 캔버스 onClick이 맡는다.
@@ -479,7 +500,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       consumeOperationFocus();
       return;
     }
-    // loadForTheater effect가 먼저 도착 Theater의 focus layer와 Formation underlay를 복원한다.
+    // loadForTheater effect가 먼저 도착 Theater의 focus layer를 복원한다.
     // Snap 전체 힌트가 있으면 먼저 앉혀 보고, 앉힐 수 없으면 같은 일반 이동으로 폴백한다.
     if (state.pendingOperationFocusSnap === true && trySnapFullFocus(operationId, resumeIfDormant)) {
       consumeOperationFocus();
@@ -586,14 +607,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
   }, [focusMapOperation, registry.operationKinds, resumeIfDormant]);
 
-  // 빈 캔버스의 일괄 열기 — 대기 전원을 복원하고 Tactical로 정렬해 스택 대신 그리드에 착지시킨다.
+  // 빈 캔버스의 일괄 열기 — 대기 전원을 복원하고 「모두 열어 정렬」로 나란히 착지시킨다.
   // 목록 순서(updatedAt 내림차순)의 첫 항목을 활성으로 둔다. 비행 연출은 N개분이라 생략하고
-  // formation 진입 전이가 그 역할을 대신한다.
+  // 정렬 진입 전이가 그 역할을 대신한다.
   const handleOpenAll = useCallback((operationIds: readonly string[]) => {
     if (operationIds.length === 0) return;
     for (const operationId of operationIds) restoreOperation(operationId);
     setActiveOperation(operationIds[0] ?? null);
-    if (!getFormationView()) toggleFormationView();
+    if (!getAlignAll()) toggleAlignAll();
   }, []);
 
   const handleMinimize = useCallback((operationId: string) => {
@@ -918,10 +939,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onOpenOperationMenu={openOperationMenu}
           openMenuOperationId={operationMenu?.operationId ?? null}
           onDismissOperationMenu={dismissOperationMenu}
+          onAlignNotice={handleAlignNotice}
         />
       </div>
       <div className="operations-toast-region" style={{ left: arenaInsets.left, right: arenaInsets.right }}>
-        <div className="app-toast-host">{deletionToast}</div>
+        <div className="app-toast-host">{deletionToast}{alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}</div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
       {/* 접힌 패널의 문 — 각 카드가 소멸한 자리의 엣지에 서고, 두 사이드바(Map·War Room)가
@@ -1003,11 +1025,6 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
     }
     if (operation && (!descriptor || descriptorCompanions.length === 0 || !canOpenCompanions)) {
       forceDropCompanionOperationId();
-      if (getFormationView()) {
-        openInFormation(operationId, resumeIfDormant);
-        requestOperationKeyboardFocus(operationId);
-        return;
-      }
       focusMap();
       requestOperationKeyboardFocus(operationId);
       return;
@@ -1028,24 +1045,29 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
     if (wasMinimized) resumeIfDormant(operationId);
     return;
   }
-  if (getFormationView()) {
-    openInFormation(operationId, resumeIfDormant);
-    requestOperationKeyboardFocus(operationId);
-    return;
-  }
   focusMap();
   requestOperationKeyboardFocus(operationId);
 }
 
 // Snap 전체 이동 — 플러그인의 focus(id, { snap: "full" })가 여기로 온다. 키보드 스냅(⌘⌥↑)과 같은 칸 수식·
-// 줌 정책·durable 쓰기를 쓰고, 앉힐 수 없는 모드·화면(Tactical·War Room 선별·Fleet Map 저줌·Theater 미로드·
+// 줌 정책·durable 쓰기를 쓰고, 앉힐 수 없는 화면(War Room 선별·Fleet Map 저줌·Theater 미로드·
 // 아레나 없음)에서는 false를 돌려 일반 이동(routeOperationFocus)으로 폴백한다. 최대화·companion은 대상
 // Theater(로드된 Theater)의 것만 정리한다 — 이어받으면 「기존 전체화면이 아님」을 어긴다.
+// 모두 정렬 중에는 묶음을 깨지 않고 활성화만 한다 — 칸 이동은 드롭·토글이 소유한다.
 function trySnapFullFocus(operationId: string, resumeIfDormant: (operationId: string) => void): boolean {
-  if (isTriageActive() || getFormationView()) return false;
+  if (isTriageActive()) return false;
   const snapshot = getState();
   const operation = snapshot.operations.find((candidate) => candidate.id === operationId);
   if (!operation || operation.theaterId !== snapshot.activeTheaterId || getLoadedTheaterId() !== operation.theaterId) return false;
+  if (getAlignAll()) {
+    const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
+    if (wasMinimized) playRestoreFlight(operationId);
+    restoreOperation(operationId);
+    setActiveOperation(operationId);
+    requestOperationKeyboardFocus(operationId);
+    if (wasMinimized) resumeIfDormant(operationId);
+    return true;
+  }
   const arena = getCanvasSnapArenaRect();
   if (!arena || getCanvasSnapshot().viewport.zoom < SNAP_MIN_ZOOM) return false;
   // companion 해제가 최대화로 돌아오면 그것도 함께 정리한다.
@@ -1068,16 +1090,6 @@ function trySnapFullFocus(operationId: string, resumeIfDormant: (operationId: st
     }).catch(() => undefined);
   }
   return true;
-}
-
-// formation 뷰의 열기 경로. 복원 비행·복원·활성화를 한 동기 실행으로 끝내고, 최소화 선반에서
-// 꺼낸 경우에만 휴면 재개를 얹는다.
-function openInFormation(operationId: string, resumeIfDormant: (operationId: string) => void): void {
-  const wasMinimized = getCanvasSnapshot().minimized.includes(operationId);
-  if (wasMinimized) playRestoreFlight(operationId);
-  restoreOperation(operationId);
-  setActiveOperation(operationId);
-  if (wasMinimized) resumeIfDormant(operationId);
 }
 
 function settleReorderPatches(patches: readonly Promise<unknown>[]): Promise<void> {

@@ -688,7 +688,7 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
   gap: var(--space-2);
 }
 
-/* Cruise / Tactical / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
+/* Cruise / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
    모드 전용 도구는 활성 세그먼트 아래 캡슐에 있으므로, 다른 모드의 도구는 애초에 존재하지 않는다.
    C′ 문법: 상자를 걷고 워시+다텀이 선택을 말한다 — 그룹 경계는 간격이 진다. */
 .command-band-mode-switch {
@@ -723,10 +723,9 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
 
 .command-band-mode-seg svg { display: block; width: 16px; height: 16px; }
 
-/* 상태 에코 — 캡슐에 숨은 도구가 기본값을 벗어나면(Station Keeping 켜짐, 스포트라이트 꺼짐,
+/* 상태 에코 — 캡슐에 숨은 도구가 기본값을 벗어나면(Station Keeping·모두 정렬 켜짐, 스포트라이트 꺼짐,
    밀도 ≠ 1.0×) 글리프 모서리에 brass 점을 둔다. brass는 위치/호버 채널이지만 이 점은 "여기
-   아래에 바뀐 것이 있다"는 위치 안내라 같은 채널이다. Tactical 레이아웃은 선택이지 이탈이
-   아니라 점을 두지 않는다. */
+   아래에 바뀐 것이 있다"는 위치 안내라 같은 채널이다. 정렬 나누기 선택은 토글과 함께 점을 공유한다. */
 .command-band-mode-seg[data-tool-echo="true"]::before {
   position: absolute;
   top: 3px;

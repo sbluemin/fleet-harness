@@ -1268,7 +1268,7 @@ export function OperationsSideBar({
             <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
               {t("sidebar.starter.reopenGuide")}
             </button>
-            {/* Tactical·War Room 단축키는 Theater가 없으면 아무 일도 하지 않으므로 여기서는 말하지 않는다. */}
+            {/* 모두 정렬·War Room 단축키는 Theater가 없으면 아무 일도 하지 않으므로 여기서는 말하지 않는다. */}
             <p className="side-bar-starter-hints">
               <kbd>{searchShortcut}</kbd> {t("sidebar.starter.hintSearch")}
             </p>

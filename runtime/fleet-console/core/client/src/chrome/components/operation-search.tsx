@@ -45,7 +45,7 @@ import {
 import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from "../../integration/shortcuts.js";
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
-import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, requestFitAllOperations, setStationKeeping, toggleFormationView } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping, toggleAlignAll } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { getViewModeSnapshot } from "../../integration/view-mode-store.js";
 import { getRailStoreSnapshot, openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
@@ -304,7 +304,7 @@ export function OperationSearch({
         if (current) break;
         // Theater 전환은 캔버스로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
-        // 선별 중 수동 전환도 방문 경로를 타야 목적지의 저장된 Formation/companion이 부활하지 않는다.
+        // 선별 중 수동 전환도 방문 경로를 타야 목적지의 저장된 focus layer가 부활하지 않는다.
         if (isTriageActive()) visitTriageTheater(action.theaterId);
         else setActiveTheater(action.theaterId);
         navigate("/operations");
@@ -390,16 +390,20 @@ export function OperationSearch({
       case "toggle-formation": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         ensurePaletteCanvasTheater(state);
-        toggleFormationView();
+        // 모두 정렬 토글 — 단축키 ID·⌘K 이름만 바뀌고 같은 자리에서 부른다.
+        // War Room 선별 중이면 진입 훅이 선별을 먼저 끝낸다.
+        toggleAlignAll();
         break;
       }
       case "toggle-station-keeping": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         ensurePaletteCanvasTheater(state);
-        // 팔레트는 규율이 사는 곳으로 데려간다 — Tactical/War Room이면 Cruise로 나온 뒤 전환해,
+        // 팔레트는 규율이 사는 곳으로 데려간다 — 정렬·War Room이면 Cruise로 나온 뒤 전환해,
         // 광고된 커맨드가 무음 no-op이 되지 않고 전환 결과(펼침 포함)가 즉시 보이게 한다.
+        // 정렬은 줌·fit-all과 같이 자리 복원 없이 풀고(자유 패널의 최종 기하는 풀릴 때 커밋),
+        // 정렬 칸은 겹치지 않으니 규율이 밀어낼 것이 없다.
         if (isTriageActive()) setTriageActive(false);
-        clearFormationView();
+        if (!getStationKeeping()) releaseAlignAll();
         setStationKeeping(!getStationKeeping());
         break;
       }

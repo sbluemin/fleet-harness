@@ -52,7 +52,7 @@ export async function forgetTheaterCompletely(
     resetTriageTheater(theaterId);
     removeTheater(theaterId);
     // 활성 Theater를 잊으면 removeTheater가 폴백 Theater를 즉시 선택한다 — 선별 중이면
-    // loadForTheater가 폴백의 저장 focus layer/Formation을 복원하기 전에 방문 정리를 적용한다.
+    // loadForTheater가 폴백의 저장 focus layer를 복원하기 전에 방문 정리를 적용한다.
     if (isTriageActive()) {
       const fallbackTheaterId = getState().activeTheaterId;
       if (fallbackTheaterId !== null) visitTriageTheater(fallbackTheaterId);

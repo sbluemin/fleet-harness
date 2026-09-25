@@ -18,7 +18,7 @@ export interface GlanceHudModel {
 }
 
 export function resolveGlanceHudModel(input: {
-  readonly mode: "map" | "formation" | "triage";
+  readonly mode: "map" | "triage";
   readonly index: number;
   readonly total?: number;
   readonly maximized?: boolean;

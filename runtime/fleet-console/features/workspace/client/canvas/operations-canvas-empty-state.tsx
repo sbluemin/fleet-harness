@@ -156,7 +156,7 @@ export function OperationsCanvasEmptyState({
         ) : null}
       </div>
       <p className="operations-canvas-empty-hints">
-        <kbd>⌘K</kbd> {t("canvas.empty.hintSearch")} <span aria-hidden="true">·</span> <kbd>Alt+F</kbd> {t("canvas.empty.hintFormation")} <span aria-hidden="true">·</span> <kbd>Alt+S</kbd> {t("canvas.empty.hintStatusBoard")} <span aria-hidden="true">·</span> <kbd>Alt+T</kbd> {t("canvas.empty.hintTriage")}
+        <kbd>⌘K</kbd> {t("canvas.empty.hintSearch")} <span aria-hidden="true">·</span> <kbd>Alt+F</kbd> {t("canvas.empty.hintAlignAll")} <span aria-hidden="true">·</span> <kbd>Alt+S</kbd> {t("canvas.empty.hintStatusBoard")} <span aria-hidden="true">·</span> <kbd>Alt+T</kbd> {t("canvas.empty.hintTriage")}
       </p>
       <p className="operations-canvas-empty-guide">{t("canvas.empty.guide")}</p>
     </div>

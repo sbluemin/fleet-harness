@@ -1434,7 +1434,7 @@ export function QuickLaunch() {
   }, [activeCommandRow, activeMention, applyCommandPrompt, clearMention, commandDeckHasRows, commandDeckOpen, commandInput, commandRowsFlat.length, deckHasRows, mentionDeckOpen, mentionTarget, pickMention, prompt, selectableMentions.length, submit, ultracodeArmed]);
 
   // 도킹 카드가 작업 면 아래를 덮지 않게, 카드가 차지하는 높이에 여백(--space-4)을 더한 값을
-  // document 루트에 알린다. 작업 면(formation 격자·최대화 프레임)은 이 값만큼 하단 안쪽 여백을
+  // document 루트에 알린다. 작업 면(정렬 칸·최대화 프레임)은 이 값만큼 하단 안쪽 여백을
   // 비워 겹침을 0으로 만든다. 쓰는 값은 펼친 높이로 고정한다 — 접힘·펼침마다 작업 면이 다시
   // 흐르면 QL에 글을 쓰는 동안 패널이 튄다.
   //

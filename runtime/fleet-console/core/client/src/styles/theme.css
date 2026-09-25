@@ -135,10 +135,7 @@
     linear-gradient(transparent, transparent),
     radial-gradient(circle, color-mix(in oklch, var(--aurora) 11%, transparent) 1px, transparent 1.4px),
     linear-gradient(transparent, transparent);
-  /* 두 모드는 sea 층을 숨기고 캔버스가 직접 칠한다 — 그래서 자기 field를 따로 갖는다. */
-  --canvas-field-formation:
-    radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-wash-mid) 78%),
-    var(--canvas-abyss);
+  /* War Room은 sea 층을 숨기고 캔버스가 직접 칠한다 — 그래서 자기 field를 따로 갖는다. */
   --canvas-field-triage:
     radial-gradient(66% 52% at 50% 46%, var(--canvas-wash-mid), var(--canvas-wash-far) 74%),
     var(--canvas-abyss);
@@ -526,13 +523,6 @@
     linear-gradient(color-mix(in oklch, var(--aurora) 15%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in oklch, var(--aurora) 6%, transparent) 1px, transparent 1px),
     linear-gradient(color-mix(in oklch, var(--aurora) 6%, transparent) 1px, transparent 1px);
-  /* Tactical = 정렬을 위해 치운 해도대. 등불이 띠로 넓어지고 등심선은 걷힌다 — 편대를 놓는
-     판이지 수심을 재는 판이 아니다. */
-  --canvas-field-formation:
-    linear-gradient(to bottom, color-mix(in oklch, var(--brass) 10%, transparent), transparent 28%),
-    radial-gradient(124% 64% at 50% 40%, color-mix(in oklch, var(--canvas-sea-core) 96%, transparent), transparent 78%),
-    radial-gradient(84% 52% at 50% 110%, color-mix(in oklch, var(--aurora) 10%, transparent), transparent 62%),
-    var(--canvas-abyss);
   /* War Room = 야간 당직. 초점 모드라 밝기를 크게 벌릴 수 없어, 세 테마를 **빛의 자리**로
      가른다 — Instrument는 가운데 우물, Maritime은 아래 수평선, Carbon은 위 작업등. */
   --canvas-field-triage:
@@ -642,13 +632,6 @@
     linear-gradient(color-mix(in oklch, var(--ink-rim) 26%, transparent) 1px, transparent 1px),
     linear-gradient(color-mix(in oklch, var(--ink-rim) 9%, transparent) 1px, transparent 1px),
     linear-gradient(transparent, transparent);
-  /* Tactical = 조명을 켠 지그판. 평면광을 위아래로 벌려 판 전체를 밝힌다 — 슬롯이 보여야
-     하는 모드다. */
-  --canvas-field-formation:
-    linear-gradient(to bottom, color-mix(in oklch, var(--brass) 9%, transparent), transparent 20%),
-    linear-gradient(to bottom, color-mix(in oklch, var(--canvas-sea-core) 98%, transparent), transparent 66%),
-    linear-gradient(to top, color-mix(in oklch, var(--canvas-wash-far) 90%, transparent), transparent 34%),
-    var(--canvas-abyss);
   /* War Room = 머리 위 작업등 하나. 상단 띠에서만 빛이 떨어지고 아래는 전부 흑연으로 진다 —
      Instrument의 가운데 우물과 분포가 최대로 갈리도록 radial이 아니라 선형 띠를 쓴다. */
   --canvas-field-triage:

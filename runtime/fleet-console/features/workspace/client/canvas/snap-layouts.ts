@@ -2,7 +2,7 @@
 //
 // 칸은 항상 "지금 보이는 아레나"의 화면 픽셀로 잰다. 놓는 순간 줌 100% 프레임으로 환산하고 카메라를
 // 그 프레임으로 당긴다(canvas-store.snapOperationToArenaRect) — 무슨 줌에서 끌었든 결과는 작업 크기다.
-// 칸 나누기 규칙은 Tactical 슬롯(calculateGridSlots)과 같은 가족이다 — 모드 프레임 여백 18px,
+// 칸 나누기 규칙은 모두 정렬(alignZonesFor)과 같은 가족이다 — 모드 프레임 여백 18px,
 // 칸 사이 8px, 캡션 32px는 칸 위 띠를 캡션이 채운다는 전제로 본문에서 뺀다.
 
 import { OPERATION_WINDOW_CAPTION_HEIGHT } from "./canvas-store.js";
@@ -47,7 +47,7 @@ export const SNAP_PRESETS: readonly SnapPreset[] = [
   { id: "stack", zones: [[0, 0, 1 / 2, 1], [1 / 2, 0, 1 / 2, 1 / 2], [1 / 2, 1 / 2, 1 / 2, 1 / 2]] },
 ];
 
-// 모드 프레임 여백(Tactical 슬롯과 같은 18px)과 칸 사이 간격.
+// 모드 프레임 여백(정렬 칸과 같은 18px)과 칸 사이 간격.
 export const SNAP_FRAME_INSET = 18;
 export const SNAP_GAP = 8;
 // 끌던 패널이 이 띠(아레나 위쪽)에 닿으면 레이아웃 바가 내려온다. 열린 뒤에는 히스테리시스만큼 더 참는다.
@@ -93,6 +93,64 @@ export function snapZonesFor(arena: SnapRect, preset: SnapZoneSet): readonly Sna
 /** 아레나 전체 한 칸(위쪽 가장자리 드롭·⌘⌥↑). */
 export function snapFullZone(arena: SnapRect): SnapRect {
   return snapZonesFor(arena, SNAP_FULL_ZONES)[0]!;
+}
+
+/**
+ * 정렬 칸 본문 균등화 — 같은 줄의 칸이 같은 폭을, 같은 열의 칸이 같은 높이를 갖게 한다.
+ * snapZonesFor는 칸마다 안쪽 변에만 반간격을 빼서 가장자리 칸이 4px씩 넓어지는데,
+ * 정렬은 빈칸 없이 꽉 채우므로 그 4px가 눈에 띈다. 줄·열 범위를 재서
+ * 간격을 균등 분배한다. 수동 스냅에는 손대지 않는다(기존 나누기를 바꾸지 않기 위해서).
+ *
+ * 세로 보폭은 간격에 캡션 높이를 더한다 — 본문 rect 기준이라 아래 칸 캡션 띠(32px)가
+ * 본문 피치에 들어가지 않으면 아래 행 캡션이 위 행 본문에 묻힌다.
+ */
+export function evenAlignBodies(bodies: readonly SnapRect[]): SnapRect[] {
+  const next = bodies.map((body) => ({ ...body }));
+  const cluster = (keyOf: (body: SnapRect) => string): number[][] => {
+    const groups = new Map<string, number[]>();
+    next.forEach((body, index) => {
+      const key = keyOf(body);
+      const list = groups.get(key) ?? [];
+      list.push(index);
+      groups.set(key, list);
+    });
+    return [...groups.values()].filter((indices) => indices.length > 1);
+  };
+  // 같은 줄: 시작점부터 끝점까지 재서 폭을 균등 분배한다.
+  for (const indices of cluster((body) => `${Math.round(body.y)}:${Math.round(body.height)}`)) {
+    const ordered = [...indices].sort((a, b) => (next[a]?.x ?? 0) - (next[b]?.x ?? 0));
+    const first = next[ordered[0] ?? -1];
+    const last = next[ordered[ordered.length - 1] ?? -1];
+    if (!first || !last) continue;
+    const start = first.x;
+    const end = last.x + last.width;
+    const count = ordered.length;
+    const width = Math.max(0, (end - start - SNAP_GAP * (count - 1)) / count);
+    ordered.forEach((index, position) => {
+      const body = next[index];
+      if (!body) return;
+      next[index] = { ...body, x: start + position * (width + SNAP_GAP), width };
+    });
+  }
+  // 같은 열: 위부터 아래까지 재서 높이를 균등 분배한다. 본문 사이에는 간격 8px에
+  // 아래 칸 캡션 띠 32px가 들어가므로 보폭은 둘의 합이다.
+  const ALIGN_ROW_STRIDE = SNAP_GAP + OPERATION_WINDOW_CAPTION_HEIGHT;
+  for (const indices of cluster((body) => `${Math.round(body.x)}:${Math.round(body.width)}`)) {
+    const ordered = [...indices].sort((a, b) => (next[a]?.y ?? 0) - (next[b]?.y ?? 0));
+    const first = next[ordered[0] ?? -1];
+    const last = next[ordered[ordered.length - 1] ?? -1];
+    if (!first || !last) continue;
+    const start = first.y;
+    const end = last.y + last.height;
+    const count = ordered.length;
+    const height = Math.max(0, (end - start - ALIGN_ROW_STRIDE * (count - 1)) / count);
+    ordered.forEach((index, position) => {
+      const body = next[index];
+      if (!body) return;
+      next[index] = { ...body, y: start + position * (height + ALIGN_ROW_STRIDE), height };
+    });
+  }
+  return next;
 }
 
 export interface SnapZoneHit {
@@ -197,7 +255,7 @@ function clamp01(value: number): number {
 
 /**
  * 가장자리·모서리 핫존 — 포인터가 보이는 아레나(`hitArena`)의 좌우 28px 안이면 반쪽, 모서리면 사분면.
- * 칸 자체는 `zoneArena`(모드 아레나)로 편다 — 핫존은 눈에 보이는 가장자리의 것이고 칸은 Tactical 슬롯과
+ * 칸 자체는 `zoneArena`(모드 아레나)로 편다 — 핫존은 눈에 보이는 가장자리의 것이고 칸은 정렬 칸과
  * 같은 상자의 것이라 둘이 다르다. 위쪽 띠는 레이아웃 바의 몫이라 여기서 다루지 않는다.
  */
 export function snapEdgeHitFor(point: SnapPoint, hitArena: SnapRect, zoneArena: SnapRect = hitArena): SnapZoneHit | null {
