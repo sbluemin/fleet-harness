@@ -11,6 +11,7 @@ import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../server/attachments.js";
 import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
+import { createObjectiveRoutes } from "../server/routes.js";
 import { createObjectiveStore, ObjectiveStoreError } from "../server/store.js";
 import type { ObjectiveItemEvent } from "../server/types.js";
 
@@ -67,9 +68,13 @@ function harness(routingOrigin: () => string | null = () => null) {
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
   const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++ });
+  let routeBody: unknown;
+  let routeResult: { status: number; value: unknown } = { status: 0, value: null };
   const ctx = {
     pluginId: "objectives",
     host: {
+      security: { isTerminalAuthorized: () => true },
+      http: { readJsonBody: async () => routeBody, writeJson: (_res: unknown, status: number, value: unknown) => { routeResult = { status, value }; } },
       server: { origin: routingOrigin },
       operations: operationsHost,
       consoleControl: {
@@ -107,8 +112,15 @@ function harness(routingOrigin: () => string | null = () => null) {
   grouped.push((event) => launch.operationGrouped(event));
   const tools = createObjectiveMcpTools(ctx, store, launch);
   const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
+  const route = async (name: string, body: Record<string, unknown>): Promise<{ status: number; value: Record<string, unknown> }> => {
+    routeBody = body;
+    routeResult = { status: 0, value: null };
+    const handler = createObjectiveRoutes(ctx, store, launch).find((entry) => entry.name === name)!.handler;
+    await handler({ req: { method: "POST" } as never, res: {} as never, pathname: name });
+    return routeResult as { status: number; value: Record<string, unknown> };
+  };
   const stateFile = path.join(workspace, "objectives", "state.json");
-  return { store, events, launch, call, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces };
+  return { store, events, launch, call, route, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -280,7 +292,7 @@ describe("Objectives contract", () => {
     for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(JSON.stringify(saved)).not.toContain(`"${key}"`);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
-    expect(reloaded.find(item.id)).toMatchObject({ title: "Release", groupId: "g-ship" });
+    expect(reloaded.find(item.id)).toMatchObject({ title: "Release", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [] });
     expect(reloaded.find(item.id)!.steps[0]!.records.map((record) => [record.kind, record.lines])).toEqual([["done", ["a done"]], ["redone", ["a redone", "fixed the gap"]]]);
     // 모든 쓰기가 사건으로 나갔다 — 화면은 이 프레임으로 갱신된다.
     expect(events.filter((event) => event.op === "upsert" && event.itemId === item.id).length).toBeGreaterThanOrEqual(8);
@@ -420,31 +432,68 @@ describe("Objectives contract", () => {
     expect(results.filter((result) => result.status === "fulfilled").length).toBe(1);
   });
 
-  it("puts the objective up for review by itself once every mission is done and every criterion is met with evidence", async () => {
-    const { store, call, launch } = harness();
+  it("keeps criteria proposed until the person decides, then reaches review only with evidence", async () => {
+    const { store, call, route, launch, events, stateFile } = harness();
     const item = await launch.create({ theaterId: "t1", title: "Criteria", groupId: null, steps: [{ text: "fix" }] });
     const as = item.id;
-    store.criterionAdd(item.id, "tests pass", "human");
-    store.criterionAdd(item.id, "copy unchanged", "human");
-    // 사람이 쓴 기준이 있으면 지휘관은 기준을 덧붙이지 못한다.
-    expect((await call("plan", { itemId: item.id, steps: [{ text: "patch" }], criteria: ["mine"] }, as)).structuredContent.error).toBe("criteria_exist");
-    // 마지막 임무를 마치면 도구가 달성 점검을 되묻는다 — 아직 검토 대기가 아니다.
-    const done = await call("complete_mission", { itemId: item.id, index: 0, summary: ["fixed"] }, as);
+    const first = store.criterionAdd(as, "tests pass", "human").criteria[0]!;
+    const second = store.criterionAdd(as, "copy unchanged", "human").criteria[1]!;
+    const plan = (criteria: unknown) => call("plan", { itemId: as, steps: [{ text: "fix" }], criteria }, as);
+    // 기준 제안은 사람이 구상을 명시적으로 요청한 국면에서만 열린다.
+    expect((await plan([{ text: "new" }])).structuredContent.error).toBe("criteria_not_planning");
+    expect((await route("plan/request", { itemId: as })).status).toBe(200);
+    const before = events.length;
+    expect((await plan([{ revise: 1, text: "tests and types pass" }, { text: "lint passes" }, { retire: second.id, reason: "redundant" }])).isError).toBe(false);
+    expect(events.length).toBe(before + 1); // 임무와 제안을 한 번의 저장/방송으로 적용한다.
+    expect(store.find(as)!.criteria).toMatchObject([{ text: "tests pass" }, { text: "copy unchanged" }]);
+    expect(store.find(as)!.criteriaProposals).toHaveLength(3);
+    expect(store.find(as)!.awaitingReview).toBe(false);
+    expect((await route("coordinator/start", { itemId: as })).value.error).toBe("criteria_pending");
+    expect((await route("coordinator/steer", { itemId: as })).value.error).toBe("criteria_pending");
+    expect((await call("mark_criterion", { itemId: as, n: 1, met: true, evidence: "12/12" }, as)).structuredContent.error).toBe("criteria_pending");
+    const [revise, added, retire] = store.find(as)!.criteriaProposals;
+    expect((await route("criterion/reject", { itemId: as, proposalId: retire!.id })).status).toBe(200);
+    expect((await route("criterion/annotate", { itemId: as, proposalId: revise!.id, annotation: "check both languages" })).status).toBe(200);
+    expect((await route("plan/request", { itemId: as })).status).toBe(200);
+    expect((await call("read", { itemId: as }, as)).structuredContent.item).toMatchObject({ criteriaProposals: [{ annotation: "check both languages", targetN: 1 }, { kind: "add" }] });
+    const replanned = events.length;
+    expect((await plan([{ revise: first.id, text: "one" }, { retire: first.id, reason: "duplicate" }])).structuredContent.error).toBe("duplicate_criterion_proposal");
+    expect(events.length).toBe(replanned);
+    expect(store.find(as)!.criteriaProposals[0]!.annotation).toBe("check both languages");
+    expect((await plan([{ revise: first.id, text: "tests pass in both languages" }, { text: "lint passes" }])).isError).toBe(false);
+    expect(events.length).toBe(replanned + 1);
+    expect(store.find(as)!.criteriaProposals).toHaveLength(2);
+    expect(store.find(as)!.criteriaProposals.every((proposal) => !proposal.annotation && proposal.id !== added!.id)).toBe(true);
+    const saved = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    expect(saved.version).toBe(3);
+    expect(saved.objectives[0].criteriaProposals).toHaveLength(2);
+    const replacement = store.find(as)!.criteriaProposals[0]!;
+    expect((await route("criterion/approve", { itemId: as, proposalId: replacement.id })).status).toBe(200);
+    expect(store.find(as)!.criteria[0]).toMatchObject({ id: first.id, by: "human", text: "tests pass in both languages" });
+    expect((await route("criterion/approve-all", { itemId: as })).status).toBe(200);
+    expect(store.find(as)!.criteria[2]).toMatchObject({ by: "commander", text: "lint passes" });
+    expect((await route("coordinator/start", { itemId: as })).status).toBe(200);
+    expect(store.find(as)!.criteriaOpen).toBe(false);
+    // 마지막 임무를 마친 뒤에도 지휘관이 근거를 적기 전에는 검토 대기가 아니다.
+    const done = await call("complete_mission", { itemId: as, index: 0, summary: ["fixed"] }, as);
     expect(String(done.structuredContent.next)).toContain("copy unchanged");
-    expect(store.find(item.id)!.awaitingReview).toBe(false);
-    // 지휘관은 검토 대기를 쓰지 않는다 — 근거 없는 충족은 받지 않고, 기준마다 근거가 서면 저절로 검토 대기다.
-    expect((await call("mark_criterion", { itemId: item.id, n: 1, met: true }, as)).structuredContent.error).toBe("evidence_required");
-    expect((await call("mark_criterion", { itemId: item.id, n: 1, met: true, evidence: "12/12" }, as)).isError).toBe(false);
-    expect(store.find(item.id)!.awaitingReview).toBe(false);
-    const met = await call("mark_criterion", { itemId: item.id, n: 2, met: true, evidence: "diff shows no copy change" }, as);
-    expect(met.structuredContent.next).toBeTruthy();
-    expect(store.find(item.id)).toMatchObject({ awaitingReview: true, criteria: [{ met: "12/12" }, { met: "diff shows no copy change" }] });
-    // 기준 문구가 바뀌면 그 기준만, 새 임무가 생기면 모든 충족 판단이 거둬진다 — 검토 대기도 함께 풀린다.
-    store.criterionPatch(item.id, store.find(item.id)!.criteria[1]!.id, "copy unchanged in both languages");
-    expect(store.find(item.id)!.criteria.map((criterion) => criterion.met ?? null)).toEqual(["12/12", null]);
-    expect(store.find(item.id)!.awaitingReview).toBe(false);
-    launch.stepAdded(item.id, { text: "one more" }, { by: "human" });
-    expect(store.find(item.id)!.criteria.every((criterion) => !criterion.met)).toBe(true);
+    expect((await call("mark_criterion", { itemId: as, n: 1, met: true }, as)).structuredContent.error).toBe("evidence_required");
+    for (const n of [1, 2, 3]) await call("mark_criterion", { itemId: as, n, met: true, evidence: `checked ${n}` }, as);
+    expect(store.find(as)!.awaitingReview).toBe(true);
+    // 사람의 문구 변경과 새 작업은 앞선 충족 판단을 해당 기준/전체에서 거둔다.
+    store.criterionPatch(as, second.id, "copy unchanged in both languages");
+    expect(store.find(as)!.criteria.map((criterion) => criterion.met ?? null)).toEqual(["checked 1", null, "checked 3"]);
+    launch.stepAdded(as, { text: "one more" }, { by: "human" });
+    expect(store.find(as)!.criteria.every((criterion) => !criterion.met)).toBe(true);
+    // 구상 중 스티어링 뒤의 턴은 cooking=true여도 기준 제안 권한이 닫힌다.
+    await route("plan/request", { itemId: as });
+    expect((await route("coordinator/steer", { itemId: as })).status).toBe(200);
+    expect(store.find(as)!.cooking).toBe(true);
+    expect((await plan([{ text: "unauthorized" }])).structuredContent.error).toBe("criteria_not_planning");
+    await route("plan/request", { itemId: as });
+    await plan([{ revise: second.id, text: "new copy" }]);
+    store.criterionRemove(as, second.id);
+    expect(store.find(as)!.criteriaProposals).toEqual([]); // 대상 기준 삭제와 제안 삭제는 같은 보드 변경이다.
   });
 
   it("registers even when a registered Theater folder is gone, and still gives the present Theater's members their Commander", async () => {

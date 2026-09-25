@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import type { LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { MAX_CRITERIA, MAX_CRITERION_TEXT, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, recordLines, stepReady, type ObjectiveItem, type ObjectiveStep } from "./types.js";
+import { criterionProposalSchema, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, recordLines, stepReady, type ObjectiveItem, type ObjectiveStep } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
 
 /**
@@ -86,19 +86,16 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!roleIn(item, caller)) return refuse("not_participant");
       return text({ item: readView(item, caller) });
     }),
-    commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added (unplaced) missions stay and are referenced by stepId; restating one is refused as mission_kept. A step may name a roster member by id or role; none means the Commander. The roster and the success criteria belong to the person, so members and criteria are accepted only while empty (members_exist, criteria_exist). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed.",
-      z.object({ itemId: ids, steps: z.array(z.object({ text: z.string().trim().min(1).max(200), after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional() }).strict()).max(40).optional(), criteria: z.array(z.string().trim().min(1).max(MAX_CRITERION_TEXT)).max(MAX_CRITERIA).optional() }).strict(),
+    commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added (unplaced) missions stay and are referenced by stepId; restating one is refused as mission_kept. A step may name a roster member by id or role; none means the Commander. Roster members are accepted only while empty (members_exist). Only a person's explicit Plan request opens success-criterion proposals: criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Use {text} to propose adding, {revise: criterion number or id, text} to revise, or {retire: criterion number or id, reason} to retire. Proposals require the person's approval and block commencement and steering until resolved (criteria_not_planning, criteria_pending). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed.",
+      z.object({ itemId: ids, steps: z.array(z.object({ text: z.string().trim().min(1).max(200), after: z.array(z.object({ index: z.number().int().min(0).optional(), stepId: ids.optional(), why: z.string().max(300).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional() }).strict()).max(40).optional(), criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional() }).strict(),
       (args, item) => {
+        if (args.criteria !== undefined && !item.criteriaOpen) return refuse("criteria_not_planning");
         if (item.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
         // 완료·미분류·기록이 있는 임무를 같은 문구로 다시 만들면 보드에 두 벌이 선다.
         const same = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
         const repeated = item.steps.filter((step) => (step.done || step.unplaced || step.records.length > 0 || step.memberBy === "human") && args.steps.some((planned) => same(planned.text) === same(step.text)));
         if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((step) => ({ stepId: step.id, text: step.text, ...(step.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board and are referenced by stepId." });
-        // 달성 기준은 사람의 것이다 — 비어 있을 때만 지휘관이 제안한다. 스스로 정한 기준을 스스로 통과시키면 점검의 뜻이 옅어진다.
-        const proposed = args.criteria ?? [];
-        if (proposed.length > 0 && item.criteria.length > 0) return refuse("criteria_exist", { hint: "The success criteria belong to the person." });
-        let planned = launch.planApplied(item.id, { steps: args.steps, ...(args.members ? { members: args.members } : {}) });
-        for (const criterion of proposed) planned = store.criterionAdd(item.id, criterion, "commander");
+        const planned = launch.planApplied(item.id, { steps: args.steps, ...(args.members ? { members: args.members } : {}), ...(args.criteria !== undefined ? { criteria: args.criteria } : {}) });
         return text({ ok: true, item: itemView(planned) });
       }),
     commanderTool("add_mission", "Append a mission, optionally naming its member by roster id or role; none means the Commander.", z.object({ itemId: ids, text: z.string().trim().min(1).max(200), member: memberReference.optional() }).strict(),
@@ -135,6 +132,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. The objective reaches the person's review by itself once every mission is done and every criterion is met; the person completes it. New or reopened missions and the person's edits clear every mark. A mark made on a board the person has since edited is refused as board_changed.",
       z.object({ itemId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_EVIDENCE).optional() }).strict(),
       (args, item) => {
+        if (item.criteriaProposals.length) return refuse("criteria_pending");
         if (item.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
         const target = item.criteria[args.n - 1];
         if (!target) return refuse("unknown_criterion", { criteria: item.criteria.length });
@@ -153,6 +151,7 @@ const IN_REVIEW = "Every mission is done and every criterion is met: the objecti
  * 다시 확인하지 않는다)를 말해 모델이 스스로 기준을 다시 따지게 한다. 기준이 모두 충족돼 있으면 이미 검토 대기다.
  */
 export function criteriaCheckPrompt(item: ObjectiveItem): string {
+  if (item.criteriaProposals.length) return "Success-criterion proposals await the person's decision; the objective cannot reach review yet.";
   const open = item.criteria.map((criterion, index) => ({ criterion, n: index + 1 })).filter(({ criterion }) => !criterion.met);
   if (open.length === 0) return IN_REVIEW;
   const list = open.map(({ criterion, n }) => `${n}. ${criterion.text}`).join("\n");

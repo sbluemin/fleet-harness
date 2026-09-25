@@ -277,6 +277,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const muster = (itemId: string): ReturnType<LaunchService["muster"]> => claim(`${itemId}:muster`, async () => {
     let current = item(itemId);
     if (current.cooking) throw new ObjectiveStoreError("planning_only");
+    if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
     if (current.done) throw new ObjectiveStoreError("item_done");
     const members: Array<{ id: string; role: string; session: string; operationId: string; state: "live" | "launched" | "resumed" | "unknown" }> = [];
     for (let index = 0; index < current.members.length; index += 1) {
@@ -381,10 +382,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const language = languageOf(options);
       let current = item(itemId);
       if (current.done) throw new ObjectiveStoreError("item_done");
+      if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
       // 따로 만든 Operation 도 지휘관이 될 수 있다 — 보드를 읽고 쓰려면 콘솔 사용이 켜져 있어야 한다.
       rememberLanguage(itemId, language);
       // 개시는 구상을 끝내고 구성원을 먼저 대기 기동·재개한다.
       if (current.cooking) current = store.setCooking(itemId, false);
+      if (current.criteriaOpen) current = store.setCriteriaOpen(itemId, false);
       await muster(itemId);
       current = item(itemId);
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
@@ -404,6 +407,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       rememberLanguage(itemId, language);
       // 구상은 계획과 메모만이다 — 단계 수행도, 담당 기동도 「시작」이 한다.
       if (!current.cooking) current = store.setCooking(itemId, true);
+      current = store.setCriteriaOpen(itemId, true);
       const firstWake = neverStarted(itemId);
       if (firstWake) current = store.setEdited(itemId, null);
       if (!(await send(itemId, cookTurn(current, language)))) throw new ObjectiveStoreError("launch_failed");
@@ -449,6 +453,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     async steer(itemId, options) {
       const current = item(itemId);
       if (current.done) throw new ObjectiveStoreError("item_done");
+      if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
+      // 스티어링 턴에서 기준 제안은 불가하다. 전송 전에 닫아 턴 전환 중 계획 쓰기와 경합하지 않는다.
+      if (current.criteriaOpen) store.setCriteriaOpen(itemId, false);
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
       const receipt = await control().request({ kind: "send", operationId: itemId, text: steerTurn(current, languageOf(options), options?.context) }, `objectives:steer:${randomUUID()}`).catch(asStoreError);
       if (receipt.status === "rejected" || receipt.status === "failed") asStoreError(new Error(receipt.error ?? "steer_failed"));
@@ -460,6 +467,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     async stop(itemId) {
       let current = item(itemId);
       if (current.cooking) current = store.setCooking(itemId, false);
+      if (current.criteriaOpen) current = store.setCriteriaOpen(itemId, false);
       const ids = [current.id, ...current.members.flatMap((candidate) => (candidate.operationId ? [candidate.operationId] : []))];
       let interrupted = 0;
       for (const operationId of ids) {

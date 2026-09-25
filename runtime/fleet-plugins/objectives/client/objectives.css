@@ -922,3 +922,43 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-criterion-state.is-met { color: var(--positive); }
 .objectives-criterion-remove { margin-top: 4px; opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
 .objectives-criterion:hover .objectives-criterion-remove, .objectives-criterion:focus-within .objectives-criterion-remove { opacity: 1; }
+
+/* 달성 기준 제안(A안) — 바뀔 기준 자리에 선다. 선택 띠가 아니라 전체 점선 테두리와 옅은 brass 워시로 가른다(왼쪽 세로 띠 없음).
+   brass 는 「사람이 여기서 결정할 자리」를 짚는다. 결정 버튼은 제안 행 안에서만 선다. */
+.objectives-criteria-head { display: flex; align-items: center; }
+.objectives-criteria-head > .objectives-row { flex: 1; min-width: 0; }
+.objectives-approve-all { flex: none; margin-right: 14px; }
+.objectives-criteria-count.is-pending { color: var(--brass); }
+/* 좁은 패널에서 「제안 N건 · 승인 대기」와 「모두 승인」이 라벨 폭을 빼앗지 않게 — 라벨은 줄지 않고, 셈이 먼저 감긴다. */
+.objectives-criteria-head .objectives-row-lab { flex: 0 0 auto; white-space: nowrap; }
+.objectives-criteria-head .objectives-row-tools { min-width: 0; }
+.objectives-criteria-head .objectives-criteria-count.is-pending { white-space: normal; word-break: keep-all; text-align: right; }
+.objectives-proposal { margin: 4px 12px; padding: 0 8px 6px 10px; border: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 6%, transparent); }
+.objectives-proposal .objectives-criterion { padding: 0; }
+.objectives-proposal .objectives-criterion:hover { background: transparent; }
+.objectives-proposal .objectives-criterion-mark { border-color: var(--brass); }
+.objectives-proposal-kind { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--brass); }
+.objectives-proposal-text { display: block; color: var(--text-primary); font-size: var(--t-sm); line-height: 1.5; overflow-wrap: anywhere; text-decoration: none; }
+del.objectives-proposal-text { text-decoration: line-through; color: var(--text-secondary); }
+del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
+.objectives-proposal-acts { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 24px; margin-top: 2px; }
+.objectives-proposal-acts .objectives-btn.is-approve { color: var(--positive); }
+.objectives-proposal-acts .objectives-btn.is-reject:hover { border-color: var(--coral); color: var(--coral); }
+.objectives-proposal-acts .objectives-btn.is-note[aria-expanded="true"] { border-color: var(--brass); color: var(--brass); }
+.objectives-proposal-note { margin: 6px 0 0 24px; display: flex; flex-direction: column; gap: 4px; }
+.objectives-proposal-note textarea { width: 100%; min-height: 44px; resize: vertical; font: inherit; font-size: var(--t-sm); line-height: 1.5; padding: 6px 8px; border-radius: var(--radius-xs); border: 1px solid var(--hairline-strong); background: var(--control-field); color: var(--text-primary); }
+.objectives-proposal-note textarea:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-proposal-hint { font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-proposal-chip { margin: 4px 0 0 24px; display: flex; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); overflow-wrap: anywhere; }
+.objectives-proposal-chip b { flex: none; margin-top: 1px; font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--brass); }
+
+/* 제안이 남아 잠긴 개시·스티어링 — 누를 수 없는 점선 한 줄. 그 아래 「다시 구상」이 한 단 낮은 띠로 열려 있다. */
+.objectives-start-group.is-gated { gap: 6px; }
+.objectives-start.is-locked, .objectives-start.is-locked:hover { cursor: default; border-style: dashed; border-color: var(--hairline-strong); background: var(--control-rest); }
+.objectives-start.is-locked .objectives-start-word { color: var(--text-tertiary); }
+/* 누를 수 없는 띠에 화살표는 눌러질 것처럼 보인다 — 자리만 남긴다. */
+.objectives-start.is-locked .objectives-start-arrow { visibility: hidden; }
+.objectives-start.is-locked .objectives-start-sub { white-space: normal; }
+.objectives-start.is-secondary { padding-block: 8px; background: transparent; }
+/* 잠긴 띠 아래의 「다시 구상」 설명도 잠긴 띠처럼 감긴다 — 두 띠가 같은 폭 규칙을 따른다. */
+.objectives-start-group.is-gated .objectives-start.is-secondary .objectives-start-sub { white-space: normal; }

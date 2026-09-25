@@ -56,6 +56,10 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     important: item.important, dueDate: item.dueDate, today: item.today,
     // 달성 기준 — n 은 1부터, 기준을 가리키는 번호. met 은 지휘관이 충족으로 표시한 근거(없으면 미충족).
     criteria: item.criteria.map((criterion, index) => ({ n: index + 1, id: criterion.id, text: criterion.text, by: criterion.by, met: criterion.met ?? null })),
+    criteriaOpen: item.criteriaOpen,
+    criteriaProposals: item.criteriaProposals.map((proposal, index) => ({ n: index + 1, id: proposal.id, kind: proposal.kind, target: proposal.target ?? null,
+      targetN: proposal.target ? item.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null,
+      text: proposal.text ?? null, reason: proposal.reason ?? null, annotation: proposal.annotation ?? null })),
     members: item.members.map((member) => ({ id: member.id, role: member.role, brief: member.brief ?? null, by: member.by, subagents: member.subagents, model: member.model ?? null, effort: member.effort ?? null, session: member.sessionName,
       ...(member.operationId ? observe(member.operationId) : { operationId: null, state: "missing" as const }) })),
     done: !!item.done, awaitingReview: item.awaitingReview, addedBy: item.addedBy, graph: graph(item),

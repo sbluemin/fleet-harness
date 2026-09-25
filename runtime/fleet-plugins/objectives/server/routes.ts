@@ -47,7 +47,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     return true;
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
-    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_item", "unknown_step", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_group"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
+    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_item", "unknown_step", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_proposal", "unknown_group"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
     const code = error instanceof Error ? error.message : "todo_failed";
     ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "todo_failed" });
   };
@@ -189,7 +189,11 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "edge/clear", method: "POST", summary: "Remove all mission dependencies.", handler: json(itemRef, unlessBusy(({ itemId }) => edited(["recipe"], () => store.edgesClear(itemId)))) },
     { name: "plan/request", method: "POST", summary: "Ask the Commander to plan the objective (starts one when missing): it lays out missions, prerequisites and delegation; nothing runs until Commence. Optional context travels with the request and is kept on the item.", handler: json(itemRef.extend({ context }), unlessBusy(({ itemId, language, context }) => { if (context !== undefined) store.patch(itemId, { cook: context }); return launch.requestPlan(itemId, { language }); })) },
     { name: "coordinator/stop", method: "POST", summary: "Interrupt the Commander and every member Operation of an objective (roster stays).", handler: json(itemRef, ({ itemId }) => launch.stop(itemId)) },
-    { name: "coordinator/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once.", handler: json(itemRef.extend({ context }), unlessBusy(({ itemId, language, context: note }) => launch.startCoordinator(itemId, { language, context: note }))) },
+    { name: "coordinator/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once.", handler: json(itemRef.extend({ context }), (body) => {
+      if (store.find(body.itemId)?.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
+      if (launch.busy(body.itemId)) throw new ObjectiveStoreError("item_busy");
+      return launch.startCoordinator(body.itemId, { language: body.language, context: body.context });
+    }) },
     { name: "coordinator/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(itemRef.extend({ context }), ({ itemId, language, context: note }) => launch.steer(itemId, { language, context: note }).then(item)) },
     { name: "group/create", method: "POST", summary: "Create an Operation group (the Objectives list).", handler: json(z.object({ theaterId: ids, language, name: groupName, color: groupColor }), ({ theaterId, name, color }) => { const groups = ctx.host.operations.groups; if (!groups) throw new Error("groups_unavailable"); return { group: groups.create({ theaterId, name, color }) }; }) },
     // 목표 표면의 그룹 메뉴 — 이름과 색만 바꾼다(사람의 사이드바 PATCH 와 같은 길: 영속 + group:changed). 해제·삭제는 사이드바의 몫이다.
@@ -209,9 +213,14 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "criterion/add", method: "POST", summary: "Add a success criterion below the missions.", handler: json(itemRef.extend({ criterion: criterionAddSchema }), steerable(() => true, ({ itemId, criterion }) => edited(["criteria"], () => store.criterionAdd(itemId, criterion.text, "human")))) },
     { name: "criterion/patch", method: "POST", summary: "Edit a success criterion.", handler: json(itemRef.extend({ criterionId: ids, patch: criterionPatchSchema }), steerable(() => true, ({ itemId, criterionId, patch }) => edited(["criteria"], () => store.criterionPatch(itemId, criterionId, patch.text)))) },
     { name: "criterion/remove", method: "POST", summary: "Remove a success criterion.", handler: json(itemRef.extend({ criterionId: ids }), steerable(() => true, ({ itemId, criterionId }) => edited(["criteria"], () => store.criterionRemove(itemId, criterionId)))) },
+    // 제안에 대한 사람의 판단·어노테이션은 지휘관 자신의 제안에 대한 답이라 edited 종류를 쌓지 않는다.
+    { name: "criterion/approve", method: "POST", summary: "Approve one proposed success criterion change.", handler: json(itemRef.extend({ proposalId: ids }), ({ itemId, proposalId }) => item(store.proposalApprove(itemId, proposalId))) },
+    { name: "criterion/approve-all", method: "POST", summary: "Approve all proposed success criterion changes.", handler: json(itemRef, ({ itemId }) => item(store.proposalsApproveAll(itemId))) },
+    { name: "criterion/reject", method: "POST", summary: "Reject one proposed success criterion change.", handler: json(itemRef.extend({ proposalId: ids }), ({ itemId, proposalId }) => item(store.proposalReject(itemId, proposalId))) },
+    { name: "criterion/annotate", method: "POST", summary: "Annotate a proposed success criterion change (empty text removes the annotation).", handler: json(itemRef.extend({ proposalId: ids, annotation: z.string().max(300) }), ({ itemId, proposalId, annotation }) => item(store.proposalAnnotate(itemId, proposalId, annotation))) },
     { name: "attachment/add", method: "POST", summary: "Attach an image to an objective's brief (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per objective).", handler: attachmentAdd },
     { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },
     { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(itemRef.extend({ attachmentId: ids }), steerable(() => true, ({ itemId, attachmentId }) => edited(["note"], () => store.attachmentRemove(itemId, attachmentId)))) },
-    { name: "plan/apply", method: "POST", summary: "Replace the unassigned missions with a plan (Commander tool path; also used by tests).", handler: json(itemRef.extend({ plan: planSchema }), ({ itemId, plan }) => item(launch.planApplied(itemId, plan))) },
+    { name: "plan/apply", method: "POST", summary: "Replace the unassigned missions with a plan (Commander tool path; also used by tests).", handler: json(itemRef.extend({ plan: planSchema.omit({ criteria: true }) }), ({ itemId, plan }) => item(launch.planApplied(itemId, plan))) },
   ];
 }
