@@ -94,7 +94,7 @@ describe("agent chat mode routes", () => {
     await vi.waitFor(() => expect(harness.consoleControl.getAction(launch.id)).toMatchObject({ status: "finished", outcome: "completed" }));
   });
   it("routes an opted-in Console message through the existing Chat session and records its result", async () => {
-    const harness = await createHarness({ disabledAgents: ["Plan"], peerProcessId: process.pid });
+    const harness = await createHarness({ disabledAgents: ["Plan"] });
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
@@ -127,23 +127,41 @@ describe("agent chat mode routes", () => {
     // 태어날 때의 강제 차단은 채팅 프로세스의 SDK 입력에도 실린다.
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task"] });
     // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스는 전역 옵트아웃만 쓴다 — 허용이 전역 제한까지 걷지 않는다.
-    const optedIn = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-opted-in", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true, parentOperationId: sessionId });
+    const optedIn = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-opted-in", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true });
     await vi.waitFor(() => expect(harness.consoleControl.getAction(optedIn.id)?.operationId).toBeDefined());
     const member = harness.consoleControl.getAction(optedIn.id)!.operationId!;
     harness.setSubagentSpawn(member, "default");
     const memberWake = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-member-wake", { kind: "send", operationId: member, text: "Start the mission" });
     await vi.waitFor(() => expect(harness.consoleControl.getAction(memberWake.id)?.status).toBe("finished"));
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent(Plan)"] });
-    const frames = await harness.openChatSocket(member);
-    const content = { message: { content: "private envelope" } };
-    harness.emitToLatest({ type: "user", uuid: "trusted-peer", ...content, origin: { kind: "peer", body: "Peer instruction", verifiedPeerPid: process.pid } });
-    harness.emitToLatest({ type: "user", uuid: "claimed-peer", ...content, origin: { kind: "peer", body: "Unverified instruction", fromSession: "sid-live", name: "commander" } });
-    await vi.waitFor(() => expect(frames.some(({ event }) => event.kind === "turn-inject")).toBe(true));
-    expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Peer instruction", by: { kind: "peer", role: "commander", title: harness.operation(sessionId)!.title } }));
-    expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "turn-inject", by: { kind: "peer", role: "unknown" } }));
-    expect(JSON.stringify(frames)).not.toMatch(/verifiedPeerPid|fromSession|private envelope/);
-    // 같은 Console Use 발신은 peer 카드로 바뀌지 않는다.
-    expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Start the mission", by: expect.objectContaining({ kind: "operation", operationId: sessionId }) }));
+    // 세션 간 메시지는 CLI 소켓으로 직접 오가 받는 쪽 스트림에는 아무것도 남지 않는다. 서버가 보는
+    // 것은 **보낸** 자식의 도구 호출뿐이고, 성공한 그 호출만이 받는 쪽 원장에 줄 하나를 세운다.
+    const frames = await harness.openChatSocket(commander);
+    const sent = (id: string, to: string, text: string, extra: Record<string, unknown> = {}) => ({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id, name: "SendMessage", input: { to, message: text } }] },
+      ...extra,
+    });
+    const settled = (id: string, ok: boolean) => ({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: JSON.stringify({ success: ok }) }] } });
+    harness.emitToLatest(sent("call-1", "commander", "Check the mobile layout."));
+    harness.emitToLatest(settled("call-1", true));
+    // 같은 호출을 다시 관측해도, 실패한 호출·서브에이전트 발신·이 Console이 모르는 이름도 줄을 세우지 않는다.
+    harness.emitToLatest(settled("call-1", true));
+    harness.emitToLatest(sent("call-2", "commander", "Rejected send."));
+    harness.emitToLatest(settled("call-2", false));
+    harness.emitToLatest(sent("call-3", "commander", "Subagent send.", { parent_tool_use_id: "job-1" }));
+    harness.emitToLatest(settled("call-3", true));
+    harness.emitToLatest(sent("call-4", "nobody-here", "Unknown target."));
+    harness.emitToLatest(settled("call-4", true));
+    harness.emitToLatest(sent("call-5", "commander", "Last word."));
+    harness.emitToLatest(settled("call-5", true));
+    const received = (): readonly Record<string, unknown>[] => frames.flatMap(({ event }) => (event.kind === "received" ? [event as unknown as Record<string, unknown>] : []));
+    await vi.waitFor(() => expect(received()).toHaveLength(2));
+    // 발신자 이름은 본문의 주장이 아니라 서버가 들고 있는 런치 이름이고, 좌표는 발신 Operation과 호출 id다.
+    expect(received()[0]).toMatchObject({ id: `${member}:call-1`, from: "member", text: "Check the mobile layout." });
+    expect(received()[1]).toMatchObject({ text: "Last word." });
+    // Console Use 발신은 그대로 Operation 출처의 지시로 선다 — 수신 줄로 두 번 서지 않는다.
+    expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Begin the objective", by: expect.objectContaining({ kind: "operation", operationId: sessionId }) }));
     const command = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "console-command", { kind: "send", operationId: sessionId, text: "/compact" });
     await vi.waitFor(() => expect(harness.consoleControl.getAction(command.id)).toMatchObject({ status: "finished", outcome: "succeeded" }));
   });
@@ -280,7 +298,7 @@ describe("agent chat mode routes", () => {
   });
 });
 
-async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly disabledAgents?: readonly string[]; readonly peerProcessId?: number } = {}) {
+async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly disabledAgents?: readonly string[] } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir);
@@ -307,18 +325,14 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   const sends: string[] = [];
   const closeChat = vi.fn();
   let emitToLatest: (message: Record<string, unknown>) => void = () => { throw new Error("No open chat session"); };
-  let firstSdkSession = true;
   // 세션 하나가 여러 프롬프트를 받는다 — 보낼 때마다 그 턴의 메시지가 열린 스트림으로 흘러든다.
   const openSession = vi.fn(async (_request: unknown) => {
     const queue: Record<string, unknown>[] = [];
     let waiting: (() => void) | null = null;
     let closed = false;
     const wake = (): void => { const resume = waiting; waiting = null; resume?.(); };
-    const pid = firstSdkSession ? options.peerProcessId : undefined;
-    firstSdkSession = false;
     emitToLatest = (message) => { queue.push(message); wake(); };
     return {
-      get processId() { return closed ? undefined : pid; },
       send: (text: string) => {
         sends.push(text);
         queue.push(
@@ -383,7 +397,6 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     terminateAndWait: async (sessionId: string) => terminate(sessionId),
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getSessionProcessId: () => undefined,
     getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
     resolveSessionIdentity: async () => null,
     onExit: () => () => {},
@@ -436,7 +449,6 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
             title: input.title,
             payload: { ...(input.payload ?? {}) },
             geometry: input.geometry ?? null,
-            ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}),
             ts: { createdAt, updatedAt: createdAt },
           };
           operations.push(operation);

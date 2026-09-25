@@ -17,22 +17,6 @@ import { LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX } from "../../features/execution/h
 import { readChatJournalEvent } from "../../features/execution/client/agent/chat/chat-events.js";
 
 describe("chat transcript mapping", () => {
-  it("projects peer envelopes before the browser boundary without trusting their attributes", () => {
-    const envelope = '<cross-session-message from="uds:/private/peer.sock" from-name="commander">\nKeep ` <Hero> ` intact.\n</cross-session-message>';
-    const map = (text: string, origin: Record<string, unknown>) => chatEventsFromSdkMessage({ type: "user", origin, message: { content: text } });
-    expect(map(envelope, { kind: "peer" })).toEqual([{ kind: "dispatch", text: "\nKeep ` <Hero> ` intact.\n", format: "markdown", by: { kind: "peer", role: "unknown" } }]);
-    // 하네스가 이미 벗긴 본문은 재파싱하지 않는다. 본문 속 태그 예시를 손상시키지 않는다.
-    expect(map(envelope, { kind: "peer", body: "`<cross-session-message>` is code." })[0]).toMatchObject({ text: "`<cross-session-message>` is code." });
-    const malformed = map(envelope.replace("</cross-session-message>", ""), { kind: "peer" });
-    const multiple = map(envelope + envelope, { kind: "peer" });
-    expect(malformed[0]).toMatchObject({ kind: "dispatch", by: { role: "unknown" } });
-    expect(JSON.stringify([malformed, multiple])).not.toMatch(/peer\.sock|from-name|uds:/);
-    // 사람이 붙여 넣은 모양만으로 peer 출처를 승격하지 않는다.
-    expect(map(envelope, { kind: "human" })).toEqual([]);
-    expect(map(envelope, { kind: "peer", senderTaskId: "background-agent", body: "Subagent report" })).toEqual([]);
-    const projected = map(envelope, { kind: "peer" })[0]!;
-    expect(readChatJournalEvent(JSON.stringify({ seq: 1, at: 1, event: projected }))?.event).toEqual(projected);
-  });
   it("maps a plain user line to a dispatch", () => {
     const events = chatEventsFromTranscriptLine(JSON.stringify({
       type: "user",

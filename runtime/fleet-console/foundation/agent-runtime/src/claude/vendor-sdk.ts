@@ -6,7 +6,6 @@
  * vendor 타입이 형제 모듈의 `.d.ts`로 새면 소비자 해석 그래프가 다시 vendor를 요구하게 되고,
  * 그것이 이 패키지가 막으려는 바로 그 상태다.
  */
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 
@@ -378,21 +377,9 @@ function readVendorAgents(response: unknown): readonly ClaudeGatewayAgent[] | nu
 
 export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySession {
   const queue = new VendorInputQueue();
-  let child: ChildProcessWithoutNullStreams | undefined;
   const run = vendorQuery({
     prompt: queue,
-    options: {
-      ...withResolvedExecutable(input.options),
-      // SDK의 공개 spawn 포트로 소유권만 확보한다. 전달 signal은 SDK의 정상 EOF/grace 뒤에
-      // 발화하므로 호출자의 abort 신호로 바꾸지 않는다. PID는 사용자 본문에서 얻지 않는다.
-      spawnClaudeCodeProcess: (options: { command: string; args: string[]; cwd?: string; env: NodeJS.ProcessEnv; signal: AbortSignal }) => {
-        child = spawn(options.command, options.args, { cwd: options.cwd, env: options.env, signal: options.signal, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
-        // custom spawn의 stderr는 SDK가 읽지 않는다. 막히지 않게 소비하고 명시적 진단 콜백만 전달한다.
-        child.stderr.setEncoding("utf8");
-        child.stderr.on("data", (chunk: string) => { if (typeof input.options.stderr === "function") input.options.stderr(chunk); });
-        return child;
-      },
-    },
+    options: withResolvedExecutable(input.options),
   } as never) as AsyncGenerator<unknown, void> & {
     close?: () => void;
     return?: (value?: unknown) => Promise<unknown>;
@@ -407,9 +394,6 @@ export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySessio
 
   let closed = false;
   return {
-    get processId(): number | undefined {
-      return !closed && child && !child.killed && child.exitCode === null && child.signalCode === null ? child.pid : undefined;
-    },
     send(text: string, options?: ClaudeGatewaySendOptions): void {
       if (closed) return;
       queue.push(vendorUserMessage(text, options?.messageId));

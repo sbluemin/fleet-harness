@@ -270,56 +270,6 @@ function withoutSnapshotEnd(events: readonly AgentChatJournalEvent[]): readonly 
 }
 
 describe("AgentChatRegistry — chat-born sessions", () => {
-  // 지원 경로의 공백: peer 수신은 send()를 거치지 않는다. 라이브/재접속/전사 재생에서 지시를
-  // 잃거나 턴을 중복 생성하는 실패를 세션의 공개 원장 경계 하나에서 검증한다.
-  it("keeps peer arrivals once, inside the active turn or as a new turn, and replays them safely", async () => {
-    const { factory, liveSession } = createFakeSdkFactory([]);
-    const registry = new AgentChatRegistry(factory);
-    const resolvePeerOrigin = vi.fn((pid: number) => pid === 42 ? { kind: "peer" as const, role: "commander" as const, title: "Goal" } : undefined);
-    const session = await registry.ensure("member", () => ({ ...freshSeedFor(tempDir("chat-peer-")), resolvePeerOrigin }));
-    session.open();
-    await vi.waitFor(() => expect(liveSession()).not.toBeNull());
-    const events: AgentChatJournalEvent[] = [];
-    session.subscribe((entry) => events.push(entry));
-    const first = { type: "user", uuid: "peer-1", isReplay: true, origin: { kind: "peer", body: "**Inspect** ` <Hero> `", verifiedPeerPid: 42, from: "uds:/private/sender.sock" }, message: { content: "private envelope" } };
-    const second = { type: "user", uuid: "peer-2", origin: { kind: "peer", body: "Check the mobile layout.", name: "commander", fromSession: "claimed-commander" }, message: { content: "private envelope" } };
-    liveSession()!.emit(first, first, { type: "assistant", message: { content: [{ type: "text", text: "Working." }], stop_reason: "tool_use" } }, second, { type: "result", is_error: false });
-    await vi.waitFor(() => expect(events.some(({ event }) => event.kind === "turn-end")).toBe(true));
-    liveSession()!.emit({ ...second, uuid: "peer-3" }, { type: "result", is_error: false });
-    await vi.waitFor(() => expect(events.filter(({ event }) => event.kind === "turn-end")).toHaveLength(2));
-    const reconnect: AgentChatJournalEvent[] = [];
-    session.subscribe((entry) => reconnect.push(entry));
-    const state = reconnect.reduce((log, entry) => reduceAgentChatLog(log, { ...entry.event, receivedAt: entry.at }), initialAgentChatLogState);
-    expect(state.turns).toHaveLength(2);
-    expect(state.turns[0]!.dispatch?.by).toEqual({ kind: "peer", role: "commander", title: "Goal" });
-    expect(state.turns[0]!.items.filter((item) => item.type === "inject")).toEqual([expect.objectContaining({ text: second.origin.body, by: { kind: "peer", role: "unknown" } })]);
-    expect(state.turns[1]!.dispatch?.text).toBe(second.origin.body);
-    expect(JSON.stringify(reconnect)).not.toMatch(/sender\.sock|private envelope|claimed-commander|verifiedPeerPid/);
-    await registry.disposeAll();
-
-    const transcript = writeTranscript("peer-replay", [
-      first, { type: "assistant", message: { content: [{ type: "text", text: "Working." }], stop_reason: "tool_use" } },
-      second, { type: "assistant", message: { content: [{ type: "text", text: "Done." }], stop_reason: "end_turn" } },
-      { ...second, uuid: "peer-3" }, { type: "assistant", message: { content: [{ type: "text", text: "Next." }], stop_reason: "end_turn" } },
-    ]);
-    resolvePeerOrigin.mockClear();
-    const replayRegistry = new AgentChatRegistry(factory);
-    const replay = await replayRegistry.ensure("member", () => ({ ...seedFor(transcript), resolvePeerOrigin }));
-    const historical: AgentChatJournalEvent[] = [];
-    replay.subscribe((entry) => historical.push(entry));
-    const previousChild = liveSession();
-    replay.open();
-    await vi.waitFor(() => expect(liveSession()).not.toBe(previousChild));
-    liveSession()!.emit(first); // isReplay:true인 과거 사본은 uuid로 버린다.
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    const history = historical.reduce((log, entry) => reduceAgentChatLog(log, { ...entry.event, receivedAt: entry.at }), initialAgentChatLogState);
-    expect(history.turns).toHaveLength(2);
-    expect(history.turns[0]!.items.filter((item) => item.type === "inject")).toHaveLength(1);
-    // 과거 PID를 지금 프로세스와 대조하지 않는다. 본문은 보존하지만 출처는 미확인이다.
-    expect(history.turns[0]!.dispatch).toMatchObject({ text: first.origin.body, by: { kind: "peer", role: "unknown" } });
-    expect(resolvePeerOrigin).not.toHaveBeenCalled();
-    await replayRegistry.disposeAll();
-  });
   it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
     const home = tempDir("chat-home-");
     const { factory, openSession, sends } = createFakeSdkFactory([
