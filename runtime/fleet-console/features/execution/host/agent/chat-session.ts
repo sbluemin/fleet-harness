@@ -151,9 +151,9 @@ export interface AgentChatSessionSeed {
   /**
    * 이 세션이 다른 세션으로 **성공적으로 보낸** 말 한 통. 받는 쪽의 원장에 수신 줄을 세우는 유일한 문이다.
    *
-   * 세션 간 메시지는 CLI 소켓으로 직접 오가므로 받는 쪽 스트림에는 아무것도 남지 않는다. 그래서
-   * 서버가 아는 사실은 여기 하나뿐이다: 보낸 세션이 도구를 불렀고 그 호출이 성공했다. 대상 해석과
-   * 전달은 이 훅을 배선한 쪽(호스트 라우트)이 한다 — 세션은 레지스트리를 모른다.
+   * 이 경로는 어느 쪽 트랜스크립트도 읽지 않는다. 서버가 여기서 쓰는 사실은 하나뿐이다: 보낸 세션의
+   * 라이브 스트림에서 도구 호출과 그 성공 결과를 보았다. 대상 해석과 전달은 이 훅을 배선한 쪽(호스트
+   * 라우트)이 한다 — 세션은 레지스트리를 모른다.
    */
   readonly onSessionMessageSent?: (sent: { readonly to: string; readonly text: string; readonly toolUseId: string }) => void;
   readonly cancelComputerUse?: () => void;
@@ -262,7 +262,10 @@ const JOURNAL_CAP = 2_000;
 const SESSION_MESSAGE_TOOL = "SendMessage";
 /** 결말을 기다리는 발신 호출의 상한. 도구 결과는 보통 곧바로 오므로 넉넉한 창이다. */
 const PENDING_SENT_MESSAGE_CAP = 64;
-/** 수신 줄 중복 방지 창. 저널 상한과 같은 자리에서 잘린다. */
+/**
+ * 수신 줄 중복 방지 창. 같은 발신 호출이 두 번 관측되는 일은 그 호출 근처에서만 일어나므로 최근
+ * 창이면 충분하다 — 저널 상한과는 별개의 값이고, 오래 산 세션에서 이 집합만 무한히 자라지 않게 한다.
+ */
 const RECEIVED_MESSAGE_ID_CAP = 512;
 /**
  * 예약 칩이 화면에 세우는 문면의 상한. 전문은 서버가 그대로 들고 있다가 자기 차례에 보내고,
@@ -2373,9 +2376,8 @@ class AgentChatSession {
   /**
    * 이 세션이 다른 세션에 말을 보냈는가 — **보내는 쪽의 라이브 스트림**에서만 읽는다.
    *
-   * 여기가 유일한 관측 지점인 이유는 전달 경로에 있다: 세션 간 메시지는 CLI가 소켓으로 직접
-   * 나르므로 받는 쪽 스트림에도, 어느 쪽 트랜스크립트에도 상대편이 남지 않는다. 서버가 볼 수
-   * 있는 사실은 하나뿐이다 — 보내는 자식이 도구를 불렀고, 그 호출이 성공했다.
+   * 여기가 유일한 관측 지점인 이유는 이 경로가 트랜스크립트를 전혀 읽지 않기 때문이다. 세우는 근거는
+   * 보내는 자식이 라이브로 부른 도구 호출과 그 결과, 그 둘뿐이다.
    *
    * 호출과 결말을 잇는 것은 `tool_use` id다. 호출만 보고 세우지 않는 이유는 실패가 조용하기
    * 때문이고(이름이 틀리면 오류가 돌아온다), 결말만 보고 세울 수 없는 이유는 결과에 본문이 없기
@@ -2436,6 +2438,9 @@ class AgentChatSession {
    * 턴을 열지 않는다. 이 줄은 **관측**이지 이 세션의 자식이 지금 무엇을 한다는 신호가 아니며,
    * 여기서 턴을 열면 아무도 닫지 않아 받기만 한 세션이 영영 일하는 것으로 보인다. 자식이 실제로
    * 그 말을 읽고 움직이면 그때 흐르는 내용이 제 턴을 연다.
+   *
+   * 본문과 출처는 **둘 다** 같은 문(`maskChatText`)을 지난다. 런치 이름도 사람이 짓는 값이라 경로나
+   * 자격증명 모양이 섞일 수 있고, 브라우저로 나가는 값에 masking 없는 자리를 하나라도 두지 않는다.
    */
   noteReceived(entry: { readonly id: string; readonly from: string; readonly text: string }): void {
     if (this.disposed) return;
@@ -2446,9 +2451,10 @@ class AgentChatSession {
       const oldest = this.receivedMessageIds.values().next();
       if (!oldest.done) this.receivedMessageIds.delete(oldest.value);
     }
+    const from = maskChatText(entry.from, { cwd: this.seed.cwd }).text;
     const text = maskChatText(entry.text, { cwd: this.seed.cwd }).text;
-    if (text.length === 0) return;
-    this.push({ kind: "received", id: entry.id, from: entry.from, text, at: Date.now() });
+    if (from.length === 0 || text.length === 0) return;
+    this.push({ kind: "received", id: entry.id, from, text, at: Date.now() });
   }
 
   /**
