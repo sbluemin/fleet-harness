@@ -236,17 +236,9 @@
     background: SelectedItem;
     color: SelectedItemText;
   }
-  /* 고대비 — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다(Quiet Controls C′). */
-  .repository-toggle-btn,
-  .history-segmented button,
-  .history-file-repository-head button,
-  .repository-ws-tree-error button,
-  .repository-compare-swap,
-  .repository-stage-action,
-  .repository-segmented,
-  .repository-staging-bulk,
-  .repository-unified .repository-commit-button { border-color: ButtonBorder; }
 }
+/* 고대비 쉬는 경계는 파일 끝의 G 블록에 있다 — 같은 특정도라 순서가 이기므로 쉬는 면 규칙보다
+   뒤에 서야 한다. */
 .repository-toggle-btn:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 /* ── 섹션 스크롤 컨테이너 ── */
@@ -2794,3 +2786,19 @@
 .repository-unified .history-commit-row.is-picked { background: var(--repository-selection); box-shadow: inset 0 0 0 1px var(--surface-rim-strong); }
 .repository-unified .history-commit-row.is-picked .history-commit-sha { color: var(--text-secondary); }
 .repository-unified .history-commit-row-main:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; border-radius: var(--radius-xs); }
+
+/* ── G Quiet Controls 고대비 경계 ─────────────────────────────────────────
+   파일 끝자리에 둔다 — 같은 특정도라 순서가 이기므로, 쉬는 면 규칙보다 앞에 서면
+   transparent이 이겨 고대비 경계가 사라진다. 선택·오류 상태 규칙은 특정도가 높아
+   어디에 있어도 이긴다. */
+@media (forced-colors: active) {
+  .repository-toggle-btn,
+  .history-segmented button,
+  .history-file-repository-head button,
+  .repository-ws-tree-error button,
+  .repository-compare-swap,
+  .repository-stage-action,
+  .repository-segmented,
+  .repository-staging-bulk,
+  .repository-unified .repository-commit-button { border-color: ButtonBorder; }
+}

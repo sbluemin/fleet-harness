@@ -11357,22 +11357,9 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 /* 고대비(forced-colors) — 면이 걷히는 환경에서는 쉬는 컨트롤의 테두리를 시스템색으로 되살린다
-   (Quiet Controls C′). 개별 면 규칙의 forced-colors 블록과 별도로 G 대상을 한데 모은다. */
-@media (forced-colors: active) {
-  .global-settings-shortcut-chord,
-  .settings-help-tip__glyph,
-  .fc-settings-slider__stepper,
-  .fc-settings-reset,
-  .codex-reader-tool,
-  .expanded-surface-pane-close,
-  .quick-launch-suggest-apply,
-  .quick-launch-suggest-dismiss,
-  .quick-launch-refine-confirm,
-  .quick-launch-refine-skip,
-  .quick-launch-chip,
-  .quick-launch-card .effort-track,
-  .quick-launch-card .effort-track-apex-toggle { border-color: ButtonBorder; }
-}
+   (Quiet Controls C′). 개별 면 규칙의 forced-colors 블록과 별도로 G 대상을 한데 모은다.
+   아래 규칙들보다 뒤에 서야 한다 — 같은 특정도라 순서가 이기므로, 앞으로 옮기면 쉬는 면 규칙의
+   transparent이 이겨 고대비 경계가 사라진다. 파일 끝의 G 블록이 이 자리의 후계다. */
 
 @media (prefers-reduced-motion: reduce) {
   .effort-track[data-at-max="true"] .effort-track-fill::after {
@@ -19073,4 +19060,24 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   .is-console-use-wrapped:not(.canvas-operation) { box-shadow: 0 0 0 1px color-mix(in oklch, var(--console-use-wrap) 60%, transparent); background-image: linear-gradient(color-mix(in oklch, var(--console-use-wrap) 12%, transparent), color-mix(in oklch, var(--console-use-wrap) 12%, transparent)); }
   .is-console-use-wrapped.is-leaving:not(.canvas-operation) { box-shadow: none; background-image: none; }
   .canvas-operation.is-console-use-wrapped.is-leaving::before { border-color: transparent; }
+}
+
+/* ── G Quiet Controls 고대비 경계 ─────────────────────────────────────────
+   파일 끝자리에 둔다 — 같은 특정도라 순서가 이기므로, 쉬는 면 규칙보다 앞에 서면
+   transparent이 이겨 고대비 경계가 사라진다. 상태 규칙(is-recording·aria-expanded·
+   aria-pressed 등)은 특정도가 높아 어디에 있어도 이긴다. */
+@media (forced-colors: active) {
+  .global-settings-shortcut-chord,
+  .settings-help-tip__glyph,
+  .fc-settings-slider__stepper,
+  .fc-settings-reset,
+  .codex-reader-tool,
+  .expanded-surface-pane-close,
+  .quick-launch-suggest-apply,
+  .quick-launch-suggest-dismiss,
+  .quick-launch-refine-confirm,
+  .quick-launch-refine-skip,
+  .quick-launch-chip,
+  .quick-launch-card .effort-track,
+  .quick-launch-card .effort-track-apex-toggle { border-color: ButtonBorder; }
 }
