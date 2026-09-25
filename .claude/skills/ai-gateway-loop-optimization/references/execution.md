@@ -10,7 +10,7 @@ When the question is only whether a backend accepts a request variant, take a re
 
 ### Standalone provider-loop runner
 
-The runner starts no Console, PTY, Theater, or Operation. It uses the production core-ai-gateway router and production credential readers. From the absolute worktree path, run:
+The runner starts no Console, PTY, Theater, or Operation. It uses the production `@fleet-console/ai-gateway` router and production credential readers. From the absolute worktree path, run:
 
 ```sh
 pnpm --filter @fleet-console/ai-gateway build

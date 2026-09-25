@@ -49,7 +49,7 @@ interface ToolMetadata {
 const TOOL_METADATA: Record<string, ToolMetadata> = {
   [ANALYST_TOOL_IDS.sessionOutline]: {
     id: ANALYST_TOOL_IDS.sessionOutline,
-    description: "Structured overview of the observed session: event count, stages, and touched files.",
+    description: "Aggregate overview of the observed session: event count, stage names, the number of touched files, and whether the index is truncated (with the skipped gaps). It returns no event text, references, or file names, so it cannot serve as evidence for a specific event. Use it for broad history or overview questions; a current-state question starts with live_tail instead.",
     promptSnippet: "Use session_outline when a broad historical or session overview benefits from an aggregate map.",
     whenToUse: ["For broad historical or session-overview questions.", "To identify useful stages or file activity before drilling down."],
     whenNotToUse: ["Do not call it for identity, capability, limits, usage, or other direct-answer questions.", "Do not require it before live_tail for a current-state question.", "Do not use it as evidence for a specific event; retrieve that event instead."],
@@ -58,32 +58,32 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
   },
   [ANALYST_TOOL_IDS.sessionEvents]: {
     id: ANALYST_TOOL_IDS.sessionEvents,
-    description: "Lists a bounded, paginated slice of indexed events, optionally filtered by event kind.",
+    description: "Lists a bounded, paginated slice of indexed events with their stable e# references, optionally filtered by event kind. Use it to locate the references that session_read then expands; page narrowly instead of listing the whole transcript.",
     promptSnippet: "Use session_events to locate relevant evidence references before session_read.",
     whenToUse: ["To find events in a stage or event category.", "To page through a small relevant range."],
     whenNotToUse: ["Do not request the entire transcript when a narrow filter or page will do."],
     usageGuidelines: ["kind filters message, tool, stage, file, or unknown; cursor is a zero-based page offset; limit is capped at 100."],
     parameters: {
-      kind: z.string().optional().describe("Optional event kind filter."),
-      cursor: z.number().optional().describe("Zero-based event offset."),
-      limit: z.number().optional().describe("Page size, maximum 100."),
+      kind: z.enum(["message", "tool", "stage", "file", "unknown"]).optional().describe("Optional event kind filter. Omit to list every kind."),
+      cursor: z.number().optional().describe("Zero-based event offset. Default 0."),
+      limit: z.number().optional().describe("Page size. Default 30, maximum 100."),
     },
   },
   [ANALYST_TOOL_IDS.sessionRead]: {
     id: ANALYST_TOOL_IDS.sessionRead,
-    description: "Reads a capped surrounding window for one stable event reference.",
+    description: "Reads a capped surrounding window for one stable event reference (e#) previously returned by session_events or live_tail. Use it to verify an observed claim before citing it; an unknown reference returns event_not_found.",
     promptSnippet: "Use session_read after locating an [e#] reference that needs context.",
     whenToUse: ["To inspect context around a specific event.", "To verify an observed claim before citing it."],
     whenNotToUse: ["Do not use an arbitrary or missing reference; locate it with session_events first."],
     usageGuidelines: ["ref is the required stable e# reference; radius is an optional surrounding-event count capped at 10."],
     parameters: {
       ref: z.string().describe("Required stable event reference, such as e12."),
-      radius: z.number().optional().describe("Optional context radius, maximum 10."),
+      radius: z.number().optional().describe("Optional number of events on each side. Default 2, maximum 10."),
     },
   },
   [ANALYST_TOOL_IDS.sessionDiff]: {
     id: ANALYST_TOOL_IDS.sessionDiff,
-    description: "Returns a bounded git diff-stat summary for the session working directory.",
+    description: "Returns a bounded git diff-stat summary for the session working directory. It reports changed-file scale only: no file contents and no transcript evidence, so it cannot explain why a change occurred.",
     promptSnippet: "Use session_diff for changed-file scale, not transcript evidence.",
     whenToUse: ["To summarize the current change footprint.", "To compare observed file activity with repository changes."],
     whenNotToUse: ["Do not use it to read file contents or infer why a change occurred."],
@@ -97,7 +97,7 @@ const TOOL_METADATA: Record<string, ToolMetadata> = {
     whenToUse: ["Before any current-state question.", "To refresh the index after new transcript data may have arrived."],
     whenNotToUse: ["Do not substitute it for targeted historical context; use session_read instead."],
     usageGuidelines: ["limit is an optional newest-event count capped at 100."],
-    parameters: { limit: z.number().optional().describe("Newest event count, maximum 100.") },
+    parameters: { limit: z.number().optional().describe("Newest event count. Default 20, maximum 100.") },
   },
   [ANALYST_TOOL_IDS.publishArtifact]: {
     id: ANALYST_TOOL_IDS.publishArtifact,

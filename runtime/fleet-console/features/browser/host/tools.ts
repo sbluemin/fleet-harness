@@ -214,7 +214,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     type: "object", properties: { tabId: TAB_ID }, additionalProperties: false,
   }, async (args, operationId) => text(await service.pageText(operationId, args.tabId ?? null)));
 
-  const consoleMessages = spec("read_console_messages", "Get console output (log, info, warn, error, debug) and uncaught exceptions from the tab. Always pass a pattern (regex) to filter; without one you may get many irrelevant lines.", {
+  const consoleMessages = spec("read_console_messages", "Get console output (log, info, warn, error, debug) and uncaught exceptions from the tab, newest last. pattern is a case-insensitive regex matched against each line's text or level; an invalid pattern is ignored and every line is returned. limit keeps the newest N lines (default 100). Pass a pattern when you are looking for something specific.", {
     type: "object", properties: { pattern: { type: "string" }, limit: { type: "number" }, tabId: TAB_ID }, additionalProperties: false,
   }, async (args, operationId) => text(service.consoleMessages(operationId, { tabId: args.tabId ?? null, pattern: args.pattern, limit: args.limit }).map((entry) => `${new Date(entry.at).toISOString()} [${entry.level}] ${entry.text}${entry.url ? ` (${entry.url}:${entry.line ?? 0})` : ""}`).join("\n") || "(no console messages)"));
 
@@ -225,7 +225,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return text(service.networkRequests(operationId, { tabId: args.tabId ?? null, pattern: args.pattern, limit: args.limit }).map((entry) => `${entry.requestId} ${entry.method} ${entry.status ?? (entry.failed ? "FAILED" : "…")} ${entry.type} ${entry.url}${entry.failed ? ` (${entry.failed})` : ""}${entry.size ? ` ${entry.size}B` : ""}`).join("\n") || "(no requests recorded)");
   });
 
-  const javascript = spec("javascript_tool", "Execute JavaScript in the page for DEBUGGING and INSPECTION only. Do NOT use this to implement UI changes — edit source code instead. Returns the awaited, JSON-serialized result.", {
+  const javascript = spec("javascript_tool", "Execute JavaScript in the page and return the awaited, JSON-serialized result. Its effects live only in this page session and are never written to source files, so it serves inspection and debugging; a UI change is made in source code.", {
     type: "object", properties: { code: { type: "string", minLength: 1, maxLength: 20_000 }, tabId: TAB_ID }, required: ["code"], additionalProperties: false,
   }, async (args, operationId) => { const result = await service.evaluate(operationId, String(args.code), args.tabId ?? null); return result.error ? text({ error: "javascript_failed", message: result.error }, true) : text(result.value === undefined ? "undefined" : result.value); });
 

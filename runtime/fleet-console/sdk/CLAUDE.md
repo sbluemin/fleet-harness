@@ -7,7 +7,7 @@
 | Directory | Responsibility |
 |---|---|
 | `agent/` | Host-owned, plugin-scoped Agent execution and tool contracts |
-| `operations/`, `launch/`, `plugin/` | Operation and plugin lifecycle contracts |
+| `operations/`, `plugin/` | Operation and plugin lifecycle contracts |
 | `settings/`, `notifications/` | Configuration and notification capabilities |
 | `routing/`, `rail/` | Route and host-panel integration contracts |
 | `react/` | Stateless React authoring helpers |

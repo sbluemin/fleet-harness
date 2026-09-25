@@ -36,7 +36,7 @@ Tests, builds, live wire evidence, cleanup, and unresolved unknowns.
 ## Gotchas
 
 - **A clean run from the wrong checkout is no evidence.** Use absolute worktree paths and confirm the PID command.
-- **The Console may consume stale package `dist/`.** Build `core-ai-gateway`, then Console, then restart.
+- **The Console may consume stale package `dist/`.** Build `@fleet-console/ai-gateway`, then Console, then restart.
 - **A prompt can manufacture retries.** “Do not explain” plus Claude Code's visible-output requirement creates an empty response followed by an automatic recovery request; classify it before blaming the provider.
 - **Suggestion Mode is a separate host request.** It can arrive after the visible transcript appears complete and must be identified by its input sentinel.
 - **Parallel trials interleave logs.** Correlate with transcript time windows or run sequentially when per-trial attribution matters; never use raw identifiers in persisted product diagnostics to make the experiment easier.

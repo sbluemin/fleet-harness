@@ -1,4 +1,4 @@
-# core-process
+# Process (@fleet-console/process)
 
 Lowest-level cross-platform process and binary primitives.
 

@@ -45,9 +45,7 @@ export async function chooseRoutingModel(input: {
     if (controller.signal.aborted) throw controller.signal.reason;
     const run = await sdk.startTurn({
       model: id, ...(effort ? { effort } : {}), cwd: input.directory,
-      systemPrompt: { mode: "replace", text: [...input.instructions,
-        'Return only one JSON object, {"choice":"..."}, containing an offered candidate key. Do not include explanations or Markdown.',
-      ].join("\n\n") },
+      systemPrompt: { mode: "replace", text: input.instructions.join("\n\n") },
       prompt: JSON.stringify({ state: input.state, candidates: input.criteria }),
       outputFormat: { type: "json_schema", schema: {
         type: "object", properties: { choice: { type: "string", enum: Object.keys(input.criteria) } },

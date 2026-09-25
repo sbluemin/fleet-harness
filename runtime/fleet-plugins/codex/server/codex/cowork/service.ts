@@ -2,7 +2,7 @@ import type { AgentToolGroup } from "@fleet-console/sdk/agent";
 import { approvePatch, enqueuePatch } from "../../wiki/index.js";
 import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "../../wiki/index.js";
 import { createWikiDraftToolSpecs } from "./draft-tools.js";
-import { getWikiToolSpecs } from "../../wiki-mcp.js";
+import { getWikiToolSpecs, modelFacingWikiToolDescription } from "../../wiki-mcp.js";
 import type { MemoryPaths, Patch, WikiEntry } from "../../wiki/index.js";
 import type { WikiWorkspaceResolver } from "../../wiki/index.js";
 import { join } from "node:path";
@@ -16,7 +16,7 @@ export function createCoworkTools(store: CoworkStore, workspaceId: string, sessi
   const allowedToolIds = ["wiki_draft_read", "wiki_draft_edit", "wiki_draft_write", "wiki_briefing", "wiki_orient", "wiki_read", "wiki_resolve"];
   const specs = [...draftTools, ...getWikiToolSpecs(resolver).filter(spec => allowedToolIds.includes(spec.id))];
   return [{ name: "cowork", tools: specs.map(spec => ({
-    name: spec.id, description: spec.description, inputSchema: spec.parameters as Readonly<Record<string, unknown>>,
+    name: spec.id, description: modelFacingWikiToolDescription(spec), inputSchema: spec.parameters as Readonly<Record<string, unknown>>,
     execute: (args, context) => spec.execute(args, { ...context, cwd }),
   })) }];
 }

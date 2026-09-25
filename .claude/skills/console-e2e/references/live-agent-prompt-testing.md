@@ -111,7 +111,7 @@ ab --session fleet-console-e2e-20260807-strict eval "document.querySelectorAll('
 
 ## Registering a Theater and launching the agent
 
-Theater registration is Console's own folder UI (`/n/folder-listings`), not a native
+Theater registration is Console's own folder browser (a modal backed by `/api/v1/theaters/folder-listings`), not a native
 dialog. Fill the absolute-path textbox, use its Go action, then add the Theater.
 Use current localized accessible labels. The Theater's new-Operation action opens a menu whose items are
 `Claude (Gateway)` and `Shell`.
@@ -174,7 +174,7 @@ print(json.dumps(req['tools'][0], indent=2)[:800])
 ## Skip the UI when the question is about the provider
 
 Driving a browser to ask "does this backend accept X" is slow and confounded. For a standard
-provider/canonical/router loop, build `core-ai-gateway` and use its `e2e:provider-loop`
+provider/canonical/router loop, build `@fleet-console/ai-gateway` and use its `e2e:provider-loop`
 runner first; it fixes the production router, credential, continuation, and cleanup contracts
 without Console or PTY. Follow `ai-gateway-loop-optimization` for the exact command and
 measurement contract.

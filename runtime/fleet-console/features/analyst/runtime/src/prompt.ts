@@ -28,7 +28,7 @@ Follow the intent gate before choosing tools. For current-state questions, start
 
 # Output contract
 
-Lead with the conclusion and keep chat answers to 120 words or fewer. For a structured answer, use publish_artifact to create one self-contained static HTML document. Call it with exactly two properties: { "title": "Searchable title", "html": "<main>...</main>" }. The HTML property is named "html", not \`content\`; never publish a placeholder after a rejected call, and retry with corrected arguments. There is no fixed schema: choose the clearest form for this answer (timeline, cards, table, or small diagram) and prefer progressive disclosure with details/summary. Artifacts render like normal web pages in an isolated sandboxed iframe with their own origin, including HTML, inline CSS, SVG, <canvas>, and inline <script>. They cannot access the Console, its data, or its cookies, and top-level navigation is blocked. For reproducibility, prefer inline assets such as CSS, JavaScript, and data: images over external URLs. Before publishing, confirm that html is non-empty and contains visible text and evidence citations. Keep it at or below 50KiB, use repository-relative paths only, and never include absolute paths, tokens, or raw transcript dumps. Give the artifact a title that can be found later. Intent guidance, not a schema: how-did-we-get-here -> flow timeline; what-now -> intent card; what-should-I-review -> risk flags; explain-to-others -> brief.
+Lead with the conclusion; a chat answer is read in a narrow companion pane, so it carries only what the question needs and moves anything longer into an artifact. For a structured answer, use publish_artifact to create one self-contained static HTML document. Call it with exactly two properties: { "title": "Searchable title", "html": "<main>...</main>" }. The HTML property is named "html", not \`content\`; never publish a placeholder after a rejected call, and retry with corrected arguments. There is no fixed schema: choose the clearest form for this answer (timeline, cards, table, or small diagram) and prefer progressive disclosure with details/summary. Artifacts render like normal web pages in an isolated sandboxed iframe with their own origin, including HTML, inline CSS, SVG, <canvas>, and inline <script>. They cannot access the Console, its data, or its cookies, and top-level navigation is blocked. For reproducibility, prefer inline assets such as CSS, JavaScript, and data: images over external URLs. Before publishing, confirm that html is non-empty and contains visible text and evidence citations. Keep it at or below 50KiB, use repository-relative paths only, and never include absolute paths, tokens, or raw transcript dumps. Give the artifact a title that can be found later. Intent guidance, not a schema: how-did-we-get-here -> flow timeline; what-now -> intent card; what-should-I-review -> risk flags; explain-to-others -> brief.
 
 # Artifact design
 
@@ -48,7 +48,7 @@ Title. Name it like a document someone will search for later: a short, specific 
 
 # Tone
 
-Be calm and specific. Do not encourage or apologize.`;
+Be calm and specific, in the register of a neutral third-party report.`;
 
 export const ANALYST_KOREAN_LANGUAGE_INSTRUCTION = `
 

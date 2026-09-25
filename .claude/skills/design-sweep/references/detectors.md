@@ -25,7 +25,7 @@ Living sources — read these for the target scope; the historical examples belo
 3. **Theme invariance** — hardcoded values that do not respond to the three-theme switch.
 4. **Grammar drift** — controls deviating from the dominant pattern (typography, height snap, radius vocabulary).
 
-### Phase 2 — Static detector sweep
+### Static detector sweep
 
 Run the detectors over `<scope>` — for `full` depth, sweep each surface family (in parallel when useful); for `quick`, run directly:
 
@@ -37,6 +37,6 @@ Run the detectors over `<scope>` — for `full` depth, sweep each surface family
 
 Use exact-match patterns — substring greps produce false positives that poison the report (rg zero-gate rule).
 
-### Phase 4 — Diagnose and classify
+### Diagnose and classify
 
-Map every confirmed finding to the defect taxonomy with `file:line` evidence and a one-line channel diagnosis ("LOCAL chip speaks warn — a state token — for what is environment identity"). Severity order: channel inversion > envelope breaks (chroma/theme) > grammar drift. Findings that survive Phases 2–3 with evidence go in; speculation does not.
+Map every confirmed finding to the defect taxonomy with `file:line` evidence and a one-line channel diagnosis ("LOCAL chip speaks warn — a state token — for what is environment identity"). Severity order: channel inversion > envelope breaks (chroma/theme) > grammar drift. Findings that survive the static sweep and live-screen confirmation (Execution steps 2–3) with evidence go in; speculation does not.

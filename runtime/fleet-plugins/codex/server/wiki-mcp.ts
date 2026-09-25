@@ -254,9 +254,19 @@ function buildWikiToolSpec(
   };
 }
 
+/**
+ * 모델에 닿는 설명. MCP 등록이 싣는 것은 `description`뿐이므로, 승인 게이트·모드 의미·신뢰 경계처럼
+ * 도구 계약에 속하는 문장을 여기서 한 문자열로 모은다.
+ */
+export function modelFacingWikiToolDescription(spec: Pick<WikiToolSpec, "description" | "promptSnippet" | "whenNotToUse" | "usageGuidelines">): string {
+  const lines = [spec.description, spec.promptSnippet, ...spec.usageGuidelines, ...spec.whenNotToUse.map((line) => `Not for: ${line}.`)];
+  // 같은 문장이 여러 목록에 실려 있으면 한 번만 싣는다.
+  return [...new Set(lines.map((line) => line.trim()).filter(Boolean))].join("\n");
+}
+
 export function createCodexMcpTools(resolver?: WikiWorkspaceResolver): PluginMcpTool[] {
   return getWikiToolSpecs(resolver).map((spec) => ({
-    name: spec.id, description: spec.description,
+    name: spec.id, description: modelFacingWikiToolDescription(spec),
     inputSchema: spec.parameters as Record<string, unknown>, execute: spec.execute,
   }));
 }

@@ -23,8 +23,7 @@ export const FLEET_EXECUTION_CONTRACT = [
   "- verify: hunt real defects with evidence+impact; PASS/FAIL; fix only if asked",
   "",
   "Search only as needed for the chosen mode. Prefer known paths over broad sweeps. Do not default to exhaustive multi-strategy hunting.",
-  "NEVER create files unless they are absolutely necessary. ALWAYS prefer editing an existing file to creating a new one.",
-  "NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested.",
+  "Prefer editing existing files to creating new ones. Create documentation files (*.md, README) only when the assignment asks for them.",
   "Final reply: concise essentials only — mode, what changed or found, key evidence (path:line when relevant), and blockers/deviations.",
 ].join("\n");
 

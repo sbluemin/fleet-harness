@@ -81,7 +81,7 @@ function createEditSpec(draft: WikiDraftPort): WikiToolSpec {
     parameters: Type.Object({
       find: Type.String({ description: "Exact draft text to replace" }),
       replace: Type.String({ description: "Replacement text" }),
-      expected_occurrences: Type.Optional(Type.Number({ minimum: 1, description: "Required exact match count when supplied" })),
+      expected_occurrences: Type.Optional(Type.Number({ minimum: 1, description: "Exact number of matches required. Default 1, so a find string that occurs more than once is refused unless this is set; every match is replaced" })),
       expected_revision: Type.Optional(Type.Number({ minimum: 0, description: "Draft revision that must still be current" })),
     }),
     async execute(args: unknown) {

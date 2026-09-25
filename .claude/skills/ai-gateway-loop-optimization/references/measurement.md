@@ -16,7 +16,7 @@ Record the literal values. If any changes, the comparison is not controlled; rer
 
 Before measuring a change that acts on a behavior, run one pilot and confirm the workload produces that behavior at the frozen effort. A reasoning-carry change measured on a task with no reasoning output measures nothing: a simple file-sum task produced zero reasoning items at `low` and almost none at `medium`, while a clue puzzle with decoy files produced reasoning on every request. Decoy paths also turn reasoning quality into countable outcomes — correct answer, tool calls, and decoys opened. When the workload inspects the candidate's own source, keep the model-visible tree identical and vary only the built runtime under test. Check `git status` around every trial and discard any trial where the model mutates the frozen tree — seeing or changing the patch alters the workload as well as the runtime, so the result has no single cause.
 
-For the standalone runner, use the absolute worktree path and verify a fresh package `dist/`. For a real Operation, use an isolated runtime directory, confirm the running PID command, and build `core-ai-gateway` before Fleet Console whenever Console consumes the package's `dist/` output.
+For the standalone runner, use the absolute worktree path and verify a fresh package `dist/`. For a real Operation, use an isolated runtime directory, confirm the running PID command, and build `@fleet-console/ai-gateway` before Fleet Console whenever Console consumes the package's `dist/` output.
 
 ## Phase 1 — Observe the whole loop
 
