@@ -27,6 +27,7 @@ import { OPERATION_GROUPED_EVENT_CHANNEL, withSubagentSpawn, withUserQuestions }
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
+import { createLaunchKeyLedger } from "../../../features/console-use/host/launch-keys.js";
 import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../features/console-use/host/console-use.js";
 import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
@@ -582,10 +583,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const data = encodeSseData(channel, payload);
     for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
   }
+  // 멱등 기동 키 원장 — 살아 있는 키는 Operation, 유예 중인 키는 tombstone 에서 읽고, purge 는 흔적을 지우기 전에 선기록한다.
+  const launchKeys = createLaunchKeyLedger({
+    directory: path.join(durablePaths.dir, "console-use"),
+    operations: () => operations.list(),
+    tombstoned: () => deletionCoordinator.list().flatMap((item) => item.kind === "operation" ? [item.operation] : item.operations),
+  });
   const deletionCoordinator = createDeferredDeletionCoordinator({
     operations,
     theaters,
     save: saveDurableState,
+    beforePurge: (purged) => launchKeys.recordPurged(purged),
     // 삭제·복원은 화면 사건이기도 하다. 누른 창은 스스로 다시 조회하지만 다른 창과 에이전트가 닫은
     // 경우는 이 스트림이 유일한 길이다 — 안 흘리면 그 Operation 은 다음 재수화까지 화면에 남는다.
     // in-process 채널은 전체 노드를 싣기에 그대로 내보내지 않고, 제거는 id 만·복원은 정화된 DTO 로 낸다.
@@ -649,7 +657,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleAgentOwners = new Set<string>();
-  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
+  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), launchKeys, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
   const computerUseDirectory = path.join(fleetDataDir, "computer-use");
   const computerUseInstaller = new CuaDriverInstaller(computerUseDirectory);
@@ -968,6 +976,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         }
       },
       observe: (operationId) => consoleControl.observe(operationId),
+      launchState: (input) => { consoleAgentOwners.add(pluginId); return consoleControl.launchKeyState({ kind: "plugin", pluginId }, input.theaterId, input.key); },
+      reserveLaunchKeys: (input) => { consoleAgentOwners.add(pluginId); consoleControl.reserveLaunchKeys({ kind: "plugin", pluginId }, input.theaterId, input.keys); },
+      launchKeyUsage: () => consoleControl.launchKeyUsage({ kind: "plugin", pluginId }),
       sleep: async (operationId, options) => {
         if (!operations.get(operationId)) return { ok: false, error: "unknown_operation" };
         const observation = consoleControl.observe(operationId);

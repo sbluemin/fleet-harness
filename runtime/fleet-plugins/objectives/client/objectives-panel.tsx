@@ -13,6 +13,19 @@ import { GroupMenu, opensGroupMenu, type GroupMenuAnchor, type GroupPatch } from
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewGlyph, StartViewPicker, startViewLabel, type StartView } from "./launch-control.js";
 import { dockObjective, expandObjective, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, type ObjectiveGroup } from "./objectives-state.js";
+import {
+  discardedFollowups,
+  followupGate,
+  isFollowupSelectable,
+  markFollowupsSeen,
+  openFollowups,
+  readBatches,
+  readHistory,
+  readOrigin,
+  setFollowupOpen,
+  unseenFollowupCount,
+} from "./followups.js";
+import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace, FollowupForkGlyph } from "./followups-view.js";
 
 export interface ObjectiveContext {
   readonly theaterId: string | null;
@@ -269,6 +282,39 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const result = await call("/item/complete", { itemId: item.id });
     if (result) toast(t("objectives.toast.completed"), async () => { await call("/item/complete", { itemId: item.id, undone: true }); });
   };
+  /**
+   * 목록·머리의 즉시 완료 체크 — open 후보가 1건 이상이면 상태와 관계없이 완료하지 않고 상세를 연다.
+   * 편집 없는 검토 대기면 후보 칸까지 펼치고 첫 체크상자로 초점을 주고, 스티어링 대상 편집이면
+   * 상세만 열어 띠의 「스티어링」에 초점을 준다. 후보가 없으면 기존처럼 바로 완료한다.
+   */
+  const openCandidateCount = (target: ObjectiveItem): number => (target.done ? 0 : openFollowups(target).length);
+  const openFollowupPicker = (target: ObjectiveItem) => {
+    const n = openCandidateCount(target);
+    setSelected(target.id);
+    if (n > 0 && isFollowupSelectable(target)) {
+      setFollowupOpen(target.id, true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>(`[data-followup-comp="${CSS.escape(target.id)}"] [data-followup-sel]`)?.focus();
+        });
+      });
+    } else if (n > 0 && followupGate(target) === "steer") {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>(".objectives-detail-bottom .objectives-start")?.focus();
+        });
+      });
+    }
+  };
+  const followupTip = (target: ObjectiveItem, n: number): string => {
+    if (isFollowupSelectable(target)) return t("objectives.followup.listTip", { n });
+    if (followupGate(target) === "steer") return t("objectives.followup.steerTip", { n });
+    return t("objectives.followup.openTip", { n });
+  };
+  /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 없는 id(지워진 원본 등)는 두지 않는다. */
+  const openObjectiveDetail = (operationId: string) => {
+    if (state.items.some((entry) => entry.id === operationId)) setSelected(operationId);
+  };
   const addItem = async (raw: string) => {
     let title = raw.trim();
     if (!title) return;
@@ -368,7 +414,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       if (neighbor) void reorder(item, { anchorId: neighbor, place: event.key === "ArrowUp" ? "before" : "after" });
       return;
     }
-    if (event.key === " ") { event.preventDefault(); if (!isBusy(item)) void completeItem(item); }
+    if (event.key === " ") { event.preventDefault(); if (!isBusy(item)) { if (openCandidateCount(item) > 0) openFollowupPicker(item); else void completeItem(item); } }
     else if (event.key === "Enter") { setSelected(item.id); }
     else if (event.key === "ArrowDown") { event.preventDefault(); rows[index + 1]?.focus(); }
     else if (event.key === "ArrowUp") { event.preventDefault(); rows[index - 1]?.focus(); }
@@ -441,15 +487,19 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                 {/* 동그라미 = 완료 버튼이자 상태. 지휘관이 연결돼 있으면 묶음에서 가장 급한 활동을 고리로 보이고, 일하는 동안은 누르지 못한다. 완료는 늘 사람의 몫이다. */}
                 {/* 검토 대기 — 모든 임무와 기준이 끝난 상태. 고리는 사람의 완료 버튼이 된다. */}
                 {item.awaitingReview && !item.done
-                  ? <span className="objectives-check-tip"><button type="button" className="objectives-check is-linked is-review" aria-label={t("objectives.review.tip")} onClick={(event) => { event.stopPropagation(); void completeItem(item); }}><i aria-hidden="true" /></button><span className="objectives-check-bubble" aria-hidden="true">{t("objectives.review.tip")}</span></span>
+                  ? (() => { const followups = openCandidateCount(item); const tip = followups > 0 ? followupTip(item, followups) : t("objectives.review.tip"); return (
+                    <span className="objectives-check-tip"><button type="button" className="objectives-check is-linked is-review" aria-label={tip} onClick={(event) => { event.stopPropagation(); if (followups > 0) openFollowupPicker(item); else void completeItem(item); }}><i aria-hidden="true" /></button><span className="objectives-check-bubble" aria-hidden="true">{tip}</span></span>
+                  ); })()
                   : !item.done && item.commander.started && operationState(item.id) !== "closed"
-                  ? (() => { const state = itemActivity(item); return (
+                  ? (() => { const state = itemActivity(item); const followups = openCandidateCount(item); const tip = followups > 0 && !busy ? followupTip(item, followups) : t(busy ? "objectives.item.linkedBusyTip" : "objectives.item.linkedTip", { state: stateLabel(state) }); return (
                     <span className="objectives-check-tip">
-                      <button type="button" className={`objectives-check is-linked is-${state}`} aria-label={t(busy ? "objectives.item.linkedBusyTip" : "objectives.item.linkedTip", { state: stateLabel(state) })} disabled={busy} onClick={(event) => { event.stopPropagation(); void completeItem(item); }}><i aria-hidden="true" /></button>
-                      <span className="objectives-check-bubble" aria-hidden="true">{t(busy ? "objectives.item.linkedBusyTip" : "objectives.item.linkedTip", { state: stateLabel(state) })}</span>
+                      <button type="button" className={`objectives-check is-linked is-${state}`} aria-label={tip} disabled={busy} onClick={(event) => { event.stopPropagation(); if (followups > 0) openFollowupPicker(item); else void completeItem(item); }}><i aria-hidden="true" /></button>
+                      <span className="objectives-check-bubble" aria-hidden="true">{tip}</span>
                     </span>
                   ); })()
-                  : <button type="button" className={`objectives-check${item.done ? " is-on" : ""}`} aria-label={t(item.done ? "objectives.item.reopen" : "objectives.item.complete")} disabled={busy} onClick={(event) => { event.stopPropagation(); void completeItem(item); }}><CheckGlyph /></button>}
+                  : (() => { const followups = openCandidateCount(item); const label = item.done ? t("objectives.item.reopen") : followups > 0 && !busy ? followupTip(item, followups) : t("objectives.item.complete"); return (
+                    <button type="button" className={`objectives-check${item.done ? " is-on" : ""}`} aria-label={label} disabled={busy} onClick={(event) => { event.stopPropagation(); if (followups > 0 && !item.done) openFollowupPicker(item); else void completeItem(item); }}><CheckGlyph /></button>
+                  ); })()}
                 <div className="objectives-item-body">
                   <div className="objectives-item-title">{item.title}</div>
                   <div className="objectives-item-meta">
@@ -507,6 +557,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           placeButton={placeButton("objectives-place-detail")}
           onComplete={() => completeItem(current)}
           onToggleEdge={(from, to) => toggleEdge(current, from, to)}
+          onOpenObjective={openObjectiveDetail}
         />
       ) : null}
       {groupMenu && groupOf(groupMenu.groupId) ? (
@@ -719,7 +770,7 @@ function OpChip({ state, label, title, onRemove, removeLabel }: { state: string;
   );
 }
 
-type DetailSection = "detail:criteria" | "detail:missions";
+type DetailSection = "detail:criteria" | "detail:missions" | "detail:followups";
 
 interface DetailProps {
   readonly item: ObjectiveItem;
@@ -746,6 +797,8 @@ interface DetailProps {
   readonly placeButton: ReactNode;
   readonly onComplete: () => void;
   readonly onToggleEdge: (from: string, to: string) => Promise<void>;
+  /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 있는 항목만 연다. */
+  readonly onOpenObjective: (operationId: string) => void;
 }
 
 /**
@@ -991,7 +1044,7 @@ function ProposalRow({ proposal, target, n, itemId, t, call, touchable, annotati
 
 const BRIEF_LINES = 3;
 
-function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightStep, onClose, detailRef, placeButton, onComplete, onToggleEdge }: DetailProps) {
+function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightStep, onClose, detailRef, placeButton, onComplete, onToggleEdge, onOpenObjective }: DetailProps) {
   const [note, setNote] = useState(item.note);
   const [title, setTitle] = useState(item.title);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1009,6 +1062,9 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   const attachments = useAttachmentUpload(item, t);
   const [dropping, setDropping] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
+  // 후속 후보 본문 — 달성 기준 아래 읽기 전용 구획. 줄·상세는 comp 와 같은 컴포넌트이고 한 번에 하나만 펼친다.
+  const [followupOpenId, setFollowupOpenId] = useState<string | null>(null);
+  useEffect(() => { setFollowupOpenId(null); }, [item.id]);
   // 펼친 단계 기록 — 단계 id → 펼친 순간 이미 읽은 기록 id(「새 기록」 표시의 기준). 다른 항목으로 가면 모두 접는다.
   const [openRecords, setOpenRecords] = useState<Readonly<Record<string, ReadonlySet<string>>>>({});
   useEffect(() => { setOpenRecords({}); }, [item.id]);
@@ -1071,6 +1127,29 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
     return () => cancelAnimationFrame(frame);
   }, [highlightStep, missionsOpen, detailRef]);
   const unseenAny = item.steps.some((step) => unseenRecords(step) > 0);
+  // 후속 후보 — 본문 구획(읽기 전용)과 완료 뒤 결과. 후보가 없으면 서지 않는다.
+  const followupOpenList = openFollowups(item);
+  const followupDiscardedList = discardedFollowups(item);
+  const followupBatches = readBatches(item);
+  const followupHistory = readHistory(item);
+  const followupOrigin = readOrigin(item);
+  const followupSelectableBody = isFollowupSelectable(item);
+  const followupGateKind = followupGate(item);
+  const showFollowupSection = !item.done && (followupOpenList.length > 0 || followupDiscardedList.length > 0);
+  const followupSectionOpen = !showFollowupSection || sectionOpen("detail:followups");
+  const followupIdsKey = followupOpenList.map((candidate) => `${candidate.id}:${candidate.rev}`).join(",");
+  const followupUnseen = unseenFollowupCount(item.id, followupIdsKey ? followupIdsKey.split(",") : []);
+  const openFollowupComp = () => {
+    setFollowupOpen(item.id, true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>(`[data-followup-comp="${CSS.escape(item.id)}"] [data-followup-sel]`)?.focus();
+      });
+    });
+  };
+  useEffect(() => {
+    if (followupSectionOpen && followupIdsKey) markFollowupsSeen(item.id, followupIdsKey.split(","));
+  }, [item.id, followupIdsKey, followupSectionOpen]);
 
   // 브리핑 — 쉴 때 3줄, 넘치면 「더 보기」. 쓰는 동안(초점)은 다 보인다(360px 뒤로는 안에서 스크롤).
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1118,7 +1197,21 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
       <div className="objectives-group">
         <div className="objectives-detail-head">
           <button type="button" className="objectives-glyph objectives-detail-back" aria-label={t("objectives.detail.backToList")} title={t("objectives.detail.backToList")} onClick={onClose}>‹</button>
-          <button type="button" className={`objectives-check${item.done ? " is-on" : ""}`} aria-label={t(item.done ? "objectives.item.reopen" : "objectives.item.complete")} disabled={busy} onClick={onComplete}><CheckGlyph /></button>
+          {(() => {
+            const n = item.done || busy ? 0 : followupOpenList.length;
+            const selectable = n > 0 && followupSelectableBody;
+            const steerFirst = n > 0 && !selectable && followupGateKind === "steer";
+            const label = selectable ? t("objectives.followup.listTip", { n }) : steerFirst ? t("objectives.followup.steerTip", { n }) : n > 0 ? t("objectives.followup.openTip", { n }) : t(item.done ? "objectives.item.reopen" : "objectives.item.complete");
+            return (
+          <button type="button" className={`objectives-check${item.done ? " is-on" : ""}`} aria-label={label} disabled={busy} onClick={() => {
+            if (selectable) openFollowupComp();
+            else if (steerFirst) detailRef.current?.querySelector<HTMLElement>(".objectives-detail-bottom .objectives-start")?.focus();
+            else if (n > 0 && followupGateKind === "criteria") onOpenSection("detail:criteria");
+            else if (n > 0) return;
+            else onComplete();
+          }}><CheckGlyph /></button>
+            );
+          })()}
           <textarea className="objectives-detail-title" aria-label={t("objectives.item.titleAria")} value={title} rows={1} readOnly={!editable} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); } }} onBlur={() => { if (title.trim() && title !== item.title) void call("/item/patch", { itemId: item.id, patch: { title: title.trim() } }); }} />
           <button type="button" className={`objectives-star${item.important ? " is-on" : ""}`} aria-label={t("objectives.item.important")} aria-pressed={item.important} onClick={() => void call("/item/patch", { itemId: item.id, patch: { important: !item.important } })}><StarGlyph /></button>
           {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.item.delete")} title={t("objectives.item.delete")} onClick={async () => { const removed = await call<{ item: ObjectiveItem }>("/item/remove", { itemId: item.id }); if (removed) toast(t("objectives.toast.deleted")); }}><TrashGlyph /></button> : null}
@@ -1126,6 +1219,22 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         </div>
         {busy ? <div className="objectives-busy-line" role="status"><i aria-hidden="true" /><span>{t(item.cooking ? "objectives.cooking" : "objectives.busy")}</span></div> : null}
       </div>
+
+      {/* 후속 목표 — 완료한 목표 상세의 머리 아래에 영속한다. 배치 요약과 줄 상태, 남긴 후보는 접힌 줄로. */}
+      {followupBatches.length > 0 || followupHistory || (item.done && followupOpenList.length > 0) ? (
+      <div className="objectives-group">
+        <SectionHead glyph={<FollowupForkGlyph />} label={t("objectives.followup.results")} />
+        <FollowupBatchResults
+          batches={followupBatches}
+          leftover={item.done ? followupOpenList : []}
+          historyTotal={followupHistory}
+          language={language}
+          t={t}
+          onRetry={(batchId, candidateId) => void call("/followup/retry", { itemId: item.id, batchId, candidateId })}
+          onOpenObjective={onOpenObjective}
+        />
+      </div>
+      ) : null}
 
       <div className="objectives-group">
         <div className={`objectives-row${item.today ? " is-on" : ""}`}>
@@ -1179,6 +1288,24 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
       </div>
 
+      {/* 출처 — 후속으로 태어난 목표의 원본. 한 줄(말줄임 제목 + ↗)로만 두고, 원본이 없으면 비활성 한 줄. */}
+      {followupOrigin ? (
+      <div className="objectives-group">
+        {followupOrigin.title ? (
+          <div className="objectives-row">
+            <button type="button" className="objectives-row-main" onClick={() => onOpenObjective(followupOrigin.itemId)} aria-label={`${t("objectives.origin.label")} · ${followupOrigin.title}`}>
+              <span className="objectives-row-lab objectives-origin-lab">{t("objectives.origin.label")}<span aria-hidden="true"> · </span><span className="objectives-origin-title">{followupOrigin.title}</span></span>
+              <span className="objectives-origin-goto" aria-hidden="true"><GoGlyph /></span>
+            </button>
+          </div>
+        ) : (
+          <div className="objectives-row is-static">
+            <span className="objectives-row-lab objectives-origin-lab">{t("objectives.origin.label")}<span aria-hidden="true"> · </span><span>{t("objectives.origin.deleted")}</span></span>
+          </div>
+        )}
+      </div>
+      ) : null}
+
       {/* 달성 기준 — 사람이 쓰고, 사람이 구상을 청한 턴에 지휘관이 추가·수정·삭제를 제안한다. 제안은 바뀔 기준 바로 그 줄에 서고
           (추가는 끝에 새 줄) 사람이 줄마다 승인·거절하거나 어노테이션을 달아 다시 구상하게 한다. 제안이 남아 있으면 개시·스티어링은 잠긴다.
           마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져 근거와 함께 충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져
@@ -1222,6 +1349,45 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
           ) : null}
         </div>
       </div>
+
+      {/* 후속 후보 — 달성 기준 아래. 후보가 있을 때만 서고, 체크 없이 같은 줄·상세를 읽는다(폐기는 여기서도 된다).
+          검토 대기에서는 띠로 보내 고르고, edited·gated·작업 중에는 읽기·폐기만 한다. */}
+      {showFollowupSection ? (
+      <div className="objectives-group">
+        <SectionHead
+          glyph={<FollowupForkGlyph />}
+          label={t("objectives.followup.title")}
+          tools={<>
+            {followupUnseen > 0 ? <i className="objectives-followup-newdot" aria-hidden="true" /> : null}
+            <span className="objectives-criteria-count">{t("objectives.followup.count", { k: followupOpenList.length, n: 10 })}</span>
+          </>}
+          controls="objectives-sec-followups"
+          expanded={followupSectionOpen}
+          onToggle={() => onToggleSection("detail:followups")}
+        />
+        <div id="objectives-sec-followups" hidden={!followupSectionOpen}>
+          <div className="objectives-followup-note">
+            {followupSelectableBody
+              ? <>{t("objectives.followup.bodyReview")} <button type="button" className="objectives-btn is-small" onClick={openFollowupComp}>{t("objectives.followup.openBand")}</button></>
+              : followupGateKind === "steer" ? t("objectives.followup.bodyEdited")
+              : followupGateKind === "criteria" ? t("objectives.followup.bodyGated")
+              : t("objectives.followup.bodyWorking")}
+          </div>
+          <FollowupCandidateList
+            candidates={followupOpenList}
+            selectable={false}
+            selection={EMPTY_IDS}
+            t={t}
+            idPrefix={`body-${item.id}`}
+            openId={followupOpenId}
+            onOpenChange={setFollowupOpenId}
+            onToggleCheck={() => {}}
+            onDiscard={(candidateId) => void call("/followup/discard", { itemId: item.id, candidateId })}
+          />
+          <FollowupDiscardedTrace discarded={followupDiscardedList} t={t} />
+        </div>
+      </div>
+      ) : null}
 
       {/* 임무 — 목록과 편성 그래프를 한 섹션에 둔다. 머리 오른쪽은 완료 셈이고, 접혀도 남는다(접힌 임무에 안 읽은 기록이 있으면 셈 앞에 점 하나).
           머리를 접으면 목록과 추가 입력만 접히고, 그래프는 접지 않는다 — 접어도 진행이 한눈에 보인다. 임무가 없으면 그래프는 서지 않는다. */}

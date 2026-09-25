@@ -1047,3 +1047,97 @@ del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
   .objectives-btn,
   .objectives-comp-chip { border-color: ButtonBorder; }
 }
+
+/* 후속 후보(A안) — 띠 comp 와 본문 구획이 같은 줄·상세를 쓴다. 색은 토큰만. */
+/* 펼친 comp 안 목록 — 330px 뒤로는 안에서 스크롤. */
+.objectives-followup-comp-list { max-height: 330px; overflow: auto; padding: 2px 0 6px; }
+.objectives-followup-comp-list .objectives-followup-list { padding: 0; }
+.objectives-followup-list { display: flex; flex-direction: column; padding: 0 6px; }
+.objectives-followup-item { border-radius: var(--radius-xs); }
+.objectives-followup-item.is-open { background: var(--control-rest); }
+/* 줄 = 체크상자 | 제목(최대 2줄)+한 줄 요약 | 근거 수+펼침 화살표. 줄 본문 클릭은 펼침만 하고 선택하지 않는다. */
+.objectives-followup-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 7px 8px; }
+.objectives-followup-row.is-readonly { grid-template-columns: minmax(0, 1fr) auto; }
+/* 선택은 네모 체크상자 — 둥근 완료 체크와 모양을 구별한다. */
+.objectives-followup-sel { appearance: none; -webkit-appearance: none; margin: 2px 0 0; width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--text-tertiary); background: transparent; cursor: pointer; display: grid; place-items: center; flex: none; padding: 0; }
+.objectives-followup-sel:checked { background: var(--aurora); border-color: var(--aurora); }
+.objectives-followup-sel:checked::after { content: ""; width: 7px; height: 4px; border: 1.8px solid var(--text-on-brass); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
+.objectives-followup-sel:focus-visible { outline: 1.5px solid var(--aurora); outline-offset: 2px; }
+.objectives-followup-main { border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; min-width: 0; display: flex; flex-direction: column; gap: 1px; color: inherit; font: inherit; }
+.objectives-followup-main:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; border-radius: var(--radius-xs); }
+.objectives-followup-title { font-weight: var(--weight-medium); color: var(--text-primary); font-size: var(--t-sm); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.objectives-followup-summary { color: var(--text-secondary); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-followup-item.is-open .objectives-followup-summary { white-space: normal; }
+.objectives-followup-meta { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); padding-top: 3px; white-space: nowrap; }
+.objectives-followup-meta svg { transition: transform var(--duration-fast); }
+.objectives-followup-item.is-open .objectives-followup-meta svg { transform: rotate(90deg); }
+/* 상세 = 브리핑(4줄 뒤 「더 보기」) → 달성 기준 초안(점선 번호 원) → 근거(종류 라벨+안전한 설명). */
+.objectives-followup-detail { padding: 2px 10px 10px 33px; display: flex; flex-direction: column; gap: 9px; }
+.objectives-followup-row.is-readonly + .objectives-followup-detail { padding-left: 10px; }
+.objectives-followup-lab { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 3px; }
+.objectives-followup-brief { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.objectives-followup-brief.is-all { display: block; }
+.objectives-followup-more { align-self: flex-start; border: 0; background: transparent; color: var(--brass); padding: 0; cursor: pointer; font: inherit; font-size: var(--t-xs); }
+.objectives-followup-more:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-followup-crit { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; counter-reset: objectives-followup-crit; }
+.objectives-followup-crit li { display: flex; gap: 8px; font-size: var(--t-sm); color: var(--text-primary); line-height: 1.45; overflow-wrap: anywhere; }
+.objectives-followup-crit li::before { counter-increment: objectives-followup-crit; content: counter(objectives-followup-crit); flex: none; width: 16px; height: 16px; border: 1.5px dashed var(--brass); border-radius: 50%; font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 13px; text-align: center; color: var(--brass); margin-top: 1px; }
+.objectives-followup-ev { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.objectives-followup-ev li { display: flex; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); overflow-wrap: anywhere; }
+.objectives-followup-ev li b { flex: none; font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 1.8; color: var(--brass); }
+.objectives-followup-ev code { font-family: var(--font-mono); font-size: var(--t-xs); }
+.objectives-followup-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.objectives-followup-hint { font-size: var(--t-2xs); color: var(--text-tertiary); flex: 1; min-width: 140px; }
+.objectives-followup-discard.is-armed { border-color: var(--coral); color: var(--coral); background: transparent; }
+/* 폐기 흔적 — 목록 끝의 흐린 한 줄로 접혀 남는다. */
+.objectives-followup-trace { margin: 4px 14px 0; padding-top: 6px; border-top: 1px dashed var(--surface-rim); font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-followup-comp-list .objectives-followup-trace { margin: 4px 14px 6px; }
+.objectives-followup-trace > button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0; display: inline-flex; gap: 6px; align-items: center; font: inherit; }
+.objectives-followup-trace > button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-followup-trace > button svg { transition: transform var(--duration-fast); }
+.objectives-followup-trace > button[aria-expanded="true"] svg { transform: rotate(90deg); }
+.objectives-followup-trace ul { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.objectives-followup-trace li s { color: var(--text-tertiary); }
+.objectives-followup-trace li span { font-size: var(--t-2xs); }
+/* 본문 구획의 펼친 카드 — 배경 양 끝을 안내 상자와 맞춘다(텍스트 들여쓰기도 나란히 선다). */
+#objectives-sec-followups .objectives-followup-item { margin-inline: 8px; }
+.objectives-followup-note { margin: 2px 14px 6px; padding: 6px 9px; border-radius: var(--radius-xs); background: var(--control-rest); font-size: var(--t-xs); color: var(--text-secondary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.objectives-followup-count { font-variant-numeric: tabular-nums; color: var(--aurora); font-weight: var(--weight-medium); }
+.objectives-followup-newdot { width: 6px; height: 6px; border-radius: 50%; background: var(--brass); display: inline-block; flex: none; }
+/* 완료 뒤 결과 — 머리 아래에 영속한다. */
+.objectives-followup-results { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 6px; }
+.objectives-followup-batch + .objectives-followup-batch { margin-top: 8px; }
+.objectives-followup-batchat { margin: 0 14px 2px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-followup-sum { margin: 0 14px 2px; font-size: var(--t-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.objectives-followup-res { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
+.objectives-followup-rrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: var(--radius-xs); }
+.objectives-followup-rrow:hover { background: var(--control-rest); }
+.objectives-followup-rt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--t-sm); color: var(--text-primary); }
+.objectives-followup-rstat { display: inline-flex; align-items: center; gap: 5px; font-size: var(--t-xs); white-space: nowrap; }
+.objectives-followup-rstat.is-ok { color: var(--positive); }
+.objectives-followup-rstat.is-fail { color: var(--coral); }
+.objectives-followup-rstat.is-wait, .objectives-followup-rstat.is-gone { color: var(--text-tertiary); }
+.objectives-followup-rstat button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.objectives-followup-rstat button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-followup-spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: objectives-spin 0.9s linear infinite; }
+.objectives-followup-history { margin: 0 14px; font-size: var(--t-2xs); color: var(--text-tertiary); }
+/* 출처 — 후속으로 태어난 목표의 원본 한 줄. 제목은 말줄임, 이동 글리프는 12px. */
+.objectives-origin-lab { font-size: var(--t-xs); color: var(--text-secondary); }
+.objectives-origin-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-origin-goto { display: inline-grid; place-items: center; flex: none; margin-left: auto; color: var(--text-tertiary); }
+.objectives-origin-goto svg { width: 12px; height: 12px; }
+button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass); }
+/* 띠 위 탭과 펼친 comp 의 aurora 톤 — 「같은 상태의 다른 선택은 띠가 위로 펼쳐져 고른다」는 기존 문법. */
+.objectives-band.has-alt.is-review::before { border-color: color-mix(in oklch, var(--aurora) 30%, transparent); background: color-mix(in oklch, var(--aurora) 6%, var(--surface-panel)); }
+.objectives-comp.is-review { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(180deg, color-mix(in oklch, var(--aurora) 4%, var(--surface-panel)), color-mix(in oklch, var(--aurora) 10%, var(--surface-panel))); }
+.objectives-comp.is-review .objectives-start { border-top-color: color-mix(in oklch, var(--aurora) 22%, transparent); }
+/* 아주 좁은 상세 — 곁 값을 줄이고 글 읽을 폭을 남긴다. */
+@container objectives-detail (width < 340px) {
+  .objectives-followup-row { gap: 8px; padding-left: 6px; padding-right: 6px; }
+  .objectives-followup-detail { padding-left: 10px; padding-right: 8px; }
+  .objectives-followup-note { margin-left: 8px; margin-right: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .objectives-followup-spin { animation: none; }
+  .objectives-followup-meta svg, .objectives-followup-trace > button svg { transition: none; }
+}

@@ -8,9 +8,14 @@ import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import {
   MAX_CRITERIA,
   MAX_CRITERION_TEXT,
+  MAX_FOLLOWUPS,
+  MAX_FOLLOWUP_BATCHES,
+  MAX_FOLLOWUP_DISCARDED,
   MAX_RECORDS,
   MAX_STEPS,
   awaitingReview,
+  evidenceView,
+  followupSettled,
   graphOf,
   hasCycle,
   lineupOrder,
@@ -31,6 +36,14 @@ import {
   type StoredObjective,
   type StoredRecord,
   type StoredStep,
+  type FollowupBodyInput,
+  type FollowupHistory,
+  type FollowupItemState,
+  type FollowupReviseInput,
+  type StoredFollowup,
+  type StoredFollowupBatch,
+  type StoredFollowupItem,
+  type StoredOrigin,
 } from "./types.js";
 
 /**
@@ -67,6 +80,26 @@ export interface ObjectiveInit {
   /** Console Use 가 함께 받은 달성 기준 문장 — 저장될 때 기본 요구사항으로 by "human" 이 된다. */
   readonly criteria?: readonly string[];
   readonly addedBy?: string;
+  /** 후속으로 태어난 목표 — 원본 목표·후보·배치와 근거. */
+  readonly origin?: StoredOrigin;
+}
+
+/**
+ * 새 목표의 초기 달성 기준 — 다듬은 문장. 한 건이라도 맞지 않으면 던진다. 키 붙은 생성은 Operation 을 띄우기 **전에** 이 검사를
+ * 먼저 거친다(띄운 뒤 거절되면 그 키의 Operation 을 지울 수 없다 — 지우면 키가 삭제로 종결된다).
+ */
+export function checkedCriteria(init: Pick<ObjectiveInit, "criteria">): readonly string[] {
+  const criteriaTexts = (init.criteria ?? []).map((entry) => entry.trim());
+  if (criteriaTexts.length > MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria");
+  if (criteriaTexts.some((entry) => entry.length === 0 || entry.length > MAX_CRITERION_TEXT)) throw new ObjectiveStoreError("invalid_criteria");
+  return criteriaTexts;
+}
+
+/** 완료와 함께 고른 후보 — 화면이 본 rev 와, 고른 순간 동결할 기동 조건. */
+export interface FollowupSelection {
+  readonly batchId: string;
+  readonly followups: readonly { readonly id: string; readonly rev: number }[];
+  readonly launch: StoredFollowupBatch["launch"];
 }
 
 export interface ObjectivePatch {
@@ -133,6 +166,29 @@ export interface ObjectiveStore {
   attachmentRemove(itemId: string, attachmentId: string): ObjectiveItem;
   /** 첨부 파일의 절대 경로 — 서버 안(파일 서빙·지휘관의 도구 응답)에서만 쓴다. */
   attachmentPath(item: ObjectiveItem, attachment: ObjectiveAttachment): string;
+  /** 후속 후보 — 지휘관만 쓴다. 활성(open·selected) 은 목표당 상한까지. 끝난 목표에는 쓰지 않는다. */
+  followupAdd(itemId: string, body: FollowupBodyInput): ObjectiveItem;
+  /** open 후보만 고친다 — rev 가 오른다. */
+  followupRevise(itemId: string, candidateId: string, patch: FollowupReviseInput): ObjectiveItem;
+  /** 지휘관이 자기 open 후보를 거둔다 — 흔적 없이 빠진다. */
+  followupWithdraw(itemId: string, candidateId: string): ObjectiveItem;
+  /** 사람이 open 후보를 버린다 — 제목·요약과 시각만 흔적으로 남는다(멱등). */
+  followupDiscard(itemId: string, candidateId: string): ObjectiveItem;
+  /**
+   * 고른 후보와 함께 완료한다 — 검토 대기·편집·기준 제안·rev 를 검사하고, `reserve` 로 기동 키 용량을 먼저 확보한 뒤 완료·배치
+   * 기록·후보 잠금을 한 번에 쓴다. 이미 같은 배치로 완료됐다면 쓰지 않고 그대로 돌려준다(`fresh: false`).
+   */
+  completeWithFollowups(itemId: string, selection: FollowupSelection, reserve: (candidateIds: readonly string[]) => void): { readonly item: ObjectiveItem; readonly fresh: boolean };
+  /** 배치 항목의 생성 결과를 기록한다. 끝난 항목(created·deleted)은 후보 목록에서 빠지고 배치에만 남는다. */
+  followupSettle(itemId: string, batchId: string, candidateId: string, next: { readonly state: FollowupItemState; readonly operationId?: string; readonly error?: string; readonly attempted?: boolean }): ObjectiveItem;
+  /** failed·confirming 항목을 다시 creating 으로 — 같은 스냅샷·같은 키로 다시 확인하거나 만든다. */
+  followupRetry(itemId: string, batchId: string, candidateId: string): ObjectiveItem;
+  /** failed 항목을 포기한다 — 후보는 같은 rev 의 open 으로 돌아간다. */
+  followupAbandon(itemId: string, batchId: string, candidateId: string): ObjectiveItem;
+  /** 저장된 배치 그대로 — 동결된 기동 조건과 스냅샷 원형. 원본이 보이지 않으면 null. */
+  followupBatch(itemId: string, batchId: string): StoredFollowupBatch | null;
+  /** 이 Operation 에 목표 레코드가 이미 있는가 — 키 붙은 생성의 재시도가 입양을 되풀이하지 않게 한다. */
+  recorded(operationId: string): boolean;
 }
 
 const STATE_FILE = "state.json";
@@ -200,7 +256,9 @@ function writeStateAtomic(file: string, objectives: readonly StoredObjective[]):
 /** 기본값·빈 값은 쓰지 않는다 — 저장 모양에는 뜻이 있는 값만 남는다. */
 function compact(objective: StoredObjective): StoredObjective {
   const out: Record<string, unknown> = { ...objective };
-  for (const key of ["note", "cook", "dueDate", "addedBy"] as const) if (!out[key]) delete out[key];
+  for (const key of ["note", "cook", "dueDate", "addedBy", "followupHistory", "origin"] as const) if (!out[key]) delete out[key];
+  if (!objective.followups?.length) delete out.followups;
+  if (!objective.followupBatches?.length) delete out.followupBatches;
   for (const key of ["cooking", "criteriaOpen", "important", "today"] as const) if (out[key] !== true) delete out[key];
   if (!(objective.attachments?.length)) delete out.attachments;
   if (!(objective.criteria?.length)) delete out.criteria;
@@ -279,6 +337,23 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       criteria: (stored.criteria ?? []).map((criterion) => ({ ...criterion })),
       criteriaProposals: (stored.criteriaProposals ?? []).map((proposal) => ({ ...proposal })),
       members,
+      followups: (stored.followups ?? []).map((candidate) => ({
+        id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary,
+        brief: candidate.brief, criteria: [...candidate.criteria], evidence: candidate.evidence.map(evidenceView),
+        at: candidate.at, updatedAt: candidate.updatedAt, batchId: candidate.batchId ?? null,
+        discarded: candidate.state === "discarded" ? { at: candidate.discardedAt ?? candidate.updatedAt, by: "human" as const } : null,
+      })),
+      followupBatches: (stored.followupBatches ?? []).map((batch) => ({
+        id: batch.id, at: batch.at,
+        items: batch.items.map((entry) => ({
+          candidateId: entry.candidateId, rev: entry.rev,
+          snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, brief: entry.snapshot.brief, criteria: [...entry.snapshot.criteria], evidence: entry.snapshot.evidence.map(evidenceView) },
+          // 만든 뒤 사람이 지운 후속은 보기 시점에 「삭제됨」 — 저장은 created 그대로라 복원하면 돌아오고 누계·멱등성은 그대로다.
+          state: entry.state === "created" && entry.operationId && !options.operations.get(entry.operationId) ? "deleted" as const : entry.state, operationId: entry.operationId ?? null, error: entry.error ?? null, attempts: entry.attempts, settledAt: entry.settledAt ?? null,
+        })),
+      })),
+      followupHistory: stored.followupHistory ?? null,
+      origin: stored.origin ? { itemId: stored.origin.itemId, title: options.operations.get(stored.origin.itemId)?.title ?? null, candidateId: stored.origin.candidateId, evidence: stored.origin.evidence.map(evidenceView) } : null,
       steps: stored.steps.map((step) => {
         const member = step.member ? byMember.get(step.member) : null;
         return {
@@ -433,9 +508,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         after: (step.after ?? []).filter((index) => index >= 0 && index < ix).map((index) => ({ id: stepIds[index]! })),
       }));
       // 함께 받은 달성 기준은 같은 저장에 기본 요구사항(by "human")으로 남는다 — 한 건이라도 맞지 않으면 목표 자체를 세우지 않는다.
-      const criteriaTexts = (init.criteria ?? []).map((entry) => entry.trim());
-      if (criteriaTexts.length > MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria");
-      if (criteriaTexts.some((entry) => entry.length === 0 || entry.length > MAX_CRITERION_TEXT)) throw new ObjectiveStoreError("invalid_criteria");
+      const criteriaTexts = checkedCriteria(init);
       const stored: StoredObjective = {
         operationId,
         note: init.note ?? "",
@@ -443,6 +516,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(init.dueDate ? { dueDate: init.dueDate } : {}),
         ...(init.today ? { today: true as const } : {}),
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
+        ...(init.origin ? { origin: init.origin } : {}),
         ...(criteriaTexts.length ? { criteria: criteriaTexts.map((text) => ({ id: randomUUID(), text, by: "human" as const })) } : {}),
         steps: [...lineupOrder(steps)],
       };
@@ -511,7 +585,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     // 완료는 상태이지 연결 해제가 아니다 — 담당 연결은 그대로 남아 묶음·이동이 살아 있다.
-    complete: (itemId) => update(itemId, (stored) => (stored.done ? stored : { ...stored, done: { at: now() }, cooking: undefined, criteriaOpen: undefined })),
+    complete: (itemId) => update(itemId, (stored) => {
+      if (stored.done) return stored;
+      // 남은 후보가 있으면 고르지 않은 완료도 후보 검토의 경계를 지난다 — 후보가 없는 목표의 완료는 지금 그대로다.
+      if ((stored.followups ?? []).some((candidate) => candidate.state === "open")) assertReviewable(stored);
+      return { ...stored, done: { at: now() }, cooking: undefined, criteriaOpen: undefined };
+    }),
     reopen: (itemId) => update(itemId, (stored) => (stored.done ? { ...stored, done: undefined } : stored)),
 
     stepAdd: (itemId, input, addOptions) => update(itemId, (stored) => {
@@ -747,6 +826,160 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     attachmentPath: (item, attachment) => fileOf(item.theaterId, item.id, attachment),
+
+    followupAdd: (itemId, body) => update(itemId, (stored) => {
+      if (stored.done) throw new ObjectiveStoreError("item_done");
+      const followups = stored.followups ?? [];
+      if (followups.filter((candidate) => candidate.state !== "discarded").length >= MAX_FOLLOWUPS) throw new ObjectiveStoreError("too_many_followups");
+      const at = now();
+      return { ...stored, followups: [...followups, { id: randomUUID(), rev: 1, state: "open", ...body, at, updatedAt: at }] };
+    }),
+    followupRevise: (itemId, candidateId, patch) => update(itemId, (stored) => {
+      if (stored.done) throw new ObjectiveStoreError("item_done");
+      const target = openFollowup(stored, candidateId);
+      const next: StoredFollowup = { ...target, ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)), rev: target.rev + 1, updatedAt: now() };
+      return { ...stored, followups: (stored.followups ?? []).map((candidate) => (candidate.id === candidateId ? next : candidate)) };
+    }),
+    followupWithdraw: (itemId, candidateId) => update(itemId, (stored) => {
+      if (stored.done) throw new ObjectiveStoreError("item_done");
+      openFollowup(stored, candidateId);
+      return { ...stored, followups: (stored.followups ?? []).filter((candidate) => candidate.id !== candidateId) };
+    }),
+    followupDiscard: (itemId, candidateId) => update(itemId, (stored) => {
+      const target = (stored.followups ?? []).find((candidate) => candidate.id === candidateId);
+      if (!target) throw new ObjectiveStoreError("unknown_followup");
+      if (target.state === "discarded") return stored;
+      if (target.state !== "open") throw new ObjectiveStoreError("followup_locked");
+      const at = now();
+      // 흔적은 제목·요약·시각만 — 브리핑·기준·근거는 남기지 않는다. 넘치면 오래된 흔적부터 정리한다.
+      const trace: StoredFollowup = { id: target.id, rev: target.rev, state: "discarded", title: target.title, summary: target.summary, brief: "", criteria: [], evidence: [], at: target.at, updatedAt: at, discardedAt: at };
+      let followups = (stored.followups ?? []).map((candidate) => (candidate.id === candidateId ? trace : candidate));
+      const traces = followups.filter((candidate) => candidate.state === "discarded");
+      if (traces.length > MAX_FOLLOWUP_DISCARDED) {
+        const drop = new Set(traces.sort((a, b) => (a.discardedAt ?? 0) - (b.discardedAt ?? 0)).slice(0, traces.length - MAX_FOLLOWUP_DISCARDED).map((candidate) => candidate.id));
+        followups = followups.filter((candidate) => !drop.has(candidate.id));
+      }
+      return { ...stored, followups };
+    }),
+
+    completeWithFollowups(itemId, selection, reserve) {
+      let fresh = false;
+      const item = update(itemId, (stored) => {
+        const batches = stored.followupBatches ?? [];
+        if (stored.done) {
+          if (batches.some((batch) => batch.id === selection.batchId)) return stored;
+          throw new ObjectiveStoreError("item_done");
+        }
+        assertReviewable(stored);
+        if (batches.some((batch) => batch.id === selection.batchId)) throw new ObjectiveStoreError("followup_changed");
+        const ids = selection.followups.map((entry) => entry.id);
+        if (new Set(ids).size !== ids.length) throw new ObjectiveStoreError("followup_changed");
+        const chosen = selection.followups.map((entry) => {
+          const candidate = (stored.followups ?? []).find((existing) => existing.id === entry.id);
+          if (!candidate || candidate.state !== "open" || candidate.rev !== entry.rev) throw new ObjectiveStoreError("followup_changed");
+          return candidate;
+        });
+        if (batches.filter((batch) => !batch.items.every((entry) => followupSettled(entry.state))).length >= MAX_FOLLOWUP_BATCHES) throw new ObjectiveStoreError("followup_backlog");
+        // 기동 키 용량을 완료 기록보다 먼저 확보한다 — 목표만 완료되고 생성이 막히는 일이 없게.
+        reserve(ids);
+        const items: StoredFollowupItem[] = chosen.map((candidate) => ({
+          candidateId: candidate.id, rev: candidate.rev,
+          snapshot: { title: candidate.title, summary: candidate.summary, brief: candidate.brief, criteria: [...candidate.criteria], evidence: [...candidate.evidence] },
+          state: "creating", attempts: 0,
+        }));
+        const chosenIds = new Set(ids);
+        fresh = true;
+        return foldBatches({
+          ...stored,
+          done: { at: now() }, cooking: undefined, criteriaOpen: undefined,
+          followups: (stored.followups ?? []).map((candidate) => (chosenIds.has(candidate.id) ? { ...candidate, state: "selected" as const, batchId: selection.batchId } : candidate)),
+          followupBatches: [...batches, { id: selection.batchId, at: now(), launch: selection.launch, items }],
+        });
+      });
+      return { item, fresh };
+    },
+
+    followupSettle: (itemId, batchId, candidateId, next) => update(itemId, (stored) => {
+      const { batch, entry } = batchItem(stored, batchId, candidateId);
+      const settled = next.state !== "creating";
+      const updated: StoredFollowupItem = {
+        candidateId: entry.candidateId, rev: entry.rev, snapshot: entry.snapshot, state: next.state,
+        ...(next.operationId ?? entry.operationId ? { operationId: next.operationId ?? entry.operationId } : {}),
+        ...(next.error ? { error: next.error } : {}),
+        attempts: entry.attempts + (next.attempted ? 1 : 0),
+        ...(settled ? { settledAt: now() } : {}),
+      };
+      if (updated.state === entry.state && updated.operationId === entry.operationId && updated.error === entry.error && updated.attempts === entry.attempts) return stored;
+      // 끝난 항목의 후보는 목록에서 빠진다(배치에 남는다). 포기한 항목의 후보는 같은 rev 의 open 으로 돌아간다.
+      const followups = updated.state === "created" || updated.state === "deleted"
+        ? (stored.followups ?? []).filter((candidate) => candidate.id !== candidateId)
+        : updated.state === "abandoned"
+          ? (stored.followups ?? []).map((candidate) => { if (candidate.id !== candidateId) return candidate; const { batchId: _batch, ...rest } = candidate; return { ...rest, state: "open" as const }; })
+          : stored.followups;
+      return foldBatches({ ...stored, followups, followupBatches: replaceItem(stored, batch, updated) });
+    }),
+    followupRetry: (itemId, batchId, candidateId) => update(itemId, (stored) => {
+      const { batch, entry } = batchItem(stored, batchId, candidateId);
+      if (entry.state === "creating") return stored;
+      if (entry.state !== "failed" && entry.state !== "confirming") throw new ObjectiveStoreError("followup_settled");
+      const { error: _error, settledAt: _settled, ...rest } = entry;
+      return { ...stored, followupBatches: replaceItem(stored, batch, { ...rest, state: "creating" }) };
+    }),
+    followupAbandon(itemId, batchId, candidateId) {
+      const current = store.find(itemId);
+      const entry = current?.followupBatches.find((batch) => batch.id === batchId)?.items.find((candidate) => candidate.candidateId === candidateId);
+      if (!current || !entry) throw new ObjectiveStoreError("unknown_followup");
+      if (entry.state === "abandoned") return current;
+      // 결과가 확정되지 않은 항목(confirming)은 포기하지 않는다 — 만들어졌을 수 있다. 같은 키의 재조회만 한다.
+      if (entry.state !== "failed") throw new ObjectiveStoreError("followup_not_failed");
+      return store.followupSettle(itemId, batchId, candidateId, { state: "abandoned" });
+    },
+    followupBatch(itemId, batchId) {
+      try { return locate(itemId).stored.followupBatches?.find((batch) => batch.id === batchId) ?? null; }
+      catch { return null; }
+    },
+    recorded(operationId) {
+      const node = options.operations.get(operationId);
+      return !!node && load(node.theaterId).some((entry) => entry.operationId === operationId);
+    },
   };
+
+  /** 화면의 「완료」와 같은 조건을 서버가 원자적으로 다시 따진다 — 제안 대기·스티어링 우선·검토 대기. */
+  function assertReviewable(stored: StoredObjective): void {
+    if (stored.criteriaProposals?.length) throw new ObjectiveStoreError("criteria_pending");
+    // 스티어링은 한 번이라도 깬 지휘관에게만 뜻이 있다 — 화면의 띠와 같은 정의(started && 편집 종류).
+    const commander = options.operations.get(stored.operationId);
+    const started = !!commander && readOperationLaunch(commander.payload).started;
+    if (started && stored.edited?.kinds.length) throw new ObjectiveStoreError("steer_required");
+    if (!awaitingReview(stored)) throw new ObjectiveStoreError("not_in_review");
+  }
+  function openFollowup(stored: StoredObjective, candidateId: string): StoredFollowup {
+    const target = (stored.followups ?? []).find((candidate) => candidate.id === candidateId);
+    if (!target) throw new ObjectiveStoreError("unknown_followup");
+    if (target.state !== "open") throw new ObjectiveStoreError("followup_locked");
+    return target;
+  }
+  function batchItem(stored: StoredObjective, batchId: string, candidateId: string): { batch: StoredFollowupBatch; entry: StoredFollowupItem } {
+    const batch = (stored.followupBatches ?? []).find((candidate) => candidate.id === batchId);
+    const entry = batch?.items.find((candidate) => candidate.candidateId === candidateId);
+    if (!batch || !entry) throw new ObjectiveStoreError("unknown_followup");
+    return { batch, entry };
+  }
+  function replaceItem(stored: StoredObjective, batch: StoredFollowupBatch, updated: StoredFollowupItem): readonly StoredFollowupBatch[] {
+    return (stored.followupBatches ?? []).map((candidate) => (candidate.id === batch.id ? { ...candidate, items: candidate.items.map((entry) => (entry.candidateId === updated.candidateId ? updated : entry)) } : candidate));
+  }
+  /** 배치가 상한을 넘으면 가장 오래된 끝난 배치를 누계로 접는다 — 건수는 잃지 않고, 진행 중 배치는 접지 않는다. */
+  function foldBatches(stored: StoredObjective): StoredObjective {
+    let batches = [...(stored.followupBatches ?? [])];
+    let history: FollowupHistory | undefined = stored.followupHistory;
+    while (batches.length > MAX_FOLLOWUP_BATCHES) {
+      const index = batches.findIndex((batch) => batch.items.every((entry) => followupSettled(entry.state)));
+      if (index < 0) break;
+      const [old] = batches.splice(index, 1);
+      const base = history ?? { batches: 0, created: 0, deleted: 0, abandoned: 0 };
+      history = { batches: base.batches + 1, created: base.created + old!.items.filter((entry) => entry.state === "created").length, deleted: base.deleted + old!.items.filter((entry) => entry.state === "deleted").length, abandoned: base.abandoned + old!.items.filter((entry) => entry.state === "abandoned").length };
+    }
+    return batches.length === stored.followupBatches?.length ? stored : { ...stored, followupBatches: batches, ...(history ? { followupHistory: history } : {}) };
+  }
   return store;
 }

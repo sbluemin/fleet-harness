@@ -4,6 +4,20 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { MAX_CONTEXT, type ObjectiveEditKind, type ObjectiveItem } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
+import {
+  clearSelection,
+  discardedFollowups,
+  isFollowupSelectable,
+  newBatchId,
+  openFollowups,
+  pruneSelection,
+  readSelectionRevs,
+  setFollowupOpen,
+  toggleFollowupSelection,
+  useFollowupOpen,
+  useFollowupSelection,
+} from "./followups.js";
+import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -94,6 +108,12 @@ const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   item_done: "objectives.band.reason.done",
   criteria_pending: "objectives.band.reason.criteriaPending",
   criteria_not_planning: "objectives.band.reason.criteriaNotPlanning",
+  followup_changed: "objectives.band.reason.followupChanged",
+  followup_capacity: "objectives.band.reason.followupCapacity",
+  too_many_followups: "objectives.band.reason.followupTooMany",
+  followup_backlog: "objectives.band.reason.followupBacklog",
+  steer_required: "objectives.band.reason.steerRequired",
+  not_in_review: "objectives.band.reason.notInReview",
 };
 
 /** 지금 상태의 주행동과, 펼치면 함께 고르는 것. 제안이 남아 잠긴 개시·스티어링은 gated 가 말한다(주행동은 「다시 구상」). */
@@ -117,6 +137,20 @@ function choose(props: ActionBandProps): { readonly primary: IntentKey | null; r
 export function ActionBand(props: ActionBandProps) {
   const { item, t, request } = props;
   const { primary, alts, gated } = choose(props);
+  // 후속 후보(A안) — 검토 대기 + 후보 1건 이상 + edited 아님이 `complete` 와 겹치면 띠는 바로 완료하지 않고 위로 펼쳐 고른다.
+  // 후보가 없으면 기존 완료 띠 그대로다. 선택은 완료를 누르기 전까지 로컬 초안이다.
+  const followupCandidates = openFollowups(item);
+  const followupAvailable = primary === "complete" && !gated && isFollowupSelectable(item) && followupCandidates.length > 0;
+  const followupSelection = useFollowupSelection(item.id);
+  const followupOpen = useFollowupOpen(item.id);
+  const [followupOpenId, setFollowupOpenId] = useState<string | null>(null);
+  const followupIdsKey = followupCandidates.map((candidate) => `${candidate.id}:${candidate.rev}`).join(",");
+  // 목록에서 사라진 id 는 초안에서 거두고, rev 가 바뀐 id 는 선택을 풀어 새로 고친 본문을 확인한 뒤 다시 고르게 한다.
+  useEffect(() => {
+    const openRevs = new Map(followupIdsKey ? followupIdsKey.split(",").map((entry) => { const at = entry.lastIndexOf(":"); return [entry.slice(0, at), Number(entry.slice(at + 1))] as const; }) : []);
+    pruneSelection(item.id, openRevs);
+  }, [item.id, followupIdsKey]);
+  useEffect(() => { setFollowupOpenId(null); }, [item.id]);
   const choices: readonly IntentKey[] = primary ? [primary, ...alts] : [];
   const [open, setOpen] = useState(false);
   const [intent, setIntent] = useState<IntentKey | null>(null);
@@ -192,6 +226,7 @@ export function ActionBand(props: ActionBandProps) {
   const fold = (focusBand: boolean) => {
     setOpen(false);
     setError(null);
+    setFollowupOpen(item.id, false);
     if (focusBand) requestAnimationFrame(() => bandRef.current?.focus());
   };
   const run = async (key: IntentKey) => {
@@ -212,8 +247,46 @@ export function ActionBand(props: ActionBandProps) {
       setPending(null);
     }
   };
+  /** 후속 묶음 완료 — 선택 순간의 rev 로 한 번만 보낸다. 바뀌었으면 서버가 followup_changed 로 거절한다. 고른 게 없으면 지금 완료 그대로다. */
+  const runFollowups = async () => {
+    if (sending) return;
+    const stored = readSelectionRevs(item.id);
+    const live = new Set(openFollowups(item).map((candidate) => candidate.id));
+    const picked = [...stored].filter(([id]) => live.has(id));
+    setPending("complete");
+    setError(null);
+    try {
+      if (picked.length === 0) await intents.complete.run("");
+      else await request("/item/complete", { itemId, batchId: newBatchId(), followups: picked.map(([id, rev]) => ({ id, rev })) });
+      clearSelection(itemId);
+      setFollowupOpen(item.id, false);
+      setFollowupOpenId(null);
+      requestAnimationFrame(() => bandRef.current?.focus());
+    } catch (failure) {
+      const code = failure instanceof Error ? failure.message : "unknown";
+      const reason = REASONS[code] ? t(REASONS[code]!) : t("objectives.band.reason.other", { code });
+      setError(t("objectives.band.failedAction", { reason }));
+    } finally {
+      setPending(null);
+    }
+  };
+  const discardFollowup = (candidateId: string) => {
+    void request("/followup/discard", { itemId, candidateId }).catch((failure: unknown) => {
+      const code = failure instanceof Error ? failure.message : "unknown";
+      const reason = REASONS[code] ? t(REASONS[code]!) : t("objectives.band.reason.other", { code });
+      setError(t("objectives.band.failedAction", { reason }));
+    });
+  };
   const press = () => {
     if (!primary) return;
+    // 후보가 있으면 완료하지 않고 펼친다 — 한 번 누름으로 후보 검토를 건너뛰는 길을 없앤다.
+    if (primary === "complete" && followupAvailable) {
+      setFollowupOpenId(null);
+      setFollowupOpen(item.id, true);
+      setError(null);
+      requestAnimationFrame(() => { compRef.current?.querySelector<HTMLElement>("[data-followup-sel]")?.focus(); });
+      return;
+    }
     const main = intents[primary];
     if (main.talk || alts.length > 0) { setOpen(true); pick(primary, "field"); return; }
     void run(primary);
@@ -242,19 +315,68 @@ export function ActionBand(props: ActionBandProps) {
     </div>
   ) : null;
 
+  // 후속 comp — 띠가 위로 자라 후보를 읽고 고른 뒤 같은 자리에서 완료한다. Esc 는 칸만 접는다.
+  // 접힌 띠 분기보다 먼저 온다: 후보 칸은 open/intent 를 쓰지 않아 current 가 항상 null 이라, 뒤에 두면 절대 그려지지 않는다.
+  if (followupOpen && followupAvailable) {
+    const picked = followupCandidates.filter((candidate) => followupSelection.has(candidate.id)).length;
+    const total = followupCandidates.length;
+    const sendSub = picked === 0 ? t("objectives.followup.sendEmpty", { n: total }) : t("objectives.followup.sendSome", { k: picked });
+    const complete = intents.complete;
+    return (
+      <div className={`objectives-group objectives-start-group${gated ? " is-gated" : ""}`}>
+        {lockedLine}
+        <div ref={compRef} className="objectives-comp is-review" role="group" aria-label={t("objectives.followup.pick")} onKeyDown={onCompKey} data-followup-comp={item.id}>
+          <div className="objectives-comp-top">
+            <span>{t("objectives.followup.pick")} · <span className="objectives-followup-count" aria-live="polite">{t("objectives.followup.count", { k: picked, n: total })}</span></span>
+            <span className="objectives-comp-tools">
+              <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.item.goToOperation")} title={t("objectives.item.goToOperation")} onClick={() => props.onFocusOperation(item.id)}><GoGlyph /></button>
+              <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.band.fold")} title={t("objectives.band.fold")} onClick={() => fold(true)}><CloseGlyph /></button>
+            </span>
+          </div>
+          <div className="objectives-followup-comp-list">
+            <FollowupCandidateList
+              candidates={followupCandidates}
+              selectable
+              selection={followupSelection}
+              t={t}
+              idPrefix={`band-${item.id}`}
+              openId={followupOpenId}
+              onOpenChange={setFollowupOpenId}
+              onToggleCheck={(candidateId, checked) => { const rev = followupCandidates.find((candidate) => candidate.id === candidateId)?.rev ?? 1; toggleFollowupSelection(item.id, candidateId, checked, rev); setError(null); }}
+              onDiscard={discardFollowup}
+            />
+          </div>
+          <FollowupDiscardedTrace discarded={discardedFollowups(item)} t={t} />
+          {errorLine}
+          <button
+            type="button"
+            className="objectives-start objectives-comp-send is-review"
+            disabled={sending}
+            onClick={() => void runFollowups()}
+          >
+            {word(complete)}
+            <span className="objectives-start-sub">{pending ? pendingText(pending) : sendSub}</span>
+            <span className="objectives-start-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!current || !intent) {
     // 보내는 동안은 진행 중인 그 행동을 보이고(다른 선택은 감춘다), 잠근다. 응답이 오면 사다리로 돌아간다.
     // 이동 칸은 보내기와 무관하므로 잠그지 않는다 — 보내는 중에도 ↗ 는 누를 수 있다.
     const shown = pending ?? primary!;
     const main = intents[shown];
     const others = pending ? [] : alts;
-    const opens = !pending && (main.talk || others.length > 0);
+    const followupExpands = !pending && followupAvailable;
+    const opens = !pending && (main.talk || others.length > 0 || followupExpands);
     const hasDraft = !pending && main.talk && !!draft.trim();
     // 결정 대기(decide·decideMember)는 띠 자체가 이동이다 — 분할 칸 없이 끝의 → 자리에 이동 글리프가 선다.
     const decide = shown === "decide" || shown === "decideMember";
     const toneCls = main.tone ? ` is-${main.tone === "stop" ? "stop" : shown === "complete" ? "review" : "awaiting"}` : "";
     const goLabel = t("objectives.item.goToOperation");
-    const bandCls = `objectives-band${others.length ? " has-alt" : ""}${main.tone === "stop" ? " is-stop" : ""}`;
+    const bandCls = `objectives-band${others.length || followupExpands ? " has-alt" : ""}${main.tone === "stop" ? " is-stop" : ""}${followupExpands ? " is-review" : ""}`;
     const mainButton = (
       <button
         ref={bandRef}
@@ -270,7 +392,7 @@ export function ActionBand(props: ActionBandProps) {
         {word(main)}
         <span className="objectives-start-sub">
           {hasDraft ? <b className="objectives-band-draft">{t("objectives.band.draft")}</b> : null}
-          {pending ? pendingText(pending) : main.desc}
+          {pending ? pendingText(pending) : followupExpands ? t("objectives.followup.sub", { n: followupCandidates.length }) : main.desc}
           {others.length ? <span className="objectives-band-also"> · {t("objectives.band.also", { words: others.map((key) => `「${intents[key].word}」`).join("") })}</span> : null}
         </span>
         {decide ? <span className="objectives-start-arrow" aria-hidden="true"><GoGlyph /></span> : null}

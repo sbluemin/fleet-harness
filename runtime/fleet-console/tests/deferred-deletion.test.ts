@@ -1,8 +1,15 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
+
+import { createConsoleControl } from "../features/console-use/host/console-control.js";
+import { createLaunchKeyLedger } from "../features/console-use/host/launch-keys.js";
 
 import { createDeferredDeletionCoordinator, DeferredDeletionError } from "../features/workspace/host/deferred-deletion.js";
 import type { DurableDeletionTombstone } from "../features/workspace/host/durable-state.js";
-import { createOperationStore } from "../features/execution/host/operations/operations-domain.js";
+import { createOperationStore, type OperationNode } from "../features/execution/host/operations/operations-domain.js";
 import { TheaterRegistry, type TheaterRegistration } from "../features/workspace/host/theaters/theater-domain.js";
 
 const THEATER: TheaterRegistration = {
@@ -75,9 +82,100 @@ describe("deferred deletion coordinator", () => {
   });
 });
 
+describe("idempotent launch keys", () => {
+  // 저장 무결성 경계 — 키 하나에 Operation 은 많아야 하나, 사람이 지운 키는 purge·재시작 뒤에도 다시 생기지 않는다.
+  it("creates at most one Operation per key and keeps a deleted key deleted across purge and restart", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-launch-keys-"));
+    try {
+      const harness = createHarness();
+      let executions = 0;
+      const boot = () => {
+        const launchKeys = createLaunchKeyLedger({
+          directory, limit: 2,
+          operations: () => harness.operations.list(),
+          tombstoned: () => harness.coordinator.list().flatMap((item) => item.kind === "operation" ? [item.operation] : item.operations),
+        });
+        const control = createConsoleControl({ directory, launchKeys, pluginAvailable: () => true, operations: () => harness.operations.list(), theaters: () => [{ id: THEATER.id, name: "theater" }] });
+        control.attach({
+          observe: () => null,
+          execute: async (input, _assertCurrent, _settled, caller) => {
+            executions += 1;
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            const id = `launched-${executions}`;
+            harness.operations.create({ ...makeOperation(id), pluginId: null, payload: { launchKey: { owner: (caller as { pluginId: string }).pluginId, key: input.launchKey } } });
+            return { operationId: id, delivery: "requested" };
+          },
+        });
+        harness.beforePurge.value = (purged) => launchKeys.recordPurged(purged);
+        return { launchKeys, control };
+      };
+      const caller = { kind: "plugin" as const, pluginId: "objectives" };
+      const launch = { kind: "launch" as const, theaterId: THEATER.id, dormant: true, launchKey: "objectives.followup:a" };
+      const settledId = async (control: ReturnType<typeof boot>["control"], receipt: { id: string; operationId?: string }) => {
+        for (let attempt = 0; attempt < 100 && !receipt.operationId; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          receipt = control.getAction(receipt.id, caller) ?? receipt;
+        }
+        return receipt.operationId;
+      };
+
+      const first = boot();
+      // 같은 키가 동시에 두 번 와도, 이미 선 뒤에 다시 와도 기동은 한 번이다.
+      const [a, b] = [first.control.request(caller, "r1", launch), first.control.request(caller, "r2", launch)];
+      expect(await settledId(first.control, a)).toBe("launched-1");
+      expect(await settledId(first.control, b)).toBe("launched-1");
+      expect(first.control.request(caller, "r3", launch).operationId).toBe("launched-1");
+      expect(executions).toBe(1);
+      expect(first.control.launchKeyState(caller, THEATER.id, "objectives.followup:a")).toEqual({ state: "live", operationId: "launched-1" });
+      // 다른 Theater 로 묻는 키는 그 Operation 을 드러내지 않는다.
+      expect(() => first.control.launchKeyState(caller, "other", "objectives.followup:a")).toThrow();
+
+      // 용량이 차면 새 키는 받지 않지만, 이미 수락한 키의 삭제 기록은 막지 않는다.
+      first.control.reserveLaunchKeys(caller, THEATER.id, ["objectives.followup:b"]);
+      expect(() => first.control.reserveLaunchKeys(caller, THEATER.id, ["objectives.followup:c"])).toThrow("launch_key_capacity");
+      harness.operations.create(makeOperation("unrelated"));
+      harness.coordinator.deleteOperation("unrelated");
+      harness.clock.value += 1; // 테스트 삭제 id 는 시각에서 나온다.
+      harness.coordinator.deleteOperation("launched-1");
+      expect(first.control.launchKeyState(caller, THEATER.id, "objectives.followup:a").state).toBe("deleting");
+      harness.clock.value += 60_000;
+      // 원장 선기록이 실패하면 그 tombstone 만 남아 미뤄진다 — 다른 정리와 무관한 생성·삭제는 막히지 않는다.
+      const record = harness.beforePurge.value!;
+      harness.beforePurge.value = (purged) => { if (purged.some((node) => node.id === "launched-1")) throw new Error("storage_unavailable"); record(purged); };
+      expect(harness.coordinator.hasPendingOperation("brand-new")).toBe(false);
+      expect(harness.coordinator.hasPendingOperation("unrelated")).toBe(false);
+      harness.operations.create(makeOperation("brand-new"));
+      harness.clock.value += 1;
+      expect(harness.coordinator.deleteOperation("brand-new")).not.toBeNull();
+      expect(first.control.launchKeyState(caller, THEATER.id, "objectives.followup:a").state).toBe("deleting");
+      harness.beforePurge.value = record;
+      harness.clock.value += 60_000;
+      harness.coordinator.sweepExpired();
+      expect(harness.coordinator.hasPendingOperation("launched-1")).toBe(false);
+      first.control.dispose();
+
+      // 재시작 — 흔적이 사라진 뒤에도 원장이 purge 를 말하고, 같은 키의 기동은 거절된다.
+      const restarted = boot();
+      expect(restarted.control.launchKeyState(caller, THEATER.id, "objectives.followup:a")).toEqual({ state: "purged", operationId: "launched-1" });
+      expect(() => restarted.control.request(caller, "r4", launch)).toThrow("launch_key_deleted");
+      expect(restarted.control.launchKeyState(caller, THEATER.id, "objectives.followup:b").state).toBe("reserved");
+      expect(executions).toBe(1);
+      // 호스트 상태가 비워져 Operation 이 흔적 없이 사라져도, 선 적이 있는 키는 다시 만들지 않는다.
+      const keyedB = { ...launch, launchKey: "objectives.followup:b" };
+      expect(await settledId(restarted.control, restarted.control.request(caller, "r5", keyedB))).toBe("launched-2");
+      harness.operations.replace([]);
+      expect(restarted.control.launchKeyState(caller, THEATER.id, "objectives.followup:b").state).toBe("purged");
+      expect(() => restarted.control.request(caller, "r6", keyedB)).toThrow("launch_key_deleted");
+      expect(executions).toBe(2);
+      restarted.control.dispose();
+    } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  });
+});
+
 function createHarness() {
   const clock = { value: 1_000 };
   const failSave = { value: false };
+  const beforePurge: { value: ((operations: readonly OperationNode[]) => void) | null } = { value: null };
   const operations = createOperationStore({ now: () => clock.value });
   const theaters = new TheaterRegistry();
   theaters.restore([THEATER]);
@@ -90,6 +188,7 @@ function createHarness() {
     save: () => {
       if (failSave.value) throw new Error("save_failed");
     },
+    beforePurge: (purged) => beforePurge.value?.(purged),
     publish: (channel, payload) => events.push({ channel, payload }),
     unregisterTheaterWorkspaces: vi.fn(),
     validateTheaterRestore: async () => {},
@@ -97,7 +196,7 @@ function createHarness() {
     setTimer: () => ({ unref: () => {} }) as unknown as ReturnType<typeof setTimeout>,
     clearTimer: () => {},
   });
-  return { clock, coordinator, events, failSave, operations, theaters };
+  return { beforePurge, clock, coordinator, events, failSave, operations, theaters };
 }
 
 function makeOperation(id: string) {
