@@ -1242,9 +1242,6 @@ class AgentChatSession {
     this.workflowRunListing = null;
     for (const wake of this.workflowReadWaiters.splice(0)) wake();
     this.abandonAsks("The chat session closed before the question was answered.");
-    // 날고 있는 자식 열기를 먼저 착지시킨다. 그 비행은 disposed를 보고 연 자식을 스스로 닫지만,
-    // 기다리지 않으면 아래에서 SDK를 접은 뒤에 비행이 새 SDK를 세워 주인 없는 자식이 남는다.
-    if (this.sessionFlight) await this.sessionFlight.catch(() => undefined);
     // 세션과 SDK를 먼저 접는다 — 자식이 죽어야 리더 스트림이 끝나고 대기 중인 디스패치가 풀린다.
     // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을
     // 무기한 막는다. 살아 있던 백그라운드 작업도 자식과 함께 거둬진다 — 터미널 세션을 닫는 것과

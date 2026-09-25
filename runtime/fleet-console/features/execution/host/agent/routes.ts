@@ -1697,21 +1697,22 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 넘겨받은 채팅도 첫 프롬프트를 기다리지 않고 자식을 세운다 — 전환 전 터미널이 받던 메시지를
     // 전환 뒤에도 받아야 한다. 다만 옛 CLI가 실제로 사라진 뒤에만 연다: 같은 Claude 세션의 두 필자가
     // 겹치면 안 되고, 확인하지 못하면 여느 채팅처럼 첫 메시지가 연다.
+    // 세대는 기다리기 **전에** 잡는다 — 기다리는 사이 복귀와 재전환이 일어나면 새 전환의 세대를 옛 대기가 넘겨받는다.
+    const generation = chatRegistry.generation(sessionId);
     if (live) {
       terminalRuntime.invalidateTicketsForSession(sessionId);
       void terminalRuntime.terminateAndWait(sessionId, ADOPTED_CHAT_EXIT_WAIT_MS)
-        .then((exited) => (exited ? openAdoptedChat(sessionId) : undefined))
+        .then((exited) => (exited ? openAdoptedChat(sessionId, generation) : undefined))
         .catch(() => undefined);
     } else {
-      void openAdoptedChat(sessionId).catch(() => undefined);
+      void openAdoptedChat(sessionId, generation).catch(() => undefined);
     }
     return { ok: true, mode: "chat", changed: true };
   }
 
-  /** 표면을 넘겨받은 채팅의 자식을 연다. 그 사이 터미널로 돌아갔으면 열지 않고, 실패는 첫 메시지가 다시 시도한다. */
-  async function openAdoptedChat(sessionId: string): Promise<void> {
+  /** 표면을 넘겨받은 채팅의 자식을 연다. 전환 시점의 세대에서 벗어났으면 열지 않고, 실패는 첫 메시지가 다시 시도한다. */
+  async function openAdoptedChat(sessionId: string, generation: number): Promise<void> {
     // 채팅 마커는 터미널 복귀가 dispose를 **마친 뒤에야** 걷힌다 — 떠났는지는 접기와 함께 오르는 세대로 판정한다.
-    const generation = chatRegistry.generation(sessionId);
     const stillAdopted = () => chatRegistry.generation(sessionId) === generation
       && ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true;
     const node = ctx.host.operations.get(sessionId);
