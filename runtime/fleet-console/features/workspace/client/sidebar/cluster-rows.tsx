@@ -10,5 +10,5 @@ import type { SideBarChipCluster, SideBarEntry } from "./operations-side-bar-chi
 export function clusterChipPropsFor(entry: SideBarEntry, index: ClusterIndex): SideBarChipCluster | null {
   const root = index.rootOf.get(entry.operation.id);
   if (!root) return null;
-  return { strip: <ClusterStrip layout={root} rootActivity={entry.status} onOpen={root.cluster.open} className="side-bar-chip-cluster-strip" /> };
+  return { strip: <ClusterStrip layout={root} rootActivity={entry.status} decorative className="side-bar-chip-cluster-strip" /> };
 }
