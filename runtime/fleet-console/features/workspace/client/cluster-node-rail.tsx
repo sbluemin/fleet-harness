@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import type { OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
@@ -22,7 +22,8 @@ const ChevDown = () => (
   </svg>
 );
 
-const TONE_ORDER = ["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"] as const;
+const TONE_ORDER: readonly string[] = ["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"];
+const EMPTY_HIDDEN_IDS: ReadonlySet<string> = new Set();
 
 /**
  * 본문 위 세션 줄 — 캡션 바로 아래 frame 흐름 안에 26px 높이로 서는 가로 탭 줄.
@@ -43,27 +44,46 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(new Set());
+  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(EMPTY_HIDDEN_IDS);
   const [moreOpen, setMoreOpen] = useState(false);
   const naturalWidthsRef = useRef(new Map<string, number>());
 
   const root = layout.cluster.root;
   // 구성원 세션 순서는 Objectives 명단(roster) 선언 순서를 따른다.
-  const nodes = layout.cluster.members
-    .map((member, index) => ({ member, n: index + 1 }))
-    .filter(({ member }) => layout.formation.byOperationId.has(member.operationId))
-    .sort((a, b) => {
-      if (a.member.order !== undefined && b.member.order !== undefined) {
-        return a.member.order - b.member.order;
-      }
-      if (a.member.tone && b.member.tone) {
-        return TONE_ORDER.indexOf(a.member.tone as any) - TONE_ORDER.indexOf(b.member.tone as any);
-      }
-      return a.n - b.n;
-    });
+  const nodes = useMemo(() => {
+    return layout.cluster.members
+      .map((member, index) => ({ member, n: index + 1 }))
+      .filter(({ member }) => layout.formation.byOperationId.has(member.operationId))
+      .sort((a, b) => {
+        if (a.member.order !== undefined && b.member.order !== undefined) {
+          return a.member.order - b.member.order;
+        }
+        if (a.member.tone && b.member.tone) {
+          return TONE_ORDER.indexOf(a.member.tone) - TONE_ORDER.indexOf(b.member.tone);
+        }
+        return a.n - b.n;
+      });
+  }, [layout.cluster.members, layout.formation.byOperationId]);
+
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
+  const nodesKey = useMemo(
+    () => nodes.map((n) => `${n.member.operationId}:${n.member.progress}:${n.member.name}:${n.member.order}`).join("|"),
+    [nodes],
+  );
 
   const nodeName = (node: { readonly member: { readonly name?: string }; readonly n: number }) =>
     node.member.name ?? t("cluster.nodes.node", { n: node.n });
+
+  const applyHidden = (next: Set<string>) => {
+    setHiddenIds((prev) => {
+      if (prev.size === next.size && (prev.size === 0 || [...prev].every((id) => next.has(id)))) {
+        return prev;
+      }
+      return next;
+    });
+  };
 
   // 폭 측정 및 +N 접힘 계산
   useLayoutEffect(() => {
@@ -73,6 +93,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
     const measure = () => {
       const railWidth = rail.clientWidth;
       if (railWidth <= 0) return;
+      const currentNodes = nodesRef.current;
 
       const tabEls = Array.from(rail.querySelectorAll<HTMLElement>("[data-member-op-id]"));
       for (const el of tabEls) {
@@ -89,13 +110,13 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
 
       // 1단계: 모든 탭이 +N 버튼 없이 전부 들어가는지 먼저 확인
       let totalNeeded = baseWidth;
-      for (const node of nodes) {
+      for (const node of currentNodes) {
         const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
         totalNeeded += w + 2;
       }
 
       if (totalNeeded <= railWidth) {
-        setHiddenIds(new Set());
+        applyHidden(EMPTY_HIDDEN_IDS as Set<string>);
         return;
       }
 
@@ -105,7 +126,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       const hidden = new Set<string>();
 
       let reservedForAwaiting = 0;
-      for (const node of nodes) {
+      for (const node of currentNodes) {
         if (node.member.progress === "awaiting") {
           const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
           reservedForAwaiting += w + 2;
@@ -115,7 +136,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       const availableForRest = railWidth - baseWidth - reservedForAwaiting - moreWidth;
       let accumulated = 0;
 
-      for (const node of nodes) {
+      for (const node of currentNodes) {
         const opId = node.member.operationId;
         if (node.member.progress === "awaiting") {
           // 허용 요청은 넘기지 않고 앞에 남긴다
@@ -129,17 +150,14 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         }
       }
 
-      setHiddenIds((prev) => {
-        if (prev.size === hidden.size && [...prev].every((id) => hidden.has(id))) return prev;
-        return hidden;
-      });
+      applyHidden(hidden);
     };
 
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(rail);
     return () => observer.disconnect();
-  }, [nodes]);
+  }, [nodesKey]);
 
   // 바깥 클릭 / Escape 로 +N 팝오버 닫기
   useEffect(() => {

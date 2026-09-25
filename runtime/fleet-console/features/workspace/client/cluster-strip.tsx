@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
 import type { OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
@@ -74,6 +74,14 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen }: {
   const stripRef = useRef<HTMLSpanElement | null>(null);
   const [mode, setMode] = useState<StripMode>("full");
 
+  const membersRef = useRef(layout.members);
+  membersRef.current = layout.members;
+
+  const membersKey = useMemo(
+    () => layout.members.map((m) => `${m.member.operationId}:${m.member.progress}:${m.depth}`).join("|"),
+    [layout.members],
+  );
+
   useLayoutEffect(() => {
     const el = stripRef.current;
     if (!el) return;
@@ -86,8 +94,9 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen }: {
     const update = () => {
       const budget = computeBudget(el);
       if (budget <= 0) return;
-      const fullW = requiredWidth(layout.members, "full");
-      const denseW = requiredWidth(layout.members, "dense");
+      const currentMembers = membersRef.current;
+      const fullW = requiredWidth(currentMembers, "full");
+      const denseW = requiredWidth(currentMembers, "dense");
       const nextMode: StripMode = fullW <= budget ? "full" : denseW <= budget ? "dense" : "count";
       setMode((prev) => (prev !== nextMode ? nextMode : prev));
     };
@@ -97,7 +106,7 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen }: {
     const observer = new ResizeObserver(update);
     observer.observe(target);
     return () => observer.disconnect();
-  }, [layout.members]);
+  }, [membersKey]);
 
   const done = layout.members.filter((laid) => laid.member.progress === "done").length;
   const label = t("cluster.strip.aria", { title: layout.cluster.title, done, total: layout.members.length });

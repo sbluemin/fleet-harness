@@ -105,7 +105,12 @@ export function ClusterPicker({
       top = belowTop;
     }
 
-    setPlaced({ left, top, width, maxHeight });
+    setPlaced((prev) => {
+      if (prev && prev.left === left && prev.top === top && prev.width === width && prev.maxHeight === maxHeight) {
+        return prev;
+      }
+      return { left, top, width, maxHeight };
+    });
   }, [anchor, panelRect]);
 
   useEffect(() => {
