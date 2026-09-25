@@ -22,6 +22,8 @@ const mission = { itemId: ids, stepId: ids.optional(), index: z.number().int().m
 const memberReference = z.string().trim().min(1).max(128);
 const PLANNING_ONLY = "The objective is in planning: its lineup can change, but missions are not carried out and members are not launched until the person commences.";
 const BOARD_CHANGED = "The person edited the objective after your last read.";
+/** 이름 없는 지휘관 — 주소를 지어내지 않고, 이미 지원되는 회신 경로(받은 메시지의 from)만 사실로 알린다. */
+const NO_FIXED_NAME = "No fixed session name. The from address on the Commander's latest message reaches that live session.";
 
 export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService): readonly PluginMcpTool[] {
   const { itemView } = createBoardViews(ctx, store);
@@ -57,18 +59,20 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     tool(name, `Commander only. ${description}`, schema, (args, caller) => {
       const item = find((args as { itemId: string }).itemId);
       const role = roleIn(item, caller);
-      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it reads the objective but does not change it; the Commander receives reports by SendMessage." });
+      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it reads the objective but does not change it; the Commander receives reports and decisions to make by SendMessage to its session.", commander: { session: item.commander.sessionName, ...(item.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) } });
       if (!role) return refuse("not_participant");
       return run(args, item, caller!);
     });
 
   return [
-    tool("mine", "Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it and report to the Commander by SendMessage. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself.", z.object({}).strict(), (_args, caller) => {
+    tool("mine", "Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it and report to the Commander by SendMessage to commander.session. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself.", z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findAssignee(caller.operationId);
       if (assigned) {
         const member = assigned.item.members.find((candidate) => candidate.id === assigned.memberId)!;
         return text({ role: "member", access: "read-only", itemId: assigned.item.id,
+          // 구성원이 보고·판단 요청을 보낼 주소 — 지휘관 세션 이름. 모르면 null 이다(따로 만든 Operation 이 지휘관인 목표).
+          commander: { session: assigned.item.commander.sessionName, ...(assigned.item.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) },
           member: { id: member.id, role: member.role, subagents: member.subagents, ...(member.brief ? { brief: member.brief } : {}) },
           missions: assigned.item.steps.flatMap((step, index) => step.member === member.id ? [{ index, stepId: step.id, text: step.text, ready: !step.done && stepReady(assigned.item.steps, step), done: step.done }] : []),
           item: itemView(assigned.item) });

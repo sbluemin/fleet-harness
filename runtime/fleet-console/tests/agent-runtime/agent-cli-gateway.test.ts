@@ -85,11 +85,12 @@ describe("claude-gateway argument composition", () => {
     }
   });
 
-  it("turns opted-out built-in subagents into Agent(name) deny rules on both surfaces", async () => {
+  it("merges opted-out subagents and disabled tools into one deny list on both surfaces", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agent-optout-");
     const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
       claudeCodeDisabledAgents: ["Explore", "Plan", "Explore"],
+      claudeCodeDisabledTools: ["AskUserQuestion"],
     }));
 
     try {
@@ -98,7 +99,7 @@ describe("claude-gateway argument composition", () => {
         readonly permissions?: { readonly deny?: readonly string[] };
         readonly skillOverrides?: Record<string, string>;
       };
-      expect(settings.permissions?.deny).toEqual(["Agent(Explore)", "Agent(Plan)"]);
+      expect(settings.permissions?.deny).toEqual(["Agent(Explore)", "Agent(Plan)", "AskUserQuestion"]);
       expect(settings.skillOverrides).toBeDefined();
     } finally {
       injected.cleanup?.();
@@ -110,9 +111,11 @@ describe("claude-gateway argument composition", () => {
       cwd: root,
       plugin: pluginStub,
       origin: { kind: "new" },
-      claudeCodeDisabledAgents: ["Explore"],
+      claudeCodeDisabledAgents: ["*"],
+      claudeCodeDisabledTools: ["AskUserQuestion"],
     });
-    expect(session.sdk.request.disallowedTools).toEqual(["Agent(Explore)"]);
+    // 도구를 끄는 정책이 서브에이전트 차단을 덮지 않는다.
+    expect(session.sdk.request.disallowedTools).toEqual(["Agent", "Task", "AskUserQuestion"]);
 
     // 옵트아웃이 없으면 규칙 키 자체가 실리지 않는다.
     const untouched = await prepareClaudeSession({ cliId: "claude", cwd: root, plugin: pluginStub, origin: { kind: "new" } });
@@ -266,6 +269,7 @@ function baseInjectOptions(
     readonly claudeCodeCustomSystemPrompt?: string;
     readonly claudeCodeSkipPermissions?: boolean;
     readonly claudeCodeDisabledAgents?: readonly string[];
+    readonly claudeCodeDisabledTools?: readonly string[];
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
@@ -278,6 +282,7 @@ function baseInjectOptions(
       ? { claudeCodeSkipPermissions: overrides.claudeCodeSkipPermissions }
       : {}),
     ...(overrides.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: overrides.claudeCodeDisabledAgents } : {}),
+    ...(overrides.claudeCodeDisabledTools ? { claudeCodeDisabledTools: overrides.claudeCodeDisabledTools } : {}),
     dedicatedMcpSession: {
       async getEndpoint() {
         return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };

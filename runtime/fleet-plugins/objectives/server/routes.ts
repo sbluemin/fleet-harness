@@ -175,8 +175,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "member/add", method: "POST", summary: "Add a member to the roster.", handler: json(itemRef.extend({ member: memberAddSchema }), steerable(() => true, ({ itemId, member }) => edited(["members"], () => store.memberAdd(itemId, member, "human")))) },
     { name: "member/patch", method: "POST", summary: "Edit a member's role, brief, launch selection, or subagent opt-in.", handler: json(itemRef.extend({ memberId: ids, patch: memberPatchSchema }), steerable(() => true, ({ itemId, memberId, patch }) => edited(["members"], () => launch.memberPatched(itemId, memberId, patch)))) },
     { name: "member/remove", method: "POST", summary: "Remove a member and return its mission ids for undo.", handler: json(itemRef.extend({ memberId: ids }), steerable(() => true, ({ itemId, memberId }) => {
-      const result = store.memberRemove(itemId, memberId);
-      if (result.removed.operationId) ctx.host.operations.delete(result.removed.operationId);
+      const result = launch.memberRemoved(itemId, memberId);
       // 맡던 임무는 지휘관 직접으로 돌아간다 — 되돌리기는 없다(다시 더하고 배정한다).
       return item(store.setEdited(itemId, ["members", ...(result.stepIds.length ? ["assign" as const] : [])]));
     })) },

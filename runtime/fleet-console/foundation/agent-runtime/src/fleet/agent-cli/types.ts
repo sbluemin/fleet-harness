@@ -125,6 +125,8 @@ export interface AgentCliInjectionContext {
    * 않는다 — 플래그 없는 런치가 이미 하는 일이다.
    */
   readonly claudeCodeDisabledAgents?: readonly string[];
+  /** 이 세션에서 뺄 도구 이름들(예: `AskUserQuestion`). 서브에이전트 규칙과 합쳐 같은 `permissions.deny`로 실린다. */
+  readonly claudeCodeDisabledTools?: readonly string[];
 }
 
 export interface AgentCliInjectionCapabilityEnabled {

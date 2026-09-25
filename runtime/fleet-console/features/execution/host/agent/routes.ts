@@ -12,7 +12,7 @@ import { CONSOLE_CONTROL_TOOLS, type ConsoleCaller } from "@fleet-console/sdk/mc
 import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
 import { createConsoleTerminalObserver } from "./console-terminal.js";
 import { ConsoleControlError } from "../../../console-use/host/console-control.js";
-import { retainSubagentSpawn, subagentSpawnBlocked, withSubagentSpawn, type OperationGeometry, type OperationLaunchKind, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
+import { retainSubagentSpawn, retainUserQuestions, subagentSpawnBlocked, userQuestionsBlocked, withSubagentSpawn, withUserQuestions, type OperationGeometry, type OperationLaunchKind, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "../context.js";
 import type { ConsoleRuntimeContext } from "../context.js";
 import { readSocketRole, readTicketChannel } from "../terminal/index.js";
@@ -29,7 +29,7 @@ import type { AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { AiGatewayLaunchBinding } from "./launch.js";
 import { deriveOperationLabel } from "./auto-name.js";
 import { readBackgroundHookReport } from "./background-report.js";
-import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, prepareChatClaudeSession, type ConsoleRuntimeSessionInfo } from "./launch.js";
+import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, prepareChatClaudeSession, USER_QUESTION_TOOL, type ConsoleRuntimeSessionInfo } from "./launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./launch-attachments.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { writeAgentSessionEvents } from "./observability-routes.js";
@@ -535,7 +535,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -1071,7 +1071,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1121,7 +1121,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       pluginId: null,
       title: namedSession.label ?? session.label ?? path.basename(cwd),
       // 태어날 때의 강제 차단은 세션 스냅샷과 별개인 다음 기동 정책에도 남긴다. 허용 기동은 전역 정책만 쓴다.
-      payload: launchOptions.disableSubagents ? withSubagentSpawn(bornPayload, "blocked") : bornPayload,
+      // 질문 차단도 같은 자리의 다음 기동 정책이다 — 휴면 재개·채팅 전환·PTY 재기동이 모두 이 값을 읽는다.
+      payload: ((withPolicy) => launchOptions.disableUserQuestions ? withUserQuestions(withPolicy, "blocked") : withPolicy)(launchOptions.disableSubagents ? withSubagentSpawn(bornPayload, "blocked") : bornPayload),
       ...(launchOptions.geometry ? { geometry: launchOptions.geometry } : {}),
       // 부모는 태어날 때 함께 — 생성 방송(operation:changed)이 부모 없는 행을 한 번이라도 실으면 목록에 선다.
       ...(launchOptions.parentOperationId ? { parentOperationId: launchOptions.parentOperationId } : {}),
@@ -1154,6 +1155,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
         ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
         ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
+        ...(launchOptions.disableUserQuestions ? { disableUserQuestions: true } : {}),
       });
       // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
       // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
@@ -1291,6 +1293,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const launchSession = readAgentSession(node.payload);
     // 이번 기동의 강제 차단은 진입 시점의 다음 기동 정책이다. 세션 스냅샷의 옛 true는 명시 정책이 있으면 지지 못한다.
     const blockSubagents = subagentSpawnBlocked(node.payload);
+    const blockUserQuestions = userQuestionsBlocked(node.payload);
     const launchModel = launchSession?.model
       || (cliId === "claude" ? "opus[1m]" : undefined);
     const launchEffort = launchSession?.effort || undefined;
@@ -1330,6 +1333,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(launchEffort ? { effort: launchEffort } : {}),
         ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
         ...(blockSubagents ? { disableSubagents: true } : {}),
+        ...(blockUserQuestions ? { disableUserQuestions: true } : {}),
         ...(fresh ? {} : { resumeSessionId: providerSession?.id }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
@@ -1341,7 +1345,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다.
       const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
       const effectiveProviderSession = fresh ? readProviderSession(currentPayload) : providerSession;
-      const resumedPayload = retainSubagentSpawn(toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle), ctx.host.operations.get(sessionId)?.payload);
+      const livePayload = ctx.host.operations.get(sessionId)?.payload;
+      const resumedPayload = retainUserQuestions(retainSubagentSpawn(toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle), livePayload), livePayload);
       // Legacy fallback도 첫 성공 뒤에는 Operation의 확정 launch 좌표가 된다 — 매 resume마다
       // fallback 정책을 다시 적용해 향후 기본값 변경에 따라 같은 Operation이 흔들리지 않게 한다.
       if (!readAgentSession(resumedPayload)?.model && launchModel) {
@@ -1359,7 +1364,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
         // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다.
         const livePayload = ctx.host.operations.get(sessionId)?.payload;
-        const rollbackPayload = retainSubagentSpawn({ ...(livePayload ?? {}) }, livePayload);
+        const rollbackPayload = retainUserQuestions(retainSubagentSpawn({ ...(livePayload ?? {}) }, livePayload), livePayload);
         rollbackPayload.session = providerSession;
         ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
         observability.updateTerminalSessionProviderSession(sessionId, providerSession);
@@ -2099,11 +2104,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           claudeCodeSystemPrompt: chatClaudeCodeSystemPrompt,
           claudeCodeCustomSystemPrompt: chatClaudeCodeCustomSystemPrompt,
           claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
+          ...(userQuestionsBlocked(node.payload) ? { claudeCodeDisabledTools: [USER_QUESTION_TOOL] } : {}),
           origin: sessionOrigin.kind === "resume"
             ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
             : { kind: "new", preferredSessionId: node.id },
           ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
         }),
+        // 세션이 열린 뒤 정책이 바뀌었거나, 막히기 전에 연 세션이 남은 질문을 부를 수 있다 — 호출마다 지금 값을 읽는다.
+        userQuestionsBlocked: () => userQuestionsBlocked(ctx.host.operations.get(node.id)?.payload),
         onProviderSessionUpdate: (updated) => {
           const operation = ctx.host.operations.get(node.id);
           if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, session: mergeCapturedAgentSession(operation.payload, updated) } });
@@ -2300,11 +2308,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE, selection);
   }
 
-  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly sessionName?: string; readonly disableSubagents?: boolean } | undefined) {
+  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly sessionName?: string; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean } | undefined) {
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
     const cliId = operation ? CLAUDE_HARNESS_ID : undefined;
     const blockSubagents = operation ? subagentSpawnBlocked(operation.payload) : context?.disableSubagents === true;
+    const blockUserQuestions = operation ? userQuestionsBlocked(operation.payload) : context?.disableUserQuestions === true;
     const providerSession = readProviderSession(operation?.payload)?.id;
     // prompt는 spawn-only. Operation payload·브라우저 DTO에 넣지 않는다(FORBIDDEN_BROWSER_PAYLOAD_KEYS).
     return launchResolver(cwd, {
@@ -2319,6 +2328,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ...(context?.prompt ? { prompt: context.prompt } : {}),
       ...(context?.sessionName ? { sessionName: context.sessionName } : {}),
       ...(blockSubagents ? { disableSubagents: true } : {}),
+      ...(blockUserQuestions ? { disableUserQuestions: true } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });
   }

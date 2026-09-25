@@ -32,6 +32,8 @@ export interface TerminalLaunchContext {
   readonly sessionName?: string;
   /** 서브에이전트 전부 끄기 — 설정의 옵트아웃 목록 대신 `Agent` 도구 자체를 막는다. spawn 인자로만 나간다. */
   readonly disableSubagents?: boolean;
+  /** 사람에게 묻는 도구(`AskUserQuestion`)를 뺀다. spawn 인자로만 나간다. */
+  readonly disableUserQuestions?: boolean;
   /** 콘솔 테마 극성 힌트 — spawn env COLORFGBG로만 소비된다. PTY는 최초 spawn 시점 값에 고정된다. */
   readonly colorScheme?: "light" | "dark";
 }
@@ -62,6 +64,7 @@ export interface TerminalTicketContext {
   readonly resumeSessionId?: string;
   readonly sessionName?: string;
   readonly disableSubagents?: boolean;
+  readonly disableUserQuestions?: boolean;
   readonly colorScheme?: "light" | "dark";
   /**
    * 이 티켓이 여는 소켓의 역할. 생략하면 `control`이다 — 지금까지 발급된 모든 티켓이 그것이었고,

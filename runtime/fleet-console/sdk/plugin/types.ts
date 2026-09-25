@@ -825,6 +825,11 @@ export interface FleetPluginConsoleControlHost {
    * `blocked`는 강제 차단, `default`는 그 차단을 걷고 전역 정책만 적용한다.
    */
   setSubagentSpawn?(operationId: string, policy: "blocked" | "default"): void;
+  /**
+   * 이미 있는 Operation의 사람 질문(`AskUserQuestion`) 정책. 다음 기동부터 도구 목록에 반영되고, 살아 있는 채팅 세션은
+   * 남은 질문 호출을 카드 없이 거절한다. 떠 있는 터미널 프로세스는 중단하지 않는다. 없는 Operation은 무시한다.
+   */
+  setUserQuestions?(operationId: string, policy: "blocked" | "default"): void;
 }
 
 /**

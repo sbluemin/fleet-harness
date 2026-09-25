@@ -45,9 +45,12 @@ function harness(routingOrigin: () => string | null = () => null) {
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
   const slept: string[] = [];
   const interrupted: string[] = [];
-  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; groupId?: string }[] = [];
+  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string }[] = [];
   const resumed: string[] = [];
   const subagentSpawns: { operationId: string; policy: "blocked" | "default" }[] = [];
+  const userQuestions: { operationId: string; policy: "blocked" | "default" }[] = [];
+  // 호스트처럼 표면은 채팅 표식이 말하고, 살아 있는 세션은 지금 보이는 표면으로 덮을 수 있다.
+  const surfaces = new Map<string, "chat" | "terminal">();
   const operationsHost = {
     get: (id: string) => operations.get(id) ?? null,
     list: () => [...operations.values()],
@@ -69,7 +72,7 @@ function harness(routingOrigin: () => string | null = () => null) {
       server: { origin: routingOrigin },
       operations: operationsHost,
       consoleControl: {
-        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; model?: string; effort?: string; groupId?: string }) => {
+        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string }) => {
           const receipt = { id: "r", requestId: "r", caller: { kind: "plugin", pluginId: "objectives" }, input, status: "running", createdAt: "", updatedAt: "", expiresAt: "" };
           if (input.kind === "send") { sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { ...receipt, operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
@@ -78,7 +81,7 @@ function harness(routingOrigin: () => string | null = () => null) {
           if (input.kind === "resume") { if (activity.get(input.operationId!) !== "dormant") throw new Error("not_dormant"); resumed.push(input.operationId!); activity.set(input.operationId!, "idle"); return { ...receipt, operationId: input.operationId }; }
           await new Promise((resolve) => setTimeout(resolve, 5));
           const id = `launched-${launches.length + 1}`;
-          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, groupId: input.groupId });
+          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableUserQuestions: input.disableUserQuestions, groupId: input.groupId });
           // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
           activity.set(id, input.dormant ? "dormant" : "idle");
           add(id, { title: input.title ?? id, groupId: input.groupId ?? null, payload: { session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } } });
@@ -86,9 +89,10 @@ function harness(routingOrigin: () => string | null = () => null) {
         },
         observe: (id: string) => {
           const state = activity.get(id);
-          return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: "terminal", supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
+          return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"), supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
         },
         setSubagentSpawn: (operationId: string, policy: "blocked" | "default") => { subagentSpawns.push({ operationId, policy }); },
+        setUserQuestions: (operationId: string, policy: "blocked" | "default") => { userQuestions.push({ operationId, policy }); },
         sleep: async (id: string, options?: { endPendingWork?: boolean }) => {
           const state = activity.get(id);
           if (state !== "idle" && !(options?.endPendingWork && (state === "awaiting" || state === "background"))) return { ok: false, error: "not_idle" };
@@ -103,7 +107,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const tools = createObjectiveMcpTools(ctx, store, launch);
   const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
   const stateFile = path.join(workspace, "objectives", "state.json");
-  return { store, events, launch, call, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed, subagentSpawns };
+  return { store, events, launch, call, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -111,13 +115,17 @@ const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000
 describe("Objectives contract", () => {
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
     let routingOrigin: string | null = null;
-    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, stateFile } = harness(() => routingOrigin);
+    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, userQuestions, stateFile, operations, surfaces } = harness(() => routingOrigin);
     const item = await launch.create({ theaterId: "t1", title: "Opt in", groupId: null, note: "brief" });
     const allowed = store.memberAdd(item.id, { role: "build", subagents: true }, "human").members[0]!;
     const blocked = store.memberAdd(item.id, { role: "research" }, "human").members[1]!;
     expect(store.find(item.id)!.members.map((member) => member.subagents)).toEqual([true, false]);
     await launch.muster(item.id);
     expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
+    // 구성원만 사람에게 묻지 않는다 — 지휘관은 질문을 그대로 가진다.
+    expect(launches.map((entry) => entry.disableUserQuestions)).toEqual([undefined, true, true]);
+    // 새 구성원의 뷰는 지휘관을 따른다 — 미기동 지휘관의 저장된 시작 뷰(터미널)에서.
+    expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["terminal", "terminal"]);
     const roster = store.find(item.id)!;
     const blockedOperationId = roster.members.find((member) => member.id === blocked.id)!.operationId!;
     activity.set(blockedOperationId, "dormant");
@@ -134,6 +142,8 @@ describe("Objectives contract", () => {
     expect((await launch.muster(item.id)).find((member) => member.id === blocked.id)!.state).toBe("resumed");
     expect(subagentSpawns).toEqual([{ operationId: blockedOperationId, policy: "default" }]);
     expect(resumed).toEqual([blockedOperationId]);
+    // 재개 전에 질문 차단을 다시 채운다 — 이 정책 전에 뜬 구성원도 재개로 풀려나지 않는다.
+    expect(userQuestions).toContainEqual({ operationId: blockedOperationId, policy: "blocked" });
     launch.memberPatched(item.id, allowed.id, { subagents: false });
     expect(store.find(item.id)!.members.find((member) => member.id === allowed.id)!.subagents).toBe(false);
     expect(subagentSpawns.at(-1)).toEqual({ operationId: roster.members.find((member) => member.id === allowed.id)!.operationId, policy: "blocked" });
@@ -153,12 +163,43 @@ describe("Objectives contract", () => {
     const routingStarted = new Promise<void>((resolve) => { enteredRouting = resolve; });
     vi.stubGlobal("fetch", () => { enteredRouting(); return routingResponse; });
     routingOrigin = "http://routing.invalid";
+    // 휴면 지휘관이 채팅으로 저장돼 있으면 새 구성원도 채팅으로 태어난다.
+    operations.get(item.id)!.payload = { ...operations.get(item.id)!.payload, chatMode: true };
     const pendingMuster = launch.muster(item.id);
     await routingStarted;
     launch.memberPatched(item.id, routed.id, { subagents: false });
     finishRouting(Response.json({ model: "sonnet" }));
     await pendingMuster;
     expect(launches.at(-1)?.disableSubagents).toBe(true);
+    expect(launches.at(-1)?.viewMode).toBe("chat");
+
+    // 명단에서 뺀 구성원은 복원되면 일반 Operation 이다 — 질문 정책을 되돌린 뒤 닫는다.
+    launch.memberRemoved(item.id, routed.id);
+    const removedId = launches.length > 0 ? `launched-${launches.length}` : "";
+    expect(userQuestions.at(-1)).toEqual({ operationId: removedId, policy: "default" });
+    expect(operations.has(removedId)).toBe(false);
+
+    // 살아 있는 지휘관은 저장값보다 지금 보이는 표면이 이긴다 — 채팅으로 저장됐어도 터미널로 떠 있으면 터미널로 태어난다.
+    vi.unstubAllGlobals();
+    routingOrigin = null;
+    activity.set(item.id, "idle");
+    surfaces.set(item.id, "terminal");
+    const late = store.memberAdd(item.id, { role: "late" }, "human").members.at(-1)!;
+    await launch.muster(item.id);
+    expect(launches.at(-1)?.viewMode).toBe("terminal");
+    launch.memberRemoved(item.id, late.id);
+
+    // 지휘관만 지워지고(삭제 사건을 놓침) 복원 불가로 확정되면 구성원은 제 목표의 지휘관으로 보인다 — 질문 차단이 남으면 안 된다.
+    // 되돌리는 것은 이 목표가 기록한 구성원 중 남아 있는 Operation 뿐이다: 이미 없는 것·무관한 Operation 에는 쓰지 않는다.
+    operations.delete(allowedOperationId);
+    operations.delete(item.id);
+    userQuestions.length = 0;
+    launch.operationPurged("unrelated-operation");
+    expect(userQuestions).toEqual([]);
+    launch.operationPurged(item.id);
+    expect(userQuestions).toEqual([{ operationId: blockedOperationId, policy: "default" }]);
+    expect(operations.has(blockedOperationId)).toBe(true);
+    expect(store.find(blockedOperationId)).toMatchObject({ id: blockedOperationId });
   });
 
   it("creates an objective as a dormant Commander Operation and keeps only objective-owned values in the workspace state.json", async () => {
@@ -275,7 +316,7 @@ describe("Objectives contract", () => {
   });
 
   it("shows every agent Operation created elsewhere as an objective, but not member or plugin Operations", async () => {
-    const { store, launch, add, stateFile } = harness();
+    const { store, launch, add, stateFile, launches, call } = harness();
     add("sidebar", { title: "Made in the sidebar", groupId: "g-a" });
     add("wiki", { pluginId: "codex", type: "codex-wiki" });
     const made = await launch.create({ theaterId: "t1", title: "Made in Objectives", groupId: null, steps: [{ text: "one" }] });
@@ -289,6 +330,12 @@ describe("Objectives contract", () => {
     expect(JSON.stringify(JSON.parse(fs.readFileSync(stateFile, "utf8")))).not.toContain("sidebar");
     store.patch("sidebar", { note: "now it has a brief" });
     expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).objectives.map((entry: { operationId: string }) => entry.operationId)).toContain("sidebar");
+    // 따로 만든 지휘관에게는 고정 이름이 없다 — 구성원은 그래도 사람에게 묻지 않고, 주소를 지어내지 않고 null 로 받는다.
+    const helper = store.memberAdd("sidebar", { role: "helper" }, "human").members.at(-1)!;
+    await launch.muster("sidebar");
+    expect(launches.at(-1)?.disableUserQuestions).toBe(true);
+    const helperOperation = store.find("sidebar")!.members.find((member) => member.id === helper.id)!.operationId!;
+    expect((await call("mine", {}, helperOperation)).structuredContent).toMatchObject({ role: "member", commander: { session: null } });
   });
 
   it("keeps an objective in its Commander Operation's group and moves the members with it", async () => {
@@ -328,7 +375,9 @@ describe("Objectives contract", () => {
     const member = (mustered.structuredContent.members as { operationId: string; state: string }[])[0]!;
     expect(member.state).toBe("launched");
     // 구성원은 제 역할과 맡은 임무를 읽지만 쓰지 못한다.
-    expect((await call("mine", {}, member.operationId)).structuredContent).toMatchObject({ role: "member", access: "read-only", itemId: item.id, member: { role: "build", brief: "implements" }, missions: [{ index: 0, text: "p1" }] });
+    // 구성원은 보고·판단 요청을 보낼 지휘관의 세션 주소를 함께 받는다.
+    expect((await call("mine", {}, member.operationId)).structuredContent).toMatchObject({ role: "member", access: "read-only", itemId: item.id, commander: { session: store.find(item.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ index: 0, text: "p1" }] });
+    expect(store.find(item.id)!.commander.sessionName).toMatch(/-cmdr$/);
     expect((await call("read", { itemId: item.id }, member.operationId)).isError).toBe(false);
     expect((await call("mine", {}, commander)).structuredContent).toMatchObject({ role: "commander", itemId: item.id });
     // 사람이 선행 없이 더한 단계는 미분류 — 지휘관이 자리를 정하기 전까지 준비되지 않는다.

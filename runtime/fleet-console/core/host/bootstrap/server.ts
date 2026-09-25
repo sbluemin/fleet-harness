@@ -23,7 +23,7 @@ import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
 import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
-import { OPERATION_GROUPED_EVENT_CHANNEL, withSubagentSpawn } from "@fleet-console/sdk/operations";
+import { OPERATION_GROUPED_EVENT_CHANNEL, withSubagentSpawn, withUserQuestions } from "@fleet-console/sdk/operations";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
@@ -985,6 +985,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const node = operations.get(operationId);
         if (!node) return;
         const next = withSubagentSpawn(node.payload, policy);
+        if (next === node.payload) return;
+        pluginHostCapabilities.operations.patch(operationId, { payload: next });
+      },
+      // 서브에이전트 정책과 같은 영속 경로. 살아 있는 채팅은 이 값을 호출마다 읽는다.
+      setUserQuestions: (operationId, policy) => {
+        if (policy !== "blocked" && policy !== "default") return;
+        const node = operations.get(operationId);
+        if (!node) return;
+        const next = withUserQuestions(node.payload, policy);
         if (next === node.payload) return;
         pluginHostCapabilities.operations.patch(operationId, { payload: next });
       },

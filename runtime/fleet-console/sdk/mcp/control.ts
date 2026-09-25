@@ -25,6 +25,8 @@ export interface ConsoleActionInput {
   readonly sessionName?: string;
   /** launch 전용 — 태어날 때 서브에이전트(Claude Code `Agent` 도구, fleet:execute 포함)를 모두 끈다. 이후 변경은 `setSubagentSpawn`이며 이미 뜬 프로세스는 다음 기동까지 그대로다. */
   readonly disableSubagents?: boolean;
+  /** launch 전용 — 태어날 때 사람에게 묻는 도구(`AskUserQuestion`)를 뺀다. 이후 변경은 `setUserQuestions`이며 이미 뜬 터미널 프로세스는 다음 기동까지 그대로다. */
+  readonly disableUserQuestions?: boolean;
   /** launch 전용 — Operation만 만들고 첫 send 때 새 세션으로 깨운다. */
   readonly dormant?: boolean;
   /**

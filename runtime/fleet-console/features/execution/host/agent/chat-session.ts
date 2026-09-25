@@ -148,6 +148,11 @@ export interface AgentChatSessionSeed {
    */
   readonly resolveAttachmentId?: (filePath: string) => string | null;
   readonly cancelComputerUse?: () => void;
+  /**
+   * 이 Operation이 사람에게 묻지 않는가. 새 세션은 도구 목록에서 이미 빠지지만, 정책이 막히기 전에 연 세션은 도구를
+   * 들고 있다 — 그 호출은 카드도 대기도 세우지 않고 거절한다. 호출마다 읽으므로 정책 변경이 곧바로 듣는다.
+   */
+  readonly userQuestionsBlocked?: () => boolean;
   readonly onProviderSessionUpdate: (providerSession: CapturedAgentSession) => void;
   /**
    * 이 세션의 실행 활동을 Operation 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
@@ -235,6 +240,9 @@ interface PendingAsk {
  * 쓴다 — 좁혀 두면 홈 정책처럼 뒤에 붙는 옵션이 주입점을 통과하지 못한다.
  */
 export type CreateChatSdk = (options: ClaudeGatewaySdkOptions) => Promise<ClaudeGatewaySdk>;
+
+/** 질문 정책이 막힌 세션의 남은 질문 호출에 돌려주는 거절 — 자식이 읽는 사실 한 줄이다. */
+const USER_QUESTIONS_OFF = "Asking the person is turned off for this session. Send what needs deciding to the session that assigned this work.";
 
 const JOURNAL_CAP = 2_000;
 /**
@@ -1698,6 +1706,8 @@ class AgentChatSession {
     context: { readonly toolUseId: string; readonly signal: AbortSignal },
   ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> {
     if (!AGENT_CHAT_ASK_TOOLS.has(name)) return { behavior: "allow" };
+    // 계획 승인(ExitPlanMode)은 이 정책 밖이다 — 사람에게 묻는 질문만 거절한다.
+    if (name === "AskUserQuestion" && this.seed.userQuestionsBlocked?.() === true) return { behavior: "deny", message: USER_QUESTIONS_OFF };
     const id = context.toolUseId.length > 0 ? context.toolUseId : `ask-${this.seq + 1}`;
     const parsed = agentChatAskFromToolInput(name, id, input);
     if (!parsed) return { behavior: "allow" };

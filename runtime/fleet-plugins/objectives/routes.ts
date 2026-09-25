@@ -68,6 +68,9 @@ export default definePlugin({
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
     const launch = createLaunchService(ctx, store);
     ctx.host.lifecycle.registerCleanup(() => launch.dispose());
+    // 질문 정책 채우기 — 이 정책 전에 뜬 구성원도 사이드바·패널 재개나 메시지로 깨어날 때 사람에게 묻지 않게 한다. 프로세스는 건드리지 않는다.
+    try { launch.backfillMemberPolicy(); }
+    catch (error) { console.warn(`[objectives] member question policy backfill skipped: ${error instanceof Error ? error.message : String(error)}`); }
     const on = (channel: string, run: (operationId: string, payload: unknown) => void) => {
       const off = ctx.host.events.subscribe(channel, (payload) => {
         const operationId = operationIdOf(payload);

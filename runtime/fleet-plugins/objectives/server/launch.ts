@@ -38,6 +38,10 @@ export interface LaunchService {
   muster(itemId: string): Promise<readonly { readonly id: string; readonly role: string; readonly session: string; readonly operationId: string; readonly state: "live" | "launched" | "resumed" | "unknown" }[]>;
   /** 사람 경로의 구성원 수정. 서브에이전트 허용이 바뀌면 다음 기동 정책만 호스트에 알리고, 떠 있는 프로세스는 건드리지 않는다. */
   memberPatched(itemId: string, memberId: string, patch: MemberPatchInput): ObjectiveItem;
+  /** 명단에서 빼고 그 Operation 을 닫는다. 삭제 유예 뒤 복원되면 일반 Operation 이므로 질문 정책을 먼저 되돌린다. */
+  memberRemoved(itemId: string, memberId: string): { readonly item: ObjectiveItem; readonly stepIds: readonly string[] };
+  /** 저장된 모든 구성원 Operation 에 질문 차단 정책을 채운다(멱등). 이 정책 이전에 뜬 구성원도 다음 기동부터 빠지지 않게 한다. */
+  backfillMemberPolicy(): void;
   /** 지휘관 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. */
   busy(itemId: string): boolean;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
@@ -103,7 +107,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
-  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; parentOperationId?: string }): Promise<string> => {
+  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; member?: boolean; parentOperationId?: string }): Promise<string> => {
     const receipt = await control().request({
       kind: "launch",
       theaterId: input.theaterId,
@@ -113,6 +117,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       ...(input.dormant ? { dormant: true } : {}),
       // 허용하지 않은 구성원만 태어날 때 서브에이전트(fleet:execute 포함)를 끈다. 허용은 전역 정책을 그대로 쓴다.
       ...(input.subagents === false ? { disableSubagents: true } : {}),
+      // 구성원은 사람에게 묻지 않는다 — 판단이 필요하면 지휘관에게 SendMessage 로 보낸다. 지휘관은 그대로다.
+      ...(input.member ? { disableUserQuestions: true } : {}),
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
       ...(input.groupId ? { groupId: input.groupId } : {}),
@@ -153,6 +159,19 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   /** 다음 프로세스 기동에 쓸 정책. 세션 payload를 직접 고치지 않고, 떠 있는 프로세스는 중단하지 않는다. */
   const rememberSubagentSpawn = (operationId: string, allowed: boolean) => {
     ctx.host.consoleControl?.setSubagentSpawn?.(operationId, allowed ? "default" : "blocked");
+  };
+  /** 구성원의 다음 기동에서 사람 질문을 뺀다. 떠 있는 터미널은 중단하지 않고, 살아 있는 채팅은 남은 질문을 거절한다. */
+  const blockMemberQuestions = (operationId: string) => {
+    ctx.host.consoleControl?.setUserQuestions?.(operationId, "blocked");
+  };
+  /**
+   * 새 구성원이 태어날 뷰 — 지휘관을 따른다. 살아 있는 지휘관은 지금 보이는 표면을, 미기동·휴면이면 저장된 시작 뷰를 쓴다
+   * (표식이 없는 옛 지휘관은 터미널이다). 이미 있는 구성원의 뷰는 바꾸지 않는다.
+   */
+  const commanderView = (itemId: string): "terminal" | "chat" => {
+    const observation = ctx.host.consoleControl?.observe(itemId);
+    if (observation?.lifecycle === "live") return observation.surface;
+    return item(itemId).commander.viewMode ?? "terminal";
   };
   const memberPreset = (current: ObjectiveItem, member: ObjectiveMember) => member.launch.mode === "model"
     ? { model: member.launch.model, effort: member.launch.effort }
@@ -267,12 +286,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const node = operationId ? ctx.host.operations.get(operationId) : null;
       if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
       if (operationId && node && observation?.lifecycle === "live") {
+        blockMemberQuestions(operationId);
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "live" });
         continue;
       }
       if (operationId && node && observation?.lifecycle === "dormant") {
         // 앞선 구성원의 기동·재개를 기다리는 동안 바뀐 허용값도 이번 재개부터 반영한다.
         rememberSubagentSpawn(operationId, item(itemId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
+        blockMemberQuestions(operationId);
         const receipt = await control().request({ kind: "resume", operationId }, `objectives:resume:${randomUUID()}`).catch(asStoreError);
         if (receipt.status === "failed" || receipt.status === "rejected") throw new ObjectiveStoreError(receipt.error ?? "resume_failed");
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "resumed" });
@@ -289,7 +310,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 라우팅은 오래 걸릴 수 있으므로 실제 기동 요청 직전에 저장된 허용값을 읽는다.
       const allowed = item(itemId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
       // 구성원은 지휘관이 지금 쓰는 표면으로 뜬다 — 채팅과 터미널은 권한 모드가 달라, 섞이면 서로의 메시지가 승인 대기에 묶인다.
-      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, viewMode: item(itemId).commander.viewMode, subagents: allowed ? undefined : false, parentOperationId: current.id }).catch(asStoreError);
+      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: allowed ? undefined : false, member: true, viewMode: commanderView(itemId), parentOperationId: current.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(itemId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       try { current = store.setMemberOperation(itemId, member.id, launchedId); }
       catch (error) { ctx.host.operations.delete(launchedId); throw error; }
@@ -404,6 +425,25 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return next;
     },
 
+    memberRemoved(itemId, memberId) {
+      const result = store.memberRemove(itemId, memberId);
+      const operationId = result.removed.operationId;
+      if (operationId) {
+        ctx.host.consoleControl?.setUserQuestions?.(operationId, "default");
+        ctx.host.operations.delete(operationId);
+      }
+      return { item: result.item, stepIds: result.stepIds };
+    },
+
+    backfillMemberPolicy() {
+      for (const current of store.all()) {
+        for (const member of current.members) {
+          const node = member.operationId ? ctx.host.operations.get(member.operationId) : null;
+          if (node && node.theaterId === current.theaterId) blockMemberQuestions(node.id);
+        }
+      }
+    },
+
     busy: (itemId) => working(item(itemId).id),
 
     async steer(itemId, options) {
@@ -439,7 +479,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       }
     },
 
-    operationPurged: (operationId) => store.forget(operationId),
+    operationPurged(operationId) {
+      // 레코드가 사라지면 남은 구성원은 소속을 잃고 제 목표의 지휘관으로 보인다. 이 목표가 기록한 구성원 중 아직 있는
+      // Operation 만 질문 정책을 되돌린다 — 이미 없는 Operation 이나 다른 소유자의 차단에는 쓰지 않는다.
+      for (const memberId of store.assigneesOf(operationId)) {
+        if (memberId !== operationId && ctx.host.operations.get(memberId)) ctx.host.consoleControl?.setUserQuestions?.(memberId, "default");
+      }
+      store.forget(operationId);
+    },
 
     operationGrouped(event) {
       const current = store.find(event.operationId);

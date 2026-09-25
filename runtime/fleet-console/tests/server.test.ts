@@ -451,9 +451,12 @@ describe("console static and terminal ticket boundary", () => {
     });
     expect(response.status).toBe(200);
     const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as {
-      readonly operations: ReadonlyArray<{ readonly id?: string; readonly payload?: { readonly subagentSpawn?: string } }>;
+      readonly operations: ReadonlyArray<{ readonly id?: string; readonly payload?: { readonly subagentSpawn?: string; readonly userQuestions?: string } }>;
     };
     expect(state.operations.find((operation) => operation.id === "bravo")?.payload?.subagentSpawn).toBe("blocked");
+    // 이 정책 전에 뜬 구성원도 플러그인 기동이 질문 차단을 채운다. 지휘관은 그대로다.
+    expect(state.operations.find((operation) => operation.id === "bravo")?.payload?.userQuestions).toBe("blocked");
+    expect(state.operations.find((operation) => operation.id === "commander-1")?.payload?.userQuestions).toBeUndefined();
   });
 
   it("rejects Theater registration without a valid folder grant", async () => {

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ClaudeGatewaySystemPrompt } from "../../claude/index.js";
 
-import { buildClaudeAgentDenyRules } from "./claude-agent-rules.js";
+import { buildClaudeDenyRules } from "./claude-agent-rules.js";
 import { GATEWAY_DISABLED_CLAUDE_SKILLS, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
 import type { AgentCliPlugin, ClaudeSessionCoordinate, FleetHookExec } from "./types.js";
 
@@ -61,6 +61,8 @@ export interface ClaudeSessionHandle {
   readonly claudeCodeSystemPrompt: "on" | "append" | "off";
   /** 이 세션에서 끈 내장 서브에이전트 이름들. 생략은 전부 남는다는 뜻이다. */
   readonly claudeCodeDisabledAgents?: readonly string[];
+  /** 이 세션에서 뺀 도구 이름들. 생략은 뺀 것이 없다는 뜻이다. */
+  readonly claudeCodeDisabledTools?: readonly string[];
   /** Chat Mode처럼 SDK로 자식을 세우는 표면이 그대로 펼쳐 쓰는 투영. */
   readonly sdk: ClaudeSessionSdkProjection;
 }
@@ -97,6 +99,11 @@ export interface PrepareClaudeSessionOptions {
    * `disallowedTools`로, 철자는 `claude-agent-rules.ts`가 소유한다.
    */
   readonly claudeCodeDisabledAgents?: readonly string[];
+  /**
+   * 이 세션에서 뺄 도구 이름들(예: `AskUserQuestion`). 무엇을 뺄지는 호출자 정책이다. 서브에이전트 규칙과 합쳐
+   * CLI는 `permissions.deny`, SDK는 `disallowedTools`로 같은 목록이 실린다.
+   */
+  readonly claudeCodeDisabledTools?: readonly string[];
 }
 
 /**
@@ -113,7 +120,8 @@ export async function prepareClaudeSession(
   const coordinate = resolveSessionCoordinate(options.origin);
   const claudeCodeSystemPrompt = options.claudeCodeSystemPrompt ?? "on";
   const claudeCodeDisabledAgents = [...new Set(options.claudeCodeDisabledAgents ?? [])];
-  const agentDenyRules = buildClaudeAgentDenyRules(claudeCodeDisabledAgents);
+  const claudeCodeDisabledTools = [...new Set(options.claudeCodeDisabledTools ?? [])];
+  const denyRules = buildClaudeDenyRules(claudeCodeDisabledAgents, claudeCodeDisabledTools);
   const skillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
   const plugin = options.plugin;
   return {
@@ -124,6 +132,7 @@ export async function prepareClaudeSession(
     ...(skillOverrides ? { skillOverrides } : {}),
     claudeCodeSystemPrompt,
     ...(claudeCodeDisabledAgents.length > 0 ? { claudeCodeDisabledAgents } : {}),
+    ...(claudeCodeDisabledTools.length > 0 ? { claudeCodeDisabledTools } : {}),
     sdk: {
       options: {
         plugins: plugin.pluginRoots.map((root) => ({ path: root })),
@@ -143,8 +152,9 @@ export async function prepareClaudeSession(
         permissionMode: "bypassPermissions",
         // 사용자가 고른 구성을 SDK 어휘로 옮긴다. 실리는 본문은 전부 사용자가 쓴 것이다.
         ...buildSdkSystemPrompt(claudeCodeSystemPrompt, options.claudeCodeCustomSystemPrompt),
-        // 옵트아웃한 내장 서브에이전트는 SDK 표면에서도 같은 규칙으로 빠진다.
-        ...(agentDenyRules.length > 0 ? { disallowedTools: agentDenyRules } : {}),
+        // 옵트아웃한 내장 서브에이전트와 뺀 도구는 SDK 표면에서도 같은 목록으로 빠진다. 실측(SDK 0.3.269):
+        // `canUseTool`이 대화형 도구를 싣더라도 여기 적힌 `AskUserQuestion`은 init 도구 목록에서 빠진다.
+        ...(denyRules.length > 0 ? { disallowedTools: denyRules } : {}),
       },
     },
   };
