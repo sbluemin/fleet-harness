@@ -2370,7 +2370,10 @@
 .agent-chat-member-foot {
   flex: none;
   border-top: 1px solid var(--hairline);
-  padding: var(--space-2) var(--space-3);
+  /* 가로 여백은 컴포저와 같은 식으로 로그 컬럼에 맞춘다 — 바닥 줄의 좌표·폭 버튼이 답 컬럼
+     가장자리와 어긋나지 않게 한다. 폭 순환 프로브가 이 줄의 content box를 재므로 순환 판정도
+     로그 컬럼과 같아진다. */
+  padding: var(--space-2) calc(clamp(var(--space-4), 4vw, var(--space-8)) + var(--agent-chat-gutter));
 }
 
 .agent-chat-member-tools {
