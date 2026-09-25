@@ -1,4 +1,4 @@
-import type { EntryPageSnapshot, EntryPageWebContents, EntryTone } from "./entry-page.js";
+import type { EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryTone } from "./entry-page.js";
 
 export type RuntimeEntryState = "checking" | "node" | "installing" | "offline" | "firstfail" | "starting" | "dev";
 
@@ -27,6 +27,8 @@ export interface LaunchControllerDependencies {
   readonly desktopVersion?: string;
   /** 지금 설치돼 있는 관리형 Console 버전. 모르면 null — 버전 줄에서 뺀다. */
   readonly consoleVersion?: () => string | null;
+  /** 사용자 테마의 색 — 기억해 둔 것이든 Console이 방금 알린 것이든 지금 아는 최신 값. 모르면 기본 판. */
+  readonly palette?: () => EntryPalette | undefined;
   /** 넘겨주기 전 브랜드가 상단 자리로 줄어드는 전환을 기다린다. 기본은 settleEntryHandoff. */
   readonly settleHandoff?: (contents: EntryPageWebContents) => Promise<void>;
   readonly onFirstRunFailure?: () => Promise<boolean>;
@@ -61,6 +63,7 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
         lang: dependencies.lang ?? "en",
         desktopVersion: dependencies.desktopVersion,
         consoleVersion: dependencies.consoleVersion ?? (() => null),
+        palette: dependencies.palette ?? (() => undefined),
       };
       const push = async (state: RuntimeEntryState, detail?: string, progress?: number): Promise<void> => {
         if (window.isDestroyed?.()) return;
@@ -106,6 +109,7 @@ interface EntryContext {
   readonly lang: EntryLanguage;
   readonly desktopVersion?: string;
   readonly consoleVersion: () => string | null;
+  readonly palette: () => EntryPalette | undefined;
 }
 
 interface EntryLine {
@@ -154,6 +158,7 @@ const COPY = {
 function snapshotFor(context: EntryContext, state: RuntimeEntryState, detail?: string, progress?: number): EntryPageSnapshot {
   const copy = COPY[context.lang];
   const line = lineFor(copy, state, detail, progress);
+  const palette = context.palette();
   return {
     platform: process.platform,
     lang: context.lang,
@@ -161,6 +166,7 @@ function snapshotFor(context: EntryContext, state: RuntimeEntryState, detail?: s
     tagline: copy.tagline,
     versions: versionLine(context),
     ...line,
+    ...(palette ? { palette } : {}),
   };
 }
 

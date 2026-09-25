@@ -1,5 +1,6 @@
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import { createDesktopEventStream, parseDesktopSseFrame, type DesktopEventStream } from "./desktop-event-stream.js";
+import { readEntryPalette, type EntryPalette } from "./entry-page.js";
 
 interface DesktopTitleBarOverlay {
   readonly color: string;
@@ -7,9 +8,11 @@ interface DesktopTitleBarOverlay {
   readonly height: number;
 }
 
-interface DesktopThemeSnapshot {
+export interface DesktopThemeSnapshot {
   readonly theme: string;
   readonly titleBarOverlay: DesktopTitleBarOverlay;
+  /** 진입 화면·종료 인사·창 바탕의 색. 이 필드를 싣지 않는 Console이거나 모양이 어긋나면 없다. */
+  readonly entry?: EntryPalette;
 }
 
 const DESKTOP_THEME_PATH = "/api/v1/desktop/theme";
@@ -37,7 +40,7 @@ export function createDesktopThemeSynchronizer(deps: DesktopThemeSynchronizerDep
     snapshotPath: DESKTOP_THEME_PATH,
     eventsPath: DESKTOP_THEME_EVENTS_PATH,
     eventName: DESKTOP_THEME_EVENT,
-    parseSnapshot: (value) => (isDesktopThemeSnapshot(value) ? value : null),
+    parseSnapshot: readDesktopThemeSnapshot,
     apply: deps.applyTheme,
     maxFrameChars: MAX_DESKTOP_THEME_SSE_BUFFER_CHARS,
     normalizeOrigin: normalizeConsoleOrigin,
@@ -49,14 +52,19 @@ export function createDesktopThemeSynchronizer(deps: DesktopThemeSynchronizerDep
 }
 
 export function parseDesktopThemeEvent(frame: string): DesktopThemeSnapshot | null {
-  return parseDesktopSseFrame(frame, DESKTOP_THEME_EVENT, (value) => (isDesktopThemeSnapshot(value) ? value : null));
+  return parseDesktopSseFrame(frame, DESKTOP_THEME_EVENT, readDesktopThemeSnapshot);
 }
 
-function isDesktopThemeSnapshot(value: unknown): value is DesktopThemeSnapshot {
-  if (!isRecord(value) || !isDesktopThemeId(value.theme) || !isRecord(value.titleBarOverlay)) return false;
-  return isElectronColor(value.titleBarOverlay.color)
-    && isElectronColor(value.titleBarOverlay.symbolColor)
-    && isTitleBarOverlayHeight(value.titleBarOverlay.height);
+/**
+ * 받아들일 수 있는 필드만 골라 새로 만든다. 팔레트가 어긋나도 제목 표시줄 색은 살린다 — 둘은 따로 쓰인다.
+ * 지난 실행에 기억해 둔 스냅샷도 같은 문을 지난다.
+ */
+export function readDesktopThemeSnapshot(value: unknown): DesktopThemeSnapshot | null {
+  if (!isRecord(value) || !isDesktopThemeId(value.theme) || !isRecord(value.titleBarOverlay)) return null;
+  const { color, symbolColor, height } = value.titleBarOverlay;
+  if (!isElectronColor(color) || !isElectronColor(symbolColor) || !isTitleBarOverlayHeight(height)) return null;
+  const entry = readEntryPalette(value.entry);
+  return { theme: value.theme, titleBarOverlay: { color, symbolColor, height }, ...(entry ? { entry } : {}) };
 }
 
 function isDesktopThemeId(value: unknown): value is string {

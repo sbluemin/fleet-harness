@@ -1,6 +1,6 @@
 import type { WebContentsView } from "electron";
 
-import type { EntryFarewell, EntryPageSnapshot, EntryPageWebContents } from "./entry-page.js";
+import type { EntryFarewell, EntryPageSnapshot, EntryPageWebContents, EntryPalette } from "./entry-page.js";
 import type { EntryLanguage } from "./launch-controller.js";
 import type { DesktopShellWindow } from "./shell-window.js";
 
@@ -153,6 +153,6 @@ export function createQuitFarewell(deps: QuitFarewellDependencies): QuitFarewell
 const FAREWELL_TITLE: Record<EntryLanguage, string> = { ko: "Fleet 종료 중…", en: "Quitting Fleet…" };
 
 /** 인사 화면은 한 줄만 말한다 — 태그라인·버전·개발 배지는 비운다. */
-export function farewellSnapshot(lang: EntryLanguage, phase: EntryFarewell): EntryPageSnapshot {
-  return { platform: process.platform, lang, dev: false, tagline: "", tone: "busy", title: FAREWELL_TITLE[lang], versions: "", farewell: phase };
+export function farewellSnapshot(lang: EntryLanguage, phase: EntryFarewell, palette?: EntryPalette): EntryPageSnapshot {
+  return { platform: process.platform, lang, dev: false, tagline: "", tone: "busy", title: FAREWELL_TITLE[lang], versions: "", farewell: phase, ...(palette ? { palette } : {}) };
 }

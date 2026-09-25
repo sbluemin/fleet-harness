@@ -14,7 +14,7 @@ import { isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit }
 import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
 import { createHydratedDesktopEnvironment, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory } from "./environment.js";
-import { pushEntrySnapshot } from "./entry-page.js";
+import { pushEntrySnapshot, type EntryPalette } from "./entry-page.js";
 import { createQuitFarewell, farewellSnapshot } from "./quit-farewell.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
@@ -42,7 +42,8 @@ import { installComputerCapture } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import { desktopFullscreenHost, type DesktopShellWindow } from "./shell-window.js";
-import { applyWindowPolicy, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
+import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
+import { createThemeMemory } from "./theme-memory.js";
 import { createZoomState } from "./zoom-state.js";
 
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
@@ -173,16 +174,32 @@ async function boot(): Promise<void> {
     if (process.platform !== "darwin" || !window || window.isDestroyed()) return;
     window.setWindowButtonPosition(trafficLightPosition(window.consoleContents.getZoomFactor()));
   };
-  const themeSynchronizer = process.platform === "win32"
-    ? createDesktopThemeSynchronizer({
-      fetch: consoleFetch,
-      applyTheme: (snapshot) => {
-        if (!window || window.isDestroyed()) return;
-        // 리프레셔가 현재 모니터 배율 보정을 소유한다 — 창이 아직 없으면 적용할 곳도 없다.
-        overlayRefresher?.applyOverlay(snapshot.titleBarOverlay);
-      },
-    })
-    : null;
+  /**
+   * 사용자 테마는 Windows 제목 표시줄만의 일이 아니다 — 진입 화면·종료 인사·창 바탕도 따른다. 그래서
+   * 구독은 모든 플랫폼에서 열고, 제목 표시줄 적용만 Windows 리프레셔(다른 OS에선 null)가 맡는다.
+   */
+  const themeMemory = createThemeMemory(path.join(app.getPath("userData"), "desktop-theme.json"));
+  const rememberedTheme = themeMemory.load();
+  let entryPalette: EntryPalette | undefined = rememberedTheme?.entry;
+  let themeOrigin: string | null = null;
+  const themeSynchronizer = createDesktopThemeSynchronizer({
+    fetch: consoleFetch,
+    applyTheme: (snapshot) => {
+      // 이 필드를 싣지 않는 Console이면 무엇을 칠할지 모른다 — 창과 종료 인사 모두 기본 판으로 돌아간다.
+      entryPalette = snapshot.entry;
+      if (snapshot.entry && themeOrigin !== null && themeOrigin === localConsoleOrigin) themeMemory.save(snapshot);
+      if (!window || window.isDestroyed()) return;
+      const canvas = snapshot.entry?.canvas ?? CANVAS_FAR_BACKGROUND_COLOR;
+      window.base.setBackgroundColor(canvas);
+      window.consoleView.setBackgroundColor(canvas);
+      // 리프레셔가 현재 모니터 배율 보정을 소유한다 — 창이 아직 없으면 적용할 곳도 없다.
+      overlayRefresher?.applyOverlay(snapshot.titleBarOverlay);
+    },
+  });
+  const synchronizeThemeAt = async (origin: string): Promise<void> => {
+    themeOrigin = origin;
+    await themeSynchronizer.start(origin);
+  };
   /**
    * 테마 오버레이와 달리 이 구독은 플랫폼을 가리지 않는다 — 콘솔이 스스로 갈아 끼울 수 없는
    * 설치 레이아웃은 어느 OS에서나 셸이 수행해야 한다. updates는 아래에서 만들어지므로
@@ -334,7 +351,7 @@ async function boot(): Promise<void> {
     loadConsole: (url) => handOffWindowToConsole({
       publishShellHome: async (origin) => { await publishShellHome(origin); },
       loadUrl: async (target) => { await window?.loadURL(target); },
-      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await synchronizeBrowserViews(origin); },
+      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
     }, url),
     openPicker: (url) => picker.open(url),
@@ -377,25 +394,30 @@ async function boot(): Promise<void> {
       return view;
     },
     entryPagePath: desktopResources.entryPagePath,
-    snapshot: (phase) => farewellSnapshot(entryLanguage, phase),
+    snapshot: (phase) => farewellSnapshot(entryLanguage, phase, entryPalette),
     pushEntry: pushEntrySnapshot,
     log: (message) => logger.error(message),
   });
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
-        const createdWindow = createSecureShellWindow(BaseWindow, WebContentsView, { iconPath: desktopResources.iconPath, platform: process.platform });
+        const createdWindow = createSecureShellWindow(BaseWindow, WebContentsView, {
+          iconPath: desktopResources.iconPath,
+          platform: process.platform,
+          ...(entryPalette ? { backgroundColor: entryPalette.canvas } : {}),
+          ...(rememberedTheme ? { titleBarOverlay: rememberedTheme.titleBarOverlay } : {}),
+        });
         window = createdWindow;
         fullscreenSynchronizer = createDesktopFullscreenSynchronizer(desktopFullscreenHost(createdWindow), { fetch: consoleFetch });
         overlayRefresher = process.platform === "win32"
           ? createTitleBarOverlayRefresher(createdWindow.base, {
             screen,
-            initialOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY,
+            initialOverlay: rememberedTheme?.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY,
             getZoomFactor: () => createdWindow.consoleContents.getZoomFactor(),
           })
           : null;
         createdWindow.base.once("closed", () => {
-          themeSynchronizer?.stop();
+          themeSynchronizer.stop();
           updateSynchronizer.stop();
           browserViews.stop();
           fullscreenSynchronizer?.stop();
@@ -456,13 +478,14 @@ async function boot(): Promise<void> {
       lang: entryLanguage,
       desktopVersion: app.getVersion(),
       consoleVersion: () => isPackaged ? readInstalledVersion(runtimePaths.latest) : null,
+      palette: () => entryPalette,
       handoffOrigin: (origin) => {
         localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);
         controls.handoffStarted();
         void publishShellHome(origin);
       },
-      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await synchronizeBrowserViews(origin); },
+      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
       onConsoleLoaded: () => { consoleShown = true; controls.onConsoleLoaded(); },
       onFirstRunFailure: async () => showFirstRunFailure(),
