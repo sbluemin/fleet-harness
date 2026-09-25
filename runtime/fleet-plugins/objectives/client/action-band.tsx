@@ -63,6 +63,8 @@ const LockGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColo
 const StopGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>;
 const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
 const DecideDot = () => <i className="objectives-start-dot" aria-hidden="true" />;
+/** 카드 이동(objectives-panel.tsx의 GoGlyph)과 같은 path — 크기는 CSS가 정한다. */
+const GoGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5H3.5v9h9V10M9.5 3.5h3v3M12.5 3.5 7.5 8.5" /></svg>;
 
 const COUNT_FROM = 1800;
 /**
@@ -242,33 +244,58 @@ export function ActionBand(props: ActionBandProps) {
 
   if (!current || !intent) {
     // 보내는 동안은 진행 중인 그 행동을 보이고(다른 선택은 감춘다), 잠근다. 응답이 오면 사다리로 돌아간다.
+    // 이동 칸은 보내기와 무관하므로 잠그지 않는다 — 보내는 중에도 ↗ 는 누를 수 있다.
     const shown = pending ?? primary!;
     const main = intents[shown];
     const others = pending ? [] : alts;
     const opens = !pending && (main.talk || others.length > 0);
     const hasDraft = !pending && main.talk && !!draft.trim();
+    // 결정 대기(decide·decideMember)는 띠 자체가 이동이다 — 분할 칸 없이 끝의 → 자리에 이동 글리프가 선다.
+    const decide = shown === "decide" || shown === "decideMember";
+    const toneCls = main.tone ? ` is-${main.tone === "stop" ? "stop" : shown === "complete" ? "review" : "awaiting"}` : "";
+    const goLabel = t("objectives.item.goToOperation");
+    const bandCls = `objectives-band${others.length ? " has-alt" : ""}${main.tone === "stop" ? " is-stop" : ""}`;
+    const mainButton = (
+      <button
+        ref={bandRef}
+        type="button"
+        className={`objectives-start${gated ? " is-secondary" : ""}${toneCls}${shown === "steer" || shown === "steerIdle" ? " is-steer" : ""}`}
+        disabled={sending || unavailable(shown)}
+        aria-busy={sending || undefined}
+        title={unavailable(shown) ? t("objectives.coordinator.unavailable") : opens ? t("objectives.band.opens") : undefined}
+        aria-expanded={opens ? false : undefined}
+        aria-label={decide ? `${main.word} — ${goLabel}` : undefined}
+        onClick={press}
+      >
+        {word(main)}
+        <span className="objectives-start-sub">
+          {hasDraft ? <b className="objectives-band-draft">{t("objectives.band.draft")}</b> : null}
+          {pending ? pendingText(pending) : main.desc}
+          {others.length ? <span className="objectives-band-also"> · {t("objectives.band.also", { words: others.map((key) => `「${intents[key].word}」`).join("") })}</span> : null}
+        </span>
+        {decide ? <span className="objectives-start-arrow" aria-hidden="true"><GoGlyph /></span> : null}
+      </button>
+    );
+    // A 분할 칸 — 주행동과 이동이 띠 하나에 나란히 선다. 끝의 → 칸은 이동 칸으로 바뀐다.
+    if (!decide) {
+      return (
+        <div className={`objectives-group objectives-start-group${gated ? " is-gated" : ""}`}>
+          {lockedLine}
+          <div className={bandCls}>
+            <div className={`objectives-split${toneCls}`}>
+              {mainButton}
+              <button type="button" className="objectives-split-goto" aria-label={goLabel} title={goLabel} onClick={() => props.onFocusOperation(item.id)}><GoGlyph /></button>
+            </div>
+          </div>
+          {errorLine}
+        </div>
+      );
+    }
     return (
       <div className={`objectives-group objectives-start-group${gated ? " is-gated" : ""}`}>
         {lockedLine}
-        <div className={`objectives-band${others.length ? " has-alt" : ""}${main.tone === "stop" ? " is-stop" : ""}`}>
-          <button
-            ref={bandRef}
-            type="button"
-            className={`objectives-start${gated ? " is-secondary" : ""}${main.tone ? ` is-${main.tone === "aurora" ? (shown === "complete" ? "review" : "awaiting") : "stop"}` : ""}${shown === "steer" || shown === "steerIdle" ? " is-steer" : ""}`}
-            disabled={sending || unavailable(shown)}
-            aria-busy={sending || undefined}
-            title={unavailable(shown) ? t("objectives.coordinator.unavailable") : opens ? t("objectives.band.opens") : undefined}
-            aria-expanded={opens ? false : undefined}
-            onClick={press}
-          >
-            {word(main)}
-            <span className="objectives-start-sub">
-              {hasDraft ? <b className="objectives-band-draft">{t("objectives.band.draft")}</b> : null}
-              {pending ? pendingText(pending) : main.desc}
-              {others.length ? <span className="objectives-band-also"> · {t("objectives.band.also", { words: others.map((key) => `「${intents[key].word}」`).join("") })}</span> : null}
-            </span>
-            {main.tone === "stop" ? <span /> : <span className="objectives-start-arrow" aria-hidden="true">→</span>}
-          </button>
+        <div className={bandCls}>
+          {mainButton}
         </div>
         {errorLine}
       </div>
@@ -282,7 +309,10 @@ export function ActionBand(props: ActionBandProps) {
       <div ref={compRef} className={`objectives-comp${current.tone === "stop" ? " is-stop" : ""}`} role="group" aria-label={t("objectives.band.send")} onKeyDown={onCompKey}>
         <div className="objectives-comp-top">
           <span>{t(many ? "objectives.band.choose" : "objectives.band.send")}</span>
-          <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.band.fold")} title={t("objectives.band.fold")} onClick={() => fold(true)}><CloseGlyph /></button>
+          <span className="objectives-comp-tools">
+            <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.item.goToOperation")} title={t("objectives.item.goToOperation")} onClick={() => props.onFocusOperation(item.id)}><GoGlyph /></button>
+            <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.band.fold")} title={t("objectives.band.fold")} onClick={() => fold(true)}><CloseGlyph /></button>
+          </span>
         </div>
         {many ? (
           <div className="objectives-intents" role="radiogroup" aria-label={t("objectives.band.intents")}>

@@ -1147,13 +1147,13 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
         </div>
       </div>
 
-      {/* 지휘관·구성원 — 목표는 곧 지휘관 Operation 이다. 행을 누르면 그 Operation 으로 가고, 오른쪽 끝은 모델·강도(깨기 전까지 바꿀 수 있다). */}
+      {/* 지휘관·구성원 — 목표는 곧 지휘관 Operation 이다. 이 행은 모델·강도·보기 설정만 맡고, 이동은 하단 띠의 이동 요소가 맡는다. */}
       <div className="objectives-group">
         <div className={`objectives-row${item.commander.started ? " is-on" : ""}`}>
-          <button type="button" className="objectives-row-main" title={t("objectives.item.goToOperation")} onClick={() => focusOperation(item.id)}>
+          <span className="objectives-row-main">
             <span className="objectives-row-ic"><CoordGlyph /></span>
             <span className="objectives-row-lab">{t("objectives.coordinator.title")}</span>
-          </button>
+          </span>
           <LaunchControl t={t} model={item.commander.model} effort={item.commander.effort} viewMode={item.commander.viewMode ?? "terminal"} onViewChange={(viewMode) => void call("/item/patch", { itemId: item.id, patch: { launch: { viewMode } } })} locked={locked || !editable} onChange={(next) => void call("/item/patch", { itemId: item.id, patch: { launch: next } })} />
         </div>
         <MemberRoster item={item} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable} />

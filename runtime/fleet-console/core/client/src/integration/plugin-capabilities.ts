@@ -20,8 +20,9 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       ...base.operations,
       // 플러그인의 「이 Operation 으로」는 검색·알림과 같은 이동 요청이다 — 자리는 소비 경로가 모드별로 정한다
       // (War Room 이면 무대에 올리고, 아니면 Theater 전환·펴기·companion·최대화·Formation 을 따른다).
+      // `snap: "full"` 힌트는 Cruise에서 Snap 전체 칸으로 앉히고, 스냅할 수 없는 모드·화면에서는 같은 일반 이동으로 폴백한다.
       // 패널로 서지 않는 단계는 스토어가 지휘관으로 돌리고, 요청한 단계의 도착 표식·알림까지 치운다.
-      focus: (operationId) => focusOperation(operationId),
+      focus: (operationId, options) => focusOperation(operationId, options?.snap === "full" ? { snapFull: true } : undefined),
     },
     notifications: {
       emit: (notification) => raiseOperationNotification(notification),

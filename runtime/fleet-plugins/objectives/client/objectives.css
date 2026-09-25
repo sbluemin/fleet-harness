@@ -337,7 +337,7 @@
 .objectives-row { display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 0 20px 0 22px; width: 100%; background: transparent; border: 0; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: default; position: relative; }
 .objectives-row + .objectives-row::before { content: ""; position: absolute; left: 22px; right: 20px; top: 0; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent); }
 button.objectives-row { cursor: pointer; }
-button.objectives-row:hover, .objectives-row:has(> .objectives-row-main:hover) { background: var(--control-rest); }
+button.objectives-row:hover, .objectives-row:has(> button.objectives-row-main:hover) { background: var(--control-rest); }
 button.objectives-row:focus-visible, .objectives-row-main:focus-visible, .objectives-row-x:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row.is-on { color: var(--text-primary); }
@@ -461,6 +461,36 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-start.is-awaiting:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
 .objectives-start.is-awaiting .objectives-start-word, .objectives-start.is-awaiting .objectives-start-arrow { color: var(--aurora); }
 .objectives-start-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent); animation: objectives-breathe 1.8s ease-in-out infinite; }
+
+/* A 분할 칸 — 띠의 틀(테두리·radius·그라디언트)이 이 래퍼로 옮고, 주행동과 이동 칸이 나란히 선다. */
+.objectives-split { display: grid; grid-template-columns: minmax(0, 1fr) 38px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 16%, transparent), color-mix(in oklch, var(--brass) 6%, transparent)); transition: border-color var(--duration-fast) var(--ease-spring); }
+.objectives-split:hover { border-color: var(--brass); }
+.objectives-split.is-stop { border-color: color-mix(in oklch, var(--coral) 40%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--coral) 12%, transparent), color-mix(in oklch, var(--coral) 4%, transparent)); }
+.objectives-split.is-stop:hover { border-color: var(--coral); }
+.objectives-split.is-review { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
+.objectives-split.is-review:hover { border-color: var(--aurora); }
+.objectives-split .objectives-start { border: 0; border-radius: 0; background: transparent; grid-template-columns: auto minmax(0, 1fr); padding: 11px 14px; }
+/* 분할 안 주행동의 초점 링은 overflow:hidden에 잘리므로 래퍼가 대신 그린다 — 기존 규칙과 같은 brass 1px. */
+.objectives-split .objectives-start:focus-visible { outline: none; }
+.objectives-split:has(> .objectives-start:focus-visible) { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-split .objectives-start:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 8%, transparent); }
+.objectives-split.is-stop .objectives-start:hover:not(:disabled) { background: color-mix(in oklch, var(--coral) 8%, transparent); }
+.objectives-split.is-review .objectives-start:hover:not(:disabled) { background: color-mix(in oklch, var(--aurora) 8%, transparent); }
+.objectives-split-goto { display: grid; place-items: center; border: 0; border-left: 1px solid color-mix(in oklch, var(--brass) 26%, transparent); background: transparent; color: var(--text-tertiary); cursor: pointer; padding: 0; }
+.objectives-split-goto svg { width: 14px; height: 14px; }
+.objectives-split-goto:hover { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); }
+.objectives-split-goto:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.objectives-split.is-stop .objectives-split-goto { border-left-color: color-mix(in oklch, var(--coral) 26%, transparent); }
+.objectives-split.is-stop .objectives-split-goto:hover { color: var(--coral); background: color-mix(in oklch, var(--coral) 12%, transparent); }
+.objectives-split.is-review .objectives-split-goto { border-left-color: color-mix(in oklch, var(--aurora) 26%, transparent); }
+.objectives-split.is-review .objectives-split-goto:hover { color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, transparent); }
+/* 결정 대기 띠 끝의 이동 글리프 — → 와 같은 자리, 띠 톤(aurora)을 따른다. */
+.objectives-start-arrow svg { width: 13px; height: 13px; }
+/* 펼친 comp 위 줄의 이동 — 접기 ✕ 바로 왼쪽, 같은 글리프 크기, 테두리 투명. */
+.objectives-comp-tools { display: inline-flex; align-items: center; gap: 2px; }
+.objectives-comp-goto { border-color: transparent; }
+/* 지휘관 행은 모델·강도·보기 설정만 맡는다 — 원래 hover 규칙을 버튼에만 좁히고, span은 손 모양만 거둔다. */
+span.objectives-row-main { cursor: default; }
 /* 하단 한 자리 — 같은 상태에 다른 선택이 하나 더 있으면 띠 뒤로 한 장이 비친다. 누르면 이 자리가 위로 펼쳐진다. */
 .objectives-band { position: relative; }
 .objectives-band.has-alt::before { content: ""; position: absolute; left: 12px; right: 12px; top: -5px; height: 6px; border: 1px solid color-mix(in oklch, var(--brass) 28%, transparent); border-bottom: 0; border-radius: var(--radius-md) var(--radius-md) 0 0; background: color-mix(in oklch, var(--brass) 5%, var(--surface-panel)); }
@@ -797,6 +827,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
   .objectives-note-more { margin-left: 14px; }
   .objectives-att { padding-left: 14px; padding-right: 12px; }
   .objectives-start { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 9px; }
+  .objectives-split .objectives-start { gap: 6px; padding: 9px 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .objectives-step.is-highlight { animation: none; }
