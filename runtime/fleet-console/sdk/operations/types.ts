@@ -124,6 +124,32 @@ export function retainSubagentSpawn(written: Record<string, unknown>, live: Reco
   return next;
 }
 
+/**
+ * 다음 프로세스 기동에 쓸 사람 질문(`AskUserQuestion`) 정책. `blocked`는 그 도구를 빼고, `default`는 그대로 둔다.
+ * 채팅 표면은 살아 있는 세션에서도 이 값을 읽어 남은 질문 호출을 카드 없이 거절한다. 계획 승인·권한 요청은 건드리지 않는다.
+ */
+export type UserQuestions = "blocked" | "default";
+
+export function userQuestionsBlocked(payload: Record<string, unknown> | undefined): boolean {
+  return payload?.userQuestions === "blocked";
+}
+
+/** 다른 payload 키는 그대로 두고 질문 정책만 바꾼다. 값이 같으면 같은 객체를 돌려준다. */
+export function withUserQuestions(payload: Record<string, unknown>, policy: UserQuestions): Record<string, unknown> {
+  if (payload.userQuestions === policy) return payload;
+  return { ...payload, userQuestions: policy };
+}
+
+/** `retainSubagentSpawn`과 같은 규칙 — 기동 전후의 payload 재작성이 그 사이 바뀐 질문 정책을 되돌리지 않는다. */
+export function retainUserQuestions(written: Record<string, unknown>, live: Record<string, unknown> | undefined): Record<string, unknown> {
+  const policy = live?.userQuestions;
+  if (policy === "blocked" || policy === "default") return written.userQuestions === policy ? written : { ...written, userQuestions: policy };
+  if (!("userQuestions" in written)) return written;
+  const next = { ...written };
+  delete next.userQuestions;
+  return next;
+}
+
 /** 기존 세션 좌표·이름·실행 정책을 유지하며 프리셋을 바꾼다. 시작 뷰 변경은 첫 실행 전 호출자가 제한한다. */
 export function withOperationLaunchPreset(payload: Record<string, unknown>, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Record<string, unknown> {
   const value = payload.session;

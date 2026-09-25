@@ -123,6 +123,7 @@ export async function prepareChatClaudeSession(
     readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
     readonly claudeCodeCustomSystemPrompt?: string;
     readonly claudeCodeDisabledAgents?: readonly string[];
+    readonly claudeCodeDisabledTools?: readonly string[];
   },
 ): Promise<ClaudeSessionHandle> {
   const gatewaySelection = deps.readAiGatewaySettings
@@ -136,6 +137,7 @@ export async function prepareChatClaudeSession(
     ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
     ...(deps.claudeCodeCustomSystemPrompt ? { claudeCodeCustomSystemPrompt: deps.claudeCodeCustomSystemPrompt } : {}),
     ...(deps.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: deps.claudeCodeDisabledAgents } : {}),
+    ...(deps.claudeCodeDisabledTools ? { claudeCodeDisabledTools: deps.claudeCodeDisabledTools } : {}),
     workspaceHookExec: buildConsoleWorkspaceHookCommand(buildConsoleHookEntry(deps)),
     ...(gatewaySelection
       ? {
@@ -145,6 +147,8 @@ export async function prepareChatClaudeSession(
 }
 
 const CHAT_PLUGIN_CLI_ID: AgentCliId = "claude";
+/** 사람에게 묻는 Claude Code 도구. 질문 정책이 막힌 Operation은 이 이름을 두 표면의 deny 목록에 싣는다. */
+export const USER_QUESTION_TOOL = "AskUserQuestion";
 
 export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDeps): TerminalLaunchResolver {
   const baseCwd = deps.cwd ?? process.cwd();
@@ -212,6 +216,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       resumeSessionId: context?.resumeSessionId,
       sessionName: context?.sessionName,
       ...(context?.disableSubagents ? { disableSubagents: true } : {}),
+      ...(context?.disableUserQuestions ? { disableUserQuestions: true } : {}),
       sessionId,
     });
   };
@@ -243,6 +248,8 @@ async function createAgentCliLaunchSpec(options: {
   readonly sessionName?: string;
   /** 서브에이전트 전부 끄기 — 설정의 옵트아웃 목록 대신 `Agent` 도구 자체를 막는다. */
   readonly disableSubagents?: boolean;
+  /** 사람에게 묻는 도구를 뺀다 — 서브에이전트 규칙과 합쳐 같은 deny 목록으로 실린다. */
+  readonly disableUserQuestions?: boolean;
   readonly sessionId: string;
 }): Promise<TerminalLaunchSpec> {
   const cleanupStack: Array<() => void | Promise<void>> = [];
@@ -299,6 +306,7 @@ async function createAgentCliLaunchSpec(options: {
       claudeCodeCustomSystemPrompt: resolveClaudeCodeCustomSystemPrompt(options.infraServices.agentOptionsService.load()),
       claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(options.infraServices.agentOptionsService.load()),
       claudeCodeDisabledAgents: options.disableSubagents ? [ALL_SUBAGENTS] : resolveClaudeCodeDisabledAgents(options.infraServices.agentOptionsService.load()),
+      ...(options.disableUserQuestions ? { claudeCodeDisabledTools: [USER_QUESTION_TOOL] } : {}),
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.
       origin: options.resumeSessionId
         ? { kind: "resume", sessionId: options.resumeSessionId }

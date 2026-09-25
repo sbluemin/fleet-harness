@@ -91,8 +91,9 @@ function createPausedSdkFactory() {
   };
 }
 
-function seedFor(awaitingLog: boolean[]): AgentChatSessionSeed {
+function seedFor(awaitingLog: boolean[], userQuestionsBlocked?: () => boolean): AgentChatSessionSeed {
   return {
+    ...(userQuestionsBlocked ? { userQuestionsBlocked } : {}),
     baseUrl: "http://127.0.0.1:9/gateway",
     model: "opus[1m]",
     cwd: "/tmp/workspace",
@@ -133,8 +134,8 @@ const QUESTION_INPUT = {
   }],
 };
 
-async function startSession(registry: AgentChatRegistry, sdk: ReturnType<typeof createPausedSdkFactory>, awaitingLog: boolean[]) {
-  const session = await registry.ensure("op-ask", () => seedFor(awaitingLog));
+async function startSession(registry: AgentChatRegistry, sdk: ReturnType<typeof createPausedSdkFactory>, awaitingLog: boolean[], userQuestionsBlocked?: () => boolean) {
+  const session = await registry.ensure("op-ask", () => seedFor(awaitingLog, userQuestionsBlocked));
   const events: AgentChatJournalEvent[] = [];
   session.subscribe((entry) => events.push(entry));
   session.send("decide the log format");
@@ -195,6 +196,28 @@ describe("AgentChatRegistry — interactive tools", () => {
     expect(session.answer("plan-2", { message: "narrow the scope to CSS only" })).toEqual({ ok: true, outcome: "revised" });
     // 거부는 되돌림이 아니라 되묻기다 — 이 문장이 그대로 모델에게 간다.
     await expect(revised).resolves.toEqual({ behavior: "deny", message: "narrow the scope to CSS only" });
+
+    sdk.finish();
+    await registry.disposeAll();
+  });
+
+  it("refuses a question from a session whose questions are off, without a card or awaiting, and still parks a plan", async () => {
+    const sdk = createPausedSdkFactory();
+    const registry = new AgentChatRegistry(sdk.factory);
+    const awaitingLog: boolean[] = [];
+    // 세션이 연 뒤 정책이 막혀도 남은 호출이 거절되도록 호출마다 읽는다.
+    let blocked = false;
+    const { session, events } = await startSession(registry, sdk, awaitingLog, () => blocked);
+    blocked = true;
+
+    await expect(sdk.ask("AskUserQuestion", QUESTION_INPUT, "tool-off")).resolves.toMatchObject({ behavior: "deny" });
+    expect(events.some((entry) => entry.event.kind === "ask")).toBe(false);
+    expect(awaitingLog).toEqual([]);
+    expect(session.awaiting).toBe(false);
+
+    // 계획 승인은 이 정책 밖이다.
+    void sdk.ask("ExitPlanMode", { plan: "1. rename" }, "plan-kept");
+    await vi.waitFor(() => { expect(session.awaiting).toBe(true); });
 
     sdk.finish();
     await registry.disposeAll();

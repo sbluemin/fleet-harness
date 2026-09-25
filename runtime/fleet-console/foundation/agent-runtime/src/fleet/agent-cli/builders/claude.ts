@@ -1,4 +1,4 @@
-import { buildClaudeAgentDenyRules } from "../claude-agent-rules.js";
+import { buildClaudeDenyRules } from "../claude-agent-rules.js";
 import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js";
 
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
@@ -10,7 +10,7 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
       pluginRoot,
     ]),
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
-    ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents, context.workspaceHookExec),
+    ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents, context.claudeCodeDisabledTools, context.workspaceHookExec),
     ...buildSearchToolArgs(),
     ...buildPermissionArgs(context.claudeCodeSkipPermissions),
   ];
@@ -80,13 +80,14 @@ function buildSearchToolArgs(): string[] {
 function buildSettingsArgs(
   skillOverrides: AgentCliInjectionContext["skillOverrides"],
   disabledAgents: AgentCliInjectionContext["claudeCodeDisabledAgents"],
+  disabledTools: AgentCliInjectionContext["claudeCodeDisabledTools"],
   workspaceHook: AgentCliInjectionContext["workspaceHookExec"],
 ): string[] {
   const settings: Record<string, unknown> = {};
   if (skillOverrides !== undefined && Object.keys(skillOverrides).length > 0) {
     settings.skillOverrides = skillOverrides;
   }
-  const deny = buildClaudeAgentDenyRules(disabledAgents);
+  const deny = buildClaudeDenyRules(disabledAgents, disabledTools);
   if (deny.length > 0) settings.permissions = { deny };
   if (workspaceHook) {
     // plugin CwdChanged는 2.1.212에서 누락된다. flag settings는 PTY와 SDK 양쪽에서 발화한다.
