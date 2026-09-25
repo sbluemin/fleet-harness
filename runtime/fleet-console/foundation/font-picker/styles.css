@@ -115,8 +115,8 @@
 .fc-font-browser__availability { padding: 0.1em 0.55em; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-pill); color: var(--text-secondary); }
 .fc-font-browser__availability--unavailable { color: var(--warn-ink); }
 .fc-font-browser__preview-copy { min-height: 5em; margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
-.fc-font-browser__stepper { min-width: 2.2em; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs, 8px); background: color-mix(in oklab, var(--surface-glass-strong) 78%, transparent); color: var(--text-primary); }
-.fc-font-browser__stepper:hover:not(:disabled) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.fc-font-browser__stepper { min-width: 2.2em; border: 1px solid transparent; border-radius: var(--radius-xs, 8px); background: color-mix(in oklab, var(--surface-glass-strong) 78%, transparent); color: var(--text-primary); }
+.fc-font-browser__stepper:hover:not(:disabled) { border-color: transparent; background: var(--control-hover-fill); }
 .fc-font-browser__stepper:active:not(:disabled) { transform: translateY(1px); }
 .fc-font-browser__size-value { color: var(--text-secondary); }
 .fc-font-browser__range { width: 100%; accent-color: var(--brass); }
@@ -134,6 +134,9 @@
   .fc-font-browser__stepper:disabled,
   .fc-font-browser__range:disabled,
   .fc-font-browser__search:disabled { opacity: 1; }
+
+  /* 고대비 — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다(Quiet Controls C′). */
+  .fc-font-browser__stepper { border-color: ButtonBorder; }
 }
 
 @media (prefers-reduced-motion: reduce) {

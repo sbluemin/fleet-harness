@@ -193,7 +193,7 @@
   display: inline-grid;
   place-items: center;
   background: var(--control-rest);
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   cursor: pointer;
   color: var(--text-tertiary);
   border-radius: var(--radius-xs);
@@ -236,6 +236,16 @@
     background: SelectedItem;
     color: SelectedItemText;
   }
+  /* 고대비 — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다(Quiet Controls C′). */
+  .repository-toggle-btn,
+  .history-segmented button,
+  .history-file-repository-head button,
+  .repository-ws-tree-error button,
+  .repository-compare-swap,
+  .repository-stage-action,
+  .repository-segmented,
+  .repository-staging-bulk,
+  .repository-unified .repository-commit-button { border-color: ButtonBorder; }
 }
 .repository-toggle-btn:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
@@ -1093,7 +1103,7 @@
 .history-inspector { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
 .history-segmented { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--surface-rim); }
 /* 인스펙터 세그먼트도 rest부터 몸을 갖는다 — 동사·토글과 같은 rest 채널 소비(#979 문법의 잔여 스윕). */
-.history-segmented button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); cursor: pointer; font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .01em; padding: 6px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
+.history-segmented button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); cursor: pointer; font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .01em; padding: 6px; transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide); }
 .history-segmented button:hover:not([aria-pressed="true"]) { background: var(--control-rest-hover); color: var(--text-primary); }
 .history-segmented button[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: color-mix(in oklch, var(--brass) 12%, transparent); color: var(--text-primary); }
 .history-segmented span { color: var(--text-tertiary); font-size: var(--t-2xs); }
@@ -1122,7 +1132,7 @@
 .history-files-title { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-xs); font-weight: var(--weight-medium); letter-spacing: .02em; }.history-files-stats { margin-left: auto; letter-spacing: 0; }.history-files-title i { color: var(--positive-ink); font-style: normal; }.history-files-title em { color: var(--coral-ink); font-style: normal; }.history-files-view-toggle { margin-left: 0; }
 .history-files-scroll { min-height: 0; overflow: auto; }.history-commit-files .repository-file-row { padding-left: 14px; }
 .history-changes-tab { min-height: 0; overflow: hidden; }.history-changes-columns { display: grid; min-height: 0; height: 100%; }.history-changes-columns > .history-commit-files { border-right: 0; }
-.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; align-items: center; gap: 2px; margin-left: auto; }.history-file-counter { margin-right: 6px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
+.history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; align-items: center; gap: 2px; margin-left: auto; }.history-file-counter { margin-right: 6px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
 .history-inspector-empty { padding: 16px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-sm); }.history-inspector-error { color: var(--coral-ink); }
 /* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 작성자 → 시간 → sha → 뱃지 순으로 양보한다.
    숨긴 셀은 grid item에서 빠지므로 그 자리의 트랙까지 함께 걷어내야 한다(7ch 같은 고정 트랙은 비어도 폭을 잡는다).
@@ -1296,7 +1306,7 @@
 
 .repository-ws-tree-error button {
   margin-left: auto;
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: var(--control-rest);
   color: var(--text-secondary);
@@ -1410,7 +1420,7 @@
 }
 
 /* ── Compare 뷰 ── */
-.repository-compare-swap { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; flex: none; font-size: var(--t-sm); }
+.repository-compare-swap { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-tertiary); cursor: pointer; flex: none; font-size: var(--t-sm); }
 .repository-compare-swap:hover:not(:disabled) { background: var(--control-rest-hover); color: var(--text-secondary); }
 .repository-compare-meta { flex: none; padding: 5px 10px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); }
 .repository-compare-meta span { color: var(--text-secondary); }
@@ -1632,12 +1642,12 @@
   line-height: 1;
   color: var(--text-secondary);
   background: var(--control-rest);
-  border: 1px solid var(--hairline);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   padding: 2px 6px;
   cursor: pointer;
 }
-.repository-stage-action:hover { color: var(--text-primary); border-color: var(--hairline-strong); }
+.repository-stage-action:hover { color: var(--text-primary); border-color: transparent; background: var(--control-rest-hover); }
 .repository-stage-action:disabled { opacity: 0.4; cursor: default; }
 /* Discard 무장 — 파괴 동사의 2단 문법: 무장 상태만 coral 신호를 입는다. */
 .repository-discard-action.is-armed {
@@ -2029,7 +2039,7 @@
   gap: 2px;
   height: 28px;
   padding: 2px;
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: 7px;
   background: var(--control-rest);
   flex: none;
@@ -2730,7 +2740,7 @@
 .repository-staging.is-reviewing > .repository-commit-box { grid-column: 3; grid-row: 2; }
 .repository-staging.is-reviewing:has(> .repository-staging-guard), .repository-staging.is-reviewing:has(> .repository-sync-toast) { display: flex; }
 .repository-staging.is-reviewing:has(> .repository-staging-guard) > .repository-staging-root, .repository-staging.is-reviewing:has(> .repository-sync-toast) > .repository-staging-root { display: grid; }
-.repository-staging-bulk { border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); border-color: var(--surface-rim); }
+.repository-staging-bulk { border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); border-color: transparent; }
 .repository-staging-row.is-cur .repository-stage-actions { opacity: 1; }
 @container repository-work (max-width: 560px) {
   .repository-staging.is-reviewing { display: flex; }
@@ -2773,8 +2783,8 @@
 .repository-unified .history-author { font-size: var(--t-xs); }
 .repository-unified .repository-commit-box { padding: 10px 12px; gap: 5px; background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised)); }
 .repository-unified .repository-commit-subject, .repository-unified .repository-commit-body { border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); font-family: var(--font-body); }
-.repository-unified .repository-commit-button { border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-primary); }
-.repository-unified .repository-commit-button:not(:disabled):hover { background: var(--control-rest-hover); border-color: var(--brass); }
+.repository-unified .repository-commit-button { border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-primary); }
+.repository-unified .repository-commit-button:not(:disabled):hover { background: var(--control-rest-hover); border-color: transparent; }
 .repository-unified .repository-staging-guard.is-locked { color: var(--text-secondary); background: var(--surface-panel); border-bottom-color: var(--surface-rim); }
 .repository-guard-signal { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--warn); }
 .repository-unified .repository-staging.is-reviewing { grid-template-columns: minmax(220px, min(var(--staging-list-width, 320px), calc(100% - 341px))) 1px minmax(0, 1fr); }

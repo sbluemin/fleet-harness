@@ -1,15 +1,23 @@
 /* Chat Mode — Operation 본문의 읽기 전용 지휘 로그.
-   색은 전부 테마 토큰이다: 상태는 신호 토큰(aurora/warn/coral/positive)만, 사용자 식별은
-   --id-cerulean 워시 문법만 쓴다(단일 화자 표면이라 spine 띠는 두지 않는다 — 우측 정렬이
-   이미 화자를 말한다). 입력창은 없다 — 하단 스트립은 입력 경로 안내다. Answer와 구간 문장은 공유
+   색은 전부 테마 토큰이다: 상태는 신호 토큰(aurora/warn/coral/positive)만, brass는
+   위치·포커스·hover만 진다. 보낸 말풍선은 중립 면으로 물러나 식별 워시를 쓰지 않는다 —
+   단일 화자 표면이라 화자는 오른쪽 정렬이 말한다(행선지via의 캡션 잉크만 --id-cerulean을
+   잇는다). 입력창은 없다 — 하단 스트립은 입력 경로 안내다. Answer와 구간 문장은 공유
    마크다운 컴포넌트(.markdown-body)로 렌더하고 여기서는 챗 밀도 스케일만 오버라이드한다. */
 
 .agent-chat {
   /* 채팅 면의 공유 measure — 턴·디스패치·시스템 줄과 컴포저가 전부 이 폭의 중앙 컬럼 안에
      산다. 읽는 자리와 쓰는 자리를 가르는 두 번째 축은 두지 않는다: 갈라 두면 넓게 읽는 사람이
      정작 긴 지시를 좁은 창에 쓰게 되고, 여섯 줄이라는 가시 상한이 그만큼 빨리 닫힌다.
-     폭은 값 하나이고, 컴포저 바의 글리프 하나가 그 값을 돌린다. */
-  --agent-chat-measure: 100ch;
+     폭은 값 하나이고, 컴포저 바의 글리프 하나가 그 값을 돌린다.
+     measure는 굵기·서체와 무관한 자릿수다 — ch는 굵기를 따라가 테마마다 컬럼이 달라지므로,
+     UI 글자 크기(--font-body-size)에 자릿수(57)를 곱한 값을 쓴다. */
+  --agent-chat-reading-measure: calc(var(--font-body-size) * 57);
+  --agent-chat-measure: var(--agent-chat-reading-measure);
+  /* 로그와 컴포저의 가로 여백을 맞추는 스크롤바 몫 — 초기값은 theme.css의
+     ::-webkit-scrollbar width 10px과 한 벌이다. 마운트 뒤 chat-view가 로그의 실제 거터를
+     재서 인라인으로 교정하므로, 겹침 스크롤바 환경에서는 0이 된다. */
+  --agent-chat-gutter: 10px;
   position: absolute;
   inset: 0;
   display: flex;
@@ -38,13 +46,22 @@
 
 /* 채팅 폭 프리셋 — 사용자 선호가 measure 변수 하나만 갈아끼운다. 로그 컬럼·컴포저·하단 스트립·
    덱 타일 스트립이 전부 이 변수를 경유하므로 값 하나로 표면 전체가 한 몸으로 따라온다.
-   reading(기본)은 위의 100ch 그대로다. */
+   reading(기본)은 위의 reading-measure 그대로다. 넓게는 1.4배다. */
 .agent-chat[data-reading-width="wide"] {
-  --agent-chat-measure: 140ch;
+  --agent-chat-measure: calc(var(--agent-chat-reading-measure) * 1.4);
 }
 
 .agent-chat[data-reading-width="full"] {
   --agent-chat-measure: 100%;
+}
+
+/* 도킹한 Quick Launch가 차지하는 높이만큼 작업 면 아래를 비운다 — formation 격자
+   (Tactical·War Room)와 Cruise 최대화 프레임이 대상이다. 자유 배치 캔버스의 떠 있는
+   패널은 사용자가 둔 자리라 대상이 아니다. 값은 QL이 펼친 높이 + --space-4를 재서
+   document 루트에 쓰며, 없으면 0으로 떨어진다. */
+.operations-canvas.is-formation-view .canvas-operation .agent-chat,
+.operations-canvas.is-panel-maximized .canvas-operation.is-maximized .agent-chat {
+  bottom: var(--quick-launch-dock-inset, 0px);
 }
 
 
@@ -81,8 +98,11 @@
      마지막 줄이 그 뒤에 갇히는 일이 없다 — 갇힘을 막던 여백이 이제는 아무도 서지 않는 45px의
      빈 띠로만 남아, 마지막 답과 그 답에 이어 쓰는 자리를 메신저 한 화면보다 멀리 떼어 놓았다.
      바닥 여백은 읽는 여백 하나로 돌아간다(위와 같은 값). 가로는 늘리지 않는다 — 모든 줄의
-     측정폭을 줄이는 대가가, 세로 여백만으로 이미 해소되는 겹침보다 크다. */
+     측정폭을 줄이는 대가가, 세로 여백만으로 이미 해소되는 겹침보다 크다.
+     스크롤바 거터를 양쪽에 예약해 컬럼이 패널 가운데에 대칭으로 선다 — 한쪽에만 서면
+     스크롤바 폭만큼 컬럼이 밀려 컴포저 프레임과 가장자리가 어긋난다. */
   padding: var(--space-3) clamp(var(--space-4), 4vw, var(--space-8));
+  scrollbar-gutter: stable both-edges;
 }
 
 /* 모든 로그 항목은 패널 중앙의 한 컬럼을 공유한다 — 에이전트 턴은 컬럼 전폭을 쓰고,
@@ -221,8 +241,8 @@
   display: flex;
   gap: var(--space-2);
   font-family: var(--font-body);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.08em;
+  font-size: var(--t-sm);
+  letter-spacing: 0;
   color: var(--text-tertiary);
   margin: 0 var(--space-1) 4px 0;
 }
@@ -236,14 +256,17 @@
   flex-direction: column;
   gap: var(--space-2);
   max-width: 64ch;
-  background: color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised));
-  border: 1px solid color-mix(in oklch, var(--id-cerulean) 18%, var(--hairline));
+  /* 테두리는 컴포저 프레임 하나만 남긴다 — 말풍선은 중립 면으로 물러난다. 화자는
+     오른쪽 정렬이 말한다. */
+  background: var(--control-rest);
+  border: 1px solid transparent;
   border-radius: 14px 14px 5px 14px;
   padding: var(--space-2) var(--space-3);
   color: var(--text-primary);
-  font-size: var(--t-base);
+  font-size: var(--font-body-size);
   line-height: 1.55;
   white-space: pre-wrap;
+  word-break: keep-all;
   overflow-wrap: anywhere;
 }
 
@@ -406,8 +429,8 @@
   flex-wrap: wrap;
   gap: var(--space-2);
   font-family: var(--font-body);
-  font-size: var(--t-xs);
-  letter-spacing: 0.06em;
+  font-size: var(--t-sm);
+  letter-spacing: 0;
   color: var(--text-tertiary);
   /* 매초 갱신되는 티커가 흔들리지 않게 숫자 폭을 고정한다. */
   font-variant-numeric: tabular-nums;
@@ -902,11 +925,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--t-xs);
-  letter-spacing: 0.04em;
+  font-size: var(--t-sm);
+  letter-spacing: 0;
   padding: 1px 7px;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--hairline);
+  border: 1px solid transparent;
+  background: var(--control-rest);
   color: var(--text-tertiary);
 }
 
@@ -915,8 +939,10 @@
   color: var(--coral-ink);
 }
 
-/* 결과를 못 받은 스텝 — 성공도 실패도 아니므로 신호색을 쓰지 않는다. */
+/* 결과를 못 받은 스텝 — 성공도 실패도 아니지만 「결과 없음」은 상태이므로 파선 테두리로 말한다.
+   테두리는 상태가 소유한다(조용한 원장의 면 전환과 무관). */
 .agent-chat-step-out.is-unknown {
+  border-color: var(--hairline);
   border-style: dashed;
 }
 
@@ -1238,9 +1264,9 @@
 .agent-chat-completion-answer {
   flex: none;
   font-family: var(--font-body);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-tertiary);
 }
 
@@ -1269,8 +1295,8 @@
   align-items: center;
   gap: var(--space-2);
   font-family: var(--font-body);
-  font-size: var(--t-xs);
-  letter-spacing: 0.06em;
+  font-size: var(--t-sm);
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
   transition: color var(--duration-fast);
@@ -1301,12 +1327,13 @@
   flex: none;
   font-size: 9px;
   line-height: 1;
-  border: 1px solid var(--hairline);
+  /* 테두리는 컴포저 프레임 하나만 남긴다 — 셰브론은 글자색으로 반응한다. */
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   transition: transform var(--duration-fast), border-color var(--duration-fast);
 }
 
-.agent-chat-fold > summary:hover .agent-chat-fold-chev { border-color: var(--hairline-strong); }
+.agent-chat-fold > summary:hover .agent-chat-fold-chev { border-color: transparent; }
 
 .agent-chat-fold[open] .agent-chat-fold-chev { transform: rotate(180deg); }
 
@@ -1395,7 +1422,7 @@
    마크다운 문법(brass 인라인 코드·리스트 마커·코드 블록 툴바)은 그대로 상속한다.
    measure는 자체 상한 대신 턴 컬럼 전폭을 따른다. */
 .agent-chat .markdown-body {
-  --font-size-body: 14.5px;
+  --font-size-body: var(--font-body-size);
   /* .markdown-body 루트는 스스로 font-family를 걸지 않고 상속한다(헤딩·코드만 자기 서체를
      못박는다). 루트 .agent-chat도 이제 인터페이스 서체라 상속만으로 같지만, 본문이 크롬의
      서체 결정에 끌려가지 않도록 여기서 명시한다. 코드·인라인 코드는 마크다운 문법이 계속 등폭으로 진다. */
@@ -1403,10 +1430,89 @@
   max-inline-size: 100%;
   margin-inline: 0;
   line-height: 1.7;
+  /* 한글은 어절 경계에서만 끊는다 — 어절 중간 끊김은 읽기 결함이다. */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .agent-chat .markdown-body > * + * {
   margin-top: var(--space-3);
+}
+
+/* 채팅 안의 등폭은 터미널 서체 하나만 쓴다 — 인터페이스 서체와 다른 물건으로 읽히던
+   한글 UI 라벨(좌표·이전 대화 띠)은 본문 서체로 바꿨다(아래 history-band·coord 규칙).
+   합자 해제는 필수다 — Cascadia Code 같은 터미널 서체는 합자로 표의 `|---|`를 선 모양으로
+   바꾼다. 공용 마크다운 렌더러는 건드리지 않고 .agent-chat 범위로 덮어쓴다. */
+.agent-chat .markdown-body code,
+.agent-chat .code-block code {
+  font-family: var(--agent-chat-font);
+  font-size: var(--t-md);
+  font-variant-ligatures: none;
+}
+
+/* 인라인 코드 — 공용의 brass 잉크·테두리를 걷고 중립 면으로 물러난다. 긴 경로는
+   anywhere로 끊는다. */
+.agent-chat .markdown-body :not(pre) > code {
+  background: var(--control-wash);
+  border-color: transparent;
+  color: var(--text-primary);
+  padding: 1px 5px;
+}
+
+/* 코드 블록 — 공용의 테두리·그림자·어두운 면을 걷고 중립 면 하나만 남긴다. */
+.agent-chat .code-block {
+  border-color: transparent;
+  box-shadow: none;
+  background: var(--control-rest);
+}
+
+.agent-chat .code-block code { padding: var(--space-1) var(--space-3) var(--space-3); }
+
+/* 코드 블록 머리줄 — 장식 점을 지우고 언어 이름을 왼쪽 본문 문법으로 둔다.
+   렌더러를 고치지 않으므로 「복사」는 글자 버튼으로 남기고 테두리만 걷는다. */
+.agent-chat .code-block-dots { display: none; }
+
+.agent-chat .code-block-toolbar {
+  padding: var(--space-1) var(--space-1) 0 var(--space-3);
+  background: transparent;
+  border-bottom: 0;
+}
+
+.agent-chat .code-block-language {
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.agent-chat .copy-code {
+  border-color: transparent;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0;
+}
+
+.agent-chat .copy-code:hover { background: var(--control-rest-hover); }
+
+/* 이전 대화 띠 — 공용 .fc-history-band(등폭·자간·대문자)를 채팅의 보조 문법으로 덮는다.
+   공용 기본 블록은 건드리지 않는다. */
+.agent-chat .fc-history-band {
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* 고대비(forced-colors) — 면이 걷히므로 B안에서 면으로 바꾼 요소들의 경계를 시스템색으로
+   되살린다(Quiet Controls C′). 버튼의 ButtonBorder와 같은 문법이다. */
+@media (forced-colors: active) {
+  .agent-chat-dispatch-bubble,
+  .agent-chat .code-block,
+  .agent-chat .markdown-body :not(pre) > code,
+  .agent-chat-step-out { border-color: ButtonBorder; }
 }
 
 /* 패널 귀속 컴포저 — sdk/composer 블록의 축약 조립(Quick Launch와 같은 부품, 다른 조립).
@@ -1417,7 +1523,9 @@
    포커스는 brass 채널, 전송 실패는 coral(상태 채널) — 색은 전부 기존 채널 문법 그대로다. */
 .agent-chat-composer {
   flex: none;
-  padding: var(--space-2) var(--space-3) var(--space-3);
+  /* 좌우 여백은 로그 컬럼과 같은 값에 스크롤바 몫(--agent-chat-gutter)을 더한다 —
+     그래야 답 컬럼과 입력창 프레임의 가장자리가 맞는다. */
+  padding: var(--space-2) calc(clamp(var(--space-4), 4vw, var(--space-8)) + var(--agent-chat-gutter)) var(--space-3);
 }
 
 .agent-chat-composer-frame {
@@ -1426,9 +1534,10 @@
      고정폭이 아니다). */
   max-width: var(--agent-chat-measure);
   margin-inline: auto;
-  border: 1px solid var(--hairline-strong);
+  /* 테두리는 이 프레임 하나만 남긴다 — 옅은 헤어라인과 필드 면으로 물러난다. */
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: var(--glass-tint-panel);
+  background: var(--control-field);
   transition:
     border-color var(--duration-base) var(--ease-spring),
     box-shadow var(--duration-base) var(--ease-spring);
@@ -1499,7 +1608,7 @@
   resize: none;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: var(--t-md);
+  font-size: var(--font-body-size);
   line-height: 1.5;
   padding: 0;
   /* 한 줄(30px)에서 시작해 여섯 줄까지 자라고 그 뒤로는 스크롤. 하한을 CSS가 지는 이유는 자동
@@ -1688,7 +1797,7 @@
   color: var(--text-tertiary);
   cursor: pointer;
   padding: 7px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-pill);
   display: inline-flex;
 }
 
@@ -1713,7 +1822,7 @@
   color: var(--text-tertiary);
   cursor: pointer;
   padding: 7px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-pill);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1793,7 +1902,7 @@
   color: var(--text-tertiary);
   cursor: pointer;
   padding: 7px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-pill);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2391,9 +2500,9 @@
   padding: 0;
   border: 0;
   background: transparent;
-  font-family: var(--agent-chat-font);
-  font-size: var(--t-xs);
-  letter-spacing: 0.06em;
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  letter-spacing: 0;
   color: var(--text-tertiary);
   white-space: nowrap;
 }
@@ -2416,7 +2525,7 @@
 }
 
 .agent-chat-coord-sep {
-  color: var(--hairline-strong);
+  color: var(--text-tertiary);
 }
 
 /* 미지정 강도는 사다리 위의 단이 아니라 모델에 맡긴 자리다 — 트랙의 파선 문법과 같은 말. */
@@ -2494,7 +2603,6 @@
   .agent-chat-composer-field { padding-left: var(--space-2); }
   .agent-chat-composer-queue { padding-inline: var(--space-3); }
   .agent-chat-composer-actions { gap: 2px; }
-  .agent-chat-composer-stop { padding: 5px; }
   /* 폭 글리프는 좌표(모델 칩)보다 먼저 자리를 내준다 — 이 폭에서는 세 단이 전부 같은 폭으로
      접혀 고를 것이 없고, 좌표는 유일한 실행 표시라 끝까지 남는다. */
   .agent-chat-composer-width { display: none; }
@@ -3526,7 +3634,7 @@
   flex: none;
   padding: 7px;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-tertiary);
   line-height: 1;
@@ -3545,6 +3653,17 @@
 /* 진행 중에는 옛 값이 새 사실인 척하지 않는다. 자리는 지키되 판독만 낮춘다 — 사라지면
    사용자가 방금 무엇을 눌렀는지 잃는다(전환 칩의 disabled와 같은 규율). */
 .agent-chat-ctx-chip.is-stale { opacity: 0.55; }
+
+/* 좁은 판면의 터치 과녁 40px — 아이콘 16px은 그대로, 패딩으로 상자를 키운다.
+   ctx-chip 기본 규칙보다 뒤에 둔다: 같은 특정도라 순서가 이긴다. */
+@container (max-width: 470px) {
+  .agent-chat-composer-actions { height: 40px; }
+  .agent-chat-composer-attach,
+  .agent-chat-ctx-chip,
+  .agent-chat-composer-stop { padding: 12px; }
+  .agent-chat-composer-send { width: 40px; height: 40px; }
+  .agent-chat-composer-input { padding-block: calc((40px - 1.5em) / 2); }
+}
 
 .agent-chat-ctx-arc {
   width: 16px;

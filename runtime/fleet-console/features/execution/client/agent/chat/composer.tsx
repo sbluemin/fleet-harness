@@ -36,16 +36,17 @@ export const READING_WIDTH_LABEL_KEY = {
   full: "terminal.chat.readingWidth.full",
 } as const satisfies Record<ChatReadingWidth, TerminalMessageKey>;
 
-/* 140ch ÷ 100ch. chat.css의 프리셋 두 값과 한 벌이고, 프로브 하나(100ch)로 두 폭을 모두
-   얻으려고 둔다 — 프리셋을 바꾸면 이 비율도 함께 바꾼다. */
+/* reading-measure ÷ 넓게 measure. chat.css의 프리셋 두 값과 한 벌이고, 프로브 하나
+   (reading-measure)로 두 폭을 모두 얻으려고 둔다 — 프리셋을 바꾸면 이 비율도 함께 바꾼다.
+   ch가 아니라 UI 글자 크기에 자릿수를 곱한 값이라 굵기·서체·테마가 폭을 흔들지 않는다. */
 const WIDE_OVER_READING = 1.4;
 
 /**
  * 지금 이 판면에서 **서로 다른 폭으로 그려지는** 프리셋만 추린다.
  *
- * 프리셋은 상한이지 고정폭이 아니라, 판면이 좁으면 100ch·140ch·전체가 같은 폭으로 접힌다.
+ * 프리셋은 상한이지 고정폭이 아니라, 판면이 좁으면 reading·넓게·전체가 같은 폭으로 접힌다.
  * 그대로 세 단을 돌리면 눌러도 화면이 그대로인 단계가 생기므로, 접히는 단계는 순환에서 뺀다.
- * 재는 자리는 컴포저의 content box다 — 로그 컬럼보다 좌우 여백이 좁아, 여기서 접히면 두 면이
+ * 재는 자리는 컴포저의 content box다 — 로그 컬럼과 가용 폭이 같아, 여기서 접히면 두 면이
  * 모두 접힌 것이다.
  *
  * 구성원 바닥 줄(MemberChatFooter)이 같은 순환을 쓰므로 공유한다 — 재는 자리는 그때 바닥 줄의
@@ -56,11 +57,11 @@ export function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | 
   React.useEffect(() => {
     const host = hostRef.current;
     if (host === null || typeof ResizeObserver === "undefined") return;
-    // 100ch를 px로 돌려주는 자. 흐름에서 빠져 있어 컴포저 레이아웃에 영향을 주지 않고,
+    // reading-measure를 px로 돌려주는 자. 흐름에서 빠져 있어 컴포저 레이아웃에 영향을 주지 않고,
     // 타이포그래피 설정이 바뀌면 스스로 폭이 변해 아래 관찰자가 다시 잰다.
     const probe = document.createElement("span");
     probe.setAttribute("aria-hidden", "true");
-    probe.style.cssText = "position:absolute;visibility:hidden;height:0;width:100ch;pointer-events:none";
+    probe.style.cssText = "position:absolute;visibility:hidden;height:0;width:var(--agent-chat-reading-measure);pointer-events:none";
     host.appendChild(probe);
     const read = () => {
       const style = window.getComputedStyle(host);
@@ -72,8 +73,8 @@ export function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | 
       if (!(available > 0) || !(reading > 0)) return;
       const drawn = [Math.min(reading, available), Math.min(reading * WIDE_OVER_READING, available), available];
       // 값이 커지는 순서라 바로 뒤 단계와만 비교하면 된다. 같은 폭이 겹치면 **나중 단**을 남긴다:
-      // 140ch가 판면에 잘려 전체와 같아졌다면 사용자가 얻은 것은 「전체」이고, 그 이름으로 저장해야
-      // 패널을 더 넓혔을 때 판면을 계속 채운다(「넓게」로 저장하면 그때 140ch로 되돌아간다).
+      // 넓게가 판면에 잘려 전체와 같아졌다면 사용자가 얻은 것은 「전체」이고, 그 이름으로 저장해야
+      // 패널을 더 넓혔을 때 판면을 계속 채운다(「넓게」로 저장하면 그때 넓게 폭으로 되돌아간다).
       const next = CHAT_READING_WIDTHS.filter((_, index) => index === CHAT_READING_WIDTHS.length - 1 || Math.round(drawn[index] ?? 0) !== Math.round(drawn[index + 1] ?? 0));
       setChoices((current) => (current.length === next.length && current.every((value, index) => value === next[index]) ? current : next));
     };
@@ -151,12 +152,6 @@ type AttachmentRejection =
 export type AgentChatQueueCancelOutcome = "canceled" | "started" | "unreachable";
 
 type QueueRejection = { readonly kind: "started" | "unreachable" };
-
-const COMPOSER_NAME_MAX = 32;
-function clipComposerName(name: string): string {
-  const trimmed = name.trim();
-  return trimmed.length > COMPOSER_NAME_MAX ? `${trimmed.slice(0, COMPOSER_NAME_MAX - 1)}…` : trimmed;
-}
 
 export function AgentChatComposer({
   context,
@@ -537,9 +532,9 @@ export function AgentChatComposer({
   // 그에 딸린 첨부다) 첨부 하나로 버튼이 켜지면 눌러도 아무 일이 없는 죽은 컨트롤이 된다.
   const uploading = attachments.some((attachment) => attachment.uploading);
   const canSend = draft.trim().length > 0 && !sending && !uploading;
-  // 제목이 긴 Operation(첫 프롬프트가 제목인 세션)은 placeholder가 두 줄로 접혀 한 줄 상자에서 잘린다 —
-  // 이름을 한 줄 분량으로 자른다. 실제 제목은 캡션이 이미 온전히 보여 준다.
-  const placeholder = t("terminal.chat.composerPlaceholder", { name: clipComposerName(context.operation.title) });
+  // 안내는 고정 문구다 — 세션 제목을 넣으면 긴 제목이 두 줄로 접혀 한 줄 상자에서 잘린다.
+  // 실제 제목은 캡션이 이미 온전히 보여 준다.
+  const placeholder = t("terminal.chat.composerPlaceholder");
   const notice = consoleNotice !== null
     ? consoleNotice
     : failed

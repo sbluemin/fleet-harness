@@ -175,6 +175,24 @@ export function AgentChatView({
   /** 이 패널의 뿌리 — 어떤 키가 이 패널 안에서 났는지 가리는 좌표다. */
   const panelRef = React.useRef<HTMLElement>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
+  // 로그의 실제 스크롤바 거터를 재서 컴포저 여백에 얹는다 — 클래식 스크롤바(양쪽 예약)와
+  // 겹침 스크롤바(0)를 환경마다 다르게 맞춘다. both-edges가 대칭이라 한쪽 몫은 차이의 절반이다.
+  // CSS 기본값 10px에서 시작해 첫 측정으로 교정한다. stable 예약이라 오버플로우 유무와 무관하게
+  // 같은 값이 나오므로, 로그 크기 변화를 보는 관찰자 하나로 충분하다.
+  React.useLayoutEffect(() => {
+    const log = logRef.current;
+    const panel = panelRef.current;
+    if (!log || !panel) return;
+    const write = () => {
+      const gutter = Math.max(0, (log.offsetWidth - log.clientWidth) / 2);
+      panel.style.setProperty("--agent-chat-gutter", `${gutter}px`);
+    };
+    write();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(write);
+    observer.observe(log);
+    return () => observer.disconnect();
+  }, []);
   // 팔로우는 두 축이다. 바닥을 따라가는 중이면 스트림이 자랄 때마다 바닥으로 간다. 자리를
   // 세우면 그 자리의 scrollTop 을 지킨다 — 예전에 쓰던 "바닥까지의 거리"는 패널 리사이즈에만
   // 쓴다. 스트림 성장에 거리를 고정하면 읽던 줄이 밑으로 끌려간다.

@@ -133,7 +133,7 @@
 
 .agent-cli-path-button {
   width: fit-content;
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   padding: 6px 10px;
   background: var(--surface-glass);
@@ -145,19 +145,21 @@
 }
 
 .agent-cli-path-button:hover:not(:disabled) {
-  border-color: var(--control-hover-rim);
+  border-color: transparent;
   background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
 .agent-cli-path-button:focus-visible {
-  border-color: var(--control-hover-rim);
+  border-color: transparent;
   outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
 }
 
 .agent-cli-path-button.is-primary {
-  border-color: var(--control-open-rim);
+  border-color: transparent;
+  background: var(--control-tint-fill);
+  color: var(--brass-ink);
 }
 
 .agent-cli-path-button:active:not(:disabled) {
@@ -494,9 +496,9 @@
 .ai-gateway-host-only {
   flex: none;
   padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--surface-rim);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
-  background: transparent;
+  background: var(--control-rest);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -511,7 +513,7 @@
 }
 
 .ai-gateway-host-only:hover:not(:disabled):not(.is-on) {
-  border-color: var(--control-hover-rim);
+  border-color: transparent;
   background: var(--control-hover-fill);
   color: var(--text-primary);
 }
@@ -1580,6 +1582,9 @@
     background: SelectedItem;
     color: SelectedItemText;
   }
+  /* 고대비 — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다(Quiet Controls C′). */
+  .agent-cli-path-button,
+  .ai-gateway-host-only { border-color: ButtonBorder; }
 }
 
 /* 링크를 누르면 서는 카드 — 「어디서 열까」 한 물음. CLI와 채팅이 같은 카드를 쓴다.
