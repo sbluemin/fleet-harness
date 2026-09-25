@@ -90,7 +90,9 @@ export function ClusterPicker({
       ? Math.min(window.innerWidth - width - 8, panelRect.left + panelRect.width - width - 8)
       : window.innerWidth - width - 8;
     const minLeft = panelRect ? Math.max(8, panelRect.left + 8) : 8;
-    const left = Math.max(minLeft, Math.min(anchor.left, maxLeft));
+    // 패널이 뷰포트 밖으로 일부 나가 min > max가 되면 뷰포트 안이 우선이다 — 보이는 띠에서 연 팝오버는 보여야 한다.
+    const viewportMaxLeft = window.innerWidth - width - 8;
+    const left = Math.max(8, Math.min(Math.max(minLeft, Math.min(anchor.left, maxLeft)), viewportMaxLeft));
 
     // N3 위치 보정:
     // 1) 팝오버는 앵커(띠)와 앱 상단 바를 덮지 않는다.

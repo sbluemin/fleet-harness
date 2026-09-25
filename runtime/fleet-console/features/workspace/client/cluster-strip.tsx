@@ -26,12 +26,13 @@ export function requiredWidth(members: readonly ClusterLaidMember[], mode: Strip
   return 13 + n * 9 + separators * 6;
 }
 
-function computeBudget(element: HTMLElement | null): number {
-  if (!element) return 0;
+/** 띠가 쓸 수 있는 폭. 아직 잴 수 없으면(배치 전·숨은 칩) null — 0은 「자리가 없다」는 측정값이다. */
+function computeBudget(element: HTMLElement | null): number | null {
+  if (!element) return null;
   const titlebar = element.closest<HTMLElement>(".canvas-operation-titlebar");
   if (titlebar) {
     const titlebarWidth = titlebar.clientWidth;
-    if (titlebarWidth <= 0) return 0;
+    if (titlebarWidth <= 0) return null;
     let otherWidth = 0;
     for (const child of Array.from(titlebar.children)) {
       if (
@@ -52,9 +53,9 @@ function computeBudget(element: HTMLElement | null): number {
   }
   const sideBarText = element.closest<HTMLElement>(".side-bar-chip-text") ?? element.parentElement;
   if (sideBarText) {
-    return sideBarText.clientWidth;
+    return sideBarText.clientWidth > 0 ? sideBarText.clientWidth : null;
   }
-  return 0;
+  return null;
 }
 
 /**
@@ -93,7 +94,7 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen }: {
 
     const update = () => {
       const budget = computeBudget(el);
-      if (budget <= 0) return;
+      if (budget === null) return;
       const currentMembers = membersRef.current;
       const fullW = requiredWidth(currentMembers, "full");
       const denseW = requiredWidth(currentMembers, "dense");

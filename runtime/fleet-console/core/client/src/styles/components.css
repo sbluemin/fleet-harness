@@ -7256,7 +7256,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 .cluster-strip-step.is-done { background: var(--positive); }
 @keyframes cluster-strip-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .cluster-strip-step.is-awaiting { animation: none; }
+  .cluster-strip-step.is-awaiting,
+  .cluster-member-status.is-awaiting { animation: none; }
 }
 
 /* 사이드바 칩의 셋째 줄 — 이름·위치 줄 아래 왼쪽 정렬. 띠 자체의 안쪽 여백만큼 물려 사각의 왼끝이 글자 왼끝과 맞는다. */
