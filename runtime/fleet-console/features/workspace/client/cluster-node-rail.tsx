@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import type { OperationClusterProgress } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
+import { TERMINAL_FOCUS_HOLD_ATTR } from "../../execution/client/terminal/shared/terminal-surface.js";
 import type { ClusterLayout } from "./operation-clusters.js";
 
 type RootActivity = "idle" | "running" | "awaiting" | "background" | "ended" | null;
@@ -46,6 +47,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
 
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(EMPTY_HIDDEN_IDS);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [focusHold, setFocusHold] = useState(false);
   const naturalWidthsRef = useRef(new Map<string, number>());
   const expectedFocusRef = useRef<string | null>(null);
 
@@ -235,12 +237,16 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const chefTip = rootActivity ? `${chefLabel} · ${t(`cluster.picker.activity.${rootActivity}`)}` : chefLabel;
   const showingSuffix = ` · ${t("cluster.nodes.current")}`;
 
-  const stop = (event: ReactPointerEvent) => event.stopPropagation();
+  const stop = (event: ReactPointerEvent) => {
+    event.stopPropagation();
+    setFocusHold(false);
+  };
 
   // W3C ARIA Tablist 화살표 키(←/→, Home, End) 내비게이션
   const onKeyDown = (event: ReactKeyboardEvent) => {
     if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
       event.preventDefault();
+      setFocusHold(true);
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
       const currentIndex = tabs.indexOf(event.currentTarget as HTMLButtonElement);
       if (currentIndex >= 0) {
@@ -256,6 +262,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       }
     } else if (event.key === "Home") {
       event.preventDefault();
+      setFocusHold(true);
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
       const firstTab = tabs[0];
       if (firstTab) {
@@ -265,6 +272,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       }
     } else if (event.key === "End") {
       event.preventDefault();
+      setFocusHold(true);
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
       const lastTab = tabs[tabs.length - 1];
       if (lastTab) {
@@ -275,6 +283,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       }
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
+      setFocusHold(false);
       const targetOpId = (event.currentTarget as HTMLElement).dataset.memberOpId ?? root;
       onPick(targetOpId, { focusTerminal: true });
     }
@@ -291,6 +300,12 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       className="cluster-node-rail"
       role="tablist"
       aria-label={t("cluster.nodes.aria", { current: currentLabel })}
+      {...(focusHold ? { [TERMINAL_FOCUS_HOLD_ATTR]: "true" } : {})}
+      onBlur={(event) => {
+        if (!railRef.current?.contains(event.relatedTarget as Node | null)) {
+          setFocusHold(false);
+        }
+      }}
       onPointerDown={stop}
       data-canvas-blocker
     >
@@ -375,6 +390,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
                     role="menuitem"
                     className={`cluster-node-overflow-item${on ? " is-current" : ""}`}
                     onClick={() => {
+                      setFocusHold(false);
                       setMoreOpen(false);
                       onPick(member.operationId, { focusTerminal: true });
                     }}

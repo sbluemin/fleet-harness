@@ -31,6 +31,14 @@ import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForTerminalFallbackFonts } from "./terminal-fallback-fonts.js";
 import "./terminal-key-bar.css";
 
+export const TERMINAL_FOCUS_HOLD_ATTR = "data-terminal-focus-hold";
+
+function isTerminalFocusHeld(): boolean {
+  if (typeof document === "undefined") return false;
+  const active = document.activeElement;
+  return Boolean(active && active.closest(`[${TERMINAL_FOCUS_HOLD_ATTR}]`));
+}
+
 type TerminalThemeId = "instrument" | "maritime" | "carbon" | "whites";
 
 export interface TerminalSurfaceProps {
@@ -562,9 +570,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         // 확장 패널이 열려 있을 때도 건너뛴다: 패널은 소프트 키보드를 대체한 것이라, 여기서 포커스를
         // 돌려주면 패널 아래에서 키보드가 다시 열려 터미널이 몇 줄로 줄어든다. 터미널 마운트는 폰트
         // 대기 뒤에 끝나므로 그 사이에 패널을 연 경우가 실제로 이 경로를 밟는다.
-        // 세션 줄(cluster-node-rail)의 화살표 키 탐색 중에는 탭 포커스를 유지해야 한다.
-        const inSessionRail = Boolean(document.activeElement?.closest(".cluster-node-rail"));
-        if (activeRef.current !== false && !keyPanelOpenRef.current && !inSessionRail) terminal.focus();
+        // 포커스 보류 속성(data-terminal-focus-hold)을 가진 컨트롤(세션 줄의 방향키 탐색 등) 안에 포커스가 있을 때는 자동 포커스를 양보한다.
+        if (activeRef.current !== false && !keyPanelOpenRef.current && !isTerminalFocusHeld()) terminal.focus();
       };
 
       resizeObserver = new ResizeObserver(() => scheduleFitAndResize());
@@ -629,9 +636,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
     if (!active) return;
     const isExplicitKeyboardFocusRequest = keyboardFocusRequestId !== undefined && keyboardFocusRequestId !== lastKeyboardFocusRequestIdRef.current;
     lastKeyboardFocusRequestIdRef.current = keyboardFocusRequestId;
-    const inSessionRail = Boolean(document.activeElement?.closest(".cluster-node-rail"));
     // 포커스만 패널 상태를 존중한다 — 출력 따라가기는 패널 개폐와 무관하게 이어져야 한다.
-    if (!keyPanelOpenRef.current && (isExplicitKeyboardFocusRequest || !inSessionRail)) {
+    if (!keyPanelOpenRef.current && (isExplicitKeyboardFocusRequest || !isTerminalFocusHeld())) {
       terminalRef.current?.focus();
     }
     scrollFollowRef.current?.resumeFollowing();
