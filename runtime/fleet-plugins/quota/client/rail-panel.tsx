@@ -31,6 +31,31 @@ const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   xai: "xAI",
 };
 
+/**
+ * Upstream plan 라벨에서 카드 헤더가 이미 말하는 공급자명을 걷어낸 표시명.
+ * 게이트웨이는 upstream 원문을 그대로 실어 오므로("Muse Code High Usage"),
+ * 헤더의 "Muse Code"와 칩이 겹쳐 읽힌다. 공급자명 접두사(대소문자 무시)와 뒤따르는
+ * 구분자를 함께 걷으며, 남는 것이 없으면 원문을 그대로 둔다.
+ */
+export function displayPlanName(id: ProviderId, plan: string): string {
+  const name = PROVIDER_NAME[id];
+  if (!plan.toLowerCase().startsWith(name.toLowerCase())) return plan;
+  const afterPrefix = plan.slice(name.length);
+  // 접두사와 구분자 없이 이어지는 낱말(예: "Codexian Pro")은 공급자명이 아니다.
+  if (afterPrefix.length > 0 && !/^[\s\-–—:·|/()[\]{}]/.test(afterPrefix)) return plan;
+  const removedLead = /^[\s\-–—:·|/()[\]{}]+/.exec(afterPrefix)?.[0] ?? "";
+  let stripped = afterPrefix.slice(removedLead.length);
+  // 앞에서 연 괄호를 걷어냈을 때만 짝이 맞는 닫는 괄호를 함께 걷는다.
+  // "High Usage (5x)"처럼 본문에 딸린 괄호는 손대지 않는다.
+  if (/[(\[{]$/.test(removedLead)) {
+    const open = removedLead.charAt(removedLead.length - 1);
+    const close = open === "(" ? ")" : open === "[" ? "]" : "}";
+    if (stripped.endsWith(close)) stripped = stripped.slice(0, -close.length);
+  }
+  stripped = stripped.replace(/[\s\-–—:·|/]+$/, "").trim();
+  return stripped.length > 0 ? stripped : plan;
+}
+
 export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.antigravity.signedOut",
   claude: "quota.claude.signedOut",
@@ -629,7 +654,7 @@ function ProviderCard({
         <h3>{name}</h3>
         {folded ? <FoldSpine provider={provider} now={now} t={t} /> : null}
         {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
-        {provider.plan ? <span className="quota-plan">{provider.plan}</span> : null}
+        {provider.plan ? <span className="quota-plan" title={provider.plan}>{displayPlanName(id, provider.plan)}</span> : null}
         {foldButton}
       </header>
       <div className="quota-card__collapse" id={regionId}>

@@ -1312,7 +1312,7 @@ function AiGatewayModelPalette({
                     onClick={() => pick(hit)}
                   >
                     <AiGatewayCapabilityBadge capabilityClass={hit.family.capabilityClass} />
-                    <span className="ai-gateway-palette-hit-name">{hit.family.name}</span>
+                    <span className="ai-gateway-palette-hit-name" title={hit.family.name}>{hit.family.name}</span>
                     <span className="ai-gateway-palette-hit-hint">
                       {allEnabled ? t("terminal.settings.aiGatewayAllEnabled") : describeAiGatewayFamily(hit.family, t("terminal.settings.aiGatewayFast"))}
                     </span>
@@ -1606,7 +1606,7 @@ export function AiGatewayModelRow({
     <div className="ai-gateway-model-row">
       <AiGatewayCapabilityBadge capabilityClass={model.capabilityClass} />
       <span className="ai-gateway-model-text">
-        <span className="ai-gateway-model-name">{model.name}</span>
+        <span className="ai-gateway-model-name" title={model.name}>{model.name}</span>
         {contextLabel ? <span className="ai-gateway-chip">{contextLabel}</span> : null}
         {model.fast ? <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayFast")}</span> : null}
         {model.description ? <span className="ai-gateway-chip">{model.description}</span> : null}
