@@ -56,10 +56,10 @@
 }
 
 /* 도킹한 Quick Launch가 차지하는 높이만큼 작업 면 아래를 비운다 — War Room 무대와
-   Cruise 최대화 프레임이 대상이다. 자유 배치 캔버스의 떠 있는 패널(정렬 칸 포함)은
+   Cruise 전체 한 칸이 대상이다. 자유 배치 캔버스의 떠 있는 패널(정렬 칸 포함)은
    사용자가 둔 자리라 대상이 아니다. 값은 QL이 펼친 높이 + --space-4를 재서
    document 루트에 쓰며, 없으면 0으로 떨어진다. */
-.operations-canvas.is-panel-maximized .canvas-operation.is-maximized .agent-chat {
+.operations-canvas.is-panel-snap-full .canvas-operation.is-snap-full .agent-chat {
   bottom: var(--quick-launch-dock-inset, 0px);
 }
 
@@ -435,37 +435,87 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 이 턴이 바꾼 파일 — 원장 맨 위. 추가·삭제는 상태 채널(positive/coral)이 진다. */
+/* 이 턴이 바꾼 파일 — 원장 맨 위. 파일 하나가 한 줄이고, 두 수는 오른쪽 두 열에 선다.
+   칩을 쓰지 않는다: 테두리와 면을 두르면 파일 수만큼 상자가 wrap으로 흩어져, 숫자가 같은
+   자리에 오지 않아 "어느 파일이 컸는가"를 눈이 세어야 했다. 목록은 줄 사이 헤어라인 한 겹으로
+   묶이고, 상태 채널(positive/coral)은 수에만 남는다.
+
+   두 수의 열은 목록 전체가 하나로 가진다 — 줄마다 자기 격자를 세우면 +7과 +340이 서로 다른
+   자리에서 끝나고, 오른쪽에 수를 모은 이유가 사라진다. subgrid가 없는 엔진에서는 줄이 자기
+   격자로 되돌아가므로, 그 경우의 고정 폭 두 열을 앞줄에 적어 둔다. */
 .agent-chat-changes {
   margin-top: var(--space-2);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: var(--space-3);
+  min-width: 0;
 }
 
 .agent-chat-change {
-  display: inline-flex;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) 4ch 4ch;
+  grid-template-columns: subgrid;
   align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-  max-width: 100%;
+  column-gap: var(--space-3);
+  padding: 2px 0;
   font-family: var(--agent-chat-font);
   font-size: var(--t-xs);
-  padding: 3px var(--space-3);
-  border-radius: var(--radius-xs);
-  background: var(--surface-panel-raised);
-  border: 1px solid color-mix(in oklch, var(--positive) 22%, var(--hairline));
+  line-height: 1.5;
   color: var(--text-secondary);
+  /* 줄과 줄 사이에만 선이 서고 목록의 위아래는 열려 있다 — 상자가 아니라 나열이다. */
+  border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent);
 }
 
-.agent-chat-change-file {
+.agent-chat-change:first-child { border-top: 0; }
+
+.agent-chat-change-path {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.agent-chat-change-add { color: var(--positive); flex: none; }
-.agent-chat-change-del { color: var(--coral); flex: none; }
+/* 갈래는 한 단 뒤로 물러나고 파일명이 본문 잉크를 진다 — 읽는 사람이 찾는 것은 파일명이다. */
+.agent-chat-change-dir { color: var(--text-tertiary); }
+.agent-chat-change-name { color: var(--text-primary); }
+
+.agent-chat-change-add,
+.agent-chat-change-del,
+.agent-chat-change-nil {
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 채도를 한 단 낮춘다 — 이 수는 결말이 아니라 좌표라, 본문보다 앞에 설 이유가 없다.
+   상태 채널의 색은 그대로 두고 밝기만 3차 잉크 쪽으로 당긴다. */
+.agent-chat-change-add { color: color-mix(in oklch, var(--positive) 72%, var(--text-tertiary)); }
+.agent-chat-change-del { color: color-mix(in oklch, var(--coral) 72%, var(--text-tertiary)); }
+/* 0은 수를 쓰지 않는다 — "+0"은 일어난 일처럼 읽힌다. 자리만 지키는 점이라 잉크도 가장 낮다. */
+.agent-chat-change-nil { color: var(--hairline); }
+
+.agent-chat-changes-more {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast);
+}
+
+.agent-chat-changes-more:hover { color: var(--text-secondary); }
+
+.agent-chat-changes-more:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
 
 /* 라이브 원장 — 스텝과 문장이 도착한 순서대로 쌓인다. 진행 중에도 완료 후에도 같은 문법이다. */
 .agent-chat-ledger {
@@ -3855,6 +3905,18 @@
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
+
+/* 접힘 머리줄의 변경 합 — 목록은 안에 있고 여기 서는 것은 수 하나다. 목록의 수와 같은
+   어휘(모노·tabular·낮춘 채도)를 써서 두 자리가 같은 것을 센다고 읽힌다. */
+.agent-chat-fold-changes {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--agent-chat-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-fold-changed-files { color: var(--text-tertiary); }
 
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-strip-orbit { animation: none; }

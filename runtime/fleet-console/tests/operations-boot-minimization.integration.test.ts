@@ -8,7 +8,8 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearCompanionOperationId, clearMaximizedOperationId, getCompanionOperationId, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setStationKeeping, setViewport, subscribe as subscribeCanvas } from "../features/workspace/client/canvas/canvas-store.js";
+import { clearCompanionOperationId, getCompanionOperationId, getSnapFullOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, releaseSnapHold, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setOperationGeometry, setStationKeeping, setViewport, subscribe as subscribeCanvas } from "../features/workspace/client/canvas/canvas-store.js";
+import { snapOperationToFullZone } from "../features/workspace/client/canvas/snap-full.js";
 import { BOOT_MINIMIZATION_STORAGE_KEY, resetBootMinimizationSession } from "../core/client/src/integration/boot-minimization-session.js";
 import { CANVAS_MODE_STORAGE_KEY } from "../features/workspace/client/canvas/canvas-mode-session.js";
 import { armTriageSetAside, getTriageSetAsideArmedId, isTriageActive, resetTriageTheater, setTriageActive } from "../features/workspace/client/canvas/triage-store.js";
@@ -167,7 +168,7 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/operations");
   loadForTheater("theater-a");
   setStationKeeping(false);
-  clearMaximizedOperationId();
+  releaseSnapHold();
   clearCompanionOperationId();
   loadForTheater(null);
   setState({ activeOperationId: null, activeTheaterId: null, groups: [], keyboardFocusRequest: null, operations: [], operationsHydrated: false, theaters: [] });
@@ -206,10 +207,10 @@ afterEach(() => {
   setTriageActive(false);
   loadForTheater("theater-a");
   clearCompanionOperationId();
-  clearMaximizedOperationId();
+  releaseSnapHold();
   loadForTheater("theater-b");
   clearCompanionOperationId();
-  clearMaximizedOperationId();
+  releaseSnapHold();
   loadForTheater(null);
   container?.remove();
   root = null;
@@ -279,8 +280,8 @@ describe("Operations boot minimization", () => {
     expect(resumeOperation).toHaveBeenCalledTimes(1);
     expect(resumeOperation).toHaveBeenCalledWith("stowed");
 
-    // 패널을 꺼내는 방식은 분기마다 다르다 — 일반 열기는 캔버스 복원으로, 최대화는 focus layer
-    // 승계로 최소화 목록에서 꺼낸다. 어느 쪽이든 사용자에게는 같은 "패널 열기"이므로 같은 재개를 받는다.
+    // 패널을 꺼내는 방식은 분기마다 다르다 — 일반 열기는 캔버스 복원으로, 전체 한 칸은 그 칸을
+    // 새 패널에게 넘기며 꺼낸다. 어느 쪽이든 사용자에게는 같은 "패널 열기"이므로 같은 재개를 받는다.
     await act(async () => {
       minimizeOperation("stowed");
       sideBarMocks.onFocus?.("stowed");
@@ -289,21 +290,37 @@ describe("Operations boot minimization", () => {
     expect(getSnapshot().minimized).toEqual([]);
     expect(resumeOperation).toHaveBeenCalledTimes(2);
 
+    // 인계는 두 패널의 기하를 바꾼다 — 칸에 들어오는 패널과, 직전 자리로 되돌려 칸 뒤에 감춰지는 패널.
+    // 되돌린 자리를 서버에 적지 않으면 다른 client·새로고침은 떠난 패널을 계속 전체 크기로 되살린다.
+    const VISIBLE_RESTING = { x: 60, y: 80, width: 420, height: 260, zIndex: 2 };
+    const geometryPatches: { readonly id: string; readonly geometry: { readonly width: number; readonly height: number } }[] = [];
+    vi.stubGlobal("fetch", (input: unknown, init?: { readonly body?: string }) => {
+      const path = String(input);
+      if (init?.body) geometryPatches.push({ id: decodeURIComponent(path.slice(path.lastIndexOf("/") + 1)), geometry: JSON.parse(init.body).geometry });
+      return Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    });
     await act(async () => {
-      setMaximizedOperationId("visible");
+      setCanvasViewportSize({ width: 1200, height: 800 });
+      setOperationGeometry("visible", VISIBLE_RESTING);
+      snapOperationToFullZone("visible", () => undefined);
       minimizeOperation("stowed");
+      geometryPatches.length = 0;
       sideBarMocks.onFocus?.("stowed");
       await Promise.resolve();
     });
-    expect(getMaximizedOperationId()).toBe("stowed");
+    expect(getSnapFullOperationId()).toBe("stowed");
     expect(getSnapshot().minimized).toEqual([]);
     expect(resumeOperation).toHaveBeenCalledTimes(3);
+    expect([...geometryPatches].map((patch) => patch.id).sort()).toEqual(["stowed", "visible"]);
+    expect(geometryPatches.find((patch) => patch.id === "visible")?.geometry).toMatchObject({ width: VISIBLE_RESTING.width, height: VISIBLE_RESTING.height });
+    vi.unstubAllGlobals();
 
     // 런타임 축이 권위를 얻기 전의 휴면 표시는 관측이 아니라 폭백이다 — 그 위에서 재개하지 않지만,
     // 여는 제스처를 버리지도 않는다. 축이 자리잡으면 관측된 사실로 다시 판정해 그때 재개한다.
     // (부팅 직후가 곧 모든 패널이 최소화된 순간이라, 여기서 버리면 기능이 조용히 사라진다.)
     await act(async () => {
-      clearMaximizedOperationId();
+      releaseSnapHold();
+      resetCanvasViewportSize();
       setOperationRuntimeHydration("pending");
       minimizeOperation("stowed");
       sideBarMocks.onFocus?.("stowed");

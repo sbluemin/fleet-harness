@@ -22,8 +22,6 @@ import {
   forceDropCompanionOperationId,
   getAlignAll,
   getCompanionOperationId,
-  clearMaximizedOperationId,
-  getMaximizedOperationId,
   getSnapshot as getCanvasSnapshot,
   getTheaterFocusLayerSnapshot,
   loadForTheater,
@@ -31,7 +29,7 @@ import {
   reconcileAlignAll,
   rejoinAlignAllPanel,
   releaseAlignAll,
-  setMaximizedOperationId,
+  releaseSnapHold,
   setCompanionOperationId,
   setOperationGeometry,
   setTheaterFocusLayerSnapshot,
@@ -115,7 +113,7 @@ beforeEach(() => {
   resetIdleArrivalForTests();
   resetSideBarStatusSectionCollapseForTests();
   releaseAlignAll();
-  clearMaximizedOperationId();
+  releaseSnapHold();
   forceDropCompanionOperationId();
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
@@ -126,7 +124,7 @@ afterEach(() => {
   resetTriageDeckZoomForTests();
   forceDropCompanionOperationId();
   releaseAlignAll();
-  clearMaximizedOperationId();
+  releaseSnapHold();
   loadForTheater(null);
   if (triagePlateRoot) {
     act(() => triagePlateRoot?.unmount());

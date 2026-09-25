@@ -10,6 +10,8 @@ import { useInlineRename } from "../../../../core/client/src/integration/use-inl
 import type { GlanceHudModel } from "./glance-hud.js";
 import type { GroupContextMenuAlign } from "./group-context-menu.js";
 import { resolveAccentColor } from "./operation-accent.js";
+import type { SnapZoneFraction } from "./snap-layouts.js";
+import { SnapMark } from "./snap-mark.js";
 
 interface OperationFrameProps {
   readonly operation: OperationNode;
@@ -19,7 +21,8 @@ interface OperationFrameProps {
   readonly zoom: number;
   readonly status?: OperationActivityVisual;
   readonly minimized?: boolean;
-  readonly maximized?: boolean;
+  /** 스냅 전체 칸을 쥐고 있는가 — 캡션 버튼이 ⤡가 되고 캡션 더블클릭이 직전 자리로 되돌린다. */
+  readonly snapFull?: boolean;
   readonly renderHidden?: boolean;
   readonly focusLayerTarget?: boolean;
   readonly topEdge?: boolean;
@@ -29,6 +32,8 @@ interface OperationFrameProps {
   readonly resizeDisabled?: boolean;
   /** 모두 정렬 묶음에 든 패널 — 스냅 투어 앵커에서 빠진다. */
   readonly alignHeld?: boolean;
+  /** 스냅 유지 중이면 그 칸의 아레나 분수 — 캡션 표식이 어느 칸인지 그리고 프레임 선이 옅어진다. */
+  readonly snapZone?: SnapZoneFraction | null;
   readonly interactionDisabled?: boolean;
   readonly triageStage?: boolean;
   readonly triagePicked?: boolean;
@@ -57,7 +62,8 @@ interface OperationFrameProps {
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onMinimize: () => void;
-  readonly onMaximize?: () => void;
+  /** 없으면 전체 칸 버튼이 서지 않는다 — Tactical·War Room은 배치를 모드가 쥔다. */
+  readonly onToggleSnapFull?: () => void;
   readonly onRename: (title: string) => void;
   /** 캡션 More 버튼이 여는 Operation 메뉴 — 사이드바 우클릭과 같은 메뉴를 부모가 소유한다. */
   readonly onOpenMenu?: (anchor: DOMRect, returnFocus: HTMLElement | null, align: GroupContextMenuAlign) => void;
@@ -122,7 +128,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapHeld = false, resizeDisabled = false, alignHeld = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, snapFull = false, snapHeld = false, resizeDisabled = false, alignHeld = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapZone = null, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onToggleSnapFull, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -172,7 +178,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     focusArrival ? "is-focus-arriving" : "",
     active ? "is-active" : "",
     minimized ? "is-minimized" : "",
-    maximized ? "is-maximized" : "",
+    snapFull ? "is-snap-full" : "",
     triageStage ? "is-triage-stage" : "",
     deckTile ? "is-deck-tile" : "",
     topEdge ? "is-top-edge" : "",
@@ -310,9 +316,9 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   // 드래그/리사이즈 도중 캡처 대상이 언마운트되면 pointerup이 오지 않는다.
   // is-dragging을 걷고, 움직인 좌표는 정착 경로로 넘긴다.
   useEffect(() => {
-    if (!maximized && !interactionDisabled && !minimized) return;
+    if (!interactionDisabled && !minimized) return;
     finishPointerManipulation(true);
-  }, [maximized, interactionDisabled, minimized]);
+  }, [interactionDisabled, minimized]);
 
   const abortPointerManipulation = () => {
     finishPointerManipulation(true);
@@ -320,7 +326,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     disarmClose();
-    if (maximized || interactionDisabled) return;
+    if (interactionDisabled) return;
     if (event.button !== 0) return;
     event.stopPropagation();
     onActivate();
@@ -352,7 +358,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   useEffect(() => disarmPendingDragRelease, []);
 
   const updateDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized || interactionDisabled) return;
+    if (interactionDisabled) return;
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     // 버튼이 이미 떨어진 채 오는 move는 드래그가 아니다 — 놓친 up의 잔상이면 지우고, 캡처 중이었다면
@@ -385,7 +391,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   };
 
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized || interactionDisabled) {
+    if (interactionDisabled) {
       dragRef.current = null;
       setDragging(false);
       return;
@@ -413,7 +419,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     snapMenuTimerRef.current = null;
   };
   const armSnapMenu = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!onOpenSnapMenu || event.pointerType !== "mouse" || maximized || interactionDisabled) return;
+    if (!onOpenSnapMenu || event.pointerType !== "mouse" || interactionDisabled) return;
     clearSnapMenuTimer();
     const anchor = event.currentTarget;
     snapMenuTimerRef.current = window.setTimeout(() => {
@@ -424,7 +430,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   useEffect(() => clearSnapMenuTimer, []);
 
   const beginResize = (direction: ResizeDirection, event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized || interactionDisabled || resizeDisabled) return;
+    if (interactionDisabled || resizeDisabled) return;
     event.preventDefault();
     event.stopPropagation();
     onActivate();
@@ -434,7 +440,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   };
 
   const updateResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized || interactionDisabled) return;
+    if (interactionDisabled) return;
     const resize = resizeRef.current;
     if (!resize || resize.pointerId !== event.pointerId) return;
     event.preventDefault();
@@ -445,7 +451,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   };
 
   const endResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (maximized || interactionDisabled) {
+    if (interactionDisabled) {
       resizeRef.current = null;
       setDragging(false);
       return;
@@ -486,9 +492,19 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     onMinimize();
   };
 
-  const maximize = () => {
+  const toggleSnapFull = () => {
     disarmClose();
-    onMaximize?.();
+    onToggleSnapFull?.();
+  };
+
+  // 캡션 바탕 더블클릭 — 전체 칸을 쥔 패널만 직전 자리로 되돌린다(버튼 ⤡·Alt↓와 같은 동작).
+  // 제목 버튼의 더블클릭은 그대로 이름 바꾸기다: 경계는 "버튼·입력 위인가" 하나이고, 제목·그룹 칩·
+  // 창 컨트롤이 제 몫을 먼저 가져간다. 전체 칸이 아닐 때는 아무 일도 하지 않는다 — 바탕 더블클릭으로
+  // 화면을 덮어 버리면 패널을 옮기려는 손짓과 구별되지 않는다.
+  const handleTitlebarDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!snapFull || !onToggleSnapFull) return;
+    if (event.target instanceof Element && event.target.closest("button, input")) return;
+    toggleSnapFull();
   };
 
   const openOperationMenu = (anchor: DOMRect, returnFocus: HTMLElement | null) => {
@@ -524,7 +540,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     rename.handleKeyDown(event);
   };
 
-  // 최소화 커밋과 동시에 스냅 칸·maximize·companion 레이아웃이 해제되면 라이브 geometry가
+  // 최소화 커밋과 동시에 스냅 칸·정렬 칸·companion 레이아웃이 해제되면 라이브 geometry가
   // 저장된 map 좌표로 회귀해, 페이드로 가시가 유지되는 동안 패널이 엉뚱한 위치에서 사라진다 —
   // 마지막 가시 geometry를 동결해 사라진 자리에서 페이드하고, 복원은 그 자리에서 목표 슬롯으로 미끄러진다.
   if (!minimized) lastVisibleGeometryRef.current = geometry;
@@ -566,6 +582,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     >
       <div
         className="canvas-operation-titlebar"
+        onDoubleClick={handleTitlebarDoubleClick}
         onPointerDown={beginDrag}
         onPointerMove={updateDrag}
         onPointerUp={endDrag}
@@ -573,11 +590,10 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         onLostPointerCapture={abortPointerManipulation}
         data-canvas-blocker
       >
+        {/* 스냅 표식 — 사이드바 칩과 같은 컴포넌트. 제목 앞, 그룹 칩보다 먼저 선다. */}
+        {snapZone ? <SnapMark zone={snapZone} /> : null}
         {/* 그룹 칩 — 사이드바 칩의 알약 문법을 그대로 쓴다. 「그룹에 있다」는 칩 형태가,
             「어느 그룹」은 --group-mark 잉크·워시와 이름이 진다. 워시는 칩 안에만 머문다. */}
-        {snapHeld ? (
-          <span className="canvas-operation-snap-mark" title={t("canvas.frame.snapHeldTitle")} aria-hidden="true">▣</span>
-        ) : null}
         {groupLabelVisible ? (
           <span
             className="canvas-operation-group-label"
@@ -657,17 +673,17 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         <div className="canvas-operation-window-controls">
           <span className="canvas-operation-controls-divider" aria-hidden="true" />
           {/* 최소화는 무대에서도 쓴다 — War Room의 최소화는 창을 접는 동작이 아니라 판(deck)에서
-              내리는 동작이고, 무대에 선 패널이면 무대까지 함께 비운다. 최대화만 계속 빠진다:
+              내리는 동작이고, 무대에 선 패널이면 무대까지 함께 비운다. 전체 칸만 계속 빠진다:
               무대는 이미 캔버스 전체라 더 키울 자리가 없다. */}
           <CaptionTipHost label={t("canvas.frame.minimizeTitle")}>
             <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })}>
               <MinimizeIcon />
             </button>
           </CaptionTipHost>
-          {!triageStage && !deckTile && onMaximize ? (
-            <CaptionTipHost label={maximized ? t("canvas.frame.restoreTitle") : t("canvas.frame.maximizeTitle")}>
-              <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} data-snap-tour={onOpenSnapMenu && !maximized ? "menu" : undefined} onPointerDown={(event) => { clearSnapMenuTimer(); stopButtonPointer(event); }} onPointerEnter={armSnapMenu} onPointerLeave={clearSnapMenuTimer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized}>
-                {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
+          {!triageStage && !deckTile && onToggleSnapFull ? (
+            <CaptionTipHost label={snapFull ? t("canvas.frame.snapFullRestoreTitle") : t("canvas.frame.snapFullTitle")}>
+              <button type="button" className={`canvas-operation-icon-button ${snapFull ? "is-active" : ""}`} data-snap-tour={onOpenSnapMenu && !snapFull ? "menu" : undefined} onPointerDown={(event) => { clearSnapMenuTimer(); stopButtonPointer(event); }} onPointerEnter={armSnapMenu} onPointerLeave={clearSnapMenuTimer} onClick={toggleSnapFull} aria-label={snapFull ? t("canvas.frame.snapFullRestoreAria", { title: displayTitle }) : t("canvas.frame.snapFullAria", { title: displayTitle })} aria-pressed={snapFull}>
+                {snapFull ? <RestorePanelIcon /> : <SnapFullPanelIcon />}
               </button>
             </CaptionTipHost>
           ) : null}
@@ -707,9 +723,10 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker inert={deckTile ? true : undefined}>
         {children}
       </div>
-      {/* 최대화·크기 잠금 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —
-          외곽 hover 시 resize 커서가 뜨거나 포인터를 가로채는 일이 없도록 한다. */}
-      {!maximized && !interactionDisabled && !resizeDisabled && RESIZE_DIRECTIONS.map((direction) => (
+      {/* 크기를 자동 채움이 쥔 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —
+          외곽 hover 시 resize 커서가 뜨거나 포인터를 가로채는 일이 없도록 한다.
+          스냅 칸(전체 칸 포함)은 여기 들지 않는다 — 변을 끌어 칸을 다시 나누는 것이 계약이다. */}
+      {!interactionDisabled && !resizeDisabled && RESIZE_DIRECTIONS.map((direction) => (
         <div
           key={direction}
           className={`canvas-operation-resize canvas-operation-resize--${direction}`}
@@ -778,7 +795,7 @@ function MinimizeIcon() {
   );
 }
 
-function MaximizePanelIcon() {
+function SnapFullPanelIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.5 6V3.5H6M10 3.5h2.5V6M12.5 10v2.5H10M6 12.5H3.5V10" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />

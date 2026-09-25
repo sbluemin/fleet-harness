@@ -76,7 +76,7 @@ export function buildShortcutGroups(
       entries: [
         { combos: [[alt, "←"], [alt, "→"]], description: t("shortcuts.map.focusPrevNext") },
         { combos: [[alt, "→"]], description: t("shortcuts.map.triageDefer") },
-        { combos: [[alt, "↑"]], description: t("shortcuts.map.maximizePanel") },
+        { combos: [[alt, "↑"]], description: t("shortcuts.map.snapFullPanel") },
         { combos: [[alt, "↓"]], description: t("shortcuts.map.minimizePanel") },
         { combos: [[alt, "↓"]], description: t("shortcuts.map.triageSetAside") },
         { combos: bound("operations.toggle-formation"), description: t("shortcuts.map.toggleFormation") },
@@ -292,7 +292,7 @@ export type OperationsArrowShortcutAction =
   | "focus-next"
   | "triage-defer"
   | "triage-noop"
-  | "maximize-toggle"
+  | "snap-full"
   | "minimize"
   | "triage-set-aside";
 
@@ -308,7 +308,7 @@ export function resolveOperationsArrowShortcutAction(
   }
   if (key === "ArrowRight") return "focus-next";
   if (key === "ArrowLeft") return "focus-previous";
-  if (key === "ArrowUp") return "maximize-toggle";
+  if (key === "ArrowUp") return "snap-full";
   if (key === "ArrowDown") return "minimize";
   return null;
 }

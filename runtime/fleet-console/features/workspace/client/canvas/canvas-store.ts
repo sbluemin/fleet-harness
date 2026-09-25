@@ -69,6 +69,31 @@ export interface SnapHold {
   readonly assignments: Readonly<Record<string, number>>;
   /** 모두 정렬이 켜져 있으면 이 묶음은 자동 채움이다 — 칸은 보이는 패널 수와 레이아웃에서 다시 나눈다. */
   readonly alignAll?: AlignAllMeta | null;
+  /**
+   * 세션 id → 전체 칸에 들기 직전의 기하와 카메라. 전체 칸은 다른 칸과 달리 되돌아갈 자리가 있어야 한다
+   * (⤡·Alt↓·캡션 더블클릭). 메모는 그 패널이 전체 칸을 떠나는 순간 소비되고, 칸 밖으로 끌어 풀거나
+   * 최소화·종료로 풀리면 함께 버려진다 — 키는 항상 assignments의 부분집합이다.
+   */
+  readonly restore?: Readonly<Record<string, SnapRestoreMemo>>;
+}
+
+/** 전체 칸 직전의 자리 — 기하는 월드 좌표, 카메라는 그때의 viewport 그대로다. */
+export interface SnapRestoreMemo {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly viewport: CanvasViewport;
+}
+
+/** 아레나 전체 한 칸의 나누기 id — snap-layouts의 SNAP_FULL_ZONES가 이 값을 쓴다. */
+export const SNAP_FULL_PRESET_ID = "full";
+
+export interface GridSlotGeometry {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** 모두 정렬의 칸 나누기 — 격자·열·행. 켜져 있는 동안 캡슐 버튼으로 바꾼다. */
@@ -85,9 +110,10 @@ export interface AlignAllMeta {
 }
 
 type Listener = () => void;
+// 렌더 전용 포커스 레이어는 companion 하나다 — 「한 패널만 크게」는 스냅 전체 칸이 지므로
+// 별도 레이어가 아니라 snapHold의 상태이고, companion은 그 위에서 열렸다 닫힌다.
 export type FocusLayerState =
-  | { readonly mode: "maximized"; readonly operationId: string }
-  | { readonly mode: "companion"; readonly operationId: string; readonly returnTo: "underlay" | "maximized" };
+  { readonly mode: "companion"; readonly operationId: string; readonly returnTo: "underlay" | "snapFull" };
 type CompanionPanelVisibilityOverrides = Record<string, Readonly<Record<string, boolean>>>;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
@@ -176,10 +202,6 @@ export function getTheaterCanvasSnapshot(theaterId: string): CanvasState {
   return activeTheaterId === theaterId ? state : readStoredState(theaterId);
 }
 
-export function getMaximizedOperationId(): string | null {
-  return focusLayer?.mode === "maximized" ? focusLayer.operationId : null;
-}
-
 export function getCompanionOperationId(): string | null {
   return focusLayer?.mode === "companion" ? focusLayer.operationId : null;
 }
@@ -223,10 +245,6 @@ export function getLoadedTheaterId(): string | null {
 
 export function useCanvasState(): CanvasState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-export function useMaximizedOperationId(): string | null {
-  return useSyncExternalStore(subscribeFocusLayer, getMaximizedOperationId, getMaximizedOperationId);
 }
 
 export function useCompanionOperationId(): string | null {
@@ -361,10 +379,20 @@ export function resetCanvasViewportSize(): void {
 }
 
 // ── 늘 숨은 패널 ────────────────────────────────────────────────────────────────
-// 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)는 최소화한 패널을 거른다. 구성원은 기본 목록에 없어
+// 기하 전역 읽기(전체 맞춤·Station Keeping 장애물·정착)는 보이지 않는 패널을 거른다. 구성원은 기본 목록에 없어
 // 좌표를 받지 않고, 남은 좌표도 정리(pruneOperations)가 걷으므로 따로 셀 것이 없다.
-function hiddenGeometryIds(minimized: readonly string[] = state.minimized): Set<string> {
-  return new Set(minimized);
+//
+// 최소화가 그 하나였고, 전체 칸이 서 있는 동안의 나머지 패널도 같다 — 그 칸을 쥔 패널만 그려지고 이웃은
+// 뒤에 남아(renderHidden) 아레나에 자리를 차지하지 않는다. 이 경계를 규율과 나누면, 규율이 아레나 크기의
+// 사각형을 실재 장애물로 보고 가려진 이웃을 아레나 밖으로 밀어낸 뒤 그 좌표를 영속시킨다(Theater를
+// 다녀오면 이웃이 화면 밖에 있다). 전체 칸은 자유 배치가 아니라 배치의 일시 정지이므로, 칸이 서 있는
+// 동안 규율은 아무것도 옮기지 않고 칸을 떠난 뒤 다시 정착한다.
+function hiddenGeometryIds(source: Pick<CanvasState, "operations" | "minimized" | "snapHold"> = state): Set<string> {
+  const hidden = new Set(source.minimized);
+  const fullHolder = snapFullHolderOf(source.snapHold);
+  if (fullHolder === null) return hidden;
+  for (const sessionId of Object.keys(source.operations)) if (sessionId !== fullHolder) hidden.add(sessionId);
+  return hidden;
 }
 
 export function fitAllOperations(): void {
@@ -446,13 +474,10 @@ export function setTheaterOperationMinimized(theaterId: string, sessionId: strin
   const theaterState = readStoredState(theaterId);
   if (theaterState.minimized.includes(sessionId) === minimized) return;
   // 활성 경로(minimizeOperation)가 지는 focus layer 정리를 여기서도 한다 — War Room 무대에는 다른
-  // Theater의 Operation도 서고 그 위에 최대화·동반 레이어가 붙으므로, 건너뛰면 무대에서 내린 패널의
+  // Theater의 Operation도 서고 그 위에 동반 레이어가 붙으므로, 건너뛰면 무대에서 내린 패널의
   // 레이어가 그대로 남는다. 레이어는 Operation의 Theater가 아니라 로드된 Theater 키로 저장되므로
   // (setFocusLayer) 여기서도 그 Theater가 아니라 지금 켜진 레이어를 본다.
-  if (minimized) {
-    if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
-    if (getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
-  }
+  if (minimized && getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
   // 되올릴 때는 활성 경로(restoreOperation)처럼 맨 앞으로 끌어올린다 — 그 Theater를 열었을 때 방금
   // 되올린 패널이 이웃 밑에 깔려 있으면 되올렸다는 사실이 화면에 드러나지 않는다. 좌표가 아직 없는
   // Operation은 자리를 지어내지 않고 그대로 둔다: 처음 캔버스에 설 때 평소 초기 배치가 정한다.
@@ -516,7 +541,6 @@ export function alignZonesFor(count: number, layout: AlignAllLayout = "grid"): r
 // Operation을 최소화한다 — 캔버스 렌더에서 빠지고 하단 태스크바에 표시된다. geometry는 operations에 보존한다.
 export function minimizeOperation(sessionId: string): void {
   if (state.minimized.includes(sessionId)) return;
-  if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
   if (getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
   setState({ minimized: [...state.minimized, sessionId], snapHold: snapHoldWithout(state.snapHold, [sessionId]) });
 }
@@ -535,9 +559,7 @@ export function minimizeOperations(sessionIds: readonly string[]): void {
     return true;
   })];
   if (stringArraysEqual(state.minimized, minimized)) return;
-  const maximizedOperationId = getMaximizedOperationId();
   const companionOperationId = getCompanionOperationId();
-  if (maximizedOperationId && minimized.includes(maximizedOperationId)) clearMaximizedOperationId();
   if (companionOperationId && minimized.includes(companionOperationId)) forceDropCompanionOperationId();
   setState({ minimized, snapHold: snapHoldWithout(state.snapHold, minimized) });
 }
@@ -546,7 +568,6 @@ export function minimizeOperations(sessionIds: readonly string[]): void {
 // 활성화(selectTerminalSession)는 호출 측 책임으로 남겨, Operation 활성 조정을 한 곳(canvas)에서 유지한다.
 export function restoreOperation(sessionId: string): void {
   if (!state.minimized.includes(sessionId)) return;
-  if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
   const minimized = state.minimized.filter((id) => id !== sessionId);
   const geometry = state.operations[sessionId];
   if (!geometry) {
@@ -604,10 +625,7 @@ export function ensureDefaultGeometry(sessionId: string, persisted?: OperationGe
     geometry = { ...geometry, x: spot.x, y: spot.y };
   }
   liftTopZIndex(geometry.zIndex);
-  if (initiallyMinimized) {
-    if (getMaximizedOperationId() === sessionId) clearMaximizedOperationId();
-    if (getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
-  }
+  if (initiallyMinimized && getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
   // 첫 기하와 최소화를 한 스냅샷에 심어 새 휴면 패널이 펼쳐진 프레임을 만들지 않는다.
   setState({
     operations: { ...state.operations, [sessionId]: geometry },
@@ -788,9 +806,18 @@ export interface SnapHoldTarget {
 export function snapOperationToArenaRect(sessionId: string, bodyRect: CanvasWorldRect, target?: SnapHoldTarget): void {
   // 모두 정렬이 켜져 있으면 유지 슬롯은 정렬이 소유한다 — 수동 스냅은 그 패널을 묶음에서
   // 빼고(나머지는 다시 나눈다) 칸 자리에는 유지 없이 앉힌다. 정렬 자체는 계속된다.
+  //
+  // 전체 칸만 예외다. 「한 패널만 크게」와 「모두 나눠 보기」는 서로의 반대라 함께 설 수 없고,
+  // 유지 없이 앉히면 아레나만큼 커진 패널이 되돌아갈 자리를 잃는다. 그래서 정렬을 지금 자리에서
+  // 풀고(켜기 전 자리로 되돌리지 않는다 — 패널들은 정렬이 놓아 준 칸에 그대로 남는다) 그 위에
+  // 전체 칸 유지를 세운다. ⤡로 나오면 그 패널만 자기 칸 자리로 돌아가므로 화면은 ⤢ 직전과
+  // 같아지고, 끝나는 것은 자동 재분할뿐이다.
   if (state.snapHold?.alignAll) {
-    snapFreePanelToArenaRect(sessionId, bodyRect);
-    return;
+    if (target?.presetId !== SNAP_FULL_PRESET_ID) {
+      snapFreePanelToArenaRect(sessionId, bodyRect);
+      return;
+    }
+    releaseAlignAll();
   }
   const zIndex = claimTopZIndex();
   // 줌 100% 프레임 — 지금 아레나 좌상단이 가리키는 월드 점을 원점으로 칸을 1:1로 놓는다.
@@ -800,15 +827,34 @@ export function snapOperationToArenaRect(sessionId: string, bodyRect: CanvasWorl
   // 유지 — 같은 칸 나누기면 묶음에 합류하고(그 칸을 쓰던 패널은 풀린다), 다른 나누기면 새 묶음이 선다.
   // 이전 묶음의 패널은 좌표를 그대로 둔 채 자유 패널로 남는다.
   let snapHold = state.snapHold;
+  let operations = state.operations;
+  // 전체 칸은 유일하게 되돌아갈 자리를 기억한다 — 들어가는 패널의 직전 기하·카메라를 메모에 남기고,
+  // 칸을 쥐고 있던 패널은 자기 메모의 자리로 되돌려 놓는다(전체 크기의 유령 패널이 남지 않게).
+  // 되돌림은 그 패널 하나에만 닿는다 — 다른 묶음이나 카메라는 건드리지 않는다.
+  const enteringFull = target?.presetId === SNAP_FULL_PRESET_ID;
+  const displaced = enteringFull ? getSnapFullOperationId() : null;
+  let restore = snapHold?.restore;
+  if (enteringFull) {
+    if (displaced && displaced !== sessionId) {
+      const memo = restore?.[displaced];
+      const geometry = operations[displaced];
+      if (memo && geometry) operations = { ...operations, [displaced]: { ...geometry, x: memo.x, y: memo.y, width: memo.width, height: memo.height } };
+    }
+    const current = operations[sessionId];
+    // 이미 전체 칸에 있으면 메모를 다시 쓰지 않는다 — 전체 칸 기하가 「직전 자리」로 굳으면 복원이 무의미해진다.
+    if (current && displaced !== sessionId) {
+      restore = { ...(restore ?? {}), [sessionId]: { x: current.x, y: current.y, width: current.width, height: current.height, viewport: state.viewport } };
+    }
+  }
   if (target) {
     const sameZones = snapHold !== null && snapZonesEqual(snapHold.zones, target.zones);
     const assignments: Record<string, number> = {};
     if (sameZones) for (const [id, index] of Object.entries(snapHold!.assignments)) if (id !== sessionId && index !== target.zoneIndex) assignments[id] = index;
     assignments[sessionId] = target.zoneIndex;
-    snapHold = { presetId: target.presetId, zones: sameZones ? snapHold!.zones : target.zones, assignments };
+    snapHold = { presetId: target.presetId, zones: sameZones ? snapHold!.zones : target.zones, assignments, ...pickRestore(restore, assignments) };
   }
   setState({
-    operations: { ...state.operations, [sessionId]: { ...normalizeOperationGeometry(world, zIndex), zIndex } },
+    operations: { ...operations, [sessionId]: { ...normalizeOperationGeometry(world, zIndex), zIndex } },
     minimized: state.minimized.includes(sessionId) ? state.minimized.filter((id) => id !== sessionId) : state.minimized,
     snapHold,
   });
@@ -823,6 +869,51 @@ export function getSnapHold(): SnapHold | null {
 
 export function useSnapHold(): SnapHold | null {
   return useSyncExternalStore(subscribe, getSnapHold, getSnapHold);
+}
+
+/**
+ * 지금 아레나 전체 칸을 쥐고 있는 패널 — 별도 상태가 아니라 유지 묶음의 실제 배정에서 파생한다.
+ * 전체 나누기는 칸이 하나라 배정도 하나뿐이다(같은 칸에 들어온 패널이 앞 패널을 밀어낸다).
+ */
+export function getSnapFullOperationId(): string | null {
+  return snapFullHolderOf(state.snapHold);
+}
+
+function snapFullHolderOf(hold: SnapHold | null): string | null {
+  if (!hold || hold.presetId !== SNAP_FULL_PRESET_ID) return null;
+  for (const [sessionId, zoneIndex] of Object.entries(hold.assignments)) if (zoneIndex === 0) return sessionId;
+  return null;
+}
+
+/** 전체 칸에 앉은 패널이 칸을 떠나면 돌아갈 자리 — 메모가 없으면(구버전 저장값) 지금 기하가 그 자리다. */
+function restingGeometryOf(hold: SnapHold | null, sessionId: string, current: OperationGeometry): OperationGeometry {
+  const memo = hold?.restore?.[sessionId];
+  return memo ? { ...current, x: memo.x, y: memo.y, width: memo.width, height: memo.height } : current;
+}
+
+export function useSnapFullOperationId(): string | null {
+  return useSyncExternalStore(subscribe, getSnapFullOperationId, getSnapFullOperationId);
+}
+
+/**
+ * 전체 칸을 떠난다 — 그 패널만 직전 기하·카메라로 되돌리고 메모를 버린다. 다른 패널이 앞서 쥐고 있던
+ * 묶음은 되살리지 않는다(스냅은 마지막 상태가 곧 현재 상태다). 메모가 없으면 유지만 풀린다.
+ */
+export function restoreSnapFullOperation(sessionId: string): boolean {
+  const hold = state.snapHold;
+  if (!hold || hold.presetId !== SNAP_FULL_PRESET_ID || !(sessionId in hold.assignments)) return false;
+  const memo = hold.restore?.[sessionId];
+  const geometry = state.operations[sessionId];
+  const zIndex = claimTopZIndex();
+  const restored = memo && geometry
+    ? { ...geometry, x: memo.x, y: memo.y, width: memo.width, height: memo.height, zIndex }
+    : geometry ? { ...geometry, zIndex } : null;
+  setState({
+    ...(restored ? { operations: { ...state.operations, [sessionId]: restored } } : {}),
+    snapHold: snapHoldWithout(hold, [sessionId]),
+  });
+  if (memo) animateViewportTo(memo.viewport);
+  return true;
 }
 
 /** 캔버스가 렌더마다 칸에서 편 유지 패널의 월드 기하를 스토어에 되쓴다 — 영속·Station Keeping 장애물·해제가 같은 값을 본다. */
@@ -1065,7 +1156,18 @@ function snapHoldWithout(hold: SnapHold | null, sessionIds: readonly string[]): 
   const drop = sessionIds.filter((id) => id in hold.assignments);
   if (drop.length === 0) return hold;
   const assignments = Object.fromEntries(Object.entries(hold.assignments).filter(([id]) => !drop.includes(id)));
-  return Object.keys(assignments).length === 0 ? null : { ...hold, assignments };
+  // 칸을 떠난 패널의 복원 메모는 함께 버린다 — 칸 밖으로 끌어 풀거나 최소화·종료로 풀리면 놓인 자리가 현재 자리다.
+  return Object.keys(assignments).length === 0 ? null : { ...hold, assignments, ...pickRestore(hold.restore, assignments) };
+}
+
+/** 복원 메모를 현재 배정에 맞춰 잘라 낸다 — 남는 메모가 없으면 필드 자체를 남기지 않는다. */
+function pickRestore(
+  restore: Readonly<Record<string, SnapRestoreMemo>> | undefined,
+  assignments: Readonly<Record<string, number>>,
+): { restore?: Readonly<Record<string, SnapRestoreMemo>> } {
+  if (!restore) return {};
+  const kept = Object.fromEntries(Object.entries(restore).filter(([id]) => id in assignments));
+  return Object.keys(kept).length === 0 ? {} : { restore: kept };
 }
 
 function snapZonesEqual(left: readonly SnapZoneFraction[], right: readonly SnapZoneFraction[]): boolean {
@@ -1095,10 +1197,14 @@ export function resolveLaunchGeometry(theaterId: string, geometry: OperationGeom
   const snapshot = activeTheaterId === theaterId ? state : readStoredState(theaterId);
   if (!snapshot.stationKeeping) return geometry;
   // 최소화한 지휘관의 숨은 단계는 장애물이 아니다 — 보이는 빈자리를 두고 새 패널이 밀려나면 안 된다.
-  const minimizedSet = hiddenGeometryIds(snapshot.minimized);
+  const minimizedSet = hiddenGeometryIds(snapshot);
+  // 전체 칸을 쥔 패널은 아레나만큼 커져 있지만 그것은 임시 상태다 — 그 사각형을 장애물로 세면 새 패널이
+  // 피할 빈자리가 없어 아레나 밖으로 밀려나고, 새 패널이 칸을 승계할 때 그 화면 밖 좌표가 복원 메모로
+  // 굳는다(칸을 떠나는 순간 화면에서 사라진다). 칸을 떠나면 돌아갈 자리, 즉 복원 메모가 실제 장애물이다.
+  const fullHolder = snapFullHolderOf(snapshot.snapHold);
   const obstacles = Object.entries(snapshot.operations)
     .filter(([sessionId]) => !minimizedSet.has(sessionId))
-    .map(([, existing]) => existing);
+    .map(([sessionId, existing]) => (sessionId === fullHolder ? restingGeometryOf(snapshot.snapHold, sessionId, existing) : existing));
   const spot = resolveStationKeepingPosition(geometry, obstacles);
   if (spot.x === geometry.x && spot.y === geometry.y) return geometry;
   return { ...geometry, x: spot.x, y: spot.y };
@@ -1120,9 +1226,7 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   const minimizedChanged = minimized.length !== state.minimized.length;
   const operationAccent = Object.fromEntries(Object.entries(state.operationAccent).filter(([sessionId]) => valid.has(sessionId)));
   const accentChanged = Object.keys(operationAccent).length !== Object.keys(state.operationAccent).length;
-  const maximizedOperationId = getMaximizedOperationId();
   const companionOperationId = getCompanionOperationId();
-  if (maximizedOperationId && (!valid.has(maximizedOperationId) || minimized.includes(maximizedOperationId))) clearMaximizedOperationId();
   // companion은 목록 부재만으로 즉시 정리하지 않는다 — ops 푸시 레이스로 일시 부재가 흔하며,
   // 지속 부재의 정리는 캔버스 렌더 측 유예 효과가 소유한다. 최소화는 사용자 확정 액션이라 즉시 닫는다.
   if (companionOperationId && minimized.includes(companionOperationId)) forceDropCompanionOperationId();
@@ -1156,7 +1260,7 @@ export function loadForTheater(theaterId: string | null): void {
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
   // 유지는 줌 100%의 것이다 — 다른 줌으로 저장된 상태(구버전·손상)면 자유 배치로 떨어진다.
-  // 정렬도 자리 복원 없이 풀린다.
+  // 정렬도 자리 복원 없이 풀리고, 전체 칸은 되돌아갈 자리(restore)까지 함께 사라진다.
   if (state.snapHold && Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON) {
     alignOffRestored = false;
     if (state.snapHold.alignAll) {
@@ -1165,8 +1269,8 @@ export function loadForTheater(theaterId: string | null): void {
     }
     state = { ...state, snapHold: null };
   }
-  // maximize와 companion은 상호 배타적인 focus layer다. Theater별 단일 상태로 보존·복원해
-  // 같은 Theater가 다시 로드돼도 현재 레이아웃 모드와 대상 Operation을 함께 유지한다.
+  // companion 레이어는 Theater별 단일 상태로 보존·복원해 같은 Theater가 다시 로드돼도
+  // 대상 Operation과 함께 유지한다. 전체 칸은 snapHold에 실려 같은 저장소로 함께 돌아온다.
   const nextFocusLayer = theaterId ? focusLayersByTheater.get(theaterId) ?? null : null;
   const focusLayerChanged = !focusLayersEqual(focusLayer, nextFocusLayer);
   focusLayer = nextFocusLayer;
@@ -1271,27 +1375,13 @@ export function focusOperation(sessionId: string, viewportSize: CanvasViewportSi
   if (followViewport) animateViewportTo(followViewport);
 }
 
-export function setMaximizedOperationId(operationId: string): void {
-  const nextFocusLayer = { mode: "maximized", operationId } as const;
-  if (activeTheaterId) focusLayersByTheater.set(activeTheaterId, nextFocusLayer);
-  // 최대화는 underlay(Map 또는 스냅 유지)를 바꾸지 않는 렌더 전용 포커스 레이어다.
-  // 대상만 실제 최소화 목록에서 꺼내 보이게 하고, peer의 실제 최소화 상태는 그대로 둔다.
-  setFocusLayer(nextFocusLayer);
-}
-
-export function clearMaximizedOperationId(): void {
-  if (activeTheaterId && focusLayersByTheater.get(activeTheaterId)?.mode === "maximized") focusLayersByTheater.delete(activeTheaterId);
-  if (focusLayer?.mode !== "maximized") return;
-  focusLayer = null;
-  emitFocusLayer();
-}
-
 export function setCompanionOperationId(operationId: string): void {
   // ANALYZE 진입마다 descriptor 기본 가시성에서 다시 시작하고, 플러그인이 현재 artifact 상태로 보정한다.
   clearCompanionPanelVisibilityOverrides(operationId);
+  // companion을 닫으면 어디로 돌아가는가 — 전체 칸이 선 채로 열었다면 닫을 때 그 칸으로 돌아간다.
   const returnTo = focusLayer?.mode === "companion"
     ? focusLayer.returnTo
-    : focusLayer?.mode === "maximized" ? "maximized" : "underlay";
+    : getSnapFullOperationId() !== null ? "snapFull" : "underlay";
   const nextFocusLayer = { mode: "companion", operationId, returnTo } as const;
   setFocusLayer(nextFocusLayer);
 }
@@ -1311,21 +1401,22 @@ function setFocusLayer(nextFocusLayer: FocusLayerState): void {
   if (focusLayerChanged) emitFocusLayer();
 }
 
-export function clearCompanionOperationId(): void {
-  if (focusLayer?.mode !== "companion") return;
+/**
+ * companion을 닫는다 — 열기 전에 전체 칸이 서 있었다면 그 칸은 닫는 패널이 받는다(옛 최대화 복귀와
+ * 같은 인계: 분석하려고 고른 패널이 그대로 큰 자리에 남는다). 칸 사각형은 "지금 보이는 아레나"의
+ * 것이라 스토어가 계산할 수 없으므로, 그 사실만 호출 측에 돌려주고 스냅은 진입 퍼널이 한다.
+ */
+export function clearCompanionOperationId(): string | null {
+  if (focusLayer?.mode !== "companion") return null;
   const closingLayer = focusLayer;
-  const canRestoreMaximized = closingLayer.returnTo === "maximized"
+  const handOverSnapFull = closingLayer.returnTo === "snapFull"
     && closingLayer.operationId in state.operations
     && !state.minimized.includes(closingLayer.operationId);
-  focusLayer = canRestoreMaximized
-    ? { mode: "maximized", operationId: closingLayer.operationId }
-    : null;
-  if (activeTheaterId) {
-    if (focusLayer) focusLayersByTheater.set(activeTheaterId, focusLayer);
-    else focusLayersByTheater.delete(activeTheaterId);
-  }
+  focusLayer = null;
+  if (activeTheaterId) focusLayersByTheater.delete(activeTheaterId);
   clearCompanionPanelVisibilityOverrides(closingLayer.operationId);
   emitFocusLayer();
+  return handOverSnapFull ? closingLayer.operationId : null;
 }
 
 export function forceDropCompanionOperationId(): void {
@@ -1471,12 +1562,24 @@ export function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/**
+ * 저장으로 나가는 상태 — 스냅 유지가 선 채로 카메라 이동이 흐르는 중이면 중간 프레임의 줌이 아니라
+ * 그 이동이 향하는 자리를 적는다. 유지는 줌 100%의 것이라(loadForTheater) 애니메이션 도중의 줌이
+ * 저장되면 다음 로드가 유지를 버리고, 되돌아갈 자리를 잃은 패널이 칸 크기 그대로 남는다 — 저줌
+ * Fleet Map에서 ⤢로 들어간 직후 Theater를 옮기거나 새로고침하면 닿는 창이다(저장 지연 400ms보다
+ * 이동이 길다). 렌더 state와 tween은 그대로고, 유지가 없을 때의 저장도 그대로다.
+ */
+function persistedCanvasState(): CanvasState {
+  if (zoomRaf === null || !state.snapHold) return state;
+  return { ...state, viewport: targetViewport };
+}
+
 function scheduleSave(): void {
   if (!activeTheaterId || typeof window === "undefined") return;
   cancelScheduledSave();
   saveTimer = window.setTimeout(() => {
     saveTimer = null;
-    writeStoredState(activeTheaterId, state);
+    writeStoredState(activeTheaterId, persistedCanvasState());
   }, SAVE_DELAY_MS);
 }
 
@@ -1484,7 +1587,7 @@ function flushScheduledSave(): void {
   if (!saveTimer || !activeTheaterId || typeof window === "undefined") return;
   window.clearTimeout(saveTimer);
   saveTimer = null;
-  writeStoredState(activeTheaterId, state);
+  writeStoredState(activeTheaterId, persistedCanvasState());
 }
 
 function cancelScheduledSave(): void {
@@ -1584,7 +1687,21 @@ function normalizeSnapHold(value: unknown, operations: Record<string, OperationG
   const alignAll = allowAlignAll ? normalizeAlignAll(value.alignAll, operations) : null;
   if (alignAll) return { presetId: value.presetId, zones, assignments, alignAll };
   if (zones.length === 0 || Object.keys(assignments).length === 0) return null;
-  return { presetId: value.presetId, zones, assignments };
+  // 복원 메모는 아직 칸을 쥐고 있는 패널의 것만 남긴다 — 저장 사이에 사라진 패널의 자리는 되돌릴 대상이 없다.
+  const restore: Record<string, SnapRestoreMemo> = {};
+  if (isRecord(value.restore)) {
+    for (const [id, memo] of Object.entries(value.restore)) {
+      if (!(id in assignments) || !isRecord(memo)) continue;
+      restore[id] = {
+        x: readFiniteNumber(memo.x, 0),
+        y: readFiniteNumber(memo.y, 0),
+        width: readPositiveNumber(memo.width, DEFAULT_OPERATION_WIDTH),
+        height: readPositiveNumber(memo.height, DEFAULT_OPERATION_HEIGHT),
+        viewport: normalizeViewport(memo.viewport),
+      };
+    }
+  }
+  return { presetId: value.presetId, zones, assignments, ...pickRestore(restore, assignments) };
 }
 
 function normalizeAlignAll(value: unknown, operations: Record<string, OperationGeometry>): AlignAllMeta | null {

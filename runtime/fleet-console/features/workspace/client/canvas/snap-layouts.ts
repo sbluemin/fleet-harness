@@ -5,7 +5,7 @@
 // 칸 나누기 규칙은 모두 정렬(alignZonesFor)과 같은 가족이다 — 모드 프레임 여백 18px,
 // 칸 사이 8px, 캡션 32px는 칸 위 띠를 캡션이 채운다는 전제로 본문에서 뺀다.
 
-import { OPERATION_WINDOW_CAPTION_HEIGHT } from "./canvas-store.js";
+import { OPERATION_WINDOW_CAPTION_HEIGHT, SNAP_FULL_PRESET_ID } from "./canvas-store.js";
 import { FLEET_MAP_EXIT_ZOOM } from "./fleet-map-layout.js";
 
 export interface SnapRect {
@@ -36,8 +36,8 @@ export interface SnapZoneSet {
   readonly zones: readonly SnapZoneFraction[];
 }
 
-/** 아레나 전체 한 칸(위쪽 가장자리 드롭·⌘⌥↑). */
-export const SNAP_FULL_ZONES: SnapZoneSet = { id: "full", zones: [[0, 0, 1, 1]] };
+/** 아레나 전체 한 칸(위쪽 가장자리 드롭·캡션 ⤢·Alt↑). 이 칸만 복원 메모를 갖는다(canvas-store.SnapHold.restore). */
+export const SNAP_FULL_ZONES: SnapZoneSet = { id: SNAP_FULL_PRESET_ID, zones: [[0, 0, 1, 1]] };
 
 export const SNAP_PRESETS: readonly SnapPreset[] = [
   { id: "half", zones: [[0, 0, 1 / 2, 1], [1 / 2, 0, 1 / 2, 1]] },
@@ -90,7 +90,7 @@ export function snapZonesFor(arena: SnapRect, preset: SnapZoneSet): readonly Sna
   });
 }
 
-/** 아레나 전체 한 칸(위쪽 가장자리 드롭·⌘⌥↑). */
+/** 아레나 전체 한 칸의 본문 사각형. */
 export function snapFullZone(arena: SnapRect): SnapRect {
   return snapZonesFor(arena, SNAP_FULL_ZONES)[0]!;
 }
@@ -273,6 +273,31 @@ export function snapEdgeHitFor(point: SnapPoint, hitArena: SnapRect, zoneArena: 
 
 export function snapPointInRect(point: SnapPoint, rect: SnapRect): boolean {
   return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
+}
+
+/** 칸의 자리 이름 — 표식이 "어느 칸에 붙어 있다"를 말할 때 쓰는 분류. */
+export type SnapZoneName =
+  | "full" | "left" | "center" | "right" | "top" | "bottom"
+  | "topLeft" | "topCenter" | "topRight" | "bottomLeft" | "bottomCenter" | "bottomRight";
+
+/**
+ * 분수 칸 하나를 사람이 부르는 이름으로 접는다. 한 축을 끝에서 끝까지 덮으면 그 축은 말하지 않는다 —
+ * ⅓ 열은 "가운데 칸"이지 "가운데 위 칸"이 아니다. 경계를 끌어 프리셋에서 벗어난 칸도 중심으로 재므로
+ * 이름이 없는 칸은 없다.
+ */
+export function snapZoneName(zone: SnapZoneFraction): SnapZoneName {
+  const [fx, fy, fw, fh] = zone;
+  const spansWidth = fx <= EPSILON && fx + fw >= 1 - EPSILON;
+  const spansHeight = fy <= EPSILON && fy + fh >= 1 - EPSILON;
+  if (spansWidth && spansHeight) return "full";
+  const centerX = fx + fw / 2;
+  const column = centerX < 0.4 ? "left" : centerX > 0.6 ? "right" : "center";
+  if (spansHeight) return column;
+  const top = fy + fh / 2 < 0.5;
+  if (spansWidth) return top ? "top" : "bottom";
+  if (column === "left") return top ? "topLeft" : "bottomLeft";
+  if (column === "right") return top ? "topRight" : "bottomRight";
+  return top ? "topCenter" : "bottomCenter";
 }
 
 // 손잡이 좌우로 이만큼은 더 받아 준다 — 손잡이 끝을 스치듯 올려도 바가 열린다.
