@@ -47,6 +47,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(EMPTY_HIDDEN_IDS);
   const [moreOpen, setMoreOpen] = useState(false);
   const naturalWidthsRef = useRef(new Map<string, number>());
+  const expectedFocusRef = useRef<string | null>(null);
 
   const root = layout.cluster.root;
   // 구성원 세션 순서는 Objectives 명단(roster) 선언 순서를 따른다.
@@ -85,6 +86,18 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
     });
   };
 
+  // 화살표 키 탐색 후 포커스를 탭 목록 안에 안정적으로 유지
+  useLayoutEffect(() => {
+    if (expectedFocusRef.current !== null) {
+      const targetOpId = expectedFocusRef.current;
+      expectedFocusRef.current = null;
+      const tab = targetOpId === root
+        ? commanderTabRef.current
+        : railRef.current?.querySelector<HTMLButtonElement>(`[data-member-op-id="${targetOpId}"]`);
+      tab?.focus();
+    }
+  }, [current, root]);
+
   // 폭 측정 및 +N 접힘 계산
   useLayoutEffect(() => {
     const rail = railRef.current;
@@ -121,32 +134,58 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       }
 
       // 2단계: 다 들어가지 않는 경우 — +N 버튼 공간(44px)을 확보하고 넘치는 탭 가리기.
-      // 허용 요청(awaiting) 탭은 넘기지 않고 앞에 남긴다.
+      // 우선순위:
+      // 1) 지휘관 (baseWidth에 포함)
+      // 2) 허용 요청(awaiting) 탭 (반드시 포함)
+      // 3) 현재 선택된 탭(current) (반드시 포함)
+      // 나머지 탭들을 가용 폭 안에서 뒤에서부터 숨긴다.
       const moreWidth = 44;
       const hidden = new Set<string>();
 
-      let reservedForAwaiting = 0;
+      // 필수 유지 탭(awaiting + current) 너비 합산
+      let reservedForPriority = 0;
       for (const node of currentNodes) {
-        if (node.member.progress === "awaiting") {
+        const isPriority = node.member.progress === "awaiting" || node.member.operationId === current;
+        if (isPriority) {
           const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
-          reservedForAwaiting += w + 2;
+          reservedForPriority += w + 2;
         }
       }
 
-      const availableForRest = railWidth - baseWidth - reservedForAwaiting - moreWidth;
-      let accumulated = 0;
-
-      for (const node of currentNodes) {
-        const opId = node.member.operationId;
-        if (node.member.progress === "awaiting") {
-          // 허용 요청은 넘기지 않고 앞에 남긴다
-          continue;
+      if (baseWidth + reservedForPriority + moreWidth > railWidth) {
+        // 필수 유지 탭마저도 가용 폭을 넘는 극단적인 경우(current도 못 남김):
+        // awaiting을 우선 남기고 current를 포함해 뒤에서부터 넘긴다
+        let reservedAwaitingOnly = 0;
+        for (const node of currentNodes) {
+          if (node.member.progress === "awaiting") {
+            const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
+            reservedAwaitingOnly += w + 2;
+          }
         }
-        const w = naturalWidthsRef.current.get(opId) || 72;
-        if (accumulated + w > availableForRest) {
-          hidden.add(opId);
-        } else {
-          accumulated += w + 2;
+        const avail = railWidth - baseWidth - reservedAwaitingOnly - moreWidth;
+        let acc = 0;
+        for (const node of currentNodes) {
+          if (node.member.progress === "awaiting") continue;
+          const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
+          if (acc + w > avail) {
+            hidden.add(node.member.operationId);
+          } else {
+            acc += w + 2;
+          }
+        }
+      } else {
+        // 일반적인 경우: awaiting과 current는 무조건 남기고, 나머지 비우선순위 탭만 뒤에서부터 넘긴다
+        const availableForRest = railWidth - baseWidth - reservedForPriority - moreWidth;
+        let acc = 0;
+        for (const node of currentNodes) {
+          const isPriority = node.member.progress === "awaiting" || node.member.operationId === current;
+          if (isPriority) continue;
+          const w = naturalWidthsRef.current.get(node.member.operationId) || 72;
+          if (acc + w > availableForRest) {
+            hidden.add(node.member.operationId);
+          } else {
+            acc += w + 2;
+          }
         }
       }
 
@@ -157,7 +196,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
     const observer = new ResizeObserver(measure);
     observer.observe(rail);
     return () => observer.disconnect();
-  }, [nodesKey]);
+  }, [nodesKey, current]);
 
   // 바깥 클릭 / Escape 로 +N 팝오버 닫기
   useEffect(() => {
@@ -209,8 +248,9 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
         const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
         const nextTab = tabs[nextIndex];
         if (nextTab) {
-          nextTab.focus();
           const targetOpId = nextTab.dataset.memberOpId ?? root;
+          expectedFocusRef.current = targetOpId;
+          nextTab.focus();
           onPick(targetOpId, { focusTerminal: false });
         }
       }
@@ -219,17 +259,18 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
       const firstTab = tabs[0];
       if (firstTab) {
+        expectedFocusRef.current = root;
         firstTab.focus();
-        const targetOpId = firstTab.dataset.memberOpId ?? root;
-        onPick(targetOpId, { focusTerminal: false });
+        onPick(root, { focusTerminal: false });
       }
     } else if (event.key === "End") {
       event.preventDefault();
       const tabs = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([hidden])') ?? []);
       const lastTab = tabs[tabs.length - 1];
       if (lastTab) {
-        lastTab.focus();
         const targetOpId = lastTab.dataset.memberOpId ?? root;
+        expectedFocusRef.current = targetOpId;
+        lastTab.focus();
         onPick(targetOpId, { focusTerminal: false });
       }
     } else if (event.key === "Enter" || event.key === " ") {
@@ -242,6 +283,7 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const hiddenNodes = nodes.filter(({ member }) => hiddenIds.has(member.operationId));
   const hiddenCount = hiddenNodes.length;
   const moreHasAwaiting = hiddenNodes.some(({ member }) => member.progress === "awaiting");
+  const moreHasCurrent = hiddenNodes.some(({ member }) => member.operationId === current);
 
   return (
     <div
@@ -307,9 +349,10 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
           <button
             ref={moreBtnRef}
             type="button"
-            className={`cluster-node-more${moreHasAwaiting ? " has-awaiting" : ""}`}
+            className={`cluster-node-more${moreHasAwaiting ? " has-awaiting" : ""}${moreHasCurrent ? " is-current" : ""}`}
             aria-haspopup="menu"
             aria-expanded={moreOpen}
+            aria-selected={moreHasCurrent ? "true" : undefined}
             aria-label={t("cluster.nodes.more", { count: hiddenCount })}
             title={t("cluster.nodes.more", { count: hiddenCount })}
             onClick={() => setMoreOpen((prev) => !prev)}

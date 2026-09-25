@@ -3876,6 +3876,12 @@
   color: var(--aurora);
 }
 
+.cluster-node-more.is-current {
+  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  color: var(--text-primary);
+}
+
 .cluster-node-more svg {
   width: 8px;
   height: 8px;
