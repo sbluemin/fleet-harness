@@ -19,7 +19,7 @@ Review actual friction, discoveries, judgment calls, and skills used. A candidat
 - **Cost:** was the obstacle costly or non-obvious enough?
 - **Generality:** does the learning apply beyond that single incident?
 
-Discard failures. Incorrect commands or missing skill boundaries are candidates too, but one model mistake does not justify a universal model rule.
+Discard candidates that fail any condition. Incorrect commands or missing skill boundaries are candidates too, but one model mistake does not justify a universal model rule.
 
 ## Route to one home
 

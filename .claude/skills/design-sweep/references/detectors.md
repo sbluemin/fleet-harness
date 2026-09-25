@@ -2,7 +2,7 @@
 
 ## The design charter (the yardstick)
 
-Living sources — read these for the target scope; the historical examples below are detector leads, not current acceptance thresholds. Verify every token, count, dimension, and exception against these sources before classifying a defect:
+Living sources — read these for the target scope. The figures below are detector leads, not acceptance thresholds; verify every token, count, dimension, and exception against these sources before classifying a defect:
 
 - `runtime/fleet-console/core/client/src/styles/theme.css` — token vocabulary and per-theme envelopes.
 - `runtime/fleet-console/tests/instrument-design-contract.test.ts` — the machine-readable charter: what is already pinned and enforced.
@@ -29,13 +29,13 @@ Living sources — read these for the target scope; the historical examples belo
 
 Run the detectors over `<scope>` — for `full` depth, sweep each surface family (in parallel when useful); for `quick`, run directly:
 
-- **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console CLAUDE.md Design invariants) — classify them out instead of reporting them. Plugins (`runtime/fleet-plugins/*`) are the historical drift reservoir — always include them.
+- **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console CLAUDE.md Design invariants) — classify them out instead of reporting them. Always include plugins (`runtime/fleet-plugins/*`); most raw literals live there.
 - **Signal misuse**: `warn|aurora|positive|coral` tokens on non-state surfaces (badges, chips, avatars, identity marks, version labels).
 - **Brass misuse**: brass on permanently-lit ornaments or identity roles (its only roles: location, focus, hover).
 - **Identity leaks**: `--user-accent` placements — count them and compare against the contract test's pinned count; any `border-color`/glow usage is a violation.
 - **Grammar drift**: `border-radius: [0-9]` raw px values; `999px` outside `--radius-pill`; control heights off the snap; non-mono/non-uppercase text on control-class elements.
 
-Use exact-match patterns — substring greps produce false positives that poison the report (rg zero-gate rule).
+Use exact-match patterns; substring greps produce false positives that poison the report.
 
 ### Diagnose and classify
 

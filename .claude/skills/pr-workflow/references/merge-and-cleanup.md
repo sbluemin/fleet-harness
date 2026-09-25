@@ -23,7 +23,7 @@ Reached after Phase 3 confirms review completion (a fresh Codex `+1` with no ope
 ### Phase 7 — Cleanup & completion
 
 **Autonomous cleanup (only when the merge succeeded).** When Phase 6 confirmed `state: MERGED`, clean up the merged head branch's local artifacts yourself — do **not** ask the user. Follow the git-worktree skill's remove flow:
-1. If `<headRefName>` is in this task's dedicated worktree, invoke `git-worktree` remove mode. That skill owns protected/dirty/unpushed/ownership checks and removal commands. Terminate tmux only when the exact session is confirmed to belong to this task.
+1. If `<headRefName>` is in this task's dedicated worktree, invoke `git-worktree` remove mode. That skill owns protected/dirty/unpushed/ownership checks and removal commands.
 2. If the user authorized direct work in the main checkout, first confirm its current branch is `<headRefName>`, clean, and unprotected. Then switch to `<base>` and delete only the merged head branch. Otherwise preserve user changes and report incomplete cleanup.
 3. Hard stops — never cross even autonomously: never delete the main checkout, and never delete a protected branch (`main` / `master` / `<base>`). The remote head branch is typically auto-deleted by GitHub on merge; otherwise leave it unless remote cleanup was requested.
 4. Skip cleanup entirely when `<auto_merge>` is `false` or the merge halted — the branch and its worktree must survive for follow-up.
@@ -36,7 +36,7 @@ Then report in Korean:
 - Validation commands and pass/fail status; note any check not run.
 - The approval signal observed (Codex `+1` on the PR body), or the explicit activation request URL plus `codex_activation_timeout`; include every `@codex` follow-up comment URL.
 - **Merge outcome**: merged (`<merge_method>` + merge commit SHA + whether a pre-merge rebase/force-push was needed), or — when `<auto_merge>` is `false` or auto-merge halted — the approved-but-unmerged state and the reason. The Phase 3 wait poll was stopped in Phase 6.
-- **Cleanup outcome**: worktree removed / tmux session killed / local branch force-deleted, or skipped (with reason).
+- **Cleanup outcome**: worktree removed / local branch force-deleted, or skipped (with reason).
 
 ## Documentation Synthesis
 
@@ -55,5 +55,5 @@ PR titles, summaries, bodies, and `.changelog.d/` fragments are host-owned. Synt
 - Do not write commit messages in any language other than English.
 - Do not post the `@codex` follow-up until the push has succeeded and the commit is visible on the remote.
 - Do not invent validation results — if a check was not run, say so.
-- Phase 7 autonomous cleanup runs only after Phase 6 confirms `state: MERGED`; it force-deletes only the merged head branch and its worktree/tmux session, never the main checkout or a protected branch (`main` / `master` / `<base>`).
+- Phase 7 autonomous cleanup runs only after Phase 6 confirms `state: MERGED`; it force-deletes only the merged head branch and its worktree, never the main checkout or a protected branch (`main` / `master` / `<base>`).
 - Create PRs only against `sbluemin/fleet-harness` with this skill.

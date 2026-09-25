@@ -26,6 +26,6 @@ Resolve values from the request and task context. Live turns spend real quota; c
 ## Boundaries and completion
 
 - Never stop/restart the user's Console or an unknown runtime.
-- Open the seeded URL in this Operation's Fleet Browser. Do not drive that instance as `console-e2e`. Do not use agent-browser or the OS opener unless Fleet Browser is unavailable.
+- Open the seeded URL in this Operation's Fleet Browser. Do not drive that instance as `console-e2e` or open it with agent-browser. Use the OS opener only when Fleet Browser is unavailable.
 - Do not stop the instance later for cleanup. Do not close the handoff tab or the user's other tabs. The user decides when it ends. If a requested rebuild requires restart, re-read the lock, open the new URL in Fleet Browser, and send it.
 - Finish once seed state, PID, URL, and the Fleet Browser open (or the documented fallback) are verified and the handoff is delivered. Handoff is not proof that usability verification passed.

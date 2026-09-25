@@ -61,6 +61,6 @@ pnpm test
 node scripts/compile-changelog-fragments.mjs --check --allow-empty
 ```
 
-Root `pnpm build` already excludes `@dotobokuri/fleet-desktop`; do not add a desktop package unless the user asked. `workspace-verify.yml` is install + typecheck + test (postinstall builds); the explicit `pnpm build` is the operator gate the user asked for. The fragment `--check` is the local gate Stable Release does not run until it compiles notes on `main`; `--allow-empty` matches that compiler flag so a no-fragment range still proceeds.
+Root `pnpm build` already excludes `@dotobokuri/fleet-desktop`; do not add a desktop package unless the user asked. `workspace-verify.yml` is install + typecheck + test (postinstall builds); the explicit `pnpm build` is the release operator gate. The fragment `--check` is the local gate Stable Release does not run until it compiles notes on `main`; `--allow-empty` matches that compiler flag so a no-fragment range still proceeds.
 
 **On failure:** fix on `canary` immediately — do not wait for a separate authorization. Keep the fix in the failing product; no opportunistic refactors. Commit in English Conventional Commits via HEREDOC (no `--amend`, no `--no-verify`). Push `git -C <canary-path> push origin HEAD:canary`. Re-run the four commands. Repeat until green. Do not push `main` on a red tree.
