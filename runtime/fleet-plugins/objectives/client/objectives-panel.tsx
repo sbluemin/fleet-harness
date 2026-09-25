@@ -850,8 +850,8 @@ function ItemDetail({ item, t, language, launchAvailable, call, toast, modeLabel
   useEffect(() => { setNote(item.note); }, [item.note]);
   useEffect(() => { setTitle(item.title); }, [item.title]);
   const mode = coordinatorMode(item.steps);
-  // 한 번 깨어난 지휘관의 모델은 바꿀 수 없다 — 이미 그 모델로 도는 세션이다.
-  const locked = item.commander.started;
+  // 수동 재개로 초기화된 유휴 세션도 잠근다. 구성원의 활동이 아니라 지휘관 자신의 상태로 판단한다.
+  const locked = item.commander.started || ["idle", "running", "background", "awaiting"].includes(operationOwnState(item.id));
   const editable = !item.done && !busy;
   // 지휘관이 일하는 동안에도 받는 편집 — 단계 추가, 끝나지 않은 단계의 문구·삭제·선행·담당, 메모. 구성원이 떠 있어도 임무는 끝나기 전까지 사람의 것이다. 서버가 같은 기준으로 가른다.
   const touchable = !item.done;

@@ -120,6 +120,11 @@ describe("Objectives contract", () => {
     expect(() => store.stepPatch(item.id, a!.id, { after: [c!.id] })).toThrow(ObjectiveStoreError);
     // 첫 실행 전 뷰는 Operation 프리셋에만 저장하고, 모델·세션 이름은 유지한다.
     expect(launch.setPreset(item.id, { viewMode: "chat" }).commander).toMatchObject({ viewMode: "chat", model: "opus[1m]", sessionName: `${head}-cmdr` });
+    // 수동 재개된 유휴 채팅은 아직 provider 좌표가 없어도 이미 프리셋을 읽었다.
+    activity.set(item.id, "idle");
+    expect(() => launch.setPreset(item.id, { viewMode: "terminal" })).toThrow("item_busy");
+    expect(() => launch.setPreset(item.id, { model: "sonnet" })).toThrow("item_busy");
+    activity.set(item.id, "dormant");
     expect(launch.setPreset(item.id, { viewMode: "terminal" }).commander.viewMode).toBe("terminal");
     // 구성원 명단 — 임무는 구성원만 가리킨다. 두 임무가 한 구성원을 나눠 쓴다.
     const research = store.memberAdd(item.id, { role: "research" }, "human").members[0]!.id;

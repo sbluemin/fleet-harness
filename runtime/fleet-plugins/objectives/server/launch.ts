@@ -334,7 +334,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     setPreset(itemId, preset) {
       const node = ctx.host.operations.get(itemId);
       if (!node) throw new ObjectiveStoreError("unknown_item");
-      if (readOperationLaunch(node.payload).started || pending.has(itemId) || service.busy(itemId)) throw new ObjectiveStoreError("item_busy");
+      // 수동 재개는 첫 메시지 전에도 세션을 초기화한다 — 살아 있는 세션의 프리셋을 뒤에서 바꾸지 않는다.
+      if (readOperationLaunch(node.payload).started || pending.has(itemId) || control().observe(itemId)?.lifecycle === "live" || service.busy(itemId)) throw new ObjectiveStoreError("item_busy");
       if (item(itemId).done) throw new ObjectiveStoreError("item_done");
       patchOperation(itemId, { payload: withOperationLaunchPreset(node.payload, preset) });
       store.refresh(itemId);
