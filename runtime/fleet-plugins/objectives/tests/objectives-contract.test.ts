@@ -5,10 +5,12 @@ import path from "node:path";
 import type { OperationGroupedEvent, OperationNode } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import objectivesPlugin from "../routes.js";
 import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../server/attachments.js";
+import { createObjectiveConsoleTools } from "../server/console-tools.js";
 import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
 import { createObjectiveRoutes } from "../server/routes.js";
@@ -112,6 +114,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   grouped.push((event) => launch.operationGrouped(event));
   const tools = createObjectiveMcpTools(ctx, store, launch);
   const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
+  const consoleTool = createObjectiveConsoleTools(ctx, store, launch)[0]!;
   const route = async (name: string, body: Record<string, unknown>): Promise<{ status: number; value: Record<string, unknown> }> => {
     routeBody = body;
     routeResult = { status: 0, value: null };
@@ -120,7 +123,7 @@ function harness(routingOrigin: () => string | null = () => null) {
     return routeResult as { status: number; value: Record<string, unknown> };
   };
   const stateFile = path.join(workspace, "objectives", "state.json");
-  return { store, events, launch, call, route, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces };
+  return { store, events, launch, call, consoleTool, route, operations, add, sent, launches, deleted, stateFile, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -309,6 +312,45 @@ describe("Objectives contract", () => {
     launch.operationPurged(item.id);
     expect(fs.existsSync(file)).toBe(false);
     expect((JSON.parse(fs.readFileSync(stateFile, "utf8")) as { objectives: unknown[] }).objectives).toEqual([]);
+  });
+
+  it("adds an objective from Console Use with brief and criteria only, through the same exposed-schema gate the host checks", async () => {
+    const { store, operations, add, stateFile, workspace, launches, consoleTool } = harness();
+    const caller = add("console-caller", { title: "Console caller", groupId: "g-console" });
+    // 호스트와 같은 선검사 — 노출 스키마를 되살려 먼저 통과시킨 뒤, 호스트처럼 파싱된 값(parsed.data)으로 execute 가 돈다.
+    // 노출 스키마가 알 수 없는 add 키를 strip 하는 회귀는 조용한 생성으로 드러나고, 중첩 strict 회귀는 선검사에서 걸린다.
+    const gate = z.fromJSONSchema(consoleTool.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
+    const throughGate = async (args: Record<string, unknown>) => {
+      const parsed = gate.safeParse(args);
+      expect(parsed.success).toBe(true);
+      if (!parsed.success) throw new Error("exposed schema rejected representative input");
+      return (await consoleTool.execute(parsed.data, { cwd: workspace, caller: { kind: "operation" as const, operationId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
+    };
+    const created = await throughGate({ add: { title: "From Console Use", note: "brief", criteria: ["ships", "tested"] } });
+    expect(created.isError).toBe(false);
+    const id = (created.structuredContent.item as { id: string }).id;
+    // 브리핑·기준은 기본 요구사항으로, 임무·구성원 없이, 호출 Operation 의 그룹과 만든 표시를 들고 태어난다.
+    expect(store.find(id)).toMatchObject({ note: "brief", groupId: "g-console", steps: [], members: [], addedBy: { operationId: caller.id } });
+    expect(store.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
+    // 저장 무결성 — 파일에서 다시 읽어도 기준이 기본 요구사항으로 남는다.
+    const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
+    expect(reloaded.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
+    // 금지 입력은 선검사를 통과해도 이유 있게 거절되고, 기동도 Operation 도 레코드도 늘지 않는다.
+    const fenced = { launches: launches.length, operations: operations.size, listed: store.list("t1").length };
+    for (const args of [
+      { add: { title: "Missions inline", steps: ["x"] } },
+      { add: { title: "Top-level missions" }, steps: ["x"] },
+      { add: { title: "Borrowed group", note: "b" }, groupId: "g-other" },
+    ]) {
+      const refused = await throughGate(args);
+      expect(refused.isError).toBe(true);
+      expect(refused.structuredContent.error).toBe("add_brief_criteria_only");
+      // 이유 안내는 제공되지만 전문을 고정하지는 않는다 — 문구는 다듬을 수 있고 경계가 담기면 된다.
+      expect(typeof refused.structuredContent.hint).toBe("string");
+      expect((refused.structuredContent.hint as string).length).toBeGreaterThan(0);
+    }
+    expect({ launches: launches.length, operations: operations.size, listed: store.list("t1").length }).toEqual(fenced);
+    expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).objectives).toHaveLength(1);
   });
 
   it("migrates v2 assignment into v3 members without losing records, order or read progress", () => {
