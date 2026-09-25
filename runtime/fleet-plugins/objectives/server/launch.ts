@@ -389,6 +389,24 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (state.state === "deleting" || state.state === "purged") { settle({ state: "deleted", ...(state.operationId ? { operationId: state.operationId } : {}) }); return; }
       // 원본이 그사이 지워졌다면 만들지 않는다 — 사람의 삭제 뒤에 자동으로 무언가를 세우지 않는다.
       if (!store.find(itemId)) return;
+      // 이 작업자가 새로 띄우는 기동인가 — 직전 키가 absent·reserved 였다. 키는 이 플러그인·이 후보에만 묶이고 같은 후보의 작업자는
+      // 이 프로세스에 하나뿐이라, 기동 뒤 그 키로 선 Operation 은 이 작업자가 만든 것이다.
+      const launchesNew = state.state === "absent" || state.state === "reserved";
+      /**
+       * 기동을 기다리는 사이 사람이 원본을 지웠다 — 이 작업자가 막 만든 대상만 닫는다(보통 삭제라 되돌릴 수 있다). 이미 있던 대상,
+       * 다른 목표·후보에서 나왔거나 독립된 레코드가 있는 대상은 건드리지 않는다. 닫지 못하면 경고만 남기고 항목은 creating 으로 둔다
+       * — 원본이 복원되면 같은 키 조회로 이어 간다.
+       */
+      const cancelIfSourceGone = (targetId: string | undefined): boolean => {
+        if (store.find(itemId) || !launchesNew || !targetId) return false;
+        const target = store.find(targetId);
+        const ours = !store.recorded(targetId) || (target?.origin?.itemId === itemId && target.origin.candidateId === candidateId);
+        if (!ours) { console.warn(`[objectives] follow-up ${candidateId}: source gone, kept existing target ${targetId}`); return true; }
+        let closed = false;
+        try { closed = ctx.host.operations.delete(targetId); } catch { closed = false; }
+        if (!closed) console.warn(`[objectives] follow-up ${candidateId}: source gone, could not close new target ${targetId}`);
+        return true;
+      };
       try {
         const created = await service.create({
           theaterId: source.theaterId, title: entry.snapshot.title, groupId: frozen.groupId, viewMode: frozen.viewMode,
@@ -396,11 +414,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
           origin: { itemId, candidateId, batchId, evidence: entry.snapshot.evidence },
           launchKey: followupKey(candidateId),
         }, { language: frozen.language });
+        if (cancelIfSourceGone(created.id)) return;
         settle({ state: "created", operationId: created.id, attempted: true });
       } catch (error) {
         const code = safeCode(error, "launch_failed");
         let after: ReturnType<typeof lookupFollowup> | null = null;
         try { after = lookupFollowup(source.theaterId, candidateId); } catch { after = null; }
+        // 기동은 섰는데 입양 전에 실패했고 그사이 원본이 지워졌다 — 같은 키로 선 대상을 같은 규칙으로 닫는다.
+        if (after?.state === "live" && cancelIfSourceGone(after.operationId)) return;
         if (after && (after.state === "deleting" || after.state === "purged")) settle({ state: "deleted", ...(after.operationId ? { operationId: after.operationId } : {}), attempted: true });
         // 키로 만든 Operation 이 없음이 확정됐다 — 같은 키로 다시 만들 수 있는 실패다.
         else if (after && (after.state === "absent" || after.state === "reserved")) settle({ state: "failed", error: code, attempted: true });

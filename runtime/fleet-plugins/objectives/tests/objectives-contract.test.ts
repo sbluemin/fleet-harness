@@ -71,7 +71,8 @@ function harness(routingOrigin: () => string | null = () => null) {
       if (input.groupId !== undefined && (node.groupId ?? null) !== input.groupId) { const previousGroupId = node.groupId ?? null; node.groupId = input.groupId; for (const listener of grouped) listener({ operationId: id, theaterId: node.theaterId, groupId: input.groupId, previousGroupId }); }
       return node;
     },
-    delete: (id: string) => { deleted.push(id); return operations.delete(id); },
+    // 호스트처럼 지운 Operation 의 기동 키는 삭제로 읽힌다(유예·purge).
+    delete: (id: string) => { deleted.push(id); for (const [key, target] of keyed) if (target === id) deletedKeys.add(key); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
   const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++ });
@@ -631,6 +632,20 @@ describe("Objectives contract", () => {
     store.setEdited(source.id, null);
     expect((await route("item/complete", { itemId: source.id })).status).toBe(200);
     expect(store.find(source.id)!.followups.find((entry) => entry.title === "E")).toMatchObject({ state: "open" });
+    // 기동을 기다리는 사이 원본을 지우면 이 요청이 막 만든 대상만 닫는다 — 원본을 되돌려도 같은 키로 다시 만들지 않는다.
+    expect((await route("item/complete", { itemId: source.id, undone: true })).status).toBe(200);
+    const e = store.find(source.id)!.followups.find((entry) => entry.title === "E")!;
+    const racing = launches.length;
+    expect((await pick("3f1c8f3e-1111-4a8b-9c0d-000000000003", [{ id: e.id, rev: 1 }])).status).toBe(200);
+    const sourceNode = operations.get(source.id)!;
+    operations.delete(source.id);
+    await vi.waitFor(() => expect(launches.length).toBe(racing + 1));
+    const raced = `launched-${racing + 1}`;
+    await vi.waitFor(() => expect(operations.has(raced)).toBe(false));
+    operations.set(source.id, sourceNode);
+    launch.resumeFollowups(source.id);
+    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches.at(-1)!.items[0]!.state).toBe("deleted"));
+    expect(launches.length).toBe(racing + 1);
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8"));
     expect(saved.objectives.find((entry: { operationId: string }) => entry.operationId === source.id).followupBatches[0].items).toHaveLength(2);
     expect(JSON.stringify(saved)).not.toContain("objectives.followup:");
