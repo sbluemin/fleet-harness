@@ -885,6 +885,12 @@ function snapFullHolderOf(hold: SnapHold | null): string | null {
   return null;
 }
 
+/** 전체 칸에 앉은 패널이 칸을 떠나면 돌아갈 자리 — 메모가 없으면(구버전 저장값) 지금 기하가 그 자리다. */
+function restingGeometryOf(hold: SnapHold | null, sessionId: string, current: OperationGeometry): OperationGeometry {
+  const memo = hold?.restore?.[sessionId];
+  return memo ? { ...current, x: memo.x, y: memo.y, width: memo.width, height: memo.height } : current;
+}
+
 export function useSnapFullOperationId(): string | null {
   return useSyncExternalStore(subscribe, getSnapFullOperationId, getSnapFullOperationId);
 }
@@ -1192,9 +1198,13 @@ export function resolveLaunchGeometry(theaterId: string, geometry: OperationGeom
   if (!snapshot.stationKeeping) return geometry;
   // 최소화한 지휘관의 숨은 단계는 장애물이 아니다 — 보이는 빈자리를 두고 새 패널이 밀려나면 안 된다.
   const minimizedSet = hiddenGeometryIds(snapshot);
+  // 전체 칸을 쥔 패널은 아레나만큼 커져 있지만 그것은 임시 상태다 — 그 사각형을 장애물로 세면 새 패널이
+  // 피할 빈자리가 없어 아레나 밖으로 밀려나고, 새 패널이 칸을 승계할 때 그 화면 밖 좌표가 복원 메모로
+  // 굳는다(칸을 떠나는 순간 화면에서 사라진다). 칸을 떠나면 돌아갈 자리, 즉 복원 메모가 실제 장애물이다.
+  const fullHolder = snapFullHolderOf(snapshot.snapHold);
   const obstacles = Object.entries(snapshot.operations)
     .filter(([sessionId]) => !minimizedSet.has(sessionId))
-    .map(([, existing]) => existing);
+    .map(([sessionId, existing]) => (sessionId === fullHolder ? restingGeometryOf(snapshot.snapHold, sessionId, existing) : existing));
   const spot = resolveStationKeepingPosition(geometry, obstacles);
   if (spot.x === geometry.x && spot.y === geometry.y) return geometry;
   return { ...geometry, x: spot.x, y: spot.y };
@@ -1552,12 +1562,24 @@ export function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/**
+ * 저장으로 나가는 상태 — 스냅 유지가 선 채로 카메라 이동이 흐르는 중이면 중간 프레임의 줌이 아니라
+ * 그 이동이 향하는 자리를 적는다. 유지는 줌 100%의 것이라(loadForTheater) 애니메이션 도중의 줌이
+ * 저장되면 다음 로드가 유지를 버리고, 되돌아갈 자리를 잃은 패널이 칸 크기 그대로 남는다 — 저줌
+ * Fleet Map에서 ⤢로 들어간 직후 Theater를 옮기거나 새로고침하면 닿는 창이다(저장 지연 400ms보다
+ * 이동이 길다). 렌더 state와 tween은 그대로고, 유지가 없을 때의 저장도 그대로다.
+ */
+function persistedCanvasState(): CanvasState {
+  if (zoomRaf === null || !state.snapHold) return state;
+  return { ...state, viewport: targetViewport };
+}
+
 function scheduleSave(): void {
   if (!activeTheaterId || typeof window === "undefined") return;
   cancelScheduledSave();
   saveTimer = window.setTimeout(() => {
     saveTimer = null;
-    writeStoredState(activeTheaterId, state);
+    writeStoredState(activeTheaterId, persistedCanvasState());
   }, SAVE_DELAY_MS);
 }
 
@@ -1565,7 +1587,7 @@ function flushScheduledSave(): void {
   if (!saveTimer || !activeTheaterId || typeof window === "undefined") return;
   window.clearTimeout(saveTimer);
   saveTimer = null;
-  writeStoredState(activeTheaterId, state);
+  writeStoredState(activeTheaterId, persistedCanvasState());
 }
 
 function cancelScheduledSave(): void {
