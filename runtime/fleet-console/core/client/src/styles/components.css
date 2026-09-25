@@ -3697,33 +3697,49 @@
   white-space: nowrap;
 }
 
-/* 세션 줄 — 지휘관 패널 본문 위에 서는 26px 가로 탭 줄. 지휘관 + 구성원. 누르면 본문 전환.
-   패널 frame 흐름 안에서 캡션 아래, 본문(터미널) 위에 위치하며 본문을 가리지 않는다. */
-.canvas-operation:has(> .cluster-node-rail) {
+/* 세션·임무 줄 — 캡션 아래, 본문 위 26px 행. 왼쪽은 세션 전환, 오른쪽은 임무 진행이다. */
+.canvas-operation:has(> .canvas-operation-cluster-row) {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-/* 상단 접힘(is-top-edge)에서는 캡션이 루트 top 0에 겹쳐 서므로, 세션 줄을 캡션 높이만큼 내려 탭을 가리지 않는다. */
-.canvas-operation.is-top-edge > .cluster-node-rail {
+/* 상단 접힘에서는 캡션이 루트 top 0에 겹쳐 서므로, 줄을 캡션 높이만큼 내려 가리지 않는다. */
+.canvas-operation.is-top-edge > .canvas-operation-cluster-row {
   margin-top: 32px;
+}
+
+.canvas-operation-cluster-row {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(48px, 30%, 240px);
+  align-items: center;
+  min-width: 0;
+  height: 26px;
+  box-sizing: border-box;
+  padding-right: 8px;
+  border-bottom: 1px solid var(--surface-rim);
+  background: var(--surface-panel);
+}
+
+.canvas-operation-cluster-progress {
+  grid-column: 2;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .cluster-node-rail {
   position: relative;
-  z-index: 5;
   display: flex;
   align-items: center;
   gap: 2px;
   min-width: 0;
   max-width: 100%;
   width: 100%;
-  height: 26px;
-  min-height: 26px;
+  height: 25px;
   box-sizing: border-box;
   padding: 0 8px;
-  border-bottom: 1px solid var(--surface-rim);
-  background: var(--surface-panel);
   white-space: nowrap;
   overflow: visible;
 }
@@ -4006,13 +4022,7 @@
   color: var(--aurora);
   font-weight: var(--weight-bold);
 }
-.canvas-operation-cluster-strip {
-  margin-left: 2px;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-/* 묶음 피커 — 지휘관 캡션의 단계 띠가 여는 팝오버. 상태별 그룹(지금·다음·완료), 두 줄 제목, 제 패널 안 위치 제한. */
+/* 묶음 피커 — 구성원 줄 오른쪽의 임무 띠가 여는 팝오버. 상태별 그룹(지금·다음·완료), 두 줄 제목, 제 패널 안 위치 제한. */
 .cluster-picker {
   position: fixed;
   z-index: 1200;

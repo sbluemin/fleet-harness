@@ -7,15 +7,13 @@ import type { ClusterLaidMember, ClusterLayout } from "./operation-clusters.js";
 
 export type StripMode = "full" | "dense" | "count";
 
-const HEADER_FIXED_PX = 251;
-
 export function requiredWidth(members: readonly ClusterLaidMember[], mode: StripMode): number {
   if (mode === "count") return 48;
   let separators = 0;
   let lastDepth = -1;
   for (const laid of members) {
     if (laid.depth !== lastDepth) {
-      if (lastDepth !== -1) separators++;
+      separators++;
       lastDepth = laid.depth;
     }
   }
@@ -29,28 +27,6 @@ export function requiredWidth(members: readonly ClusterLaidMember[], mode: Strip
 /** 띠가 쓸 수 있는 폭. 아직 잴 수 없으면(배치 전·숨은 칩) null — 0은 「자리가 없다」는 측정값이다. */
 function computeBudget(element: HTMLElement | null): number | null {
   if (!element) return null;
-  const titlebar = element.closest<HTMLElement>(".canvas-operation-titlebar");
-  if (titlebar) {
-    const titlebarWidth = titlebar.clientWidth;
-    if (titlebarWidth <= 0) return null;
-    let otherWidth = 0;
-    for (const child of Array.from(titlebar.children)) {
-      if (
-        child.classList.contains("canvas-operation-identity-name") ||
-        child.classList.contains("canvas-operation-identity-input") ||
-        child.classList.contains("canvas-operation-identity-subject") ||
-        child.classList.contains("canvas-operation-cluster-strip") ||
-        child === element
-      ) {
-        continue;
-      }
-      otherWidth += (child as HTMLElement).offsetWidth || 0;
-    }
-    const fixed = Math.max(HEADER_FIXED_PX, otherWidth + 24);
-    const free = Math.max(0, titlebarWidth - fixed);
-    const titleMin = Math.min(160, Math.round(free * 0.6));
-    return Math.max(0, free - titleMin);
-  }
   const sideBarText = element.closest<HTMLElement>(".side-bar-chip-text") ?? element.parentElement;
   if (sideBarText) {
     return sideBarText.clientWidth > 0 ? sideBarText.clientWidth : null;
@@ -87,7 +63,6 @@ export function ClusterStrip({ layout, rootActivity, className, onOpen }: {
     const el = stripRef.current;
     if (!el) return;
     const target =
-      el.closest<HTMLElement>(".canvas-operation-titlebar") ??
       el.closest<HTMLElement>(".side-bar-chip-text") ??
       el.parentElement;
     if (!target) return;
