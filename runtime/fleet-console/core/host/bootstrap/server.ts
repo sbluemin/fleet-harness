@@ -23,7 +23,7 @@ import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
 import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
-import { OPERATION_GROUPED_EVENT_CHANNEL } from "@fleet-console/sdk/operations";
+import { OPERATION_GROUPED_EVENT_CHANNEL, withSubagentSpawn } from "@fleet-console/sdk/operations";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
@@ -977,6 +977,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const endsPendingWork = options?.endPendingWork === true && ((observation.surface === "terminal" && observation.activity === "awaiting") || observation.activity === "background");
         if (observation.activity !== "idle" && !endsPendingWork) return { ok: false, error: "not_idle" };
         return sleepOperation(operationId);
+      },
+      // 다음 기동 정책만 남긴다. 세션 스냅샷을 고치거나 떠 있는 프로세스를 중단하지 않는다.
+      // 플러그인 operations.patch와 같은 영속 경로를 탄다. 저장소 patch만 호출하면 재시작 뒤 정책이 사라진다.
+      setSubagentSpawn: (operationId, policy) => {
+        if (policy !== "blocked" && policy !== "default") return;
+        const node = operations.get(operationId);
+        if (!node) return;
+        const next = withSubagentSpawn(node.payload, policy);
+        if (next === node.payload) return;
+        pluginHostCapabilities.operations.patch(operationId, { payload: next });
       },
     }),
     createAgentHost: (pluginId) => {

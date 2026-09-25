@@ -172,12 +172,18 @@ interface LaunchControlProps {
   readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly onPick: () => void }[];
   /** 열 때 모델 목록(1단계)부터 — 배정 메뉴는 특별 항목을 먼저 보여야 한다. */
   readonly startAtList?: boolean;
+  /**
+   * 구성원 기동 설정의 서브에이전트 허용. 메뉴 맨 아래 체크이며, 모델을 고르는 것과 달리 눌러도 메뉴는 닫히지 않는다.
+   * 지휘관 메뉴에는 넘기지 않는다.
+   */
+  readonly subagents?: { readonly allowed: boolean; readonly onToggle: () => void };
 }
 
 const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
+const menuItems = (root: HTMLElement): HTMLButtonElement[] => [...root.querySelectorAll<HTMLButtonElement>('[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]')];
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents }: LaunchControlProps) {
   const groups = useLaunchGroups();
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
@@ -189,17 +195,27 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
   const [focused, setFocused] = useState(!startAtList);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const focusIntent = useRef<"first" | "last" | null>(null);
   const [pos, setPos] = useState<CSSProperties>({});
+  const menuWidth = subagents ? 232 : MENU_WIDTH;
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
-    const left = Math.max(MENU_MARGIN, Math.min(rect.left, window.innerWidth - MENU_WIDTH - MENU_MARGIN));
+    const left = Math.max(MENU_MARGIN, Math.min(rect.left, window.innerWidth - menuWidth - MENU_MARGIN));
     const below = rect.bottom + 6;
     const height = menuRef.current?.offsetHeight ?? 320;
     const top = below + height > window.innerHeight - MENU_MARGIN ? Math.max(MENU_MARGIN, rect.top - height - 6) : below;
-    setPos({ left, top, width: MENU_WIDTH });
-  }, [open, groups.length, currentModel, focused]);
+    setPos({ left, top, width: menuWidth });
+  }, [open, groups.length, currentModel, focused, menuWidth, subagents?.allowed]);
+
+  useLayoutEffect(() => {
+    if (!open || !focusIntent.current || !menuRef.current) return;
+    const items = menuItems(menuRef.current);
+    const target = focusIntent.current === "last" ? items.at(-1) : items[0];
+    focusIntent.current = null;
+    target?.focus();
+  }, [open, focused, groups.length, subagents?.allowed]);
 
   useEffect(() => {
     if (!open) return;
@@ -207,11 +223,34 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
       const target = event.target as Node;
       if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
     };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); triggerRef.current?.focus(); } };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); triggerRef.current?.focus(); return; }
+      if (!subagents || !menuRef.current || !(event.target instanceof Node) || !menuRef.current.contains(event.target)) return;
+      // 캔버스가 window keydown에서 Space를 삼켜 button의 keyup 클릭이 사라진다. 체크만 여기서 한 번 토글하고, Enter의 기본 클릭은 그대로 둔다.
+      if (!event.repeat && (event.key === " " || event.code === "Space") && event.target instanceof Element && event.target.closest("[role='menuitemcheckbox']")) {
+        event.preventDefault();
+        event.stopPropagation();
+        subagents.onToggle();
+        return;
+      }
+      const items = menuItems(menuRef.current);
+      const index = items.indexOf(event.target as HTMLButtonElement);
+      if (index < 0) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+      } else if (event.key === "Home") { event.preventDefault(); items[0]?.focus(); }
+      else if (event.key === "End") { event.preventDefault(); items.at(-1)?.focus(); }
+      else if (event.key === "Tab" && (event.shiftKey ? index === 0 : index === items.length - 1)) {
+        // 메뉴 밖으로 나가는 Tab — 닫고 트리거에 초점을 돌려, 브라우저가 트리거 다음(또는 이전)으로 가게 한다.
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("pointerdown", onDown, true); document.removeEventListener("keydown", onKey); };
-  }, [open]);
+  }, [open, subagents]);
 
   const chosenProvider = groups.find((group) => group.rows.some((row) => row.launch.model === currentModel))?.provider ?? launchProviderFromModelId(currentModel);
   const text = (
@@ -230,15 +269,21 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
 
   return (
     <>
-      <button ref={triggerRef} type="button" className={`objectives-launch${trigger ? " is-glyph objectives-glyph" : ""}`} aria-haspopup="menu" aria-expanded={open} aria-label={triggerLabel ?? t("objectives.launch.menuAria")} title={trigger ? triggerLabel : triggerTitle} onClick={() => { setFocused(!startAtList); setOpen((value) => !value); }}>
+      <button ref={triggerRef} type="button" className={`objectives-launch${trigger ? " is-glyph objectives-glyph" : ""}`} aria-haspopup="menu" aria-expanded={open} aria-label={triggerLabel ?? t("objectives.launch.menuAria")} title={trigger ? triggerLabel : triggerTitle} onKeyDown={subagents ? (event) => {
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        event.preventDefault();
+        focusIntent.current = event.key === "ArrowUp" ? "last" : "first";
+        setFocused(!startAtList);
+        setOpen(true);
+      } : undefined} onClick={(event) => { setFocused(!startAtList); setOpen((value) => { const next = !value; if (next && subagents && event.detail === 0) focusIntent.current = "first"; return next; }); }}>
         {trigger ?? triggerText ?? text}
       </button>
       {/* body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에 갇히고 overflow 에 잘린다(캔버스 메뉴와 같은 이유). */}
       {open ? createPortal(
-        <div ref={menuRef} className={`objectives-menu${focused ? " is-focused" : ""}`} role="menu" aria-label={t("objectives.launch.menuAria")} style={pos}>
+        <div ref={menuRef} className={`objectives-menu${focused ? " is-focused" : ""}`} role="menu" aria-label={triggerLabel ?? t("objectives.launch.menuAria")} style={pos}>
           {focused && chosenRow ? (
             <>
-              <button type="button" className="objectives-menu-item objectives-menu-back" onClick={() => setFocused(false)} aria-label={t("objectives.launch.backToModels")}>
+              <button type="button" role="menuitem" className="objectives-menu-item objectives-menu-back" onClick={() => setFocused(false)} aria-label={t("objectives.launch.backToModels")}>
                 <span className="objectives-menu-chev" aria-hidden="true"><Chevron back /></span>
                 {providerOf(chosenRow) ? <span className={`operation-launch-provider-glyph objectives-menu-provider is-${providerOf(chosenRow)}`} aria-hidden="true">{launchProviderGlyph(providerOf(chosenRow)!)}</span> : null}
                 <span className="objectives-menu-label objectives-menu-back-label">{chosenRow.label}</span>
@@ -297,6 +342,16 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
             <div className="objectives-menu-divider" role="separator" />
             <p className="objectives-menu-caption">{t("objectives.view.label")}</p>
             {(["terminal", "chat"] as const).map((view) => <button key={view} type="button" role="menuitemradio" aria-checked={viewMode === view} className={`objectives-menu-item${viewMode === view ? " is-active" : ""}`} onClick={() => onViewChange(view)}><span className="objectives-launch-view"><StartViewGlyph view={view} /></span><span className="objectives-menu-label">{startViewLabel(t, view)}</span></button>)}
+          </div> : null}
+          {subagents ? <div className="objectives-menu-group" role="group" aria-label={t("objectives.members.subagentsGroup")}>
+            <div className="objectives-menu-divider" role="separator" />
+            <button type="button" role="menuitemcheckbox" aria-checked={subagents.allowed} className={`objectives-menu-item objectives-menu-check${subagents.allowed ? " is-active" : ""}`} onClick={() => subagents.onToggle()}>
+              <span className="objectives-menu-box" aria-hidden="true" />
+              <span className="objectives-menu-check-copy">
+                <span className="objectives-menu-label">{t("objectives.members.subagents")}</span>
+                <span className="objectives-menu-hint">{t("objectives.members.subagentsHint")}</span>
+              </span>
+            </button>
           </div> : null}
         </div>,
         document.body,

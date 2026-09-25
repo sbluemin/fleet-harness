@@ -383,6 +383,79 @@ describe("console static and terminal ticket boundary", () => {
     expect(serialized).not.toContain("providerTitle");
   });
 
+  it("persists a member subagent block across the durable state boundary", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-subagent-"));
+    tempDirs.push(dir);
+    const realpath = fs.realpathSync.native(dir);
+    const theaterId = workspaceHash(realpath);
+    const workspaceName = realpath.replace(/[^a-zA-Z0-9]/g, "-");
+    const fixture = await startFixture({
+      beforeCreateServer: ({ fleetDataDir }) => {
+        const consoleDir = path.join(fleetDataDir, "console");
+        const objectivesDir = path.join(fleetDataDir, "workspaces", workspaceName, "objectives");
+        fs.mkdirSync(consoleDir, { recursive: true });
+        fs.mkdirSync(objectivesDir, { recursive: true });
+        fs.writeFileSync(path.join(fleetDataDir, "workspaces", workspaceName, "cwd.json"), `${JSON.stringify({ cwd: realpath })}\n`);
+        fs.writeFileSync(path.join(objectivesDir, "state.json"), `${JSON.stringify({
+          version: 3,
+          objectives: [{
+            operationId: "commander-1",
+            note: "",
+            members: [{ id: "member-1", role: "Bravo", by: "human", operationId: "bravo", subagents: true }],
+            steps: [],
+          }],
+        })}\n`);
+        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
+          version: 2,
+          theaters: [{
+            id: theaterId,
+            path: dir,
+            realpath,
+            label: path.basename(dir),
+            registeredAt: "2026-09-25T00:00:00.000Z",
+            lastOpenedAt: "2026-09-25T00:00:01.000Z",
+          }],
+          operations: [
+            {
+              id: "commander-1",
+              theaterId,
+              title: "Objective",
+              pluginId: null,
+              type: "agent",
+              payload: { cwd: dir, session: { harness: "claude-code", sessionName: "objective-cmdr" } },
+              ts: { createdAt: 1_000, updatedAt: 1_000 },
+            },
+            {
+              id: "bravo",
+              theaterId,
+              title: "Objective › Bravo",
+              pluginId: null,
+              type: "agent",
+              parentOperationId: "commander-1",
+              payload: {
+                cwd: dir,
+                subagentSpawn: "default",
+                session: { harness: "claude-code", sessionName: "objective-member-1", disableSubagents: true },
+              },
+              ts: { createdAt: 1_001, updatedAt: 1_001 },
+            },
+          ],
+        }));
+      },
+    });
+    const origin = new URL(fixture.endpoint).origin;
+    const response = await fetch(`${origin}/plugins/objectives/member/patch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin },
+      body: JSON.stringify({ itemId: "commander-1", memberId: "member-1", patch: { subagents: false } }),
+    });
+    expect(response.status).toBe(200);
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as {
+      readonly operations: ReadonlyArray<{ readonly id?: string; readonly payload?: { readonly subagentSpawn?: string } }>;
+    };
+    expect(state.operations.find((operation) => operation.id === "bravo")?.payload?.subagentSpawn).toBe("blocked");
+  });
+
   it("rejects Theater registration without a valid folder grant", async () => {
     const failed = await startFixture();
 

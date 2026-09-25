@@ -56,6 +56,26 @@ describe("agent dormant ticket guards", () => {
     expect(harness.attach.mock.calls[0]![0]).not.toHaveProperty("resumeSessionId");
   });
 
+  it("resumes a dormant member with the host subagent policy instead of a stale session block", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createLiveSession();
+    const operation = harness.operations.find((op) => op.id === sessionId)!;
+    harness.patch(sessionId, {
+      payload: {
+        ...operation.payload,
+        subagentSpawn: "default",
+        session: { ...(operation.payload.session as Record<string, unknown>), disableSubagents: true },
+      },
+    });
+    await harness.transitionToDormant(sessionId);
+    harness.attach.mockClear();
+    await harness.resumeSession(sessionId);
+    const attached = harness.attach.mock.calls.at(-1)?.[0] as { disableSubagents?: boolean } | undefined;
+    expect(attached).toMatchObject({ sessionId });
+    expect(attached).not.toHaveProperty("disableSubagents");
+    expect(harness.operations.find((op) => op.id === sessionId)?.payload.subagentSpawn).toBe("default");
+  });
+
   it("resumes a dormant member through Console control without a message", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
