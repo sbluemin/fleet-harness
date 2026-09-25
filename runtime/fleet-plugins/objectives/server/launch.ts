@@ -107,7 +107,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
-  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; questionsOff?: boolean; parentOperationId?: string }): Promise<string> => {
+  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; member?: boolean; parentOperationId?: string }): Promise<string> => {
     const receipt = await control().request({
       kind: "launch",
       theaterId: input.theaterId,
@@ -118,7 +118,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 허용하지 않은 구성원만 태어날 때 서브에이전트(fleet:execute 포함)를 끈다. 허용은 전역 정책을 그대로 쓴다.
       ...(input.subagents === false ? { disableSubagents: true } : {}),
       // 구성원은 사람에게 묻지 않는다 — 판단이 필요하면 지휘관에게 SendMessage 로 보낸다. 지휘관은 그대로다.
-      ...(input.questionsOff ? { disableUserQuestions: true } : {}),
+      ...(input.member ? { disableUserQuestions: true } : {}),
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
       ...(input.groupId ? { groupId: input.groupId } : {}),
@@ -160,14 +160,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const rememberSubagentSpawn = (operationId: string, allowed: boolean) => {
     ctx.host.consoleControl?.setSubagentSpawn?.(operationId, allowed ? "default" : "blocked");
   };
-  /**
-   * 구성원이 사람 대신 판단을 보낼 곳이 있는가 — 지휘관의 세션 주소. 따로 만든 Operation 이 지휘관이면 주소가 없어,
-   * 질문까지 막으면 구성원이 첫 판단에서 멈춘다.
-   */
-  const commanderReachable = (current: ObjectiveItem): boolean => !!current.commander.sessionName;
   /** 구성원의 다음 기동에서 사람 질문을 뺀다. 떠 있는 터미널은 중단하지 않고, 살아 있는 채팅은 남은 질문을 거절한다. */
-  const blockMemberQuestions = (current: ObjectiveItem, operationId: string) => {
-    if (!commanderReachable(current)) return;
+  const blockMemberQuestions = (operationId: string) => {
     ctx.host.consoleControl?.setUserQuestions?.(operationId, "blocked");
   };
   /**
@@ -292,14 +286,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const node = operationId ? ctx.host.operations.get(operationId) : null;
       if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
       if (operationId && node && observation?.lifecycle === "live") {
-        blockMemberQuestions(current, operationId);
+        blockMemberQuestions(operationId);
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "live" });
         continue;
       }
       if (operationId && node && observation?.lifecycle === "dormant") {
         // 앞선 구성원의 기동·재개를 기다리는 동안 바뀐 허용값도 이번 재개부터 반영한다.
         rememberSubagentSpawn(operationId, item(itemId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
-        blockMemberQuestions(current, operationId);
+        blockMemberQuestions(operationId);
         const receipt = await control().request({ kind: "resume", operationId }, `objectives:resume:${randomUUID()}`).catch(asStoreError);
         if (receipt.status === "failed" || receipt.status === "rejected") throw new ObjectiveStoreError(receipt.error ?? "resume_failed");
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "resumed" });
@@ -316,7 +310,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 라우팅은 오래 걸릴 수 있으므로 실제 기동 요청 직전에 저장된 허용값을 읽는다.
       const allowed = item(itemId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
       // 구성원은 지휘관이 지금 쓰는 표면으로 뜬다 — 채팅과 터미널은 권한 모드가 달라, 섞이면 서로의 메시지가 승인 대기에 묶인다.
-      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: allowed ? undefined : false, questionsOff: commanderReachable(current), viewMode: commanderView(itemId), parentOperationId: current.id }).catch(asStoreError);
+      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: allowed ? undefined : false, member: true, viewMode: commanderView(itemId), parentOperationId: current.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(itemId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       try { current = store.setMemberOperation(itemId, member.id, launchedId); }
       catch (error) { ctx.host.operations.delete(launchedId); throw error; }
@@ -445,7 +439,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       for (const current of store.all()) {
         for (const member of current.members) {
           const node = member.operationId ? ctx.host.operations.get(member.operationId) : null;
-          if (node && node.theaterId === current.theaterId) blockMemberQuestions(current, node.id);
+          if (node && node.theaterId === current.theaterId) blockMemberQuestions(node.id);
         }
       }
     },
