@@ -659,6 +659,11 @@ function MemberMark({ role, tone }: { role: string; tone: number }) {
   return <span className={`objectives-member-mark is-tone-${tone}`} aria-hidden="true">{Array.from(role)[0] ?? "?"}</span>;
 }
 
+/** 지휘관 표식 — 그래프 뿌리 노드처럼 둥근 brass 원에 계급 별. 구성원 표식(각진 칸·첫 글자·정체성 톤)과 모양·색·내용이 모두 다르다. */
+function CommanderMark() {
+  return <span className="objectives-member-mark is-commander" aria-hidden="true"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2.2l1.75 3.55 3.92.57-2.84 2.77.67 3.9L8 11.15l-3.5 1.84.67-3.9-2.84-2.77 3.92-.57z" /></svg></span>;
+}
+
 function MemberRoster({ objective, t, call, request, operationState, rows, touchable }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean }) {
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
   const remove = (member: ObjectiveMember) => void call("/member/remove", { objectiveId: objective.id, memberId: member.id });
@@ -769,7 +774,7 @@ function AssignControl({ t, objective, mission, onAssign, onCreate, label, rows,
   return <>
     <button ref={trigger} type="button" className="objectives-launch is-glyph objectives-glyph" aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => { setCreating(false); setOpen((value) => !value); }}><AssignGlyph /></button>
     {open ? createPortal(<div ref={menu} className="objectives-menu objectives-assign-menu" role="menu" aria-label={label} style={{ ...pos, width: 216 }}>
-      <button type="button" role="menuitemradio" aria-checked={!mission.member} className={`objectives-menu-item${!mission.member ? " is-active" : ""}`} onClick={() => pick(null)}><span className="objectives-menu-label">{t("objectives.memberSelection.self")}</span></button>
+      <button type="button" role="menuitemradio" aria-checked={!mission.member} className={`objectives-menu-item${!mission.member ? " is-active" : ""}`} onClick={() => pick(null)}><CommanderMark /><span className="objectives-menu-label is-commander">{t("objectives.memberSelection.self")}</span></button>
       <div className="objectives-menu-divider" role="separator" />
       <p className="objectives-menu-caption objectives-assign-caption">{t("objectives.members.title")}</p>
       {objective.members.map((member) => <button key={member.id} type="button" role="menuitemradio" aria-checked={mission.member === member.id} className={`objectives-menu-item${mission.member === member.id ? " is-active" : ""}`} onClick={() => pick(member.id)}><MemberMark role={member.role} tone={memberTone(objective, member.id)} /><span className="objectives-menu-label">{member.role}</span>{((display) => <span className="objectives-assign-model" title={display.title}>{display.label}</span>)(memberLaunchDisplay(member, memberLaunched(member, operationState), t, rows))}</button>)}
@@ -1456,7 +1461,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
                   <div className="objectives-mission-body">
                     <WrapText key={mission.text} className="objectives-mission-text" label={`${index + 1}`} value={mission.text} readOnly={!(editable || (touchable && notStarted(mission)))} maxLength={200}
                       onCommit={(value) => { if (!value) return false; if (value !== mission.text) void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { text: value } }); return true; }} />
-                    <span className={`objectives-mission-sub${mission.operationId ? ` is-${operationState(mission.operationId)}` : " is-assign"}`} title={mission.operationId ? operationTitle(mission.operationId) : undefined}>{member ? <><MemberMark role={member.role} tone={memberTone(objective, member.id)} /><span className="objectives-mission-member-name">{member.role}</span></> : t("objectives.memberSelection.self")}</span>
+                    <span className={`objectives-mission-sub${mission.operationId ? ` is-${operationState(mission.operationId)}` : " is-assign"}`} title={mission.operationId ? operationTitle(mission.operationId) : undefined}>{member ? <><MemberMark role={member.role} tone={memberTone(objective, member.id)} /><span className="objectives-mission-member-name">{member.role}</span></> : <><CommanderMark /><span className="objectives-mission-member-name is-commander">{t("objectives.memberSelection.self")}</span></>}</span>
                     {mission.unplaced && !mission.done ? <span className="objectives-mission-sub is-unplaced">{t("objectives.missions.unplaced")}</span> : null}
                   </div>
                   {records.length > 0 ? (
