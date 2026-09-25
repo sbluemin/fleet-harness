@@ -54,12 +54,41 @@ export function useLaunchGroups(): readonly LaunchGroup[] {
 }
 export const useLaunchRows = (): readonly OperationLaunchVariantRow[] => useLaunchGroups().flatMap((group) => group.rows);
 
-/** 모델 id 의 공급자 글리프 — 지휘관 컨트롤과 단계 줄이 같은 표식을 쓴다. 모르는 모델이면 아무것도 그리지 않는다. */
+/** 모델 id 의 공급자 — 카탈로그 행이 있으면 그 밴드, 없으면 id 에서. 라우팅의 "codex/gpt-…"·게이트웨이 접두 표기도 같은 공급자로 읽는다. */
+function providerOfModel(groups: readonly LaunchGroup[], model: string): LaunchProviderGlyphId | null {
+  const row = findLaunchRow(groups.flatMap((group) => group.rows), model);
+  const group = row ? groups.find((candidate) => candidate.rows.includes(row)) : undefined;
+  return group?.provider ?? launchProviderFromModelId(canonicalModelId(model));
+}
+
+/** 모델 id 의 공급자 글리프 — 지휘관 컨트롤과 구성원 줄이 같은 표식을 쓴다. 모르는 모델이면 아무것도 그리지 않는다. */
 export function ProviderGlyph({ model }: { readonly model: string | undefined }) {
   const groups = useLaunchGroups();
-  const provider = (model ? groups.find((group) => group.rows.some((row) => row.launch.model === model))?.provider : null) ?? (model ? launchProviderFromModelId(model) : null);
+  const provider = model ? providerOfModel(groups, model) : null;
   if (!provider) return null;
   return <span className={`operation-launch-provider-glyph objectives-launch-provider is-${provider}`} aria-hidden="true">{launchProviderGlyph(provider)}</span>;
+}
+
+/**
+ * 실제로 띄운 모델의 낱말 — 설정 선택(member.launch)이 아니라 실행 Operation 에 적힌 값이다. 모델이 비어 있으면 Console 기본으로
+ * 뜬 것이므로 기본 모델(Opus)을 추정하지 않고 「기본」으로 둔다. 제목(title)은 공급자까지 붙인 풀네임.
+ */
+export function launchedWords(rows: readonly OperationLaunchVariantRow[], model: string | undefined, effort: string | undefined, labels: { readonly auto: string; readonly fallback: string }): { readonly model: string | null; readonly words: { readonly model: string; readonly effort: string }; readonly title: string } {
+  const known = model && model !== "default" ? model : null;
+  const words = known ? launchWords(rows, known, effort, labels.auto) : { model: labels.fallback, effort: effort && effort !== "auto" ? effort.toUpperCase() : labels.auto };
+  return { model: known, words, title: `${known ? modelFullName(rows, known) : labels.fallback} · ${words.effort}` };
+}
+
+/** 실행 모델 한 줄 — [공급자 글리프] 이름 · 강도. LaunchControl 의 triggerText 로 들어가 설정 메뉴의 선택 표시와 섞이지 않는다. */
+export function LaunchedText({ model, words }: { readonly model: string | null; readonly words: { readonly model: string; readonly effort: string } }) {
+  return (
+    <>
+      <ProviderGlyph model={model ?? undefined} />
+      <span className="objectives-launch-model">{words.model}</span>
+      <span className="objectives-launch-dot" aria-hidden="true">·</span>
+      <span className="objectives-launch-effort">{words.effort}</span>
+    </>
+  );
 }
 export const loadLaunchRows = async (signal?: AbortSignal) => (await loadLaunchGroups(signal)).flatMap((group) => group.rows);
 
@@ -73,10 +102,15 @@ export function launchWords(rows: readonly OperationLaunchVariantRow[], model: s
 }
 
 const GATEWAY_PREFIX = "claude-gateway--";
+/** 게이트웨이 접두를 벗기고 "codex/gpt-…" 를 카탈로그 표기 "codex--gpt-…" 로 맞춘 id. */
+function canonicalModelId(model: string): string {
+  const stripped = model.startsWith(GATEWAY_PREFIX) ? model.slice(GATEWAY_PREFIX.length) : model;
+  return stripped.includes("--") ? stripped : stripped.replace("/", "--");
+}
 /** 라우팅이 준 "claude-gateway--codex--gpt-…" 와 카탈로그의 "codex--gpt-…" 는 같은 모델 — 어느 표기로든 행을 찾는다. */
 function findLaunchRow(rows: readonly OperationLaunchVariantRow[], model: string): OperationLaunchVariantRow | undefined {
   const stripped = model.startsWith(GATEWAY_PREFIX) ? model.slice(GATEWAY_PREFIX.length) : model;
-  const id = stripped.includes("--") ? stripped : stripped.replace("/", "--");
+  const id = canonicalModelId(model);
   return rows.find((candidate) => candidate.launch.model === model || candidate.launch.model === id || candidate.launch.model === stripped || candidate.launch.model === `${GATEWAY_PREFIX}${id}`);
 }
 /** 카탈로그에 없는 모델의 읽을 수 있는 이름 — 접두와 공급자 칸을 벗긴 뒤 다듬는다. */
@@ -87,9 +121,8 @@ function bareModelId(model: string): string {
 /** "Codex GPT-5.3 Codex" / "Claude Opus" — 단계 아래 dim 줄의 풀네임. 게이트웨이 접두는 벗기고, 카탈로그 행이 있으면 그 이름, 없으면 id 를 읽을 수 있게 다듬는다. */
 export function modelFullName(rows: readonly OperationLaunchVariantRow[], model: string | undefined | null): string {
   if (!model || model === "default") return "";
-  const stripped = model.startsWith(GATEWAY_PREFIX) ? model.slice(GATEWAY_PREFIX.length) : model;
   // 라우팅은 "codex/gpt-…", 카탈로그는 "codex--gpt-…" — 같은 모델의 두 표기.
-  const id = stripped.includes("--") ? stripped : stripped.replace("/", "--");
+  const id = canonicalModelId(model);
   const row = findLaunchRow(rows, model);
   const group = row ? cached?.find((candidate) => candidate.rows.includes(row)) : undefined;
   const provider = group?.provider ?? launchProviderFromModelId(id);
@@ -133,6 +166,8 @@ interface LaunchControlProps {
   readonly triggerLabel?: string;
   /** 라우팅·지휘관과 같게처럼 모델 id가 아닌 선택 방식의 표시 낱말. */
   readonly triggerText?: ReactNode;
+  /** triggerText 의 풀네임 — 좁은 칸에서 잘린 모델 이름을 hover 로 읽는다. */
+  readonly triggerTitle?: string;
   /** 모델 목록 위에 서는 선택 방식(라우팅 · 지휘관과 같게). 고르면 메뉴가 닫힌다. */
   readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly onPick: () => void }[];
   /** 열 때 모델 목록(1단계)부터 — 배정 메뉴는 특별 항목을 먼저 보여야 한다. */
@@ -142,7 +177,7 @@ interface LaunchControlProps {
 const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, extras, startAtList = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false }: LaunchControlProps) {
   const groups = useLaunchGroups();
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
@@ -188,14 +223,14 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
       <span className="objectives-launch-effort">{words.effort}</span>
     </>
   );
-  if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={t("objectives.coordinator.locked")}>{triggerText ?? text}</span>;
+  if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={triggerTitle ? `${triggerTitle}\n${t("objectives.coordinator.locked")}` : t("objectives.coordinator.locked")}>{triggerText ?? text}</span>;
 
   const chosenRow = rows.find((row) => row.launch.model === currentModel) ?? null;
   const providerOf = (row: OperationLaunchVariantRow) => groups.find((group) => group.rows.includes(row))?.provider ?? null;
 
   return (
     <>
-      <button ref={triggerRef} type="button" className={`objectives-launch${trigger ? " is-glyph objectives-glyph" : ""}`} aria-haspopup="menu" aria-expanded={open} aria-label={triggerLabel ?? t("objectives.launch.menuAria")} title={trigger ? triggerLabel : undefined} onClick={() => { setFocused(!startAtList); setOpen((value) => !value); }}>
+      <button ref={triggerRef} type="button" className={`objectives-launch${trigger ? " is-glyph objectives-glyph" : ""}`} aria-haspopup="menu" aria-expanded={open} aria-label={triggerLabel ?? t("objectives.launch.menuAria")} title={trigger ? triggerLabel : triggerTitle} onClick={() => { setFocused(!startAtList); setOpen((value) => !value); }}>
         {trigger ?? triggerText ?? text}
       </button>
       {/* body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에 갇히고 overflow 에 잘린다(캔버스 메뉴와 같은 이유). */}
