@@ -16,8 +16,9 @@ const ChevRight = () => (
  * 묶음 피커 — 지휘관 캡션의 단계 띠를 누르면 뜬다.
  * 목록을 「지금」(실행·대기) → 「다음」 → 「완료 N」(기본으로 접힘) 순서로 묶는다.
  * 띠의 칸을 누르면 그 임무가 든 묶음을 펴고 그 행으로 스크롤해 brass로 강조한다.
- * 위치: 폭은 min(420px, 패널 폭 − 16px), 높이는 제 패널 아래 끝에서 8px 위까지로 아래 패널을 덮지 않는다.
- * 자리가 240px보다 좁으면 위로 연다.
+ * 위치: 폭은 min(420px, 패널 폭 − 16px)이고 좌우는 제 패널 안이다. 아래로 여는 것이 먼저다 — 제 패널 안에
+ * 들어가면(또는 240px 이상이면) 패널 안에, 아니면 뷰포트 아래까지 쓴다. 둘 다 모자랄 때만 위로 열고,
+ * 그때는 카드 아래 끝을 앵커 바로 위에 붙인다. 앵커와 앱 상단 바는 덮지 않는다.
  */
 export function ClusterPicker({
   layout,
@@ -82,8 +83,7 @@ export function ClusterPicker({
     if (!card) return;
 
     const panelW = panelRect?.width ?? window.innerWidth;
-    const panelBottom = panelRect?.bottom ?? (anchor.bottom + 400);
-    const panelTop = panelRect?.top ?? (anchor.top - 400);
+    const panelBottom = panelRect ? (panelRect.bottom - 8) : (window.innerHeight - 8);
 
     const width = Math.max(220, Math.min(420, panelW - 16));
     const maxLeft = panelRect
@@ -92,35 +92,44 @@ export function ClusterPicker({
     const minLeft = panelRect ? Math.max(8, panelRect.left + 8) : 8;
     const left = Math.max(minLeft, Math.min(anchor.left, maxLeft));
 
-    // N2 위치 보정:
+    // N3 위치 보정:
     // 1) 팝오버는 앵커(띠)와 앱 상단 바를 덮지 않는다.
     //    앱 상단 바 경계: canvasTop(캔버스 영역의 top) 또는 36px.
     const appTopBound = Math.max(8, canvasTop ?? 36);
     const belowTop = anchor.bottom + 6;
     const viewportBottom = window.innerHeight - 8;
 
-    // 2) 위쪽 가용 공간: 앱 상단 바 아래 ~ 앵커 위
+    // 카드의 자연 높이 — 목록은 카드 안에서 스크롤하므로, 지금 걸린 max-height와 무관하게
+    // 「카드 크롬 + 목록 전체 높이」로 잰다. 묶음을 펴고 접을 때도 같은 기준이다.
+    const list = listRef.current;
+    const cardHeight = list
+      ? card.offsetHeight - list.clientHeight + list.scrollHeight
+      : card.offsetHeight;
+
+    // 공간 계산
+    // ① 제 패널 안의 아래 공간
+    const spaceBelowInPanel = Math.max(0, panelBottom - belowTop);
+    // ② 뷰포트 아래 공간
+    const spaceBelowInViewport = Math.max(0, viewportBottom - belowTop);
+    // ③ 위쪽 공간 (앱 상단 바 아래 ~ 앵커 위)
     const spaceAbove = Math.max(0, anchor.top - 6 - appTopBound);
-
-    // 3) 아래쪽 가용 공간:
-    //    제 패널 아래 끝까지를 우선하되, 그 높이가 240px 미만이면 뷰포트 아래 −8까지 확장
-    const spaceBelowInPanel = Math.max(0, panelBottom - 8 - belowTop);
-    const spaceBelow = spaceBelowInPanel >= 240
-      ? spaceBelowInPanel
-      : Math.max(0, viewportBottom - belowTop);
-
-    // 4) 아래와 위 중 더 넓은 쪽으로 연다
-    const openDownward = spaceBelow >= spaceAbove;
 
     let top: number;
     let maxHeight: number;
 
-    if (openDownward) {
+    if (spaceBelowInPanel >= cardHeight || spaceBelowInPanel >= 240) {
+      // ① 제 패널 안의 아래 공간에 들어가거나 240px 이상이면 아래로 열고 제 패널 안에 머문다
+      maxHeight = Math.min(spaceBelowInPanel, 520);
       top = belowTop;
-      maxHeight = Math.min(spaceBelow, 520);
+    } else if (spaceBelowInViewport >= cardHeight || spaceBelowInViewport >= 240) {
+      // ② 아니면 뷰포트 아래 공간이 카드 실제 높이 또는 240px 이상일 때 아래로 열고 뷰포트 아래까지 쓴다
+      maxHeight = Math.min(spaceBelowInViewport, 520);
+      top = belowTop;
     } else {
+      // ③ 둘 다 아니면 위로 열고, 카드의 아래 끝을 앵커 위(anchor.top - 6)에 붙인다
       maxHeight = Math.min(spaceAbove, 520);
-      top = Math.max(appTopBound, anchor.top - 6 - maxHeight);
+      const actualHeight = Math.min(cardHeight, maxHeight);
+      top = Math.max(appTopBound, anchor.top - 6 - actualHeight);
     }
 
     setPlaced((prev) => {
@@ -129,7 +138,7 @@ export function ClusterPicker({
       }
       return { left, top, width, maxHeight };
     });
-  }, [anchor, panelRect, canvasTop]);
+  }, [anchor, panelRect, canvasTop, nowExpanded, nextExpanded, doneExpanded]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
