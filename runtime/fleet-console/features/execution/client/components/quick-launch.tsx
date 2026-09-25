@@ -1593,7 +1593,7 @@ export function QuickLaunch() {
                       {row.renderMark ? (
                         <span className="quick-launch-mention-mark" aria-hidden="true">{row.renderMark()}</span>
                       ) : null}
-                      <span className="quick-launch-mention-name">{row.label}</span>
+                      <span className="quick-launch-mention-name" title={row.label}>{row.label}</span>
                       {row.capabilityLabel ? (
                         <span className="quick-launch-mention-capability">{row.capabilityLabel}</span>
                       ) : null}
@@ -1636,7 +1636,7 @@ export function QuickLaunch() {
                         {launchProviderGlyph(section.band.provider)}
                       </span>
                     ) : null}
-                    <span>{section.band.label}</span>
+                    <span title={section.band.label}>{section.band.label}</span>
                   </p>
                 ) : null}
                 {section.rows.map((row) => {
@@ -1661,7 +1661,7 @@ export function QuickLaunch() {
                       onClick={row.pick}
                     >
                       {row.lead}
-                      <span className="quick-launch-mention-name">{row.label}</span>
+                      <span className="quick-launch-mention-name" title={row.label}>{row.label}</span>
                       {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
                       {row.value === undefined ? null : <span className="quick-launch-command-value">{row.value}</span>}
                       {row.token === undefined ? null : <span className="quick-launch-command-token" aria-hidden="true">{row.token}</span>}
@@ -2031,7 +2031,7 @@ export function QuickLaunch() {
                             {launchProviderGlyph(provider)}
                           </span>
                         ) : null}
-                        <span>{group.label}</span>
+                        <span title={group.label}>{group.label}</span>
                       </p>
                     );
                   })()}
@@ -2076,6 +2076,7 @@ function QuickLaunchVariantRow({ row, selectedModel, onPick }: {
         aria-checked={rowModel === selectedModel}
         tabIndex={-1}
         data-menu-label={row.label}
+        title={row.label}
         onClick={() => onPick(rowModel)}
       >
         {/* ★는 라벨 뒤에 선다 — 앞에 두고 오른쪽으로 밀면 그 행만 통째로 우측 정렬돼 목록의 좌측 기준선이 끊긴다. */}
