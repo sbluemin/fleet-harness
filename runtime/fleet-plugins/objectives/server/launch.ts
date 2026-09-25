@@ -271,7 +271,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         continue;
       }
       if (operationId && node && observation?.lifecycle === "dormant") {
-        rememberSubagentSpawn(operationId, member.subagents === true);
+        // 앞선 구성원의 기동·재개를 기다리는 동안 바뀐 허용값도 이번 재개부터 반영한다.
+        rememberSubagentSpawn(operationId, item(itemId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
         const receipt = await control().request({ kind: "resume", operationId }, `objectives:resume:${randomUUID()}`).catch(asStoreError);
         if (receipt.status === "failed" || receipt.status === "rejected") throw new ObjectiveStoreError(receipt.error ?? "resume_failed");
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "resumed" });
@@ -285,7 +286,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       let session = memberSession(current.commander.sessionName, number);
       while (used.has(session)) session = memberSession(current.commander.sessionName, ++number);
       const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
-      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: member.subagents === true ? undefined : false, parentOperationId: current.id }).catch(asStoreError);
+      // 라우팅은 오래 걸릴 수 있으므로 실제 기동 요청 직전에 저장된 허용값을 읽는다.
+      const allowed = item(itemId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
+      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: allowed ? undefined : false, parentOperationId: current.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(itemId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       try { current = store.setMemberOperation(itemId, member.id, launchedId); }
       catch (error) { ctx.host.operations.delete(launchedId); throw error; }

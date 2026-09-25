@@ -4,7 +4,7 @@ import path from "node:path";
 
 import type { OperationGroupedEvent, OperationNode } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import objectivesPlugin from "../routes.js";
 import { imageInfo } from "../server/attachments.js";
@@ -22,11 +22,11 @@ import type { ObjectiveItemEvent } from "../server/types.js";
  */
 
 const dirs: string[] = [];
-afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllGlobals(); for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
 type Node = { -readonly [K in keyof OperationNode]: OperationNode[K] };
 
-function harness() {
+function harness(routingOrigin: () => string | null = () => null) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-"));
   dirs.push(dir);
   const theaterPath = path.join(dir, "project");
@@ -66,6 +66,7 @@ function harness() {
   const ctx = {
     pluginId: "objectives",
     host: {
+      server: { origin: routingOrigin },
       operations: operationsHost,
       consoleControl: {
         request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; model?: string; effort?: string; groupId?: string }) => {
@@ -109,7 +110,8 @@ const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000
 
 describe("Objectives contract", () => {
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
-    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, stateFile } = harness();
+    let routingOrigin: string | null = null;
+    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, stateFile } = harness(() => routingOrigin);
     const item = await launch.create({ theaterId: "t1", title: "Opt in", groupId: null, note: "brief" });
     const allowed = store.memberAdd(item.id, { role: "build", subagents: true }, "human").members[0]!;
     const blocked = store.memberAdd(item.id, { role: "research" }, "human").members[1]!;
@@ -142,6 +144,21 @@ describe("Objectives contract", () => {
     const refused = await call("plan", { itemId: item.id, steps: [{ text: "next" }], members: [{ role: "extra", subagents: true }] }, item.id);
     expect(refused.isError).toBe(true);
     expect(refused.structuredContent.error).toBe("invalid_arguments");
+
+    // 라우팅 응답을 기다리는 동안 해제한 허용은 아직 뜨지 않은 구성원의 첫 기동부터 반영한다.
+    const routed = store.memberAdd(item.id, { role: "review", subagents: true }, "human").members.at(-1)!;
+    let finishRouting!: (response: Response) => void;
+    const routingResponse = new Promise<Response>((resolve) => { finishRouting = resolve; });
+    let enteredRouting!: () => void;
+    const routingStarted = new Promise<void>((resolve) => { enteredRouting = resolve; });
+    vi.stubGlobal("fetch", () => { enteredRouting(); return routingResponse; });
+    routingOrigin = "http://routing.invalid";
+    const pendingMuster = launch.muster(item.id);
+    await routingStarted;
+    launch.memberPatched(item.id, routed.id, { subagents: false });
+    finishRouting(Response.json({ model: "sonnet" }));
+    await pendingMuster;
+    expect(launches.at(-1)?.disableSubagents).toBe(true);
   });
 
   it("creates an objective as a dormant Commander Operation and keeps only objective-owned values in the workspace state.json", async () => {
