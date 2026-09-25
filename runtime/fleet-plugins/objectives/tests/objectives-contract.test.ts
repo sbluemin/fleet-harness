@@ -316,7 +316,7 @@ describe("Objectives contract", () => {
   });
 
   it("shows every agent Operation created elsewhere as an objective, but not member or plugin Operations", async () => {
-    const { store, launch, add, stateFile } = harness();
+    const { store, launch, add, stateFile, launches, call } = harness();
     add("sidebar", { title: "Made in the sidebar", groupId: "g-a" });
     add("wiki", { pluginId: "codex", type: "codex-wiki" });
     const made = await launch.create({ theaterId: "t1", title: "Made in Objectives", groupId: null, steps: [{ text: "one" }] });
@@ -330,6 +330,12 @@ describe("Objectives contract", () => {
     expect(JSON.stringify(JSON.parse(fs.readFileSync(stateFile, "utf8")))).not.toContain("sidebar");
     store.patch("sidebar", { note: "now it has a brief" });
     expect(JSON.parse(fs.readFileSync(stateFile, "utf8")).objectives.map((entry: { operationId: string }) => entry.operationId)).toContain("sidebar");
+    // 따로 만든 지휘관에게는 고정 이름이 없다 — 구성원은 그래도 사람에게 묻지 않고, 주소를 지어내지 않고 null 로 받는다.
+    const helper = store.memberAdd("sidebar", { role: "helper" }, "human").members.at(-1)!;
+    await launch.muster("sidebar");
+    expect(launches.at(-1)?.disableUserQuestions).toBe(true);
+    const helperOperation = store.find("sidebar")!.members.find((member) => member.id === helper.id)!.operationId!;
+    expect((await call("mine", {}, helperOperation)).structuredContent).toMatchObject({ role: "member", commander: { session: null } });
   });
 
   it("keeps an objective in its Commander Operation's group and moves the members with it", async () => {
