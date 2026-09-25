@@ -118,7 +118,7 @@ function bareModelId(model: string): string {
   const stripped = model.startsWith(GATEWAY_PREFIX) ? model.slice(GATEWAY_PREFIX.length) : model;
   return stripped.includes("--") ? stripped.slice(stripped.lastIndexOf("--") + 2) : stripped.includes("/") ? stripped.slice(stripped.lastIndexOf("/") + 1) : stripped;
 }
-/** "Codex GPT-5.3 Codex" / "Claude Opus" — 단계 아래 dim 줄의 풀네임. 게이트웨이 접두는 벗기고, 카탈로그 행이 있으면 그 이름, 없으면 id 를 읽을 수 있게 다듬는다. */
+/** "Codex GPT-5.3 Codex" / "Claude Opus" — 임무 아래 dim 줄의 풀네임. 게이트웨이 접두는 벗기고, 카탈로그 행이 있으면 그 이름, 없으면 id 를 읽을 수 있게 다듬는다. */
 export function modelFullName(rows: readonly OperationLaunchVariantRow[], model: string | undefined | null): string {
   if (!model || model === "default") return "";
   // 라우팅은 "codex/gpt-…", 카탈로그는 "codex--gpt-…" — 같은 모델의 두 표기.
@@ -188,7 +188,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
   const currentEffort = effort ?? (model || extras?.length ? undefined : DEFAULT_LAUNCH.effort);
-  const words = launchWords(rows, model, effort, t("objectives.coordinator.effortAuto"));
+  const words = launchWords(rows, model, effort, t("objectives.commander.effortAuto"));
   const [open, setOpen] = useState(false);
   useEffect(() => { if (locked) setOpen(false); }, [locked]);
   // 2단계 — 고른 모델 한 줄과 강도 트랙. 메뉴는 여기서 열리고, 모델명을 누르면 목록(1단계)으로 간다.
@@ -262,7 +262,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
       <span className="objectives-launch-effort">{words.effort}</span>
     </>
   );
-  if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={triggerTitle ? `${triggerTitle}\n${t("objectives.coordinator.locked")}` : t("objectives.coordinator.locked")}>{triggerText ?? text}</span>;
+  if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={triggerTitle ? `${triggerTitle}\n${t("objectives.commander.locked")}` : t("objectives.commander.locked")}>{triggerText ?? text}</span>;
 
   const chosenRow = rows.find((row) => row.launch.model === currentModel) ?? null;
   const providerOf = (row: OperationLaunchVariantRow) => groups.find((group) => group.rows.includes(row))?.provider ?? null;
@@ -288,7 +288,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
                 {providerOf(chosenRow) ? <span className={`operation-launch-provider-glyph objectives-menu-provider is-${providerOf(chosenRow)}`} aria-hidden="true">{launchProviderGlyph(providerOf(chosenRow)!)}</span> : null}
                 <span className="objectives-menu-label objectives-menu-back-label">{chosenRow.label}</span>
                 {/* 강도 낱말은 모델 이름 오른쪽 — 한 줄이 「무엇을 · 얼마나」를 다 말한다. 트랙은 그 아래 한 줄. */}
-                <span className="objectives-menu-effort-word">{chosenRow.chips?.find((chip) => chip.launch.effort === resolveRowEffort(chosenRow, currentEffort ?? null))?.label ?? t("objectives.coordinator.effortAuto")}</span>
+                <span className="objectives-menu-effort-word">{chosenRow.chips?.find((chip) => chip.launch.effort === resolveRowEffort(chosenRow, currentEffort ?? null))?.label ?? t("objectives.commander.effortAuto")}</span>
               </button>
               {/* 게이트는 고정 개방 — MAX·ULTRACODE 까지 한 축에 펼쳐지고(펼친 폭 유지·apex 모션 유지) 접기/펼치기가 없다. */}
               <div className="objectives-menu-track">
@@ -297,9 +297,9 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
                   apexPinnedOpen
                   value={resolveRowEffort(chosenRow, currentEffort ?? null)}
                   onChange={(next) => onChange({ model: chosenRow.launch.model, effort: next ?? undefined })}
-                  autoLabel={t("objectives.coordinator.effortAuto")}
-                  autoValueText={t("objectives.coordinator.effortAuto")}
-                  ariaLabel={t("objectives.coordinator.effortAria")}
+                  autoLabel={t("objectives.commander.effortAuto")}
+                  autoValueText={t("objectives.commander.effortAuto")}
+                  ariaLabel={t("objectives.commander.effortAria")}
                 />
               </div>
             </>

@@ -3,7 +3,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import type { PromptLanguage } from "./prompts.js";
 import type { ObjectiveStore } from "./store.js";
-import { coordinatorMode, latestRecord, stepReady, type ObjectiveItem } from "./types.js";
+import { commanderMode, latestRecord, missionReady, type Objective } from "./types.js";
 
 /**
  * 보드 보기 — `fleet-objectives`(지휘관·담당의 작업 도구)와 `console_objectives`(Console Use)가 같은 모양으로 목표를 읽는다.
@@ -18,10 +18,10 @@ export function refuse(error: string, extra: Record<string, unknown> = {}) {
 }
 
 /** 이 Operation 이 이 목표에서 맡은 자리 — 지휘관 또는 명단에 연결된 구성원. 둘 다 아니면 null. */
-export function roleIn(item: ObjectiveItem, caller: ConsoleCaller | undefined): { role: "commander" } | { role: "member"; memberId: string } | null {
+export function roleIn(objective: Objective, caller: ConsoleCaller | undefined): { role: "commander" } | { role: "member"; memberId: string } | null {
   if (caller?.kind !== "operation") return null;
-  if (item.id === caller.operationId) return { role: "commander" };
-  const member = item.members.find((candidate) => candidate.operationId === caller.operationId);
+  if (objective.id === caller.operationId) return { role: "commander" };
+  const member = objective.members.find((candidate) => candidate.operationId === caller.operationId);
   return member ? { role: "member", memberId: member.id } : null;
 }
 
@@ -32,52 +32,52 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     const observation = ctx.host.consoleControl?.observe(operationId) ?? null;
     return { operationId, title: node.title, state: observation ? (observation.lifecycle === "dormant" ? "dormant" : observation.activity) : "unknown" };
   };
-  const graph = (item: ObjectiveItem) => ({
-    commander: { ...observe(item.id), session: item.commander.sessionName },
-    mode: coordinatorMode(item.steps),
-    ...(item.cooking ? { planning: true } : {}),
-    steps: item.steps.map((step, index) => ({
-      index, stepId: step.id, text: step.text, done: step.done,
-      after: step.after.map((id) => item.steps.findIndex((candidate) => candidate.id === id)).filter((value) => value >= 0),
-      why: step.why,
-      member: step.member ? ((member) => member ? { id: member.id, role: member.role } : null)(item.members.find((candidate) => candidate.id === step.member)) : null,
-      ...(step.unplaced ? { unplaced: true } : {}),
-      ready: !step.done && stepReady(item.steps, step),
-      // 다음 단계가 받는 것 — 가장 최근 기록과 기록 수. 앞선 기록은 사람이 화면에서 읽는다.
-      record: ((latest) => (latest ? { lines: latest.lines, kind: latest.kind, at: latest.at ? new Date(latest.at).toISOString() : null } : null))(latestRecord(step)),
-      records: step.records.length,
+  const graph = (objective: Objective) => ({
+    commander: { ...observe(objective.id), session: objective.commander.sessionName },
+    mode: commanderMode(objective.missions),
+    ...(objective.planning ? { planning: true } : {}),
+    // n 은 1부터 세는 임무 번호(편성 순서), missionId 는 변하지 않는 가리킴.
+    missions: objective.missions.map((mission, index) => ({
+      n: index + 1, missionId: mission.id, text: mission.text, done: mission.done,
+      // 선행도 같은 1-based 번호로 — 목록에 없는 가리킴은 버린다.
+      prerequisites: mission.prerequisites.map((id) => objective.missions.findIndex((candidate) => candidate.id === id) + 1).filter((value) => value >= 1),
+      why: mission.why,
+      member: mission.member ? ((member) => member ? { id: member.id, role: member.role } : null)(objective.members.find((candidate) => candidate.id === mission.member)) : null,
+      ...(mission.unplaced ? { unplaced: true } : {}),
+      ready: !mission.done && missionReady(objective.missions, mission),
+      // 다음 임무가 받는 것 — 가장 최근 기록과 기록 수. 앞선 기록은 사람이 화면에서 읽는다.
+      record: ((latest) => (latest ? { lines: latest.lines, kind: latest.kind, at: latest.at ? new Date(latest.at).toISOString() : null } : null))(latestRecord(mission)),
+      records: mission.records.length,
       // 구성원 세션 상태는 명단에서 읽는다. 한 구성원은 여러 임무를 맡는다.
     })),
   });
-  const itemView = (item: ObjectiveItem) => ({
-    id: item.id, theaterId: item.theaterId, groupId: item.groupId, title: item.title, note: item.note,
+  const objectiveView = (objective: Objective) => ({
+    id: objective.id, theaterId: objective.theaterId, groupId: objective.groupId, title: objective.title, note: objective.note,
     // 메모에 붙인 이미지 — 이미지 자체는 싣지 않고 이 기계의 절대 경로만. 필요할 때 Read 로 연다(브라우저에는 이 경로가 가지 않는다).
-    attachments: (item.attachments ?? []).map((attachment) => ({ n: attachment.n, name: attachment.name, type: attachment.type, bytes: attachment.bytes, ...(attachment.width ? { width: attachment.width, height: attachment.height } : {}), path: store.attachmentPath(item, attachment) })),
-    important: item.important, dueDate: item.dueDate, today: item.today,
+    attachments: (objective.attachments ?? []).map((attachment) => ({ n: attachment.n, name: attachment.name, type: attachment.type, bytes: attachment.bytes, ...(attachment.width ? { width: attachment.width, height: attachment.height } : {}), path: store.attachmentPath(objective, attachment) })),
+    important: objective.important, dueDate: objective.dueDate, today: objective.today,
     // 달성 기준 — n 은 1부터, 기준을 가리키는 번호. met 은 지휘관이 충족으로 표시한 근거(없으면 미충족).
-    criteria: item.criteria.map((criterion, index) => ({ n: index + 1, id: criterion.id, text: criterion.text, by: criterion.by, met: criterion.met ?? null })),
-    criteriaOpen: item.criteriaOpen,
-    criteriaProposals: item.criteriaProposals.map((proposal, index) => ({ n: index + 1, id: proposal.id, kind: proposal.kind, target: proposal.target ?? null,
-      targetN: proposal.target ? item.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null,
+    criteria: objective.criteria.map((criterion, index) => ({ n: index + 1, id: criterion.id, text: criterion.text, by: criterion.by, met: criterion.met ?? null })),
+    criteriaOpen: objective.criteriaOpen,
+    criteriaProposals: objective.criteriaProposals.map((proposal, index) => ({ n: index + 1, id: proposal.id, kind: proposal.kind, target: proposal.target ?? null,
+      targetN: proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null,
       text: proposal.text ?? null, reason: proposal.reason ?? null, annotation: proposal.annotation ?? null })),
-    members: item.members.map((member) => ({ id: member.id, role: member.role, brief: member.brief ?? null, by: member.by, subagents: member.subagents, model: member.model ?? null, effort: member.effort ?? null, session: member.sessionName,
+    members: objective.members.map((member) => ({ id: member.id, role: member.role, brief: member.brief ?? null, by: member.by, subagents: member.subagents, model: member.model ?? null, effort: member.effort ?? null, session: member.sessionName,
       ...(member.operationId ? observe(member.operationId) : { operationId: null, state: "missing" as const }) })),
-    done: !!item.done, awaitingReview: item.awaitingReview, addedBy: item.addedBy, graph: graph(item),
+    done: !!objective.done, awaitingReview: objective.awaitingReview, addedBy: objective.addedBy, graph: graph(objective),
     // 후속 후보 — 지휘관이 고치거나 거둘 수 있는 것은 open 뿐이다. 폐기 흔적은 제목·요약만.
-    followups: item.followups.map((candidate) => (candidate.state === "discarded"
+    followups: objective.followups.map((candidate) => (candidate.state === "discarded"
       ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary }
       : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence })),
-    followupBatches: item.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error })) })),
+    followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error })) })),
     // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
-    origin: item.origin,
+    origin: objective.origin,
   });
-  const rowView = (item: ObjectiveItem) => ({ id: item.id, groupId: item.groupId, title: item.title, done: !!item.done, awaitingReview: item.awaitingReview, important: item.important, dueDate: item.dueDate, today: item.today, steps: `${item.steps.filter((step) => step.done).length}/${item.steps.length}`, mode: coordinatorMode(item.steps), addedBy: item.addedBy?.operationId ?? null });
-  /** 알림 문구의 언어 — 목표가 띄운 세션은 objectiveLanguage 에, 그 전 판의 세션은 콘솔 사용 표식에 남아 있다. */
+  const rowView = (objective: Objective) => ({ id: objective.id, groupId: objective.groupId, title: objective.title, done: !!objective.done, awaitingReview: objective.awaitingReview, important: objective.important, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null });
+  /** 알림 문구의 언어 — 목표가 띄운 세션에 objectiveLanguage 로 남아 있다. */
   const languageOf = (caller: ConsoleCaller | undefined): PromptLanguage => {
     if (caller?.kind !== "operation") return "en";
-    const payload = ctx.host.operations.get(caller.operationId)?.payload;
-    const marked = payload?.objectiveLanguage ?? (payload?.consoleUse as { language?: unknown } | undefined)?.language;
-    return marked === "ko" ? "ko" : "en";
+    return ctx.host.operations.get(caller.operationId)?.payload?.objectiveLanguage === "ko" ? "ko" : "en";
   };
-  return { itemView, rowView, languageOf };
+  return { objectiveView, rowView, languageOf };
 }

@@ -2,12 +2,12 @@ import { useSyncExternalStore } from "react";
 
 import type { ClientApiCapability, ConsoleOperationSummary, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
-import type { ObjectiveItem, ObjectiveItemEvent } from "../server/types.js";
+import type { Objective, ObjectiveEvent } from "../server/types.js";
 
 /**
  * 표면·캡션·팔레트가 함께 구독하는 모듈 스토어.
  *
- * 화면은 응답이 아니라 사건으로 갱신된다 — 자기 변경도 `objectives:item` 프레임으로 들어온다. 그룹은 코어의
+ * 화면은 응답이 아니라 사건으로 갱신된다 — 자기 변경도 `objectives:objective` 프레임으로 들어온다. 그룹은 코어의
  * `group:changed`/`group:removed` 를 같은 스트림에서 듣는다. Operation 의 활동은 호스트 consoleState 가 진실이다.
  * 목표는 곧 에이전트 Operation 이라, Console 어디서든 Operation 이 생기면 그 목표를 받아 오고 사라지면 목록에서 뺀다.
  */
@@ -21,19 +21,19 @@ export interface ObjectiveGroup {
 }
 
 interface TheaterState {
-  readonly items: readonly ObjectiveItem[];
+  readonly objectives: readonly Objective[];
   readonly groups: readonly ObjectiveGroup[];
   readonly loaded: boolean;
   readonly launchAvailable: boolean;
 }
 
 export interface RevealTarget {
-  readonly itemId: string;
-  readonly stepId?: string;
+  readonly objectiveId: string;
+  readonly missionId?: string;
   readonly at: number;
 }
 
-const EMPTY: TheaterState = { items: [], groups: [], loaded: false, launchAvailable: false };
+const EMPTY: TheaterState = { objectives: [], groups: [], loaded: false, launchAvailable: false };
 const theaters = new Map<string, TheaterState>();
 const listeners = new Set<() => void>();
 let installed: PluginInstallContext | null = null;
@@ -46,8 +46,8 @@ const fetching = new Set<string>();
 let knownOperationIds: ReadonlySet<string> = new Set();
 
 /** 구성원 Operation — 임무가 아직 없어도 목표가 아니며 명단에서 제외되어야 한다. */
-function assigneeIds(items: readonly ObjectiveItem[]): ReadonlySet<string> {
-  return new Set(items.flatMap((item) => item.members.flatMap((member) => member.operationId ? [member.operationId] : [])));
+function memberIds(objectives: readonly Objective[]): ReadonlySet<string> {
+  return new Set(objectives.flatMap((objective) => objective.members.flatMap((member) => member.operationId ? [member.operationId] : [])));
 }
 
 /**
@@ -62,25 +62,25 @@ function reconcileOperations(api: ClientApiCapability): void {
     if (!state.loaded) continue;
     if (gone.length) {
       const drop = new Set(gone);
-      if (state.items.some((item) => drop.has(item.id))) setTheater(theaterId, { items: state.items.filter((item) => !drop.has(item.id)) });
+      if (state.objectives.some((objective) => drop.has(objective.id))) setTheater(theaterId, { objectives: state.objectives.filter((objective) => !drop.has(objective.id)) });
     }
     // 제목은 Operation 의 것이다 — 자동 작명처럼 사건 없이 바뀐 제목도 Operation 목록에서 따라간다.
     const titles = new Map(operationsSnapshot.map((operation) => [operation.id, operation.title]));
-    const stale = (theaters.get(theaterId) ?? state).items;
-    if (stale.some((item) => titles.has(item.id) && titles.get(item.id) !== item.title)) {
-      setTheater(theaterId, { items: stale.map((item) => (titles.has(item.id) && titles.get(item.id) !== item.title ? { ...item, title: titles.get(item.id)! } : item)) });
+    const stale = (theaters.get(theaterId) ?? state).objectives;
+    if (stale.some((objective) => titles.has(objective.id) && titles.get(objective.id) !== objective.title)) {
+      setTheater(theaterId, { objectives: stale.map((objective) => (titles.has(objective.id) && titles.get(objective.id) !== objective.title ? { ...objective, title: titles.get(objective.id)! } : objective)) });
     }
-    const known = new Set((theaters.get(theaterId) ?? state).items.map((item) => item.id));
-    const assignees = assigneeIds(state.items);
+    const known = new Set((theaters.get(theaterId) ?? state).objectives.map((objective) => objective.id));
+    const members = memberIds(state.objectives);
     for (const operation of operationsSnapshot) {
       // 부모 아래 선 Operation(구성원)은 목표가 아니다 — 코어가 구성원으로 기록한 것은 묻지도 않는다.
-      if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || assignees.has(operation.id) || fetching.has(operation.id)) continue;
+      if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || members.has(operation.id) || fetching.has(operation.id)) continue;
       fetching.add(operation.id);
-      void post<{ item: ObjectiveItem }>(api, "/item/get", { itemId: operation.id })
-        .then(({ item }) => {
-          const latest = theaters.get(item.theaterId) ?? EMPTY;
+      void post<{ objective: Objective }>(api, "/objective/get", { objectiveId: operation.id })
+        .then(({ objective }) => {
+          const latest = theaters.get(objective.theaterId) ?? EMPTY;
           // 응답을 기다리는 사이 담당으로 연결됐으면 목표가 아니다.
-          if (!latest.items.some((candidate) => candidate.id === item.id) && !assigneeIds(latest.items).has(item.id)) setTheater(item.theaterId, { items: [item, ...latest.items] });
+          if (!latest.objectives.some((candidate) => candidate.id === objective.id) && !memberIds(latest.objectives).has(objective.id)) setTheater(objective.theaterId, { objectives: [objective, ...latest.objectives] });
         })
         .catch(() => { /* 플러그인 소유이거나 담당이면 목표가 아니다 */ })
         .finally(() => { fetching.delete(operation.id); });
@@ -99,24 +99,24 @@ function setTheater(theaterId: string, next: Partial<TheaterState>): void {
 
 export function installObjectiveState(ctx: PluginInstallContext): () => void {
   installed = ctx;
-  const offItem = ctx.consoleEvents.subscribe("objectives:item", (payload) => {
-    const event = payload as ObjectiveItemEvent | null;
-    if (!event || typeof event.itemId !== "string" || typeof event.theaterId !== "string") return;
+  const offItem = ctx.consoleEvents.subscribe("objectives:objective", (payload) => {
+    const event = payload as ObjectiveEvent | null;
+    if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
     const current = theaters.get(event.theaterId) ?? EMPTY;
-    if (event.op === "remove") { setTheater(event.theaterId, { items: current.items.filter((item) => item.id !== event.itemId) }); return; }
-    if (!event.item) return;
-    const exists = current.items.some((item) => item.id === event.itemId);
-    const merged = exists ? current.items.map((item) => (item.id === event.itemId ? event.item! : item)) : [event.item, ...current.items];
+    if (event.op === "remove") { setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
+    if (!event.objective) return;
+    const exists = current.objectives.some((objective) => objective.id === event.objectiveId);
+    const merged = exists ? current.objectives.map((objective) => (objective.id === event.objectiveId ? event.objective! : objective)) : [event.objective, ...current.objectives];
     // 위임 직후 담당 Operation 을 목표로 먼저 받아 왔을 수 있다 — 어느 목표의 담당이 된 Operation 은 목록에서 뺀다.
-    const assignees = assigneeIds(merged);
-    const items = assignees.size ? merged.filter((item) => !assignees.has(item.id)) : merged;
+    const members = memberIds(merged);
+    const objectives = members.size ? merged.filter((objective) => !members.has(objective.id)) : merged;
     // 순서가 함께 오면 서버의 줄을 따른다 — 목록에 없는 id 는 건너뛰고, 순서에 없는 항목은 뒤에 그대로 둔다.
     if (event.order) {
       const rank = new Map(event.order.map((id, index) => [id, index]));
-      setTheater(event.theaterId, { items: [...items].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)) });
+      setTheater(event.theaterId, { objectives: [...objectives].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)) });
       return;
     }
-    setTheater(event.theaterId, { items });
+    setTheater(event.theaterId, { objectives });
   });
   const offGroup = ctx.consoleEvents.subscribe("group:changed", (payload) => {
     const group = (payload as { group?: ObjectiveGroup } | null)?.group;
@@ -183,9 +183,9 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
   if (current?.loaded && !force) return Promise.resolve();
   const pending = inflight.get(theaterId);
   if (pending) return pending;
-  const task = post<{ items: ObjectiveItem[]; groups: ObjectiveGroup[]; launch: { available: boolean } }>(api, "/state", { theaterId })
+  const task = post<{ objectives: Objective[]; groups: ObjectiveGroup[]; launch: { available: boolean } }>(api, "/state", { theaterId })
     .then((state) => {
-      setTheater(theaterId, { items: state.items, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
+      setTheater(theaterId, { objectives: state.objectives, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
       // 읽는 사이 생긴 Operation 도 목표로 — 스냅숏 기준으로 한 번 맞춘다.
       if (installed) { knownOperationIds = new Set(); operationsSnapshot = installed.consoleState.getOperations({ nested: true }); reconcileOperations(installed.api); }
     })
@@ -225,7 +225,7 @@ export function activeTheaterId(): string | null {
 }
 
 /** 팔레트·캡션에서 "이 항목으로" — 표면이 마운트되어 있으면 즉시, 아니면 열릴 때 집는다. */
-export function revealItem(target: { itemId: string; stepId?: string }): void {
+export function revealObjective(target: { objectiveId: string; missionId?: string }): void {
   reveal = { ...target, at: Date.now() };
   notify();
 }
@@ -294,7 +294,7 @@ export function handleMapOperationSelected(operationId: string): void {
   let targetTheaterId: string | null = op?.theaterId ?? null;
   if (!targetTheaterId) {
     for (const [tId, tState] of theaters) {
-      if (tState.items.some((item) => item.id === operationId || item.members.some((m) => m.operationId === operationId))) {
+      if (tState.objectives.some((objective) => objective.id === operationId || objective.members.some((m) => m.operationId === operationId))) {
         targetTheaterId = tId;
         break;
       }
@@ -307,15 +307,15 @@ export function handleMapOperationSelected(operationId: string): void {
 
   const currentTheaterState = theaters.get(targetTheaterId);
   if (currentTheaterState?.loaded) {
-    const matchingItem = currentTheaterState.items.find(
-      (item) => item.id === operationId || item.members.some((m) => m.operationId === operationId)
+    const matchingObjective = currentTheaterState.objectives.find(
+      (objective) => objective.id === operationId || objective.members.some((m) => m.operationId === operationId)
     );
-    if (!matchingItem) return;
+    if (!matchingObjective) return;
 
-    const nextList = matchingItem.groupId ? `group:${matchingItem.groupId}` : "ungrouped";
+    const nextList = matchingObjective.groupId ? `group:${matchingObjective.groupId}` : "ungrouped";
     patchObjectiveView(targetTheaterId, (current) => {
-      if (current.selected === matchingItem.id && current.list === nextList && current.externalSelectionId === matchingItem.id) return current;
-      return { selected: matchingItem.id, list: nextList, externalSelectionId: matchingItem.id };
+      if (current.selected === matchingObjective.id && current.list === nextList && current.externalSelectionId === matchingObjective.id) return current;
+      return { selected: matchingObjective.id, list: nextList, externalSelectionId: matchingObjective.id };
     });
     return;
   }
@@ -330,15 +330,15 @@ export function handleMapOperationSelected(operationId: string): void {
     const loadedState = theaters.get(targetTheaterId);
     if (!loadedState?.loaded) return;
 
-    const matchingItem = loadedState.items.find(
-      (item) => item.id === operationId || item.members.some((m) => m.operationId === operationId)
+    const matchingObjective = loadedState.objectives.find(
+      (objective) => objective.id === operationId || objective.members.some((m) => m.operationId === operationId)
     );
-    if (!matchingItem) return;
+    if (!matchingObjective) return;
 
-    const nextList = matchingItem.groupId ? `group:${matchingItem.groupId}` : "ungrouped";
+    const nextList = matchingObjective.groupId ? `group:${matchingObjective.groupId}` : "ungrouped";
     patchObjectiveView(targetTheaterId, (current) => {
-      if (current.selected === matchingItem.id && current.list === nextList && current.externalSelectionId === matchingItem.id) return current;
-      return { selected: matchingItem.id, list: nextList, externalSelectionId: matchingItem.id };
+      if (current.selected === matchingObjective.id && current.list === nextList && current.externalSelectionId === matchingObjective.id) return current;
+      return { selected: matchingObjective.id, list: nextList, externalSelectionId: matchingObjective.id };
     });
   });
 }
@@ -352,7 +352,6 @@ export function focusOperation(operationId: string): void {
 
 const OBJECTIVE_PANEL_ID = "objectives";
 const OBJECTIVE_PLACE_KEY = "objectives.lastPlace";
-const LEGACY_PLACE_KEY = "todo.lastPlace";
 type ObjectivePlace = "rail" | "expanded";
 
 function rememberObjectivePlace(place: ObjectivePlace): void {
@@ -364,8 +363,7 @@ export function toggleObjectivePlace(rail = installed?.rail, surfaces = installe
   if (!rail || !surfaces) return;
   if (rail.isOpen(OBJECTIVE_PANEL_ID)) { rememberObjectivePlace("rail"); rail.close(OBJECTIVE_PANEL_ID); return; }
   if (surfaces.isOpen(OBJECTIVE_PANEL_ID)) { rememberObjectivePlace("expanded"); surfaces.closeSurface(OBJECTIVE_PANEL_ID); return; }
-  // 이름을 바꾸기 전(todo)에 기억한 자리도 처음 한 번은 따른다 — 여는 순간 새 키에 적힌다.
-  const remembered = installed?.preferences.read<unknown>(OBJECTIVE_PLACE_KEY, null) ?? installed?.preferences.read<unknown>(LEGACY_PLACE_KEY, "rail");
+  const remembered = installed?.preferences.read<unknown>(OBJECTIVE_PLACE_KEY, "rail");
   const place = remembered === "expanded" ? "expanded" : "rail";
   if (place === "expanded") surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
   else rail.open(OBJECTIVE_PANEL_ID);

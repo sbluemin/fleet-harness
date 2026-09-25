@@ -6,7 +6,7 @@ import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 import { objectivesClusterSource } from "./clusters.js";
 import { getT } from "./i18n/index.js";
 import { ObjectivePanel } from "./objectives-panel.js";
-import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealItem, objectivesApi, toggleObjectivePlace } from "./objectives-state.js";
+import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealObjective, objectivesApi, toggleObjectivePlace } from "./objectives-state.js";
 import "./objectives.css";
 
 export const OBJECTIVE_SURFACE_ID = "objectives";
@@ -51,9 +51,9 @@ export const objectivesEntry: RailEntryDescriptor = {
     await loadTheater(api, theaterId);
     const response = await api.fetch("objectives", "/palette-search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, query, limit }) });
     if (!response.ok) return [];
-    const result = await response.json() as { items: { id: string; title: string }[] };
+    const result = await response.json() as { objectives: { id: string; title: string }[] };
     const subtitle = getT(language)("objectives.palette.subtitle");
-    return result.items.map((item) => ({ id: `objectives:${item.id}`, title: item.title, subtitle, activate: () => { revealItem({ itemId: item.id }); } }));
+    return result.objectives.map((objective) => ({ id: `objectives:${objective.id}`, title: objective.title, subtitle, activate: () => { revealObjective({ objectiveId: objective.id }); } }));
   },
 };
 

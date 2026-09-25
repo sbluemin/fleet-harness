@@ -67,23 +67,8 @@ export function getShortcutOverrides(): ShortcutBindings {
   return overrides;
 }
 
-/** 이름이 바뀐 명령의 옛 저장 키 → 새 id. 사용자가 재배정한 조합이 이름 변경으로 사라지지 않게 잇는다. */
-const RENAMED_COMMAND_IDS: Readonly<Record<string, string>> = { "console.toggle-todo": "console.toggle-objectives" };
-
-function adoptRenamedCommandIds(bindings: ShortcutBindings): ShortcutBindings {
-  let adopted: Record<string, readonly string[]> | null = null;
-  for (const [legacy, current] of Object.entries(RENAMED_COMMAND_IDS)) {
-    const chords = bindings[legacy];
-    if (chords === undefined) continue;
-    adopted ??= { ...bindings };
-    delete adopted[legacy];
-    if (bindings[current] === undefined) adopted[current] = chords;
-  }
-  return adopted ?? bindings;
-}
-
 export function setShortcutOverrides(next: ShortcutBindings): void {
-  overrides = adoptRenamedCommandIds(next);
+  overrides = next;
   for (const listener of listeners) listener();
 }
 

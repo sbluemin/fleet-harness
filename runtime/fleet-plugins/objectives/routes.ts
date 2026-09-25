@@ -8,13 +8,13 @@ import { createLaunchService } from "./server/launch.js";
 import { createObjectiveMcpTools } from "./server/objective-tools.js";
 import { createObjectiveRoutes } from "./server/routes.js";
 import { createObjectiveStore } from "./server/store.js";
-import { OBJECTIVE_ITEM_CHANNEL } from "./server/types.js";
+import { OBJECTIVE_CHANNEL } from "./server/types.js";
 
 /**
  * 목표 — Theater 의 에이전트 Operation 하나하나가 목표다.
  *
- * 목표 고유값은 프로젝트의 워크스페이스 디렉터리(`workspaces/<프로젝트>/objectives/state.json`)에, 제목·그룹·세션은
- * Operation 에 산다. 목록의 그룹은 Operation 그룹 그 자체이고, 변경은 전부 `objectives:item` 사건으로 브라우저에 닿는다.
+ * 목표 고유값은 프로젝트의 워크스페이스 디렉터리(`workspaces/<프로젝트>/objectives/<목표>/objective.json`)에, 제목·그룹·세션은
+ * Operation 에 산다. 목록의 그룹은 Operation 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
  * 목표를 수행하는 세션은 `fleet-objectives` 로, Console Use 는 `console_objectives` 로 보드를 쓴다.
  */
 const operationIdOf = (payload: unknown): string | null => {
@@ -28,7 +28,7 @@ export default definePlugin({
     const dirs = new Map<string, string>();
     const unreadable = new Set<string>();
     // 등록된 Theater 폴더가 지금 없을 수 있다(옮김·지움·외장 디스크 분리). 그 Theater 는 읽을 수 없는 것으로 두고
-    // 던지지 않는다 — 던지면 기동의 backfill 이 플러그인 등록을 깨 Console 전체가 뜨지 않는다. 실패는 캐시하지 않아
+    // 던지지 않는다 — 던지면 플러그인 등록이 깨져 Console 전체가 뜨지 않는다. 실패는 캐시하지 않아
     // 폴더가 돌아오면 다음 읽기가 다시 푼다.
     const dirOf = (theaterId: string): string | null => {
       const cached = dirs.get(theaterId);
@@ -47,30 +47,13 @@ export default definePlugin({
       dirs.set(theaterId, dir);
       return dir;
     };
-    const releaseChannel = ctx.host.events.registerSseChannel(OBJECTIVE_ITEM_CHANNEL);
+    const releaseChannel = ctx.host.events.registerSseChannel(OBJECTIVE_CHANNEL);
     ctx.host.lifecycle.registerCleanup(releaseChannel);
-    const store = createObjectiveStore({ dirOf, operations: ctx.host.operations, emit: (event) => ctx.host.events.publish(OBJECTIVE_ITEM_CHANNEL, event) });
-
-    // 부모 채우기 — 구성원은 태어날 때 지휘관을 부모로 받는다(launch). 그 전에 뜬 구성원은 여기서 한 번 채운다.
-    // 코어는 부모가 있는 Operation 을 목록 표면에서 빼고 지휘관이 대표하게 한다. 복원된 상태는 플러그인보다 먼저 선다.
-    // 최선 노력이다 — 어떤 실패도 플러그인 등록을 깨지 않는다(읽지 못한 Theater 의 구성원은 목록에 남을 뿐이다).
-    try {
-      for (const item of store.all()) {
-        for (const member of item.members) {
-          const node = member.operationId ? ctx.host.operations.get(member.operationId) : null;
-          if (!node || node.theaterId !== item.theaterId || node.parentOperationId === item.id) continue;
-          try { ctx.host.operations.patch(node.id, { parentOperationId: item.id }); }
-          catch (error) { console.warn(`[objectives] member parent backfill failed: ${error instanceof Error ? error.message : String(error)}`); }
-        }
-      }
-    } catch (error) { console.warn(`[objectives] member parent backfill skipped: ${error instanceof Error ? error.message : String(error)}`); }
+    const store = createObjectiveStore({ dirOf, operations: ctx.host.operations, emit: (event) => ctx.host.events.publish(OBJECTIVE_CHANNEL, event) });
 
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
     const launch = createLaunchService(ctx, store);
     ctx.host.lifecycle.registerCleanup(() => launch.dispose());
-    // 질문 정책 채우기 — 이 정책 전에 뜬 구성원도 사이드바·패널 재개나 메시지로 깨어날 때 사람에게 묻지 않게 한다. 프로세스는 건드리지 않는다.
-    try { launch.backfillMemberPolicy(); }
-    catch (error) { console.warn(`[objectives] member question policy backfill skipped: ${error instanceof Error ? error.message : String(error)}`); }
     const on = (channel: string, run: (operationId: string, payload: unknown) => void) => {
       const off = ctx.host.events.subscribe(channel, (payload) => {
         const operationId = operationIdOf(payload);

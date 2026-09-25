@@ -8,7 +8,7 @@
 
 import { useSyncExternalStore } from "react";
 
-import type { ObjectiveItem } from "../server/types.js";
+import type { Objective } from "../server/types.js";
 
 export type FollowupState = "open" | "selected" | "discarded";
 
@@ -73,7 +73,7 @@ export interface FollowupHistory {
 }
 
 export interface FollowupOrigin {
-  readonly itemId: string;
+  readonly objectiveId: string;
   readonly title: string | null;
   readonly candidateId: string;
 }
@@ -159,20 +159,20 @@ function asBatch(value: unknown): FollowupBatch | null {
 }
 
 /** 서버가 주기 전에도 깨지지 않게 — 후보가 없으면 빈 배열이다. */
-export function readFollowups(item: ObjectiveItem): readonly FollowupCandidate[] {
-  const raw = (item as unknown as { followups?: unknown }).followups;
+export function readFollowups(objective: Objective): readonly FollowupCandidate[] {
+  const raw = (objective as unknown as { followups?: unknown }).followups;
   if (!Array.isArray(raw)) return [];
   return raw.map(asCandidate).filter((entry): entry is FollowupCandidate => entry !== null);
 }
 
-export function readBatches(item: ObjectiveItem): readonly FollowupBatch[] {
-  const raw = (item as unknown as { followupBatches?: unknown }).followupBatches;
+export function readBatches(objective: Objective): readonly FollowupBatch[] {
+  const raw = (objective as unknown as { followupBatches?: unknown }).followupBatches;
   if (!Array.isArray(raw)) return [];
   return raw.map(asBatch).filter((entry): entry is FollowupBatch => entry !== null);
 }
 
-export function readHistory(item: ObjectiveItem): FollowupHistory | null {
-  const raw = (item as unknown as { followupHistory?: unknown }).followupHistory;
+export function readHistory(objective: Objective): FollowupHistory | null {
+  const raw = (objective as unknown as { followupHistory?: unknown }).followupHistory;
   if (!isRecord(raw)) return null;
   if (typeof raw.batches !== "number" || typeof raw.created !== "number" || typeof raw.deleted !== "number" || typeof raw.abandoned !== "number") return null;
   return { batches: raw.batches, created: raw.created, deleted: raw.deleted, abandoned: raw.abandoned };
@@ -182,45 +182,45 @@ export function readHistory(item: ObjectiveItem): FollowupHistory | null {
  * 후속으로 태어난 목표의 출처 — 원본 목표와 후보. 원본이 사라졌으면 title 은 null 이다.
  * 상세 브리핑 아래 한 줄로만 쓴다(R4 최소 표시).
  */
-export function readOrigin(item: ObjectiveItem): { readonly itemId: string; readonly title: string | null } | null {
-  const raw = (item as unknown as { origin?: unknown }).origin;
+export function readOrigin(objective: Objective): { readonly objectiveId: string; readonly title: string | null } | null {
+  const raw = (objective as unknown as { origin?: unknown }).origin;
   if (!isRecord(raw)) return null;
-  if (typeof raw.itemId !== "string" || !raw.itemId) return null;
-  return { itemId: raw.itemId, title: typeof raw.title === "string" ? raw.title : null };
+  if (typeof raw.objectiveId !== "string" || !raw.objectiveId) return null;
+  return { objectiveId: raw.objectiveId, title: typeof raw.title === "string" ? raw.title : null };
 }
 
-export function openFollowups(item: ObjectiveItem): readonly FollowupCandidate[] {
-  return readFollowups(item).filter((candidate) => candidate.state === "open");
+export function openFollowups(objective: Objective): readonly FollowupCandidate[] {
+  return readFollowups(objective).filter((candidate) => candidate.state === "open");
 }
 
-export function discardedFollowups(item: ObjectiveItem): readonly FollowupCandidate[] {
-  return readFollowups(item).filter((candidate) => candidate.state === "discarded");
+export function discardedFollowups(objective: Objective): readonly FollowupCandidate[] {
+  return readFollowups(objective).filter((candidate) => candidate.state === "discarded");
 }
 
 /**
  * 스티어링 대상 편집 — choose()와 같은 정의다. 한 번도 깨지 않은 지휘관은 보드를 처음부터 읽으므로
  * 그 전의 편집은 알릴 것이 없고, 후속 고르기도 막지 않는다. started 뒤의 편집만 스티어링이 먼저다.
  */
-export function steeredEdits(item: ObjectiveItem): boolean {
-  return item.commander.started && (item.edited?.kinds.length ?? 0) > 0;
+export function steeredEdits(objective: Objective): boolean {
+  return objective.commander.started && (objective.edited?.kinds.length ?? 0) > 0;
 }
 
 /**
  * 고를 수 있음 — 서버와 같은 조건(awaitingReview && 스티어링 대상 편집 없음 && 기준 제안 없음 && 미완료).
  * 작업 중·edited(깨운 뒤)·gated에서는 읽기·폐기만 한다.
  */
-export function isFollowupSelectable(item: ObjectiveItem): boolean {
-  if (item.done) return false;
-  if (!item.awaitingReview) return false;
-  if (steeredEdits(item)) return false;
-  if (item.criteriaProposals.length > 0) return false;
+export function isFollowupSelectable(objective: Objective): boolean {
+  if (objective.done) return false;
+  if (!objective.awaitingReview) return false;
+  if (steeredEdits(objective)) return false;
+  if (objective.criteriaProposals.length > 0) return false;
   return true;
 }
 
 /** 고를 수 없을 때 본문 한 줄이 가리키는 이유 — 스티어링 우선과 기준 잠금을 우회하지 않는다. */
-export function followupGate(item: ObjectiveItem): "steer" | "criteria" | null {
-  if (steeredEdits(item)) return "steer";
-  if (item.criteriaProposals.length > 0) return "criteria";
+export function followupGate(objective: Objective): "steer" | "criteria" | null {
+  if (steeredEdits(objective)) return "steer";
+  if (objective.criteriaProposals.length > 0) return "criteria";
   return null;
 }
 
@@ -250,38 +250,38 @@ function notifyComp(): void {
   for (const listener of compListeners) listener();
 }
 
-export function readSelection(itemId: string): ReadonlySet<string> {
-  return selectionSnapshots.get(itemId) ?? EMPTY_SELECTION;
+export function readSelection(objectiveId: string): ReadonlySet<string> {
+  return selectionSnapshots.get(objectiveId) ?? EMPTY_SELECTION;
 }
 
 /** 선택 순간의 rev — 보낼 때 이 값으로 보내 서버가 followup_changed 로 판정한다. */
-export function readSelectionRevs(itemId: string): ReadonlyMap<string, number> {
-  return selectionRevSnapshots.get(itemId) ?? EMPTY_SELECTION_REVS;
+export function readSelectionRevs(objectiveId: string): ReadonlyMap<string, number> {
+  return selectionRevSnapshots.get(objectiveId) ?? EMPTY_SELECTION_REVS;
 }
 
-function commitSelection(itemId: string, next: Map<string, number> | null): void {
-  const current = selections.get(itemId) ?? null;
+function commitSelection(objectiveId: string, next: Map<string, number> | null): void {
+  const current = selections.get(objectiveId) ?? null;
   const same =
     (current === null && next === null) ||
     (current !== null && next !== null && current.size === next.size && [...current].every(([id, rev]) => next.get(id) === rev));
   if (same) return;
   if (next === null || next.size === 0) {
-    selections.delete(itemId);
-    selectionSnapshots.delete(itemId);
-    selectionRevSnapshots.delete(itemId);
+    selections.delete(objectiveId);
+    selectionSnapshots.delete(objectiveId);
+    selectionRevSnapshots.delete(objectiveId);
   } else {
-    selections.set(itemId, next);
-    selectionSnapshots.set(itemId, new Set(next.keys()));
-    selectionRevSnapshots.set(itemId, new Map(next));
+    selections.set(objectiveId, next);
+    selectionSnapshots.set(objectiveId, new Set(next.keys()));
+    selectionRevSnapshots.set(objectiveId, new Map(next));
   }
   notifySelections();
 }
 
-export function toggleFollowupSelection(itemId: string, candidateId: string, checked: boolean, rev: number): void {
-  const next = new Map(selections.get(itemId) ?? []);
+export function toggleFollowupSelection(objectiveId: string, candidateId: string, checked: boolean, rev: number): void {
+  const next = new Map(selections.get(objectiveId) ?? []);
   if (checked) next.set(candidateId, rev);
   else next.delete(candidateId);
-  commitSelection(itemId, next.size > 0 ? next : null);
+  commitSelection(objectiveId, next.size > 0 ? next : null);
 }
 
 /**
@@ -289,18 +289,18 @@ export function toggleFollowupSelection(itemId: string, candidateId: string, che
  * 사람이 rev1 을 보고 골랐는데 지휘관이 rev2 로 고쳤다면 rev2 를 묵시 승인해 만들지 않는다 —
  * 선택을 풀어 새로 고친 본문을 확인한 뒤 다시 고르게 한다. 다시 고르면 그때의 rev 로 기억된다.
  */
-export function pruneSelection(itemId: string, openRevs: ReadonlyMap<string, number>): void {
-  const current = selections.get(itemId);
+export function pruneSelection(objectiveId: string, openRevs: ReadonlyMap<string, number>): void {
+  const current = selections.get(objectiveId);
   if (!current) return;
   const next = new Map<string, number>();
   for (const [id, rev] of current) {
     if (openRevs.get(id) === rev) next.set(id, rev);
   }
-  commitSelection(itemId, next.size > 0 ? next : null);
+  commitSelection(objectiveId, next.size > 0 ? next : null);
 }
 
-export function clearSelection(itemId: string): void {
-  commitSelection(itemId, null);
+export function clearSelection(objectiveId: string): void {
+  commitSelection(objectiveId, null);
 }
 
 export function subscribeSelection(listener: () => void): () => void {
@@ -308,19 +308,19 @@ export function subscribeSelection(listener: () => void): () => void {
   return () => { selectionListeners.delete(listener); };
 }
 
-export function useFollowupSelection(itemId: string): ReadonlySet<string> {
+export function useFollowupSelection(objectiveId: string): ReadonlySet<string> {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- 모듈 스토어 구독(기존 objectives-state 와 같은 문법)
-  return useSyncExternalStore(subscribeSelection, () => readSelection(itemId), () => readSelection(itemId));
+  return useSyncExternalStore(subscribeSelection, () => readSelection(objectiveId), () => readSelection(objectiveId));
 }
 
-export function isFollowupOpen(itemId: string): boolean {
-  return compOpens.get(itemId) ?? false;
+export function isFollowupOpen(objectiveId: string): boolean {
+  return compOpens.get(objectiveId) ?? false;
 }
 
-export function setFollowupOpen(itemId: string, open: boolean): void {
-  if ((compOpens.get(itemId) ?? false) === open) return;
-  if (open) compOpens.set(itemId, true);
-  else compOpens.delete(itemId);
+export function setFollowupOpen(objectiveId: string, open: boolean): void {
+  if ((compOpens.get(objectiveId) ?? false) === open) return;
+  if (open) compOpens.set(objectiveId, true);
+  else compOpens.delete(objectiveId);
   notifyComp();
 }
 
@@ -329,20 +329,20 @@ function subscribeComp(listener: () => void): () => void {
   return () => { compListeners.delete(listener); };
 }
 
-export function useFollowupOpen(itemId: string): boolean {
+export function useFollowupOpen(objectiveId: string): boolean {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- 모듈 스토어 구독
-  return useSyncExternalStore(subscribeComp, () => isFollowupOpen(itemId), () => isFollowupOpen(itemId));
+  return useSyncExternalStore(subscribeComp, () => isFollowupOpen(objectiveId), () => isFollowupOpen(objectiveId));
 }
 
 /** 본문 구획 머리의 새 후보 점 — 본 적 없는 open id 가 있으면 찍힌다. 펼치면 읽음으로 친다. */
-export function unseenFollowupCount(itemId: string, openIds: readonly string[]): number {
-  const seen = seenCandidates.get(itemId);
+export function unseenFollowupCount(objectiveId: string, openIds: readonly string[]): number {
+  const seen = seenCandidates.get(objectiveId);
   if (!seen) return openIds.length;
   return openIds.filter((id) => !seen.has(id)).length;
 }
 
-export function markFollowupsSeen(itemId: string, openIds: readonly string[]): void {
-  seenCandidates.set(itemId, new Set(openIds));
+export function markFollowupsSeen(objectiveId: string, openIds: readonly string[]): void {
+  seenCandidates.set(objectiveId, new Set(openIds));
 }
 
 /** 완료 멱등 키 — 서버가 UUID 로 받는다. 같은 batchId 를 다시 보내면 멱등이다. */

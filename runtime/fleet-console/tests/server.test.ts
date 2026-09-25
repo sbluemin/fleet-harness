@@ -394,16 +394,14 @@ describe("console static and terminal ticket boundary", () => {
         const consoleDir = path.join(fleetDataDir, "console");
         const objectivesDir = path.join(fleetDataDir, "workspaces", workspaceName, "objectives");
         fs.mkdirSync(consoleDir, { recursive: true });
-        fs.mkdirSync(objectivesDir, { recursive: true });
+        fs.mkdirSync(path.join(objectivesDir, "commander-1"), { recursive: true });
         fs.writeFileSync(path.join(fleetDataDir, "workspaces", workspaceName, "cwd.json"), `${JSON.stringify({ cwd: realpath })}\n`);
-        fs.writeFileSync(path.join(objectivesDir, "state.json"), `${JSON.stringify({
-          version: 3,
-          objectives: [{
-            operationId: "commander-1",
-            note: "",
-            members: [{ id: "member-1", role: "Bravo", by: "human", operationId: "bravo", subagents: true }],
-            steps: [],
-          }],
+        fs.writeFileSync(path.join(objectivesDir, "commander-1", "objective.json"), `${JSON.stringify({
+          operationId: "commander-1",
+          rank: 0,
+          note: "",
+          members: [{ id: "member-1", role: "Bravo", by: "human", operationId: "bravo", subagents: true }],
+          missions: [],
         })}\n`);
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
           version: 2,
@@ -447,16 +445,13 @@ describe("console static and terminal ticket boundary", () => {
     const response = await fetch(`${origin}/plugins/objectives/member/patch`, {
       method: "POST",
       headers: { "Content-Type": "application/json", origin },
-      body: JSON.stringify({ itemId: "commander-1", memberId: "member-1", patch: { subagents: false } }),
+      body: JSON.stringify({ objectiveId: "commander-1", memberId: "member-1", patch: { subagents: false } }),
     });
     expect(response.status).toBe(200);
     const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as {
-      readonly operations: ReadonlyArray<{ readonly id?: string; readonly payload?: { readonly subagentSpawn?: string; readonly userQuestions?: string } }>;
+      readonly operations: ReadonlyArray<{ readonly id?: string; readonly payload?: { readonly subagentSpawn?: string } }>;
     };
     expect(state.operations.find((operation) => operation.id === "bravo")?.payload?.subagentSpawn).toBe("blocked");
-    // 이 정책 전에 뜬 구성원도 플러그인 기동이 질문 차단을 채운다. 지휘관은 그대로다.
-    expect(state.operations.find((operation) => operation.id === "bravo")?.payload?.userQuestions).toBe("blocked");
-    expect(state.operations.find((operation) => operation.id === "commander-1")?.payload?.userQuestions).toBeUndefined();
   });
 
   it("rejects Theater registration without a valid folder grant", async () => {
