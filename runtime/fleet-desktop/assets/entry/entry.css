@@ -1,6 +1,7 @@
 /* Passive entry surface — self-contained by contract (no Console CSS import; the only url()s are the
    bundled font files next to this sheet, allowed by CSP font-src 'self'). The mini palette mirrors
-   the current Instrument charter in theme.css; when the charter moves, re-sync values here by hand.
+   the current Instrument charter in theme.css and is the default surface until the Console's theme
+   snapshot supplies the user's palette (desktop-contract.ts); when the charter moves, re-sync values here by hand.
    Channel rules apply as in the Console: signal tokens carry state only (positive=done, coral=danger,
    brass=progress), identity/environment badges stay on neutral ink. Korean glyphs fall back to
    Pretendard when installed, then to the system face — the bundled faces are Latin subsets. */
@@ -30,12 +31,12 @@
   --ink-spectral: oklch(70% 0.012 245);
   --ink-pearl: oklch(94% 0.008 90);
   --brass: oklch(80% 0.085 78);
-  --brass-glow: oklch(80% 0.085 78 / 16%);
+  --brass-glow: color-mix(in oklch, var(--brass) 16%, transparent);
   --aurora: oklch(77% 0.085 200);
   --positive: oklch(76% 0.11 160);
-  --positive-glow: oklch(76% 0.11 160 / 16%);
+  --positive-glow: color-mix(in oklch, var(--positive) 16%, transparent);
   --coral: oklch(68% 0.13 25);
-  --coral-glow: oklch(68% 0.13 25 / 16%);
+  --coral-glow: color-mix(in oklch, var(--coral) 16%, transparent);
   --hairline: oklch(29% 0.018 245);
   --hairline-strong: oklch(37% 0.02 245);
   --radius-xs: 6px;
@@ -54,6 +55,8 @@
   --brand-mark-size: 72px;
 }
 :root[data-platform="darwin"] { --brand-glyph-left: 93px; }
+/* 위 팔레트는 기본 판이다. main이 사용자의 Console 테마 색을 알면 같은 이름의 변수를 덮고 밝기를 알린다. */
+:root[data-scheme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }

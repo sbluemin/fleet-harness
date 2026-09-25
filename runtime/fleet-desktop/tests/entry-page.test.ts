@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createEntrySnapshotScript, type EntryPageSnapshot } from "../src/entry-page.js";
+import { createEntrySnapshotScript, ENTRY_PALETTE_TOKENS, type EntryPageSnapshot, type EntryPalette } from "../src/entry-page.js";
 
 const DAILY: EntryPageSnapshot = {
   platform: "darwin",
@@ -20,5 +20,14 @@ describe("entry page snapshots", () => {
     expect(source).toContain("\\u003cstep\\u003e");
     expect(source).toContain("textContent");
     expect(source).not.toContain("innerHTML");
+  });
+
+  it("lets only well-formed Console theme colors into the renderer's CSS", () => {
+    // 팔레트는 원격 Console도 보낼 수 있고, 렌더러에서 CSS 변수로 해석된다.
+    const tokens = Object.fromEntries(ENTRY_PALETTE_TOKENS.map((token) => [token, "oklch(97% 0.003 100)"]));
+    const light = { scheme: "light", canvas: "#f7f7f5", tokens } as EntryPalette;
+    expect(createEntrySnapshotScript({ ...DAILY, palette: light })).toContain('"scheme":"light"');
+    const hostile = { ...light, tokens: { ...tokens, brass: "red; background: url(https://evil.example/x)" } } as EntryPalette;
+    expect(createEntrySnapshotScript({ ...DAILY, palette: hostile })).not.toContain("evil.example");
   });
 });

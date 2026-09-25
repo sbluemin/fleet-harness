@@ -12,6 +12,48 @@ export type EntryTone = "busy" | "done" | "warning" | "failed";
  */
 export type EntryFarewell = "veiled" | "shown";
 
+/**
+ * 사용자가 Console에서 고른 테마의 색. Console이 테마 스냅샷에 실어 보내고(desktop-theme-sync),
+ * 진입 화면과 종료 인사는 이 값으로 기본 판(entry.css의 Instrument)을 덮는다. 모르면 기본 판 그대로다.
+ */
+export interface EntryPalette {
+  readonly scheme: "dark" | "light";
+  /** 창과 Console 뷰의 네이티브 바탕. Electron이 읽을 수 있는 #rrggbb. */
+  readonly canvas: string;
+  readonly tokens: Readonly<Record<EntryPaletteToken, string>>;
+}
+
+export const ENTRY_PALETTE_TOKENS = [
+  "ink-abyss", "ink-deep", "ink-veil", "ink-rim", "ink-fog", "ink-muted", "ink-spectral", "ink-pearl",
+  "brass", "aurora", "positive", "coral", "hairline", "hairline-strong",
+] as const;
+
+export type EntryPaletteToken = (typeof ENTRY_PALETTE_TOKENS)[number];
+
+const PALETTE_CANVAS = /^#[\da-f]{6}$/i;
+// 렌더러의 CSS 변수로 그대로 들어가는 값이다 — 색 하나 외의 어떤 문법도 통과시키지 않는다.
+const PALETTE_COLOR = /^(?:#[\da-f]{6}|oklch\(\d{1,3}(?:\.\d{1,4})?% \d(?:\.\d{1,4})? \d{1,3}(?:\.\d{1,4})?\))$/i;
+
+/**
+ * 밖에서 온 팔레트(Console 스냅샷, 지난 실행의 기억)를 받아들일 모양으로 거른다. 아는 토큰이 하나라도
+ * 빠지거나 형식이 어긋나면 통째로 버린다 — 절반만 바뀐 판보다 기본 판이 낫다. 모르는 토큰은 무시한다.
+ */
+export function readEntryPalette(value: unknown): EntryPalette | null {
+  if (!isRecord(value) || (value.scheme !== "dark" && value.scheme !== "light")) return null;
+  if (typeof value.canvas !== "string" || !PALETTE_CANVAS.test(value.canvas) || !isRecord(value.tokens)) return null;
+  const tokens: Partial<Record<EntryPaletteToken, string>> = {};
+  for (const token of ENTRY_PALETTE_TOKENS) {
+    const color = value.tokens[token];
+    if (typeof color !== "string" || !PALETTE_COLOR.test(color)) return null;
+    tokens[token] = color;
+  }
+  return { scheme: value.scheme, canvas: value.canvas, tokens: tokens as Record<EntryPaletteToken, string> };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export interface EntryPageSnapshot {
   readonly platform: string;
   readonly lang: "ko" | "en";
@@ -27,6 +69,7 @@ export interface EntryPageSnapshot {
   /** true면 마크와 워드마크가 Console 상단 브랜드 자리로 줄어들고 나머지는 사라진다. */
   readonly handoff?: boolean;
   readonly farewell?: EntryFarewell;
+  readonly palette?: EntryPalette;
 }
 
 export interface EntryPageWebContents {
@@ -50,6 +93,14 @@ const ENTRY_RENDERER = String.raw`(() => {
   root.setAttribute("lang", snapshot.lang);
   root.setAttribute("data-platform", snapshot.platform);
   root.setAttribute("data-tone", snapshot.tone);
+  // 팔레트가 없으면 기본 판으로 돌아간다 — 앞서 칠한 테마를 남겨 두면 창 바탕·종료 인사와 어긋난다.
+  root.removeAttribute("style");
+  root.removeAttribute("data-scheme");
+  if (snapshot.palette) {
+    // CSP가 style 속성은 막아도 CSSOM은 허용한다. 키와 값은 main이 readEntryPalette로 거른 것뿐이다.
+    root.setAttribute("data-scheme", snapshot.palette.scheme);
+    for (const [token, color] of Object.entries(snapshot.palette.tokens)) root.style.setProperty("--" + token, color);
+  }
   tagline.textContent = snapshot.tagline;
   title.textContent = snapshot.title;
   detail.textContent = snapshot.detail || "";
@@ -78,7 +129,10 @@ export function createEntrySnapshotScript(snapshot: EntryPageSnapshot): string {
 }
 
 export function normalizeEntrySnapshot(snapshot: EntryPageSnapshot): EntryPageSnapshot {
-  return typeof snapshot.progress === "number" ? { ...snapshot, progress: clampProgress(snapshot.progress) } : snapshot;
+  const { palette, ...rest } = snapshot;
+  const accepted = palette === undefined ? null : readEntryPalette(palette);
+  const normalized: EntryPageSnapshot = accepted ? { ...rest, palette: accepted } : rest;
+  return typeof normalized.progress === "number" ? { ...normalized, progress: clampProgress(normalized.progress) } : normalized;
 }
 
 export function clampProgress(progress: number): number {

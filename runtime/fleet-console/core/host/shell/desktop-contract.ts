@@ -169,9 +169,26 @@ export interface DesktopTitleBarOverlay {
   readonly height: number;
 }
 
+/**
+ * Desktop이 스스로 그리는 판(진입 화면·종료 인사)과 창 바탕의 색. 진입 화면은 Console CSS를 가져오지
+ * 않으므로 theme.css의 같은 이름 토큰 값을 여기 옮겨 둔다 — theme.css의 해당 토큰을 바꾸면 여기도 고친다.
+ * canvas는 Electron이 읽는 hex(`--canvas-sea-far`)이고, tokens는 진입 CSS 변수 이름 그대로의 oklch 값이다.
+ */
+export interface DesktopEntryPalette {
+  readonly scheme: "dark" | "light";
+  readonly canvas: string;
+  readonly tokens: Readonly<Record<DesktopEntryToken, string>>;
+}
+
+export type DesktopEntryToken =
+  | "ink-abyss" | "ink-deep" | "ink-veil" | "ink-rim" | "ink-fog" | "ink-muted" | "ink-spectral" | "ink-pearl"
+  | "brass" | "aurora" | "positive" | "coral" | "hairline" | "hairline-strong";
+
 export interface DesktopThemeSnapshot {
   readonly theme: ConsoleThemeId;
   readonly titleBarOverlay: DesktopTitleBarOverlay;
+  /** 이 필드를 모르는 Desktop은 무시하고, 이 필드가 없는 Console을 만난 Desktop은 기본 판을 쓴다. */
+  readonly entry: DesktopEntryPalette;
 }
 
 export const DESKTOP_THEME_PATH = "/api/v1/desktop/theme";
@@ -185,8 +202,56 @@ const DESKTOP_TITLE_BAR_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSn
   whites: { color: "#f1f0ec", symbolColor: "#424038", height: 35 },
 };
 
+const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalette>> = {
+  instrument: {
+    scheme: "dark",
+    canvas: "#010204",
+    tokens: {
+      "ink-abyss": "oklch(13% 0.014 245)", "ink-deep": "oklch(16.5% 0.016 245)", "ink-veil": "oklch(23.5% 0.02 245)",
+      "ink-rim": "oklch(29% 0.018 245)", "ink-fog": "oklch(52% 0.012 245)", "ink-muted": "oklch(64% 0.012 245)",
+      "ink-spectral": "oklch(70% 0.012 245)", "ink-pearl": "oklch(94% 0.008 90)", brass: "oklch(80% 0.085 78)",
+      aurora: "oklch(77% 0.085 200)", positive: "oklch(76% 0.11 160)", coral: "oklch(68% 0.13 25)",
+      hairline: "oklch(29% 0.018 245)", "hairline-strong": "oklch(37% 0.02 245)",
+    },
+  },
+  maritime: {
+    scheme: "dark",
+    canvas: "#000102",
+    tokens: {
+      "ink-abyss": "oklch(15% 0.04 250)", "ink-deep": "oklch(20% 0.045 248)", "ink-veil": "oklch(36% 0.035 248)",
+      "ink-rim": "oklch(48% 0.03 248)", "ink-fog": "oklch(70% 0.02 248)", "ink-muted": "oklch(75% 0.02 248)",
+      "ink-spectral": "oklch(82% 0.018 90)", "ink-pearl": "oklch(96% 0.012 88)", brass: "oklch(78% 0.13 75)",
+      aurora: "oklch(82% 0.13 195)", positive: "oklch(80% 0.15 152)", coral: "oklch(72% 0.17 25)",
+      hairline: "oklch(36% 0.035 248)", "hairline-strong": "oklch(48% 0.03 248)",
+    },
+  },
+  carbon: {
+    scheme: "dark",
+    canvas: "#010101",
+    tokens: {
+      "ink-abyss": "oklch(14% 0.006 255)", "ink-deep": "oklch(18% 0.007 255)", "ink-veil": "oklch(33% 0.006 252)",
+      "ink-rim": "oklch(45% 0.005 252)", "ink-fog": "oklch(67% 0.005 250)", "ink-muted": "oklch(72% 0.005 250)",
+      "ink-spectral": "oklch(81% 0.004 250)", "ink-pearl": "oklch(95% 0.003 250)", brass: "oklch(76% 0.115 62)",
+      aurora: "oklch(80% 0.105 205)", positive: "oklch(78% 0.13 158)", coral: "oklch(70% 0.16 25)",
+      hairline: "oklch(33% 0.006 252)", "hairline-strong": "oklch(45% 0.005 252)",
+    },
+  },
+  whites: {
+    scheme: "light",
+    canvas: "#f7f7f5",
+    tokens: {
+      "ink-abyss": "oklch(97% 0.003 100)", "ink-deep": "oklch(95.5% 0.005 100)", "ink-veil": "oklch(90.5% 0.009 100)",
+      "ink-rim": "oklch(80% 0.012 100)", "ink-fog": "oklch(45% 0.012 95)", "ink-muted": "oklch(41% 0.013 95)",
+      "ink-spectral": "oklch(37% 0.014 95)", "ink-pearl": "oklch(22.5% 0.012 95)", brass: "oklch(56% 0.125 82)",
+      aurora: "oklch(50% 0.1 210)", positive: "oklch(50% 0.12 160)", coral: "oklch(52% 0.16 25)",
+      hairline: "oklch(86% 0.01 100)", "hairline-strong": "oklch(76% 0.014 100)",
+    },
+  },
+};
+
 export function desktopThemeSnapshot(theme: ConsoleThemeId): DesktopThemeSnapshot {
-  return { theme, titleBarOverlay: { ...DESKTOP_TITLE_BAR_OVERLAYS[theme] } };
+  const entry = DESKTOP_ENTRY_PALETTES[theme];
+  return { theme, titleBarOverlay: { ...DESKTOP_TITLE_BAR_OVERLAYS[theme] }, entry: { ...entry, tokens: { ...entry.tokens } } };
 }
 
 interface DesktopThemeRouteDeps {
@@ -206,7 +271,7 @@ export const DESKTOP_THEME_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
     path: DESKTOP_THEME_PATH,
-    summary: "Get the Console-owned Desktop title bar theme.",
+    summary: "Get the Console-owned Desktop title bar and entry surface theme.",
     category: "Desktop",
     gate: "origin-strict",
     transport: "http",
@@ -214,7 +279,7 @@ export const DESKTOP_THEME_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
     path: DESKTOP_THEME_EVENTS_PATH,
-    summary: "Stream server-confirmed Desktop title bar theme changes.",
+    summary: "Stream server-confirmed Desktop title bar and entry surface theme changes.",
     category: "Desktop",
     gate: "origin-strict",
     transport: "sse",

@@ -6,6 +6,9 @@ import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWind
 export interface SecureWindowOptions {
   readonly iconPath: string;
   readonly platform?: NodeJS.Platform;
+  /** 지난 실행에 기억해 둔 사용자 테마. 없으면 Instrument 기본값으로 뜬다. */
+  readonly backgroundColor?: string;
+  readonly titleBarOverlay?: { readonly color: string; readonly symbolColor: string; readonly height: number };
 }
 
 export interface WindowPolicy {
@@ -24,7 +27,8 @@ export interface WindowPolicy {
 
 const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
-const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
+/** Instrument의 `--canvas-sea-far`. 사용자 테마를 모를 때의 창 바탕이다. */
+export const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
 /**
  * Windows 캡션 버튼 스트립도 Command Band와의 합의다 — 높이 35px + 밴드 하단 divider 1px가
  * 클라이언트 `--chrome-band-height: 36px`를 채우고, 폭 138 DIP(46×3)는 우측 클러스터가 비워
@@ -66,12 +70,12 @@ function secureShellWindowOptions(options: SecureWindowOptions): BaseWindowConst
     show: false,
     title: DESKTOP_WINDOW_TITLE,
     icon: options.iconPath,
-    backgroundColor: CANVAS_FAR_BACKGROUND_COLOR,
+    backgroundColor: options.backgroundColor ?? CANVAS_FAR_BACKGROUND_COLOR,
     minWidth: 900,
     minHeight: 560,
     // Windows 오버레이 35px + Command Band 하단 divider 1px가 클라이언트 --chrome-band-height: 36px를 채운다. macOS 신호등 계약과 함께 변경 시 양쪽을 동기화한다.
     ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1) } : {}),
-    ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
+    ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: options.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
   };
 }
 
@@ -88,7 +92,7 @@ export function createSecureShellWindow(
   const consoleView = new WebContentsViewCtor({
     webPreferences: { ...SECURE_RENDERER_PREFERENCES, backgroundThrottling: false },
   });
-  consoleView.setBackgroundColor(CANVAS_FAR_BACKGROUND_COLOR);
+  consoleView.setBackgroundColor(options.backgroundColor ?? CANVAS_FAR_BACKGROUND_COLOR);
   const stack = createDesktopViewStack(base, consoleView);
   return createDesktopShellWindow(base, consoleView, stack);
 }

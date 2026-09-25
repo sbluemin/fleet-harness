@@ -118,7 +118,8 @@ export function createDesktopEventStream<T>(deps: DesktopEventStreamDeps<T>): De
       if (response.status === 404 || response.status === 405) return "legacy";
       if (!response.ok) return "transient";
       const snapshot = deps.parseSnapshot(await response.json());
-      if (snapshot !== null) deps.apply(snapshot);
+      // 창이 그새 다른 콘솔로 옮겨 갔다면 이 응답은 떠나온 콘솔의 것이다 — 지금 콘솔의 상태로 적용하지 않는다.
+      if (snapshot !== null && activeOrigin === origin) deps.apply(snapshot);
       return "supported";
     } catch {
       return "transient";
