@@ -1696,7 +1696,19 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       terminalRuntime.invalidateTicketsForSession(sessionId);
       terminalRuntime.terminate(sessionId);
     }
+    // 넘겨받은 채팅도 첫 프롬프트를 기다리지 않고 자식을 세운다 — 전환 전 터미널이 받던 메시지를
+    // 전환 뒤에도 받아야 한다. PTY를 먼저 접은 뒤이므로 사용자가 곧바로 보낸 첫 메시지와 같은 자리다.
+    void openAdoptedChat(sessionId).catch(() => undefined);
     return { ok: true, mode: "chat", changed: true };
+  }
+
+  /** 표면을 넘겨받은 채팅의 자식을 연다. 그 사이 터미널로 돌아갔으면 열지 않고, 실패는 첫 메시지가 다시 시도한다. */
+  async function openAdoptedChat(sessionId: string): Promise<void> {
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return;
+    const seed = await resolveChatSeed(node);
+    if (!seed.ok || ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return;
+    (await chatRegistry.ensure(sessionId, () => seed.seed)).open();
   }
 
   /**
