@@ -40,11 +40,19 @@ const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
 export function displayPlanName(id: ProviderId, plan: string): string {
   const name = PROVIDER_NAME[id];
   if (!plan.toLowerCase().startsWith(name.toLowerCase())) return plan;
-  const stripped = plan
-    .slice(name.length)
-    .replace(/^[\s\-–—:·|/()[\]{}]+/, "")
-    .replace(/[\s\-–—:·|/()[\]{}]+$/, "")
-    .trim();
+  const afterPrefix = plan.slice(name.length);
+  // 접두사와 구분자 없이 이어지는 낱말(예: "Codexian Pro")은 공급자명이 아니다.
+  if (afterPrefix.length > 0 && !/^[\s\-–—:·|/()[\]{}]/.test(afterPrefix)) return plan;
+  const removedLead = /^[\s\-–—:·|/()[\]{}]+/.exec(afterPrefix)?.[0] ?? "";
+  let stripped = afterPrefix.slice(removedLead.length);
+  // 앞에서 연 괄호를 걷어냈을 때만 짝이 맞는 닫는 괄호를 함께 걷는다.
+  // "High Usage (5x)"처럼 본문에 딸린 괄호는 손대지 않는다.
+  if (/[(\[{]$/.test(removedLead)) {
+    const open = removedLead.charAt(removedLead.length - 1);
+    const close = open === "(" ? ")" : open === "[" ? "]" : "}";
+    if (stripped.endsWith(close)) stripped = stripped.slice(0, -close.length);
+  }
+  stripped = stripped.replace(/[\s\-–—:·|/]+$/, "").trim();
   return stripped.length > 0 ? stripped : plan;
 }
 
