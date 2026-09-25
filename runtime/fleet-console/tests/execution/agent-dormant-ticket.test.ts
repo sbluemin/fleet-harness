@@ -181,6 +181,7 @@ async function createHarness(options: {
     terminateAndWait: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
+    getSessionProcessId: () => undefined,
     getSessionLastActivityAt: () => null,
     resolveSessionIdentity: async () => null,
     onExit: (callback) => {

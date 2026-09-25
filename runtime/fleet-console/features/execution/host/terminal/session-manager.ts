@@ -166,6 +166,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     return typeof pid === "number" ? waitForProcessExit(pid, timeoutMs) : false;
   }
 
+  function getSessionProcessId(sessionId: string): number | undefined {
+    return sessions.get(sessionId)?.pty.pid;
+  }
+
   function getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined {
     return sessions.get(sessionId)?.messagePolicy;
   }
@@ -455,7 +459,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, terminateAndWait, stop, writeToSession };
+  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, getSessionProcessId, resolveSessionIdentity, terminate, terminateAndWait, stop, writeToSession };
 }
 
 async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {

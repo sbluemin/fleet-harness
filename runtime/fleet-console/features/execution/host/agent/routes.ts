@@ -2091,6 +2091,17 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 재생이 만난 첨부 경로를 미리보기 좌표로 되돌리는 유일한 문. 스토어가 모르는 경로(지난
         // 프로세스가 만든 것)는 null이고, 그 자리는 바이트 없는 첨부로 선다.
         resolveAttachmentId: (filePath: string) => launchAttachments.idForPath(filePath),
+        resolvePeerOrigin: (verifiedPid) => {
+          // from/fromSession/name은 송신자의 주장이다. 커널이 확인한 접속 PID와 우리가 소유한
+          // 살아 있는 자식만 대조한다. 중계자·다른 Console·과거 PID는 확인할 수 없으므로 중립이다.
+          const sender = ctx.host.operations.list().find((candidate) => candidate.type === AGENT_OPERATION_TYPE
+            && (chatRegistry.get(candidate.id)?.processId === verifiedPid || terminalRuntime.getSessionProcessId(candidate.id) === verifiedPid));
+          if (!sender) return undefined;
+          try { process.kill(verifiedPid, 0); } catch { return undefined; }
+          const receiver = ctx.host.operations.get(node.id);
+          const commander = receiver?.parentOperationId === sender.id && receiver.theaterId === sender.theaterId;
+          return { kind: "peer", role: commander ? "commander" : "session", title: maskChatText(sender.title, { cwd }).text };
+        },
         cancelComputerUse: () => { computerUseMcp?.cancelSession(mcpTokenLabel); browserMcp?.cancelSession(mcpTokenLabel); },
         ...(launchEffort?.ultracode ? { ultracode: true } : {}),
         // 터미널 런치와 같은 함수에서 같은 옵션으로 받는다 — 두 표면이 한 세션의 두 얼굴이다.

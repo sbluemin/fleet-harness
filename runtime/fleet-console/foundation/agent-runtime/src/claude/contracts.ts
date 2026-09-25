@@ -445,6 +445,8 @@ export interface ClaudeGatewaySendOptions {
 }
 
 export interface ClaudeGatewaySession extends AsyncIterable<ClaudeGatewayMessage> {
+  /** 이 핸들이 소유한 살아 있는 로컬 자식 PID. 서버의 수신 출처 대조 전용이며 종료 후에는 없다. */
+  readonly processId?: number;
   /**
    * 자식에게 사용자 메시지 하나를 밀어 넣는다. 반환은 큐 등록이며, 진행은 스트림으로만 온다.
    *

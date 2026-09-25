@@ -15,7 +15,8 @@ import { splitLaunchAttachmentInstructions } from "./launch-attachments.js";
 
 /** 쓰기 계열 도구가 남긴 파일 변경 — 도구 입력에서 접는다(원문 본문은 싣지 않는다). */
 /** 사람이 아닌 발화자 — 브라우저 DTO 에 실리며 제목만 싣고 경로·세션 신원은 없다. */
-export type ChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string };
+export type ChatPeerOrigin = { readonly kind: "peer"; readonly role: "commander" | "session" | "unknown"; readonly title?: string };
+export type ChatOrigin = { readonly kind: "operation"; readonly operationId: string; readonly title: string } | { readonly kind: "plugin"; readonly pluginId: string } | ChatPeerOrigin;
 
 /**
  * 사용자가 함께 보낸 이미지 하나. 브라우저에 가는 것은 미리보기 라우트의 좌표(id)뿐이고 호스트
@@ -374,6 +375,7 @@ interface TranscriptLine {
   readonly isSidechain?: unknown;
   readonly isCompactSummary?: unknown;
   readonly timestamp?: unknown;
+  readonly uuid?: unknown;
   /**
    * 이 줄을 누가 만들었는가. CLI가 출처를 아는 줄에만 실린다 — 관측된 값은 `human`(사람 입력),
    * `task-notification`(백그라운드 작업 결말), `peer`(다른 세션)다. 사람 발화에 `human` 아닌
@@ -383,10 +385,11 @@ interface TranscriptLine {
    * 남긴 줄, Quick Launch가 보낸 `promptSource:"sdk"` 줄). 부재를 "사람 아님"으로 읽으면 지시가
    * 조용히 사라진다.
    */
-  readonly origin?: { readonly kind?: unknown };
+  readonly origin?: { readonly kind?: unknown; readonly body?: unknown; readonly verifiedPeerPid?: unknown; readonly senderTaskId?: unknown };
   readonly message?: {
     readonly role?: unknown;
     readonly content?: unknown;
+    readonly stop_reason?: unknown;
   };
 }
 
@@ -425,6 +428,8 @@ export interface ChatEventMapOptions {
    * 않는다 — 이 훅이 없거나 null을 돌려주면 바이트 없는 자리(`lapsed`)로 그려진다.
    */
   readonly resolveAttachmentId?: (filePath: string) => string | null;
+  /** 라이브 연결의 커널 확인 PID만 받는다. 재생 시에는 재활용된 PID를 신뢰하지 않는다. */
+  readonly resolvePeerOrigin?: (verifiedPid: number) => ChatPeerOrigin | undefined;
 }
 
 /**
@@ -443,7 +448,7 @@ export function chatEventsFromTranscriptLine(raw: string, options: ChatEventMapO
 export function chatReplayFromTranscriptLine(
   raw: string,
   options: ChatEventMapOptions = {},
-): { readonly at?: number; readonly events: readonly AgentChatStreamEvent[] } {
+): { readonly at?: number; readonly messageId?: string; readonly endsTurn?: boolean; readonly events: readonly AgentChatStreamEvent[] } {
   let line: TranscriptLine;
   try {
     line = JSON.parse(raw) as TranscriptLine;
@@ -452,7 +457,8 @@ export function chatReplayFromTranscriptLine(
   }
   const parsedAt = typeof line.timestamp === "string" ? Date.parse(line.timestamp) : Number.NaN;
   const events = eventsFromTranscriptLine(line, options);
-  return Number.isFinite(parsedAt) ? { at: parsedAt, events } : { events };
+  const endsTurn = line.type === "assistant" && line.message?.stop_reason === "end_turn" && line.isSidechain !== true;
+  return { ...(Number.isFinite(parsedAt) ? { at: parsedAt } : {}), ...(typeof line.uuid === "string" ? { messageId: line.uuid } : {}), ...(endsTurn ? { endsTurn: true } : {}), events };
 }
 
 /**
@@ -481,6 +487,8 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     // 도구 응답을 실은 user 줄은 사람이 친 지시가 아니다 — 재생에서도 스텝의 결말로 옮긴다.
     const results = toolResultsFrom(line.message?.content, options);
     if (results.length > 0) return results;
+    const peer = peerMessageFrom(line);
+    if (peer) return [{ kind: "dispatch", ...peer, ...atField }];
     const text = readUserText(line.message?.content);
     if (text === null) return [];
     // 사람이 친 것이 아닌 운반체는 지휘 로그에 사용자 발화로 서지 않는다. 다만 본문만 걷고 턴
@@ -614,8 +622,15 @@ export function chatEventsFromSdkMessage(message: {
     return eventsFromAssistantContent(body?.content, options);
   }
   if (message.type === "user") {
-    const body = (message as { readonly message?: { readonly content?: unknown } }).message;
-    return toolResultsFrom(body?.content, options);
+    // isReplay는 과거만 뜻하지 않는다. CLI가 지금 받은 peer의 live echo에도 붙인다(실측).
+    // 중복 여부는 세션이 transcript/스트림에서 이미 받은 uuid로 판단한다.
+    const line = message as TranscriptLine;
+    const results = toolResultsFrom(line.message?.content, options);
+    if (results.length > 0) return results;
+    const peer = peerMessageFrom(line, options);
+    if (!peer) return [];
+    const at = typeof message.timestamp === "string" ? Date.parse(message.timestamp) : Number.NaN;
+    return [{ kind: "dispatch", ...peer, ...(Number.isFinite(at) ? { at } : {}) }];
   }
   if (message.type === "result") {
     const durationMs = (message as { readonly duration_ms?: unknown }).duration_ms;
@@ -1187,6 +1202,39 @@ function toolResultsFrom(content: unknown, options: ChatEventMapOptions): readon
     });
   }
   return events;
+}
+
+/**
+ * SDK가 확인한 수신 운반체만 읽는다. 본문에 붙여넣은 태그·이름은 출처 증거가 아니다.
+ * 최신 CLI의 origin.body는 하네스가 바깥 envelope를 벗긴 값이다. 다시 파싱하면 본문 속 코드가
+ * 사라지므로 그대로 보존한다. 구형/손상된 envelope는 속성을 브라우저에 넘기지 않는 쪽으로 닫는다.
+ */
+function peerMessageFrom(line: TranscriptLine, options: ChatEventMapOptions = {}): {
+  readonly text: string; readonly format: "markdown"; readonly by: ChatPeerOrigin;
+} | null {
+  if (line.origin?.kind !== "peer" || typeof line.origin.senderTaskId === "string") return null;
+  // 같은 프로세스의 서브에이전트 보고는 기존 작업 원장이 소유한다. 세션 간 메시지로 중복 표시하지 않는다.
+  const origin = line.origin;
+  let text: string;
+  if (typeof origin.body === "string") {
+    text = origin.body;
+  } else {
+    const content = line.message?.content;
+    const raw = typeof content === "string" ? content : Array.isArray(content)
+      ? content.flatMap((part: TranscriptContentBlock) => part?.type === "text" && typeof part.text === "string" ? [part.text] : []).join("\n") : "";
+    if (raw.includes("<cross-session-message")) {
+      // 단일 바깥 envelope만 벗긴다. 속성값은 사용하지도 반환하지도 않는다.
+      const envelope = /^\s*<cross-session-message(?:\s+[a-z-]+="[^"<>]*")*\s*>([\s\S]*)<\/cross-session-message>\s*$/.exec(raw);
+      text = envelope && !envelope[1]!.includes("<cross-session-message") && !envelope[1]!.includes("</cross-session-message>")
+        ? envelope[1]! : "";
+    } else {
+      text = raw;
+    }
+  }
+  const pid = origin.verifiedPeerPid;
+  const by = typeof origin.body === "string" && typeof pid === "number" && Number.isSafeInteger(pid) && pid > 0
+    ? options.resolvePeerOrigin?.(pid) : undefined;
+  return { text: capText(text), format: "markdown", by: by ?? { kind: "peer", role: "unknown" } };
 }
 
 function readUserText(content: unknown): string | null {

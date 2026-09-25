@@ -23,6 +23,7 @@ import {
   splitAgentChatTurn,
   type AgentChatAsk,
   type AgentChatAttachment,
+  type AgentChatPeerOrigin,
   type AgentChatChange,
   type AgentChatContext,
   type AgentChatContextSlice,
@@ -1188,7 +1189,9 @@ function ChatTurn({
   if (turn.command) return <ChatCommandRow command={turn.command} state={turn.state} language={language} />;
   return (
     <>
-      {turn.dispatch ? (
+      {turn.dispatch?.by?.kind === "peer" ? (
+        <PeerMessageCard text={turn.dispatch.text} by={turn.dispatch.by} at={turn.dispatch.at} language={language} />
+      ) : turn.dispatch ? (
         <div className="agent-chat-dispatch">
           <div className="agent-chat-dispatch-meta">
             {/* "Quick Launch로 전달" 배지는 퇴역했다 — 패널 컴포저가 주 경로가 되면서 들어온 문이
@@ -1441,15 +1444,41 @@ function Ledger({
   );
 }
 
-/**
- * 도는 턴이 도중에 집어간 사용자의 말 한 줄.
- *
- * 턴을 여는 말풍선과 같은 모양을 쓰지 않는다 — 그 모양은 "여기서 턴이 시작했다"는 뜻이고,
- * 이 말은 이미 돌던 턴이 읽은 것이다. 원장 폭에 맞춰 서되 캡션 하나가 그 차이를 말한다.
- *
- * 색은 중립이다. 신호 채널(aurora·coral)은 상태를 말하는 자리이고, 사용자가 말을 보탠 것은
- * 상태가 아니다 — 그 자리를 빌리면 이 줄이 경보로 읽힌다.
- */
+/** 세션 간 수신 카드. Console Use 말풍선과 분리하고, 본문과 서버가 확인한 출처만 그린다. */
+function PeerMessageCard({ text, by, at, language, midTurn = false }: {
+  readonly text: string;
+  readonly by: AgentChatPeerOrigin;
+  readonly at?: number;
+  readonly language: "en" | "ko";
+  readonly midTurn?: boolean;
+}) {
+  const t = getT(language);
+  const [explained, setExplained] = React.useState(false);
+  const explanationId = React.useId();
+  const heading = by.role === "commander" ? t("terminal.chat.peerCommander")
+    : by.role === "session" ? t("terminal.chat.peerSession") : t("terminal.chat.peerUnknown");
+  const explanation = by.role === "commander" ? t("terminal.chat.peerCommanderWhy")
+    : by.role === "session" ? t("terminal.chat.peerSessionWhy") : t("terminal.chat.peerUnknownWhy");
+  return (
+    <div className={`agent-chat-peer${midTurn ? " is-mid-turn" : ""}`} role="group" aria-label={heading}>
+      <div className="agent-chat-peer-head">
+        <svg className="agent-chat-peer-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+          <rect x="2" y="3.5" width="12" height="9" rx="1.5" /><path d="m2.5 4.5 5.5 4 5.5-4" />
+        </svg>
+        {midTurn ? <span>{t("terminal.chat.peerMidTurn")} ·</span> : null}
+        <span className="agent-chat-peer-heading">{heading}</span>
+        {by.title ? <span className={!midTurn && by.role === "commander" ? "chat-by-agent" : "agent-chat-peer-name"}>{by.title}</span> : null}
+        <button type="button" className="agent-chat-peer-info" aria-label={t("terminal.chat.peerExplanation")} aria-expanded={explained} aria-controls={explanationId} onClick={() => setExplained(!explained)}>i</button>
+        {at !== undefined ? <span className="agent-chat-peer-time">{new Intl.DateTimeFormat(language, { hour: "2-digit", minute: "2-digit" }).format(new Date(at))}</span> : null}
+      </div>
+      <div className="agent-chat-peer-explanation" id={explanationId} hidden={!explained}>{explanation}</div>
+      {text.trim() ? <StreamedMarkdown text={text} streaming={false} className="agent-chat-peer-body agent-chat-dispatch-md" language={language} />
+        : <div className="agent-chat-peer-body">{t("terminal.chat.peerUnavailable")}</div>}
+    </div>
+  );
+}
+
+/** 도는 턴이 집어간 말. 세션 간 수신은 카드로, 기존 사용자 개입은 중립 캡션 줄로 구분한다. */
 function InjectLine({
   item,
   language,
@@ -1458,6 +1487,7 @@ function InjectLine({
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
+  if (item.by?.kind === "peer") return <PeerMessageCard text={item.text ?? ""} by={item.by} at={item.at} language={language} midTurn />;
   return (
     <div className="agent-chat-turn-inject">
       <span className="agent-chat-turn-inject-caption">{t("terminal.chat.injectCaption")}</span>

@@ -93,7 +93,7 @@ export interface TerminalPtyDataDisposable {
 
 export interface TerminalPtyHandle {
   readonly fd?: number;
-  /** PTY 자식의 프로세스 id. 종료를 확인할 때만 쓴다. */
+  /** PTY 자식의 프로세스 id. 서버의 종료 확인과 peer 수신 출처 대조에만 쓴다. */
   readonly pid?: number;
   onData(callback: (data: string) => void): TerminalPtyDataDisposable;
   onExit(callback: () => void): TerminalPtyDataDisposable;
@@ -133,6 +133,8 @@ export interface TerminalSessionManager {
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   getSessionRenameCommand(sessionId: string): string | undefined;
   getSessionLastActivityAt(sessionId: string): number | null;
+  /** 서버 내부 소유 프로세스 대조 전용. 브라우저 세션 정보에는 포함하지 않는다. */
+  getSessionProcessId(sessionId: string): number | undefined;
   resolveSessionIdentity(sessionId: string, providerSessionId: string): Promise<string | null>;
   terminate(sessionId: string): boolean;
   /** `terminate`와 같이 접고, PTY 자식 프로세스가 실제로 끝날 때까지 기다린다. 제한 시간 안에 확인하지 못하면 false. */
