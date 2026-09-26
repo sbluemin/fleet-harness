@@ -1947,9 +1947,9 @@ describe("Instrument core design contract", () => {
     expect(chip).toContain("const markVisual = mark ?? status;");
     // 밴드는 브레드크럼 퇴역으로 활성 Operation을 그리지 않는다 — 마크 축 소비자에서 물러났다.
     expect(commandBand).not.toContain("resolveOperationMarkVisual");
-    // 지도 점은 함대 지도(Cruise 축소)가 그린다 — 덱은 칸에 패널을 세울 뿐 마크 축을 소비하지 않는다.
+    // 고정 덱의 테두리도 지도 점처럼 실제 대기와 확인 전의 마크 축을 구별한다.
     expect(source("../../../features/workspace/client/canvas/fleet-map.tsx")).toContain("const visual = operationMarkVisual(resolveOperationMarkVisual({");
-    expect(watchDeck).not.toContain("resolveOperationMarkVisual");
+    expect(watchDeck).toContain("const visual = resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds });");
     // 미확인 완료는 패널 아웃라인이 아니라 캡션 아랫변 레일이 나른다 — 상시 aura는 사라졌다.
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
     expect(components).not.toContain(".canvas-operation.is-unseen.is-active {");
@@ -4518,9 +4518,9 @@ describe("War Room deck panel grammar", () => {
   it("puts the deck card's hover mark on the cell, never on the pulsing panel", () => {
     // is-fresh·is-arriving·is-landed가 패널의 border-color와 box-shadow를 키프레임으로 물고 있어,
     // 같은 두 속성에 얹은 hover 선언은 애니메이션 오리진에 진다 — 신호가 가장 급한 카드에서만
-    // 위치 마크가 사라지는 조용한 실패다. 그래서 위치는 칸의 box-shadow가 소유한다.
-    const hover = components.match(/\.canvas-triage-deck-cell:hover,\n\.canvas-triage-deck-cell:has\(> \.canvas-triage-deck-pick:focus-visible\) \{[^}]*\}/)?.[0] ?? "";
-    expect(hover).toContain("box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);");
+    // 위치 마크가 사라지는 조용한 실패다. 그래서 위치는 칸의 outline이 소유한다.
+    const hover = components.match(/\.canvas-triage-deck-cell:hover,\n\.canvas-triage-deck-cell.is-queue-hovered,\n\.canvas-triage-deck-cell:focus-within \{[^}]*\}/)?.[0] ?? "";
+    expect(hover).toContain("outline: 1px solid color-mix(in oklch, var(--brass) 55%, transparent);");
     expect(hover).toContain("z-index: 6;");
     expect(hover).not.toContain("--shadow-floating");
     // 위치 마크는 패널의 맥동 속성을 절대 건드리지 않는다.

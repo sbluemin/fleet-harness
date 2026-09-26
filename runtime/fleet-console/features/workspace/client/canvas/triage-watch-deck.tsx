@@ -4,9 +4,10 @@ import type { OperationActivityVisual } from "../../../execution/client/operatio
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { getIdleArrivalIds, useOperationStatusDetails } from "../../../execution/client/operation-marks.js";
-import { operationActivityVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../../../execution/client/operation-activity.js";
+import { resolveOperationMarkVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../../../execution/client/operation-activity.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
-import type { OperationNode } from "../../../../core/client/src/integration/types.js";
+import type { OperationNode, OperationGroup } from "../../../../core/client/src/integration/types.js";
+import { flattenGroupedOrder, operationOrderFromNodes } from "../../../../core/client/src/integration/store.js";
 import {
   clampTriageDeckZoom,
   getTriageDeckZoom,
@@ -14,6 +15,7 @@ import {
   isTriageActive,
   nextTriageDeckZoomPreset,
   pickTriageOperation,
+  resolveTriageCounts,
   setTriageDeckZoom,
   setTriageDeckZoomLive,
   subscribeTriage,
@@ -30,6 +32,8 @@ interface TriageWatchDeckProps {
   /** 전 Theater 목록 — deck는 Theater 밴드로 갈라 전 Theater의 휴면 아닌 Operation을 올린다. */
   readonly theaters: readonly TriageDeckTheater[];
   readonly operations: readonly OperationNode[];
+  readonly groups?: readonly OperationGroup[];
+  readonly nextOperationId?: string | null;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly operationAccent: Readonly<Record<string, string>>;
   readonly arrivingOperationId?: string | null;
@@ -72,15 +76,18 @@ export function takeTriageDeckDepartureRect(operationId: string): DOMRect | null
   return rect;
 }
 
-// 카드 정렬 등급 — 사이드바 STATUS 축의 섹션 순서(대기→실행 중→백그라운드→유휴→휴면)를 그대로
-// 따른다. deck이 자체 순서를 정의하면 같은 상태가 두 표면에서 다른 위치로 읽힌다.
-const TRIAGE_DECK_ACTIVITY_RANK: Record<OperationActivityVisual, number> = {
-  awaiting: 0,
-  running: 1,
-  background: 2,
-  idle: 3,
-  ended: 4,
-};
+// 막대의 겨눔은 지목과 다르다. 카드의 outline만 바꾸고 무대·처리 큐는 건드리지 않는다.
+export function highlightTriageDeckCard(operationId: string | null): void {
+  document.querySelector(".canvas-triage-deck-cell.is-queue-hovered")?.classList.remove("is-queue-hovered");
+  if (!operationId) return;
+  const card = document.querySelector<HTMLElement>(`[data-triage-deck-card="${escapeAttributeValue(operationId)}"]`);
+  if (!card) return;
+  card.classList.add("is-queue-hovered");
+  const grid = card.closest(".canvas-triage-deck-grid");
+  if (!grid || card.closest(".is-under-stage")) return;
+  const rect = card.getBoundingClientRect(), bounds = grid.getBoundingClientRect();
+  if (rect.top < bounds.top || rect.bottom > bounds.bottom) card.scrollIntoView({ block: "nearest", behavior: "instant" });
+}
 const deckCardRects = new Map<string, DOMRect>();
 const CARD_FLASH_DURATION_MS = 900;
 
@@ -331,6 +338,8 @@ export function TriageWatchDeck({
   active,
   theaters,
   operations,
+  groups = [],
+  nextOperationId = null,
   operationRuntime,
   operationAccent,
   arrivingOperationId = null,
@@ -429,39 +438,17 @@ export function TriageWatchDeck({
   if (!visible) return null;
 
   const idleArrivalIds = getIdleArrivalIds();
-  const displayActivity = (operation: OperationNode) => resolveOperationDisplayActivity({
-    activity: resolveOperationActivity(operation, operationRuntime),
-    operationId: operation.id,
-    idleArrivalIds,
-  });
-  const activities = operations.map(displayActivity);
-  const running = activities.filter((activity) => activity === "running").length;
-  const idle = activities.filter((activity) => activity === "idle").length;
-  // 밴드 순서: 대기 카드 수 내림차순 → 같으면 theaters 선언 순. 카드 없는 Theater는 밴드를 그리지 않는다.
-  // 헤더 수치는 밴드 정렬과 같은 대기 판정(isTriageWaitingOperation)을 쓴다 — 유휴 도착을 정렬은 대기로
-  // 치면서 수치는 0으로 보이면 큐·사이드바 카운트와 모순된다. 대기로 센 유휴 도착은 유휴 수에서 뺀다.
-  const theaterBands = theaters
-    .map((theater, theaterIndex) => {
-      const theaterOperations = operations
-        .filter((operation) => operation.theaterId === theater.id)
-        .sort((left, right) => TRIAGE_DECK_ACTIVITY_RANK[displayActivity(left)]
-          - TRIAGE_DECK_ACTIVITY_RANK[displayActivity(right)]);
-      const waitingIds = new Set(
-        theaterOperations
-          .filter((operation) => displayActivity(operation) === "awaiting")
-          .map((operation) => operation.id),
-      );
-      const counts = {
-        waiting: waitingIds.size,
-        running: theaterOperations.filter((operation) => displayActivity(operation) === "running").length,
-        idle: theaterOperations.filter((operation) =>
-          displayActivity(operation) === "idle" && !waitingIds.has(operation.id)).length,
-      };
-      return { theater, theaterIndex, operations: theaterOperations, counts };
-    })
-    .filter((band) => band.operations.length > 0)
-    .sort((left, right) => right.counts.waiting - left.counts.waiting || left.theaterIndex - right.theaterIndex);
-  const bands = theaterBands;
+  const counts = resolveTriageCounts(operations, operationRuntime);
+  // flattenGroupedOrder 안의 sortOperationsByOrder가 durable order를 먼저 적용한다.
+  // 상태축·주의 큐와 독립된 그룹 화면 순서이며, 밴드도 Theater 목록 순서를 그대로 따른다.
+  const bands = theaters.map((theater) => {
+    const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
+    return {
+      theater,
+      operations: flattenGroupedOrder(theaterOperations, groups.filter((group) => group.theaterId === theater.id), operationOrderFromNodes(theaterOperations)),
+      counts: resolveTriageCounts(theaterOperations, operationRuntime),
+    };
+  }).filter((band) => band.operations.length > 0);
   const pick = (operationId: string, element: HTMLElement) => {
     // 승격 flight는 클릭 순간 사용자가 보고 있는 위치에서 출발해야 한다 — tween이 살아 있으면
     // 카드가 움직이는 중이라 좌표가 흔들리므로 먼저 스냅 종료하고, 그 다음 rect를 출발 전용 채널에 기록한다.
@@ -501,7 +488,9 @@ export function TriageWatchDeck({
       data-canvas-blocker
     >
       <div className="canvas-triage-deck-caption">
-        {t("canvas.triage.deckCaption", { running, idle })}
+        {counts.waiting + counts.unseen > 0
+          ? t("canvas.triage.deckAttentionCaption", counts)
+          : t("canvas.triage.deckCaption", counts)}
       </div>
       <div className="canvas-triage-deck-grid" ref={gridRef}>
         {bands.map((band) => {
@@ -516,7 +505,12 @@ export function TriageWatchDeck({
                 <span className="canvas-triage-deck-band-label">{band.theater.label}</span>
                 <span className="canvas-triage-deck-band-rule" aria-hidden="true" />
                 <span className="canvas-triage-deck-band-counts">
-                  {t("canvas.triage.bandCounts", { waiting: band.counts.waiting, running: band.counts.running, idle: band.counts.idle })}
+                  {([
+                    [band.counts.waiting, "canvas.triage.waitingCount"],
+                    [band.counts.unseen, "canvas.triage.unseenCount"],
+                    [band.counts.running, "canvas.triage.runningCount"],
+                    [band.counts.idle, "canvas.triage.idleCount"],
+                  ] as const).filter(([count]) => count > 0).map(([count, key]) => t(key, { count })).join(" · ")}
                 </span>
               </header>
               <div className="canvas-triage-deck-band-body">
@@ -527,8 +521,8 @@ export function TriageWatchDeck({
             </section>
           );
           function renderCell(operation: OperationNode) {
-                    const activity = displayActivity(operation);
-                    const visual = operationActivityVisual(activity);
+                    const activity = resolveOperationActivity(operation, operationRuntime);
+                    const visual = resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds });
                     return (
                       // 칸은 자리이지 물건이 아니다 — 이 안에 서는 것은 캔버스가 소유한 그
                       // Operation의 실제 패널이고(canvas가 portal로 들여보낸다), 칸은 자리·배율·
@@ -550,6 +544,7 @@ export function TriageWatchDeck({
                           data-fallback-title={operation.title}
                           ref={slotRefFor(operation.id)}
                         />
+                        {!underStage && operation.id === nextOperationId ? <span className="canvas-triage-deck-next">{t("canvas.triage.next")}</span> : null}
                         {/* 무대로 올리는 면 — 덱에서 패널의 본문은 읽는 것이지 조작하는 것이
                             아니다. 본문 위를 덮어 클릭 한 번을 승격으로 받고, 캡션은 그 위에 남아
                             창 컨트롤이 자기 클릭을 지킨다. */}

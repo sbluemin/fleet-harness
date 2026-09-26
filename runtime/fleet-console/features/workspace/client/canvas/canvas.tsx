@@ -1945,6 +1945,8 @@ export function OperationsCanvas({
         active={triageActive}
         theaters={state.theaters}
         operations={triageDeckOperations}
+        groups={state.groups}
+        nextOperationId={triageQueue[0]?.operation.id ?? null}
         operationRuntime={operationRuntime}
         operationAccent={canvas.operationAccent}
         arrivingOperationId={triageDeckArrivingOperationId}

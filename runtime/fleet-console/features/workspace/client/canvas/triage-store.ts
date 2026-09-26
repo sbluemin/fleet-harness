@@ -30,6 +30,21 @@ export interface TriageQueueEntry {
   readonly picked: boolean;
 }
 
+export function resolveTriageCounts(operations: readonly OperationNode[], runtime: Readonly<Record<string, OperationRuntimeState>>) {
+  const counts = { waiting: 0, unseen: 0, running: 0, idle: 0 };
+  const arrivals = getIdleArrivalIds();
+  for (const operation of operations) {
+    const activity = resolveOperationActivity(operation, runtime);
+    if (activity === "awaiting") counts.waiting += 1;
+    else if (activity === "running" || activity === "background") counts.running += 1;
+    else if (activity === "idle") {
+      if (arrivals.has(operation.id)) counts.unseen += 1;
+      else counts.idle += 1;
+    }
+  }
+  return counts;
+}
+
 export interface TriageStageIdentity {
   readonly theaterId: string;
   readonly operationId: string | null;

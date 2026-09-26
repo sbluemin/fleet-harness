@@ -90,6 +90,9 @@ import { resolveTriageDeckPromotion, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDe
 import { triageStageGeometryFor } from "../features/workspace/client/canvas/coordinates.js";
 import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../features/execution/client/operation-marks.js";
 
+// 덱은 실제 컴포넌트로 검증하되 Vite 호스트가 공급하는 플러그인 카탈로그는 필요하지 않다.
+vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => ({ operationKinds: [], providers: [] }) }));
+
 const THEATER_ID = "theater-a";
 const THEATERS = [
   { id: "theater-a", label: "Alpha" },
@@ -231,6 +234,27 @@ describe("triage store", () => {
       clearOperationRuntime(member.id);
       resetIdleArrivalForTests();
     }
+  });
+
+  it("keeps the deck in grouped manual order when attention changes without changing queue priority", () => {
+    const ungrouped = { ...operation("ungrouped", 1), order: 0 };
+    const first = { ...operation("first", 3), order: 1, groupId: "group" };
+    const second = { ...operation("second", 2), order: 2, groupId: "group" };
+    const other = operation("other", 4, "theater-b");
+    const operations = [ungrouped, second, other, first];
+    const groups = [{ id: "group", name: "Group", color: "", order: 0, theaterId: THEATER_ID, createdAt: 1 }];
+    const host = document.createElement("div");
+    document.body.append(host);
+    triagePlateRoot = createRoot(host);
+    const render = (runtime: Record<string, OperationRuntimeState>) => act(() => triagePlateRoot!.render(createElement(TriageWatchDeck, {
+      active: true, theaters: THEATERS, operations, groups, operationRuntime: runtime, operationAccent: {},
+    })));
+    const ids = () => [...host.querySelectorAll<HTMLElement>("[data-triage-deck-card]")].map((cell) => cell.dataset.triageDeckCard);
+    render({ second: { lifecycle: "live", activity: "awaiting" } });
+    expect(ids()).toEqual(["first", "second", "ungrouped", "other"]);
+    render({ other: { lifecycle: "live", activity: "awaiting" }, first: { lifecycle: "live", activity: "running" } });
+    expect(ids()).toEqual(["first", "second", "ungrouped", "other"]);
+    expect(resolveTriageQueue(operations, { other: { lifecycle: "live", activity: "awaiting" } }).map((entry) => entry.operation.id)).toEqual(["other"]);
   });
 
   it("keeps align-all across Triage round-trips, and align entry exits Triage", () => {    toggleAlignAll();
