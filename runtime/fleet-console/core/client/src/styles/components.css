@@ -17776,6 +17776,17 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   letter-spacing: 0.04em;
 }
 
+/* Trust 복구 지시는 한 줄 오류 행에서 말줄임하지 않고 별도 줄로 읽힌다. */
+.quick-launch-trust-guidance {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--surface-rim);
+  color: var(--coral);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 /* 실행 거절 사유 — 상태 신호이므로 coral 채널을 쓴다. */
 .quick-launch-rejection {
   min-width: 0;

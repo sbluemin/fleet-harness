@@ -1,11 +1,12 @@
 import type * as http from "node:http";
 import { canonicalizeTheaterPathSync, workspaceHash, listTheaterFolders, TheaterFolderListError, type TheaterRegistry, type TheaterRegistration, type createFolderGrantStore } from "./theaters/theater-domain.js";
 import { DeferredDeletionError, type createDeferredDeletionCoordinator } from "./deferred-deletion.js";
+import { ClaudeTrustError, trustClaudeTheater } from "./theaters/claude-trust.js";
 import type { ConsoleTheaterFolderListResponse, ConsoleTheaterInfo } from "../../../core/host/transport/console-contract-types.js";
 
 type TheaterFolderListBody = { readonly path?: unknown };
 type TheaterFolderGrantBody = { readonly path?: unknown };
-type CreateTheaterBody = { readonly folderGrantId?: unknown };
+type CreateTheaterBody = { readonly folderGrantId?: unknown; readonly claudeTrustConsent?: unknown };
 type PatchTheaterBody = { readonly order?: unknown };
 
 interface WorkspaceRouteDeps {
@@ -97,6 +98,18 @@ export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
     const canonicalCwd = canonicalizeTheaterPathSync(cwd);
     if (deletionCoordinator.hasPendingTheater(workspaceHash(canonicalCwd))) {
       writeJson(res, 409, { error: "pending_deletion" });
+      return;
+    }
+    // 안내된 추가 행위만 동의다. 다른 API 호출자의 자동 등록은 사용자 설정을 건드리지 않는다.
+    if (body.claudeTrustConsent === true) {
+      try {
+        await trustClaudeTheater(canonicalCwd);
+      } catch (error) {
+        writeJson(res, 409, { error: error instanceof ClaudeTrustError ? error.code : "claude_trust_write_failed" });
+        return;
+      }
+    } else if (body.claudeTrustConsent !== undefined && body.claudeTrustConsent !== false) {
+      writeJson(res, 400, { error: "invalid_claude_trust_consent" });
       return;
     }
     const theater = await theaters.register(cwd);

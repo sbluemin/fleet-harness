@@ -13,6 +13,7 @@ import { registerAgentRoutes } from "../../../features/execution/host/agent/rout
 import { createAgentCliPathStore, resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import { createTerminalRuntime } from "../../../features/execution/host/terminal/index.js";
 import { registerShellRoutes } from "../../../features/execution/host/terminal/shell.js";
+import { isClaudePathTrusted } from "../../../features/workspace/host/theaters/claude-trust.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
 
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist", "launchKey"] as const;
@@ -67,6 +68,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   const agent = await registerAgentRoutes(ctx, runtime, {
     organize,
     agentOptionsService: ctx.agentOptions,
+    isClaudePathTrusted,
     readAiGatewaySettings: aiGatewayStore.read,
     aiGateway: {
       routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,

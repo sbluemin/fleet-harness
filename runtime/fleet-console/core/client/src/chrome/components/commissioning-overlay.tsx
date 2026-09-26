@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { addTheater, issueTheaterFolderGrant } from "../../integration/api.js";
+import { describeTheaterRegistrationError } from "../../integration/failure-notices.js";
 import { useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { takeCommissioningReturnFocus } from "../../integration/shortcuts.js";
 import { useT } from "../../i18n/index.js";
@@ -78,10 +79,10 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
     beginAddTheater();
     try {
       const folderGrantId = await issueTheaterFolderGrant(path);
-      const result = await addTheater(folderGrantId);
+      const result = await addTheater(folderGrantId, true);
       completeAddTheater(result);
     } catch (error) {
-      failAddTheater(error instanceof Error ? error.message : String(error));
+      failAddTheater(describeTheaterRegistrationError(error, t));
     }
   };
 

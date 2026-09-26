@@ -68,6 +68,7 @@ type OperationRenamedEvent = {
 interface AgentRouteDeps {
   readonly organize?: Pick<ConsoleUseActions, "rename" | "group">;
   readonly agentOptionsService: AgentOptionsService;
+  readonly isClaudePathTrusted?: (cwd: string) => Promise<boolean>;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /** 턴 종료 hook의 관찰자 — 실험 "세션 관찰"이 여기서 검토를 예약한다. */
@@ -215,6 +216,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   });
   const launchAttachments = createLaunchAttachmentStore({ dataDir: ctx.host.paths.consoleDataDir });
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
+  // 확인된 실행 중 PTY는 설정 파일이 나중에 바뀌어도 이미 Trust 문턱을 지났다. 재개 때는 다시 확인한다.
+  const trustedPtySessions = new Set<string>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
@@ -304,7 +307,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ctx.host.operations.patch(payload.operationId, { title: updated.label ?? updated.cwdLabel, payload: toOperationPayload(operation.payload, cwd, updated, providerSession) });
       }
     }
-    injectRenameCommand(payload.operationId, payload.title);
+    void injectRenameCommand(payload.operationId, payload.title);
   });
   const unsubscribeChatDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
     if (isOperationDeletedEventPayload(payload) && payload.pluginId === null) void chatRegistry.dispose(payload.operationId);
@@ -1143,6 +1146,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     if (launchOptions.onSettled && launchOptions.prompt) consoleTerminal.begin(sessionId, launchOptions.prompt, true, launchOptions.onSettled);
     try {
+      trustedPtySessions.delete(sessionId);
       await terminalRuntime.attach({
         cwd,
         sessionId,
@@ -1324,6 +1328,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         };
         ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
       }
+      trustedPtySessions.delete(sessionId);
       await terminalRuntime.attach({
         cwd,
         sessionId,
@@ -1510,6 +1515,17 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     const deliveredText = composeLaunchPromptWithAttachments(sanitized, attachmentPaths) as string;
+    const livePty = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
+    if (!livePty) trustedPtySessions.delete(sessionId);
+    if (deps.isClaudePathTrusted && !trustedPtySessions.has(sessionId)) {
+      const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId) || "";
+      if (!await deps.isClaudePathTrusted(cwd)) {
+        settleAttachments(false);
+        reply(409, { error: "claude_trust_required" });
+        return true;
+      }
+      if (livePty) trustedPtySessions.add(sessionId);
+    }
     if (onSettled) {
       // 실행 중이어도 사람 경로와 같이 큐잉한다. 막는 것은 권한 프롬프트 대기 하나뿐이다 — 본문 끝의
       // Enter가 대기 중인 선택지를 확정해 버린다. 이미 귀속 대기 중인 console 턴이 있으면 이 요청의
@@ -1532,7 +1548,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         [...leadChunks, ...formatPtyMessage(policy, deliveredText, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY)],
       );
     };
-    if (terminalRuntime.getSessionLastActivityAt(sessionId) !== null) {
+    if (livePty) {
       // awaiting 재검사: 덱은 pick 시점만 가드한다 — 작성하는 사이 CLI가 권한 프롬프트로 전환하면
       // 전달 끝의 줄 종결자가 대기 중인 선택지를 그대로 확정해 버린다. 직접 POST 호출도 여기서 닫힌다.
       if (observability.getTerminalSessionInfo(sessionId)?.attentionPending === true) {
@@ -2354,6 +2370,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   async function handleExit(operationId: string): Promise<void> {
+    trustedPtySessions.delete(operationId);
     consoleTerminal.cancel(operationId);
     reminderWriter.cancel(operationId);
     resetOscActivity(operationId);
@@ -2405,6 +2422,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   function removeSession(sessionId: string): void {
+    trustedPtySessions.delete(sessionId);
     consoleTerminal.forget(sessionId);
     reminderWriter.cancel(sessionId);
     resetOscActivity(sessionId);
@@ -2492,8 +2510,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       });
   }
 
-  function injectRenameCommand(sessionId: string, label: string | undefined): void {
+  async function injectRenameCommand(sessionId: string, label: string | undefined): Promise<void> {
     if (!label) return;
+    const operation = ctx.host.operations.get(sessionId);
+    const cwd = operation && (readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId));
+    if (!cwd || (deps.isClaudePathTrusted && !trustedPtySessions.has(sessionId) && !(await deps.isClaudePathTrusted(cwd)))) return;
+    // 신뢰 조회 중 더 새 이름이 저장됐다면 낡은 /rename을 나중에 보내지 않는다.
+    if (ctx.host.operations.get(sessionId)?.title !== operation.title) return;
     const renameCommand = terminalRuntime.getRenameCommand(sessionId);
     if (!renameCommand) return;
     const safeLabel = sanitizePtyMessageText(label.replace(/[\r\n\t]+/g, " ")).trim();

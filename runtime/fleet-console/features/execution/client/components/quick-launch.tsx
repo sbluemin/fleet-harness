@@ -1959,6 +1959,9 @@ export function QuickLaunch() {
           </div>
         ) : null}
 
+        {mentionErrorKey === "chrome.quickLaunch.mentionErrorTrustRequired" && !showStrip ? (
+          <p className="quick-launch-trust-guidance" role="alert">{t("chrome.quickLaunch.mentionErrorTrustRequired")}</p>
+        ) : null}
         <ComposerBar className="quick-launch-bar" ref={barRef} inert={showStrip || undefined}>
           {/* 멘션이 확정되면 런치 3종(theater/model/effort)은 접히고 행선지 태그가 그 자리를 잇는다 —
               한 입력의 행선지는 하나라는 사실을 바가 배타적으로 말한다. */}
@@ -2041,7 +2044,7 @@ export function QuickLaunch() {
             <span className="quick-launch-rejection" role="alert">
               {t(attachmentErrorKey as Parameters<typeof t>[0])}
             </span>
-          ) : mentionErrorKey ? (
+          ) : mentionErrorKey && mentionErrorKey !== "chrome.quickLaunch.mentionErrorTrustRequired" ? (
             // 전달이 거절됐다. 초안·멘션은 그대로 남았고, 무엇이 문제인지 여기서 말한다.
             <span className="quick-launch-rejection" role="alert">
               {t(mentionErrorKey as Parameters<typeof t>[0])}

@@ -18,6 +18,7 @@ import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type Conso
 import type { AgentCliDetector } from "../features/execution/host/agent/agent-cli-detect.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "../features/workspace/host/theaters/theater-domain.js";
 import { TheaterRegistry } from "../features/workspace/host/theaters/theater-domain.js";
+import { isClaudePathTrusted, trustClaudeTheater } from "../features/workspace/host/theaters/claude-trust.js";
 import { WorkspaceRegistry } from "../../fleet-plugins/codex/server/codex/workspaces.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "../features/execution/host/terminal/terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "../features/execution/host/terminal/ws.js";
@@ -452,6 +453,83 @@ describe("console static and terminal ticket boundary", () => {
       readonly operations: ReadonlyArray<{ readonly id?: string; readonly payload?: { readonly subagentSpawn?: string } }>;
     };
     expect(state.operations.find((operation) => operation.id === "bravo")?.payload?.subagentSpawn).toBe("blocked");
+  });
+
+  it("applies Claude trust only on consent while preserving global settings and rejecting invalid JSON", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-trust-"));
+    tempDirs.push(dir);
+    const config = path.join(dir, "claude-config");
+    fs.mkdirSync(config);
+    const file = path.join(config, ".claude.json");
+    const first = path.join(dir, "first");
+    const second = path.join(dir, "second");
+    fs.mkdirSync(first);
+    fs.mkdirSync(second);
+    fs.writeFileSync(file, JSON.stringify({ custom: "keep", projects: { elsewhere: { hasTrustDialogAccepted: true } } }), { mode: 0o600 });
+    vi.stubEnv("CLAUDE_CONFIG_DIR", config);
+    try {
+      const fixture = await startFixture();
+      await createTheater(fixture, first);
+      expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({ custom: "keep", projects: { elsewhere: { hasTrustDialogAccepted: true } } });
+      const grant = await issueTheaterFolderGrant(fixture, second);
+      const response = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderGrantId: grant.folderGrantId, claudeTrustConsent: true }),
+      });
+      expect(response.status).toBe(200);
+      expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({
+        custom: "keep", projects: { elsewhere: { hasTrustDialogAccepted: true }, [fs.realpathSync(second)]: { hasTrustDialogAccepted: true } },
+      });
+      expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+      const beforeLockFailure = fs.readFileSync(file, "utf8");
+      fs.mkdirSync(`${file}.lock`);
+      const lockedGrant = await issueTheaterFolderGrant(fixture, first);
+      const locked = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderGrantId: lockedGrant.folderGrantId, claudeTrustConsent: true }),
+      });
+      expect(locked.status).toBe(409);
+      expect(fs.readFileSync(file, "utf8")).toBe(beforeLockFailure);
+      fs.rmdirSync(`${file}.lock`);
+      fs.writeFileSync(file, "{broken");
+      const failedGrant = await issueTheaterFolderGrant(fixture, first);
+      const failed = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderGrantId: failedGrant.folderGrantId, claudeTrustConsent: true }),
+      });
+      expect(failed.status).toBe(409);
+      await expect(failed.json()).resolves.toEqual({ error: "claude_trust_invalid_config" });
+      expect(fs.readFileSync(file, "utf8")).toBe("{broken");
+      const target = path.join(config, "actual.json");
+      fs.writeFileSync(target, beforeLockFailure, { mode: 0o600 });
+      fs.rmSync(file);
+      fs.symlinkSync(target, file);
+      fs.mkdirSync(`${file}.lock`);
+      const linkedLockedGrant = await issueTheaterFolderGrant(fixture, first);
+      const linkedLocked = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderGrantId: linkedLockedGrant.folderGrantId, claudeTrustConsent: true }),
+      });
+      expect(linkedLocked.status).toBe(409);
+      expect(fs.readFileSync(target, "utf8")).toBe(beforeLockFailure);
+      fs.rmdirSync(`${file}.lock`);
+      const linkedGrant = await issueTheaterFolderGrant(fixture, first);
+      const linked = await fetch(`${fixture.endpoint}api/v1/theaters`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderGrantId: linkedGrant.folderGrantId, claudeTrustConsent: true }),
+      });
+      expect(linked.status).toBe(200);
+      expect(fs.lstatSync(file).isSymbolicLink()).toBe(true);
+      expect(JSON.parse(fs.readFileSync(target, "utf8")).projects[fs.realpathSync(first)].hasTrustDialogAccepted).toBe(true);
+      const repo = path.join(dir, "nested-repo");
+      fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
+      const settings = JSON.parse(fs.readFileSync(target, "utf8"));
+      settings.projects[fs.realpathSync(dir)] = { hasTrustDialogAccepted: true };
+      fs.writeFileSync(target, JSON.stringify(settings));
+      expect(await isClaudePathTrusted(repo)).toBe(false);
+      await trustClaudeTheater(repo);
+      expect(JSON.parse(fs.readFileSync(target, "utf8")).projects[fs.realpathSync(repo)].hasTrustDialogAccepted).toBe(true);
+    } finally { vi.unstubAllEnvs(); }
   });
 
   it("rejects Theater registration without a valid folder grant", async () => {

@@ -4,6 +4,12 @@ import type { CoreMessageKey } from "../i18n/index.js";
 
 type Translate = (key: CoreMessageKey) => string;
 
+export function describeTheaterRegistrationError(error: unknown, t: Translate): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === "claude_trust_locked") return t("chrome.directoryBrowser.trustLocked");
+  return message.startsWith("claude_trust_") ? `${t("chrome.directoryBrowser.trustFailure")} (${message})` : message;
+}
+
 /**
  * Console core가 소유하는 실패 코드를 사람이 읽는 세 조각으로 옮긴다.
  *

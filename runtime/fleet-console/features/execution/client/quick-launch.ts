@@ -478,6 +478,7 @@ export function quickLaunchMentionErrorMessageKey(code: string | null): string {
   switch (code) {
     case "resume_unavailable": return "chrome.quickLaunch.mentionErrorResumeUnavailable";
     case "session_awaiting_input": return "chrome.quickLaunch.mentionErrorAwaiting";
+    case "claude_trust_required": return "chrome.quickLaunch.mentionErrorTrustRequired";
     // 비-Operation 행선지가 아직 앞 질문에 답하는 중 — 조용히 삼키면 사용자의 문장이 사라진다.
     case "destination_busy": return "chrome.quickLaunch.mentionErrorBusy";
     case "session_not_found": return "chrome.quickLaunch.mentionErrorGone";

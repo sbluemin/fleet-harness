@@ -101,10 +101,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   };
 
   /** 전달됐는지를 돌려준다 — 못 닿은 알림에 기대 상태를 지우면 다음 시작이 같은 변경을 말하지 못한다. */
-  const send = async (operationId: string, text: string): Promise<boolean> => {
+  const send = async (operationId: string, text: string, reportFailure = false): Promise<boolean> => {
     if (!ctx.host.consoleControl || !ctx.host.operations.get(operationId)) return false;
     try { await ctx.host.consoleControl.request({ kind: "send", operationId, text }); return true; }
-    catch { return false; }
+    catch (error) {
+      // 개시·구상은 사람이 재시도해야 할 실패다. 알림의 best-effort 전달과 달리 원인을 보존한다.
+      if (reportFailure) asStoreError(error);
+      return false;
+    }
   };
   // 호스트 제어 경로의 거절(invalid_launch_option 등)은 코드 그대로 호출자에게 — 뭉개지 않는다.
   const asStoreError = (error: unknown): never => {
@@ -503,7 +507,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
       const firstWake = neverStarted(objectiveId);
       if (firstWake) current = store.setEdited(objectiveId, null);
-      const delivered = await send(objectiveId, startTurn(current, language, options?.context));
+      const delivered = await send(objectiveId, startTurn(current, language, options?.context), true);
       if (!delivered) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
@@ -521,7 +525,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       current = store.setCriteriaOpen(objectiveId, true);
       const firstWake = neverStarted(objectiveId);
       if (firstWake) current = store.setEdited(objectiveId, null);
-      if (!(await send(objectiveId, planTurn(current, language)))) throw new ObjectiveStoreError("launch_failed");
+      if (!(await send(objectiveId, planTurn(current, language), true))) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
       return { objective: current, operationId: objectiveId };
     }, "plan"),

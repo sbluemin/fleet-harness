@@ -107,6 +107,7 @@ const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   slot_taken: "objectives.band.reason.taken",
   session_awaiting_input: "objectives.band.reason.awaiting",
   launch_failed: "objectives.band.reason.undelivered",
+  claude_trust_required: "objectives.band.reason.trustRequired",
   launch_unavailable: "objectives.band.reason.unavailable",
   objective_done: "objectives.band.reason.done",
   criteria_pending: "objectives.band.reason.criteriaPending",

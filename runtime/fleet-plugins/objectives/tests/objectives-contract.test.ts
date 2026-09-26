@@ -66,7 +66,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const keyed = new Map<string, string>();
   const deletedKeys = new Set<string>();
   const reservedKeys = new Set<string>();
-  const hostFault = { afterCreate: 0 };
+  const hostFault = { afterCreate: 0, sendError: null as string | null };
   const operationsHost = {
     get: (id: string) => operations.get(id) ?? null,
     list: () => [...operations.values()],
@@ -96,7 +96,7 @@ function harness(routingOrigin: () => string | null = () => null) {
         launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
         reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
         request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string }) => {
-          if (input.kind === "send") { sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
+          if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
           if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // resume 은 휴면만 세션째 되살린다.
@@ -266,6 +266,9 @@ describe("Objectives contract", () => {
     hostFault.afterCreate = 1;
     await expect(launch.startCommander(objective.id)).rejects.toThrow("request_timeout");
     expect(savedObjective(objective.id)).toHaveProperty("pending.title", "Release renamed");
+    hostFault.sendError = "claude_trust_required";
+    await expect(launch.startCommander(objective.id)).rejects.toThrow("claude_trust_required");
+    expect(store.find(objective.id)?.title).toBe("Release renamed");
     const starts = await Promise.all([launch.startCommander(objective.id), launch.startCommander(objective.id)]);
     expect(starts.map((entry) => entry.operationId)).toEqual([objective.id, objective.id]);
     expect(launches.filter((entry) => entry.dormant)).toHaveLength(1);

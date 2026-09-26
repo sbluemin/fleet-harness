@@ -61,6 +61,34 @@ describe("agent message delivery", () => {
     expect(harness.writes).toEqual([]);
   });
 
+  it("does not type a structured message into an untrusted live or resuming PTY", async () => {
+    const harness = await createHarness({ trusted: false });
+    const sessionId = await harness.createSession();
+    harness.attachProviderSession(sessionId);
+    await harness.postMessage(sessionId, { text: "start the objective" });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "claude_trust_required" } });
+    expect(harness.attach).toHaveBeenCalledTimes(1);
+    harness.setLive(sessionId);
+    await harness.postMessage(sessionId, { text: "confirm the objective" });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "claude_trust_required" } });
+    expect(harness.writes).toEqual([]);
+  });
+
+  it("forgets a prior PTY trust check when that execution exits", async () => {
+    const harness = await createHarness({ trusted: true });
+    const sessionId = await harness.createSession();
+    harness.attachProviderSession(sessionId);
+    harness.setLive(sessionId);
+    await harness.postMessage(sessionId, { text: "first turn" });
+    await vi.waitFor(() => expect(harness.writes.length).toBeGreaterThan(0));
+    harness.setTrust(false);
+    await harness.fireExit(sessionId);
+    const previousWrites = harness.writes.length;
+    await harness.postMessage(sessionId, { text: "second turn" });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "claude_trust_required" } });
+    expect(harness.writes).toHaveLength(previousWrites);
+  });
+
   it("rejects an unknown operation with 404", async () => {
     const harness = await createHarness();
 
@@ -125,7 +153,7 @@ describe("agent message delivery", () => {
   });
 });
 
-async function createHarness(options: { readonly resumeAttachError?: Error } = {}) {
+async function createHarness(options: { readonly resumeAttachError?: Error; readonly trusted?: boolean } = {}) {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-message-"));
   temporaryDirectories.push(fleetDataDir);
   const operations: OperationNode[] = [];
@@ -133,6 +161,8 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
   const writes: string[] = [];
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
   const liveSessions = new Set<string>();
+  let trustAllowed = options.trusted;
+  let onExit: ((sessionId: string) => void | Promise<void>) | null = null;
   let route: RouteHandler | undefined;
   const tickets = createPluginTerminalTicketRegistry();
   const attach = vi.fn<TerminalRuntime["attach"]>(async () => {
@@ -155,7 +185,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
     getRenameCommand: () => undefined,
     getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
     resolveSessionIdentity: async () => null,
-    onExit: () => () => {},
+    onExit: (callback) => { onExit = callback; return () => { onExit = null; }; },
     onTitle: () => () => {},
     registerLaunchResolver: () => () => {},
     bindChatAttach: () => () => {},
@@ -263,6 +293,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
   await registerAgentRoutes(ctx, terminalRuntime, {
     agentOptionsService: agentOptionsStub,
+    ...(options.trusted === undefined ? {} : { isClaudePathTrusted: async () => trustAllowed === true }),
   });
   cleanups.push(async () => {
     if (previousTerminalCommand === undefined) delete process.env.FLEET_TERMINAL_CMD;
@@ -308,6 +339,8 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
     postMessage,
     postAttention,
     setLive: (sessionId: string) => { liveSessions.add(sessionId); },
+    setTrust: (trusted: boolean) => { trustAllowed = trusted; },
+    fireExit: async (sessionId: string) => { if (onExit) await onExit(sessionId); },
     attachProviderSession: (sessionId: string) => {
       const operation = operations.find((candidate) => candidate.id === sessionId);
       if (!operation) throw new Error("Operation not found");
