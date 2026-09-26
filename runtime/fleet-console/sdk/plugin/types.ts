@@ -686,6 +686,12 @@ export interface FleetPluginManifest {
    */
   readonly consoleRoutePrefix?: string;
   readonly id: string;
+  /**
+   * 외부 플러그인(`~/.fleet/plugins/<dir>/plugin.json`)은 반드시 `SDK_API_VERSION`
+   * (`@fleet-console/sdk/version`, 현재 1)과 같은 값을 선언해야 한다. 빠지거나 다르면 Console은
+   * 그 플러그인을 기동하지 않고, 서버 로그와 「패널을 세우지 못한 플러그인」 알림에 필요한 값을 남긴다.
+   * 내장 플러그인은 생략할 수 있다.
+   */
   readonly apiVersion?: number;
   readonly name?: string;
   readonly client?: string;

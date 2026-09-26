@@ -2,7 +2,7 @@
 
 Sample external Fleet Console client plugin.
 
-- `plugin.json` declares `apiVersion: 1`, a browser client entry (`client/index.tsx`), and an optional routes entry (`routes.ts`).
+- `plugin.json` declares `apiVersion: 1`, a browser client entry (`client/index.tsx`), and an optional routes entry (`routes.ts`). `apiVersion` is required for external plugins and must equal `SDK_API_VERSION` from `@fleet-console/sdk/version`; when it is missing or different, the Console does not start the plugin and names the required value in the server log and in its skipped-plugin notice.
 - `client/index.tsx` imports only React and `@fleet-console/sdk/*` browser modules. The console runtime shims share the host's React and SDK singleton, so the plugin does not bring its own React copy.
 - `routes.ts` exposes a minimal `/plugins/notes/info` backend route with display-safe metadata only.
 

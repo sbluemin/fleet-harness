@@ -193,6 +193,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export interface PluginClientAssetsDeps {
   readonly plugins: readonly DiscoveredFleetPlugin[];
+  /** 탐색 단계에서 이미 거절된 플러그인 — 브라우저가 이유를 말할 수 있게 manifest의 skipped에 합친다. */
+  readonly skipped?: readonly PluginClientSkippedDto[];
 }
 
 export interface PluginClientManifestDto {
@@ -208,7 +210,7 @@ export interface PluginClientManifestDto {
 export interface PluginClientSkippedDto {
   readonly id: string;
   readonly name?: string;
-  readonly reason: "unsupported_client_entry" | "client_build_failed";
+  readonly reason: "unsupported_api_version" | "unsupported_client_entry" | "client_build_failed";
 }
 
 export interface PluginClientManifestEntryDto {
@@ -279,7 +281,7 @@ export function createPluginClientAssets(deps: PluginClientAssetsDeps): PluginCl
   }
 
   function manifest(): PluginClientManifestDto {
-    const skipped = [...skippedPlugins.values()];
+    const skipped = [...(deps.skipped ?? []), ...skippedPlugins.values()];
     return {
       plugins: deps.plugins.filter((plugin) => plugin.external && !!plugin.clientEntry && preparedPlugins.has(plugin.manifest.id)).map((plugin) => ({
         id: plugin.manifest.id,
@@ -386,6 +388,8 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
 
 export interface FleetPluginHost {
   readonly plugins: readonly DiscoveredFleetPlugin[];
+  /** 발견됐지만 호환성 게이트에서 거절된 외부 플러그인. */
+  readonly skipped: readonly PluginClientSkippedDto[];
   readonly sensitiveFieldsByPluginId: ReadonlyMap<string, readonly string[]>;
   readonly apiCatalog: readonly ApiCatalogEntry[];
   boot(): Promise<void>;
@@ -459,7 +463,7 @@ const MAX_PLUGIN_BUNDLE_OWNER_PID = 0x7fff_ffff;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHost {
-  const plugins = filterDiscoveredPlugins(discoverFleetPlugins(deps));
+  const { accepted: plugins, skipped } = filterDiscoveredPlugins(discoverFleetPlugins(deps));
   const sensitiveFieldsByPluginId = new Map(plugins.map((plugin) => [plugin.manifest.id, plugin.manifest.sensitiveFields ?? []]));
   const generatedBundleDirs = new Set<string>();
   const apiCatalog: ApiCatalogEntry[] = [];
@@ -498,7 +502,7 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
     }
   }
 
-  return { plugins, sensitiveFieldsByPluginId, apiCatalog, boot, cleanup };
+  return { plugins, skipped, sensitiveFieldsByPluginId, apiCatalog, boot, cleanup };
 
   async function bootPluginRoutes(plugin: DiscoveredFleetPlugin): Promise<void> {
     const pendingRoutes: PendingRouteRegistration[] = [];
@@ -676,8 +680,9 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities):
   };
 }
 
-function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): readonly DiscoveredFleetPlugin[] {
+function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): { readonly accepted: readonly DiscoveredFleetPlugin[]; readonly skipped: readonly PluginClientSkippedDto[] } {
   const accepted: DiscoveredFleetPlugin[] = [];
+  const skipped: PluginClientSkippedDto[] = [];
   const seen = new Set<string>();
   for (const plugin of plugins) {
     const id = plugin.manifest.id;
@@ -686,13 +691,17 @@ function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): rea
       continue;
     }
     if (plugin.external && plugin.manifest.apiVersion !== SDK_API_VERSION) {
-      console.warn(`[fleet-console] Plugin ${id} skipped: unsupported apiVersion (${String(plugin.manifest.apiVersion)})`);
+      // 이 거절은 예전에 서버 로그 한 줄로만 남았고, 데몬은 stdout을 버리므로 작성자에게는 플러그인이
+      // 그냥 없는 것으로 보였다. 로그는 고칠 값을 말하고, 브라우저에는 skipped로 도달시킨다.
+      const declared = plugin.manifest.apiVersion === undefined ? "has no apiVersion" : `declares apiVersion ${plugin.manifest.apiVersion}`;
+      console.warn(`[fleet-console] Plugin ${id} skipped: ${path.join(plugin.root, "plugin.json")} ${declared}; this Console requires "apiVersion": ${SDK_API_VERSION}`);
+      skipped.push({ id, ...(plugin.manifest.name ? { name: plugin.manifest.name } : {}), reason: "unsupported_api_version" });
       continue;
     }
     seen.add(id);
     accepted.push(plugin);
   }
-  return accepted;
+  return { accepted, skipped };
 }
 
 // 동적 import된 URL은 Node의 ESM 레지스트리에 영구히 남아 회수되지 않는다. 번들 캐시 디렉터리는 서버마다
