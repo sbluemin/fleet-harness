@@ -75,7 +75,9 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const soloMaxWidthRef = useRef(soloMaxWidth);
   soloMaxWidthRef.current = soloMaxWidth;
   const extraWidth = soloWidth === null ? requestedExtraWidth : 0;
-  const railChromeExpanded = useRailChromeExpanded();
+  // Zen에서는 레일 접힘 선호를 보지 않는다 — 아이콘 열이 작업 표시줄 트레이로 옮겨 가고 카드는 도구를 고를 때만
+  // 서므로, 접어 둔 채 Zen에 들어와도 트레이에서 고른 도구가 떠야 한다. 선호 자체는 그대로라 Zen을 끄면 다시 접힌다.
+  const railChromeExpanded = useRailChromeExpanded() || zenMode;
   const railPeeking = useRailPeeking();
   const overlayAlpha = useRailOverlayAlpha();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);

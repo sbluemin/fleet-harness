@@ -134,9 +134,11 @@ export function App() {
   const workFocusRef = useRef<HTMLElement | null>(null);
   // Zen은 /operations 데스크톱 화면에만 선다. Theater를 바꿔도 Zen은 유지한다 — 작업 표시줄의
   // Theater 메뉴와 다른 Theater의 Operation이 바로 그 전환을 Zen 안에서 하는 길이다.
+  // Zen이 켜질 때도 다시 잰다 — 전환 장면은 커튼이 내려온 뒤에 Zen을 켜므로, 그 사이 화면을 떠났거나 모바일이
+  // 되었으면 늦게 켜진 Zen을 여기서 거둔다.
   useLayoutEffect(() => {
-    if (!operationsViewVisible || mobileLayout) setZenMode(false);
-  }, [operationsViewVisible, mobileLayout]);
+    if (zenMode && (!operationsViewVisible || mobileLayout)) setZenMode(false);
+  }, [zenMode, operationsViewVisible, mobileLayout]);
   useEffect(() => {
     const remember = (event: FocusEvent) => {
       const target = event.target;
