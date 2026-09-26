@@ -245,7 +245,7 @@ export function followupGate(objective: Objective): "steer" | "criteria" | null 
 // ── 탭 안 편의 상태 (초안과 같은 규칙: 접어도, 다른 목표를 보다 와도 남는다) ──
 
 const selections = new Map<string, Map<string, number>>();
-const linkSelections = new Map<string, ReadonlySet<string>>();
+const linkSelections = new Map<string, ReadonlyMap<string, ReadonlySet<string>>>();
 const selectionListeners = new Set<() => void>();
 const compOpens = new Map<string, boolean>();
 const compListeners = new Set<() => void>();
@@ -258,6 +258,7 @@ const seenCandidates = new Map<string, Set<string>>();
  */
 const EMPTY_SELECTION: ReadonlySet<string> = new Set();
 const EMPTY_SELECTION_REVS: ReadonlyMap<string, number> = new Map();
+const EMPTY_LINKS: ReadonlyMap<string, ReadonlySet<string>> = new Map();
 const selectionSnapshots = new Map<string, ReadonlySet<string>>();
 const selectionRevSnapshots = new Map<string, ReadonlyMap<string, number>>();
 
@@ -296,13 +297,16 @@ function commitSelection(objectiveId: string, next: Map<string, number> | null):
   notifySelections();
 }
 
-export function readLinkSelections(objectiveId: string): ReadonlySet<string> { return linkSelections.get(objectiveId) ?? EMPTY_SELECTION; }
-export function useLinkSelections(objectiveId: string): ReadonlySet<string> {
+export function readLinkSelections(objectiveId: string): ReadonlyMap<string, ReadonlySet<string>> { return linkSelections.get(objectiveId) ?? EMPTY_LINKS; }
+export function useLinkSelections(objectiveId: string): ReadonlyMap<string, ReadonlySet<string>> {
   return useSyncExternalStore(subscribeSelection, () => readLinkSelections(objectiveId), () => readLinkSelections(objectiveId));
 }
-export function toggleLinkSelection(objectiveId: string, candidateId: string, checked: boolean): void {
-  const next = new Set(readLinkSelections(objectiveId));
-  if (checked) next.add(candidateId);
+export function toggleLinkSelection(objectiveId: string, candidateId: string, targetId: string, checked: boolean): void {
+  const next = new Map(readLinkSelections(objectiveId));
+  const targets = new Set(next.get(candidateId) ?? []);
+  if (checked) targets.add(targetId);
+  else targets.delete(targetId);
+  if (targets.size) next.set(candidateId, targets);
   else next.delete(candidateId);
   if (next.size) linkSelections.set(objectiveId, next);
   else linkSelections.delete(objectiveId);
@@ -314,7 +318,13 @@ export function toggleFollowupSelection(objectiveId: string, candidateId: string
   if (checked) next.set(candidateId, rev);
   else next.delete(candidateId);
   commitSelection(objectiveId, next.size > 0 ? next : null);
-  if (!checked) toggleLinkSelection(objectiveId, candidateId, false);
+  if (!checked && linkSelections.get(objectiveId)?.has(candidateId)) {
+    const links = new Map(readLinkSelections(objectiveId));
+    links.delete(candidateId);
+    if (links.size) linkSelections.set(objectiveId, links);
+    else linkSelections.delete(objectiveId);
+    notifySelections();
+  }
 }
 
 /**
@@ -330,10 +340,13 @@ export function pruneSelection(objectiveId: string, openRevs: ReadonlyMap<string
     if (openRevs.get(id) === rev) next.set(id, rev);
   }
   commitSelection(objectiveId, next.size > 0 ? next : null);
-  const linked = new Set([...readLinkSelections(objectiveId)].filter((id) => next.has(id)));
-  if (linked.size) linkSelections.set(objectiveId, linked);
-  else linkSelections.delete(objectiveId);
-  notifySelections();
+  const previous = readLinkSelections(objectiveId);
+  const linked = new Map([...previous].filter(([candidateId]) => next.has(candidateId)));
+  if (linked.size !== previous.size) {
+    if (linked.size) linkSelections.set(objectiveId, linked);
+    else linkSelections.delete(objectiveId);
+    notifySelections();
+  }
 }
 
 export function clearSelection(objectiveId: string): void {

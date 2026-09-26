@@ -113,7 +113,7 @@ export function checkedCriteria(init: Pick<ObjectiveInit, "criteria">): readonly
 /** 완료와 함께 고른 후보 — 화면이 본 rev 와, 고른 순간 동결할 기동 조건. */
 export interface FollowupSelection {
   readonly batchId: string;
-  readonly followups: readonly { readonly id: string; readonly rev: number; readonly linkOnCreate?: boolean }[];
+  readonly followups: readonly { readonly id: string; readonly rev: number; readonly linkTargets?: readonly string[] }[];
   readonly launch: StoredFollowupBatch["launch"];
 }
 
@@ -458,7 +458,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           candidateId: entry.candidateId, rev: entry.rev,
           snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, userImpact: entry.snapshot.userImpact, fromMission: entry.snapshot.fromMission, brief: entry.snapshot.brief, criteria: [...entry.snapshot.criteria], evidence: entry.snapshot.evidence.map(evidenceView), related: entry.snapshot.related ?? [] },
           // 만든 뒤 사람이 지운 후속은 보기 시점에 「삭제됨」 — 저장은 created 그대로라 복원하면 돌아오고 누계·멱등성은 그대로다.
-          state: entry.state === "created" && entry.operationId && !options.operations.get(entry.operationId) && !load(node?.theaterId ?? pending!.theaterId).get(entry.operationId)?.pending ? "deleted" as const : entry.state, operationId: entry.operationId ?? null, error: entry.error ?? null, attempts: entry.attempts, linkOnCreate: entry.linkOnCreate === true, settledAt: entry.settledAt ?? null,
+          state: entry.state === "created" && entry.operationId && !options.operations.get(entry.operationId) && !load(node?.theaterId ?? pending!.theaterId).get(entry.operationId)?.pending ? "deleted" as const : entry.state, operationId: entry.operationId ?? null, error: entry.error ?? null, attempts: entry.attempts, linkTargets: entry.linkTargets ?? [], settledAt: entry.settledAt ?? null,
         })),
       })),
       followupHistory: stored.followupHistory ?? null,
@@ -1058,7 +1058,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const items: StoredFollowupItem[] = chosen.map((candidate) => ({
           candidateId: candidate.id, rev: candidate.rev,
           snapshot: { title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: [...candidate.criteria], evidence: [...candidate.evidence], related: candidate.related ?? [] },
-          state: "creating", attempts: 0, ...(selection.followups.find((entry) => entry.id === candidate.id)?.linkOnCreate ? { linkOnCreate: true } : {}),
+          state: "creating", attempts: 0,
+          linkTargets: [...new Set(selection.followups.find((entry) => entry.id === candidate.id)?.linkTargets ?? [])].filter((id) => id !== objectiveId),
         }));
         const chosenIds = new Set(ids);
         fresh = true;
@@ -1076,7 +1077,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const { batch, entry } = batchItem(stored, batchId, candidateId);
       const settled = next.state !== "creating";
       const updated: StoredFollowupItem = {
-        candidateId: entry.candidateId, rev: entry.rev, snapshot: entry.snapshot, state: next.state, ...(entry.linkOnCreate ? { linkOnCreate: true } : {}),
+        candidateId: entry.candidateId, rev: entry.rev, snapshot: entry.snapshot, state: next.state, ...(entry.linkTargets?.length ? { linkTargets: entry.linkTargets } : {}),
         ...(next.operationId ?? entry.operationId ? { operationId: next.operationId ?? entry.operationId } : {}),
         ...(next.error ? { error: next.error } : {}),
         attempts: entry.attempts + (next.attempted ? 1 : 0),

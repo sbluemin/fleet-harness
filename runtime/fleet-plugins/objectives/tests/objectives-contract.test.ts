@@ -762,6 +762,8 @@ describe("Objectives contract", () => {
     const { store, route, call, launch, launches, operations, savedObjective } = harness();
     const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
     const related = await launch.create({ theaterId: "t1", title: "Related", groupId: null });
+    const removed = await launch.create({ theaterId: "t1", title: "Removed", groupId: null });
+    const completed = await launch.create({ theaterId: "t1", title: "Completed", groupId: null });
     await launch.requestPlan(source.id);
     const missionId = store.find(source.id)!.missions[0]!.id;
     store.missionDone(source.id, missionId, ["fixed"]);
@@ -775,11 +777,13 @@ describe("Objectives contract", () => {
     for (const extra of store.find(source.id)!.followups.slice(1)) store.followupWithdraw(source.id, extra.id);
     const candidate = store.find(source.id)!.followups[0]!;
     const batchId = "3f1c8f3e-1111-4a8b-9c0d-000000000001";
-    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev, linkOnCreate: true }] });
+    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev, linkTargets: [related.id, removed.id, completed.id, source.id] }] });
     // 후보 선택은 검토 대기에서만 — 지휘관이 넘기지 않았으면 사람이 회고 없이 넘긴다.
     expect((await pick()).value.error).toBe("not_in_review");
     expect((await route("objective/hand-off", { objectiveId: source.id })).status).toBe(200);
     expect(store.find(source.id)!.handoff).toMatchObject({ by: "human", retrospective: null });
+    launch.remove(removed.id); // 사라지거나 완료된 연결 대상은 건너뛰되 후속 생성은 계속한다.
+    store.complete(completed.id);
     expect((await pick()).status).toBe(200);
     expect((await pick()).status).toBe(200);
     await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("created"));
@@ -787,17 +791,18 @@ describe("Objectives contract", () => {
     expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id, userImpact: "Users see the next step" } });
     expect(savedObjective(targetId)).toHaveProperty("pending.title", "Next");
     expect(store.find(targetId)!.related).toEqual([related.id]);
-    expect(store.find(related.id)!.links).toEqual([]);
-    expect(savedObjective(source.id).links?.[0]?.objectiveId).toBe(targetId);
-    expect(savedObjective(targetId).links?.[0]?.objectiveId).toBe(source.id);
-    expect((await route("objective/relation", { objectiveId: source.id, otherId: targetId, action: "unlink" })).status).toBe(200);
     expect(savedObjective(source.id).links).toBeUndefined();
+    expect(savedObjective(targetId).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([related.id]);
+    expect(savedObjective(related.id).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([targetId]);
+    expect(savedObjective(completed.id).links).toBeUndefined();
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "unlink" })).status).toBe(200);
+    expect(savedObjective(related.id).links).toBeUndefined();
     expect(savedObjective(targetId).links).toBeUndefined();
-    expect((await route("objective/relation", { objectiveId: source.id, otherId: targetId, action: "unrelated" })).status).toBe(200);
-    expect(savedObjective(source.id).unrelated).toEqual([targetId]);
-    expect(savedObjective(targetId).unrelated).toEqual([source.id]);
-    expect((await route("objective/relation", { objectiveId: source.id, otherId: targetId, action: "restore" })).status).toBe(200);
-    expect(savedObjective(source.id).unrelated).toBeUndefined();
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "unrelated" })).status).toBe(200);
+    expect(savedObjective(related.id).unrelated).toEqual([targetId]);
+    expect(savedObjective(targetId).unrelated).toEqual([related.id]);
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "restore" })).status).toBe(200);
+    expect(savedObjective(related.id).unrelated).toBeUndefined();
     expect(savedObjective(targetId).unrelated).toBeUndefined();
     expect(operations.has(targetId)).toBe(false);
     expect(launches).toHaveLength(1);

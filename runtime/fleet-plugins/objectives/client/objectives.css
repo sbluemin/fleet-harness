@@ -1115,6 +1115,7 @@ del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
 .objectives-origin-impact { margin: 0 14px 4px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-secondary); overflow-wrap: anywhere; }
 .objectives-nearby-count, .objectives-relation-hint { font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-relation-hint { margin: 3px 14px; overflow-wrap: anywhere; }
+.objectives-relation-nearby-item { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 10px; padding: 3px 0; }
 .objectives-relation-heading { margin: 7px 14px 2px; color: var(--text-secondary); font-size: var(--t-xs); }
 .objectives-relation-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; padding: 5px 14px; font-size: var(--t-xs); min-width: 0; }
 .objectives-relation-row > span { color: var(--text-tertiary); overflow-wrap: anywhere; }

@@ -74,7 +74,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     followups: objective.followups.map((candidate) => (candidate.state === "discarded"
       ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary }
       : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence, related: candidate.related, nearby: nearbyObjectives({ title: candidate.title, note: candidate.brief, criteria: candidate.criteria.map((text) => ({ text })), evidence: candidate.evidence }, store.list(objective.theaterId), objective) })),
-    followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error, linkOnCreate: entry.linkOnCreate })) })),
+    followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error, linkTargets: entry.linkTargets })) })),
     // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
     origin: objective.origin,
   });

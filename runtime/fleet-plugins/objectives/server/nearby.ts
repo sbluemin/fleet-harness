@@ -35,7 +35,8 @@ export function nearbyObjectives(
   const documents = [subject, ...candidates].map((entry) => grams(textOf(entry)));
   const frequency = new Map<string, number>();
   for (const doc of documents) for (const gram of doc.keys()) frequency.set(gram, (frequency.get(gram) ?? 0) + 1);
-  const weight = (gram: string) => Math.log(documents.length / (frequency.get(gram) ?? documents.length));
+  // 작은 보드에서도 모든 공유 gram의 가중치가 0으로 사라지지 않게 최소 IDF를 둔다.
+  const weight = (gram: string) => Math.log(documents.length / (frequency.get(gram) ?? documents.length)) + 0.05;
   const norm = (doc: Map<string, number>) => Math.sqrt([...doc].reduce((sum, [gram, count]) => sum + (count * weight(gram)) ** 2, 0));
   const query = documents[0]!;
   const queryNorm = norm(query);
@@ -46,11 +47,7 @@ export function nearbyObjectives(
   return candidates.map((other, at) => {
     const doc = documents[at + 1]!;
     const denominator = queryNorm * norm(doc);
-    // 두 문서만 있고 본문이 같으면 모든 gram의 IDF가 0이다. 완전 중복은 숨기지 않는다.
-    const rawNorm = (value: Map<string, number>) => Math.sqrt([...value.values()].reduce((sum, count) => sum + count ** 2, 0));
-    const score = denominator ? [...query].reduce((sum, [gram, count]) => sum + count * (doc.get(gram) ?? 0) * weight(gram) ** 2, 0) / denominator
-      : queryNorm === 0 && norm(doc) === 0 && rawNorm(query) * rawNorm(doc) > 0
-        ? [...query].reduce((sum, [gram, count]) => sum + count * (doc.get(gram) ?? 0), 0) / (rawNorm(query) * rawNorm(doc)) : 0;
+    const score = denominator ? [...query].reduce((sum, [gram, count]) => sum + count * (doc.get(gram) ?? 0) * weight(gram) ** 2, 0) / denominator : 0;
     const overlap = [...paths].filter((path) => pathsOf(other.origin?.evidence ?? []).has(path));
     return { other, score, paths: overlap, words: [...words].filter((word) => wordsOf(textOf(other)).has(word)).sort((a, b) => (wordFrequency.get(a) ?? 0) - (wordFrequency.get(b) ?? 0) || b.length - a.length || a.localeCompare(b)).slice(0, 4) };
   }).filter((item) => item.score >= 0.15 || item.paths.length > 0)

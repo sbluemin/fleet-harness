@@ -293,7 +293,7 @@ export function ActionBand(props: ActionBandProps) {
     setError(null);
     try {
       if (picked.length === 0) await intents.complete.run("");
-      else await request("/objective/complete", { objectiveId, batchId: newBatchId(), followups: picked.map(([id, rev]) => ({ id, rev, linkOnCreate: readLinkSelections(objective.id).has(id) })) });
+      else await request("/objective/complete", { objectiveId, batchId: newBatchId(), followups: picked.map(([id, rev]) => ({ id, rev, linkTargets: [...(readLinkSelections(objective.id).get(id) ?? [])] })) });
       clearSelection(objectiveId);
       setFollowupOpen(objective.id, false);
       setFollowupOpenId(null);
@@ -450,7 +450,7 @@ export function ActionBand(props: ActionBandProps) {
               openId={followupOpenId}
               onOpenChange={setFollowupOpenId}
               onToggleCheck={(candidateId, checked) => { const rev = followupCandidates.find((candidate) => candidate.id === candidateId)?.rev ?? 1; toggleFollowupSelection(objective.id, candidateId, checked, rev); setError(null); }}
-              onToggleLink={(candidateId, checked) => toggleLinkSelection(objective.id, candidateId, checked)}
+              onToggleLink={(candidateId, targetId, checked) => toggleLinkSelection(objective.id, candidateId, targetId, checked)}
               onDiscard={discardFollowup}
             />
           </div>

@@ -81,17 +81,17 @@ function DiscardButton({ candidateId, t, onDiscard }: { readonly candidateId: st
   );
 }
 
-function FollowupCandidateItem({ candidate, selectable, checked, linkOnCreate, open, t, idPrefix, onToggleCheck, onToggleLink, onToggleOpen, onDiscard, names }: {
+function FollowupCandidateItem({ candidate, selectable, checked, linkTargets, open, t, idPrefix, onToggleCheck, onToggleLink, onToggleOpen, onDiscard, names }: {
   readonly candidate: FollowupCandidate;
   readonly selectable: boolean;
   readonly checked: boolean;
-  readonly linkOnCreate: boolean;
+  readonly linkTargets: ReadonlySet<string>;
   readonly open: boolean;
   readonly names: ReadonlyMap<string, string>;
   readonly t: T;
   readonly idPrefix: string;
   readonly onToggleCheck: (candidateId: string, checked: boolean) => void;
-  readonly onToggleLink: (candidateId: string, checked: boolean) => void;
+  readonly onToggleLink: (candidateId: string, targetId: string, checked: boolean) => void;
   readonly onToggleOpen: (candidateId: string) => void;
   readonly onDiscard: (candidateId: string) => void;
 }) {
@@ -140,9 +140,14 @@ function FollowupCandidateItem({ candidate, selectable, checked, linkOnCreate, o
               <FollowupEvidenceList evidence={candidate.evidence} t={t} />
             </div>
           ) : null}
-          {candidate.nearby.length ? <div className="objectives-relation-hint">{t("objectives.relations.nearby")}: {candidate.nearby.map((item) => item.title).join(" · ")}</div> : null}
+          {candidate.nearby.length ? <div className="objectives-relation-hint">
+            <div>{t("objectives.relations.nearby")}</div>
+            {candidate.nearby.map((item) => <div className="objectives-relation-nearby-item" key={item.objectiveId}>
+              <span>{item.title}{item.words.length ? ` · ${item.words.join(" · ")}` : ""}{item.paths.length ? ` · ${t("objectives.relations.samePath")}: ${item.paths.join(" · ")}` : ""}</span>
+              {selectable && checked ? <label className="objectives-relation-check"><input type="checkbox" checked={linkTargets.has(item.objectiveId)} onChange={(event) => onToggleLink(candidate.id, item.objectiveId, event.target.checked)} />{t("objectives.relations.linkOnCreate")}</label> : null}
+            </div>)}
+          </div> : null}
           {candidate.related.length ? <div className="objectives-relation-hint">{t("objectives.relations.related")}: {candidate.related.map((id) => names.get(id) ?? t("objectives.origin.deleted")).join(" · ")}</div> : null}
-          {selectable && checked ? <label className="objectives-relation-check"><input type="checkbox" checked={linkOnCreate} onChange={(event) => onToggleLink(candidate.id, event.target.checked)} />{t("objectives.relations.linkOnCreate")}</label> : null}
           <div className="objectives-followup-foot">
             <span className="objectives-followup-hint">{t("objectives.followup.noEdit")}</span>
             <DiscardButton candidateId={candidate.id} t={t} onDiscard={onDiscard} />
@@ -153,19 +158,21 @@ function FollowupCandidateItem({ candidate, selectable, checked, linkOnCreate, o
   );
 }
 
+const EMPTY_TARGETS: ReadonlySet<string> = new Set();
+
 /** 후보 목록 — 한 번에 하나만 펼친다. 줄 본문 클릭은 펼침만 하고 선택하지 않는다. */
-export function FollowupCandidateList({ candidates, selectable, selection, linkSelection = new Set(), names = new Map(), t, idPrefix, openId, onOpenChange, onToggleCheck, onToggleLink = () => {}, onDiscard }: {
+export function FollowupCandidateList({ candidates, selectable, selection, linkSelection = new Map(), names = new Map(), t, idPrefix, openId, onOpenChange, onToggleCheck, onToggleLink = () => {}, onDiscard }: {
   readonly candidates: readonly FollowupCandidate[];
   readonly selectable: boolean;
   readonly selection: ReadonlySet<string>;
-  readonly linkSelection?: ReadonlySet<string>;
+  readonly linkSelection?: ReadonlyMap<string, ReadonlySet<string>>;
   readonly names?: ReadonlyMap<string, string>;
   readonly t: T;
   readonly idPrefix: string;
   readonly openId: string | null;
   readonly onOpenChange: (candidateId: string | null) => void;
   readonly onToggleCheck: (candidateId: string, checked: boolean) => void;
-  readonly onToggleLink?: (candidateId: string, checked: boolean) => void;
+  readonly onToggleLink?: (candidateId: string, targetId: string, checked: boolean) => void;
   readonly onDiscard: (candidateId: string) => void;
 }) {
   return (
@@ -176,7 +183,7 @@ export function FollowupCandidateList({ candidates, selectable, selection, linkS
           candidate={candidate}
           selectable={selectable}
           checked={selection.has(candidate.id)}
-          linkOnCreate={linkSelection.has(candidate.id)}
+          linkTargets={linkSelection.get(candidate.id) ?? EMPTY_TARGETS}
           names={names}
           open={openId === candidate.id}
           t={t}
