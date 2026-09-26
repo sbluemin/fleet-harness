@@ -130,6 +130,12 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
 .is-veiled body { background-color: transparent; }
 .is-farewell .tagline { display: none; }
 .is-farewell .brand-mark, .is-farewell .wordmark { transition-delay: 60ms; }
+/* Zen에서 종료하면 앰블럼은 Band가 아니라 작업 표시줄 오른쪽 끝 트레이에 앉아 있다 — 인사도 그 자리에서
+   출발한다. 값은 Console 트레이 앰블럼(18px 마크 · 13px 워드마크)의 실측 자리를 오른쪽 아래 끝에서 잰 것이다.
+   Band가 없으므로 넘겨주기 밑줄도 긋지 않는다. */
+.is-handoff.is-from-tray .drag-strip { border-bottom-color: transparent; }
+.is-handoff.is-from-tray .brand-mark { top: calc(100% - 27px); left: calc(100% - 68.7px); width: 18px; height: 18px; }
+.is-handoff.is-from-tray .wordmark { top: calc(100% - 24.5px); left: calc(100% - 43.7px); }
 .is-instant, .is-instant * { transition: none !important; }
 
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--brass-glow); } 50% { box-shadow: 0 0 0 6px transparent; } }

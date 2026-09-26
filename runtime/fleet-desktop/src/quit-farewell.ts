@@ -1,6 +1,6 @@
 import type { WebContentsView } from "electron";
 
-import type { EntryFarewell, EntryPageSnapshot, EntryPageWebContents, EntryPalette } from "./entry-page.js";
+import type { EntryFarewell, EntryFarewellOrigin, EntryPageSnapshot, EntryPageWebContents, EntryPalette } from "./entry-page.js";
 import type { EntryLanguage } from "./launch-controller.js";
 import type { DesktopShellWindow } from "./shell-window.js";
 
@@ -8,7 +8,7 @@ import type { DesktopShellWindow } from "./shell-window.js";
  * 종료 인사 — 진입 화면의 넘겨주기를 거꾸로 돌린다.
  *
  * 종료가 시작되면 Console 위에 진입 화면을 한 겹 더 얹는다. 덮개는 투명한 판에서 마크와 워드마크가
- * Console 상단 브랜드 자리에 앉은 모습으로 시작하고, 바탕이 차오르는 동안 둘이 가운데로 돌아와
+ * Console의 앰블럼 자리(평소에는 상단 Band, Zen에서는 작업 표시줄 오른쪽 끝 트레이)에 앉은 모습으로 시작하고, 바탕이 차오르는 동안 둘이 가운데로 돌아와
  * "종료 중"을 말한다. 판이 차오른 뒤에 Console을 멈추고, 정지가 끝나면 창이 흐려지며 사라진다.
  *
  * 덮개는 Console을 대신하지 않는다. 아래의 Console은 끝까지 그 자리에 있으므로 정지에 실패하면
@@ -153,6 +153,6 @@ export function createQuitFarewell(deps: QuitFarewellDependencies): QuitFarewell
 const FAREWELL_TITLE: Record<EntryLanguage, string> = { ko: "Fleet 종료 중…", en: "Quitting Fleet…" };
 
 /** 인사 화면은 한 줄만 말한다 — 태그라인·버전·개발 배지는 비운다. */
-export function farewellSnapshot(lang: EntryLanguage, phase: EntryFarewell, palette?: EntryPalette): EntryPageSnapshot {
-  return { platform: process.platform, lang, dev: false, tagline: "", tone: "busy", title: FAREWELL_TITLE[lang], versions: "", farewell: phase, ...(palette ? { palette } : {}) };
+export function farewellSnapshot(lang: EntryLanguage, phase: EntryFarewell, palette?: EntryPalette, from: EntryFarewellOrigin = "band"): EntryPageSnapshot {
+  return { platform: process.platform, lang, dev: false, tagline: "", tone: "busy", title: FAREWELL_TITLE[lang], versions: "", farewell: phase, farewellFrom: from, ...(palette ? { palette } : {}) };
 }

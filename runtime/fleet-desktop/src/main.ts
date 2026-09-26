@@ -252,9 +252,18 @@ async function boot(): Promise<void> {
    * 콘솔에서 듣는다. 전체화면 진입·이탈은 OS가 이미 사용자에게 내준 조작이라 별도 확인을 두지 않는다.
    */
   let zenFullscreen: ZenFullscreenController | null = null;
+  /**
+   * 창이 보여 주는 Console이 Zen인가. Console은 Zen을 켜고 끌 때마다 전체화면 켜기·끄기를 시키므로(이미
+   * 전체화면이던 창에서도, 강제 종료·새로 고침에서도) 마지막 명령이 곧 Zen 여부다. 종료 인사가 앰블럼이
+   * 실제로 앉아 있는 자리(Zen이면 작업 표시줄 트레이)에서 출발하는 데 쓴다.
+   */
+  let consoleInZen = false;
   const windowCommands = createDesktopWindowCommandSynchronizer({
     fetch: consoleFetch,
-    perform: (command) => zenFullscreen?.perform(command),
+    perform: (command) => {
+      consoleInZen = command === "enter-fullscreen";
+      zenFullscreen?.perform(command);
+    },
   });
   let fullscreenSynchronizer: ReturnType<typeof createDesktopFullscreenSynchronizer> | null = null;
   /**
@@ -404,7 +413,7 @@ async function boot(): Promise<void> {
       return view;
     },
     entryPagePath: desktopResources.entryPagePath,
-    snapshot: (phase) => farewellSnapshot(entryLanguage, phase, entryPalette),
+    snapshot: (phase) => farewellSnapshot(entryLanguage, phase, entryPalette, consoleInZen ? "tray" : "band"),
     pushEntry: pushEntrySnapshot,
     log: (message) => logger.error(message),
   });

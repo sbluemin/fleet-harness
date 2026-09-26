@@ -11,6 +11,7 @@ export type EntryTone = "busy" | "done" | "warning" | "failed";
  * 모습(전환 없이 곧바로), shown은 바탕이 차오르며 마크와 워드마크가 가운데로 돌아온 모습이다.
  */
 export type EntryFarewell = "veiled" | "shown";
+export type EntryFarewellOrigin = "band" | "tray";
 
 /**
  * 사용자가 Console에서 고른 테마의 색. Console이 테마 스냅샷에 실어 보내고(desktop-theme-sync),
@@ -69,6 +70,8 @@ export interface EntryPageSnapshot {
   /** true면 마크와 워드마크가 Console 상단 브랜드 자리로 줄어들고 나머지는 사라진다. */
   readonly handoff?: boolean;
   readonly farewell?: EntryFarewell;
+  /** 종료 인사가 출발하는 자리 — Console 상단 Band(기본) 또는 Zen 작업 표시줄 트레이. */
+  readonly farewellFrom?: EntryFarewellOrigin;
   readonly palette?: EntryPalette;
 }
 
@@ -114,6 +117,7 @@ const ENTRY_RENDERER = String.raw`(() => {
   if (snapshot.farewell === "veiled") {
     // 전환을 끈 채 상단 자리로 옮기고 스타일을 한 번 확정한 뒤에야 전환을 되살린다.
     root.classList.add("is-instant", "is-handoff", "is-veiled", "is-farewell");
+    root.classList.toggle("is-from-tray", snapshot.farewellFrom === "tray");
     void root.offsetWidth;
     root.classList.remove("is-instant");
   }
