@@ -1,7 +1,7 @@
 import type { OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterSource } from "@fleet-console/sdk/plugin";
 
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
-import { openObjectiveSurface, operationSummaries, readAllTheaters, revealObjective, subscribeObjective } from "./objectives-state.js";
+import { openObjectiveFromCluster, operationSummaries, readAllTheaters, revealObjective, subscribeObjective } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -102,7 +102,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
         ? operationId.startsWith("mission:") ? operationId.slice("mission:".length) : representative.get(operationId)
         : undefined;
       revealObjective(missionId ? { objectiveId: objective.id, missionId } : { objectiveId: objective.id });
-      openObjectiveSurface();
+      openObjectiveFromCluster();
     };
     out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, root: commander, members, open });
   }

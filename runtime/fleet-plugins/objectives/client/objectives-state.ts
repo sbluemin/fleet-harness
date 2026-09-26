@@ -390,7 +390,8 @@ export function onObjectiveSurfaceClose(): void {
   rememberObjectivePlace("expanded");
 }
 
-export function openObjectiveSurface(): void {
+/** 캡션 칩은 이미 열린 자리를 사용하고, 닫혀 있을 때만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
+export function openObjectiveFromCluster(): void {
+  if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
   installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
-  rememberObjectivePlace("expanded");
 }
