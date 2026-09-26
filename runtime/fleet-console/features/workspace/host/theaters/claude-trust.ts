@@ -164,8 +164,11 @@ export async function trustClaudeTheater(cwd: string): Promise<void> {
         if ((await readSettings(file)).original !== original) continue;
         if (!await ownsLock()) throw new ClaudeTrustError("claude_trust_write_failed");
         await fs.rename(temp, file);
-        const dir = await fs.open(path.dirname(file), "r");
-        try { await dir.sync(); } finally { await dir.close(); }
+        // Windows에서는 디렉터리 핸들의 fsync가 지원되지 않는다. 파일 자체의 sync는 이미 마쳤다.
+        if (process.platform !== "win32") {
+          const dir = await fs.open(path.dirname(file), "r");
+          try { await dir.sync(); } finally { await dir.close(); }
+        }
         if (await isClaudePathTrusted(real)) return;
       } catch (error) {
         if (error instanceof ClaudeTrustError) throw error;
