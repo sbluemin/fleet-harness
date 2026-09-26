@@ -5728,171 +5728,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   line-height: 1.45;
 }
 
-/* ── 좁힌 레일 ────────────────────────────────────────────────────────────
-   왼쪽 열은 64px 레일로 좁혀 설 수 있다. War Room은 상태 묶음(덱이 Theater 띠와 건수를 이미
-   말한다), Cruise는 Theater 묶음이다. 호버로 사용자 폭까지 펼쳐지는 오버레이이며(인셋
-   불참), 스트립 토글로 다시 넓힌다. 키보드는 그 토글로 펼친다 — focus-within 펼침은 포커스한
-   타일을 감춰 포커스를 잃는다. 상태별 보기(Alt+S)와 좁히기는 서로 다른 축이라 같이 켤 수 있다. */
-.operations-side-bar.is-narrow {
-  width: var(--queue-rail-width, 64px);
-}
-
-/* 엣지 독이 되부른 픽(.is-peeking)은 호버 펼침과 같은 상태다 — 접힌 레일을 가장자리에서 되부르면
-   카드는 사용자 폭으로 서므로 내용도 펼친 목록이어야 한다. 레일 타일이 넓은 카드 가운데 서는
-   것은 두 규칙이 어긋난 결함이었다. */
-.operations-side-bar.is-narrow:hover,
-.operations-side-bar.is-narrow.is-peeking {
-  width: var(--side-bar-width, 280px);
-}
-
-.operations-side-bar.is-narrow:not(:hover):not(.is-peeking) .side-bar-wide,
-.operations-side-bar.is-narrow:not(:hover):not(.is-peeking) .side-bar-top-strip-eyebrow,
-.operations-side-bar.is-narrow:not(:hover):not(.is-peeking) .side-bar-status-view-toggle:not(.side-bar-narrow-toggle),
-.operations-side-bar.is-narrow:not(:hover):not(.is-peeking) .side-bar-collapse {
-  display: none;
-}
-
-.operations-side-bar.is-narrow:hover .side-bar-rail-sections,
-.operations-side-bar.is-narrow.is-peeking .side-bar-rail-sections {
-  display: none;
-}
-
-.operations-side-bar.is-narrow .side-bar-top-strip {
-  justify-content: center;
-}
-
-.operations-side-bar.is-narrow:hover .side-bar-top-strip,
-.operations-side-bar.is-narrow.is-peeking .side-bar-top-strip {
-  justify-content: flex-start;
-}
-
-.side-bar-rail-sections,
-.side-bar-rail-tiles {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.side-bar-rail-sections {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) 0 var(--space-3);
-  overflow-y: auto;
-  overflow-x: hidden;
-  min-height: 0;
-}
-
-.side-bar-rail-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-/* Theater 묶음의 머리 — 목록 헤더와 같은 이니셜 배지 채움으로 활성 위치를 표시한다. */
-.side-bar-rail-theater {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  cursor: pointer;
-}
-
-.side-bar-rail-theater:hover {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
-}
-
-.side-bar-rail-theater:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
-}
-
-.side-bar-rail-tile.is-minimized {
-  opacity: 0.55;
-}
-
-/* 섹션 표식 — 헤더의 신호색 점과 건수를 40px 열에 맞춰 한 줄로 줄인 것. 색 채널은 상태 헤더와 같다. */
-.side-bar-rail-section-mark {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 40px;
-  padding: 0 var(--space-1);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  font-variant-numeric: tabular-nums;
-}
-
-.side-bar-rail-section-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--activity-color, var(--ink-fog));
-}
-
-.side-bar-rail-section--awaiting { --activity-color: var(--aurora); }
-.side-bar-rail-section--running { --activity-color: var(--warn); }
-.side-bar-rail-section--idle { --activity-color: var(--positive); }
-.side-bar-rail-section--shelved,
-.side-bar-rail-section--empty { --activity-color: var(--ink-fog); }
-
-.side-bar-rail-tiles {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-/* 타일 — Theater 이니셜 + 비콘. 활성(무대)은 brass 링으로만 말한다(위치 채널). */
-.side-bar-rail-tile {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: var(--control-wash);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.04em;
-  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
-}
-
-.side-bar-rail-tile:hover {
-  background: var(--control-hover-fill);
-  border-color: var(--control-hover-rim);
-  color: var(--text-primary);
-}
-
-.side-bar-rail-tile.is-active {
-  border-color: var(--brass);
-  color: var(--brass-ink);
-}
-
-.side-bar-rail-tile:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
-}
-
-.side-bar-rail-tile-beacon {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-}
-
 .triage-side-bar-dormant-shelf {
   flex: none;
   border-top: 1px solid var(--surface-rim);
@@ -6202,8 +6037,7 @@ body[data-companion-resizing="true"] .canvas-operation {
    서로 다른 거리에서 말한다. 채움 위 글자는 brass 전용 텍스트 티어를 쓴다 — 라이트에서
    자기 채움 위 AA를 보장하는 유일한 값이다. 대기 tick은 배지 바깥 모서리에 떠 있어 가려지지
    않는다. */
-.side-bar-theater-header.is-active .side-bar-theater-anchor,
-.side-bar-rail-section--theater.is-active .side-bar-theater-anchor {
+.side-bar-theater-header.is-active .side-bar-theater-anchor {
   background: var(--brass);
   color: var(--text-on-brass);
 }
@@ -17653,17 +17487,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   .effort-track-stop[data-previewed="true"] {
     box-shadow: 0 0 0 2px var(--brass);
   }
-}
-
-.command-band-local-chip.is-shared {
-  border-color: color-mix(in oklch, var(--warn) 50%, var(--surface-rim));
-  background: var(--warn-glow);
-  color: var(--warn-ink);
-}
-
-.command-band-local-chip.is-shared .command-band-local-dot {
-  background: var(--warn);
-  box-shadow: 0 0 10px var(--warn-glow);
 }
 
 /* 원격 제어 인계 — curtain은 로컬 입력을 멈추고, bar는 흐름 안에서 읽기 전용 상태를 계속 알린다. */

@@ -194,12 +194,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     setCopyFailedValue(null);
   };
   const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
-  // darwin Desktop은 traffic-light 자리(76 DIP + 12px)가 첫 트랙을 잠식해 전체 라벨이 사이드바 경계를 넘는다.
-  // Desktop 앱 안에서는 Desktop임이 자명하므로 칩은 "Local"로 축약하고, Desktop 구분은 팝오버의
-  // Desktop data 행이 유지한다(대원수 재가).
-  const desktopChipLabel = typeof document !== "undefined" && document.documentElement.dataset.desktopPlatform === "darwin"
-    ? t("chrome.commandBand.local")
-    : t("chrome.commandBand.localDesktop");
   // 전체화면에서 밴드는 창 모드와 똑같은 흐름 요소다 — 자동 은닉·엣지 스트립·도킹 핀은
   // 퇴역했다. 크롬을 치우는 결정은 Zen 하나가 소유한다(중복 제스처 정리).
   // 이 스냅숏이 남은 이유는 단 하나: darwin 전체화면에서 신호등이 물러난 자리로 좌측
@@ -207,7 +201,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const nativeFullscreen = useDesktopFullscreenSnapshot();
   const zenSlot = useZenChromeSlot();
   useEffect(() => {
-    if (zenMode) setEnvironmentOpen(false);
+    if (!zenMode) return;
+    setEnvironmentOpen(false);
+    discardEnvironmentState();
   }, [zenMode]);
 
   useEffect(() => {
@@ -217,7 +213,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     setEnvironmentError(null);
     setEnvironmentLoading(true);
     fetchConsoleEnvironment(controller.signal)
-      .then(setEnvironment)
+      .then((result) => { if (!controller.signal.aborted) setEnvironment(result); })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setEnvironmentError(error instanceof Error ? error.message : t("chrome.commandBand.unableToLoadEnvironment"));
@@ -339,14 +335,34 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         inert={commandBandHidden || undefined}
       >
       <div ref={bandLeftRef} className="command-band-left">
-        <BrandHome />
-        {state.channel === "local" ? <div className="command-band-environment">
-          <button ref={environmentTriggerRef} type="button" className={`command-band-local-chip${state.controlHolder !== null ? " is-shared" : ""}`} aria-haspopup="dialog" aria-expanded={environmentOpen} onClick={() => { discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}>
-          <span className="command-band-local-dot" aria-hidden="true" />
-          <span className="command-band-local-chip-label">{state.controlHolder !== null ? t("chrome.control.shared") : desktopShell ? desktopChipLabel : t("chrome.commandBand.local")}</span>
-          </button>
-          {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
-        </div> : null}
+        {state.channel === "local" ? (
+          <div className="command-band-brand is-local command-band-environment">
+            <button
+              ref={environmentTriggerRef}
+              type="button"
+              className="command-band-brand-diagnostics"
+              aria-label={`${t("chrome.commandBand.environment")}: ${t(desktopShell ? "chrome.commandBand.localDesktop" : "chrome.commandBand.local")}`}
+              aria-haspopup="dialog"
+              aria-expanded={environmentOpen}
+              onKeyDown={(event) => {
+                // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
+                if (event.code === "Space") event.stopPropagation();
+              }}
+              onClick={() => { discardEnvironmentState(); setEnvironmentOpen((open) => !open); }}
+            >
+              <BrandMarkIcon local />
+            </button>
+            <Link
+              className="command-band-brand-home"
+              to="/operations"
+              aria-label={t("chrome.commandBand.operations")}
+              onClick={() => { setEnvironmentOpen(false); discardEnvironmentState(); }}
+            >
+              <span className="command-band-brand-wordmark is-local">Fleet<span className="command-band-brand-wordmark-dot" aria-hidden="true">.</span></span>
+            </Link>
+            {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
+          </div>
+        ) : <BrandHome />}
         {/* 업데이트 중에는 링크 상실이 고장이 아니라 진행이다. 커튼이 그 사실을 말하고 있는
             동안 이 칩까지 "연결 끊김"이라고 말하면, 한 화면이 두 가지 이야기를 한다. */}
         {state.connection !== "live" && !updateProgress.watching ? (
@@ -600,16 +616,18 @@ function BrandHome() {
   return <Link className="command-band-brand" to="/operations" aria-label={t("chrome.commandBand.operations")}><BrandMarkIcon /><span className="command-band-brand-wordmark">Fleet</span></Link>;
 }
 
-// 제품 favicon(bearing-scope 마크)의 인라인 축약판 — 브랜드 글리프는 파비콘과 동일 조형을 쓴다.
-function BrandMarkIcon() {
+// 일반 채널은 favicon과 같은 조형이다. 개발 채널만 바깥 링을 열고 신호점을 빼 구분한다.
+function BrandMarkIcon({ local = false }: { readonly local?: boolean }) {
   return (
     <svg className="command-band-brand-glyph" viewBox="0 0 64 64" aria-hidden="true">
       <rect x="2" y="2" width="60" height="60" rx="14" fill="var(--ink-deep)" stroke="var(--surface-rim-strong)" strokeWidth="2" />
-      <circle cx="32" cy="32" r="18.5" fill="none" stroke="var(--brass)" strokeWidth="3.5" />
+      {local
+        ? <path d="M48.33 23.31A18.5 18.5 0 0 1 48.33 40.69M40.69 48.33A18.5 18.5 0 0 1 23.31 48.33M15.67 40.69A18.5 18.5 0 0 1 15.67 23.31M23.31 15.67A18.5 18.5 0 0 1 40.69 15.67" fill="none" stroke="var(--brass)" strokeWidth="3.5" strokeLinecap="round" />
+        : <circle cx="32" cy="32" r="18.5" fill="none" stroke="var(--brass)" strokeWidth="3.5" />}
       <circle cx="32" cy="32" r="10.5" fill="none" stroke="var(--brass)" strokeWidth="1.8" opacity="0.55" />
       <path d="M32 9v8M32 47v8M9 32h8M47 32h8" stroke="var(--brass)" strokeWidth="3" strokeLinecap="round" />
       <circle cx="32" cy="32" r="3" fill="var(--brass)" />
-      <circle cx="44.7" cy="19.3" r="5" fill="var(--aurora)" />
+      {local ? null : <circle cx="44.7" cy="19.3" r="5" fill="var(--aurora)" />}
     </svg>
   );
 }

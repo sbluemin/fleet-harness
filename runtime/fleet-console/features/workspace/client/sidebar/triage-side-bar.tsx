@@ -8,7 +8,6 @@ import type { OperationRuntimeState, ClientExecutionProvider } from "@fleet-cons
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
-import { OperationStatusIcon } from "../../../execution/client/components/operation-status-icon.js";
 import { resumeOperationInPlace } from "../../../../core/client/src/integration/operation-actions.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification } from "../../../../core/client/src/integration/types.js";
@@ -21,10 +20,10 @@ import { getTriagePick, getTriageSnapshot, resolveTriageQueue, subscribeTriage, 
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
 import { useClusterIndex } from "../operation-clusters.js";
-import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, theaterInitials, type StatusSection } from "./operations-side-bar.js";
+import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, type StatusSection } from "./operations-side-bar.js";
 import { focusEdgeDockWhenPanelContainsActiveElement } from "../../../../core/client/src/integration/shortcuts.js";
-import { consumeStatusLandings, getStatusTransitionTick, setQueueRailPinned, setSideBarPeeking, useQueueRailPinned, useSideBarState } from "./operations-side-bar-store.js";
-import { SideBarCollapseControl, SideBarNarrowToggle } from "./side-bar-collapse-control.js";
+import { consumeStatusLandings, getStatusTransitionTick, setSideBarPeeking, useSideBarState } from "./operations-side-bar-store.js";
+import { SideBarCollapseControl } from "./side-bar-collapse-control.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 // 선별 사이드바의 상태 섹션은 Map 사이드바 STATUS 축과 같은 collapse 저장소를 쓰되,
@@ -101,8 +100,6 @@ export function TriageSideBar({
   // 접힘/폭은 Map 사이드바와 같은 좌측 열 상태를 공유한다 — ⌘B와 패널 접기 컨트롤이
   // 선별 중에도 계속 동작해야 하고, 모드 전환이 사용자의 접힘 선택을 잃지 않아야 한다.
   const sideBar = useSideBarState();
-  const queueRailPinned = useQueueRailPinned();
-  const narrow = sideBar.narrow;
   const rootRef = useRef<HTMLElement | null>(null);
   // 상태 착지 flash — 칩이 다른 섹션으로 옮겨 앉은 순간을 0.5초 aurora로 알린다. 착지는
   // 전이 추적(App 구독)이 쌓고 이 목록이 소비한다. Theater 묶음 카드는 섹션이 없어 소비하지 않는다.
@@ -220,7 +217,6 @@ export function TriageSideBar({
   const dormantSection = endedSection && endedSection.entries.length > 0
     ? { ...endedSection, label: t("triageSidebar.dormantShelf") }
     : undefined;
-  const shelvedCount = minimizedEntries.length + (dormantSection?.entries.length ?? 0);
   const renderChip = (entry: SideBarEntry, index: number, shelf: "none" | "ended" | "minimized" = "none") => {
     const dormant = shelf === "ended";
     const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
@@ -266,26 +262,10 @@ export function TriageSideBar({
       />
     );
   };
-  // 레일 타일 — 이름 대신 Theater 이니셜과 비콘으로 서는 대기열. 순서·섹션은 펼친 목록과 같다.
-  const renderTile = (entry: SideBarEntry) => (
-    <li key={entry.operation.id}>
-      <button
-        type="button"
-        className={`side-bar-rail-tile${entry.active ? " is-active" : ""}`}
-        aria-label={`${entry.operation.title} · ${theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}`}
-        title={`${entry.operation.title} · ${theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId}`}
-        aria-current={entry.active ? "true" : undefined}
-        onClick={() => onPick(entry.operation.id)}
-      >
-        <span className="side-bar-rail-tile-initials" aria-hidden="true">{theaterInitials(theaterLabelById.get(entry.operation.theaterId) ?? entry.operation.theaterId)}</span>
-        <OperationStatusIcon status={entry.mark ?? entry.status} decorative className="side-bar-rail-tile-beacon" />
-      </button>
-    </li>
-  );
   return (
     <aside
       ref={rootRef}
-      className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}${narrow ? " is-narrow" : ""}`}
+      className={`operations-side-bar triage-side-bar ${sideBar.collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
       data-canvas-blocker
       data-sidebar-state={sideBar.collapsed ? "closed" : "expanded"}
       data-resizing={resizing ? "true" : undefined}
@@ -301,42 +281,10 @@ export function TriageSideBar({
         setSideBarPeeking(false);
       }}
     >
-      {/* 스트립 — 낱말(대기열)이 이 목록의 읽는 법을 말하고, 그 옆의 토글이 레일로 좁히기/펼치기를
-          뒤집는다(War Room은 레일이 기본이라 펼침은 세션 안의 고정이다). 우단은 두 사이드바가 같은
-          문법으로 소유하는 접기 컨트롤이다. 레일 상태에서는 낱말이 접히고 토글만 남는다. */}
       <div className="side-bar-top-strip">
         <span className="side-bar-top-strip-eyebrow">{t("sidebar.view.queueEyebrow")}</span>
-        <SideBarNarrowToggle narrow={!queueRailPinned} onToggle={() => setQueueRailPinned(!queueRailPinned)} />
         <SideBarCollapseControl />
       </div>
-      {/* 좁힌 대기열 레일 — 덱이 Theater 띠와 건수를 이미 말하므로 여기서는 상태 묶음의 순서와 비콘만
-          남긴다. 타일은 Theater 이니셜이다(묶음이 말하지 않는 것을 타일이 말한다). */}
-      {narrow ? (
-        <ol className="side-bar-rail-sections" aria-label={t("sidebar.view.queueRailAria")}>
-          {visibleLivingSections.map((section) => (
-            <li key={section.status} className={`side-bar-rail-section side-bar-rail-section--${section.status}`}>
-              <span className="side-bar-rail-section-mark" aria-label={`${section.label} ${section.entries.length}`} title={`${section.label} ${section.entries.length}`}>
-                <span className="side-bar-rail-section-dot" aria-hidden="true" />
-                <span className="side-bar-rail-section-count">{section.entries.length}</span>
-              </span>
-              <ol className="side-bar-rail-tiles">{section.entries.map(renderTile)}</ol>
-            </li>
-          ))}
-          {visibleLivingSections.length === 0 ? (
-            <li className="side-bar-rail-section side-bar-rail-section--empty" aria-label={t("sidebar.view.empty")} title={t("sidebar.view.empty")}>
-              <span className="side-bar-rail-section-mark"><span className="side-bar-rail-section-dot" aria-hidden="true" /><span className="side-bar-rail-section-count">0</span></span>
-            </li>
-          ) : null}
-          {shelvedCount > 0 ? (
-            <li className="side-bar-rail-section side-bar-rail-section--shelved">
-              <span className="side-bar-rail-section-mark" data-panel-motion-shelf aria-label={`${minimizedSection.label} ${minimizedEntries.length}${dormantSection ? ` · ${dormantSection.label} ${dormantSection.entries.length}` : ""}`}>
-                <span className="side-bar-rail-section-dot" aria-hidden="true" />
-                <span className="side-bar-rail-section-count">{shelvedCount}</span>
-              </span>
-            </li>
-          ) : null}
-        </ol>
-      ) : null}
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips triage-side-bar-sections" aria-label={t("triageSidebar.aria")}>
         {visibleLivingSections.map((section) => (
@@ -374,7 +322,7 @@ export function TriageSideBar({
         </footer>
       ) : null}
       </div>
-      {narrow ? null : <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />}
+      <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
 
       {launchMenu ? createPortal(
         <CanvasContextMenu
