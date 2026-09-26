@@ -1,5 +1,6 @@
 import { pluginRuntimeState } from "../../execution/client/operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -24,9 +25,11 @@ import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissT
 import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
 import { RailEdgeDock, SideBarEdgeDock } from "../../../core/client/src/chrome/components/panel-edge-docks.js";
-import { RightRail } from "../../../core/client/src/chrome/rail/right-rail.js";
+import { RailToolIcons, RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
+import { useZenToolsSlot } from "../../../core/client/src/integration/zen-chrome-slot.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
 import { TriageSideBar } from "./sidebar/triage-side-bar.js";
+import { ZEN_TASKBAR_HEIGHT, ZenTaskbar } from "./zen/zen-taskbar.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
 import { sideBarOccupiedWidth, toggleSideBarStatusAxis, useSideBarState } from "./sidebar/operations-side-bar-store.js";
 import { useRailOccupiedPx } from "../../../core/client/src/chrome/rail/rail-store.js";
@@ -107,12 +110,15 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const zenState = useZenModeState();
   const zenSideBarHidden = zenMode && !zenState.sideBarRevealed;
   const sideBarOccupiedPx = zenSideBarHidden ? 0 : sideBarOccupiedWidth(sideBar);
+  // Zen은 사이드바를 걷고 화면 아래에 작업 표시줄을 세운다 — 막대 높이만 아래 인셋으로 비운다.
+  // Zen 바(종료·도구)는 사용자가 옮기는 부유 도구막대라 인셋에 불참한다(아래 Operation을 덮어도 된다는
+  // 제품 결정).
   const arenaInsets: CanvasArenaInsets = useMemo(() => ({
     left: sideBarOccupiedPx > 0 ? sideBarOccupiedPx + CHROME_FLOAT_GUTTER : 0,
     top: 0,
     right: railOccupiedPx > 0 ? railOccupiedPx + CHROME_FLOAT_GUTTER : 0,
-    bottom: 0,
-  }), [railOccupiedPx, sideBarOccupiedPx]);
+    bottom: zenMode ? ZEN_TASKBAR_HEIGHT : 0,
+  }), [railOccupiedPx, sideBarOccupiedPx, zenMode]);
   useEffect(() => {
     setCanvasArenaInsets(arenaInsets);
   }, [arenaInsets]);
@@ -544,6 +550,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleRailLaunchOperation = useCallback((pluginId: string | null, kind: OperationLaunchKind) => {
     handleSideBarLaunchKind(pluginId, kind);
   }, [handleSideBarLaunchKind]);
+  // Zen에서는 레일 아이콘 열이 걷히고 같은 도구가 막대 위 Zen 탭에 가로로 선다 — 문맥은 레일과 같다.
+  const zenToolsSlot = useZenToolsSlot();
+  const zenToolsContext = useRailPanelContext(state.activeTheaterId, STABLE_RAIL_API, handleRailLaunchOperation);
 
   // Quick Launch 컴포저가 남긴 의도를 여기서 소비한다. 대상 Theater로의 전환이 실제로 반영된 뒤에만
   // 실행해야 한다 — activeTheaterId가 아직 이전 Theater면 launch 좌표와 포커스 승계가 엉뚱한 캔버스로 간다.
@@ -939,6 +948,22 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         <div className="app-toast-host">{deletionToast}{alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}</div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
+      {zenMode && zenToolsSlot !== null ? createPortal(<RailToolIcons context={zenToolsContext} orientation="row" />, zenToolsSlot) : null}
+      {zenMode ? (
+        <ZenTaskbar
+          theaters={state.theaters}
+          activeTheaterId={state.activeTheaterId}
+          operations={state.operations}
+          groups={state.groups}
+          minimized={minimized}
+          activeOperationId={state.activeOperationId}
+          operationNotifications={state.operationNotifications}
+          operationRuntime={state.operationRuntime}
+          onFocus={handleFocus}
+          onResume={handleResume}
+          onSelectTheater={setActiveTheater}
+        />
+      ) : null}
       {/* 접힌 패널의 문 — 각 카드가 소멸한 자리의 엣지에 서고, 두 사이드바(Map·War Room)가
           같은 접힘 상태를 쓰므로 독도 모드와 무관하게 이 페이지가 한 번만 세운다. */}
       {zenMode ? null : <><SideBarEdgeDock /><RailEdgeDock /></>}

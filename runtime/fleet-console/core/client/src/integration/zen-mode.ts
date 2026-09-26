@@ -30,8 +30,31 @@ export function setZenMode(next: boolean): void {
   emit({ active: next, sideBarRevealed: false, railRevealed: false });
 }
 
+/**
+ * 사용자가 켜고 끄는 Zen은 전환 장면(커튼·앰블럼)을 거친다. 장면은 크롬이 소유하므로 여기서는
+ * 연출기를 끼울 자리만 둔다 — 연출기가 요청을 맡으면(true) 레이아웃 전환 시점도 연출기가 정하고,
+ * 없거나 맡지 않으면(동작 줄이기·측정 불가) 곧바로 바꾼다. 경로 이탈·모바일·설정 열기 같은
+ * 강제 종료는 이 길을 타지 않고 setZenMode로 즉시 걷는다.
+ */
+export type ZenTransitionRunner = (next: boolean) => boolean;
+
+let transitionRunner: ZenTransitionRunner | null = null;
+
+export function setZenTransitionRunner(runner: ZenTransitionRunner): () => void {
+  transitionRunner = runner;
+  return () => {
+    if (transitionRunner === runner) transitionRunner = null;
+  };
+}
+
+export function requestZenMode(next: boolean): void {
+  if (state.active === next) return;
+  if (transitionRunner?.(next)) return;
+  setZenMode(next);
+}
+
 export function toggleZenMode(): void {
-  setZenMode(!state.active);
+  requestZenMode(!state.active);
 }
 
 export function setZenSideBarRevealed(revealed: boolean): void {

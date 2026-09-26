@@ -34,3 +34,30 @@ function subscribe(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
+
+/**
+ * Zen 탭의 도구 칸 — 레일 도구 아이콘이 가로로 서는 자리.
+ *
+ * 탭은 콘솔 크롬(App)이 세우지만, 도구를 여는 문맥(Theater·실행 손잡이)은 Operations 페이지가
+ * 가진다. 그래서 칸은 App이 늘 DOM에 두고, 아이콘은 Operations가 이 칸으로 포털한다 — 페이지가
+ * 내려가도 컨테이너는 남으므로 포털이 분리된 노드에 남지 않는다(위 슬롯과 같은 계약).
+ */
+const toolsListeners = new Set<Listener>();
+let toolsSlot: HTMLElement | null = null;
+
+export function setZenToolsSlot(element: HTMLElement | null): void {
+  if (toolsSlot === element) return;
+  toolsSlot = element;
+  for (const listener of toolsListeners) listener();
+}
+
+export function useZenToolsSlot(): HTMLElement | null {
+  return useSyncExternalStore(
+    (listener) => {
+      toolsListeners.add(listener);
+      return () => { toolsListeners.delete(listener); };
+    },
+    () => toolsSlot,
+    () => null,
+  );
+}

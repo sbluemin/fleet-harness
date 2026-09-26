@@ -617,9 +617,10 @@ function BrandHome() {
 }
 
 // 일반 채널은 favicon과 같은 조형이다. 개발 채널만 바깥 링을 열고 신호점을 빼 구분한다.
-function BrandMarkIcon({ local = false }: { readonly local?: boolean }) {
+// Zen 작업 표시줄의 앰블럼과 전환 장면의 날아가는 마크도 이 조형 하나를 쓴다.
+export function BrandMarkIcon({ className = "command-band-brand-glyph", local = false }: { readonly className?: string; readonly local?: boolean } = {}) {
   return (
-    <svg className="command-band-brand-glyph" viewBox="0 0 64 64" aria-hidden="true">
+    <svg className={className} viewBox="0 0 64 64" aria-hidden="true">
       <rect x="2" y="2" width="60" height="60" rx="14" fill="var(--ink-deep)" stroke="var(--surface-rim-strong)" strokeWidth="2" />
       {local
         ? <path d="M48.33 23.31A18.5 18.5 0 0 1 48.33 40.69M40.69 48.33A18.5 18.5 0 0 1 23.31 48.33M15.67 40.69A18.5 18.5 0 0 1 15.67 23.31M23.31 15.67A18.5 18.5 0 0 1 40.69 15.67" fill="none" stroke="var(--brass)" strokeWidth="3.5" strokeLinecap="round" />

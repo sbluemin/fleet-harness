@@ -92,7 +92,7 @@ vi.mock("../features/workspace/client/canvas/canvas.js", () => ({
   },
 }));
 vi.mock("../core/client/src/chrome/components/codex-reading-sheet.js", () => ({ CodexReadingSheet: () => null }));
-vi.mock("../core/client/src/chrome/components/command-band.js", () => ({ CommandBand: () => null }));
+vi.mock("../core/client/src/chrome/components/command-band.js", () => ({ CommandBand: () => null, BrandMarkIcon: () => null }));
 vi.mock("../core/client/src/chrome/components/commissioning-overlay.js", () => ({ CommissioningOverlay: () => null }));
 vi.mock("../core/client/src/chrome/components/keyboard-shortcuts-dialog.js", () => ({ isKeyboardShortcutsModalOpen: () => false, shouldHandleOperationsKeyboardShortcut: keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut }));
 vi.mock("../core/client/src/chrome/components/operation-search.js", () => ({ OperationSearch: () => null }));
@@ -124,7 +124,7 @@ vi.mock("../core/client/src/chrome/rail/rail-store.js", async (importOriginal) =
   ...(await importOriginal<typeof import("../core/client/src/chrome/rail/rail-store.js")>()),
   toggleRailChrome: vi.fn(),
 }));
-vi.mock("../core/client/src/chrome/rail/right-rail.js", () => ({ RightRail: () => null }));
+vi.mock("../core/client/src/chrome/rail/right-rail.js", () => ({ RightRail: () => null, RailToolIcons: () => null, useRailPanelContext: () => ({}) }));
 vi.mock("../features/updates/client/whatsnew.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 // operations.tsx의 Alt 핸들러가 상태축 분기를 위해 이 모듈을 함께 읽으므로, 누락되면 preventDefault 이전에 던진다.
 // 부분 목으로 두어야 이 스토어에 export가 늘어도 이 테스트가 따라 깨지지 않는다.
