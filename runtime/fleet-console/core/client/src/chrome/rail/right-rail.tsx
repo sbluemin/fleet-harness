@@ -376,7 +376,7 @@ export function RailToolIcons({ context }: { readonly context: RailToolContext }
         aria-pressed={activePanelId === SETTINGS_RAIL_ENTRY_ID}
         aria-controls={activePanelId === SETTINGS_RAIL_ENTRY_ID ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
         aria-label={t("settings.title")}
-        title={t("settings.title")}
+        data-tip={t("settings.title")}
         onClick={() => toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)}
       >
         <GearGlyph />
@@ -556,7 +556,8 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
       aria-pressed={isActive}
       aria-label={title}
       disabled={entry.activate !== undefined && context.theaterId === null}
-      title={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${title} (${shortcut})` : title}
+      // 이름은 도구모음 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
+      data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${title} (${shortcut})` : title}
       onClick={handleClick}
     >
       {icon}
