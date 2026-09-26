@@ -1398,21 +1398,6 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         </div>
       </div>
 
-      {/* 회고 — 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
-      {objective.handoff ? (
-      <div className="objectives-group">
-        <SectionHead glyph={<RetroGlyph />} label={t("objectives.retro.title")} controls="objectives-sec-retro" expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
-        <div id="objectives-sec-retro" hidden={!sectionOpen("detail:retro")}>
-          <Retrospective
-            t={t}
-            by={objective.handoff.by}
-            good={objective.handoff.retrospective?.wentWell.map((pair) => ({ text: pair.point, aside: pair.because })) ?? []}
-            regret={objective.handoff.retrospective?.fellShort.map((pair) => ({ text: pair.point, aside: pair.ifOnly })) ?? []}
-          />
-        </div>
-      </div>
-      ) : null}
-
       {/* 임무 — 목록과 편성 그래프를 한 섹션에 둔다. 머리 오른쪽은 완료 셈이고, 접혀도 남는다(접힌 임무에 안 읽은 기록이 있으면 셈 앞에 점 하나).
           머리를 접으면 목록과 추가 입력만 접히고, 그래프는 접지 않는다 — 접어도 진행이 한눈에 보인다. 임무가 없으면 그래프는 서지 않는다. */}
       <div className="objectives-group objectives-missions-group" data-objectives-tour="missions">
@@ -1503,7 +1488,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         ) : null}
       </div>
 
-      {/* 후속 후보 — 임무 아래(맨 끝). 후보가 있을 때만 서고, 체크 없이 같은 줄·상세를 읽는다(폐기는 여기서도 된다).
+      {/* 후속 후보 — 임무 아래, 회고 위. 후보가 있을 때만 서고, 체크 없이 같은 줄·상세를 읽는다(폐기는 여기서도 된다).
           검토 대기에서는 띠로 보내 고르고, edited·gated·작업 중에는 읽기·폐기만 한다. */}
       {showFollowupSection ? (
       <div className="objectives-group">
@@ -1539,6 +1524,21 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             onDiscard={(candidateId) => void call("/followup/discard", { objectiveId: objective.id, candidateId })}
           />
           <FollowupDiscardedTrace discarded={followupDiscardedList} t={t} />
+        </div>
+      </div>
+      ) : null}
+
+      {/* 회고 — 후속 후보 아래(맨 끝). 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
+      {objective.handoff ? (
+      <div className="objectives-group">
+        <SectionHead glyph={<RetroGlyph />} label={t("objectives.retro.title")} controls="objectives-sec-retro" expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
+        <div id="objectives-sec-retro" hidden={!sectionOpen("detail:retro")}>
+          <Retrospective
+            t={t}
+            by={objective.handoff.by}
+            good={objective.handoff.retrospective?.wentWell.map((pair) => ({ text: pair.point, aside: pair.because })) ?? []}
+            regret={objective.handoff.retrospective?.fellShort.map((pair) => ({ text: pair.point, aside: pair.ifOnly })) ?? []}
+          />
         </div>
       </div>
       ) : null}
