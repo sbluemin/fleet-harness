@@ -83,15 +83,19 @@
 .objectives-section-add:focus-visible { outline: none; color: var(--brass); text-decoration: underline; text-underline-offset: 3px; }
 .objectives-section-empty { padding: 2px 10px 4px 26px; font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-section + .objectives-section { margin-top: 10px; }
-/* 구획 머리는 접이식 칩 — 셰브런이 펼침을 말하고, 「완료됨」은 맨 아래 접힌 채 선다 */
-.objectives-section-hd { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; margin: 2px 0 1px; padding: 4px 10px 4px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--surface-panel-raised) 70%, var(--surface-panel)); font: inherit; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-secondary); cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
-.objectives-section-hd:hover { border-color: var(--hairline-strong); color: var(--text-primary); }
-.objectives-section-hd:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.objectives-section-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-fast); }
+/* 구획 머리는 접이식 낱말 — 상자·채움 없이 셰브런이 펼침을 말하고, 「완료됨」은 맨 아래 접힌 채 선다.
+   초점은 범위 낱말처럼 황동 글자와 이름 밑줄로 자리를 말한다. */
+.objectives-section-hd { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; margin: 2px 0 1px; padding: 4px 2px 4px 0; border: 0; background: none; font: inherit; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-secondary); cursor: pointer; transition: color var(--duration-fast); }
+.objectives-section-hd:hover { color: var(--text-primary); }
+.objectives-section-hd:hover .objectives-section-chev { color: var(--text-secondary); }
+.objectives-section-hd:focus-visible { outline: none; color: var(--brass); }
+.objectives-section-hd:focus-visible .objectives-section-name { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.objectives-section-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-fast), color var(--duration-fast); }
 .objectives-section-chev svg { width: 11px; height: 11px; }
 .objectives-section-hd[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
 .objectives-section.is-done { margin-top: 14px; }
 .objectives-section.is-done .objectives-section-hd { color: var(--text-tertiary); }
+.objectives-section.is-done .objectives-section-hd:hover { color: var(--text-secondary); }
 .objectives-section-hd .objectives-swatch { width: 7px; height: 7px; border-radius: 50%; }
 .objectives-section-hd .objectives-count { color: var(--text-tertiary); }
 .objectives-objectives { display: flex; flex-direction: column; gap: 5px; flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
