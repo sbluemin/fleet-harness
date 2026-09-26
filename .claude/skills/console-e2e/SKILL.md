@@ -38,7 +38,7 @@ A standalone browser cannot establish Desktop behavior, so SPA checks requested 
 
 1. Build changed packages and the selected host in dependency order. Client changes require reload; host changes require an owned-server/app restart.
 2. Establish diagnostics before the scenario. First-load errors, rejections, and WebSocket lifecycle need pre-navigation instrumentation; post-load inspection misses them.
-3. Follow the user's exact action sequence and refresh snapshots after rerenders. Record the smallest DOM/state/network fingerprint distinguishing the defect. Screenshots are required for visual claims; geometry and synthetic clicks do not prove real hit testing, focus, or transitions. Check relevant modal, keyboard, and inverse paths.
+3. Follow the user's exact action sequence and refresh snapshots after rerenders. Record the smallest DOM/state/network fingerprint distinguishing the defect. Before real pointer input, follow [Pointer target preflight](references/verification.md#pointer-target-preflight). Screenshots are required for visual claims; geometry and synthetic clicks do not prove real hit testing, focus, or transitions. Check relevant modal, keyboard, and inverse paths.
 4. For a fix, establish fresh diagnostics and repeat the exact scenario plus relevant inverse. Repair task-induced regressions and verify again. Leave unsupported OS/native/signing claims unverified.
 5. Clean up on success and failure through the selected route's helper or tab cleanup, and stop only the owned isolated runtime. Global closes/kills, unknown PID signals, live-lock deletion, external CDP, and token output are out of bounds because they reach the user's own sessions and credentials.
 

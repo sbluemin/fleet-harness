@@ -30,6 +30,32 @@ EOF
 
 Interpret evidence in this order: page errors/rejections, DOM presence and size, WebSocket churn, console/network symptoms, screenshot. A missing React tree, zero-sized layout, absent xterm, and closed-socket flood are different failures.
 
+## Pointer target preflight
+
+Before real pointer input, especially near rails, captions, floating panels, or overlays, establish that the intended control receives the planned coordinate:
+
+1. Confirm the actual viewport and scroll position, visible overlays, and settled layout with a fresh snapshot and screenshot when spatial evidence matters. Use [Fresh-window chrome preflight](#fresh-window-chrome-preflight) when applicable. Do not reuse coordinates after scrolling, resizing, rerendering, or a transition.
+2. Resolve the current target and inspect its center with `elementFromPoint` in the same document and viewport coordinate system as `getBoundingClientRect`. For example, with `target` set to the intended control:
+
+   ```js
+   const r = target.getBoundingClientRect();
+   const x = r.left + r.width / 2;
+   const y = r.top + r.height / 2;
+   const inViewport = r.width > 0 && r.height > 0 &&
+     x >= 0 && y >= 0 && x < innerWidth && y < innerHeight;
+   const hit = inViewport ? document.elementFromPoint(x, y) : null;
+   ({
+     viewport: [innerWidth, innerHeight], scroll: [scrollX, scrollY],
+     rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+     point: [x, y], inViewport,
+     hit: hit && { tag: hit.tagName, id: hit.id, class: hit.getAttribute('class') },
+     reachesTarget: !!hit && (hit === target || target.contains(hit)),
+   });
+   ```
+
+3. If the center is outside the viewport, the hit is null, or another control/overlay receives it, **do not click or attribute the result to the intended control**. Preserve the target/occluder evidence first. Resolve expected obstruction only through supported UI actions, or scroll the target into view, then refresh the snapshot and repeat the hit-test. Do not remove overlays, force-click, or use DOM `.click()` to bypass them. If testing a visible non-center point, record and hit-test that exact point too; do not silently substitute it for a center-click claim. Unexpected obstruction may be a product defect, not a required workaround.
+4. Send real pointer input at the checked point using the selected driver and inspect the resulting target/event and state. If the driver's click chooses a different coordinate, check that coordinate instead. A passing hit-test is a precondition, not proof of a usable click, focus, or completed transition; synthetic DOM activation remains handler-diagnosis evidence only.
+
 ## Event contracts: record the sequence before changing code
 
 When a fix turns on **which** event fires, in what order, or at which target, log the real sequence first. The specification and the engine disagree often enough that a listener placed by reasoning can silently never run, and the symptom — nothing happens — looks identical to a wrong fix. Record type, pointer id, and coordinate, install in the capture phase so nothing is missed, and read the order rather than the outcome:
