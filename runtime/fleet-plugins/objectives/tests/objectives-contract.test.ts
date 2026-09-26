@@ -762,6 +762,7 @@ describe("Objectives contract", () => {
     const { store, route, call, launch, launches, operations, savedObjective } = harness();
     const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
     const related = await launch.create({ theaterId: "t1", title: "Related", groupId: null });
+    const alsoRelated = await launch.create({ theaterId: "t1", title: "Also related", groupId: null });
     const removed = await launch.create({ theaterId: "t1", title: "Removed", groupId: null });
     const completed = await launch.create({ theaterId: "t1", title: "Completed", groupId: null });
     await launch.requestPlan(source.id);
@@ -777,17 +778,36 @@ describe("Objectives contract", () => {
     for (const extra of store.find(source.id)!.followups.slice(1)) store.followupWithdraw(source.id, extra.id);
     const candidate = store.find(source.id)!.followups[0]!;
     const batchId = "3f1c8f3e-1111-4a8b-9c0d-000000000001";
-    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev, linkTargets: [related.id, removed.id, completed.id, source.id] }] });
+    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev, linkTargets: [related.id, alsoRelated.id, removed.id, completed.id, source.id] }] });
     // 후보 선택은 검토 대기에서만 — 지휘관이 넘기지 않았으면 사람이 회고 없이 넘긴다.
     expect((await pick()).value.error).toBe("not_in_review");
     expect((await route("objective/hand-off", { objectiveId: source.id })).status).toBe(200);
     expect(store.find(source.id)!.handoff).toMatchObject({ by: "human", retrospective: null });
     launch.remove(removed.id); // 사라지거나 완료된 연결 대상은 건너뛰되 후속 생성은 계속한다.
     store.complete(completed.id);
+    const relation = store.relation;
+    const interruptedLink = vi.spyOn(store, "relation").mockImplementation((objectiveId, otherId, action) => {
+      if (otherId === alsoRelated.id && action === "link") throw new Error("record_failed");
+      return relation(objectiveId, otherId, action);
+    });
     expect((await pick()).status).toBe(200);
     expect((await pick()).status).toBe(200);
+    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("failed"));
+    interruptedLink.mockRestore();
+    const targetId = store.list("t1").find((entry) => entry.origin?.candidateId === candidate.id)!.id;
+    expect(savedObjective(targetId).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([related.id]);
+    // 일부만 연결된 배치의 실패 뒤 사람이 관계 없음을 정하면, 재시도는 그 결정을 뒤집지 않는다.
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "unrelated" })).status).toBe(200);
+    expect((await route("followup/retry", { objectiveId: source.id, batchId, candidateId: candidate.id })).status).toBe(200);
     await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("created"));
-    const targetId = store.find(source.id)!.followupBatches[0]!.items[0]!.operationId!;
+    expect(store.find(source.id)!.followupBatches[0]!.items[0]!.operationId).toBe(targetId);
+    expect(savedObjective(targetId).unrelated).toEqual([related.id]);
+    expect(savedObjective(related.id).unrelated).toEqual([targetId]);
+    expect(savedObjective(targetId).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([alsoRelated.id]);
+    expect(savedObjective(alsoRelated.id).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([targetId]);
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: alsoRelated.id, action: "unlink" })).status).toBe(200);
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "restore" })).status).toBe(200);
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "link" })).status).toBe(200);
     expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id, userImpact: "Users see the next step" } });
     expect(savedObjective(targetId)).toHaveProperty("pending.title", "Next");
     expect(store.find(targetId)!.related).toEqual([related.id]);

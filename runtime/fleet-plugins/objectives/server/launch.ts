@@ -406,11 +406,20 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
           return;
         }
         for (const targetId of entry.linkTargets ?? []) {
+          if (entry.handledLinkTargets?.includes(targetId)) continue;
           const target = store.find(targetId);
-          if (!target || target.done || target.theaterId !== source.theaterId || target.id === created.id || target.id === objectiveId) continue;
-          // 재시도는 같은 목표를 다시 만들지 않는다. 이미 양쪽에 있는 연결의 시각도 바꾸지 않는다.
-          if (created.links.some((link) => link.objectiveId === targetId) && target.links.some((link) => link.objectiveId === created.id)) continue;
-          store.relation(created.id, targetId, "link");
+          if (!target || target.done || target.theaterId !== source.theaterId || target.id === created.id || target.id === objectiveId) {
+            store.followupLinkHandled(objectiveId, batchId, candidateId, targetId);
+            continue;
+          }
+          const current = store.find(created.id);
+          if (!current) throw new ObjectiveStoreError("unknown_objective");
+          // 사람의 관계 없음과 이전 시도의 해제는 재시도가 덮지 않는다.
+          if (!current.unrelated.includes(targetId) && !target.unrelated.includes(created.id) &&
+            !(current.links.some((link) => link.objectiveId === targetId) && target.links.some((link) => link.objectiveId === created.id))) {
+            store.relation(created.id, targetId, "link");
+          }
+          store.followupLinkHandled(objectiveId, batchId, candidateId, targetId);
         }
         store.followupSettle(objectiveId, batchId, candidateId, { state: "created", operationId: created.id, attempted: true });
       } catch (error) {

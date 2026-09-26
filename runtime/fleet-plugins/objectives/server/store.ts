@@ -198,6 +198,8 @@ export interface ObjectiveStore {
   completeWithFollowups(objectiveId: string, selection: FollowupSelection): { readonly objective: Objective; readonly fresh: boolean };
   /** 배치 항목의 생성 결과를 기록한다. 끝난 항목(created·deleted)은 후보 목록에서 빠지고 배치에만 남는다. */
   followupSettle(objectiveId: string, batchId: string, candidateId: string, next: { readonly state: FollowupItemState; readonly operationId?: string; readonly error?: string; readonly attempted?: boolean }): Objective;
+  /** 대상 한 건의 관계 처리를 남겨 재시도가 뒤의 사람 결정을 덮지 않게 한다. */
+  followupLinkHandled(objectiveId: string, batchId: string, candidateId: string, targetId: string): Objective;
   /** failed·confirming 항목을 다시 creating 으로 — 같은 스냅샷·같은 키로 다시 확인하거나 만든다. */
   followupRetry(objectiveId: string, batchId: string, candidateId: string): Objective;
   /** failed 항목을 포기한다 — 후보는 같은 rev 의 open 으로 돌아간다. */
@@ -1078,6 +1080,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const settled = next.state !== "creating";
       const updated: StoredFollowupItem = {
         candidateId: entry.candidateId, rev: entry.rev, snapshot: entry.snapshot, state: next.state, ...(entry.linkTargets?.length ? { linkTargets: entry.linkTargets } : {}),
+        ...(entry.handledLinkTargets?.length ? { handledLinkTargets: entry.handledLinkTargets } : {}),
         ...(next.operationId ?? entry.operationId ? { operationId: next.operationId ?? entry.operationId } : {}),
         ...(next.error ? { error: next.error } : {}),
         attempts: entry.attempts + (next.attempted ? 1 : 0),
@@ -1091,6 +1094,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           ? (stored.followups ?? []).map((candidate) => { if (candidate.id !== candidateId) return candidate; const { batchId: _batch, ...rest } = candidate; return { ...rest, state: "open" as const }; })
           : stored.followups;
       return foldBatches({ ...stored, followups, followupBatches: replaceItem(stored, batch, updated) });
+    }),
+    followupLinkHandled: (objectiveId, batchId, candidateId, targetId) => update(objectiveId, (stored) => {
+      const { batch, entry } = batchItem(stored, batchId, candidateId);
+      if (entry.state !== "creating" || !entry.linkTargets?.includes(targetId)) throw new ObjectiveStoreError("unknown_followup");
+      if (entry.handledLinkTargets?.includes(targetId)) return stored;
+      return { ...stored, followupBatches: replaceItem(stored, batch, { ...entry, handledLinkTargets: [...(entry.handledLinkTargets ?? []), targetId] }) };
     }),
     followupRetry: (objectiveId, batchId, candidateId) => update(objectiveId, (stored) => {
       const { batch, entry } = batchItem(stored, batchId, candidateId);

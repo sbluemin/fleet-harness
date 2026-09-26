@@ -197,6 +197,8 @@ export interface StoredFollowupItem {
   readonly error?: string;
   readonly attempts: number;
   readonly linkTargets?: readonly string[];
+  /** 이미 처리한 대상 — 재시도가 이후 사람의 관계 결정을 뒤집지 않도록 보존한다. */
+  readonly handledLinkTargets?: readonly string[];
   readonly settledAt?: number;
 }
 
