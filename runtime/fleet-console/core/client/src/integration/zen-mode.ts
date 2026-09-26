@@ -48,28 +48,25 @@ export function setZenTransitionRunner(runner: ZenTransitionRunner): () => void 
 }
 
 /**
- * 사용자 요청 앞에 끼는 관문. Desktop은 창 전환(네이티브 전체화면)을 먼저 끝낸 뒤에 Zen을 바꾼다 —
- * 창이 커지거나 줄어드는 동안 장면이 시작되면 장면이 끊겨 보인다. 관문이 요청을 맡으면(true) 준비가
- * 끝났을 때 proceed()를 부르고, 맡지 않으면 곧바로 진행한다. 강제 종료(setZenMode)는 관문을 타지 않는다.
+ * 창 단계 — 전환 장면이 커튼을 완전히 친 뒤 창을 바꾸고 기다리는 자리. Desktop은 여기서 네이티브 전체화면을
+ * 켜고 끄며 셸의 완료 알림을 기다린다(desktop-fullscreen.ts). 창을 바꿀 셸이 없으면(브라우저) 곧바로 끝난다.
  */
-export type ZenRequestGate = (next: boolean, proceed: () => void) => boolean;
+export type ZenWindowStage = (next: boolean) => Promise<void>;
 
-let requestGate: ZenRequestGate | null = null;
+let windowStage: ZenWindowStage | null = null;
 
-export function setZenRequestGate(gate: ZenRequestGate): () => void {
-  requestGate = gate;
+export function setZenWindowStage(stage: ZenWindowStage): () => void {
+  windowStage = stage;
   return () => {
-    if (requestGate === gate) requestGate = null;
+    if (windowStage === stage) windowStage = null;
   };
 }
 
-export function requestZenMode(next: boolean): void {
-  if (state.active === next) return;
-  if (requestGate?.(next, () => runZenRequest(next))) return;
-  runZenRequest(next);
+export function runZenWindowStage(next: boolean): Promise<void> {
+  return windowStage?.(next) ?? Promise.resolve();
 }
 
-function runZenRequest(next: boolean): void {
+export function requestZenMode(next: boolean): void {
   if (state.active === next) return;
   if (transitionRunner?.(next)) return;
   setZenMode(next);

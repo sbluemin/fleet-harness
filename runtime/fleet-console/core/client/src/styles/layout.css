@@ -600,8 +600,7 @@ body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-drawer,
 body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-fold { display: none; }
 body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-plugins { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
 
-/* Zen 전환 장면 — 커튼 한 겹과 날아가는 앰블럼(zen-transition.tsx). 커튼은 예전 War Room·Tactical
-   모드 커튼과 같은 원형 스크림(가운데 canvas-abyss 66%)에 가장자리를 옅게 한 겹 더 깐다.
+/* Zen 전환 장면 — 불투명한 커튼 한 겹과 그 위를 나는 앰블럼(zen-transition.tsx).
    앰블럼이 나는 동안 제자리의 브랜드(밴드·작업 표시줄)는 비워 둔다 — 둘이 겹쳐 보이면 한 마크가
    두 개로 읽힌다. */
 .zen-transition {
@@ -615,14 +614,16 @@ body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-plugins { 
   position: absolute;
   inset: 0;
   opacity: 0;
-  background:
-    radial-gradient(52% 46% at 50% 50%, color-mix(in oklch, var(--canvas-abyss) 66%, transparent), color-mix(in oklch, var(--canvas-abyss) 30%, transparent) 72%),
-    color-mix(in oklch, var(--canvas-abyss) 18%, transparent);
+  /* 불투명하다 — 커튼 뒤에서 레이아웃이 바뀌고 창이 전체화면으로 커지거나 줄어드는 동안 그 과정이 비치지
+     않아야 한다. 색은 테마마다 가장 깊은 캔버스 바탕(--canvas-abyss)이라 라이트 테마에서는 밝은 커튼이다. */
+  background: var(--canvas-abyss);
 }
+/* 배우는 화면 한가운데를 원점으로 선다 — 좌표는 중심에서의 거리다(zen-transition.tsx). 창이 전체화면으로
+   바뀌어도 가운데에 멈춘 앰블럼이 가운데에 남는다. */
 .zen-transition-mark {
   position: absolute;
-  top: 0;
-  left: 0;
+  top: 50%;
+  left: 50%;
   width: 72px;
   height: 72px;
   visibility: hidden;
@@ -637,8 +638,8 @@ body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-plugins { 
 }
 .zen-transition .zen-transition-wordmark {
   position: absolute;
-  top: 0;
-  left: 0;
+  top: 50%;
+  left: 50%;
   visibility: hidden;
   color: var(--text-primary);
   /* 서체는 밴드 워드마크(.command-band-brand-wordmark)를 함께 입어 받는다 — 디스플레이 서체의 생산자는 하나다. */

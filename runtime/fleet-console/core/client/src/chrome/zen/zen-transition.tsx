@@ -1,29 +1,43 @@
 import { useEffect, useRef } from "react";
 
 import { BrandMarkIcon } from "../components/command-band.js";
-import { setZenMode, setZenTransitionRunner } from "../../integration/zen-mode.js";
+import { runZenWindowStage, setZenMode, setZenTransitionRunner } from "../../integration/zen-mode.js";
 import { BrandWordmark } from "./zen-bar.js";
 
 /**
- * Zen 전환 장면 — 반투명 커튼이 내려오고, Band 왼쪽의 앰블럼과 워드마크가 화면 가운데로 나와
- * 세로축으로 한 바퀴 뒤집히며 커졌다 작아진 뒤, 커튼이 걷히는 동안 작업 표시줄 오른쪽 끝(Zen 바
- * 트레이의 앰블럼)에 내려앉는다. 끌 때는 경로와 회전 방향만 거꾸로 돈다.
+ * Zen 전환 장면. 켤 때:
  *
- * 곡선과 가운데 배치는 Desktop 진입 화면(fleet-desktop/assets/entry)의 넘겨주기를 그대로 쓴다 —
- * 72px 마크와 40px 워드마크, 420ms, cubic-bezier(0.16, 1, 0.3, 1). 끌 때 애니메이션을 통째로
- * 역재생하면 곡선까지 뒤집혀 도착이 가속하므로, 종료 인사처럼 경로만 뒤집고 곡선은 그대로 둔다.
+ *   1. 테마 바탕색의 **불투명한** 커튼이 다 쳐진다 — 그 뒤에서 레이아웃이 Zen으로 바뀐다.
+ *   2. Band 왼쪽의 앰블럼(마크+워드마크)이 화면 가운데로 옮겨 와 멈춘다. 가운데에서는 아무것도 하지 않는다.
+ *   3. 창 단계 — Desktop은 네이티브 전체화면을 켜고 셸의 완료 알림까지 기다린다(브라우저는 곧바로 끝).
+ *   4. 가운데에서 세로축으로 한 바퀴 뒤집히며 커졌다 작아진 뒤, 작업 표시줄 오른쪽 끝(트레이 앰블럼)으로
+ *      내려앉는 동안 커튼이 걷힌다.
  *
- * 레이아웃 전환(Band·사이드바가 물러나고 작업 표시줄이 올라오는 것)은 커튼이 가린 동안 일어난다.
- * 도착 자리는 전환 뒤에야 서므로 마지막 구간을 시작할 때 잰다. 측정할 자리가 없거나 동작 줄이기를
- * 켠 환경이면 장면을 맡지 않고, Zen은 곧바로 바뀐다.
+ * 끌 때는 거울상이다: 앰블럼이 트레이에서 가운데로 오는 동안 커튼이 쳐지고, 가운데에서 거꾸로 한 바퀴 돈 뒤
+ * 커튼 뒤에서 레이아웃이 돌아오고, 창 단계(전체화면 해제)를 기다린 다음, 앰블럼이 Band 자리로 옮겨 가고
+ * 커튼이 걷힌다.
+ *
+ * 창이 바뀌는 동안 보이는 것은 불투명한 커튼과 멈춘 앰블럼뿐이다 — macOS 전체화면 애니메이션은 창 내용을
+ * 얼리므로, 그 사이에 움직이는 것이 있으면 끊겨 보인다. 가운데 배치와 곡선은 Desktop 진입 화면
+ * (fleet-desktop/assets/entry)의 넘겨주기를 그대로 쓴다 — 72px 마크와 40px 워드마크, 스프링
+ * cubic-bezier(0.16, 1, 0.3, 1). 끌 때 애니메이션을 통째로 역재생하면 곡선까지 뒤집혀 도착이 가속하므로,
+ * 경로만 뒤집고 곡선은 그대로 둔다. 도착 자리는 레이아웃·창 전환 뒤에야 서므로 그 구간을 시작할 때 잰다.
+ * 측정할 자리가 없거나 동작 줄이기를 켠 환경이면 장면을 맡지 않고, Zen은 곧바로 바뀐다.
  */
 
+/** 커튼이 다 쳐지거나 걷히는 시간(Band 쪽 끝). */
+const VEIL_MS = 320;
+/** Band 자리 ↔ 가운데. */
 const MOVE_MS = 420;
+/** 가운데에서의 한 바퀴. */
 const SPIN_MS = 700;
+/** 가운데 ↔ 트레이 자리. 이 구간 동안 커튼이 걷히거나(켤 때) 쳐진다(끌 때). */
 const LAND_MS = 520;
-const TOTAL_MS = MOVE_MS + SPIN_MS + LAND_MS;
-/** 켤 때는 커튼이 반쯤 내려온 뒤, 끌 때는 다 내려온 뒤 레이아웃을 바꾼다. */
-const SWITCH_AT = { enter: 0.12, exit: 0.34 } as const;
+/**
+ * 커튼 뒤에서 레이아웃이 돌아온 뒤 Band가 제자리에 서기까지(layout.css의 --duration-base 220ms 전이 + 여유).
+ * 창 단계가 곧바로 끝나는 브라우저에서도 착지할 Band 자리를 잴 수 있게 적어도 이만큼은 기다린다.
+ */
+const BAND_SETTLE_MS = 280;
 const SPRING = "cubic-bezier(0.16, 1, 0.3, 1)";
 const MARK_SIZE = 72;
 const WORD_SIZE = 40;
@@ -31,6 +45,11 @@ const SPIN_SCALE_PEAK = 0.28;
 const SPIN_FRAMES = 12;
 const FLIGHT_ATTRIBUTE = "zenFlight";
 
+/**
+ * 배우의 좌표는 화면 **중심**을 원점으로 한다(배우는 CSS로 화면 한가운데에 서 있다). 창이 전체화면으로
+ * 커지거나 줄어도 가운데에 멈춰 선 앰블럼이 그대로 가운데에 남는다 — 왼쪽 위 원점이면 창이 커진 뒤 옛 창의
+ * 가운데, 곧 새 화면의 왼쪽 위에서 돌게 된다. 자리를 잰 값은 잰 순간의 창 크기로 옮겨 둔다.
+ */
 interface Rect { readonly x: number; readonly y: number; readonly size: number }
 interface BrandRects { readonly mark: Rect; readonly word: Rect }
 
@@ -70,42 +89,24 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
   const sign = next ? 1 : -1;
   const running: Animation[] = [];
   const track = (animation: Animation) => { running.push(animation); return animation; };
-  root.dataset[FLIGHT_ATTRIBUTE] = "true";
-  mark.style.visibility = "visible";
-  word.style.visibility = "visible";
-  let switched = false;
-  const switchTimer = window.setTimeout(() => {
-    switched = true;
-    setZenMode(next);
-  }, TOTAL_MS * (next ? SWITCH_AT.enter : SWITCH_AT.exit));
-  try {
-    track(veil.animate([
-      { offset: 0, opacity: 0 },
-      { offset: 0.2, opacity: 1 },
-      { offset: (MOVE_MS + SPIN_MS) / TOTAL_MS, opacity: 1 },
-      { offset: 0.95, opacity: 0 },
-      { offset: 1, opacity: 0 },
-    ], { duration: TOTAL_MS, fill: "both" }));
-
-    // 1 — 제자리에서 가운데로(Desktop 넘겨주기의 역방향 배치). 출발 자리가 화면 밖이면 가운데에서 떠오른다.
-    await Promise.all(from === null
-      ? [
-        track(mark.animate([{ transform: markTransform(center.mark), opacity: 0 }, { transform: markTransform(center.mark), opacity: 1 }], { duration: MOVE_MS, easing: SPRING, fill: "forwards" })).finished,
-        track(word.animate([{ transform: wordTransform(center.word), opacity: 0 }, { transform: wordTransform(center.word), opacity: 1 }], { duration: MOVE_MS, easing: SPRING, fill: "forwards" })).finished,
-      ]
-      : [
-        track(mark.animate([{ transform: markTransform(from.mark) }, { transform: markTransform(center.mark) }], { duration: MOVE_MS, easing: SPRING, fill: "forwards" })).finished,
-        track(word.animate([{ transform: wordTransform(from.word) }, { transform: wordTransform(center.word) }], { duration: MOVE_MS, easing: SPRING, fill: "forwards" })).finished,
-      ]);
-
-    // 2 — 세로축으로 한 바퀴. 도는 동안 1.0 → 1.28 → 1.0으로 커졌다 작아진다.
+  // 배우를 곧바로 한 자리에 세운다(0ms 애니메이션 + forwards). 다음 구간의 애니메이션이 이어받는다.
+  const place = (markRect: Rect, wordRect: Rect, opacity = 1) => {
+    track(mark.animate([{ transform: markTransform(markRect), opacity }], { duration: 0, fill: "forwards" }));
+    track(word.animate([{ transform: wordTransform(wordRect), opacity }], { duration: 0, fill: "forwards" }));
+  };
+  const moveBetween = (a: BrandRects, b: BrandRects) => Promise.all([
+    track(mark.animate([{ transform: markTransform(a.mark) }, { transform: markTransform(b.mark) }], { duration: MOVE_MS, easing: SPRING, fill: "forwards" })).finished,
+    track(word.animate([{ transform: wordTransform(a.word) }, { transform: wordTransform(b.word) }], { duration: MOVE_MS, easing: SPRING, fill: "forwards" })).finished,
+  ]);
+  // 가운데에서의 한 바퀴 — 도는 동안 1.0 → 1.28 → 1.0으로 커졌다 작아진다.
+  const spin = () => {
     const spinFrames: Keyframe[] = [];
     for (let index = 0; index <= SPIN_FRAMES; index += 1) {
       const eased = easeInOutCubic(index / SPIN_FRAMES);
       const scale = 1 + SPIN_SCALE_PEAK * Math.sin(Math.PI * eased);
       spinFrames.push({ transform: `${markTransform(center.mark, scale)} rotateY(${(360 * eased * sign).toFixed(2)}deg)` });
     }
-    await Promise.all([
+    return Promise.all([
       track(mark.animate(spinFrames, { duration: SPIN_MS, easing: "linear", fill: "forwards" })).finished,
       track(word.animate([
         { transform: wordTransform(center.word) },
@@ -113,25 +114,69 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
         { transform: wordTransform(center.word) },
       ], { duration: SPIN_MS, easing: "ease-in-out", fill: "forwards" })).finished,
     ]);
+  };
+  // 가운데 ↔ 트레이 — 자리가 없으면(막대를 접어 둠) 가운데에서 나타나거나 사라진다.
+  const land = (tray: BrandRects | null, towardTray: boolean) => {
+    if (tray === null) {
+      const frames = towardTray ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 0 }, { opacity: 1 }];
+      return Promise.all([
+        track(mark.animate(frames, { duration: LAND_MS / 2, fill: "forwards" })).finished,
+        track(word.animate(frames, { duration: LAND_MS / 2, fill: "forwards" })).finished,
+      ]);
+    }
+    const spun = `rotateY(${360 * sign}deg)`;
+    const atCenter = { mark: `${markTransform(center.mark)} ${towardTray ? spun : ""}`, word: wordTransform(center.word) };
+    const atTray = { mark: `${markTransform(tray.mark)} ${towardTray ? spun : ""}`, word: wordTransform(tray.word) };
+    const [markFrom, markTo] = towardTray ? [atCenter.mark, atTray.mark] : [atTray.mark, atCenter.mark];
+    const [wordFrom, wordTo] = towardTray ? [atCenter.word, atTray.word] : [atTray.word, atCenter.word];
+    return Promise.all([
+      track(mark.animate([{ transform: markFrom }, { transform: markTo }], { duration: LAND_MS, easing: SPRING, fill: "forwards" })).finished,
+      track(word.animate([{ transform: wordFrom }, { transform: wordTo }], { duration: LAND_MS, easing: SPRING, fill: "forwards" })).finished,
+    ]);
+  };
+  const veilTo = (opacity: number, duration: number, easing: string) =>
+    track(veil.animate([{ opacity: opacity === 1 ? 0 : 1 }, { opacity }], { duration, easing, fill: "forwards" })).finished;
 
-    // 3 — 새 자리로 내려앉는다. 그 자리는 레이아웃 전환 뒤에야 서므로 지금 잰다. 막대를 접어 둬서
-    //     자리가 화면 밖이면 가운데에서 흐려지며 사라진다.
-    const to = next ? measureTaskbarBrand() : measureBandBrand();
-    if (to === null) {
-      await Promise.all([
-        track(mark.animate([{ opacity: 1 }, { opacity: 0 }], { duration: LAND_MS / 2, fill: "forwards" })).finished,
-        track(word.animate([{ opacity: 1 }, { opacity: 0 }], { duration: LAND_MS / 2, fill: "forwards" })).finished,
-      ]);
+  root.dataset[FLIGHT_ATTRIBUTE] = "true";
+  mark.style.visibility = "visible";
+  word.style.visibility = "visible";
+  let switched = false;
+  const switchLayout = () => {
+    switched = true;
+    setZenMode(next);
+  };
+  try {
+    if (next) {
+      // 1 — 앰블럼은 Band 자리에 선 채 불투명한 커튼이 다 쳐지고, 그 뒤에서 레이아웃이 Zen으로 바뀐다.
+      if (from !== null) place(from.mark, from.word);
+      await veilTo(1, VEIL_MS, "ease-out");
+      switchLayout();
+      // 2 — 가운데로 옮겨 와 멈춘다.
+      if (from !== null) await moveBetween(from, center);
+      // 3 — 창 단계(Desktop 전체화면). 앰블럼은 가운데에 멈춰 있다.
+      await runZenWindowStage(true);
+      // 4 — 가운데에서 한 바퀴, 트레이로 내려앉으며 커튼이 걷힌다.
+      await spin();
+      const tray = measureTaskbarBrand();
+      await Promise.all([land(tray, true), veilTo(0, LAND_MS * 0.9, "ease-in")]);
     } else {
-      await Promise.all([
-        track(mark.animate([{ transform: `${markTransform(center.mark)} rotateY(${360 * sign}deg)` }, { transform: `${markTransform(to.mark)} rotateY(${360 * sign}deg)` }], { duration: LAND_MS, easing: SPRING, fill: "forwards" })).finished,
-        track(word.animate([{ transform: wordTransform(center.word) }, { transform: wordTransform(to.word) }], { duration: LAND_MS, easing: SPRING, fill: "forwards" })).finished,
-      ]);
+      // 4′ — 트레이에서 가운데로 오는 동안 커튼이 쳐진다(자리가 없으면 가운데에서 나타난다).
+      if (from !== null) place(from.mark, from.word);
+      else place(center.mark, center.word, 0);
+      await Promise.all([land(from, false), veilTo(1, LAND_MS, "ease-out")]);
+      // 가운데에서 거꾸로 한 바퀴 — 끝나면 커튼 뒤에서 레이아웃이 돌아온다.
+      await spin();
+      switchLayout();
+      // 3′ — 창 단계(Desktop 전체화면 해제). 앰블럼은 가운데에 멈춰 있다. Band가 제자리에 설 시간도 함께 기다린다.
+      await Promise.all([runZenWindowStage(false), delay(BAND_SETTLE_MS)]);
+      // 2′·1′ — 창이 돌아온 뒤의 Band 자리로 옮겨 가고, 커튼이 걷힌다.
+      const band = measureBandBrand();
+      if (band !== null) await moveBetween(center, band);
+      await veilTo(0, VEIL_MS, "ease-in");
     }
   } catch {
     // 취소(언마운트·탭 숨김)는 장면만 거둔다.
   } finally {
-    window.clearTimeout(switchTimer);
     // 전환이 아직 걸리지 않았을 때만 요청을 마저 반영한다. 이미 걸린 뒤 경로 이탈 같은 강제 종료가
     // Zen을 걷었다면 그 결정을 되돌리지 않는다.
     if (!switched) setZenMode(next);
@@ -160,10 +205,12 @@ function measureBrand(glyphSelector: string, wordSelector: string): BrandRects |
   // 접힌 막대처럼 화면 밖으로 물러난 자리는 착지할 곳이 아니다.
   if (glyphRect.bottom <= 0 || glyphRect.top >= window.innerHeight) return null;
   const fontSize = Number.parseFloat(getComputedStyle(wordmark).fontSize) || 13;
+  const originX = window.innerWidth / 2;
+  const originY = window.innerHeight / 2;
   return {
-    mark: { x: glyphRect.left, y: glyphRect.top, size: glyphRect.width },
+    mark: { x: glyphRect.left - originX, y: glyphRect.top - originY, size: glyphRect.width },
     // 워드마크는 글자 크기로 줄인다. 줄 높이가 달라도 글자 몸통이 같은 자리에 오도록 세로 가운데를 맞춘다.
-    word: { x: wordRect.left, y: wordRect.top + (wordRect.height - fontSize) / 2, size: fontSize },
+    word: { x: wordRect.left - originX, y: wordRect.top + (wordRect.height - fontSize) / 2 - originY, size: fontSize },
   };
 }
 
@@ -173,11 +220,9 @@ function centerRects(word: HTMLElement): BrandRects {
   word.style.transform = "none";
   const wordWidth = word.getBoundingClientRect().width;
   word.style.transform = previous;
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight / 2;
   return {
-    mark: { x: centerX - MARK_SIZE / 2, y: centerY - 116, size: MARK_SIZE },
-    word: { x: centerX - wordWidth / 2, y: centerY - 26, size: WORD_SIZE },
+    mark: { x: -MARK_SIZE / 2, y: -116, size: MARK_SIZE },
+    word: { x: -wordWidth / 2, y: -26, size: WORD_SIZE },
   };
 }
 
@@ -193,6 +238,10 @@ function markTransform(rect: Rect, extraScale = 1): string {
 function wordTransform(rect: Rect, extraScale = 1): string {
   const scale = (rect.size / WORD_SIZE) * extraScale;
   return `translate(${rect.x.toFixed(2)}px, ${rect.y.toFixed(2)}px) scale(${scale.toFixed(4)})`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => { window.setTimeout(resolve, ms); });
 }
 
 function easeInOutCubic(progress: number): number {
