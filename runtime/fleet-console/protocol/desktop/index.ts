@@ -232,3 +232,24 @@ export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRe
   if (value.events !== undefined && !(Array.isArray(value.events) && value.events.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && typeof entry.method === "string" && isRecord(entry.params)))) return false;
   return true;
 }
+
+/**
+ * 창이 자기를 든 셸에게 시키는 창 조작. 방향은 셸 갱신 명령과 같다(창 → Console → 그 창의 셸 SSE)
+ * 이지만, 명령은 걸어 두지 않고 지금 붙어 있는 셸에만 흘린다 — 나중에 붙은 셸이 사용자가 잊은
+ * 전체화면 전환을 수행하면 창이 저 혼자 커진다. 스냅샷 경로는 옛 Console을 가려내는 데만 쓰이고
+ * 늘 빈 명령을 돌려준다.
+ */
+export const DESKTOP_WINDOW_COMMAND_PATH = "/api/v1/desktop/window/command";
+export const DESKTOP_WINDOW_COMMAND_EVENTS_PATH = "/api/v1/desktop/window/command/events";
+export const DESKTOP_WINDOW_COMMAND_EVENT = "desktop:window-command";
+export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen"] as const;
+export type DesktopWindowCommand = (typeof DESKTOP_WINDOW_COMMANDS)[number];
+export interface DesktopWindowCommandSnapshot { readonly command: DesktopWindowCommand | null }
+
+export function isDesktopWindowCommand(value: unknown): value is DesktopWindowCommand {
+  return typeof value === "string" && (DESKTOP_WINDOW_COMMANDS as readonly string[]).includes(value);
+}
+
+export function isDesktopWindowCommandSnapshot(value: unknown): value is DesktopWindowCommandSnapshot {
+  return isRecord(value) && Object.keys(value).length === 1 && (value.command === null || isDesktopWindowCommand(value.command));
+}

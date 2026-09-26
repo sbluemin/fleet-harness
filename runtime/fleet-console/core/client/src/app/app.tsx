@@ -51,6 +51,7 @@ import { useConsoleLocale, useT } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { syncExperimentModelOptionPlugins } from "../integration/experiment-model-options.js";
 import { isZenMode, setZenMode, toggleZenMode, useZenModeState } from "../integration/zen-mode.js";
+import { useZenDesktopFullscreen } from "../integration/desktop-fullscreen.js";
 import { ZenBar } from "../chrome/zen/zen-bar.js";
 import { ZenTransition } from "../chrome/zen/zen-transition.js";
 import { toggleZenSideBar } from "../integration/zen-chrome-toggles.js";
@@ -139,6 +140,7 @@ export function App() {
   useLayoutEffect(() => {
     if (zenMode && (!operationsViewVisible || mobileLayout)) setZenMode(false);
   }, [zenMode, operationsViewVisible, mobileLayout]);
+  useZenDesktopFullscreen(zenActive);
   useEffect(() => {
     const remember = (event: FocusEvent) => {
       const target = event.target;

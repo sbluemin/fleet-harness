@@ -27,6 +27,7 @@ import { createDesktopLogger, describeError, type DesktopLogger } from "./loggin
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { createDesktopUpdateSynchronizer } from "./desktop-update-sync.js";
 import { createDesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
+import { createDesktopWindowCommandSynchronizer } from "./desktop-window-command.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
 import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables } from "./runtime/console-installer.js";
@@ -246,6 +247,17 @@ async function boot(): Promise<void> {
     // 새로 붙은 화면은 이 셸이 이미 아는 상태를 모른다 — 지금 값을 한 번 게시해 두 자리를 맞춘다.
     if (shellUpdater) publishShellUpdate(shellUpdater.snapshot());
   };
+  /**
+   * 창 조작 명령 — 화면(Zen)이 이 창의 네이티브 전체화면을 켜고 끈다. 셸 갱신 명령처럼 창이 보고 있는
+   * 콘솔에서 듣는다. 전체화면 진입·이탈은 OS가 이미 사용자에게 내준 조작이라 별도 확인을 두지 않는다.
+   */
+  const windowCommands = createDesktopWindowCommandSynchronizer({
+    fetch: consoleFetch,
+    perform: (command) => {
+      if (!window || window.isDestroyed()) return;
+      window.base.setFullScreen(command === "enter-fullscreen");
+    },
+  });
   let fullscreenSynchronizer: ReturnType<typeof createDesktopFullscreenSynchronizer> | null = null;
   /**
    * Operation 브라우저의 네이티브 뷰. 창이 어느 콘솔에 있든 그 콘솔의 탭을 이 창에 그린다 — 원격 콘솔로 건너가면
@@ -351,7 +363,7 @@ async function boot(): Promise<void> {
     loadConsole: (url) => handOffWindowToConsole({
       publishShellHome: async (origin) => { await publishShellHome(origin); },
       loadUrl: async (target) => { await window?.loadURL(target); },
-      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await synchronizeBrowserViews(origin); },
+      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
     }, url),
     openPicker: (url) => picker.open(url),
@@ -422,6 +434,7 @@ async function boot(): Promise<void> {
           browserViews.stop();
           fullscreenSynchronizer?.stop();
           fullscreenSynchronizer = null;
+          windowCommands.stop();
           overlayRefresher?.stop();
           overlayRefresher = null;
           picker.close();
@@ -485,7 +498,7 @@ async function boot(): Promise<void> {
         controls.handoffStarted();
         void publishShellHome(origin);
       },
-      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await synchronizeBrowserViews(origin); },
+      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
       onConsoleLoaded: () => { consoleShown = true; controls.onConsoleLoaded(); },
       onFirstRunFailure: async () => showFirstRunFailure(),

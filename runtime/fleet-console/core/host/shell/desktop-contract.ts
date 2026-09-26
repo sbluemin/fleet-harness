@@ -1,5 +1,6 @@
 import type http from "node:http";
 
+import { DESKTOP_WINDOW_COMMAND_EVENTS_PATH, DESKTOP_WINDOW_COMMAND_PATH, isDesktopWindowCommandSnapshot, type DesktopWindowCommand, type DesktopWindowCommandSnapshot } from "@fleet-console/protocol/desktop";
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import type { ConsoleThemeId } from "../../../features/settings/host/settings-domain.js";
 
@@ -59,6 +60,77 @@ export function createDesktopFullscreenRouter(deps: DesktopFullscreenRouteDeps):
       return true;
     }
     if (deps.getFullscreen() !== body.fullscreen) deps.setFullscreen(body.fullscreen);
+    deps.writeNoContent(res);
+    return true;
+  };
+}
+
+export const DESKTOP_WINDOW_COMMAND_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "POST",
+    path: DESKTOP_WINDOW_COMMAND_PATH,
+    summary: "Ask the shell that owns this window to enter or leave native fullscreen.",
+    category: "Desktop",
+    gate: "origin-strict",
+    transport: "http",
+  },
+  {
+    method: "GET",
+    path: DESKTOP_WINDOW_COMMAND_PATH,
+    summary: "Read the window command snapshot (always empty; commands are never parked).",
+    category: "Desktop",
+    gate: "origin-strict",
+    transport: "http",
+  },
+  {
+    method: "GET",
+    path: DESKTOP_WINDOW_COMMAND_EVENTS_PATH,
+    summary: "Stream window commands the owning shell must perform.",
+    category: "Desktop",
+    gate: "origin-strict",
+    transport: "sse",
+  },
+];
+
+interface DesktopWindowCommandRouteDeps {
+  readonly isAuthorized: (req: http.IncomingMessage) => boolean;
+  readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
+  /** 요청한 창의 셸 주인에게만 흘린다. 주인을 가릴 수 없는 요청은 조용히 버린다. */
+  readonly requestCommand: (req: http.IncomingMessage, command: DesktopWindowCommand) => void;
+  readonly subscribe: (req: http.IncomingMessage, res: http.ServerResponse) => void;
+  readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
+  readonly writeNoContent: (res: http.ServerResponse) => void;
+}
+
+export function createDesktopWindowCommandRouter(deps: DesktopWindowCommandRouteDeps): (context: DesktopFullscreenRouteContext) => Promise<boolean> {
+  return async ({ req, res, pathname }) => {
+    if (pathname !== DESKTOP_WINDOW_COMMAND_PATH && pathname !== DESKTOP_WINDOW_COMMAND_EVENTS_PATH) return false;
+    if (!deps.isAuthorized(req)) {
+      deps.writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    if (pathname === DESKTOP_WINDOW_COMMAND_EVENTS_PATH) {
+      if (req.method !== "GET") {
+        deps.writeJson(res, 405, { error: "Method not allowed" });
+        return true;
+      }
+      deps.subscribe(req, res);
+      return true;
+    }
+    if (req.method === "GET") {
+      deps.writeJson(res, 200, { command: null } satisfies DesktopWindowCommandSnapshot);
+      return true;
+    }
+    if (req.method !== "POST") {
+      deps.writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    const body = await deps.readJsonBody<unknown>(req);
+    if (!isDesktopWindowCommandSnapshot(body) || body.command === null) {
+      deps.writeJson(res, 400, { error: "invalid_desktop_window_command" });
+      return true;
+    }
+    deps.requestCommand(req, body.command);
     deps.writeNoContent(res);
     return true;
   };

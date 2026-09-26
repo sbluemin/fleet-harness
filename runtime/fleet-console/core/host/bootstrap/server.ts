@@ -32,7 +32,7 @@ import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../featur
 import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
 import { createBrowserRouter } from "../../../features/browser/host/routes.js";
@@ -66,7 +66,7 @@ import type { TheaterRegistration } from "../../../features/workspace/host/theat
 import { TheaterFolderListError, TheaterRegistry, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "../plugin-host/plugin-host.js";
 import { createFleetPluginHost, createPluginClientAssets } from "../plugin-host/plugin-host.js";
-import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopFullscreenRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, desktopFullscreenSnapshot, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
+import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopFullscreenRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopFullscreenSnapshot, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
 import { readDesktopProtocolEnvironment } from "../shell/desktop-protocol.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "../shell/system-fonts.js";
 import { buildApiCatalog, type ApiCatalogEntry } from "../transport/api-catalog.js";
@@ -536,6 +536,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 소유자별로 갈라 담는다. 원격 Desktop이 붙어 있으면 두 창은 서로 다른 기계의 앱을 말하고 있다.
    */
   const desktopShellUpdateCommandSseSubscribers = new Map<http.ServerResponse, string>();
+  /** 창 조작 명령 구독 — 응답마다 그 셸의 주인. 명령은 걸어 두지 않으므로 지금 붙은 셸만 듣는다. */
+  const desktopWindowCommandSseSubscribers = new Map<http.ServerResponse, string>();
   /** 셸의 브라우저 스냅샷 구독 — 응답마다 그 셸의 주인(루프백은 "local", 원격은 세션 공개 이름). */
   const desktopBrowserSseSubscribers = new Map<http.ServerResponse, string>();
   /**
@@ -1181,6 +1183,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
     writeNoContent,
   });
+  const desktopWindowCommandRouter = createDesktopWindowCommandRouter({
+    isAuthorized: isExactConsoleOrigin,
+    readJsonBody,
+    requestCommand: (req, command) => {
+      const owner = shellOwnerOf(req);
+      if (owner === null) return;
+      publishDesktopWindowCommand(owner, command);
+    },
+    subscribe: (req, res) => {
+      const owner = shellOwnerOf(req);
+      if (owner === null) { writeJson(res, 401, { error: "unauthorized" }); return; }
+      openDesktopSse(res, DESKTOP_WINDOW_COMMAND_EVENT, { command: null });
+      desktopWindowCommandSseSubscribers.set(res, owner);
+      res.on("close", () => { desktopWindowCommandSseSubscribers.delete(res); });
+    },
+    writeJson,
+    writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
+  });
   const pluginSettingsRouter = createPluginSettingsRouter({
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
@@ -1302,6 +1322,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (await desktopShellUpdateRouter(context)) return true;
     if (await desktopShellRouter(context)) return true;
     if (await desktopFullscreenRouter(context)) return true;
+    if (await desktopWindowCommandRouter(context)) return true;
     if (desktopUpdateRouter(context)) return true;
     return desktopThemeRouter(context);
   });
@@ -2109,6 +2130,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (desktopShellUpdateCommandSseSubscribers.size === 0) return;
     const data = encodeSseData(DESKTOP_SHELL_UPDATE_COMMAND_EVENT, snapshot);
     for (const [res, subscriber] of desktopShellUpdateCommandSseSubscribers) {
+      if (subscriber === owner) res.write(data);
+    }
+  }
+
+  function publishDesktopWindowCommand(owner: string | "local", command: DesktopWindowCommand): void {
+    const data = encodeSseData(DESKTOP_WINDOW_COMMAND_EVENT, { command });
+    for (const [res, subscriber] of desktopWindowCommandSseSubscribers) {
       if (subscriber === owner) res.write(data);
     }
   }
