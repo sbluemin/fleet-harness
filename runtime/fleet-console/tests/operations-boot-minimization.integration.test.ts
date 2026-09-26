@@ -92,7 +92,7 @@ vi.mock("../features/workspace/client/canvas/canvas.js", () => ({
   },
 }));
 vi.mock("../core/client/src/chrome/components/codex-reading-sheet.js", () => ({ CodexReadingSheet: () => null }));
-vi.mock("../core/client/src/chrome/components/command-band.js", () => ({ CommandBand: () => null, BrandMarkIcon: () => null }));
+vi.mock("../core/client/src/chrome/components/command-band.js", () => ({ CommandBand: () => null, BrandMarkIcon: () => null, BrandWordmark: () => null }));
 vi.mock("../core/client/src/chrome/components/commissioning-overlay.js", () => ({ CommissioningOverlay: () => null }));
 vi.mock("../core/client/src/chrome/components/keyboard-shortcuts-dialog.js", () => ({ isKeyboardShortcutsModalOpen: () => false, shouldHandleOperationsKeyboardShortcut: keyboardShortcutMocks.shouldHandleOperationsKeyboardShortcut }));
 vi.mock("../core/client/src/chrome/components/operation-search.js", () => ({ OperationSearch: () => null }));
