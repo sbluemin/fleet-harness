@@ -139,7 +139,7 @@ export function NoteAttachments({ objective, t, touchable, error, sending, onRem
 }
 
 /** 크게 보기 — body 포털의 고정 오버레이, 채팅 첨부 보기와 같은 틀. Esc·바깥 누름·닫기 글리프로 닫힌다(Esc 는 상세가 함께 닫히지 않게 캡처에서 삼킨다). */
-function AttachmentView({ t, src, caption, onClose }: { readonly t: T; readonly src: string; readonly caption: string; readonly onClose: () => void }) {
+export function AttachmentView({ t, src, caption, onClose }: { readonly t: T; readonly src: string; readonly caption: string; readonly onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
