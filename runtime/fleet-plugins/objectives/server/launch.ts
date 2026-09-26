@@ -585,6 +585,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 대상마다 따로, 동시에 보낸다 — 한 대상의 느린 확인이 나머지를 늦추거나 요청 시한 뒤로 밀지 않게 한다.
       const targets = await Promise.all(ids.map(async (operationId): Promise<StopTarget> => {
         if (!stoppable(operationId)) return { operationId, outcome: "skipped", reason: "not_working" };
+        // background 는 진행 중인 턴 없이 작업만 남은 상태다 — 중단은 턴만 끊으므로 보내지 않는다.
+        if (ctx.host.consoleControl?.observe(operationId)?.activity === "background") return { operationId, outcome: "skipped", reason: "not_in_turn" };
         try { await control().request({ kind: "interrupt", operationId }); return { operationId, outcome: "interrupted" }; }
         catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
