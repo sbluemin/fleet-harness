@@ -1393,6 +1393,9 @@ export function OperationsCanvas({
   // 글라이드 도중 다시 토글해도 진행 중 전이·배율에서 그대로 이어진다. War Room은 자기 FLIP이 전환을 지므로 쉰다.
   const layerSnapshotRef = useRef<{ readonly worldDetached: boolean; readonly triage: boolean; readonly companionId: string | null } | null>(null);
   const layerGlideStopRef = useRef<(() => void) | null>(null);
+  // 글라이드 중인 패널은 companion 프레임·분할선보다 위에 선다 — companion은 DOM상 뒤라 같은 z-index에서
+  // 이동 중인 패널의 캡션을 덮는다. 글라이드가 끝나면 원래 쌓임(companion이 위)으로 돌아간다.
+  const [layerGlideOperationId, setLayerGlideOperationId] = useState<string | null>(null);
   const worldDetached = panelCompanion !== null || triageActive;
   const committedLayer = layerSnapshotRef.current;
   const layerSwitchOperationId = committedLayer && committedLayer.worldDetached !== worldDetached && !committedLayer.triage && !triageActive
@@ -1422,7 +1425,11 @@ export function OperationsCanvas({
       height: visibleScale > 0 ? layerSwitchFrom.height / visibleScale : layerSwitchFrom.layoutHeight,
     };
     layerGlideStopRef.current?.();
-    layerGlideStopRef.current = glideAcrossLayerSwitch(element, start, visibleScale / parent.zoom, flightTiming());
+    const operationId = layerSwitchOperationId;
+    setLayerGlideOperationId(operationId);
+    layerGlideStopRef.current = glideAcrossLayerSwitch(element, start, visibleScale / parent.zoom, flightTiming(), () => {
+      setLayerGlideOperationId((current) => (current === operationId ? null : current));
+    });
   });
   useEffect(() => () => layerGlideStopRef.current?.(), []);
 
@@ -1647,11 +1654,13 @@ export function OperationsCanvas({
                 snapFull: operationSnapFull,
                 companionOpen: panelCompanion !== null,
               });
-          const frameGeometry = operationTriageStage
+          let frameGeometry = operationTriageStage
             ? triageStageGeometryFor(modeArena, topPanelZIndex, 0, triageActive && operationCompanion ? companionSlotCount : 1)
             : operationCompanion
             ? companionGeometryFor(companionLayerBox, 0, companionSlotWidths, topPanelZIndex)
             : snapHeldRect ? { ...baseGeometry, ...snapHeldRect } : baseGeometry;
+          // companion 프레임(topPanelZIndex)·분할선(+1) 위 — 좌표계 전환 글라이드 동안만.
+          if (layerGlideOperationId === operation.id && !triageActive) frameGeometry = { ...frameGeometry, zIndex: topPanelZIndex + 2 };
           if (!focusLayerHidden && !deckSlot && !minimizedSet.has(operation.id)) renderedVisibleFrameIds.add(operation.id);
           // 보더 위 캡션(top: -32px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
           // War Room은 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.

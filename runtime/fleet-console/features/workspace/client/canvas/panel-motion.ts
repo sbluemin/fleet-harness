@@ -187,15 +187,19 @@ export interface LayerHandoffRect {
 // 좌표계 전환 글라이드 — 부모 월드 transform이 붙거나 떨어지는 커밋(companion 배치 진입·이탈)에서
 // 패널의 CSS geometry 전이는 옛 좌표계의 값에서 출발한다. 부모 행렬은 이미 바뀌었으므로 첫 프레임에
 // 패널이 행렬만큼 튄다. 여기서는 옛 화면 자리를 새 좌표계로 옮긴 값을 전이 없이 먼저 확정해
-// 전이의 출발점으로 삼고, 곧바로 React가 쓴 목표값으로 되돌려 같은 360ms 글라이드가 이어지게 한다.
+// 전이의 출발점으로 삼고, 곧바로 React가 쓴 목표값으로 되돌려 같은 글라이드가 이어지게 한다.
 // 레이아웃 크기는 전환 전 그대로 두고 사라진(또는 새로 생긴) 부모 배율은 요소 자체의 scale로 넘겨받아
 // 1로 풀어 준다 — 상자와 내용 배율이 함께 연속이다. 최소 크기(320×200)는 companion 배치 밖에서만
 // 돌아오는 규칙이라, 좁은 칸에서 나올 때 첫 프레임에 폭이 튀지 않게 글라이드 동안만 푼다.
-// 반환값은 글라이드를 도중에 끊는 정리 함수다.
-export function glideAcrossLayerSwitch(element: HTMLElement, start: LayerHandoffRect, startScale: number, timing: FlightTiming): () => void {
+//
+// 글라이드 동안 geometry 전이는 인라인으로 선다. 사이드바 개폐 중의 억제 규칙(transition: none)은 칸이
+// 매 프레임 옮겨 가는 동안 상자가 스테이지를 즉시 따라가게 하려는 것인데, 좌표계 전환 자체는 그 아래에서도
+// 미끄러져야 순간 이동이 없다. 끝나는 시점은 타이머가 아니라 실제로 남은 전이로 판정한다 — 목표가 도중에
+// 다시 잡히면 전이가 늘어나고, 그 전에 인라인 전이를 걷으면 억제 규칙이 남은 전이를 끊어 튄다.
+// 끌기가 시작되면 즉시 손을 뗀다(끌기는 전이 없이 포인터를 따라야 한다).
+// onSettle은 글라이드가 끝나거나 끊길 때 한 번 불린다. 반환값은 글라이드를 도중에 끊는 정리 함수다.
+export function glideAcrossLayerSwitch(element: HTMLElement, start: LayerHandoffRect, startScale: number, timing: FlightTiming, onSettle?: () => void): () => void {
   const style = element.style;
-  // 전이가 꺼진 상태(사이드바 개폐 중·reduced motion)에서는 패널이 목표로 즉시 선다 — 튈 첫 프레임이 없다.
-  if (!hasGeometryTransition(element)) return () => undefined;
   const target = { left: style.left, top: style.top, width: style.width, height: style.height };
   const previousTransition = style.transition;
   const previousOrigin = style.transformOrigin;
@@ -208,7 +212,8 @@ export function glideAcrossLayerSwitch(element: HTMLElement, start: LayerHandoff
   style.minHeight = "0";
   // 출발값을 계산된 스타일로 확정한다 — 이 읽기가 없으면 같은 태스크의 두 쓰기가 합쳐져 전이가 옛 값에서 출발한다.
   void element.offsetWidth;
-  style.transition = previousTransition;
+  const glide = `${timing.duration}ms ${timing.easing}`;
+  style.transition = `left ${glide}, top ${glide}, width ${glide}, height ${glide}`;
   style.left = target.left;
   style.top = target.top;
   style.width = target.width;
@@ -226,16 +231,32 @@ export function glideAcrossLayerSwitch(element: HTMLElement, start: LayerHandoff
       animation = null;
     }
   }
+  const startedAt = performance.now();
   let released = false;
+  let frame = 0;
   const release = () => {
     if (released) return;
     released = true;
-    window.clearTimeout(timer);
+    cancelAnimationFrame(frame);
+    style.transition = previousTransition;
     style.minWidth = "";
     style.minHeight = "";
     if (animation) style.transformOrigin = previousOrigin;
+    onSettle?.();
   };
-  const timer = window.setTimeout(release, timing.duration + 60);
+  const watch = () => {
+    frame = requestAnimationFrame(() => {
+      if (released) return;
+      if (!element.isConnected || element.classList.contains("is-dragging")) {
+        animation?.cancel();
+        release();
+        return;
+      }
+      if (performance.now() - startedAt < timing.duration || hasRunningGeometryTransition(element)) watch();
+      else release();
+    });
+  };
+  watch();
   if (animation) animation.oncancel = release;
   return () => {
     animation?.cancel();
@@ -243,13 +264,11 @@ export function glideAcrossLayerSwitch(element: HTMLElement, start: LayerHandoff
   };
 }
 
-function hasGeometryTransition(element: HTMLElement): boolean {
-  try {
-    const computed = getComputedStyle(element);
-    const properties = computed.transitionProperty.split(",").map((value) => value.trim());
-    const durations = computed.transitionDuration.split(",").map((value) => parseDurationMs(value) ?? 0);
-    return properties.some((property, index) => (property === "left" || property === "all") && (durations[index % durations.length] ?? 0) > 0);
-  } catch {
-    return false;
-  }
+const GEOMETRY_PROPERTIES = new Set(["left", "top", "width", "height"]);
+
+function hasRunningGeometryTransition(element: HTMLElement): boolean {
+  if (typeof element.getAnimations !== "function" || typeof CSSTransition === "undefined") return false;
+  return element.getAnimations().some((animation) => animation instanceof CSSTransition
+    && GEOMETRY_PROPERTIES.has(animation.transitionProperty)
+    && animation.playState === "running");
 }
