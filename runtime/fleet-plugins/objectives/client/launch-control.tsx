@@ -297,6 +297,8 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
                   apexPinnedOpen
                   value={resolveRowEffort(chosenRow, currentEffort ?? null)}
                   onChange={(next) => onChange({ model: chosenRow.launch.model, effort: next ?? undefined })}
+                  // 값은 onChange 가 이미 실었다 — 고른 노브를 한 번 더 누르거나 Enter 는 「이걸로」라는 뜻이라 메뉴만 닫는다.
+                  onConfirmCurrent={() => { setOpen(false); triggerRef.current?.focus(); }}
                   autoLabel={t("objectives.commander.effortAuto")}
                   autoValueText={t("objectives.commander.effortAuto")}
                   ariaLabel={t("objectives.commander.effortAria")}
