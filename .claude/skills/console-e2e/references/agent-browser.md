@@ -10,14 +10,28 @@ Load the `agent-browser` skill, then the installed CLI workflow:
 
 ```bash
 ab() {
-  if command -v agent-browser >/dev/null 2>&1; then agent-browser "$@";
-  else npx --yes agent-browser "$@"; fi
+  if command -v agent-browser >/dev/null 2>&1; then set -- agent-browser "$@";
+  else set -- npx --yes agent-browser "$@"; fi
+  if command -v timeout >/dev/null 2>&1; then timeout 30 "$@";
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout 30 "$@";
+  else perl -e 'alarm 30; exec @ARGV; die "exec failed: $!\n"' -- "$@"; fi
 }
 ab skills get core --full
 ab skills get dogfood
 ```
 
 Choose one unique session id matching `^fleet-console-e2e-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$` and repeat that literal in every call; shell variables, `ab()`, and cwd do not survive between tool calls. The examples use `fleet-console-e2e-20260725-a7c3`, `<worktree>`, `<scratchpad>`, and `<port>`: substitute recorded absolute values consistently.
+
+## Bound commands and recover stuck input
+
+Apply a per-command wall-clock limit to every agent-browser call, including `open`, input, `find`, `reload`, and diagnostics; a long timeout around a batch is not a substitute. The wrapper above defaults to 30 seconds and uses Perl when macOS has no `timeout`/`gtimeout`. Confirm a limiter is available before starting; use the platform route's equivalent when these commands are unavailable. Choose and record a longer finite limit in advance for an expected slow operation, such as first-time installation, rather than repeatedly extending a hung interaction. Keep the enclosing tool deadline longer than the individual command limit.
+
+Suspect stuck automation input when one key press produces an event flood (for example, repeated `Unidentified` keydown/keypress), an action fires more times than the input sent, or subsequent observation/navigation commands stop returning. These are diagnostic signals, not proof of a product defect or of a driver fault.
+
+1. Stop sending input or retrying `find`/`reload` in the suspect session. Preserve available command, timing, event-count, and error evidence; bound any diagnostic attempt too.
+2. Run the [owned-session cleanup](#cleanup) helper with a finite enclosing tool deadline. A timed-out CLI command may leave its daemon and browser alive. If cleanup fails or times out, report cleanup as unconfirmed and stop this route rather than using global closes, killing unknown processes, or accumulating replacement sessions.
+3. After verified cleanup, choose a new unique session id, open the same owned runtime with fresh pre-navigation instrumentation, restore the scenario's starting state, and repeat the exact action sequence once. Do not use a reload of the suspect session as the fresh-session control.
+4. Compare the runs before classifying the failure. A failure confined to the contaminated session is evidence of an automation/session issue; report that the product defect was not reproduced in the fresh session, not that it is disproved. A fresh-session recurrence needs further driver/product isolation before changing product code. If the fresh run blocks too, stop and report the verification blocker instead of retrying indefinitely. Clean up the replacement session on either outcome.
 
 ## Open with instrumentation
 
