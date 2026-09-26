@@ -21,6 +21,8 @@ import {
   type FetchLike,
 } from "../../../transport/upstream-sse.js";
 import { logRawWireEvent, wireLog } from "../../../transport/wire-log.js";
+import type { QuotaWindow } from "../../../quota/types.js";
+import { parseMuseCodeSubscriptionUsage } from "../quota.js";
 
 /**
  * Muse Code 구독 키가 쓰는 Meta Model API Responses 엔드포인트.
@@ -85,6 +87,11 @@ export interface MuseCodeResponsesAdapterOptions {
   fetch?: FetchLike;
   maxBodyBytes?: number;
   idleTimeoutMs?: number;
+  /**
+   * 스트림 끝의 `response.subscription_usage` 이벤트가 알려 준 구독 사용량. 응답 완료 뒤에
+   * 오므로 소비자가 스트림을 끝까지 읽을 때만 불린다. 관측의 실패는 응답에 영향을 주지 않는다.
+   */
+  onSubscriptionUsage?: (windows: readonly QuotaWindow[]) => void;
 }
 
 export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
@@ -92,9 +99,11 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
   private readonly fetchImpl: FetchLike;
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
+  private readonly onSubscriptionUsage: ((windows: readonly QuotaWindow[]) => void) | undefined;
 
   constructor(options: MuseCodeResponsesAdapterOptions = {}) {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.onSubscriptionUsage = options.onSubscriptionUsage;
     this.maxBodyBytes = positiveInteger(
       options.maxBodyBytes ?? DEFAULT_MUSE_CODE_MAX_UPSTREAM_BODY_BYTES,
       "maxBodyBytes",
@@ -178,7 +187,7 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
           onClose: unlinkAbort,
           missingBodyMessage: "Muse Code streaming response had no body",
         },
-        parseEventFrame,
+        (frame) => parseEventFrame(frame, this.onSubscriptionUsage),
       ),
     };
   }
@@ -329,7 +338,10 @@ function readablePatternSchema(value: unknown): unknown {
   return changed ? next : value;
 }
 
-function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
+function parseEventFrame(
+  frame: string,
+  onSubscriptionUsage?: (windows: readonly QuotaWindow[]) => void,
+): CanonicalResponseEvent | undefined {
   const { event: eventName, data } = parseSseFrameFields(frame);
   if (data.length === 0 || data === "[DONE]") return undefined;
   let parsed: unknown;
@@ -344,7 +356,26 @@ function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
   if (isRecord(parsed) && typeof parsed.type !== "string" && eventName !== undefined) {
     parsed = { ...parsed, type: eventName };
   }
+  if (isRecord(parsed) && parsed.type === "response.subscription_usage") {
+    observeSubscriptionUsage(parsed.subscription, onSubscriptionUsage);
+    return undefined;
+  }
   return canonicalEvent(parsed);
+}
+
+/** 사용량은 부가 정보다. 모양이 틀리거나 관측자가 실패해도 응답 스트림은 계속된다. */
+function observeSubscriptionUsage(
+  subscription: unknown,
+  onSubscriptionUsage: ((windows: readonly QuotaWindow[]) => void) | undefined,
+): void {
+  if (!onSubscriptionUsage) return;
+  const windows = parseMuseCodeSubscriptionUsage(subscription);
+  if (!windows) return;
+  try {
+    onSubscriptionUsage(windows);
+  } catch {
+    // 관측자의 실패를 응답 실패로 바꾸지 않는다.
+  }
 }
 
 function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {

@@ -26,6 +26,7 @@ import { resolveCodexCredentials } from "../upstream/codex/credentials.js";
 import { resolveXaiCliCredentials } from "../upstream/xai/credentials.js";
 import { museInferenceKey, resolveMuseAuth, type MuseAuthResult } from "../upstream/muse-code/credentials.js";
 import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
+import type { QuotaWindow } from "../quota/types.js";
 import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
 import {
   GATEWAY_MODELS,
@@ -191,6 +192,11 @@ export interface AiGatewayRouteDeps {
   readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   /** Muse Code 로그인 판정. 미주입이면 Muse Code 모델은 미로그인으로 거절된다. */
   readonly readMuseCodeAuth?: () => MuseAuthResult | Promise<MuseAuthResult>;
+  /**
+   * Muse Code 추론 스트림이 알려 준 구독 사용량. 사용량 캐시를 가진 호스트만 주입한다.
+   * key endpoint는 진행 중인 창이 없으면 사용량을 싣지 않으므로, 실제 사용 직후의 값은 여기서 온다.
+   */
+  readonly observeMuseCodeUsage?: (windows: readonly QuotaWindow[]) => void;
   readonly readModelOverride?: () => string | undefined;
   /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
   readonly compactionStore?: ClaudeCodexCompactionStore;
@@ -653,7 +659,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
             : target.provider === "antigravity"
               ? antigravityGateway()
               : target.provider === "muse-code"
-                ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({ fetch: fetchImpl }))
+                ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
+                  fetch: fetchImpl,
+                  ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: deps.observeMuseCodeUsage } : {}),
+                }))
                 : new AnthropicMessagesGateway(codexAdapter!));
       const modelContextWindow = typeof target.contextWindow === "number"
         && Number.isFinite(target.contextWindow)

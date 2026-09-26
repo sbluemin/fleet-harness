@@ -285,6 +285,16 @@ export const FOLDED_STATUS_KEY: Readonly<Partial<Record<ProviderStatus, QuotaMes
   stale: "quota.fold.unavailable",
 };
 
+/**
+ * 구독은 살아 있지만 지금 진행 중인 사용 창이 없다(Muse Code는 이때 사용량을 싣지 않는다).
+ * 수치가 없는 성공을 따로 말하지 않으면 아직 읽지 못한 카드와 구분되지 않는다.
+ */
+function isIdle(id: ProviderId, provider: ProviderDto): boolean {
+  return id === "muse-code"
+    && provider.status === "ok"
+    && (provider.windows === undefined || provider.windows.length === 0);
+}
+
 function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
 }
@@ -533,10 +543,12 @@ function FoldButton({
  * 갈리면 같은 공급자가 접힘/펼침에서 서로 다른 판정을 말하게 된다.
  */
 function FoldSpine({
+  id,
   provider,
   now,
   t,
 }: {
+  readonly id: ProviderId;
   readonly provider: ProviderDto;
   readonly now: number;
   readonly t: T;
@@ -545,7 +557,7 @@ function FoldSpine({
     ? foldedWindow(provider.windows)
     : null;
   if (window === null) {
-    const statusKey = FOLDED_STATUS_KEY[provider.status];
+    const statusKey = isIdle(id, provider) ? "quota.fold.idle" : FOLDED_STATUS_KEY[provider.status];
     return statusKey === undefined
       ? null
       : <span className="quota-fold-spine quota-fold-spine--quiet">{t(statusKey)}</span>;
@@ -633,7 +645,7 @@ function ProviderCard({
           {/* 접힌 행은 목록의 한 줄이지 권유가 아니다 — 버튼이 사라진 자리에 "연결하세요"만
               남으면 누를 곳 없는 지시가 된다. 그 자리에는 공급자 이름을 둔다. */}
           <h3>{folded ? name : t(titleKey)}</h3>
-          {folded ? <FoldSpine provider={provider} now={now} t={t} /> : null}
+          {folded ? <FoldSpine id={id} provider={provider} now={now} t={t} /> : null}
           {foldButton}
         </header>
         <div className="quota-card__collapse" id={regionId}>
@@ -652,7 +664,7 @@ function ProviderCard({
         <GripButton name={name} t={t} />
         <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
-        {folded ? <FoldSpine provider={provider} now={now} t={t} /> : null}
+        {folded ? <FoldSpine id={id} provider={provider} now={now} t={t} /> : null}
         {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
         {provider.plan ? <span className="quota-plan" title={provider.plan}>{displayPlanName(id, provider.plan)}</span> : null}
         {foldButton}
@@ -661,8 +673,14 @@ function ProviderCard({
       <div className="quota-card__rest">
       {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
+      {isIdle(id, provider) ? <div className="quota-signed-out">{t("quota.museCode.idle")}</div> : null}
       {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
       {provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
+      {provider.status === "stale" ? (() => {
+        // 이전 값을 보여 주더라도 사용자가 고칠 수 있는 원인(키체인 권한 등)은 가리지 않는다.
+        const credentialKey = credentialUnavailableKey(provider.message);
+        return credentialKey ? <StatusStrip kind="error">{t(credentialKey, { provider: name })}</StatusStrip> : null;
+      })() : null}
       {provider.status === "error" ? (() => {
         const match = provider.message?.match(/^Certificate verification failed \(([A-Za-z0-9_]+)\)$/);
         if (match?.[1] !== undefined) {

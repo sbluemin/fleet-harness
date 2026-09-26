@@ -117,11 +117,19 @@ describe("quota service", () => {
     expect(authService.getApiKey).toHaveBeenCalledWith(OPENCODE_AUTH_PROVIDER_ID);
   });
 
-  it("serves last-good data as stale for 30 minutes, then returns sanitized error", async () => {
+  it("keeps last-good data as stale after any failure until its windows reset, but not for routing", async () => {
     let now = 100_000;
     const fetchClaude = vi.fn()
-      .mockResolvedValueOnce(ok(now, 41))
+      .mockResolvedValueOnce({
+        status: "ok",
+        fetchedAt: now,
+        windows: [
+          { id: "session", usedPercent: 41, resetsAt: now + 3_600_000 },
+          { id: "weekly", usedPercent: 70, resetsAt: now + 7_200_000 },
+        ],
+      } satisfies ProviderSuccess)
       .mockImplementationOnce(() => getJson(async () => new Response(null, { status: 429 }), "https://quota.example/usage", {}))
+      .mockResolvedValueOnce({ status: "error", message: "Credential store unavailable (keychain_denied)" })
       .mockRejectedValue(new Error("Bearer super-secret upstream unavailable"));
     const service = createQuotaService({
       now: () => now,
@@ -133,14 +141,27 @@ describe("quota service", () => {
     await service.getSummary();
     now += 300_000;
     const limited = (await service.getSummary()).providers.claude;
-    expect(limited).toMatchObject({ status: "stale", fetchedAt: 100_000, windows: [{ usedPercent: 41 }] });
+    expect(limited).toMatchObject({ status: "stale", fetchedAt: 100_000, windows: [{ usedPercent: 41 }, { usedPercent: 70 }] });
     await service.getSummary();
     expect(fetchClaude).toHaveBeenCalledTimes(2);
-    now = 100_000 + 1_799_999;
+
+    // 조회가 예외 대신 오류 결과를 돌려줘도 실패다. 원인 문구는 stale 값에 실린다.
+    const unreadable = (await service.getSummary({ force: true })).providers.claude;
+    expect(unreadable).toMatchObject({ status: "stale", message: "Credential store unavailable (keychain_denied)", windows: [{ usedPercent: 41 }, { usedPercent: 70 }] });
+
+    // 30분이 지나도 패널에는 잇되, 배정은 낡은 값을 믿지 않는다.
+    now = 100_000 + 1_800_001;
     const stale = (await service.getSummary({ force: true })).providers.claude;
-    expect(stale).toMatchObject({ status: "stale", windows: [{ usedPercent: 41 }] });
+    expect(stale).toMatchObject({ status: "stale", windows: [{ usedPercent: 41 }, { usedPercent: 70 }] });
     expect(stale.message).not.toContain("super-secret");
-    now += 2;
+    expect(service.peekSummary()?.providers.claude.status).toBe("error");
+
+    // 리셋이 지난 창은 빠지고, 남은 창이 없으면 오류다.
+    now = 100_000 + 3_600_001;
+    expect((await service.getSummary({ force: true })).providers.claude.windows).toEqual([
+      expect.objectContaining({ id: "weekly", usedPercent: 70 }),
+    ]);
+    now = 100_000 + 7_200_001;
     const error = (await service.getSummary()).providers.claude;
     expect(error.status).toBe("error");
     expect(error).not.toHaveProperty("windows");
@@ -198,12 +219,12 @@ describe("quota service", () => {
     await service.getSummary({ force: true });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
 
-    // 29분 된 성공값 뒤의 429: stale은 1분 뒤 만료되지만 5분 backoff는 일반·강제 조회 모두에 유지된다.
+    // 29분 된 성공값 뒤의 429: 5분 backoff는 일반·강제 조회 모두에 유지되고, 그동안 stale 값을 잇는다.
     now += 29 * 60_000;
     status = 429;
     expect((await service.getSummary({ force: true })).providers["muse-code"]).toMatchObject({ status: "stale", plan: "Pro" });
     now += 120_000;
-    expect((await service.getSummary()).providers["muse-code"]).toMatchObject({ status: "error" });
+    expect((await service.getSummary()).providers["muse-code"]).toMatchObject({ status: "stale", plan: "Pro" });
     await service.getSummary({ force: true });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
 
