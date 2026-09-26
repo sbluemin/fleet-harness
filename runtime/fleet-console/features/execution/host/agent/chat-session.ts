@@ -53,7 +53,7 @@ import {
   type ChatEventMapOptions,
   type ChatOrigin,
 } from "./chat-events.js";
-import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
+import { FLEET_PLUGIN_NAME, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
 import { chatChildEnv } from "../terminal/launch-env.js";
@@ -138,7 +138,7 @@ export interface AgentChatSessionSeed {
   /**
    * 이 세션의 Claude 좌표와 능력 표면을 admiral에서 확정해 온다. 세션 id, 플러그인 트리,
    * 스킬 억제, 설정 층, 시스템 프롬프트 정책이 한 핸들에 함께 실린다 — 터미널 세션이
-   * `--session-id`·`--plugin-dir`·`--settings`로 받는 것과 같은 값이다.
+   * `--session-id`·`--plugin-url`·`--settings`로 받는 것과 같은 값이다.
    */
   readonly resolveClaudeSession?: () => Promise<ClaudeSessionHandle>;
   /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
@@ -580,6 +580,8 @@ class AgentChatSession {
    * 비어 있으면 전부 명령으로 선다 — 틀린 카테고리보다 한 카테고리가 낫다.
    */
   private skillNames: Set<string> = new Set();
+  /** 이 세션의 init에서 Fleet 플러그인 적재를 이미 판정했는가. 세션당 한 번만 알린다. */
+  private fleetPluginVerified = false;
   /** 세션 스트림을 소진하는 리더. dispose가 착지를 기다리는 자리다. */
   private readerDone: Promise<void> | null = null;
   /**
@@ -1444,6 +1446,24 @@ class AgentChatSession {
     if (!Array.isArray(skills)) return;
     // 더한다 — reloadSkills가 이미 채워 둔 이름을 지우면 그쪽만 아는 스킬이 명령으로 되돌아간다.
     for (const name of skills) if (typeof name === "string") this.skillNames.add(name);
+  }
+
+  /**
+   * 자식이 Fleet 플러그인을 실제로 실었는지 init으로 확인한다.
+   *
+   * 플러그인은 자식이 세션 시작에 루프백 zip을 받아 싣는다. 그 fetch가 실패하면 자식은 오류 없이
+   * 플러그인만 뺀 채 뜬다 — 정책 훅도 게이트웨이 정체성도 없는 세션이 화면에는 멀쩡해 보인다.
+   * 도구 좌표 실패(`chat_fleet_tools_unavailable`)와 같은 무게로 저널에 남긴다. `plugins`가 없는
+   * init은 판정하지 않는다 — 없는 목록은 누락의 증거가 아니다.
+   */
+  private verifyFleetPluginLoaded(message: ClaudeGatewayMessage): void {
+    if (message.type !== "system" || message.subtype !== "init" || this.fleetPluginVerified) return;
+    const plugins = (message as { plugins?: unknown }).plugins;
+    if (!Array.isArray(plugins)) return;
+    this.fleetPluginVerified = true;
+    const loaded = plugins.some((plugin) => typeof plugin === "object" && plugin !== null
+      && (plugin as { name?: unknown }).name === FLEET_PLUGIN_NAME);
+    if (!loaded) this.push({ kind: "error", code: "chat_fleet_plugin_unavailable" });
   }
 
   /**
@@ -2347,6 +2367,7 @@ class AgentChatSession {
         this.trackSentMessages(message);
         this.trackHandover(message);
         this.rememberSkillNames(message);
+        this.verifyFleetPluginLoaded(message);
         this.invalidateCatalog(message);
         this.rememberJobOutput(message);
         this.rememberJobKinds(message);

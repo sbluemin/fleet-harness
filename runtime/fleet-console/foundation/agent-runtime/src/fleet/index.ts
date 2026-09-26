@@ -88,8 +88,8 @@ export {
 
 export {
   createAgentCliPlugin,
-  fleetClaudePluginRoot,
   type AgentCliPlugin,
+  type AgentCliPluginHttpMount,
   type CreateAgentCliPluginOptions,
 } from "./agent-cli/plugin/index.js";
 export { reclaimLegacyTrees } from "./agent-cli/plugin/legacy-trees.js";

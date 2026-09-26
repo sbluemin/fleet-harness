@@ -1,14 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-import { findGatewayModel, type GatewayModel } from "@fleet-console/ai-gateway";
+import { unzipSync } from "fflate";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FLEET_HARNESS_VERSION } from "../../foundation/agent-runtime/src/fleet/agent-cli/assets.generated.js";
-import { createAgentCliPlugin, fleetClaudePluginRoot } from "../../foundation/agent-runtime/src/fleet/agent-cli/plugin/index.js";
-import { publishSharedPlugin } from "../../foundation/agent-runtime/src/fleet/agent-cli/plugin/shared-store.js";
-import type { CreateAgentCliPluginOptions } from "../../foundation/agent-runtime/src/fleet/agent-cli/types.js";
+import { createAgentCliPlugin } from "../../foundation/agent-runtime/src/fleet/agent-cli/plugin/index.js";
+import { reclaimLegacyTrees } from "../../foundation/agent-runtime/src/fleet/agent-cli/plugin/legacy-trees.js";
 
 const tempDirs: string[] = [];
 
@@ -18,87 +17,74 @@ afterEach(() => {
   }
 });
 
-describe("agent CLI shared plugin store", () => {
-  it("publishes one shared tree under the Fleet data directory's harness/claude path", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-shared-root-");
+describe("agent CLI plugin archive delivery", () => {
+  it("serves the packed plugin only to a plain loopback fetch of its exact address", async () => {
+    // zip에는 이 설치의 절대 경로(훅 실행 파일)가 실린다. 주소를 아는 자식만 받아야 하고,
+    // 브라우저 요청이나 다른 이름으로 들어온 요청(DNS rebinding)은 루프백에 닿아도 받지 않는다.
+    const plugin = createAgentCliPlugin({});
+    try {
+      const url = new URL(await plugin.url());
+      expect(url.hostname).toBe("127.0.0.1");
 
-    const plugin = await createAgentCliPlugin(options({ cwd, dataDir }));
+      const served = await request(url, {});
+      expect(served.status).toBe(200);
+      const entries = unzipSync(served.body);
+      expect(Object.keys(entries)).toEqual(expect.arrayContaining([
+        ".claude-plugin/plugin.json",
+        "hooks/hooks.json",
+        "hooks/fleet-compact-event.mjs",
+      ]));
 
-    expect(plugin.pluginRoot).toBe(path.join(dataDir, "harness", "claude"));
-    expect(plugin.pluginRoot).toBe(fleetClaudePluginRoot(dataDir));
-    expect(plugin.pluginRoots).toEqual([plugin.pluginRoot]);
-    expect(existsSync(path.join(plugin.pluginRoot, ".claude-plugin", "plugin.json"))).toBe(true);
-    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
-    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-compact-event.mjs"))).toBe(true);
-    expect(existsSync(path.join(dataDir, "workspaces"))).toBe(false);
+      expect((await request(url, { origin: "http://127.0.0.1:1" })).status).toBe(404);
+      expect((await request(url, { host: `fleet.example:${url.port}` })).status).toBe(404);
+      expect((await request(new URL(`${url.origin}/fleet.zip`), {})).status).toBe(404);
+    } finally {
+      await plugin.close();
+    }
   });
 
-  it("leaves the previous tree intact when staging the next render fails", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-shared-stage-failure-");
-    const plugin = await createAgentCliPlugin(options({ cwd, dataDir }));
-    const hookPath = path.join(plugin.pluginRoot, "hooks", "fleet-compact-event.mjs");
-    const hookBefore = readFileSync(hookPath, "utf8");
+  it("reclaims the slot's shared tree without touching files Fleet did not render", () => {
+    const slotRoot = createTempRoot("fleet-plugin-slot-reclaim-");
+    const harnessRoot = path.join(slotRoot, "harness");
+    mkdirSync(path.join(harnessRoot, "claude", "hooks"), { recursive: true });
+    writeFileSync(path.join(harnessRoot, "claude", "hooks", "hooks.json"), "{}\n");
+    mkdirSync(path.join(harnessRoot, "claude.lock"));
+    mkdirSync(path.join(harnessRoot, ".fleet-plugin-stage-123-abc"));
+    writeFileSync(path.join(harnessRoot, "user-note.txt"), "keep\n");
 
-    expect(() => publishSharedPlugin(dataDir, plugin.pluginRoot, [{
-      relativePath: "hooks/blocked/file.txt",
-      content: "unreachable\n",
-    }, {
-      relativePath: "hooks/blocked",
-      content: "not a directory\n",
-    }])).toThrow();
+    reclaimLegacyTrees(createTempRoot("fleet-plugin-legacy-root-"), slotRoot);
 
-    expect(readFileSync(hookPath, "utf8")).toBe(hookBefore);
-    expect(existsSync(path.join(plugin.pluginRoot, ".claude-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(path.join(harnessRoot, "claude"))).toBe(false);
+    expect(existsSync(path.join(harnessRoot, "claude.lock"))).toBe(false);
+    expect(existsSync(path.join(harnessRoot, ".fleet-plugin-stage-123-abc"))).toBe(false);
+    expect(existsSync(path.join(harnessRoot, "user-note.txt"))).toBe(true);
   });
-
-  it("replaces a tree whose hook file was swapped for a symlink", async () => {
-    // 훅은 이벤트마다 이 자리에서 다시 읽힌다. 링크로 바뀐 트리를 "같다"고 승인하면 그 세션은
-    // 남이 가리킨 파일을 자기 정책으로 실행한다.
-    const { dataDir, cwd } = createRoots("fleet-admiral-shared-hook-link-");
-
-    const first = await createAgentCliPlugin(options({ cwd, dataDir }));
-    const hooksPath = path.join(first.pluginRoot, "hooks", "hooks.json");
-    const outside = path.join(dataDir, "outside-hooks.json");
-    writeFileSync(outside, "{}\n");
-    rmSync(hooksPath, { force: true });
-    symlinkSync(outside, hooksPath);
-
-    const second = await createAgentCliPlugin(options({ cwd, dataDir }));
-
-    const restored = readdirSync(path.join(second.pluginRoot, "hooks"), { withFileTypes: true })
-      .find((entry) => entry.name === "hooks.json");
-    expect(restored?.isFile()).toBe(true);
-    expect(restored?.isSymbolicLink()).toBe(false);
-  });
-
 });
 
-function options(input: {
-  readonly cwd: string;
-  readonly dataDir: string;
-}): CreateAgentCliPluginOptions {
-  return { dataDir: input.dataDir };
+function request(url: URL, headers: { readonly origin?: string; readonly host?: string }): Promise<{ status: number; body: Uint8Array }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host: url.hostname,
+      port: url.port,
+      path: url.pathname,
+      method: "GET",
+      headers: {
+        ...(headers.origin ? { origin: headers.origin } : {}),
+        ...(headers.host ? { host: headers.host } : {}),
+      },
+    }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: new Uint8Array(Buffer.concat(chunks)) }));
+      res.on("error", reject);
+    });
+    req.on("error", reject);
+    req.end();
+  });
 }
 
-function createRoots(prefix: string): { readonly dataDir: string; readonly cwd: string } {
+function createTempRoot(prefix: string): string {
   const root = mkdtempSync(path.join(os.tmpdir(), prefix));
   tempDirs.push(root);
-  const cwd = path.join(root, "project");
-  mkdirSync(cwd, { recursive: true });
-  return { dataDir: path.join(root, "data"), cwd };
-}
-
-function requireGatewayModel(modelId: string): GatewayModel {
-  const model = findGatewayModel(modelId);
-  if (!model) throw new Error(`Catalog model missing for test: ${modelId}`);
-  return model;
-}
-
-function seedLegacyMarketplace(dataDir: string): string {
-  const legacyRoot = path.join(dataDir, "marketplace", "plugins", "fleet-gateway");
-  mkdirSync(path.join(legacyRoot, "hooks"), { recursive: true });
-  mkdirSync(path.join(dataDir, "marketplace", ".claude-plugin"), { recursive: true });
-  writeFileSync(path.join(legacyRoot, "hooks", "hooks.json"), "{\"hooks\":{}}\n");
-  writeFileSync(path.join(dataDir, "marketplace", "user-note.txt"), "legacy user file\n");
-  return legacyRoot;
+  return root;
 }

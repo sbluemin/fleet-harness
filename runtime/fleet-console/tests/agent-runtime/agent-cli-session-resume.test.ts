@@ -30,7 +30,7 @@ afterEach(() => {
   }
 });
 
-const pluginStub = { pluginRoot: path.join("/tmp/fleet-plugin-stub", "harness", "claude"), pluginRoots: [path.join("/tmp/fleet-plugin-stub", "harness", "claude")] };
+const pluginStub = { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} };
 
 describe("agent CLI session resume and capture hooks", () => {
   it("places Claude --resume before Fleet injection flags", async () => {
@@ -46,7 +46,7 @@ describe("agent CLI session resume and capture hooks", () => {
     }));
 
     expect(injected.args.slice(0, 4)).toEqual(["--model", "claude-opus", "--resume", resumeSessionId]);
-    expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--plugin-dir"]));
+    expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--plugin-url"]));
     expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--mcp-config"]));
     // 주입 인자의 마지막 가족을 기준으로 잰다 — 바이패스 플래그는 옵트인일 때만 실리므로
     // 순서 계약의 기준점이 될 수 없다.
@@ -63,8 +63,8 @@ describe("agent CLI session resume and capture hooks", () => {
     const fresh = await injectAgentCliProfile(profile, baseInjectOptions(root));
     expect(indexOfSequence(fresh.args, ["--session-id", fresh.session.sessionId])).toBeGreaterThanOrEqual(0);
     expect(fresh.args).not.toContain("--resume");
-    // 세션 좌표와 무관하게 모든 런치는 Fleet 데이터 디렉터리의 공유 트리를 읽는다.
-    expect(fresh.session.pluginRoot.endsWith(path.join("harness", "claude"))).toBe(true);
+    // 세션 좌표와 무관하게 모든 런치는 호스트가 기동에 묶어 둔 같은 zip을 받는다.
+    expect(fresh.session.pluginUrl).toBe("http://127.0.0.1:9/fleet-plugin-stub/fleet.zip");
 
     const from = randomUUID();
     const forked = await injectAgentCliProfile(profile, baseInjectOptions(root, {

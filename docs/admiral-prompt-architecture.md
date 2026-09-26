@@ -141,9 +141,9 @@ never the transcript.
 There is no PreToolUse dispatch gate, and none is needed: a dispatch no longer depends on the
 host spelling a pin correctly. The retired `gate-delegation` hook could judge only a pin's
 spelling, and its pseudo-parser repeatedly blocked valid scripts. Retired subcommands
-(`remind`, `gate-delegation`) still exit zero without judging, because the shared plugin tree
-is replaced in place and a live session executes the new script from its next event while its
-loaded `hooks.json` may still name them.
+(`remind`, `gate-delegation`) still exit zero without judging, because a live session keeps the
+plugin copy it fetched at start (`--plugin-url`), so its `hooks.json` may still name them while the
+hook commands reach an upgraded Console entry.
 
 ## 3. Live State Access
 

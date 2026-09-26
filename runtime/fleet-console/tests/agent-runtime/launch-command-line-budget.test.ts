@@ -24,7 +24,7 @@ afterEach(() => {
 const CMD_WRAPPED_PREFIX_ARGS = ["/d", "/s", "/c", "call", "C:\\Users\\a\\AppData\\Roaming\\npm\\claude.cmd "] as const;
 const CMD_SHIM_LIMIT: LaunchCommandLineLimit = { maxChars: WINDOWS_CMD_SHIM_COMMAND_LINE_MAX_CHARS, via: "cmd-shim" };
 
-const pluginStub = { pluginRoot: "/tmp/fleet-plugin-stub", pluginRoots: ["/tmp/fleet-plugin-stub"] };
+const pluginStub = { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} };
 
 describe("resolveLaunchCommandLineLimit", () => {
   it("declares no limit on POSIX", () => {

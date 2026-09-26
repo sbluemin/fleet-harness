@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
 
-import type { AgentCliPlugin, FleetHookExec } from "@fleet-console/agent-runtime/fleet";
+import type { AgentCliPlugin, AgentCliPluginHttpMount, FleetHookExec } from "@fleet-console/agent-runtime/fleet";
 import { createAgentCliPlugin, createSessionCaptureHookExec, type AgentCliId } from "@fleet-console/agent-runtime/fleet";
 
 export interface ConsoleHookCommandEntry {
@@ -94,25 +94,23 @@ function buildConsoleCliHookExec(entry: ConsoleHookCommandEntry, trailingArgs: r
 const HOOK_ENTRY_EXTENSIONS = new Set([".cjs", ".cts", ".js", ".mjs", ".mts", ".ts", ".tsx"]);
 
 export interface RenderConsoleAgentCliPluginDeps {
-  /** 트리가 사는 자리 — 이 Console 인스턴스의 슬롯. */
-  readonly dataDir: string;
+  /** zip을 얹을 Console 리스너의 루프백 전용 불투명 경로. 생략하면 자기 루프백 리스너를 연다. */
+  readonly transport?: AgentCliPluginHttpMount;
   readonly entryPath?: string;
   readonly execPath?: string;
   readonly tsxLoaderPath?: string;
 }
 
 /**
- * 이 Console이 띄우는 모든 Claude 세션이 읽을 플러그인 트리를 렌더한다.
+ * 이 Console이 띄우는 모든 Claude 세션이 실을 플러그인을 zip 한 벌로 묶는다.
  *
- * 기동에 **한 번만** 부른다. 렌더 결과는 세션 좌표를 담지 않아 런치마다 같고, 매 런치가 이
- * 일을 반복하면 저장소 락을 다시 잡고 트리 전체를 다시 읽는다 — 여러 Operation을 동시에 여는
- * 순간 그 락이 직렬화 지점이 된다. 그 대가로 실행 중 손상된 트리는 다음 런치가 아니라 다음
- * 기동에 복구된다.
+ * 기동에 **한 번만** 부른다. 결과는 세션 좌표를 담지 않아 런치마다 같다. 자식은 세션마다 이
+ * zip을 받아 자기 임시 자리에 풀므로, 세션끼리도 `fleet` 런처와도 디스크를 나눠 쓰지 않는다.
  */
-export async function renderConsoleAgentCliPlugin(deps: RenderConsoleAgentCliPluginDeps): Promise<AgentCliPlugin> {
+export function renderConsoleAgentCliPlugin(deps: RenderConsoleAgentCliPluginDeps): AgentCliPlugin {
   const entry = buildConsoleHookEntry(deps);
   return createAgentCliPlugin({
-    dataDir: deps.dataDir,
+    ...(deps.transport ? { transport: deps.transport } : {}),
     // 캡처 훅의 provider는 어떤 CLI로 열든 claude 하나다 — 그래서 이 조립이 세션과 무관하다.
     captureSessionHookExec: buildConsoleCaptureHookCommand(entry, "claude"),
     turnStartHookExec: buildConsoleTurnHookCommand(entry, "start"),

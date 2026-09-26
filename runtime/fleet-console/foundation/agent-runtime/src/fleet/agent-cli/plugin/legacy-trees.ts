@@ -17,6 +17,9 @@ const MARKETPLACE_DIR_NAME = "marketplace";
  */
 const LEGACY_HARNESS_DIR_NAME = "harness";
 const MARKETPLACE_PLUGINS_DIR_NAME = "plugins";
+/** 슬롯 공유 트리 시절의 이름들. 트리 본체, 저장소 락, 교체 스테이징의 접두사. */
+const SLOT_CLAUDE_TREE_NAME = "claude";
+const SLOT_STAGE_PREFIX = ".fleet-plugin-stage-";
 /** Fleet이 렌더했던 것만 지운다. 이 트리에는 사용자가 직접 둔 파일이 함께 살 수 있다. */
 const FLEET_RENDERED_ENTRIES = [
   ".claude-plugin",
@@ -54,9 +57,32 @@ const FLEET_RENDERED_PLUGIN_DIRS = ["fleet-gateway"] as const;
  * 부모. 두 자리 모두 같은 staleness 창을 쓴다: 그 트리를 쥔 구버전 세션이 살아 있는지 물어볼
  * 방법이 없으므로 마지막 렌더 시각으로 대신 판단한다.
  */
-export function reclaimLegacyTrees(legacyRoot: string): void {
+export function reclaimLegacyTrees(legacyRoot: string, slotRoot?: string): void {
   reclaimLegacyHarness(legacyRoot);
   reclaimLegacyMarketplace(legacyRoot);
+  if (slotRoot !== undefined) reclaimSlotHarness(slotRoot);
+}
+
+/**
+ * Console 슬롯의 공유 트리(`<슬롯>/harness/claude`)를 걷는다. 플러그인이 루프백 zip으로 옮겨 간
+ * 뒤로 이 자리는 아무도 읽지 않는다 — 자식은 세션마다 zip을 받아 자기 임시 자리에 푼다.
+ *
+ * 트리와 함께 그것을 쓰던 락 디렉터리와 교체 중 남은 스테이징 잔해도 걷는다. `harness`가
+ * 비면 껍데기도 걷는다. 전부 Fleet 렌더 산출물이라 사용자 파일이 섞이지 않는다.
+ */
+function reclaimSlotHarness(slotRoot: string): void {
+  try {
+    const harnessRoot = path.join(slotRoot, LEGACY_HARNESS_DIR_NAME);
+    if (!existsSync(harnessRoot)) return;
+    for (const entry of readdirSync(harnessRoot)) {
+      if (entry === SLOT_CLAUDE_TREE_NAME || entry === `${SLOT_CLAUDE_TREE_NAME}.lock` || entry.startsWith(SLOT_STAGE_PREFIX)) {
+        removeBestEffort(path.join(harnessRoot, entry), harnessRoot);
+      }
+    }
+    removeIfEmpty(harnessRoot, slotRoot);
+  } catch {
+    return;
+  }
 }
 
 /**

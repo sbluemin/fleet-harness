@@ -477,9 +477,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 인스턴스를 가리지 않는 한 벌이었으므로 이 슬롯으로 한 번 승계한다.
   const agentOptions = createAgentOptionsService({ store: consoleSettingsStore, legacyDirs: [fleetDataDir] });
   // 워크스페이스 지식과 하네스 트리는 파일이 아니라 디렉터리라 승계 판정기가 다루지 않는다.
-  // 전자는 옮기고(내용이 사용자 자산이다), 후자는 렌더 산출물이라 걷기만 한다.
+  // 전자는 옮기고(내용이 사용자 자산이다), 후자는 렌더 산출물이라 걷기만 한다 — 이 슬롯의
+  // 공유 트리도 포함한다. 플러그인은 이제 루프백 zip으로 나가고 디스크 트리는 아무도 읽지 않는다.
   adoptLegacyWorkspaces(fleetDataDir, durablePaths.dir);
-  reclaimLegacyTrees(fleetDataDir);
+  reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
     getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
     getLiquidGlass: () => consoleSettingsStore.load().general?.liquidGlass ?? true,
@@ -2189,9 +2190,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (server && lockHandle) return lockHandle.payload.endpoint;
       try {
         await rehydrateDurableState();
-        // 플러그인 트리는 기동에 한 번만 렌더한다 — 세션마다 같은 내용이라 런치가 반복할
-        // 이유가 없고, 반복하면 저장소 락이 동시 런치의 직렬화 지점이 된다.
-        const agentCliPlugin = await renderConsoleAgentCliPlugin({ dataDir: durablePaths.dir });
+        // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
+        // 같은 루프백 전용 불투명 경로이고, 리스너가 뜬 뒤에야 주소가 정해지므로 런치가 그때 묻는다.
+        const agentCliPlugin = renderConsoleAgentCliPlugin({ transport: mcpHttp.transport });
         const execution = await startConsoleExecution(createConsoleRuntimeContext({
           consoleControl,
           host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },

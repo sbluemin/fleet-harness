@@ -39,7 +39,6 @@ export async function chooseRoutingModel(input: {
       tempRoot: input.directory,
       home: { kind: "isolated" },
       settingSources: [],
-      plugins: [],
       allowAmbientMcpServers: false,
     });
     if (controller.signal.aborted) throw controller.signal.reason;

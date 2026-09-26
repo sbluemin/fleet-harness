@@ -150,7 +150,7 @@ function quoteWindowsArg(value: string): string {
  * 조립이 끝난 argv가 이 플랫폼의 명령줄 상한 안에 들어가는지 확인한다.
  *
  * 프롬프트 길이만 보는 검사(MAX_LAUNCH_PROMPT_CHARS)로는 부족하다 — 상한을 채우는 것은
- * 프롬프트만이 아니라 bin·shim 선행 인자·`--mcp-config`/`--plugin-dir` 같은 주입 인자의
+ * 프롬프트만이 아니라 bin·shim 선행 인자·`--mcp-config`/`--plugin-url` 같은 주입 인자의
  * 합계이고, 그 합계는 프로필이 조립된 뒤에야 알 수 있다. 여기서 막지 않으면 spawn이
  * 플랫폼 오류로 죽어 사용자에게는 원인이 남지 않는다.
  */

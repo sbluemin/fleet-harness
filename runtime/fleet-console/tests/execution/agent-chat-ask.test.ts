@@ -101,15 +101,14 @@ function seedFor(awaitingLog: boolean[], userQuestionsBlocked?: () => boolean): 
     origin: { kind: "fresh" },
     resolveClaudeSession: async () => {
       const sessionId = "11111111-2222-4333-8444-555555555555";
-      const pluginRoot = `/fleet/workspaces/tmp-workspace/sessions/${sessionId}`;
+      const pluginUrl = "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip";
       return {
         sessionId,
         coordinate: { kind: "new", sessionId },
-        pluginRoot,
-        pluginRoots: [pluginRoot],
+        pluginUrl,
         claudeCodeSystemPrompt: "off",
         sdk: {
-          options: { plugins: [{ path: pluginRoot }], settingSources: ["user", "project", "local"], allowAmbientMcpServers: true },
+          options: { pluginUrl, settingSources: ["user", "project", "local"], allowAmbientMcpServers: true },
           request: { sessionId, permissionMode: "bypassPermissions" },
         },
       };

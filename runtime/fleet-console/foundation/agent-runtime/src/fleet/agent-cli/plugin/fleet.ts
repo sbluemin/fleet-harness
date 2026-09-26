@@ -19,15 +19,15 @@ const COMPACT_EVENT_SCRIPT_NAME = "fleet-compact-event.mjs";
  */
 const ROUTING_MOD_SCRIPT_NAME = "fleet-routing-mod.tsx";
 
-/** 스냅숏에 들어갈 파일 하나. relativePath는 `/` 구분의 스냅숏 루트 상대 경로다. */
+/** zip에 들어갈 파일 하나. relativePath는 `/` 구분의 플러그인 루트 상대 경로다. */
 export interface AssetPluginFile {
   readonly relativePath: string;
   readonly content: string;
 }
 
 /**
- * 플러그인 스냅숏의 전체 파일 집합을 메모리에서 조립한다. 디스크에는 아무것도 쓰지 않는다 —
- * 이 목록이 곧 스냅숏의 내용 정체성(해시 입력)이고, 발행 여부는 그 해시가 결정한다.
+ * 플러그인의 전체 파일 집합을 메모리에서 조립한다. 디스크에는 아무것도 쓰지 않는다 —
+ * 호스트가 이 목록을 기동에 한 번 zip으로 묶어 루프백으로 내준다.
  */
 export function buildAssetPluginFiles(
   bundle: AssetPluginBundle,
@@ -51,12 +51,12 @@ function toJsonContent(value: unknown): string {
 /**
  * 라우팅 Mod 원본. 치환하는 것은 **실행 계약 하나뿐**이다.
  *
- * 스냅숏은 내용 해시로 발행되는 공유 트리다. 값이 바뀔 때마다 새 트리가 발행되고, 그 발행이
- * 그때 열려 있던 모든 세션의 훅을 다시 싣게 한다. 그래서 노출 목록이나 배정 판정처럼 세션
- * 중에 변하는 것은 절대 굽지 않는다 — 그쪽은 Mod가 배정할 때마다 Console에 묻는다.
+ * zip은 호스트 기동에 한 번 묶이고, 세션은 시작할 때 받아 둔 사본으로 끝까지 돈다. 그래서
+ * 노출 목록이나 배정 판정처럼 세션 중에 변하는 것은 절대 굽지 않는다 — 구우면 세션 수명 내내
+ * 낡은 값이 남는다. 그쪽은 Mod가 배정할 때마다 Console에 묻는다.
  *
- * 실행 계약은 반대다. Fleet 버전당 상수라 릴리스에서만 바뀌고, 그때는 어차피 트리가 새로
- * 발행된다. 굽는 비용이 없으므로 세션마다 물어볼 이유도 없다.
+ * 실행 계약은 반대다. Fleet 버전당 상수라 릴리스에서만 바뀌고, 그때는 어차피 호스트가 새로
+ * 떠서 zip을 다시 묶는다. 굽는 비용이 없으므로 세션마다 물어볼 이유도 없다.
  */
 function routingModSource(): string {
   const asset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === ROUTING_MOD_SCRIPT_NAME);
@@ -71,7 +71,7 @@ function routingModSource(): string {
 /**
  * 세션 시작에 렌더된 플러그인 버전을 문맥으로 올리는 훅. 스크립트 자산을 렌더하지 않고
  * hooks.json이 답을 직접 들고 있다 — 판정할 입력이 없고 출력이 렌더 시점에 이미 정해진
- * 상수라, 파일 하나를 스냅숏에 싣고 그것을 읽어 실행할 이유가 없다.
+ * 상수라, 파일 하나를 zip에 싣고 그것을 읽어 실행할 이유가 없다.
  *
  * 응답 본문은 인자로 넘긴다. `-e` 코드에 끼워 넣으면 버전 문자열이 JS 소스가 되므로,
  * 코드는 고정하고 페이로드는 argv로만 흐르게 한다. exec 형식이라 셸 토크나이징도 없다.

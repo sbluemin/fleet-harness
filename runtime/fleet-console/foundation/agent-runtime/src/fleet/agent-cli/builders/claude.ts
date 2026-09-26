@@ -5,10 +5,8 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
   return [
     ...buildSessionArgs(context.sessionCoordinate),
     ...buildSystemPromptArgs(context.claudeCodeSystemPrompt, context.claudeCodeCustomSystemPromptFile),
-    ...context.pluginRoots.flatMap((pluginRoot) => [
-      "--plugin-dir",
-      pluginRoot,
-    ]),
+    "--plugin-url",
+    context.pluginUrl,
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
     ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents, context.claudeCodeDisabledTools, context.workspaceHookExec),
     ...buildSearchToolArgs(),

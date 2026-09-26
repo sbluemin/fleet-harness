@@ -20,7 +20,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const pluginStub = { pluginRoot: "/tmp/fleet-plugin-stub", pluginRoots: ["/tmp/fleet-plugin-stub"] };
+const pluginStub = { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} };
 
 describe("claude-gateway profile", () => {
   it("is the only published Agent CLI and normalizes exact retired aliases", () => {
@@ -224,16 +224,6 @@ function requireGatewayModel(id: string) {
   const model = findGatewayModel(id);
   if (!model) throw new Error(`missing gateway model fixture: ${id}`);
   return model;
-}
-
-/**
- * 세션이 실제로 적재하는 정의가 놓인 자리. argv의 `--plugin-dir`를 따라가야 렌더가 실제
- * 스폰이 가리키는 곳에 떨어졌는지까지 확인된다 — 경로를 따로 계산하면 그 연결이 빠진다.
- */
-function agentsDirOf(profile: AgentCliProfile): string {
-  const index = profile.args.indexOf("--plugin-dir");
-  expect(index).toBeGreaterThanOrEqual(0);
-  return path.join(profile.args[index + 1]!, "agents");
 }
 
 function createTempRoot(prefix: string): string {
