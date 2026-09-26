@@ -3636,7 +3636,6 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".canvas-operation.is-running.is-active {");
     expect(components).toContain(".canvas-operation-window-controls {");
     const windowControlsBlock = components.match(/\.canvas-operation-window-controls \{[^}]*\}/)?.[0] ?? "";
-    expect(windowControlsBlock).toContain("margin-left: auto;");
     expect(windowControlsBlock).toContain("max-width: none;");
     expect(windowControlsBlock).not.toContain("max-width: 0;");
     const windowControlsLastButtonBlock = components.match(/\.canvas-operation-window-controls > \.canvas-operation-icon-button:last-child \{[^}]*\}/)?.[0] ?? "";

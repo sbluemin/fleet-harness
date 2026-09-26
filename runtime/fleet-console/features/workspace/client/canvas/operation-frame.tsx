@@ -590,109 +590,117 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         onLostPointerCapture={abortPointerManipulation}
         data-canvas-blocker
       >
-        {/* 스냅 표식 — 사이드바 칩과 같은 컴포넌트. 제목 앞, 그룹 칩보다 먼저 선다. */}
-        {snapZone ? <SnapMark zone={snapZone} /> : null}
-        {/* 그룹 칩 — 사이드바 칩의 알약 문법을 그대로 쓴다. 「그룹에 있다」는 칩 형태가,
-            「어느 그룹」은 --group-mark 잉크·워시와 이름이 진다. 워시는 칩 안에만 머문다. */}
-        {groupLabelVisible ? (
-          <span
-            className="canvas-operation-group-label"
-            style={{ "--group-mark": groupColor } as CSSProperties}
-            title={t("canvas.frame.groupTitle", { name: groupName ?? "" })}
-            aria-hidden="true"
-          >
-            {groupName}
-          </span>
-        ) : null}
-        {rename.renaming ? (
-          <input
-            ref={rename.inputRef}
-            className="canvas-operation-identity-input"
-            value={rename.draftTitle}
-            aria-label={t("canvas.frame.renameAria", { title: displayTitle })}
-            onChange={(event) => rename.setDraftTitle(event.target.value)}
-            onKeyDown={handleRenameKeyDown}
-            onBlur={rename.handleBlur}
-            onPointerDown={stopIdentityPointer}
-          />
-        ) : (
-          <button
-            ref={identityTriggerRef}
-            type="button"
-            className="canvas-operation-identity-name"
-            onPointerDown={stopIdentityPointer}
-            onDoubleClick={beginRename}
-            onKeyDown={beginRenameFromKeyboard}
-            aria-label={t("canvas.frame.renameAria", { title: displayTitle })}
-            title={t("canvas.frame.renameTitle", { title: displayTitle })}
-          >
-            {displayTitle}
-          </button>
-        )}
-        {subject ? (
-          <span
-            className="canvas-operation-identity-subject"
-            style={subjectInk ? { "--subject-ink": subjectInk } as CSSProperties : undefined}
-            title={t("canvas.frame.subjectTitle", { title: subject.title })}
-          >
-            <span aria-hidden="true">› </span>{subject.name}
-          </span>
-        ) : null}
-        {theaterLabelVisible ? (
-          <span
-            className="canvas-operation-theater-label"
-            title={t("canvas.frame.theaterTitle", { name: theaterLabel ?? "" })}
-            aria-hidden="true"
-          >
-            {theaterLabel}
-          </span>
-        ) : null}
-        {triagePicked ? <span className="canvas-operation-triage-picked">{t("canvas.triage.picked")}</span> : null}
-        {/* 캡션은 상태를 말하지 않는다 — 패널 자신의 보더·글로우가 이미 상태 채널을 지고 있고,
-            목록에서 상태를 읽는 자리는 사이드바 칩이다. 이 자리는 그 Operation에 대한 동작을
-            여는 문(사이드바 우클릭과 같은 메뉴)이 가져간다. */}
-        {/* 플러그인 동작 선반 — 이 줄에서 마크만 서는 버튼은 전부 같은 말풍선을 쓴다. */}
-        {captionActions ? (
-          <span className="canvas-operation-caption-actions" {...(subject ? { role: "group", "aria-label": t("canvas.frame.subjectTools", { name: subject.name }) } : {})}>{captionActions}</span>
-        ) : null}
-        {onOpenMenu ? (
-          <CaptionTipHost label={t("canvas.frame.openMenuTitle")}>
-            <button
-              type="button"
-              className="canvas-operation-more-button"
-              onPointerDown={stopButtonPointer}
-              onClick={(event) => openOperationMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
-              aria-label={t("canvas.frame.openMenuAria", { title: displayTitle })}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
+        {/* 캡션은 세 칸이다 — 앞(위치·소속 표식), 가운데(정체), 뒤(동작). 앞뒤 칸이 같은 몫을 나눠
+            가져 정체가 패널 폭의 한가운데 서고, 자리가 모자라면 정체가 말줄임으로 물러난다. */}
+        <span className="canvas-operation-caption-lead">
+          {/* 스냅 표식 — 사이드바 칩과 같은 컴포넌트. 제목 앞, 그룹 칩보다 먼저 선다. */}
+          {snapZone ? <SnapMark zone={snapZone} /> : null}
+          {/* 그룹 칩 — 사이드바 칩의 알약 문법을 그대로 쓴다. 「그룹에 있다」는 칩 형태가,
+              「어느 그룹」은 --group-mark 잉크·워시와 이름이 진다. 워시는 칩 안에만 머문다. */}
+          {groupLabelVisible ? (
+            <span
+              className="canvas-operation-group-label"
+              style={{ "--group-mark": groupColor } as CSSProperties}
+              title={t("canvas.frame.groupTitle", { name: groupName ?? "" })}
+              aria-hidden="true"
             >
-              <MoreIcon />
+              {groupName}
+            </span>
+          ) : null}
+          {theaterLabelVisible ? (
+            <span
+              className="canvas-operation-theater-label"
+              title={t("canvas.frame.theaterTitle", { name: theaterLabel ?? "" })}
+              aria-hidden="true"
+            >
+              {theaterLabel}
+            </span>
+          ) : null}
+        </span>
+        <span className="canvas-operation-identity">
+          {rename.renaming ? (
+            <input
+              ref={rename.inputRef}
+              className="canvas-operation-identity-input"
+              value={rename.draftTitle}
+              aria-label={t("canvas.frame.renameAria", { title: displayTitle })}
+              onChange={(event) => rename.setDraftTitle(event.target.value)}
+              onKeyDown={handleRenameKeyDown}
+              onBlur={rename.handleBlur}
+              onPointerDown={stopIdentityPointer}
+            />
+          ) : (
+            <button
+              ref={identityTriggerRef}
+              type="button"
+              className="canvas-operation-identity-name"
+              onPointerDown={stopIdentityPointer}
+              onDoubleClick={beginRename}
+              onKeyDown={beginRenameFromKeyboard}
+              aria-label={t("canvas.frame.renameAria", { title: displayTitle })}
+              title={t("canvas.frame.renameTitle", { title: displayTitle })}
+            >
+              {displayTitle}
             </button>
-          </CaptionTipHost>
-        ) : null}
-        <div className="canvas-operation-window-controls">
-          <span className="canvas-operation-controls-divider" aria-hidden="true" />
-          {/* 최소화는 무대에서도 쓴다 — War Room의 최소화는 창을 접는 동작이 아니라 판(deck)에서
-              내리는 동작이고, 무대에 선 패널이면 무대까지 함께 비운다. 전체 칸만 계속 빠진다:
-              무대는 이미 캔버스 전체라 더 키울 자리가 없다. */}
-          <CaptionTipHost label={t("canvas.frame.minimizeTitle")}>
-            <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })}>
-              <MinimizeIcon />
-            </button>
-          </CaptionTipHost>
-          {!triageStage && !deckTile && onToggleSnapFull ? (
-            <CaptionTipHost label={snapFull ? t("canvas.frame.snapFullRestoreTitle") : t("canvas.frame.snapFullTitle")}>
-              <button type="button" className={`canvas-operation-icon-button ${snapFull ? "is-active" : ""}`} data-snap-tour={onOpenSnapMenu && !snapFull ? "menu" : undefined} onPointerDown={(event) => { clearSnapMenuTimer(); stopButtonPointer(event); }} onPointerEnter={armSnapMenu} onPointerLeave={clearSnapMenuTimer} onClick={toggleSnapFull} aria-label={snapFull ? t("canvas.frame.snapFullRestoreAria", { title: displayTitle }) : t("canvas.frame.snapFullAria", { title: displayTitle })} aria-pressed={snapFull}>
-                {snapFull ? <RestorePanelIcon /> : <SnapFullPanelIcon />}
+          )}
+          {subject ? (
+            <span
+              className="canvas-operation-identity-subject"
+              style={subjectInk ? { "--subject-ink": subjectInk } as CSSProperties : undefined}
+              title={t("canvas.frame.subjectTitle", { title: subject.title })}
+            >
+              <span aria-hidden="true">› </span>{subject.name}
+            </span>
+          ) : null}
+        </span>
+        <span className="canvas-operation-caption-trail">
+          {triagePicked ? <span className="canvas-operation-triage-picked">{t("canvas.triage.picked")}</span> : null}
+          {/* 캡션은 상태를 말하지 않는다 — 패널 자신의 보더·글로우가 이미 상태 채널을 지고 있고,
+              목록에서 상태를 읽는 자리는 사이드바 칩이다. 이 자리는 그 Operation에 대한 동작을
+              여는 문(사이드바 우클릭과 같은 메뉴)이 가져간다. */}
+          {/* 플러그인 동작 선반 — 이 줄에서 마크만 서는 버튼은 전부 같은 말풍선을 쓴다. */}
+          {captionActions ? (
+            <span className="canvas-operation-caption-actions" {...(subject ? { role: "group", "aria-label": t("canvas.frame.subjectTools", { name: subject.name }) } : {})}>{captionActions}</span>
+          ) : null}
+          {onOpenMenu ? (
+            <CaptionTipHost label={t("canvas.frame.openMenuTitle")}>
+              <button
+                type="button"
+                className="canvas-operation-more-button"
+                onPointerDown={stopButtonPointer}
+                onClick={(event) => openOperationMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
+                aria-label={t("canvas.frame.openMenuAria", { title: displayTitle })}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+              >
+                <MoreIcon />
               </button>
             </CaptionTipHost>
           ) : null}
-          <CaptionTipHost label={isCloseArmed ? t("canvas.frame.confirmCloseTitle") : t("canvas.frame.closeTitle")}>
-            <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? t("canvas.frame.confirmCloseAria", { title: displayTitle }) : t("canvas.frame.closeAria", { title: displayTitle })}>
-              {isCloseArmed ? t("canvas.frame.closeArmed") : <CloseIcon />}
-            </button>
-          </CaptionTipHost>
-        </div>
+          <div className="canvas-operation-window-controls">
+            <span className="canvas-operation-controls-divider" aria-hidden="true" />
+            {/* 최소화는 무대에서도 쓴다 — War Room의 최소화는 창을 접는 동작이 아니라 판(deck)에서
+                내리는 동작이고, 무대에 선 패널이면 무대까지 함께 비운다. 전체 칸만 계속 빠진다:
+                무대는 이미 캔버스 전체라 더 키울 자리가 없다. */}
+            <CaptionTipHost label={t("canvas.frame.minimizeTitle")}>
+              <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })}>
+                <MinimizeIcon />
+              </button>
+            </CaptionTipHost>
+            {!triageStage && !deckTile && onToggleSnapFull ? (
+              <CaptionTipHost label={snapFull ? t("canvas.frame.snapFullRestoreTitle") : t("canvas.frame.snapFullTitle")}>
+                <button type="button" className={`canvas-operation-icon-button ${snapFull ? "is-active" : ""}`} data-snap-tour={onOpenSnapMenu && !snapFull ? "menu" : undefined} onPointerDown={(event) => { clearSnapMenuTimer(); stopButtonPointer(event); }} onPointerEnter={armSnapMenu} onPointerLeave={clearSnapMenuTimer} onClick={toggleSnapFull} aria-label={snapFull ? t("canvas.frame.snapFullRestoreAria", { title: displayTitle }) : t("canvas.frame.snapFullAria", { title: displayTitle })} aria-pressed={snapFull}>
+                  {snapFull ? <RestorePanelIcon /> : <SnapFullPanelIcon />}
+                </button>
+              </CaptionTipHost>
+            ) : null}
+            <CaptionTipHost label={isCloseArmed ? t("canvas.frame.confirmCloseTitle") : t("canvas.frame.closeTitle")}>
+              <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? t("canvas.frame.confirmCloseAria", { title: displayTitle }) : t("canvas.frame.closeAria", { title: displayTitle })}>
+                {isCloseArmed ? t("canvas.frame.closeArmed") : <CloseIcon />}
+              </button>
+            </CaptionTipHost>
+          </div>
+        </span>
       </div>
       {/* 무장 중에는 Alt를 놓아도 안내가 남아야 한다 — 확인 기한이 1.5초뿐이라 Alt를 다시 눌러 확인할 시간이 없다. */}
       <div className={`canvas-operation-glance-hud${glanceHud.armedMessageKey ? " is-armed-set-aside" : ""}`} aria-hidden="true">
