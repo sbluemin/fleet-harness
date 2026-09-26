@@ -133,9 +133,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
+  const enableOwnedTemp = (operationId: string) => {
+    const node = ctx.host.operations.get(operationId);
+    if (node && node.payload.ownedTemp !== true) ctx.host.operations.patch(operationId, { payload: { ...node.payload, ownedTemp: true } });
+  };
   const launch = async (input: { newOperationId?: string; theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; member?: boolean; parentOperationId?: string; launchKey?: string }): Promise<string> => {
     const result = await control().request({
       kind: "launch",
+      ownedTemp: true,
       theaterId: input.theaterId,
       title: input.title,
       viewMode: input.viewMode ?? "terminal",
@@ -180,6 +185,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const existing = ctx.host.operations.get(objectiveId);
     const key = `objectives.commander:${objectiveId}`;
     if (existing) {
+      enableOwnedTemp(objectiveId);
       if (pendingCommander) {
         const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
         if (marker?.owner !== ctx.pluginId || marker.key !== key) throw new ObjectiveStoreError("operation_id_taken");
@@ -340,6 +346,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const observation = operationId ? ctx.host.consoleControl?.observe(operationId) : null;
       const node = operationId ? ctx.host.operations.get(operationId) : null;
       if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
+      if (node && operationId) enableOwnedTemp(operationId);
       if (operationId && node && observation?.lifecycle === "live") {
         blockMemberQuestions(operationId);
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "live" });

@@ -57,12 +57,12 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
   /** 지휘관이 제 목표를 읽었다 — 그 뒤의 계획·충족 판단은 사람의 변경을 다시 막지 않는다. */
   const readView = (objective: Objective, caller: ConsoleCaller | undefined) => objectiveView(roleIn(objective, caller)?.role === "commander" ? store.setEdited(objective.id, null) : objective);
 
-  const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, caller: ConsoleCaller | undefined) => Promise<unknown> | unknown): PluginMcpTool => ({
+  const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, caller: ConsoleCaller | undefined, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> | unknown): PluginMcpTool => ({
     name, description, inputSchema: z.toJSONSchema(schema),
     execute: async (raw, context) => {
       const parsed = schema.safeParse(raw ?? {});
       if (!parsed.success) return refuse("invalid_arguments");
-      try { return await run(parsed.data, context.caller); }
+      try { return await run(parsed.data, context.caller, context); }
       catch (error) { return error instanceof ObjectiveStoreError ? refuse(error.code, error.details) : refuse("objectives_failed"); }
     },
   });
@@ -97,6 +97,11 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       const objective = find(objectiveId);
       if (!roleIn(objective, caller)) return refuse("not_participant");
       return text({ objective: readView(objective, caller) });
+    }),
+    tool("evidence_root", "This participating session's host-owned temporary-file root, when its execution has one. The path is returned only to this session through MCP, not to the browser. Bash temporary files may be outside this root. Missing or ended scopes return scope_unavailable; unsupported execution providers return scope_unsupported_provider.", z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller, context) => {
+      if (!roleIn(find(objectiveId), caller)) return refuse("not_participant");
+      const scope = context.ownedTemp?.read() ?? { error: "scope_unavailable", reason: "not_issued" };
+      return "error" in scope ? refuse(scope.error, { reason: scope.reason }) : text({ scopeId: scope.id, root: scope.root, note: "Bash temporary files may be outside this root." });
     }),
     commanderTool("attach_result", `Attach a PR or sealed evidence reference to this objective. At most ${RESULT_LIMITS.count} results, including ${RESULT_LIMITS.evidenceCount} evidence files. PR URLs support github.com only; their status is server-observed, not caller-supplied. Evidence requires an evidenceId sealed for this objective; raw paths and URLs are not accepted as evidence. Duplicate targets are refused as result_exists. Results do not change missions, criteria, or hand-off readiness.`,
       z.object({ objectiveId: ids, result: resultInputSchema }).strict(),
