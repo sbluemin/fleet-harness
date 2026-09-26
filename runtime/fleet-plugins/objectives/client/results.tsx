@@ -40,7 +40,9 @@ const ERROR_KEYS: Readonly<Record<PrErrorCode, ObjectiveMessageKey>> = {
   lookup_failed: "objectives.results.err.lookup_failed",
 };
 
-export const resultFileUrl = (objectiveId: string, resultId: string) => `/plugins/objectives/result/file?objectiveId=${encodeURIComponent(objectiveId)}&resultId=${encodeURIComponent(resultId)}`;
+/** 파일은 목표·결과물 id 로 받는다. 같은 결과물의 증거가 새 복사본으로 교체되면 evidenceId 가 바뀌므로 그 값을 버전으로 붙여
+ *  이미 그려진 썸네일·열린 보기가 옛 파일을 붙들지 않게 한다(서버는 v 를 권한에 쓰지 않고 그 결과물의 현재 파일만 준다). */
+export const resultFileUrl = (objectiveId: string, result: Pick<EvidenceResult, "id" | "evidenceId">) => `/plugins/objectives/result/file?objectiveId=${encodeURIComponent(objectiveId)}&resultId=${encodeURIComponent(result.id)}&v=${encodeURIComponent(result.evidenceId)}`;
 
 /** 상대 시각이 낡지 않게 — 30초마다 다시 그린다. */
 function useNow(intervalMs = 30_000): number {
@@ -85,7 +87,8 @@ export function ResultsHeadTools({ objective, t, expanded }: { readonly objectiv
 
 export function ObjectiveResults({ objective, t, language }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale }) {
   const now = useNow();
-  const [viewing, setViewing] = useState<EvidenceResult | null>(null);
+  // 열린 보기는 결과물 id 로만 기억한다 — 교체되면 지금 객체(새 파일·형식)를 다시 고르고, 떼어지면 닫힌다.
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const evidence = objective.results.filter((result): result is EvidenceResult => result.kind === "evidence");
   const prs = objective.results.filter((result): result is PrResult => result.kind === "pr");
@@ -96,10 +99,9 @@ export function ObjectiveResults({ objective, t, language }: { readonly objectiv
     return index >= 0 ? ` · ${t("objectives.results.mission", { n: index + 1 })}` : "";
   };
   const uploaded = (result: EvidenceResult) => t("objectives.results.uploaded", { ago: relative(result.capturedAt, now, language) });
-  const open = (result: EvidenceResult, opener: HTMLButtonElement) => { openerRef.current = opener; setViewing(result); };
-  const close = () => { setViewing(null); openerRef.current?.focus(); };
-  // 보는 사이 그 결과물이 떼어지면 보기도 닫는다.
-  const viewingLive = viewing && evidence.some((result) => result.id === viewing.id) ? viewing : null;
+  const open = (result: EvidenceResult, opener: HTMLButtonElement) => { openerRef.current = opener; setViewingId(result.id); };
+  const close = () => { setViewingId(null); openerRef.current?.focus(); };
+  const viewingLive = viewingId ? evidence.find((result) => result.id === viewingId) ?? null : null;
 
   return (
     <div className="objectives-results">
@@ -110,7 +112,7 @@ export function ObjectiveResults({ objective, t, language }: { readonly objectiv
             const title = result.label ?? result.name;
             return (
               <button key={result.id} type="button" className="objectives-result-thumb" aria-label={t("objectives.results.zoom", { name: title })} title={`${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)}`} onClick={(event) => open(result, event.currentTarget)}>
-                <span className="objectives-result-img"><img src={resultFileUrl(objective.id, result.id)} alt="" loading="lazy" draggable={false} /></span>
+                <span className="objectives-result-img"><img src={resultFileUrl(objective.id, result)} alt="" loading="lazy" draggable={false} /></span>
                 <span className="objectives-result-name">{title}</span>
               </button>
             );
@@ -134,8 +136,8 @@ export function ObjectiveResults({ objective, t, language }: { readonly objectiv
       {prs.map((result) => <PrRow key={result.id} result={result} t={t} language={language} now={now} missionTag={missionTag(result.sourceMissionId)} />)}
       {viewingLive ? createPortal(
         viewingLive.mediaType === "text/plain"
-          ? <EvidenceTextView t={t} src={resultFileUrl(objective.id, viewingLive.id)} name={viewingLive.name} caption={`${viewingLive.name} · ${bytesLabel(viewingLive.bytes)} · ${uploaded(viewingLive)}`} onClose={close} />
-          : <AttachmentView t={t} src={resultFileUrl(objective.id, viewingLive.id)} caption={`${viewingLive.name}${viewingLive.width && viewingLive.height ? ` · ${viewingLive.width}×${viewingLive.height}` : ""} · ${uploaded(viewingLive)}`} onClose={close} />,
+          ? <EvidenceTextView t={t} src={resultFileUrl(objective.id, viewingLive)} name={viewingLive.name} caption={`${viewingLive.name} · ${bytesLabel(viewingLive.bytes)} · ${uploaded(viewingLive)}`} onClose={close} />
+          : <AttachmentView t={t} src={resultFileUrl(objective.id, viewingLive)} caption={`${viewingLive.name}${viewingLive.width && viewingLive.height ? ` · ${viewingLive.width}×${viewingLive.height}` : ""} · ${uploaded(viewingLive)}`} onClose={close} />,
         document.body,
       ) : null}
     </div>
