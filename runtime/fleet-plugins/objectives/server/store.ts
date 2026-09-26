@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { readOperationLaunch, type OperationNode } from "@fleet-console/sdk/operations";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
+import { checkedResultInput, patchedResultInput, prTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch } from "./results.js";
 import {
   MAX_CRITERIA,
   MAX_CRITERION_TEXT,
@@ -70,7 +71,7 @@ import {
  */
 
 export class ObjectiveStoreError extends Error {
-  constructor(readonly code: string, message?: string) {
+  constructor(readonly code: string, message?: string, readonly details?: Record<string, unknown>) {
     super(message ?? code);
     this.name = "ObjectiveStoreError";
   }
@@ -83,6 +84,8 @@ export interface ObjectiveStoreOptions {
   readonly operations: { get(id: string): OperationNode | null; list(): readonly OperationNode[] };
   readonly emit: (event: ObjectiveEvent) => void;
   readonly now?: () => number;
+  /** 같은 목표에 seal된 증거만 반환한다. 없으면 파일 결과물은 fail-closed다. */
+  readonly resolveEvidence?: (objectiveId: string, evidenceId: string) => EvidenceMetadata | null;
 }
 
 /** 새 목표의 목표 고유값 — Operation 은 부르는 쪽이 먼저 만든다. */
@@ -182,6 +185,9 @@ export interface ObjectiveStore {
   proposalAnnotate(objectiveId: string, proposalId: string, annotation: string): Objective;
   /** 사람의 편집을 쌓는다 · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
   setEdited(objectiveId: string, kinds: readonly ObjectiveEditKind[] | null): Objective;
+  resultAdd(objectiveId: string, input: ResultInput): { readonly objective: Objective; readonly result: ObjectiveResult };
+  resultUpdate(objectiveId: string, resultId: string, patch: ResultPatch): Objective;
+  resultRemove(objectiveId: string, resultId: string): Objective;
   attachmentAdd(objectiveId: string, input: { readonly name: string; readonly type: ObjectiveAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly objective: Objective; readonly attachment: ObjectiveAttachment };
   attachmentRemove(objectiveId: string, attachmentId: string): Objective;
   /** 첨부 파일의 절대 경로 — 서버 안(파일 서빙·지휘관의 도구 응답)에서만 쓴다. */
@@ -294,9 +300,12 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     const parsed = JSON.parse(raw) as Partial<StoredObjective>;
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
-      return { ...parsed, operationId: parsed.operationId, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [] };
+      const results = storedResultsSchema.safeParse(parsed.results === undefined ? [] : parsed.results);
+      // 새 결과물 필드가 손상돼도 목표 전체를 빈 값으로 바꿔 덮어쓰지 않는다.
+      if (!results.success) throw new ObjectiveStoreError("invalid_stored_results");
+      return { ...parsed, operationId: parsed.operationId, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [], results: results.data };
     }
-  } catch { /* 깨진 파일 */ }
+  } catch (error) { if (error instanceof ObjectiveStoreError) throw error; /* 깨진 JSON 파일 */ }
   quarantine(file);
   return null;
 }
@@ -333,6 +342,7 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.followupBatches?.length) delete out.followupBatches;
   for (const key of ["planning", "criteriaOpen", "today"] as const) if (out[key] !== true) delete out[key];
   if (!(objective.attachments?.length)) delete out.attachments;
+  if (!objective.results?.length) delete out.results;
   if (!(objective.criteria?.length)) delete out.criteria;
   if (!(objective.criteriaProposals?.length)) delete out.criteriaProposals;
   if (!objective.members?.length) delete out.members;
@@ -434,6 +444,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: launch.model } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started },
       note: stored.note,
       attachments: stored.attachments ?? [],
+      results: stored.results ?? [],
       ...(stored.planRequest ? { planRequest: stored.planRequest } : {}),
       planning: stored.planning === true,
       criteriaOpen: stored.criteriaOpen === true,
@@ -564,6 +575,44 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     return commit(theaterId, next, !recorded) ?? project(next, node);
   };
 
+  const resultChecked = <T>(run: () => T): T => {
+    try { return run(); }
+    catch (error) { if (error instanceof ResultValidationError) throw new ObjectiveStoreError(error.code); throw error; }
+  };
+  const makeResult = (objectiveId: string, input: ResultInput, previous?: ObjectiveResult): ObjectiveResult => {
+    const at = now();
+    const common = { id: previous?.id ?? randomUUID(), createdAt: previous?.createdAt ?? at, updatedAt: at,
+      ...(input.label ? { label: input.label } : {}), ...(input.note ? { note: input.note } : {}), ...(input.sourceMissionId ? { sourceMissionId: input.sourceMissionId } : {}) };
+    switch (input.kind) {
+      case "pr": return { ...common, kind: "pr", ...prTarget(input.url), observation: previous?.kind === "pr" && previous.url === input.url ? previous.observation : { state: "unchecked", checkedAt: null, stale: true } };
+      case "evidence": {
+        // label만 고칠 때는 이미 보존된 bytes를 다시 수입하지 않는다. 새 id는 seal 서비스가 확인한다.
+        const metadata = previous?.kind === "evidence" && previous.evidenceId === input.evidenceId
+          ? { evidenceId: previous.evidenceId, name: previous.name, mediaType: previous.mediaType, bytes: previous.bytes, sha256: previous.sha256, capturedAt: previous.capturedAt, ...(previous.width ? { width: previous.width } : {}), ...(previous.height ? { height: previous.height } : {}) }
+          : options.resolveEvidence?.(objectiveId, input.evidenceId);
+        if (!metadata) throw new ObjectiveStoreError("unknown_evidence");
+        const parsed = evidenceMetadataSchema.safeParse(metadata);
+        if (!parsed.success || parsed.data.evidenceId !== input.evidenceId) throw new ObjectiveStoreError("invalid_evidence");
+        return { ...common, kind: "evidence", ...parsed.data };
+      }
+    }
+  };
+  const checkedResults = (results: readonly ObjectiveResult[]): readonly ObjectiveResult[] => {
+    if (results.length > RESULT_LIMITS.count) throw new ObjectiveStoreError("too_many_results");
+    const evidence = results.filter((entry) => entry.kind === "evidence");
+    if (evidence.length > RESULT_LIMITS.evidenceCount || evidence.reduce((total, entry) => total + entry.bytes, 0) > RESULT_LIMITS.totalEvidenceBytes) throw new ObjectiveStoreError("evidence_capacity");
+    const parsed = storedResultsSchema.safeParse(results);
+    if (!parsed.success) throw new ObjectiveStoreError("invalid_results");
+    return parsed.data;
+  };
+  const assertResultTarget = (stored: StoredObjective, input: ResultInput | ObjectiveResult, replacing?: ObjectiveResult) => {
+    if (stored.done) throw new ObjectiveStoreError("objective_done");
+    // 기존 기록의 임무가 지워져도 결과물은 남는다. 새로 연결하는 임무만 현재 목표 안에서 확인한다.
+    if (input.sourceMissionId && input.sourceMissionId !== replacing?.sourceMissionId && !stored.missions.some((mission) => mission.id === input.sourceMissionId)) throw new ObjectiveStoreError("unknown_mission");
+    const duplicate = stored.results?.find((entry) => entry.id !== replacing?.id && resultIdentity(entry) === resultIdentity(input));
+    if (duplicate) throw new ObjectiveStoreError("result_exists", undefined, { resultId: duplicate.id });
+  };
+
   const missionOf = (stored: StoredObjective, missionId: string): { at: number; mission: StoredMission } => {
     const at = stored.missions.findIndex((mission) => mission.id === missionId);
     if (at < 0) throw new ObjectiveStoreError("unknown_mission");
@@ -610,7 +659,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const store: ObjectiveStore = {
     list: (theaterId) => visible(theaterId).map(({ stored, node }) => project(stored, node)),
     all: () => theaterIds().flatMap((theaterId) => store.list(theaterId)),
-    find: (objectiveId) => { try { const { stored, node } = locate(objectiveId); return project(stored, node); } catch { return null; } },
+    find: (objectiveId) => { try { const { stored, node } = locate(objectiveId); return project(stored, node); } catch (error) { if (error instanceof ObjectiveStoreError && error.code === "invalid_stored_results") throw error; return null; } },
     membersOf(commanderId) {
       for (const theaterId of theaterIds()) {
         const stored = load(theaterId).get(commanderId);
@@ -955,6 +1004,32 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (!stored.criteriaProposals?.some((entry) => entry.id === proposalId)) throw new ObjectiveStoreError("unknown_proposal");
       if (annotation.length > 300) throw new ObjectiveStoreError("annotation_too_long");
       return { ...stored, criteriaProposals: stored.criteriaProposals.map((entry) => entry.id === proposalId ? { ...entry, annotation: annotation.trim() || undefined } : entry) };
+    }),
+
+    resultAdd(objectiveId, raw) {
+      const input = resultChecked(() => checkedResultInput(raw));
+      let result!: ObjectiveResult;
+      const objective = update(objectiveId, (stored) => {
+        if (stored.done) throw new ObjectiveStoreError("objective_done");
+        result = resultChecked(() => makeResult(objectiveId, input));
+        assertResultTarget(stored, result);
+        return { ...stored, results: checkedResults([...(stored.results ?? []), result]) };
+      });
+      return { objective, result };
+    },
+    resultUpdate: (objectiveId, resultId, patch) => update(objectiveId, (stored) => {
+      if (stored.done) throw new ObjectiveStoreError("objective_done");
+      const previous = stored.results?.find((entry) => entry.id === resultId);
+      if (!previous) throw new ObjectiveStoreError("unknown_result");
+      const input = resultChecked(() => patchedResultInput(previous, patch));
+      const changed = resultChecked(() => makeResult(objectiveId, input, previous));
+      assertResultTarget(stored, changed, previous);
+      return { ...stored, results: checkedResults(stored.results!.map((entry) => entry.id === resultId ? changed : entry)) };
+    }),
+    resultRemove: (objectiveId, resultId) => update(objectiveId, (stored) => {
+      if (stored.done) throw new ObjectiveStoreError("objective_done");
+      if (!stored.results?.some((entry) => entry.id === resultId)) throw new ObjectiveStoreError("unknown_result");
+      return { ...stored, results: stored.results.filter((entry) => entry.id !== resultId) };
     }),
 
     attachmentAdd(objectiveId, input) {

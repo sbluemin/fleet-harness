@@ -3,6 +3,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
 
 import type { LaunchService } from "./launch.js";
+import { resultInputSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { criterionProposalSchema, followupBodySchema, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
@@ -60,7 +61,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       const parsed = schema.safeParse(raw ?? {});
       if (!parsed.success) return refuse("invalid_arguments");
       try { return await run(parsed.data, context.caller); }
-      catch (error) { return refuse(error instanceof ObjectiveStoreError ? error.code : "objectives_failed"); }
+      catch (error) { return error instanceof ObjectiveStoreError ? refuse(error.code, error.details) : refuse("objectives_failed"); }
     },
   });
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Operation 에게는 참여자가 아님을 말한다. */
@@ -95,6 +96,18 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!roleIn(objective, caller)) return refuse("not_participant");
       return text({ objective: readView(objective, caller) });
     }),
+    commanderTool("attach_result", `Attach a PR or sealed evidence reference to this objective. At most ${RESULT_LIMITS.count} results, including ${RESULT_LIMITS.evidenceCount} evidence files. PR URLs support github.com only; their status is server-observed, not caller-supplied. Evidence requires an evidenceId sealed for this objective; raw paths and URLs are not accepted as evidence. Duplicate targets are refused as result_exists. Results do not change missions, criteria, or hand-off readiness.`,
+      z.object({ objectiveId: ids, result: resultInputSchema }).strict(),
+      ({ result }, objective) => {
+        const attached = store.resultAdd(objective.id, result);
+        return text({ ok: true, resultId: attached.result.id, objective: objectiveView(attached.objective) });
+      }),
+    commanderTool("update_result", "Update a result by resultId without changing its kind. Omitted fields stay; null clears label, note, or sourceMissionId. A PR URL change resets its observation to unchecked. Evidence replacement requires another sealed evidenceId. Completed objectives refuse result changes as objective_done.",
+      z.object({ objectiveId: ids, resultId: ids, patch: resultPatchSchema }).strict(),
+      ({ resultId, patch }, objective) => text({ ok: true, objective: objectiveView(store.resultUpdate(objective.id, resultId, patch)) })),
+    commanderTool("detach_result", "Detach a result by resultId. This removes the objective's reference, not a PR. Unknown result ids are refused as unknown_result; completed objectives refuse changes as objective_done.",
+      z.object({ objectiveId: ids, resultId: ids }).strict(),
+      ({ resultId }, objective) => text({ ok: true, objective: objectiveView(store.resultRemove(objective.id, resultId)) })),
     commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added (unplaced) missions stay and are referenced by missionId; restating one is refused as mission_kept. A mission's prerequisites are numbers n counting from 1 over this plan's own missions, or the missionId of a mission that stays. A mission may name a roster member by id or role; none means the Commander. Roster members are accepted only while empty (members_exist). Only a person's explicit Plan request opens success-criterion proposals: criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Use {text} to propose adding, {revise: criterion number or id, text} to revise, or {retire: criterion number or id, reason} to retire. Proposals require the person's approval and block commencement and steering until resolved (criteria_not_planning, criteria_pending). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed.",
       z.object({ objectiveId: ids, missions: z.array(z.object({ text: z.string().trim().min(1).max(200), prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional() }).strict()).max(40).optional(), criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional() }).strict(),
       (args, objective) => {

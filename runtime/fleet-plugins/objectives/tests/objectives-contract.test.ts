@@ -16,6 +16,7 @@ import { createObjectiveMcpTools } from "../server/objective-tools.js";
 import { createObjectiveRoutes } from "../server/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../server/store.js";
 import { MAX_FOLLOWUPS, type ObjectiveEvent } from "../server/types.js";
+import { RESULT_LIMITS, type ObjectiveResult } from "../server/results.js";
 
 /**
  * 목표의 필수 계약 — 목표 레코드는 Operation 없이 태어나고, 개시·구상 때 같은 id 의 지휘관이 한 번만 선다.
@@ -37,6 +38,7 @@ type Saved = {
   readonly followupBatches?: readonly { readonly items: readonly unknown[] }[];
   readonly links?: readonly { readonly objectiveId: string; readonly at: number }[];
   readonly unrelated?: readonly string[];
+  readonly results?: readonly ObjectiveResult[];
 };
 
 function harness(routingOrigin: () => string | null = () => null) {
@@ -244,7 +246,7 @@ describe("Objectives contract", () => {
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
-    const { store, events, launch, operations, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, slept, interrupted, resumed, hostFault } = harness();
+    const { store, events, launch, call, route, operations, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, slept, interrupted, resumed, hostFault } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
     expect(launches).toEqual([]);
     expect(operations.has(objective.id)).toBe(false);
@@ -327,6 +329,23 @@ describe("Objectives contract", () => {
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [] });
     expect(reloaded.find(objective.id)!.missions[0]!.records.map((record) => [record.kind, record.lines])).toEqual([["done", ["a done"]], ["redone", ["a redone", "fixed the gap"]]]);
+    // 결과물은 임무 기록과 독립된 지휘관 도구다. 이전 저장에는 없고, 등록·수정·재시작을 지나 ID와 참조가 남는다.
+    expect(reloaded.find(objective.id)!.results).toEqual([]);
+    const pr = await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/Example/Project/pull/12/", sourceMissionId: a!.id } }, objective.id);
+    expect(pr.isError).toBe(false);
+    const prId = pr.structuredContent.resultId as string;
+    expect(store.find(objective.id)!.results).toContainEqual(expect.objectContaining({ id: prId, kind: "pr", url: "https://github.com/example/project/pull/12", observation: { state: "unchecked", checkedAt: null, stale: true } }));
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/example/project/pull/12" } }, objective.id)).structuredContent).toMatchObject({ error: "result_exists", resultId: prId });
+    expect((await call("update_result", { objectiveId: objective.id, resultId: prId, patch: { url: "https://github.com/example/project/pull/13", label: "Review", note: "Ready" } }, objective.id)).isError).toBe(false);
+    const restored = createObjectiveStore({ dirOf: () => objectivesDir, operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
+    expect(restored.find(objective.id)!.results).toEqual(store.find(objective.id)!.results);
+    expect(restored.find(objective.id)!.results).toContainEqual(expect.objectContaining({ id: prId, url: "https://github.com/example/project/pull/13", label: "Review", note: "Ready" }));
+    expect((await route("objective/get", { objectiveId: objective.id })).value.objective).toHaveProperty("results", restored.find(objective.id)!.results);
+    expect((await call("update_result", { objectiveId: objective.id, resultId: prId, patch: { label: null, note: null } }, objective.id)).isError).toBe(false);
+    expect(store.find(objective.id)!.results[0]).not.toHaveProperty("label");
+    expect((await call("detach_result", { objectiveId: objective.id, resultId: prId }, objective.id)).isError).toBe(false);
+    expect((await call("detach_result", { objectiveId: objective.id, resultId: prId }, objective.id)).structuredContent.error).toBe("unknown_result");
+    expect(savedObjective(objective.id).results).toBeUndefined();
     // 모든 쓰기가 사건으로 나갔다 — 화면은 이 프레임으로 갱신된다.
     expect(events.filter((event) => event.op === "upsert" && event.objectiveId === objective.id).length).toBeGreaterThanOrEqual(8);
     // 메모 첨부 — 머리 바이트가 이미지가 아니면 받지 않는다; 목표를 지우면 지휘관 Operation 이 닫히고 구성원도 따라 닫히며,
@@ -410,6 +429,11 @@ describe("Objectives contract", () => {
     const recovered = reload();
     expect(recovered.find("alpha")).toMatchObject({ note: "", missions: [] });
     expect(fs.readdirSync(path.join(objectivesDir, "alpha")).some((name) => name.startsWith("objective.json.broken-"))).toBe(true);
+    // 손상된 신규 결과물 필드는 빈 목표로 삼아 덮지 않는다. 원본 bytes를 그대로 두고 읽기를 거절한다.
+    fs.writeFileSync(objectiveFile("beta"), JSON.stringify({ operationId: "beta", rank: 1, note: "preserve", missions: [], results: [{ kind: "pr", url: "invalid" }] }));
+    const corruptResults = bytes("beta");
+    expect(() => reload().find("beta")).toThrow("invalid_stored_results");
+    expect(bytes("beta")).toEqual(corruptResults);
   });
 
   it("keeps the dropped position of objectives with and without records, through reload and a stopped respread", () => {
@@ -653,11 +677,27 @@ describe("Objectives contract", () => {
     expect(store.find(objective.id)!.commander.sessionName).toMatch(/-cmdr$/);
     expect((await call("read", { objectiveId: objective.id }, member.operationId)).isError).toBe(false);
     expect((await call("mine", {}, commander)).structuredContent).toMatchObject({ role: "commander", objectiveId: objective.id });
+    // 새 결과물 도구도 같은 인증 caller 경계를 지난다. 구성원·외부·호출자 없음이 보드 쓰기로 이어지지 않는다.
+    const resultInput = { kind: "pr", url: "https://github.com/example/project/pull/1" };
+    expect((await call("attach_result", { objectiveId: objective.id, result: resultInput }, member.operationId)).structuredContent.error).toBe("not_commander");
+    const attached = await call("attach_result", { objectiveId: objective.id, result: resultInput }, commander);
+    const resultId = attached.structuredContent.resultId;
+    expect(attached.isError).toBe(false);
+    expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { label: "foreign" } }, other)).structuredContent.error).toBe("not_participant");
+    expect((await call("detach_result", { objectiveId: objective.id, resultId })).structuredContent.error).toBe("not_participant");
+    expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { path: "/private/user-file" } }, commander)).structuredContent.error).toBe("invalid_arguments");
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: "12345678-1234-4123-8123-123456789012" } }, commander)).structuredContent.error).toBe("unknown_evidence");
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", path: "/private/user-file" } }, commander)).structuredContent.error).toBe("invalid_arguments");
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://elsewhere.invalid/o/r/pull/1" } }, commander)).structuredContent.error).toBe("unsupported_pr_host");
+    expect((await call("read", { objectiveId: objective.id }, member.operationId)).structuredContent.objective).toHaveProperty("results", expect.arrayContaining([expect.objectContaining({ id: resultId })]));
+    expect(store.find(objective.id)!.results).toHaveLength(1);
     // 사람이 선행 없이 더한 임무는 미분류 — 지휘관이 자리를 정하기 전까지 준비되지 않는다.
     launch.missionAdded(objective.id, { text: "missed" }, { by: "human" });
     const board = async () => ((await call("read", { objectiveId: objective.id }, commander)).structuredContent.objective as { graph: { missions: { n: number; unplaced?: boolean; ready: boolean; prerequisites: number[]; member: { role: string } | null }[] } }).graph.missions;
     // 지휘관이 읽기 전에 사람이 바꾼 보드로는 계획을 쓸 수 없다.
     store.setEdited(objective.id, ["missions"]);
+    expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { note: "Stored independently" } }, commander)).isError).toBe(false);
+    expect(store.find(objective.id)!.edited?.kinds).toEqual(["missions"]);
     expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "stale" }] }, commander)).structuredContent.error).toBe("board_changed");
     const missed = (await board()).find((mission) => mission.unplaced)!;
     expect(missed).toMatchObject({ unplaced: true, ready: false });
@@ -681,6 +721,11 @@ describe("Objectives contract", () => {
     // 같은 목표에 시작이 겹치면 하나만 간다.
     const results = await Promise.allSettled([launch.startCommander(other), launch.startCommander(other)]);
     expect(results.filter((result) => result.status === "fulfilled").length).toBe(2);
+    // 결과물 수의 상한과 완료 잠금은 도구 호출을 우회한 저장에서도 유지된다.
+    for (let n = 2; n <= RESULT_LIMITS.count; n += 1) store.resultAdd(objective.id, { kind: "pr", url: `https://github.com/example/project/pull/${n}` });
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/example/project/pull/999" } }, commander)).structuredContent.error).toBe("too_many_results");
+    store.complete(objective.id);
+    expect((await call("detach_result", { objectiveId: objective.id, resultId }, commander)).structuredContent.error).toBe("objective_done");
   });
 
   it("keeps criteria proposed until the person decides, then awaits hand-off and reaches review only through hand_off", async () => {

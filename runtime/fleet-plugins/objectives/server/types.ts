@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { ObjectiveResult } from "./results.js";
+export type { ObjectiveResult, PrObservation } from "./results.js";
 
 /**
  * 목표 도메인 — 저장 모양과 화면 모양을 가른다.
@@ -274,6 +276,8 @@ export interface StoredObjective {
   /** 사람의 명시적인 구상 요청에서만 켜고, 스티어링·개시·중지·완료에서 끈다. */
   readonly criteriaOpen?: true;
   readonly attachments?: readonly ObjectiveAttachment[];
+  /** 지휘관이 붙인 결과물 — 브리핑 입력·임무 기록·완료 조건과 별개다. */
+  readonly results?: readonly ObjectiveResult[];
   readonly dueDate?: string;
   readonly today?: true;
   /** 에이전트가 도구로 더한 목표 — 더한 Operation. 사람이 만든 목표에는 없다. */
@@ -363,6 +367,7 @@ export interface Objective {
   readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean };
   readonly note: string;
   readonly attachments: readonly ObjectiveAttachment[];
+  readonly results: readonly ObjectiveResult[];
   readonly planRequest?: string;
   readonly planning: boolean;
   readonly criteriaOpen: boolean;
