@@ -6219,20 +6219,17 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .side-bar-starter-eyebrow {
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
 }
 
 .side-bar-starter-title {
   margin: 0;
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: var(--t-xl);
-  font-weight: var(--weight-medium);
+  font-size: var(--t-lg);
+  font-weight: var(--weight-bold);
   letter-spacing: 0;
   line-height: 1.15;
   text-wrap: balance;
@@ -6241,8 +6238,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .side-bar-starter-body {
   margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--t-md);
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
   line-height: 1.55;
   word-break: keep-all;
 }
@@ -6257,11 +6254,11 @@ body[data-companion-resizing="true"] .canvas-operation {
   border: 1px solid color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
   border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--brass) 10%, var(--surface-glass));
-  color: var(--brass-bright);
+  color: var(--brass-ink);
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: var(--t-md);
-  font-weight: var(--weight-bold);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
   line-height: 1.2;
   transition:
     border-color var(--duration-fast) var(--ease-glide),
@@ -6293,16 +6290,12 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--text-tertiary);
   cursor: pointer;
   font: inherit;
-  font-size: var(--t-sm);
-  text-decoration: underline;
-  text-decoration-color: color-mix(in oklch, var(--text-tertiary) 50%, transparent);
-  text-underline-offset: 3px;
+  font-size: var(--t-xs);
 }
 
 .side-bar-starter-secondary:hover,
 .side-bar-starter-secondary:focus-visible {
   color: var(--text-secondary);
-  text-decoration-color: currentcolor;
 }
 
 .side-bar-starter-secondary:focus-visible {
@@ -9246,14 +9239,13 @@ body[data-companion-resizing="true"] .canvas-operation {
   user-select: none;
 }
 
+/* 청사진 캡션과 실루엣 — 첫 실행 카드와 같은 결로 조용하게: 본문 글꼴의 옅은 한 줄, 점선 대신 거의 비치는 면. */
 .operations-canvas-blueprint-caption {
   position: absolute;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
 }
 
 .operations-canvas-blueprint-caption--lead {
@@ -9264,9 +9256,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 .operations-canvas-blueprint-caption--guide {
   right: 0;
   bottom: 0;
-  text-transform: none;
-  letter-spacing: 0.02em;
   font-weight: var(--weight-regular);
+  opacity: 0.8;
 }
 
 .operations-canvas-blueprint-card {
@@ -9276,8 +9267,9 @@ body[data-companion-resizing="true"] .canvas-operation {
   box-sizing: border-box;
   max-width: 320px;
   padding: var(--space-3) var(--space-4);
-  border: 1px dashed color-mix(in oklch, var(--surface-rim-strong) 80%, transparent);
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
   border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 22%, transparent);
 }
 
 .operations-canvas-blueprint-card::before {
@@ -9286,21 +9278,21 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 2px;
   margin-bottom: 2px;
   border-radius: var(--radius-pill);
-  background: var(--surface-rim-strong);
+  background: color-mix(in oklch, var(--brass) 30%, var(--surface-rim));
 }
 
 .operations-canvas-blueprint-title {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-2xs);
-  letter-spacing: 0.04em;
+  opacity: 0.85;
 }
 
 .operations-canvas-blueprint-card i {
   display: block;
-  height: 6px;
+  height: 5px;
   border-radius: 3px;
-  background: color-mix(in oklch, var(--surface-rim) 70%, transparent);
+  background: color-mix(in oklch, var(--surface-rim) 50%, transparent);
 }
 
 .operations-canvas-error {
@@ -11286,6 +11278,9 @@ body[data-companion-resizing="true"] .canvas-operation {
   font-size: var(--t-2xs);
 }
 
+/* 첫 실행 카드 — Theater가 없는 콘솔의 설정 가이드. 한 가지 일(폴더 하나 등록)을 조용히 권한다:
+   폭을 좁히고, 큰 제목과 모노 머리글·깜빡이는 주 버튼 대신 담백한 제목과 두 줄짜리 체크리스트를 둔다.
+   지금 할 단계만 버튼을 갖고, 끝난 단계는 체크로 접힌다. 위치를 가리키는 강조는 brass 하나다. */
 .commissioning-overlay {
   position: fixed;
   inset: 0;
@@ -11299,7 +11294,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   position: absolute;
   inset: 0;
   border: 0;
-  background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
+  background: color-mix(in oklch, var(--ink-abyss) 58%, transparent);
   cursor: default;
 }
 
@@ -11309,61 +11304,80 @@ body[data-companion-resizing="true"] .canvas-operation {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: var(--space-5);
-  width: min(920px, 94vw);
-  max-height: min(820px, 88vh);
-  padding: var(--space-6);
+  width: min(520px, 94vw);
+  max-height: min(720px, 88vh);
+  padding: var(--space-6) var(--space-6) var(--space-5);
   overflow: hidden;
-  border: 1px solid var(--surface-rim-strong);
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background:
-    radial-gradient(120% 80% at 50% -12%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 58%),
-    radial-gradient(70% 80% at 100% 20%, color-mix(in oklch, var(--aurora) 8%, transparent), transparent 62%),
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 60px -40px var(--brass);
+  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
 
 .commissioning-header {
   display: grid;
+  justify-items: start;
   gap: var(--space-2);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
+}
+
+.commissioning-mark {
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-2);
+}
+
+.commissioning-mark-plate {
+  fill: color-mix(in oklch, var(--brass) 10%, transparent);
+  stroke: color-mix(in oklch, var(--brass) 38%, transparent);
+}
+
+.commissioning-mark-panel {
+  fill: none;
+  stroke: var(--brass);
+  stroke-width: 1.5;
+}
+
+.commissioning-mark-fill {
+  fill: var(--brass);
+  opacity: 0.55;
 }
 
 .commissioning-eyebrow {
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
 }
 
 .commissioning-header h2 {
   margin: 0;
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 52px;
-  font-variation-settings: "opsz" 60;
-  font-weight: var(--weight-medium);
-  letter-spacing: 0;
-  line-height: 0.98;
+  font-size: var(--t-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  text-wrap: balance;
+  word-break: keep-all;
 }
 
 .commissioning-header p {
-  max-width: 560px;
   margin: 0;
   color: var(--text-secondary);
-  font-size: var(--t-lg);
-  line-height: 1.55;
+  font-size: var(--t-md);
+  line-height: 1.6;
+  word-break: keep-all;
+  text-wrap: pretty;
 }
 
 .commissioning-steps {
   display: grid;
-  gap: 0;
+  gap: var(--space-2);
   min-height: 0;
   margin: 0;
   padding: 0;
@@ -11372,60 +11386,49 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .commissioning-step {
-  position: relative;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: var(--space-4);
-  min-height: 150px;
-  padding: var(--space-4) 0;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  transition: background var(--duration-base) var(--ease-glide), border-color var(--duration-base) var(--ease-glide);
 }
 
-.commissioning-step::after {
-  content: "";
-  position: absolute;
-  top: calc(var(--space-4) + 42px);
-  bottom: calc(var(--space-4) * -1);
-  left: 21px;
-  width: 1px;
-  background: linear-gradient(180deg, color-mix(in oklch, var(--brass) 34%, transparent), color-mix(in oklch, var(--surface-rim) 78%, transparent));
-}
-
-.commissioning-step:last-child::after {
-  display: none;
+.commissioning-step.is-current {
+  border-color: color-mix(in oklch, var(--surface-rim) 80%, transparent);
+  background: color-mix(in oklch, var(--surface-glass) 55%, transparent);
 }
 
 .commissioning-step-node {
-  position: relative;
-  z-index: 1;
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
   place-items: center;
-  border: 1px solid color-mix(in oklab, var(--brass) 48%, var(--surface-rim));
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 76%, var(--surface-glass));
-  color: var(--brass-bright);
-  box-shadow: var(--shadow-anchor);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
 }
 
 .commissioning-step.is-current .commissioning-step-node {
-  border-color: color-mix(in oklch, var(--aurora) 54%, var(--surface-rim));
-  color: var(--aurora-ink);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--aurora) 18%, transparent), 0 0 18px -6px var(--aurora-glow);
+  border-color: color-mix(in oklch, var(--brass) 60%, transparent);
+  color: var(--brass-ink);
 }
 
 .commissioning-step.is-complete .commissioning-step-node {
-  color: var(--brass-bright);
+  border-color: transparent;
+  background: color-mix(in oklch, var(--positive) 22%, transparent);
+  color: var(--positive-ink);
 }
 
 .commissioning-step-body {
   display: grid;
   align-content: start;
-  gap: var(--space-3);
+  gap: 4px;
   min-width: 0;
 }
 
@@ -11433,89 +11436,62 @@ body[data-companion-resizing="true"] .canvas-operation {
   margin: 0;
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: var(--t-xl);
-  font-variation-settings: "opsz" 36;
-  font-weight: var(--weight-medium);
-  letter-spacing: 0;
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  line-height: 1.4;
+}
+
+.commissioning-step:not(.is-current):not(.is-complete) .commissioning-step-body h3 {
+  color: var(--text-secondary);
+}
+
+.commissioning-step.is-complete .commissioning-step-body h3 {
+  color: var(--text-tertiary);
 }
 
 .commissioning-step-body p {
-  max-width: 620px;
   margin: 0;
   color: var(--text-tertiary);
-  font-size: var(--t-base);
-  line-height: 1.6;
-}
-
-.commissioning-primary-action,
-.commissioning-secondary-link,
-.commissioning-skip {
-  justify-self: start;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  font-family: var(--font-mono);
-  font-weight: var(--weight-bold);
+  font-size: var(--t-sm);
+  line-height: 1.55;
+  word-break: keep-all;
 }
 
 .commissioning-primary-action {
-  position: relative;
   display: inline-flex;
+  justify-self: start;
   align-items: center;
   gap: var(--space-2);
-  min-height: 40px;
+  min-height: 34px;
+  margin-top: var(--space-2);
   padding: 0 var(--space-4);
-  border-color: color-mix(in oklch, var(--aurora) 50%, var(--surface-rim));
-  background: color-mix(in oklch, var(--aurora) 18%, transparent);
-  color: var(--text-primary);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--aurora) 14%, transparent), 0 0 20px -8px var(--aurora-glow);
-  font-size: var(--t-xs);
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  color: var(--brass-ink);
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
   transition:
     border-color var(--duration-fast) var(--ease-glide),
     background var(--duration-fast) var(--ease-glide);
-}
-
-.commissioning-primary-action.is-live::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--aurora);
-  box-shadow: 0 0 0 0 var(--aurora-glow);
-  animation: aurora-pulse 1.4s var(--ease-glide) infinite;
 }
 
 .commissioning-primary-action:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--aurora) 68%, var(--surface-rim));
-  background: color-mix(in oklch, var(--aurora) 24%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 62%, transparent);
+  background: color-mix(in oklch, var(--brass) 24%, transparent);
 }
 
 .commissioning-primary-action:disabled {
+  border-color: var(--surface-rim);
+  background: transparent;
   color: var(--text-tertiary);
-  cursor: not-allowed;
-}
-
-.commissioning-secondary-link,
-.commissioning-skip {
-  min-height: 34px;
-  padding: 0 var(--space-3);
-  color: var(--brass-bright);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  font-size: var(--t-2xs);
-  line-height: 32px;
-  transition:
-    border-color var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide);
-}
-
-.commissioning-secondary-link:hover,
-.commissioning-skip:hover {
-  border-color: color-mix(in oklab, var(--brass) 52%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  cursor: wait;
 }
 
 .commissioning-error {
   color: var(--coral-ink) !important;
-  font-family: var(--font-mono);
   font-size: var(--t-xs) !important;
 }
 
@@ -11524,20 +11500,30 @@ body[data-companion-resizing="true"] .canvas-operation {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
 }
 
 .commissioning-footer p {
   margin: 0;
   color: var(--text-tertiary);
-  font-size: var(--t-sm);
+  font-size: var(--t-xs);
   line-height: 1.5;
+  word-break: keep-all;
 }
 
 .commissioning-skip {
   flex: none;
-  background: color-mix(in oklch, var(--surface-glass) 52%, transparent);
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-sm);
+}
+
+.commissioning-skip:hover,
+.commissioning-skip:focus-visible {
+  color: var(--text-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -11545,12 +11531,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   .commissioning-card {
     animation: none;
   }
-
-  .commissioning-primary-action.is-live::before {
-    animation: none;
-  }
-
-
 }
 
 /* 토스트 — 우하단 고정 알림 스택. 재사용 컴포넌트(toast.tsx)가 렌더하며, tone으로 색을 바꾼다 */
@@ -12958,35 +12938,12 @@ body[data-companion-resizing="true"] .canvas-operation {
   }
 
   .commissioning-card {
-    max-height: calc(100vh - (var(--space-3) * 2));
-    max-height: calc(100dvh - (var(--space-3) * 2));
-    padding: var(--space-4);
-  }
-
-  .commissioning-header h2 {
-    font-size: 34px;
-  }
-
-  .commissioning-step {
-    grid-template-columns: 46px minmax(0, 1fr);
-  }
-
-  .commissioning-step::after {
-    left: 18px;
-  }
-
-  .commissioning-step-node {
-    width: 38px;
-    height: 38px;
+    padding: var(--space-5) var(--space-4) var(--space-4);
   }
 
   .commissioning-footer {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .commissioning-skip {
-    width: 100%;
   }
 }
 
