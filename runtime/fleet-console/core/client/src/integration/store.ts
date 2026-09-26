@@ -1,4 +1,5 @@
 import { readStoredWhatsNewSeenVersion, evaluateAutomaticWhatsNew, remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists, writeStoredWhatsNewSeenVersion } from "../../../../features/updates/client/release-state.js";
+import { rememberSeen } from "../../../../features/onboarding/client/seen-store.js";
 import { normalizeOperationOwner, partitionListedOperations } from "@fleet-console/sdk/operations/browser";
 import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
@@ -1150,7 +1151,10 @@ export function openOnboarding(): void {
 export function closeOnboarding(): void {
   const settings = getGlobalSettingsStoreState().state;
   if (settings && !settings.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)) {
-    void setGlobalSettingsField("seenFeatureTours", [...settings.seenFeatureTours, COMMISSIONING_SEEN_KEY]);
+    // 첫 실행 직후에는 온보딩 엔진이 같은 seenFeatureTours 필드를 저장하는 중일 수 있다. 같은 필드의 겹친 저장은
+    // 거절되므로, 인플라이트 저장이 끝난 뒤 최신 값 위에 덧붙이는 경로로 남긴다 — 그러지 않으면 기록이 유실되어
+    // 다음 실행에 가이드가 다시 선다.
+    rememberSeen([COMMISSIONING_SEEN_KEY]);
   }
   if (!state.onboardingOpen) return;
   setState({ onboardingOpen: false });
