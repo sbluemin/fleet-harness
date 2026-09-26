@@ -16,6 +16,7 @@ export const RESULT_LIMITS = {
   prSettledRefreshMs: 15 * 60 * 1000,
   prTimeoutMs: 15 * 1000,
   prResponseBytes: 1024 * 1024,
+  prTitle: 200,
   prConcurrency: 2,
   prBackoffMs: [60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000],
 } as const;
@@ -43,10 +44,11 @@ export const prErrorSchema = z.enum(["gh_unavailable", "auth_required", "forbidd
 const prState = z.enum(["open", "merged", "closed"]);
 const timestamp = z.number().finite().nonnegative();
 const lastSuccess = z.object({ state: prState, checkedAt: timestamp }).strict();
+const prTitle = z.string().min(1).max(RESULT_LIMITS.prTitle).regex(/^[^\u0000-\u001f\u007f]+$/).optional();
 export const prObservationSchema = z.discriminatedUnion("state", [
-  z.object({ state: z.literal("unchecked"), checkedAt: z.null(), stale: z.boolean(), lastSuccess: lastSuccess.optional() }).strict(),
-  z.object({ state: prState, checkedAt: timestamp, stale: z.boolean(), lastSuccess: lastSuccess.optional(), }).strict(),
-  z.object({ state: z.literal("error"), checkedAt: timestamp, stale: z.boolean(), lastSuccess: lastSuccess.optional(), error: z.object({ code: prErrorSchema }).strict() }).strict(),
+  z.object({ state: z.literal("unchecked"), checkedAt: z.null(), stale: z.boolean(), title: prTitle, lastSuccess: lastSuccess.optional() }).strict(),
+  z.object({ state: prState, checkedAt: timestamp, stale: z.boolean(), title: prTitle, lastSuccess: lastSuccess.optional(), }).strict(),
+  z.object({ state: z.literal("error"), checkedAt: timestamp, stale: z.boolean(), title: prTitle, lastSuccess: lastSuccess.optional(), error: z.object({ code: prErrorSchema }).strict() }).strict(),
 ]);
 export type PrObservation = z.output<typeof prObservationSchema>;
 

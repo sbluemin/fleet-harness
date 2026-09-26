@@ -5,7 +5,7 @@ import { prTarget, RESULT_LIMITS, type PrObservation } from "./results.js";
 import type { ObjectiveStore } from "./store.js";
 
 export type PrErrorCode = Extract<PrObservation, { state: "error" }>["error"]["code"];
-export type PrLookupResult = { readonly state: "open" | "merged" | "closed" } | { readonly error: PrErrorCode; readonly retryAt?: number };
+export type PrLookupResult = { readonly state: "open" | "merged" | "closed"; readonly title?: string } | { readonly error: PrErrorCode; readonly retryAt?: number };
 export type PrLookup = (url: string, signal: AbortSignal) => Promise<PrLookupResult>;
 
 const execute = promisify(execFile);
@@ -27,10 +27,12 @@ export function createGhPrLookup(options: { readonly cwd: string; readonly execu
       const parsed = responseParts(response.stdout);
       if (parsed.status !== null && parsed.status !== 200) return classifyFailure(response.stdout, response.stderr);
       try {
-        const body = JSON.parse(parsed.body) as { state?: unknown; merged?: unknown; merged_at?: unknown; number?: unknown; html_url?: unknown };
+        const body = JSON.parse(parsed.body) as { title?: unknown; state?: unknown; merged?: unknown; merged_at?: unknown; number?: unknown; html_url?: unknown };
         if (body.number !== target.number || typeof body.html_url !== "string" || prTarget(body.html_url).url !== target.url || typeof body.merged !== "boolean" || (body.state !== "open" && body.state !== "closed")) return { error: "invalid_response" };
-        if (body.merged) return body.state === "closed" && typeof body.merged_at === "string" ? { state: "merged" } : { error: "invalid_response" };
-        return body.merged_at === null ? { state: body.state } : { error: "invalid_response" };
+        const cleaned = typeof body.title === "string" ? body.title.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, RESULT_LIMITS.prTitle) : "";
+        const title = cleaned ? { title: cleaned } : {};
+        if (body.merged) return body.state === "closed" && typeof body.merged_at === "string" ? { state: "merged", ...title } : { error: "invalid_response" };
+        return body.merged_at === null ? { state: body.state, ...title } : { error: "invalid_response" };
       } catch { return { error: "invalid_response" }; }
     } catch (error) {
       const failure = error as NodeJS.ErrnoException & { killed?: boolean; stdout?: string; stderr?: string };
@@ -81,6 +83,7 @@ export function createPrStatusService(store: ObjectiveStore, options: { readonly
   const flights = new Map<string, Promise<void>>();
   let stopped = false;
   let scanning = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
   const targets = () => store.all().flatMap((objective) => objective.results.flatMap((result) => result.kind === "pr" ? [{ objectiveId: objective.id, done: !!objective.done, result }] : []));
   const report = () => options.onError?.("pr_status_storage_failed");
@@ -103,14 +106,14 @@ export function createPrStatusService(store: ObjectiveStore, options: { readonly
         const previous = attempts.get(url)?.observation ?? [...found].sort((a, b) => (b.result.observation.checkedAt ?? 0) - (a.result.observation.checkedAt ?? 0))[0]!.result.observation;
         const lastSuccess = previous.state === "open" || previous.state === "merged" || previous.state === "closed" ? { state: previous.state, checkedAt: previous.checkedAt } : previous.lastSuccess;
         const observation: PrObservation = "error" in answer
-          ? { state: "error", checkedAt, stale: false, error: { code: answer.error }, ...(lastSuccess ? { lastSuccess } : {}) }
-          : { state: answer.state, checkedAt, stale: false, lastSuccess: { state: answer.state, checkedAt } };
+          ? { state: "error", checkedAt, stale: false, ...(previous.title ? { title: previous.title } : {}), error: { code: answer.error }, ...(lastSuccess ? { lastSuccess } : {}) }
+          : { state: answer.state, checkedAt, stale: false, ...(answer.title ? { title: answer.title } : {}), lastSuccess: { state: answer.state, checkedAt } };
         attempts.set(url, { nextAt: Math.max(checkedAt + delay, "error" in answer ? answer.retryAt ?? 0 : 0), failures, observation });
         // 기다리는 동안 삭제·URL 교체·다른 목표의 참조 추가가 있었을 수 있다. 지금 그 PR을 가리키는 항목만 쓴다.
         try {
           for (const entry of targets().filter((candidate) => candidate.result.url === url)) store.resultObserved(entry.objectiveId, entry.result.id, url, observation);
         } catch { report(); }
-      }).finally(() => { flights.delete(url); pump(); });
+      }).finally(() => { flights.delete(url); pump(); arm(); });
       flights.set(url, flight);
     }
   };
@@ -128,6 +131,7 @@ export function createPrStatusService(store: ObjectiveStore, options: { readonly
         const attempted = attempts.get(entry.result.url);
         const interval = entry.done || attempted?.observation.state === "merged" ? RESULT_LIMITS.prSettledRefreshMs : RESULT_LIMITS.prRefreshMs;
         const nextAt = attempted && attempted.failures === 0 ? Math.min(attempted.nextAt, (attempted.observation.checkedAt ?? 0) + interval) : attempted?.nextAt ?? 0;
+        if (attempted) attempted.nextAt = nextAt;
         if (attempted && nextAt > now()) {
           // 새 참조는 같은 PR의 이번 프로세스 내 최신 관측을 공유한다. 조회 실패 backoff도 건너뛰지 않는다.
           if (entry.result.observation.state === "unchecked") store.resultObserved(entry.objectiveId, entry.result.id, entry.result.url, attempted.observation);
@@ -139,12 +143,20 @@ export function createPrStatusService(store: ObjectiveStore, options: { readonly
     } catch { report(); }
     finally { scanning = false; }
     pump();
+    arm();
   };
-  const timer = setInterval(() => refresh(), RESULT_LIMITS.prRefreshMs);
-  timer.unref?.();
+  // 응답이 끝난 시각의 nextAt에 맞춘다. 고정 60초 tick은 네트워크 지연만큼 due를 지나쳐 120초 간격이 된다.
+  const arm = () => {
+    if (timer) clearTimeout(timer);
+    if (stopped) return;
+    const due = [...attempts].filter(([url]) => !flights.has(url) && !queued.has(url)).map(([, attempt]) => attempt.nextAt);
+    const delay = due.length ? Math.max(1, Math.min(...due) - now()) : RESULT_LIMITS.prRefreshMs;
+    timer = setTimeout(() => refresh(), delay);
+    timer.unref?.();
+  };
   refresh();
   return {
     refresh,
-    async dispose() { stopped = true; clearInterval(timer); queued.clear(); controller.abort(); await Promise.allSettled(flights.values()); flights.clear(); attempts.clear(); },
+    async dispose() { stopped = true; if (timer) clearTimeout(timer); queued.clear(); controller.abort(); await Promise.allSettled(flights.values()); flights.clear(); attempts.clear(); },
   };
 }

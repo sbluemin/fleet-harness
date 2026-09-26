@@ -749,15 +749,16 @@ describe("Objectives contract", () => {
         finish = () => resolve({ stdout: JSON.stringify({ number: 7, html_url: url, state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z" }), stderr: "" });
         signal.addEventListener("abort", () => { aborted = true; reject(Object.assign(new Error("aborted"), { code: "ABORT_ERR" })); }, { once: true });
       });
-      return { stdout: `HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ number: 7, html_url: "https://github.com/Example/Project/pull/7", state: mode === "open" ? "open" : "closed", merged: mode === "merged", merged_at: mode === "merged" ? "2026-01-01T00:00:00Z" : null })}`, stderr: "" };
+      if (mode === "open") await new Promise((resolve) => setTimeout(resolve, 250));
+      return { stdout: `HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ title: "Review\u0000\nresult", number: 7, html_url: "https://github.com/Example/Project/pull/7", state: mode === "open" ? "open" : "closed", merged: mode === "merged", merged_at: mode === "merged" ? "2026-01-01T00:00:00Z" : null })}`, stderr: "" };
     });
     vi.useFakeTimers();
     const service = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: ".", execute }) });
     const observed = () => store.find("pr-owner")!.results.find((entry) => entry.id === first.id) as Extract<ObjectiveResult, { kind: "pr" }>;
     try {
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(250);
       expect(execute).toHaveBeenCalledTimes(1);
-      expect(observed().observation).toMatchObject({ state: "open", stale: false });
+      expect(observed().observation).toMatchObject({ state: "open", stale: false, title: "Review result" });
       expect(store.find("also-owner")!.results[0]).toHaveProperty("observation.state", "open");
       mode = "auth";
       await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
