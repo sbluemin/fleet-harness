@@ -114,25 +114,17 @@
 }
 
 .zen-taskbar-group { display: contents; }
-/* 묶음 이름 — 사이드바와 같은 상태·그룹 색을 앞의 작은 점과 이름 잉크로만 말한다(띠·면은 두지 않는다).
-   점은 원색, 이름은 3티어 글자색 쪽으로 눌러 막대의 조용한 잉크에 섞는다. */
+/* 묶음 이름 — 사이드바와 같은 상태·그룹 색을 이름 잉크로만 말한다(점·띠·면은 두지 않는다).
+   이름은 3티어 글자색 쪽으로 눌러 막대의 조용한 잉크에 섞는다. */
 .zen-taskbar-group-label {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 5px;
   padding: 0 var(--space-1) 0 4px;
   color: color-mix(in oklab, var(--group-mark) 70%, var(--text-tertiary));
   font: var(--weight-medium) var(--t-2xs) var(--font-body);
   letter-spacing: 0.04em;
   white-space: nowrap;
-}
-.zen-taskbar-group-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--group-mark);
 }
 .zen-taskbar-empty { padding: 0 var(--space-2); color: var(--text-tertiary); font: var(--t-xs) var(--font-body); }
 
@@ -224,7 +216,6 @@
 }
 .zen-taskbar-chip:hover,
 .zen-taskbar-chip[aria-expanded="true"] { background: var(--control-hover-fill); color: var(--text-primary); }
-.zen-taskbar-chip .zen-taskbar-group-dot { margin-inline-end: 1px; }
 .zen-taskbar-chip-label { color: color-mix(in oklab, var(--group-mark) 55%, var(--text-secondary)); }
 .zen-taskbar-chip-count { color: var(--text-tertiary); font: var(--t-2xs) var(--font-mono); }
 .zen-taskbar-chip-awaiting { width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--aurora); }

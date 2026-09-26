@@ -1,6 +1,6 @@
 import { prefersReducedMotion } from "./canvas-store.js";
 
-// 존재 전환 안무 — 최소화/복원 시 패널과 사이드바 칩 사이를 잇는 고스트 flight.
+// 존재 전환 안무 — 최소화/복원 시 패널과 사이드바 칩(Zen에서는 작업 표시줄 항목) 사이를 잇는 고스트 flight.
 // 상태 커밋을 지연·블로킹하지 않는 fire-and-forget 연출 레이어다.
 
 const ARRIVAL_PULSE_DURATION_MS = 600;
@@ -50,8 +50,13 @@ function panelElement(operationId: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(operationId)}"]`);
 }
 
+// Zen은 사이드바를 걷어(visibility:hidden) 칩이 보이지 않는다 — 그때는 같은 Operation의 작업 표시줄 항목이
+// 비행의 끝점이다. 사이드바를 잠깐 드러낸 Zen에서는 보이는 사이드바 칩이 그대로 끝점이다.
 function chipElement(operationId: string): HTMLElement | null {
-  return document.querySelector<HTMLElement>(`[data-side-bar-chip-id="${escapeSelectorValue(operationId)}"]`);
+  const id = escapeSelectorValue(operationId);
+  const sideBarChip = document.querySelector<HTMLElement>(`[data-side-bar-chip-id="${id}"]`);
+  if (isVisiblyRendered(sideBarChip)) return sideBarChip;
+  return document.querySelector<HTMLElement>(`[data-zen-op="${id}"]`) ?? sideBarChip;
 }
 
 function isVisiblyRendered(element: HTMLElement | null): element is HTMLElement {

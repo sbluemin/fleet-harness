@@ -25,7 +25,8 @@ import "./zen-taskbar.css";
  *
  * 왼쪽은 지금 Theater의 Operation 목록이다. Theater는 이름을 눌러 위로 여는 메뉴에서 바꾸고,
  * 목록은 사이드바와 같은 상태별 보기 토글(같은 부품, Alt+S)을 따라 상태 또는 사용자 그룹으로 나뉜다.
- * 묶음 이름 앞의 점과 이름 잉크가 사이드바와 같은 상태·그룹 색을 말하고, Operation 이름은 제 강조색을 입는다.
+ * 묶음 이름의 잉크가 사이드바와 같은 상태·그룹 색을 말하고, Operation 이름은 제 강조색을 입는다.
+ * 지금 보는 Operation을 막대에서 한 번 더 누르면 최소화한다 — 작업 표시줄의 익숙한 토글이다.
  * 막대가 모자라면 모든 묶음을 「이름 + 개수」 칩으로 접고, 지금 보는 Operation 하나만 자기
  * 묶음 칩 옆에 이름째 남긴다 — Operation이 몇 개로 늘어도 막대 길이가 묶음 수에만 비례한다.
  *
@@ -50,6 +51,7 @@ interface ZenTaskbarProps {
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly onFocus: (operationId: string) => void;
+  readonly onMinimize: (operationId: string) => void;
   readonly onResume: (operationId: string) => void;
   readonly onSelectTheater: (theaterId: string) => void;
   /** 다른 그룹의 묶음에 끌어 놓으면 그 그룹으로 옮긴다 — 사이드바의 끌어 놓기와 같은 규칙. */
@@ -112,6 +114,7 @@ export function ZenTaskbar({
   operationNotifications,
   operationRuntime,
   onFocus,
+  onMinimize,
   onResume,
   onSelectTheater,
   onSetGroupId,
@@ -206,13 +209,16 @@ export function ZenTaskbar({
     setMenu((current) => current !== null && current.kind === next.kind && (current.kind !== "group" || next.kind !== "group" || current.key === next.key) ? null : next);
   };
 
-  const activate = (entry: SideBarEntry) => {
+  // 막대 항목(toggle)은 지금 보는 열린 Operation을 다시 누르면 최소화한다. 접힌 묶음 메뉴의 항목은
+  // 고르는 자리라 토글하지 않는다 — 메뉴에서 누른 것은 언제나 「이것을 보여 달라」다.
+  const activate = (entry: SideBarEntry, toggle: boolean) => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
     setMenu(null);
     if (entry.status === "ended") onResume(entry.operation.id);
+    else if (toggle && entry.active && !entry.minimized) onMinimize(entry.operation.id);
     else onFocus(entry.operation.id);
   };
 
@@ -357,7 +363,7 @@ export function ZenTaskbar({
         style={{ ...(accent ? { "--user-accent": accent } : {}), ...(measuring ? {} : dragStyle(entry.operation.id)) } as CSSProperties}
         onPointerDown={measuring ? undefined : (event) => beginDrag(event, entry, "x")}
         onKeyDown={measuring ? undefined : (event) => keyboardMove(event, entry, "x")}
-        onClick={measuring ? undefined : () => activate(entry)}
+        onClick={measuring ? undefined : () => activate(entry, true)}
       >
         <OperationNameMark operation={entry.operation} status={entry.mark} decorative className="zen-taskbar-op-mark" />
         <span className="zen-taskbar-op-title">{entry.operation.title}</span>
@@ -380,7 +386,6 @@ export function ZenTaskbar({
         aria-label={t(awaiting ? "zen.taskbar.groupChipAwaiting" : "zen.taskbar.groupChip", { label: group.label, count: group.entries.length })}
         onClick={(event) => toggleMenu({ kind: "group", key: group.key, anchor: event.currentTarget.getBoundingClientRect() }, event.currentTarget)}
       >
-        <span className="zen-taskbar-group-dot" aria-hidden="true" />
         <span className="zen-taskbar-chip-label">{group.label}</span>
         <span className="zen-taskbar-chip-count">{group.entries.length}</span>
         {awaiting ? <span className="zen-taskbar-chip-awaiting" aria-hidden="true" /> : null}
@@ -396,7 +401,6 @@ export function ZenTaskbar({
         ? <>{renderGroupChip(group)}{group.entries.filter((entry) => entry.active).map((entry) => renderOperation(entry, false))}</>
         : <>
           <span className="zen-taskbar-group-label" data-zen-drop-label="" aria-hidden="true" style={{ "--group-mark": group.color } as CSSProperties}>
-            <span className="zen-taskbar-group-dot" />
             {group.label}
           </span>
           {group.entries.map((entry) => renderOperation(entry, measuring))}
@@ -484,7 +488,7 @@ export function ZenTaskbar({
                 style={dragStyle(entry.operation.id)}
                 onPointerDown={(event) => beginDrag(event, entry, "y")}
                 onKeyDown={(event) => keyboardMove(event, entry, "y")}
-                onClick={() => activate(entry)}
+                onClick={() => activate(entry, false)}
               >
                 <OperationNameMark operation={entry.operation} status={entry.mark} decorative className="zen-taskbar-op-mark" />
                 <span className="zen-taskbar-menu-title">{entry.operation.title}</span>

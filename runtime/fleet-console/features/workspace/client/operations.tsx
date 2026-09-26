@@ -959,6 +959,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           operationNotifications={state.operationNotifications}
           operationRuntime={state.operationRuntime}
           onFocus={handleFocus}
+          onMinimize={handleMinimize}
           onResume={handleResume}
           onSelectTheater={setActiveTheater}
           onSetGroupId={handleSetGroupId}
