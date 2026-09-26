@@ -22,12 +22,55 @@
   cursor: default;
 }
 
-.onboarding-welcome-card {
+.onboarding-welcome-deck {
   position: relative;
   z-index: 1;
+  width: min(460px, 100%);
+  /* 뒤에 쌓인 카드가 아래로 비쳐 나올 자리 */
+  padding-bottom: 20px;
+  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
+}
+
+/* 큐에 쌓인 카드 — 남은 슬라이드만큼 현재 카드 아래로 한 단씩 좁아지며 비쳐 나오는 판. 카드는 반투명 유리라 뒤판 전체를
+   깔면 윤곽이 본문 너머로 비친다 — 그래서 판은 카드 바닥 아래로 드러나는 얇은 띠만 그린다. 남은 수가 줄면 한 장씩
+   앞 카드 밑으로 들어가 사라진다. 같은 유리 채널을 칠하되 backdrop-filter는 걸지 않는다(두 번 흐려진다). */
+.onboarding-welcome-queued {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 20px;
+  height: 14px;
+  border: 1px solid var(--surface-rim);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background:
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  box-shadow: var(--glass-lift);
+  opacity: 0;
+  transform: translateY(0) scaleX(1);
+  transform-origin: 50% 100%;
+  transition: opacity var(--duration-base) var(--ease-glide), transform var(--duration-base) var(--ease-glide);
+}
+
+.onboarding-welcome-queued.is-depth-1 { z-index: 1; }
+.onboarding-welcome-queued.is-depth-2 { z-index: 0; }
+
+.onboarding-welcome-queued.is-depth-1.is-queued {
+  opacity: 0.8;
+  transform: translateY(8px) scaleX(0.955);
+}
+
+.onboarding-welcome-queued.is-depth-2.is-queued {
+  opacity: 0.5;
+  transform: translateY(16px) scaleX(0.91);
+}
+
+.onboarding-welcome-card {
+  position: relative;
+  z-index: 2;
   display: grid;
   gap: var(--space-4);
-  width: min(460px, 100%);
   padding: var(--space-5);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
@@ -38,23 +81,45 @@
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
-  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
+}
+
+.onboarding-welcome-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .onboarding-welcome-eyebrow {
   color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.onboarding-welcome-count {
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* 슬라이드 창 — 넘길 때 글과 그림이 창 밖으로 밀려나고 반대쪽에서 들어온다. */
+.onboarding-welcome-viewport {
+  overflow: hidden;
+  margin: 0 calc(-1 * var(--space-5));
+  padding: 0 var(--space-5);
 }
 
 .onboarding-welcome-slide {
   display: grid;
   gap: var(--space-4);
   text-align: center;
-  animation: onboarding-welcome-slide-in var(--duration-base) var(--ease-glide) both;
 }
+
+.onboarding-welcome-slide.is-from-next { animation: onboarding-welcome-in-from-next var(--duration-base) var(--ease-glide) both; }
+.onboarding-welcome-slide.is-from-previous { animation: onboarding-welcome-in-from-previous var(--duration-base) var(--ease-glide) both; }
+.onboarding-welcome-slide.is-leaving-next { animation: onboarding-welcome-out-to-previous 170ms var(--ease-glide) both; }
+.onboarding-welcome-slide.is-leaving-previous { animation: onboarding-welcome-out-to-next 170ms var(--ease-glide) both; }
 
 .onboarding-welcome-art svg {
   display: block;
@@ -111,6 +176,10 @@
   transition: width var(--duration-base) var(--ease-glide), background-color var(--duration-base) var(--ease-glide);
 }
 
+.onboarding-welcome-dots span.is-done {
+  background: color-mix(in oklch, var(--brass) 45%, var(--hairline-strong));
+}
+
 .onboarding-welcome-dots span.is-current {
   width: 18px;
   background: var(--brass);
@@ -144,15 +213,31 @@
 
 .onboarding-welcome-primary:hover { background: color-mix(in oklch, var(--brass) 26%, transparent); }
 
-@keyframes onboarding-welcome-slide-in {
-  from { opacity: 0; translate: 10px 0; }
+@keyframes onboarding-welcome-in-from-next {
+  from { opacity: 0; translate: 36px 0; }
   to { opacity: 1; translate: 0 0; }
 }
 
+@keyframes onboarding-welcome-in-from-previous {
+  from { opacity: 0; translate: -36px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes onboarding-welcome-out-to-previous {
+  from { opacity: 1; translate: 0 0; }
+  to { opacity: 0; translate: -36px 0; }
+}
+
+@keyframes onboarding-welcome-out-to-next {
+  from { opacity: 1; translate: 0 0; }
+  to { opacity: 0; translate: 36px 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .onboarding-welcome-slide,
   .onboarding-welcome-overlay,
-  .onboarding-welcome-card { animation: none; }
+  .onboarding-welcome-deck,
+  .onboarding-welcome-slide { animation: none !important; }
+  .onboarding-welcome-queued,
   .onboarding-welcome-dots span { transition: none; }
 }
 
