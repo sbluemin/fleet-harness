@@ -36,7 +36,7 @@ export interface ServedMcpEndpoint {
   start(): Promise<string>;
   stop(): Promise<void>;
   setOnToolCallArrived(token: string, cb: ToolCallArrivedCallback | null): void;
-  resolveNextToolCall(token: string, toolCallId: string, result: McpCallToolResult): void;
+  resolveToolCall(token: string, toolCallId: string, result: McpCallToolResult): void;
   hasPendingToolCall(token: string): boolean;
   clearPendingForSession(token: string): void;
 }
@@ -82,7 +82,7 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
   const host = deps.host ?? DEFAULT_HOST;
   const port = deps.port ?? DEFAULT_PORT;
   const callQueues = new Map<string, PendingToolCall[]>();
-  const resultQueues = new Map<string, PendingToolResult[]>();
+  const arrivingResults = new Map<string, PendingToolResult[]>();
   const arrivalCallbacks = new Map<string, ToolCallArrivedCallback>();
   let hosted: ReturnType<McpHttpTransport["mount"]> | null = null;
   let activeServer: http.Server | null = null;
@@ -103,14 +103,14 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
       }
       callQueues.delete(token);
     }
-    resultQueues.delete(token);
+    arrivingResults.delete(token);
   }
 
   function clearAllMcpState(): void {
     for (const token of Array.from(callQueues.keys())) {
       clearPendingForSession(token);
     }
-    resultQueues.clear();
+    arrivingResults.clear();
     arrivalCallbacks.clear();
     snapshotStore.clearAllTools();
   }
@@ -250,21 +250,20 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
       return makeError(id, -32000, "too many pending tool calls");
     }
 
-    const toolCallId = cb(toolName, p.arguments ?? {});
-    const preQueue = resultQueues.get(token);
-    if (preQueue && preQueue.length > 0) {
-      const pendingResult = preQueue[0]!;
-      if (pendingResult.toolCallId === toolCallId) {
-        preQueue.shift();
-        if (preQueue.length === 0) resultQueues.delete(token);
-        return makeResult(id, pendingResult.result);
+    const previousResults = arrivingResults.get(token);
+    const synchronousResults: PendingToolResult[] = [];
+    arrivingResults.set(token, synchronousResults);
+    let toolCallId: string;
+    try {
+      toolCallId = cb(toolName, p.arguments ?? {});
+    } finally {
+      if (arrivingResults.get(token) === synchronousResults) {
+        if (previousResults) arrivingResults.set(token, previousResults);
+        else arrivingResults.delete(token);
       }
-      return makeError(
-        id,
-        -32000,
-        `MCP FIFO pre-queue mismatch: expected=${toolCallId} actual=${pendingResult.toolCallId}`,
-      );
     }
+    const synchronousResult = synchronousResults.find((entry) => entry.toolCallId === toolCallId);
+    if (synchronousResult) return makeResult(id, synchronousResult.result);
 
     return new Promise<JsonRpcResponse>((resolve) => {
       let writableQueue = callQueues.get(token);
@@ -380,28 +379,19 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
         arrivalCallbacks.delete(token);
       }
     },
-    resolveNextToolCall(token, toolCallId, result) {
+    resolveToolCall(token, toolCallId, result) {
       const queue = callQueues.get(token);
-
-      if (queue && queue.length > 0) {
-        const pending = queue[0]!;
-        if (pending.toolCallId !== toolCallId) {
-          throw new Error(
-            `MCP FIFO head mismatch: expected=${pending.toolCallId} actual=${toolCallId}`,
-          );
-        }
-        queue.shift();
+      const index = queue?.findIndex((pending) => pending.toolCallId === toolCallId) ?? -1;
+      if (queue && index >= 0) {
+        const pending = queue.splice(index, 1)[0]!;
         if (queue.length === 0) callQueues.delete(token);
         cleanupPendingToolCall(pending);
         pending.resolve(makeResult(null, result));
-      } else {
-        let preQueue = resultQueues.get(token);
-        if (!preQueue) {
-          preQueue = [];
-          resultQueues.set(token, preQueue);
-        }
-        preQueue.push({ toolCallId, result });
+        return;
       }
+
+      // Only a result produced inside the arrival callback can precede its pending call.
+      arrivingResults.get(token)?.push({ toolCallId, result });
     },
     hasPendingToolCall(token) {
       const queue = callQueues.get(token);

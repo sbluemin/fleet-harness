@@ -10,7 +10,7 @@ export type { ToolCallArrivedCallback } from "./jsonrpc.js";
 export interface McpRouterServer {
   start(): Promise<string>;
   setOnToolCallArrived(token: string, cb: ToolCallArrivedCallback | null): void;
-  resolveNextToolCall(token: string, toolCallId: string, result: McpCallToolResult): void;
+  resolveToolCall(token: string, toolCallId: string, result: McpCallToolResult): void;
   clearPendingForSession(token: string): void;
 }
 
@@ -42,9 +42,8 @@ export function installExecutorToolCallRouter(
       toolCallId,
       signal: ctx.signal,
     })
-      .then((result) => runtime.server.resolveNextToolCall(sessionToken, toolCallId, result))
-      .catch((err) => {
-        runtime.server.resolveNextToolCall(sessionToken, toolCallId, {
+      .then((result) => runtime.server.resolveToolCall(sessionToken, toolCallId, result), (err) => {
+        runtime.server.resolveToolCall(sessionToken, toolCallId, {
           content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
           isError: true,
         });
