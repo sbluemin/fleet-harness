@@ -346,6 +346,9 @@ export function ZenTaskbar({
         type="button"
         className={className}
         data-zen-op={measuring ? undefined : entry.operation.id}
+        // 사이드바 칩처럼 Operation을 고르는 진입점이다 — 누르는 순간 활성 해제가 먼저 돌면 접힌 막대에서
+        // 지금 보는 Operation이 사라져 누르기도 끌기도 닿지 않는다(active-operation-surface 유지 표식).
+        data-keep-operation-active=""
         aria-current={entry.active ? "true" : undefined}
         aria-label={`${entry.operation.title}, ${statusLabel}`}
         title={entry.operation.title}
@@ -368,6 +371,7 @@ export function ZenTaskbar({
       <button
         type="button"
         className="zen-taskbar-chip"
+        data-zen-drop-chip=""
         style={{ "--group-mark": group.color } as CSSProperties}
         data-zen-taskbar-menu-anchor=""
         aria-haspopup="menu"
@@ -385,7 +389,7 @@ export function ZenTaskbar({
   };
 
   const renderGroups = (mode: "expanded" | "compact", measuring: boolean): ReactNode => taskbarGroups.map((group, index) => (
-    <span key={group.key} className="zen-taskbar-group" data-zen-drop-group={measuring || mode === "compact" ? undefined : group.key}>
+    <span key={group.key} className="zen-taskbar-group" data-zen-drop-group={measuring ? undefined : group.key}>
       {index > 0 ? <span className="zen-taskbar-sep" aria-hidden="true" /> : null}
       {mode === "compact" && !measuring
         ? <>{renderGroupChip(group)}{group.entries.filter((entry) => entry.active).map((entry) => renderOperation(entry, false))}</>
@@ -474,6 +478,7 @@ export function ZenTaskbar({
                 role="menuitem"
                 className={`zen-taskbar-menu-item${entry.active ? " is-active" : ""}${drag?.dragging && drag.id === entry.operation.id ? " is-dragging" : ""}`}
                 data-zen-op={entry.operation.id}
+                data-keep-operation-active=""
                 aria-current={entry.active ? "true" : undefined}
                 style={dragStyle(entry.operation.id)}
                 onPointerDown={(event) => beginDrag(event, entry, "y")}
@@ -509,7 +514,8 @@ function menuPlacement(anchor: DOMRect): CSSProperties {
 
 /**
  * 포인터 자리에서 끌기의 도착점을 찾는다. 막대(x축)에서는 묶음 이름의 가운데보다 왼쪽이면 앞 묶음의 끝이고,
- * 그 밖에서는 가운데를 지나지 않은 첫 Operation 앞이다. 메뉴(y축)는 묶음 하나라 Operation만 본다.
+ * 그 밖에서는 가운데를 지나지 않은 첫 Operation 앞이다. 접힌 막대에서는 다른 묶음의 칩 위가 그 묶음의 끝이다.
+ * 메뉴(y축)는 묶음 하나라 Operation만 본다.
  */
 function findDropTarget(container: HTMLElement, axis: "x" | "y", point: number, sourceId: string): DropTarget | null {
   const sections = container.matches("[data-zen-drop-group]")
@@ -519,6 +525,22 @@ function findDropTarget(container: HTMLElement, axis: "x" | "y", point: number, 
   const lineAt = (at: number): DropTarget["line"] => axis === "x"
     ? { axis, left: at, top: containerRect.top + 4, length: containerRect.height - 8 }
     : { axis, left: containerRect.left + 6, top: at, length: containerRect.width - 12 };
+  // 접힌 막대 — 묶음은 「이름 + 개수」 칩 하나로 선다. 칩 위에 놓으면 그 묶음의 끝으로 옮긴다.
+  // 끌고 있는 Operation이 든 제 묶음의 칩은 도착점이 아니다(제자리).
+  const chips = sections.flatMap((section) => {
+    const chip = section.querySelector<HTMLElement>("[data-zen-drop-chip]");
+    return chip === null ? [] : [{ section, chip }];
+  });
+  if (chips.length > 0) {
+    for (const { section, chip } of chips) {
+      if (section.querySelector(`[data-zen-op="${CSS.escape(sourceId)}"]`) !== null) continue;
+      const rect = chip.getBoundingClientRect();
+      const start = axis === "x" ? rect.left : rect.top;
+      const end = axis === "x" ? rect.right : rect.bottom;
+      if (point >= start && point <= end) return { groupKey: section.dataset.zenDropGroup!, beforeId: null, line: lineAt(end + 1) };
+    }
+    return null;
+  }
   let previous: { readonly key: string; readonly end: number } | null = null;
   for (const section of sections) {
     const key = section.dataset.zenDropGroup!;
