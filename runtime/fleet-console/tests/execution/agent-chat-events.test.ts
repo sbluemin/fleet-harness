@@ -83,7 +83,7 @@ describe("chat transcript mapping", () => {
   it("bounds and masks tool detail through live, transcript replay and browser DTOs", () => {
     const cwd = path.join(os.tmpdir(), "fleet-chat-detail");
     const source = `${cwd}/src/example.ts`;
-    const input = { file_path: source, content: `const token = "sk-abcdefghijklmnopqrstuvwxyz";\nconst api_key = "private-value";\n${"line\n".repeat(240)}` };
+    const input = { file_path: source, content: `const token = "sk-abcdefghijklmnopqrstuvwxyz";\nconst api_key = "private-value";\nconst password = "correct horse battery staple";\nconst private_key = \`-----BEGIN PRIVATE KEY-----\nSYNTHETIC-PEM-BODY-XYZ\n-----END PRIVATE KEY-----\`;\n${"line\n".repeat(240)}` };
     const assistant = { type: "assistant", message: { content: [{ type: "tool_use", id: "call-1", name: "Write", input }] } };
     const opts = { cwd, toolNames: new Map([["call-1", "Write"]]) };
     const live = chatEventsFromSdkMessage(assistant, opts);
@@ -96,14 +96,16 @@ describe("chat transcript mapping", () => {
     expect(detail?.sections[0]?.truncated).toBe(true);
     expect(JSON.stringify(detail)).toContain("[가림]");
     expect(JSON.stringify(detail)).not.toContain("private-value");
+    expect(JSON.stringify(detail)).not.toContain("horse battery staple");
+    expect(JSON.stringify(detail)).not.toContain("SYNTHETIC-PEM-BODY-XYZ");
     expect(JSON.stringify(detail)).not.toContain(cwd);
     const result = { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "call-1", content: "Wrote the file." }] } };
     expect(chatEventsFromSdkMessage(result, opts)).toEqual(chatEventsFromTranscriptLine(JSON.stringify(result), opts));
-    expect(live[0]).toMatchObject({ change: { added: 0, removed: 0, written: 242 } });
-    const read = chatEventsFromSdkMessage({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "read-1", content: "  100→export const item = 1;\n  101\t</div>" }] } }, {
+    expect(live[0]).toMatchObject({ change: { added: 0, removed: 0, written: 246 } });
+    const read = chatEventsFromSdkMessage({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "read-1", content: "  100→export const item = 1;\n  101\t</div>\n102→-----BEGIN RSA PRIVATE KEY-----\n103→SYNTHETIC-PEM-BODY-XYZ\n104→-----END RSA PRIVATE KEY-----\n105→const trailer = true;" }] } }, {
       cwd, toolNames: new Map([["read-1", "Read"]]),
     })[0];
-    expect(read).toMatchObject({ kind: "tool-result", toolDetail: { sections: [{ kind: "read", firstLine: 100, text: "export const item = 1;\n</div>" }] } });
+    expect(read).toMatchObject({ kind: "tool-result", toolDetail: { sections: [{ kind: "read", firstLine: 100, text: "export const item = 1;\n</div>\n[가림]\n\n\nconst trailer = true;" }] } });
     const edited = chatEventsFromSdkMessage({ type: "assistant", message: { content: [{ type: "tool_use", id: "edit-1", name: "Edit", input: {
       file_path: source, old_string: "const path = '/api/v1/x';", new_string: "  /** Optional note */\n  </div>\n  const path = '/api/v1/x';\n  const file = '/var/private-owner/secret.txt';",
     } }] } }, { cwd })[0];

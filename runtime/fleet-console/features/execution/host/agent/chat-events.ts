@@ -1394,8 +1394,16 @@ type ToolDetailSection = AgentChatToolDetail["sections"][number];
 
 function maskDetailSecrets(value: string): string {
   return maskSecrets(value)
-    // 상세는 첫 줄보다 많이 보여 주므로 할당식 자격증명도 가린다.
-    .replace(/((?:["']?\b(?:[a-z][a-z0-9_-]*[_-])?(?:api[_-]?key|token|secret|password|passwd|private[_-]?key|auth|cookie)["']?)\s*[:=]\s*["']?)(?!(?:(?:process\.env|import\.meta\.env|env)\.[A-Za-z_$][\w$]*\b|(?:string|number|boolean|unknown|never|null|undefined|object|any|true|false)\s*(?:[;,)\]}>]|$)))([^\s"'`,;}{]+)/gi, "$1[가림]");
+    // 줄 수·바이트 상한을 적용하기 전에 키 본문 전체를 가려 뒤쪽 발췌에도 남지 않게 한다.
+    .replace(/-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/g,
+      (block) => `[가림]${(block.match(/\n/g) ?? []).join("")}`)
+    // 따옴표 값은 공백·개행·이스케이프까지 한 덩어리다. 코드 참조 예외는 맨 값에만 적용한다.
+    .replace(/((?:["']?\b(?:[a-z][a-z0-9_-]*[_-])?(?:api[_-]?key|token|secret|password|passwd|private[_-]?key|auth|cookie)["']?)\s*[:=]\s*)("(?:\\[\s\S]|[^"\\])*(?:"|\\?$)|'(?:\\[\s\S]|[^'\\])*(?:'|\\?$)|`(?:\\[\s\S]|[^`\\])*(?:`|\\?$)|(?!(?:(?:process\.env|import\.meta\.env|env)\.[A-Za-z_$][\w$]*\b|(?:string|number|boolean|unknown|never|null|undefined|object|any|true|false)\s*(?:[;,)\]}>]|$)))[^\s"'`,;}{]+)/gi,
+      (_match, prefix: string, secret: string) => {
+        const quote = /^["'`]/.test(secret) ? secret[0] : "";
+        // Read의 후속 파일 행 번호와 diff의 행 위치가 바뀌지 않게 개행 수는 남긴다.
+        return `${prefix}${quote}[가림]${(secret.match(/\n/g) ?? []).join("")}${quote}`;
+      });
 }
 
 function detailExcerpt(raw: string, lines: number, bytes: number, tail = false, options: ChatEventMapOptions = {}, inCode = false): ToolDetailSection & { readonly kind: "result" } {
