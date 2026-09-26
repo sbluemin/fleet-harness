@@ -958,7 +958,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onAlignNotice={handleAlignNotice}
         />
       </div>
-      <div className="operations-toast-region" style={{ left: canvasArenaInsets.left, right: canvasArenaInsets.right }}>
+      <div className="operations-toast-region" style={{ left: canvasArenaInsets.left, right: canvasArenaInsets.right, bottom: canvasArenaInsets.bottom }}>
         <div className="app-toast-host">{deletionToast}{alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}</div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
