@@ -166,7 +166,8 @@
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
-.zen-taskbar-op:hover { background: var(--control-hover-fill); color: var(--text-primary); }
+.zen-taskbar-op:hover,
+.zen-taskbar-op[aria-expanded="true"] { background: var(--control-hover-fill); color: var(--text-primary); }
 .zen-taskbar-op-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* Operation의 강조색(정체성)은 사이드바 칩과 같은 문법으로 이름 잉크만 소유한다. */
 .zen-taskbar-op[style*="--user-accent"] .zen-taskbar-op-title { color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary)); }

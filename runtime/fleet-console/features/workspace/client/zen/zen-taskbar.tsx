@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
@@ -29,6 +29,7 @@ import "./zen-taskbar.css";
  * 지금 보는 Operation을 막대에서 한 번 더 누르면 최소화한다 — 작업 표시줄의 익숙한 토글이다. 최소화한 것은
  * 사이드바의 최소화 칩과 같은 규칙으로 잉크를 한 단계 낮춰 「치워 둠」을 말한다.
  * 묶음 이름을 누르면 그 묶음을 접는다 — 이름 옆에 개수만 남고 항목은 걷히되, 지금 보는 Operation은 남는다.
+ * Operation을 우클릭(또는 메뉴 키·⇧F10)하면 일반 모드와 같은 Operation 메뉴가 열린다 — 메뉴는 페이지가 소유한다.
  * 막대가 모자라면 모든 묶음을 「이름 + 개수」 칩으로 접고, 지금 보는 Operation 하나만 자기
  * 묶음 칩 옆에 이름째 남긴다 — Operation이 몇 개로 늘어도 막대 길이가 묶음 수에만 비례한다.
  *
@@ -56,6 +57,10 @@ interface ZenTaskbarProps {
   readonly onMinimize: (operationId: string) => void;
   readonly onResume: (operationId: string) => void;
   readonly onSelectTheater: (theaterId: string) => void;
+  /** 사이드바·캡션·War Room 카드와 같은 Operation 메뉴를 연다(페이지 소유). */
+  readonly onOpenOperationMenu: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
+  /** 그 메뉴가 지금 열려 있는 Operation — 항목이 열린 메뉴의 주인임을 표시한다. */
+  readonly openMenuOperationId: string | null;
   /** 다른 그룹의 묶음에 끌어 놓으면 그 그룹으로 옮긴다 — 사이드바의 끌어 놓기와 같은 규칙. */
   readonly onSetGroupId: (operationId: string, groupId: string | null) => void;
 }
@@ -143,6 +148,8 @@ export function ZenTaskbar({
   onMinimize,
   onResume,
   onSelectTheater,
+  onOpenOperationMenu,
+  openMenuOperationId,
   onSetGroupId,
 }: ZenTaskbarProps) {
   const t = useT();
@@ -247,6 +254,24 @@ export function ZenTaskbar({
     if (entry.status === "ended") onResume(entry.operation.id);
     else if (toggle && entry.active && !entry.minimized) onMinimize(entry.operation.id);
     else onFocus(entry.operation.id);
+  };
+
+  // Operation 메뉴 — 막대의 위로 여는 메뉴와 겹쳐 서지 않게 먼저 걷는다(두 메뉴의 키보드 훅이 함께 걸리지 않는다).
+  // 접힌 묶음 메뉴의 항목에서 열면 그 항목은 메뉴와 함께 사라지므로, 포커스는 묶음 칩으로 돌아간다.
+  const openOperationMenu = (entry: SideBarEntry, anchor: DOMRect, returnFocus: HTMLElement | null) => {
+    setMenu(null);
+    onOpenOperationMenu(entry.operation.id, anchor, returnFocus);
+  };
+  const openOperationMenuAtPointer = (event: ReactMouseEvent<HTMLButtonElement>, entry: SideBarEntry, returnFocus: HTMLElement | null) => {
+    event.preventDefault();
+    openOperationMenu(entry, new DOMRect(event.clientX, event.clientY, 0, 0), returnFocus);
+  };
+  const openOperationMenuFromKey = (event: ReactKeyboardEvent<HTMLButtonElement>, entry: SideBarEntry, returnFocus: HTMLElement | null): boolean => {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    openOperationMenu(entry, event.currentTarget.getBoundingClientRect(), returnFocus);
+    return true;
   };
 
   // ── 끌어서 순서 바꾸기 ─────────────────────────────────────────────
@@ -368,6 +393,7 @@ export function ZenTaskbar({
         : entry.status === "ended" ? t("zen.taskbar.ended") : t("sidebar.status.idle");
     const statusLabel = entry.minimized ? `${activityLabel}, ${t("zen.taskbar.minimized")}` : activityLabel;
     const dragging = !measuring && drag?.dragging === true && drag.id === entry.operation.id;
+    const menuOpen = !measuring && openMenuOperationId === entry.operation.id;
     const className = [
       "zen-taskbar-op",
       entry.active ? "is-active" : "",
@@ -388,12 +414,17 @@ export function ZenTaskbar({
         // 지금 보는 Operation이 사라져 누르기도 끌기도 닿지 않는다(active-operation-surface 유지 표식).
         data-keep-operation-active=""
         aria-current={entry.active ? "true" : undefined}
+        aria-haspopup={measuring ? undefined : "menu"}
+        aria-expanded={measuring ? undefined : menuOpen}
         aria-label={`${entry.operation.title}, ${statusLabel}`}
         title={entry.operation.title}
         tabIndex={measuring ? -1 : undefined}
         style={{ ...(accent ? { "--user-accent": accent } : {}), ...(measuring ? {} : dragStyle(entry.operation.id)) } as CSSProperties}
         onPointerDown={measuring ? undefined : (event) => beginDrag(event, entry, "x")}
-        onKeyDown={measuring ? undefined : (event) => keyboardMove(event, entry, "x")}
+        onKeyDown={measuring ? undefined : (event) => {
+          if (!openOperationMenuFromKey(event, entry, event.currentTarget)) keyboardMove(event, entry, "x");
+        }}
+        onContextMenu={measuring ? undefined : (event) => openOperationMenuAtPointer(event, entry, event.currentTarget)}
         onClick={measuring ? undefined : () => activate(entry, true)}
       >
         <OperationNameMark operation={entry.operation} status={entry.mark} decorative className="zen-taskbar-op-mark" />
@@ -540,7 +571,10 @@ export function ZenTaskbar({
                 aria-current={entry.active ? "true" : undefined}
                 style={dragStyle(entry.operation.id)}
                 onPointerDown={(event) => beginDrag(event, entry, "y")}
-                onKeyDown={(event) => keyboardMove(event, entry, "y")}
+                onKeyDown={(event) => {
+                  if (!openOperationMenuFromKey(event, entry, menuReturnFocusRef.current)) keyboardMove(event, entry, "y");
+                }}
+                onContextMenu={(event) => openOperationMenuAtPointer(event, entry, menuReturnFocusRef.current)}
                 onClick={() => activate(entry, false)}
               >
                 <OperationNameMark operation={entry.operation} status={entry.mark} decorative className="zen-taskbar-op-mark" />
