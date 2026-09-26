@@ -7,6 +7,7 @@ import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
 import { commanderMode, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting } from "./action-band.js";
+import { nearbyObjectives } from "../server/nearby.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
@@ -16,6 +17,7 @@ import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows,
 import { dockObjective, expandObjective, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, type ObjectiveGroup } from "./objectives-state.js";
 import {
   discardedFollowups,
+  eligibleRelatedObjectives,
   followupGate,
   isFollowupSelectable,
   markFollowupsSeen,
@@ -477,6 +479,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
             const mode = commanderMode(objective.missions);
             const showGroup = false as false | ObjectiveGroup | null;
             const busy = isBusy(objective);
+            const nearbyCount = objective.done ? 0 : nearbyObjectives({ ...objective, evidence: objective.origin?.evidence ?? [] }, state.objectives, objective).length;
             return (
               <div key={objective.id} data-objective-id={objective.id} className={`objectives-objective${objective.done ? " is-done" : ""}${busy ? " is-busy" : ""}${drag?.objectiveId === objective.id ? " is-lifted" : ""}${drag?.insert?.anchorId === objective.id ? ` is-insert-${drag.insert.place}` : ""}`} role="option" aria-selected={selected === objective.id} tabIndex={0}
                 onPointerDown={(event) => onItemPointerDown(event, objective, section.key)}
@@ -510,6 +513,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                     {objective.dueDate ? <span className={`objectives-objective-due${objective.dueDate < todayIso() && !objective.done ? " is-overdue" : ""}`}><CalGlyph />{dueLabel(objective.dueDate, language)}</span> : null}
                     {showGroup ? <span>{showGroup.name}</span> : null}
                     {objective.addedBy ? <span className="objectives-by">{t("objectives.objective.addedBy", { name: objective.addedBy.title ?? "—" })}</span> : null}
+                    {nearbyCount > 0 ? <span className="objectives-nearby-count">{t("objectives.relations.nearbyCount", { n: nearbyCount })}</span> : null}
                   </div>
                 </div>
                 <div className="objectives-objective-side">
@@ -539,6 +543,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         <ObjectiveDetail
           key={current.id}
           objective={current}
+          board={state.objectives}
           t={t}
           language={language}
           launchAvailable={state.launchAvailable}
@@ -836,6 +841,7 @@ type DetailSection = "detail:criteria" | "detail:missions" | "detail:followups" 
 
 interface DetailProps {
   readonly objective: Objective;
+  readonly board: readonly Objective[];
   readonly t: T;
   readonly language: "en" | "ko";
   readonly launchAvailable: boolean;
@@ -1106,7 +1112,7 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
 
 const BRIEF_LINES = 3;
 
-function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, onClose, detailRef, placeButton, onComplete, onToggleEdge, onOpenObjective }: DetailProps) {
+function ObjectiveDetail({ objective, board, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, onClose, detailRef, placeButton, onComplete, onToggleEdge, onOpenObjective }: DetailProps) {
   const [note, setNote] = useState(objective.note);
   const [title, setTitle] = useState(objective.title);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1190,7 +1196,12 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   }, [highlightMission, missionsOpen, detailRef]);
   const unseenAny = objective.missions.some((mission) => unseenRecords(mission) > 0);
   // 후속 후보 — 본문 구획(읽기 전용)과 완료 뒤 결과. 후보가 없으면 서지 않는다.
-  const followupOpenList = openFollowups(objective);
+  const followupOpenList = openFollowups(objective, board);
+  const nearby = nearbyObjectives({ ...objective, evidence: objective.origin?.evidence ?? [] }, board, objective);
+  const eligibleRelated = eligibleRelatedObjectives(objective, board);
+  const shownRelations = new Set([...nearby.map((entry) => entry.objectiveId), ...objective.links.map((entry) => entry.objectiveId), ...objective.unrelated, objective.origin?.objectiveId]);
+  const relatedSuggestions = [...new Set(objective.related)].filter((id) => !shownRelations.has(id));
+  const names = new Map(board.map((entry) => [entry.id, entry.title]));
   const followupDiscardedList = discardedFollowups(objective);
   const followupBatches = readBatches(objective);
   const followupHistory = readHistory(objective);
@@ -1383,6 +1394,31 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       </div>
       ) : null}
 
+      {(nearby.length || objective.links.length || objective.unrelated.length || relatedSuggestions.length) ? <div className="objectives-group objectives-relations">
+        <SectionHead glyph={<FollowupForkGlyph />} label={t("objectives.relations.title")} />
+        {objective.links.map((link) => <div className="objectives-relation-row" key={`link:${link.objectiveId}`}>
+          <button type="button" onClick={() => onOpenObjective(link.objectiveId)}>{t("objectives.relations.linked")}: {names.get(link.objectiveId) ?? t("objectives.origin.deleted")}</button>
+          <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: link.objectiveId, action: "unlink" })}>{t("objectives.relations.unlink")}</button>
+        </div>)}
+        {nearby.length ? <p className="objectives-relation-heading">{t("objectives.relations.nearby")}</p> : null}
+        {nearby.map((match) => <div className="objectives-relation-row" key={`nearby:${match.objectiveId}`}>
+          <button type="button" onClick={() => onOpenObjective(match.objectiveId)}>{match.title}</button>
+          <span>{match.words.join(" · ")}{match.paths.length ? ` · ${t("objectives.relations.samePath")}: ${match.paths.join(" · ")}` : ""}</span>
+          <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: match.objectiveId, action: "link" })}>{t("objectives.relations.link")}</button>
+          <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: match.objectiveId, action: "unrelated" })}>{t("objectives.relations.unrelated")}</button>
+        </div>)}
+        {relatedSuggestions.length ? <p className="objectives-relation-heading">{t("objectives.relations.related")}</p> : null}
+        {relatedSuggestions.map((id) => eligibleRelated.has(id) ? <div className="objectives-relation-row" key={`related:${id}`}>
+          <button type="button" onClick={() => onOpenObjective(id)}>{eligibleRelated.get(id)}</button>
+          <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: id, action: "link" })}>{t("objectives.relations.link")}</button>
+          <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: id, action: "unrelated" })}>{t("objectives.relations.unrelated")}</button>
+        </div> : <p className="objectives-relation-hint" key={`related:${id}`}>{names.get(id) ?? t("objectives.origin.deleted")}</p>)}
+        {objective.unrelated.map((id) => <div className="objectives-relation-row is-muted" key={`unrelated:${id}`}>
+          <span>{t("objectives.relations.unrelated")}: {names.get(id) ?? t("objectives.origin.deleted")}</span>
+          <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: id, action: "restore" })}>{t("objectives.relations.restore")}</button>
+        </div>)}
+      </div> : null}
+
       {/* 달성 기준 — 사람이 쓰고, 사람이 구상을 청한 턴에 지휘관이 추가·수정·삭제를 제안한다. 제안은 바뀔 기준 바로 그 줄에 서고
           (추가는 끝에 새 줄) 사람이 줄마다 승인·거절하거나 어노테이션을 달아 다시 구상하게 한다. 제안이 남아 있으면 개시·스티어링은 잠긴다.
           마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져 근거와 함께 충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져
@@ -1543,6 +1579,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           </div>
           <FollowupCandidateList
             candidates={followupOpenList}
+            names={names}
+            eligibleRelated={eligibleRelated}
             selectable={false}
             selection={EMPTY_IDS}
             t={t}
@@ -1576,6 +1614,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       <div className="objectives-detail-bottom" data-objectives-tour="action">
         <ActionBand
           objective={objective}
+          board={board}
           t={t}
           busy={busy}
           working={working}

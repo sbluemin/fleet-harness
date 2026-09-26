@@ -6,6 +6,7 @@ import type { LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { criterionProposalSchema, followupBodySchema, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
+import { nearbyObjectives } from "./nearby.js";
 
 /**
  * `fleet-objectives` — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Operation 에 실리므로
@@ -31,6 +32,10 @@ const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS
 
 export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService): readonly PluginMcpTool[] {
   const { objectiveView } = createBoardViews(ctx, store);
+  const followupNearby = (objective: Objective, candidateId: string) => {
+    const candidate = objective.followups.find((entry) => entry.id === candidateId);
+    return candidate ? nearbyObjectives({ title: candidate.title, note: candidate.brief, criteria: candidate.criteria.map((text) => ({ text })), evidence: candidate.evidence }, store.list(objective.theaterId), objective) : [];
+  };
   const find = (objectiveId: string): Objective => {
     const objective = store.find(objectiveId);
     if (!objective) throw new ObjectiveStoreError("unknown_objective");
@@ -133,13 +138,13 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const next = done.awaitingHandoff ? handoffPrompt(done) : done.missions.every((mission) => mission.done) && !done.awaitingReview ? criteriaCheckPrompt(done) : undefined;
         return text({ ok: true, ...(next ? { next } : {}), objective: objectiveView(done) });
       }),
-    commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. A candidate holds an improvement to the product features of the project worked on, as its users experience them; a finding with no user impact is not placed on the objective and stays only in the Commander's final report. Candidates can be added at any time until the objective is complete. add a candidate {title, summary (one line), userImpact (one line: what a user experiences differently), fromMission (the missionId of this objective's mission it came from), brief, criteria (1–10), evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note; at least one is a file with a line or a command)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective carrying that title, brief and criteria and no missions, and its evidence reaches that objective's Commander. A picked candidate is frozen; the person can also discard candidates.`,
+    commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. A candidate holds an improvement to the product features of the project worked on, as its users experience them; a finding with no user impact is not placed on the objective and stays only in the Commander's final report. Candidates can be added at any time until the objective is complete. add a candidate {title, summary (one line), userImpact (one line: what a user experiences differently), fromMission (the missionId of this objective's mission it came from), brief, criteria (1–10), related (objective ids, optional), evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note; at least one is a file with a line or a command)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective carrying that title, brief and criteria and no missions, and its evidence reaches that objective's Commander. Results carry nearby open objectives with overlapping text or evidence paths, shared words and paths. related records the agent's suggestion, not a link; linking or setting objectives aside is the person's act. A picked candidate is frozen; the person can also discard candidates.`,
       z.object({ objectiveId: ids, add: followupBodySchema.optional(), revise: followupReviseSchema.extend({ id: ids }).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
       (args, objective) => {
         const actions = [args.add, args.revise, args.withdraw].filter((value) => value !== undefined);
         if (actions.length !== 1) return refuse("invalid_arguments", { hint: "Exactly one of add, revise or withdraw." });
-        if (args.add) return text({ ok: true, objective: objectiveView(store.followupAdd(objective.id, args.add)) });
-        if (args.revise) { const { id, ...patch } = args.revise; return text({ ok: true, objective: objectiveView(store.followupRevise(objective.id, id, patch)) }); }
+        if (args.add) { const next = store.followupAdd(objective.id, args.add); const candidate = next.followups.at(-1)!; return text({ ok: true, objective: objectiveView(next), nearby: followupNearby(next, candidate.id) }); }
+        if (args.revise) { const { id, ...patch } = args.revise; const next = store.followupRevise(objective.id, id, patch); return text({ ok: true, objective: objectiveView(next), nearby: followupNearby(next, id) }); }
         return text({ ok: true, objective: objectiveView(store.followupWithdraw(objective.id, args.withdraw!.id)) });
       }),
     // 회고 형식이 어긋나면 invalid_arguments 대신 형식을 말하는 거절로 — 입력 스키마는 모델에게 온전한 모양을 보인다.
