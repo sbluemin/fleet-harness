@@ -5,8 +5,9 @@ import { createPortal } from "react-dom";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
-import { commanderMode, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
+import { commanderMode, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting } from "./action-band.js";
+import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
@@ -509,6 +510,11 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                   ? (() => { const followups = openCandidateCount(objective); const tip = followups > 0 ? followupTip(objective, followups) : t("objectives.review.tip"); return (
                     <span className="objectives-check-tip"><button type="button" className="objectives-check is-linked is-review" aria-label={tip} onClick={(event) => { event.stopPropagation(); if (followups > 0) openFollowupPicker(objective); else void completeObjective(objective); }}><i aria-hidden="true" /></button><span className="objectives-check-bubble" aria-hidden="true">{tip}</span></span>
                   ); })()
+                  // 인계 대기 — 아직 지휘관의 차례다. 활동 고리는 그대로 보이고, 누르면 완료 대신 상세를 연다(서버도 완료를 거절한다).
+                  : objective.awaitingHandoff && !objective.done
+                  ? (() => { const state = objectiveActivity(objective); const tip = t("objectives.handoff.tip"); return (
+                    <span className="objectives-check-tip"><button type="button" className={`objectives-check is-linked is-${state} is-handoff`} aria-label={tip} onClick={(event) => { event.stopPropagation(); setSelected(objective.id); }}><i aria-hidden="true" /></button><span className="objectives-check-bubble" aria-hidden="true">{tip}</span></span>
+                  ); })()
                   : !objective.done && objective.commander.started && operationState(objective.id) !== "closed"
                   ? (() => { const state = objectiveActivity(objective); const followups = openCandidateCount(objective); const tip = followups > 0 && !busy ? followupTip(objective, followups) : t(busy ? "objectives.objective.linkedBusyTip" : "objectives.objective.linkedTip", { state: stateLabel(state) }); return (
                     <span className="objectives-check-tip">
@@ -523,6 +529,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                   <div className="objectives-objective-title">{objective.title}</div>
                   <div className="objectives-objective-meta">
                     {objective.missions.length ? <span>✓ {objective.missions.filter((mission) => mission.done).length}/{objective.missions.length}</span> : null}
+                    {objective.awaitingHandoff && !objective.done ? <span className="objectives-objective-handoff">{t("objectives.handoff.label")}</span> : null}
                     {objective.dueDate ? <span className={`objectives-objective-due${objective.dueDate < todayIso() && !objective.done ? " is-overdue" : ""}`}><CalGlyph />{dueLabel(objective.dueDate, language)}</span> : null}
                     {showGroup ? <span>{showGroup.name}</span> : null}
                     {objective.addedBy ? <span className="objectives-by">{t("objectives.objective.addedBy", { name: objective.addedBy.title ?? "—" })}</span> : null}
@@ -796,7 +803,7 @@ function OpChip({ state, label, title, onRemove, removeLabel }: { state: string;
   );
 }
 
-type DetailSection = "detail:criteria" | "detail:missions" | "detail:followups" | "detail:members";
+type DetailSection = "detail:criteria" | "detail:missions" | "detail:followups" | "detail:members" | "detail:retro";
 
 interface DetailProps {
   readonly objective: Objective;
@@ -1227,10 +1234,13 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             const n = objective.done || busy ? 0 : followupOpenList.length;
             const selectable = n > 0 && followupSelectableBody;
             const steerFirst = n > 0 && !selectable && followupGateKind === "steer";
-            const label = selectable ? t("objectives.followup.listTip", { n }) : steerFirst ? t("objectives.followup.steerTip", { n }) : n > 0 ? t("objectives.followup.openTip", { n }) : t(objective.done ? "objectives.objective.reopen" : "objectives.objective.complete");
+            // 인계 대기 — 완료는 넘기기 뒤에만 된다. 후보가 없으면 동그라미는 하단 띠(「검토로 넘기기」)로 초점을 옮긴다.
+            const handoffOnly = n === 0 && objective.awaitingHandoff && !objective.done;
+            const label = selectable ? t("objectives.followup.listTip", { n }) : steerFirst ? t("objectives.followup.steerTip", { n }) : n > 0 ? t("objectives.followup.openTip", { n }) : handoffOnly ? t("objectives.handoff.tip") : t(objective.done ? "objectives.objective.reopen" : "objectives.objective.complete");
             return (
           <button type="button" className={`objectives-check${objective.done ? " is-on" : ""}`} aria-label={label} disabled={busy} onClick={() => {
             if (selectable) openFollowupComp();
+            else if (handoffOnly) detailRef.current?.querySelector<HTMLElement>(".objectives-detail-bottom .objectives-start")?.focus();
             else if (steerFirst) detailRef.current?.querySelector<HTMLElement>(".objectives-detail-bottom .objectives-start")?.focus();
             else if (n > 0 && followupGateKind === "criteria") onOpenSection("detail:criteria");
             else if (n > 0) {
@@ -1340,6 +1350,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             <span className="objectives-row-lab objectives-origin-lab">{t("objectives.origin.label")}<span aria-hidden="true"> · </span><span>{t("objectives.origin.deleted")}</span></span>
           </div>
         )}
+        {followupOrigin.userImpact ? <p className="objectives-origin-impact"><b>{t("objectives.followup.impact")}</b> {followupOrigin.userImpact}</p> : null}
       </div>
       ) : null}
 
@@ -1387,6 +1398,21 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         </div>
       </div>
 
+      {/* 회고 — 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
+      {objective.handoff ? (
+      <div className="objectives-group">
+        <SectionHead glyph={<RetroGlyph />} label={t("objectives.retro.title")} controls="objectives-sec-retro" expanded={sectionOpen("detail:retro")} onToggle={() => onToggleSection("detail:retro")} />
+        <div id="objectives-sec-retro" hidden={!sectionOpen("detail:retro")}>
+          <Retrospective
+            t={t}
+            by={objective.handoff.by}
+            good={objective.handoff.retrospective?.wentWell.map((pair) => ({ text: pair.point, aside: pair.because })) ?? []}
+            regret={objective.handoff.retrospective?.fellShort.map((pair) => ({ text: pair.point, aside: pair.ifOnly })) ?? []}
+          />
+        </div>
+      </div>
+      ) : null}
+
       {/* 후속 후보 — 달성 기준 아래. 후보가 있을 때만 서고, 체크 없이 같은 줄·상세를 읽는다(폐기는 여기서도 된다).
           검토 대기에서는 띠로 보내 고르고, edited·gated·작업 중에는 읽기·폐기만 한다. */}
       {showFollowupSection ? (
@@ -1396,7 +1422,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           label={t("objectives.followup.title")}
           tools={<>
             {followupUnseen > 0 ? <i className="objectives-followup-newdot" aria-hidden="true" /> : null}
-            <span className="objectives-criteria-count">{t("objectives.followup.count", { k: followupOpenList.length, n: 10 })}</span>
+            <span className="objectives-criteria-count">{t("objectives.followup.count", { k: followupOpenList.length, n: MAX_FOLLOWUPS })}</span>
           </>}
           controls="objectives-sec-followups"
           expanded={followupSectionOpen}
@@ -1408,6 +1434,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
               ? <>{t("objectives.followup.bodyReview")} <button type="button" className="objectives-btn is-small" onClick={openFollowupComp}>{t("objectives.followup.openBand")}</button></>
               : followupGateKind === "steer" ? t("objectives.followup.bodyEdited")
               : followupGateKind === "criteria" ? t("objectives.followup.bodyGated")
+              : objective.awaitingHandoff ? t("objectives.followup.bodyHandoff")
               : t("objectives.followup.bodyWorking")}
           </div>
           <FollowupCandidateList

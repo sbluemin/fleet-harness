@@ -13,12 +13,15 @@ import {
   MAX_FOLLOWUP_DISCARDED,
   MAX_RECORDS,
   MAX_MISSIONS,
+  awaitingHandoff,
   awaitingReview,
   evidenceView,
   followupSettled,
   graphOf,
   hasCycle,
   lineupOrder,
+  observableEvidence,
+  withValidHandoff,
   withoutMet,
   type CriterionProposalInput,
   type ObjectiveCriterionProposal,
@@ -38,6 +41,7 @@ import {
   type StoredRecord,
   type StoredMission,
   type FollowupBodyInput,
+  type FollowupEvidence,
   type FollowupHistory,
   type FollowupItemState,
   type FollowupReviseInput,
@@ -45,6 +49,7 @@ import {
   type StoredFollowupBatch,
   type StoredFollowupItem,
   type StoredOrigin,
+  type Retrospective,
 } from "./types.js";
 
 /**
@@ -142,6 +147,8 @@ export interface ObjectiveStore {
   move(objectiveId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): Objective;
   complete(objectiveId: string): Objective;
   reopen(objectiveId: string): Objective;
+  /** 인계 대기의 목표를 검토 대기로 넘긴다 — 인계 기록을 남긴다. 지휘관은 회고와 함께, 사람은 회고 없이. */
+  handOff(objectiveId: string, input: { readonly by: "commander"; readonly retrospective: Retrospective } | { readonly by: "human" }): Objective;
   /** `unplaced` — 사람이 선행 없이 더한 임무는 미분류로 들어간다(지휘관이 자리를 잡는다). */
   missionAdd(objectiveId: string, input: MissionAddInput, options?: { readonly unplaced?: boolean; readonly by?: "human" }): Objective;
   missionPatch(objectiveId: string, missionId: string, input: MissionPatchInput, options?: { readonly by?: "human" }): Objective;
@@ -325,6 +332,7 @@ function compact(objective: StoredObjective): StoredObjective {
   else out.members = objective.members.map((member) => ({ ...member, ...(member.brief ? {} : { brief: undefined }), ...(member.launch ? {} : { launch: undefined }), ...(member.operationId ? {} : { operationId: undefined }), ...(member.subagents === true ? {} : { subagents: undefined }) }));
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
+  if (!objective.handoff) delete out.handoff;
   out.missions = objective.missions.map((mission) => {
     const next: Record<string, unknown> = { ...mission };
     if (mission.done !== true) delete next.done;
@@ -427,12 +435,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       today: stored.today === true,
       addedBy,
       done: stored.done ?? null,
+      awaitingHandoff: awaitingHandoff(stored),
       awaitingReview: awaitingReview(stored),
+      handoff: stored.handoff ? { by: stored.handoff.by, at: stored.handoff.at, retrospective: stored.handoff.by === "commander" ? stored.handoff.retrospective : null } : null,
       criteria: (stored.criteria ?? []).map((criterion) => ({ ...criterion })),
       criteriaProposals: (stored.criteriaProposals ?? []).map((proposal) => ({ ...proposal })),
       members,
       followups: (stored.followups ?? []).map((candidate) => ({
-        id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary,
+        id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission,
         brief: candidate.brief, criteria: [...candidate.criteria], evidence: candidate.evidence.map(evidenceView),
         at: candidate.at, updatedAt: candidate.updatedAt, batchId: candidate.batchId ?? null,
         discarded: candidate.state === "discarded" ? { at: candidate.discardedAt ?? candidate.updatedAt, by: "human" as const } : null,
@@ -441,13 +451,13 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         id: batch.id, at: batch.at,
         items: batch.items.map((entry) => ({
           candidateId: entry.candidateId, rev: entry.rev,
-          snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, brief: entry.snapshot.brief, criteria: [...entry.snapshot.criteria], evidence: entry.snapshot.evidence.map(evidenceView) },
+          snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, userImpact: entry.snapshot.userImpact, fromMission: entry.snapshot.fromMission, brief: entry.snapshot.brief, criteria: [...entry.snapshot.criteria], evidence: entry.snapshot.evidence.map(evidenceView) },
           // 만든 뒤 사람이 지운 후속은 보기 시점에 「삭제됨」 — 저장은 created 그대로라 복원하면 돌아오고 누계·멱등성은 그대로다.
           state: entry.state === "created" && entry.operationId && !options.operations.get(entry.operationId) && !load(node?.theaterId ?? pending!.theaterId).get(entry.operationId)?.pending ? "deleted" as const : entry.state, operationId: entry.operationId ?? null, error: entry.error ?? null, attempts: entry.attempts, settledAt: entry.settledAt ?? null,
         })),
       })),
       followupHistory: stored.followupHistory ?? null,
-      origin: stored.origin ? { objectiveId: stored.origin.objectiveId, title: options.operations.get(stored.origin.objectiveId)?.title ?? load(node?.theaterId ?? pending!.theaterId).get(stored.origin.objectiveId)?.pending?.title ?? null, candidateId: stored.origin.candidateId, evidence: stored.origin.evidence.map(evidenceView) } : null,
+      origin: stored.origin ? { objectiveId: stored.origin.objectiveId, title: options.operations.get(stored.origin.objectiveId)?.title ?? load(node?.theaterId ?? pending!.theaterId).get(stored.origin.objectiveId)?.pending?.title ?? null, candidateId: stored.origin.candidateId, userImpact: stored.origin.userImpact, evidence: stored.origin.evidence.map(evidenceView) } : null,
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
         return {
@@ -531,7 +541,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
   const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective): Objective => {
     const { theaterId, recorded, stored, node } = locate(objectiveId);
-    const mutated = mutate(stored);
+    // 인계 기록은 할 일이 끝난 동안에만 산다 — 기준 표시를 거두는 변경이 곧 인계를 거두고 목표를 진행 중으로 돌린다.
+    const mutated = withValidHandoff(mutate(stored));
     if (mutated === stored) return project(stored, node);
     if (mutated.missions.length > MAX_MISSIONS) throw new ObjectiveStoreError("too_many_missions");
     if (hasCycle(graphOf(mutated.missions))) throw new ObjectiveStoreError("dependency_cycle");
@@ -729,11 +740,17 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     // 완료는 상태이지 연결 해제가 아니다 — 담당 연결은 그대로 남아 묶음·이동이 살아 있다.
     complete: (objectiveId) => update(objectiveId, (stored) => {
       if (stored.done) return stored;
-      // 남은 후보가 있으면 고르지 않은 완료도 후보 검토의 경계를 지난다 — 후보가 없는 목표의 완료는 지금 그대로다.
-      if ((stored.followups ?? []).some((candidate) => candidate.state === "open")) assertReviewable(stored);
+      // 인계 대기는 넘기기를 거쳐야 완료된다. 남은 후보가 있으면 고르지 않은 완료도 후보 검토의 경계를 지난다 —
+      // 그 밖의(진행 중이며 후보가 없는) 목표의 완료는 지금 그대로다.
+      if (awaitingHandoff(stored) || (stored.followups ?? []).some((candidate) => candidate.state === "open")) assertReviewable(stored);
       return { ...stored, done: { at: now() }, planning: undefined, criteriaOpen: undefined };
     }),
     reopen: (objectiveId) => update(objectiveId, (stored) => (stored.done ? { ...stored, done: undefined } : stored)),
+    handOff: (objectiveId, input) => update(objectiveId, (stored) => {
+      if (!awaitingHandoff(stored)) throw new ObjectiveStoreError("not_awaiting_handoff");
+      const at = now();
+      return { ...stored, handoff: input.by === "commander" ? { by: "commander", at, retrospective: input.retrospective } : { by: "human", at } };
+    }),
 
     missionAdd: (objectiveId, input, addOptions) => update(objectiveId, (stored) => {
       const known = new Set(stored.missions.map((mission) => mission.id));
@@ -973,12 +990,16 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (stored.done) throw new ObjectiveStoreError("objective_done");
       const followups = stored.followups ?? [];
       if (followups.filter((candidate) => candidate.state !== "discarded").length >= MAX_FOLLOWUPS) throw new ObjectiveStoreError("too_many_followups");
+      assertMission(stored, body.fromMission);
+      assertObservable(body.evidence);
       const at = now();
       return { ...stored, followups: [...followups, { id: randomUUID(), rev: 1, state: "open", ...body, at, updatedAt: at }] };
     }),
     followupRevise: (objectiveId, candidateId, patch) => update(objectiveId, (stored) => {
       if (stored.done) throw new ObjectiveStoreError("objective_done");
       const target = openFollowup(stored, candidateId);
+      if (patch.fromMission !== undefined) assertMission(stored, patch.fromMission);
+      if (patch.evidence !== undefined) assertObservable(patch.evidence);
       const next: StoredFollowup = { ...target, ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)), rev: target.rev + 1, updatedAt: now() };
       return { ...stored, followups: (stored.followups ?? []).map((candidate) => (candidate.id === candidateId ? next : candidate)) };
     }),
@@ -994,7 +1015,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (target.state !== "open") throw new ObjectiveStoreError("followup_locked");
       const at = now();
       // 흔적은 제목·요약·시각만 — 브리핑·기준·근거는 남기지 않는다. 넘치면 오래된 흔적부터 정리한다.
-      const trace: StoredFollowup = { id: target.id, rev: target.rev, state: "discarded", title: target.title, summary: target.summary, brief: "", criteria: [], evidence: [], at: target.at, updatedAt: at, discardedAt: at };
+      const trace: StoredFollowup = { id: target.id, rev: target.rev, state: "discarded", title: target.title, summary: target.summary, userImpact: "", fromMission: target.fromMission, brief: "", criteria: [], evidence: [], at: target.at, updatedAt: at, discardedAt: at };
       let followups = (stored.followups ?? []).map((candidate) => (candidate.id === candidateId ? trace : candidate));
       const traces = followups.filter((candidate) => candidate.state === "discarded");
       if (traces.length > MAX_FOLLOWUP_DISCARDED) {
@@ -1024,7 +1045,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         if (batches.filter((batch) => !batch.items.every((entry) => followupSettled(entry.state))).length >= MAX_FOLLOWUP_BATCHES) throw new ObjectiveStoreError("followup_backlog");
         const items: StoredFollowupItem[] = chosen.map((candidate) => ({
           candidateId: candidate.id, rev: candidate.rev,
-          snapshot: { title: candidate.title, summary: candidate.summary, brief: candidate.brief, criteria: [...candidate.criteria], evidence: [...candidate.evidence] },
+          snapshot: { title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: [...candidate.criteria], evidence: [...candidate.evidence] },
           state: "creating", attempts: 0,
         }));
         const chosenIds = new Set(ids);
@@ -1198,6 +1219,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const started = !!commander && readOperationLaunch(commander.payload).started;
     if (started && stored.edited?.kinds.length) throw new ObjectiveStoreError("steer_required");
     if (!awaitingReview(stored)) throw new ObjectiveStoreError("not_in_review");
+  }
+  /** 후보의 출처 임무 — 이 목표에 있는 임무여야 한다. */
+  function assertMission(stored: StoredObjective, missionId: string): void {
+    if (!stored.missions.some((mission) => mission.id === missionId)) throw new ObjectiveStoreError("unknown_mission");
+  }
+  /** 근거 가운데 하나 이상은 관찰할 수 있어야 한다 — 줄 번호가 있는 파일 또는 명령. */
+  function assertObservable(evidence: readonly FollowupEvidence[]): void {
+    if (!evidence.some(observableEvidence)) throw new ObjectiveStoreError("evidence_not_observable");
   }
   function openFollowup(stored: StoredObjective, candidateId: string): StoredFollowup {
     const target = (stored.followups ?? []).find((candidate) => candidate.id === candidateId);

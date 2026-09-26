@@ -64,16 +64,18 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       text: proposal.text ?? null, reason: proposal.reason ?? null, annotation: proposal.annotation ?? null })),
     members: objective.members.map((member) => ({ id: member.id, role: member.role, brief: member.brief ?? null, by: member.by, subagents: member.subagents, model: member.model ?? null, effort: member.effort ?? null, session: member.sessionName,
       ...(member.operationId ? observe(member.operationId) : { operationId: null, state: "missing" as const }) })),
-    done: !!objective.done, awaitingReview: objective.awaitingReview, addedBy: objective.addedBy, graph: graph(objective),
+    done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
+    handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
+    addedBy: objective.addedBy, graph: graph(objective),
     // 후속 후보 — 지휘관이 고치거나 거둘 수 있는 것은 open 뿐이다. 폐기 흔적은 제목·요약만.
     followups: objective.followups.map((candidate) => (candidate.state === "discarded"
       ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary }
-      : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence })),
+      : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence })),
     followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error })) })),
     // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
     origin: objective.origin,
   });
-  const rowView = (objective: Objective) => ({ id: objective.id, groupId: objective.groupId, title: objective.title, done: !!objective.done, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null });
+  const rowView = (objective: Objective) => ({ id: objective.id, groupId: objective.groupId, title: objective.title, done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null });
   /** 알림 문구의 언어 — 목표가 띄운 세션에 objectiveLanguage 로 남아 있다. */
   const languageOf = (caller: ConsoleCaller | undefined): PromptLanguage => {
     if (caller?.kind !== "operation") return "en";

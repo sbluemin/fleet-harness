@@ -30,6 +30,10 @@ export interface FollowupCandidate {
   readonly state: FollowupState;
   readonly title: string;
   readonly summary: string;
+  /** 사용자가 무엇을 다르게 겪는지 한 줄 — 폐기 흔적은 빈 문자열. */
+  readonly userImpact: string;
+  /** 이 후보를 낳은 임무 id — 그 임무가 지워졌으면 보드에 없을 수 있다. */
+  readonly fromMission: string;
   readonly brief: string;
   readonly criteria: readonly string[];
   readonly evidence: readonly FollowupEvidence[];
@@ -48,6 +52,8 @@ export interface FollowupBatchItem {
   readonly snapshot: {
     readonly title: string;
     readonly summary: string;
+    readonly userImpact: string;
+    readonly fromMission: string;
     readonly brief: string;
     readonly criteria: readonly string[];
     readonly evidence: readonly FollowupEvidence[];
@@ -116,6 +122,8 @@ function asCandidate(value: unknown): FollowupCandidate | null {
     state: value.state,
     title: asString(value.title),
     summary: asString(value.summary),
+    userImpact: value.state === "discarded" ? "" : asString(value.userImpact),
+    fromMission: asString(value.fromMission),
     brief: value.state === "discarded" ? "" : asString(value.brief),
     criteria: value.state === "discarded" ? [] : asStringArray(value.criteria),
     evidence: value.state === "discarded" ? [] : evidence,
@@ -138,6 +146,8 @@ function asBatchItem(value: unknown): FollowupBatchItem | null {
     snapshot: {
       title: asString(snapshot.title),
       summary: asString(snapshot.summary),
+      userImpact: asString(snapshot.userImpact),
+      fromMission: asString(snapshot.fromMission),
       brief: asString(snapshot.brief),
       criteria: asStringArray(snapshot.criteria),
       evidence,
@@ -182,11 +192,11 @@ export function readHistory(objective: Objective): FollowupHistory | null {
  * 후속으로 태어난 목표의 출처 — 원본 목표와 후보. 원본이 사라졌으면 title 은 null 이다.
  * 상세 브리핑 아래 한 줄로만 쓴다(R4 최소 표시).
  */
-export function readOrigin(objective: Objective): { readonly objectiveId: string; readonly title: string | null } | null {
+export function readOrigin(objective: Objective): { readonly objectiveId: string; readonly title: string | null; readonly userImpact: string } | null {
   const raw = (objective as unknown as { origin?: unknown }).origin;
   if (!isRecord(raw)) return null;
   if (typeof raw.objectiveId !== "string" || !raw.objectiveId) return null;
-  return { objectiveId: raw.objectiveId, title: typeof raw.title === "string" ? raw.title : null };
+  return { objectiveId: raw.objectiveId, title: typeof raw.title === "string" ? raw.title : null, userImpact: asString(raw.userImpact) };
 }
 
 export function openFollowups(objective: Objective): readonly FollowupCandidate[] {

@@ -111,6 +111,7 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
         <button type="button" className="objectives-followup-main" aria-expanded={open} aria-controls={detailId} onClick={() => onToggleOpen(candidate.id)}>
           <span className="objectives-followup-title">{candidate.title}</span>
           <span className="objectives-followup-summary">{candidate.summary}</span>
+          {candidate.userImpact ? <span className="objectives-followup-impact"><b>{t("objectives.followup.impact")}</b> {candidate.userImpact}</span> : null}
         </button>
         <span className="objectives-followup-meta">{t("objectives.followup.evidence", { n: candidate.evidence.length })}<FollowupChevGlyph /></span>
       </div>
