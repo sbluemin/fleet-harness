@@ -37,6 +37,8 @@ Review semantic changes by assembling an entrypoint with **only references selec
 | Deliver a visual proposal with Fleet Browser unavailable | product-proposal; report blocker and available URL, do not claim Browser handoff or visual proposal completion |
 | Create a work checkout / target path already exists | git-worktree create; canary base and internal install, no overwrite on collision |
 | Remove current checkout / it is main or a protected branch | git-worktree remove; stop before actual removal |
+| Compare a specific old commit / later remove the disposable baseline | git-worktree baseline; detached SHA and independent ownership evidence, clean state and full HEAD history before ordinary removal, no branch/remote deletion |
+| Remove a baseline / dirty, new commit even after returning HEAD, foreign owner, or missing evidence | git-worktree baseline; preserve and report, no force or invented ownership |
 | Rebase a topic with sync_local_base=no | rebase-on-canary; preview/rebase/verification all use origin/canary, no push |
 | Resume Codex review on an open PR | pr-workflow; recover pushed head/frozen context, ignore stale +1, bounded passes and final audit |
 | Synchronize only / range is docs-only | release-version-update; no main deployment push, no fake product change to trigger CI |

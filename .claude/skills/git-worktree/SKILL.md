@@ -1,19 +1,20 @@
 ---
 name: git-worktree
-description: Create a canary-based worktree for Fleet repository changes or clean up the current dedicated worktree. Use rebase-on-canary to refresh an existing branch; read-only investigation needs no new worktree.
+description: Create a canary-based worktree for Fleet changes, create a detached baseline for revision comparison or bisect, or remove an owned dedicated checkout. Use rebase-on-canary to refresh an existing branch; ordinary read-only investigation needs no new worktree.
 ---
 
 # Git Worktree
 
-Interpret the request as exactly `create` or `remove`. A repository change requiring a dedicated checkout means create. Ask only if both modes are plausible. Never adopt another session's worktree or overwrite an existing path.
+Interpret the request as `create` or `remove`. Creation defaults to a branch for repository changes; use the detached baseline route only when the task needs a separate historical revision for comparison or bisect. A baseline is read-only source, not an implementation checkout. Ask only when the intended action or revision is unclear. Never adopt another session's worktree or overwrite an existing path.
 
 ## Inputs
 
 - `<worktree-name>`: create directory and default branch name. Infer a task-specific name when absent.
-- `<new-branch>`: optional; defaults to `<worktree-name>`.
-- `<base-branch>`: defaults to `canary`. Reject `main`/`master`; ask before using any other base.
-- `<delete-remote>`: remove only; defaults to `no`. Set `yes` only for explicit remote-cleanup requests.
-- `<force>`: local removal defaults to `yes`. With explicit `no`, do not force-remove the worktree or force-delete its branch; report the blocked state.
+- `<new-branch>`: branch creation only; defaults to `<worktree-name>`.
+- `<base-branch>`: branch creation only; defaults to `canary`. Reject `main`/`master`; ask before using any other base.
+- `<revision>`: baseline creation only; the task's specific commit or ref, resolved once to a full commit SHA. No implicit `canary` fallback and no new branch.
+- `<delete-remote>`: branch removal only; defaults to `no`. Set `yes` only for explicit remote-cleanup requests.
+- `<force>`: branch removal defaults to `yes`. With explicit `no`, do not force-remove the worktree or force-delete its branch; report the blocked state. Baseline removal never uses force.
 
 Trim names and replace internal spaces with `-`, preserving deliberate capitalization. Reject characters outside `[A-Za-z0-9._-]+`, `/`, `..`, leading `.`, path separators, and shell metacharacters. Neither a new nor deleted branch may be `main`/`master`/`canary`.
 
@@ -22,15 +23,16 @@ Trim names and replace internal spaces with `-`, preserving deliberate capitaliz
 - Never remove the main checkout. Stop **before removal commands** for protected-branch worktrees too.
 - Never create or preserve a new-worktree symlink targeting main-checkout content. pnpm links within the new worktree or to an external package store are allowed.
 - Never replace colliding paths/branches automatically. Do not use `reset --hard`, forced file restoration, or hook bypasses to clean up.
-- Removal requires a request targeting the current dedicated worktree or authorized post-merge cleanup. Inspect and disclose dirty/unpushed/unmerged state first; force cleanup stays within that authority. Reading this skill as a reference does not authorize deletion.
+- Removal requires a request targeting the owned dedicated worktree, authorized post-merge cleanup, or an explicitly disposable baseline created for the current task. Inspect and disclose dirty/unpushed/unmerged state first; branch force cleanup stays within that authority. A general task request or reading this skill as a reference does not authorize deletion.
 
 ## Execution routes
 
 | Mode | Read before execution | Completion condition |
 |---|---|---|
-| create | [Create](references/create.md) | New checkout from remote base, successful internal `pnpm install --frozen-lockfile`, subsequent commands fixed to its path |
-| remove | [Remove](references/remove.md) | Verified removal/prune, local-branch outcome, remote preservation/deletion reported |
+| create branch | [Create](references/create.md) | New checkout from remote base, successful internal `pnpm install --frozen-lockfile`, subsequent commands fixed to its path |
+| create baseline | [Baseline](references/baseline.md) | Detached checkout at the recorded commit, ownership evidence saved, required preparation completed |
+| remove | [Remove](references/remove.md); it routes baselines separately | Verified removal, branch/remote outcome or baseline evidence reported |
 
-Do not skip path, ownership, or branch-protection checks. Execute this lifecycle directly through Bash rather than creating temporary helper scripts. Stop immediately on create-mode installation failure; do not call the worktree ready. On removal failure, report exactly what remains.
+Do not skip path, ownership, or branch-protection checks. Execute this lifecycle directly through Bash rather than creating temporary helper scripts. Stop immediately on installation failure in either creation route; do not call the worktree ready. On removal failure, report exactly what remains.
 
 After creation, every edit/command uses the absolute worktree path. Set the execution root for background commands too; a green check in the main checkout is not evidence. Reading main-checkout status to detect leaked edits is an explicit read-only exception.

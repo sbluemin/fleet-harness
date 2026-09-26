@@ -1,4 +1,6 @@
-# Create a Worktree
+# Create a Branch Worktree
+
+For a historical comparison or bisect checkout without a new branch, use [Baseline](baseline.md) instead. This page owns the normal implementation checkout.
 
 1. Use `pwd`, `git --version`, `git rev-parse --show-toplevel`, and `git worktree list --porcelain` to identify the current path, repository, and worktrees. Check OS/shell when command selection depends on them. Read applicable `CLAUDE.md` instructions not already loaded.
 2. Identify `<repo-root>` from the first porcelain worktree entry. Confirm `.fleet/worktrees/<worktree-name>` is a new path within it. Stop if the directory or branch already exists.
