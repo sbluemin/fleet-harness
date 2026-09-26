@@ -248,7 +248,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       if (objectives.length || list === "all") out.push({ key: group.id, label: group.name, swatch: group.color, objectives });
     }
     const rest = working.filter((objective) => !groupOf(objective.groupId));
-    if (rest.length) out.push({ key: "ungrouped", label: t("objectives.list.ungrouped"), swatch: null, objectives: rest });
+    // 미분류도 「모두」에서는 비어 있어도 선다 — 카드를 그룹에서 빼는 놓을 자리가 늘 있어야 한다.
+    if (rest.length || list === "all") out.push({ key: "ungrouped", label: t("objectives.list.ungrouped"), swatch: null, objectives: rest });
     // 완료된 항목은 목록 맨 아래 「완료됨」 한 구획 — 펼쳐야 보인다.
     if (finished.length) out.push({ key: "done", label: t("objectives.objectives.done"), swatch: null, objectives: finished, done: true });
     return out;
@@ -469,7 +470,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           {sections.map((section) => { const expanded = isOpen(section.key, !section.done); const group = groupOf(section.key); const dropKey: DropTarget | null = group ? `group:${group.id}` : section.key === "ungrouped" ? "ungrouped" : null; return (<div key={section.key} data-section={section.key} {...(dropKey ? { "data-drop-list": dropKey } : {})} className={`objectives-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}${dropKey && drag?.over === dropKey ? " is-drop" : ""}`}>
           {section.label ? <div className="objectives-section-row"><button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span>{section.label}</span><span className="objectives-count">{section.objectives.length}</span></button>
             {group ? <button type="button" className="objectives-section-add" aria-label={t("objectives.section.addTo", { name: group.name })} title={t("objectives.section.addTo", { name: group.name })} onClick={() => pickAddGroup(group.id)}>+ {t("objectives.section.add")}</button> : null}</div> : null}
-          {expanded && group && section.objectives.length === 0 ? <div className="objectives-section-empty">{t("objectives.section.empty")}</div> : null}
+          {expanded && dropKey && section.objectives.length === 0 ? <div className="objectives-section-empty">{t(group ? "objectives.section.empty" : "objectives.section.emptyUngrouped")}</div> : null}
           {expanded ? section.objectives.map((objective) => {
             // 방향키 이웃은 같은 구획의 카드 행 기준 — 검토 대기가 빠져나가면 visible 순서와 구획 안 순서가 어긋난다.
             const index = section.objectives.indexOf(objective);
