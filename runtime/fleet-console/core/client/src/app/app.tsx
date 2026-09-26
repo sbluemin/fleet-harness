@@ -51,10 +51,10 @@ import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store
 import { useConsoleLocale, useT } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { syncExperimentModelOptionPlugins } from "../integration/experiment-model-options.js";
-import { setZenChromeSlot } from "../integration/zen-chrome-slot.js";
 import { isZenMode, setZenMode, toggleZenMode, useZenModeState } from "../integration/zen-mode.js";
+import { ZenBar } from "../chrome/zen/zen-bar.js";
+import { ZenTransition } from "../chrome/zen/zen-transition.js";
 import { toggleZenRail, toggleZenSideBar } from "../integration/zen-chrome-toggles.js";
-import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
@@ -131,13 +131,12 @@ export function App() {
   const zenState = useZenModeState();
   const zenMode = zenState.active;
   const zenActive = zenMode && operationsViewVisible && !mobileLayout;
-  const zenAwaitingCount = state.operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
-  const zenContextRef = useRef(state.activeTheaterId);
   const workFocusRef = useRef<HTMLElement | null>(null);
+  // Zen은 /operations 데스크톱 화면에만 선다. Theater를 바꿔도 Zen은 유지한다 — 작업 표시줄의
+  // Theater 메뉴와 다른 Theater의 Operation이 바로 그 전환을 Zen 안에서 하는 길이다.
   useLayoutEffect(() => {
-    if (!operationsViewVisible || mobileLayout || zenContextRef.current !== state.activeTheaterId) setZenMode(false);
-    zenContextRef.current = state.activeTheaterId;
-  }, [operationsViewVisible, mobileLayout, state.activeTheaterId]);
+    if (!operationsViewVisible || mobileLayout) setZenMode(false);
+  }, [operationsViewVisible, mobileLayout]);
   useEffect(() => {
     const remember = (event: FocusEvent) => {
       const target = event.target;
@@ -146,9 +145,17 @@ export function App() {
     document.addEventListener("focusin", remember);
     return () => document.removeEventListener("focusin", remember);
   }, []);
+  // Zen이 바뀌는 순간 포커스가 걷힌 크롬(inert 영역·숨은 Zen 바·작업 표시줄) 안에 있었다면 작업면으로
+  // 돌려준다. 숨은 요소의 포커스는 브라우저가 body로 떨구기도 하므로 전환 직후의 body도 같은 경우로 본다.
+  const previousZenActiveRef = useRef(zenActive);
   useLayoutEffect(() => {
+    const changed = previousZenActiveRef.current !== zenActive;
+    previousZenActiveRef.current = zenActive;
+    if (!changed) return;
     const focused = document.activeElement;
-    if (!(focused instanceof HTMLElement) || !focused.closest("[inert], .zen-mode-handle[hidden]")) return;
+    const stranded = focused === document.body
+      || (focused instanceof HTMLElement && focused.closest("[inert], .zen-bar[hidden]") !== null);
+    if (!stranded) return;
     const target = workFocusRef.current;
     if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
     else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
@@ -497,27 +504,10 @@ export function App() {
     <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
       <div className={`console-shell${zenActive ? " is-zen" : ""}${zenActive && zenState.railRevealed ? " is-zen-rail-revealed" : ""}`}>
-        {/* Zen에서 서 있는 크롬은 이 손잡이 하나다. 밴드에 자리를 빌린 플러그인 항목(부관
-            글리프)은 밴드가 내려가는 동안 사라지지 않고 이 손잡이 왼편 슬롯으로 옮겨 온다 —
-            닿을 수 없는 곳에 숨기지 않으면서도 크롬 조각은 여전히 하나다.
-            슬롯 요소는 Zen이 꺼져 있어도 DOM에 남긴다: 포털의 컨테이너가 커밋 중에 사라지면
-            옮겨 가던 항목이 분리된 노드에 남는다. 손잡이가 hidden이라 그려지지는 않는다. */}
-        <div className="zen-mode-handle" hidden={!zenActive}>
-          <span className="zen-mode-exit-grip" aria-hidden="true" />
-          <span className="zen-mode-chrome-slot" ref={setZenChromeSlot} />
-          <button type="button" className="zen-mode-exit" onClick={() => {
-            setZenMode(false);
-            requestAnimationFrame(() => {
-              const target = workFocusRef.current;
-              if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
-              else document.querySelector<HTMLElement>(".operations-center-stage .xterm-helper-textarea, .operations-center-stage")?.focus({ preventScroll: true });
-            });
-          }} aria-label={t("zen.exit")}>
-            <span>{t("zen.exitCompact")}</span>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 7 3 3 3-3" /></svg>
-          </button>
-        </div>
-        {zenActive && zenAwaitingCount > 0 ? <button type="button" className="zen-mode-attention" onClick={() => openOperationSearch()}>{t("zen.awaiting", { count: zenAwaitingCount })}</button> : null}
+        {/* Zen에서 서는 부유 도구막대 — 종료 · 레일 도구 · 밴드에서 옮겨 온 플러그인 항목. 막대(작업 표시줄)는
+            Operations 페이지가 세우고, 이 바는 콘솔 크롬이라 여기 둔다. 도구 칸과 플러그인 칸은 Zen이 꺼져
+            있어도 DOM에 남는다(포털 계약) — 바 전체가 hidden이라 그려지지는 않는다. */}
+        <ZenBar active={zenActive} local={state.channel === "local"} />
         <span className="zen-mode-announcement" role="status" aria-live="polite">{zenActive ? t("zen.active") : ""}</span>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
             taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
@@ -596,6 +586,7 @@ export function App() {
           firstRun={state.bootstrapped && state.theaters.length === 0 && globalSettings.state !== null && !globalSettings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)}
           ports={ONBOARDING_PORTS}
         />
+        <ZenTransition local={state.channel === "local"} />
         <ControlCurtain />
         <ControlReclaimedNotice />
         <ToastHost>

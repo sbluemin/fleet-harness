@@ -32,7 +32,7 @@ import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/setti
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
-import { setZenMode, useZenModeState } from "../../integration/zen-mode.js";
+import { useZenModeState } from "../../integration/zen-mode.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -63,17 +63,10 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const zenMode = zenState.active && !zenState.railRevealed;
   const t = useT();
   const railShortcut = useRailShortcutLabel();
-  const theaterFallback = t("rail.theater.fallback");
-  const theaterLabel = useSyncExternalStore(
-    subscribe,
-    () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? theaterFallback,
-    () => theaterFallback,
-  );
   const connection = useSyncExternalStore(subscribe, () => getState().connection, () => "connecting" as const);
   const connectionLostAt = useSyncExternalStore(subscribe, () => getState().connectionLostAt, () => null);
-  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
-  const globalSettings = useGlobalSettingsStore();
-  const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
+  const baseCtx = useRailPanelContext(theaterId, api, onLaunchOperation);
+  const language = baseCtx.language;
   const rootRef = useRef<HTMLDivElement>(null);
   const activePanelId = useRailActivePanelId();
   const requestedExtraWidth = useRailPanelExtraWidth();
@@ -82,9 +75,6 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const soloMaxWidthRef = useRef(soloMaxWidth);
   soloMaxWidthRef.current = soloMaxWidth;
   const extraWidth = soloWidth === null ? requestedExtraWidth : 0;
-  useLayoutEffect(() => {
-    if (activePanelId === SETTINGS_RAIL_ENTRY_ID) setZenMode(false);
-  }, [activePanelId]);
   const railChromeExpanded = useRailChromeExpanded();
   const railPeeking = useRailPeeking();
   const overlayAlpha = useRailOverlayAlpha();
@@ -93,27 +83,6 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 페인을 세우는 엔트리와 그냥 실행하는 엔트리의 구분은 "이 엔트리가 세우는 페인이 있는가"라는
   // 사실 하나가 진다(pane 계약, #957). 활성 패널·폭 계산은 페인 엔트리만 본다.
   const paneEntries = bindings.filter((binding) => binding.panes.length > 0);
-  // 합성 순서가 곧 레일 순서다(virtual:fleet-plugins). 동작 엔트리를 종류별로 앞세우면 등록
-  // 순서가 렌더에서 뒤집히므로(Shell이 Codex 앞에 섰다), 순서는 바인딩 그대로 두고 연속한
-  // 페인 토글 구간만 role=group으로 묶는다 — 동작은 패널 그룹의 구성원이 아니다.
-  // 범위(entry.scope)만은 순서 위에 선다: Theater를 다루는 도구가 먼저, Console 전체의 도구가
-  // 구분선 아래 — 각 범위 안에서는 합성 순서 그대로다.
-  type PluginRun = { readonly kind: "panes" | "action"; readonly key: string; readonly bindings: RailEntryBinding[] };
-  const runsByScope: Record<"theater" | "fleet", PluginRun[]> = { theater: [], fleet: [] };
-  for (const binding of bindings) {
-    if (binding.core) continue;
-    const runs = runsByScope[binding.entry.scope ?? "theater"];
-    const kind = binding.panes.length > 0 ? "panes" : "action";
-    const tail = runs[runs.length - 1];
-    if (tail !== undefined && tail.kind === kind) tail.bindings.push(binding);
-    else runs.push({ kind, key: binding.entry.id, bindings: [binding] });
-  }
-  // 표면 스토어를 구독한다 — 슬롯이 열리고 닫힐 때 rail 아이콘이 함께 켜지고 꺼져야 한다.
-  const { instances: openSurfaces } = useExpandedSurfaces();
-  const openSurfaceIds = useMemo(
-    () => new Set(openSurfaces.map((instance) => instance.surfaceId)),
-    [openSurfaces],
-  );
   // 등록 목록에 없는 id(내려간 플러그인)는 조용히 무시한다 — 저장된 id는 유지되어
   // 플러그인이 돌아오면 그 패널이 다시 선다.
   const activeBinding = activePanelId === null
@@ -280,17 +249,6 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     else setStoredWidths(clearStoredPanelWidth(storedWidthsRef.current, panelId));
   }, []);
 
-  const baseCtx: RailPanelContext = useMemo(() => ({
-    theaterId,
-    pathContext: { kind: "root", relPath: null, label: theaterLabel },
-    api,
-    language,
-    theme,
-    surfaces: RAIL_CAPABILITIES.surfaces,
-    rail: RAIL_CAPABILITIES.rail,
-    launchOperation: onLaunchOperation,
-  }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation]);
-
   return (
     <div
       ref={rootRef}
@@ -361,62 +319,134 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
         >
           {railPeeking ? <RailKeepOpenGlyph /> : <RailCollapseGlyph />}
         </button>
-        {/* 아이콘은 배타 전환이다 — 한 번에 하나만 켜지고, 켜진 아이콘을 다시 누르면 닫힌다.
-            설정은 문(톱니)으로만 열리므로 탭 목록에는 다시 서지 않는다. */}
-        <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
-          {paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID).map(({ entry }) => (
-            <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activePanelId === entry.id} />
-          ))}
-        </div>
-        {renderRuns(runsByScope.theater)}
-        {runsByScope.theater.length > 0 && runsByScope.fleet.length > 0
-          ? <div className="right-rail-divider" role="separator" aria-orientation="horizontal" />
-          : null}
-        {renderRuns(runsByScope.fleet)}
-        {/* 설정은 열의 꼬리에 선다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류의 동작이라
-            구분선 아래 마지막 자리(VS Code Manage와 같은 자리, 카드 바닥)에 둔다. 톱니는 메뉴가 아니라 설정
-            표면의 문이고, 켜짐은 열의 다른 아이콘과 똑같은 활성 표식으로 "지금 여기"를 말한다. */}
-        <span className="right-rail-spacer" aria-hidden="true" />
-        <div className="right-rail-divider" role="separator" aria-orientation="horizontal" />
-        <button
-          id="rail-settings-toggle"
-          type="button"
-          className={`right-rail-ico right-rail-settings-btn${activePanelId === SETTINGS_RAIL_ENTRY_ID ? " is-active" : ""}`}
-          aria-pressed={activePanelId === SETTINGS_RAIL_ENTRY_ID}
-          aria-controls={activePanelId === SETTINGS_RAIL_ENTRY_ID ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
-          aria-label={t("settings.title")}
-          title={t("settings.title")}
-          onClick={() => toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)}
-        >
-          <GearGlyph />
-        </button>
+        <RailToolIcons context={baseCtx} orientation="column" />
       </nav>
     </div>
+  );
+}
+
+/** 레일 도구가 여는 표면의 공통 문맥 — 레일 카드와 Zen 탭이 같은 문맥으로 도구를 연다. 언어는 늘 정해져 있다. */
+export type RailToolContext = RailPanelContext & { readonly language: ConsoleLocale };
+
+export function useRailPanelContext(
+  theaterId: string | null,
+  api: ClientApiCapability,
+  onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void,
+): RailToolContext {
+  const t = useT();
+  const theaterFallback = t("rail.theater.fallback");
+  const theaterLabel = useSyncExternalStore(
+    subscribe,
+    () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? theaterFallback,
+    () => theaterFallback,
+  );
+  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
+  const globalSettings = useGlobalSettingsStore();
+  const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
+  return useMemo(() => ({
+    theaterId,
+    pathContext: { kind: "root", relPath: null, label: theaterLabel },
+    api,
+    language,
+    theme,
+    surfaces: RAIL_CAPABILITIES.surfaces,
+    rail: RAIL_CAPABILITIES.rail,
+    launchOperation: onLaunchOperation,
+  }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation]);
+}
+
+/**
+ * 레일 도구 아이콘 목록 — 레일 카드의 세로 열과 Zen 탭의 가로 줄이 같은 목록·순서·켜짐을 쓴다.
+ * 아이콘의 문서 id(rail-tab-*·rail-settings-toggle)는 세로 열만 싣는다: 패널 영역의 이름표와
+ * 온보딩 앵커가 그 id를 가리키고, 두 줄이 함께 DOM에 있으므로(Zen 중 세로 열은 hidden) 한쪽만
+ * 가져야 id가 겹치지 않는다.
+ */
+export function RailToolIcons({ context, orientation }: { readonly context: RailToolContext; readonly orientation: "column" | "row" }) {
+  const t = useT();
+  const language = context.language;
+  const activePanelId = useRailActivePanelId();
+  const bindings = useRailEntries();
+  const paneEntries = bindings.filter((binding) => binding.panes.length > 0);
+  const anchored = orientation === "column";
+  // 합성 순서가 곧 레일 순서다(virtual:fleet-plugins). 동작 엔트리를 종류별로 앞세우면 등록
+  // 순서가 렌더에서 뒤집히므로(Shell이 Codex 앞에 섰다), 순서는 바인딩 그대로 두고 연속한
+  // 페인 토글 구간만 role=group으로 묶는다 — 동작은 패널 그룹의 구성원이 아니다.
+  // 범위(entry.scope)만은 순서 위에 선다: Theater를 다루는 도구가 먼저, Console 전체의 도구가
+  // 구분선 아래 — 각 범위 안에서는 합성 순서 그대로다.
+  type PluginRun = { readonly kind: "panes" | "action"; readonly key: string; readonly bindings: RailEntryBinding[] };
+  const runsByScope: Record<"theater" | "fleet", PluginRun[]> = { theater: [], fleet: [] };
+  for (const binding of bindings) {
+    if (binding.core) continue;
+    const runs = runsByScope[binding.entry.scope ?? "theater"];
+    const kind = binding.panes.length > 0 ? "panes" : "action";
+    const tail = runs[runs.length - 1];
+    if (tail !== undefined && tail.kind === kind) tail.bindings.push(binding);
+    else runs.push({ kind, key: binding.entry.id, bindings: [binding] });
+  }
+  // 표면 스토어를 구독한다 — 슬롯이 열리고 닫힐 때 rail 아이콘이 함께 켜지고 꺼져야 한다.
+  const { instances: openSurfaces } = useExpandedSurfaces();
+  const openSurfaceIds = useMemo(
+    () => new Set(openSurfaces.map((instance) => instance.surfaceId)),
+    [openSurfaces],
+  );
+  const divider = <div className="right-rail-divider" role="separator" aria-orientation={anchored ? "horizontal" : "vertical"} />;
+
+  return (
+    <>
+      {/* 아이콘은 배타 전환이다 — 한 번에 하나만 켜지고, 켜진 아이콘을 다시 누르면 닫힌다.
+          설정은 문(톱니)으로만 열리므로 탭 목록에는 다시 서지 않는다. */}
+      <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
+        {paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID).map(({ entry }) => (
+          <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id} anchored={anchored} />
+        ))}
+      </div>
+      {renderRuns(runsByScope.theater)}
+      {runsByScope.theater.length > 0 && runsByScope.fleet.length > 0 ? divider : null}
+      {renderRuns(runsByScope.fleet)}
+      {/* 설정은 열의 꼬리에 선다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류의 동작이라
+          구분선 아래 마지막 자리(VS Code Manage와 같은 자리, 카드 바닥)에 둔다. 톱니는 메뉴가 아니라 설정
+          표면의 문이고, 켜짐은 열의 다른 아이콘과 똑같은 활성 표식으로 "지금 여기"를 말한다. */}
+      {anchored ? <span className="right-rail-spacer" aria-hidden="true" /> : null}
+      <div className="right-rail-divider" role="separator" aria-orientation={anchored ? "horizontal" : "vertical"} />
+      <button
+        id={anchored ? "rail-settings-toggle" : undefined}
+        type="button"
+        className={`right-rail-ico right-rail-settings-btn${activePanelId === SETTINGS_RAIL_ENTRY_ID ? " is-active" : ""}`}
+        aria-pressed={activePanelId === SETTINGS_RAIL_ENTRY_ID}
+        aria-controls={activePanelId === SETTINGS_RAIL_ENTRY_ID ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
+        aria-label={t("settings.title")}
+        title={t("settings.title")}
+        onClick={() => toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)}
+      >
+        <GearGlyph />
+      </button>
+    </>
   );
 
   function renderRuns(runs: readonly PluginRun[]) {
     return runs.map((run) => run.kind === "action"
-          ? (
-            <Fragment key={run.key}>
-              {run.bindings.map(({ entry }) => (
-                <RailIcon
-                  key={entry.id}
-                  entry={entry}
-                  context={baseCtx}
-                  language={language}
-                  // 확장 표면이나 자기 레일 패널이 열려 있으면 켜짐이다.
-                  isActive={activePanelId === entry.id || (entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))}
-                />
-              ))}
-            </Fragment>
-          )
-          : (
-            <div key={run.key} className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
-              {run.bindings.map(({ entry }) => (
-                <RailIcon key={entry.id} entry={entry} context={baseCtx} language={language} isActive={activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))} />
-              ))}
-            </div>
-          ));
+      ? (
+        <Fragment key={run.key}>
+          {run.bindings.map(({ entry }) => (
+            <RailIcon
+              key={entry.id}
+              entry={entry}
+              context={context}
+              language={language}
+              anchored={anchored}
+              // 확장 표면이나 자기 레일 패널이 열려 있으면 켜짐이다.
+              isActive={activePanelId === entry.id || (entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))}
+            />
+          ))}
+        </Fragment>
+      )
+      : (
+        <div key={run.key} className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
+          {run.bindings.map(({ entry }) => (
+            <RailIcon key={entry.id} entry={entry} context={context} language={language} anchored={anchored} isActive={activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))} />
+          ))}
+        </div>
+      ));
   }
 }
 
@@ -537,9 +567,11 @@ interface RailIconProps {
   readonly context: RailPanelContext;
   readonly language: ConsoleLocale;
   readonly isActive: boolean;
+  /** 세로 열의 아이콘만 문서 id를 싣는다(RailToolIcons 참고). */
+  readonly anchored: boolean;
 }
 
-function RailIcon({ entry, context, language, isActive }: RailIconProps) {
+function RailIcon({ entry, context, language, isActive, anchored }: RailIconProps) {
   const handleClick = useCallback(() => {
     if (entry.activate) {
       if (context.theaterId === null) return;
@@ -559,7 +591,7 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
 
   return (
     <button
-      id={`rail-tab-${entry.id}`}
+      id={anchored ? `rail-tab-${entry.id}` : undefined}
       className={`right-rail-ico${isActive ? " is-active" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
       type="button"
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.

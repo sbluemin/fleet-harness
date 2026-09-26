@@ -2465,13 +2465,13 @@ describe("Instrument core design contract", () => {
     // 돌아간다). 그것이 바로 Zen이 치우려던 것이다.
     expect(commandBand).toContain("createPortal(rendered, zenSlot)");
     const appShell = source("app/app.tsx");
-    expect(appShell).toContain('<span className="zen-mode-chrome-slot" ref={setZenChromeSlot} />');
-    // 슬롯은 Zen이 꺼져 있어도 DOM에 남는다 — 포털 컨테이너가 커밋 중에 사라지면 옮겨 가던
-    // 항목이 분리된 노드에 남는다. 손잡이 전체가 hidden이라 그려지지는 않는다.
-    expect(appShell).toContain('<div className="zen-mode-handle" hidden={!zenActive}>');
-    // Zen에서 서 있는 크롬은 하나다 — 슬롯은 손잡이 안에서 종료 버튼과 한 면을 나눈다.
-    const zenHandleBlock = layout.match(/\.zen-mode-handle \{[^}]*\}/)?.[0] ?? "";
-    expect(zenHandleBlock).toContain("background: var(--surface-panel);");
+    const zenBar = source("chrome/zen/zen-bar.tsx");
+    expect(zenBar).toContain('<span className="zen-mode-chrome-slot" ref={setZenChromeSlot} />');
+    // 슬롯(과 레일 도구 칸)은 Zen이 꺼져 있어도 DOM에 남는다 — 포털 컨테이너가 커밋 중에 사라지면
+    // 옮겨 가던 항목이 분리된 노드에 남는다. Zen 바 전체가 hidden이라 그려지지는 않는다.
+    expect(zenBar).toContain('<span className="zen-bar-tools" ref={setZenToolsSlot} />');
+    expect(zenBar).toContain("hidden={!active}");
+    expect(appShell).toContain("<ZenBar active={zenActive}");
     expect(layout).toContain(".zen-mode-chrome-slot:empty { display: none; }");
     // darwin 전체화면에서 신호등이 물러난 자리로 좌측 클러스터가 활주한다. transform이 아니라
     // 패딩을 움직여야 중앙 여백 하한의 실측(offsetLeft)이 새 자리를 읽는다.
