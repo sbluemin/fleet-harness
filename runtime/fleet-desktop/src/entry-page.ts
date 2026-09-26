@@ -109,6 +109,7 @@ const ENTRY_RENDERER = String.raw`(() => {
   detail.textContent = snapshot.detail || "";
   versions.textContent = snapshot.versions;
   devTag.classList.toggle("is-visible", snapshot.dev);
+  root.classList.toggle("is-dev", snapshot.dev);
   const progress = snapshot.progress;
   bar.classList.toggle("is-visible", progress !== undefined);
   bar.classList.toggle("is-indeterminate", progress === "indeterminate");

@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
 
-import { BrandMarkIcon } from "../components/command-band.js";
+import { BrandMarkIcon, BrandWordmark } from "../components/command-band.js";
 import { runZenWindowStage, setZenMode, setZenTransitionRunner } from "../../integration/zen-mode.js";
-import { BrandWordmark } from "./zen-bar.js";
 
 /**
  * Zen 전환 장면. 켤 때:

@@ -779,11 +779,27 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   color: var(--ink-brand-dev);
 }
 
-/* 브랜드 계기와 이어지는 마침표는 기존 브랜드 황동을 유지한다. */
-.command-band-brand-wordmark-dot {
-  margin-inline-start: 0.03em;
+/* 개발 채널의 「Fleet·DEV」 — 황동 가운데 점과 작은 모노 대문자 DEV(BrandWordmark). 점과 DEV는 본문·모노
+   서체라 디스플레이 서체의 생산자는 여전히 워드마크 하나다. 크기는 em이라 트레이·전환 장면의 워드마크를
+   그대로 따라간다. DEV의 잉크는 개발 잉크를 3차 잉크 쪽으로 눌러 워드마크보다 한 단 물러선다. */
+.command-band-brand-wordmark-sep {
+  margin: 0 0.34em;
   color: var(--brass-ink);
-  font-weight: var(--weight-medium);
+  font-family: var(--font-body);
+  font-weight: var(--weight-bold);
+}
+
+.command-band-brand-wordmark-tag {
+  display: inline-block;
+  /* 자간의 꼬리를 되돌려 DEV의 오른쪽 끝이 글자 끝에 선다(호버 면·트레이 여백이 한쪽만 넓어지지 않게). */
+  margin-inline-end: -0.16em;
+  color: color-mix(in oklab, var(--ink-brand-dev) 72%, var(--text-tertiary));
+  font-family: var(--font-mono);
+  font-size: 0.62em;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  letter-spacing: 0.16em;
+  transform: translateY(-0.08em);
 }
 
 .command-band-link-chip {

@@ -98,6 +98,12 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
   transition: top var(--handoff-duration) var(--ease-spring), left var(--handoff-duration) var(--ease-spring), transform var(--handoff-duration) var(--ease-spring), font-size var(--handoff-duration) var(--ease-spring), letter-spacing var(--handoff-duration) var(--ease-spring);
 }
 
+/* 개발 빌드의 「Fleet·DEV」 — Console 워드마크(BrandWordmark)와 같은 조형·같은 em이라 넘겨주기에서 크기가 줄어도
+   함께 줄어든다. 잉크는 진입 판의 토큰으로 옮긴다: 점은 황동, DEV는 워드마크 잉크를 옅은 잉크 쪽으로 누른다. */
+.wordmark-sep, .wordmark-tag { display: none; }
+.is-dev .wordmark-sep { display: inline; margin: 0 0.34em; color: var(--brass); font-family: var(--font-body); font-weight: 700; }
+.is-dev .wordmark-tag { display: inline-block; margin-inline-end: -0.16em; color: color-mix(in oklab, var(--ink-pearl) 72%, var(--ink-fog)); font: 700 0.62em/1 var(--font-mono); letter-spacing: 0.16em; transform: translateY(-0.08em); }
+
 .entry-stage { position: fixed; top: calc(50% + 30px); left: 24px; right: 24px; display: grid; justify-items: center; gap: 10px; text-align: center; transition: opacity var(--duration-fade) ease; }
 .tagline { margin: 0 0 14px; color: var(--ink-spectral); font-size: 14px; }
 .status { display: inline-flex; align-items: center; gap: 9px; color: var(--ink-pearl); font-size: 13.5px; font-weight: 500; }
@@ -136,6 +142,9 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
 .is-handoff.is-from-tray .drag-strip { border-bottom-color: transparent; }
 .is-handoff.is-from-tray .brand-mark { top: calc(100% - 27px); left: calc(100% - 68.7px); width: 18px; height: 18px; }
 .is-handoff.is-from-tray .wordmark { top: calc(100% - 24.5px); left: calc(100% - 43.7px); }
+/* 개발 빌드의 트레이 워드마크는 「·DEV」만큼(13px에서 29.5px) 넓어 마크와 워드마크가 그만큼 왼쪽에 앉는다. */
+.is-dev.is-handoff.is-from-tray .brand-mark { left: calc(100% - 98.2px); }
+.is-dev.is-handoff.is-from-tray .wordmark { left: calc(100% - 73.2px); }
 .is-instant, .is-instant * { transition: none !important; }
 
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--brass-glow); } 50% { box-shadow: 0 0 0 6px transparent; } }

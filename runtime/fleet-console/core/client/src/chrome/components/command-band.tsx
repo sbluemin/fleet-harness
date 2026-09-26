@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Ref } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchConsoleEnvironment } from "../../integration/api.js";
@@ -229,7 +229,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
               aria-label={t("chrome.commandBand.operations")}
               onClick={() => { setEnvironmentOpen(false); discardEnvironmentState(); }}
             >
-              <span className="command-band-brand-wordmark is-local">Fleet<span className="command-band-brand-wordmark-dot" aria-hidden="true">.</span></span>
+              <BrandWordmark local />
             </Link>
             {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
           </div>
@@ -296,6 +296,25 @@ function buildEnvironmentRows(
 function BrandHome() {
   const t = useT();
   return <Link className="command-band-brand" to="/operations" aria-label={t("chrome.commandBand.operations")}><BrandMarkIcon /><span className="command-band-brand-wordmark">Fleet</span></Link>;
+}
+
+/**
+ * 브랜드 워드마크 — Band·Zen 트레이·Zen 전환 장면이 같은 글자를 쓴다(서체는 이 클래스 하나가 진다).
+ * 개발 채널은 승인된 개발 잉크에 황동 가운데 점과 작은 모노 대문자 DEV를 잇는다 — 「Fleet·DEV」.
+ * 점과 DEV는 em으로 서므로 워드마크의 크기(트레이 13px, 전환 장면 40px)를 그대로 따라간다.
+ */
+export function BrandWordmark({ className, local = false, ref }: { readonly className?: string; readonly local?: boolean; readonly ref?: Ref<HTMLSpanElement> }) {
+  return (
+    <span ref={ref} className={`command-band-brand-wordmark${className ? ` ${className}` : ""}${local ? " is-local" : ""}`}>
+      Fleet
+      {local ? (
+        <>
+          <span className="command-band-brand-wordmark-sep" aria-hidden="true">·</span>
+          <span className="command-band-brand-wordmark-tag">DEV</span>
+        </>
+      ) : null}
+    </span>
+  );
 }
 
 // 일반 채널은 favicon과 같은 조형이다. 개발 채널만 바깥 링을 열고 신호점을 빼 구분한다.
