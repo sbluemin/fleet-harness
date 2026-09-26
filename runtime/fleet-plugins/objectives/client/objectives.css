@@ -1,9 +1,9 @@
-/* 목표 표면 — 목록 · 항목 · 세부 세 열. 색은 토큰만. */
+/* 목표 표면 — 항목 · 세부 두 열(범위는 제목 줄의 낱말, 그룹은 카드 패널의 구획). 색은 토큰만. */
 
 .objectives-container { container: objectives-panel / inline-size; width: 100%; height: 100%; min-height: 0; }
 .objectives-root {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   position: relative;
   height: 100%;
   min-height: 0;
@@ -13,7 +13,13 @@
   color: var(--text-primary);
   background: var(--surface-panel);
 }
-.objectives-root.has-detail { grid-template-columns: 200px minmax(0, 1fr) minmax(420px, 480px); }
+.objectives-root.has-detail { grid-template-columns: minmax(0, 1fr) minmax(360px, 480px); }
+/* 펼친 상태 — 상세 폭은 손잡이로 바꾼 값(--objectives-detail-w). 카드 열의 최소 폭은 JS 가 폭을 제한해 지킨다. */
+.objectives-root.has-detail.is-sized { grid-template-columns: minmax(0, 1fr) var(--objectives-detail-w, 480px); }
+.objectives-detail-grip { position: absolute; top: 0; bottom: 0; right: calc(var(--objectives-detail-w, 480px) - 5px); width: 10px; z-index: 3; cursor: col-resize; touch-action: none; outline: none; }
+.objectives-detail-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background-color var(--duration-fast); }
+.objectives-detail-grip:hover::after, .objectives-detail-grip:focus-visible::after, .objectives-root.is-resizing .objectives-detail-grip::after { background: var(--brass); }
+.objectives-root.is-resizing, .objectives-root.is-resizing * { cursor: col-resize; user-select: none; }
 .objectives-place-button {
   flex: none;
   display: grid;
@@ -30,65 +36,6 @@
 .objectives-place-button:hover { color: var(--brass); }
 .objectives-place-button:focus-visible { color: var(--brass); outline: 1px solid var(--brass); outline-offset: 1px; }
 
-/* ── 목록 열 ── */
-.objectives-lists {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 8px;
-  border-right: 1px solid var(--surface-rim);
-  overflow: auto;
-  min-height: 0;
-}
-.objectives-lists-hd {
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  padding: 8px 8px 4px;
-}
-.objectives-list-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  padding: 5px 8px;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  transition: background var(--duration-fast), border-color var(--duration-fast);
-}
-.objectives-list-btn:hover { background: var(--control-rest); }
-.objectives-list-btn:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.objectives-list-btn[aria-current="true"] { background: var(--control-wash); color: var(--text-primary); border-color: transparent; font-weight: var(--weight-medium); }
-.objectives-list-btn .objectives-count { margin-left: auto; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.objectives-list-btn .objectives-swatch { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-tertiary); }
-.objectives-list-btn.is-muted { color: var(--text-tertiary); }
-/* 그룹 행 — 올리거나 초점이 들어오면 셈 자리에 「···」가 선다(그룹 메뉴: 색·이름). 메뉴가 열린 행은 테두리로 자리를 말한다. */
-.objectives-list-row { position: relative; }
-.objectives-group-more.is-row { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: none; }
-.objectives-list-row:hover .objectives-group-more.is-row, .objectives-list-row:focus-within .objectives-group-more.is-row, .objectives-list-row.is-menu .objectives-group-more.is-row { display: inline-grid; }
-.objectives-list-row:hover .objectives-count, .objectives-list-row:focus-within .objectives-count, .objectives-list-row.is-menu .objectives-count { visibility: hidden; }
-.objectives-list-row.is-menu .objectives-list-btn { border-color: color-mix(in oklch, var(--brass) 56%, var(--surface-rim)); }
-.objectives-lists-add {
-  margin-top: auto;
-  background: transparent;
-  border: 1px dashed var(--surface-rim);
-  color: var(--text-tertiary);
-  font: inherit;
-  font-size: var(--t-sm);
-  padding: 5px 8px;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  text-align: left;
-}
-.objectives-lists-add:hover { color: var(--text-primary); border-color: var(--brass); }
-
 /* ── 항목 열 ── */
 .objectives-main {
   display: flex;
@@ -100,32 +47,41 @@
 }
 .objectives-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .objectives-title .objectives-place-button { margin-left: auto; }
-.objectives-list-select { display: none; position: relative; min-width: 0; }
-.objectives-list-trigger { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 3px 7px; background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); color: var(--text-primary); font: inherit; cursor: pointer; }
-.objectives-list-trigger > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-list-trigger .objectives-count { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
-.objectives-list-trigger:focus-visible { outline: 1px solid var(--brass); }
-.objectives-list-menu { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; width: min(240px, calc(100cqw - 28px)); max-height: min(440px, 65vh); overflow: auto; padding: 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); }
-.objectives-list-menu .objectives-lists-add { width: 100%; margin-top: 8px; }
 .objectives-place-detail { display: grid; }
 .objectives-root.has-detail .objectives-place-main { display: none; }
 .objectives-glyph.objectives-detail-back { font-size: var(--t-xl); }
-.objectives-title h2 { margin: 0; font-family: var(--font-display); font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 1.2; }
-.objectives-title .objectives-sub { font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-title .objectives-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-.objectives-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 6px; }
-.objectives-chip {
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-pill);
-  padding: 1px 9px;
-  font: inherit;
-  font-size: var(--t-xs);
-  color: var(--text-secondary);
-  background: transparent;
-  cursor: pointer;
-}
-.objectives-chip[aria-pressed="true"] { border-color: var(--brass); color: var(--brass); }
-.objectives-section { display: flex; flex-direction: column; gap: 5px; }
+/* 범위 낱말 — 상자·채움 없이 글자 무게·색과 얇은 밑줄로만 고른 범위를 말한다. 늘 같은 자리에 선다. */
+.objectives-scope { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; min-width: 0; }
+.objectives-scope-word { position: relative; display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 0 6px; border: 0; background: none; font: inherit; font-size: var(--t-md); color: var(--text-tertiary); cursor: pointer; white-space: nowrap; transition: color var(--duration-fast); }
+.objectives-scope-word::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1.5px; border-radius: 1px; background: currentColor; transform: scaleX(0); transform-origin: left; transition: transform var(--duration-fast); }
+.objectives-scope-word:hover { color: var(--text-secondary); }
+.objectives-scope-word[aria-selected="true"] { color: var(--text-primary); font-weight: var(--weight-medium); }
+.objectives-scope-word[aria-selected="true"]::after { transform: scaleX(1); }
+/* 키보드 초점도 상자 없이 — 황동 글자와 밑줄로 자리를 말한다. */
+.objectives-scope-word:focus-visible { outline: none; color: var(--brass); }
+.objectives-scope-word:focus-visible::after { transform: scaleX(1); background: var(--brass); }
+.objectives-scope-word.is-drop { color: var(--brass); }
+.objectives-scope-word.is-drop::after { transform: scaleX(1); background: var(--brass); }
+.objectives-scope-glyph { font-size: var(--t-xs); opacity: 0.75; }
+.objectives-scope-word .objectives-count { font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: normal; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.objectives-scope-word[aria-selected="true"] .objectives-count { color: var(--text-secondary); }
+/* 기한 세부 — 범위 낱말과 같은 글자형. 고른 것만 밑줄. */
+.objectives-chips { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 6px; }
+.objectives-chip { border: 0; padding: 0 0 2px; font: inherit; font-size: var(--t-xs); color: var(--text-tertiary); background: none; cursor: pointer; transition: color var(--duration-fast); }
+.objectives-chip:hover { color: var(--text-secondary); }
+.objectives-chip[aria-pressed="true"] { color: var(--text-primary); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.objectives-chip:focus-visible { outline: none; color: var(--brass); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.objectives-section { display: flex; flex-direction: column; gap: 5px; border-radius: var(--radius-xs); transition: background-color var(--duration-fast), box-shadow var(--duration-fast); }
+/* 다른 그룹 구획 위로 카드를 끌면 그 구획이 놓을 자리가 된다(끄는 동안만 보이는 되먹임). */
+.objectives-section.is-drop { background: color-mix(in oklch, var(--brass) 8%, transparent); box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 45%, transparent); }
+.objectives-section-row { display: flex; align-items: center; gap: 6px; }
+/* 구획 머리의 「+ 추가」 — 올리거나 초점이 들어올 때만 글자로 선다. 누르면 아래 입력줄의 대상이 그 그룹이 된다. */
+.objectives-section-add { border: 0; background: none; padding: 2px 4px; font: inherit; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); cursor: pointer; opacity: 0; transition: opacity var(--duration-fast), color var(--duration-fast); }
+.objectives-section-row:hover .objectives-section-add, .objectives-section-add:focus-visible { opacity: 1; }
+.objectives-section-add:hover { color: var(--brass); }
+.objectives-section-add:focus-visible { outline: none; color: var(--brass); text-decoration: underline; text-underline-offset: 3px; }
+.objectives-section-empty { padding: 2px 10px 4px 26px; font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-section + .objectives-section { margin-top: 10px; }
 /* 구획 머리는 접이식 칩 — 셰브런이 펼침을 말하고, 「완료됨」은 맨 아래 접힌 채 선다 */
 .objectives-section-hd { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; margin: 2px 0 1px; padding: 4px 10px 4px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--surface-panel-raised) 70%, var(--surface-panel)); font: inherit; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-secondary); cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
@@ -233,6 +189,11 @@
 }
 .objectives-add input { flex: 1; background: transparent; border: 0; color: var(--text-primary); font: inherit; outline: none; min-width: 0; }
 .objectives-add .objectives-plus { color: var(--brass); font-size: var(--t-lg); line-height: 1; }
+.objectives-add-target { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); white-space: nowrap; }
+.objectives-add-target .objectives-swatch { width: 7px; height: 7px; border-radius: 50%; }
+.objectives-add-target-clear { border: 0; background: none; padding: 0 2px; font: inherit; color: var(--text-tertiary); cursor: pointer; }
+.objectives-add-target-clear:hover { color: var(--text-primary); }
+.objectives-add-target-clear:focus-visible { outline: none; color: var(--brass); }
 .objectives-add:focus-within { border-color: var(--brass); }
 .objectives-view-picker { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: var(--radius-xs); background: var(--control-rest); }
 .objectives-view-picker button { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; }
@@ -591,10 +552,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-menu-track .effort-track-value { display: none; }
 .objectives-menu-effort-word { font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass); }
 .objectives-menu-divider { height: 1px; margin: var(--space-1) var(--space-1); background: var(--surface-rim); }
-/* 그룹 메뉴 — 색(사이드바와 같은 SDK 스와치) → 이름 변경. */
-.objectives-group-menu { width: 212px; }
-.objectives-group-menu-name { margin: 0 10px 8px; padding: 6px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-body); }
-.objectives-group-menu-name:focus { outline: none; border-color: var(--brass); }
 .objectives-menu-empty { padding: 6px var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
 
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
@@ -677,9 +634,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-objective.is-insert-after::after { content: ""; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 1px; background: var(--brass); pointer-events: none; }
 .objectives-objective.is-insert-before::before { top: -4.5px; }
 .objectives-objective.is-insert-after::after { bottom: -4.5px; }
-.objectives-lists.is-dragging .objectives-list-btn[data-drop-list] { border-color: color-mix(in oklch, var(--brass) 35%, transparent); }
-.objectives-list-btn.is-drop { background: color-mix(in oklch, var(--brass) 16%, transparent); border-color: var(--brass); color: var(--text-primary); }
-.objectives-list-btn.is-drop .objectives-count { color: var(--brass); }
 .objectives-drag-ghost { position: fixed; z-index: 70; pointer-events: none; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--brass); border-radius: var(--radius-xs); background: var(--surface-panel-raised); box-shadow: 0 14px 34px color-mix(in oklch, var(--ink-deep) 62%, transparent); color: var(--text-primary); font-size: var(--t-md); transition: border-color var(--duration-fast), box-shadow var(--duration-fast); }
 .objectives-drag-ghost.is-over { border-color: var(--brass-bright, var(--brass)); box-shadow: 0 6px 18px color-mix(in oklch, var(--ink-deep) 55%, transparent); }
 .objectives-drag-ghost .objectives-check { width: 18px; height: 18px; flex: none; }
@@ -805,16 +759,13 @@ span.objectives-row-main { cursor: default; }
 /* 연결 선택 */
 
 @container objectives-panel (width < 960px) {
-  .objectives-root, .objectives-root.has-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .objectives-root:not(.has-detail) { grid-template-columns: minmax(0, 1fr); }
-  .objectives-lists { display: none; }
-  .objectives-list-select { display: block; }
-  .objectives-title h2 { display: none; }
-  .objectives-place-detail { display: grid; }
-  .objectives-root.has-detail .objectives-place-main { display: none; }
+  .objectives-root.has-detail:not(.is-sized) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 @container objectives-panel (width < 600px) {
-  .objectives-root, .objectives-root.has-detail { grid-template-columns: minmax(0, 1fr); }
+  /* <960 의 두 열 규칙(:not(.is-sized))보다 한 단 높여야 좁은 폭에서 한 열이 이긴다. */
+  .objectives-root, .objectives-root.has-detail, .objectives-root.has-detail:not(.is-sized), .objectives-root.has-detail.is-sized { grid-template-columns: minmax(0, 1fr); }
+  .objectives-detail-grip { display: none; }
+  .objectives-scope { gap: 14px; }
   .objectives-root.has-detail .objectives-main { display: none; }
   .objectives-detail { border-left: 0; }
   .objectives-glyph.objectives-detail-back { display: inline-grid; margin-right: -6px; font-size: var(--t-xl); }
