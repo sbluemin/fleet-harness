@@ -184,6 +184,9 @@ export function useSideBarFollowedInset(targetInset: number): number {
   return shown;
 }
 
+/** 이 값 이하의 진행이면 이 커밋이 막 연 전환으로 본다. */
+const FRESH_TRANSITION_PROGRESS = 0.001;
+
 interface FollowDriver {
   /** 이 추종이 시작된 뒤의 진행(0→1, 곡선 적용). 끝났으면 null. */
   readonly progress: () => number | null;
@@ -195,10 +198,11 @@ interface FollowDriver {
 /**
  * 인셋을 무엇에 실어 움직일지 고른다.
  *
- * - 카드가 width 전환 중이면 그 전환을 탄다. 이미 진행 중이던 전환(엣지 호버 픽이 먼저 연 폭)을 잡았다면
- *   잡은 순간의 진행을 0으로 다시 잰다 — 그 전환의 절반이 이미 지났다고 인셋까지 절반 건너뛰면 안 된다.
- * - 전환이 없는데 카드가 보이면(픽으로 이미 다 펼쳐진 카드를 고정) 카드는 움직이지 않지만 인셋은 움직인다.
- *   카드의 width 전환과 같은 길이·곡선의 빈 애니메이션을 탐침으로 굴려 그 진행을 쓰고, 그동안 패널
+ * - 이 커밋이 막 연 width 전환(진행 0)이면 그 전환을 탄다 — 인셋이 카드와 같은 곡선으로 함께 간다.
+ * - 이미 진행 중이던 전환(엣지 호버 픽이 먼저 연 폭)을 잡았거나, 전환이 없는데 카드가 보이면(픽으로 다
+ *   펼쳐진 카드를 고정) 카드의 남은 진행에 인셋을 실을 수 없다. 남은 짧은 구간에 인셋 전체를 몰면 첫
+ *   프레임부터 큰 걸음이 된다. 그래서 카드의 width 전환과 같은 길이·곡선의 빈 애니메이션을 탐침으로 새로
+ *   굴려 그 진행을 쓴다 — 캔버스가 카드보다 조금 늦게 끝나도 걸음은 일반 토글과 같다. 그동안 패널
  *   글라이드 억제 플래그를 직접 붙든다.
  * - 전환이 꺼진 경우(드래그 리사이즈·reduced motion)나 숨은 카드는 목표 인셋이 즉시 선다.
  */
@@ -208,17 +212,8 @@ function followDriverFor(card: HTMLElement): FollowDriver | null {
   const running = typeof CSSTransition === "undefined" ? undefined : card.getAnimations().find((animation) => animation instanceof CSSTransition
     && animation.transitionProperty === "width"
     && animation.playState !== "finished");
-  if (running) {
-    const origin = effectProgress(running) ?? 0;
-    return {
-      progress: () => {
-        const progress = effectProgress(running);
-        if (progress === null) return null;
-        return origin >= 1 ? 1 : (progress - origin) / (1 - origin);
-      },
-      finished: running.finished,
-      release: () => undefined,
-    };
+  if (running && (effectProgress(running) ?? 0) <= FRESH_TRANSITION_PROGRESS) {
+    return { progress: () => effectProgress(running), finished: running.finished, release: () => undefined };
   }
   if (typeof card.animate !== "function" || getComputedStyle(card).visibility === "hidden") return null;
   const timing = widthTransitionTiming(card);
