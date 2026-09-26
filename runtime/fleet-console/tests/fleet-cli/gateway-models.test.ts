@@ -91,6 +91,7 @@ describe("fleet-console-use host", () => {
       const restarted = createConsoleControl(deps);
       try {
         expect(restarted.state()).toMatchObject({ paused: false });
+        expect(JSON.parse(readFileSync(path.join(directory, "state.json"), "utf8"))).not.toHaveProperty("actions");
         expect(restarted.state().automations.find((a) => a.id === pending.id)?.status).toBe("paused");
         await expect(restarted.readEvents(cursor)).rejects.toThrow("cursor_expired");
         for (let i = restarted.state().automations.length; i < 100; i += 1) restarted.automation({ kind: "operation", operationId: "op-a" }, { name: `Briefing ${i}`, theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 1000).toISOString(), maxRuns: 1 });

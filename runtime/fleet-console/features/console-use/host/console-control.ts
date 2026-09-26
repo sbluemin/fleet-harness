@@ -111,6 +111,8 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       || automations.some((a) => !a || typeof a.id !== "string" || !callerSchema.safeParse(a.caller).success || !Number.isSafeInteger(a.runs) || a.runs < 0 || !["approval_required", "active", "paused", "expired", "exhausted"].includes(a.status) || !automationSchema.safeParse(a.input).success)) throw new Error("invalid_state");
     // 자동 정책은 기존 계약대로 재시작 뒤 일시 중지한다.
     state = { version: 3, automations: automations.map((a) => a.status === "active" || (a.status as string) === "approval_required" ? { ...a, status: "paused" } : a) };
+    // 옛 형식이면 바로 다시 쓴다 — 읽지 않는 영수증이 다음 정책 변경 때까지 디스크에 남지 않게.
+    if (raw.version !== 3) persist();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") storageError = true;
   }
