@@ -600,9 +600,11 @@ span.objectives-row-main { cursor: default; }
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
 .objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
 .objectives-members-empty { margin: 0; padding: 5px 20px 9px 22px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
-.objectives-member { display: flex; align-items: flex-start; gap: 10px; min-height: 50px; padding: 6px 14px 6px 22px; }
-.objectives-member > .objectives-member-mark { margin-top: 3px; }
-.objectives-member > .objectives-member-remove { margin-top: 2px; }
+/* 윗줄은 역할 · 모델·상태 · 삭제, 설명은 아랫줄에서 역할 칸부터 오른쪽 끝까지 — 모델명 길이가 설명 폭을 깎지 않는다. */
+.objectives-member { display: grid; grid-template-columns: 20px minmax(0, 1fr) fit-content(55%); grid-template-areas: "mark name meta" ". brief brief"; align-items: center; gap: 2px 10px; min-height: 50px; padding: 6px 14px 6px 22px; }
+.objectives-member:has(> .objectives-member-remove) { grid-template-columns: 20px minmax(0, 1fr) fit-content(55%) auto; grid-template-areas: "mark name meta remove" ". brief brief brief"; }
+.objectives-member > .objectives-member-mark { grid-area: mark; }
+.objectives-member > .objectives-member-remove { grid-area: remove; }
 .objectives-member:hover { background: var(--control-rest); }
 /* 구성원 표식 — 정체성 톤(--id-*)으로 구성원을 가른다. 신호색(brass·aurora·positive·coral·warn)은 상태·지휘관을 뜻하므로 쓰지 않는다. */
 .objectives-member-mark { --member-tone: var(--id-teal); flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid color-mix(in oklch, var(--member-tone) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--member-tone) 14%, transparent); color: var(--member-tone); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
@@ -614,26 +616,26 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-mark.is-tone-6 { --member-tone: var(--id-indigo); }
 .objectives-member-mark.is-tone-7 { --member-tone: var(--id-crimson); }
 /* 달성 기준 줄과 같은 문법 — 역할 이름과 설명이 그 자리의 입력칸이다(테두리 없음, 포커스는 brass 밑줄). */
-.objectives-member-body { flex: 1; min-width: 0; display: grid; gap: 2px; padding: 4px 0; }
-.objectives-member-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.objectives-member-body { display: contents; }
+.objectives-member-name { grid-area: name; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; }
 .objectives-member-role, .objectives-member-brief { min-width: 0; padding: 0; border: 0; background: transparent; font: inherit; text-overflow: ellipsis; }
 /* 역할 칸은 글자 폭만큼 — 입력과 숨은 복제가 같은 칸(1/1)에 겹쳐, 복제의 폭이 칸 너비가 된다. */
 .objectives-member-role-fit { display: inline-grid; min-width: 0; max-width: 100%; font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .objectives-member-role-fit::after { content: attr(data-value) " "; grid-area: 1 / 1; visibility: hidden; white-space: pre; overflow: hidden; font: inherit; }
 .objectives-member-role { grid-area: 1 / 1; width: 100%; color: var(--text-primary); font-size: inherit; font-weight: inherit; }
 .objectives-member-role:focus, .objectives-member-brief:focus { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
-.objectives-member-brief { display: block; width: 100%; resize: none; overflow: hidden; field-sizing: content; overflow-wrap: anywhere; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
+.objectives-member-brief { grid-area: brief; align-self: start; display: block; width: 100%; resize: none; overflow: hidden; field-sizing: content; overflow-wrap: anywhere; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
 .objectives-member-brief::placeholder { color: var(--text-tertiary); opacity: 0.7; }
 .objectives-member-remove { flex: none; opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
 .objectives-member:hover .objectives-member-remove, .objectives-member:focus-within .objectives-member-remove { opacity: 1; }
 .objectives-member-by { flex: none; padding: 2px 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora); font: var(--weight-bold) var(--t-2xs)/1 var(--font-mono); }
 /* 긴 실행 모델명(게이트웨이 모델 등)은 이름만 줄임표로 접는다 — 글리프·강도·상태·삭제 버튼은 자리를 지킨다. 풀네임은 title. */
-.objectives-member-meta { display: grid; grid-template-columns: minmax(0, max-content); gap: 1px; justify-items: end; flex: 0 1 auto; min-width: 0; max-width: 48%; }
+.objectives-member-meta { grid-area: meta; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .objectives-member-meta > * { min-width: 0; max-width: 100%; }
 .objectives-member-meta .objectives-launch { margin: 0; }
 .objectives-member-meta .objectives-launch > * { flex: none; }
 .objectives-member-meta .objectives-launch > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-member-status { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); color: var(--text-tertiary); padding-right: 6px; }
+.objectives-member-status { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); color: var(--text-tertiary); }
 .objectives-member-subagents { color: var(--text-secondary); }
 .objectives-member-slot { display: contents; }
 .objectives-member-note { margin: 0 14px 6px 52px; padding: 6px 10px; border: 1px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--aurora) 8%, transparent); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; }
@@ -711,12 +713,11 @@ span.objectives-row-main { cursor: default; }
   .objectives-graph-vertical { display: block; }
 }
 /* 아주 좁은 상세(레일 분할 등 340px 미만) — 곁에 서던 값들을 아랫줄로 내려 글이 읽힐 폭을 남긴다.
-   구성원: 역할·설명이 한 줄을 다 쓰고, 모델·상태는 그 아래 줄(설명과 같은 들여쓰기). 지휘관: 모델·강도가 라벨 아래 줄. */
+   구성원: 역할이 윗줄을 다 쓰고, 설명 아래에 모델·상태 줄(설명과 같은 들여쓰기). 지휘관: 모델·강도가 라벨 아래 줄. */
 @container objectives-detail (width < 340px) {
-  .objectives-member { flex-wrap: wrap; row-gap: 2px; }
-  .objectives-member > .objectives-member-body { flex: 1 1 0; }
-  .objectives-member > .objectives-member-remove { order: 2; }
-  .objectives-member > .objectives-member-meta { order: 3; flex: 1 0 100%; max-width: none; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding-left: 30px; }
+  .objectives-member { grid-template-columns: 20px minmax(0, 1fr); grid-template-areas: "mark name" ". brief" ". meta"; }
+  .objectives-member:has(> .objectives-member-remove) { grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-areas: "mark name remove" ". brief brief" ". meta meta"; }
+  .objectives-member > .objectives-member-meta { justify-content: flex-start; flex-wrap: wrap; gap: 2px 8px; }
   .objectives-row:has(> .objectives-launch) { flex-wrap: wrap; row-gap: 0; padding-bottom: 6px; }
   .objectives-row:has(> .objectives-launch) > .objectives-row-main { flex: 1 0 100%; min-height: 36px; }
   .objectives-row > .objectives-launch { margin: 0 0 0 20px; }
