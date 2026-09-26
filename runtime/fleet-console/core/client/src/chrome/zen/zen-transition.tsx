@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { BrandMarkIcon, BrandWordmark } from "../components/command-band.js";
-import { runZenWindowStage, setZenMode, setZenTransitionRunner } from "../../integration/zen-mode.js";
+import { runZenWindowStage, setZenMode, setZenTransitionRunner, setZenTransitionActive, type ZenTransitionActions } from "../../integration/zen-mode.js";
 
 /**
  * Zen 전환 장면. 켤 때:
@@ -58,7 +58,7 @@ export function ZenTransition({ local = false }: { readonly local?: boolean } = 
   const wordRef = useRef<HTMLSpanElement>(null);
   const busyRef = useRef(false);
 
-  useEffect(() => setZenTransitionRunner((next) => {
+  useEffect(() => setZenTransitionRunner((next, actions) => {
     // 장면이 도는 동안의 요청은 삼킨다 — 반쯤 걸린 커튼 위에서 방향을 바꾸면 어느 쪽도 끝나지 않는다.
     if (busyRef.current) return true;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
@@ -68,7 +68,8 @@ export function ZenTransition({ local = false }: { readonly local?: boolean } = 
     const from = next ? measureBandBrand() : measureTaskbarBrand();
     if (veil === null || mark === null || word === null || (from === null && next)) return false;
     busyRef.current = true;
-    void play(next, from, { veil, mark, word }).finally(() => { busyRef.current = false; });
+    setZenTransitionActive(true);
+    void play(next, from, { veil, mark, word }, actions).finally(() => { busyRef.current = false; setZenTransitionActive(false); });
     return true;
   }), []);
 
@@ -81,7 +82,7 @@ export function ZenTransition({ local = false }: { readonly local?: boolean } = 
   );
 }
 
-async function play(next: boolean, from: BrandRects | null, actors: { readonly veil: HTMLElement; readonly mark: HTMLElement; readonly word: HTMLElement }): Promise<void> {
+async function play(next: boolean, from: BrandRects | null, actors: { readonly veil: HTMLElement; readonly mark: HTMLElement; readonly word: HTMLElement }, actions?: ZenTransitionActions): Promise<void> {
   const { veil, mark, word } = actors;
   const root = document.documentElement;
   const center = centerRects(word);
@@ -143,6 +144,7 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
   const switchLayout = () => {
     switched = true;
     setZenMode(next);
+    actions?.onLayout?.();
   };
   try {
     if (next) {
@@ -157,6 +159,7 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
       // 4 — 가운데에서 한 바퀴, 트레이로 내려앉으며 커튼이 걷힌다.
       await spin();
       const tray = measureTaskbarBrand();
+      root.dataset.zenLanding = "true";
       await Promise.all([land(tray, true), veilTo(0, LAND_MS * 0.9, "ease-in")]);
     } else {
       // 4′ — 트레이에서 가운데로 오는 동안 커튼이 쳐진다(자리가 없으면 가운데에서 나타난다).
@@ -178,11 +181,13 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
   } finally {
     // 전환이 아직 걸리지 않았을 때만 요청을 마저 반영한다. 이미 걸린 뒤 경로 이탈 같은 강제 종료가
     // Zen을 걷었다면 그 결정을 되돌리지 않는다.
-    if (!switched) setZenMode(next);
+    if (!switched) switchLayout();
     for (const animation of running) animation.cancel();
     mark.style.visibility = "";
     word.style.visibility = "";
     delete root.dataset[FLIGHT_ATTRIBUTE];
+    delete root.dataset.zenLanding;
+    actions?.onComplete?.();
   }
 }
 

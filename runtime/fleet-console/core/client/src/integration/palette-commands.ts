@@ -129,7 +129,7 @@ export function buildPaletteCommands(
   current: ConsoleState,
   railPanels: readonly PaletteRailPanelInfo[],
   t: T,
-  options?: { readonly canUndoLastClose?: boolean },
+  options?: { readonly canUndoLastClose?: boolean; readonly warRoomAvailable?: boolean },
 ): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
   const language = resolveActiveLocale();
@@ -173,7 +173,8 @@ export function buildPaletteCommands(
       push({ commandId: "minimize-all-operations", label: t("palette.minimizeAll"), aliasLabel: alias("palette.minimizeAll"), action: { kind: "minimize-all-operations" }, group: "view", glyph: "view-minimize-all" });
       push({ commandId: "fit-all-panels", label: t("palette.fitAllPanels"), aliasLabel: alias("palette.fitAllPanels"), action: { kind: "fit-all-panels" }, group: "view", glyph: "view-fit", shortcut: "operations.fit-all" });
     }
-    push({ commandId: "toggle-triage-mode", label: t("palette.toggleTriage"), aliasLabel: alias("palette.toggleTriage"), action: { kind: "toggle-triage-mode" }, group: "view", glyph: "view-war-room", shortcut: "operations.toggle-triage" });
+    // 팔레트에는 비활성·사유 행 문법이 없으므로 Zen 불가 환경에서는 진입 명령을 싣지 않는다.
+    if (options?.warRoomAvailable !== false) push({ commandId: "toggle-triage-mode", label: t("palette.toggleTriage"), aliasLabel: alias("palette.toggleTriage"), action: { kind: "toggle-triage-mode" }, group: "view", glyph: "view-war-room", shortcut: "operations.toggle-triage" });
     push({ commandId: "toggle-formation", label: t("palette.toggleFormation"), aliasLabel: alias("palette.toggleFormation"), extraAliases: ["tactical"], action: { kind: "toggle-formation" }, group: "view", glyph: "view-align-all", shortcut: "operations.toggle-formation" });
     push({ commandId: "toggle-station-keeping", label: t("palette.toggleStationKeeping"), aliasLabel: alias("palette.toggleStationKeeping"), action: { kind: "toggle-station-keeping" }, group: "view", glyph: "view-station-keeping" });
     push({ commandId: "toggle-status-axis", label: t("palette.toggleStatusAxis"), aliasLabel: alias("palette.toggleStatusAxis"), action: { kind: "toggle-status-axis" }, group: "view", glyph: "view-status-axis", shortcut: "operations.sort-by-status" });

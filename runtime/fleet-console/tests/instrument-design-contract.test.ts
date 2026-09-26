@@ -1947,9 +1947,9 @@ describe("Instrument core design contract", () => {
     expect(chip).toContain("const markVisual = mark ?? status;");
     // 밴드는 브레드크럼 퇴역으로 활성 Operation을 그리지 않는다 — 마크 축 소비자에서 물러났다.
     expect(commandBand).not.toContain("resolveOperationMarkVisual");
-    // 지도 점은 함대 지도(Cruise 축소)가 그린다 — 덱은 칸에 패널을 세울 뿐 마크 축을 소비하지 않는다.
+    // 고정 덱의 테두리도 지도 점처럼 실제 대기와 확인 전의 마크 축을 구별한다.
     expect(source("../../../features/workspace/client/canvas/fleet-map.tsx")).toContain("const visual = operationMarkVisual(resolveOperationMarkVisual({");
-    expect(watchDeck).not.toContain("resolveOperationMarkVisual");
+    expect(watchDeck).toContain("const visual = resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds });");
     // 미확인 완료는 패널 아웃라인이 아니라 캡션 아랫변 레일이 나른다 — 상시 aura는 사라졌다.
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
     expect(components).not.toContain(".canvas-operation.is-unseen.is-active {");
@@ -2236,7 +2236,7 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).toContain('{ id: "cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseModeIcon },');
     expect(modeSwitch).toContain('{ id: "warRoom", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomModeIcon },');
     expect(modeSwitch).toContain("<mode.Icon />");
-    expect(modeSwitch).toContain("aria-label={t(mode.titleKey)}");
+    expect(modeSwitch).toContain('aria-label={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.zenUnavailable" : mode.titleKey)}');
     expect(modeSwitch).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : "cruise";');
     expect(modeSwitch).toContain('aria-pressed={canvasMode === mode.id}');
     // 모드 도구는 활성 세그먼트 아래 캡슐 하나에 활성 모드의 것만 마운트한다 — 비활성 모드 도구는
@@ -2246,12 +2246,14 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).toContain("inert={modeToolsOpen ? undefined : true}");
     expect(modeSwitch).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
     expect(modeSwitch).toContain('{canvasMode === "cruise" ? <>');
-    expect(modeSwitch).toContain('{canvasMode === "warRoom" ? <>');
+    // War Room 도구는 작업 표시줄에만 선다 — 사이드바 캡슐에 중복하지 않는다.
+    expect(modeSwitch).toContain('{triageActive ? null : <div');
+    expect(source("../../../features/workspace/client/zen/war-room-taskbar.tsx")).toContain('<WarRoomModeTools compact={fit.step >= 2} />');
     expect(modeSwitch).toContain('{ALIGN_LAYOUTS.map((layout) => (');
     expect(modeSwitch).toContain("onClick={cycleTriageDeckZoomPreset}");
     expect(modeSwitch).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");
-    // 값은 남기되 낱말은 두지 않는다 — 아이콘 + 배율 수치.
-    expect(modeSwitch).toContain("<DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span>");
+    // 가용 폭이 줄면 모드 도구를 먼저 아이콘으로 접는다.
+    expect(modeSwitch).toContain("<DensityIcon />{!compact ? <span>{triageDeckZoomLive.toFixed(1)}×</span> : null}");
     // 안내 앵커(.command-band-mode-tray, data-war-room-tool)가 닫힌 캡슐 안에 있을 때는 CSS가 강제로 펼친다.
     expect(layout).toContain(".command-band-mode-tray:has(.is-feature-tour-anchor)");
     // 중앙 트랙에는 모드 스위치만 남는다 — 찾기·Zen은 도구모음으로 옮겨 가 구분선도 함께 퇴역했다.
@@ -2268,8 +2270,8 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).not.toContain("setModeTrayOpen");
     // 정렬이 켜지면 Cruise 세그먼트에 brass 점이 켜진다 — 캡슐 안 나누기와 같은 채널이다.
     expect(modeSwitch).toContain("stationKeeping || alignOn");
-    // 모드 스위치는 Theater 등록 여부로만 게이트한다 — 정렬 토글은 활성 Theater로 게이트한다.
-    expect(modeSwitch).toContain("disabled={state.theaters.length === 0}");
+    // War Room은 Zen 적격성도 따른다 — 정렬 토글은 활성 Theater로 게이트한다.
+    expect(modeSwitch).toContain('disabled={state.theaters.length === 0 || (mode.id === "warRoom" && warRoomUnavailable)}');
     // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
     expect(modeSwitch).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
     const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
@@ -4518,9 +4520,9 @@ describe("War Room deck panel grammar", () => {
   it("puts the deck card's hover mark on the cell, never on the pulsing panel", () => {
     // is-fresh·is-arriving·is-landed가 패널의 border-color와 box-shadow를 키프레임으로 물고 있어,
     // 같은 두 속성에 얹은 hover 선언은 애니메이션 오리진에 진다 — 신호가 가장 급한 카드에서만
-    // 위치 마크가 사라지는 조용한 실패다. 그래서 위치는 칸의 box-shadow가 소유한다.
-    const hover = components.match(/\.canvas-triage-deck-cell:hover,\n\.canvas-triage-deck-cell:has\(> \.canvas-triage-deck-pick:focus-visible\) \{[^}]*\}/)?.[0] ?? "";
-    expect(hover).toContain("box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);");
+    // 위치 마크가 사라지는 조용한 실패다. 그래서 위치는 칸의 outline이 소유한다.
+    const hover = components.match(/\.canvas-triage-deck-cell:hover,\n\.canvas-triage-deck-cell.is-queue-hovered,\n\.canvas-triage-deck-cell:focus-within \{[^}]*\}/)?.[0] ?? "";
+    expect(hover).toContain("outline: 1px solid color-mix(in oklch, var(--brass) 55%, transparent);");
     expect(hover).toContain("z-index: 6;");
     expect(hover).not.toContain("--shadow-floating");
     // 위치 마크는 패널의 맥동 속성을 절대 건드리지 않는다.

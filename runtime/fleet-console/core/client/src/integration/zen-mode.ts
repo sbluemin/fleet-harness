@@ -11,6 +11,17 @@ export interface ZenModeState {
 
 let state: ZenModeState = { active: false, sideBarRevealed: false };
 const listeners = new Set<() => void>();
+let transitionActive = false;
+
+/** 크롬 장면 동안 안내를 미루는 조합 신호. 기능은 Zen DOM 속성을 직접 찾지 않는다. */
+export function setZenTransitionActive(active: boolean): void {
+  if (transitionActive === active) return;
+  transitionActive = active;
+  for (const listener of listeners) listener();
+}
+export function useZenTransitionActive(): boolean {
+  return useSyncExternalStore(subscribeZenMode, () => transitionActive, () => false);
+}
 
 function emit(next: ZenModeState): void {
   state = next;
@@ -36,7 +47,11 @@ export function setZenMode(next: boolean): void {
  * 없거나 맡지 않으면(동작 줄이기·측정 불가) 곧바로 바꾼다. 경로 이탈·모바일·설정 열기 같은
  * 강제 종료는 이 길을 타지 않고 setZenMode로 즉시 걷는다.
  */
-export type ZenTransitionRunner = (next: boolean) => boolean;
+export interface ZenTransitionActions {
+  readonly onLayout?: () => void;
+  readonly onComplete?: () => void;
+}
+export type ZenTransitionRunner = (next: boolean, actions?: ZenTransitionActions) => boolean;
 
 let transitionRunner: ZenTransitionRunner | null = null;
 
@@ -66,10 +81,12 @@ export function runZenWindowStage(next: boolean): Promise<void> {
   return windowStage?.(next) ?? Promise.resolve();
 }
 
-export function requestZenMode(next: boolean): void {
+export function requestZenMode(next: boolean, actions?: ZenTransitionActions): void {
   if (state.active === next) return;
-  if (transitionRunner?.(next)) return;
+  if (transitionRunner?.(next, actions)) return;
   setZenMode(next);
+  actions?.onLayout?.();
+  actions?.onComplete?.();
 }
 
 export function toggleZenMode(): void {
@@ -81,17 +98,17 @@ export function setZenSideBarRevealed(revealed: boolean): void {
   emit({ ...state, sideBarRevealed: revealed });
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribeZenMode(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
 
 export function useZenMode(): boolean {
-  return useSyncExternalStore(subscribe, isZenMode, () => false);
+  return useSyncExternalStore(subscribeZenMode, isZenMode, () => false);
 }
 
 const INACTIVE: ZenModeState = { active: false, sideBarRevealed: false };
 
 export function useZenModeState(): ZenModeState {
-  return useSyncExternalStore(subscribe, getZenModeState, () => INACTIVE);
+  return useSyncExternalStore(subscribeZenMode, getZenModeState, () => INACTIVE);
 }

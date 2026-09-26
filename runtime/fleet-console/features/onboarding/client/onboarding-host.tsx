@@ -29,6 +29,8 @@ export interface OnboardingHostProps {
    */
   readonly firstRun: boolean;
   readonly ports: EntryHintPorts;
+  /** 호스트의 전환 장면 중에는 투어를 시작하거나 표시하지 않고 진행 위치만 보존한다. */
+  readonly toursSuspended?: boolean;
 }
 
 /**
@@ -37,7 +39,7 @@ export interface OnboardingHostProps {
  * - 웰컴은 aria-modal 카드라 떠 있는 동안 힌트와 투어가 물러난다.
  * - 가리킬 힌트가 남아 있는 동안 투어는 새로 시작하지 않는다(재생 중인 투어는 끊지 않는다).
  */
-export function OnboardingHost({ core, plugins, language, welcomeReady, firstRun, ports }: OnboardingHostProps) {
+export function OnboardingHost({ core, plugins, language, welcomeReady, firstRun, ports, toursSuspended = false }: OnboardingHostProps) {
   const settings = useGlobalSettingsStore();
   const seen = settings.state?.seenFeatureTours ?? null;
   const contributions = useMemo(() => [...core, ...plugins], [core, plugins]);
@@ -84,7 +86,7 @@ export function OnboardingHost({ core, plugins, language, welcomeReady, firstRun
     <>
       <WelcomeDeck candidates={welcomes} ready={welcomeReady} firstRun={firstRun} seen={seen} language={language} />
       <EntryHints candidates={hints} seen={seen} language={language} ports={ports} held={welcomeHeld} />
-      <TourOverlay tours={tours} language={language} blocked={toursBlocked} />
+      <TourOverlay tours={tours} language={language} blocked={toursBlocked} suspended={toursSuspended} />
     </>
   );
 }

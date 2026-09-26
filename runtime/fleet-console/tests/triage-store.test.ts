@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { TriageEntryDialog } from "../features/workspace/client/canvas/triage-entry-dialog.js";
+import { isZenMode, setZenMode, setZenTransitionRunner, type ZenTransitionActions } from "../core/client/src/integration/zen-mode.js";
 import { operationRuntimeVisual, runtimeStateVisual } from "../features/execution/client/operation-activity.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -70,6 +72,8 @@ import {
   resetTriageDeckZoomForTests,
   resetTriageSpotlightForTests,
   resetTriageTheater,
+  restoreTriageSession,
+  getTriageEnteredAt,
   resolveActiveAwaitingTriageEntry,
   resolveTriageQueue,
   scheduleTriageClear,
@@ -85,6 +89,9 @@ import { TriageClearPlate } from "../features/workspace/client/canvas/canvas-ove
 import { resolveTriageDeckPromotion, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../features/workspace/client/canvas/triage-watch-deck.js";
 import { triageStageGeometryFor } from "../features/workspace/client/canvas/coordinates.js";
 import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../features/execution/client/operation-marks.js";
+
+// 덱은 실제 컴포넌트로 검증하되 Vite 호스트가 공급하는 플러그인 카탈로그는 필요하지 않다.
+vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => ({ operationKinds: [], providers: [] }) }));
 
 const THEATER_ID = "theater-a";
 const THEATERS = [
@@ -136,6 +143,49 @@ afterEach(() => {
 });
 
 describe("triage store", () => {
+  it("confirms normal entry under the Zen curtain and preserves War Room implies Zen across exit and reload", () => {
+    window.history.replaceState(null, "", "/console/operations");
+    setZenMode(false);
+    const opener = document.createElement("button");
+    const host = document.createElement("div");
+    document.body.append(opener, host);
+    triagePlateRoot = createRoot(host);
+    act(() => triagePlateRoot!.render(createElement(TriageEntryDialog)));
+    opener.focus();
+    act(() => enterTriage(null, opener));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(document.activeElement).toBe(dialog.querySelector(".onboarding-welcome-primary"));
+    expect(isTriageActive()).toBe(false);
+    act(() => dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+    expect(isZenMode()).toBe(false);
+
+    let actions: ZenTransitionActions | undefined;
+    const off = setZenTransitionRunner((_next, nextActions) => { actions = nextActions; return true; });
+    try {
+      act(() => enterTriage(null, opener));
+      act(() => (document.querySelector(".onboarding-welcome-primary") as HTMLButtonElement).click());
+      expect(isTriageActive()).toBe(false);
+      // 연출기가 커튼을 덮기 전에는 두 상태 모두 이전 화면이다.
+      act(() => { setZenMode(true); actions?.onLayout?.(); });
+      expect(isTriageActive()).toBe(true);
+      expect(getTriageEnteredAt()).toBe(0);
+      act(() => setTriageActive(false));
+      expect(isZenMode()).toBe(true);
+      act(() => enterTriage(null));
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(isTriageActive()).toBe(true);
+      act(() => setZenMode(false));
+      expect(isTriageActive()).toBe(false);
+      // 새로고침의 저장 표식 복원은 확인·연출 없이 Zen도 함께 되살린다.
+      window.sessionStorage.setItem("fleet.console.canvas-mode", JSON.stringify({ warRoom: true }));
+      act(() => { expect(restoreTriageSession()).toBe(true); });
+      expect(isZenMode()).toBe(true);
+      expect(isTriageActive()).toBe(true);
+      expect(getTriageEnteredAt()).toBe(0);
+    } finally { off(); act(() => setZenMode(false)); }
+  });
   it("keeps a member under its Commander: off every list, on the Commander's activity, and reachable by id", async () => {
     const commander = operation("commander", 1);
     const member = { ...operation("member", 2), parentOperationId: commander.id };
@@ -184,6 +234,27 @@ describe("triage store", () => {
       clearOperationRuntime(member.id);
       resetIdleArrivalForTests();
     }
+  });
+
+  it("keeps the deck in grouped manual order when attention changes without changing queue priority", () => {
+    const ungrouped = { ...operation("ungrouped", 1), order: 0 };
+    const first = { ...operation("first", 3), order: 1, groupId: "group" };
+    const second = { ...operation("second", 2), order: 2, groupId: "group" };
+    const other = operation("other", 4, "theater-b");
+    const operations = [ungrouped, second, other, first];
+    const groups = [{ id: "group", name: "Group", color: "", order: 0, theaterId: THEATER_ID, createdAt: 1 }];
+    const host = document.createElement("div");
+    document.body.append(host);
+    triagePlateRoot = createRoot(host);
+    const render = (runtime: Record<string, OperationRuntimeState>) => act(() => triagePlateRoot!.render(createElement(TriageWatchDeck, {
+      active: true, theaters: THEATERS, operations, groups, operationRuntime: runtime, operationAccent: {},
+    })));
+    const ids = () => [...host.querySelectorAll<HTMLElement>("[data-triage-deck-card]")].map((cell) => cell.dataset.triageDeckCard);
+    render({ second: { lifecycle: "live", activity: "awaiting" } });
+    expect(ids()).toEqual(["first", "second", "ungrouped", "other"]);
+    render({ other: { lifecycle: "live", activity: "awaiting" }, first: { lifecycle: "live", activity: "running" } });
+    expect(ids()).toEqual(["first", "second", "ungrouped", "other"]);
+    expect(resolveTriageQueue(operations, { other: { lifecycle: "live", activity: "awaiting" } }).map((entry) => entry.operation.id)).toEqual(["other"]);
   });
 
   it("keeps align-all across Triage round-trips, and align entry exits Triage", () => {    toggleAlignAll();

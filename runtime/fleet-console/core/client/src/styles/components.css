@@ -3550,6 +3550,11 @@
 .canvas-mode-bracket--sw { bottom: -2px; left: -2px; border-top: 0; border-right: 0; }
 .canvas-mode-bracket--se { right: -2px; bottom: -2px; border-top: 0; border-left: 0; }
 
+/* War Room의 바닥은 작업 표시줄 수평선이다 — 아래 괄호는 세로 팔로 그 선까지 잇는다. */
+.operations-canvas.is-triage .canvas-mode-frame { bottom: var(--arena-bottom, 0px); border-bottom: 0; }
+.operations-canvas.is-triage .canvas-mode-bracket--sw,
+.operations-canvas.is-triage .canvas-mode-bracket--se { bottom: 0; height: 34px; border-bottom: 0; }
+
 .is-triage-entering .canvas-mode-bracket--nw { animation: triage-bracket-nw var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 .is-triage-entering .canvas-mode-bracket--ne { animation: triage-bracket-ne var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 .is-triage-entering .canvas-mode-bracket--sw { animation: triage-bracket-sw var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
@@ -4363,7 +4368,11 @@
   display: grid;
   place-items: center;
   flex: none;
-  width: 18px;
+  width: auto;
+  min-width: 18px;
+  padding: 0 4px;
+  letter-spacing: 0;
+  white-space: nowrap;
   height: 18px;
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--brass) 16%, transparent);
@@ -4421,7 +4430,7 @@
   border-radius: var(--radius-md);
   transition:
     transform var(--duration-slow) var(--ease-glide),
-    box-shadow var(--duration-base) var(--ease-glide);
+    outline-color var(--duration-base) var(--ease-glide);
 }
 
 /* 포인터가 겨눈 칸 — 위치(brass)는 칸이 지고 상태(신호색)는 패널이 진다. 이 분담은 취향이 아니라
@@ -4429,20 +4438,44 @@
    키프레임으로 물고 있어, 같은 두 속성에 얹은 author-normal 선언은 애니메이션 오리진에 진다.
    실측(맥동 카드에 hover brass를 얹어 계산): 나온 값은 brass가 아니라 aurora였고 그림자도
    맥동 글로우였다 — 신호가 가장 급한 카드에서만 hover가 사라지는 조용한 실패다.
-   그래서 위치 마크는 패널이 건드리지 않는 표면, 곧 칸의 box-shadow가 소유한다.
+   그래서 위치 마크는 맥동과 별개인 칸의 outline이 소유한다.
    키보드는 같은 마크를 같은 순간에 받는다. 기존 .canvas-triage-deck-pick:focus-visible 링은
    그대로 남긴다: 그 링은 본문 안쪽을, 이 링은 캡션까지 포함한 칸 전체를 말한다. */
 .canvas-triage-deck-cell:hover,
-.canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible) {
-  /* 이웃 카드의 16px 맥동 글로우가 10px 간격을 건너와 이 1px 링을 씻지 않게 한 칸 올린다. */
+.canvas-triage-deck-cell.is-queue-hovered,
+.canvas-triage-deck-cell:focus-within {
+  /* 이웃 카드의 맥동 위에도 위치를 남기되, 신호 테두리는 덮지 않는다. */
   z-index: 6;
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);
+  outline: 1px solid color-mix(in oklch, var(--brass) 55%, transparent);
+  outline-offset: 0;
+}
+
+.canvas-triage-deck-cell:is(.is-awaiting, .is-unseen):is(:hover, :focus-within, .is-queue-hovered) {
+  outline-color: color-mix(in oklch, var(--brass) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.canvas-triage-deck-cell.is-awaiting { --triage-signal: var(--aurora); --triage-signal-glow: var(--aurora-glow); --triage-signal-ink: var(--aurora-ink); }
+.canvas-triage-deck-cell.is-unseen { --triage-signal: var(--positive); --triage-signal-glow: var(--positive-glow); --triage-signal-ink: var(--positive-ink); }
+.canvas-triage-deck-cell:is(.is-awaiting, .is-unseen) > .canvas-triage-deck-mount > .canvas-operation {
+  border-color: var(--triage-signal);
+}
+.canvas-triage-deck-cell.is-idle .canvas-operation-terminal { opacity: 0.56; }
+.canvas-triage-deck-next {
+  flex: none;
+  white-space: nowrap;
+  pointer-events: none;
+  color: var(--triage-signal-ink, var(--aurora-ink));
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.05em;
 }
 
 /* 겨눈 카드의 캡션은 같은 brass 워시를 옅게 입는다. 포커스(28%)보다 낮은 10%인 것은
    제어 문법의 hover < selected 위계 그대로다 — 겨눔은 지목이지 자리가 아니다. */
 .canvas-triage-deck-cell:hover .canvas-operation.is-deck-tile > .canvas-operation-titlebar,
-.canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible) .canvas-operation.is-deck-tile > .canvas-operation-titlebar {
+.canvas-triage-deck-cell.is-queue-hovered .canvas-operation.is-deck-tile > .canvas-operation-titlebar,
+.canvas-triage-deck-cell:focus-within .canvas-operation.is-deck-tile > .canvas-operation-titlebar {
   background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
@@ -4521,13 +4554,13 @@
 }
 
 @keyframes triage-deck-arrival-pulse {
-  0%, 100% { border-color: var(--surface-rim); box-shadow: none; }
-  48% { border-color: var(--aurora); box-shadow: 0 0 16px var(--aurora-glow); }
+  0%, 100% { border-color: var(--triage-signal, var(--surface-rim)); box-shadow: none; }
+  48% { border-color: var(--triage-signal, var(--aurora)); box-shadow: 0 0 16px var(--triage-signal-glow, var(--aurora-glow)); }
 }
 
 @keyframes triage-fresh-pulse {
-  0%, 100% { border-color: var(--surface-rim); box-shadow: none; }
-  50% { border-color: var(--aurora); box-shadow: 0 0 16px var(--aurora-glow); }
+  0%, 100% { border-color: color-mix(in oklab, var(--triage-signal, var(--aurora)) 50%, var(--surface-rim)); box-shadow: none; }
+  50% { border-color: var(--triage-signal, var(--aurora)); box-shadow: 0 0 16px var(--triage-signal-glow, var(--aurora-glow)); }
 }
 
 @keyframes triage-bracket-nw { from { transform: translate(-18px, -18px); } to { transform: translate(0, 0); } }
@@ -4581,9 +4614,9 @@
     animation: none;
   }
 
-  /* 움직임 없이도 검토 전 신호는 읽혀야 한다 — 정지한 aurora 링으로 폴백한다. */
+  /* 움직임 없이도 대기·확인 전의 서로 다른 신호는 남는다. */
   .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation {
-    border-color: var(--aurora);
+    border-color: var(--triage-signal, var(--aurora));
   }
 
   /* 움직임 없이도 대기 신호는 읽혀야 한다 — 정지한 aurora 링으로 폴백한다. */

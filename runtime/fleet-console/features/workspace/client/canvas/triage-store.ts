@@ -9,6 +9,8 @@ import { getState, clearPendingSideBarSignals, registerFocusTheaterSwitchSuppres
 import { clearSideBarOperationAction } from "../sidebar/interaction.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import { readCanvasModeSession, rememberWarRoomActive } from "./canvas-mode-session.js";
+import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
+import { isZenMode, requestZenMode, setZenMode, subscribeZenMode } from "../../../../core/client/src/integration/zen-mode.js";
 import {
   forceDropCompanionOperationId,
   getLoadedTheaterId,
@@ -26,6 +28,21 @@ export interface TriageQueueEntry {
   readonly operation: OperationNode;
   readonly activity: OperationActivityVisual;
   readonly picked: boolean;
+}
+
+export function resolveTriageCounts(operations: readonly OperationNode[], runtime: Readonly<Record<string, OperationRuntimeState>>) {
+  const counts = { waiting: 0, unseen: 0, running: 0, idle: 0 };
+  const arrivals = getIdleArrivalIds();
+  for (const operation of operations) {
+    const activity = resolveOperationActivity(operation, runtime);
+    if (activity === "awaiting") counts.waiting += 1;
+    else if (activity === "running" || activity === "background") counts.running += 1;
+    else if (activity === "idle") {
+      if (arrivals.has(operation.id)) counts.unseen += 1;
+      else counts.idle += 1;
+    }
+  }
+  return counts;
 }
 
 export interface TriageStageIdentity {
@@ -48,6 +65,17 @@ let setAsideArmed: {
 let enteredAt: number | null = null;
 // 선별 중 마지막으로 무대에 올랐던 Operation의 Theater — 종료 시 이 Theater로 복귀한다.
 let lastStagedTheaterId: string | null = null;
+let stagedOperationId: string | null = null;
+
+// 무대 판정은 캔버스 한 곳이 소유한다. 막대는 포커스 보호·600ms 유예를 재계산하지 않고 그 결과를 읽는다.
+export function publishTriageStage(operationId: string | null): void {
+  if (stagedOperationId === operationId) return;
+  stagedOperationId = operationId;
+  emitTriage();
+}
+export function useTriageStage(): string | null {
+  return useSyncExternalStore(subscribeTriage, () => stagedOperationId, () => null);
+}
 const lastClearedAt = new Map<string, number>();
 const deferredAt = new Map<string, number>();
 const dismissed = new Set<string>();
@@ -220,14 +248,21 @@ export function isTriageActive(): boolean {
   return triageActive;
 }
 
-export function setTriageActive(active: boolean): void {
+// Zen을 끄는 모든 경로(장면·강제 종료·네이티브 전체화면)를 한 곳에서 따른다.
+subscribeZenMode(() => {
+  if (!isZenMode()) setTriageActive(false);
+});
+
+export function setTriageActive(active: boolean, animate = true): void {
   if (active) {
+    if (getViewModeSnapshot().effective === "mobile") return;
+    setZenMode(true);
     const { activeTheaterId } = getState();
     // 모두 정렬은 스냅 유지라 War Room 왕복에 남는다 — 진입이 걷지 않는다.
     if (!triageActive) {
       triageActive = true;
       rememberWarRoomActive(true);
-      enteredAt = Date.now();
+      enteredAt = animate ? Date.now() : 0;
       lastStagedTheaterId = null;
     }
     if (activeTheaterId) captureFocusLayerBeforeTriage(activeTheaterId);
@@ -243,6 +278,7 @@ export function setTriageActive(active: boolean): void {
     return;
   }
   triageActive = false;
+  stagedOperationId = null;
   rememberWarRoomActive(false);
   pickedOperationId = null;
   activeAwaitingClaimId = null;
@@ -295,11 +331,62 @@ export function setTriageActive(active: boolean): void {
 export function restoreTriageSession(): boolean {
   if (triageActive) return false;
   if (!readCanvasModeSession().warRoom) return false;
-  setTriageActive(true);
+  if (getViewModeSnapshot().effective === "mobile") return false;
+  setTriageActive(true, false);
   return true;
 }
 
-export function enterTriage(focusedOperationId: string | null): void {
+interface TriageEntryRequest {
+  readonly focusedOperationId: string | null;
+  readonly returnFocus: HTMLElement | null;
+}
+let entryRequest: TriageEntryRequest | null = null;
+let entryEpoch = 0;
+
+export function useTriageEntryRequest(): TriageEntryRequest | null {
+  return useSyncExternalStore(subscribeTriage, () => entryRequest, () => null);
+}
+
+export function cancelTriageEntry(): void {
+  entryEpoch += 1;
+  const target = entryRequest?.returnFocus;
+  entryRequest = null;
+  emitTriage();
+  if (target?.isConnected) target.focus({ preventScroll: true });
+}
+
+export function confirmTriageEntry(): void {
+  const request = entryRequest;
+  if (!request) return;
+  entryRequest = null;
+  emitTriage();
+  if (getViewModeSnapshot().effective === "mobile") return;
+  const epoch = entryEpoch;
+  const enter = () => {
+    // Operations의 대화상자 호스트가 언마운트되면 epoch가 바뀐다. 브라우저의 basename을
+    // 라우터 내부 경로와 비교하지 않고, 실제 요청 호스트의 수명으로 경로 이탈을 판단한다.
+    if (getViewModeSnapshot().effective === "mobile" || epoch !== entryEpoch) return;
+    activateTriage(request.focusedOperationId, false);
+  };
+  const focus = () => requestAnimationFrame(() => {
+    if (isTriageActive()) document.querySelector<HTMLButtonElement>('.zen-taskbar [data-canvas-mode="warRoom"]')?.focus({ preventScroll: true });
+  });
+  if (isZenMode()) { enter(); focus(); }
+  else requestZenMode(true, { onLayout: enter, onComplete: focus });
+}
+
+export function enterTriage(focusedOperationId: string | null, returnFocus: HTMLElement | null = globalThis.document?.activeElement as HTMLElement | null): void {
+  if (getViewModeSnapshot().effective === "mobile" || entryRequest !== null) return;
+  if (!isZenMode()) {
+    // 지목과 복귀 대상을 대화상자의 포커스 이동 전에 포착한다.
+    entryRequest = { focusedOperationId, returnFocus };
+    emitTriage();
+    return;
+  }
+  activateTriage(focusedOperationId);
+}
+
+function activateTriage(focusedOperationId: string | null, animate = true): void {
   const { operations, operationRuntime } = getState();
   const focusedOperation = focusedOperationId === null
     ? null
@@ -307,7 +394,7 @@ export function enterTriage(focusedOperationId: string | null): void {
   if (focusedOperation && isTriageWaitingOperation(focusedOperation, operationRuntime)) {
     pickTriageOperation(focusedOperation.id);
   }
-  setTriageActive(true);
+  setTriageActive(true, animate);
   if (resolveTriageQueue(operations, operationRuntime).length > 0) return;
   setActiveOperation(null);
   const document = globalThis.document;

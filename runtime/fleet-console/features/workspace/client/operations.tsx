@@ -42,6 +42,7 @@ import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuic
 import type { ConsoleState, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../../../core/client/src/chrome/mobile/operation-body-pool.js";
+import { TriageEntryDialog } from "./canvas/triage-entry-dialog.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { useZenMode, useZenModeState } from "../../../core/client/src/integration/zen-mode.js";
@@ -1005,6 +1006,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onClose={closeOperationMenu}
         />
       ) : null}
+      <TriageEntryDialog />
       <ExpandedSurfaceLayer />
     </div>
   );

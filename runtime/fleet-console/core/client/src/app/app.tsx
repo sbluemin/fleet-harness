@@ -52,7 +52,7 @@ import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store
 import { useConsoleLocale, useT } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { syncExperimentModelOptionPlugins } from "../integration/experiment-model-options.js";
-import { isZenMode, setZenMode, toggleZenMode, useZenModeState } from "../integration/zen-mode.js";
+import { isZenMode, setZenMode, toggleZenMode, useZenModeState, useZenTransitionActive } from "../integration/zen-mode.js";
 import { useZenDesktopFullscreen } from "../integration/desktop-fullscreen.js";
 import { ZenBar } from "../chrome/zen/zen-bar.js";
 import { ZenTransition } from "../chrome/zen/zen-transition.js";
@@ -132,6 +132,7 @@ export function App() {
   const mobileLayout = useViewMode().effective === "mobile";
   const mobileSessionOpen = useMobileSessionOpen();
   const zenState = useZenModeState();
+  const zenTransitionActive = useZenTransitionActive();
   const zenMode = zenState.active;
   const zenActive = zenMode && operationsViewVisible && !mobileLayout;
   const workFocusRef = useRef<HTMLElement | null>(null);
@@ -574,6 +575,7 @@ export function App() {
         <WhatsNewModal state={state} />
         <CommissioningOverlay state={state} />
         <OnboardingHost
+          toursSuspended={zenTransitionActive}
           core={CORE_ONBOARDING}
           plugins={registry.onboarding}
           language={consoleLocale}

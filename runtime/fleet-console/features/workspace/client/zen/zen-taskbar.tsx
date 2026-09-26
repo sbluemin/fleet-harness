@@ -18,6 +18,8 @@ import type { SideBarEntry } from "../sidebar/operations-side-bar-chip.js";
 import { getStatusTransitionTick, useSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
+import { useTriageActive } from "../canvas/triage-store.js";
+import { WarRoomTaskbar } from "./war-room-taskbar.js";
 import "./zen-taskbar.css";
 
 /**
@@ -44,7 +46,7 @@ import "./zen-taskbar.css";
 /** 막대 높이 — theme.css의 --zen-taskbar-height와 한 값. 아레나 하단 인셋의 원료다. */
 export const ZEN_TASKBAR_HEIGHT = 36;
 
-interface ZenTaskbarProps {
+export interface ZenTaskbarProps {
   readonly theaters: readonly TheaterInfo[];
   readonly activeTheaterId: string | null;
   readonly operations: readonly OperationNode[];
@@ -135,7 +137,11 @@ function toggleFoldedGroup(key: string): void {
 const MENU_GAP = 8;
 const MENU_WIDTH = 272;
 
-export function ZenTaskbar({
+export function ZenTaskbar(props: ZenTaskbarProps) {
+  return useTriageActive() ? <WarRoomTaskbar {...props} /> : <CruiseTaskbar {...props} />;
+}
+
+function CruiseTaskbar({
   theaters,
   activeTheaterId,
   operations,

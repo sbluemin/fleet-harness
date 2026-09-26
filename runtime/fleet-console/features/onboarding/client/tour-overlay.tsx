@@ -27,10 +27,11 @@ interface LockedTour {
  * blocked는 엔진의 앞 단계(엔트리 힌트)가 아직 남았다는 뜻이다. 막혀 있는 동안에는 새 투어를 시작하지 않고,
  * 이미 재생 중인 투어는 끊지 않는다.
  */
-export function TourOverlay({ tours, language, blocked }: {
+export function TourOverlay({ tours, language, blocked, suspended = false }: {
   readonly tours: readonly OnboardingTour[];
   readonly language: ConsoleLocale;
   readonly blocked: () => boolean;
+  readonly suspended?: boolean;
 }) {
   const settings = useGlobalSettingsStore();
   const t = onboardingT(language);
@@ -85,7 +86,7 @@ export function TourOverlay({ tours, language, blocked }: {
   }, [domRevision, tours]);
 
   const resolved = useMemo(() => {
-    if (domRevision === 0 || !settings.state) return null;
+    if (suspended || domRevision === 0 || !settings.state) return null;
     if (lockedTour) {
       const tour = tours.find((entry) => entry.id === lockedTour.tourId);
       if (!tour || seen.includes(tourSeenKey(tour.id, lockedTour.phase))) return null;
@@ -99,7 +100,7 @@ export function TourOverlay({ tours, language, blocked }: {
     }
     if (blocked()) return null;
     return resolveNextTour(tours, seen, document, isCompletedTourScreenVisible(completedTourIdRef.current, tours, document));
-  }, [blocked, domRevision, lockedTour, seen, settings.state, tours]);
+  }, [blocked, domRevision, lockedTour, seen, settings.state, tours, suspended]);
 
   useEffect(() => {
     if (lockedTour || !resolved) return;

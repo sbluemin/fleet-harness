@@ -9,10 +9,10 @@ const messagesEn = {
   "zenTaskbar.welcomeNext": "Try it from the Zen button in the top bar.",
   "canvasModes.step1Title": "Two ways to work the canvas",
   "canvasModes.step1Body": "Cruise keeps panels where you drop them. Align all (Alt+F) lines every panel up at once, and drops them back where they were when you toggle it off. War Room brings up one waiting panel at a time, across every Theater.",
-  "canvasModes.step2Title": "The tools sit under the mode",
-  "canvasModes.step2Body": "Hover the active mode, or press it, and its tools drop down here. Switch modes and the set changes.",
+  "canvasModes.step2Title": "Each mode has its own tools",
+  "canvasModes.step2Body": "In Cruise, hover or press the active mode to open its tools. War Room keeps auto-stage and deck density beside the mode switch in the taskbar.",
   "warRoom.step1Title": "War Room, one at a time",
-  "warRoom.step1Body": "Whatever is waiting comes up one at a time, in the order the sidebar keeps. These tools are War Room's own: this one cycles deck density 1.0x -> 1.6x, and pinch or Ctrl+wheel takes it anywhere from 1.0x to 2.0x.",
+  "warRoom.step1Body": "Whatever is waiting comes up one at a time, in the taskbar queue's order. These tools are War Room's own: this one cycles deck density 1.0x -> 1.6x, and pinch or Ctrl+wheel takes it anywhere from 1.0x to 2.0x.",
   "warRoom.step2Title": "One at a time",
   "warRoom.step2Body": "Only what is waiting stays on stage. Answer it and the next item takes the same spot. Alt+→ pushes the current item to the back; Alt+↓ twice sets it aside.",
   "warRoom.step3Title": "The deck watches the rest",
@@ -37,10 +37,10 @@ const messagesKo: Record<keyof typeof messagesEn, string> = {
   "zenTaskbar.welcomeNext": "상단 바의 Zen 버튼으로 켜 보세요.",
   "canvasModes.step1Title": "화면을 쓰는 두 가지 방식입니다",
   "canvasModes.step1Body": "Cruise는 패널을 놓은 자리에 그대로 둡니다. 모두 정렬(Alt+F)은 열린 패널을 한 번에 정렬했다가 끄면 원래 자리로 돌려놓습니다. War Room은 답을 기다리는 패널을 Theater 구분 없이 한 건씩 올립니다.",
-  "canvasModes.step2Title": "도구는 모드 아래에 있습니다",
-  "canvasModes.step2Body": "켜진 모드에 마우스를 올리거나 누르면 그 모드의 도구가 여기로 펼쳐집니다. 모드를 바꾸면 도구도 바뀝니다.",
+  "canvasModes.step2Title": "모드마다 도구가 다릅니다",
+  "canvasModes.step2Body": "Cruise에서는 켜진 모드에 마우스를 올리거나 누르면 도구가 펼쳐집니다. War Room에서는 작업 표시줄의 모드 옆에 자동 올리기와 덱 배율이 있습니다.",
   "warRoom.step1Title": "War Room은 한 번에 하나씩",
-  "warRoom.step1Body": "기다리는 건이 사이드바가 쥔 순서대로 하나씩 올라옵니다. 이 도구들은 War Room의 것입니다 — 여기서 덱 밀도를 1.0× → 1.6×로 순환하고, 핀치나 Ctrl+휠로는 1.0×~2.0× 사이 어디든 갈 수 있습니다.",
+  "warRoom.step1Body": "기다리는 건이 작업 표시줄의 대기열 순서대로 하나씩 올라옵니다. 이 도구들은 War Room의 것입니다 — 여기서 덱 밀도를 1.0× → 1.6×로 순환하고, 핀치나 Ctrl+휠로는 1.0×~2.0× 사이 어디든 갈 수 있습니다.",
   "warRoom.step2Title": "한 번에 하나만 세웁니다",
   "warRoom.step2Body": "답을 기다리는 작업만 무대에 남습니다. 답을 보내면 다음 건이 같은 자리에 섭니다. Alt+→는 이번 건을 맨 뒤로 미루고, Alt+↓를 두 번 누르면 치워둡니다.",
   "warRoom.step3Title": "덱이 나머지를 지켜봅니다",
@@ -129,7 +129,7 @@ export const workspaceOnboarding: OnboardingContribution = {
  * Zen 작업 표시줄 소개 일러스트 — 사이드바가 물러난 캔버스 아래로 작업 표시줄이 선다. 왼쪽은 Theater와 묶인 Operation
  * 목록(지금 보는 것은 brass 밑줄, 답을 기다리는 것은 aurora), 오른쪽 끝은 도구 · 종료 · Fleet 앰블럼이다. 테마 토큰만 소비한다.
  */
-function ZenTaskbarWelcomeIllustration() {
+export function ZenTaskbarWelcomeIllustration() {
   return (
     <svg viewBox="0 0 360 176" role="img" aria-hidden="true" focusable="false">
       <defs>

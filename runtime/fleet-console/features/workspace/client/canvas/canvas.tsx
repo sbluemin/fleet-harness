@@ -45,7 +45,7 @@ import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operation
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { companionSlotWeightsFor, COMPANION_CRAMPED_SLOT_RATIO, COMPANION_KEYBOARD_STEP_PX, COMPANION_MIN_SLOT_PX, COMPANION_SESSION_SLOT_ID, COMPANION_SLOT_GAP_PX, resetCompanionSlotWeights, resolveCompanionSlotWidths, setCompanionSlotWeights, useCompanionSlotWeights } from "./companion-widths.js";
-import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, publishTriageStage, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 // 함대 지도 퇴장 연출 길이 — CSS fleet-map-out(--duration-base ≈ 220ms)보다 넉넉히.
 const FLEET_MAP_LEAVE_MS = 320;
@@ -254,7 +254,7 @@ export function OperationsCanvas({
     }
     // 전환 제목은 전역 진입 시각 기준으로 한 번만 띄운다 — 선별 중 Theater 자동 전환은 재생하지 않는다.
     const enteredAt = getTriageEnteredAt() ?? Date.now();
-    const remaining = Math.max(0, MODE_TITLE_DURATION_MS - (Date.now() - enteredAt));
+    const remaining = enteredAt === 0 ? 0 : Math.max(0, MODE_TITLE_DURATION_MS - (Date.now() - enteredAt));
     setTriageEntering(remaining > 0);
     if (remaining === 0) return;
     const timer = window.setTimeout(() => setTriageEntering(false), remaining);
@@ -632,6 +632,8 @@ export function OperationsCanvas({
   const triageStage = deckPromotion.promote ? candidateTriageStage : null;
   const triageStageId = triageStage?.operation.id ?? null;
   const triageStageTheaterId = triageStage?.operation.theaterId ?? null;
+  useLayoutEffect(() => { publishTriageStage(triageStageId); }, [triageStageId]);
+  useEffect(() => () => publishTriageStage(null), []);
   useEffect(() => {
     // 종료 시 "마지막으로 무대에 올랐던 Theater"로 복귀하기 위한 이력 — 무대가 설 때만 기록한다.
     if (triageStageTheaterId !== null) recordTriageStageTheater(triageStageTheaterId);
@@ -1733,6 +1735,7 @@ export function OperationsCanvas({
             snapFull: operationSnapFull || operationCompanionLayer,
             triageStage: operationTriageStage,
             triagePicked: operationTriageStage && triageStage?.picked === true,
+            triageNext: triageActive && triageStageId === null && triageQueue[0]?.operation.id === operation.id,
             glanceHud,
             companion: operationCompanion,
             companions: operationCompanion ? visibleCompanionPanels : [],
@@ -1945,6 +1948,7 @@ export function OperationsCanvas({
         active={triageActive}
         theaters={state.theaters}
         operations={triageDeckOperations}
+        groups={state.groups}
         operationRuntime={operationRuntime}
         operationAccent={canvas.operationAccent}
         arrivingOperationId={triageDeckArrivingOperationId}
@@ -2256,6 +2260,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly snapFull: boolean;
   readonly triageStage: boolean;
   readonly triagePicked: boolean;
+  readonly triageNext: boolean;
   readonly glanceHud: GlanceHudModel;
   readonly companion: boolean;
   readonly companions: readonly CompanionPanelDescriptor[];
@@ -2331,6 +2336,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         snapFull={options.snapFull}
         triageStage={options.triageStage}
         triagePicked={options.triagePicked}
+        triageNext={options.triageNext}
         deckTile={options.deckSlot !== null}
         glanceHud={options.glanceHud}
         topEdge={options.topEdge}
