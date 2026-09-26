@@ -35,6 +35,8 @@ type Saved = {
   readonly members?: readonly { readonly role: string; readonly subagents?: boolean }[];
   readonly criteriaProposals?: readonly unknown[];
   readonly followupBatches?: readonly { readonly items: readonly unknown[] }[];
+  readonly links?: readonly { readonly objectiveId: string; readonly at: number }[];
+  readonly unrelated?: readonly string[];
 };
 
 function harness(routingOrigin: () => string | null = () => null) {
@@ -551,7 +553,7 @@ describe("Objectives contract", () => {
       if (!parsed.success) throw new Error("exposed schema rejected representative input");
       return (await consoleTool.execute(parsed.data, { cwd: workspace, caller: { kind: "operation" as const, operationId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
     };
-    const created = await throughGate({ add: { title: "From Console Use", note: "brief", criteria: ["ships", "tested"] } });
+    const created = await throughGate({ add: { title: "From Console Use", note: "brief", criteria: ["ships", "tested"], related: [caller.id] } });
     expect(created.isError).toBe(false);
     const id = (created.structuredContent.objective as { id: string }).id;
     // 브리핑·기준은 기본 요구사항으로, 임무·구성원 없이, 호출 Operation 의 그룹과 만든 표시를 들고 태어난다.
@@ -560,6 +562,8 @@ describe("Objectives contract", () => {
     // 저장 무결성 — 파일에서 다시 읽어도 기준이 기본 요구사항으로 남는다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect(reloaded.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
+    expect(reloaded.find(id)!.related).toEqual([caller.id]);
+    expect(reloaded.find(id)!.links).toEqual([]);
     // 편성 키도 오타도 add 에 없다 — 선검사에서 막혀 사람의 권한 요청까지 가지 않는다.
     for (const args of [{ add: { title: "Typo", criterai: ["x"] } }, { add: { title: "Missions inline", missions: ["x"] } }, { add: { title: "Top-level missions" }, missions: ["x"] }]) {
       expect(gate.safeParse(args).success).toBe(false);
@@ -574,6 +578,9 @@ describe("Objectives contract", () => {
     expect((refused.structuredContent.hint as string).length).toBeGreaterThan(0);
     expect({ launches: launches.length, operations: operations.size, listed: store.list("t1").length }).toEqual(fenced);
     expect(savedIds()).toEqual([id]);
+    const similar = await throughGate({ add: { title: "From Console Use", note: "brief", criteria: ["ships", "tested"] } });
+    expect(similar.isError).toBe(false);
+    expect((similar.structuredContent.nearby as readonly { objectiveId: string }[]).map((entry) => entry.objectiveId)).toContain(id);
   });
 
   it("shows every agent Operation created elsewhere as an objective, but not member or plugin Operations", async () => {
@@ -754,11 +761,12 @@ describe("Objectives contract", () => {
   it("admits observable follow-ups and creates records once after hand-off without launching their Operations", async () => {
     const { store, route, call, launch, launches, operations, savedObjective } = harness();
     const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
+    const related = await launch.create({ theaterId: "t1", title: "Related", groupId: null });
     await launch.requestPlan(source.id);
     const missionId = store.find(source.id)!.missions[0]!.id;
     store.missionDone(source.id, missionId, ["fixed"]);
     // 후보는 이 목표의 임무에서 나오고, 근거 하나는 관찰할 수 있어야 하며(줄 있는 파일·명령), 활성 후보는 상한까지다.
-    const body = { title: "Next", summary: "Next step", userImpact: "Users see the next step", fromMission: missionId, brief: "Next brief", criteria: ["Verified"], evidence: [{ kind: "command", text: "pnpm test" }] };
+    const body = { title: "Next", summary: "Next step", userImpact: "Users see the next step", fromMission: missionId, brief: "Next brief", criteria: ["Verified"], related: [related.id], evidence: [{ kind: "command", text: "pnpm test" }] };
     const add = async (value: unknown) => (await call("followup", { objectiveId: source.id, add: value }, source.id)).structuredContent;
     expect((await add({ ...body, fromMission: "elsewhere" })).error).toBe("unknown_mission");
     expect((await add({ ...body, evidence: [{ kind: "file", path: "src/a.ts" }] })).error).toBe("evidence_not_observable");
@@ -767,7 +775,7 @@ describe("Objectives contract", () => {
     for (const extra of store.find(source.id)!.followups.slice(1)) store.followupWithdraw(source.id, extra.id);
     const candidate = store.find(source.id)!.followups[0]!;
     const batchId = "3f1c8f3e-1111-4a8b-9c0d-000000000001";
-    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev }] });
+    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev, linkOnCreate: true }] });
     // 후보 선택은 검토 대기에서만 — 지휘관이 넘기지 않았으면 사람이 회고 없이 넘긴다.
     expect((await pick()).value.error).toBe("not_in_review");
     expect((await route("objective/hand-off", { objectiveId: source.id })).status).toBe(200);
@@ -778,6 +786,19 @@ describe("Objectives contract", () => {
     const targetId = store.find(source.id)!.followupBatches[0]!.items[0]!.operationId!;
     expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id, userImpact: "Users see the next step" } });
     expect(savedObjective(targetId)).toHaveProperty("pending.title", "Next");
+    expect(store.find(targetId)!.related).toEqual([related.id]);
+    expect(store.find(related.id)!.links).toEqual([]);
+    expect(savedObjective(source.id).links?.[0]?.objectiveId).toBe(targetId);
+    expect(savedObjective(targetId).links?.[0]?.objectiveId).toBe(source.id);
+    expect((await route("objective/relation", { objectiveId: source.id, otherId: targetId, action: "unlink" })).status).toBe(200);
+    expect(savedObjective(source.id).links).toBeUndefined();
+    expect(savedObjective(targetId).links).toBeUndefined();
+    expect((await route("objective/relation", { objectiveId: source.id, otherId: targetId, action: "unrelated" })).status).toBe(200);
+    expect(savedObjective(source.id).unrelated).toEqual([targetId]);
+    expect(savedObjective(targetId).unrelated).toEqual([source.id]);
+    expect((await route("objective/relation", { objectiveId: source.id, otherId: targetId, action: "restore" })).status).toBe(200);
+    expect(savedObjective(source.id).unrelated).toBeUndefined();
+    expect(savedObjective(targetId).unrelated).toBeUndefined();
     expect(operations.has(targetId)).toBe(false);
     expect(launches).toHaveLength(1);
     launch.resumeFollowups(source.id);

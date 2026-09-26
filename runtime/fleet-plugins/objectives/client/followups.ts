@@ -9,6 +9,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { Objective } from "../server/types.js";
+import { nearbyObjectives } from "../server/nearby.js";
 
 export type FollowupState = "open" | "selected" | "discarded";
 
@@ -42,6 +43,8 @@ export interface FollowupCandidate {
   readonly batchId: string | null;
   /** 폐기 흔적 — 누가·언제. open·selected면 null 이다. */
   readonly discarded: { readonly at: number; readonly by: "human" } | null;
+  readonly related: readonly string[];
+  readonly nearby: readonly { readonly objectiveId: string; readonly title: string; readonly words: readonly string[]; readonly paths: readonly string[] }[];
 }
 
 export type FollowupBatchItemState = "creating" | "confirming" | "created" | "failed" | "deleted" | "abandoned";
@@ -130,6 +133,8 @@ function asCandidate(value: unknown): FollowupCandidate | null {
     at: typeof value.at === "number" ? value.at : 0,
     updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : (typeof value.at === "number" ? value.at : 0),
     batchId: typeof value.batchId === "string" ? value.batchId : null,
+    related: asStringArray(value.related),
+    nearby: Array.isArray(value.nearby) ? value.nearby.filter((entry): entry is FollowupCandidate["nearby"][number] => isRecord(entry) && typeof entry.objectiveId === "string" && typeof entry.title === "string" && Array.isArray(entry.words) && Array.isArray(entry.paths)) : [],
     discarded,
   };
 }
@@ -199,8 +204,11 @@ export function readOrigin(objective: Objective): { readonly objectiveId: string
   return { objectiveId: raw.objectiveId, title: typeof raw.title === "string" ? raw.title : null, userImpact: asString(raw.userImpact) };
 }
 
-export function openFollowups(objective: Objective): readonly FollowupCandidate[] {
-  return readFollowups(objective).filter((candidate) => candidate.state === "open");
+export function openFollowups(objective: Objective, board?: readonly Objective[]): readonly FollowupCandidate[] {
+  return readFollowups(objective).filter((candidate) => candidate.state === "open").map((candidate) => board ? {
+    ...candidate,
+    nearby: nearbyObjectives({ title: candidate.title, note: candidate.brief, criteria: candidate.criteria.map((text) => ({ text })), evidence: candidate.evidence }, board, objective),
+  } : candidate);
 }
 
 export function discardedFollowups(objective: Objective): readonly FollowupCandidate[] {
@@ -237,6 +245,7 @@ export function followupGate(objective: Objective): "steer" | "criteria" | null 
 // ── 탭 안 편의 상태 (초안과 같은 규칙: 접어도, 다른 목표를 보다 와도 남는다) ──
 
 const selections = new Map<string, Map<string, number>>();
+const linkSelections = new Map<string, ReadonlySet<string>>();
 const selectionListeners = new Set<() => void>();
 const compOpens = new Map<string, boolean>();
 const compListeners = new Set<() => void>();
@@ -287,11 +296,25 @@ function commitSelection(objectiveId: string, next: Map<string, number> | null):
   notifySelections();
 }
 
+export function readLinkSelections(objectiveId: string): ReadonlySet<string> { return linkSelections.get(objectiveId) ?? EMPTY_SELECTION; }
+export function useLinkSelections(objectiveId: string): ReadonlySet<string> {
+  return useSyncExternalStore(subscribeSelection, () => readLinkSelections(objectiveId), () => readLinkSelections(objectiveId));
+}
+export function toggleLinkSelection(objectiveId: string, candidateId: string, checked: boolean): void {
+  const next = new Set(readLinkSelections(objectiveId));
+  if (checked) next.add(candidateId);
+  else next.delete(candidateId);
+  if (next.size) linkSelections.set(objectiveId, next);
+  else linkSelections.delete(objectiveId);
+  notifySelections();
+}
+
 export function toggleFollowupSelection(objectiveId: string, candidateId: string, checked: boolean, rev: number): void {
   const next = new Map(selections.get(objectiveId) ?? []);
   if (checked) next.set(candidateId, rev);
   else next.delete(candidateId);
   commitSelection(objectiveId, next.size > 0 ? next : null);
+  if (!checked) toggleLinkSelection(objectiveId, candidateId, false);
 }
 
 /**
@@ -307,10 +330,15 @@ export function pruneSelection(objectiveId: string, openRevs: ReadonlyMap<string
     if (openRevs.get(id) === rev) next.set(id, rev);
   }
   commitSelection(objectiveId, next.size > 0 ? next : null);
+  const linked = new Set([...readLinkSelections(objectiveId)].filter((id) => next.has(id)));
+  if (linked.size) linkSelections.set(objectiveId, linked);
+  else linkSelections.delete(objectiveId);
+  notifySelections();
 }
 
 export function clearSelection(objectiveId: string): void {
   commitSelection(objectiveId, null);
+  if (linkSelections.delete(objectiveId)) notifySelections();
 }
 
 export function subscribeSelection(listener: () => void): () => void {

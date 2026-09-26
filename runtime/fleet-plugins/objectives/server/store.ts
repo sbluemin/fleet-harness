@@ -94,6 +94,7 @@ export interface ObjectiveInit {
   /** Console Use 가 함께 받은 달성 기준 문장 — 저장될 때 기본 요구사항으로 by "human" 이 된다. */
   readonly criteria?: readonly string[];
   readonly addedBy?: string;
+  readonly related?: readonly string[];
   /** 후속으로 태어난 목표 — 원본 목표·후보·배치와 근거. */
   readonly origin?: StoredOrigin;
 }
@@ -112,7 +113,7 @@ export function checkedCriteria(init: Pick<ObjectiveInit, "criteria">): readonly
 /** 완료와 함께 고른 후보 — 화면이 본 rev 와, 고른 순간 동결할 기동 조건. */
 export interface FollowupSelection {
   readonly batchId: string;
-  readonly followups: readonly { readonly id: string; readonly rev: number }[];
+  readonly followups: readonly { readonly id: string; readonly rev: number; readonly linkOnCreate?: boolean }[];
   readonly launch: StoredFollowupBatch["launch"];
 }
 
@@ -203,6 +204,7 @@ export interface ObjectiveStore {
   followupAbandon(objectiveId: string, batchId: string, candidateId: string): Objective;
   /** 저장된 배치 그대로 — 동결된 기동 조건과 스냅샷 원형. 원본이 보이지 않으면 null. */
   followupBatch(objectiveId: string, batchId: string): StoredFollowupBatch | null;
+  relation(objectiveId: string, otherId: string, action: "link" | "unlink" | "unrelated" | "restore"): Objective;
   /** 이 id 에 목표 레코드가 있는가 — 후속 재시도의 중복 생성을 막는다. */
   recorded(operationId: string): boolean;
 }
@@ -322,6 +324,9 @@ function writeObjectiveAtomic(dir: string, objective: StoredObjective): void {
 function compact(objective: StoredObjective): StoredObjective {
   const out: Record<string, unknown> = { ...objective };
   for (const key of ["note", "planRequest", "dueDate", "addedBy", "followupHistory", "origin"] as const) if (!out[key]) delete out[key];
+  if (!objective.related?.length) delete out.related;
+  if (!objective.links?.length) delete out.links;
+  if (!objective.unrelated?.length) delete out.unrelated;
   if (!objective.followups?.length) delete out.followups;
   if (!objective.followupBatches?.length) delete out.followupBatches;
   for (const key of ["planning", "criteriaOpen", "today"] as const) if (out[key] !== true) delete out[key];
@@ -444,20 +449,22 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       followups: (stored.followups ?? []).map((candidate) => ({
         id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission,
         brief: candidate.brief, criteria: [...candidate.criteria], evidence: candidate.evidence.map(evidenceView),
-        at: candidate.at, updatedAt: candidate.updatedAt, batchId: candidate.batchId ?? null,
+        at: candidate.at, updatedAt: candidate.updatedAt, batchId: candidate.batchId ?? null, related: candidate.related ?? [],
         discarded: candidate.state === "discarded" ? { at: candidate.discardedAt ?? candidate.updatedAt, by: "human" as const } : null,
       })),
       followupBatches: (stored.followupBatches ?? []).map((batch) => ({
         id: batch.id, at: batch.at,
         items: batch.items.map((entry) => ({
           candidateId: entry.candidateId, rev: entry.rev,
-          snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, userImpact: entry.snapshot.userImpact, fromMission: entry.snapshot.fromMission, brief: entry.snapshot.brief, criteria: [...entry.snapshot.criteria], evidence: entry.snapshot.evidence.map(evidenceView) },
+          snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, userImpact: entry.snapshot.userImpact, fromMission: entry.snapshot.fromMission, brief: entry.snapshot.brief, criteria: [...entry.snapshot.criteria], evidence: entry.snapshot.evidence.map(evidenceView), related: entry.snapshot.related ?? [] },
           // 만든 뒤 사람이 지운 후속은 보기 시점에 「삭제됨」 — 저장은 created 그대로라 복원하면 돌아오고 누계·멱등성은 그대로다.
-          state: entry.state === "created" && entry.operationId && !options.operations.get(entry.operationId) && !load(node?.theaterId ?? pending!.theaterId).get(entry.operationId)?.pending ? "deleted" as const : entry.state, operationId: entry.operationId ?? null, error: entry.error ?? null, attempts: entry.attempts, settledAt: entry.settledAt ?? null,
+          state: entry.state === "created" && entry.operationId && !options.operations.get(entry.operationId) && !load(node?.theaterId ?? pending!.theaterId).get(entry.operationId)?.pending ? "deleted" as const : entry.state, operationId: entry.operationId ?? null, error: entry.error ?? null, attempts: entry.attempts, linkOnCreate: entry.linkOnCreate === true, settledAt: entry.settledAt ?? null,
         })),
       })),
       followupHistory: stored.followupHistory ?? null,
       origin: stored.origin ? { objectiveId: stored.origin.objectiveId, title: options.operations.get(stored.origin.objectiveId)?.title ?? load(node?.theaterId ?? pending!.theaterId).get(stored.origin.objectiveId)?.pending?.title ?? null, candidateId: stored.origin.candidateId, userImpact: stored.origin.userImpact, evidence: stored.origin.evidence.map(evidenceView) } : null,
+      recorded: load(node?.theaterId ?? pending!.theaterId).has(stored.operationId),
+      related: stored.related ?? [], links: stored.links ?? [], unrelated: stored.unrelated ?? [],
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
         return {
@@ -641,6 +648,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(init.today ? { today: true as const } : {}),
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
         ...(init.origin ? { origin: init.origin } : {}),
+        ...(init.related?.length ? { related: [...new Set(init.related.filter((id) => id !== operationId && store.find(id)?.theaterId === theaterId))] } : {}),
         ...(criteriaTexts.length ? { criteria: criteriaTexts.map((text) => ({ id: randomUUID(), text, by: "human" as const })) } : {}),
         missions: [...lineupOrder(missions)],
       };
@@ -993,14 +1001,18 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       assertMission(stored, body.fromMission);
       assertObservable(body.evidence);
       const at = now();
-      return { ...stored, followups: [...followups, { id: randomUUID(), rev: 1, state: "open", ...body, at, updatedAt: at }] };
+      const theaterId = locate(objectiveId).theaterId;
+      return { ...stored, followups: [...followups, { id: randomUUID(), rev: 1, state: "open", ...body,
+        ...(body.related ? { related: [...new Set(body.related.filter((id) => id !== objectiveId && store.find(id)?.theaterId === theaterId))] } : {}), at, updatedAt: at }] };
     }),
     followupRevise: (objectiveId, candidateId, patch) => update(objectiveId, (stored) => {
       if (stored.done) throw new ObjectiveStoreError("objective_done");
       const target = openFollowup(stored, candidateId);
       if (patch.fromMission !== undefined) assertMission(stored, patch.fromMission);
       if (patch.evidence !== undefined) assertObservable(patch.evidence);
-      const next: StoredFollowup = { ...target, ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)), rev: target.rev + 1, updatedAt: now() };
+      const theaterId = locate(objectiveId).theaterId;
+      const next: StoredFollowup = { ...target, ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)),
+        ...(patch.related ? { related: [...new Set(patch.related.filter((id) => id !== objectiveId && store.find(id)?.theaterId === theaterId))] } : {}), rev: target.rev + 1, updatedAt: now() };
       return { ...stored, followups: (stored.followups ?? []).map((candidate) => (candidate.id === candidateId ? next : candidate)) };
     }),
     followupWithdraw: (objectiveId, candidateId) => update(objectiveId, (stored) => {
@@ -1045,8 +1057,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         if (batches.filter((batch) => !batch.items.every((entry) => followupSettled(entry.state))).length >= MAX_FOLLOWUP_BATCHES) throw new ObjectiveStoreError("followup_backlog");
         const items: StoredFollowupItem[] = chosen.map((candidate) => ({
           candidateId: candidate.id, rev: candidate.rev,
-          snapshot: { title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: [...candidate.criteria], evidence: [...candidate.evidence] },
-          state: "creating", attempts: 0,
+          snapshot: { title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: [...candidate.criteria], evidence: [...candidate.evidence], related: candidate.related ?? [] },
+          state: "creating", attempts: 0, ...(selection.followups.find((entry) => entry.id === candidate.id)?.linkOnCreate ? { linkOnCreate: true } : {}),
         }));
         const chosenIds = new Set(ids);
         fresh = true;
@@ -1064,7 +1076,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const { batch, entry } = batchItem(stored, batchId, candidateId);
       const settled = next.state !== "creating";
       const updated: StoredFollowupItem = {
-        candidateId: entry.candidateId, rev: entry.rev, snapshot: entry.snapshot, state: next.state,
+        candidateId: entry.candidateId, rev: entry.rev, snapshot: entry.snapshot, state: next.state, ...(entry.linkOnCreate ? { linkOnCreate: true } : {}),
         ...(next.operationId ?? entry.operationId ? { operationId: next.operationId ?? entry.operationId } : {}),
         ...(next.error ? { error: next.error } : {}),
         attempts: entry.attempts + (next.attempted ? 1 : 0),
@@ -1098,6 +1110,44 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     followupBatch(objectiveId, batchId) {
       try { return locate(objectiveId).stored.followupBatches?.find((batch) => batch.id === batchId) ?? null; }
       catch { return null; }
+    },
+    relation(objectiveId, otherId, action) {
+      if (objectiveId === otherId) throw new ObjectiveStoreError("same_objective");
+      const first = locate(objectiveId);
+      let second: ReturnType<typeof locate> | null = null;
+      try { second = locate(otherId); } catch (error) { if (!(error instanceof ObjectiveStoreError) || error.code !== "unknown_objective") throw error; }
+      if (second && first.theaterId !== second.theaterId) throw new ObjectiveStoreError("unknown_objective");
+      if (second && !view(second.theaterId, second.stored)) second = null;
+      if (!view(first.theaterId, first.stored) || (!second && (action === "link" || action === "unrelated"))) throw new ObjectiveStoreError("unknown_objective");
+      if (!second) return update(objectiveId, (stored) => ({ ...stored, links: (stored.links ?? []).filter((entry) => entry.objectiveId !== otherId), unrelated: (stored.unrelated ?? []).filter((id) => id !== otherId) }));
+      const before = [first, second];
+      const at = now();
+      const changed = before.map(({ stored, node, recorded }, index) => {
+        const peer = before[1 - index]!.stored.operationId;
+        const links = (stored.links ?? []).filter((entry) => entry.objectiveId !== peer);
+        const unrelated = (stored.unrelated ?? []).filter((id) => id !== peer);
+        return {
+          ...stored, rank: recorded ? stored.rank : virtualRank(node!),
+          links: action === "link" ? [...links, { objectiveId: peer, at }] : links,
+          unrelated: action === "unrelated" ? [...unrelated, peer] : unrelated,
+        };
+      });
+      // 두 파일을 모두 쓴 다음 캐시와 사건을 바꾼다. 두 번째 실패 시 첫 번째 파일을 원래대로 돌려놓는다.
+      const firstFile = objectiveDir(first.theaterId, objectiveId);
+      const secondFile = objectiveDir(second.theaterId, otherId);
+      try {
+        writeObjectiveAtomic(firstFile, changed[0]!);
+        writeObjectiveAtomic(secondFile, changed[1]!);
+      } catch (error) {
+        if (first.recorded) writeObjectiveAtomic(firstFile, first.stored);
+        else fs.rmSync(containedFile(firstFile, OBJECTIVE_FILE), { force: true });
+        throw error;
+      }
+      load(first.theaterId).set(objectiveId, changed[0]!);
+      load(second.theaterId).set(otherId, changed[1]!);
+      const result = announce(first.theaterId, changed[0]!) ?? project(changed[0]!, first.node);
+      announce(second.theaterId, changed[1]!);
+      return result;
     },
     recorded(operationId) {
       const node = options.operations.get(operationId);

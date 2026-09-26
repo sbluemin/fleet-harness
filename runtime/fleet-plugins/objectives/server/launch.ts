@@ -35,7 +35,7 @@ export interface LaunchService {
    * 고른 후속 후보와 함께 완료한다 — 완료·배치 기록을 한 번에 쓴 뒤 지휘관을 재우고 후속 목표 레코드를
    * 뒤에서 만든다. 같은 배치로 다시 부르면 그대로 돌려준다.
    */
-  completeWithFollowups(objectiveId: string, selection: { readonly batchId: string; readonly followups: readonly { readonly id: string; readonly rev: number }[] }, options?: LaunchOptions): Objective;
+  completeWithFollowups(objectiveId: string, selection: { readonly batchId: string; readonly followups: readonly { readonly id: string; readonly rev: number; readonly linkOnCreate?: boolean }[] }, options?: LaunchOptions): Objective;
   /** failed·confirming 배치 항목을 같은 스냅샷·같은 키로 다시 확인하거나 만든다. */
   retryFollowup(objectiveId: string, batchId: string, candidateId: string): Objective;
   /** 끝나지 않은 후속 생성(creating)을 이어 간다 — 기동 때와 원본이 복원될 때. objectiveId 가 없으면 모든 목표. */
@@ -398,13 +398,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         if (existing && (existing.origin?.objectiveId !== objectiveId || existing.origin.candidateId !== candidateId)) throw new ObjectiveStoreError("objective_id_taken");
         const created = existing ?? await service.create({
           theaterId: source.theaterId, title: entry.snapshot.title, groupId: batch.launch.groupId, viewMode: batch.launch.viewMode,
-          note: entry.snapshot.brief, criteria: entry.snapshot.criteria, addedBy: objectiveId,
+          note: entry.snapshot.brief, criteria: entry.snapshot.criteria, related: entry.snapshot.related, addedBy: objectiveId,
           origin: { objectiveId, candidateId, batchId, userImpact: entry.snapshot.userImpact, evidence: entry.snapshot.evidence }, objectiveId: id,
         }, { language: batch.launch.language });
         if (!store.find(objectiveId)) {
           if (!existing && store.pending(created.id)) store.removePending(created.id);
           return;
         }
+        if (entry.linkOnCreate) store.relation(objectiveId, created.id, "link");
         store.followupSettle(objectiveId, batchId, candidateId, { state: "created", operationId: created.id, attempted: true });
       } catch (error) {
         const code = error instanceof Error ? error.message : "record_failed";

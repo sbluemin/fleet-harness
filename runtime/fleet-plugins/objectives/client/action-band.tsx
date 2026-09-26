@@ -12,7 +12,10 @@ import {
   openFollowups,
   pruneSelection,
   readSelectionRevs,
+  readLinkSelections,
   setFollowupOpen,
+  toggleLinkSelection,
+  useLinkSelections,
   toggleFollowupSelection,
   useFollowupOpen,
   useFollowupSelection,
@@ -55,6 +58,7 @@ export interface MemberAwaiting {
 
 export interface ActionBandProps {
   readonly objective: Objective;
+  readonly board?: readonly Objective[];
   readonly t: T;
   /** 지휘관이 일한다(running·background, 구성원 활동을 끌어올린 값) — 편집 잠금과 같은 기준. */
   readonly busy: boolean;
@@ -153,9 +157,10 @@ export function ActionBand(props: ActionBandProps) {
   const { primary, alts, gated } = choose(props);
   // 후속 후보(A안) — 검토 대기 + 후보 1건 이상 + edited 아님이 `complete` 와 겹치면 띠는 바로 완료하지 않고 위로 펼쳐 고른다.
   // 후보가 없으면 기존 완료 띠 그대로다. 선택은 완료를 누르기 전까지 로컬 초안이다.
-  const followupCandidates = openFollowups(objective);
+  const followupCandidates = openFollowups(objective, props.board);
   const followupAvailable = primary === "complete" && !gated && isFollowupSelectable(objective) && followupCandidates.length > 0;
   const followupSelection = useFollowupSelection(objective.id);
+  const linkSelection = useLinkSelections(objective.id);
   const followupOpen = useFollowupOpen(objective.id);
   const [followupOpenId, setFollowupOpenId] = useState<string | null>(null);
   const followupIdsKey = followupCandidates.map((candidate) => `${candidate.id}:${candidate.rev}`).join(",");
@@ -288,7 +293,7 @@ export function ActionBand(props: ActionBandProps) {
     setError(null);
     try {
       if (picked.length === 0) await intents.complete.run("");
-      else await request("/objective/complete", { objectiveId, batchId: newBatchId(), followups: picked.map(([id, rev]) => ({ id, rev })) });
+      else await request("/objective/complete", { objectiveId, batchId: newBatchId(), followups: picked.map(([id, rev]) => ({ id, rev, linkOnCreate: readLinkSelections(objective.id).has(id) })) });
       clearSelection(objectiveId);
       setFollowupOpen(objective.id, false);
       setFollowupOpenId(null);
@@ -438,11 +443,14 @@ export function ActionBand(props: ActionBandProps) {
               candidates={followupCandidates}
               selectable
               selection={followupSelection}
+              linkSelection={linkSelection}
+              names={new Map(props.board?.map((entry) => [entry.id, entry.title]) ?? [])}
               t={t}
               idPrefix={`band-${objective.id}`}
               openId={followupOpenId}
               onOpenChange={setFollowupOpenId}
               onToggleCheck={(candidateId, checked) => { const rev = followupCandidates.find((candidate) => candidate.id === candidateId)?.rev ?? 1; toggleFollowupSelection(objective.id, candidateId, checked, rev); setError(null); }}
+              onToggleLink={(candidateId, checked) => toggleLinkSelection(objective.id, candidateId, checked)}
               onDiscard={discardFollowup}
             />
           </div>

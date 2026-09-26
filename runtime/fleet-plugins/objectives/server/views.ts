@@ -3,6 +3,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import type { PromptLanguage } from "./prompts.js";
 import type { ObjectiveStore } from "./store.js";
+import { nearbyObjectives } from "./nearby.js";
 import { commanderMode, latestRecord, missionReady, type Objective } from "./types.js";
 
 /**
@@ -67,11 +68,13 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
     handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
     addedBy: objective.addedBy, graph: graph(objective),
+    links: objective.links, unrelated: objective.unrelated, related: objective.related,
+    nearby: nearbyObjectives({ ...objective, evidence: objective.origin?.evidence ?? [] }, store.list(objective.theaterId), objective),
     // 후속 후보 — 지휘관이 고치거나 거둘 수 있는 것은 open 뿐이다. 폐기 흔적은 제목·요약만.
     followups: objective.followups.map((candidate) => (candidate.state === "discarded"
       ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary }
-      : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence })),
-    followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error })) })),
+      : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence, related: candidate.related, nearby: nearbyObjectives({ title: candidate.title, note: candidate.brief, criteria: candidate.criteria.map((text) => ({ text })), evidence: candidate.evidence }, store.list(objective.theaterId), objective) })),
+    followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error, linkOnCreate: entry.linkOnCreate })) })),
     // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
     origin: objective.origin,
   });
