@@ -28,7 +28,7 @@ import { RightRail } from "../../../core/client/src/chrome/rail/right-rail.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
 import { TriageSideBar } from "./sidebar/triage-side-bar.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
-import { setSideBarNarrow, sideBarOccupiedWidth, toggleSideBarStatusAxis, useQueueRailPinned, useSideBarMapNarrow, useSideBarState } from "./sidebar/operations-side-bar-store.js";
+import { sideBarOccupiedWidth, toggleSideBarStatusAxis, useSideBarState } from "./sidebar/operations-side-bar-store.js";
 import { useRailOccupiedPx } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-surface/layer.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
@@ -103,14 +103,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zenMode]);
   const sideBar = useSideBarState();
-  const queueRailPinned = useQueueRailPinned();
-  const mapNarrow = useSideBarMapNarrow();
-  // 왼쪽 열은 64px 레일로 좁혀 설 수 있다. War Room은 레일이 기본이다 — 덱이 이미 Theater 띠와
-  // 건수를 말하므로 순서와 비콘만 남기고, 고정(펼친 채 두기)하면 세션 안에서 사용자 폭이다.
-  // Cruise는 사용자가 고른 배치(localStorage)다. 호버 펼침은 오버레이라 인셋에 불참한다.
-  useEffect(() => {
-    setSideBarNarrow(triageActive ? !queueRailPinned : mapNarrow);
-  }, [triageActive, queueRailPinned, mapNarrow]);
   const railOccupiedPx = useRailOccupiedPx();
   const zenState = useZenModeState();
   const zenSideBarHidden = zenMode && !zenState.sideBarRevealed;

@@ -86,15 +86,13 @@ export const workspaceOnboarding: OnboardingContribution = {
     },
     {
       id: "war-room-sidebar",
-      // 대기 섹션은 비어 있어도 렌더되므로 비지 않은 상태를 앵커 조건으로 삼는다. 접힌 사이드바(:not(.is-closed))와
-      // 대기열 레일(.is-narrow)은 자식이 DOM에 남은 채 보이지 않을 뿐이라 배제한다 — 배제하지 않으면 사용자가 본 적
-      // 없는 안내가 재생되고 시청 기록에 그대로 남는다. 안내는 사용자가 레일을 고정해 목록을 펼쳤을 때 재생된다.
+      // 접힌 사이드바는 자식이 DOM에 남으므로 배제한다. 실제로 보이는 목록에서만 안내를 재생한다.
       spotlight: null,
       deferAfterAnotherTour: true,
       walkthrough: [
-        { anchor: ".triage-side-bar:not(.is-closed):not(.is-narrow) .side-bar-status-section--awaiting:not(.side-bar-status-section--empty)", title: T("warRoomSidebar.step1Title"), body: T("warRoomSidebar.step1Body") },
-        { anchor: ".triage-side-bar:not(.is-closed):not(.is-narrow) .triage-side-bar-minimized-shelf .side-bar-status-header", title: T("warRoomSidebar.step2Title"), body: T("warRoomSidebar.step2Body") },
-        { anchor: ".triage-side-bar:not(.is-closed):not(.is-narrow) .side-bar-status-section--awaiting .side-bar-chip", title: T("warRoomSidebar.step3Title"), body: T("warRoomSidebar.step3Body") },
+        { anchor: ".triage-side-bar:not(.is-closed) .side-bar-status-section--awaiting:not(.side-bar-status-section--empty)", title: T("warRoomSidebar.step1Title"), body: T("warRoomSidebar.step1Body") },
+        { anchor: ".triage-side-bar:not(.is-closed) .triage-side-bar-minimized-shelf .side-bar-status-header", title: T("warRoomSidebar.step2Title"), body: T("warRoomSidebar.step2Body") },
+        { anchor: ".triage-side-bar:not(.is-closed) .side-bar-status-section--awaiting .side-bar-chip", title: T("warRoomSidebar.step3Title"), body: T("warRoomSidebar.step3Body") },
       ],
     },
     {

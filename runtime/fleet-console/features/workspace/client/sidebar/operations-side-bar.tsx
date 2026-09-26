@@ -12,7 +12,6 @@ import { getT, useT, type CoreMessageKey } from "../../../../core/client/src/i18
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../../../../core/client/src/integration/types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
-import { OperationStatusIcon } from "../../../execution/client/components/operation-status-icon.js";
 import { focusEdgeDockWhenPanelContainsActiveElement, useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -31,7 +30,7 @@ import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-
 import { clusterChipPropsFor } from "./cluster-rows.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
-import { SideBarCollapseControl, SideBarNarrowToggle, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
+import { SideBarCollapseControl, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
 import {
   consumeStatusLandings,
   setSideBarCollapsed,
@@ -42,8 +41,6 @@ import {
   trackOperationActivityTransitions,
   toggleSideBarStatusSectionCollapsed,
   useCollapsedTheaters,
-  setSideBarMapNarrow,
-  useSideBarMapNarrow,
   useSideBarState,
   useSideBarStatusAxis,
   useSideBarStatusSectionCollapsed,
@@ -355,11 +352,6 @@ export function OperationsSideBar({
   const sideBar = useSideBarState();
   const { width, collapsed } = sideBar;
   const statusAxis = useSideBarStatusAxis();
-  const mapNarrow = useSideBarMapNarrow();
-  // 좁힌 레일은 Theater 타일이 있어야 뜻이 있다. Theater가 없으면 저장된 narrow 선호가 남아 있어도
-  // 펼친 폭으로 선다 — 레일 상태에서는 시작 블록이 hover 전까지 숨고, 스트립의 넓히기 토글도
-  // Theater가 없을 때는 서지 않아 키보드 사용자가 폴더 선택에 닿을 길이 없다.
-  const narrow = sideBar.narrow && theaters.length > 0;
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
   const closeArmTimeoutRef = useRef<number | null>(null);
@@ -535,12 +527,6 @@ export function OperationsSideBar({
       setSideBarCollapsed(false);
       return false;
     }
-    // 좁힌 레일에서는 칩이 가려져 있다 — 팔레트 동작(이름 바꾸기·그룹·강조·최소화)은 목록으로 넓힌 뒤
-    // 다시 그려진 칩이 소비한다(칩은 .is-narrow 안에서 사양한다).
-    if (narrow) {
-      setSideBarMapNarrow(false);
-      return false;
-    }
     if (collapsedTheaters.includes(operation.theaterId)) {
       setTheaterCollapsed(operation.theaterId, false);
       return false;
@@ -562,7 +548,7 @@ export function OperationsSideBar({
       return false;
     }
     return false;
-  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, narrow, operationRuntime, operations, statusAxis]);
+  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxis]);
 
   useEffect(() => {
     if (armedCloseId === null) return;
@@ -947,7 +933,7 @@ export function OperationsSideBar({
 
   return (
     <aside
-      className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}${narrow ? " is-narrow" : ""}`}
+      className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
       ref={rootRef}
       data-sidebar-state={collapsed ? "closed" : "expanded"}
       data-sidebar-axis={statusAxis ? "status" : "group"}
@@ -967,73 +953,16 @@ export function OperationsSideBar({
     >
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
-      {/* 스트립은 목록의 제목줄이다 — 왼쪽 낱말이 지금 목록을 어떻게 읽는지(Theater 묶음 · 상태별)
-          말하고, 오른쪽의 두 토글이 상태별 보기와 레일로 좁히기를 뒤집는다. 상태별 보기는 목록
-          전체를 다시 쓰는 하나짜리 세션 스위치라 Theater 행이 아니라 여기 한 번만 선다. Theater가
-          없으면 정리할 목록도 없으므로 낱말과 토글도 서지 않는다. 스트립 우단은 패널 자신의 접기
-          컨트롤이 맡는다(Periscope — 밴드 토글 퇴역). 레일 상태에서는 낱말이 접히고 토글만 남는다. */}
+      {/* 상태별 보기는 목록 전체의 세션 스위치다. 우단은 두 모드가 공유하는 접기 컨트롤이다. */}
       <div className="side-bar-top-strip">
         {theaters.length > 0 ? (
           <>
             <span className="side-bar-top-strip-eyebrow">{t(statusAxis ? "sidebar.view.byStatusEyebrow" : "sidebar.view.theaters")}</span>
             <SideBarStatusViewToggle active={statusAxis} />
-            <SideBarNarrowToggle narrow={mapNarrow} onToggle={() => setSideBarMapNarrow(!mapNarrow)} />
           </>
         ) : <span className="side-bar-top-strip-spacer" aria-hidden="true" />}
         <SideBarCollapseControl />
       </div>
-
-      {/* 좁힌 레일 — Theater 이니셜 타일이 묶음의 머리에 서고, 그 아래 Operation 타일이 제목 이니셜과
-          비콘으로 선다(묶음이 이미 말하는 Theater는 타일이 되풀이하지 않는다). 순서는 펼친 목록과
-          같다. 호버로 펼친 목록이 오버레이로 서고, 토글로 다시 넓힌다. */}
-      {narrow ? (
-        <ol className="side-bar-rail-sections" aria-label={t("sidebar.view.railAria")}>
-          {theaters.map((theater) => {
-            const theaterCanvas = theater.id === activeTheaterId ? canvas : getTheaterCanvasSnapshot(theater.id);
-            const railEntries = theater.id === activeTheaterId ? allEntries : buildTheaterEntries({
-              theaterId: theater.id,
-              operations,
-              operationOrder: operationOrderFromNodes(operations.filter((operation) => operation.theaterId === theater.id)),
-              minimizedSet: new Set(theaterCanvas.minimized),
-              activeOperationId: null,
-              operationNotifications,
-              operationRuntime,
-            });
-            const isActiveTheater = theater.id === activeTheaterId;
-            return (
-              <li key={theater.id} className={`side-bar-rail-section side-bar-rail-section--theater${isActiveTheater ? " is-active" : ""}`}>
-                <button
-                  type="button"
-                  className="side-bar-rail-theater"
-                  aria-label={isActiveTheater ? theater.label : t("sidebar.theater.switchTo", { theater: theater.label })}
-                  title={theater.label}
-                  aria-current={isActiveTheater ? "true" : undefined}
-                  onClick={() => onSelectTheater(theater.id)}
-                >
-                  <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
-                </button>
-                <ol className="side-bar-rail-tiles">
-                  {railEntries.map((entry) => (
-                    <li key={entry.operation.id}>
-                      <button
-                        type="button"
-                        className={`side-bar-rail-tile${entry.active ? " is-active" : ""}${entry.minimized ? " is-minimized" : ""}`}
-                        aria-label={entry.operation.title}
-                        title={entry.operation.title}
-                        aria-current={entry.active ? "true" : undefined}
-                        onClick={() => onFocus(entry.operation.id)}
-                      >
-                        <span className="side-bar-rail-tile-initials" aria-hidden="true">{theaterInitials(entry.operation.title)}</span>
-                        <OperationStatusIcon status={entry.mark ?? entry.status} decorative className="side-bar-rail-tile-beacon" />
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              </li>
-            );
-          })}
-        </ol>
-      ) : null}
 
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
@@ -1284,7 +1213,7 @@ export function OperationsSideBar({
       </ol>
       </div>
 
-      {narrow ? null : <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />}
+      <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
 
       {newMenu ? createPortal(
         <CanvasContextMenu

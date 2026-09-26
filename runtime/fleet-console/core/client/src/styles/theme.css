@@ -43,6 +43,9 @@
   --ink-spectral: oklch(70% 0.012 245);
   --ink-pearl: oklch(94% 0.008 90);
 
+  /* 개발 채널 워드마크 전용 잉크 — 신호가 아니며 다른 표면에서는 소비하지 않는다. */
+  --ink-brand-dev: oklch(84% 0.045 255);
+
   --brass: oklch(80% 0.085 78);
   --brass-bright: var(--brass);
   --brass-deep: var(--brass);
@@ -477,6 +480,8 @@
   --ink-spectral: oklch(82% 0.018 90);
   --ink-pearl: oklch(96% 0.012 88);
 
+  --ink-brand-dev: oklch(86% 0.05 255);
+
   --brass: oklch(78% 0.13 75);
   --brass-bright: oklch(86% 0.16 78);
   --brass-deep: oklch(56% 0.13 65);
@@ -586,6 +591,8 @@
   --ink-muted: oklch(72% 0.005 250);
   --ink-spectral: oklch(81% 0.004 250);
   --ink-pearl: oklch(95% 0.003 250);
+
+  --ink-brand-dev: oklch(84% 0.04 255);
 
   --brass: oklch(76% 0.115 62);
   --brass-bright: oklch(84% 0.14 64);
@@ -729,6 +736,8 @@
      된다. 진폭을 더 얻겠다고 트러프를 올리면 물결의 3분의 2를 차지하는 "휴지 잉크"가 판독 계약을
      깬다 — 그 순서는 뒤집지 않는다. */
   --live-sweep-trough: oklch(52% 0.012 95);
+
+  --ink-brand-dev: oklch(42% 0.075 255);
 
   --brass: oklch(56% 0.125 82);
   --brass-bright: oklch(49% 0.14 80);

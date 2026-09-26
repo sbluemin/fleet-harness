@@ -1845,12 +1845,6 @@ describe("Instrument core design contract", () => {
     expect(triageSidebar).toContain("{minimizedEntries.length > 0 ? (");
     // 선반은 목록 뒤에 흐른다 — 카드 바닥에 고정하면 목록과 선반 사이가 War Room 사이드바의 구멍이 된다.
     expect(components).toMatch(/\.triage-side-bar \.side-bar-wide > \.operations-side-bar-chips \{[^}]*flex: 0 1 auto;/);
-    // 좁힌 레일은 두 사이드바가 같은 문법으로 쓴다 — War Room은 상태 묶음, Cruise는 Theater 묶음.
-    expect(sidebar).toContain('className="side-bar-rail-sections"');
-    expect(triageSidebar).toContain('className="side-bar-rail-sections"');
-    expect(sidebar).toContain("<SideBarNarrowToggle narrow={mapNarrow}");
-    expect(operations).toContain("setSideBarNarrow(triageActive ? !queueRailPinned : mapNarrow);");
-    expect(components).toMatch(/\.operations-side-bar\.is-narrow \{[^}]*width: var\(--queue-rail-width, 64px\);/);
     expect(components).toMatch(/\.side-bar-status-view-toggle\[aria-pressed="true"\] \{[^}]*color: var\(--brass-ink\);/);
     expect(sidebar).not.toContain("triage-side-bar-caption");
     expect(components).not.toContain(".triage-side-bar-caption");
@@ -1972,7 +1966,7 @@ describe("Instrument core design contract", () => {
     const activeSection = components.match(/\.side-bar-theater-section--active \{[^}]*\}/)?.[0] ?? "";
     const headerHover = components.match(/\.side-bar-theater-header:hover,\n\.side-bar-theater-header:focus-visible \{[^}]*\}/)?.[0] ?? "";
     const activeHeader = components.match(/\.side-bar-theater-header\.is-active \{[^}]*\}/)?.[0] ?? "";
-    const activeAnchor = components.match(/\.side-bar-theater-header\.is-active \.side-bar-theater-anchor,\s*\.side-bar-rail-section--theater\.is-active \.side-bar-theater-anchor \{[^}]*\}/)?.[0] ?? "";
+    const activeAnchor = components.match(/\.side-bar-theater-header\.is-active \.side-bar-theater-anchor \{[^}]*\}/)?.[0] ?? "";
     const activeName = components.match(/\.side-bar-theater-header\.is-active \.side-bar-theater-name \{[^}]*\}/)?.[0] ?? "";
 
     // 활성은 구역 왼쪽 2px brass 스파인이 나른다. 헤더가 아니라 구역에 붙으므로 헤더가 스크롤

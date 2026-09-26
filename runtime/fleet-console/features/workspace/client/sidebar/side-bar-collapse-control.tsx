@@ -59,24 +59,3 @@ export function SideBarStatusViewToggle({ active }: { readonly active: boolean }
 function StatusViewIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.6v10.8M5 13.4 2.8 11.2M5 13.4l2.2-2.2M11 13.4V2.6M11 2.6 8.8 4.8M11 2.6l2.2 2.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
-
-// 레일로 좁히기 / 목록으로 펼치기 — 카드 폭을 64px 레일과 사용자 폭 사이에서 뒤집는다. Cruise는
-// 이 선택을 기억하고(localStorage), War Room은 레일이 기본이라 세션 안에서만 펼친 채 둔다.
-export function SideBarNarrowToggle({ narrow, onToggle }: { readonly narrow: boolean; readonly onToggle: () => void }) {
-  const t = useT();
-  const label = t(narrow ? "sidebar.view.widen" : "sidebar.view.narrow");
-  return (
-    <button
-      type="button"
-      className="side-bar-status-view-toggle side-bar-narrow-toggle"
-      aria-pressed={narrow}
-      aria-label={label}
-      title={label}
-      onClick={onToggle}
-    >
-      {narrow
-        ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 3.6 10.6 8l-4.4 4.4M3.5 3.6v8.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        : <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.8 3.6 5.4 8l4.4 4.4M12.5 3.6v8.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-    </button>
-  );
-}

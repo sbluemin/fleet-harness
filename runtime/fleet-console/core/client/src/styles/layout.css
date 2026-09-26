@@ -484,37 +484,61 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
   letter-spacing: 0.01em;
 }
 
-/* 환경 표시는 상태가 아니라 정보다 — warn 신호·글로우 금지, 중립 잉크 필로 침묵한다. */
-/* 밴드 컨트롤은 24px 한 단에 선다 — 고정 높이가 없으면 높이를 내용이 정하고, 그 값은
-   같은 줄 이웃과 어긋난 소수점(실측 28.6px)으로 착지한다. 세로 패딩 대신 높이로 세운다. */
-.command-band-local-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+/* 개발 채널은 별도 칩 대신 브랜드에서 구분한다. 글리프의 진단 버튼과 홈 링크는 형제다. */
+.command-band-brand.is-local {
+  gap: 0;
+  padding: 0 0 0 1px;
+}
+
+.command-band-brand.is-local:hover {
+  background: none;
+}
+
+.command-band-brand-diagnostics {
+  display: grid;
+  place-items: center;
   flex: none;
+  width: 24px;
   height: 24px;
-  padding: 0 7px;
-  border: 1px solid var(--surface-rim-strong);
+  padding: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.command-band-brand-diagnostics:hover,
+.command-band-brand-diagnostics:focus-visible,
+.command-band-brand-home:hover,
+.command-band-brand-home:focus-visible {
   background: var(--surface-glass);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.01em;
 }
 
-.command-band-local-chip:hover,
-.command-band-local-chip:focus-visible {
-  border-color: color-mix(in oklch, var(--ink-fog) 55%, var(--surface-rim));
+.command-band-brand-diagnostics[aria-expanded="true"] {
   background: var(--surface-glass-strong);
-  outline: none;
+  border-color: var(--surface-rim-strong);
 }
 
-.command-band-local-chip-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.command-band-brand-home {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px 0 3px;
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+}
+
+/* 승인된 개발 브랜드 전용 잉크다. 상태·사용자 정체성 채널을 빌리지 않는다. */
+.command-band-brand-wordmark.is-local {
+  color: var(--ink-brand-dev);
+}
+
+/* 브랜드 계기와 이어지는 마침표는 기존 브랜드 황동을 유지한다. */
+.command-band-brand-wordmark-dot {
+  margin-inline-start: 0.03em;
+  color: var(--brass-ink);
+  font-weight: var(--weight-medium);
 }
 
 .command-band-link-chip {
@@ -539,22 +563,6 @@ body:has([aria-modal="true"]:not([hidden])) .zen-mode-attention { visibility: hi
 .command-band-link-chip[data-link-state="connecting"] {
   background: var(--warn-glow);
   color: var(--warn-ink);
-}
-
-/* macOS Desktop은 traffic-light 자리(좌측 76 DIP + 12px)가 첫 트랙 폭을 잠식하므로
-   local 칩을 컴팩트하게 줄여 사이드바 경계(280px) 침범을 막는다. */
-:root[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-local-chip {
-  gap: 4px;
-  padding-inline: 5px;
-  letter-spacing: 0.01em;
-  min-width: 0;
-}
-
-.command-band-local-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--ink-fog);
 }
 
 .command-band-environment { position: relative; }
