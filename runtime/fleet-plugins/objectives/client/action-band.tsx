@@ -79,11 +79,19 @@ const LockGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColo
 const HandOffGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 8h8M7.5 4.5 11 8l-3.5 3.5M13.5 3v10" /></svg>;
 const StopGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>;
 const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
+/** 위아래에서 가운데로 모이는 화살표 — 컨텍스트 압축(/compact). */
+const CompactGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 1.75v4M5.75 3.75 8 6l2.25-2.25M8 14.25v-4M5.75 12.25 8 10l2.25 2.25M3 8h10" /></svg>;
+const CheckGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>;
 const DecideDot = () => <i className="objectives-start-dot" aria-hidden="true" />;
 /** 카드 이동(objectives-panel.tsx의 GoGlyph)과 같은 path — 크기는 CSS가 정한다. */
 const GoGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5H3.5v9h9V10M9.5 3.5h3v3M12.5 3.5 7.5 8.5" /></svg>;
 
 const COUNT_FROM = 1800;
+/** 압축 두 번 누름 — 첫 누름 뒤 이 안에 다시 눌러야 보낸다. 결과 체크와 결과 부제는 각각 이만큼 보인다. */
+const COMPACT_ARM_MS = 4000;
+const COMPACT_DONE_MS = 1600;
+const COMPACT_RESULT_MS = 5000;
+interface CompactResult { readonly requested: number; readonly woken: number; readonly rejected: number; readonly excluded: number }
 /**
  * 초안 — 접어도, 다른 목표를 보다 와도, 레일↔확대로 자리를 옮겨도 남는다(목표 id 별, 이 탭의 메모리). 보내면 비운다.
  * 플러그인 번들 안에서만 쓰는 보기 상태라 호스트와 나누지 않는다.
@@ -171,6 +179,19 @@ export function ActionBand(props: ActionBandProps) {
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
   const compRef = useRef<HTMLDivElement | null>(null);
 
+  // 컨텍스트 압축 — 두 번 눌러 지휘관과 구성원 모두에게 /compact 를 보낸다. 주행동 보내기와는 서로 잠그지 않는다(이동 칸과 같다).
+  const [compactPhase, setCompactPhase] = useState<"idle" | "armed" | "busy" | "done">("idle");
+  const [compactResult, setCompactResult] = useState<CompactResult | null>(null);
+  const compactTimers = useRef<{ arm?: ReturnType<typeof setTimeout>; done?: ReturnType<typeof setTimeout>; result?: ReturnType<typeof setTimeout> }>({});
+  useEffect(() => () => { const timers = compactTimers.current; clearTimeout(timers.arm); clearTimeout(timers.done); clearTimeout(timers.result); }, []);
+  const compactSessions = new Set([objective.id, ...objective.members.flatMap((member) => (member.operationId ? [member.operationId] : []))]).size;
+  const compactExcluded = objective.members.filter((member) => !member.operationId).length;
+  const compactLocked = compactSessions === 0;
+  const disarm = () => {
+    clearTimeout(compactTimers.current.arm);
+    setCompactPhase((phase) => (phase === "armed" ? "idle" : phase));
+  };
+
   const kinds = (objective.edited?.kinds ?? []).map((kind) => t(EDIT_KEYS[kind]));
   const kindText = kinds.join("·");
   const objectiveId = objective.id;
@@ -208,6 +229,8 @@ export function ActionBand(props: ActionBandProps) {
     if (primary && intents[primary].talk) setIntent(primary);
     else setOpen(false);
   });
+  // 띠 상태나 목표가 바뀌면, 접고 펼치면 무장을 푼다.
+  useEffect(() => { disarm(); }, [objective.id, primary, open, followupOpen]);
   // 초안이 늘면 칸도 는다 — 최대 132px 뒤로는 안에서 스크롤.
   useLayoutEffect(() => {
     const field = fieldRef.current;
@@ -221,6 +244,7 @@ export function ActionBand(props: ActionBandProps) {
   const unavailable = (key: IntentKey) => intents[key].talk && !props.launchAvailable;
 
   const pick = (key: IntentKey, focus: "field" | "radio") => {
+    disarm();
     setIntent(key);
     setError(null);
     // 구상의 맥락은 목표에 남아 있다 — 칸이 비었으면 지난번 말로 미리 채운다.
@@ -285,6 +309,7 @@ export function ActionBand(props: ActionBandProps) {
     });
   };
   const press = () => {
+    disarm();
     if (!primary) return;
     // 후보가 있으면 완료하지 않고 펼친다 — 한 번 누름으로 후보 검토를 건너뛰는 길을 없앤다.
     if (primary === "complete" && followupAvailable) {
@@ -308,6 +333,73 @@ export function ActionBand(props: ActionBandProps) {
   const onCompKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     // Esc 는 칸만 접는다 — 상세를 닫는 창 처리기로 올라가지 않게 막는다. 두 번째 Esc 가 상세를 닫는다.
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); fold(true); }
+  };
+  const fireCompact = async () => {
+    setCompactPhase("busy");
+    setError(null);
+    try {
+      const result = (await request("/commander/compact", { objectiveId })) as Partial<CompactResult> | undefined;
+      const counts: CompactResult = { requested: result?.requested ?? 0, woken: result?.woken ?? 0, rejected: result?.rejected ?? 0, excluded: result?.excluded ?? 0 };
+      if (counts.requested === 0) {
+        setCompactPhase("idle");
+        setError(t("objectives.band.failedAction", { reason: t("objectives.compact.none") }));
+        return;
+      }
+      setCompactPhase("done");
+      setCompactResult(counts);
+      const timers = compactTimers.current;
+      clearTimeout(timers.done); clearTimeout(timers.result);
+      timers.done = setTimeout(() => setCompactPhase((phase) => (phase === "done" ? "idle" : phase)), COMPACT_DONE_MS);
+      timers.result = setTimeout(() => setCompactResult(null), COMPACT_RESULT_MS);
+    } catch (failure) {
+      setCompactPhase("idle");
+      const code = failure instanceof Error ? failure.message : "unknown";
+      const reason = REASONS[code] ? t(REASONS[code]!) : t("objectives.band.reason.other", { code });
+      setError(t("objectives.band.failedAction", { reason }));
+    }
+  };
+  const pressCompact = () => {
+    if (compactLocked || compactPhase === "busy") return;
+    if (compactPhase === "armed") { clearTimeout(compactTimers.current.arm); void fireCompact(); return; }
+    setCompactResult(null);
+    setCompactPhase("armed");
+    clearTimeout(compactTimers.current.arm);
+    compactTimers.current.arm = setTimeout(disarm, COMPACT_ARM_MS);
+  };
+  const onCompactKey = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    // 누르고 있는 키의 반복으로는 확정하지 않는다.
+    if ((event.key === "Enter" || event.key === " ") && event.repeat) { event.preventDefault(); return; }
+    // 무장 중의 첫 Esc 는 무장만 푼다 — 칸을 접는 것은 다음 Esc 다.
+    if (event.key === "Escape" && compactPhase === "armed") { event.preventDefault(); event.stopPropagation(); disarm(); }
+  };
+  /** 무장 중이면 확정 안내, 결과가 있으면 결과 — 그 밖엔 null 이라 원래 설명이 선다. */
+  const compactNote: ReactNode = compactPhase === "armed" ? (
+    <span className="objectives-compact-note" aria-live="polite"><b>{t("objectives.compact.arm", { count: compactSessions })}</b>{compactExcluded ? t("objectives.compact.armExcluded", { count: compactExcluded }) : null}</span>
+  ) : compactResult ? (
+    <span className="objectives-compact-note" aria-live="polite">
+      {([["requested", compactResult.requested], ["woken", compactResult.woken], ["rejected", compactResult.rejected], ["excluded", compactResult.excluded]] as const)
+        .filter(([, count]) => count > 0)
+        .map(([key, count], index) => { const text = t(`objectives.compact.${key}`, { count }); return index === 0 ? <b key={key}>{text}</b> : <span key={key}> · {text}</span>; })}
+    </span>
+  ) : null;
+  const compactButton = (className: string) => {
+    const label = compactLocked ? t("objectives.compact.empty") : compactPhase === "armed" ? t("objectives.compact.armAria") : t("objectives.compact.label");
+    const inert = compactLocked || compactPhase === "busy";
+    return (
+      <button
+        type="button"
+        className={`${className}${compactPhase === "armed" ? " is-armed" : ""}${compactPhase === "done" ? " is-done" : ""}${compactLocked ? " is-locked" : ""}`}
+        aria-label={label}
+        title={compactLocked ? t("objectives.compact.empty") : t("objectives.compact.label")}
+        aria-disabled={inert || undefined}
+        aria-busy={compactPhase === "busy" || undefined}
+        onClick={pressCompact}
+        onKeyDown={onCompactKey}
+        onBlur={disarm}
+      >
+        {compactPhase === "done" ? <CheckGlyph /> : <CompactGlyph />}
+      </button>
+    );
   };
   /** 보내는 동안의 부제 — 중단은 「중단하는 중…」, 나머지는 「보내는 중…」. */
   const pendingText = (key: IntentKey) => t(key === "stop" ? "objectives.band.stopping" : "objectives.band.sending");
@@ -334,8 +426,9 @@ export function ActionBand(props: ActionBandProps) {
         {lockedLine}
         <div ref={compRef} className="objectives-comp is-review" role="group" aria-label={t("objectives.followup.pick")} onKeyDown={onCompKey} data-followup-comp={objective.id}>
           <div className="objectives-comp-top">
-            <span>{t("objectives.followup.pick")} · <span className="objectives-followup-count" aria-live="polite">{t("objectives.followup.count", { k: picked, n: total })}</span></span>
+            {compactNote ?? <span>{t("objectives.followup.pick")} · <span className="objectives-followup-count" aria-live="polite">{t("objectives.followup.count", { k: picked, n: total })}</span></span>}
             <span className="objectives-comp-tools">
+              {props.commanderExists ? compactButton("objectives-glyph objectives-comp-compact") : null}
               {props.commanderExists ? <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button> : null}
               <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.band.fold")} title={t("objectives.band.fold")} onClick={() => fold(true)}><CloseGlyph /></button>
             </span>
@@ -399,7 +492,7 @@ export function ActionBand(props: ActionBandProps) {
         {word(main)}
         <span className="objectives-start-sub">
           {hasDraft ? <b className="objectives-band-draft">{t("objectives.band.draft")}</b> : null}
-          <span className="objectives-start-desc">{pending ? pendingText(pending) : followupExpands ? t("objectives.followup.sub", { n: followupCandidates.length }) : main.desc}</span>
+          {!decide && compactNote ? <span className="objectives-start-desc">{compactNote}</span> : <span className="objectives-start-desc">{pending ? pendingText(pending) : followupExpands ? t("objectives.followup.sub", { n: followupCandidates.length }) : main.desc}</span>}
           {/* 다른 할 일로 가는 길은 말줄임 대상이 아니다 — 좁은 레일에서 설명이 먼저 줄고 「…도 여기서」는 끝까지 남는다. */}
           {others.length ? <span className="objectives-band-also"> · {t("objectives.band.also", { words: others.map((key) => `「${intents[key].word}」`).join("") })}</span> : null}
         </span>
@@ -412,9 +505,12 @@ export function ActionBand(props: ActionBandProps) {
         <div className={`objectives-group objectives-start-group${gated ? " is-gated" : ""}`}>
           {lockedLine}
           <div className={bandCls}>
-            {props.commanderExists ? <div className={`objectives-split${toneCls}`}>
+            {props.commanderExists ? <div className={`objectives-split has-compact${toneCls}`}>
               {mainButton}
-              <button type="button" className="objectives-split-goto" aria-label={goLabel} title={goLabel} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button>
+              <div className="objectives-split-tools">
+                {compactButton("objectives-split-goto objectives-split-compact")}
+                <button type="button" className="objectives-split-goto" aria-label={goLabel} title={goLabel} onClick={() => { disarm(); props.onFocusOperation(objective.id); }}><GoGlyph /></button>
+              </div>
             </div> : mainButton}
           </div>
           {errorLine}
@@ -438,8 +534,9 @@ export function ActionBand(props: ActionBandProps) {
       {lockedLine}
       <div ref={compRef} className={`objectives-comp${current.tone === "stop" ? " is-stop" : ""}`} role="group" aria-label={t("objectives.band.send")} onKeyDown={onCompKey}>
         <div className="objectives-comp-top">
-          <span>{t(many ? "objectives.band.choose" : "objectives.band.send")}</span>
+          {compactNote ?? <span>{t(many ? "objectives.band.choose" : "objectives.band.send")}</span>}
           <span className="objectives-comp-tools">
+            {props.commanderExists ? compactButton("objectives-glyph objectives-comp-compact") : null}
             {props.commanderExists ? <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button> : null}
             <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.band.fold")} title={t("objectives.band.fold")} onClick={() => fold(true)}><CloseGlyph /></button>
           </span>
