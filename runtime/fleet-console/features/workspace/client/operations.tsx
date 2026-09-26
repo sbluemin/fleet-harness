@@ -870,7 +870,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           </button>
         </p>
       ) : null}
-      <div className="zen-sidebar-chrome" inert={zenSideBarHidden} hidden={zenSideBarHidden}>
+      <div className="zen-sidebar-chrome" inert={zenSideBarHidden} data-zen-hidden={zenSideBarHidden || undefined}>
       {triageActive ? (
         <TriageSideBar
           theaters={state.theaters}

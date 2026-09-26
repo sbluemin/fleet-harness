@@ -93,7 +93,7 @@
 
 /* 상태별 보기 토글 — 일반 사이드바와 같은 부품을 도구모음 아이콘의 한 줄 문법(26px 둥근 칸, 켜짐은
    어두운 면 · rim-strong 테두리 · 아래 brass 선)으로 입는다. 막대 안에서 따로 튀는 상자가 되지 않게. */
-.zen-taskbar-axis { display: flex; flex: none; align-items: center; }
+.zen-taskbar-axis { display: flex; flex: none; align-items: center; gap: var(--space-1); }
 .zen-taskbar-axis .side-bar-status-view-toggle {
   position: relative;
   width: 26px;

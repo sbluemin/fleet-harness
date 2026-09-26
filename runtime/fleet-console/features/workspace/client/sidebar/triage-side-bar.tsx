@@ -24,6 +24,7 @@ import { buildTheaterEntries, groupOperationsByStatus, StatusSectionSlot, type S
 import { focusEdgeDockWhenPanelContainsActiveElement } from "../../../../core/client/src/integration/shortcuts.js";
 import { consumeStatusLandings, getStatusTransitionTick, setSideBarPeeking, useSideBarState } from "./operations-side-bar-store.js";
 import { SideBarCollapseControl } from "./side-bar-collapse-control.js";
+import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 // 선별 사이드바의 상태 섹션은 Map 사이드바 STATUS 축과 같은 collapse 저장소를 쓰되,
@@ -281,8 +282,10 @@ export function TriageSideBar({
         setSideBarPeeking(false);
       }}
     >
+      {/* War Room 사이드바에는 상태별 보기가 없다 — 캔버스 모드는 Map 사이드바와 같은 자리(접기 바로 앞)에 선다. */}
       <div className="side-bar-top-strip">
         <span className="side-bar-top-strip-eyebrow">{t("sidebar.view.queueEyebrow")}</span>
+        <CanvasModeSwitch />
         <SideBarCollapseControl />
       </div>
       <div className="side-bar-wide">

@@ -17,6 +17,7 @@ import { groupOperations, groupOperationsByStatus, theaterInitials } from "../si
 import type { SideBarEntry } from "../sidebar/operations-side-bar-chip.js";
 import { getStatusTransitionTick, useSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
+import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import "./zen-taskbar.css";
 
 /**
@@ -425,8 +426,8 @@ export function ZenTaskbar({
               </span>
               <span className="zen-taskbar-theater-name">{theater.label}</span>
             </button>
-            {/* 일반 사이드바와 같은 상태별 보기 토글 — 모드마다 다른 스위치를 두지 않는다. */}
-            <span className="zen-taskbar-axis"><SideBarStatusViewToggle active={statusAxis} /></span>
+            {/* 일반 사이드바와 같은 캔버스 모드·상태별 보기 토글 — 모드마다 다른 스위치를 두지 않는다. */}
+            <span className="zen-taskbar-axis"><CanvasModeSwitch /><SideBarStatusViewToggle active={statusAxis} /></span>
             <span className="zen-taskbar-sep" aria-hidden="true" />
           </>
         ) : null}

@@ -321,12 +321,39 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   pointer-events: none;
 }
 .zen-sidebar-chrome { display: contents; }
-.zen-sidebar-chrome[hidden],
 .console-shell.is-zen .canvas-minimap,
 .console-shell.is-zen .canvas-minimap-fab,
 .console-shell.is-zen .canvas-shortcuts { display: none; }
-/* Zen의 도구 패널 카드는 작업 표시줄을 덮지 않는다. */
-.console-shell.is-zen .right-rail { bottom: calc(var(--zen-taskbar-height) + var(--space-2)); }
+/* Zen의 도구 패널 카드와 좌측 사이드바는 작업 표시줄을 덮지 않는다. */
+.console-shell.is-zen .right-rail,
+.console-shell.is-zen .operations-side-bar { bottom: calc(var(--zen-taskbar-height) + var(--space-2)); }
+/* Zen의 좌측 사이드바(⌘B) — 숨길 때는 왼쪽 가장자리 밖으로 미끄러져 나가며 흐려지고, 드러낼 때는 같은 길로
+   돌아온다. 폭·테두리 전이(접기)는 평소 그대로 두고 이동과 흐림만 더한다. visibility는 나갈 때 이동이
+   끝난 뒤에 내려 전이가 보이게 하고, 돌아올 때는 곧바로 올린다. */
+.console-shell.is-zen .operations-side-bar {
+  transition:
+    width 200ms ease, border-color 200ms ease, visibility 0s linear 0s,
+    translate 340ms var(--ease-spring), opacity 200ms var(--ease-glide);
+}
+.console-shell.is-zen .operations-side-bar.is-closed {
+  transition:
+    width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms,
+    translate 340ms var(--ease-spring), opacity 200ms var(--ease-glide);
+}
+.console-shell.is-zen .zen-sidebar-chrome[data-zen-hidden] .operations-side-bar {
+  translate: calc(-100% - var(--space-3) - 16px) 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    width 200ms ease, border-color 200ms ease, visibility 0s linear 240ms,
+    translate 240ms var(--ease-glide), opacity 200ms var(--ease-glide);
+}
+.console-shell.is-zen .operations-side-bar[data-resizing="true"] { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .console-shell.is-zen .operations-side-bar,
+  .console-shell.is-zen .operations-side-bar.is-closed,
+  .console-shell.is-zen .zen-sidebar-chrome[data-zen-hidden] .operations-side-bar { transition-duration: 0.01ms; transition-delay: 0s; }
+}
 .zen-bar[hidden] { display: none; }
 .zen-mode-announcement {
   position: absolute;
@@ -358,17 +385,11 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 }
 
 /* ── 도구모음 ─────────────────────────────────────────────────────
-   콘솔에 하나뿐인 도구 줄(console-toolbar.tsx). 상단 바 오른쪽과 Zen 트레이, 두 자리에 같은 줄이
+   콘솔에 하나뿐인 도구 줄(console-toolbar.tsx). 상단 바 가운데와 Zen 트레이, 두 자리에 같은 줄이
    같은 순서·같은 문법으로 선다 — 여기 규칙은 자리를 묻지 않는다. 자리에 따라 갈리는 것은 떠오르는
-   말풍선·메뉴의 방향뿐이다(아래 Zen 트레이 단락). */
+   말풍선·메뉴·캡슐의 방향뿐이다(아래 Zen 트레이 단락). */
 .command-band-toolbar,
 .zen-bar-toolbar { display: flex; align-items: center; min-width: 0; }
-/* 상단 바에서는 도구모음 바깥(보기 모드·호스트)과 가는 선 하나로 나뉜다 — 트레이에서 앰블럼과 나뉘는 것과 같다. */
-.command-band-toolbar:not(:empty) {
-  margin-inline-end: var(--space-1);
-  padding-inline-end: var(--space-2);
-  border-inline-end: 1px solid var(--surface-rim);
-}
 .console-toolbar-mount { display: contents; }
 .console-toolbar {
   display: flex;
@@ -434,11 +455,14 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   align-items: center;
   gap: 1px;
   min-width: 0;
-  /* 접힘은 가로로만 자른다 — 세로는 열어 두어야 도움말 메뉴·업데이트 말풍선이 서랍 밖(아래·위)으로 뜬다.
-     clip은 스크롤 상자를 만들지 않으므로 한 축만 자를 수 있다. */
+  transition: transform 360ms var(--ease-spring);
+}
+/* 접혀 있거나 말리는 동안만 가로로 자른다 — 펼쳐 쉬는 동안 자르면 서랍보다 넓은 원격·도움말 메뉴가
+   잘린다(유틸리티 화면처럼 서랍이 좁을 때). 세로는 늘 열어 두어 메뉴·말풍선이 서랍 밖(아래·위)으로 뜬다.
+   clip은 스크롤 상자를 만들지 않으므로 한 축만 자를 수 있다. */
+.console-toolbar:is(.is-folded, .is-folding) .console-toolbar-drawer-inner {
   overflow-x: clip;
   overflow-y: visible;
-  transition: transform 360ms var(--ease-spring);
 }
 .console-toolbar.is-folded .console-toolbar-drawer { grid-template-columns: 0fr; opacity: 0; filter: blur(2px); }
 .console-toolbar.is-folded .console-toolbar-drawer-inner { transform: translateX(10px); }
@@ -545,7 +569,8 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   transform: translateY(-3.5px) rotate(45deg);
 }
 .zen-bar .command-band-system-menu,
-.zen-bar .command-band-update-bubble { top: auto; bottom: calc(100% + 10px); }
+.zen-bar .command-band-update-bubble,
+.zen-bar .host-switcher-panel { top: auto; bottom: calc(100% + 10px); }
 
 /* 앰블럼 — 트레이의 끝. 도구모음과는 가는 선 하나로 나뉜다. */
 .zen-bar-brand {
@@ -902,16 +927,6 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   color: var(--brass-ink);
 }
 
-/* 맵 컨트롤 클러스터(모드 스위치 + 모드 도구)는 중앙 트랙의 단독 승객이다(브레드크럼 퇴역).
-   컨테이너 플로우 배치 계약은 그대로다 — 개별 절대 위치 + 매직 오프셋 금지(116px 사고)와
-   "한 컨테이너의 플로우 형제" 계약은 중앙 트랙 안에서도 유지한다. 중앙 정렬을 흔드는
-   비대칭 마진은 두지 않는다 — 간격은 트랙 padding이 진다. */
-.command-band-map-controls {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 /* Cruise / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
    모드 전용 도구는 활성 세그먼트 아래 캡슐에 있으므로, 다른 모드의 도구는 애초에 존재하지 않는다.
    C′ 문법: 상자를 걷고 워시+다텀이 선택을 말한다 — 그룹 경계는 간격이 진다. */
@@ -1082,6 +1097,22 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   }
 }
 
+/* 자리별 캡슐 — 스위치는 좌측 사이드바 머리와 Zen 작업 표시줄에 선다(canvas-mode-switch.tsx).
+   사이드바 카드는 overflow:hidden이라 활성 글리프 가운데에 맞추면 캡슐 오른쪽이 카드 밖으로 잘린다 —
+   사이드바에서는 스위치 오른쪽 끝에 맞춰 아래로 연다. 작업 표시줄은 화면 아래 끝이라 글리프 위로 연다. */
+.side-bar-top-strip .command-band-mode-tray {
+  left: auto;
+  right: 0;
+  transform: translateY(-5px) scale(0.96);
+  transform-origin: top right;
+}
+.side-bar-top-strip .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: none; }
+.zen-taskbar .command-band-mode-tray { top: auto; bottom: calc(100% + 7px); transform: translate(-50%, 5px) scale(0.96); transform-origin: bottom center; }
+.zen-taskbar .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: translate(-50%, 0) scale(1); }
+.zen-taskbar .command-band-mode-tray::before { top: auto; bottom: -8px; }
+.zen-taskbar .command-band-mode-tray > .command-band-mode-tool { transform: translateY(3px); }
+.zen-taskbar .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) > .command-band-mode-tool { transform: none; }
+
 @media (forced-colors: active) {
   .command-band-mode-tray {
     border-color: CanvasText;
@@ -1247,7 +1278,6 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .command-band.is-
   .console-shell,
   .operations-side-bar,
   .right-rail,
-  .command-band-map-controls,
   .command-band-left {
     transition: none !important;
   }

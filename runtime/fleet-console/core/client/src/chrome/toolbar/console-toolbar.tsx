@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
@@ -8,13 +8,13 @@ import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { toggleOperationSearch } from "../../integration/store.js";
 import { setToolbarToolsSlot, useToolbarHost } from "../../integration/toolbar-slots.js";
 import { requestZenMode } from "../../integration/zen-mode.js";
-import { ConsoleHelpMenu } from "../components/command-band-system-cluster.js";
+import { ConsoleHelpMenu, HostSwitcher } from "../components/command-band-system-cluster.js";
 
 /**
- * 도구모음 — 콘솔에 하나뿐인 도구 줄. 모드는 이 줄의 **자리**만 바꾼다: 평소에는 상단 바 오른쪽,
+ * 도구모음 — 콘솔에 하나뿐인 도구 줄. 모드는 이 줄의 **자리**만 바꾼다: 평소에는 상단 바 가운데,
  * Zen에서는 작업 표시줄 오른쪽 끝 트레이. 내용과 순서는 같다.
  *
- *   › 접기 | 레일 도구 · 설정 | 찾기 · 도움말 | 플러그인 항목(부관 등) | Zen 켜기/끄기
+ *   › 접기 | 레일 도구 · 설정 | 찾기 · 원격 · 도움말 | 플러그인 항목(부관 등) | Zen 켜기/끄기
  *
  * 줄은 자기 DOM 노드를 하나 만들어 들고, 자리가 바뀌면 그 노드를 새 자리로 옮긴다. React는 같은
  * 노드에 계속 포털하므로 안의 항목이 다시 마운트되지 않는다 — 플러그인은 자리가 사라졌다고 보지
@@ -27,6 +27,8 @@ import { ConsoleHelpMenu } from "../components/command-band-system-cluster.js";
 const FOLD_STORAGE_KEY = "fleet-console.toolbar.folded";
 /** 1차 Zen 트레이의 접힘 기억 — 한 번 읽어 옮기고 걷는다. */
 const LEGACY_FOLD_STORAGE_KEY = "fleet-console.zen.tools-folded";
+/** 서랍 전이(layout.css .console-toolbar-drawer의 360ms)보다 조금 길게 — 전이가 끝난 뒤에 자름을 푼다. */
+const FOLD_TRANSITION_MS = 420;
 
 function readFolded(): boolean {
   try {
@@ -53,11 +55,11 @@ function writeFolded(folded: boolean): void {
 interface ConsoleToolbarProps {
   /** Zen이 이 창에서 실제로 켜져 있는가 — 켜져 있으면 줄이 Zen 트레이에 선다. */
   readonly zen: boolean;
-  /** 이 화면에서 Zen을 켤 수 있는가(/operations 데스크톱). 아니면 Zen 칸을 비운다. */
-  readonly zenAvailable: boolean;
+  /** 캔버스 화면인가(/operations 데스크톱). 아니면 Zen 칸을 비운다. */
+  readonly canvas: boolean;
 }
 
-export function ConsoleToolbar({ zen, zenAvailable }: ConsoleToolbarProps) {
+export function ConsoleToolbar({ zen, canvas }: ConsoleToolbarProps) {
   const t = useT();
   const bandHost = useToolbarHost("band");
   const zenHost = useToolbarHost("zen");
@@ -83,14 +85,24 @@ export function ConsoleToolbar({ zen, zenAvailable }: ConsoleToolbarProps) {
   useLayoutEffect(() => () => mount.remove(), [mount]);
 
   const [folded, setFolded] = useState(readFolded);
+  // 서랍이 말리거나 펴지는 동안만 가로를 자른다 — 늘 자르면 서랍보다 넓은 메뉴(원격·도움말)가 잘린다.
+  const [folding, setFolding] = useState(false);
+  const foldingTimerRef = useRef<number | null>(null);
+  useEffect(() => () => { if (foldingTimerRef.current !== null) window.clearTimeout(foldingTimerRef.current); }, []);
   const toggleFold = () => {
     const next = !folded;
     setFolded(next);
     writeFolded(next);
+    setFolding(true);
+    if (foldingTimerRef.current !== null) window.clearTimeout(foldingTimerRef.current);
+    foldingTimerRef.current = window.setTimeout(() => {
+      foldingTimerRef.current = null;
+      setFolding(false);
+    }, FOLD_TRANSITION_MS);
   };
 
   return createPortal(
-    <div className={`console-toolbar${folded ? " is-folded" : ""}`} role="toolbar" aria-label={t("toolbar.aria")}>
+    <div className={`console-toolbar${folded ? " is-folded" : ""}${folding ? " is-folding" : ""}`} role="toolbar" aria-label={t("toolbar.aria")}>
       <button
         type="button"
         className="console-toolbar-fold"
@@ -115,11 +127,12 @@ export function ConsoleToolbar({ zen, zenAvailable }: ConsoleToolbarProps) {
           >
             <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M10.4 10.4 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
           </button>
+          <HostSwitcher />
           <ConsoleHelpMenu />
         </div>
       </div>
       <ToolbarPluginEntries />
-      {zenAvailable ? <ZenToggle zen={zen} /> : null}
+      {canvas ? <ZenToggle zen={zen} /> : null}
     </div>,
     mount,
   );

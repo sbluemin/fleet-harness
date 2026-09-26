@@ -507,7 +507,7 @@ export function App() {
         <PersistentPluginComponents />
         {mobileLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
         {/* 도구모음은 하나다 — 모드는 자리만 바꾼다(상단 바 오른쪽 ↔ Zen 트레이). 모바일 셸은 자기 탭 막대를 쓴다. */}
-        {mobileLayout ? null : <ConsoleToolbar zen={zenActive} zenAvailable={operationsViewVisible} />}
+        {mobileLayout ? null : <ConsoleToolbar zen={zenActive} canvas={operationsViewVisible} />}
         <FloatingWidgetLayer />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는
             레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만 성립하는데, 그 조건을

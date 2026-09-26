@@ -90,16 +90,6 @@ function pickerUrl(homeOrigin: string, surface: string, at?: string): string {
   return url.toString();
 }
 
-// 시스템 클러스터는 커맨드 밴드 우측 끝에 상주한다 — 이 콘솔이 어느 호스트를 보고 있는지는 일반 모드의
-// 상단 바만 말한다. 도움말(?)과 설정의 문(톱니)은 도구모음으로 옮겨 가 모드와 무관하게 늘 닿는다.
-export function CommandBandSystemCluster() {
-  return (
-    <div className="command-band-system-cluster">
-      <HostSwitcher />
-    </div>
-  );
-}
-
 /** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, Zen 트레이에서는 위로 열린다(CSS가 자리로 판단). */
 export function ConsoleHelpMenu() {
   const state = useConsoleState();
@@ -388,10 +378,12 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   return (
     <div className={`host-switcher${inPicker ? " is-picker-surface" : ""}`}>
       {inPicker ? null : (
+        // 원격 — 도구모음의 글리프 한 칸(도움말 왼쪽). 어느 콘솔에 서 있는지는 이름표가 아니라 겨눌 때의
+        // 말풍선(title)이 말하고, 글리프 모서리의 점은 집을 떠나 있거나(aurora) 제어를 나눠 준 때(warn)만 선다.
         <button
           ref={triggerRef}
           type="button"
-          className={`host-switcher-chip${state.controlHolder !== null ? " is-shared" : ""}`}
+          className={`command-band-button host-switcher-chip${state.controlHolder !== null ? " is-shared" : standingAtHome ? "" : " is-away"}`}
           aria-haspopup="menu"
           aria-expanded={pickerHome === null && open}
           data-open={pickerHome === null && open ? "true" : undefined}
@@ -402,9 +394,10 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
             setOpen((previous) => !previous);
           }}
         >
-          <span className={`host-switcher-dot ${state.controlHolder !== null ? "is-shared" : "is-live"}`} aria-hidden="true" />
-          <span className="host-switcher-name">{chipLabel}</span>
-          <ChevronGlyph />
+          <RemoteGlyph />
+          {state.controlHolder !== null || !standingAtHome
+            ? <span className={`host-switcher-dot ${state.controlHolder !== null ? "is-shared" : "is-live"}`} aria-hidden="true" />
+            : null}
         </button>
       )}
       {open ? (
@@ -573,8 +566,9 @@ function formatSeen(epochMs: number): string {
   return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
 }
 
-function ChevronGlyph() {
-  return <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+// 원격 — 가운데 점에서 양옆으로 퍼지는 전파. 다른 기계의 콘솔로 건너가는 문이다.
+function RemoteGlyph() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" /><path d="M5.4 5.4a3.7 3.7 0 0 0 0 5.2M10.6 5.4a3.7 3.7 0 0 1 0 5.2M3.3 3.3a6.6 6.6 0 0 0 0 9.4M12.7 3.3a6.6 6.6 0 0 1 0 9.4" /></svg>;
 }
 
 function CheckGlyph() {

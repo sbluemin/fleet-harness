@@ -2171,6 +2171,7 @@ describe("Instrument core design contract", () => {
     const layout = source("styles/layout.css");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
+    const modeSwitch = source("../../../features/workspace/client/canvas/canvas-mode-switch.tsx");
     expect(app).toContain("<CommandBand operationsViewVisible={operationsViewVisible} />");
     expect(app).not.toContain("FocusMode");
     expect(app).not.toContain("is-focus-mode");
@@ -2179,16 +2180,16 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain("is-focus-mode");
     expect(theme).toContain("--chrome-band-height: 36px;");
     expect(commandBand).toContain("<BrandHome />");
-    expect(commandBand).toContain("<CommandBandSystemCluster />");
+    expect(commandBand).not.toContain("CommandBandSystemCluster");
     expect(commandBand).toContain('className="command-band-button command-band-viewmode"');
     // 도구모음은 콘솔에 하나다 — 찾기·도움말·Zen은 밴드가 따로 세우지 않고, 밴드는 도구모음이 설 자리만 둔다.
     const toolbar = source("chrome/toolbar/console-toolbar.tsx");
-    expect(commandBand).toContain('<span className="command-band-toolbar" ref={setBandToolbarHost} />');
+    expect(commandBand).toContain('<span ref={setToolbarHost} className="command-band-toolbar" />');
     expect(commandBand).not.toContain("command-band-search");
     expect(commandBand).not.toContain("command-band-zen");
     expect(toolbar).toContain("onClick={toggleOperationSearch}");
-    expect(toolbar).toContain("<ConsoleHelpMenu />");
-    expect(app).toContain("<ConsoleToolbar zen={zenActive} zenAvailable={operationsViewVisible} />");
+    expect(toolbar).toContain("<HostSwitcher />\n          <ConsoleHelpMenu />");
+    expect(app).toContain("<ConsoleToolbar zen={zenActive} canvas={operationsViewVisible} />");
     // Periscope: 패널 접기 토글은 밴드에서 퇴역했다 — 좌측 사이드바의 접기는 패널 자신의 컨트롤이,
     // 접힌 뒤의 문은 엣지 독(brass 필라멘트 + 호버 픽 + 클릭 고정)이 진다. 오른쪽 사이드바는 퇴역해
     // 도구모음이 되었고, 그 쪽의 접기·엣지 독·⌘⌥B도 함께 퇴역했다.
@@ -2212,65 +2213,65 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".panel-edge-dock-filament {");
     // 엣지 독은 캔버스 위 부유 크롬이다 — 캔버스 제스처가 삼키지 않도록 blocker 마크를 단다.
     expect(edgeDocks).toContain("data-canvas-blocker");
-    // 맵 컨트롤(모드 스위치+트레이)은 중앙 트랙의 단독 승객이다(브레드크럼 퇴역). 찾기는 도구모음으로
-    // 옮겨 갔고, 모드 스위치·트레이는 Operations 뷰에 게이트된다.
+    // 도구모음이 중앙 트랙의 단독 승객이다. 캔버스 모드 스위치는 상태별 보기 토글 바로 왼쪽 — 좌측 사이드바
+    // 머리와 Zen 작업 표시줄 — 에 선다.
     expect(commandBand).toContain(`      <div className="command-band-center">
-        <div ref={mapControlsRef} className="command-band-map-controls">
-        {operationsViewVisible ? <div
-          ref={modeSwitchRef}
-          className="command-band-mode-switch"`);
+        <span ref={setToolbarHost} className="command-band-toolbar" />`);
+    expect(toolbar).not.toContain("CanvasModeSwitch");
+    expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).toContain("<CanvasModeSwitch />\n            <SideBarStatusViewToggle active={statusAxis} />");
+    expect(source("../../../features/workspace/client/zen/zen-taskbar.tsx")).toContain("<CanvasModeSwitch /><SideBarStatusViewToggle active={statusAxis} />");
     // 접힘 상태도 펼침 상태와 같은 단일 간격으로 잇는다. 별도 구분선과 캡 표면은 사라진
     // 사이드바 경계를 다시 만들어 Command Band를 두 판처럼 보이게 하므로 두지 않는다.
     expect(commandBand).not.toContain("command-band-dock-divider");
-    expect(commandBand).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
-    expect(commandBand).toContain("<ResetViewIcon />");
-    expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
+    expect(modeSwitch).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
+    expect(modeSwitch).toContain("<ResetViewIcon />");
+    expect(modeSwitch).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
     // 캔버스 모드는 세그먼트 스위치 하나가 단독으로 소유한다 — 모드별 도구를 밴드에 상시
     // 늘어놓으면 다른 모드의 도구를 눌러 무경고로 모드를 이탈시킬 수 있다(2026-08 격자 클릭 사고).
-    expect(commandBand).toContain(`          className="command-band-mode-switch"
-          role="group"
-          aria-label={t("chrome.commandBand.canvasMode")}`);
+    expect(modeSwitch).toContain(`      className="command-band-mode-switch"
+      role="group"
+      aria-label={t("chrome.commandBand.canvasMode")}`);
     // 모드는 글리프 하나로 말하고 이름은 설명 문자열(title/aria-label)이 진다 — 낱말과 아이콘을
     // 함께 두면 클러스터가 375px까지 벌어져 1280px 밴드에서 중앙이 무너진다(2026-08 실측).
-    expect(commandBand).toContain('{ id: "cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseModeIcon },');
-    expect(commandBand).toContain('{ id: "warRoom", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomModeIcon },');
-    expect(commandBand).toContain("<mode.Icon />");
-    expect(commandBand).toContain("aria-label={t(mode.titleKey)}");
-    expect(commandBand).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : "cruise";');
-    expect(commandBand).toContain('aria-pressed={canvasMode === mode.id}');
+    expect(modeSwitch).toContain('{ id: "cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseModeIcon },');
+    expect(modeSwitch).toContain('{ id: "warRoom", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomModeIcon },');
+    expect(modeSwitch).toContain("<mode.Icon />");
+    expect(modeSwitch).toContain("aria-label={t(mode.titleKey)}");
+    expect(modeSwitch).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : "cruise";');
+    expect(modeSwitch).toContain('aria-pressed={canvasMode === mode.id}');
     // 모드 도구는 활성 세그먼트 아래 캡슐 하나에 활성 모드의 것만 마운트한다 — 비활성 모드 도구는
     // disabled가 아니라 부재다. 캡슐은 활성 세그먼트의 hover·포커스·클릭만 열고, 닫힌 동안은
     // inert로 포커스에서 빠지되 DOM에 남아 안내(feature tour)가 앵커를 찾는다.
-    expect(commandBand).toContain('className={`command-band-mode-tray${modeToolsOpen ? " is-open" : ""}`}');
-    expect(commandBand).toContain("inert={modeToolsOpen ? undefined : true}");
-    expect(commandBand).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
-    expect(commandBand).toContain('{canvasMode === "cruise" ? <>');
-    expect(commandBand).toContain('{canvasMode === "warRoom" ? <>');
-    expect(commandBand).toContain('{ALIGN_LAYOUTS.map((layout) => (');
-    expect(commandBand).toContain("onClick={cycleTriageDeckZoomPreset}");
-    expect(commandBand).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");
+    expect(modeSwitch).toContain('className={`command-band-mode-tray${modeToolsOpen ? " is-open" : ""}`}');
+    expect(modeSwitch).toContain("inert={modeToolsOpen ? undefined : true}");
+    expect(modeSwitch).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
+    expect(modeSwitch).toContain('{canvasMode === "cruise" ? <>');
+    expect(modeSwitch).toContain('{canvasMode === "warRoom" ? <>');
+    expect(modeSwitch).toContain('{ALIGN_LAYOUTS.map((layout) => (');
+    expect(modeSwitch).toContain("onClick={cycleTriageDeckZoomPreset}");
+    expect(modeSwitch).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");
     // 값은 남기되 낱말은 두지 않는다 — 아이콘 + 배율 수치.
-    expect(commandBand).toContain("<DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span>");
+    expect(modeSwitch).toContain("<DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span>");
     // 안내 앵커(.command-band-mode-tray, data-war-room-tool)가 닫힌 캡슐 안에 있을 때는 CSS가 강제로 펼친다.
     expect(layout).toContain(".command-band-mode-tray:has(.is-feature-tour-anchor)");
     // 중앙 트랙에는 모드 스위치만 남는다 — 찾기·Zen은 도구모음으로 옮겨 가 구분선도 함께 퇴역했다.
     expect(commandBand).not.toContain("command-band-center-divider");
     // 세 버튼이 곧 토글이다 — 꺼져 있으면 켜고, 다른 나누기면 바꾸고, 눌린 것을 다시 누르면 끈다.
     // 눌림 표시는 켜져 있을 때만 보인다. 별도 토글 버튼은 두지 않는다.
-    expect(commandBand).toContain("onClick={() => pickAlignLayout(layout.id)}");
-    expect(commandBand).toContain("aria-pressed={alignOn && alignLayout === layout.id}");
-    expect(commandBand).toContain("if (layout === alignMeta.layout) {");
-    expect(commandBand).not.toContain("chrome.commandBand.alignAll");
-    expect(commandBand).not.toContain("AlignAllIcon");
+    expect(modeSwitch).toContain("onClick={() => pickAlignLayout(layout.id)}");
+    expect(modeSwitch).toContain("aria-pressed={alignOn && alignLayout === layout.id}");
+    expect(modeSwitch).toContain("if (layout === alignMeta.layout) {");
+    expect(modeSwitch).not.toContain("chrome.commandBand.alignAll");
+    expect(modeSwitch).not.toContain("AlignAllIcon");
     // 캡슐 트레이는 칸 위에 겹쳐 열린다 — 기하를 움직이지 않는 오버레이이며, Tactical도 같았다.
     // hover 동작은 canary와 같고, 열린 캡슐이 칸을 미는 배선은 두지 않는다.
-    expect(commandBand).not.toContain("setModeTrayOpen");
+    expect(modeSwitch).not.toContain("setModeTrayOpen");
     // 정렬이 켜지면 Cruise 세그먼트에 brass 점이 켜진다 — 캡슐 안 나누기와 같은 채널이다.
-    expect(commandBand).toContain("stationKeeping || alignOn");
+    expect(modeSwitch).toContain("stationKeeping || alignOn");
     // 모드 스위치는 Theater 등록 여부로만 게이트한다 — 정렬 토글은 활성 Theater로 게이트한다.
-    expect(commandBand).toContain("disabled={state.theaters.length === 0}");
+    expect(modeSwitch).toContain("disabled={state.theaters.length === 0}");
     // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
-    expect(commandBand).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
+    expect(modeSwitch).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
     const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");
     expect(sidebar).not.toContain("side-bar-theater-add-btn");
@@ -2289,7 +2290,7 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain(".command-band-center-divider {");
     // 맵 컨트롤 클러스터는 컨테이너 플로우 배치다 — 개별 절대 위치 + 매직 오프셋(구 116px)은
     // 버튼 추가 시 겹침으로 깨지므로(선별 처리 아이콘 덮임 사고) 다시 도입하지 않는다.
-    expect(layout).toContain(".command-band-map-controls {");
+    expect(layout).not.toContain(".command-band-map-controls {");
     // 전면 해도 개편: 사이드바-가장자리 추종 앵커는 캡 계약과 함께 퇴역했다 — 클러스터는
     // 흐름 배치이고 하한은 좌·우 클러스터의 실측 콘텐츠 폭 중 큰 쪽에서 나온다. 앵커 변수가
     // 되살아나면 모드 스위치가 존재하지 않는 열 경계에 다시 정박한다.
@@ -2559,7 +2560,6 @@ describe("Instrument core design contract", () => {
     const reducedMotionBlock = layout.slice(layout.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reducedMotionBlock).toContain(".operations-side-bar,");
     expect(reducedMotionBlock).toContain(".right-rail,");
-    expect(reducedMotionBlock).toContain(".command-band-map-controls,");
     expect(reducedMotionBlock).toContain(".command-band-left {");
     expect(reducedMotionBlock).toContain("transition: none !important;");
   });
@@ -3471,7 +3471,7 @@ describe("Instrument core design contract", () => {
     expect(source("chrome/rail/right-rail.tsx")).toContain('t("settings.title")');
     expect(systemCluster).toContain('t("chrome.system.keyboardShortcuts")');
     expect(systemCluster).toContain("openWhatsNew");
-    expect(components).toContain(".command-band-system-cluster {");
+    expect(components).not.toContain(".command-band-system-cluster {");
     expect(components).not.toContain(".side-bar-brand-foot");
 
     expect(sidebar).toContain("hasCustomGroups && section.entries.length > 0");
