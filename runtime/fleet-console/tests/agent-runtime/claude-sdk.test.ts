@@ -108,9 +108,10 @@ describe("fail-closed refusals", () => {
 
   it("never spawns a session child once disposal lands during launch preparation", async () => {
     const sdk = await createClaudeGatewaySdk({ modelPolicy: claudeGatewayModelPolicy, baseUrl: BASE_URL, models: [LUNA] });
-    const opening = sdk.openSession({ model: LUNA });
+    // 거절 처리를 dispose보다 먼저 붙인다 — dispose를 기다리는 사이 거절이 도착하면 미처리로 잡힌다.
+    const refused = expect(sdk.openSession({ model: LUNA })).rejects.toThrow(/disposed/);
     await sdk.dispose();
-    await expect(opening).rejects.toThrow(/disposed/);
+    await refused;
     expect(runVendorSession).not.toHaveBeenCalled();
   });
 });
