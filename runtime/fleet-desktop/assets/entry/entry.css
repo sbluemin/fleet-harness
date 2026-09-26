@@ -19,6 +19,15 @@
   font-style: normal;
   font-display: swap;
 }
+/* 개발 빌드 워드마크의 DEV 태그 — Console과 같은 서체라야 넘겨주기·종료 인사의 착지 폭이 맞는다.
+   워드마크의 일부이므로 Fraunces처럼 폴백으로 먼저 그리지 않는다. */
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  src: url("fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: block;
+}
 
 :root {
   color-scheme: dark;
@@ -30,6 +39,9 @@
   --ink-muted: oklch(64% 0.012 245);
   --ink-spectral: oklch(70% 0.012 245);
   --ink-pearl: oklch(94% 0.008 90);
+  /* 개발 빌드 워드마크 전용 잉크와 DEV가 물러서는 3차 잉크 — Console theme.css의 --ink-brand-dev·--text-tertiary(Instrument). */
+  --ink-brand-dev: oklch(84% 0.045 255);
+  --text-tertiary: var(--ink-muted);
   --brass: oklch(80% 0.085 78);
   --brass-glow: color-mix(in oklch, var(--brass) 16%, transparent);
   --aurora: oklch(77% 0.085 200);
@@ -57,6 +69,8 @@
 :root[data-platform="darwin"] { --brand-glyph-left: 93px; }
 /* 위 팔레트는 기본 판이다. main이 사용자의 Console 테마 색을 알면 같은 이름의 변수를 덮고 밝기를 알린다. */
 :root[data-scheme="light"] { color-scheme: light; }
+/* 개발 잉크는 팔레트로 건너오지 않는다 — 밝은 판에서는 Console Whites의 값으로 바꿔 판독성을 지킨다. */
+:root[data-scheme="light"] { --ink-brand-dev: oklch(42% 0.075 255); --text-tertiary: var(--ink-fog); }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -76,6 +90,10 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
 }
 .brand-mark-tile { fill: var(--ink-deep); stroke: var(--hairline-strong); stroke-width: 2; }
 .brand-mark-ring { fill: none; stroke: var(--brass); stroke-width: 3.5; }
+/* 개발 빌드는 Console(BrandMarkIcon local)처럼 바깥 링을 열고 신호점을 뺀다. */
+.brand-mark-ring-open { display: none; fill: none; stroke: var(--brass); stroke-width: 3.5; stroke-linecap: round; }
+.is-dev .brand-mark-ring, .is-dev .brand-mark-beacon { display: none; }
+.is-dev .brand-mark-ring-open { display: inline; }
 .brand-mark-inner { fill: none; stroke: var(--brass); stroke-width: 1.8; opacity: 0.55; }
 .brand-mark-ticks { fill: none; stroke: var(--brass); stroke-width: 3; stroke-linecap: round; }
 .brand-mark-pip { fill: var(--brass); }
@@ -99,10 +117,11 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
 }
 
 /* 개발 빌드의 「Fleet·DEV」 — Console 워드마크(BrandWordmark)와 같은 조형·같은 em이라 넘겨주기에서 크기가 줄어도
-   함께 줄어든다. 잉크는 진입 판의 토큰으로 옮긴다: 점은 황동, DEV는 워드마크 잉크를 옅은 잉크 쪽으로 누른다. */
+   함께 줄어든다. 워드마크는 개발 잉크, 점은 황동, DEV는 개발 잉크를 3차 잉크 쪽으로 누른다. */
 .wordmark-sep, .wordmark-tag { display: none; }
+.is-dev .wordmark { color: var(--ink-brand-dev); }
 .is-dev .wordmark-sep { display: inline; margin: 0 0.34em; color: var(--brass); font-family: var(--font-body); font-weight: 700; }
-.is-dev .wordmark-tag { display: inline-block; margin-inline-end: -0.16em; color: color-mix(in oklab, var(--ink-pearl) 72%, var(--ink-fog)); font: 700 0.62em/1 var(--font-mono); letter-spacing: 0.16em; transform: translateY(-0.08em); }
+.is-dev .wordmark-tag { display: inline-block; margin-inline-end: -0.16em; color: color-mix(in oklab, var(--ink-brand-dev) 72%, var(--text-tertiary)); font: 700 0.62em/1 var(--font-mono); letter-spacing: 0.16em; transform: translateY(-0.08em); }
 
 .entry-stage { position: fixed; top: calc(50% + 30px); left: 24px; right: 24px; display: grid; justify-items: center; gap: 10px; text-align: center; transition: opacity var(--duration-fade) ease; }
 .tagline { margin: 0 0 14px; color: var(--ink-spectral); font-size: 14px; }
