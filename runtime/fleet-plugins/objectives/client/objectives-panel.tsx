@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
@@ -439,9 +440,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
   const pickList = (next: ListId) => { setList(next); setListMenuOpen(false); listTriggerRef.current?.focus(); };
   return (
-    // data-feature-tour-boundary="anchor" — 콘솔 피처 투어와의 DOM 계약. 투어 카드가 패널을 가리지 않고 패널 옆,
-    // 짚는 구획 높이에 선다(레일이든 넓은 화면이든 자리가 없으면 투어가 앵커 기준 배치로 돌아간다).
-    <div className="objectives-container" data-feature-tour-boundary="anchor" onPointerDownCapture={(event) => {
+    // 온보딩 경계(SDK 계약) — 투어 카드가 패널을 가리지 않고 패널 옆, 짚는 구획 높이에 선다(레일이든 넓은 화면이든
+    // 자리가 없으면 앵커 기준 배치로 돌아간다).
+    <div className="objectives-container" {...onboardingBoundary("anchor")} onPointerDownCapture={(event) => {
       if (highlightMission && !(event.target as Element).closest(`[data-mission-id="${CSS.escape(highlightMission)}"]`)) {
         if (highlightTimer.current) clearTimeout(highlightTimer.current);
         highlightTimer.current = null;

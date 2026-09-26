@@ -1,0 +1,394 @@
+/* 온보딩 엔진 — 웰컴(카드 한 장)·엔트리 힌트·투어. 내용은 각 기여가 소유하고, 이 시트는 세 표면의 재질만 정한다.
+   세 표면 모두 팝업 판독성 계약(.whatsnew-card의 canonical 주석)을 따라 유리 채널 위에 불투명 언더레이를 깐다. */
+
+/* 웰컴 — 업데이트로 새로 생긴 기능을 기존 사용자에게 알리는 카드 한 장. 안 본 슬라이드만 넘겨 보이며,
+   What's New가 닫힌 뒤에만 선다. 유리 채널을 그대로 입는다(.whatsnew-card 와 같은 계약). 슬라이드가 바뀔 때는
+   글이 옆으로 조금 흘러들며 나타나고, 카드 자체의 크기는 흔들리지 않는다. */
+.onboarding-welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 44px);
+  animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) both;
+}
+
+.onboarding-welcome-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
+  cursor: default;
+}
+
+.onboarding-welcome-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--space-4);
+  width: min(460px, 100%);
+  padding: var(--space-5);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
+  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
+}
+
+.onboarding-welcome-eyebrow {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.onboarding-welcome-slide {
+  display: grid;
+  gap: var(--space-4);
+  text-align: center;
+  animation: onboarding-welcome-slide-in var(--duration-base) var(--ease-glide) both;
+}
+
+.onboarding-welcome-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-xs);
+}
+
+.onboarding-welcome-copy {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.onboarding-welcome-copy h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-xl);
+  font-weight: var(--weight-bold);
+  text-wrap: balance;
+}
+
+.onboarding-welcome-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+.onboarding-welcome-copy .onboarding-welcome-next {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
+.onboarding-welcome-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.onboarding-welcome-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.onboarding-welcome-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline-strong);
+  transition: width var(--duration-base) var(--ease-glide), background-color var(--duration-base) var(--ease-glide);
+}
+
+.onboarding-welcome-dots span.is-current {
+  width: 18px;
+  background: var(--brass);
+}
+
+.onboarding-welcome-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.onboarding-welcome-actions button {
+  padding: 8px 18px;
+  border-radius: var(--radius-xs);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+.onboarding-welcome-secondary {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.onboarding-welcome-secondary:hover { color: var(--text-primary); }
+
+.onboarding-welcome-primary {
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  background: color-mix(in oklch, var(--brass) 18%, transparent);
+  color: var(--brass-ink);
+}
+
+.onboarding-welcome-primary:hover { background: color-mix(in oklch, var(--brass) 26%, transparent); }
+
+@keyframes onboarding-welcome-slide-in {
+  from { opacity: 0; translate: 10px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-welcome-slide,
+  .onboarding-welcome-overlay,
+  .onboarding-welcome-card { animation: none; }
+  .onboarding-welcome-dots span { transition: none; }
+}
+
+/* ── 투어 ─────────────────────────────────────────────────────────────── */
+.feature-tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-tour);
+  pointer-events: none;
+}
+
+/* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조).
+   안내 카드는 스크림 없이 캔버스·패널 바로 위에 떠서 가리키는 대상 옆에 서므로, 반투명 glass
+   토큰을 쓰는 테마에서는 카드 본문과 뒤 화면이 겹쳐 읽힌다. */
+.feature-tour-card {
+  position: fixed;
+  width: min(340px, calc(100vw - 24px));
+  padding: var(--space-4);
+  border: 1px solid color-mix(in oklab, var(--brass) 34%, var(--hairline));
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  color: var(--text-primary);
+  pointer-events: auto;
+  animation: feature-tour-enter var(--duration-slow) var(--ease-glide) both;
+}
+
+.feature-tour-layer.is-centered .feature-tour-card {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.feature-tour-card h2 {
+  margin: 0;
+  color: var(--brass-ink);
+  font-family: var(--font-body);
+  font-size: var(--t-lg);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+}
+
+.feature-tour-card p {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+  line-height: 1.55;
+}
+
+/* 예시 문장 — 상자 없이 본문과 같은 결로, 안내 한 줄 아래 프롬프트만 기울이고 굵게. */
+.feature-tour-card .feature-tour-example {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+}
+.feature-tour-card .feature-tour-example-lead {
+  display: block;
+}
+.feature-tour-card .feature-tour-example em {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-primary);
+  font-style: italic;
+  font-weight: var(--weight-bold);
+}
+
+.feature-tour-progress {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
+}
+
+.feature-tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.feature-tour-actions button {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.feature-tour-actions button:hover,
+.feature-tour-actions button:focus-visible {
+  border-color: color-mix(in oklab, var(--brass) 34%, var(--hairline));
+  color: var(--text-primary);
+}
+
+.feature-tour-actions .feature-tour-primary {
+  border-color: color-mix(in oklab, var(--brass) 34%, var(--hairline));
+  background: color-mix(in oklab, var(--brass) 12%, var(--surface-glass));
+  color: var(--text-primary);
+}
+
+.is-feature-tour-anchor {
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--brass) 55%, transparent);
+}
+
+@keyframes feature-tour-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feature-tour-card {
+    animation: none;
+  }
+}
+
+/* 엔트리 힌트 — 아직 열어 본 적 없는 레일 아이콘 왼쪽에 한 번 선다. 투어 카드와 달리 화면을 잠그지
+   않고, 꼬리가 아이콘을 가리켜 "이 문"이라는 것을 붙여 둔다. 도움말의 업데이트 말풍선과 같은 유리 채널을 입고,
+   가리키는 대상이 위치이므로 테두리 강조는 brass다. */
+.onboarding-hint {
+  position: fixed;
+  z-index: var(--z-tour);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(280px, calc(100vw - 72px));
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
+  border-radius: var(--radius-md);
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  transform: translateY(-50%);
+  text-align: left;
+  animation: onboarding-hint-in var(--duration-base) var(--ease-glide) both;
+}
+
+/* 꼬리 — 본체와 같은 유리를 칠하되 backdrop-filter는 다시 걸지 않는다(두 번 흐려진다).
+   말풍선이 뷰포트 끝에서 밀려나면 그만큼 거꾸로 옮겨 여전히 아이콘 가운데를 가리킨다. */
+.onboarding-hint::before {
+  content: "";
+  position: absolute;
+  top: calc(50% - 5px + var(--onboarding-hint-arrow-shift, 0px));
+  right: -6px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
+  border-right: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
+  background:
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  transform: rotate(45deg);
+}
+
+.onboarding-hint-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.onboarding-hint-title {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+}
+
+.onboarding-hint-close {
+  flex: none;
+  margin: -2px -4px 0 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  line-height: 1.2;
+}
+
+.onboarding-hint-close:hover { color: var(--text-primary); }
+
+.onboarding-hint-body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  line-height: 1.55;
+  /* 한글 낱말 가운데가 갈라지면 한 번 더 읽게 된다. */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.onboarding-hint-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.onboarding-hint-kbd {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.onboarding-hint-open {
+  padding: 4px 12px;
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 18%, transparent);
+  color: var(--brass-ink);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.onboarding-hint-open:hover { background: color-mix(in oklch, var(--brass) 26%, transparent); }
+
+@keyframes onboarding-hint-in {
+  from { opacity: 0; translate: 6px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-hint { animation: none; }
+}

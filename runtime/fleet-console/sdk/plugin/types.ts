@@ -1,3 +1,4 @@
+import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
 import type { ConsoleActionInput, ConsoleActionReceipt, ConsoleOperationObservation } from "../mcp/control.js";
 import type http from "node:http";
@@ -131,6 +132,11 @@ export interface ClientExecutionProvider {
   readonly railPanels?: readonly RailPanelDescriptor[];
   /** 우측 레일의 아이콘 진입점. 무엇을 여는지는 `panes` 또는 `activate`가 말한다. */
   readonly railEntries?: readonly RailEntryDescriptor[];
+  /**
+   * 이 플러그인의 온보딩(웰컴 슬라이드·레일 진입점 힌트·투어). 호스트는 Console 코어 기능의 온보딩을
+   * 먼저 마친 뒤 같은 단계 순서로 이어서 보인다. 문구와 앵커는 플러그인이 소유한다.
+   */
+  readonly onboarding?: OnboardingContribution;
   /**
    * 표면 안의 열. 레일 표면과 확대 표면 어디에나 설 수 있고, 등록은 서로 독립이다 —
    * 어느 페인이 언제 서는지는 등록이 아니라 `panes.open` 호출이 정한다.

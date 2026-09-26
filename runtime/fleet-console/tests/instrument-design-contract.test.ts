@@ -61,6 +61,7 @@ const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.ts
 const FILE_EXPLORER_CSS_PATH = new URL("../../fleet-plugins/file-explorer/client/explorer.css", import.meta.url);
 const REPOSITORY_CSS_PATH = new URL("../../fleet-plugins/repository/client/repository.css", import.meta.url);
 const FONT_PICKER_CSS_PATH = new URL("../foundation/font-picker/styles.css", import.meta.url);
+const ONBOARDING_CSS_PATH = new URL("../features/onboarding/client/onboarding.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
 const SDK_CAPTION_ACTIONS_PATH = new URL("../sdk/components/caption-actions.tsx", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
@@ -2111,7 +2112,6 @@ describe("Instrument core design contract", () => {
     // directly on a popup is a regression: that surface would escape the gates.
     const componentsPopupSelectors = [
       ".whatsnew-card",
-      ".feature-welcome-card",
       ".commissioning-card",
       ".control-curtain-card",
       ".control-reclaimed-card",
@@ -2127,7 +2127,6 @@ describe("Instrument core design contract", () => {
       // backdrop-filter가 backdrop root가 되면 안쪽 앵커 팝업의 blur가 카드 밖을 샘플링하지
       // 못한다. 채널 계약은 그 전용 요소에서 그대로 지켜져야 한다.
       ".quick-launch-glass",
-      ".feature-tour-card",
     ];
     // Quick Launch 오버레이도 fleet-pop을 타므로 억제 절을 함께 못 박는다 — 규칙 옆에 붙은
     // 자체 reduced-motion 블록은 .fc-select__* 선례와 같은 형태다.
@@ -2136,6 +2135,13 @@ describe("Instrument core design contract", () => {
       const scoped = selector.replace(/\./g, "\\.");
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--glass-underlay\\);`));
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*backdrop-filter: var\\(--glass-backdrop-strong\\);`));
+    }
+    // 온보딩 엔진의 세 표면(웰컴 카드·엔트리 힌트·투어 카드)은 엔진 시트가 소유하고 같은 채널 계약을 진다.
+    const onboardingCss = externalSource(ONBOARDING_CSS_PATH);
+    for (const selector of [".onboarding-welcome-card", ".onboarding-hint", ".feature-tour-card"]) {
+      const scoped = selector.replace(/\./g, "\\.");
+      expect(onboardingCss).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--glass-underlay\\);`));
+      expect(onboardingCss).toMatch(new RegExp(`${scoped} \\{[^}]*backdrop-filter: var\\(--glass-backdrop-strong\\);`));
     }
     // 브레드크럼 스위처 메뉴는 브레드크럼과 함께 퇴역했다 — 밴드 앵커 메뉴는 시스템 메뉴와
     // 환경 팝오버만 남는다.

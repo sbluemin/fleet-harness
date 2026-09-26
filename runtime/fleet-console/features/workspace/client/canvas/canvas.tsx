@@ -1,4 +1,5 @@
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
+import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -797,7 +798,7 @@ export function OperationsCanvas({
       && autoFocusedTriageStageRef.current.operationId === nextStage.operationId) return;
     autoFocusedTriageStageRef.current = nextStage;
     const frame = window.requestAnimationFrame(() => {
-      if (document.querySelector(".feature-tour-layer") || hasVisibleModal(document)) return;
+      if (document.querySelector(ONBOARDING_TOUR_LAYER_SELECTOR) || hasVisibleModal(document)) return;
       const activeElement = document.activeElement;
       if (activeElement instanceof HTMLElement
         && activeElement.closest(".canvas-operation")

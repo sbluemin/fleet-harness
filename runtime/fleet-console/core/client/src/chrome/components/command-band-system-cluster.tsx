@@ -17,8 +17,8 @@ import { openRailPanel, setRailChromeExpanded } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
-import { EFFORT_CONFIRM_TIP_SEEN_KEY, forgetAllFeatureTours } from "./feature-tour.js";
-import { RAIL_ENTRY_HINT_SEEN_KEYS } from "../rail/rail-entry-hint.js";
+import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
+import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/workspace/client/canvas/canvas-context-menu.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 
@@ -577,14 +577,14 @@ function CheckGlyph() {
   return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 6.3 4.8 8.6 9.5 3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-// "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다.
-// 카탈로그의 모든 피처 투어 시청 기록(walkthrough·spotlight)·최초 설정 가이드·강도 확인 팁
-// 기록과 레일 진입점 말풍선을 함께 지워, 어느 화면에 있든 온보딩을 처음부터 다시 보게 한다.
+// "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다. 엔진이 마운트한 모든 기여의
+// 엔트리 힌트·투어 시청 기록과 최초 설정 가이드·강도 확인 팁 기록을 함께 지워, 어느 화면에 있든 처음부터 다시 보게 한다.
+// 웰컴은 되돌리지 않는다 — "이번 업데이트로 새로 생긴 것"은 다시 일어나지 않는 사건이다.
 function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
-  const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY, ...RAIL_ENTRY_HINT_SEEN_KEYS]);
-  const afterTours = forgetAllFeatureTours(seen);
-  const next = afterTours.filter((key) => !drop.has(key));
-  return next.length === afterTours.length ? afterTours : next;
+  const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY]);
+  const afterOnboarding = forgetReplayableOnboarding(seen);
+  const next = afterOnboarding.filter((key) => !drop.has(key));
+  return next.length === afterOnboarding.length ? afterOnboarding : next;
 }
 
 function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: {

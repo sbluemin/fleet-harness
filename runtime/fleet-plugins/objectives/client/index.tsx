@@ -6,6 +6,7 @@ import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 import { objectivesClusterSource } from "./clusters.js";
 import { getT } from "./i18n/index.js";
 import { ObjectivePanel } from "./objectives-panel.js";
+import { objectivesOnboarding } from "./onboarding.js";
 import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealObjective, objectivesApi, toggleObjectivePlace } from "./objectives-state.js";
 import "./objectives.css";
 
@@ -67,6 +68,7 @@ const objectivesPlugin = definePlugin({
   },
   onMapOperationSelected: handleMapOperationSelected,
   railEntries: [objectivesEntry],
+  onboarding: objectivesOnboarding,
   panes: [objectivesPane],
   expandedSurfaces: [objectivesSurface],
   // 지휘관과 담당 Operation은 한 묶음이다 — 호스트는 이 서술자로 지휘관 패널의 구성원·임무 줄을 그린다.

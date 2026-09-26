@@ -1,5 +1,6 @@
 import { consoleExecution } from "./execution.js";
 import { createContext, useContext, useMemo } from "react";
+import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
 import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
@@ -36,6 +37,8 @@ export interface PluginRegistry {
   readonly operationCaptionContributions: readonly OperationCaptionContribution[];
   /** 모든 플러그인의 묶음을 한 원천으로 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
   readonly operationClusters: OperationClusterSource;
+  /** 플러그인의 온보딩 기여 — 엔진은 코어 기능의 온보딩 다음 순서로 보인다. */
+  readonly onboarding: readonly OnboardingContribution[];
 }
 
 interface PluginRuntimeManifest {
@@ -186,6 +189,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
     providers,
     failures,
     persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),
+    onboarding: providers.flatMap((plugin) => (plugin.onboarding ? [plugin.onboarding] : [])),
     operationKinds: providers.flatMap((plugin) => plugin.operationKinds ?? []),
     settingsSections: providers.flatMap((plugin) => plugin.settingsSections ?? []),
     notificationKinds: providers.flatMap((plugin) => plugin.notificationKinds ?? []),

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantRow, OperationLaunchView } from "@fleet-console/sdk/operations";
 
-import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../../../../core/client/src/integration/feature-tour-catalog.js";
+import { ONBOARDING_TOUR_LAYER_SELECTOR, onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunchStartSurface } from "../../../execution/client/launch-start-surface.js";
 import { resolveLaunchKindAnnotation } from "../../../execution/client/launch-kind-annotations.js";
 import { EffortGaugeGlyph, EffortTrack, effortLadderPosition, gatedEffortNames } from "../../../execution/client/components/effort-track.js";
-import { appendSeenFeatureTour, EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../core/client/src/chrome/components/feature-tour.js";
+import { appendSeen } from "../../../onboarding/client/seen-store.js";
 import { launchProviderFromGroupId, launchProviderGlyph } from "../../../execution/client/components/launch-provider-glyphs.js";
 import { ChatBubbleIcon, TerminalViewIcon } from "../../../execution/client/components/start-view-glyphs.js";
 
@@ -28,6 +28,10 @@ interface CanvasContextMenuProps {
 // 폭은 세 곳이 함께 알아야 한다 — 이 상수(측정 전 clamp 폴백), .canvas-context-menu의 width,
 // .operation-launch-control--canvas .operation-launch-menu의 min-width. 하나만 고치면 컴파일은
 // 되고 치수만 조용히 어긋난다.
+// 강도 확인 팁 — 투어 카탈로그 항목은 아니지만 같은 seenFeatureTours 필드에 실어, "화면 안내 다시 보기"가 투어·
+// 첫 실행 안내와 함께 되돌린다.
+export const EFFORT_CONFIRM_TIP_SEEN_KEY = "effort-confirm-tip";
+
 const MENU_WIDTH = 264;
 const FLYOUT_GAP = 10;
 // 트랙·접힘 셰브론·ULTRACODE 라벨이 나란히 들어가는 최악 폭(게이트 열림). CSS는
@@ -315,7 +319,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (containerRef.current?.contains(target) || document.querySelector(FEATURE_TOUR_LAYER_SELECTOR)?.contains(target)) return;
+      if (containerRef.current?.contains(target) || document.querySelector(ONBOARDING_TOUR_LAYER_SELECTOR)?.contains(target)) return;
       onClose();
     };
     const handleKey = (event: KeyboardEvent) => {
@@ -561,12 +565,12 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           // 기능 투어는 이 메뉴의 항목에 앵커를 걸고 여러 단계를 걷는다. 그 카드의 버튼으로
           // 포커스가 가는 것은 메뉴를 떠나는 것이 아니다 — 여기서 닫으면 다음 단계가 짚을
           // 항목이 사라져 설명하던 대상을 잃은 투어만 남는다(포인터 경로도 같은 이유로 면제한다).
-          if (document.querySelector(FEATURE_TOUR_LAYER_SELECTOR)?.contains(next)) return;
+          if (document.querySelector(ONBOARDING_TOUR_LAYER_SELECTOR)?.contains(next)) return;
           setHoverKey(null);
           setFocusKey(null);
           onClose();
         }}
-        {...{ [FEATURE_TOUR_BOUNDARY_ATTRIBUTE]: "" }}
+        {...onboardingBoundary()}
       >
         {/* 게이지·스트립은 sticky라 배치 변형(cursor/above/triage fixed)과 무관하게 스크롤 포트
             가장자리에 붙고, height:0이라 목록 흐름을 밀지 않는다. 전부 aria-hidden 포인터 전용
@@ -874,7 +878,7 @@ async function persistEffortConfirmTipSeen(): Promise<void> {
     if (seen.includes(EFFORT_CONFIRM_TIP_SEEN_KEY)) return;
     const saved = await setGlobalSettingsField(
       "seenFeatureTours",
-      appendSeenFeatureTour(seen, EFFORT_CONFIRM_TIP_SEEN_KEY),
+      appendSeen(seen, EFFORT_CONFIRM_TIP_SEEN_KEY),
     );
     if (saved) return;
     await new Promise((resolve) => setTimeout(resolve, 40));

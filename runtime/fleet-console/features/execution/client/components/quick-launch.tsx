@@ -15,7 +15,7 @@ import type { OperationSearchEntry } from "../../../../core/client/src/integrati
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
 import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, mentionTargetName, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionTarget, type QuickLaunchMentionToken } from "../quick-launch.js";
-import { FEATURE_TOUR_LAYER_SELECTOR } from "../../../../core/client/src/integration/feature-tour-catalog.js";
+import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import type { QuickLaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
 import { theaterInitials } from "../../../workspace/client/sidebar/operations-side-bar.js";
@@ -2290,7 +2290,7 @@ function trapFocus(event: KeyboardEvent, card: HTMLElement | null): void {
   if (!card) return;
   // 화면 안내가 이 컴포저 안을 가리키고 있으면 그 카드도 이 대화의 포커스 범위다 — 안내 카드는
   // 스스로 포커스를 가져가지 않으므로, 트랩이 카드를 빼면 키보드로는 안내를 닫을 방법이 없다.
-  const scopes = [card, ...Array.from(document.querySelectorAll<HTMLElement>(FEATURE_TOUR_LAYER_SELECTOR))];
+  const scopes = [card, ...Array.from(document.querySelectorAll<HTMLElement>(ONBOARDING_TOUR_LAYER_SELECTOR))];
   const focusable = scopes.flatMap((scope) => Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)))
     // 멘션 전환으로 접힌 런치 3종은 visibility:hidden으로 남는다 — offsetParent만 보면 트랩이
     // 보이지 않는 칩으로 포커스를 되돌린다. 로빙(tabIndex -1) 항목 — 픽커·멘션 덱의 행 — 은

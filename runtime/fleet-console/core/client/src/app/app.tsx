@@ -4,12 +4,11 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { ActiveCompanionShortcutsProvider, availableCompanionPanels, type CompanionShortcutEntry, takeKeyboardShortcutsReturnFocus, usableCompanionShortcuts } from "../integration/shortcuts.js";
-import { companionDefaultChord, companionShortcutCommandId } from "../integration/shortcut-bindings.js";
+import { companionDefaultChord, companionShortcutCommandId, shortcutCommandLabel } from "../integration/shortcut-bindings.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
 import { CommandBand } from "../chrome/components/command-band.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
-import { FeatureTourOverlay } from "../chrome/components/feature-tour.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "../chrome/components/operation-search.js";
 import { QuickLaunch } from "../../../../features/execution/client/components/quick-launch.js";
@@ -20,8 +19,8 @@ import { claimTheaterBootMinimization } from "../integration/boot-minimization-s
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "../integration/deletion-undo.js";
 import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
-import { FeatureWelcome } from "../chrome/components/feature-welcome.js";
-import { RailEntryHints } from "../chrome/rail/rail-entry-hint.js";
+import { OnboardingHost } from "../../../../features/onboarding/client/onboarding-host.js";
+import { CORE_ONBOARDING } from "../integration/onboarding.js";
 import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
 import { ComputerScreenShareProvider } from "../../../../features/computer-use/client/computer-screen-share.js";
@@ -40,7 +39,7 @@ import { syncSettingsSearchPlugins } from "../../../../features/settings/client/
 import { Operations } from "../../../../features/workspace/client/operations.js";
 import { setRailChromeExpanded, toggleRailChrome } from "../chrome/rail/rail-store.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
-import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
+import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
@@ -62,6 +61,12 @@ import { resolveOperationActivity } from "../../../../features/execution/client/
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 const UNDO_WINDOW_MS = 8_000;
 const THEME_NOTICE_AUTO_DISMISS_MS = 8_000;
+
+// 온보딩 엔진이 코어 크롬에 닿는 창구 — 레일 진입점 버튼(RailIcon이 세우는 #rail-tab-<id>)과 단축키 표기.
+const ONBOARDING_PORTS = {
+  railEntryElement: (railEntryId: string) => document.getElementById(`rail-tab-${railEntryId}`),
+  shortcutLabel: (commandId: string) => shortcutCommandLabel(commandId),
+} as const;
 
 export function App() {
   const state = useConsoleState();
@@ -582,10 +587,15 @@ export function App() {
         <QuickLaunch />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <WhatsNewModal state={state} />
-        <FeatureWelcome state={state} />
         <CommissioningOverlay state={state} />
-        <FeatureTourOverlay />
-        <RailEntryHints />
+        <OnboardingHost
+          core={CORE_ONBOARDING}
+          plugins={registry.onboarding}
+          language={consoleLocale}
+          whatsNewOpen={state.whatsNewOpen}
+          firstRun={state.bootstrapped && state.theaters.length === 0 && globalSettings.state !== null && !globalSettings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)}
+          ports={ONBOARDING_PORTS}
+        />
         <ControlCurtain />
         <ControlReclaimedNotice />
         <ToastHost>
