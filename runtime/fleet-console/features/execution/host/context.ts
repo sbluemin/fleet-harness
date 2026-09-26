@@ -18,6 +18,7 @@ export interface ConsoleRuntimeContext {
   readonly basePath: string;
   readonly wsBasePath: string;
   readonly dataDir: string;
+  readonly recordFailure?: (kind: string, error: unknown) => void;
   readonly legacyDataDir: string;
   /** Agent 실행 옵션. 저장 자리(Console 슬롯)는 부트스트랩이 정해 붙인다. */
   readonly agentOptions: AgentOptionsService;

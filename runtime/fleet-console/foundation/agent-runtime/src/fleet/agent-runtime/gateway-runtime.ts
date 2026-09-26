@@ -7,6 +7,7 @@ type AdditionalMcpSession = Pick<ExecutorSessionManager, "getEndpoint" | "issueS
 export interface FleetGatewayAgentRuntimeLifecycleDeps {
 	/** 추가 연결은 호스트가 소유하며 이 런타임은 발급한 세션 토큰만 회수한다. */
 	readonly additionalMcpSessions?: readonly AdditionalMcpSession[];
+	readonly onFailure?: (kind: string, error: unknown) => void;
 }
 
 export interface FleetGatewayAgentRuntimeLifecycle {
@@ -26,6 +27,7 @@ export async function createFleetGatewayAgentRuntimeLifecycle(
 				registry: mcpRuntime.mcpRegistry,
 				server: mcpRuntime.mcpServer,
 				snapshotStore: mcpRuntime.mcpToolSnapshotStore,
+					onFailure: deps.onFailure,
 			},
 		}],
 	});

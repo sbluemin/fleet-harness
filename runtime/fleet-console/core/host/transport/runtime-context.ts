@@ -9,6 +9,7 @@ import type { ConsoleRuntimeHost, ConsoleRuntimeContext } from "../../../feature
 export function createConsoleRuntimeContext(deps: {
   readonly host: ConsoleRuntimeHost;
   readonly dataDir: string;
+  readonly recordFailure?: (kind: string, error: unknown) => void;
   readonly legacyDataDir: string;
   readonly agentOptions: AgentOptionsService;
   readonly agentCliPlugin: AgentCliPlugin;
@@ -29,6 +30,7 @@ export function createConsoleRuntimeContext(deps: {
     host: deps.host,
     consoleControl: deps.consoleControl,
     dataDir: deps.dataDir,
+    recordFailure: deps.recordFailure,
     legacyDataDir: deps.legacyDataDir,
     agentOptions: deps.agentOptions,
     agentCliPlugin: deps.agentCliPlugin,

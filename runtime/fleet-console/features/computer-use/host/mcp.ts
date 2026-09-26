@@ -12,6 +12,7 @@ export const FLEET_COMPUTER_USE_MCP_SERVER = "fleet-computer-use";
 export interface ComputerUseMcpDeps {
   readonly transport?: McpHttpTransport;
   readonly service: ComputerUseService;
+  readonly onFailure?: (kind: string, error: unknown) => void;
   /**
    * 호출자 Operation 단위 판정의 재료. 주어지면 조회·정리를 포함한 **모든** 도구가 실험 플래그와
    * 그 Operation의 토글을 둘 다 요구한다 — 콘솔 사용과 같은 정책이다. 없으면(테스트·플러그인 없는
@@ -224,7 +225,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         } });
       }
       const server = createServedMcpEndpoint({ transport: deps.transport, serverInfo: { name: FLEET_COMPUTER_USE_MCP_SERVER }, toolSnapshotStore: snapshotStore });
-      const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_COMPUTER_USE_MCP_SERVER, runtime: { registry, snapshotStore, server } }] });
+      const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_COMPUTER_USE_MCP_SERVER, runtime: { registry, snapshotStore, server, onFailure: deps.onFailure } }] });
       let closed = false;
       let closing: Promise<void> | null = null;
       const release = (label: string) => { const id = owner(label); deps.service.release(id); owners.delete(id); operationOwners.delete(id); };

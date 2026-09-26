@@ -9,6 +9,7 @@ import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 
 import type { ConsoleLockPayload } from "../transport/console-contract-types.js";
 import { describeDaemonStartFailure } from "../transport/failure-notice.js";
+import { createConsoleFailureLog } from "./failure-log.js";
 import { createConsoleHealthClient } from "./health.js";
 import { createConsoleStalePolicy } from "./stale.js";
 import {
@@ -22,7 +23,7 @@ import {
 } from "../../../cli/styles/tokens.js";
 import { readFleetCliRelease } from "../../../cli/release.js";
 import { createConsoleLock } from "./lock.js";
-import { createConsolePaths } from "./paths.js";
+import { createConsoleDataPaths, createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
 
 export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
@@ -223,12 +224,38 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const stale = createConsoleStalePolicy();
 
   async function runServer(): Promise<void> {
-    const server = createConsoleServer();
-    await server.start(paths);
-    await new Promise<void>((resolve) => {
-      process.once("SIGTERM", () => { void server.stop().finally(resolve); });
-      process.once("SIGINT", () => { void server.stop().finally(resolve); });
-    });
+    let recordFailure: (kind: string, error: unknown) => void = (kind, error) => {
+      try { process.stderr.write(`${JSON.stringify({ ts: new Date().toISOString(), kind, message: String(error), stack: null })}\n`); } catch { /* No diagnostic channel remains. */ }
+    };
+    try { recordFailure = createConsoleFailureLog(createConsoleDataPaths({ env }).dir); }
+    catch { /* Diagnostics setup cannot prevent Console startup. */ }
+    const onRejection = (error: unknown) => recordFailure("unhandledRejection", error);
+    const onException = (error: Error) => {
+      recordFailure("uncaughtException", error);
+      process.exit(1);
+    };
+    // Only the Console serve process owns global policy; a failed registration must not block boot.
+    try {
+      process.on("unhandledRejection", onRejection);
+      process.on("uncaughtException", onException);
+    } catch (error) { recordFailure("handler_install_failed", error); }
+    try {
+      const server = createConsoleServer();
+      await server.start(paths);
+      await new Promise<void>((resolve) => {
+        const shutdown = () => {
+          void Promise.resolve().then(() => server.stop()).catch((error) => {
+            recordFailure("shutdown_failed", error);
+            process.exitCode = 1;
+          }).finally(resolve);
+        };
+        process.once("SIGTERM", shutdown);
+        process.once("SIGINT", shutdown);
+      });
+    } finally {
+      process.removeListener("unhandledRejection", onRejection);
+      process.removeListener("uncaughtException", onException);
+    }
   }
 
   async function probe(timeoutMs?: number, signal?: AbortSignal) {

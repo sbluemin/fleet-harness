@@ -27,6 +27,7 @@ describe("Computer Use authorization and lifecycle", () => {
     const openApp = vi.fn<typeof macOSComputerUsePlatform.openApp>(async (app) => ({ requestDispatched: true, windowReady: true, windowState: { app, status: "available", pid: 42, frontmost: true, hidden: false, windowCount: 1 } }));
     const resolveTarget = vi.fn(macOSComputerUsePlatform.resolveTarget);
     const diagnostic = vi.fn();
+    const onFailure = vi.fn();
     const onCaptureTarget = vi.fn();
     const start = vi.fn(async () => undefined);
     const stop = vi.fn(async () => undefined);
@@ -41,13 +42,13 @@ describe("Computer Use authorization and lifecycle", () => {
       ["paste", { name: "paste", inputSchema: { type: "object", properties: { app: { type: "string" }, text: { type: "string", minLength: 1, maxLength: 100_000 }, format: { type: "string", enum: ["text", "md", "html"] } }, required: ["app", "text", "format"], additionalProperties: false } }],
     ]) } as unknown as ComputerUseBackend;
     const service = new ComputerUseService({
-      directory: "unused", diagnostic, onCaptureTarget, enabled: () => enabled, localControl: () => local,
+      directory: "unused", diagnostic, onFailure, onCaptureTarget, enabled: () => enabled, localControl: () => local,
       platform: { ...macOSComputerUsePlatform, preflight, inspectWindows, openApp, resolveTarget, supported: () => true, inspectInstallation: async () => true,
         createBroker: async (deps) => { approve = () => deps.approve({}); return broker; } },
     });
     services.push(service);
     const invoke = async (tool: string, input: unknown, sessionLabel = "session-a", signal?: AbortSignal) => await service.specs().find((spec) => spec.id === tool)!.execute(observation && (tool === "computer_state" || tool === "computer_action") ? { observation, ...input as Record<string, unknown> } : input, { cwd: "", sessionLabel, signal }) as ComputerUseResult;
-    return { service, invoke, call, preflight, inspectWindows, openApp, resolveTarget, diagnostic, onCaptureTarget, start, stop, approve: () => approve!(), enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; } };
+    return { service, invoke, call, preflight, inspectWindows, openApp, resolveTarget, diagnostic, onFailure, onCaptureTarget, start, stop, approve: () => approve!(), enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; } };
   }
 
   it("keeps window recovery explicit, owned, and separate from capture and stale input", async () => {
@@ -93,6 +94,17 @@ describe("Computer Use authorization and lifecycle", () => {
     await vi.waitFor(() => expect(f.openApp).toHaveBeenCalledTimes(3));
     controller.abort();
     expect((await pending).isError).toBe(true);
+    expect(f.service.activeOwner()).toBeNull();
+  });
+
+  it("retains cleanup failure and releases ownership when a detached stop fails", async () => {
+    const f = setup();
+    await f.invoke("computer_apps", {});
+    f.stop.mockRejectedValueOnce(new Error("cleanup denied"));
+    f.service.stopDetached();
+    await vi.waitFor(() => expect(f.service.status().state).toBe("idle"));
+    expect(f.service.status()).toMatchObject({ cleanupStatus: "failed", warning: "computer_use_cleanup_unconfirmed", error: "computer_use_cleanup_failed" });
+    expect(f.onFailure).toHaveBeenCalledWith("computer_use_stop_failed", expect.objectContaining({ message: "cleanup denied" }));
     expect(f.service.activeOwner()).toBeNull();
   });
 

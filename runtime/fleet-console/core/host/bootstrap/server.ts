@@ -78,6 +78,7 @@ import type { DesktopShellUpdateCommandKind, DesktopShellUpdateCommandSnapshot, 
 import { listLocalConsoles } from "./local-consoles.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createConsoleDataPaths } from "./paths.js";
+import { createConsoleFailureLog } from "./failure-log.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
 
 export interface ConsoleServerDeps {
@@ -471,6 +472,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     ?? (process.env.FLEET_DATA_DIR === undefined ? consoleSlotOverride : undefined)
     ?? getFleetDataDir();
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
+  const recordFailure = createConsoleFailureLog(durablePaths.dir);
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   // Agent 실행 옵션은 Console 설정 파일의 한 섹션이다. 옛 자리(Fleet 루트의 settings.json)는
@@ -685,6 +687,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     platform: computerUsePlatforms[readExperimentSettings(consoleSettingsStore).computerUseBackend],
     directory: computerUseDirectory,
+    onFailure: recordFailure,
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
@@ -693,6 +696,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const useRequests = createUseRequestBroker();
   const computerUseMcp = createComputerUseMcpHost({
     transport: mcpHttp.transport,
+    onFailure: recordFailure,
     service: computerUse,
     requests: useRequests,
     operations: () => operations.list(),
@@ -727,6 +731,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const browserMcp = createBrowserMcpHost({
     transport: mcpHttp.transport,
+    onFailure: recordFailure,
     service: browserService,
     screenshots: browserScreenshots,
     operations: () => operations.list(),
@@ -773,6 +778,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     control: consoleControl,
     requests: useRequests,
     transport: mcpHttp.transport,
+    onFailure: recordFailure,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
     operations: () => operations.list(),
     // `auto`는 브라우저가 푸는 값이라 호스트는 못박은 경우에만 답한다.
@@ -780,6 +786,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   // 플러그인 MCP 도구의 호출자 — Console Use 와 같은 규칙으로 세션 라벨(`<operationId>` 또는 `chat:<operationId>`)을 Operation 으로 푼다.
   const pluginMcp = createPluginAdmiralMcpHost(mcpHttp.transport, {
+    onFailure: recordFailure,
     resolveCaller: (label) => {
       const operationId = label.startsWith("chat:") ? label.slice(5) : label;
       return operations.get(operationId) ? { kind: "operation", operationId } : null;
@@ -2001,7 +2008,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 서버는 아무것도 바뀌지 않았는데 화면만 틀린 것을 그리고 있는 자리에만 쓴다.
    */
   function broadcastControlChanged(resend = false): void {
-    if (access.hasSession("remote", "full") || access.hasSession("remote", "monitoring")) void computerUse.stop();
+    if (access.hasSession("remote", "full") || access.hasSession("remote", "monitoring")) computerUse.stopDetached();
     // 제어 보유자가 곧 브라우저 뷰를 그릴 창이다 — 바뀌면 옛 창의 탭은 닫히고 새 창이 이어받는다.
     browserService.reconcile();
     /**
@@ -2218,6 +2225,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           consoleControl,
           host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
+          recordFailure,
           legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),
           agentOptions,
           agentCliPlugin,

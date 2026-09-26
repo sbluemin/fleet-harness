@@ -12,6 +12,7 @@ export const FLEET_BROWSER_MCP_SERVER = "fleet-browser";
 export interface BrowserMcpDeps extends BrowserToolDeps {
   readonly transport?: McpHttpTransport;
   readonly service: BrowserService;
+  readonly onFailure?: (kind: string, error: unknown) => void;
   readonly operations: () => readonly OperationNode[];
   readonly language?: () => "en" | "ko" | null;
 }
@@ -102,7 +103,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
         } });
       }
       const server = createServedMcpEndpoint({ transport: deps.transport, serverInfo: { name: FLEET_BROWSER_MCP_SERVER }, toolSnapshotStore: snapshotStore });
-      const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_BROWSER_MCP_SERVER, runtime: { registry, snapshotStore, server } }] });
+      const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_BROWSER_MCP_SERVER, runtime: { registry, snapshotStore, server, onFailure: deps.onFailure } }] });
       let closed = false;
       let closing: Promise<void> | null = null;
       const connection: BrowserMcpConnection = {

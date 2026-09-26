@@ -40,7 +40,7 @@ export interface ComputerUseBackend {
   readonly tools: ReadonlyMap<string, ComputerUseTool>;
   readonly cleanupStatus: "not_requested" | "not_needed" | "notified" | "failed";
   readonly threadReleaseStatus: "not_requested" | "not_needed" | "released" | "failed";
-  readonly cleanupFailure: "timeout" | "client_unavailable" | "client_exit" | null;
+  readonly cleanupFailure: "timeout" | "client_unavailable" | "client_exit" | "directory_cleanup" | null;
   start(): Promise<void>;
   call(tool: string, args: Record<string, unknown>, options?: { readonly allowActivation: boolean }): Promise<ComputerUseResult>;
   stop(): Promise<void>;
@@ -48,6 +48,7 @@ export interface ComputerUseBackend {
 export interface ComputerUseBackendOptions {
   readonly directory: string;
   readonly onStage?: (stage: string) => void;
+  readonly onFailure?: (kind: string, error: unknown) => void;
   readonly approve: (request: Record<string, unknown>) => Promise<boolean>;
 }
 export interface ComputerUsePlatform {
