@@ -176,3 +176,80 @@ export function flyPanelBetweenRects(element: HTMLElement, from: DOMRect, to: DO
     return false;
   }
 }
+
+export interface LayerHandoffRect {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+// 좌표계 전환 글라이드 — 부모 월드 transform이 붙거나 떨어지는 커밋(companion 배치 진입·이탈)에서
+// 패널의 CSS geometry 전이는 옛 좌표계의 값에서 출발한다. 부모 행렬은 이미 바뀌었으므로 첫 프레임에
+// 패널이 행렬만큼 튄다. 여기서는 옛 화면 자리를 새 좌표계로 옮긴 값을 전이 없이 먼저 확정해
+// 전이의 출발점으로 삼고, 곧바로 React가 쓴 목표값으로 되돌려 같은 360ms 글라이드가 이어지게 한다.
+// 레이아웃 크기는 전환 전 그대로 두고 사라진(또는 새로 생긴) 부모 배율은 요소 자체의 scale로 넘겨받아
+// 1로 풀어 준다 — 상자와 내용 배율이 함께 연속이다. 최소 크기(320×200)는 companion 배치 밖에서만
+// 돌아오는 규칙이라, 좁은 칸에서 나올 때 첫 프레임에 폭이 튀지 않게 글라이드 동안만 푼다.
+// 반환값은 글라이드를 도중에 끊는 정리 함수다.
+export function glideAcrossLayerSwitch(element: HTMLElement, start: LayerHandoffRect, startScale: number, timing: FlightTiming): () => void {
+  const style = element.style;
+  // 전이가 꺼진 상태(사이드바 개폐 중·reduced motion)에서는 패널이 목표로 즉시 선다 — 튈 첫 프레임이 없다.
+  if (!hasGeometryTransition(element)) return () => undefined;
+  const target = { left: style.left, top: style.top, width: style.width, height: style.height };
+  const previousTransition = style.transition;
+  const previousOrigin = style.transformOrigin;
+  style.transition = "none";
+  style.left = `${start.left}px`;
+  style.top = `${start.top}px`;
+  style.width = `${start.width}px`;
+  style.height = `${start.height}px`;
+  style.minWidth = "0";
+  style.minHeight = "0";
+  // 출발값을 계산된 스타일로 확정한다 — 이 읽기가 없으면 같은 태스크의 두 쓰기가 합쳐져 전이가 옛 값에서 출발한다.
+  void element.offsetWidth;
+  style.transition = previousTransition;
+  style.left = target.left;
+  style.top = target.top;
+  style.width = target.width;
+  style.height = target.height;
+
+  let animation: Animation | null = null;
+  if (Math.abs(startScale - 1) > 0.001 && Number.isFinite(startScale) && startScale > 0 && typeof element.animate === "function") {
+    style.transformOrigin = "0 0";
+    try {
+      animation = element.animate(
+        [{ transform: `scale(${startScale})` }, { transform: "none" }],
+        { duration: timing.duration, easing: timing.easing },
+      );
+    } catch {
+      animation = null;
+    }
+  }
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    window.clearTimeout(timer);
+    style.minWidth = "";
+    style.minHeight = "";
+    if (animation) style.transformOrigin = previousOrigin;
+  };
+  const timer = window.setTimeout(release, timing.duration + 60);
+  if (animation) animation.oncancel = release;
+  return () => {
+    animation?.cancel();
+    release();
+  };
+}
+
+function hasGeometryTransition(element: HTMLElement): boolean {
+  try {
+    const computed = getComputedStyle(element);
+    const properties = computed.transitionProperty.split(",").map((value) => value.trim());
+    const durations = computed.transitionDuration.split(",").map((value) => parseDurationMs(value) ?? 0);
+    return properties.some((property, index) => (property === "left" || property === "all") && (durations[index % durations.length] ?? 0) > 0);
+  } catch {
+    return false;
+  }
+}

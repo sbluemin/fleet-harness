@@ -28,7 +28,7 @@ import { resolveConsoleLanguage } from "../../../updates/client/whatsnew-i18n.js
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
 import { animateViewportTo, claimTopZIndex, consumeAlignOffRestored, consumeAlignStayedRelease, consumePendingFitAllOperations, consumeStayedReleaseGeometries, detachAlignAllPanel, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getAlignOffRestoredCount, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, reconcileAlignAll, rejoinAlignAllPanel, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, SNAP_FULL_PRESET_ID, syncSnapHoldGeometry, useAlignActivationNonce, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useMinimized, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
 import { applySnapZone, closeCompanionLayer, toggleOperationSnapFull } from "./snap-full.js";
-import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
+import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, glideAcrossLayerSwitch, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
@@ -1385,6 +1385,54 @@ export function OperationsCanvas({
   companionSlotIdsRef.current = companionSlotIds;
   companionSlotWidthsRef.current = companionSlotWidths;
 
+  // ── 좌표계 전환 글라이드 ──
+  // Cruise에서 companion 배치가 서거나 걷히는 커밋은 월드 transform(translate·scale)을 떼거나 다시 붙인다.
+  // 패널의 geometry 전이는 옛 좌표계 값에서 출발하므로 그대로 두면 첫 프레임에 행렬만큼 튄다(사이드바 폭·
+  // 팬·줌이 모두 그 행렬 안에 있다). 커밋마다 보인 패널의 프레임 기하와 행렬을 기록해 두고, 전환 커밋에서
+  // 옛 화면 자리를 새 좌표계로 옮겨 출발점으로 삼는다. War Room은 자기 FLIP이 전환을 지므로 여기서 쉰다.
+  const renderedFrameGeometries = new Map<string, OperationGeometry>();
+  const layerSnapshotRef = useRef<{
+    readonly worldDetached: boolean;
+    readonly triage: boolean;
+    readonly companionId: string | null;
+    readonly tx: number;
+    readonly ty: number;
+    readonly zoom: number;
+    readonly frames: ReadonlyMap<string, OperationGeometry>;
+  } | null>(null);
+  const layerGlideStopRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    const previous = layerSnapshotRef.current;
+    const current = {
+      worldDetached: panelCompanion !== null || triageActive,
+      triage: triageActive,
+      companionId: panelCompanion,
+      tx: Math.round(screenViewport.x),
+      ty: Math.round(screenViewport.y),
+      zoom: screenViewport.zoom,
+      frames: renderedFrameGeometries,
+    };
+    layerSnapshotRef.current = current;
+    if (!previous || previous.worldDetached === current.worldDetached || previous.triage || current.triage) return;
+    if (prefersReducedMotion()) return;
+    const detaching = current.worldDetached;
+    const operationId = detaching ? current.companionId : previous.companionId;
+    if (operationId === null) return;
+    const from = previous.frames.get(operationId);
+    if (!from || !current.frames.has(operationId)) return;
+    const element = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(operationId)}"]`);
+    if (!element) return;
+    // 떼는 쪽: 옛 화면 자리 = 옛 행렬 × 월드 기하, 새 부모는 항등이다. 붙이는 쪽: 옛 화면 자리를 새 행렬로 되돌린다.
+    // 크기는 레이아웃 그대로 두고 배율만 요소가 넘겨받는다 — 첫 프레임의 화면 상자가 전환 직전과 같다.
+    const start = detaching
+      ? { left: previous.tx + from.x * previous.zoom, top: previous.ty + from.y * previous.zoom, width: from.width, height: from.height }
+      : { left: (from.x - current.tx) / current.zoom, top: (from.y - current.ty) / current.zoom, width: from.width, height: from.height };
+    const startScale = detaching ? previous.zoom : 1 / current.zoom;
+    layerGlideStopRef.current?.();
+    layerGlideStopRef.current = glideAcrossLayerSwitch(element, start, startScale, flightTiming());
+  });
+  useEffect(() => () => layerGlideStopRef.current?.(), []);
+
   /** 분할선 한 칸이 주고받을 수 있는 경계. 이웃한 두 슬롯 밖으로는 폭이 새지 않는다. */
   function companionDividerPair(dividerIndex: number): { readonly leftId: string; readonly rightId: string; readonly leftStart: number; readonly pair: number; readonly floor: number } | null {
     const ids = companionSlotIdsRef.current;
@@ -1611,6 +1659,16 @@ export function OperationsCanvas({
             : operationCompanion
             ? companionGeometryFor(companionLayerBox, 0, companionSlotWidths, topPanelZIndex)
             : snapHeldRect ? { ...baseGeometry, ...snapHeldRect } : baseGeometry;
+          // 좌표계 전환 글라이드의 출발점 — 실제로 보인 프레임만, 프레임이 쓰는 정수 픽셀 그대로 적는다.
+          if (!focusLayerHidden && !deckSlot && !minimizedSet.has(operation.id)) {
+            renderedFrameGeometries.set(operation.id, {
+              ...frameGeometry,
+              x: Math.round(frameGeometry.x),
+              y: Math.round(frameGeometry.y),
+              width: Math.round(frameGeometry.width),
+              height: Math.round(frameGeometry.height),
+            });
+          }
           // 보더 위 캡션(top: -32px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
           // War Room은 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
           // 스냅 칸은 캡션 높이를 본문에서 빼 두므로(snapZonesFor) 전체 칸도 이 판정을 그대로 받는다.
