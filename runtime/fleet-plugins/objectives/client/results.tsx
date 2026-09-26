@@ -146,6 +146,8 @@ function PrRow({ result, t, language, now, missionTag }: { readonly result: PrRe
   const observation = result.observation;
   const ago = (time: number) => relative(time, now, language);
   const repository = `${result.owner}/${result.repo}`;
+  // 제목 — 지휘관이 붙인 label, 없으면 GitHub 에서 확인한 PR 제목(조회 실패 때도 이전 제목이 남는다), 둘 다 없으면 저장소.
+  const title = result.label ?? observation.title;
   const word = (state: PrState) => t(STATE_KEYS[state]);
   // 조회 실패가 주 상태다 — 오래됨 표시는 성공한 관측에만 붙는다. 시각에 올리면 절대 시각이 뜬다.
   const stale = observation.stale && observation.state !== "error" && observation.state !== "unchecked";
@@ -170,9 +172,9 @@ function PrRow({ result, t, language, now, missionTag }: { readonly result: PrRe
     <div className="objectives-result-row">
       <span className="objectives-row-ic"><PrGlyph /></span>
       <span className="objectives-result-body">
-        <a className="objectives-result-title" href={result.url} target="_blank" rel="noreferrer noopener"><span className="objectives-result-num">#{result.number}</span>{result.label ?? repository}</a>
+        <a className="objectives-result-title" href={result.url} target="_blank" rel="noreferrer noopener"><span className="objectives-result-num">#{result.number}</span>{title ?? repository}</a>
         {/* 제목 자리에 저장소가 섰으면 보조 줄에서 다시 말하지 않는다. */}
-        {result.label ? <span className="objectives-result-sub"><span className="is-mono">{repository}</span>{missionTag}</span>
+        {title ? <span className="objectives-result-sub"><span className="is-mono">{repository}</span>{missionTag}</span>
           : missionTag ? <span className="objectives-result-sub">{missionTag.replace(/^ · /, "")}</span> : null}
         {result.note ? <span className="objectives-result-sub">{result.note}</span> : null}
         {lines}
