@@ -1413,6 +1413,15 @@ function maskDetailSecrets(value: string): string {
     return `${field[1]}${field[2]}[가림]`;
   }).join("\n");
   return maskSecrets(yamlMasked)
+    // 한 줄 flow mapping의 맨 값은 쉼표·닫는 괄호까지이며 이웃한 공개 필드는 보존한다.
+    .replace(/([,{][ \t]*["']?\b(?:[a-z][a-z0-9_-]*[_-])?(?:api[_-]?key|token|secret|password|passwd|private[_-]?key|auth|cookie)["']?[ \t]*:[ \t]*)([^,\]}\n]+)/gi,
+      (match, prefix: string, scalar: string) => {
+        const plain = scalar.trim();
+        if (!plain || /^["'`[{]/.test(plain)
+          || /^(?:process\.env|import\.meta\.env|env)\.[A-Za-z_$][\w$]*\b/.test(plain)
+          || /^(?:string|number|boolean|unknown|never|null|undefined|object|any|true|false)$/.test(plain)) return match;
+        return `${prefix}[가림]${/[ \t]*$/.exec(scalar)![0]}`;
+      })
     // 줄 수·바이트 상한을 적용하기 전에 키 본문 전체를 가려 뒤쪽 발췌에도 남지 않게 한다.
     .replace(/-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/g,
       (block) => `[가림]${(block.match(/\n/g) ?? []).join("")}`)
