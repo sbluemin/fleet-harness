@@ -118,7 +118,7 @@ vi.mock("../core/client/src/integration/operations-sse.js", () => ({ refreshObse
 // 라우트에 다녀오기"이므로 어댑터를 옛 페이지 모양의 대역으로 세워 라우트 왕복만 남긴다.
 vi.mock("../features/settings/client/settings-route-adapter.js", () => ({ SettingsRouteAdapter: () => createElement("div", { "data-route": "settings" }) }));
 vi.mock("../core/client/src/integration/plugin-capabilities.js", () => ({ createHostCapabilities: () => ({ api: {} }) }));
-vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(), usePluginRegistry: () => ({ providers: registryMocks.providers, failures: [], operationKinds: registryMocks.operationKinds, operationClusters: registryMocks.operationClusters, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [], commandBandEntries: [], expandedSurfaces: [], persistentComponents: []}) }));
+vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ useExpandedSurfaceDescriptors: () => new Map(), usePluginRegistry: () => ({ providers: registryMocks.providers, failures: [], operationKinds: registryMocks.operationKinds, operationClusters: registryMocks.operationClusters, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [], commandBandEntries: [], expandedSurfaces: [], persistentComponents: [], onboarding: []}) }));
 // 부분 목 — 이 스토어에 export가 늘어도(아레나 점유 폭 훅 등) 테스트가 따라 깨지지 않는다.
 vi.mock("../core/client/src/chrome/rail/rail-store.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../core/client/src/chrome/rail/rail-store.js")>()),

@@ -90,17 +90,41 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
       <button type="button" className="commissioning-scrim" onClick={closeOnboarding} aria-label={t("chrome.commissioning.closeAria")} />
       <section className="commissioning-card" ref={cardRef}>
         <header className="commissioning-header">
+          <FleetMark />
           <span className="commissioning-eyebrow">{t("chrome.commissioning.eyebrow")}</span>
           <h2 id="commissioning-title">{t("chrome.commissioning.title")}</h2>
           <p>{t("chrome.commissioning.lead")}</p>
         </header>
 
         <ol className="commissioning-steps">
-          <li className={`commissioning-step commissioning-step--primary ${theaterRegistered ? "is-complete" : "is-current"}`}>
-            <span className="commissioning-step-node" aria-hidden="true">{theaterRegistered ? "✓" : "01"}</span>
+          <li className={`commissioning-step ${theaterRegistered ? "is-complete" : "is-current"}`}>
+            <span className="commissioning-step-node" aria-hidden="true">{theaterRegistered ? <CheckGlyph /> : "1"}</span>
             <div className="commissioning-step-body">
               <h3>{t("chrome.commissioning.step1Title")}</h3>
               <p>{t("chrome.commissioning.step1Body")}</p>
+              {theaterRegistered ? null : (
+                <button
+                  ref={(node) => {
+                    primaryActionRef.current = node;
+                  }}
+                  type="button"
+                  className="commissioning-primary-action"
+                  disabled={state.addingTheater}
+                  onClick={handleChooseFolder}
+                >
+                  <FolderGlyph />
+                  {state.addingTheater ? t("chrome.commissioning.addingTheater") : t("chrome.commissioning.chooseFolder")}
+                </button>
+              )}
+              {state.theaterError ? <p className="commissioning-error" role="alert">{state.theaterError}</p> : null}
+            </div>
+          </li>
+
+          <li className={`commissioning-step ${theaterRegistered ? "is-current" : ""}`}>
+            <span className="commissioning-step-node" aria-hidden="true">2</span>
+            <div className="commissioning-step-body">
+              <h3>{t("chrome.commissioning.step2Title")}</h3>
+              <p>{t("chrome.commissioning.step2Body")}</p>
               {theaterRegistered ? (
                 <Link
                   ref={(node) => {
@@ -112,42 +136,45 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
                 >
                   {t("chrome.commissioning.goToOperationsArrow")}
                 </Link>
-              ) : (
-                <button
-                  ref={(node) => {
-                    primaryActionRef.current = node;
-                  }}
-                  type="button"
-                  className="commissioning-primary-action is-live"
-                  disabled={state.addingTheater}
-                  onClick={handleChooseFolder}
-                >
-                  {state.addingTheater ? t("chrome.commissioning.addingTheater") : t("chrome.commissioning.chooseFolder")}
-                </button>
-              )}
-              {state.theaterError ? <p className="commissioning-error" role="alert">{state.theaterError}</p> : null}
-            </div>
-          </li>
-
-          <li className="commissioning-step">
-            <span className="commissioning-step-node" aria-hidden="true">02</span>
-            <div className="commissioning-step-body">
-              <h3>{t("chrome.commissioning.step2Title")}</h3>
-              <p>{t("chrome.commissioning.step2Body")}</p>
-              <Link className="commissioning-secondary-link" to="/operations" onClick={closeOnboarding}>
-                {t("chrome.commissioning.goToOperations")}
-              </Link>
+              ) : null}
             </div>
           </li>
         </ol>
 
         <footer className="commissioning-footer">
-          <p>{t("chrome.commissioning.footer")}</p>
           <button type="button" className="commissioning-skip" onClick={closeOnboarding}>{t("chrome.commissioning.skip")}</button>
         </footer>
       </section>
       <DirectoryBrowserModal open={browserOpen} onCancel={handleBrowserCancel} onConfirm={handleBrowserConfirm} />
     </div>
+  );
+}
+
+/** 첫 실행 카드 머리의 작은 표식 — 캔버스 위에 떠 있는 두 패널. 테마 토큰만 쓴다. */
+function FleetMark() {
+  return (
+    <svg className="commissioning-mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+      <rect className="commissioning-mark-plate" x="1" y="1" width="38" height="38" rx="11" />
+      <rect className="commissioning-mark-panel" x="10" y="12" width="12" height="16" rx="3" />
+      <rect className="commissioning-mark-fill" x="24" y="12" width="6" height="7" rx="2" />
+      <rect className="commissioning-mark-panel" x="24" y="21" width="6" height="7" rx="2" opacity="0.7" />
+    </svg>
+  );
+}
+
+function FolderGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.8l1.4 1.5h4.8A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-7Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CheckGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M2.5 6.3 4.8 8.6 9.5 3.9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

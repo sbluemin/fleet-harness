@@ -609,7 +609,7 @@ export function AgentChatView({
             containing block을 로그 영역으로 좁힌다 — 컴포저 높이가 얼마가 되든 부유물은
             언제나 그 위에 선다. */}
         <div className="agent-chat-body">
-        {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
+        {/* data-chat-tour는 실행·브라우저 기능의 온보딩 투어가 짚는 앵커 계약이다 —
             사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
             콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
         <div

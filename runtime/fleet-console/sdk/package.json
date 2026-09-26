@@ -110,6 +110,16 @@
       "import": "./expanded-surface/types.ts",
       "default": "./expanded-surface/types.ts"
     },
+    "./onboarding": {
+      "types": "./onboarding/types.ts",
+      "import": "./onboarding/types.ts",
+      "default": "./onboarding/types.ts"
+    },
+    "./onboarding/anchors": {
+      "types": "./onboarding/anchors.ts",
+      "import": "./onboarding/anchors.ts",
+      "default": "./onboarding/anchors.ts"
+    },
     "./i18n": {
       "types": "./i18n/types.ts",
       "import": "./i18n/types.ts",

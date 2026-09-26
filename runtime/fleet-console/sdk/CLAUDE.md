@@ -10,6 +10,7 @@
 | `operations/`, `plugin/` | Operation and plugin lifecycle contracts |
 | `settings/`, `notifications/` | Configuration and notification capabilities |
 | `routing/`, `rail/` | Route and host-panel integration contracts |
+| `onboarding/` | Onboarding contributions (welcome slide, rail entry hint, tours) shared by core features and plugins |
 | `react/` | Stateless React authoring helpers |
 | `components/` | Shared browser UI primitives (controlled, host-styled) |
 

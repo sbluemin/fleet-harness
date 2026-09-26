@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
@@ -160,7 +161,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     <button type="button" className={`objectives-glyph objectives-group-more ${className}`} aria-label={t("objectives.group.menu", { name: group.name })} title={t("objectives.group.menu", { name: group.name })} aria-haspopup="menu" aria-expanded={groupMenu?.groupId === group.id}
       onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); openGroupMenu(group.id, { x: rect.left, y: rect.bottom + 4 }, event.currentTarget); }}><MoreGlyph /></button>
   );
-  const placeButton = (className: string) => <button type="button" className={`objectives-place-button ${className}`} aria-label={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} title={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} onClick={ctx.place === "rail" ? expandObjective : dockObjective}>
+  const placeButton = (className: string) => <button type="button" className={`objectives-place-button ${className}`} data-objectives-tour="place" aria-label={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} title={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} onClick={ctx.place === "rail" ? expandObjective : dockObjective}>
     {ctx.place === "rail" ? <ExpandGlyph /> : <DockGlyph />}
   </button>;
   useEffect(() => {
@@ -439,7 +440,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
   const pickList = (next: ListId) => { setList(next); setListMenuOpen(false); listTriggerRef.current?.focus(); };
   return (
-    <div className="objectives-container" onPointerDownCapture={(event) => {
+    // 온보딩 경계(SDK 계약) — 투어 카드가 패널을 가리지 않고 패널 옆, 짚는 구획 높이에 선다(레일이든 넓은 화면이든
+    // 자리가 없으면 앵커 기준 배치로 돌아간다).
+    <div className="objectives-container" {...onboardingBoundary("anchor")} onPointerDownCapture={(event) => {
       if (highlightMission && !(event.target as Element).closest(`[data-mission-id="${CSS.escape(highlightMission)}"]`)) {
         if (highlightTimer.current) clearTimeout(highlightTimer.current);
         highlightTimer.current = null;
@@ -486,7 +489,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
             ))}
           </div>
         ) : null}
-        <div ref={objectivesRef} className="objectives-objectives" role="listbox" aria-label={listTitle}>
+        <div ref={objectivesRef} className="objectives-objectives" role="listbox" aria-label={listTitle} data-objectives-tour="list">
           {open.length === 0 && finished.length === 0 ? <div className="objectives-empty">{t("objectives.objectives.empty")}</div> : null}
           {sections.map((section) => { const expanded = isOpen(section.key, !section.done); return (<div key={section.key} data-section={section.key} className={`objectives-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}`}>
           {section.label ? <button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)} {...(section.swatch && groupOf(section.key) ? groupMenuHandlers(section.key) : {})}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span>{section.label}</span><span className="objectives-count">{section.objectives.length}</span></button> : null}
@@ -534,7 +537,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           }) : null}
           </div>); })}
         </div>
-        <div className="objectives-add">
+        <div className="objectives-add" data-objectives-tour="add">
           <span className="objectives-plus" aria-hidden="true">+</span>
           <input aria-label={t("objectives.objectives.add")} placeholder={t("objectives.objectives.add")} onKeyDown={(event) => { if (submitKey(event)) { const target = event.currentTarget; void addObjective(target.value).then(() => { target.value = ""; }); } }} />
           <StartViewPicker t={t} value={nextView} onChange={chooseNextView} />
@@ -1287,7 +1290,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       </div>
 
       {/* 지휘관·구성원 — 목표는 곧 지휘관 Operation 이다. 이 행은 모델·강도·보기 설정만 맡고, 이동은 하단 띠의 이동 요소가 맡는다. */}
-      <div className="objectives-group">
+      <div className="objectives-group" data-objectives-tour="crew">
         <div className={`objectives-row${objective.commander.started ? " is-on" : ""}`}>
           <span className="objectives-row-main">
             <span className="objectives-row-ic"><CoordGlyph /></span>
@@ -1303,6 +1306,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다 — 끌어오는 동안은 자리를 밀지 않는 겹판이 선다. */}
       <div
         className="objectives-group objectives-note-group"
+        data-objectives-tour="brief"
         onFocus={() => setBriefActive(true)}
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setBriefActive(false); }}
         onDragOver={(event) => { if (touchable && [...event.dataTransfer.types].includes("Files")) { event.preventDefault(); setDropping(true); } }}
@@ -1343,7 +1347,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           (추가는 끝에 새 줄) 사람이 줄마다 승인·거절하거나 어노테이션을 달아 다시 구상하게 한다. 제안이 남아 있으면 개시·스티어링은 잠긴다.
           마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져 근거와 함께 충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져
           「미확인」으로 돌아간다. 모든 임무와 기준이 끝나면 저절로 검토 대기다. */}
-      <div className="objectives-group objectives-criteria-group">
+      <div className="objectives-group objectives-criteria-group" data-objectives-tour="criteria">
         <div className="objectives-criteria-head">
           <SectionHead
             glyph={<CriteriaGlyph />}
@@ -1424,7 +1428,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
 
       {/* 임무 — 목록과 편성 그래프를 한 섹션에 둔다. 머리 오른쪽은 완료 셈이고, 접혀도 남는다(접힌 임무에 안 읽은 기록이 있으면 셈 앞에 점 하나).
           머리를 접으면 목록과 추가 입력만 접히고, 그래프는 접지 않는다 — 접어도 진행이 한눈에 보인다. 임무가 없으면 그래프는 서지 않는다. */}
-      <div className="objectives-group objectives-missions-group">
+      <div className="objectives-group objectives-missions-group" data-objectives-tour="missions">
         <SectionHead
           glyph={<GraphGlyph />}
           label={t("objectives.missions.title")}
@@ -1513,7 +1517,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       </div>
 
       </div>
-      <div className="objectives-detail-bottom">
+      <div className="objectives-detail-bottom" data-objectives-tour="action">
         <ActionBand
           objective={objective}
           t={t}

@@ -99,6 +99,12 @@ export const browserEn = {
   "terminal.browser.import.done": "Imported {count} cookies. Reload the page to use them.",
   "terminal.browser.import.chromeRequired": "Google Chrome must be installed on this computer to import from it.",
   "terminal.browser.import.noProfiles": "No Google Chrome profile was found on this computer.",
+  "terminal.browser.onboarding.welcome.title": "Every Operation now has a browser",
+  "terminal.browser.onboarding.welcome.body": "A browser companion sits beside each agent Operation. The agent drives the same tabs you see, and you can watch, take over, annotate a page and paste the screenshot into the Operation.",
+  "terminal.browser.onboarding.welcome.next": "Open an Operation and the globe in its caption shows how to ask for it.",
+  "terminal.browser.onboarding.tour.step1Title": "The globe opens this Operation's browser",
+  "terminal.browser.onboarding.tour.step1Body": "Open it here or with Alt+B. The agent drives the same tabs you see, so you can watch it work, take over, annotate a page and paste the screenshot into this Operation.",
+  "terminal.browser.onboarding.tour.step1Example": "Open Hacker News in the Fleet browser and tell me the top three stories.",
 };
 export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.open": "브라우저 열기 (Alt+B)",
@@ -198,6 +204,12 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.browser.import.done": "쿠키 {count}개를 가져왔습니다. 페이지를 새로고침하면 적용됩니다.",
   "terminal.browser.import.chromeRequired": "이 컴퓨터에 Google Chrome이 설치되어 있어야 가져올 수 있습니다.",
   "terminal.browser.import.noProfiles": "이 컴퓨터에서 Google Chrome 프로필을 찾지 못했습니다.",
+  "terminal.browser.onboarding.welcome.title": "Operation마다 브라우저가 생겼습니다",
+  "terminal.browser.onboarding.welcome.body": "에이전트 Operation 옆에 브라우저 companion이 열립니다. 에이전트가 사용자와 같은 탭을 조작하고, 지켜보거나 직접 이어받고, 페이지에 주석을 달아 스크린샷을 Operation에 붙여넣을 수 있습니다.",
+  "terminal.browser.onboarding.welcome.next": "Operation을 열면 캡션의 지구본이 요청 방법을 이어서 안내합니다.",
+  "terminal.browser.onboarding.tour.step1Title": "이 지구본이 브라우저 문입니다",
+  "terminal.browser.onboarding.tour.step1Body": "여기서 또는 Alt+B로 엽니다. 에이전트가 사용자와 같은 탭을 조작하므로 작업을 지켜보고, 직접 이어받고, 페이지에 주석을 달아 스크린샷을 이 Operation에 붙여넣을 수 있습니다.",
+  "terminal.browser.onboarding.tour.step1Example": "Fleet 브라우저로 Hacker News를 열고 상위 글 3개만 알려줘",
 };
 const messages = { en: browserEn, ko: browserKo };
 const translators = { en: createTranslator(messages, "en"), ko: createTranslator(messages, "ko") };
