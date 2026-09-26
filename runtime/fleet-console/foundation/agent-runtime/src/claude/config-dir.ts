@@ -70,6 +70,9 @@ export async function createIsolatedClaudeConfigDir(
   await mkdir(path.dirname(cachePath), { recursive: true, mode: 0o700 });
 
   let disposed = false;
+  // 진행 중인 캐시 쓰기. dispose가 이것을 기다리지 않고 지우면 재귀 삭제가 목록을 읽은 뒤 스테이징
+  // 파일이 새로 생겨 `ENOTEMPTY`로 실패하고 임시 홈이 남는다 — 턴을 준비하는 도중의 dispose가 그 창이다.
+  let writing: Promise<void> = Promise.resolve();
   return {
     path: root,
     async writeModelCache(options): Promise<void> {
@@ -78,12 +81,17 @@ export async function createIsolatedClaudeConfigDir(
       // 자식이 반쯤 쓰인 캐시를 읽으면 모델 검증이 알 수 없는 이유로 실패한다. 같은 디렉터리에
       // 쓰고 rename해서 교체를 원자적으로 만든다.
       const staging = `${cachePath}.tmp`;
-      await writeFile(staging, body, { mode: 0o600 });
-      await rename(staging, cachePath);
+      const write = writing.then(async () => {
+        await writeFile(staging, body, { mode: 0o600 });
+        await rename(staging, cachePath);
+      });
+      writing = write.catch(() => undefined);
+      await write;
     },
     async dispose(): Promise<void> {
       if (disposed) return;
       disposed = true;
+      await writing;
       await rm(root, { recursive: true, force: true });
     },
   };
