@@ -7276,6 +7276,43 @@ body[data-companion-resizing="true"] .canvas-operation {
   cursor: grabbing;
 }
 
+/* 캡션 세 칸 — 앞·뒤 칸이 기준 폭 0에서 같은 몫으로 자라므로 가운데 정체가 패널 폭의 한가운데 선다.
+   뒤 칸(창 컨트롤·동작 선반)은 내용보다 좁아지지 않고, 몫이 모자라면 그만큼 정체가 옆으로 비킨 뒤
+   말줄임으로 물러난다. 앞 칸의 표식(그룹·Shell)은 정체보다 먼저 물러나되 전부 사라지지는 않는다. */
+.canvas-operation-caption-lead,
+.canvas-operation-caption-trail {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  gap: 6px;
+}
+
+.canvas-operation-caption-lead {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.canvas-operation-caption-lead:has(> .canvas-snap-mark) {
+  min-width: 16px;
+}
+
+.canvas-operation-caption-lead:has(.canvas-operation-group-label, .canvas-operation-theater-label) {
+  min-width: min(10ch, 22%);
+}
+
+.canvas-operation-caption-trail {
+  justify-content: flex-end;
+}
+
+.canvas-operation-identity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 1 auto;
+  gap: 6px;
+  min-width: 0;
+}
+
 /* 캡션이 본문 위에 붙는 Operation만 상단 보더를 비운다 — 1px 이음새가 두 장의 창처럼 읽힌다.
    companion은 자체 캡션이라 상단 보더를 유지한다.
    단축 border-top: none은 색까지 currentColor로 리셋하므로 width/style만 비운다. */
@@ -7533,7 +7570,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .canvas-operation-identity-name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow: hidden;
   padding: 4px 0;
   border: 0;
@@ -7551,13 +7588,10 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* 지휘관 패널이 구성원의 본문을 보이는 동안 제목 뒤에 서는 「› 이름」 — 캡션 선반이 누구의 도구인지 말한다.
    정체성 톤(--subject-ink ← --id-*)은 제목 잉크 규칙 그대로 글자에만 쓰고, 채움·테두리는 건드리지 않는다.
-   제목은 늘어나지 않고 이름이 남은 폭을 받아 둘이 붙어 선다. 언포커스는 제목과 같은 한 단계 물러남이다. */
-.canvas-operation-titlebar:has(.canvas-operation-identity-subject) .canvas-operation-identity-name {
-  flex: 0 1 auto;
-}
-
+   제목과 이름은 한 덩어리로 붙어 가운데 서고, 폭이 모자라면 제목이 먼저 줄어 이름을 오래 남긴다.
+   언포커스는 제목과 같은 한 단계 물러남이다. */
 .canvas-operation-identity-subject {
-  flex: 1 1 auto;
+  flex: 0 0.25 auto;
   min-width: 0;
   overflow: hidden;
   padding: 4px 0;
@@ -7919,7 +7953,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   display: flex;
   align-items: center;
   flex: none;
-  margin-left: auto;
   gap: 4px;
   max-width: none;
   overflow: visible;
@@ -8001,8 +8034,8 @@ body[data-companion-resizing="true"] .canvas-operation {
   align-items: center;
   gap: 4px;
   flex: none;
-  /* auto 마진은 쓰지 않는다 — 이름 버튼이 이미 남는 폭을 전부 먹어 오른쪽으로 밀고 있고,
-     여기에 두 번째 auto가 서면 남는 폭이 둘로 갈려 창 컨트롤과의 사이가 벌어진다. */
+  /* auto 마진은 쓰지 않는다 — 뒤 칸이 이미 오른쪽 끝으로 모아 두고, 여기에 auto가 서면
+     남는 폭이 갈려 창 컨트롤과의 사이가 벌어진다. */
 }
 
 .fleet-caption-slot {
@@ -8709,7 +8742,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 /* 캡션에서는 제목 앞, 그룹 칩보다 먼저 — 문자 표식이 쓰던 2px 숨을 그대로 둔다. */
-.canvas-operation-titlebar > .canvas-snap-mark {
+.canvas-operation-caption-lead > .canvas-snap-mark {
   margin-inline: 2px;
 }
 
