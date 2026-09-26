@@ -89,8 +89,6 @@
 }
 .zen-taskbar-theater-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 
-.zen-taskbar-chevron { width: 10px; height: 10px; flex: none; opacity: 0.6; }
-
 /* 캔버스 모드 스위치와 상태별 보기 토글 — 일반 사이드바와 같은 부품을 모양 그대로 싣는다. 켜짐 표시는 두 자리
    모두 모드 세그먼트와 같은 문법(옅은 워시 · 기본 잉크 · 아래 brass 다텀)이다(components.css). */
 .zen-taskbar-axis { display: flex; flex: none; align-items: center; gap: var(--space-1); }
@@ -133,7 +131,8 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.zen-taskbar-group-label:hover {
+.zen-taskbar-group-label:hover,
+.zen-taskbar-group-label.is-menu[aria-expanded="true"] {
   background: var(--control-hover-fill);
   color: color-mix(in oklab, var(--group-mark) 80%, var(--text-secondary));
 }
@@ -146,6 +145,9 @@
   transition: transform var(--duration-fast) var(--ease-spring);
 }
 .zen-taskbar-group-label.is-collapsed .zen-taskbar-fold-chevron { transform: rotate(-90deg); }
+/* 넘쳐 접힌 묶음 — 같은 이름 부품에 대기 점을 더하고, 화살표는 위로 여는 메뉴를 가리킨다. */
+.zen-taskbar-group-label.is-menu .zen-taskbar-fold-chevron { transform: rotate(180deg); }
+.zen-taskbar-group-awaiting { flex: none; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--aurora); }
 .zen-taskbar-empty { padding: 0 var(--space-2); color: var(--text-tertiary); font: var(--t-xs) var(--font-body); }
 
 .zen-taskbar-op {
@@ -209,7 +211,6 @@
 /* 최소화 비행의 도착 맥동 — 사이드바 칩과 같은 brass 한 번(components.css side-bar-chip-arrival-pulse).
    막대에서 걷힌 Operation은 그것을 품은 접힌 이름·칩이 대신 받는다. */
 .zen-taskbar-op.is-arrival-pulse,
-.zen-taskbar-chip.is-arrival-pulse,
 .zen-taskbar-group-label.is-arrival-pulse { animation: side-bar-chip-arrival-pulse 0.6s var(--ease-glide) 1; }
 
 /* 끌어서 순서 바꾸기 — 잡은 Operation은 유리 면으로 떠서 포인터를 따라가고, 놓일 자리는 brass 선이 말한다. */
@@ -234,30 +235,7 @@
 .zen-taskbar-drop-line.is-x { width: 2px; }
 .zen-taskbar-drop-line.is-y { height: 2px; }
 
-.zen-taskbar-chip {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 5px;
-  height: calc(var(--zen-taskbar-height) - 10px);
-  padding: 0 7px 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: none;
-  box-shadow: inset 0 0 0 1px var(--surface-rim);
-  color: var(--text-secondary);
-  font: var(--t-xs) var(--font-body);
-  white-space: nowrap;
-  cursor: pointer;
-}
-.zen-taskbar-chip:hover,
-.zen-taskbar-chip[aria-expanded="true"] { background: var(--control-hover-fill); color: var(--text-primary); }
-.zen-taskbar-chip-label { color: color-mix(in oklab, var(--group-mark) 55%, var(--text-secondary)); }
-.zen-taskbar-chip-count { color: var(--text-tertiary); font: var(--t-2xs) var(--font-mono); }
-.zen-taskbar-chip-awaiting { width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--aurora); }
-
 .zen-taskbar-op:focus-visible,
-.zen-taskbar-chip:focus-visible,
 .zen-taskbar-group-label:focus-visible,
 .zen-taskbar-theater:focus-visible,
 .zen-taskbar-menu-item:focus-visible {
@@ -317,6 +295,5 @@
   .zen-taskbar-op::after,
   .zen-taskbar-fold-chevron { transition: none; }
   .zen-taskbar-op.is-arrival-pulse,
-  .zen-taskbar-chip.is-arrival-pulse,
   .zen-taskbar-group-label.is-arrival-pulse { animation: none; }
 }

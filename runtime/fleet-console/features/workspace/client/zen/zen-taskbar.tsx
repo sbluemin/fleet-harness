@@ -437,9 +437,11 @@ export function ZenTaskbar({
     const awaiting = group.entries.some((entry) => entry.status === "awaiting");
     const expanded = menu?.kind === "group" && menu.key === group.key;
     return (
+      // 넘쳐 접힌 묶음도 손으로 접은 묶음 이름과 같은 부품 모양이다(이름 · 개수 · 작은 화살표). 다른 것은 누름의
+      // 결과뿐이라 화살표 방향만 위(메뉴가 위로 열림)를 가리킨다.
       <button
         type="button"
-        className="zen-taskbar-chip"
+        className="zen-taskbar-group-label is-menu"
         data-zen-drop-chip=""
         data-zen-fold-ops={foldOpsOf(group)}
         // 묶음 머리는 지금 보는 Operation을 옆에 남기는 자리다 — 누르는 순간 활성 해제가 먼저 돌면 그 Operation이
@@ -452,10 +454,10 @@ export function ZenTaskbar({
         aria-label={t(awaiting ? "zen.taskbar.groupChipAwaiting" : "zen.taskbar.groupChip", { label: group.label, count: group.entries.length })}
         onClick={(event) => toggleMenu({ kind: "group", key: group.key, anchor: event.currentTarget.getBoundingClientRect() }, event.currentTarget)}
       >
-        <span className="zen-taskbar-chip-label">{group.label}</span>
-        <span className="zen-taskbar-chip-count">{group.entries.length}</span>
-        {awaiting ? <span className="zen-taskbar-chip-awaiting" aria-hidden="true" /> : null}
-        <UpChevron />
+        {group.label}
+        <span className="zen-taskbar-group-count" aria-hidden="true">{group.entries.length}</span>
+        {awaiting ? <span className="zen-taskbar-group-awaiting" aria-hidden="true" /> : null}
+        <FoldChevron />
       </button>
     );
   };
@@ -671,8 +673,4 @@ function foldOpsOf(group: TaskbarGroup): string {
 
 function FoldChevron() {
   return <svg className="zen-taskbar-fold-chevron" viewBox="0 0 8 8" aria-hidden="true"><path d="M1.5 2.8 4 5.3l2.5-2.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function UpChevron() {
-  return <svg className="zen-taskbar-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
