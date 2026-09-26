@@ -10,6 +10,7 @@ import { AI_GATEWAY_ROUTE_SEGMENT } from "../../../features/ai-gateway/host/rout
 import { registerAnalysisRoutes } from "../../../features/analyst/host/analysis-routes.js";
 import { registerExperimentRoutes } from "../../../features/execution/host/agent/experiments-routes.js";
 import { registerAgentRoutes } from "../../../features/execution/host/agent/routes.js";
+import { createAgentCliPathStore, resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import { createTerminalRuntime } from "../../../features/execution/host/terminal/index.js";
 import { registerShellRoutes } from "../../../features/execution/host/terminal/shell.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
@@ -18,10 +19,20 @@ export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitl
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
 export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("@fleet-console/sdk/plugin").FleetPluginHostCapabilities["storage"]) {
-  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime } = startAiGateway({ ...ctx, host: { ...ctx.host, storage: quotaStorage } });
+  const agentCliPaths = createAgentCliPathStore(ctx.dataDir, ctx.legacyDataDir);
+  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels } = startAiGateway({
+    ...ctx,
+    host: { ...ctx.host, storage: quotaStorage },
+    // Claude alias의 버전은 런치가 쓰는 바로 그 실행 파일에게 묻는다. Windows cmd shim은 SDK가 직접 못 띄운다.
+    resolveClaudeExecutable: async () => {
+      const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: (await agentCliPaths.read()).paths });
+      return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
+    },
+  });
   registerTerminalSettingsRoutes(ctx, {
     agentOptionsService: ctx.agentOptions,
     aiGatewayStore,
+    ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     wireLogRuntime: wireLog,
   });
   const runtime = createTerminalRuntime(ctx);

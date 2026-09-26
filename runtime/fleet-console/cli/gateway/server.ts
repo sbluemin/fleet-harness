@@ -2,9 +2,12 @@ import { randomUUID } from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 
+import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
+import { resolveBinary } from "@fleet-console/process";
 import {
   AI_GATEWAY_MODEL_ENV,
   createAiGatewayRouter,
+  createClaudeNativeModelSync,
   createFailureJournal,
   createClaudeCodexCompactionStore,
   readAntigravitySubscriptionToken,
@@ -38,7 +41,17 @@ export async function startGatewayHttpServer(deps: {
     filePath: path.join(gatewayDir, "failures.jsonl"),
   });
   const compactHookToken = randomUUID();
+  // Claude alias의 버전은 `fleet`이 띄우는 그 CLI에게 묻는다. 네이티브 alias 중계가 처음 필요할 때만 뜬다.
+  const claudeNativeModels = createClaudeNativeModelSync({
+    resolveExecutable: async () => {
+      // 런처와 같은 해석(`CLAUDE_BIN` → PATH)이다. Windows cmd shim은 SDK가 직접 못 띄운다.
+      const resolved = resolveBinary("claude", "CLAUDE_BIN", process.env);
+      return resolved.prefixArgs.length === 0 && path.isAbsolute(resolved.bin) ? resolved.bin : undefined;
+    },
+    readSupportedModels: (executable) => readClaudeSupportedModels(executable === undefined ? {} : { executablePath: executable }),
+  });
   const router = createAiGatewayRouter({
+    ensureClaudeNativeModels: claudeNativeModels.ensure,
     compactionStore: createClaudeCodexCompactionStore({ directory: gatewayDir }),
     compactionHookToken: compactHookToken,
     failureJournal: failureJournal.write,

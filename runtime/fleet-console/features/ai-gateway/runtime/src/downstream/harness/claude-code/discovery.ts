@@ -58,7 +58,8 @@ export function toGatewayModelAlias(modelId: string): string {
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
   if (model.provider === "claude") {
-    const id = model.upstreamId ?? model.id;
+    // 버전은 자식 CLI가 푼다 — alias를 넘겨야 CLI가 갱신돼도 최신 버전으로 뜬다.
+    const id = model.claudeAlias ?? model.upstreamId ?? model.id;
     return isClaudeOneMillionContextWindow(model.contextWindow)
       ? `${id}${CLAUDE_ONE_MILLION_MARKER}`
       : id;

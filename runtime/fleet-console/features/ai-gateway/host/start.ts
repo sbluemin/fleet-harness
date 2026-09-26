@@ -1,7 +1,9 @@
 import path from "node:path";
+import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
 import { chooseRoutingModel } from "./routing-model.js";
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
+  createClaudeNativeModelSync,
   createQuotaService,
   createAiGatewayQuotaCollectors,
   parseGatewayQuotaSnapshot,
@@ -36,6 +38,11 @@ interface GatewayStartContext {
     readonly storage: Pick<FleetPluginHostCapabilities["storage"], "readJson">;
   };
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
+  /**
+   * The Claude Code executable Console launches. Claude alias entries resolve against this
+   * installation; absent leaves them unresolved and native alias relays are refused.
+   */
+  readonly resolveClaudeExecutable?: () => Promise<string | undefined>;
 }
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
@@ -187,10 +194,20 @@ export function startAiGateway(ctx: GatewayStartContext) {
     } finally { testing = false; res.off("close", abort); }
     return true;
   }, [{ method: "POST", path: "", summary: "Test the configured routing decision with a real provider request.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
+  const resolveClaudeExecutable = ctx.resolveClaudeExecutable;
+  // Claude alias가 가리키는 버전은 Console이 띄우는 그 CLI가 정한다. 필요한 순간에만 묻는다.
+  const claudeNativeModels = resolveClaudeExecutable
+    ? createClaudeNativeModelSync({
+      resolveExecutable: resolveClaudeExecutable,
+      readSupportedModels: (executable) => readClaudeSupportedModels(executable === undefined ? {} : { executablePath: executable }),
+    })
+    : undefined;
+  const ensureClaudeNativeModels = claudeNativeModels?.ensure;
   const aiGatewayRuntime = registerAiGatewayRoutes(ctx, {
+    ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     readAiGatewaySettings: aiGatewayStore.read,
     assignRouting: (request, options) => assign(request, options?.signal),
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
   });
-  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime };
+  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels };
 }

@@ -490,7 +490,6 @@ function minimalRegistry() {
       opencode: provider("OpenCode", "minimax-m3"),
       xai: provider("Grok", "grok-4.6"),
       "muse-code": provider("Muse Code", "muse-spark-1.3"),
-      claude: provider("Claude", "sonnet"),
     },
     pricing: {
       source: "openrouter" as const,

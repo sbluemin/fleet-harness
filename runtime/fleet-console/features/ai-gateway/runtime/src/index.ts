@@ -180,3 +180,5 @@ export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 
 export { GatewayRoutingDistribution } from "./fleet/routing-distribution.js";
 export { fallbackGatewayRoutingAssignment } from "./fleet/routing-fallback.js";
+export { createClaudeNativeModelSync } from "./fleet/claude-native-sync.js";
+export type { ClaudeNativeModelSync, ClaudeNativeModelSyncDeps } from "./fleet/claude-native-sync.js";

@@ -28,6 +28,8 @@ import type {
   ClaudeGatewayTool,
   ClaudeGatewayToolExtras,
   ClaudeGatewayToolResult,
+  ClaudeSupportedModel,
+  ReadClaudeSupportedModelsOptions,
 } from "./contracts.js";
 
 /** 이미 조립이 끝난 vendor `query()` 인자. 조립 책임은 `./sdk.ts`에 있다. */
@@ -517,6 +519,64 @@ export function createVendorMcpServer(options: {
 }
 
 /** 자식이 남긴 세션 기록에서 사람이 읽을 제목만 꺼낸다. 없으면 null. */
+const SUPPORTED_MODELS_TIMEOUT_MS = 20_000;
+
+/**
+ * 설치된 Claude Code가 alias를 어느 모델로 푸는지 CLI 자신에게 묻는다.
+ *
+ * 사용자 메시지를 보내지 않는 control 요청이라 추론 비용이 없다. 입력 스트림은 끝나지 않고
+ * 기다리기만 하며, 답을 받으면 자식을 바로 접는다. 사용자 설정 층은 연다 — 모델 표는 사용자가
+ * 터미널에서 보는 그것이어야 한다.
+ */
+export async function readVendorSupportedModels(
+  options: ReadClaudeSupportedModelsOptions = {},
+): Promise<readonly ClaudeSupportedModel[]> {
+  const idle = new AbortController();
+  async function* waitForever(): AsyncGenerator<never, void> {
+    await new Promise<void>((resolve) => idle.signal.addEventListener("abort", () => resolve(), { once: true }));
+  }
+  const run = vendorQuery({
+    prompt: waitForever(),
+    options: withResolvedExecutable({
+      ...(options.executablePath === undefined ? {} : { pathToClaudeCodeExecutable: options.executablePath }),
+      ...(options.env === undefined ? {} : { env: { ...options.env } }),
+      settingSources: ["user"],
+      persistSession: false,
+    }),
+  } as never) as { supportedModels(): Promise<unknown>; close(): void };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const rows = await Promise.race([
+      run.supportedModels(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Claude Code did not report its models in time.")),
+          options.timeoutMs ?? SUPPORTED_MODELS_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    return Array.isArray(rows) ? rows.flatMap(readVendorSupportedModel) : [];
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    idle.abort();
+    try { run.close(); } catch { /* 이미 끝난 자식이다. */ }
+  }
+}
+
+function readVendorSupportedModel(row: unknown): ClaudeSupportedModel[] {
+  if (typeof row !== "object" || row === null) return [];
+  const model = row as { value?: unknown; resolvedModel?: unknown; displayName?: unknown; supportedEffortLevels?: unknown };
+  if (typeof model.value !== "string" || model.value.length === 0) return [];
+  return [{
+    value: model.value,
+    resolvedModel: typeof model.resolvedModel === "string" && model.resolvedModel.length > 0 ? model.resolvedModel : null,
+    displayName: typeof model.displayName === "string" ? model.displayName : model.value,
+    effortLevels: Array.isArray(model.supportedEffortLevels)
+      ? model.supportedEffortLevels.filter((level): level is string => typeof level === "string")
+      : [],
+  }];
+}
+
 export interface ClaudeSessionTitle {
   readonly customTitle: string | null;
   readonly summary: string | null;

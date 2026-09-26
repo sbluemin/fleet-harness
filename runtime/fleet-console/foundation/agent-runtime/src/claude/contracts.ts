@@ -148,6 +148,25 @@ export interface ClaudeModelPolicy {
   resolve(requested: string): ClaudeModelResolution;
 }
 
+/**
+ * 설치된 Claude Code가 `/model` 피커에 내놓는 한 줄. `value`는 CLI가 받는 표기(`opus`,
+ * `claude-fable-5-1`)이고 `resolvedModel`은 그 표기가 이 CLI 버전에서 풀리는 API 모델 id다.
+ */
+export interface ClaudeSupportedModel {
+  readonly value: string;
+  readonly resolvedModel: string | null;
+  readonly displayName: string;
+  /** 비어 있으면 강도를 받지 않는 모델이다. */
+  readonly effortLevels: readonly string[];
+}
+
+export interface ReadClaudeSupportedModelsOptions {
+  /** Console이 실제로 띄우는 그 실행 파일. 부재는 SDK 동봉 CLI다. */
+  readonly executablePath?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly timeoutMs?: number;
+}
+
 export interface ClaudeGatewaySdkOptions {
   /** 모델 의미와 discovery 표기는 호출자가 소유한다. */
   readonly modelPolicy: ClaudeModelPolicy;

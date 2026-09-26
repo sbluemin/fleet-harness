@@ -33,6 +33,7 @@ import {
   fallbackGatewayRoutingAssignment as decideGatewayRoutingAssignment,
   decideGatewayRoutingAssignment as decideGatewayRoutingAssignmentWithJev,
   errorMessage,
+  applyClaudeNativeModels,
   findGatewayModel,
   GATEWAY_MODELS,
   GatewayRoutingDistribution,
@@ -318,6 +319,14 @@ describe("delegation assignment", () => {
   });
 
   it("proxies native Claude requests to Anthropic with caller credentials and without alias advertisement", async () => {
+    // 설치된 CLI의 표에는 구버전 명시 id도 섞여 온다. alias는 그중 최신으로만 풀려야 한다.
+    const ensureClaudeNativeModels = vi.fn(async () => {
+      applyClaudeNativeModels([
+        { value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus 5.5", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
+        { value: "claude-opus-5", resolvedModel: "claude-opus-5", displayName: "Opus 5", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
+        { value: "sonnet", resolvedModel: "claude-sonnet-5", displayName: "Sonnet 5", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
+      ]);
+    });
     const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       expect(String(url)).toBe("https://api.anthropic.com/v1/messages");
       const headers = new Headers(init?.headers);
@@ -329,7 +338,7 @@ describe("delegation assignment", () => {
       });
     });
 
-    const router = createAiGatewayRouter({ fetch: fetchMock });
+    const router = createAiGatewayRouter({ fetch: fetchMock, ensureClaudeNativeModels });
     const res = response();
     await router.handle(ctx({
       res,
@@ -339,15 +348,16 @@ describe("delegation assignment", () => {
     }));
     expect(res.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(ensureClaudeNativeModels).toHaveBeenCalledTimes(1);
 
     // 위임 훅은 CLI alias 해석을 거치지 않는다. 배정 ID를 그대로 보내도 API ID와 1M 헤더가 맞아야 한다.
     const decision = decideGatewayRoutingAssignment(
       { surface: "agent", requestedModel: "opus" },
       { delegationRoutingEnabled: true, delegationModels: [requireGatewayModel("claude--opus-1m")] },
     );
-    expect(decision.model).toBe("claude-opus-5[1m]");
+    expect(decision.model).toBe("opus[1m]");
     const nativeRouter = createAiGatewayRouter({ fetch: vi.fn<typeof fetch>(async (_url, init) => {
-      expect(JSON.parse(String(init?.body)).model).toBe("claude-opus-5");
+      expect(JSON.parse(String(init?.body)).model).toBe("claude-opus-5-5");
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
       expect(headers.get("anthropic-beta")).toContain("context-1m-2025-08-07");
@@ -372,13 +382,13 @@ describe("delegation assignment", () => {
     } satisfies GatewayAssignmentExposure;
 
     const loadout = buildGatewayLoadout(exposure);
-    expect(loadout.models.filter((m) => m.provider === "claude").map((m) => m.modelId)).toEqual(["claude-sonnet-5"]);
+    expect(loadout.models.filter((m) => m.provider === "claude").map((m) => m.modelId)).toEqual(["sonnet"]);
 
     const decision = decideGatewayRoutingAssignment(
       { surface: "agent", requestedModel: "sonnet" },
       exposure,
     );
-    expect(decision.model).toBe("claude-sonnet-5");
+    expect(decision.model).toBe("sonnet");
     expect(decision.effort).toBe("medium");
   });
 

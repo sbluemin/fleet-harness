@@ -39,6 +39,8 @@ import {
 interface TerminalSettingsRouteDeps {
   readonly agentOptionsService: AgentOptionsService;
   readonly aiGatewayStore: AiGatewaySettingsStore;
+  /** Resolves Claude alias entries to the installed CLI's versions before the catalog is shown. */
+  readonly ensureClaudeNativeModels?: () => Promise<void>;
   readonly wireLogRuntime: {
     readonly enabled: () => boolean;
     readonly apply: (stored: boolean | undefined) => void;
@@ -95,9 +97,20 @@ export interface TerminalSettingsState {
   readonly xaiEndpoint: XaiEndpointPreference;
 }
 
+const CLAUDE_CATALOG_WAIT_MS = 5_000;
+
 export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, deps: TerminalSettingsRouteDeps): void {
   ctx.registerRouter("agent/settings", async ({ req, res }) => {
     if (req.method === "GET") {
+      // 첫 조회만 CLI를 띄운다. 느리면 기다리지 않고 지금 아는 표로 그린다.
+      if (deps.ensureClaudeNativeModels) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          deps.ensureClaudeNativeModels(),
+          new Promise<void>((resolve) => { timer = setTimeout(resolve, CLAUDE_CATALOG_WAIT_MS); }),
+        ]);
+        clearTimeout(timer);
+      }
       // 세션 없는 요청은 상류가 이미 걷어냈다. 다만 상류가 보장하는 것은 loopback이 아니다 —
       // 원격 리스너에서 온 GET도 여기 닿고, 원격 세션은 이 콘솔의 설정 화면을 그리는 주체이므로
       // 그래야 한다. 플러그인 컨텍스트에는 콘솔 포트가 없어 여기서 Host를 다시 볼 수도 없다.

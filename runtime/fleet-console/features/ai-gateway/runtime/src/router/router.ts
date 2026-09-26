@@ -230,6 +230,11 @@ export interface AiGatewayRouteDeps {
    * once, so without a sink it leaves no trace anywhere. Absent means the gateway keeps no record.
    */
   readonly failureJournal?: GatewayFailureSink;
+  /**
+   * Brings the Claude alias entries up to the installed Claude Code's latest versions.
+   * Awaited before a native Claude alias is relayed; absent means the catalog is used as is.
+   */
+  readonly ensureClaudeNativeModels?: () => Promise<void>;
 }
 
 export interface AiGatewayRouter {
@@ -501,7 +506,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 요청이 지목한 모델이 어느 구독으로 가는지 정한다. env 오버라이드가 있으면 그쪽이 이긴다.
     const modelOverride = deps.readModelOverride?.();
     const requested = modelOverride ?? body.model;
-    const target = harness.findModel(requested, GATEWAY_MODELS);
+    let target = harness.findModel(requested, GATEWAY_MODELS);
+    // Claude alias의 버전은 설치된 CLI가 정한다. 표를 갱신하면 카탈로그가 새로 지어지므로 다시 찾는다.
+    if (target?.provider === "claude" && deps.ensureClaudeNativeModels) {
+      await deps.ensureClaudeNativeModels();
+      target = harness.findModel(requested, GATEWAY_MODELS);
+    }
     if (!target && !harness.relaysUnmatchedModel(requested)) {
       writeAnthropicError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
       return true;
@@ -580,7 +590,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
     try {
       if (!target || target.provider === "claude") {
-        // 네이티브 모델의 전송 ID는 카탈로그가 소유한다. 호출자 인증과 기존 beta는 보존한다.
+        // 네이티브 모델의 전송 ID는 설치된 Claude Code가 alias를 푼 값이다. 아직 못 물었으면
+        // alias를 API로 흘리지 않고 여기서 멈춘다. 호출자 인증과 기존 beta는 보존한다.
+        if (target && target.upstreamId === undefined) {
+          writeAnthropicError(res, 503, "api_error", `Claude Code has not reported which model "${requested}" resolves to yet.`);
+          return true;
+        }
         await proxyToAnthropic(req.headers, res,
           target ? { ...body, model: target.upstreamId ?? body.model } : body,
           fetchImpl, controller.signal, harness.retryableStatus, target?.contextWindow);
