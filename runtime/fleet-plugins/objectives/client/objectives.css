@@ -161,7 +161,7 @@
 .objectives-objective > .objectives-check-tip { flex: none; width: 22px; }
 .objectives-objective-body { flex: 1 1 160px; min-width: 0; }
 .objectives-objective-side { min-width: 0; max-width: 100%; margin-left: auto; }
-.objectives-objective-side > .objectives-goto, .objectives-objective-side > .objectives-star { flex: none; }
+.objectives-objective-side > .objectives-goto { flex: none; }
 .objectives-objective:hover { border-color: var(--hairline-strong); }
 .objectives-objective:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-objective[aria-selected="true"] { border-color: var(--brass); }
@@ -221,9 +221,6 @@
 .objectives-op.is-idle i, .objectives-op.is-ended i, .objectives-op.is-closed i, .objectives-op.is-unknown i { background: var(--text-tertiary); }
 .objectives-op.is-background i { background: var(--aurora); }
 .objectives-by { border: 1px solid color-mix(in oklch, var(--console-use-badge) 50%, transparent); color: var(--console-use-badge); border-radius: var(--radius-pill); padding: 0 6px; font-family: var(--font-mono); font-size: var(--t-2xs); }
-.objectives-star { background: transparent; border: 0; color: var(--text-tertiary); cursor: pointer; padding: 2px; font-size: var(--t-base); line-height: 1; }
-.objectives-star.is-on { color: var(--brass); }
-.objectives-star:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; border-radius: 4px; }
 .objectives-add {
   display: flex;
   gap: 8px;
@@ -325,9 +322,6 @@
   field-sizing: content;
 }
 .objectives-detail-title:focus { outline: none; }
-.objectives-detail-head .objectives-star { flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; margin: 0; border-radius: var(--radius-xs); }
-.objectives-detail-head .objectives-star svg { width: 16px; height: 16px; }
-.objectives-detail-head .objectives-star.is-on svg { fill: currentColor; }
 .objectives-detail-delete { flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; }
 .objectives-detail-delete svg { width: 16px; height: 16px; }
 .objectives-detail-delete:hover { color: var(--coral); }

@@ -81,7 +81,7 @@ export interface ObjectiveAttachment {
   readonly at: number;
 }
 
-/** 지휘관에게 알릴 만한 사람의 편집 — 일정·중요 표시·모델 같은 지휘관의 일과 무관한 값은 넣지 않는다. */
+/** 지휘관에게 알릴 만한 사람의 편집 — 일정·모델 같은 지휘관의 일과 무관한 값은 넣지 않는다. */
 export type ObjectiveEditKind = "title" | "note" | "missions" | "lineup" | "members" | "member" | "criteria";
 
 // ═══ 저장 모양 (목표마다 objective.json) ═════════════════════════════════════
@@ -240,7 +240,6 @@ export interface StoredObjective {
   /** 사람의 명시적인 구상 요청에서만 켜고, 스티어링·개시·중지·완료에서 끈다. */
   readonly criteriaOpen?: true;
   readonly attachments?: readonly ObjectiveAttachment[];
-  readonly important?: true;
   readonly dueDate?: string;
   readonly today?: true;
   /** 에이전트가 도구로 더한 목표 — 더한 Operation. 사람이 만든 목표에는 없다. */
@@ -329,7 +328,6 @@ export interface Objective {
   readonly planning: boolean;
   readonly criteriaOpen: boolean;
   readonly edited?: { readonly at: number; readonly kinds: readonly ObjectiveEditKind[] };
-  readonly important: boolean;
   readonly dueDate: string | null;
   readonly today: boolean;
   readonly addedBy: { readonly operationId: string; readonly title: string | null } | null;
@@ -535,7 +533,6 @@ export const createObjectiveSchema = z.object({
   groupId: ids.nullable().optional(),
   title,
   note: note.optional(),
-  important: z.boolean().optional(),
   dueDate: dueDate.optional(),
   today: z.boolean().optional(),
   /** 선행은 이 목록 안의 1-based 임무 번호 — 앞에 선 임무만 가리킨다. */
@@ -546,7 +543,6 @@ export const patchObjectiveSchema = z.object({
   title: title.optional(),
   note: note.optional(),
   planRequest: z.string().max(MAX_CONTEXT).optional(),
-  important: z.boolean().optional(),
   dueDate: dueDate.optional(),
   today: z.boolean().optional(),
   groupId: ids.nullable().optional(),
