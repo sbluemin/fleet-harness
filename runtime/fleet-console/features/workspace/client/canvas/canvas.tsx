@@ -39,7 +39,7 @@ import type { GroupContextMenuAlign } from "./group-context-menu.js";
 import { FleetMap } from "./fleet-map.js";
 import { anchorViewportToPoint, resolveFleetContentCenter, resolveFleetMapActive, resolveFleetMapZoomAnchor } from "./fleet-map-layout.js";
 import { OperationFrame, type OperationDragPointer } from "./operation-frame.js";
-import { SNAP_FULL_ZONES, SNAP_MIN_ZOOM, SNAP_PRESETS, SNAP_TOP_FULL_EDGE, evenAlignBodies, snapEdgeHitFor, snapEmptyZoneHitFor, snapPointAtTopEdge, snapPointInRect, snapPointInTopBand, snapZoneHitFor, snapZonesFor, snapZonesResized, type SnapRect, type SnapZoneFraction, type SnapZoneHit, type SnapZoneSet } from "./snap-layouts.js";
+import { SNAP_FULL_ZONES, SNAP_MIN_ZOOM, SNAP_PRESETS, SNAP_TOP_FULL_EDGE, evenAlignBodies, snapEdgeHitFor, snapEmptyZoneHitFor, snapFullZone, snapPointAtTopEdge, snapPointInRect, snapPointInTopBand, snapZoneHitFor, snapZonesFor, snapZonesResized, type SnapRect, type SnapZoneFraction, type SnapZoneHit, type SnapZoneSet } from "./snap-layouts.js";
 import { SnapAssist, SnapGhost, SnapHandle, SnapLayoutBar, SnapLayoutMenu, type SnapAssistCandidate, type SnapZoneRef } from "./snap-layouts-ui.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
@@ -981,6 +981,10 @@ export function OperationsCanvas({
   const snapArena: SnapRect = { x: modeArena.x - arena.x, y: 0, width: modeArena.width, height: arena.height };
   const arenaRectToBox = (rect: SnapRect): SnapRect => ({ x: rect.x + arena.x, y: rect.y + arena.y, width: rect.width, height: rect.height });
   const frameOf = (body: SnapRect): SnapRect => ({ x: body.x, y: body.y - OPERATION_WINDOW_CAPTION_HEIGHT, width: body.width, height: body.height + OPERATION_WINDOW_CAPTION_HEIGHT });
+  // companion 레이어의 바깥 사각형 — 스냅 전체 칸의 프레임(캡션 포함)과 같은 자리다. 레이어는 여전히
+  // 별도 모드지만, 사람에게는 「전체 칸을 차지한 패널이 옆에 분석가·브라우저를 편 것」으로 읽혀야 한다.
+  // 아레나 전체(여백 0)를 쓰면 위는 밴드에, 아래는 창 바닥에 붙어 스냅 칸과 따로 논다.
+  const companionLayerBox = frameOf(arenaRectToBox(snapFullZone(snapArena)));
   // ── 스냅 유지 ──
   // 유지 패널은 저장된 월드 좌표가 아니라 "지금 보이는 아레나"의 칸에서 매 렌더 편다 — 사이드바·레일이
   // 여닫히거나 카메라가 팬해도 칸에 붙어 있다. 편 값은 effect가 스토어에 되써서 영속·Station Keeping·
@@ -1377,7 +1381,7 @@ export function OperationsCanvas({
   // 슬롯 id는 Operation 본체 + 보이는 companion 순서다. 이 배열이 폭의 키이자 분할선의 좌표계다.
   const companionSlotIds = [COMPANION_SESSION_SLOT_ID, ...visibleCompanionPanels.map((panel) => panel.id)];
   const companionSlotWidths = resolveCompanionSlotWidths(
-    arena.width,
+    companionLayerBox.width,
     companionSlotWeightsFor(companionSlotIds, companionSlotWeights),
   );
   // 분할선은 Cruise companion 배치에만 선다. War Room은 자기 격자가 폭을 정하고,
@@ -1560,6 +1564,9 @@ export function OperationsCanvas({
           const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
           const operationSnapFull = panelSnapFull === operation.id;
           const operationCompanion = panelCompanion === operation.id;
+          // Cruise의 companion 레이어는 전체 칸 자리에 선다 — 캡션·칩 표식과 창 컨트롤도 전체 칸의 문법을 따른다
+          // (⤡·Alt↓·캡션 더블클릭 = 나가기). War Room 무대의 companion은 무대 배치라 여기에 들지 않는다.
+          const operationCompanionLayer = operationCompanion && !triageActive;
           const operationTriageStage = triageStageId === operation.id;
           // 덱 칸이 잡혀 있으면 그 자리가 이 패널의 자리다 — 캔버스 좌표 대신 칸 안으로 들어가
           // 칸 크기를 그대로 입는다(PTY도 그 크기로 맞춰진다).
@@ -1607,7 +1614,7 @@ export function OperationsCanvas({
           const frameGeometry = operationTriageStage
             ? triageStageGeometryFor(modeArena, topPanelZIndex, 0, triageActive && operationCompanion ? companionSlotCount : 1)
             : operationCompanion
-            ? companionGeometryFor(arena, 0, companionSlotWidths, topPanelZIndex)
+            ? companionGeometryFor(companionLayerBox, 0, companionSlotWidths, topPanelZIndex)
             : snapHeldRect ? { ...baseGeometry, ...snapHeldRect } : baseGeometry;
           // 보더 위 캡션(top: -32px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
           // War Room은 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
@@ -1632,7 +1639,7 @@ export function OperationsCanvas({
             geometry: frameGeometry,
             topEdge,
             alignHeld: alignMeta !== null && snapHeldIndex !== undefined,
-            snapZone: snapHeldIndex !== undefined ? snapHold?.zones[snapHeldIndex] ?? null : null,
+            snapZone: operationCompanionLayer ? SNAP_FULL_ZONES.zones[0]! : snapHeldIndex !== undefined ? snapHold?.zones[snapHeldIndex] ?? null : null,
             operationKindRegistry,
             // 캡션 비콘은 사이드바 칩과 같은 원천을 읽어야 한다 — 런타임 맵을 날로 조회하면 아직
             // 런타임 축을 심지 않은 복원 Operation이 doctrine상 dormant인데도 캡션에서만 idle로 서서,
@@ -1677,7 +1684,7 @@ export function OperationsCanvas({
             // 숨기지 않고, 자리가 아직 없을 때만(입장 연출·지도 전환 직전) 접어 둔다.
             // 후보 판의 칸에 선 동안은 최소화 상태여도 실물로 선다(War Room 덱과 같다).
             minimized: triageActive ? !operationTriageStage && !deckSlot : minimizedSet.has(operation.id) && !snapAssistSlot,
-            snapFull: operationSnapFull,
+            snapFull: operationSnapFull || operationCompanionLayer,
             triageStage: operationTriageStage,
             triagePicked: operationTriageStage && triageStage?.picked === true,
             glanceHud,
@@ -1687,7 +1694,7 @@ export function OperationsCanvas({
               ? visibleCompanionPanels.map((panel, index) => {
                   const slot = triageActive
                     ? triageStageGeometryFor(modeArena, topPanelZIndex, index + 1, companionSlotCount)
-                    : companionGeometryFor(arena, index + 1, companionSlotWidths, topPanelZIndex);
+                    : companionGeometryFor(companionLayerBox, index + 1, companionSlotWidths, topPanelZIndex);
                   // 세 배치 모두 캡션 높이만큼 아래에서 시작한다(캡션이 그 위 띠를 채운다는 전제).
                   // 캡션 없는 companion은 그 띠가 빈 채 남으므로 본문에 돌려준다 — 프레임 꼭대기가
                   // 이웃 Operation의 캡션 꼭대기와 나란히 선다.
@@ -1737,7 +1744,11 @@ export function OperationsCanvas({
             },
             // 캡션 ⤢/⤡ — 전체 칸에 앉히거나 직전 자리로 되돌린다. 기하가 실제로 바뀌므로 드래그 커밋과
             // 같은 durable 쓰기를 함께 보낸다. 모두 정렬·War Room은 배치를 쥐고 있어 버튼 자체가 없다.
-            onToggleSnapFull: alignMeta !== null || triageActive ? undefined : () => {
+            onToggleSnapFull: alignMeta !== null || triageActive ? undefined : operationCompanionLayer ? () => {
+              // 레이어 안의 ⤡는 레이어를 닫는다 — 들어오기 전 자리(전체 칸이었으면 전체 칸)로 돌아간다.
+              // 숨은 스냅 유지를 뒤집던 ⤢는 화면을 바꾸지 못한 채 상태만 흔들었다.
+              closeCompanionLayer(commitOperationGeometry);
+            } : () => {
               if (!operationSnapFull) setActiveOperation(operation.id);
               toggleOperationSnapFull(operation.id, commitOperationGeometry);
             },
@@ -1804,7 +1815,7 @@ export function OperationsCanvas({
         {companionDividersActive ? companionSlotIds.slice(0, -1).map((slotId, index) => (
           <CompanionDivider
             key={`companion-divider-${slotId}`}
-            geometry={companionDividerGeometryFor(arena, index, companionSlotWidths, topPanelZIndex + 1)}
+            geometry={companionDividerGeometryFor(companionLayerBox, index, companionSlotWidths, topPanelZIndex + 1)}
             label={t("canvas.companion.dividerAria")}
             onPointerDown={(event) => beginCompanionDividerDrag(index, event)}
             onNudge={(delta) => nudgeCompanionDivider(index, delta)}
@@ -1853,8 +1864,9 @@ export function OperationsCanvas({
           body={t("canvas.align.modeBody", { count: alignOrderedIds.length })}
         />
       ) : null}
-      {snapHoldActive ? (
+      {snapHoldActive || (panelCompanion !== null && !triageActive) ? (
         // 유지의 표시 — "이 화면은 정돈된 상태"라는 한 문법. 모두 정렬도 같은 브래킷을 쓴다.
+        // companion 레이어도 전체 칸 자리에 서므로 같은 테두리를 두른다(자유 패널에서 열었어도).
         <div className="canvas-mode-frame is-snap-hold" aria-hidden="true">
           <span className="canvas-mode-bracket canvas-mode-bracket--nw" />
           <span className="canvas-mode-bracket canvas-mode-bracket--ne" />

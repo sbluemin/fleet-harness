@@ -194,7 +194,7 @@ export function CoordinationGraph({ objective, t, modeLabel, onToggleEdge, onCyc
           <circle cx={root.x} cy={root.y} r={9} />
           {/* 뿌리 라벨은 항상 「지휘관」 — 모드는 지휘관 행이 말하고, 긴 모드명은 그래프 왼쪽 가장자리에서 잘린다. */}
           <text x={root.x} y={root.y + 21} textAnchor="middle">{t("objectives.graph.commander")}</text>
-          <title>{`${operationTitle(objective.id)} · ${modeLabel}`}</title>
+          <title>{`${(objective.commander.started ? operationTitle(objective.id) : objective.title)} · ${modeLabel}`}</title>
         </g>
         {missions.map((mission, index) => {
           const p = pos.get(mission.id)!;

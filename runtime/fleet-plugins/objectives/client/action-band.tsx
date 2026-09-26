@@ -65,6 +65,7 @@ export interface ActionBandProps {
   readonly launchAvailable: boolean;
   /** 지휘관 상태 낱말(유휴·끝남 …) — 「개시」 부제에 쓴다. */
   readonly commanderState: string;
+  readonly commanderExists: boolean;
   /** 실패하면 코드를 message 로 던진다. */
   readonly request: (path: string, body: Record<string, unknown>) => Promise<unknown>;
   readonly onFocusOperation: (operationId: string) => void;
@@ -329,7 +330,7 @@ export function ActionBand(props: ActionBandProps) {
           <div className="objectives-comp-top">
             <span>{t("objectives.followup.pick")} · <span className="objectives-followup-count" aria-live="polite">{t("objectives.followup.count", { k: picked, n: total })}</span></span>
             <span className="objectives-comp-tools">
-              <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button>
+              {props.commanderExists ? <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button> : null}
               <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.band.fold")} title={t("objectives.band.fold")} onClick={() => fold(true)}><CloseGlyph /></button>
             </span>
           </div>
@@ -392,7 +393,8 @@ export function ActionBand(props: ActionBandProps) {
         {word(main)}
         <span className="objectives-start-sub">
           {hasDraft ? <b className="objectives-band-draft">{t("objectives.band.draft")}</b> : null}
-          {pending ? pendingText(pending) : followupExpands ? t("objectives.followup.sub", { n: followupCandidates.length }) : main.desc}
+          <span className="objectives-start-desc">{pending ? pendingText(pending) : followupExpands ? t("objectives.followup.sub", { n: followupCandidates.length }) : main.desc}</span>
+          {/* 다른 할 일로 가는 길은 말줄임 대상이 아니다 — 좁은 레일에서 설명이 먼저 줄고 「…도 여기서」는 끝까지 남는다. */}
           {others.length ? <span className="objectives-band-also"> · {t("objectives.band.also", { words: others.map((key) => `「${intents[key].word}」`).join("") })}</span> : null}
         </span>
         {decide ? <span className="objectives-start-arrow" aria-hidden="true"><GoGlyph /></span> : null}
@@ -404,10 +406,10 @@ export function ActionBand(props: ActionBandProps) {
         <div className={`objectives-group objectives-start-group${gated ? " is-gated" : ""}`}>
           {lockedLine}
           <div className={bandCls}>
-            <div className={`objectives-split${toneCls}`}>
+            {props.commanderExists ? <div className={`objectives-split${toneCls}`}>
               {mainButton}
               <button type="button" className="objectives-split-goto" aria-label={goLabel} title={goLabel} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button>
-            </div>
+            </div> : mainButton}
           </div>
           {errorLine}
         </div>
@@ -432,7 +434,7 @@ export function ActionBand(props: ActionBandProps) {
         <div className="objectives-comp-top">
           <span>{t(many ? "objectives.band.choose" : "objectives.band.send")}</span>
           <span className="objectives-comp-tools">
-            <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button>
+            {props.commanderExists ? <button type="button" className="objectives-glyph objectives-comp-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={() => props.onFocusOperation(objective.id)}><GoGlyph /></button> : null}
             <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.band.fold")} title={t("objectives.band.fold")} onClick={() => fold(true)}><CloseGlyph /></button>
           </span>
         </div>

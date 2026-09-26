@@ -40,6 +40,8 @@ export interface ConsoleActionInput {
    * 함께 영속되며 만료하지 않는다. 새 키는 소유자별 용량 안에서만 받는다(`launch_key_capacity`).
    */
   readonly launchKey?: string;
+  /** 플러그인의 키 붙은 새 기동에서만 지정할 수 있는 Operation UUID. */
+  readonly newOperationId?: string;
 }
 
 export interface ConsoleOperationObservation {

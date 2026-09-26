@@ -27,11 +27,13 @@ const actionObjectSchema = z.object({
   disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
   parentOperationId: z.string().min(1).max(128).optional(),
   launchKey: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
+  newOperationId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).optional(),
 }).strict();
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && !value.text)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.launchKey !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.newOperationId && !value.launchKey) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "interrupt" && (value.text || value.display || value.displayFormat)) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
   if (value.kind === "resume" && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_resume" });
@@ -171,6 +173,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (found.state === "live") return { id: randomUUID(), requestId: `launch-key:${input.launchKey}`, caller, input, status: "finished", createdAt: stamp(), updatedAt: stamp(), expiresAt: stamp(), operationId: found.operationId! };
     if (found.state === "deleting" || found.state === "purged") fail("launch_key_deleted");
     if (found.state === "pending") return pendingKeyed(caller, input.launchKey!)!;
+    if (input.newOperationId && deps.operations().some((operation) => operation.id === input.newOperationId)) fail("operation_id_taken");
     try { ledger.reserve(owner, input.theaterId!, [input.launchKey!]); }
     catch (error) { if (error instanceof LaunchKeyError) fail(error.code); throw error; }
     return null;
@@ -221,6 +224,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       return duplicate;
     }
     validTarget(input);
+    if (input.newOperationId && caller.kind !== "plugin") fail("invalid_launch_option");
     if (input.launchKey !== undefined) {
       const existing = keyedLaunch(caller, input);
       if (existing) return existing;

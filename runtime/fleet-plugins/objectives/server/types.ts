@@ -3,10 +3,9 @@ import { z } from "zod";
 /**
  * 목표 도메인 — 저장 모양과 화면 모양을 가른다.
  *
- * 목표는 곧 그 지휘관 Operation 이다. 목표의 식별자·제목·그룹·Theater·만든 시각·모델 프리셋·세션 이름은 Operation 이
- * 이미 들고 있으므로 저장하지 않는다 — `objective.json` 에는 목표에만 있는 값(브리핑·임무·기준·일정·보드 자리)만 남고,
- * 화면과 지휘관 도구가 보는 `Objective` 은 서버가 Operation 과 합쳐 만든다. 검토 대기도 저장하지 않는다 — 모든 임무와
- * 기준이 끝났는지에서 매번 계산한다.
+ * 목표는 Operation 없이 레코드로 태어난다. 첫 기동 전 제목·그룹·시각·프리셋은 `pending` 에 두고, 개시·구상에서
+ * 같은 id 의 지휘관 Operation 을 세운 뒤 `pending` 을 없앤다. 기존 지휘관과 따로 만든 Agent Operation 은 Operation
+ * 값에서 화면을 만들고, 검토 대기는 모든 임무와 기준의 충족 여부에서 계산한다.
  */
 
 export const MAX_TITLE = 120;
@@ -212,8 +211,21 @@ export interface StoredOrigin {
   readonly evidence: readonly FollowupEvidence[];
 }
 
+export interface PendingCommander {
+  readonly theaterId: string;
+  readonly title: string;
+  readonly groupId: string | null;
+  readonly createdAt: number;
+  readonly sessionName: string;
+  readonly model?: string;
+  readonly effort?: string;
+  readonly viewMode: "terminal" | "chat";
+}
+
 export interface StoredObjective {
-  /** 지휘관 Operation id — 목표의 유일한 식별자이자 이 목표 디렉터리의 이름. */
+  /** 아직 지휘관 Operation 이 없다 — 첫 기동 때 제거한다. */
+  readonly pending?: PendingCommander;
+  /** 목표 id — 지휘관이 태어나면 그 Operation id 이기도 하다. */
   readonly operationId: string;
   /**
    * 보드 자리 — 유한 실수 하나. 보드는 이 값의 오름차순이고 동률은 만든 시각으로 가른다. 옮기면 이웃 사이의 중간값을

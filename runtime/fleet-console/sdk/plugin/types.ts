@@ -887,6 +887,8 @@ export interface FleetPluginPathsHost {
   readonly consoleDataDir: string;
   pluginDataDir(pluginId: string): string;
   resolveTheaterPath(theaterId: string): string | null;
+  /** Operation 이 아직 없는 Theater 의 플러그인 레코드도 다시 찾는다. */
+  listTheaterIds?(): readonly string[];
   canonicalizeTheaterPath(cwd: string): string;
   workspaceHash(canonicalCwd: string): string;
   /**
