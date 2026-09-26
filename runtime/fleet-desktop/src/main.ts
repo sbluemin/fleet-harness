@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BaseWindow, dialog, Menu, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
+import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
 
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 
@@ -315,6 +315,12 @@ async function boot(): Promise<void> {
         return { cleared: true };
       }
       throw new Error("desktop_shell_unsupported");
+    },
+    resampleCapture: (png, crop, size, format, quality) => {
+      let image = nativeImage.createFromBuffer(png).crop(crop);
+      const cropped = image.getSize();
+      if (cropped.width !== size.width || cropped.height !== size.height) image = image.resize({ width: size.width, height: size.height, quality: "best" });
+      return (format === "jpeg" ? image.toJPEG(quality) : image.toPNG()).toString("base64");
     },
   });
   const synchronizeBrowserViews = async (origin: string): Promise<void> => {

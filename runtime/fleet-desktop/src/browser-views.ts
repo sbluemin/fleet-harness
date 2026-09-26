@@ -48,6 +48,35 @@ export interface DesktopBrowserViewsDeps {
    * 창을 든 기계에서만 답할 수 있는 것. 없으면 그런 명령은 `desktop_shell_unsupported` 로 거절된다.
    */
   readonly shellCommand?: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+  /**
+   * 뷰 표면 PNG 에서 `crop`(이미지 픽셀)을 잘라 `size` 로 줄이고 요청 형식의 base64 로 돌려준다. 있으면 clip 이 붙은
+   * `Page.captureScreenshot` 을 Chromium 의 캡처 에뮬레이션 없이 수행한다 — 없으면 명령을 그대로 보낸다.
+   */
+  readonly resampleCapture?: (png: Buffer, crop: CaptureRect, size: { width: number; height: number }, format: "png" | "jpeg", quality: number) => string;
+}
+
+export interface CaptureRect { x: number; y: number; width: number; height: number }
+
+/** CDP 가 jpeg quality 를 받지 않았을 때 Chromium 이 쓰는 값. */
+const DEFAULT_JPEG_QUALITY = 80;
+
+interface ViewportCapture { readonly clip: CaptureRect; readonly scale: number; readonly format: "png" | "jpeg"; readonly quality: number }
+
+/**
+ * clip 이 붙은 캡처를 셸이 대신 풀 수 있는 모양인지. 전체 페이지(captureBeyondViewport)나 nativeImage 가 쓰지 못하는
+ * 형식은 Chromium 에 그대로 맡긴다.
+ */
+function viewportCapture(params: Record<string, unknown>): ViewportCapture | null {
+  if (params.captureBeyondViewport === true || params.fromSurface === false) return null;
+  const format = params.format === undefined || params.format === "png" ? "png" : params.format === "jpeg" ? "jpeg" : null;
+  if (!format) return null;
+  const clip = params.clip as Record<string, unknown> | undefined;
+  if (!clip || typeof clip !== "object") return null;
+  const x = Number(clip.x), y = Number(clip.y), width = Number(clip.width), height = Number(clip.height);
+  const scale = clip.scale === undefined ? 1 : Number(clip.scale);
+  if (![x, y, width, height, scale].every(Number.isFinite) || width <= 0 || height <= 0 || scale <= 0) return null;
+  const quality = typeof params.quality === "number" && Number.isFinite(params.quality) ? Math.min(100, Math.max(0, Math.round(params.quality))) : DEFAULT_JPEG_QUALITY;
+  return { clip: { x, y, width, height }, scale, format, quality };
 }
 
 export interface DesktopBrowserViews {
@@ -64,6 +93,38 @@ interface LiveView {
   /** 마지막 표시 크기 — 주차 중 창에 맞춘 일시적인 축소로 덮어쓰지 않는다. */
   parkViewport: ParkViewport;
   lastBounds: { x: number; y: number; width: number; height: number } | null;
+}
+
+/**
+ * clip 을 Chromium 에 넘기면 캡처하는 동안 라이브 뷰에 디바이스 에뮬레이션(배율·viewport offset)이 걸린다 — 사람이 보고
+ * 있는 뷰가 한두 프레임 축소된 페이지와 검은 바탕으로 깜빡이고, 스크롤한 페이지에서는 clip 이 문서 좌표로 읽혀 빈 프레임이
+ * 나온다. 그래서 셸은 지금 그려진 표면을 clip 없이 받고, 콘솔이 뜻한 뷰포트 CSS 좌표의 clip 과 배율을 여기서 적용한다.
+ */
+async function captureWithoutEmulation(entry: LiveView, params: Record<string, unknown>, capture: ViewportCapture, resample: NonNullable<DesktopBrowserViewsDeps["resampleCapture"]>): Promise<{ data: string }> {
+  const target = entry.view.webContents.debugger;
+  type Box = { clientWidth?: number; clientHeight?: number };
+  const metrics = await target.sendCommand("Page.getLayoutMetrics", {}) as { visualViewport?: Box; cssVisualViewport?: Box };
+  // 이미지 픽셀 ÷ CSS px — 화면 배율·페이지 줌·프리셋 에뮬레이션을 모두 담는다. 두 값이 모두 스크롤바를 뺀 같은 상자다.
+  const ratio = Number(metrics.visualViewport?.clientWidth) / Number(metrics.cssVisualViewport?.clientWidth);
+  if (!Number.isFinite(ratio) || ratio <= 0) return await target.sendCommand("Page.captureScreenshot", params) as { data: string };
+  const surface = await target.sendCommand("Page.captureScreenshot", { format: "png" }) as { data?: unknown };
+  if (typeof surface.data !== "string") throw new Error("browser_capture_invalid_image");
+  const png = Buffer.from(surface.data, "base64");
+  if (png.length < 24 || png.readUInt32BE(0) !== 0x89504e47) throw new Error("browser_capture_invalid_image");
+  const imageWidth = png.readUInt32BE(16), imageHeight = png.readUInt32BE(20);
+  const { clip } = capture;
+  const left = Math.max(0, Math.min(imageWidth, Math.round(clip.x * ratio)));
+  const top = Math.max(0, Math.min(imageHeight, Math.round(clip.y * ratio)));
+  const crop = {
+    x: left,
+    y: top,
+    width: Math.min(imageWidth, Math.round((clip.x + clip.width) * ratio)) - left,
+    height: Math.min(imageHeight, Math.round((clip.y + clip.height) * ratio)) - top,
+  };
+  if (crop.width < 1 || crop.height < 1) throw new Error("browser_capture_outside_viewport");
+  // Chromium 과 같은 결과 크기 — clip 의 CSS 크기 × 요청 배율 × 기기 배율.
+  const size = { width: Math.max(1, Math.round(clip.width * capture.scale * ratio)), height: Math.max(1, Math.round(clip.height * capture.scale * ratio)) };
+  return { data: resample(png, crop, size, capture.format, capture.quality) };
 }
 
 export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): DesktopBrowserViews {
@@ -252,6 +313,13 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     }
     const entry = live.get(command.viewId);
     if (!entry || !entry.attached) { push({ results: [{ id: command.id, error: "desktop_view_missing" }] }); return; }
+    const capture = command.method === "Page.captureScreenshot" && deps.resampleCapture ? viewportCapture(command.params) : null;
+    if (capture && deps.resampleCapture) {
+      captureWithoutEmulation(entry, command.params, capture, deps.resampleCapture)
+        .then((result) => push({ results: [{ id: command.id, result }] }))
+        .catch((error: unknown) => push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }));
+      return;
+    }
     entry.view.webContents.debugger.sendCommand(command.method, command.params)
       .then((result) => push({ results: [{ id: command.id, result }] }))
       .catch((error: unknown) => push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }));
