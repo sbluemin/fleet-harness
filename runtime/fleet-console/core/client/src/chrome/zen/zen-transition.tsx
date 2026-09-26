@@ -158,6 +158,7 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
       // 4 — 가운데에서 한 바퀴, 트레이로 내려앉으며 커튼이 걷힌다.
       await spin();
       const tray = measureTaskbarBrand();
+      root.dataset.zenLanding = "true";
       await Promise.all([land(tray, true), veilTo(0, LAND_MS * 0.9, "ease-in")]);
     } else {
       // 4′ — 트레이에서 가운데로 오는 동안 커튼이 쳐진다(자리가 없으면 가운데에서 나타난다).
@@ -184,6 +185,7 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
     mark.style.visibility = "";
     word.style.visibility = "";
     delete root.dataset[FLIGHT_ATTRIBUTE];
+    delete root.dataset.zenLanding;
     actions?.onComplete?.();
   }
 }

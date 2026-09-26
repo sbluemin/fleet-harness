@@ -47,7 +47,7 @@ import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcu
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping, toggleAlignAll } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
-import { getViewModeSnapshot } from "../../integration/view-mode-store.js";
+import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
@@ -95,6 +95,7 @@ export function OperationSearch({
 }: OperationSearchProps) {
   const t = useT();
   const zenMode = useZenMode();
+  const warRoomAvailable = useViewMode().effective !== "mobile";
   const sessions = useAgentState().sessions;
   const railBindings = useRailEntries();
   const navigate = useNavigate();
@@ -125,8 +126,8 @@ export function OperationSearch({
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
   const commands = useMemo(
-    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable }),
-    [state, railPanels, t, undoAvailable, zenMode],
+    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, warRoomAvailable }),
+    [state, railPanels, t, undoAvailable, zenMode, warRoomAvailable],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {

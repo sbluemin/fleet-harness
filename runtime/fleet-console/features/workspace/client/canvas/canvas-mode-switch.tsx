@@ -102,7 +102,7 @@ export function CanvasModeSwitch() {
       modeToolsCloseTimerRef.current = null;
     }
   };
-  const openModeTools = () => { cancelModeToolsClose(); setModeToolsOpen(true); };
+  const openModeTools = () => { if (triageActive) return; cancelModeToolsClose(); setModeToolsOpen(true); };
   const closeModeTools = () => { cancelModeToolsClose(); setModeToolsOpen(false); };
   const scheduleModeToolsClose = () => {
     cancelModeToolsClose();
@@ -212,7 +212,7 @@ export function CanvasModeSwitch() {
       ))}
       {/* 캡슐은 활성 모드의 도구만 마운트한다 — 비활성 모드 도구는 disabled가 아니라 부재다.
           닫힌 동안은 inert로 포커스·접근성 트리에서 빠지되 DOM에는 남아, 안내가 앵커를 찾는다. */}
-      <div
+      {triageActive ? null : <div
         className={`command-band-mode-tray${modeToolsOpen ? " is-open" : ""}`}
         role="group"
         aria-label={t(canvasMode === "cruise" ? "chrome.commandBand.cruiseTools" : "chrome.commandBand.warRoomTools")}
@@ -248,31 +248,29 @@ export function CanvasModeSwitch() {
             ><layout.Icon /></button>
           ))}
         </> : null}
-        {canvasMode === "warRoom" ? <>
-          {/* data-war-room-tool은 화면 안내가 짚는 자리다 — 라벨이나 순서가 바뀌어도
-              앵커가 조용히 사라지지 않도록 의미 속성으로 표시한다. */}
-          <button
-            type="button"
-            className="command-band-mode-tool"
-            data-war-room-tool="spotlight"
-            aria-pressed={triageSpotlightEnabled}
-            aria-label={t("canvas.triage.spotlightTitle")}
-            title={t("canvas.triage.spotlightTitle")}
-            onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}
-          ><SpotlightIcon /></button>
-          <button
-            type="button"
-            className="command-band-mode-tool is-valued"
-            data-war-room-tool="density"
-            aria-pressed={triageDeckZoomLive !== 1.0}
-            aria-label={t("canvas.triage.densityChipTitle")}
-            title={t("canvas.triage.densityChipTitle")}
-            onClick={cycleTriageDeckZoomPreset}
-          ><DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span></button>
-        </> : null}
-      </div>
+      </div>}
     </div>
   );
+}
+
+export function WarRoomModeTools({ compact = false }: { readonly compact?: boolean }) {
+  const t = useT();
+  const triageSpotlightEnabled = useTriageSpotlightEnabled();
+  const triageDeckZoomLive = useTriageDeckZoomLive();
+  return <>
+    <button type="button" className={`war-room-tool${triageSpotlightEnabled ? "" : " is-off"}`}
+      data-war-room-tool="spotlight" aria-pressed={triageSpotlightEnabled}
+      aria-label={t(triageSpotlightEnabled ? "canvas.triage.spotlightOn" : "canvas.triage.spotlightOff")}
+      title={t(triageSpotlightEnabled ? "canvas.triage.spotlightOn" : "canvas.triage.spotlightOff")}
+      onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}>
+      <SpotlightIcon />{(!compact || !triageSpotlightEnabled) ? <span>{t(compact ? "canvas.triage.off" : triageSpotlightEnabled ? "canvas.triage.spotlightOn" : "canvas.triage.spotlightOff")}</span> : null}
+    </button>
+    <button type="button" className="war-room-tool"
+      data-war-room-tool="density" aria-pressed={triageDeckZoomLive !== 1.0}
+      aria-label={t("canvas.triage.densityChipTitle")} title={t("canvas.triage.densityChipTitle")} onClick={cycleTriageDeckZoomPreset}>
+      <DensityIcon />{!compact ? <span>{triageDeckZoomLive.toFixed(1)}×</span> : null}
+    </button>
+  </>;
 }
 
 // 모드 글리프 — 도구 아이콘과 같은 언어(16px 격자 · 1.3px 획 · 둥근 끝)로 각 모드의 동작을 그린다.

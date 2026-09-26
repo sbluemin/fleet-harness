@@ -2246,12 +2246,14 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).toContain("inert={modeToolsOpen ? undefined : true}");
     expect(modeSwitch).toContain('onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; if (mode.id === canvasMode) openModeTools(); else scheduleModeToolsClose(); }}');
     expect(modeSwitch).toContain('{canvasMode === "cruise" ? <>');
-    expect(modeSwitch).toContain('{canvasMode === "warRoom" ? <>');
+    // War Room 도구는 작업 표시줄에만 선다 — 사이드바 캡슐에 중복하지 않는다.
+    expect(modeSwitch).toContain('{triageActive ? null : <div');
+    expect(source("../../../features/workspace/client/zen/war-room-taskbar.tsx")).toContain('<WarRoomModeTools compact={fit.step >= 2} />');
     expect(modeSwitch).toContain('{ALIGN_LAYOUTS.map((layout) => (');
     expect(modeSwitch).toContain("onClick={cycleTriageDeckZoomPreset}");
     expect(modeSwitch).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");
-    // 값은 남기되 낱말은 두지 않는다 — 아이콘 + 배율 수치.
-    expect(modeSwitch).toContain("<DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span>");
+    // 가용 폭이 줄면 모드 도구를 먼저 아이콘으로 접는다.
+    expect(modeSwitch).toContain("<DensityIcon />{!compact ? <span>{triageDeckZoomLive.toFixed(1)}×</span> : null}");
     // 안내 앵커(.command-band-mode-tray, data-war-room-tool)가 닫힌 캡슐 안에 있을 때는 CSS가 강제로 펼친다.
     expect(layout).toContain(".command-band-mode-tray:has(.is-feature-tour-anchor)");
     // 중앙 트랙에는 모드 스위치만 남는다 — 찾기·Zen은 도구모음으로 옮겨 가 구분선도 함께 퇴역했다.

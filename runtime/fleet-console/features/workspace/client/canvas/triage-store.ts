@@ -65,6 +65,17 @@ let setAsideArmed: {
 let enteredAt: number | null = null;
 // 선별 중 마지막으로 무대에 올랐던 Operation의 Theater — 종료 시 이 Theater로 복귀한다.
 let lastStagedTheaterId: string | null = null;
+let stagedOperationId: string | null = null;
+
+// 무대 판정은 캔버스 한 곳이 소유한다. 막대는 포커스 보호·600ms 유예를 재계산하지 않고 그 결과를 읽는다.
+export function publishTriageStage(operationId: string | null): void {
+  if (stagedOperationId === operationId) return;
+  stagedOperationId = operationId;
+  emitTriage();
+}
+export function useTriageStage(): string | null {
+  return useSyncExternalStore(subscribeTriage, () => stagedOperationId, () => null);
+}
 const lastClearedAt = new Map<string, number>();
 const deferredAt = new Map<string, number>();
 const dismissed = new Set<string>();
@@ -267,6 +278,7 @@ export function setTriageActive(active: boolean, animate = true): void {
     return;
   }
   triageActive = false;
+  stagedOperationId = null;
   rememberWarRoomActive(false);
   pickedOperationId = null;
   activeAwaitingClaimId = null;
@@ -329,12 +341,14 @@ interface TriageEntryRequest {
   readonly returnFocus: HTMLElement | null;
 }
 let entryRequest: TriageEntryRequest | null = null;
+let entryEpoch = 0;
 
 export function useTriageEntryRequest(): TriageEntryRequest | null {
   return useSyncExternalStore(subscribeTriage, () => entryRequest, () => null);
 }
 
 export function cancelTriageEntry(): void {
+  entryEpoch += 1;
   const target = entryRequest?.returnFocus;
   entryRequest = null;
   emitTriage();
@@ -347,9 +361,11 @@ export function confirmTriageEntry(): void {
   entryRequest = null;
   emitTriage();
   if (getViewModeSnapshot().effective === "mobile") return;
+  const epoch = entryEpoch;
   const enter = () => {
-    // 커튼이 내려오는 동안 화면 적격성이 바뀌었으면 진입하지 않는다.
-    if (getViewModeSnapshot().effective === "mobile" || !globalThis.location?.pathname.startsWith("/operations")) return;
+    // Operations의 대화상자 호스트가 언마운트되면 epoch가 바뀐다. 브라우저의 basename을
+    // 라우터 내부 경로와 비교하지 않고, 실제 요청 호스트의 수명으로 경로 이탈을 판단한다.
+    if (getViewModeSnapshot().effective === "mobile" || epoch !== entryEpoch) return;
     activateTriage(request.focusedOperationId, false);
   };
   const focus = () => requestAnimationFrame(() => {

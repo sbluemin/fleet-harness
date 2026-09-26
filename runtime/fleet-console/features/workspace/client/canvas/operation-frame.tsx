@@ -37,6 +37,7 @@ interface OperationFrameProps {
   readonly interactionDisabled?: boolean;
   readonly triageStage?: boolean;
   readonly triagePicked?: boolean;
+  readonly triageNext?: boolean;
   /** War Room 덱의 한 칸에 선 패널 — 자리와 크기를 칸이 정하므로 캔버스 좌표를 쓰지 않는다. */
   readonly deckTile?: boolean;
   readonly glanceHud: GlanceHudModel;
@@ -128,7 +129,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, snapFull = false, snapHeld = false, resizeDisabled = false, alignHeld = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapZone = null, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onToggleSnapFull, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, snapFull = false, snapHeld = false, resizeDisabled = false, alignHeld = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapZone = null, interactionDisabled = false, triageStage = false, triagePicked = false, triageNext = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onToggleSnapFull, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -593,6 +594,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         {/* 캡션은 세 칸이다 — 앞(위치·소속 표식), 가운데(정체), 뒤(동작). 앞뒤 칸이 같은 몫을 나눠
             가져 정체가 패널 폭의 한가운데 서고, 자리가 모자라면 정체가 말줄임으로 물러난다. */}
         <span className="canvas-operation-caption-lead">
+          {triageNext ? <span className="canvas-triage-deck-next">{t("canvas.triage.next")}</span> : null}
           {/* 스냅 표식 — 사이드바 칩과 같은 컴포넌트. 제목 앞, 그룹 칩보다 먼저 선다. */}
           {snapZone ? <SnapMark zone={snapZone} /> : null}
           {/* 그룹 칩 — 사이드바 칩의 알약 문법을 그대로 쓴다. 「그룹에 있다」는 칩 형태가,

@@ -144,7 +144,7 @@ afterEach(() => {
 
 describe("triage store", () => {
   it("confirms normal entry under the Zen curtain and preserves War Room implies Zen across exit and reload", () => {
-    window.history.replaceState(null, "", "/operations");
+    window.history.replaceState(null, "", "/console/operations");
     setZenMode(false);
     const opener = document.createElement("button");
     const host = document.createElement("div");

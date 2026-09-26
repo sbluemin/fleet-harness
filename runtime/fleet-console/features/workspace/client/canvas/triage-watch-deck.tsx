@@ -33,7 +33,6 @@ interface TriageWatchDeckProps {
   readonly theaters: readonly TriageDeckTheater[];
   readonly operations: readonly OperationNode[];
   readonly groups?: readonly OperationGroup[];
-  readonly nextOperationId?: string | null;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly operationAccent: Readonly<Record<string, string>>;
   readonly arrivingOperationId?: string | null;
@@ -339,7 +338,6 @@ export function TriageWatchDeck({
   theaters,
   operations,
   groups = [],
-  nextOperationId = null,
   operationRuntime,
   operationAccent,
   arrivingOperationId = null,
@@ -544,7 +542,6 @@ export function TriageWatchDeck({
                           data-fallback-title={operation.title}
                           ref={slotRefFor(operation.id)}
                         />
-                        {!underStage && operation.id === nextOperationId ? <span className="canvas-triage-deck-next">{t("canvas.triage.next")}</span> : null}
                         {/* 무대로 올리는 면 — 덱에서 패널의 본문은 읽는 것이지 조작하는 것이
                             아니다. 본문 위를 덮어 클릭 한 번을 승격으로 받고, 캡션은 그 위에 남아
                             창 컨트롤이 자기 클릭을 지킨다. */}

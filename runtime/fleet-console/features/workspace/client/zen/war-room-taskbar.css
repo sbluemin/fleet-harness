@@ -1,0 +1,134 @@
+/* War Room A2 — 수평선은 위치(brass), 대기열 위의 선은 상태 신호다. 크롬 소유 트레이 면은 바꾸지 않는다. */
+.war-room-taskbar {
+  --wr-horizon: color-mix(in oklch, var(--brass) 70%, transparent);
+  --wr-horizon-glow: color-mix(in oklch, var(--brass) 11%, transparent);
+  --wr-face: color-mix(in oklch, var(--brass) 3.5%, var(--surface-band));
+  border-top: 0;
+  background: var(--wr-face);
+  animation: none;
+}
+:root[data-theme="whites"] .war-room-taskbar {
+  --wr-horizon: color-mix(in oklch, var(--brass) 80%, transparent);
+  --wr-horizon-glow: color-mix(in oklch, var(--brass) 12%, transparent);
+  --wr-face: color-mix(in oklch, var(--brass) 4%, var(--surface-band));
+}
+.war-room-taskbar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--wr-horizon);
+  transform-origin: center;
+  pointer-events: none;
+}
+.war-room-taskbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -24px;
+  height: 24px;
+  background: linear-gradient(to top, var(--wr-horizon-glow), transparent);
+  pointer-events: none;
+}
+.war-room-taskbar.is-entering::before { animation: war-room-horizon-in 320ms var(--ease-glide) both; }
+.war-room-taskbar.is-entering .war-room-taskbar-row { animation: war-room-content-in var(--duration-base) var(--ease-glide) both; }
+/* 기존 Zen 장면의 착지 구간 안에서 긋는다. 커튼·장면 길이를 더하지 않는다. */
+:root[data-zen-flight]:not([data-zen-landing]) .war-room-taskbar.is-entering::before,
+:root[data-zen-flight]:not([data-zen-landing]) .war-room-taskbar.is-entering .war-room-taskbar-row { animation-play-state: paused; }
+@keyframes war-room-horizon-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes war-room-content-in { from { opacity: 0; } to { opacity: 1; } }
+
+.war-room-taskbar-row { gap: 2px; }
+.war-room-kicker {
+  flex: none;
+  padding: 0 6px 0 8px;
+  color: var(--brass-ink);
+  font: var(--weight-bold) var(--t-2xs) var(--font-mono);
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+.war-room-tools, .war-room-shelves { display: flex; align-items: center; flex: none; gap: 2px; white-space: nowrap; }
+.war-room-tool, .war-room-menu-button {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 5px;
+  height: calc(var(--zen-taskbar-height) - 8px);
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: var(--weight-regular) var(--t-xs) var(--font-body);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.war-room-tool:hover, .war-room-menu-button:hover, .war-room-menu-button[aria-expanded="true"] { background: var(--control-hover-fill); color: var(--text-primary); }
+.war-room-tool:focus-visible, .war-room-menu-button:focus-visible, .war-room-chip:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.war-room-tool svg { width: 13px; height: 13px; flex: none; }
+.war-room-tool.is-off { color: var(--text-tertiary); }
+.war-room-tool.is-off svg { opacity: 0.5; }
+.war-room-queue { position: relative; display: flex; align-items: center; flex: none; gap: 2px; height: 100%; --wr-attention: var(--aurora); }
+.war-room-queue.is-positive { --wr-attention: var(--positive); }
+.war-room-queue.has-attention::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--wr-attention) 14% 86%, transparent);
+  pointer-events: none;
+}
+.war-room-queue.has-attention::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -18px;
+  height: 18px;
+  background: radial-gradient(60% 100% at 50% 100%, color-mix(in oklch, var(--wr-attention) 14%, transparent), transparent);
+  pointer-events: none;
+}
+.war-room-queue.is-arriving::after { animation: war-room-arrival 1.1s var(--ease-glide) 1; transform-origin: bottom; }
+@keyframes war-room-arrival {
+  0% { opacity: 0; transform: scaleY(0.4); }
+  35% { opacity: 1; transform: scaleY(2.2); }
+  100% { opacity: 1; transform: scaleY(1); }
+}
+.war-room-chip { --wr-chip-signal: var(--aurora); --wr-chip-ink: var(--aurora-ink); }
+.war-room-chip.is-unseen { --wr-chip-signal: var(--positive); --wr-chip-ink: var(--positive-ink); }
+/* 칩은 상자가 아니라 상태 워시다. 무대의 밑줄(brass)은 기존 Zen 활성 문법을 그대로 쓴다. */
+.war-room-taskbar .war-room-chip:is(.is-awaiting, .is-unseen) {
+  border-color: transparent;
+  background: color-mix(in oklch, var(--wr-chip-signal) 7%, transparent);
+  color: var(--text-primary);
+}
+.war-room-taskbar .war-room-chip:hover { background: var(--control-hover-fill); }
+.war-room-chip sup {
+  margin-left: -3px;
+  align-self: flex-start;
+  margin-top: 6px;
+  color: var(--text-tertiary);
+  /* 첨자는 10px 보조 글자의 85%다 — 별도 타입 스케일을 만들지 않는다. */
+  font: var(--weight-medium) calc(var(--t-2xs) * 0.85) var(--font-mono);
+}
+.war-room-next { display: flex; align-items: center; flex: none; gap: 3px; color: var(--wr-chip-ink); font: var(--weight-bold) var(--t-2xs) var(--font-body); letter-spacing: 0.05em; }
+.war-room-next > span { font-size: 0.8em; }
+.war-room-chip.is-new { animation: war-room-chip-in var(--duration-base) var(--ease-spring) both, war-room-chip-wash 0.9s var(--ease-glide) 1; }
+@keyframes war-room-chip-in { from { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; } to { max-width: 140px; opacity: 1; } }
+@keyframes war-room-chip-wash { 50% { background: color-mix(in oklch, var(--wr-chip-signal) 14%, transparent); } }
+.war-room-summary { display: flex; align-items: center; flex: none; gap: 5px; margin-left: auto; padding: 0 8px; color: var(--text-tertiary); font: var(--t-xs) var(--font-body); white-space: nowrap; }
+.war-room-shelves { color: var(--text-tertiary); }
+/* 모든 접힘을 사용한 뒤에도 극단적으로 좁으면 남겨 둔 다음·무대 칩의 이름만 줄인다. */
+.war-room-taskbar[data-fit="5"] .war-room-queue { flex: 1; min-width: 0; }
+.war-room-taskbar[data-fit="5"] .war-room-chip { flex: 1; min-width: 0; padding-inline: 5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .war-room-taskbar.is-entering::before, .war-room-taskbar.is-entering .war-room-taskbar-row,
+  .war-room-queue.is-arriving::after, .war-room-chip.is-new { animation: none; }
+  .war-room-chip { transition: none; }
+}

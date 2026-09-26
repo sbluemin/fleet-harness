@@ -3550,6 +3550,11 @@
 .canvas-mode-bracket--sw { bottom: -2px; left: -2px; border-top: 0; border-right: 0; }
 .canvas-mode-bracket--se { right: -2px; bottom: -2px; border-top: 0; border-left: 0; }
 
+/* War Room의 바닥은 작업 표시줄 수평선이다 — 아래 괄호는 세로 팔로 그 선까지 잇는다. */
+.operations-canvas.is-triage .canvas-mode-frame { bottom: var(--arena-bottom, 0px); border-bottom: 0; }
+.operations-canvas.is-triage .canvas-mode-bracket--sw,
+.operations-canvas.is-triage .canvas-mode-bracket--se { bottom: 0; height: 34px; border-bottom: 0; }
+
 .is-triage-entering .canvas-mode-bracket--nw { animation: triage-bracket-nw var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 .is-triage-entering .canvas-mode-bracket--ne { animation: triage-bracket-ne var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 .is-triage-entering .canvas-mode-bracket--sw { animation: triage-bracket-sw var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
@@ -4457,10 +4462,8 @@
 }
 .canvas-triage-deck-cell.is-idle .canvas-operation-terminal { opacity: 0.56; }
 .canvas-triage-deck-next {
-  position: absolute;
-  right: 10px;
-  top: 8px;
-  z-index: 8;
+  flex: none;
+  white-space: nowrap;
   pointer-events: none;
   color: var(--triage-signal-ink, var(--aurora-ink));
   font-size: var(--t-2xs);
