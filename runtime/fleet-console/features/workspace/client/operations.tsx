@@ -79,6 +79,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     readonly returnFocus?: HTMLElement | null;
     readonly align?: GroupContextMenuAlign;
     readonly fromSidebar?: boolean;
+    readonly fromZenTaskbar?: boolean;
   } | null>(null);
   const triageActive = useTriageActive();
 
@@ -99,10 +100,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 한쪽만 인셋을 아는 감사 실패 양식이 재발한다.
   const zenMode = useZenMode();
   useEffect(() => {
-    if (!zenMode || !operationMenu?.fromSidebar) return;
+    // 진입 때는 사이드바가 연 메뉴를, 종료 때는 Zen 작업 표시줄이 연 메뉴를 회수한다 — 둘 다 방금 걷히는
+    // 표면에 앵커해 되돌릴 포커스 자리를 잃는다. 작업면의 공용 메뉴와 이후 요청은 보존한다.
+    if (!(zenMode ? operationMenu?.fromSidebar : operationMenu?.fromZenTaskbar)) return;
     setOperationMenu(null);
     bodyRef.current?.focus({ preventScroll: true });
-    // 진입 전에 사이드바가 연 메뉴만 회수한다. 작업면의 공용 메뉴와 이후 요청은 보존한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zenMode]);
   const sideBar = useSideBarState();
@@ -705,6 +707,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (!stateRef.current.operations.some((operation) => operation.id === operationId)) return;
     setOperationMenu({ operationId, anchor, returnFocus, align });
   }, []);
+  const openZenTaskbarOperationMenu = useCallback((operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => {
+    if (!stateRef.current.operations.some((operation) => operation.id === operationId)) return;
+    setOperationMenu({ operationId, anchor, returnFocus, fromZenTaskbar: true });
+  }, []);
   // 포커스 복귀는 갱신 함수 밖에서 한다 — setState updater는 순수해야 하고, StrictMode의
   // 이중 호출에서 focus()가 두 번 실행된다.
   const closeOperationMenu = useCallback(() => {
@@ -959,8 +965,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           operationNotifications={state.operationNotifications}
           operationRuntime={state.operationRuntime}
           onFocus={handleFocus}
+          onMinimize={handleMinimize}
           onResume={handleResume}
           onSelectTheater={setActiveTheater}
+          onOpenOperationMenu={openZenTaskbarOperationMenu}
+          openMenuOperationId={operationMenu?.operationId ?? null}
           onSetGroupId={handleSetGroupId}
         />
       ) : null}
@@ -982,6 +991,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
             onSetAccent: (key) => handleSetAccent(menuOperation.id, key),
             onSetGroupId: (groupId) => handleSetGroupId(menuOperation.id, groupId),
             onCreateGroup: (name) => handleCreateGroup(menuOperation.theaterId, name, menuOperation.id),
+            onCloseOperation: () => handleClose(menuOperation.id),
           }}
           onClose={closeOperationMenu}
         />

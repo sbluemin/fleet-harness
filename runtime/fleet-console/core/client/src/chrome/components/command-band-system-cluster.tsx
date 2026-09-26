@@ -379,7 +379,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
     <div className={`host-switcher${inPicker ? " is-picker-surface" : ""}`}>
       {inPicker ? null : (
         // 원격 — 도구모음의 글리프 한 칸(도움말 왼쪽). 어느 콘솔에 서 있는지는 이름표가 아니라 겨눌 때의
-        // 말풍선(title)이 말하고, 글리프 모서리의 점은 집을 떠나 있거나(aurora) 제어를 나눠 준 때(warn)만 선다.
+        // 말풍선(도구모음 말풍선의 data-tip)이 말하고, 글리프 모서리의 점은 집을 떠나 있거나(aurora) 제어를 나눠 준 때(warn)만 선다.
         <button
           ref={triggerRef}
           type="button"
@@ -388,7 +388,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
           aria-expanded={pickerHome === null && open}
           data-open={pickerHome === null && open ? "true" : undefined}
           aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
-          title={chipLabel}
+          data-tip={chipLabel}
           onClick={() => {
             if (pickerHome !== null) { location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin)); return; }
             setOpen((previous) => !previous);
@@ -637,7 +637,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
     {/* 표식은 실행 버튼 위에 있어야 한다. 설정에 붙어 있던 동안 그 점을 따라간 사람은
         업데이트가 없는 화면에 도착했다. 색·크기·위치는 그대로 옮겨 온 것이며, 커맨드 밴드에
         같은 뜻의 표식이 둘이 되지 않도록 설정 쪽은 함께 제거했다. */}
-    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")} title={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")}>
+    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")} data-tip={updateReady ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")}>
       <HelpGlyph />
       {updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
     </button>

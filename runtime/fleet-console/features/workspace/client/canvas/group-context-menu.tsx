@@ -12,6 +12,8 @@ export interface GroupContextMenuChipActions {
   readonly onSetAccent: (key: string | null) => void;
   readonly onSetGroupId: (groupId: string | null) => void;
   readonly onCreateGroup: (name: string) => void;
+  /** 창 닫기 — 캡션 X와 같은 닫기(유예 삭제 + 실행 취소 토스트). 두 번 눌러 확정한 뒤에만 부른다. */
+  readonly onCloseOperation: () => void;
 }
 
 export interface GroupContextMenuHeaderActions {
@@ -45,6 +47,8 @@ type GroupContextMenuProps =
     };
 
 const POPOVER_GAP = 6;
+/** 창 닫기 무장 창 — 캡션 X(operation-frame.tsx CLOSE_ARM_DURATION_MS)와 같은 1.5초. */
+const CLOSE_ARM_DURATION_MS = 1500;
 const VIEWPORT_MARGIN = 8;
 
 export function GroupContextMenu(props: GroupContextMenuProps) {
@@ -203,7 +207,54 @@ function ChipMenuContent({
         labels={accentToneLabels(t)}
         onSelect={(key) => { actions.onSetAccent(key); onClose(); }}
       />
+      <div className="group-context-menu-divider" aria-hidden="true" />
+      <CloseWindowItem onCloseOperation={actions.onCloseOperation} onClose={onClose} />
     </>
+  );
+}
+
+/**
+ * 창 닫기 — 메뉴의 맨 끝 칸(Windows 11 작업 표시줄 메뉴의 「창 닫기」). 쉬는 모양은 중립 항목이고,
+ * 캡션 X·칩 X처럼 첫 누름이 무장(붉은 면)하고 창 안의 두 번째 누름이 닫는다.
+ */
+function CloseWindowItem({ onCloseOperation, onClose }: { onCloseOperation: () => void; onClose: () => void }) {
+  const t = useT();
+  const [armed, setArmed] = useState(false);
+  const timerRef = useRef<number | null>(null);
+  useEffect(() => () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); }, []);
+  const trigger = () => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+    if (armed) {
+      setArmed(false);
+      onClose();
+      onCloseOperation();
+      return;
+    }
+    setArmed(true);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      setArmed(false);
+    }, CLOSE_ARM_DURATION_MS);
+  };
+  return (
+    <button
+      type="button"
+      className={`group-context-menu-item group-context-menu-item--close${armed ? " group-context-menu-item--danger is-armed" : ""}`}
+      role="menuitem"
+      onClick={trigger}
+      // Enter를 누르고 있는 것만으로 무장→확정이 이어지지 않게 한다(메뉴 키보드 훅의 Enter보다 먼저 받는다).
+      onKeyDownCapture={(event) => {
+        if (!event.repeat || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
+      <CloseMark />
+      <span className="group-context-menu-item__name" aria-live="polite">
+        {armed ? t("canvas.groupMenu.closeWindowArmed") : t("canvas.groupMenu.closeWindow")}
+      </span>
+    </button>
   );
 }
 
@@ -290,6 +341,14 @@ function GroupHeaderMenuContent({
         {ungroupArmed ? t("canvas.groupMenu.confirmUngroupAll") : t("canvas.groupMenu.ungroupAll")}
       </button>
     </>
+  );
+}
+
+function CloseMark() {
+  return (
+    <svg viewBox="0 0 14 14" className="group-context-menu-item__close" aria-hidden="true">
+      <path d="m3.5 3.5 7 7m0-7-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
   );
 }
 

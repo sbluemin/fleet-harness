@@ -1244,6 +1244,7 @@ export function OperationsSideBar({
             onSetAccent: (key) => onSetAccent(contextMenuOperation.id, key),
             onSetGroupId: (groupId) => onSetGroupId(contextMenuOperation.id, groupId),
             onCreateGroup: (name) => onCreateGroup(contextMenuOperation.theaterId, name, contextMenuOperation.id),
+            onCloseOperation: () => onClose(contextMenuOperation.id),
           }}
           onClose={closeActiveContextMenu}
         />

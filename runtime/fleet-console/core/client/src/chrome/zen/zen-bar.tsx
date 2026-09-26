@@ -1,8 +1,8 @@
-import { useEffect, useRef, type Ref } from "react";
+import { useEffect, useRef } from "react";
 
 import { useT } from "../../i18n/index.js";
 import { setZenToolbarHost } from "../../integration/toolbar-slots.js";
-import { BrandMarkIcon } from "../components/command-band.js";
+import { BrandMarkIcon, BrandWordmark } from "../components/command-band.js";
 
 /**
  * Zen 바 — 작업 표시줄 오른쪽 끝의 트레이. 콘솔의 도구모음(console-toolbar.tsx)이 Zen 동안 이 자리에
@@ -16,7 +16,7 @@ import { BrandMarkIcon } from "../components/command-band.js";
 
 const WIDTH_PROPERTY = "--zen-bar-width";
 
-/** local — 개발 채널이면 Band와 같은 개발 브랜드(열린 링 · 마침표)를 세운다. 전환 장면의 마크가 같은 조형으로 내려앉는다. */
+/** local — 개발 채널이면 Band와 같은 개발 브랜드(열린 링 · 「Fleet·DEV」)를 세운다. 전환 장면의 마크가 같은 조형으로 내려앉는다. */
 export function ZenBar({ active, local = false }: { readonly active: boolean; readonly local?: boolean }) {
   const t = useT();
   const barRef = useRef<HTMLDivElement>(null);
@@ -44,14 +44,5 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
         <BrandWordmark className="zen-bar-brand-wordmark" local={local} />
       </span>
     </div>
-  );
-}
-
-/** 브랜드 워드마크 — 서체는 밴드 워드마크를 함께 입어 받고, 개발 채널이면 Band와 같은 잉크와 마침표를 쓴다. */
-export function BrandWordmark({ className, local, ref }: { readonly className: string; readonly local: boolean; readonly ref?: Ref<HTMLSpanElement> }) {
-  return (
-    <span ref={ref} className={`command-band-brand-wordmark ${className}${local ? " is-local" : ""}`}>
-      Fleet{local ? <span className="command-band-brand-wordmark-dot" aria-hidden="true">.</span> : null}
-    </span>
   );
 }

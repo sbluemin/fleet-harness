@@ -522,13 +522,15 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 .console-toolbar-zen.is-exit:active { background: color-mix(in oklch, var(--coral) 26%, transparent); }
 .console-toolbar-zen.is-exit:focus-visible { outline-color: color-mix(in oklch, var(--coral) 60%, transparent); }
 
-/* Zen 버튼 말풍선 — 겨누면 잠깐 뒤에 떠오른다. 상단 바에서는 아래로, Zen 트레이에서는 위로 뜬다.
-   화면 오른쪽 끝에 붙지 않게 버튼 오른쪽 끝에 맞춘다. */
+/* 도구모음 말풍선 — 도구모음의 모든 칸이 쓰는 한 장(toolbar-tip.tsx). 겨누면 잠깐(180ms, JS) 뒤에 떠오른다.
+   상단 바에서는 아래로, Zen 트레이(화면 아래 끝)에서는 위로 뜬다(data-placement). 자리는 칸 가운데를 실측해
+   정하고 뷰포트 끝에서는 안으로 밀려 들어오므로, 꼬리는 --toolbar-tip-arrow-x로 칸을 계속 가리킨다.
+   body 포털이라 층은 전면 오버레이 사다리 바로 아래다 — 떠 있는 위젯·메뉴 위, 모달·커튼 아래. */
 .console-toolbar-tip {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: -6px;
-  z-index: 41;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: calc(var(--z-overlay) - 1);
   padding: 5px 9px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
@@ -538,32 +540,35 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   font: var(--weight-medium) var(--t-xs) var(--font-body);
   white-space: nowrap;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   transform: translateY(-4px);
-  transition: opacity var(--duration-fast) var(--ease-glide), transform var(--duration-base) var(--ease-spring);
+  transition:
+    opacity var(--duration-fast) var(--ease-glide),
+    transform var(--duration-base) var(--ease-spring),
+    visibility 0s linear var(--duration-fast);
+}
+.console-toolbar-tip[data-placement="above"] { transform: translateY(4px); }
+.console-toolbar-tip.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
 }
 .console-toolbar-tip::after {
   position: absolute;
   bottom: 100%;
-  right: 13.5px;
+  left: var(--toolbar-tip-arrow-x, 50%);
   width: 7px;
   height: 7px;
+  margin-left: -3.5px;
   border-top: 1px solid var(--surface-rim-strong);
   border-left: 1px solid var(--surface-rim-strong);
   background: var(--surface-panel-raised);
   transform: translateY(3.5px) rotate(45deg);
   content: "";
 }
-.console-toolbar-zen:hover .console-toolbar-tip,
-.console-toolbar-zen:focus-visible .console-toolbar-tip {
-  opacity: 1;
-  transform: none;
-  transition-delay: 180ms, 180ms;
-}
-
-/* Zen 트레이 자리 — 화면 아래 끝이라 말풍선·도움말 메뉴·업데이트 말풍선은 위로 뜬다. */
-.zen-bar .console-toolbar-tip { top: auto; bottom: calc(100% + 10px); transform: translateY(4px); }
-.zen-bar .console-toolbar-tip::after {
+.console-toolbar-tip[data-placement="above"]::after {
   top: 100%;
   bottom: auto;
   border: 0;
@@ -571,6 +576,8 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   border-bottom: 1px solid var(--surface-rim-strong);
   transform: translateY(-3.5px) rotate(45deg);
 }
+
+/* Zen 트레이 자리 — 화면 아래 끝이라 도움말 메뉴·업데이트 말풍선은 위로 뜬다. */
 .zen-bar .command-band-system-menu,
 .zen-bar .command-band-update-bubble,
 .zen-bar .host-switcher-panel { top: auto; bottom: calc(100% + 10px); }
@@ -772,11 +779,27 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   color: var(--ink-brand-dev);
 }
 
-/* 브랜드 계기와 이어지는 마침표는 기존 브랜드 황동을 유지한다. */
-.command-band-brand-wordmark-dot {
-  margin-inline-start: 0.03em;
+/* 개발 채널의 「Fleet·DEV」 — 황동 가운데 점과 작은 모노 대문자 DEV(BrandWordmark). 점과 DEV는 본문·모노
+   서체라 디스플레이 서체의 생산자는 여전히 워드마크 하나다. 크기는 em이라 트레이·전환 장면의 워드마크를
+   그대로 따라간다. DEV의 잉크는 개발 잉크를 3차 잉크 쪽으로 눌러 워드마크보다 한 단 물러선다. */
+.command-band-brand-wordmark-sep {
+  margin: 0 0.34em;
   color: var(--brass-ink);
-  font-weight: var(--weight-medium);
+  font-family: var(--font-body);
+  font-weight: var(--weight-bold);
+}
+
+.command-band-brand-wordmark-tag {
+  display: inline-block;
+  /* 자간의 꼬리를 되돌려 DEV의 오른쪽 끝이 글자 끝에 선다(호버 면·트레이 여백이 한쪽만 넓어지지 않게). */
+  margin-inline-end: -0.16em;
+  color: color-mix(in oklab, var(--ink-brand-dev) 72%, var(--text-tertiary));
+  font-family: var(--font-mono);
+  font-size: 0.62em;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  letter-spacing: 0.16em;
+  transform: translateY(-0.08em);
 }
 
 .command-band-link-chip {

@@ -41,6 +41,7 @@ import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
+import { subscribeIdleAutoMinimize } from "../../../../features/workspace/client/canvas/idle-auto-minimize.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
 import { useMobileSessionOpen } from "../chrome/mobile/mobile-store.js";
 import { MobileTabBar } from "../chrome/mobile/mobile-tab-bar.js";
@@ -282,6 +283,8 @@ export function App() {
   }, [operationsViewVisible]);
 
   useEffect(() => subscribeOperationActivityTracking(), []);
+
+  useEffect(() => subscribeIdleAutoMinimize(), []);
 
   useEffect(() => observeSideBarCollapseMotion(), []);
 

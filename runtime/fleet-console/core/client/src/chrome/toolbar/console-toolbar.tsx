@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
@@ -9,6 +9,7 @@ import { toggleOperationSearch } from "../../integration/store.js";
 import { setToolbarToolsSlot, useToolbarHost } from "../../integration/toolbar-slots.js";
 import { requestZenMode } from "../../integration/zen-mode.js";
 import { ConsoleHelpMenu, HostSwitcher } from "../components/command-band-system-cluster.js";
+import { ToolbarTipLayer } from "./toolbar-tip.js";
 
 /**
  * 도구모음 — 콘솔에 하나뿐인 도구 줄. 모드는 이 줄의 **자리**만 바꾼다: 평소에는 상단 바 가운데,
@@ -22,6 +23,8 @@ import { ConsoleHelpMenu, HostSwitcher } from "../components/command-band-system
  *
  * Zen 버튼은 늘 맨 끝 칸이다. 그래서 일반 모드의 켜기와 Zen의 끄기가 도구모음의 같은 자리에 선다.
  * 접으면 도구만 말려 들어가고, 플러그인 항목과 Zen 버튼은 남는다.
+ *
+ * 칸의 이름은 한 장의 말풍선이 말한다(toolbar-tip.tsx) — 칸은 네이티브 title 대신 data-tip을 든다.
  */
 
 const FOLD_STORAGE_KEY = "fleet-console.toolbar.folded";
@@ -84,6 +87,7 @@ export function ConsoleToolbar({ zen, canvas }: ConsoleToolbarProps) {
   }, [host, mount]);
   useLayoutEffect(() => () => mount.remove(), [mount]);
 
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [folded, setFolded] = useState(readFolded);
   // 서랍이 말리거나 펴지는 동안만 가로를 자른다 — 늘 자르면 서랍보다 넓은 메뉴(원격·도움말)가 잘린다.
   const [folding, setFolding] = useState(false);
@@ -102,12 +106,13 @@ export function ConsoleToolbar({ zen, canvas }: ConsoleToolbarProps) {
   };
 
   return createPortal(
-    <div className={`console-toolbar${folded ? " is-folded" : ""}${folding ? " is-folding" : ""}`} role="toolbar" aria-label={t("toolbar.aria")}>
+    <div ref={toolbarRef} className={`console-toolbar${folded ? " is-folded" : ""}${folding ? " is-folding" : ""}`} role="toolbar" aria-label={t("toolbar.aria")}>
+      <ToolbarTipLayer rootRef={toolbarRef} />
       <button
         type="button"
         className="console-toolbar-fold"
         aria-label={t(folded ? "toolbar.expand" : "toolbar.fold")}
-        title={t(folded ? "toolbar.expand" : "toolbar.fold")}
+        data-tip={t(folded ? "toolbar.expand" : "toolbar.fold")}
         aria-expanded={!folded}
         onClick={toggleFold}
       >
@@ -123,7 +128,7 @@ export function ConsoleToolbar({ zen, canvas }: ConsoleToolbarProps) {
             className="command-band-button console-toolbar-search"
             onClick={toggleOperationSearch}
             aria-label={t("chrome.commandBand.searchSessions")}
-            title={t("chrome.commandBand.searchSessionsTitle")}
+            data-tip={t("chrome.commandBand.searchSessionsTitle")}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M10.4 10.4 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
           </button>
@@ -164,17 +169,16 @@ function ToolbarPluginEntry({ render }: { readonly render: () => ReactNode }) {
 
 /**
  * Zen 켜기/끄기 — 도구모음의 맨 끝 칸. 켜기는 도구 아이콘과 같은 잉크로 조용히 서고, 끄기는 옅은 coral
- * ×로 선다(겨눌 때만 붉은 면). 이름은 말풍선이 말한다 — 상단 바에서는 아래로, 트레이에서는 위로 뜬다.
+ * ×로 선다(겨눌 때만 붉은 면). 이름은 도구모음의 말풍선이 말한다 — 상단 바에서는 아래로, 트레이에서는 위로 뜬다.
  */
 function ZenToggle({ zen }: { readonly zen: boolean }) {
   const t = useT();
-  const tipId = useId();
   return (
     <button
       type="button"
       className={`console-toolbar-zen${zen ? " is-exit" : ""}`}
       aria-label={t(zen ? "zen.exit" : "zen.enter")}
-      aria-describedby={tipId}
+      data-tip={t(zen ? "zen.exitShort" : "zen.enterShort")}
       // 누르는 순간 포커스를 옮기지 않는다 — 전환 뒤 포커스 복귀는 앱 셸의 작업면 규칙이 맡는다.
       onMouseDown={(event) => event.preventDefault()}
       onClick={() => requestZenMode(!zen)}
@@ -187,7 +191,6 @@ function ZenToggle({ zen }: { readonly zen: boolean }) {
           <path d="M7.5 10h5" />
         </svg>
       )}
-      <span className="console-toolbar-tip" id={tipId} role="tooltip">{t(zen ? "zen.exitShort" : "zen.enterShort")}</span>
     </button>
   );
 }
