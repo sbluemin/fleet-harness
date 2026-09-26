@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import type { LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, followupBodySchema, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, recordLines, missionReady, type Objective, type ObjectiveMission } from "./types.js";
+import { criterionProposalSchema, followupBodySchema, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
 
 /**
@@ -25,6 +25,9 @@ const PLANNING_ONLY = "The objective is in planning: its lineup can change, but 
 const BOARD_CHANGED = "The person edited the objective after your last read.";
 /** 이름 없는 지휘관 — 주소를 지어내지 않고, 이미 지원되는 회신 경로(받은 메시지의 from)만 사실로 알린다. */
 const NO_FIXED_NAME = "No fixed session name. The from address on the Commander's latest message reaches that live session.";
+/** read·mine 설명의 한 줄 — 후속 후보는 언제든 담을 수 있다. */
+const FOLLOWUP_ANYTIME = "Follow-up candidates can be placed on the objective at any time with the Commander's followup tool.";
+const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS} {point, because} and fellShort: 1–${MAX_RETRO_PAIRS} {point, ifOnly}, each field one line of at most ${MAX_RETRO_TEXT} characters.`;
 
 export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService): readonly PluginMcpTool[] {
   const { objectiveView } = createBoardViews(ctx, store);
@@ -66,7 +69,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     });
 
   return [
-    tool("mine", "Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself.", z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective.`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findMember(caller.operationId);
       if (assigned) {
@@ -82,7 +85,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!own) return refuse("not_participant");
       return text({ role: "commander", objectiveId: own.id, objective: readView(own, caller) });
     }),
-    tool("read", "The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order and shift as it changes; missionIds do not.", z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
+    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order and shift as it changes; missionIds do not. ${FOLLOWUP_ANYTIME}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
       const objective = find(objectiveId);
       if (!roleIn(objective, caller)) return refuse("not_participant");
       return text({ objective: readView(objective, caller) });
@@ -126,11 +129,11 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const lines = recordLines(args.summary);
         if (!lines) return refuse("summary_format", { hint: `A record is 1–${MAX_RECORD_LINES} lines, each at most ${MAX_RECORD_LINE} characters.` });
         const done = store.missionDone(objective.id, target.id, lines);
-        // 마지막 임무를 마쳤다 — 검토 대기로 넘어가기 전에 달성 기준을 스스로 다시 따지게 한다.
-        const next = done.missions.every((mission) => mission.done) ? criteriaCheckPrompt(done) : undefined;
+        // 마지막 임무를 마쳤다 — 인계 대기로 넘어갔으면 인계를, 아니면 달성 기준을 스스로 다시 따지게 한다. 이미 넘긴 목표에는 붙이지 않는다.
+        const next = done.awaitingHandoff ? handoffPrompt(done) : done.missions.every((mission) => mission.done) && !done.awaitingReview ? criteriaCheckPrompt(done) : undefined;
         return text({ ok: true, ...(next ? { next } : {}), objective: objectiveView(done) });
       }),
-    commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. add a candidate {title, summary (one line), brief, criteria (1–10), evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective carrying that title, brief and criteria and no missions, and its evidence reaches that objective's Commander. A picked candidate is frozen; the person can also discard candidates.`,
+    commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. A candidate holds an improvement to the product features of the project worked on, as its users experience them; a finding with no user impact is not placed on the objective and stays only in the Commander's final report. Candidates can be added at any time until the objective is complete. add a candidate {title, summary (one line), userImpact (one line: what a user experiences differently), fromMission (the missionId of this objective's mission it came from), brief, criteria (1–10), evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note; at least one is a file with a line or a command)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective carrying that title, brief and criteria and no missions, and its evidence reaches that objective's Commander. A picked candidate is frozen; the person can also discard candidates.`,
       z.object({ objectiveId: ids, add: followupBodySchema.optional(), revise: followupReviseSchema.extend({ id: ids }).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
       (args, objective) => {
         const actions = [args.add, args.revise, args.withdraw].filter((value) => value !== undefined);
@@ -139,7 +142,17 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (args.revise) { const { id, ...patch } = args.revise; return text({ ok: true, objective: objectiveView(store.followupRevise(objective.id, id, patch)) }); }
         return text({ ok: true, objective: objectiveView(store.followupWithdraw(objective.id, args.withdraw!.id)) });
       }),
-    commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. The objective reaches the person's review by itself once every mission is done and every criterion is met; the person completes it. New or reopened missions and the person's edits clear every mark. A mark made on a board the person has since edited is refused as board_changed.",
+    // 회고 형식이 어긋나면 invalid_arguments 대신 형식을 말하는 거절로 — 입력 스키마는 모델에게 온전한 모양을 보인다.
+    { ...commanderTool("hand_off", `Hand an objective awaiting hand-off to the person's review with a retrospective: the Commander's synthesis of the members' retrospectives and its own. ${RETROSPECTIVE_FORMAT} because and ifOnly point at instructions, skills, tools or approaches; whoever maintains those reads each pair on its own, without this objective's context. The retrospective stays on the objective as a record and does not become work. A hand-off does not depend on the number of follow-up candidates. Refused as not_awaiting_handoff unless every mission is done, every criterion is met and it has not been handed off; a hand-off on a board the person has since edited is refused as board_changed.`,
+      z.object({ objectiveId: ids, retrospective: z.unknown() }).strict(),
+      (args, objective) => {
+        if (objective.criteriaProposals.length) return refuse("criteria_pending");
+        if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
+        const retrospective = retrospectiveSchema.safeParse(args.retrospective);
+        if (!retrospective.success) return refuse("retrospective_format", { hint: RETROSPECTIVE_FORMAT });
+        return text({ ok: true, objective: objectiveView(store.handOff(objective.id, { by: "commander", retrospective: retrospective.data })) });
+      }), inputSchema: z.toJSONSchema(z.object({ objectiveId: ids, retrospective: retrospectiveSchema }).strict()) },
+    commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. Once every mission is done and every criterion is met, the objective awaits hand-off; it reaches the person's review only when handed off, and the person completes it. New or reopened missions and the person's edits clear every mark and any hand-off. A mark made on a board the person has since edited is refused as board_changed.",
       z.object({ objectiveId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_EVIDENCE).optional() }).strict(),
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
@@ -148,13 +161,27 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (!target) return refuse("unknown_criterion", { criteria: objective.criteria.length });
         if (args.met && !args.evidence) return refuse("evidence_required", { hint: "A met mark carries one line of evidence." });
         const next = store.criterionMet(objective.id, target.id, args.met ? args.evidence! : null);
-        return text({ ok: true, ...(next.awaitingReview ? { next: IN_REVIEW } : {}), objective: objectiveView(next) });
+        return text({ ok: true, ...(next.awaitingHandoff ? { next: handoffPrompt(next) } : {}), objective: objectiveView(next) });
       }),
   ];
 }
 
-/** 모든 임무와 기준이 끝났다 — 목표는 사람의 검토로 넘어갔다. */
-const IN_REVIEW = "Every mission is done and every criterion is met: the objective is with the person for review.";
+/**
+ * 인계 전환 — 할 일이 끝나 인계 대기로 넘어간 지휘관에게 돌려주는 사실. 목표를 넘어 남는 것(후보)과 목표와 함께 끝나는 것
+ * (기록·메시지), 지금 후보 수, 인계의 단계만 말한다. 상한은 말하지 않고, 후보 0건도 인계가 된다는 사실을 함께 둔다 —
+ * 판단을 요구할 뿐 등록을 요구하지 않는다.
+ */
+export function handoffPrompt(objective: Objective): string {
+  const candidates = objective.followups.filter((candidate) => candidate.state === "open").length;
+  const members = objective.members.length > 0;
+  return [
+    "Every mission is done and every criterion is met: the objective awaits hand-off, and it reaches the person's review only through hand_off.",
+    `Only follow-up candidates carry beyond this objective; mission records and messages end with it, so a finding that is not a candidate reaches no later objective. The objective holds ${candidates} follow-up ${candidates === 1 ? "candidate" : "candidates"}, and a hand-off with none is valid.`,
+    members
+      ? "The hand-off step: the Commander requests each member's retrospective by SendMessage, gathers them, and synthesizes them with its own into the retrospective that hand_off carries. SendMessage reaches only live sessions; muster brings dormant members back."
+      : "The hand-off step: the Commander writes the retrospective that hand_off carries.",
+  ].join("\n\n");
+}
 
 /**
  * 달성 점검 — 마지막 임무를 마친 지휘관에게 도구 응답으로 돌려주는 사실. 지시 대신 판단의 무게(사람이 이 판단을 믿고
@@ -163,7 +190,7 @@ const IN_REVIEW = "Every mission is done and every criterion is met: the objecti
 export function criteriaCheckPrompt(objective: Objective): string {
   if (objective.criteriaProposals.length) return "Success-criterion proposals await the person's decision; the objective cannot reach review yet.";
   const open = objective.criteria.map((criterion, index) => ({ criterion, n: index + 1 })).filter(({ criterion }) => !criterion.met);
-  if (open.length === 0) return IN_REVIEW;
+  if (open.length === 0) return handoffPrompt(objective);
   const list = open.map(({ criterion, n }) => `${n}. ${criterion.text}`).join("\n");
-  return `Every mission is done. The objective goes to the person's review once each criterion below is marked met with evidence; the person relies on that judgment rather than re-checking, and a criterion that does not hold yet means the objective is not finished.\n\nCriteria not yet met:\n${list}`;
+  return `Every mission is done. The objective awaits hand-off once each criterion below is marked met with evidence; the person relies on that judgment rather than re-checking, and a criterion that does not hold yet means the objective is not finished.\n\nCriteria not yet met:\n${list}`;
 }

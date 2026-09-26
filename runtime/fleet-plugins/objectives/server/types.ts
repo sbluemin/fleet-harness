@@ -5,7 +5,8 @@ import { z } from "zod";
  *
  * 목표는 Operation 없이 레코드로 태어난다. 첫 기동 전 제목·그룹·시각·프리셋은 `pending` 에 두고, 개시·구상에서
  * 같은 id 의 지휘관 Operation 을 세운 뒤 `pending` 을 없앤다. 기존 지휘관과 따로 만든 Agent Operation 은 Operation
- * 값에서 화면을 만들고, 검토 대기는 모든 임무와 기준의 충족 여부에서 계산한다.
+ * 값에서 화면을 만든다. 모든 임무와 기준이 끝나면 인계 대기이고, 그때 남긴 인계 기록이 있어야 검토 대기다 — 둘 다
+ * 저장된 상태가 아니라 임무·기준·인계 기록에서 계산한다.
  */
 
 export const MAX_TITLE = 120;
@@ -27,13 +28,18 @@ export const MAX_RECORDS = 20;
  * 후속 후보 — 진행 중 범위 밖에서 찾은 결함·개선점. 지휘관만 올리고, 사람이 완료하며 고른 것만 새 휴면 목표가 된다.
  * 활성(open + 진행 중 selected) 수·본문 길이·근거 수는 저장 무결성을 위한 상한이다.
  */
-export const MAX_FOLLOWUPS = 10;
+export const MAX_FOLLOWUPS = 5;
 export const MAX_FOLLOWUP_SUMMARY = 160;
+/** 사용자 영향 한 줄 — 사용자가 무엇을 다르게 겪는지. */
+export const MAX_FOLLOWUP_IMPACT = 160;
 export const MAX_FOLLOWUP_BRIEF = 4000;
 export const MAX_FOLLOWUP_CRITERIA = 10;
 export const MAX_FOLLOWUP_EVIDENCE = 5;
 export const MAX_FOLLOWUP_EVIDENCE_TEXT = 300;
 export const MAX_FOLLOWUP_NOTE = 200;
+/** 인계 회고 — 잘한 점·아쉬운 점 각각 이만큼의 쌍, 쌍의 칸마다 이 길이까지. */
+export const MAX_RETRO_PAIRS = 3;
+export const MAX_RETRO_TEXT = 100;
 /** 폐기 흔적(제목·요약만) — 지휘관이 같은 후보를 다시 올리지 않게 남긴다. 넘치면 오래된 흔적부터 정리한다. */
 export const MAX_FOLLOWUP_DISCARDED = 20;
 /** 보존하는 완료 배치 — 넘치면 가장 오래된 종결 배치를 누계로 접는다. 진행 중 배치는 접지 않는다. */
@@ -145,10 +151,15 @@ export type FollowupEvidence =
   | { readonly kind: "command"; readonly text: string; readonly note?: string }
   | { readonly kind: "artifact"; readonly path: string; readonly note?: string };
 
-/** 후속 후보 본문 — 새 목표의 제목·브리핑·기준이 되고, 요약·근거는 고르는 사람과 새 지휘관이 읽는다. */
+/**
+ * 후속 후보 본문 — 새 목표의 제목·브리핑·기준이 되고, 요약·사용자 영향·근거는 고르는 사람과 새 지휘관이 읽는다.
+ * fromMission 은 발견한 이 목표의 임무 id 다(그 뒤 임무가 지워지면 가리킬 곳이 없을 수 있다).
+ */
 export interface FollowupBody {
   readonly title: string;
   readonly summary: string;
+  readonly userImpact: string;
+  readonly fromMission: string;
   readonly brief: string;
   readonly criteria: readonly string[];
   readonly evidence: readonly FollowupEvidence[];
@@ -208,8 +219,27 @@ export interface StoredOrigin {
   readonly objectiveId: string;
   readonly candidateId: string;
   readonly batchId: string;
+  /** 고른 후보의 사용자 영향 한 줄 — 새 지휘관과 사람이 출처와 함께 읽는다. */
+  readonly userImpact: string;
   readonly evidence: readonly FollowupEvidence[];
 }
+
+/**
+ * 인계 회고 — 지휘관이 구성원들의 회고와 자신의 회고를 종합한 것. 잘한 점은 {point, because}, 아쉬운 점은 {point, ifOnly}
+ * 쌍으로 각 1–3쌍이다. because·ifOnly 는 지침·스킬·도구·접근을 향하고, 목표의 맥락 없이 따로 읽힌다.
+ */
+export interface Retrospective {
+  readonly wentWell: readonly { readonly point: string; readonly because: string }[];
+  readonly fellShort: readonly { readonly point: string; readonly ifOnly: string }[];
+}
+
+/**
+ * 인계 기록 — 인계 대기의 목표를 검토 대기로 넘긴 주체와 시각. 지휘관이 넘기면 회고가 함께 있고, 사람이 넘기면 없다.
+ * 모든 임무와 기준이 끝난 동안에만 유효하다: 그 조건이 깨지는 변경(임무 추가·재개, 기준 표시 해제 등)은 기록도 거둔다.
+ */
+export type StoredHandoff =
+  | { readonly by: "commander"; readonly at: number; readonly retrospective: Retrospective }
+  | { readonly by: "human"; readonly at: number };
 
 export interface PendingCommander {
   readonly theaterId: string;
@@ -251,6 +281,8 @@ export interface StoredObjective {
   readonly edited?: { readonly at: number; readonly kinds: readonly ObjectiveEditKind[] };
   /** 목표 완료 — 완료는 늘 사람이 누른다. */
   readonly done?: { readonly at: number };
+  /** 인계 기록 — 있으면 인계 대기를 지나 검토 대기다. */
+  readonly handoff?: StoredHandoff;
   readonly criteria?: readonly StoredCriterion[];
   readonly criteriaProposals?: readonly ObjectiveCriterionProposal[];
   readonly members?: readonly StoredMember[];
@@ -332,8 +364,12 @@ export interface Objective {
   readonly today: boolean;
   readonly addedBy: { readonly operationId: string; readonly title: string | null } | null;
   readonly done: { readonly at: number } | null;
-  /** 검토 대기 — 끝나지 않은 목표의 모든 임무와 모든 달성 기준이 끝났다. 저장하지 않고 계산한다. 완료는 사람이 누른다. */
+  /** 인계 대기 — 끝나지 않은 목표의 모든 임무와 모든 달성 기준이 끝났고 인계 기록이 없다. 계산한 값이다. */
+  readonly awaitingHandoff: boolean;
+  /** 검토 대기 — 같은 조건에 인계 기록이 있다. 계산한 값이며 인계 대기와 동시에 참이 되지 않는다. 완료는 사람이 누른다. */
   readonly awaitingReview: boolean;
+  /** 인계 기록 — 검토 대기와 완료된 목표에 남는다. 사람이 넘겼으면 retrospective 가 null. */
+  readonly handoff: ObjectiveHandoff | null;
   readonly criteria: readonly ObjectiveCriterion[];
   readonly criteriaProposals: readonly ObjectiveCriterionProposal[];
   readonly members: readonly ObjectiveMember[];
@@ -344,7 +380,13 @@ export interface Objective {
   readonly followupBatches: readonly ObjectiveFollowupBatch[];
   readonly followupHistory: FollowupHistory | null;
   /** 이 목표가 후속으로 태어났다면 원본과 후보. 원본이 사라졌으면 title 은 null. */
-  readonly origin: { readonly objectiveId: string; readonly title: string | null; readonly candidateId: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] } | null;
+  readonly origin: { readonly objectiveId: string; readonly title: string | null; readonly candidateId: string; readonly userImpact: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] } | null;
+}
+
+export interface ObjectiveHandoff {
+  readonly by: StoredHandoff["by"];
+  readonly at: number;
+  readonly retrospective: Retrospective | null;
 }
 
 export interface ObjectiveFollowupEvidenceView {
@@ -361,6 +403,9 @@ export interface ObjectiveFollowup {
   readonly state: StoredFollowup["state"];
   readonly title: string;
   readonly summary: string;
+  readonly userImpact: string;
+  /** 발견한 임무 id — 그 임무가 지워졌으면 목록에 없을 수 있다. 폐기 흔적에도 남는다. */
+  readonly fromMission: string;
   readonly brief: string;
   readonly criteria: readonly string[];
   readonly evidence: readonly ObjectiveFollowupEvidenceView[];
@@ -376,7 +421,7 @@ export interface ObjectiveFollowupBatch {
   readonly items: readonly {
     readonly candidateId: string;
     readonly rev: number;
-    readonly snapshot: { readonly title: string; readonly summary: string; readonly brief: string; readonly criteria: readonly string[]; readonly evidence: readonly ObjectiveFollowupEvidenceView[] };
+    readonly snapshot: { readonly title: string; readonly summary: string; readonly userImpact: string; readonly fromMission: string; readonly brief: string; readonly criteria: readonly string[]; readonly evidence: readonly ObjectiveFollowupEvidenceView[] };
     readonly state: FollowupItemState;
     readonly operationId: string | null;
     readonly error: string | null;
@@ -408,10 +453,26 @@ export function recordLines(summary: readonly string[]): readonly string[] | nul
   return lines.every((line) => line.length <= MAX_RECORD_LINE) ? lines : null;
 }
 
-/** 검토 대기 — 임무가 하나 이상 있고 모두 끝났으며, 달성 기준이 모두 충족으로 표시됐다. */
-export function awaitingReview(objective: Pick<StoredObjective, "done" | "missions" | "criteria" | "criteriaProposals">): boolean {
-  if (objective.done || objective.missions.length === 0 || objective.criteriaProposals?.length) return false;
+/** 할 일이 끝났다 — 임무가 하나 이상 있고 모두 끝났으며, 기준 제안이 없고 달성 기준이 모두 충족으로 표시됐다. 완료 여부는 보지 않는다. */
+export function settled(objective: Pick<StoredObjective, "missions" | "criteria" | "criteriaProposals">): boolean {
+  if (objective.missions.length === 0 || objective.criteriaProposals?.length) return false;
   return objective.missions.every((mission) => mission.done) && (objective.criteria ?? []).every((criterion) => !!criterion.met);
+}
+
+type ReviewShape = Pick<StoredObjective, "done" | "missions" | "criteria" | "criteriaProposals" | "handoff">;
+/** 인계 대기 — 끝나지 않은 목표의 할 일이 끝났고, 아직 아무도 검토로 넘기지 않았다. */
+export const awaitingHandoff = (objective: ReviewShape): boolean => !objective.done && !objective.handoff && settled(objective);
+/** 검토 대기 — 끝나지 않은 목표의 할 일이 끝났고 인계 기록이 있다. */
+export const awaitingReview = (objective: ReviewShape): boolean => !objective.done && !!objective.handoff && settled(objective);
+
+/**
+ * 인계 기록의 유효성 — 기록은 할 일이 끝난 동안에만 뜻이 있다. 끝나지 않은 목표에서 그 조건이 깨졌으면 기록을 거둔다
+ * (완료된 목표는 그대로 둔다). 기준 표시를 지우는 기존 규칙이 곧 인계 기록을 거두는 규칙이 된다.
+ */
+export function withValidHandoff<T extends ReviewShape>(objective: T): T {
+  if (!objective.handoff || objective.done || settled(objective)) return objective;
+  const { handoff: _handoff, ...rest } = objective;
+  return rest as T;
 }
 
 /** 기준의 충족 표시를 모두 거둔다 — 새 작업이 생기면 앞선 판단은 옛 보드에 대한 것이다. */
@@ -596,20 +657,30 @@ const oneLine = (max: number) => z.string().trim().min(1).max(max).regex(/^[^\u0
  */
 export const relativePath = oneLine(MAX_FOLLOWUP_EVIDENCE_TEXT).refine((value) => !/^[/~\\]/.test(value) && !/^[A-Za-z]:/.test(value) && !value.includes("\\") && !value.split("/").some((segment) => segment === ".."), { message: "relative_path" });
 const evidenceNote = oneLine(MAX_FOLLOWUP_NOTE).optional();
+/** 회고의 한 칸 — 줄바꿈 없는 한 줄, 100자 이내. */
+const retroText = oneLine(MAX_RETRO_TEXT);
+export const retrospectiveSchema = z.object({
+  wentWell: z.array(z.object({ point: retroText, because: retroText }).strict()).min(1).max(MAX_RETRO_PAIRS),
+  fellShort: z.array(z.object({ point: retroText, ifOnly: retroText }).strict()).min(1).max(MAX_RETRO_PAIRS),
+}).strict();
 export const followupEvidenceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("file"), path: relativePath, line: z.number().int().min(1).optional(), note: evidenceNote }).strict(),
   z.object({ kind: z.literal("command"), text: oneLine(MAX_FOLLOWUP_EVIDENCE_TEXT), note: evidenceNote }).strict(),
   z.object({ kind: z.literal("artifact"), path: relativePath, note: evidenceNote }).strict(),
 ]);
+/** 관찰할 수 있는 근거 — 줄 번호가 있는 파일, 또는 명령. */
+export const observableEvidence = (evidence: FollowupEvidence): boolean => evidence.kind === "command" || (evidence.kind === "file" && evidence.line !== undefined);
 const followupFields = {
   title,
   summary: oneLine(MAX_FOLLOWUP_SUMMARY),
+  userImpact: oneLine(MAX_FOLLOWUP_IMPACT),
+  fromMission: ids,
   brief: z.string().trim().min(1).max(MAX_FOLLOWUP_BRIEF),
   criteria: z.array(z.string().trim().min(1).max(MAX_CRITERION_TEXT)).min(1).max(MAX_FOLLOWUP_CRITERIA),
   evidence: z.array(followupEvidenceSchema).min(1).max(MAX_FOLLOWUP_EVIDENCE),
 };
 export const followupBodySchema = z.object(followupFields).strict();
-export const followupReviseSchema = z.object({ title: followupFields.title.optional(), summary: followupFields.summary.optional(), brief: followupFields.brief.optional(), criteria: followupFields.criteria.optional(), evidence: followupFields.evidence.optional() }).strict();
+export const followupReviseSchema = z.object({ title: followupFields.title.optional(), summary: followupFields.summary.optional(), userImpact: followupFields.userImpact.optional(), fromMission: followupFields.fromMission.optional(), brief: followupFields.brief.optional(), criteria: followupFields.criteria.optional(), evidence: followupFields.evidence.optional() }).strict();
 export type FollowupBodyInput = z.output<typeof followupBodySchema>;
 export type FollowupReviseInput = z.output<typeof followupReviseSchema>;
 /** 완료와 함께 고른 후보 — 화면이 본 rev 와 함께. batchId 는 화면이 만든 멱등 키(UUID). */

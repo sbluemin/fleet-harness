@@ -178,6 +178,8 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       if (!batchId) throw new ObjectiveStoreError("invalid_request");
       return objective(launch.completeWithFollowups(objectiveId, { batchId, followups }, { language }));
     })) },
+    // 사람의 넘기기 — 지휘관이 넘기지 않은 인계 대기를 회고 없이 검토 대기로. 사람이 넘겼다는 사실이 인계 기록에 남는다.
+    { name: "objective/hand-off", method: "POST", summary: "Hand an objective awaiting hand-off to review without a retrospective; the record says the person handed it off.", handler: json(objectiveRef, unlessBusy(({ objectiveId }) => objective(store.handOff(objectiveId, { by: "human" })))) },
     // 후속 후보에 대한 사람의 판단 — 지휘관이 알아야 할 보드 편집이 아니므로 edited 를 쌓지 않는다(기준 제안의 거절과 같다).
     { name: "followup/discard", method: "POST", summary: "Discard an open follow-up candidate; its title and summary stay as a trace.", handler: json(objectiveRef.extend({ candidateId: ids }), ({ objectiveId, candidateId }) => objective(store.followupDiscard(objectiveId, candidateId))) },
     { name: "followup/retry", method: "POST", summary: "Re-check or re-create a failed or unconfirmed follow-up with the same snapshot and key.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), ({ objectiveId, batchId, candidateId }) => objective(launch.retryFollowup(objectiveId, batchId, candidateId))) },

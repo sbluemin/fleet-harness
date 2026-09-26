@@ -377,7 +377,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         const created = existing ?? await service.create({
           theaterId: source.theaterId, title: entry.snapshot.title, groupId: batch.launch.groupId, viewMode: batch.launch.viewMode,
           note: entry.snapshot.brief, criteria: entry.snapshot.criteria, addedBy: objectiveId,
-          origin: { objectiveId, candidateId, batchId, evidence: entry.snapshot.evidence }, objectiveId: id,
+          origin: { objectiveId, candidateId, batchId, userImpact: entry.snapshot.userImpact, evidence: entry.snapshot.evidence }, objectiveId: id,
         }, { language: batch.launch.language });
         if (!store.find(objectiveId)) {
           if (!existing && store.pending(created.id)) store.removePending(created.id);

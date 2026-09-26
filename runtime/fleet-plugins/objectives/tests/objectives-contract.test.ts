@@ -15,7 +15,7 @@ import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
 import { createObjectiveRoutes } from "../server/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../server/store.js";
-import type { ObjectiveEvent } from "../server/types.js";
+import { MAX_FOLLOWUPS, type ObjectiveEvent } from "../server/types.js";
 
 /**
  * 목표의 필수 계약 — 목표 레코드는 Operation 없이 태어나고, 개시·구상 때 같은 id 의 지휘관이 한 번만 선다.
@@ -673,7 +673,7 @@ describe("Objectives contract", () => {
     expect(results.filter((result) => result.status === "fulfilled").length).toBe(2);
   });
 
-  it("keeps criteria proposed until the person decides, then reaches review only with evidence", async () => {
+  it("keeps criteria proposed until the person decides, then awaits hand-off and reaches review only through hand_off", async () => {
     const { store, call, route, launch, events, savedObjective, launches, operations } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Criteria", groupId: null, missions: [{ text: "fix" }] });
     const as = objective.id;
@@ -721,10 +721,20 @@ describe("Objectives contract", () => {
     expect(String(done.structuredContent.next)).toContain("copy unchanged");
     expect((await call("mark_criterion", { objectiveId: as, n: 1, met: true }, as)).structuredContent.error).toBe("evidence_required");
     for (const n of [1, 2, 3]) await call("mark_criterion", { objectiveId: as, n, met: true, evidence: `checked ${n}` }, as);
-    expect(store.find(as)!.awaitingReview).toBe(true);
-    // 사람의 문구 변경과 새 작업은 앞선 충족 판단을 해당 기준/전체에서 거둔다.
+    // 할 일이 끝나면 인계 대기다 — 완료는 넘기기를 거쳐야 하고, 검토 대기는 회고를 실은 hand_off 뒤에만 온다.
+    expect(store.find(as)!).toMatchObject({ awaitingHandoff: true, awaitingReview: false, handoff: null });
+    expect((await route("objective/complete", { objectiveId: as })).value.error).toBe("not_in_review");
+    const retrospective = { wentWell: [{ point: "p", because: "b" }], fellShort: [{ point: "p", ifOnly: "i" }] };
+    const handOff = async (value: unknown) => (await call("hand_off", { objectiveId: as, retrospective: value }, as)).structuredContent;
+    expect((await handOff({ ...retrospective, fellShort: [] })).error).toBe("retrospective_format");
+    expect((await handOff(retrospective)).ok).toBe(true);
+    expect(store.find(as)!).toMatchObject({ awaitingHandoff: false, awaitingReview: true, handoff: { by: "commander", retrospective } });
+    expect((await handOff(retrospective)).error).toBe("not_awaiting_handoff");
+    // 사람의 문구 변경과 새 작업은 앞선 충족 판단을 해당 기준/전체에서 거두고, 함께 인계 기록도 거둬 진행 중으로 돌린다.
     store.criterionPatch(as, second.id, "copy unchanged in both languages");
     expect(store.find(as)!.criteria.map((criterion) => criterion.met ?? null)).toEqual(["checked 1", null, "checked 3"]);
+    expect(store.find(as)!).toMatchObject({ awaitingHandoff: false, awaitingReview: false, handoff: null });
+    expect(savedObjective(as)).not.toHaveProperty("handoff");
     launch.missionAdded(as, { text: "one more" }, { by: "human" });
     expect(store.find(as)!.criteria.every((criterion) => !criterion.met)).toBe(true);
     // 구상 중 스티어링 뒤의 턴은 planning=true여도 기준 제안 권한이 닫힌다.
@@ -738,20 +748,32 @@ describe("Objectives contract", () => {
     expect(store.find(as)!.criteriaProposals).toEqual([]); // 대상 기준 삭제와 제안 삭제는 같은 보드 변경이다.
   });
 
-  it("creates follow-up records once without launching their Operations", async () => {
-    const { store, route, launch, launches, operations, savedObjective } = harness();
+  it("admits observable follow-ups and creates records once after hand-off without launching their Operations", async () => {
+    const { store, route, call, launch, launches, operations, savedObjective } = harness();
     const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
     await launch.requestPlan(source.id);
     const missionId = store.find(source.id)!.missions[0]!.id;
     store.missionDone(source.id, missionId, ["fixed"]);
-    const candidate = store.followupAdd(source.id, { title: "Next", summary: "Next step", brief: "Next brief", criteria: ["Verified"], evidence: [{ kind: "command", text: "pnpm test" }] }).followups[0]!;
+    // 후보는 이 목표의 임무에서 나오고, 근거 하나는 관찰할 수 있어야 하며(줄 있는 파일·명령), 활성 후보는 상한까지다.
+    const body = { title: "Next", summary: "Next step", userImpact: "Users see the next step", fromMission: missionId, brief: "Next brief", criteria: ["Verified"], evidence: [{ kind: "command", text: "pnpm test" }] };
+    const add = async (value: unknown) => (await call("followup", { objectiveId: source.id, add: value }, source.id)).structuredContent;
+    expect((await add({ ...body, fromMission: "elsewhere" })).error).toBe("unknown_mission");
+    expect((await add({ ...body, evidence: [{ kind: "file", path: "src/a.ts" }] })).error).toBe("evidence_not_observable");
+    for (let n = 0; n < MAX_FOLLOWUPS; n += 1) expect((await add(body)).ok).toBe(true);
+    expect((await add(body)).error).toBe("too_many_followups");
+    for (const extra of store.find(source.id)!.followups.slice(1)) store.followupWithdraw(source.id, extra.id);
+    const candidate = store.find(source.id)!.followups[0]!;
     const batchId = "3f1c8f3e-1111-4a8b-9c0d-000000000001";
     const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev }] });
+    // 후보 선택은 검토 대기에서만 — 지휘관이 넘기지 않았으면 사람이 회고 없이 넘긴다.
+    expect((await pick()).value.error).toBe("not_in_review");
+    expect((await route("objective/hand-off", { objectiveId: source.id })).status).toBe(200);
+    expect(store.find(source.id)!.handoff).toMatchObject({ by: "human", retrospective: null });
     expect((await pick()).status).toBe(200);
     expect((await pick()).status).toBe(200);
     await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("created"));
     const targetId = store.find(source.id)!.followupBatches[0]!.items[0]!.operationId!;
-    expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id } });
+    expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id, userImpact: "Users see the next step" } });
     expect(savedObjective(targetId)).toHaveProperty("pending.title", "Next");
     expect(operations.has(targetId)).toBe(false);
     expect(launches).toHaveLength(1);

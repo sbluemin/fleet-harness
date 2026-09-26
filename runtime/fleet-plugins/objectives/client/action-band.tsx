@@ -27,12 +27,13 @@ type T = Translate<ObjectiveMessageKey>;
  * 완료·결정 대기·중단은 펼칠 것이 없으면 누르는 즉시 실행한다.
  *
  * 우선순위 — 사람이 지금 무엇을 해야 하나: 완료됨 > 지휘관 결정 대기 > 작업 중(구성원 실행 포함) > 구성원 결정 대기 >
- * 검토 대기 > 깨운 뒤 유휴 > 개시 전. 지휘관이 마지막으로 읽은 뒤 사람이 보드를 고쳤으면 낱말은 상태와 상관없이 「스티어링」이고,
+ * 검토 대기 > 인계 대기 > 깨운 뒤 유휴 > 개시 전. 인계 대기에서 쉬는 지휘관 대신 사람이 「검토로 넘기기」를 쓸 수 있다 — 한 번 누름으로
+ * 넘어가지 않게 지휘관 깨우기와 함께 펼쳐 고른다. 지휘관이 마지막으로 읽은 뒤 사람이 보드를 고쳤으면 낱말은 상태와 상관없이 「스티어링」이고,
  * 서버 경로는 상태가 고른다(쉬는 구성원까지 깨워야 하는 유휴는 개시 경로, 작업 중·검토 대기·구상 중은 스티어링 경로).
  * 달성 기준 제안이 남아 있으면 개시·스티어링은 잠긴 띠로 서고(서버가 criteria_pending 으로 거부한다), 그 아래 「다시 구상」만 열린다.
  */
 
-type IntentKey = "plan" | "replan" | "start" | "resume" | "steer" | "steerIdle" | "complete" | "decide" | "decideMember" | "stop";
+type IntentKey = "plan" | "replan" | "start" | "resume" | "steer" | "steerIdle" | "complete" | "handOff" | "decide" | "decideMember" | "stop";
 
 interface Intent {
   readonly word: string;
@@ -75,6 +76,7 @@ const WandGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColo
 const StartGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 3.5l8 4.5-8 4.5z" /></svg>;
 const SteerGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 11.5c2-4 5-6 11-6M10.5 2.5l3 3-3 3" /></svg>;
 const LockGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg>;
+const HandOffGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 8h8M7.5 4.5 11 8l-3.5 3.5M13.5 3v10" /></svg>;
 const StopGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>;
 const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
 const DecideDot = () => <i className="objectives-start-dot" aria-hidden="true" />;
@@ -115,6 +117,7 @@ const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   followup_backlog: "objectives.band.reason.followupBacklog",
   steer_required: "objectives.band.reason.steerRequired",
   not_in_review: "objectives.band.reason.notInReview",
+  not_awaiting_handoff: "objectives.band.reason.notAwaitingHandoff",
 };
 
 /** 지금 상태의 주행동과, 펼치면 함께 고르는 것. 제안이 남아 잠긴 개시·스티어링은 gated 가 말한다(주행동은 「다시 구상」). */
@@ -129,6 +132,7 @@ function choose(props: ActionBandProps): { readonly primary: IntentKey | null; r
   if (memberAwaiting) return { primary: "decideMember", alts: [] };
   if (objective.criteriaProposals.length > 0) return { primary: "replan", alts: [], gated: true };
   if (objective.awaitingReview) return edited ? { primary: "steer", alts: ["replan"] } : { primary: "complete", alts: [] };
+  if (objective.awaitingHandoff) return edited ? { primary: "steerIdle", alts: ["handOff"] } : { primary: "handOff", alts: [started ? "resume" : "start"] };
   // 구상이 끝나 개시를 기다린다 — 편집이 있으면 편성을 이어서 짜게 알리고(스티어링), 개시도 여기서 고른다.
   if (started && objective.planning) return edited ? { primary: "steer", alts: ["start"] } : { primary: "start", alts: ["replan"] };
   if (started) return edited ? { primary: "steerIdle", alts: ["replan"] } : { primary: "resume", alts: ["replan"] };
@@ -186,6 +190,7 @@ export function ActionBand(props: ActionBandProps) {
     },
     steerIdle: { word: t("objectives.steer"), desc: t("objectives.band.steerIdle.desc", { kinds: kindText }), talk: true, glyph: <SteerGlyph />, placeholder: t("objectives.band.steer.ph"), run: (context) => request("/commander/start", { objectiveId, ...(context ? { context } : {}) }) },
     complete: { word: t("objectives.review.complete"), desc: t(objective.criteria.length > 0 ? "objectives.review.subCriteria" : "objectives.review.sub"), talk: false, tone: "aurora", run: () => request("/objective/complete", { objectiveId }) },
+    handOff: { word: t("objectives.handoff.send"), desc: t("objectives.handoff.sendDesc"), talk: false, glyph: <HandOffGlyph />, run: () => request("/objective/hand-off", { objectiveId }) },
     decide: { word: t("objectives.awaiting.word"), desc: t("objectives.awaiting.commander"), talk: false, tone: "aurora", glyph: <DecideDot />, run: async () => props.onFocusOperation(objectiveId) },
     decideMember: {
       word: t("objectives.awaiting.word"),

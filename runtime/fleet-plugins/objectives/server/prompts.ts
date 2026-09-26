@@ -52,11 +52,14 @@ export function steerTurn(objective: Objective, language: PromptLanguage, contex
 }
 
 /**
- * 개시 — 한 줄: 목표 id 와 「임무를 개시하세요」. 무엇을 어떻게 할지는 지휘관이 정한다.
+ * 개시 — 한 줄: 목표 id 와 「임무를 개시하세요」, 그리고 후속 후보는 언제든 담을 수 있다는 사실. 무엇을 어떻게 할지는 지휘관이 정한다.
+ * 후보의 한 줄은 개시에만 둔다 — 범위 밖의 발견은 수행 중에 생기고, 구상은 수행하지 않으며, 스티어링은 이어지는 턴이다.
  * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것이 있으면 무엇이 바뀌었는지만 짧게 붙이고 다시 읽게 한다 — 바뀐 내용 자체는 보드가 말한다.
  */
 export function startTurn(objective: Objective, language: PromptLanguage, context?: string): string {
-  const word = language === "ko" ? `목표 \`${objective.id}\` 의 임무를 개시하세요.` : `Commence the missions of objective \`${objective.id}\`.`;
+  const word = language === "ko"
+    ? `목표 \`${objective.id}\` 의 임무를 개시하세요. 후속 후보는 언제든 \`fleet-objectives\` 의 followup 으로 목표에 담을 수 있습니다.`
+    : `Commence the missions of objective \`${objective.id}\`. Follow-up candidates can be placed on the objective at any time with \`fleet-objectives\` followup.`;
   const what = editedWords(objective, language);
   const changed = !what ? "" : language === "ko"
     ? `\n\n마지막으로 읽은 뒤 사람이 목표를 바꿨습니다(${what}). 진행하기 전에 \`fleet-objectives\` 로 이 목표를 다시 읽으세요.`
