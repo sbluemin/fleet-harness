@@ -417,6 +417,9 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   padding-inline-start: var(--space-1);
   border-inline-start: 1px solid var(--surface-rim-strong);
 }
+/* 플러그인이 항목을 그리지 않는 동안(부관을 하나도 도구모음에 두지 않음) 칸째 걷는다 — 남겨 두면 여백과
+   구분선만 선 빈자리가 도움말과 Zen 버튼 사이에 벌어진다. */
+.console-toolbar-plugins:empty { display: none; }
 
 /* 찾기·도움말 — 도구 아이콘(.right-rail-ico)과 같은 26px 둥근 칸, 같은 겨눔·켜짐 문법. */
 .console-toolbar .command-band-button {

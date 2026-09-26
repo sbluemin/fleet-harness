@@ -5821,9 +5821,11 @@ body[data-companion-resizing="true"] .canvas-operation {
   text-overflow: ellipsis;
 }
 
-/* 상태별 보기 토글 — 접기 컨트롤과 같은 24px 유령 버튼. 눌림은 레일 아이콘의 켜짐과 같은 문법
-   (brass 잉크 · 어두운 면 · rim-strong 테두리)이라 왼쪽 열과 오른쪽 열의 "지금 이 보기"가 한 어휘다. */
+/* 상태별 보기 토글 — 접기 컨트롤과 같은 24px 유령 버튼. 눌림은 바로 왼쪽 캔버스 모드 세그먼트
+   (layout.css .command-band-mode-seg)와 같은 말로 한다 — 옅은 워시 · 기본 잉크 · 아래 12px brass 다텀.
+   나란히 선 두 스위치가 "지금 이것"을 다른 어휘로 말하지 않게. 사이드바 머리와 Zen 작업 표시줄이 같은 부품이다. */
 .side-bar-status-view-toggle {
+  position: relative;
   display: grid;
   place-items: center;
   flex: none;
@@ -5843,17 +5845,29 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 16px;
 }
 
-.side-bar-status-view-toggle:hover,
-.side-bar-status-view-toggle:focus-visible {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
+.side-bar-status-view-toggle:hover:not([aria-pressed="true"]),
+.side-bar-status-view-toggle:focus-visible:not([aria-pressed="true"]) {
+  border-color: transparent;
+  background: var(--control-wash-hover);
+  color: var(--text-secondary);
 }
 
 .side-bar-status-view-toggle[aria-pressed="true"] {
-  color: var(--brass-ink);
-  border-color: var(--surface-rim-strong);
-  background: var(--ink-deep);
+  border-color: transparent;
+  background: var(--control-wash);
+  color: var(--text-primary);
+}
+
+.side-bar-status-view-toggle[aria-pressed="true"]::after {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 12px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  transform: translateX(-50%);
+  content: "";
 }
 
 .side-bar-status-view-toggle:focus-visible {

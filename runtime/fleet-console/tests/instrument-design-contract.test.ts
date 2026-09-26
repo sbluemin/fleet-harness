@@ -1845,7 +1845,7 @@ describe("Instrument core design contract", () => {
     expect(triageSidebar).toContain("{minimizedEntries.length > 0 ? (");
     // 선반은 목록 뒤에 흐른다 — 카드 바닥에 고정하면 목록과 선반 사이가 War Room 사이드바의 구멍이 된다.
     expect(components).toMatch(/\.triage-side-bar \.side-bar-wide > \.operations-side-bar-chips \{[^}]*flex: 0 1 auto;/);
-    expect(components).toMatch(/\.side-bar-status-view-toggle\[aria-pressed="true"\] \{[^}]*color: var\(--brass-ink\);/);
+    expect(components).toMatch(/\.side-bar-status-view-toggle\[aria-pressed="true"\] \{[^}]*background: var\(--control-wash\);/);
     expect(sidebar).not.toContain("triage-side-bar-caption");
     expect(components).not.toContain(".triage-side-bar-caption");
     expect(components).toContain(".side-bar-status-section--minimized {");
