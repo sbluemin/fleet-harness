@@ -923,7 +923,7 @@ function resolveBlockedUpdateApplyCopy(errorCode: string | null, t: Translate<Co
   if (errorCode === "local_channel") return { label: t("chrome.system.update.local"), title: t("chrome.system.update.localTitle"), tone: "blocked", disabled: true };
   // 이 콘솔이 스스로 갈아 끼울 수 없는 레이아웃은 이제 셸에게 넘어간다. 이 문구는 그
   // 위임을 모르는 옛 서버에 붙었을 때만 남는 마지막 안내다.
-  if (errorCode === "managed_runtime_update_requires_relaunch") return { label: t("chrome.system.update.updateAndRestart"), title: t("chrome.system.update.managedTitle"), tone: "blocked", disabled: true };
+  if (errorCode === "managed_runtime_update_requires_relaunch") return { label: t("chrome.system.update.managed"), title: t("chrome.system.update.managedTitle"), tone: "blocked", disabled: true };
   if (errorCode === "update_already_in_progress") return { label: t("chrome.system.update.busy"), title: t("chrome.system.update.busyTitle"), tone: "blocked", disabled: true };
   if (errorCode === "update_not_available") return { label: t("chrome.system.update.current"), title: t("chrome.system.update.currentTitle"), tone: "blocked", disabled: true };
   return { label: t("chrome.system.update.blocked"), title: t("chrome.system.update.blockedTitle"), tone: "error", disabled: false };
