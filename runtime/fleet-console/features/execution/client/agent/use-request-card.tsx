@@ -3,7 +3,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { openPane } from "../../../../core/client/src/chrome/pane/pane-store.js";
-import { openRailPanel, setRailChromeExpanded } from "../../../../core/client/src/chrome/rail/rail-store.js";
+import { openRailPanel } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { useOperationUseRequests, type OperationUseRequest } from "../../../computer-use/client/computer-screen-share.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
 import { answerUseRequest } from "./experiments-api.js";
@@ -63,7 +63,6 @@ function UseRequestCard({ request, language }: { readonly request: OperationUseR
   const openSettings = () => {
     openRailPanel(SETTINGS_RAIL_ENTRY_ID);
     openPane({ paneId: SETTINGS_PANE_ID, params: { section: "experiments" } });
-    setRailChromeExpanded(true);
   };
 
   return (

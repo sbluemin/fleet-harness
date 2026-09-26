@@ -1,8 +1,7 @@
 import { useEffect, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useT } from "../../i18n/index.js";
-import { useRailShortcutLabel, useSideBarShortcutLabel } from "../../integration/shortcuts.js";
-import { setRailChromeExpanded, setRailPeeking, useRailChromeExpanded, useRailPeeking } from "../rail/rail-store.js";
+import { useSideBarShortcutLabel } from "../../integration/shortcuts.js";
 import { setSideBarCollapsed, setSideBarPeeking, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 
 /* Periscope 엣지 독 — 접힌 패널이 남기는 유일한 문.
@@ -28,25 +27,6 @@ export function SideBarEdgeDock() {
       // 펼침 뒤 포커스는 반대 방향 컨트롤(패널 안 접기 셰브런)로 넘긴다 — 접힘이 포커스를
       // 독으로 넘기는 계약의 대칭. 트리거는 펼침과 함께 언마운트라 여기 둘 곳이 없다.
       onExpand={() => { setSideBarCollapsed(false); focusAfterExpand(".side-bar-collapse"); }}
-    />
-  );
-}
-
-export function RailEdgeDock() {
-  const t = useT();
-  const railChromeExpanded = useRailChromeExpanded();
-  const peeking = useRailPeeking();
-  const shortcut = useRailShortcutLabel();
-  if (railChromeExpanded) return null;
-  return (
-    <EdgeDock
-      side="right"
-      peeking={peeking}
-      label={t("rail.chrome.edgeExpand", { shortcut })}
-      triggerClassName="rail-edge-dock"
-      panelSelector=".right-rail"
-      onPeek={setRailPeeking}
-      onExpand={() => { setRailChromeExpanded(true); focusAfterExpand(".right-rail-collapse"); }}
     />
   );
 }

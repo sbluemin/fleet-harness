@@ -10,7 +10,6 @@ import type { RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/r
 import { useExpandedSurfaces } from "../expanded-surface/store.js";
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import "../../styles/rail.css";
-import { focusEdgeDockWhenPanelContainsActiveElement, useRailShortcutLabel } from "../../integration/shortcuts.js";
 import { CORE_SHORTCUT_COMMANDS, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { useT } from "../../i18n/index.js";
@@ -19,7 +18,7 @@ import { getState, subscribe } from "../../integration/store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
-import { closeRailPanel, getRailStoreSnapshot, openRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, setRailChromeExpanded, setRailPeeking, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth, useRailPeeking } from "./rail-store.js";
+import { reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   clearStoredPanelWidth,
@@ -32,7 +31,6 @@ import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/setti
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
-import { useZenModeState } from "../../integration/zen-mode.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
@@ -42,8 +40,6 @@ interface RightRailProps {
 
 /** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */
 const RAIL_CAPABILITIES = createHostCapabilities();
-/** 아이콘 열 폭 — rail.css .right-rail-icons와 한 값. */
-const RAIL_ICON_STRIP_WIDTH = 44;
 /** 카드 양쪽 테두리 — 열 실측과 카드 폭 사이의 차이. */
 const RAIL_CARD_BORDER_WIDTH = 2;
 /** 엔트리의 대표 페인 — 폭 기본값 등 표면 차원의 힌트를 primary가 말한다(pane 계약). */
@@ -57,12 +53,13 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
   return Math.max(MIN_PANEL_WIDTH, resolvePaneDefaultWidth(primaryPaneOf(binding)));
 }
 
+/**
+ * 도구 패널 카드 — 도구모음의 도구가 여는 표면. 화면 오른쪽에 뜨는 부유 카드이고, 모드와 무관하게
+ * 같은 자리에 선다(Zen에서는 작업 표시줄 위까지). 도구 아이콘은 여기 없다: 콘솔 도구모음이 하나뿐인
+ * 도구 줄이고(console-toolbar.tsx), 카드는 켜진 도구가 있을 때만 선다.
+ */
 export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps) {
-  const zenState = useZenModeState();
-  // Zen에서 레일을 드러내면 아이콘 열까지 평소처럼 선다.
-  const zenMode = zenState.active && !zenState.railRevealed;
   const t = useT();
-  const railShortcut = useRailShortcutLabel();
   const connection = useSyncExternalStore(subscribe, () => getState().connection, () => "connecting" as const);
   const connectionLostAt = useSyncExternalStore(subscribe, () => getState().connectionLostAt, () => null);
   const baseCtx = useRailPanelContext(theaterId, api, onLaunchOperation);
@@ -75,10 +72,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const soloMaxWidthRef = useRef(soloMaxWidth);
   soloMaxWidthRef.current = soloMaxWidth;
   const extraWidth = soloWidth === null ? requestedExtraWidth : 0;
-  const railChromeExpanded = useRailChromeExpanded();
-  const railPeeking = useRailPeeking();
   const overlayAlpha = useRailOverlayAlpha();
-  const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const bindings = useRailEntries();
   // 페인을 세우는 엔트리와 그냥 실행하는 엔트리의 구분은 "이 엔트리가 세우는 페인이 있는가"라는
   // 사실 하나가 진다(pane 계약, #957). 활성 패널·폭 계산은 페인 엔트리만 본다.
@@ -150,11 +144,6 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     setCardWidthState(next);
   }, [isDragging, maxPanelWidth, desiredWidth]);
 
-  useLayoutEffect(() => {
-    if (previousRailChromeExpandedRef.current && !railChromeExpanded) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".rail-edge-dock");
-    previousRailChromeExpandedRef.current = railChromeExpanded;
-  }, [railChromeExpanded]);
-
   // 아레나 계산의 원료 — 레일이 캔버스 위에서 점유하는 실측 폭을 스토어로 보고한다.
   // fit-all·스냅 칸·War Room 무대가 이 값으로 열린 카드를 피해 계산된다.
   // 슬롯 총폭(카드+extra)도 예산으로 캡한다 — 카드 상한만 사이드바를 빼면 MIN 바닥(240)과
@@ -164,8 +153,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     ? Math.max(MIN_PANEL_WIDTH, Math.min(cardWidth + extraWidth, Math.max(MIN_PANEL_WIDTH, widthBudget)))
     : 0;
   useLayoutEffect(() => {
-    reportRailOccupiedPx(railChromeExpanded ? (zenMode ? 0 : RAIL_ICON_STRIP_WIDTH) + slotWidth : 0);
-  }, [railChromeExpanded, slotWidth, zenMode]);
+    reportRailOccupiedPx(slotWidth);
+  }, [slotWidth]);
 
   const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -252,19 +241,11 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   return (
     <div
       ref={rootRef}
-      className={`right-rail${hasPanel ? " is-open" : ""}${railChromeExpanded ? " is-expanded" : " is-closed"}${railPeeking ? " is-peeking" : ""}${isDragging ? " is-dragging" : ""}`}
-      data-rail-chrome={railChromeExpanded ? "expanded" : "closed"}
+      className={`right-rail${hasPanel ? " is-open" : ""}${isDragging ? " is-dragging" : ""}`}
       role="complementary"
       aria-label={t("rail.chrome.aria")}
-      inert={!railChromeExpanded && !railPeeking}
+      inert={!hasPanel}
       style={{ "--right-rail-panel-width": `${slotWidth}px` } as CSSProperties}
-      onPointerLeave={(event) => {
-        // 픽은 포인터가 머무는 동안의 상태다 — 카드를 떠나면 끝나고, 엣지 독으로의 이동만 연속이다.
-        if (railChromeExpanded || !railPeeking) return;
-        const next = event.relatedTarget;
-        if (next instanceof Element && next.closest(".panel-edge-dock") !== null) return;
-        setRailPeeking(false);
-      }}
     >
       <div
         className="right-rail-panel-slot"
@@ -305,22 +286,6 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
           />
         )}
       </div>
-      <nav className="right-rail-icons" hidden={zenMode} inert={zenMode} aria-label={t("rail.chrome.toolsAria")}>
-        {/* 창 동사(접기·열어 두기)는 도구 위, 열 최상단에 선다 — 카드 자신을 다루는 일은
-            카드 안의 어떤 도구보다 먼저다(Periscope: 밴드 토글 퇴역, 접기는 패널 소유).
-            픽(오버레이) 중에는 같은 자리가 "열어 두기"(고정)로 바뀐다 — 픽에서 접기는
-            무의미하고 남는 결정은 고정뿐이다. */}
-        <button
-          type="button"
-          className="right-rail-ico right-rail-collapse"
-          aria-label={t(railPeeking ? "rail.chrome.keepOpen" : "rail.chrome.collapse", { shortcut: railShortcut })}
-          title={t(railPeeking ? "rail.chrome.keepOpen" : "rail.chrome.collapse", { shortcut: railShortcut })}
-          onClick={() => setRailChromeExpanded(railPeeking ? true : false)}
-        >
-          {railPeeking ? <RailKeepOpenGlyph /> : <RailCollapseGlyph />}
-        </button>
-        <RailToolIcons context={baseCtx} orientation="column" />
-      </nav>
     </div>
   );
 }
@@ -356,33 +321,15 @@ export function useRailPanelContext(
 }
 
 /**
- * 트레이(가로 줄)에서 도구를 고른다. Zen은 레일의 펼침 플래그를 내려 패널 카드를 숨기므로(zen-chrome-toggles),
- * 레일을 접어 둔 채거나 Zen 토글로 숨긴 채 트레이에서 고르면 먼저 펼친다 — 사용자가 명시적으로 연 것이므로
- * Zen의 레일 드러냄과 같은 규칙이다. 이미 보이는 패널을 다시 고르면 평소처럼 닫는다.
+ * 레일 도구 아이콘 목록 — 콘솔 도구모음의 도구 칸에 한 줄로 선다(모드와 무관한 하나의 목록·순서·켜짐).
+ * 아이콘의 문서 id(rail-tab-*·rail-settings-toggle)는 패널 영역의 이름표와 온보딩 앵커가 가리킨다.
  */
-function toggleRailPanelFromTray(id: string): void {
-  const rail = getRailStoreSnapshot();
-  if (!rail.railChromeExpanded) {
-    setRailChromeExpanded(true);
-    if (rail.activePanelId !== id) openRailPanel(id);
-    return;
-  }
-  toggleRailPanel(id);
-}
-
-/**
- * 레일 도구 아이콘 목록 — 레일 카드의 세로 열과 Zen 탭의 가로 줄이 같은 목록·순서·켜짐을 쓴다.
- * 아이콘의 문서 id(rail-tab-*·rail-settings-toggle)는 세로 열만 싣는다: 패널 영역의 이름표와
- * 온보딩 앵커가 그 id를 가리키고, 두 줄이 함께 DOM에 있으므로(Zen 중 세로 열은 hidden) 한쪽만
- * 가져야 id가 겹치지 않는다.
- */
-export function RailToolIcons({ context, orientation }: { readonly context: RailToolContext; readonly orientation: "column" | "row" }) {
+export function RailToolIcons({ context }: { readonly context: RailToolContext }) {
   const t = useT();
   const language = context.language;
   const activePanelId = useRailActivePanelId();
   const bindings = useRailEntries();
   const paneEntries = bindings.filter((binding) => binding.panes.length > 0);
-  const anchored = orientation === "column";
   // 합성 순서가 곧 레일 순서다(virtual:fleet-plugins). 동작 엔트리를 종류별로 앞세우면 등록
   // 순서가 렌더에서 뒤집히므로(Shell이 Codex 앞에 섰다), 순서는 바인딩 그대로 두고 연속한
   // 페인 토글 구간만 role=group으로 묶는다 — 동작은 패널 그룹의 구성원이 아니다.
@@ -404,7 +351,7 @@ export function RailToolIcons({ context, orientation }: { readonly context: Rail
     () => new Set(openSurfaces.map((instance) => instance.surfaceId)),
     [openSurfaces],
   );
-  const divider = <div className="right-rail-divider" role="separator" aria-orientation={anchored ? "horizontal" : "vertical"} />;
+  const divider = <div className="right-rail-divider" role="separator" aria-orientation="vertical" />;
 
   return (
     <>
@@ -412,26 +359,25 @@ export function RailToolIcons({ context, orientation }: { readonly context: Rail
           설정은 문(톱니)으로만 열리므로 탭 목록에는 다시 서지 않는다. */}
       <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
         {paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID).map(({ entry }) => (
-          <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id} anchored={anchored} />
+          <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id} />
         ))}
       </div>
       {renderRuns(runsByScope.theater)}
       {runsByScope.theater.length > 0 && runsByScope.fleet.length > 0 ? divider : null}
       {renderRuns(runsByScope.fleet)}
-      {/* 설정은 열의 꼬리에 선다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류의 동작이라
-          구분선 아래 마지막 자리(VS Code Manage와 같은 자리, 카드 바닥)에 둔다. 톱니는 메뉴가 아니라 설정
-          표면의 문이고, 켜짐은 열의 다른 아이콘과 똑같은 활성 표식으로 "지금 여기"를 말한다. */}
-      {anchored ? <span className="right-rail-spacer" aria-hidden="true" /> : null}
-      <div className="right-rail-divider" role="separator" aria-orientation={anchored ? "horizontal" : "vertical"} />
+      {/* 설정은 도구 줄의 꼬리에 선다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류의 동작이라
+          구분선 뒤 마지막 자리에 둔다. 톱니는 메뉴가 아니라 설정 표면의 문이고, 켜짐은 다른 아이콘과
+          똑같은 활성 표식으로 "지금 여기"를 말한다. */}
+      {divider}
       <button
-        id={anchored ? "rail-settings-toggle" : undefined}
+        id="rail-settings-toggle"
         type="button"
         className={`right-rail-ico right-rail-settings-btn${activePanelId === SETTINGS_RAIL_ENTRY_ID ? " is-active" : ""}`}
         aria-pressed={activePanelId === SETTINGS_RAIL_ENTRY_ID}
         aria-controls={activePanelId === SETTINGS_RAIL_ENTRY_ID ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
         aria-label={t("settings.title")}
         title={t("settings.title")}
-        onClick={() => (anchored ? toggleRailPanel(SETTINGS_RAIL_ENTRY_ID) : toggleRailPanelFromTray(SETTINGS_RAIL_ENTRY_ID))}
+        onClick={() => toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)}
       >
         <GearGlyph />
       </button>
@@ -448,7 +394,6 @@ export function RailToolIcons({ context, orientation }: { readonly context: Rail
               entry={entry}
               context={context}
               language={language}
-              anchored={anchored}
               // 확장 표면이나 자기 레일 패널이 열려 있으면 켜짐이다.
               isActive={activePanelId === entry.id || (entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))}
             />
@@ -458,7 +403,7 @@ export function RailToolIcons({ context, orientation }: { readonly context: Rail
       : (
         <div key={run.key} className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
           {run.bindings.map(({ entry }) => (
-            <RailIcon key={entry.id} entry={entry} context={context} language={language} anchored={anchored} isActive={activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))} />
+            <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))} />
           ))}
         </div>
       ));
@@ -582,20 +527,17 @@ interface RailIconProps {
   readonly context: RailPanelContext;
   readonly language: ConsoleLocale;
   readonly isActive: boolean;
-  /** 세로 열의 아이콘만 문서 id를 싣는다(RailToolIcons 참고). */
-  readonly anchored: boolean;
 }
 
-function RailIcon({ entry, context, language, isActive, anchored }: RailIconProps) {
+function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   const handleClick = useCallback(() => {
     if (entry.activate) {
       if (context.theaterId === null) return;
       entry.activate(context);
       return;
     }
-    if (anchored) toggleRailPanel(entry.id);
-    else toggleRailPanelFromTray(entry.id);
-  }, [anchored, context, entry]);
+    toggleRailPanel(entry.id);
+  }, [context, entry]);
   useShortcutOverrides();
   const command = CORE_SHORTCUT_COMMANDS.find((candidate) => candidate.railEntryId === entry.id);
   const shortcut = command === undefined ? "" : shortcutCommandLabel(command.id);
@@ -607,7 +549,7 @@ function RailIcon({ entry, context, language, isActive, anchored }: RailIconProp
 
   return (
     <button
-      id={anchored ? `rail-tab-${entry.id}` : undefined}
+      id={`rail-tab-${entry.id}`}
       className={`right-rail-ico${isActive ? " is-active" : ""}${wrapClassName ? ` ${wrapClassName}` : ""}`}
       type="button"
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
@@ -620,15 +562,6 @@ function RailIcon({ entry, context, language, isActive, anchored }: RailIconProp
       {icon}
     </button>
   );
-}
-
-// 접기 방향(우측 엣지)을 가리키는 단일 셰브런 — 엣지 독 트리거의 펼침 셰브런과 한 쌍이다.
-function RailCollapseGlyph() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 3.6 10.6 8l-4.4 4.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function RailKeepOpenGlyph() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 2.5h5.6M6.4 2.5v3.1L4.6 7.7v1h6.8v-1L9.6 5.6V2.5M8 8.7v4.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 /** Console Use 시선 — 에이전트가 이 레일 패널(저장소·파일)을 읽으면 아이콘 모서리에 점이 선다. */

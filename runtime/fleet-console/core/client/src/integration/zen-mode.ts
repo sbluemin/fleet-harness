@@ -1,15 +1,15 @@
 import { useSyncExternalStore } from "react";
 
 // Zen은 현재 창의 표시 오버라이드다. 크롬 선호와 작업 수명은 건드리지 않는다.
-// Zen 안에서도 좌우 사이드바를 잠깐 드러낼 수 있다(reveal). 드러냄은 Zen 한 회에 묶인
+// Zen 안에서도 좌측 사이드바를 잠깐 드러낼 수 있다(reveal). 드러냄은 Zen 한 회에 묶인
 // 비영속 상태라 진입·종료 때 모두 걷힌다 — 다음 Zen은 다시 크롬 없이 시작한다.
+// 오른쪽에는 드러낼 사이드바가 없다 — 도구는 모드와 무관하게 도구모음 하나에 선다.
 export interface ZenModeState {
   readonly active: boolean;
   readonly sideBarRevealed: boolean;
-  readonly railRevealed: boolean;
 }
 
-let state: ZenModeState = { active: false, sideBarRevealed: false, railRevealed: false };
+let state: ZenModeState = { active: false, sideBarRevealed: false };
 const listeners = new Set<() => void>();
 
 function emit(next: ZenModeState): void {
@@ -27,7 +27,7 @@ export function getZenModeState(): ZenModeState {
 
 export function setZenMode(next: boolean): void {
   if (state.active === next) return;
-  emit({ active: next, sideBarRevealed: false, railRevealed: false });
+  emit({ active: next, sideBarRevealed: false });
 }
 
 /**
@@ -62,11 +62,6 @@ export function setZenSideBarRevealed(revealed: boolean): void {
   emit({ ...state, sideBarRevealed: revealed });
 }
 
-export function setZenRailRevealed(revealed: boolean): void {
-  if (!state.active || state.railRevealed === revealed) return;
-  emit({ ...state, railRevealed: revealed });
-}
-
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
@@ -76,7 +71,7 @@ export function useZenMode(): boolean {
   return useSyncExternalStore(subscribe, isZenMode, () => false);
 }
 
-const INACTIVE: ZenModeState = { active: false, sideBarRevealed: false, railRevealed: false };
+const INACTIVE: ZenModeState = { active: false, sideBarRevealed: false };
 
 export function useZenModeState(): ZenModeState {
   return useSyncExternalStore(subscribe, getZenModeState, () => INACTIVE);

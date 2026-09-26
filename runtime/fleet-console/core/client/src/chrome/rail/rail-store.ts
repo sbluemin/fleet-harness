@@ -7,7 +7,6 @@ import { useSyncExternalStore } from "react";
      아레나에서 항상 제외되므로 fit-all·스냅 칸·War Room 무대가 패널을 피해 계산된다. */
 interface RailStore {
   readonly activePanelId: string | null;
-  readonly railChromeExpanded: boolean;
   /** 활성 패널의 확장 폭 요구(px) — 독점 슬롯이라 요구도 하나다. 패널 교체·닫힘에 0으로 리셋. */
   readonly panelExtraWidth: number;
   /** detail이 떠난 동안 유지할 primary 열 폭. 카드의 분할 폭 기억과는 별개다. */
@@ -15,10 +14,8 @@ interface RailStore {
   readonly panelSoloMaxWidth: number | null;
   readonly panelWidthReset: number;
   readonly overlayAlpha: RailOverlayAlpha;
-  /** 레일 카드가 캔버스 위에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. */
+  /** 도구 패널 카드가 캔버스 위에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. */
   readonly railOccupiedPx: number;
-  /** 접힌 레일을 엣지 독 호버가 오버레이로 되부른 상태 — 세션 한정, railOccupiedPx에 불참한다. */
-  readonly railPeeking: boolean;
 }
 
 export type RailOverlayAlpha = number;
@@ -30,21 +27,21 @@ export const RAIL_OVERLAY_ALPHA_DEFAULT = 100;
 type Listener = () => void;
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
 const LEGACY_PREFS_PINNED_PANELS = "fleet-console.rail.pinnedPanels";
-const PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
+// 옛 아이콘 열의 접힘 선호 — 열이 도구모음으로 옮겨 가며 퇴역했다. 남은 값은 첫 로드에 걷는다.
+const LEGACY_PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
 const PREFS_OVERLAY_ALPHA = "fleet-console.rail.overlayAlpha";
 const PREFS_REPOSITORY_SOURCE = "fleet-console.repository.source";
 const listeners = new Set<Listener>();
 let store: RailStore = {
   activePanelId: readStoredActivePanelId(),
-  railChromeExpanded: readStoredChromeExpanded(),
   panelExtraWidth: 0,
   panelSoloWidth: null,
   panelSoloMaxWidth: null,
   panelWidthReset: 0,
   overlayAlpha: readStoredOverlayAlpha(),
   railOccupiedPx: 0,
-  railPeeking: false,
 };
+try { localStorage.removeItem(LEGACY_PREFS_CHROME_EXPANDED); } catch { /* ignore */ }
 
 export function subscribeRailStore(listener: Listener): () => void {
   listeners.add(listener);
@@ -72,24 +69,6 @@ export function openRailPanel(id: string): void {
 export function closeRailPanel(id: string): void {
   if (store.activePanelId !== id) return;
   deactivateRailPanel();
-}
-
-export function setRailChromeExpanded(expanded: boolean): void {
-  if (store.railChromeExpanded === expanded) return;
-  // dock 상태 전환은 어느 방향이든 픽을 끝낸다 — 펼침(고정)은 픽의 승격이고, 새 접힘은 픽 없이 시작한다.
-  setStore({ ...store, railChromeExpanded: expanded, railPeeking: false });
-  saveStoredChromeExpanded(expanded);
-}
-
-/** 엣지 독 호버가 접힌 레일을 오버레이로 되부른다 — 펼쳐져 있으면 픽이 설 자리가 없다. */
-export function setRailPeeking(peeking: boolean): void {
-  const next = peeking && !store.railChromeExpanded;
-  if (store.railPeeking === next) return;
-  setStore({ ...store, railPeeking: next });
-}
-
-export function toggleRailChrome(): void {
-  setRailChromeExpanded(!store.railChromeExpanded);
 }
 
 export function setRailOverlayAlpha(alpha: number): void {
@@ -144,10 +123,6 @@ export function useRailActivePanelId(): string | null {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).activePanelId;
 }
 
-export function useRailChromeExpanded(): boolean {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railChromeExpanded;
-}
-
 export function useRailPanelExtraWidth(): number {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelExtraWidth;
 }
@@ -158,10 +133,6 @@ export function useRailOverlayAlpha(): RailOverlayAlpha {
 
 export function useRailOccupiedPx(): number {
   return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railOccupiedPx;
-}
-
-export function useRailPeeking(): boolean {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railPeeking;
 }
 
 function activateRailPanel(id: string): void {
@@ -226,10 +197,6 @@ function normalizeStoredPanelId(stored: string): string | null {
   return stored;
 }
 
-function readStoredChromeExpanded(): boolean {
-  try { return localStorage.getItem(PREFS_CHROME_EXPANDED) !== "0"; } catch { return true; }
-}
-
 function readStoredOverlayAlpha(): RailOverlayAlpha {
   try {
     const stored = localStorage.getItem(PREFS_OVERLAY_ALPHA);
@@ -248,10 +215,6 @@ function saveStoredActivePanelId(id: string | null): void {
     if (id === null) localStorage.removeItem(PREFS_ACTIVE_PANEL);
     else localStorage.setItem(PREFS_ACTIVE_PANEL, id);
   } catch { /* ignore */ }
-}
-
-function saveStoredChromeExpanded(expanded: boolean): void {
-  try { localStorage.setItem(PREFS_CHROME_EXPANDED, expanded ? "1" : "0"); } catch { /* ignore */ }
 }
 
 function saveStoredOverlayAlpha(alpha: RailOverlayAlpha): void {

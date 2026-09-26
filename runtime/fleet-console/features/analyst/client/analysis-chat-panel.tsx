@@ -8,7 +8,7 @@ import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
 
 import { openPane } from "../../../core/client/src/chrome/pane/pane-store.js";
-import { openRailPanel, setRailChromeExpanded } from "../../../core/client/src/chrome/rail/rail-store.js";
+import { openRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../settings/client/settings-entry.js";
 import { splitAnalystLedger, type AnalysisActivity, type AnalysisEntry, type AnalysisSegment, type AnalysisState, type AnalysisToolStep } from "./analysis-state.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -69,7 +69,6 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const openAnalystSettings = () => {
     openRailPanel(SETTINGS_RAIL_ENTRY_ID);
     openPane({ paneId: SETTINGS_PANE_ID, params: { section: "experiments" } });
-    setRailChromeExpanded(true);
   };
   const hasInteracted = state.entries.length > 0;
   // 아티팩트는 드로어 안의 모드다 — 별도 컴패니언이 아니라 발판 줄의 글리프가 이 본문을 가른다.

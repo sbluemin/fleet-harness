@@ -24,7 +24,6 @@ export interface ConsoleGlobalShortcutDependencies {
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
   readonly getOperationSearchMode: () => "operations" | "commands" | null;
   readonly toggleQuickLaunch: () => void;
-  readonly toggleRailChrome: () => void;
   readonly toggleZenMode?: () => void;
   readonly toggleRailSurface: (entryId: string) => boolean;
   readonly canUndoLastClose?: () => boolean;
@@ -104,14 +103,6 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.undoLastClose?.();
-      return;
-    }
-    // Mod+Alt+B(rail): macOS는 ⌘⌥로 발화하며 ⌥B의 합성문자(∫)는 무시하고 code로 판정한다.
-    // Win/Linux의 AltGr 오인은 등록부의 matchesChord가 event.key 교차 판정으로 거른다.
-    if (matches("console.toggle-rail")) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      dependencies.toggleRailChrome();
       return;
     }
     if (matches("console.toggle-sidebar")) {

@@ -37,7 +37,6 @@ import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
-import { setRailChromeExpanded, toggleRailChrome } from "../chrome/rail/rail-store.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
@@ -54,7 +53,8 @@ import { syncExperimentModelOptionPlugins } from "../integration/experiment-mode
 import { isZenMode, setZenMode, toggleZenMode, useZenModeState } from "../integration/zen-mode.js";
 import { ZenBar } from "../chrome/zen/zen-bar.js";
 import { ZenTransition } from "../chrome/zen/zen-transition.js";
-import { toggleZenRail, toggleZenSideBar } from "../integration/zen-chrome-toggles.js";
+import { toggleZenSideBar } from "../integration/zen-chrome-toggles.js";
+import { ConsoleToolbar } from "../chrome/toolbar/console-toolbar.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
@@ -446,21 +446,6 @@ export function App() {
       toggleZenMode: () => {
         if (resolvePanelShortcut() === "apply") toggleZenMode();
       },
-      toggleRailChrome: () => {
-        if (isZenMode() && resolvePanelShortcut() === "apply") {
-          hideZenChromeRestoringFocus(".right-rail", toggleZenRail);
-          return;
-        }
-        setZenMode(false);
-        const outcome = resolvePanelShortcut();
-        if (outcome === "suppress") return;
-        if (outcome === "reveal") {
-          navigate("/operations");
-          setRailChromeExpanded(true);
-          return;
-        }
-        toggleRailChrome();
-      },
       toggleRailSurface: (entryId) => {
         const outcome = resolvePanelShortcut();
         const entry = railBindings.find((binding) => binding.entry.id === entryId)?.entry;
@@ -505,10 +490,10 @@ export function App() {
   return (
     <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
-      <div className={`console-shell${zenActive ? " is-zen" : ""}${zenActive && zenState.railRevealed ? " is-zen-rail-revealed" : ""}`}>
-        {/* Zen에서 서는 부유 도구막대 — 종료 · 레일 도구 · 밴드에서 옮겨 온 플러그인 항목. 막대(작업 표시줄)는
-            Operations 페이지가 세우고, 이 바는 콘솔 크롬이라 여기 둔다. 도구 칸과 플러그인 칸은 Zen이 꺼져
-            있어도 DOM에 남는다(포털 계약) — 바 전체가 hidden이라 그려지지는 않는다. */}
+      <div className={`console-shell${zenActive ? " is-zen" : ""}`}>
+        {/* Zen 트레이 — 작업 표시줄 오른쪽 끝. 막대(작업 표시줄)는 Operations 페이지가 세우고, 이 트레이는
+            콘솔 크롬이라 여기 둔다. 도구모음이 Zen 동안 여기에 선다 — 자리는 Zen이 꺼져 있어도 DOM에 남고,
+            바 전체가 hidden이라 그려지지는 않는다. */}
         <ZenBar active={zenActive} local={state.channel === "local"} />
         <span className="zen-mode-announcement" role="status" aria-live="polite">{zenActive ? t("zen.active") : ""}</span>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
@@ -519,6 +504,8 @@ export function App() {
             지키는 화이트리스트라, 그리지 않는 것이라도 끼면 계약이 헐거워진다. */}
         <PersistentPluginComponents />
         {mobileLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
+        {/* 도구모음은 하나다 — 모드는 자리만 바꾼다(상단 바 오른쪽 ↔ Zen 트레이). 모바일 셸은 자기 탭 막대를 쓴다. */}
+        {mobileLayout ? null : <ConsoleToolbar zen={zenActive} zenAvailable={operationsViewVisible} />}
         <FloatingWidgetLayer />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는
             레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만 성립하는데, 그 조건을

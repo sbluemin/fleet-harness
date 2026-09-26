@@ -2044,8 +2044,8 @@ describe("Instrument core design contract", () => {
     expect(rightRail).not.toContain("toggleRailSectionCollapsed");
     expect(rail).not.toContain(".right-rail-section-toggle");
     expect(rail).not.toContain(".right-rail-section-caret");
-    // Doctrine: Operation panels keep a 32px attached caption. The Activity Rail has no
-    // panel head at all — its settings live behind the gear at the top of the icon column,
+    // Doctrine: Operation panels keep a 32px attached caption. The tool panel card has no
+    // panel head at all — its settings live behind the gear in the toolbar,
     // so the body owns the whole slot and no chrome can summon itself over it. The retired
     // hover-reveal head is pinned negatively: it fired from the most common pointer path
     // across the panel top and then covered the very controls that path was aiming for.
@@ -2054,14 +2054,13 @@ describe("Instrument core design contract", () => {
     expect(rail).not.toContain("grid-template-rows: 32px minmax(0, 1fr);");
     expect(rightRail).not.toContain("HEAD_REVEAL");
     expect(rightRail).not.toMatch(/onPointerMove=\{(?:hasPanel \? )?handleSlotPointer/);
-    // Doctrine: the gear stands last in the icon column, below a spacer and a divider that
-    // split it from the tool runs — governing the console and choosing a work tool are
-    // different kinds of act. Tools group by scope (Theater-scoped first, Fleet-scoped after
-    // a divider), each scope in plugin composition order. The gear is the settings surface's
-    // one door: it toggles the core settings pane and never appears again as a tab.
-    expect(rightRail).toMatch(/right-rail-tabs[\s\S]*renderRuns\(runsByScope\.theater\)[\s\S]*renderRuns\(runsByScope\.fleet\)[\s\S]{0,1200}right-rail-spacer[\s\S]{0,300}right-rail-divider[\s\S]{0,300}right-rail-settings-btn/);
+    // Doctrine: the gear stands last in the toolbar's tool run, after a divider that splits it
+    // from the tools — governing the console and choosing a work tool are different kinds of
+    // act. Tools group by scope (Theater-scoped first, Fleet-scoped after a divider), each scope
+    // in plugin composition order. The gear is the settings surface's one door: it toggles the
+    // core settings pane and never appears again as a tab.
+    expect(rightRail).toMatch(/right-rail-tabs[\s\S]*renderRuns\(runsByScope\.theater\)[\s\S]*renderRuns\(runsByScope\.fleet\)[\s\S]{0,1200}\{divider\}[\s\S]{0,300}right-rail-settings-btn/);
     expect(rightRail).toContain('binding.entry.scope ?? "theater"');
-    expect(rail).toMatch(/\.right-rail-spacer \{[^}]*flex: 1 1 0;/);
     expect(rightRail).toContain('toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)');
     expect(rightRail).toContain('binding.entry.id !== SETTINGS_RAIL_ENTRY_ID');
     expect(rail).toMatch(/\.right-rail-divider \{[^}]*background: var\(--surface-rim-strong\);/);
@@ -2069,8 +2068,8 @@ describe("Instrument core design contract", () => {
     // button (30px inside the 32px control), which is how it first shipped oversized; plugin
     // icons bring their own sizes but this core-drawn glyph has to state one here.
     expect(rail).toMatch(/\.right-rail-settings-btn svg \{[^}]*width: \d+px;[^}]*height: \d+px;/);
-    // Doctrine: one column, one "on" grammar. The gear wears the same active mark as every
-    // other rail icon (dark fill, rim-strong border, left brass bar) and declares no active
+    // Doctrine: one row, one "on" grammar. The gear wears the same active mark as every
+    // other tool icon (dark fill, rim-strong border, brass underline) and declares no active
     // rule of its own — it first shipped with a brass-glow fill and a suppressed bar, which
     // read as a different kind of selection sitting right above the panel tabs. That the gear
     // is a door and not a tab is already carried by role/aria, not by a second visual grammar.
@@ -2181,12 +2180,18 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--chrome-band-height: 36px;");
     expect(commandBand).toContain("<BrandHome />");
     expect(commandBand).toContain("<CommandBandSystemCluster />");
-    expect(commandBand).toContain('className="command-band-button command-band-search"');
-    expect(commandBand).toContain("onClick={toggleOperationSearch}");
     expect(commandBand).toContain('className="command-band-button command-band-viewmode"');
-    // Periscope: 패널 접기 토글은 밴드에서 퇴역했다 — 접기는 각 패널 자신의 컨트롤이,
-    // 접힌 뒤의 문은 엣지 독(brass 필라멘트 + 호버 픽 + 클릭 고정)이 진다. ⌘B·⌘⌥B 의미는
-    // 불변이고 /operations 밖의 "돌아가 펼침"은 단축키 핸들러가 계속 소유한다.
+    // 도구모음은 콘솔에 하나다 — 찾기·도움말·Zen은 밴드가 따로 세우지 않고, 밴드는 도구모음이 설 자리만 둔다.
+    const toolbar = source("chrome/toolbar/console-toolbar.tsx");
+    expect(commandBand).toContain('<span className="command-band-toolbar" ref={setBandToolbarHost} />');
+    expect(commandBand).not.toContain("command-band-search");
+    expect(commandBand).not.toContain("command-band-zen");
+    expect(toolbar).toContain("onClick={toggleOperationSearch}");
+    expect(toolbar).toContain("<ConsoleHelpMenu />");
+    expect(app).toContain("<ConsoleToolbar zen={zenActive} zenAvailable={operationsViewVisible} />");
+    // Periscope: 패널 접기 토글은 밴드에서 퇴역했다 — 좌측 사이드바의 접기는 패널 자신의 컨트롤이,
+    // 접힌 뒤의 문은 엣지 독(brass 필라멘트 + 호버 픽 + 클릭 고정)이 진다. 오른쪽 사이드바는 퇴역해
+    // 도구모음이 되었고, 그 쪽의 접기·엣지 독·⌘⌥B도 함께 퇴역했다.
     expect(commandBand).not.toContain("command-band-sidebar-toggle");
     expect(commandBand).not.toContain("command-band-rail-toggle");
     expect(commandBand).not.toContain("panelTogglesVisible");
@@ -2196,24 +2201,19 @@ describe("Instrument core design contract", () => {
     const edgeDocks = source("chrome/components/panel-edge-docks.tsx");
     expect(sidebarPanelSource).toContain("<SideBarCollapseControl />");
     expect(triageSidebarSource).toContain("<SideBarCollapseControl />");
-    expect(railPanelSource).toContain('className="right-rail-ico right-rail-collapse"');
-    // Doctrine: the window verb carries an explicit glyph size, for the same reason the gear
-    // does — it first shipped with only a viewBox and filled the 32px control, twice the gear.
-    // It matches the sidebar collapse control's glyph (same chevron/pin, same 16px) so both
-    // edges read as one grammar.
-    expect(rail).toMatch(/\.right-rail-collapse svg \{[^}]*width: 16px;[^}]*height: 16px;/);
+    expect(railPanelSource).not.toContain("right-rail-collapse");
+    expect(edgeDocks).not.toContain("RailEdgeDock");
     // 접힘 순간 포커스는 접힌 뒤에도 남는 안정 좌표(그 패널의 엣지 독 트리거)로 넘어간다.
     expect(sidebarPanelSource).toContain('focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock")');
-    expect(railPanelSource).toContain('focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".rail-edge-dock")');
-    // 픽은 오버레이다 — dock 상태(collapsed/railChromeExpanded)와 아레나 인셋 보고를 건드리지
-    // 않고 카드만 되부른다. 필라멘트·픽 테두리의 brass 믹스는 상태가 아니라 위치/호버 채널이다.
+    // 픽은 오버레이다 — dock 상태(collapsed)와 아레나 인셋 보고를 건드리지 않고 카드만 되부른다.
+    // 필라멘트·픽 테두리의 brass 믹스는 상태가 아니라 위치/호버 채널이다.
     expect(components).toContain(".operations-side-bar.is-closed.is-peeking {");
-    expect(rail).toContain(".right-rail.is-closed.is-peeking {");
+    expect(rail).not.toContain(".is-peeking");
     expect(components).toContain(".panel-edge-dock-filament {");
     // 엣지 독은 캔버스 위 부유 크롬이다 — 캔버스 제스처가 삼키지 않도록 blocker 마크를 단다.
     expect(edgeDocks).toContain("data-canvas-blocker");
-    // 맵 컨트롤(모드 스위치+검색+트레이)은 중앙 트랙의 단독 승객이다(브레드크럼 퇴역). 검색은
-    // 전역 진입구라 유틸리티 뷰에서도 중앙에 남고, 모드 스위치·트레이만 Operations 뷰에 게이트된다.
+    // 맵 컨트롤(모드 스위치+트레이)은 중앙 트랙의 단독 승객이다(브레드크럼 퇴역). 찾기는 도구모음으로
+    // 옮겨 갔고, 모드 스위치·트레이는 Operations 뷰에 게이트된다.
     expect(commandBand).toContain(`      <div className="command-band-center">
         <div ref={mapControlsRef} className="command-band-map-controls">
         {operationsViewVisible ? <div
@@ -2253,7 +2253,8 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("<DensityIcon /><span>{triageDeckZoomLive.toFixed(1)}×</span>");
     // 안내 앵커(.command-band-mode-tray, data-war-room-tool)가 닫힌 캡슐 안에 있을 때는 CSS가 강제로 펼친다.
     expect(layout).toContain(".command-band-mode-tray:has(.is-feature-tour-anchor)");
-    expect(commandBand).toContain('<span className="command-band-center-divider" aria-hidden="true" />');
+    // 중앙 트랙에는 모드 스위치만 남는다 — 찾기·Zen은 도구모음으로 옮겨 가 구분선도 함께 퇴역했다.
+    expect(commandBand).not.toContain("command-band-center-divider");
     // 세 버튼이 곧 토글이다 — 꺼져 있으면 켜고, 다른 나누기면 바꾸고, 눌린 것을 다시 누르면 끈다.
     // 눌림 표시는 켜져 있을 때만 보인다. 별도 토글 버튼은 두지 않는다.
     expect(commandBand).toContain("onClick={() => pickAlignLayout(layout.id)}");
@@ -2285,7 +2286,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-theater-add-btn {");
     expect(layout).toContain(".command-band-mode-switch {");
     expect(layout).toContain(".command-band-mode-seg {");
-    expect(layout).toContain(".command-band-center-divider {");
+    expect(layout).not.toContain(".command-band-center-divider {");
     // 맵 컨트롤 클러스터는 컨테이너 플로우 배치다 — 개별 절대 위치 + 매직 오프셋(구 116px)은
     // 버튼 추가 시 겹침으로 깨지므로(선별 처리 아이콘 덮임 사고) 다시 도입하지 않는다.
     expect(layout).toContain(".command-band-map-controls {");
@@ -2443,7 +2444,8 @@ describe("Instrument core design contract", () => {
     expect(sideBarBlock).toContain("border: 1px solid var(--surface-rim);");
     expect(components).not.toContain(".float-handle");
     expect(components).not.toContain("focus-mode-reveal");
-    expect(rail).toContain(".right-rail.is-closed");
+    // 도구 패널 카드는 켜진 도구가 없으면 폭 0으로 걷힌다 — 접힌 레일(is-closed) 상태는 오른쪽 사이드바와 함께 퇴역했다.
+    expect(rail).toContain(".right-rail:not(.is-open) {");
     expect(layout).not.toContain(".command-band-context-separator {");
     // Theater›Operation 브레드크럼은 퇴역했다 — 사이드바가 이미 말하는 문장이고, 중앙 트랙은
     // 캔버스 모드 컨트롤이 가져갔다.
@@ -2460,19 +2462,18 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("inert={commandBandHidden || undefined}");
     // 크롬을 치우는 결정은 Zen 하나가 소유한다.
     expect(commandBand).toContain("const commandBandHidden = zenMode;");
-    // Zen이 밴드를 내려도 플러그인 항목은 언마운트되지 않고 손잡이 슬롯으로 옮겨 간다 —
-    // 언마운트하면 플러그인은 슬롯이 없다고 보고 자기 표면을 캔버스로 되돌린다(부관은 새로
-    // 돌아간다). 그것이 바로 Zen이 치우려던 것이다.
-    expect(commandBand).toContain("createPortal(rendered, zenSlot)");
+    // 도구모음은 하나이고 Zen은 그 자리만 바꾼다 — 도구모음은 자기 노드를 새 자리로 옮겨 끼우므로
+    // 안의 플러그인 항목은 언마운트되지 않는다. 언마운트하면 플러그인은 자리가 없다고 보고 자기 표면을
+    // 캔버스로 되돌린다(부관은 새로 돌아간다). 그것이 바로 Zen이 치우려던 것이다.
     const appShell = source("app/app.tsx");
     const zenBar = source("chrome/zen/zen-bar.tsx");
-    expect(zenBar).toContain('<span className="zen-mode-chrome-slot" ref={setZenChromeSlot} />');
-    // 슬롯(과 레일 도구 칸)은 Zen이 꺼져 있어도 DOM에 남는다 — 포털 컨테이너가 커밋 중에 사라지면
-    // 옮겨 가던 항목이 분리된 노드에 남는다. Zen 바 전체가 hidden이라 그려지지는 않는다.
-    expect(zenBar).toContain('<span className="zen-bar-tools" ref={setZenToolsSlot} />');
+    const consoleToolbar = source("chrome/toolbar/console-toolbar.tsx");
+    expect(consoleToolbar).toContain("host.appendChild(mount);");
+    expect(consoleToolbar).toContain("<ToolbarPluginEntries />");
+    // 트레이 자리는 Zen이 꺼져 있어도 DOM에 남는다. Zen 바 전체가 hidden이라 그려지지는 않는다.
+    expect(zenBar).toContain('<span className="zen-bar-toolbar" ref={setZenToolbarHost} />');
     expect(zenBar).toContain("hidden={!active}");
     expect(appShell).toContain("<ZenBar active={zenActive}");
-    expect(layout).toContain(".zen-mode-chrome-slot:empty { display: none; }");
     // darwin 전체화면에서 신호등이 물러난 자리로 좌측 클러스터가 활주한다. transform이 아니라
     // 패딩을 움직여야 중앙 여백 하한의 실측(offsetLeft)이 새 자리를 읽는다.
     const darwinBandLeftBlock = layout.match(/html\[data-desktop-shell="true"\]\[data-desktop-platform="darwin"\] \.command-band-left \{[^}]*\}/)?.[0] ?? "";
@@ -3692,7 +3693,7 @@ describe("Instrument core design contract", () => {
     // 패널 토글 글리프(사이드바 프레임 rect)는 Periscope에서 토글과 함께 퇴역했다 —
     // 밴드에 패널 프레임 아이콘이 되살아나면 접기 조작이 밴드로 되돌아온 회귀다.
     expect(commandBand).not.toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
-    expect(rail).toContain("width: 44px");
+    expect(rail).not.toContain(".right-rail-icons");
   });
 
   it("pins the caption status rail motion grammar — one motion per state, hierarchy, phase lock", () => {

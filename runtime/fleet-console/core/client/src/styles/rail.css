@@ -1,4 +1,6 @@
-/* ── Right Rail chrome ───────────────────────────────────────────── */
+/* ── 도구 패널 카드와 도구 아이콘 ─────────────────────────────────────
+   카드는 도구모음의 도구가 여는 표면이다(옛 오른쪽 사이드바의 패널 칸). 아이콘 열은 퇴역했고,
+   같은 아이콘이 콘솔 도구모음(console-toolbar.tsx)의 도구 칸에 한 줄로 선다. */
 
 /* z-index 계층 — 우현 핸들 충돌 방지 SSoT.
    --z-rail은 전면 캔버스(z:0 스택 컨텍스트) 위 부유 크롬 공용 층이다 — 좌측 사이드바 카드도
@@ -9,9 +11,8 @@
   --z-codex-side: 20;
 }
 
-/* 부유 유리 카드 — 전면 해도 개편으로 레일은 그리드 열이 아니라 캔버스 위에 뜬 카드다.
-   구 push/overlay 이원은 퇴역했다: 밀어낼 그리드 트랙이 더는 없고, "가리지 않는다"는 push의
-   기대는 아레나 인셋(캔버스 기하가 열린 카드 폭을 항상 제외)이 승계한다. */
+/* 부유 유리 카드 — 캔버스 위에 뜬 카드다. "가리지 않는다"는 기대는 아레나 인셋(캔버스 기하가
+   열린 카드 폭을 항상 제외)이 진다. 켜진 도구가 없으면 폭 0으로 걷히고 보이지 않는다. */
 .right-rail {
   position: absolute;
   top: var(--space-3);
@@ -19,38 +20,18 @@
   bottom: var(--space-3);
   display: flex;
   flex-direction: row;
-  width: calc(44px + var(--right-rail-panel-width, 0px));
+  width: var(--right-rail-panel-width, 0px);
   min-height: 0;
   z-index: var(--z-rail);
   /* Glass 부유 카드 — 144df6c 이전 독립 ALERTS 도크의 함교 계기판 질감을 계승한다:
      우상단 brass 코너 조명 + glass 본체, 부유 그림자, 단일 blur 레이어.
-     자식(panel-slot·icons)은 표면을 갖지 않고 이 카드 위에 투명하게 얹힌다. */
+     자식(panel-slot)은 표면을 갖지 않고 이 카드 위에 투명하게 얹힌다. */
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
   background: none;
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   overflow: hidden;
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
-}
-
-/* 레일 유리도 자식 없는 ::before가 진다 — 루트 backdrop-filter의 containing block 함정 회피.
-   가로 범위는 아이콘 열(44px)로 한정한다: 카드 전폭으로 깔면 슬롯 재질 뒤에 한 겹 더 상주해
-   투명도 슬라이더가 캔버스 대신 이 층에 막히고 기본 상태에서도 이중 틴트가 된다(적대 리뷰 확정).
-   모서리는 카드 루트의 overflow: hidden + radius가 잘라 주므로 여기서 다시 굴리지 않는다. */
-.right-rail::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: 44px;
-  z-index: -1;
-  background:
-    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
-    color-mix(in oklch, var(--glass-tint-strong) 92%, var(--ink-deep));
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
-  pointer-events: none;
 }
 
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
@@ -154,38 +135,14 @@
   font-size: var(--t-xs);
 }
 
-/* ── 아이콘 레일 ────────────────────────────────────────────────── */
-.right-rail-icons {
-  width: 44px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  /* 접기 토글이 상단에 밀착하도록 위 패딩은 두지 않는다(아래만 유지). */
-  padding: 0 0 10px;
-  list-style: none;
-  margin: 0;
-}
-
-/* 패널이 열렸을 때만 panel-slot과 아이콘 컬럼 사이 내부 구분선을 둔다.
-   닫힌 상태(48px 카드)에선 구분선이 카드 좌측 모서리에 붙어 어색하므로 숨긴다. */
-.right-rail.is-open .right-rail-icons {
-  border-left: 1px solid var(--surface-rim);
-}
-
-/* 톱니를 열 꼬리(카드 바닥)로 밀어내는 숨 — 도구 열과 톱니 사이의 남는 높이를 먹는다. */
-.right-rail-spacer {
-  flex: 1 1 0;
-  min-height: 0;
-}
-
+/* ── 도구 아이콘 ──────────────────────────────────────────────────
+   도구모음의 한 줄 문법 — 26px 둥근 칸, 켜짐은 어두운 면 · rim-strong 테두리 · 아래 brass 선. */
 .right-rail-ico {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   display: inline-grid;
   place-items: center;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-pill);
   background: none;
   border: 1px solid transparent;
   color: var(--text-tertiary);
@@ -211,24 +168,26 @@
   background: var(--ink-deep);
 }
 
-/* 활성 아이콘 좌측 2px brass bar */
+.right-rail-ico svg { width: 15px; height: 15px; }
+
+/* 켜짐 표식은 아이콘 아래 선이다 — 가로 줄 사이에 선 세로 띠로 읽히지 않게. */
 .right-rail-ico.is-active::before {
   content: "";
   position: absolute;
-  left: -1px;
-  top: 7px;
-  bottom: 7px;
-  width: 2px;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 2px;
   border-radius: 2px;
   background: var(--brass);
 }
 
 /* ── 설정 톱니 ──────────────────────────────────────────────────
    톱니는 설정 표면의 문이다. 옛 컨텍스트 메뉴(플로팅·불투명도·폭·닫기)는 해체됐다 —
-   레일 취향은 설정 > 겉모습으로, 폭 초기화는 분할선 더블클릭으로 갔다. 톱니는 아이콘 열
-   최상단에 서고 디바이더가 패널 탭과 갈라 놓는다 — 콘솔을 다스리는 일과 작업 패널을
+   카드 취향은 설정 > 겉모습으로, 폭 초기화는 분할선 더블클릭으로 갔다. 톱니는 도구 줄의
+   꼬리에 서고 디바이더가 패널 탭과 갈라 놓는다 — 콘솔을 다스리는 일과 작업 패널을
    고르는 일은 다른 종류의 동작이다. */
-/* 크기를 적지 않은 SVG는 viewBox만 갖고 버튼을 통째로 채운다(32px 버튼 안에서 30px) —
+/* 크기를 적지 않은 SVG는 viewBox만 갖고 버튼을 통째로 채운다 —
    플러그인 아이콘은 저마다 크기를 들고 오지만 코어가 그리는 이 글리프는 여기서 정해야 한다.
    값은 상자 맞춤이 아니라 광학 무게로 골랐다: 톱니는 링·이·안쪽 원이 겹친 조밀한 형태라
    같은 상자에서도 윤곽선 글리프보다 잉크가 많다. 15px에서 칠해진 면적이 이웃 패널 아이콘
@@ -240,26 +199,16 @@
   display: block;
 }
 
-/* 창 동사(접기·열어 두기)도 같은 이유로 크기를 적는다 — 처음 출하 때 viewBox만 든 채
-   버튼을 통째로 채워(30px) 톱니의 두 배로 보였다. 값은 좌측 사이드바 접기 컨트롤의 같은
-   글리프(.side-bar-collapse svg: 16px)와 맞춘다: 양쪽 가장자리의 셰브런·핀은 같은 그림이고
-   같은 크기로 읽혀야 한 문법이다. 윤곽선 글리프라 톱니(15px)보다 1px 커도 잉크는 더 가볍다. */
-.right-rail-collapse svg {
-  width: 16px;
-  height: 16px;
-  display: block;
-}
-
-/* 열린 상태는 톱니만의 문법을 따로 두지 않는다 — 레일 아이콘 하나가 켜졌다는 사실은
-   열 전체에서 한 가지 모습으로만 말해야 한다(.right-rail-ico.is-active: 어두운 면·
-   rim-strong 테두리·좌측 brass 바). 톱니가 탭이 아니라는 사실은 role/aria가 이미
-   말하고 있고, 시각 표식까지 갈라놓으면 같은 열의 켜짐이 두 문법으로 읽힌다. */
+/* 열린 상태는 톱니만의 문법을 따로 두지 않는다 — 도구 하나가 켜졌다는 사실은
+   줄 전체에서 한 가지 모습으로만 말해야 한다(.right-rail-ico.is-active: 어두운 면·
+   rim-strong 테두리·아래 brass 선). 톱니가 탭이 아니라는 사실은 role/aria가 이미
+   말하고 있고, 시각 표식까지 갈라놓으면 같은 줄의 켜짐이 두 문법으로 읽힌다. */
 
 .right-rail-divider {
   flex: none;
-  width: 20px;
-  height: 1px;
-  margin: 2px 0;
+  width: 1px;
+  height: 14px;
+  margin: 0 var(--space-1);
   background: var(--surface-rim-strong);
 }
 
@@ -298,38 +247,26 @@
   transition: none;
 }
 
-/* 외곽 .right-rail의 width(calc + --right-rail-panel-width)도 같은 이유로 꺼야 한다.
+/* 외곽 .right-rail의 width(--right-rail-panel-width)도 같은 이유로 꺼야 한다.
    외곽 transition만 살아 있으면 flex 부모의 애니메이션 중인 폭이 슬롯을 flex-shrink로
-   압축해 슬롯의 transition:none을 무력화한다(실측: 매 프레임 슬롯 폭 ≡ rail 폭 − 45px,
-   60px 스텝 완주에 ~200ms). 닫기 toggle(.is-closed: width→0)은 is-dragging이 아닐 때만
+   압축해 슬롯의 transition:none을 무력화한다. 닫힘(width→0)은 is-dragging이 아닐 때만
    타므로 그대로 유지된다. */
 .right-rail.is-dragging {
   user-select: none;
   transition: none;
 }
 
-/* 패널 탭(그룹)만 감싸는 래퍼 — 라우트 NavLink를 그룹 밖에 두기 위한 a11y 경계.
-   display: contents로 아이콘 컬럼 flex 배치는 그대로 통과시킨다. */
+/* 패널 탭(그룹)만 감싸는 래퍼 — 동작 엔트리를 그룹 밖에 두기 위한 a11y 경계.
+   display: contents로 도구 칸의 flex 배치는 그대로 통과시킨다. */
 .right-rail-tabs {
   display: contents;
 }
 
-.right-rail.is-closed {
-  width: 0;
+/* 켜진 도구가 없으면 카드는 폭 0으로 걷히고, 걷힌 뒤에 보이지 않게 된다. */
+.right-rail:not(.is-open) {
   border-color: transparent;
   visibility: hidden;
-  overflow: hidden;
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms;
-}
-
-/* Periscope 픽 — 접힌 레일을 엣지 독 호버가 오버레이로 되부른다. dock 상태(railChromeExpanded)와
-   railOccupiedPx 보고는 그대로라 아레나·fit-all은 접힘 기하를 유지하고, 카드만 원폭으로 떠오른다.
-   brass 믹스 테두리는 사이드바 픽과 같은 위치/호버 채널이다(components.css 참조). */
-.right-rail.is-closed.is-peeking {
-  width: calc(44px + var(--right-rail-panel-width, 0px));
-  border-color: color-mix(in oklch, var(--brass) 38%, var(--surface-rim));
-  visibility: visible;
-  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
 /* ── prefers-reduced-motion 단락 ───────────────────────────────── */
@@ -359,7 +296,7 @@
 
 /* 폭을 배정받은 열은 그 폭으로 고정되고, 나머지 열이 남는 자리를 나눠 갖는다.
    레일은 오른쪽 가장자리에 정박해 왼쪽으로 자라므로, 표면의 마지막 열(primary)이
-   아이콘 띠에 붙어 있어야 폭이 변해도 목록이 손 아래 그대로 남는다. */
+   카드의 오른쪽 가장자리에 붙어 있어야 폭이 변해도 목록이 손 아래 그대로 남는다. */
 .rail-surface > .rail-pane.is-sized {
   flex: 0 0 auto;
   width: var(--pane-width, 248px);

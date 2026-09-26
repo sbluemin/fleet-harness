@@ -13,7 +13,7 @@ import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
 import { openPane } from "../pane/pane-store.js";
-import { openRailPanel, setRailChromeExpanded } from "../rail/rail-store.js";
+import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
@@ -90,23 +90,28 @@ function pickerUrl(homeOrigin: string, surface: string, at?: string): string {
   return url.toString();
 }
 
-// 시스템 클러스터는 커맨드 밴드 우측에 상주한다 — 사이드바 접힘·라우트 전환과 무관하게
-// 도움말(메뉴)이 항상 도달 가능해야 한다는 배치 계약의 소유자다. 설정 버튼은 여기 없다:
-// 설정의 문은 레일의 톱니 하나이고, 페이지가 은퇴하며 history 진입 마커도 함께 은퇴했다.
+// 시스템 클러스터는 커맨드 밴드 우측 끝에 상주한다 — 이 콘솔이 어느 호스트를 보고 있는지는 일반 모드의
+// 상단 바만 말한다. 도움말(?)과 설정의 문(톱니)은 도구모음으로 옮겨 가 모드와 무관하게 늘 닿는다.
 export function CommandBandSystemCluster() {
-  const state = useConsoleState();
   return (
     <div className="command-band-system-cluster">
       <HostSwitcher />
-      <HelpMenu
-        version={state.version}
-        latestVersion={state.latestVersion}
-        updateAvailable={state.updateAvailable}
-        // 새로고침/언어 전환 실패는 이미 표시 중인 노트를 버리지 않는다. 남은 노트가 있으면
-        // Help 진입도 열어 두어 inline 오류를 보고 다시 시도할 수 있어야 한다.
-        releaseDisabled={state.releaseNotesLoading || state.releaseNotes.length === 0}
-      />
     </div>
+  );
+}
+
+/** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, Zen 트레이에서는 위로 열린다(CSS가 자리로 판단). */
+export function ConsoleHelpMenu() {
+  const state = useConsoleState();
+  return (
+    <HelpMenu
+      version={state.version}
+      latestVersion={state.latestVersion}
+      updateAvailable={state.updateAvailable}
+      // 새로고침/언어 전환 실패는 이미 표시 중인 노트를 버리지 않는다. 남은 노트가 있으면
+      // Help 진입도 열어 두어 inline 오류를 보고 다시 시도할 수 있어야 한다.
+      releaseDisabled={state.releaseNotesLoading || state.releaseNotes.length === 0}
+    />
   );
 }
 
@@ -369,7 +374,6 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
     navigate("/operations");
     openRailPanel(SETTINGS_RAIL_ENTRY_ID);
     openPane({ paneId: SETTINGS_PANE_ID, params: { section: "connectivity" } });
-    setRailChromeExpanded(true);
   };
   const openAdd = () => {
     // 덮개에서는 판을 접지 않는다 — 접으면 팝업이 닫힌 뒤 빈 덮개만 남는다.

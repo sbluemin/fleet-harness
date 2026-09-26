@@ -322,13 +322,10 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 }
 .zen-sidebar-chrome { display: contents; }
 .zen-sidebar-chrome[hidden],
-.right-rail-icons[hidden],
 .console-shell.is-zen .canvas-minimap,
 .console-shell.is-zen .canvas-minimap-fab,
 .console-shell.is-zen .canvas-shortcuts { display: none; }
-.console-shell.is-zen:not(.is-zen-rail-revealed) .right-rail { width: var(--right-rail-panel-width, 0px); }
-.console-shell.is-zen:not(.is-zen-rail-revealed) .right-rail::before { display: none; }
-/* Zen의 레일 카드(도구 패널)는 작업 표시줄을 덮지 않는다. */
+/* Zen의 도구 패널 카드는 작업 표시줄을 덮지 않는다. */
 .console-shell.is-zen .right-rail { bottom: calc(var(--zen-taskbar-height) + var(--space-2)); }
 .zen-bar[hidden] { display: none; }
 .zen-mode-announcement {
@@ -339,9 +336,9 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* Zen 바 — 작업 표시줄 오른쪽 끝의 트레이(zen-bar.tsx). 접기 화살표 · 레일 도구 · 플러그인 항목 · 종료 ·
-   Fleet 앰블럼이 한 줄로 선다. 앱 셸이 들고 작업 표시줄 위에 겹쳐 세우므로 제 면을 따로 두지 않고
-   작업 표시줄의 면을 그대로 입는다 — 작업 표시줄은 --zen-bar-width만큼 비켜 선다. */
+/* Zen 바 — 작업 표시줄 오른쪽 끝의 트레이(zen-bar.tsx). Zen 동안 콘솔 도구모음이 여기에 서고, 끝에
+   Fleet 앰블럼이 선다. 앱 셸이 들고 작업 표시줄 위에 겹쳐 세우므로 제 면을 따로 두지 않고 작업
+   표시줄의 면을 그대로 입는다 — 작업 표시줄은 --zen-bar-width만큼 비켜 선다. */
 .zen-bar {
   position: fixed;
   right: 0;
@@ -360,72 +357,70 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   to { transform: none; }
 }
 
-/* 종료 — 도구모음의 맨 끝. 평소에는 옅은 coral 잉크의 ×만 서서 시선을 끌지 않고, 겨눌 때에야
-   붉은 면이 차오른다.
-   Doctrine exception: coral은 위험 신호 채널이지만, Zen 종료는 사용자가 「일반적인 종료 버튼(레드 계열)」으로
-   지정한 자리라 이 한 버튼만 coral을 쓴다. 쉬는 상태는 중립 잉크 쪽으로 크게 눌러 경보로 읽히지 않게 한다. */
-.zen-bar-exit {
-  position: relative;
-  display: grid;
+/* ── 도구모음 ─────────────────────────────────────────────────────
+   콘솔에 하나뿐인 도구 줄(console-toolbar.tsx). 상단 바 오른쪽과 Zen 트레이, 두 자리에 같은 줄이
+   같은 순서·같은 문법으로 선다 — 여기 규칙은 자리를 묻지 않는다. 자리에 따라 갈리는 것은 떠오르는
+   말풍선·메뉴의 방향뿐이다(아래 Zen 트레이 단락). */
+.command-band-toolbar,
+.zen-bar-toolbar { display: flex; align-items: center; min-width: 0; }
+/* 상단 바에서는 도구모음 바깥(보기 모드·호스트)과 가는 선 하나로 나뉜다 — 트레이에서 앰블럼과 나뉘는 것과 같다. */
+.command-band-toolbar:not(:empty) {
+  margin-inline-end: var(--space-1);
+  padding-inline-end: var(--space-2);
+  border-inline-end: 1px solid var(--surface-rim);
+}
+.console-toolbar-mount { display: contents; }
+.console-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.console-toolbar-tools,
+.console-toolbar-plugins {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+/* 도구 칸은 /operations가 채운다 — 비어 있으면 뒤따르는 구분선도 걷는다. */
+.console-toolbar-tools:empty,
+.console-toolbar-tools:empty + .console-toolbar-sep { display: none; }
+.console-toolbar-sep {
   flex: none;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  margin-inline-start: 2px;
-  border: 0;
+  width: 1px;
+  height: 14px;
+  margin: 0 var(--space-1);
+  background: var(--surface-rim-strong);
+}
+.console-toolbar-plugins {
+  margin-inline-start: var(--space-1);
+  padding-inline-start: var(--space-1);
+  border-inline-start: 1px solid var(--surface-rim-strong);
+}
+
+/* 찾기·도움말 — 도구 아이콘(.right-rail-ico)과 같은 26px 둥근 칸, 같은 겨눔·켜짐 문법. */
+.console-toolbar .command-band-button {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-color: transparent;
   border-radius: var(--radius-pill);
-  background: none;
-  /* oklab으로 섞는다 — oklch로 섞으면 coral과 중립 잉크 사이 색상각을 돌아 보라로 샌다. */
-  color: color-mix(in oklab, var(--coral) 55%, var(--text-tertiary));
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide), transform var(--duration-fast) var(--ease-spring);
 }
-.zen-bar-exit svg { width: 14px; height: 14px; }
-.zen-bar-exit:hover,
-.zen-bar-exit:focus-visible { background: color-mix(in oklch, var(--coral) 16%, transparent); color: var(--coral); }
-.zen-bar-exit:active { background: color-mix(in oklch, var(--coral) 26%, transparent); transform: scale(0.92); }
-.zen-bar-exit:focus-visible { outline: 1px solid color-mix(in oklch, var(--coral) 60%, transparent); outline-offset: 1px; }
-
-/* 종료 말풍선 — 겨누면 잠깐 뒤에 위로 떠오른다. 화면 오른쪽 끝에 붙지 않게 버튼 오른쪽 끝에 맞춘다. */
-.zen-bar-tip {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  right: -6px;
-  padding: 5px 9px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  background: var(--surface-panel-raised);
-  box-shadow: var(--glass-lift);
-  color: var(--text-primary);
-  font: var(--weight-medium) var(--t-xs) var(--font-body);
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(4px);
-  transition: opacity var(--duration-fast) var(--ease-glide), transform var(--duration-base) var(--ease-spring);
+.console-toolbar .command-band-button svg { width: 15px; height: 15px; }
+.console-toolbar .command-band-button:hover,
+.console-toolbar .command-band-button:focus-visible {
+  border-color: transparent;
+  background: var(--surface-glass);
+  color: var(--text-secondary);
 }
-.zen-bar-tip::after {
-  position: absolute;
-  top: 100%;
-  right: 13.5px;
-  width: 7px;
-  height: 7px;
-  border-right: 1px solid var(--surface-rim-strong);
-  border-bottom: 1px solid var(--surface-rim-strong);
-  background: var(--surface-panel-raised);
-  transform: translateY(-3.5px) rotate(45deg);
-  content: "";
-}
-.zen-bar-exit:hover .zen-bar-tip,
-.zen-bar-exit:focus-visible .zen-bar-tip {
-  opacity: 1;
-  transform: none;
-  transition-delay: 180ms, 180ms;
+.console-toolbar .command-band-button[aria-expanded="true"] {
+  border-color: var(--surface-rim-strong);
+  background: var(--ink-deep);
+  color: var(--brass-ink);
 }
 
-/* 서랍 — 도구와 플러그인 칸. 접으면 열 폭이 0으로 말려 종료 버튼 쪽으로 빨려 들며 흐려진다.
-   트레이가 오른쪽 끝에 붙어 있으므로 줄어드는 폭만큼 화살표가 오른쪽으로 따라 붙는다. */
-.zen-bar-drawer {
+/* 서랍 — 도구·찾기·도움말. 접으면 열 폭이 0으로 말려 Zen 버튼 쪽으로 빨려 들며 흐려진다.
+   플러그인 항목과 Zen 버튼은 서랍 밖이라 남는다. */
+.console-toolbar-drawer {
   display: grid;
   grid-template-columns: 1fr;
   min-width: 0;
@@ -434,18 +429,22 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
     opacity 220ms var(--ease-glide),
     filter 260ms var(--ease-glide);
 }
-.zen-bar-drawer-inner {
+.console-toolbar-drawer-inner {
   display: flex;
   align-items: center;
+  gap: 1px;
   min-width: 0;
-  overflow: hidden;
+  /* 접힘은 가로로만 자른다 — 세로는 열어 두어야 도움말 메뉴·업데이트 말풍선이 서랍 밖(아래·위)으로 뜬다.
+     clip은 스크롤 상자를 만들지 않으므로 한 축만 자를 수 있다. */
+  overflow-x: clip;
+  overflow-y: visible;
   transition: transform 360ms var(--ease-spring);
 }
-.zen-bar.is-folded .zen-bar-drawer { grid-template-columns: 0fr; opacity: 0; filter: blur(2px); }
-.zen-bar.is-folded .zen-bar-drawer-inner { transform: translateX(10px); }
+.console-toolbar.is-folded .console-toolbar-drawer { grid-template-columns: 0fr; opacity: 0; filter: blur(2px); }
+.console-toolbar.is-folded .console-toolbar-drawer-inner { transform: translateX(10px); }
 
 /* 접기·펼치기 화살표 — 펼쳐 있으면 ›(도구를 오른쪽으로 말아 넣기), 접혀 있으면 돌아서 ‹. */
-.zen-bar-fold {
+.console-toolbar-fold {
   display: grid;
   flex: none;
   place-items: center;
@@ -458,31 +457,95 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
 }
-.zen-bar-fold svg { width: 12px; height: 12px; flex: none; transition: rotate 360ms var(--ease-spring); }
-.zen-bar.is-folded .zen-bar-fold svg { rotate: 180deg; }
-.zen-bar-fold:hover,
-.zen-bar-fold:focus-visible { color: var(--brass-ink); background: var(--control-hover-fill); }
-.zen-bar-fold:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.console-toolbar-fold svg { width: 12px; height: 12px; flex: none; transition: rotate 360ms var(--ease-spring); }
+.console-toolbar.is-folded .console-toolbar-fold svg { rotate: 180deg; }
+.console-toolbar-fold:hover,
+.console-toolbar-fold:focus-visible { color: var(--brass-ink); background: var(--control-hover-fill); }
+.console-toolbar-fold:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 
-/* 도구 칸 — 레일 아이콘(RailToolIcons row)이 가로로 선다. 레일 열의 문법을 한 줄로 눕힌다. */
-.zen-bar-tools {
-  display: flex;
-  align-items: center;
-  gap: 1px;
+/* Zen 켜기/끄기 — 도구모음의 맨 끝 칸. 켜기는 도구 아이콘과 같은 잉크로 조용히 선다.
+   끄기는 옅은 coral 잉크의 ×만 서서 시선을 끌지 않고, 겨눌 때에야 붉은 면이 차오른다.
+   Doctrine exception: coral은 위험 신호 채널이지만, Zen 종료는 사용자가 「일반적인 종료 버튼(레드 계열)」으로
+   지정한 자리라 이 한 버튼만 coral을 쓴다. 쉬는 상태는 중립 잉크 쪽으로 크게 눌러 경보로 읽히지 않게 한다. */
+.console-toolbar-zen {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-inline-start: 2px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide), transform var(--duration-fast) var(--ease-spring);
 }
-.zen-bar-tools .right-rail-tabs { display: flex; align-items: center; gap: 1px; }
-.zen-bar-tools .right-rail-divider { width: 1px; height: 14px; margin: 0 var(--space-1); background: var(--surface-rim-strong); }
-.zen-bar-tools .right-rail-ico { width: 26px; height: 26px; border-radius: var(--radius-pill); }
-.zen-bar-tools .right-rail-ico svg { width: 15px; height: 15px; }
-/* 가로 줄에서 켜짐 표식은 아래 선이다 — 세로 열의 왼쪽 막대를 그대로 두면 가로 줄 사이에 선 세로 띠로 읽힌다. */
-.zen-bar-tools .right-rail-ico.is-active::before { top: auto; right: 8px; bottom: -1px; left: 8px; width: auto; height: 2px; }
-.zen-mode-chrome-slot {
-  display: flex;
-  align-items: center;
-  gap: 2px;
+.console-toolbar-zen svg { width: 15px; height: 15px; }
+.console-toolbar-zen:hover,
+.console-toolbar-zen:focus-visible { background: var(--surface-glass); color: var(--text-secondary); }
+.console-toolbar-zen:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.console-toolbar-zen:active { transform: scale(0.92); }
+/* oklab으로 섞는다 — oklch로 섞으면 coral과 중립 잉크 사이 색상각을 돌아 보라로 샌다. */
+.console-toolbar-zen.is-exit { color: color-mix(in oklab, var(--coral) 55%, var(--text-tertiary)); }
+.console-toolbar-zen.is-exit svg { width: 14px; height: 14px; }
+.console-toolbar-zen.is-exit:hover,
+.console-toolbar-zen.is-exit:focus-visible { background: color-mix(in oklch, var(--coral) 16%, transparent); color: var(--coral); }
+.console-toolbar-zen.is-exit:active { background: color-mix(in oklch, var(--coral) 26%, transparent); }
+.console-toolbar-zen.is-exit:focus-visible { outline-color: color-mix(in oklch, var(--coral) 60%, transparent); }
+
+/* Zen 버튼 말풍선 — 겨누면 잠깐 뒤에 떠오른다. 상단 바에서는 아래로, Zen 트레이에서는 위로 뜬다.
+   화면 오른쪽 끝에 붙지 않게 버튼 오른쪽 끝에 맞춘다. */
+.console-toolbar-tip {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -6px;
+  z-index: 41;
+  padding: 5px 9px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--glass-lift);
+  color: var(--text-primary);
+  font: var(--weight-medium) var(--t-xs) var(--font-body);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity var(--duration-fast) var(--ease-glide), transform var(--duration-base) var(--ease-spring);
 }
-.zen-mode-chrome-slot:empty { display: none; }
-.zen-mode-chrome-slot:not(:empty) { margin-inline-start: var(--space-1); padding-inline-start: var(--space-1); border-inline-start: 1px solid var(--surface-rim-strong); }
+.console-toolbar-tip::after {
+  position: absolute;
+  bottom: 100%;
+  right: 13.5px;
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid var(--surface-rim-strong);
+  border-left: 1px solid var(--surface-rim-strong);
+  background: var(--surface-panel-raised);
+  transform: translateY(3.5px) rotate(45deg);
+  content: "";
+}
+.console-toolbar-zen:hover .console-toolbar-tip,
+.console-toolbar-zen:focus-visible .console-toolbar-tip {
+  opacity: 1;
+  transform: none;
+  transition-delay: 180ms, 180ms;
+}
+
+/* Zen 트레이 자리 — 화면 아래 끝이라 말풍선·도움말 메뉴·업데이트 말풍선은 위로 뜬다. */
+.zen-bar .console-toolbar-tip { top: auto; bottom: calc(100% + 10px); transform: translateY(4px); }
+.zen-bar .console-toolbar-tip::after {
+  top: 100%;
+  bottom: auto;
+  border: 0;
+  border-right: 1px solid var(--surface-rim-strong);
+  border-bottom: 1px solid var(--surface-rim-strong);
+  transform: translateY(-3.5px) rotate(45deg);
+}
+.zen-bar .command-band-system-menu,
+.zen-bar .command-band-update-bubble { top: auto; bottom: calc(100% + 10px); }
 
 /* 앰블럼 — 트레이의 끝. 도구모음과는 가는 선 하나로 나뉜다. */
 .zen-bar-brand {
@@ -499,14 +562,15 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 /* 워드마크의 서체·크기는 밴드 워드마크(.command-band-brand-wordmark)를 함께 입어 받는다 — 같은 브랜드, 같은 글자. */
 .zen-bar-brand-wordmark { color: var(--text-primary); line-height: 1; }
 
-/* 모달이 열리면 트레이의 **접기·도구·종료**만 물러난다 — 모달 뒤에서 누를 수 있는 조작면이 남지 않게.
-   바째 걷으면 그 안에 세든 플러그인 항목까지 사라지는데, 상단 바에 둔 부관은 Zen에서 여기 말고
+/* 모달이 열리면 Zen 트레이의 **접기·도구·Zen 버튼**만 물러난다 — 모달 뒤에서 누를 수 있는 조작면이 남지 않게.
+   트레이째 걷으면 그 안의 플러그인 항목까지 사라지는데, 상단 바에 둔 부관은 Zen에서 여기 말고
    닿을 자리가 없고 그 답 말풍선이 글리프를 닻으로 삼는다 — Quick Launch로 부관을 부르는 동안
-   정작 그 부관이 사라졌다(인도 검수). visibility가 아니라 display로 내린다: 자리를 남기면 빈 칸이 선다. */
-body:has([aria-modal="true"]:not([hidden])) .zen-bar-exit,
-body:has([aria-modal="true"]:not([hidden])) .zen-bar-tools,
-body:has([aria-modal="true"]:not([hidden])) .zen-bar-fold { display: none; }
-body:has([aria-modal="true"]:not([hidden])) .zen-mode-chrome-slot { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
+   정작 그 부관이 사라졌다(인도 검수). visibility가 아니라 display로 내린다: 자리를 남기면 빈 칸이 선다.
+   상단 바는 모달이 뜨면 aria-modal 경계 밖이라 따로 물러나지 않아도 닿지 않는다. */
+body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-zen,
+body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-drawer,
+body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-fold { display: none; }
+body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-plugins { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
 
 /* Zen 전환 장면 — 커튼 한 겹과 날아가는 앰블럼(zen-transition.tsx). 커튼은 예전 War Room·Tactical
    모드 커튼과 같은 원형 스크림(가운데 canvas-abyss 66%)에 가장자리를 옅게 한 겹 더 깐다.
@@ -562,11 +626,11 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .console-shell .command-band,
   .zen-bar { animation: none; }
-  .zen-bar-drawer,
-  .zen-bar-drawer-inner,
-  .zen-bar-fold svg,
-  .zen-bar-exit,
-  .zen-bar-tip { transition: none; }
+  .console-toolbar-drawer,
+  .console-toolbar-drawer-inner,
+  .console-toolbar-fold svg,
+  .console-toolbar-zen,
+  .console-toolbar-tip { transition: none; }
 }
 
 /* 중앙 트랙이 모드 컨트롤을 좌우 대칭으로 품지 못하는 폭에서는 감추는 대신 좌측 플로우로
@@ -936,16 +1000,6 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
     background: SelectedItem;
     color: SelectedItemText;
   }
-}
-
-/* 글리프 스위치와 전역 유틸리티(검색·Zen) 사이의 구분선. 클러스터 gap(8px)에 자기 여백 2px을
-   더해 좌우 10px씩 선다. */
-.command-band-center-divider {
-  align-self: stretch;
-  flex: none;
-  width: 1px;
-  margin: 4px 2px;
-  background: var(--surface-rim);
 }
 
 /* 모드 도구 캡슐 — 활성 세그먼트의 가로 중심(--command-band-mode-tools-x) 아래 7px에 뜬다.

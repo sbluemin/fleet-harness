@@ -55,7 +55,6 @@ export type PaletteCommandAction =
   | { readonly kind: "toggle-station-keeping" }
   | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
-  | { readonly kind: "toggle-rail" }
   | { readonly kind: "toggle-sidebar" }
   | { readonly kind: "toggle-zen" }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
@@ -196,7 +195,6 @@ export function buildPaletteCommands(
     });
   }
   push({ commandId: "toggle-sidebar", label: t("palette.toggleSidebar"), aliasLabel: alias("palette.toggleSidebar"), action: { kind: "toggle-sidebar" }, group: "console", glyph: "console-sidebar", shortcut: "console.toggle-sidebar" });
-  push({ commandId: "toggle-rail", label: t("palette.toggleRail"), aliasLabel: alias("palette.toggleRail"), action: { kind: "toggle-rail" }, group: "console", glyph: "console-rail", shortcut: "console.toggle-rail" });
   // 전체화면에서 밴드가 숨은 동안 그 안의 토글은 inert라 닿지 않는다 — 팔레트가 표면 밖 경로다.
   // 라벨은 저장된 선호를 따른다: 이 항목은 전환이므로 한 방향으로만 읽히면 이미 켜 둔 사용자가
   // 켜는 줄 알고 골랐다가 밴드를 끄게 된다. current는 false로 둔다 — 전환 항목은 배지 대상이 아니고,

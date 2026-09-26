@@ -48,7 +48,7 @@ import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping, toggleAlignAll } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { getViewModeSnapshot } from "../../integration/view-mode-store.js";
-import { getRailStoreSnapshot, openRailPanel, setRailChromeExpanded, toggleRailChrome } from "../rail/rail-store.js";
+import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
@@ -68,7 +68,7 @@ import {
 import { useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { isZenMode, setZenMode, toggleZenMode, useZenMode } from "../../integration/zen-mode.js";
-import { toggleZenRail, toggleZenSideBar } from "../../integration/zen-chrome-toggles.js";
+import { toggleZenSideBar } from "../../integration/zen-chrome-toggles.js";
 
 interface OperationSearchProps {
   readonly state: ConsoleState;
@@ -289,7 +289,6 @@ export function OperationSearch({
       if (surfaceId) openExpandedSurface({ surfaceId });
       else openRailPanel(panelId);
     }
-    setRailChromeExpanded(true);
     closeOperationSearch();
   };
 
@@ -417,8 +416,7 @@ export function OperationSearch({
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         if (action.surfaceId) openExpandedSurface({ surfaceId: action.surfaceId });
         else openRailPanel(action.panelId);
-        setRailChromeExpanded(true);
-        break;
+            break;
       }
       case "toggle-zen": {
         if (getViewModeSnapshot().effective === "mobile") break;
@@ -429,28 +427,6 @@ export function OperationSearch({
         requestAnimationFrame(() => {
           if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
           else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
-        });
-        break;
-      }
-      case "toggle-rail": {
-        if (isZenMode() && location.pathname.startsWith("/operations")) {
-          previousFocusRef.current = null;
-          const shown = toggleZenRail();
-          requestAnimationFrame(() => {
-            (shown ? document.querySelector<HTMLElement>(".right-rail-collapse") : document.querySelector<HTMLElement>(".operations-center-stage"))?.focus({ preventScroll: true });
-          });
-          break;
-        }
-        setZenMode(false);
-        if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        // 구 복원 좌표(밴드 rail 토글)는 퇴역했다 — 복원을 억제하고 도착지가 받는다: 접히면
-        // 엣지 독, 펼치면 레일의 접기 컨트롤. 두 좌표 모두 이 커밋의 재렌더 뒤에야 서므로
-        // 프레임을 하나 넘긴다(open-settings와 같은 계약, 미발견 시 포커스 생략).
-        previousFocusRef.current = null;
-        const railCollapsing = getRailStoreSnapshot().railChromeExpanded;
-        toggleRailChrome();
-        requestAnimationFrame(() => {
-          document.querySelector<HTMLElement>(railCollapsing ? ".rail-edge-dock" : ".right-rail-collapse")?.focus();
         });
         break;
       }
@@ -465,7 +441,7 @@ export function OperationSearch({
         }
         setZenMode(false);
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        // toggle-rail과 같은 도착지 포커스 계약 — 접히면 엣지 독, 펼치면 사이드바의 접기 컨트롤.
+        // 도착지 포커스 계약 — 접히면 엣지 독, 펼치면 사이드바의 접기 컨트롤.
         previousFocusRef.current = null;
         const sideBarCollapsing = !getSideBarState().collapsed;
         setSideBarCollapsed(sideBarCollapsing);
@@ -497,8 +473,7 @@ export function OperationSearch({
         // 레일은 /operations에만 마운트된다. 주소 쿼리는 selectRailResult와 같은 이유로 지킨다.
         if (!location.pathname.startsWith("/operations")) navigate({ pathname: "/operations", search: window.location.search });
         openRailPanel(SETTINGS_RAIL_ENTRY_ID);
-        setRailChromeExpanded(true);
-        // 복원을 억제했으면 도착지가 받아야 한다 — 페인은 이 커밋의 재렌더 뒤에야 서므로
+            // 복원을 억제했으면 도착지가 받아야 한다 — 페인은 이 커밋의 재렌더 뒤에야 서므로
         // 프레임을 하나 넘겨 검색 입력(첫 컨트롤)으로 보낸다. 실패 시 표면 본문이 받는다.
         window.requestAnimationFrame(() => {
           const landing = document.querySelector<HTMLElement>(".settings-pane .settings-search input")

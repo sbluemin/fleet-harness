@@ -13,7 +13,6 @@ it("keeps Zen out of modal, composition, repeat, and AltGr input while allowing 
     closeOperationSearch: vi.fn(),
     getOperationSearchMode: () => null,
     toggleQuickLaunch: vi.fn(),
-    toggleRailChrome: vi.fn(),
     toggleRailSurface: vi.fn(() => true),
     toggleZenMode,
   });
