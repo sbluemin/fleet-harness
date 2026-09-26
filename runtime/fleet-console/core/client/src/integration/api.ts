@@ -160,11 +160,11 @@ export async function fetchUpdateProgress(signal?: AbortSignal): Promise<Console
   return assertConsoleUpdateProgress(await response.json(), response.status);
 }
 
-export async function addTheater(folderGrantId: string, signal?: AbortSignal): Promise<TheaterInfo> {
+export async function addTheater(folderGrantId: string, claudeTrustConsent = false, signal?: AbortSignal): Promise<TheaterInfo> {
   const response = await fetch("/api/v1/theaters", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ folderGrantId }),
+    body: JSON.stringify({ folderGrantId, claudeTrustConsent }),
     signal,
   });
   await assertOk(response);

@@ -315,6 +315,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
 
         {listing?.truncated ? <p className="directory-browser-note">{t("chrome.directoryBrowser.truncated")}</p> : null}
 
+        <p className="directory-browser-note">{t("chrome.directoryBrowser.trustNotice")}</p>
         <footer className="directory-browser-actions">
           <div className="directory-browser-target">
             <span className="directory-browser-target-label">{t("chrome.directoryBrowser.theaterRoot")}</span>

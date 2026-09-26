@@ -93,6 +93,7 @@ export const chromeEn = {
   "chrome.quickLaunch.mentionErrorBusy": "That destination is still answering — wait for it to finish",
   "chrome.quickLaunch.mentionErrorResumeUnavailable": "This Operation has no session to resume — relaunch it from its panel",
   "chrome.quickLaunch.mentionErrorAwaiting": "This Operation is waiting for input in its terminal — answer it there first",
+  "chrome.quickLaunch.mentionErrorTrustRequired": "Claude Code has not confirmed trust for this folder. Open a terminal in the folder and run claude. If the trust dialog appears, choose “Yes, I trust this folder”, then retry sending your message",
   "chrome.quickLaunch.mentionErrorGone": "This Operation no longer exists",
   "chrome.quickLaunch.mentionErrorDeliveryFailed": "The message was not delivered — nothing was sent",
   "chrome.quickLaunch.ultracodeNotice": "Dynamic workflow requested for this turn",
@@ -246,6 +247,9 @@ export const chromeEn = {
   "chrome.directoryBrowser.truncated": "Showing the first 500 folders.",
   "chrome.directoryBrowser.theaterRoot": "Theater Root",
   "chrome.directoryBrowser.addTheater": "Add Theater",
+  "chrome.directoryBrowser.trustNotice": "Adding this folder also trusts it in Claude Code. Only this folder and its descendants are affected.",
+  "chrome.directoryBrowser.trustFailure": "Claude Code trust could not be saved. Open a terminal in this folder and run claude. If the folder trust dialog appears, choose “Yes, I trust this folder”, then retry adding the Theater. If it still fails, check the Claude Code global settings file.",
+  "chrome.directoryBrowser.trustLocked": "Claude Code settings are locked by another process. Wait a moment and retry adding this Theater.",
 
   // command-band system cluster
   "chrome.commandBand.operations": "Operations",
@@ -505,6 +509,7 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.quickLaunch.mentionErrorBusy": "그 행선지는 아직 답하는 중입니다 — 끝난 뒤에 보내세요",
   "chrome.quickLaunch.mentionErrorResumeUnavailable": "이 Operation은 이어붙일 세션이 없습니다 — 패널에서 다시 실행해 주세요",
   "chrome.quickLaunch.mentionErrorAwaiting": "이 Operation은 터미널에서 입력을 기다리는 중입니다 — 먼저 그쪽에 응답해 주세요",
+  "chrome.quickLaunch.mentionErrorTrustRequired": "Claude Code가 이 폴더의 신뢰를 확인하지 못했습니다. 해당 폴더에서 터미널을 열고 claude를 실행한 뒤, 신뢰 확인 화면이 나타나면 “Yes, I trust this folder”를 선택해 주세요. 완료한 뒤 메시지 전달을 다시 시도하세요",
   "chrome.quickLaunch.mentionErrorGone": "이 Operation은 더 이상 존재하지 않습니다",
   "chrome.quickLaunch.mentionErrorDeliveryFailed": "메시지가 전달되지 않았습니다 — 아무것도 보내지 않았습니다",
   "chrome.quickLaunch.ultracodeNotice": "이번 턴에 다이나믹 워크플로우를 요청합니다",
@@ -653,6 +658,9 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.directoryBrowser.truncated": "처음 500개 폴더만 표시합니다.",
   "chrome.directoryBrowser.theaterRoot": "Theater 루트",
   "chrome.directoryBrowser.addTheater": "Theater 추가",
+  "chrome.directoryBrowser.trustNotice": "추가하면 Claude Code가 이 폴더를 신뢰하도록 설정합니다. 이 폴더와 하위 경로에만 적용됩니다.",
+  "chrome.directoryBrowser.trustFailure": "Claude Code 신뢰 설정을 저장하지 못했습니다. 해당 폴더에서 터미널을 열고 claude를 실행한 뒤, 폴더 신뢰 확인 화면이 나타나면 “Yes, I trust this folder”를 선택해 주세요. 완료한 뒤 Theater 추가를 다시 시도하세요. 계속 실패하면 Claude Code 전역 설정 파일을 확인하세요.",
+  "chrome.directoryBrowser.trustLocked": "다른 프로세스가 Claude Code 설정을 사용 중입니다. 잠시 뒤 Theater 추가를 다시 시도하세요.",
 
   "chrome.commandBand.operations": "Operations",
   "chrome.hosts.aria": "호스트",
