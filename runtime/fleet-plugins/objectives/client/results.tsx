@@ -203,13 +203,20 @@ function neutralizeUntrustedDom(root: ParentNode): void {
   }
 }
 
-/** Markdown 은 렌더하고, 그 밖의 텍스트(LOG·JSON·TXT)는 원문 그대로 코드 블록으로 감싼다. 울타리는 본문의 가장 긴 backtick 보다 길게. */
-function asMarkdown(name: string, text: string): string {
+/**
+ * 보기 방식 — Markdown 은 렌더하고, JSON 은 등록된 json 강조의 코드 블록, 그 밖(LOG·TXT)은 평문 그대로.
+ * 등록되지 않은 언어는 자동 감지 강조로 떨어지므로 LOG·TXT 는 렌더러를 거치지 않는다.
+ */
+function textMode(name: string): "markdown" | "json" | "plain" {
   const ext = extension(name);
-  if (ext === "md" || ext === "markdown") return text;
+  return ext === "md" || ext === "markdown" ? "markdown" : ext === "json" ? "json" : "plain";
+}
+
+/** JSON 을 코드 블록으로 감싼다 — 울타리는 본문의 가장 긴 backtick 보다 길게. */
+function fencedJson(text: string): string {
   const longest = Math.max(2, ...[...text.matchAll(/`+/g)].map((match) => match[0].length));
   const fence = "`".repeat(longest + 1);
-  return `${fence}${ext === "json" ? "json" : "text"}\n${text}\n${fence}`;
+  return `${fence}json\n${text}\n${fence}`;
 }
 
 function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; readonly src: string; readonly name: string; readonly caption: string; readonly onClose: () => void }) {
@@ -233,13 +240,14 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
       .catch(() => { if (!controller.signal.aborted) setLoaded({ error: "network" }); });
     return () => controller.abort();
   }, [src]);
+  const mode = textMode(name);
   const html = useMemo(() => {
-    if (!loaded || !("text" in loaded)) return "";
-    const rendered = renderMarkdown(asMarkdown(name, loaded.text), { copyLabel: t("objectives.results.copy"), copyAriaLabel: (language) => t("objectives.results.copyCode", { language }) }).html;
+    if (!loaded || !("text" in loaded) || mode === "plain") return "";
+    const rendered = renderMarkdown(mode === "json" ? fencedJson(loaded.text) : loaded.text, { copyLabel: t("objectives.results.copy"), copyAriaLabel: (language) => t("objectives.results.copyCode", { language }) }).html;
     const doc = new DOMParser().parseFromString(rendered, "text/html");
     neutralizeUntrustedDom(doc.body);
     return doc.body.innerHTML;
-  }, [loaded, name, t]);
+  }, [loaded, mode, t]);
   useEffect(() => { closeRef.current?.focus(); }, []);
   useEffect(() => {
     const root = bodyRef.current;
@@ -280,7 +288,9 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
         <button ref={closeRef} type="button" className="objectives-att-view-close" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={onClose}><CloseGlyph /></button>
         {loaded === null ? <div className="objectives-result-textstate" role="status">{t("objectives.results.loading")}</div>
           : "error" in loaded ? <div className="objectives-result-textstate is-error" role="alert">{t("objectives.results.loadFailed", { code: loaded.error })}</div>
-          : <div ref={bodyRef} className="markdown-body objectives-result-markdown" tabIndex={0} onClick={onCopy} dangerouslySetInnerHTML={{ __html: html }} />}
+          : mode === "plain"
+            ? <div className="markdown-body objectives-result-markdown" tabIndex={0}><pre className="objectives-result-plain"><code>{loaded.text}</code></pre></div>
+            : <div ref={bodyRef} className="markdown-body objectives-result-markdown" tabIndex={0} onClick={onCopy} dangerouslySetInnerHTML={{ __html: html }} />}
         <figcaption>{caption}</figcaption>
       </figure>
     </div>
