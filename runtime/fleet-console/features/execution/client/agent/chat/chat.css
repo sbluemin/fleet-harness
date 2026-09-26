@@ -451,6 +451,8 @@
   min-width: 0;
 }
 
+.agent-chat-changes.has-written { grid-template-columns: minmax(0, 1fr) auto auto max-content; }
+
 .agent-chat-change {
   display: grid;
   grid-column: 1 / -1;
@@ -467,6 +469,7 @@
   border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent);
 }
 
+.agent-chat-changes.has-written .agent-chat-change { grid-template-columns: minmax(0, 1fr) 4ch 4ch max-content; grid-template-columns: subgrid; }
 .agent-chat-change:first-child { border-top: 0; }
 
 .agent-chat-change-path {
@@ -490,8 +493,12 @@
 
 /* 채도를 한 단 낮춘다 — 이 수는 결말이 아니라 좌표라, 본문보다 앞에 설 이유가 없다.
    상태 채널의 색은 그대로 두고 밝기만 3차 잉크 쪽으로 당긴다. */
-.agent-chat-change-add { color: color-mix(in oklch, var(--positive) 72%, var(--text-tertiary)); }
-.agent-chat-change-del { color: color-mix(in oklch, var(--coral) 72%, var(--text-tertiary)); }
+.agent-chat-change-add { grid-column: 2; color: color-mix(in oklch, var(--positive) 72%, var(--text-tertiary)); }
+.agent-chat-change-del { grid-column: 3; color: color-mix(in oklch, var(--coral) 72%, var(--text-tertiary)); }
+.agent-chat-change-written { grid-column: 4; justify-self: end; color: var(--text-secondary); white-space: nowrap; }
+.agent-chat-fold-changes .agent-chat-change-add,
+.agent-chat-fold-changes .agent-chat-change-del,
+.agent-chat-fold-changes .agent-chat-change-written { grid-column: auto; }
 /* 0은 수를 쓰지 않는다 — "+0"은 일어난 일처럼 읽힌다. 자리만 지키는 점이라 잉크도 가장 낮다. */
 .agent-chat-change-nil { color: var(--hairline); }
 
@@ -655,6 +662,10 @@
   gap: var(--space-2);
   min-width: 0;
 }
+
+/* 라이브 꼬리의 긴 수신자·명령도 원장 너비 안에서 줄인다. */
+.agent-chat-tally-running .agent-chat-tally-clause { max-width: 100%; }
+.agent-chat-tally-running .agent-chat-tally-clause > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 생각의 점은 하나씩 나타나고 모두 찬 뒤 첫 점만 남긴다. 세 칸을 늘 차지해 되풀이할 때
    뒤 문구나 줄 폭이 흔들리지 않으며, 점은 장식으로 숨겨 라이브 리전이 매 박자 다시 읽히지 않는다. */
@@ -937,6 +948,10 @@
 .agent-chat-step-verb {
   color: var(--text-secondary);
   flex: none;
+  max-width: calc(100% - 42px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 동사 자리의 물결 — 위 규칙이 `.agent-chat-live-text`와 같은 특정성(0,1,0)인데 뒤에 서므로
@@ -949,11 +964,12 @@
 }
 
 .agent-chat-step-object {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-tertiary);
-  min-width: 0;
 }
 
 /* Theater 밖 좌표 — 표시형으로 접히면 안쪽과 구별되지 않으므로 표식이 대신 말한다. */
@@ -968,11 +984,7 @@
 }
 
 .agent-chat-step-out {
-  margin-left: auto;
-  flex: none;
-  max-width: 46%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
   white-space: nowrap;
   font-size: var(--t-sm);
   letter-spacing: 0;
@@ -984,6 +996,11 @@
 }
 
 .agent-chat-step-out.is-error {
+  flex: 0 6 auto;
+  min-width: calc(11ch + 16px);
+  max-width: 38%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-color: color-mix(in oklch, var(--coral) 30%, transparent);
   color: var(--coral-ink);
 }
@@ -3959,6 +3976,16 @@
   gap: var(--space-1);
 }
 
+/* 접힌 도착은 보낸 사람과 본문 조각이 한 줄을 공유한다. 이름과 조각은 각자 줄어들고,
+   펼친 순간 조각은 사라져 같은 내용을 본문에서 두 번 읽지 않는다. */
+.agent-chat-received-head .agent-chat-tally { min-width: 0; }
+.agent-chat-received-text { flex-wrap: nowrap; flex: 1 1 auto; overflow: hidden; white-space: nowrap; }
+.agent-chat-received-text > .agent-chat-tally-clause,
+.agent-chat-received-text > .agent-chat-tally-sep { flex: none; }
+.agent-chat-received-text > .agent-chat-tally-name { min-width: 0; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
+.agent-chat-received-excerpt { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); }
+.agent-chat-tally-fold[open] .agent-chat-received-preview { display: none; }
+
 .agent-chat .agent-chat-received-body.markdown-body {
   --font-size-body: var(--t-md);
   min-width: 0;
@@ -4001,3 +4028,64 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* 호출 상세는 기존 집계 줄기 안의 잎이다. 선택 띠가 아닌 원장 구조선만 유지한다. */
+.agent-chat-tool-fold { min-width: 0; }
+.agent-chat-tool-fold > summary { list-style: none; cursor: pointer; }
+.agent-chat-tool-fold > summary::-webkit-details-marker { display: none; }
+.agent-chat-tool-fold > summary:hover { background: var(--control-rest); }
+.agent-chat-tool-fold > summary:focus-visible,
+.agent-chat-change.is-link:focus-visible,
+.agent-chat-tool-copy:focus-visible { outline: 2px solid var(--aurora); outline-offset: 2px; border-radius: var(--radius-xs); }
+.agent-chat-tally-body > .agent-chat-tool-fold { position: relative; }
+.agent-chat-tally-body > .agent-chat-tool-fold > summary.agent-chat-step.is-leaf {
+  min-height: 24px; padding: 2px 0; background: none; border: 0; border-radius: 0;
+}
+.agent-chat-tally-body > .agent-chat-tool-fold > summary.agent-chat-step.is-leaf::before {
+  content: ""; position: absolute; left: calc(var(--space-3) * -1); top: 50%; width: 7px; height: 1px; background: var(--hairline);
+}
+.agent-chat-tool-chevron { flex: none; margin-left: auto; font-size: var(--t-xs); color: var(--text-tertiary); transition: transform var(--duration-fast); }
+.agent-chat-tool-fold[open] .agent-chat-tool-chevron { transform: rotate(180deg); }
+.agent-chat-change.is-link { appearance: none; width: 100%; text-align: left; background: transparent; border-right: 0; border-bottom: 0; border-left: 0; cursor: pointer; }
+.agent-chat-change.is-link:hover { background: var(--control-rest); }
+.agent-chat-change-count { font-family: var(--font-body); color: var(--text-tertiary); font-size: var(--t-2xs); }
+
+.agent-chat-tool-detail { margin: var(--space-1) 0 var(--space-2) var(--space-3); min-width: 0; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); font-family: var(--font-body); font-size: var(--t-xs); }
+.agent-chat-tool-section + .agent-chat-tool-section { border-top: 1px solid var(--hairline); }
+.agent-chat-tool-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; padding: 5px var(--space-3); color: var(--text-tertiary); }
+.agent-chat-tool-heading strong { min-width: 0; overflow-wrap: anywhere; color: var(--text-secondary); font-weight: var(--weight-medium); }
+.agent-chat-tool-origin { padding: 0 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); font-size: var(--t-2xs); }
+.agent-chat-tool-local-label { font-size: var(--t-2xs); }
+.agent-chat-tool-spacer { flex: 1; }
+.agent-chat-tool-copy { flex: none; font: inherit; color: var(--text-tertiary); border: 0; border-radius: var(--radius-xs); background: transparent; cursor: pointer; }
+.agent-chat-tool-copy:hover { color: var(--text-secondary); background: var(--control-rest-hover); }
+.agent-chat-tool-code { min-width: 0; max-width: 100%; max-height: 260px; overflow: auto; background: var(--surface-panel); color: var(--text-primary); }
+.agent-chat-tool-code table { width: 100%; border-collapse: collapse; font-family: var(--agent-chat-font); font-size: var(--t-xs); line-height: 1.6; }
+.agent-chat-tool-code td { padding: 0; vertical-align: top; }
+.agent-chat-tool-number { width: 1%; padding: 0 var(--space-2) !important; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-tertiary); user-select: none; }
+.agent-chat-tool-sign { width: 1%; padding: 0 var(--space-1) !important; color: var(--text-tertiary); text-align: center; user-select: none; }
+.agent-chat-tool-code-text { min-width: 100%; white-space: pre; padding-right: var(--space-3) !important; }
+.agent-chat-tool-code-text code.hljs { display: inline; padding: 0; background: none; font: inherit; white-space: pre; }
+.agent-chat-tool-code.is-command .agent-chat-tool-code-text { min-width: 0; }
+.agent-chat-tool-code.is-output .agent-chat-tool-code-text { padding-left: var(--space-3) !important; }
+.agent-chat-tool-code.is-command .agent-chat-tool-code-text,
+.agent-chat-tool-code.is-command .agent-chat-tool-code-text code.hljs { white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-chat-tool-code tr.is-added { background: color-mix(in oklab, var(--positive) 24%, var(--surface-panel)); }
+.agent-chat-tool-code tr.is-removed { background: color-mix(in oklab, var(--coral) 24%, var(--surface-panel)); }
+.agent-chat-tool-code tr.is-added .agent-chat-tool-sign { color: var(--positive); }
+.agent-chat-tool-code tr.is-removed .agent-chat-tool-sign { color: var(--coral); }
+.agent-chat-tool-recipient { padding: var(--space-2) var(--space-3) 0; overflow-wrap: anywhere; font-family: var(--agent-chat-font); color: var(--text-secondary); background: var(--surface-panel); }
+.agent-chat-tool-message { padding: var(--space-2) var(--space-3); overflow-wrap: anywhere; background: var(--surface-panel); }
+.agent-chat-tool-message > :first-child { margin-top: 0; }
+.agent-chat-tool-message > :last-child { margin-bottom: 0; }
+.agent-chat-tool-truncated, .agent-chat-tool-pending, .agent-chat-tool-mask-note { display: block; padding: 5px var(--space-3); color: var(--text-tertiary); }
+.agent-chat-tool-truncated { border-top: 1px dashed var(--hairline-strong); }
+.agent-chat-tool-warning { margin: 0; padding: var(--space-2) var(--space-3); color: var(--coral-ink); border-bottom: 1px solid var(--hairline); }
+.agent-chat-tool-mask-note { font-size: var(--t-2xs); border-top: 1px solid var(--hairline); }
+.agent-chat-tool-agents { width: 100%; border-collapse: collapse; background: var(--surface-panel); font: inherit; }
+.agent-chat-tool-agents th, .agent-chat-tool-agents td { text-align: left; padding: 4px var(--space-3); border-top: 1px solid var(--hairline); }
+.agent-chat-tool-agents th { font-weight: var(--weight-medium); color: var(--text-tertiary); }
+.agent-chat-tool-agents td { overflow-wrap: anywhere; }
+.agent-chat-tool-agents td:first-child { font-family: var(--agent-chat-font); color: var(--text-primary); }
+.agent-chat-tool-raw > summary { padding: 5px var(--space-3); color: var(--text-tertiary); cursor: pointer; }
+.agent-chat-tool-raw > summary:focus-visible { outline: 2px solid var(--aurora); outline-offset: -2px; }

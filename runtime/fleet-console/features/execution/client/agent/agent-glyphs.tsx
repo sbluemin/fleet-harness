@@ -14,7 +14,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
  * 이모지는 자기 색을 들고 오므로 여기 들어오지 않는다.
  */
 export type AgentGlyphName =
-  | "read" | "write" | "edit" | "run" | "inspect" | "search" | "fetch" | "delegate"
+  | "read" | "write" | "edit" | "run" | "inspect" | "search" | "fetch" | "delegate" | "agents" | "send"
   | "workflow" | "stop" | "plan" | "ask" | "propose" | "mcp" | "skill" | "other" | "think" | "artifact"
   | "reset" | "close" | "export" | "clear";
 
@@ -45,6 +45,13 @@ const GLYPHS: Readonly<Record<AgentGlyphName, readonly GlyphStroke[]>> = {
     { d: "M6 8.5v7" },
     { d: "M18 8.5a6 6 0 0 1-6 6h-3" },
   ],
+  agents: [
+    { d: "M9 4.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7" },
+    { d: "M2.5 20.5a6.5 6.5 0 0 1 13 0" },
+    { d: "M16 4.8a3.5 3.5 0 0 1 0 6.4" },
+    { d: "M18.5 14.6a6.5 6.5 0 0 1 3 5.9" },
+  ],
+  send: [{ d: "M21.5 2.5 10.5 13.5" }, { d: "M21.5 2.5 14.5 21.5 10.5 13.5 2.5 9.5z" }],
   workflow: [
     { d: "M5 3h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" },
     { d: "M15 13h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z" },

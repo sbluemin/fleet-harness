@@ -26,8 +26,11 @@ export type ChatAttachment = { readonly id: string } | { readonly lapsed: true }
 
 export interface AgentChatChange {
   readonly file: string;
+  /** Edit 입력의 줄 수. 파일시스템 diff가 아니다. */
   readonly added: number;
   readonly removed: number;
+  /** Write 입력 줄 수. 이전 버전이 없으므로 diff의 추가 줄이 아니다. */
+  readonly written?: number;
 }
 
 export interface AgentChatQuestionOption {
@@ -199,6 +202,8 @@ export type AgentChatStreamEvent =
       readonly kind: "tool";
       readonly name: string;
       readonly detail: string;
+      /** 상한과 가림을 적용한 입력 발췌. 옛 저널에는 없다. */
+      readonly toolDetail?: AgentChatToolDetail;
       /** tool-start·tool-result와 같은 스텝임을 잇는 축. 트랜스크립트 재생에도 실린다. */
       readonly id?: string;
       /** 좌표가 Operation cwd 밖을 가리킨다 — 표시형으로 접히면 구별되지 않으므로 따로 싣는다. */
@@ -206,7 +211,7 @@ export type AgentChatStreamEvent =
       readonly change?: AgentChatChange;
     }
   /** 스텝의 결말. ok는 도구가 돌려준 사실이지 턴의 성패가 아니다. */
-  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string }
+  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail }
   /**
    * 다른 세션이 이 세션에 보낸 말 한 통 — 도구 줄 하나로 선다.
    *
@@ -332,6 +337,22 @@ export interface AgentChatJournalEvent {
   readonly seq: number;
   readonly at?: number;
   readonly event: AgentChatStreamEvent;
+}
+
+export interface AgentChatToolDetail {
+  /** 각 섹션은 실제 도구 입력·결과이며 가상의 파일시스템 스냅샷이 아니다. */
+  readonly sections: readonly {
+    readonly kind: "command" | "output" | "read" | "write" | "before" | "after" | "message" | "result";
+    readonly text: string;
+    readonly truncated?: boolean;
+    readonly totalLines?: number;
+    /** CLI Read 결과에 번호 접두가 있었다면 그 첫 번째 실제 파일 행. */
+    readonly firstLine?: number;
+    /** 정화 과정에서 실제로 내용이 가려졌을 때만 고지를 표시한다. */
+    readonly masked?: true;
+    /** Edit의 이전·새 입력 쌍. 파일 행 번호가 아니라 발췌 안의 위치다. */
+    readonly pair?: number;
+  }[];
 }
 
 const MAX_TOOL_DETAIL_CHARS = 160;
@@ -1170,10 +1191,12 @@ function eventsFromAssistantContent(content: unknown, options: ChatEventMapOptio
     }
     if (block.type === "tool_use" && typeof block.name === "string" && block.name.length > 0) {
       const change = changeFromToolInput(block.name, block.input, options);
+      const toolDetail = toolInputDetail(block.name, block.input, options);
       events.push({
         kind: "tool",
         name: block.name,
         detail: summarizeToolInput(block.input, options),
+        ...(toolDetail ? { toolDetail } : {}),
         ...(typeof block.id === "string" && block.id.length > 0 ? { id: block.id } : {}),
         ...(pathIsOutsideCwd(block.input, options.cwd) ? { outside: true } : {}),
         ...(change ? { change } : {}),
@@ -1194,11 +1217,13 @@ function toolResultsFrom(content: unknown, options: ChatEventMapOptions): readon
     const ok = block.is_error !== true;
     const tool = options.toolNames?.get(block.tool_use_id);
     const quiet = ok && tool !== undefined && (CONTENT_RESULT_TOOLS.has(tool) || WRITE_TOOLS.has(tool));
+    const toolDetail = toolResultDetail(tool, block.content, options);
     events.push({
       kind: "tool-result",
       id: block.tool_use_id,
       ok,
       summary: quiet ? "" : summarizeToolResult(block.content, options),
+      ...(toolDetail ? { toolDetail } : {}),
     });
   }
   return events;
@@ -1361,6 +1386,122 @@ function cap(value: string, limit: number): string {
   return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
 }
 
+// 상세는 실제 SDK 블록의 상한 있는 발췌이며 브라우저에 노출되는 전체 트랜스크립트가 아니다.
+// 입력·결과는 편집 쌍이 여러 개여도 호출당 32 KiB 문자 예산을 절반씩 쓴다.
+// 바이트 절단 경계의 UTF-8 대체 문자와 섹션 메타데이터가 쓸 공간을 남긴다.
+const TOOL_DETAIL_SIDE_BYTES = 16 * 1024 - 256;
+type ToolDetailSection = AgentChatToolDetail["sections"][number];
+
+function maskDetailSecrets(value: string): string {
+  // YAML의 맨 값과 들여쓴 블록은 첫 토큰만 가리면 뒷부분이 샌다. 같은 깊이의 다음 키는 남긴다.
+  let scalarIndent: number | null = null;
+  const yamlMasked = value.split("\n").map((line) => {
+    const indent = /^[ \t]*/.exec(line)![0];
+    if (scalarIndent !== null) {
+      if (line.trim() === "") return line;
+      if (indent.length > scalarIndent) return `${indent}[가림]`;
+      scalarIndent = null;
+    }
+    const field = /^([ \t]*(?:-[ \t]+)?)(["']?\b(?:[a-z][a-z0-9_-]*[_-])?(?:api[_-]?key|token|secret|password|passwd|private[_-]?key|auth|cookie)["']?[ \t]*:[ \t]*)(.*)$/i.exec(line);
+    if (!field) return line;
+    const scalar = field[3]!.trim();
+    // 문자열 리터럴은 아래에서 전체를 가린다. 코드의 env 참조와 타입·불리언은 자격증명이 아니다.
+    if (!scalar || /^["'`[{]/.test(scalar)
+      || /^(?:process\.env|import\.meta\.env|env)\.[A-Za-z_$][\w$]*\b/.test(scalar)
+      || /^(?:string|number|boolean|unknown|never|null|undefined|object|any|true|false)(?:\s*[;,)\]}>]|$)/.test(scalar)) return line;
+    scalarIndent = field[1]!.length;
+    return `${field[1]}${field[2]}[가림]`;
+  }).join("\n");
+  return maskSecrets(yamlMasked)
+    // 한 줄 flow mapping의 맨 값은 쉼표·닫는 괄호까지이며 이웃한 공개 필드는 보존한다.
+    .replace(/([,{][ \t]*["']?\b(?:[a-z][a-z0-9_-]*[_-])?(?:api[_-]?key|token|secret|password|passwd|private[_-]?key|auth|cookie)["']?[ \t]*:[ \t]*)([^,\]}\n]+)/gi,
+      (match, prefix: string, scalar: string) => {
+        const plain = scalar.trim();
+        if (!plain || /^["'`[{]/.test(plain)
+          || /^(?:process\.env|import\.meta\.env|env)\.[A-Za-z_$][\w$]*\b/.test(plain)
+          || /^(?:string|number|boolean|unknown|never|null|undefined|object|any|true|false)$/.test(plain)) return match;
+        return `${prefix}[가림]${/[ \t]*$/.exec(scalar)![0]}`;
+      })
+    // 줄 수·바이트 상한을 적용하기 전에 키 본문 전체를 가려 뒤쪽 발췌에도 남지 않게 한다.
+    .replace(/-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/g,
+      (block) => `[가림]${(block.match(/\n/g) ?? []).join("")}`)
+    // 따옴표 값은 공백·개행·이스케이프까지 한 덩어리다. 코드 참조 예외는 맨 값에만 적용한다.
+    .replace(/((?:["']?\b(?:[a-z][a-z0-9_-]*[_-])?(?:api[_-]?key|token|secret|password|passwd|private[_-]?key|auth|cookie)["']?)\s*[:=]\s*)("(?:\\[\s\S]|[^"\\])*(?:"|\\?$)|'(?:\\[\s\S]|[^'\\])*(?:'|\\?$)|`(?:\\[\s\S]|[^`\\])*(?:`|\\?$)|(?!(?:(?:process\.env|import\.meta\.env|env)\.[A-Za-z_$][\w$]*\b|(?:string|number|boolean|unknown|never|null|undefined|object|any|true|false)\s*(?:[;,)\]}>]|$)))[^\s"'`,;}{]+)/gi,
+      (_match, prefix: string, secret: string) => {
+        const quote = /^["'`]/.test(secret) ? secret[0] : "";
+        // Read의 후속 파일 행 번호와 diff의 행 위치가 바뀌지 않게 개행 수는 남긴다.
+        return `${prefix}${quote}[가림]${(secret.match(/\n/g) ?? []).join("")}${quote}`;
+      });
+}
+
+function detailExcerpt(raw: string, lines: number, bytes: number, tail = false, options: ChatEventMapOptions = {}, inCode = false): ToolDetailSection & { readonly kind: "result" } {
+  // 들여쓰기와 줄바꿈을 지킨다. 일반 채팅 요약은 빈 줄을 접는다.
+  const normalized = raw.replace(/\r\n?/g, "\n");
+  const safe = maskDetailSecrets(options.fullPaths === true ? normalized : abbreviateAbsolutePaths(normalizePathTokens(normalized, options.cwd), inCode));
+  const all = safe.split("\n");
+  const selected = tail ? all.slice(-lines) : all.slice(0, lines);
+  const sliced = Buffer.from(selected.join("\n"), "utf8");
+  const text = sliced.length > bytes
+    ? Buffer.from(sliced.subarray(tail ? sliced.length - bytes : 0, tail ? sliced.length : bytes)).toString("utf8")
+    : selected.join("\n");
+  return { kind: "result", text, ...(safe !== normalized ? { masked: true as const } : {}), ...(all.length > selected.length || sliced.length > bytes ? { truncated: true, totalLines: all.length } : {}) };
+}
+
+function toolInputDetail(name: string, input: unknown, options: ChatEventMapOptions): AgentChatToolDetail | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const row = input as Record<string, unknown>;
+  const sections: ToolDetailSection[] = [];
+  const add = (kind: ToolDetailSection["kind"], raw: unknown, lines: number, budget: number, pair?: number) => {
+    if (typeof raw !== "string" || (raw.length === 0 && !["write", "before", "after"].includes(kind)) || budget <= 0) return;
+    const excerpt = detailExcerpt(raw, lines, budget, false, options, kind === "write" || kind === "before" || kind === "after" || kind === "command");
+    sections.push({ ...excerpt, kind, ...(pair !== undefined ? { pair } : {}) });
+  };
+  if (name === "Bash" || name === "Shell") add("command", row.command, 2_000, TOOL_DETAIL_SIDE_BYTES);
+  else if (name === "Write") add("write", row.content, 200, TOOL_DETAIL_SIDE_BYTES);
+  else if (name === "Edit") {
+    add("before", row.old_string, 200, TOOL_DETAIL_SIDE_BYTES / 2, 0);
+    add("after", row.new_string, 200, TOOL_DETAIL_SIDE_BYTES / 2, 0);
+  } else if (name === "MultiEdit" && Array.isArray(row.edits)) {
+    const edits = row.edits.slice(0, 20);
+    const perPair = Math.floor(TOOL_DETAIL_SIDE_BYTES / Math.max(1, edits.length));
+    for (const [index, edit] of edits.entries()) {
+      if (!edit || typeof edit !== "object") continue;
+      const fields = edit as Record<string, unknown>;
+      add("before", fields.old_string, Math.floor(400 / Math.max(1, edits.length * 2)), Math.floor(perPair / 2), index);
+      add("after", fields.new_string, Math.floor(400 / Math.max(1, edits.length * 2)), Math.floor(perPair / 2), index);
+    }
+    if (row.edits.length > edits.length && sections.length > 0) {
+      const last = sections.length - 1;
+      sections[last] = { ...sections[last]!, truncated: true };
+    }
+  } else if (name === "SendMessage") {
+    // 수신자와 본문은 제공자 세션 신원이 아니다. 둘 다 사용자 텍스트로 취급해 가린다.
+    add("message", typeof row.to === "string" ? `→ ${row.to}\n${typeof row.message === "string" ? row.message : ""}` : row.message, 200, TOOL_DETAIL_SIDE_BYTES);
+  }
+  return sections.length > 0 ? { sections } : null;
+}
+
+function numberedReadContent(raw: string): { readonly text: string; readonly firstLine: number } | null {
+  const source = raw.replace(/\r\n?/g, "\n").replace(/\n$/, "").split("\n");
+  const rows = source.map((line) => /^(?:\s*)(\d+)(?:\t|:|→)(.*)$/.exec(line));
+  if (rows.length === 0 || rows.some((row) => row === null)) return null;
+  const firstLine = Number(rows[0]![1]);
+  if (!Number.isSafeInteger(firstLine) || firstLine < 1 || rows.some((row, index) => Number(row![1]) !== firstLine + index)) return null;
+  return { firstLine, text: rows.map((row) => row![2]).join("\n") };
+}
+
+function toolResultDetail(name: string | undefined, content: unknown, options: ChatEventMapOptions): AgentChatToolDetail | null {
+  const raw = readResultText(content);
+  if (raw === null || raw.length === 0) return null;
+  const kind = name === "Read" || name === "NotebookRead" ? "read" : name === "Bash" || name === "Shell" ? "output" : "result";
+  const limit = kind === "read" ? 200 : name === "ListAgents" ? 30 : 60;
+  const numbered = kind === "read" ? numberedReadContent(raw) : null;
+  // 공개 원장은 세션 이름만 말하고 불투명한 연결 참조는 노출하지 않는다.
+  const display = name === "ListAgents" ? raw.replace(/\s+\[[0-9a-f]{6,}\]/gi, "") : numbered?.text ?? raw;
+  return { sections: [{ ...detailExcerpt(display, limit, TOOL_DETAIL_SIDE_BYTES, kind === "output", options, kind === "read"), kind,
+    ...(numbered ? { firstLine: numbered.firstLine } : {}), ...(display !== raw && name === "ListAgents" ? { masked: true as const } : {}) }] };
+}
+
 /**
  * 도구 입력에서 한 줄 요약을 뽑는다. 사람이 스캔할 좌표 성격의 필드만 고르고 상한을 둔다 —
  * 전체 입력(파일 본문·프롬프트)은 싣지 않는다. 경로 필드는 브라우저로 나가는 스트림이므로
@@ -1369,19 +1510,27 @@ function cap(value: string, limit: number): string {
 export function summarizeToolInput(input: unknown, options: ChatEventMapOptions = {}): string {
   if (!input || typeof input !== "object" || Array.isArray(input)) return "";
   const record = input as Record<string, unknown>;
-  for (const key of PATH_KEYS.concat(["command", "pattern", "url", "query", "description", "prompt", "subject"])) {
+  for (const key of PATH_KEYS.concat(["to", "command", "pattern", "url", "query", "description", "prompt", "subject"])) {
     const value = record[key];
     if (typeof value === "string" && value.trim().length > 0) {
       const flat = value.replace(/\s+/g, " ").trim();
-      const shown = options.fullPaths === true
-        ? flat
+      const target = key === "to" && typeof record.message === "string" && record.message.trim().length > 0
+        ? `→ ${flat} · ${record.message.trim().split(/\r?\n/, 1)[0]}`
+        : key === "to" ? `→ ${flat}` : flat;
+      const shown = maskDetailSecrets(options.fullPaths === true
+        ? target
         : PATH_KEYS.includes(key)
-          ? displayPath(flat, options.cwd)
-          : normalizePathTokens(flat, options.cwd);
+          ? displayPath(target, options.cwd)
+          : foldPathsUnlessFull(target, options));
       return shown.length > MAX_TOOL_DETAIL_CHARS ? `${shown.slice(0, MAX_TOOL_DETAIL_CHARS - 1)}…` : shown;
     }
   }
   return "";
+}
+
+/** CLI가 실패 사유를 감싸는 경계만 화면에서 벗긴다. 저널의 원본 상세와 복사는 그대로 남는다. */
+function stripToolErrorWrapper(value: string): string {
+  return /^\s*<tool_use_error>([\s\S]*?)<\/tool_use_error>\s*$/u.exec(value)?.[1]?.trim() ?? value;
 }
 
 /**
@@ -1392,7 +1541,7 @@ export function summarizeToolInput(input: unknown, options: ChatEventMapOptions 
 export function summarizeToolResult(content: unknown, options: ChatEventMapOptions = {}): string {
   const text = readResultText(content);
   if (text === null) return "";
-  const first = text.split("\n").map((line) => line.trim()).find((line) => line.length > 0);
+  const first = stripToolErrorWrapper(text).split("\n").map((line) => line.trim()).find((line) => line.length > 0);
   if (first === undefined) return "";
   const masked = maskSecrets(foldPathsUnlessFull(first.replace(/\s+/g, " ").trim(), options));
   return masked.length > MAX_TOOL_RESULT_CHARS ? `${masked.slice(0, MAX_TOOL_RESULT_CHARS - 1)}…` : masked;
@@ -1422,17 +1571,21 @@ export function summarizeToolResult(content: unknown, options: ChatEventMapOptio
  * 저절로 걸러진다.
  */
 const QUOTED_ABSOLUTE_PATH = /(['"`])((?:[A-Za-z]:[\\/]|\\\\|\/)[^'"`\n]*)\1/g;
-const BARE_ABSOLUTE_PATH = /(?<![^\s'"`([{=<])(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s'"`,;:()[\]<>]+/g;
+const BARE_ABSOLUTE_PATH = /(?<![^\s'"`([{=])(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s'"`,;:()[\]<>]+/g;
+// 코드 발췌에는 /api/v1/x, /** 주석, 정규식, JSX 닫는 태그가 나올 수 있다.
+// 코드 안에서는 파일시스템 루트 모양만 접고 자유 출력에는 기존 규칙을 쓴다.
+const CODE_FILE_ROOT = /^\/(?:Users|home|private|var|tmp|Volumes|mnt|media|root|workspace|workspaces|srv|data|opt|usr|Applications|Library|System|etc|dev|proc|run|storage)(?:\/|$)/;
 
-function abbreviateAbsolutePaths(value: string): string {
+function abbreviateAbsolutePaths(value: string, inCode = false): string {
+  const fold = (path: string) => !inCode || /^[A-Za-z]:[\\/]|^\\\\/.test(path) || CODE_FILE_ROOT.test(path) ? foldPath(path) : path;
   return value
-    .replace(QUOTED_ABSOLUTE_PATH, (_match, quote: string, path: string) => `${quote}${foldPath(path)}${quote}`)
-    .replace(BARE_ABSOLUTE_PATH, (match) => foldPath(match));
+    .replace(QUOTED_ABSOLUTE_PATH, (_match, quote: string, path: string) => `${quote}${fold(path)}${quote}`)
+    .replace(BARE_ABSOLUTE_PATH, (match) => fold(match));
 }
 
 function foldPath(path: string): string {
   const segments = path.split(/[\\/]/).filter((segment) => segment.length > 0 && !/^[A-Za-z]:$/.test(segment));
-  if (segments.length === 0) return path;
+  if (segments.length < 2) return path;
   return `…/${segments.slice(-2).join("/")}`;
 }
 
@@ -1473,7 +1626,7 @@ function changeFromToolInput(name: string, input: unknown, options: ChatEventMap
   if (raw === null) return null;
   const file = displayPath(raw.trim(), options.cwd);
   if (name === "Write") {
-    return { file, added: lineCount(record.content), removed: 0 };
+    return { file, added: 0, removed: 0, written: lineCount(record.content) };
   }
   if (name === "Edit") {
     return { file, added: lineCount(record.new_string), removed: lineCount(record.old_string) };

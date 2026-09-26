@@ -10,14 +10,25 @@ export interface DraftLine {
 // 브라우저가 멈추므로, 상한을 넘으면 선형(위치 비교) 폴백으로 강등한다.
 const MAX_LCS_CELLS = 1 << 20;
 
-/** A small, browser-only LCS diff suitable for rendered Cowork drafts. */
-export function diffDraftLines(base: string, draft: string): readonly DraftLine[] {
+export interface SnippetDiffLine {
+  readonly text: string;
+  readonly sign: " " | "+" | "-";
+  /** 제공된 발췌 안의 위치다. 실제 파일 행 번호라고 주장하지 않는다. */
+  readonly before?: number;
+  readonly after?: number;
+}
+
+/** 렌더된 초안과 상한 있는 도구 old/new 입력 비교가 같은 LCS 정렬을 쓴다. */
+export function diffSnippetLines(base: string, draft: string): readonly SnippetDiffLine[] {
   const before = base.replace(/\r\n/g, "\n").split("\n");
   const after = draft.replace(/\r\n/g, "\n").split("\n");
   const rows = before.length + 1;
   const columns = after.length + 1;
   if (rows * columns > MAX_LCS_CELLS) {
-    return after.map((text, index) => ({ text, changed: before[index] !== text }));
+    return [
+      ...before.map((text, index) => ({ sign: "-" as const, text, before: index + 1 })),
+      ...after.map((text, index) => ({ sign: "+" as const, text, after: index + 1 })),
+    ];
   }
   const lcs = Array.from({ length: rows }, () => new Uint16Array(columns));
   for (let i = before.length - 1; i >= 0; i -= 1) {
@@ -25,19 +36,31 @@ export function diffDraftLines(base: string, draft: string): readonly DraftLine[
       lcs[i]![j] = before[i] === after[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
     }
   }
-  const result: DraftLine[] = [];
+  const result: SnippetDiffLine[] = [];
   let i = 0;
   let j = 0;
-  while (j < after.length) {
-    if (i < before.length && before[i] === after[j]) {
-      result.push({ text: after[j]!, changed: false }); i += 1; j += 1;
-    } else if (i < before.length && lcs[i + 1]![j]! >= lcs[i]![j + 1]!) {
-      i += 1;
+  while (i < before.length || j < after.length) {
+    if (i < before.length && j < after.length && before[i] === after[j]) {
+      result.push({ sign: " ", text: before[i]!, before: i + 1, after: j + 1 }); i += 1; j += 1;
+    } else if (i < before.length && (j >= after.length || lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) {
+      result.push({ sign: "-", text: before[i]!, before: i + 1 }); i += 1;
     } else {
-      result.push({ text: after[j]!, changed: true }); j += 1;
+      result.push({ sign: "+", text: after[j]!, after: j + 1 }); j += 1;
     }
   }
   return result;
+}
+
+/** 렌더된 Cowork 초안에 맞는 작은 브라우저 전용 LCS diff. */
+export function diffDraftLines(base: string, draft: string): readonly DraftLine[] {
+  const before = base.replace(/\r\n/g, "\n").split("\n");
+  const after = draft.replace(/\r\n/g, "\n").split("\n");
+  if ((before.length + 1) * (after.length + 1) > MAX_LCS_CELLS) {
+    return after.map((text, index) => ({ text, changed: before[index] !== text }));
+  }
+  return diffSnippetLines(base, draft)
+    .filter((row) => row.sign !== "-")
+    .map((row) => ({ text: row.text, changed: row.sign === "+" }));
 }
 
 export interface DraftBlock {
