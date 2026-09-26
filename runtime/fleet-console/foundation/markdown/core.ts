@@ -2,6 +2,8 @@ import { Marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
+import css from "highlight.js/lib/languages/css";
+import xml from "highlight.js/lib/languages/xml";
 import javascript from "highlight.js/lib/languages/javascript";
 import json from "highlight.js/lib/languages/json";
 import markdown from "highlight.js/lib/languages/markdown";
@@ -236,6 +238,12 @@ function extractToc(document: Document): TocItem[] {
   }));
 }
 
+/** 상한 있는 코드 발췌에도 Markdown의 언어 등록부와 정화된 강조 팔레트를 재사용한다. */
+export function highlightCodeSnippet(code: string, language: string | null): string {
+  if (!language || !highlighter.getLanguage(language)) return escapeHtml(code);
+  return DOMPurify.sanitize(highlighter.highlight(code, { language }).value, { ALLOWED_TAGS: ["span"], ALLOWED_ATTR: ["class"] });
+}
+
 function highlightCode(code: string, language: string | null): string {
   if (language && highlighter.getLanguage(language)) {
     return highlighter.highlight(code, { language }).value;
@@ -246,6 +254,9 @@ function highlightCode(code: string, language: string | null): string {
 function configureHighlighter(): typeof hljs {
   hljs.registerLanguage("bash", bash);
   hljs.registerLanguage("sh", bash);
+  hljs.registerLanguage("css", css);
+  hljs.registerLanguage("html", xml);
+  hljs.registerLanguage("xml", xml);
   hljs.registerLanguage("javascript", javascript);
   hljs.registerLanguage("js", javascript);
   hljs.registerLanguage("json", json);

@@ -10,6 +10,7 @@ import { useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth, useTerm
 import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
 import { agentChatAttachmentPreviewUrl, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
+import { ToolDetail } from "./tool-detail.js";
 import { AgentGlyph } from "../agent-glyphs.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
 import {
@@ -162,6 +163,16 @@ export function AgentChatView({
   // 열 때마다 로그의 절반을 가져갔다 — 시트는 대화의 아래쪽을 잠시 덮을 뿐 밀어내지 않고,
   // 접으면 로그와 컴포저는 처음 그 자리다. 여는 것이 레이아웃 사건이 아니어야 닫는 것도 가볍다.
   const [workOpen, setWorkOpen] = React.useState(false);
+  // 다음 턴이 시작되면 마지막 턴은 역사 자리로 옮겨진다. 열린 호출 ID를 두 자리 위에서
+  // 보관해야 그 이동과 WebSocket 재연결 때 상세가 닫히지 않는다.
+  const [openedToolIds, setOpenedToolIds] = React.useState<ReadonlySet<string>>(() => new Set());
+  const toggleToolId = React.useCallback((id: string) => setOpenedToolIds((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  }), []);
+  const openToolId = React.useCallback((id: string) => setOpenedToolIds((current) => new Set(current).add(id)), []);
+  React.useEffect(() => setOpenedToolIds(new Set()), [context.operationId]);
   // 로그는 마지막 문답만 보여 준다. 앞선 턴은 상단 밴드 뒤에 접혀 있고, 누르거나 맨 위에서
   // 위로 한 번 더 굴리면 펼쳐진다. 새 턴이 서면(팔로우 중일 때) 다시 접힌다.
   const [historyOpen, setHistoryOpen] = React.useState(false);
@@ -684,6 +695,9 @@ export function AgentChatView({
             jobsByToolUse={jobsByToolUse}
             onOpenJob={showJob}
             onAnswer={state.answerAsk}
+            openedTools={openedToolIds}
+            onToggleTool={toggleToolId}
+            onOpenTool={openToolId}
           />
         ))}
       </div>
@@ -699,6 +713,9 @@ export function AgentChatView({
           jobsByToolUse={jobsByToolUse}
           onOpenJob={showJob}
           onAnswer={state.answerAsk}
+          openedTools={openedToolIds}
+          onToggleTool={toggleToolId}
+          onOpenTool={openToolId}
         />
       ) : null}
       {state.errorCode === "chat_turn_failed"
@@ -1150,9 +1167,15 @@ function ChatTurn({
   jobsByToolUse,
   onOpenJob,
   onAnswer,
+  openedTools,
+  onToggleTool,
+  onOpenTool,
 }: {
   readonly operationId: string;
   readonly turn: AgentChatTurn;
+  readonly openedTools: ReadonlySet<string>;
+  readonly onToggleTool: (id: string) => void;
+  readonly onOpenTool: (id: string) => void;
   /** 바로 다음 턴이 시작될 때의 문맥 총량. 이 턴이 더한 몫은 그것과의 차이다. */
   readonly nextContextBefore: number | undefined;
   readonly language: "en" | "ko";
@@ -1170,6 +1193,40 @@ function ChatTurn({
   // 살아남고, 다음 턴은 제 노드이므로 접힌 채로 시작한다.
   const [changesOpened, setChangesOpened] = React.useState(false);
   const toggleChanges = React.useCallback(() => { setChangesOpened((open) => !open); }, []);
+  // 완료로 넘어가면 WorkFold가 다시 마운트되므로 호출 상태는 채팅 패널이 지닌다.
+  const [workOpened, setWorkOpened] = React.useState<boolean | null>(null);
+  const [revealId, setRevealId] = React.useState<string | null>(null);
+  const turnRef = React.useRef<HTMLDivElement | null>(null);
+  const changeTargets = React.useMemo(() => {
+    const targets = new Map<string, { id?: string; count: number; writes: number }>();
+    for (const item of turn.items) {
+      if (item.type !== "tool" || item.state !== "ok" || item.change === undefined) continue;
+      const earlier = targets.get(item.change.file);
+      targets.set(item.change.file, { ...(item.id && item.toolDetail?.sections.length ? { id: item.id } : {}),
+        count: (earlier?.count ?? 0) + 1, writes: (earlier?.writes ?? 0) + (item.name === "Write" ? 1 : 0) });
+    }
+    return targets;
+  }, [turn.items]);
+  const openChange = React.useCallback((file: string) => {
+    const id = changeTargets.get(file)?.id;
+    if (!id) return;
+    setWorkOpened(true);
+    onOpenTool(id);
+    setRevealId(id);
+  }, [changeTargets, onOpenTool]);
+  React.useEffect(() => {
+    if (!revealId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = Array.from(turnRef.current?.querySelectorAll<HTMLElement>("[data-chat-tool-id]") ?? [])
+        .find((node) => node.dataset.chatToolId === revealId);
+      const tally = target?.closest(".agent-chat-tally-fold");
+      if (tally instanceof HTMLDetailsElement) tally.open = true;
+      target?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      target?.querySelector<HTMLElement>("summary")?.focus({ preventScroll: true });
+      setRevealId(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [revealId, workOpened, turn.state]);
   const continuityItem = useFastShellContinuity(turn);
   const holdingContinuity = continuityItem !== null;
   // 이 턴이 낳은 잡 중 아직 도는 것. 접힘 줄이 이 수를 말하지 않으면, 접힘이 "다 끝났다"를
@@ -1222,7 +1279,7 @@ function ChatTurn({
       ) : null}
       {turn.items.length > view.received.length || working || view.answer !== null ? (
         <div className={`agent-chat-turn is-${turn.state}`}>
-          <div className="agent-chat-turn-body">
+          <div className="agent-chat-turn-body" ref={turnRef}>
             {/* 모델·강도는 상단 세션 바가 이미 말한다 — 진행 중 헤드는 턴의 시간축만 맡는다.
                 완료 턴에는 따로 두지 않는다: 접힘 줄이 같은 시간을 말하므로 두 줄이 겹친다. */}
             {working ? (
@@ -1232,7 +1289,7 @@ function ChatTurn({
             ) : null}
             {working ? (
               <>
-                <ChangeStrip changes={view.changes} language={language} opened={changesOpened} onToggle={toggleChanges} />
+                <ChangeStrip changes={view.changes} language={language} opened={changesOpened} onToggle={toggleChanges} targets={changeTargets} onOpenChange={openChange} />
                 {/* 아무 스텝도 돌지 않고 글자도 흐르지 않는 구간이 실제로 길다(실측 34초) —
                     모델이 다음 도구 호출을 짓는 동안이다. 그 사이 원장이 비면 패널은 멈춘 것처럼
                     읽히므로, 라이브 줄의 꼬리가 "생각 중…"을 말한다(내용은 싣지 않는다). 별도의
@@ -1244,6 +1301,8 @@ function ChatTurn({
                   jobsByToolUse={jobsByToolUse}
                   onOpenJob={onOpenJob}
                   onAnswer={onAnswer}
+                  openedTools={openedTools}
+                  onToggleTool={onToggleTool}
                   working
                   continuityItem={continuityItem}
                   pending={view.streamingText === null
@@ -1265,6 +1324,8 @@ function ChatTurn({
                 jobsByToolUse={jobsByToolUse}
                 onOpenJob={onOpenJob}
                 onAnswer={onAnswer}
+                openedTools={openedTools}
+                onToggleTool={onToggleTool}
                 continuityItem={continuityItem}
               />
             ) : hasSettledWork ? (
@@ -1277,9 +1338,11 @@ function ChatTurn({
                 changes={view.changes}
                 language={language}
                 leadsToAnswer={view.answer !== null}
+                opened={workOpened ?? turn.items.some((item) => item.id !== undefined && openedTools.has(item.id))}
+                onToggleOpen={setWorkOpened}
               >
-                <ChangeStrip changes={view.changes} language={language} opened={changesOpened} onToggle={toggleChanges} />
-                <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} onAnswer={onAnswer} />
+                <ChangeStrip changes={view.changes} language={language} opened={changesOpened} onToggle={toggleChanges} targets={changeTargets} onOpenChange={openChange} />
+                <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} onAnswer={onAnswer} openedTools={openedTools} onToggleTool={onToggleTool} />
               </WorkFold>
             ) : null}
             {/* 중지된 턴에서 흐르던 글도 여기 선다 — Answer가 아니므로 그 이름표를 달지 않고,
@@ -1372,11 +1435,15 @@ function ChangeStrip({
   language,
   opened,
   onToggle,
+  targets,
+  onOpenChange,
 }: {
   readonly changes: readonly AgentChatChange[];
   readonly language: "en" | "ko";
   readonly opened: boolean;
   readonly onToggle: () => void;
+  readonly targets: ReadonlyMap<string, { id?: string; count: number; writes: number }>;
+  readonly onOpenChange: (file: string) => void;
 }) {
   const t = getT(language);
   if (changes.length === 0) return null;
@@ -1384,27 +1451,27 @@ function ChangeStrip({
   const hidden = ordered.length - CHANGE_ROWS_VISIBLE;
   const rows = opened || hidden <= 0 ? ordered : ordered.slice(0, CHANGE_ROWS_VISIBLE);
   return (
-    <div className="agent-chat-changes" aria-label={t("terminal.chat.changesAria")}>
+    <div className={`agent-chat-changes${ordered.some((change) => (change.written ?? 0) > 0) ? " has-written" : ""}`} aria-label={t("terminal.chat.changesAria")}>
       {rows.map((change) => {
         const directory = foldedDirectory(change.file);
-        return (
-          // 숫자가 무엇을 센 것인지는 이 줄이 직접 말한다 — git이 잰 diff가 아니라 쓰기 도구의
-          // 입력이라, 같은 자리를 두 번 고치면 두 번 다 더해진다. 그 사실을 감추면 숫자가 거짓말이 된다.
-          <div key={change.file} className="agent-chat-change" title={t("terminal.chat.changeCounts")}>
-            <span className="agent-chat-change-path" title={change.file}>
-              {directory.length > 0 ? <span className="agent-chat-change-dir">{directory}</span> : null}
-              <span className="agent-chat-change-name">{change.file.slice(change.file.lastIndexOf("/") + 1)}</span>
-            </span>
-            {/* 0은 자리를 지키되 수를 세지 않는다 — "+0"은 일어난 일처럼 읽히고, 칸을 비우면
-                두 열의 정렬이 무너진다. 낭독에서는 그 점을 건너뛴다. */}
-            {change.added > 0
-              ? <span className="agent-chat-change-add">+{change.added}</span>
-              : <span className="agent-chat-change-nil" aria-hidden="true">·</span>}
-            {change.removed > 0
-              ? <span className="agent-chat-change-del">−{change.removed}</span>
-              : <span className="agent-chat-change-nil" aria-hidden="true">·</span>}
-          </div>
-        );
+        const target = targets.get(change.file);
+        const content = <>
+          <span className="agent-chat-change-path" title={change.file}>
+            {directory.length > 0 ? <span className="agent-chat-change-dir">{directory}</span> : null}
+            <span className="agent-chat-change-name">{change.file.slice(change.file.lastIndexOf("/") + 1)}</span>
+            {target && target.count > 1 ? <span className="agent-chat-change-count">{language === "ko"
+              ? target.writes === 0 ? ` · ${target.count}회 고침` : target.writes === target.count ? ` · ${target.count}회 씀` : ` · ${target.count}회 호출`
+              : ` · ${target.count} calls`}</span> : null}
+          </span>
+          {/* Edit의 old/new와 Write의 입력은 서로 다른 숫자다. 어느 것도 git diff가 아니다. */}
+          {change.added > 0 ? <span className="agent-chat-change-add">+{change.added}</span> : null}
+          {change.removed > 0 ? <span className="agent-chat-change-del">−{change.removed}</span> : null}
+          {(change.written ?? 0) > 0 ? <span className="agent-chat-change-written">{change.added > 0 || change.removed > 0 ? "· " : ""}{t("terminal.chat.writtenLines", { count: change.written ?? 0 })}</span> : null}
+          {change.added === 0 && change.removed === 0 && (change.written ?? 0) === 0 ? <span className="agent-chat-change-nil" aria-hidden="true">·</span> : null}
+        </>;
+        return target?.id
+          ? <button type="button" key={change.file} className="agent-chat-change is-link" title={t("terminal.chat.changeCounts")} onClick={() => onOpenChange(change.file)}>{content}</button>
+          : <div key={change.file} className="agent-chat-change" title={t("terminal.chat.changeCounts")}>{content}</div>;
       })}
       {hidden > 0 ? (
         <button
@@ -1424,15 +1491,17 @@ function ChangeStrip({
   );
 }
 
-/** 접힌 뒤에도 남는 한 줄 — 파일 수와 두 합. 목록 자체는 접힘 안에 있다. */
-function changeTotals(changes: readonly AgentChatChange[]): { files: number; added: number; removed: number } {
+/** 접힌 뒤에도 남는 한 줄 — 파일 수, Edit의 두 합, Write의 별도 합. */
+function changeTotals(changes: readonly AgentChatChange[]): { files: number; added: number; removed: number; written: number } {
   let added = 0;
   let removed = 0;
+  let written = 0;
   for (const change of changes) {
     added += change.added;
     removed += change.removed;
+    written += change.written ?? 0;
   }
-  return { files: changes.length, added, removed };
+  return { files: changes.length, added, removed, written };
 }
 
 /**
@@ -1446,12 +1515,16 @@ function Ledger({
   jobsByToolUse,
   onOpenJob,
   onAnswer,
+  openedTools,
+  onToggleTool,
   working = false,
   pending = false,
   continuityItem = null,
 }: {
   readonly operationId: string;
   readonly items: readonly AgentChatTurnItem[];
+  readonly openedTools: ReadonlySet<string>;
+  readonly onToggleTool: (id: string) => void;
   readonly language: "en" | "ko";
   readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
   readonly onOpenJob: (id: string) => void;
@@ -1504,6 +1577,8 @@ function Ledger({
                     language={language}
                     jobsByToolUse={jobsByToolUse}
                     onOpenJob={onOpenJob}
+                    openedTools={openedTools}
+                    onToggleTool={onToggleTool}
                     {...(at === liveTallyAt ? { live: true, tails, thinking: pending } : {})}
                   />
                 );
@@ -1516,10 +1591,10 @@ function Ledger({
               }
               return part.item.type === "ask" && part.item.ask
                 ? <AskCard key={`ask-${part.item.ask.id}`} ask={part.item.ask} language={language} onAnswer={onAnswer} />
-                : <Step key={at} item={part.item} language={language} live={live} />;
+                : <Step key={at} item={part.item} language={language} live={live} openedTools={openedTools} onToggleTool={onToggleTool} />;
             })}
             {live && liveTallyAt < 0 && (tails.length > 0 || pending)
-              ? <Tally groups={[]} folded={[]} language={language} live tails={tails} thinking={pending} />
+              ? <Tally groups={[]} folded={[]} language={language} openedTools={openedTools} onToggleTool={onToggleTool} live tails={tails} thinking={pending} />
               : null}
           </div>
         );
@@ -1527,15 +1602,15 @@ function Ledger({
       {continuityItem !== null ? <ContinuityTally item={continuityItem} language={language} /> : null}
       {/* 첫 도구가 나가기 전의 첫 공백 — 세울 구간이 없으므로 빈 집계에 꼬리만 단다. */}
       {pending && segments.length === 0
-        ? <Tally groups={[]} folded={[]} language={language} live tails={[]} thinking />
+        ? <Tally groups={[]} folded={[]} language={language} openedTools={openedTools} onToggleTool={onToggleTool} live tails={[]} thinking />
         : null}
     </div>
   );
 }
 
 /**
- * 다른 세션이 보낸 메시지 한 줄. 도구 호출 줄과 같은 문법이다 — 한 줄이 "받은 메시지 · 보낸 세션"을
- * 말하고, 펼치면 본문이 선다. 별도 카드를 두지 않는 것은 이 도착이 원장의 한 사건이기 때문이다.
+ * 다른 세션이 보낸 메시지 한 줄. 접히면 보낸 세션과 본문의 짧은 첫 줄을 함께 읽고,
+ * 펼치면 축약을 숨기고 전체 본문을 읽는다. 별도 카드가 아닌 원장의 한 사건이다.
  */
 function ReceivedLine({
   item,
@@ -1546,14 +1621,17 @@ function ReceivedLine({
 }) {
   const t = getT(language);
   const text = item.text ?? "";
+  const firstLine = text.trim().split(/\r?\n/, 1)[0]?.replace(/\s+/g, " ") ?? "";
+  const preview = `${firstLine.slice(0, 160)}${text.trim().length > firstLine.length || firstLine.length > 160 ? "…" : ""}`;
   const line = (
-    <span className="agent-chat-tally-text">
+    <span className="agent-chat-tally-text agent-chat-received-text">
       <span className="agent-chat-tally-clause">
         <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name="fetch" /></span>
         <span>{t("terminal.chat.received")}</span>
       </span>
       <span className="agent-chat-tally-sep" aria-hidden="true">·</span>
-      <span className="agent-chat-tally-name">{item.from ?? ""}</span>
+      <span className="agent-chat-tally-name" title={item.from ?? ""}>{item.from ?? ""}</span>
+      {preview ? <><span className="agent-chat-tally-sep agent-chat-received-preview" aria-hidden="true">·</span><span className="agent-chat-received-preview agent-chat-received-excerpt">{preview}</span></> : null}
     </span>
   );
   // 펼칠 본문이 없으면 눌리는 척하지 않는다 — 집계 줄과 같은 규칙이다.
@@ -1703,11 +1781,15 @@ function Tally({
   language,
   jobsByToolUse,
   onOpenJob,
+  openedTools,
+  onToggleTool,
   live = false,
   tails = [],
   thinking = false,
 }: {
   readonly groups: readonly AgentChatStepGroup[];
+  readonly openedTools: ReadonlySet<string>;
+  readonly onToggleTool: (id: string) => void;
   readonly folded: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
   /** 접힌 것 중 잡을 낳은 호출을 되찾는 표. 없으면 잡 절은 수만 말하고 펼침은 스텝만 세운다. */
@@ -1721,6 +1803,13 @@ function Tally({
   readonly thinking?: boolean;
 }) {
   const t = getT(language);
+  const [tallyOpened, setTallyOpened] = React.useState(false);
+  const previouslyOpen = React.useRef<ReadonlySet<string>>(new Set());
+  React.useEffect(() => {
+    const openIds = new Set([...folded, ...tails].flatMap((item) => item.id && openedTools.has(item.id) ? [item.id] : []));
+    if ([...openIds].some((id) => !previouslyOpen.current.has(id))) setTallyOpened(true);
+    previouslyOpen.current = openIds;
+  }, [folded, tails, openedTools]);
   // 셀 것도 도는 것도 없으면 줄이 아니다. 도는 것만 있는 구간(도구로 시작한 구간)에서는 집계가
   // 비어도 이 줄이 서야 한다 — 그러지 않으면 그 스텝들이 다시 자기 행을 갖는다. 생각 중인
   // 공백도 같다: 셀 것이 없어도 살아 있다는 한 줄은 서야 한다.
@@ -1813,7 +1902,9 @@ function Tally({
   // 펼칠 것이 없으면 눌리는 척하지 않는다 — 열쇠 없는 자물쇠는 어포던스가 아니라 거짓말이다.
   if (body.length === 0) return <div className={`agent-chat-tally${alive ? " is-live" : ""}`}>{line}</div>;
   return (
-    <details className="agent-chat-tally-fold">
+    <details className="agent-chat-tally-fold" open={tallyOpened} onToggle={(event) => {
+      if (event.target === event.currentTarget) setTallyOpened(event.currentTarget.open);
+    }}>
       <summary className={`agent-chat-tally${alive ? " is-live" : ""}`} aria-label={t("terminal.chat.tallyAria")}>
         {line}
         <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
@@ -1830,7 +1921,7 @@ function Tally({
           // 이 펼침 안에만 남아 있다.
           return job !== undefined && onOpenJob !== undefined
             ? <JobAnchor key={index} job={job} language={language} onOpenJob={onOpenJob} />
-            : <Step key={index} item={item} language={language} folded />;
+            : <Step key={item.id ?? index} item={item} language={language} openedTools={openedTools} onToggleTool={onToggleTool} folded />;
         })}
       </div>
     </details>
@@ -2165,11 +2256,15 @@ function AskSettled({
 function Step({
   item,
   language,
+  openedTools,
+  onToggleTool,
   live = false,
   folded = false,
 }: {
   readonly item: AgentChatTurnItem;
   readonly language: "en" | "ko";
+  readonly openedTools: ReadonlySet<string>;
+  readonly onToggleTool: (id: string) => void;
   /** 도는 턴의 꼬리에 홀로 선 줄인가 — 집계가 없는 구간에서는 이 줄이 라이브 줄을 진다. */
   readonly live?: boolean;
   /**
@@ -2193,14 +2288,20 @@ function Step({
   // 결과 칩은 변경 장부가 있으면 줄 수를, 없으면 도구가 돌려준 한 줄 요약을 보인다.
   // 실패는 언제나 요약이 이긴다 — 무엇이 잘못됐는지가 얼마나 썼는지보다 먼저다.
   const outcome = failed
-    ? item.result ?? t("terminal.chat.stepFailed")
+    ? item.result?.trim() || t("terminal.chat.stepFailed")
     : unconfirmed
       ? t("terminal.chat.stepUnconfirmed")
-      : item.change && (item.change.added > 0 || item.change.removed > 0)
-        ? formatChange(item.change)
-        : item.result ?? null;
-  return (
-    <div className={`agent-chat-step is-${item.state ?? "done"}${folded ? " is-leaf" : ""}`}>
+      : item.state === "ok" && item.name === "Write" && item.change
+        ? t("terminal.chat.writtenLines", { count: item.change.written ?? item.change.added })
+        : item.state === "ok" && item.change && (item.change.added > 0 || item.change.removed > 0)
+          ? formatChange(item.change)
+          : null;
+  const peerCount = name === "ListAgents" && item.state === "ok"
+    ? /Peer sessions \((\d+)\):/.exec(item.toolDetail?.sections.find((section) => section.kind === "result")?.text ?? "")?.[1]
+    : undefined;
+  const className = `agent-chat-step is-${item.state ?? "done"}${folded ? " is-leaf" : ""}`;
+  const content = (
+    <>
       {running
         // 상세 본문은 기록이다 — 라이브 상태와 애니메이션은 요약 줄 하나가 지고, 펼친 본문은
         // 지금 하는 도구의 G2 글리프만 정적으로 보여 준다. 닫힌 details 안에서 링을 계속 돌리면
@@ -2217,19 +2318,30 @@ function Step({
       >
         {verb}
       </span>
-      {item.detail ? <span className="agent-chat-step-object">{item.detail}</span> : null}
+      {item.detail ? <span className="agent-chat-step-object" title={item.detail}>{item.detail}</span> : null}
+      {peerCount !== undefined ? <span className="agent-chat-step-object">· {t("terminal.chat.peerSessions", { count: peerCount })}</span> : null}
       {item.outside ? (
         <span className="agent-chat-step-outside" title={t("terminal.chat.outsideTheaterTitle")}>
           {t("terminal.chat.outsideTheater")}
         </span>
       ) : null}
       {outcome ? (
-        <span className={`agent-chat-step-out${failed ? " is-error" : ""}${unconfirmed ? " is-unknown" : ""}`}>
+        <span className={`agent-chat-step-out${failed ? " is-error" : ""}${unconfirmed ? " is-unknown" : ""}`} {...(failed ? { title: outcome ?? undefined } : {})}>
           {outcome}
         </span>
       ) : null}
-    </div>
+    </>
   );
+  const id = item.id;
+  const detail = item.toolDetail;
+  if (!id || !detail || detail.sections.length === 0) return <div className={className}>{content}</div>;
+  const opened = openedTools.has(id);
+  return <details className="agent-chat-tool-fold" data-chat-tool-id={id} open={opened}>
+    <summary className={className} onClick={(event) => { event.preventDefault(); onToggleTool(id); }}>
+      {content}<span className="agent-chat-tool-chevron" aria-hidden="true">⌄</span>
+    </summary>
+    {opened ? <ToolDetail detail={detail} name={name} path={item.detail ?? ""} state={item.state} language={language} /> : null}
+  </details>;
 }
 
 /**
@@ -2248,9 +2360,13 @@ function WorkFold({
   changes,
   language,
   leadsToAnswer,
+  opened,
+  onToggleOpen,
   children,
 }: {
   readonly durationMs: number | undefined;
+  readonly opened: boolean;
+  readonly onToggleOpen: (open: boolean) => void;
   /** 이 턴이 낳은 잡 중 아직 도는 것의 수. 접힘이 이것을 삼키면 접힘이 곧 거짓말이 된다. */
   readonly running: number;
   /** 턴 자체가 실패로 닫혔는가. 스텝 하나가 넘어진 것과 다르다 — 이쪽은 결말이다. */
@@ -2272,7 +2388,9 @@ function WorkFold({
     : t("terminal.chat.workedLabel");
   const totals = changeTotals(changes);
   return (
-    <details className={`agent-chat-fold${leadsToAnswer ? " leads-to-answer" : ""}`} {...(running > 0 ? { open: true } : {})}>
+    <details className={`agent-chat-fold${leadsToAnswer ? " leads-to-answer" : ""}`} open={running > 0 || opened} onToggle={(event) => {
+      if (event.target === event.currentTarget) onToggleOpen(event.currentTarget.open);
+    }}>
       <summary>
         {leadsToAnswer ? (
           <span className={`agent-chat-completion-node${running > 0 ? " is-running" : error ? " is-error" : stopped ? " is-stopped" : ""}`} aria-hidden="true" />
@@ -2290,6 +2408,7 @@ function WorkFold({
             </span>
             {totals.added > 0 ? <span className="agent-chat-change-add">+{totals.added}</span> : null}
             {totals.removed > 0 ? <span className="agent-chat-change-del">−{totals.removed}</span> : null}
+            {totals.written > 0 ? <span className="agent-chat-change-written">{totals.added > 0 || totals.removed > 0 ? "· " : ""}{t("terminal.chat.writtenLines", { count: totals.written })}</span> : null}
           </span>
         ) : null}
         {running > 0 ? <span className="agent-chat-fold-running">{t("terminal.chat.foldRunning", { count: running })}</span> : null}

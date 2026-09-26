@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } from "./chat-store.js";
-import { splitAgentChatTurn, type AgentChatStreamEvent } from "./chat-events.js";
+import { splitAgentChatTurn, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";
 
 class FakeWebSocket implements ChatWebSocketLike {
   static instances: FakeWebSocket[] = [];
@@ -151,7 +151,8 @@ describe("useAgentChatStream", () => {
       { kind: "received", id: "after-history", from: "commander", text: "Resume work.", inTurn: false },
       { kind: "dispatch", text: "hello" },
       { kind: "turn-start" },
-      { kind: "tool", id: "tool-1", name: "Read", detail: "file" },
+      { kind: "tool", id: "tool-1", name: "Read", detail: "file", toolDetail: { sections: [{ kind: "command", text: "requested input" }] } },
+      { kind: "tool-result", id: "tool-1", ok: true, summary: "", toolDetail: { sections: [{ kind: "read", text: "actual read content" }] } },
       { kind: "received", id: "mid", from: "commander", text: "Check this too.", inTurn: true },
       { kind: "text", text: "FINAL" },
       { kind: "received", id: "late", from: "commander", text: "Next task.", inTurn: true },
@@ -173,6 +174,7 @@ describe("useAgentChatStream", () => {
     const view = splitAgentChatTurn(latest!.turns[2]!);
     expect(view.answer).toBe("FINAL");
     expect(view.ledger.map((item) => item.type)).toEqual(["tool", "received"]);
+    expect(view.ledger[0]?.toolDetail?.sections.map((section) => section.text)).toEqual(["requested input", "actual read content"]);
     expect(latest?.turns[3]?.items[0]?.id).toBe("late");
     expect(latest?.turns[4]).toMatchObject({ state: "working", command: { name: "compact", phase: "compacting" } });
     expect(latest?.turns[5]?.items[0]?.id).toBe("command");
@@ -198,7 +200,12 @@ describe("useAgentChatStream", () => {
       }
       second!.onmessage?.({ data: JSON.stringify({ seq: journal.length + 1, event: { kind: "replay-end", turns: 1 } }) });
     });
-    expect(latest?.turns).toEqual(liveTurns);
+    // settledAt은 라이브 애니메이션 전용 시각이므로 재생 계약에 포함되지 않는다.
+    const durableTurns = (turns: readonly AgentChatTurn[] | undefined) => turns?.map((turn) => ({
+      ...turn,
+      items: turn.items.map(({ settledAt: _settledAt, ...item }) => item),
+    }));
+    expect(durableTurns(latest?.turns)).toEqual(durableTurns(liveTurns));
     expect(latest?.connection).toBe("open");
   });
 });

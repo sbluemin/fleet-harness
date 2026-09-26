@@ -11,6 +11,7 @@ export interface AgentChatChange {
   readonly file: string;
   readonly added: number;
   readonly removed: number;
+  readonly written?: number;
 }
 
 export interface AgentChatQuestionOption {
@@ -152,11 +153,12 @@ export type AgentChatStreamEvent =
       readonly kind: "tool";
       readonly name: string;
       readonly detail: string;
+      readonly toolDetail?: AgentChatToolDetail;
       readonly id?: string;
       readonly outside?: boolean;
       readonly change?: AgentChatChange;
     }
-  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string }
+  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail }
   /** 모델이 멈춰 서서 사용자를 기다린다. 저널에 남으므로 재접속해도 같은 카드가 다시 선다. */
   | {
       readonly kind: "ask";
@@ -337,6 +339,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           ...(typeof event.id === "string" && event.id.length > 0 ? { id: event.id } : {}),
           ...(event.outside === true ? { outside: true } : {}),
           ...(readChange(event.change) ? { change: readChange(event.change) as AgentChatChange } : {}),
+          ...(readToolDetail(event.toolDetail) ? { toolDetail: readToolDetail(event.toolDetail) as AgentChatToolDetail } : {}),
         },
       };
     case "ask": {
@@ -384,6 +387,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           id: event.id,
           ok: event.ok === true,
           summary: typeof event.summary === "string" ? event.summary : "",
+          ...(readToolDetail(event.toolDetail) ? { toolDetail: readToolDetail(event.toolDetail) as AgentChatToolDetail } : {}),
         },
       };
     case "turn-end":
@@ -540,11 +544,32 @@ function readStages(value: readonly unknown[]): readonly AgentChatJobStage[] {
   return stages;
 }
 
+const TOOL_DETAIL_KINDS = new Set(["command", "output", "read", "write", "before", "after", "message", "result"]);
+function readToolDetail(value: unknown): AgentChatToolDetail | null {
+  if (!value || typeof value !== "object" || !Array.isArray((value as { sections?: unknown }).sections)) return null;
+  const sections = (value as { sections: unknown[] }).sections.slice(0, 42).flatMap((raw) => {
+    if (!raw || typeof raw !== "object") return [];
+    const section = raw as Record<string, unknown>;
+    if (typeof section.kind !== "string" || !TOOL_DETAIL_KINDS.has(section.kind) || typeof section.text !== "string") return [];
+    return [{
+      kind: section.kind as AgentChatToolDetail["sections"][number]["kind"],
+      text: section.text.slice(0, 16 * 1024),
+      ...(section.truncated === true ? { truncated: true } : {}),
+      ...(typeof section.totalLines === "number" && Number.isFinite(section.totalLines) ? { totalLines: section.totalLines } : {}),
+      ...(typeof section.firstLine === "number" && Number.isSafeInteger(section.firstLine) && section.firstLine > 0 ? { firstLine: section.firstLine } : {}),
+      ...(section.masked === true ? { masked: true as const } : {}),
+      ...(typeof section.pair === "number" && Number.isInteger(section.pair) ? { pair: section.pair } : {}),
+    }];
+  });
+  return sections.length > 0 ? { sections } : null;
+}
+
 function readChange(value: unknown): AgentChatChange | null {
   if (!value || typeof value !== "object") return null;
-  const change = value as { readonly file?: unknown; readonly added?: unknown; readonly removed?: unknown };
+  const change = value as { readonly file?: unknown; readonly added?: unknown; readonly removed?: unknown; readonly written?: unknown };
   if (typeof change.file !== "string" || change.file.length === 0) return null;
-  return { file: change.file, added: numberOr(change.added, 0), removed: numberOr(change.removed, 0) };
+  return { file: change.file, added: numberOr(change.added, 0), removed: numberOr(change.removed, 0),
+    ...(typeof change.written === "number" && Number.isFinite(change.written) && change.written >= 0 ? { written: change.written } : {}) };
 }
 
 /** 이름과 토큰 수가 갖춰진 항목만 남긴다. 이름 없는 조각은 미터에 자리를 차지할 자격이 없다. */
@@ -570,6 +595,18 @@ function numberOr(value: unknown, fallback: number): number {
 
 /** 스텝의 결말. running은 아직 돌아오지 않은 것이고, done은 결과 없이 턴이 닫힌 것이다. */
 export type AgentChatStepState = "running" | "ok" | "fail" | "done";
+
+export interface AgentChatToolDetail {
+  readonly sections: readonly {
+    readonly kind: "command" | "output" | "read" | "write" | "before" | "after" | "message" | "result";
+    readonly text: string;
+    readonly truncated?: boolean;
+    readonly totalLines?: number;
+    readonly firstLine?: number;
+    readonly masked?: true;
+    readonly pair?: number;
+  }[];
+}
 
 export interface AgentChatTurnItem {
   /**
@@ -601,6 +638,7 @@ export interface AgentChatTurnItem {
   /** 라이브 결과가 돌아온 수신 시각. 시작 시각과 함께 있을 때만 짧은 완료 이음매를 만든다. */
   readonly settledAt?: number;
   readonly result?: string;
+  readonly toolDetail?: AgentChatToolDetail;
   readonly outside?: boolean;
   readonly change?: AgentChatChange;
   /** type="inject"의 문면 형식 — markdown 이면 본문을 마크다운으로 그린다. */
@@ -1123,6 +1161,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         type: "tool",
         name: event.name,
         detail: event.detail,
+        ...(event.toolDetail ? { toolDetail: event.toolDetail } : {}),
         state: initial,
         ...(event.id !== undefined ? { id: event.id } : {}),
         ...(initial === "running" && now !== undefined && agentChatToolFamily(event.name) === "run" ? { startedAt: now } : {}),
@@ -1168,6 +1207,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         state: event.ok ? "ok" : "fail",
         ...(now !== undefined && !state.replaying ? { settledAt: now } : {}),
         ...(event.summary.length > 0 ? { result: event.summary } : {}),
+        ...(event.toolDetail ? { toolDetail: { sections: [...(item.toolDetail?.sections ?? []), ...event.toolDetail.sections] } } : {}),
       }));
       // 짝을 못 찾은 결과는 버린다 — 좌표 없는 결말은 원장에 세울 자리가 없다.
       // 마지막 도는 스텝이 결과를 받으면 공백이 열린다 — 다음 호출을 짓는 시간이 여기서 잰다.
@@ -1395,6 +1435,8 @@ const TOOL_FAMILIES: Readonly<Record<string, string>> = {
   Grep: "search",
   WebSearch: "search",
   WebFetch: "fetch",
+  ListAgents: "agents",
+  SendMessage: "send",
   Task: "delegate",
   Agent: "delegate",
   Workflow: "workflow",
@@ -1412,10 +1454,9 @@ const TOOL_FAMILIES: Readonly<Record<string, string>> = {
   // 그러면 점 자체가 아무 말도 하지 않는다.
   //
   // [무엇을 싣고 무엇을 남기는가] 계열은 글리프만이 아니라 **문장**을 정한다. 그래서 글리프가
-  // 맞아도 그 계열의 문장이 거짓이 되는 이름은 여기 싣지 않는다 — `SendMessage`를 delegate에
-  // 두면 줄이 "1건 위임"이라 말하는데 실제로는 이미 도는 상대에게 말을 건 것이고,
-  // `ScheduleWakeup`을 plan에 두면 "계획 갱신"이 된다. 그런 이름은 점으로 남는 편이 정확하다:
-  // `other`는 도구 이름을 그대로 세우므로 "SendMessage 2회"는 적어도 참이다.
+  // 맞아도 그 계열의 문장이 거짓이 되는 이름은 여기 싣지 않는다 — `SendMessage`는
+  // delegate(위임)가 아니라 전용 send(메시지 전달)이며 `ScheduleWakeup`은 plan(계획 갱신)이
+  // 아니다. 아직 문장이 맞지 않는 이름은 점으로 두고 원래 도구 이름을 보여 준다.
   ToolSearch: "search",
   ListMcpResourcesTool: "search",
   // MCP 리소스를 가져오는 호출은 파일 읽기가 아니라 바깥에서 들여오는 일이다 — WebFetch와 같은 절.
@@ -1578,11 +1619,8 @@ function foldSegment(
     // 이웃한 완료 스텝의 집계는 끊지 않는다.
     const thought = step.type === "thought";
     if (thought) continue;
-    // 변경 장부가 이미 그 파일의 이름과 줄 수로 말한 쓰기는 집계 절을 만들지 않는다 —
-    // "파일 3개 씀"과 파일 세 줄이 나란히 서면 접기로 줄인 소음이 그대로 돌아온다. 펼침의
-    // 잎도 같은 이유로 비운다: 그 잎이 말할 것(도구 이름과 파일)이 장부 줄과 한 글자도 다르지
-    // 않다. 실패했거나 결과 없이 닫힌 쓰기는 장부에 오르지 않으므로 여기 남아 자기 절을 지킨다.
-    if (agentChatChangeLedgerStep(step)) continue;
+    // 변경 띠는 파일별 목차이고 호출 잎은 실제 입력/결과를 읽는 자리다. 성공한 쓰기도
+    // 호출별 상세를 되찾을 수 있도록 순서대로 남긴다. 실패/미확인 쓰기는 적용을 주장하지 않는다.
     // 잡을 낳은 호출은 결과를 기다리지 않고 접힌다. 호출 자체는 잡을 띄우자마자 돌아오므로
     // 그 상태가 무엇이든(`ok`·`done`·아직 `running`) 원장이 말할 것은 하나다: 여기서 잡이 태어났다.
     // 그 잡이 어떻게 끝났는지는 호출의 상태가 아니라 잡 자신의 결말이고, 그 결말은 절이 진다.
@@ -1650,15 +1688,19 @@ export function agentChatChangeLedgerStep(item: AgentChatTurnItem): boolean {
 
 /** 같은 파일을 여러 번 쓴 턴은 파일 하나로 합산한다 — 장부는 파일 단위다. */
 function collectChanges(items: readonly AgentChatTurnItem[]): readonly AgentChatChange[] {
-  const byFile = new Map<string, { file: string; added: number; removed: number }>();
+  const byFile = new Map<string, { file: string; added: number; removed: number; written: number }>();
   for (const item of items) {
     if (!item.change || !agentChatChangeLedgerStep(item)) continue;
+    // 옛 저널은 Write 입력 줄 수를 `added`에 실었다. 이전 버전이 없으므로 diff의 추가 줄은 아니었다.
+    const written = item.name === "Write" ? item.change.written ?? item.change.added : item.change.written ?? 0;
+    const added = item.name === "Write" ? 0 : item.change.added;
     const entry = byFile.get(item.change.file);
     if (entry) {
-      entry.added += item.change.added;
+      entry.added += added;
       entry.removed += item.change.removed;
+      entry.written += written;
     } else {
-      byFile.set(item.change.file, { ...item.change });
+      byFile.set(item.change.file, { file: item.change.file, added, removed: item.change.removed, written });
     }
   }
   return [...byFile.values()];
