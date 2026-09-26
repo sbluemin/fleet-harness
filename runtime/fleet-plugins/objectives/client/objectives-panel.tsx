@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { createPortal } from "react-dom";
 
@@ -11,7 +11,6 @@ import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
-import { GroupMenu, opensGroupMenu, type GroupMenuAnchor, type GroupPatch } from "./group-menu.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewGlyph, StartViewPicker, startViewLabel, type StartView } from "./launch-control.js";
 import { dockObjective, expandObjective, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, type ObjectiveGroup } from "./objectives-state.js";
@@ -36,7 +35,11 @@ export interface ObjectiveContext {
   readonly place: "rail" | "expanded";
 }
 
-type ListId = "today" | "due" | "all" | "agent" | "ungrouped" | `group:${string}`;
+/** 중앙 pane 제목 줄의 범위 낱말 — 그룹은 목록이 아니라 카드 패널의 구획이다. */
+type ListId = "today" | "due" | "all" | "agent";
+const LISTS: readonly ListId[] = ["today", "due", "all", "agent"];
+/** 끌어 놓을 자리 — 범위 낱말(오늘·기한) 또는 다른 그룹 구획. */
+type DropTarget = "today" | "due" | "ungrouped" | `group:${string}`;
 type DueFilter = "all" | "overdue" | "today" | "week" | "later";
 /** 끌어서 순서 바꾸기의 놓을 자리 — 이웃 카드의 앞 또는 뒤. */
 type Insert = { readonly anchorId: string; readonly place: "before" | "after" };
@@ -48,8 +51,17 @@ const CheckGlyph = () => <svg viewBox="0 0 10 10" fill="none" stroke="currentCol
 const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" /></svg>;
 /** 브리핑 — 봉인된 작전 명령서. 문서 오른쪽 아래 모서리를 인장이 대신한다. */
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
-const MoreGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" /><circle cx="8" cy="8" r="1.2" /><circle cx="12.5" cy="8" r="1.2" /></svg>;
 
+/** 펼친 상태의 상세 패널 폭 — 보는 사람의 브라우저에 남긴다(시작 보기 선택과 같은 자리). 카드 열은 최소 420px 을 지킨다. */
+const DETAIL_DEFAULT = 480;
+const DETAIL_MIN = 360;
+const DETAIL_MAX = 760;
+const MAIN_MIN = 420;
+const DETAIL_WIDTH_KEY = "fleet.objectives.detail-width";
+function readDetailWidth(): number {
+  try { const value = Number(localStorage.getItem(DETAIL_WIDTH_KEY)); return Number.isFinite(value) && value >= DETAIL_MIN && value <= DETAIL_MAX ? value : DETAIL_DEFAULT; } catch { return DETAIL_DEFAULT; }
+}
+function saveDetailWidth(width: number): void { try { localStorage.setItem(DETAIL_WIDTH_KEY, String(width)); } catch { /* 저장을 차단한 브라우저에서도 이번 폭은 유지한다. */ } }
 function todayIso(): string { return new Date().toISOString().slice(0, 10); }
 /** 한글 IME 조합 중의 Return 은 확정이지 제출이 아니다 — 조합 확정과 제출로 두 번 오는 keydown 중 앞의 것을 거른다. */
 function submitKey(event: ReactKeyboardEvent<HTMLElement>): boolean { return event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229; }
@@ -119,7 +131,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const reveal = useReveal();
   // 보기 상태(목록 · 펼친 항목 · 구획 접힘 · 기한 필터)는 Theater 별 모듈 스토어에 산다 — 표면을 닫았다 열어도 보던 자리 그대로.
   const view = useObjectiveView(theaterId);
-  const list = view.list as ListId;
+  // 옛 보기 상태가 그룹·미분류 목록을 가리키면 「모두」로 읽는다 — 그 그룹은 「모두」의 구획으로 보인다.
+  const list: ListId = (LISTS as readonly string[]).includes(view.list) ? view.list as ListId : "all";
   const selected = view.selected;
   const collapsed = view.collapsed;
   const dueFilter = view.dueFilter as DueFilter;
@@ -136,51 +149,37 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const launchRows = useLaunchRows();
   const [nextView, setNextView] = useState<StartView>(() => { try { return localStorage.getItem("fleet.objectives.start-view") === "chat" ? "chat" : "terminal"; } catch { return "terminal"; } });
   const chooseNextView = (value: StartView) => { setNextView(value); try { localStorage.setItem("fleet.objectives.start-view", value); } catch { /* 저장을 차단한 브라우저에서도 선택은 유지한다. */ } };
-  // 끌기 — 카드를 왼쪽 목록 위에 놓으면 그 목록으로 옮기고, 같은 구획의 카드 사이에 놓으면 순서를 바꾼다.
+  // 끌기 — 카드를 범위 낱말(오늘·기한)이나 다른 그룹 구획에 놓으면 그리로 옮기고, 같은 구획의 카드 사이에 놓으면 순서를 바꾼다.
   // 원래 자리는 빈 홈으로 남고 카드 유령이 커서를 따르며, 순서를 바꿀 자리에는 삽입선이 선다.
-  const [drag, setDrag] = useState<{ objectiveId: string; x: number; y: number; over: ListId | null; insert: Insert | null; offX: number; offY: number; width: number; compact: boolean } | null>(null);
-  const dragRef = useRef<{ objectiveId: string; section: string; startX: number; startY: number; live: boolean; over: ListId | null; insert: Insert | null; offX: number; offY: number; width: number } | null>(null);
+  const [drag, setDrag] = useState<{ objectiveId: string; x: number; y: number; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number; compact: boolean } | null>(null);
+  const dragRef = useRef<{ objectiveId: string; section: string; startX: number; startY: number; live: boolean; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number } | null>(null);
   const suppressClick = useRef(false);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [listMenuOpen, setListMenuOpen] = useState(false);
-  const listMenuRef = useRef<HTMLDivElement | null>(null);
-  const listTriggerRef = useRef<HTMLButtonElement | null>(null);
-  // 그룹 메뉴 — 목록 열의 그룹 행·스마트 목록의 그룹 구획 머리·그룹 목록 제목 옆 「···」에서 연다(이름·색만).
-  const [groupMenu, setGroupMenu] = useState<{ groupId: string; anchor: GroupMenuAnchor; returnFocus: HTMLElement | null } | null>(null);
-  const openGroupMenu = (groupId: string, anchor: GroupMenuAnchor, returnFocus: HTMLElement | null) => setGroupMenu({ groupId, anchor, returnFocus });
-  /** 우클릭·Shift+F10·메뉴 키 — 우클릭은 커서 자리, 키보드는 요소의 왼쪽 아래. */
-  const groupMenuHandlers = (groupId: string) => ({
-    onContextMenu: (event: ReactMouseEvent<HTMLElement>) => { event.preventDefault(); openGroupMenu(groupId, { x: event.clientX, y: event.clientY }, event.currentTarget); },
-    onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => {
-      if (!opensGroupMenu(event)) return;
-      event.preventDefault();
-      const rect = event.currentTarget.getBoundingClientRect();
-      openGroupMenu(groupId, { x: rect.left + 12, y: rect.bottom + 4 }, event.currentTarget);
-    },
-  });
-  const moreButton = (group: ObjectiveGroup, className: string) => (
-    <button type="button" className={`objectives-glyph objectives-group-more ${className}`} aria-label={t("objectives.group.menu", { name: group.name })} title={t("objectives.group.menu", { name: group.name })} aria-haspopup="menu" aria-expanded={groupMenu?.groupId === group.id}
-      onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); openGroupMenu(group.id, { x: rect.left, y: rect.bottom + 4 }, event.currentTarget); }}><MoreGlyph /></button>
-  );
+  // 목표 추가의 대상 그룹 — 구획 머리의 「+ 추가」로 고른다. 그룹을 만들고 이름을 바꾸는 일은 Console 사이드바가 맡는다.
+  const [addGroupId, setAddGroupId] = useState<string | null>(null);
+  const addInputRef = useRef<HTMLInputElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [rootWidth, setRootWidth] = useState(0);
+  const [detailWidth, setDetailWidth] = useState(readDetailWidth);
+  const [resizing, setResizing] = useState(false);
+  useLayoutEffect(() => {
+    const node = rootRef.current;
+    if (!node) return;
+    setRootWidth(node.clientWidth);
+    const observer = new ResizeObserver(() => setRootWidth(node.clientWidth));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [theaterId]);
   const placeButton = (className: string) => <button type="button" className={`objectives-place-button ${className}`} data-objectives-tour="place" aria-label={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} title={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} onClick={ctx.place === "rail" ? expandObjective : dockObjective}>
     {ctx.place === "rail" ? <ExpandGlyph /> : <DockGlyph />}
   </button>;
-  useEffect(() => {
-    if (!listMenuOpen) return;
-    const onDown = (event: PointerEvent) => { if (!listMenuRef.current?.contains(event.target as Node)) setListMenuOpen(false); };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); setListMenuOpen(false); listTriggerRef.current?.focus(); } };
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey, true);
-    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey, true); };
-  }, [listMenuOpen]);
-
   useEffect(() => { if (theaterId) void loadTheater(ctx.api, theaterId); }, [ctx.api, theaterId]);
   // 남겨 둔 자리가 사라졌으면(항목 삭제 · 그룹 제거) 그 자리만 거둔다 — 다른 곳에서 지워진 것을 붙들고 빈 화면을 보이지 않게.
   useEffect(() => {
     if (!state.loaded) return;
     if (selected && !state.objectives.some((objective) => objective.id === selected)) setSelected(null);
-    if (list.startsWith("group:") && !state.groups.some((group) => group.id === list.slice(6))) setList("all");
-  }, [state.loaded, state.objectives, state.groups, selected, list, setSelected, setList]);
+    if (addGroupId && !state.groups.some((group) => group.id === addGroupId)) setAddGroupId(null);
+  }, [state.loaded, state.objectives, state.groups, selected, addGroupId, setSelected]);
 
   // 팔레트·캡션에서 온 "이 항목으로" — 이 Theater 의 항목이면 고르고 임무를 잠깐 강조한다.
   useEffect(() => {
@@ -189,7 +188,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     if (!objective) return;
     takeReveal();
     setSelected(objective.id);
-    setList(objective.groupId ? `group:${objective.groupId}` : "ungrouped");
+    setList("all");
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     setHighlightMission(reveal.missionId ?? null);
     if (reveal.missionId) highlightTimer.current = setTimeout(() => { setHighlightMission(null); highlightTimer.current = null; }, 2400);
@@ -229,16 +228,14 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const inList = useCallback((objective: Objective): boolean => {
     if (list === "today") return objective.today;
     if (list === "due") return !!objective.dueDate && (dueFilter === "all" || dueBucket(objective.dueDate) === dueFilter);
-    if (list === "all") return true;
     if (list === "agent") return !!objective.addedBy;
-    if (list === "ungrouped") return !groupOf(objective.groupId);
-    return objective.groupId === list.slice(6);
-  }, [list, dueFilter, state.groups]);
+    return true;
+  }, [list, dueFilter]);
   const visible = useMemo(() => state.objectives.filter((objective) => inList(objective)), [state.objectives, inList]);
   const open = useMemo(() => visible.filter((objective) => !objective.done), [visible]);
   const finished = useMemo(() => visible.filter((objective) => objective.done), [visible]);
-  // 스마트 목록(오늘·기한·전부·에이전트)은 그룹별 구획으로 선다 — 사이드바 그룹 순서, 미분류는 마지막.
-  const sectioned = !list.startsWith("group:") && list !== "ungrouped";
+  // 카드 패널은 그룹별 구획으로 선다 — 사이드바 그룹 순서, 미분류는 마지막. 「모두」는 목표가 없는 그룹도 빈 구획으로 보여서
+  // 끌어 놓을 자리와 「+ 추가」 입구가 된다. 다른 범위는 해당 목표가 있는 그룹만 선다.
   const sections = useMemo(() => {
     type Section = { key: string; label: string | null; swatch: string | null; objectives: Objective[]; done?: boolean };
     const out: Section[] = [];
@@ -246,19 +243,16 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const reviewing = open.filter((objective) => objective.awaitingReview);
     if (reviewing.length) out.push({ key: "review", label: t("objectives.objectives.review"), swatch: null, objectives: reviewing });
     const working = open.filter((objective) => !objective.awaitingReview);
-    if (!sectioned) out.push({ key: "flat", label: null, swatch: null, objectives: working });
-    else {
-      for (const group of state.groups) {
-        const objectives = working.filter((objective) => objective.groupId === group.id);
-        if (objectives.length) out.push({ key: group.id, label: group.name, swatch: group.color, objectives });
-      }
-      const rest = working.filter((objective) => !groupOf(objective.groupId));
-      if (rest.length) out.push({ key: "ungrouped", label: t("objectives.list.ungrouped"), swatch: null, objectives: rest });
+    for (const group of state.groups) {
+      const objectives = working.filter((objective) => objective.groupId === group.id);
+      if (objectives.length || list === "all") out.push({ key: group.id, label: group.name, swatch: group.color, objectives });
     }
+    const rest = working.filter((objective) => !groupOf(objective.groupId));
+    if (rest.length) out.push({ key: "ungrouped", label: t("objectives.list.ungrouped"), swatch: null, objectives: rest });
     // 완료된 항목은 목록 맨 아래 「완료됨」 한 구획 — 펼쳐야 보인다.
     if (finished.length) out.push({ key: "done", label: t("objectives.objectives.done"), swatch: null, objectives: finished, done: true });
     return out;
-  }, [sectioned, open, finished, state.groups, t]);
+  }, [list, open, finished, state.groups, t]);
   const openCount = (predicate: (objective: Objective) => boolean) => state.objectives.filter((objective) => !objective.done && predicate(objective)).length;
   const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? null : null;
   const detailRef = useRef<HTMLElement | null>(null);
@@ -278,8 +272,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     requestAnimationFrame(() => { if (id) objectivesRef.current?.querySelector<HTMLElement>(`.objectives-objective[data-objective-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }); });
   };
 
-  const listTitle = list === "today" ? t("objectives.list.today") : list === "due" ? t("objectives.list.due") : list === "all" ? t("objectives.list.all") : list === "agent" ? t("objectives.list.agent") : list === "ungrouped" ? t("objectives.list.ungrouped") : groupOf(list.slice(6))?.name ?? t("objectives.list.all");
-  const listSub = list === "today" ? t("objectives.sub.today") : list === "due" ? t("objectives.sub.due") : list === "all" ? t("objectives.sub.all") : list === "agent" ? t("objectives.sub.agent") : list === "ungrouped" ? t("objectives.sub.ungrouped") : t("objectives.sub.group");
+  const listTitle = t(`objectives.list.${list}`);
+  const listCount = (id: ListId) => openCount((objective) => id === "today" ? objective.today : id === "due" ? !!objective.dueDate : id === "agent" ? !!objective.addedBy : true);
 
   // ── 행동 ──
   const completeObjective = async (objective: Objective) => {
@@ -333,7 +327,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const addObjective = async (raw: string) => {
     const title = raw.trim();
     if (!title || !theaterId) return;
-    const groupId = list.startsWith("group:") ? list.slice(6) : null;
+    const groupId = addGroupId && groupOf(addGroupId) ? addGroupId : null;
     await call("/objective/create", { theaterId, groupId, title, viewMode: nextView, today: list === "today", dueDate: list === "due" ? todayIso() : null });
   };
   const toggleEdge = async (objective: Objective, from: string, to: string) => {
@@ -360,11 +354,13 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const reorder = async (objective: Objective, insert: Insert) => {
     await call("/objective/move", { objectiveId: objective.id, ...(insert.place === "before" ? { beforeId: insert.anchorId } : { afterId: insert.anchorId }) });
   };
-  const dropTargetAt = (x: number, y: number): ListId | null => {
+  /** 놓을 자리 — 범위 낱말이나 다른 그룹 구획. 잡은 카드의 구획 위는 자리가 아니다(그 안에서는 순서를 바꾼다). */
+  const dropTargetAt = (x: number, y: number, fromSection: string): DropTarget | null => {
     const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop-list]");
-    return (hit?.dataset.dropList as ListId | undefined) ?? null;
+    if (!hit || hit.dataset.section === fromSection) return null;
+    return (hit.dataset.dropList as DropTarget | undefined) ?? null;
   };
-  const moveTo = async (objective: Objective, target: ListId) => {
+  const moveTo = async (objective: Objective, target: DropTarget) => {
     const patch: Record<string, unknown> = target === "today" ? { today: true }
       : target === "due" ? { dueDate: objective.dueDate ?? todayIso() }
       : target === "ungrouped" ? { groupId: null }
@@ -390,10 +386,10 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         state.live = true;
         suppressClick.current = true;
       }
-      state.over = busy ? null : dropTargetAt(move.clientX, move.clientY);
+      state.over = busy ? null : dropTargetAt(move.clientX, move.clientY, state.section);
       state.insert = state.over ? null : insertAt(move.clientX, move.clientY, state.objectiveId, state.section);
-      // 목록 열 위로 들어오면 카드가 손 안의 표로 줄어든다 — 놓을 자리가 카드 아래 가려지지 않게.
-      const compact = !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".objectives-lists");
+      // 범위 낱말 줄에 들어오면 놓을 자리가 잡히기 전에도 카드가 표로 줄어든다 — 낱말이 카드 아래 가려지지 않게.
+      const compact = !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".objectives-scope");
       setDrag({ objectiveId: state.objectiveId, x: move.clientX, y: move.clientY, over: state.over, insert: state.insert, offX: state.offX, offY: state.offY, width: state.width, compact });
     };
     // 취소(pointercancel — 시스템 제스처·창 전환)는 놓기가 아니다 — 아무것도 옮기지 않고 끝낸다.
@@ -432,14 +428,19 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     else if (event.key === "ArrowUp") { event.preventDefault(); rows[index - 1]?.focus(); }
   };
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !event.defaultPrevented && selected && !listMenuOpen && !document.querySelector(".objectives-cal, .objectives-zoom-backdrop, .objectives-menu")) closeDetail(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !event.defaultPrevented && selected && !document.querySelector(".objectives-cal, .objectives-zoom-backdrop, .objectives-menu")) closeDetail(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, listMenuOpen]);
+  }, [selected]);
 
   if (!theaterId) return <div className="objectives-container"><div className="objectives-root"><div className="objectives-main"><div className="objectives-empty">{t("objectives.objectives.emptyTheater")}</div></div></div></div>;
 
-  const pickList = (next: ListId) => { setList(next); setListMenuOpen(false); listTriggerRef.current?.focus(); };
+  const addGroup = addGroupId ? groupOf(addGroupId) : null;
+  // 폭 조절은 펼친 상태에서만 — 레일은 상세가 카드 목록을 대신한다. 표면이 좁아지면 저장한 폭은 두고 보이는 폭만 줄인다.
+  const sized = ctx.place === "expanded" && !!current;
+  const detailMax = Math.max(DETAIL_MIN, Math.min(DETAIL_MAX, rootWidth - MAIN_MIN));
+  const shownDetail = Math.max(DETAIL_MIN, Math.min(detailWidth, detailMax));
+  const pickAddGroup = (groupId: string) => { setAddGroupId(groupId); requestAnimationFrame(() => addInputRef.current?.focus()); };
   return (
     // 온보딩 경계(SDK 계약) — 투어 카드가 패널을 가리지 않고 패널 옆, 짚는 구획 높이에 선다(레일이든 넓은 화면이든
     // 자리가 없으면 앵커 기준 배치로 돌아간다).
@@ -449,38 +450,11 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         highlightTimer.current = null;
         setHighlightMission(null);
       }
-    }}><div className={`objectives-root${current ? " has-detail" : ""}`}>
-      <nav className={`objectives-lists${drag ? " is-dragging" : ""}`} aria-label={t("objectives.panel.title")}>
-        <ListButton id="today" current={list} onPick={setList} drop over={drag?.over === "today"} label={`☀ ${t("objectives.list.today")}`} count={openCount((objective) => objective.today)} />
-        <ListButton id="due" current={list} onPick={setList} drop over={drag?.over === "due"} label={t("objectives.list.due")} count={openCount((objective) => !!objective.dueDate)} />
-        <ListButton id="all" current={list} onPick={setList} label={`∞ ${t("objectives.list.all")}`} count={openCount(() => true)} />
-        <ListButton id="agent" current={list} onPick={setList} label={`◌ ${t("objectives.list.agent")}`} count={openCount((objective) => !!objective.addedBy)} />
-        <div className="objectives-lists-hd" title={t("objectives.list.groupsHint")}>{t("objectives.list.groups")}</div>
-        {state.groups.map((group) => (
-          <div key={group.id} className={`objectives-list-row${groupMenu?.groupId === group.id ? " is-menu" : ""}`}>
-            <ListButton id={`group:${group.id}`} current={list} onPick={setList} drop over={drag?.over === `group:${group.id}`} label={group.name} swatch={group.color} count={openCount((objective) => objective.groupId === group.id)} menuProps={groupMenuHandlers(group.id)} />
-            {moreButton(group, "is-row")}
-          </div>
-        ))}
-        <ListButton id="ungrouped" current={list} onPick={setList} drop over={drag?.over === "ungrouped"} label={t("objectives.list.ungrouped")} muted count={openCount((objective) => !groupOf(objective.groupId))} />
-        <button type="button" className="objectives-lists-add" onClick={async () => { const result = await call<{ group: ObjectiveGroup }>("/group/create", { theaterId, name: t("objectives.list.newGroupName"), color: "teal" }); if (result) { setList(`group:${result.group.id}`); toast(t("objectives.toast.groupCreated")); } }}>+ {t("objectives.list.newGroup")}</button>
-      </nav>
-
+    }}><div ref={rootRef} className={`objectives-root${current ? " has-detail" : ""}${sized ? " is-sized" : ""}${resizing ? " is-resizing" : ""}`} style={sized ? { "--objectives-detail-w": `${shownDetail}px` } as CSSProperties : undefined}>
+      {sized ? <DetailGrip t={t} width={shownDetail} max={detailMax} rootRef={rootRef} onResize={setDetailWidth} onResizing={setResizing} /> : null}
       <section ref={mainRef} className="objectives-main">
         <div className="objectives-title">
-          <div ref={listMenuRef} className="objectives-list-select">
-            <button ref={listTriggerRef} type="button" className="objectives-list-trigger" aria-label={t("objectives.list.select")} aria-haspopup="menu" aria-expanded={listMenuOpen} onClick={() => setListMenuOpen((value) => !value)}><span>{listTitle}</span><span className="objectives-count">{open.length}</span><span aria-hidden="true">⌄</span></button>
-            {listMenuOpen ? <div className="objectives-list-menu" role="menu" aria-label={t("objectives.list.select")}>
-              {(["today", "due", "all", "agent"] as const).map((id) => <ListButton key={id} id={id} current={list} onPick={pickList} label={t(`objectives.list.${id}`)} count={openCount((objective) => id === "today" ? objective.today : id === "due" ? !!objective.dueDate : id === "agent" ? !!objective.addedBy : true)} menu />)}
-              <div className="objectives-lists-hd">{t("objectives.list.groups")}</div>
-              {state.groups.map((group) => <ListButton key={group.id} id={`group:${group.id}`} current={list} onPick={pickList} label={group.name} swatch={group.color} count={openCount((objective) => objective.groupId === group.id)} menu />)}
-              <ListButton id="ungrouped" current={list} onPick={pickList} label={t("objectives.list.ungrouped")} count={openCount((objective) => !groupOf(objective.groupId))} menu />
-              <button type="button" className="objectives-lists-add" role="menuitem" onClick={async () => { const result = await call<{ group: ObjectiveGroup }>("/group/create", { theaterId, name: t("objectives.list.newGroupName"), color: "teal" }); if (result) { pickList(`group:${result.group.id}`); toast(t("objectives.toast.groupCreated")); } }}>+ {t("objectives.list.newGroup")}</button>
-            </div> : null}
-          </div>
-          <h2>{listTitle}</h2>
-          {list.startsWith("group:") && groupOf(list.slice(6)) ? moreButton(groupOf(list.slice(6))!, "is-title") : null}
-          <span className="objectives-sub">{listSub}</span>
+          <ScopeWords current={list} onPick={setList} t={t} count={listCount} dropOver={drag?.over ?? null} />
           {placeButton("objectives-place-main")}
         </div>
         {list === "due" ? (
@@ -492,8 +466,10 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         ) : null}
         <div ref={objectivesRef} className="objectives-objectives" role="listbox" aria-label={listTitle} data-objectives-tour="list">
           {open.length === 0 && finished.length === 0 ? <div className="objectives-empty">{t("objectives.objectives.empty")}</div> : null}
-          {sections.map((section) => { const expanded = isOpen(section.key, !section.done); return (<div key={section.key} data-section={section.key} className={`objectives-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}`}>
-          {section.label ? <button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)} {...(section.swatch && groupOf(section.key) ? groupMenuHandlers(section.key) : {})}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span>{section.label}</span><span className="objectives-count">{section.objectives.length}</span></button> : null}
+          {sections.map((section) => { const expanded = isOpen(section.key, !section.done); const group = groupOf(section.key); const dropKey: DropTarget | null = group ? `group:${group.id}` : section.key === "ungrouped" ? "ungrouped" : null; return (<div key={section.key} data-section={section.key} {...(dropKey ? { "data-drop-list": dropKey } : {})} className={`objectives-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}${dropKey && drag?.over === dropKey ? " is-drop" : ""}`}>
+          {section.label ? <div className="objectives-section-row"><button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span>{section.label}</span><span className="objectives-count">{section.objectives.length}</span></button>
+            {group ? <button type="button" className="objectives-section-add" aria-label={t("objectives.section.addTo", { name: group.name })} title={t("objectives.section.addTo", { name: group.name })} onClick={() => pickAddGroup(group.id)}>+ {t("objectives.section.add")}</button> : null}</div> : null}
+          {expanded && group && section.objectives.length === 0 ? <div className="objectives-section-empty">{t("objectives.section.empty")}</div> : null}
           {expanded ? section.objectives.map((objective) => {
             // 방향키 이웃은 같은 구획의 카드 행 기준 — 검토 대기가 빠져나가면 visible 순서와 구획 안 순서가 어긋난다.
             const index = section.objectives.indexOf(objective);
@@ -546,7 +522,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         </div>
         <div className="objectives-add" data-objectives-tour="add">
           <span className="objectives-plus" aria-hidden="true">+</span>
-          <input aria-label={t("objectives.objectives.add")} placeholder={t("objectives.objectives.add")} onKeyDown={(event) => { if (submitKey(event)) { const target = event.currentTarget; void addObjective(target.value).then(() => { target.value = ""; }); } }} />
+          <input ref={addInputRef} aria-label={addGroup ? t("objectives.add.into", { name: addGroup.name }) : t("objectives.objectives.add")} placeholder={t("objectives.objectives.add")} onKeyDown={(event) => { if (submitKey(event)) { const target = event.currentTarget; void addObjective(target.value).then(() => { target.value = ""; }); } else if (event.key === "Escape" && addGroup) { event.preventDefault(); setAddGroupId(null); } }} />
+          {addGroup ? <span className="objectives-add-target"><span className="objectives-swatch" style={{ background: `var(--id-${addGroup.color}, var(--text-tertiary))` }} aria-hidden="true" /><span>{t("objectives.add.into", { name: addGroup.name })}</span><button type="button" className="objectives-add-target-clear" aria-label={t("objectives.add.clear")} title={t("objectives.add.clear")} onClick={() => { setAddGroupId(null); addInputRef.current?.focus(); }}>×</button></span> : null}
           <StartViewPicker t={t} value={nextView} onChange={chooseNextView} />
         </div>
         {banner ? (
@@ -585,20 +562,10 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           onOpenObjective={openObjectiveDetail}
         />
       ) : null}
-      {groupMenu && groupOf(groupMenu.groupId) ? (
-        <GroupMenu
-          key={groupMenu.groupId}
-          group={groupOf(groupMenu.groupId)!}
-          anchor={groupMenu.anchor}
-          t={t}
-          onPatch={(patch: GroupPatch) => void call("/group/patch", { groupId: groupMenu.groupId, ...patch })}
-          onClose={(returnFocus) => { const back = groupMenu.returnFocus; setGroupMenu(null); if (returnFocus) back?.focus(); }}
-        />
-      ) : null}
       {/* 유령은 body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에서 어긋난다. */}
       {drag && dragObjective ? createPortal(
-        // 순서를 바꿀 자리가 잡히면 유령은 표로 줄어 커서 오른쪽 아래로 비킨다 — 카드 크기로 커서에 붙어 있으면 바로 그 틈의 삽입선을 덮는다.
-        <div className={`objectives-drag-ghost${drag.over || drag.insert ? " is-over" : ""}${drag.compact || drag.insert ? " is-compact" : ""}`} style={drag.compact ? { left: drag.x - 18, top: drag.y - 16, width: 224 } : drag.insert ? { left: drag.x + 14, top: drag.y + 12, width: 224 } : { left: drag.x - drag.offX, top: drag.y - drag.offY, width: drag.width }} aria-hidden="true">
+        // 놓을 자리(범위 낱말·다른 그룹 구획·카드 사이)가 잡히면 유령은 표로 줄어 커서 오른쪽 아래로 비킨다 — 카드 크기로 커서에 붙어 있으면 그 자리를 덮는다.
+        <div className={`objectives-drag-ghost${drag.over || drag.insert ? " is-over" : ""}${drag.compact || drag.over || drag.insert ? " is-compact" : ""}`} style={drag.compact || drag.over || drag.insert ? { left: drag.x + 14, top: drag.y + 12, width: 224 } : { left: drag.x - drag.offX, top: drag.y - drag.offY, width: drag.width }} aria-hidden="true">
           <span className={`objectives-check${dragObjective.done ? " is-on" : ""}`}><CheckGlyph /></span>
           <span className="objectives-drag-title">{dragObjective.title}</span>
           <span className="objectives-drag-hint">{drag.over ? "↓" : drag.insert ? "↕" : t("objectives.drag.hint")}</span>
@@ -609,13 +576,74 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   );
 }
 
-function ListButton({ id, current, onPick, label, count, swatch, muted, drop, over, menu, menuProps }: { id: ListId; current: ListId; onPick: (id: ListId) => void; label: string; count: number; swatch?: string; muted?: boolean; drop?: boolean; over?: boolean; menu?: boolean; menuProps?: { onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void; onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void } }) {
+/**
+ * 상세 패널 폭 손잡이 — 상세의 왼쪽 가장자리. 끌기·←/→(Shift 는 크게)·Home/End 로 바꾸고 두 번 누르면 기본 폭으로 돌아간다.
+ * 확대 표면은 transform 조상이라 화면 거리와 CSS 거리가 다를 수 있어 끌기는 표면의 배율로 나눈다.
+ */
+function DetailGrip({ t, width, max, rootRef, onResize, onResizing }: { t: T; width: number; max: number; rootRef: RefObject<HTMLDivElement | null>; onResize: (width: number) => void; onResizing: (value: boolean) => void }) {
+  const clamp = (value: number) => Math.round(Math.max(DETAIL_MIN, Math.min(max, value)));
+  const commit = (value: number) => { const next = clamp(value); onResize(next); saveDetailWidth(next); };
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const root = rootRef.current;
+    const scale = root && root.offsetWidth ? root.getBoundingClientRect().width / root.offsetWidth : 1;
+    const startX = event.clientX;
+    const startWidth = width;
+    let last = startWidth;
+    onResizing(true);
+    const onMove = (move: PointerEvent) => { last = clamp(startWidth - (move.clientX - startX) / (scale || 1)); onResize(last); };
+    const onEnd = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
+      onResizing(false);
+      saveDetailWidth(last);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+  };
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 64 : 16;
+    const next = event.key === "ArrowLeft" ? width + step : event.key === "ArrowRight" ? width - step : event.key === "Home" ? max : event.key === "End" ? DETAIL_MIN : null;
+    if (next === null) return;
+    event.preventDefault();
+    commit(next);
+  };
   return (
-    <button type="button" className={`objectives-list-btn${muted ? " is-muted" : ""}${over ? " is-drop" : ""}`} role={menu ? "menuitemradio" : undefined} aria-checked={menu ? current === id : undefined} aria-current={current === id} aria-haspopup={menuProps ? "menu" : undefined} onClick={() => onPick(id)} {...(drop ? { "data-drop-list": id } : {})} {...(menuProps ?? {})}>
-      {swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}
-      <span>{label}</span>
-      <span className="objectives-count">{count}</span>
-    </button>
+    <div className="objectives-detail-grip" role="separator" aria-orientation="vertical" aria-label={t("objectives.detail.width")} title={t("objectives.detail.widthTip")} aria-valuemin={DETAIL_MIN} aria-valuemax={max} aria-valuenow={width} tabIndex={0}
+      onPointerDown={onPointerDown} onDoubleClick={() => commit(DETAIL_DEFAULT)} onKeyDown={onKeyDown} />
+  );
+}
+
+const SCOPE_GLYPH: Record<ListId, string> = { today: "☀", due: "", all: "∞", agent: "◌" };
+/**
+ * 범위 낱말 — 오늘·기한·모두·에이전트가 남김이 제목 줄에 늘 같은 자리로 선다. 상자도 채움도 없이 고른 낱말만 진해지고 얇은 밑줄이
+ * 깔린다(탭 목록: ←/→·Home/End 로 옮기면 바로 고른다). 오늘·기한은 카드를 끌어 놓을 자리이기도 하다.
+ */
+function ScopeWords({ current, onPick, t, count, dropOver }: { current: ListId; onPick: (id: ListId) => void; t: T; count: (id: ListId) => number; dropOver: DropTarget | null }) {
+  const refs = useRef<Partial<Record<ListId, HTMLButtonElement | null>>>({});
+  const onKey = (event: ReactKeyboardEvent<HTMLButtonElement>, id: ListId) => {
+    const at = LISTS.indexOf(id);
+    const next = event.key === "ArrowRight" ? LISTS[(at + 1) % LISTS.length] : event.key === "ArrowLeft" ? LISTS[(at - 1 + LISTS.length) % LISTS.length] : event.key === "Home" ? LISTS[0] : event.key === "End" ? LISTS[LISTS.length - 1] : null;
+    if (!next) return;
+    event.preventDefault();
+    onPick(next);
+    refs.current[next]?.focus();
+  };
+  return (
+    <div className="objectives-scope" role="tablist" aria-label={t("objectives.scope.label")} data-objectives-tour="scope">
+      {LISTS.map((id) => (
+        <button key={id} ref={(node) => { refs.current[id] = node; }} type="button" role="tab" className={`objectives-scope-word${dropOver === id ? " is-drop" : ""}`} aria-selected={current === id} tabIndex={current === id ? 0 : -1} title={t(`objectives.sub.${id}`)} onClick={() => onPick(id)} onKeyDown={(event) => onKey(event, id)} {...(id === "today" || id === "due" ? { "data-drop-list": id } : {})}>
+          {SCOPE_GLYPH[id] ? <span className="objectives-scope-glyph" aria-hidden="true">{SCOPE_GLYPH[id]}</span> : null}
+          <span>{t(`objectives.list.${id}`)}</span>
+          <span className="objectives-count">{count(id)}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 

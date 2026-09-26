@@ -312,7 +312,7 @@ export function handleMapOperationSelected(operationId: string): void {
     );
     if (!matchingObjective) return;
 
-    const nextList = matchingObjective.groupId ? `group:${matchingObjective.groupId}` : "ungrouped";
+    const nextList = "all";
     patchObjectiveView(targetTheaterId, (current) => {
       if (current.selected === matchingObjective.id && current.list === nextList && current.externalSelectionId === matchingObjective.id) return current;
       return { selected: matchingObjective.id, list: nextList, externalSelectionId: matchingObjective.id };
@@ -335,7 +335,7 @@ export function handleMapOperationSelected(operationId: string): void {
     );
     if (!matchingObjective) return;
 
-    const nextList = matchingObjective.groupId ? `group:${matchingObjective.groupId}` : "ungrouped";
+    const nextList = "all";
     patchObjectiveView(targetTheaterId, (current) => {
       if (current.selected === matchingObjective.id && current.list === nextList && current.externalSelectionId === matchingObjective.id) return current;
       return { selected: matchingObjective.id, list: nextList, externalSelectionId: matchingObjective.id };

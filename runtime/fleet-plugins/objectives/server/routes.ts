@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import type http from "node:http";
 
-import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { z } from "zod";
@@ -30,8 +29,6 @@ const missionRef = z.object({ objectiveId: ids, missionId: ids, language });
 /** 사람이 지휘관에게 덧붙이는 말 — 구상·개시·스티어링이 같은 상한을 쓴다. */
 const context = z.string().max(MAX_CONTEXT).optional();
 /** 그룹 — 사이드바 그룹 그 자체. 색은 정체성 톤 키여야 영속 상태에 남는다(목록 밖 색의 그룹은 불러올 때 버려진다). */
-const groupName = z.string().trim().min(1).max(64);
-const groupColor = z.enum(IDENTITY_TONES);
 
 export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly ObjectiveRoute[] {
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>, req: http.IncomingMessage) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
@@ -207,15 +204,6 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       return launch.startCommander(body.objectiveId, { language: body.language, context: body.context });
     }) },
     { name: "commander/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(objectiveRef.extend({ context }), ({ objectiveId, language, context: note }) => launch.steer(objectiveId, { language, context: note }).then(objective)) },
-    { name: "group/create", method: "POST", summary: "Create an Operation group (the Objectives list).", handler: json(z.object({ theaterId: ids, language, name: groupName, color: groupColor }), ({ theaterId, name, color }) => { const groups = ctx.host.operations.groups; if (!groups) throw new Error("groups_unavailable"); return { group: groups.create({ theaterId, name, color }) }; }) },
-    // 목표 표면의 그룹 메뉴 — 이름과 색만 바꾼다(사람의 사이드바 PATCH 와 같은 길: 영속 + group:changed). 해제·삭제는 사이드바의 몫이다.
-    { name: "group/patch", method: "POST", summary: "Rename or recolor an Operation group (the Objectives list).", handler: json(z.object({ groupId: ids, language, name: groupName.optional(), color: groupColor.optional() }).refine((body) => body.name !== undefined || body.color !== undefined), ({ groupId, name, color }) => {
-      const groups = ctx.host.operations.groups;
-      if (!groups) throw new Error("groups_unavailable");
-      const group = groups.patch(groupId, { ...(name !== undefined ? { name } : {}), ...(color !== undefined ? { color } : {}) });
-      if (!group) throw new ObjectiveStoreError("unknown_group");
-      return { group };
-    }) },
     { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();
       const hits = store.list(theaterId).filter((candidate) => !candidate.done && candidate.title.toLowerCase().includes(needle)).slice(0, limit ?? 20);
