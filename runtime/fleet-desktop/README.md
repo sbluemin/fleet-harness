@@ -26,10 +26,10 @@ The entry page is view-only: main process code pushes status snapshots one way, 
 - **J3 update:** automatically install a newly found version through the staging/rename transaction before starting Console.
 - **J4 offline:** if the registry is unavailable, start a valid installed `latest` and retry the check next launch.
 - **J5 attach:** adopt a healthy matching Desktop-owned Console immediately; bootstrap and update work are skipped.
-- **J6 long-running shell:** poll every 60 minutes and on manual Check. The native message box offers **Update and Restart** or **Later** with **Skip this version**; it is shown at most once per version. Menu/tray retain `Update to x.x.x...` as the fallback after Later. Updating always calls `app.relaunch()` and reuses J3; there is no in-place update path.
+- **J6 long-running shell:** the shell checks GitHub Releases for a newer Desktop at startup and every 60 minutes; the interval is fixed. Nothing is fetched in the background. Console announces a found version inside the window, on the help button, and the same state appears as `Check for Updates`, `Download Update x.x.x…`, and `Restart to Update to x.x.x` in the macOS app menu or the Windows tray. The download starts only when you ask for it, and nothing restarts until you choose Restart; the installer then replaces and relaunches the shell. If the local managed Console also has an update waiting, that relaunch installs it through J3. A Console-only update requested in the window relaunches the app into J3; there is no in-place update of a managed runtime. Shell self-update covers the macOS and Windows releases; Linux is not covered.
 - **J-dev:** `pnpm desktop` uses workspace Console `dist` and `FLEET_CONSOLE_NODE_PATH`/`npm_node_execpath`. It does not access `~/.fleet/desktop/runtime` or perform a registry check.
 
-First-install failure **Retry**/**Quit** and J6 update prompts remain native. Desktop offers no surface of its own for choosing, adding, or naming a Console; that list belongs to Fleet Console. Startup never treats a foreign Console as an implicit pairing request. Closing the window follows normal macOS behavior and hides to tray on Windows/Linux; a second launch restores the existing window.
+First-install failure **Retry**/**Quit** remains a native dialog; update notices never open a native dialog or tray balloon. Desktop offers no surface of its own for choosing, adding, or naming a Console; that list belongs to Fleet Console. Startup never treats a foreign Console as an implicit pairing request. Closing the window follows normal macOS behavior and hides to tray on Windows/Linux; a second launch restores the existing window.
 
 ## Reaching another console
 
@@ -76,5 +76,5 @@ With Cua Driver, agents use the existing Fleet MCP tools and select exact window
 - **Registry unavailable:** an installed `latest` remains usable. If none exists, Retry after connectivity is restored.
 - **CLI-owned daemon exists:** do not delete a healthy lock or signal the process. Desktop only adopts a matching Desktop owner; reach another console from Fleet Console's own host list after normal startup.
 - **A live foreign Console lock is unhealthy:** Desktop shows one warning, then exits. Stop or quit that Console before reopening Desktop; Desktop does not kill it. An owned sidecar that cannot terminate remains a normal startup failure.
-- **Protocol is newer than the shell:** Desktop keeps the status passive and opens the Fleet releases page; it does not download a new shell automatically.
+- **Console needs a newer runtime than the shell ships:** Desktop shows a native error asking you to install the latest Fleet Console Desktop release, then exits; it never starts Console on a mismatched Node runtime.
 - **Provider unavailable:** start Desktop from an environment where the provider CLI is on `PATH`; Desktop does not provide provider discovery.
