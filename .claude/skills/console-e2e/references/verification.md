@@ -73,9 +73,18 @@ For example, Chromium fires `lostpointercapture` at the **document**, not at the
 
 Drive input the interaction actually uses. When the browser driver cannot produce it — multiple simultaneous pointers, for example — send it over the page's CDP session (`Input.dispatchTouchEvent`, `Input.dispatchMouseEvent`) rather than dispatching synthetic DOM events, which reproduce neither pointer capture nor gesture arbitration.
 
+## Plan activation paths by starting state
+
+Before measuring an activation flow, including non-modal surfaces, list its starting states and target control. For each state, check whether another surface covers the target or blocks pointer input; record the covering surface and starting focus. Use a screenshot and hit-test inspection to plan the route, then real input and its event target to establish actual reachability.
+
+- Verify pointer and keyboard activation paths where available. Keep the requested starting state intact: closing a covering surface or moving a panel creates a separate control case, not evidence for the covered state.
+- When pointer input cannot reach the target, measure through an available user path such as Tab/Shift+Tab followed by Enter or Space as supported. Record the focus origin and actual keys; a terminal may consume Tab. If no supported path reaches the target, report the block rather than forcing activation.
+- Programmatic `focus()` followed by a key is supporting activation-handler evidence only, not proof of normal keyboard reachability or visible focus. Do not remove `inert`, disabled state, focus traps, or pointer blocking to make the scenario pass.
+- Report what each route proves, what remains unverified, and what is not applicable. Keyboard activation can establish the resulting reveal or surface reuse, but not the covered control's pointer handler or hit testing. Mark pointer access not applicable only when intentional blocking is supported by design or implementation evidence; separate that intent judgment from observed behavior and record any untested handler separately. Report observed failures, such as focus hidden behind a covering surface, with their evidence rather than as unverified; judge separately whether they are product defects.
+
 ## High-risk browser boundaries
 
-- For every modal, drawer, drop-up, or shared-state deck, verify initial focus, Tab wrap, Escape close, shortcut suppression behind the modal, pointer and keyboard open paths, mutual exclusion, and focus return.
+- For every modal, drawer, drop-up, or shared-state deck, verify initial focus, Tab wrap, Escape close, shortcut suppression behind the modal, [activation paths by starting state](#plan-activation-paths-by-starting-state), mutual exclusion, and focus return.
 - Before a no-modal shortcut or chrome-changing scenario, follow [Fresh-window chrome preflight](#fresh-window-chrome-preflight); closing one dialog does not establish a clear input path.
 - Create structural state through APIs or real UI actions. Do not seed store-managed collections in localStorage; hydration may overwrite them.
 - Target destructive controls by article-scoped accessible name. WebGL can swallow loose hit tests; confirm selector accuracy before reporting a broken action.
