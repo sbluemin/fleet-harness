@@ -12,10 +12,18 @@ import type { MemberPatchInput, Objective, ObjectiveMember, PlanInput, SlotBy, M
  * 목표는 레코드로 태어난다. 첫 「개시」·「구상」에서만 같은 id 의 dormant 지휘관 Operation 을 세우고 깨운다.
  */
 
-/** 전체 중단·압축의 대상별 결과 — 건너뛴 이유와 실패를 숨기지 않는다. */
+/** 전체 중단의 대상별 결과 — 건너뛴 이유와 실패를 숨기지 않는다. */
 export interface StopTarget {
   readonly operationId: string;
-  readonly outcome: "interrupted" | "requested" | "skipped" | "failed";
+  readonly outcome: "interrupted" | "skipped" | "failed";
+  readonly reason?: string;
+}
+
+/** 전체 압축의 대상별 결과 — woken 은 보내기 전 휴면이었고 전달이 받아들여진 곳이다. */
+export interface CompactTarget {
+  readonly operationId: string;
+  readonly outcome: "requested" | "rejected";
+  readonly woken: boolean;
   readonly reason?: string;
 }
 
@@ -61,7 +69,7 @@ export interface LaunchService {
   /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
   stop(objectiveId: string): Promise<{ readonly objective: Objective; readonly interrupted: number; readonly targets: readonly StopTarget[] }>;
   /** 전체 압축 — 지휘관과 operationId 가 있는 모든 구성원에게 "/compact" 를 보낸다. 큐잉·깨움·거절은 호스트 전달 경로가 정한다. */
-  compact(objectiveId: string): Promise<{ readonly objective: Objective; readonly requested: number; readonly targets: readonly StopTarget[] }>;
+  compact(objectiveId: string): Promise<{ readonly objective: Objective; readonly requested: number; readonly woken: number; readonly rejected: number; readonly excluded: number; readonly targets: readonly CompactTarget[] }>;
   /** Operation 이 삭제 유예에 들어갔다 — 지휘관이었다면 담당 Operation 도 함께 닫는다. */
   operationDeleted(operationId: string): void;
   /** Operation 이 복원 불가로 사라졌다 — 목표 레코드(지휘관)나 임무 연결(담당)을 거둔다. */
@@ -601,16 +609,23 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
     async compact(objectiveId) {
       const current = objective(objectiveId);
-      const ids = [...new Set([current.id, ...current.members.flatMap((candidate) => (candidate.operationId ? [candidate.operationId] : []))])];
-      const targets = await Promise.all(ids.map(async (operationId): Promise<StopTarget> => {
-        try { await control().request({ kind: "send", operationId, text: "/compact" }); return { operationId, outcome: "requested" }; }
+      if (current.done) throw new ObjectiveStoreError("objective_done");
+      // 보낼 곳 — 지휘관과, Operation 이 아직 있는 구성원. operationId 가 없거나 Operation 이 사라진 구성원은 제외로 센다.
+      const memberIds = current.members.flatMap((candidate) => (candidate.operationId ? [candidate.operationId] : []));
+      const live = [...new Set([current.id, ...memberIds])].filter((operationId) => operationId === current.id || !!ctx.host.operations.get(operationId));
+      const excluded = current.members.length - live.filter((operationId) => operationId !== current.id).length;
+      // 상태로 거르지 않는다 — 큐잉·즉시 실행·휴면 깨움·거절은 호스트 전달 경로가 정한다. 깨움은 보내기 전에 휴면이었던 곳만 센다.
+      const targets = await Promise.all(live.map(async (operationId): Promise<CompactTarget> => {
+        const dormant = ctx.host.consoleControl?.observe(operationId)?.lifecycle === "dormant";
+        try { await control().request({ kind: "send", operationId, text: "/compact" }); return { operationId, outcome: "requested", woken: dormant }; }
         catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           console.warn(`[objectives] Could not send /compact to Operation ${operationId} of objective ${objectiveId}: ${reason}`);
-          return { operationId, outcome: "failed", reason };
+          return { operationId, outcome: "rejected", woken: false, reason };
         }
       }));
-      return { objective: current, requested: targets.filter((target) => target.outcome === "requested").length, targets };
+      const requested = targets.filter((target) => target.outcome === "requested");
+      return { objective: current, requested: requested.length, woken: requested.filter((target) => target.woken).length, rejected: targets.length - requested.length, excluded: Math.max(0, excluded), targets };
     },
 
     operationDeleted(operationId) {
