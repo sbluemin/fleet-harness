@@ -55,7 +55,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     id: objective.id, theaterId: objective.theaterId, groupId: objective.groupId, title: objective.title, note: objective.note,
     // 메모에 붙인 이미지 — 이미지 자체는 싣지 않고 이 기계의 절대 경로만. 필요할 때 Read 로 연다(브라우저에는 이 경로가 가지 않는다).
     attachments: (objective.attachments ?? []).map((attachment) => ({ n: attachment.n, name: attachment.name, type: attachment.type, bytes: attachment.bytes, ...(attachment.width ? { width: attachment.width, height: attachment.height } : {}), path: store.attachmentPath(objective, attachment) })),
-    important: objective.important, dueDate: objective.dueDate, today: objective.today,
+    dueDate: objective.dueDate, today: objective.today,
     // 달성 기준 — n 은 1부터, 기준을 가리키는 번호. met 은 지휘관이 충족으로 표시한 근거(없으면 미충족).
     criteria: objective.criteria.map((criterion, index) => ({ n: index + 1, id: criterion.id, text: criterion.text, by: criterion.by, met: criterion.met ?? null })),
     criteriaOpen: objective.criteriaOpen,
@@ -73,7 +73,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
     origin: objective.origin,
   });
-  const rowView = (objective: Objective) => ({ id: objective.id, groupId: objective.groupId, title: objective.title, done: !!objective.done, awaitingReview: objective.awaitingReview, important: objective.important, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null });
+  const rowView = (objective: Objective) => ({ id: objective.id, groupId: objective.groupId, title: objective.title, done: !!objective.done, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null });
   /** 알림 문구의 언어 — 목표가 띄운 세션에 objectiveLanguage 로 남아 있다. */
   const languageOf = (caller: ConsoleCaller | undefined): PromptLanguage => {
     if (caller?.kind !== "operation") return "en";

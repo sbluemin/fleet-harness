@@ -43,7 +43,6 @@ type T = Translate<ObjectiveMessageKey>;
 const ExpandGlyph = () => <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" /></svg>;
 const DockGlyph = () => <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12.5 2.5v11M3 8h7M7 5l3 3-3 3" /></svg>;
 const CheckGlyph = () => <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden="true"><path d="M2 5.2l2.2 2.2L8 3" /></svg>;
-const StarGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" aria-hidden="true"><path d="M8 2.4l1.8 3.75 4.1.55-3 2.85.75 4.07L8 11.68l-3.65 1.94.75-4.07-3-2.85 4.1-.55z" /></svg>;
 const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" /></svg>;
 /** 브리핑 — 봉인된 작전 명령서. 문서 오른쪽 아래 모서리를 인장이 대신한다. */
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
@@ -330,13 +329,10 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     if (state.objectives.some((entry) => entry.id === operationId)) setSelected(operationId);
   };
   const addObjective = async (raw: string) => {
-    let title = raw.trim();
-    if (!title) return;
-    const important = /(^|\s)!/.test(title);
-    title = title.replace(/(^|\s)!\S*/g, "$1").trim();
+    const title = raw.trim();
     if (!title || !theaterId) return;
     const groupId = list.startsWith("group:") ? list.slice(6) : null;
-    await call("/objective/create", { theaterId, groupId, title, important, viewMode: nextView, today: list === "today", dueDate: list === "due" ? todayIso() : null });
+    await call("/objective/create", { theaterId, groupId, title, viewMode: nextView, today: list === "today", dueDate: list === "due" ? todayIso() : null });
   };
   const toggleEdge = async (objective: Objective, from: string, to: string) => {
     const result = await call<{ objective: Objective; linked: boolean }>("/edge/toggle", { objectiveId: objective.id, from, to });
@@ -532,7 +528,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                 <div className="objectives-objective-side">
                   <LaunchWords objective={objective} t={t} rows={launchRows} autoLabel={t("objectives.commander.effortAuto")} defaultLabel={t("objectives.launch.default")} state={objective.commander.started ? operationState(objective.id) : null} />
                   {!!operationOf(objective.id) ? <button type="button" className="objectives-glyph objectives-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={(event) => { event.stopPropagation(); focusOperation(objective.id); }}><GoGlyph /></button> : null}
-                  <button type="button" className={`objectives-star${objective.important ? " is-on" : ""}`} aria-label={t("objectives.objective.important")} aria-pressed={objective.important} onClick={(event) => { event.stopPropagation(); void call("/objective/patch", { objectiveId: objective.id, patch: { important: !objective.important } }); }}>{objective.important ? "★" : "☆"}</button>
                 </div>
               </div>
             );
@@ -1251,7 +1246,6 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             );
           })()}
           <textarea className="objectives-detail-title" aria-label={t("objectives.objective.titleAria")} value={title} rows={1} readOnly={!editable} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); } }} onBlur={() => { if (title.trim() && title !== objective.title) void call("/objective/patch", { objectiveId: objective.id, patch: { title: title.trim() } }); }} />
-          <button type="button" className={`objectives-star${objective.important ? " is-on" : ""}`} aria-label={t("objectives.objective.important")} aria-pressed={objective.important} onClick={() => void call("/objective/patch", { objectiveId: objective.id, patch: { important: !objective.important } })}><StarGlyph /></button>
           {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.objective.delete")} title={t("objectives.objective.delete")} onClick={async () => { const removed = await call<{ objective: Objective }>("/objective/remove", { objectiveId: objective.id }); if (removed) toast(t("objectives.toast.deleted")); }}><TrashGlyph /></button> : null}
           {placeButton}
         </div>

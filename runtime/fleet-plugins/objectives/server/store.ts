@@ -83,7 +83,6 @@ export interface ObjectiveStoreOptions {
 /** 새 목표의 목표 고유값 — Operation 은 부르는 쪽이 먼저 만든다. */
 export interface ObjectiveInit {
   readonly note?: string;
-  readonly important?: boolean;
   readonly dueDate?: string | null;
   readonly today?: boolean;
   readonly missions?: readonly { readonly text: string; readonly prerequisites?: readonly number[] }[];
@@ -115,7 +114,6 @@ export interface FollowupSelection {
 export interface ObjectivePatch {
   readonly note?: string;
   readonly planRequest?: string;
-  readonly important?: boolean;
   readonly dueDate?: string | null;
   readonly today?: boolean;
 }
@@ -319,7 +317,7 @@ function compact(objective: StoredObjective): StoredObjective {
   for (const key of ["note", "planRequest", "dueDate", "addedBy", "followupHistory", "origin"] as const) if (!out[key]) delete out[key];
   if (!objective.followups?.length) delete out.followups;
   if (!objective.followupBatches?.length) delete out.followupBatches;
-  for (const key of ["planning", "criteriaOpen", "important", "today"] as const) if (out[key] !== true) delete out[key];
+  for (const key of ["planning", "criteriaOpen", "today"] as const) if (out[key] !== true) delete out[key];
   if (!(objective.attachments?.length)) delete out.attachments;
   if (!(objective.criteria?.length)) delete out.criteria;
   if (!(objective.criteriaProposals?.length)) delete out.criteriaProposals;
@@ -425,7 +423,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       planning: stored.planning === true,
       criteriaOpen: stored.criteriaOpen === true,
       ...(stored.edited ? { edited: stored.edited } : {}),
-      important: stored.important === true,
       dueDate: stored.dueDate ?? null,
       today: stored.today === true,
       addedBy,
@@ -629,7 +626,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         rank: bottomRank(theaterId),
         ...(pending ? { pending } : {}),
         note: init.note ?? "",
-        ...(init.important ? { important: true as const } : {}),
         ...(init.dueDate ? { dueDate: init.dueDate } : {}),
         ...(init.today ? { today: true as const } : {}),
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
@@ -661,7 +657,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       ...stored,
       ...(input.note !== undefined ? { note: input.note } : {}),
       ...(input.planRequest !== undefined ? { planRequest: input.planRequest } : {}),
-      ...(input.important !== undefined ? { important: input.important ? true as const : undefined } : {}),
       ...(input.dueDate !== undefined ? { dueDate: input.dueDate ?? undefined } : {}),
       ...(input.today !== undefined ? { today: input.today ? true as const : undefined } : {}),
     })),
