@@ -39,7 +39,7 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
   return (
     <div ref={barRef} className="zen-bar" hidden={!active} role="group" aria-label={t("zen.bar.aria")}>
       <span className="zen-bar-toolbar" ref={setZenToolbarHost} />
-      <span className="zen-bar-brand" title="Fleet">
+      <span className="zen-bar-brand" title={t("zen.bar.brand")}>
         <BrandMarkIcon className="zen-bar-brand-glyph" local={local} />
         <BrandWordmark className="zen-bar-brand-wordmark" local={local} />
       </span>
