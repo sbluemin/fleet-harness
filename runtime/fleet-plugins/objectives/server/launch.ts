@@ -12,6 +12,13 @@ import type { MemberPatchInput, Objective, ObjectiveMember, PlanInput, SlotBy, M
  * 목표는 레코드로 태어난다. 첫 「개시」·「구상」에서만 같은 id 의 dormant 지휘관 Operation 을 세우고 깨운다.
  */
 
+/** 전체 중단의 대상별 결과 — 건너뛴 이유와 실패를 숨기지 않는다. */
+export interface StopTarget {
+  readonly operationId: string;
+  readonly outcome: "interrupted" | "skipped" | "failed";
+  readonly reason?: string;
+}
+
 export interface LaunchService {
   describe(): { readonly available: boolean };
   /** 목표 레코드만 만든다. 후속 후보는 안정적인 objectiveId 를 지정할 수 있다. */
@@ -52,7 +59,7 @@ export interface LaunchService {
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
   steer(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
-  stop(objectiveId: string): Promise<{ readonly objective: Objective; readonly interrupted: number }>;
+  stop(objectiveId: string): Promise<{ readonly objective: Objective; readonly interrupted: number; readonly targets: readonly StopTarget[] }>;
   /** Operation 이 삭제 유예에 들어갔다 — 지휘관이었다면 담당 Operation 도 함께 닫는다. */
   operationDeleted(operationId: string): void;
   /** Operation 이 복원 불가로 사라졌다 — 목표 레코드(지휘관)나 임무 연결(담당)을 거둔다. */
@@ -575,13 +582,17 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (current.planning) current = store.setPlanning(objectiveId, false);
       if (current.criteriaOpen) current = store.setCriteriaOpen(objectiveId, false);
       const ids = [current.id, ...current.members.flatMap((candidate) => (candidate.operationId ? [candidate.operationId] : []))];
-      let interrupted = 0;
-      for (const operationId of ids) {
-        if (!stoppable(operationId)) continue;
-        try { await control().request({ kind: "interrupt", operationId }); interrupted += 1; }
-        catch { /* 이미 멈췄거나 받을 수 없는 Operation — 나머지는 계속 멈춘다. */ }
-      }
-      return { objective: current, interrupted };
+      // 대상마다 따로, 동시에 보낸다 — 한 대상의 느린 확인이 나머지를 늦추거나 요청 시한 뒤로 밀지 않게 한다.
+      const targets = await Promise.all(ids.map(async (operationId): Promise<StopTarget> => {
+        if (!stoppable(operationId)) return { operationId, outcome: "skipped", reason: "not_working" };
+        try { await control().request({ kind: "interrupt", operationId }); return { operationId, outcome: "interrupted" }; }
+        catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          console.warn(`[objectives] Could not interrupt Operation ${operationId} of objective ${objectiveId}: ${reason}`);
+          return { operationId, outcome: "failed", reason };
+        }
+      }));
+      return { objective: current, interrupted: targets.filter((target) => target.outcome === "interrupted").length, targets };
     },
 
     operationDeleted(operationId) {
