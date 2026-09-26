@@ -1393,7 +1393,26 @@ const TOOL_DETAIL_SIDE_BYTES = 16 * 1024 - 256;
 type ToolDetailSection = AgentChatToolDetail["sections"][number];
 
 function maskDetailSecrets(value: string): string {
-  return maskSecrets(value)
+  // YAML의 맨 값과 들여쓴 블록은 첫 토큰만 가리면 뒷부분이 샌다. 같은 깊이의 다음 키는 남긴다.
+  let scalarIndent: number | null = null;
+  const yamlMasked = value.split("\n").map((line) => {
+    const indent = /^[ \t]*/.exec(line)![0];
+    if (scalarIndent !== null) {
+      if (line.trim() === "") return line;
+      if (indent.length > scalarIndent) return `${indent}[가림]`;
+      scalarIndent = null;
+    }
+    const field = /^([ \t]*(?:-[ \t]+)?)(["']?\b(?:[a-z][a-z0-9_-]*[_-])?(?:api[_-]?key|token|secret|password|passwd|private[_-]?key|auth|cookie)["']?[ \t]*:[ \t]*)(.*)$/i.exec(line);
+    if (!field) return line;
+    const scalar = field[3]!.trim();
+    // 문자열 리터럴은 아래에서 전체를 가린다. 코드의 env 참조와 타입·불리언은 자격증명이 아니다.
+    if (!scalar || /^["'`[{]/.test(scalar)
+      || /^(?:process\.env|import\.meta\.env|env)\.[A-Za-z_$][\w$]*\b/.test(scalar)
+      || /^(?:string|number|boolean|unknown|never|null|undefined|object|any|true|false)(?:\s*[;,)\]}>]|$)/.test(scalar)) return line;
+    scalarIndent = field[1]!.length;
+    return `${field[1]}${field[2]}[가림]`;
+  }).join("\n");
+  return maskSecrets(yamlMasked)
     // 줄 수·바이트 상한을 적용하기 전에 키 본문 전체를 가려 뒤쪽 발췌에도 남지 않게 한다.
     .replace(/-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/g,
       (block) => `[가림]${(block.match(/\n/g) ?? []).join("")}`)

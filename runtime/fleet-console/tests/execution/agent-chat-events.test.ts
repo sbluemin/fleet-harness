@@ -121,6 +121,12 @@ describe("chat transcript mapping", () => {
     expect(displayed).toContain(code);
     expect(displayed).not.toContain("hunter2secretvalue");
     expect(displayed).not.toContain("abc123secretvalue");
+    const yamlRead = chatEventsFromSdkMessage({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "read-yaml", content: "120→password: correct horse battery staple\n121→token: |\n122→  synthetic first\n123→  synthetic second\n124→public: kept" }] } }, {
+      cwd, toolNames: new Map([["read-yaml", "Read"]]),
+    })[0];
+    expect(yamlRead).toMatchObject({ kind: "tool-result", toolDetail: { sections: [{ kind: "read", firstLine: 120,
+      text: "password: [가림]\ntoken: [가림]\n  [가림]\n  [가림]\npublic: kept", masked: true,
+    }] } });
     const longOutput = `${"older\n".repeat(70)}FLEET_TOKEN=private-value\n${"newer\n".repeat(20)}`;
     const shellResult = chatEventsFromSdkMessage({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "shell-1", content: longOutput }] } }, {
       cwd, toolNames: new Map([["shell-1", "Bash"]]),
