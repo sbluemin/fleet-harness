@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -30,12 +30,85 @@ interface GraphProps {
   readonly onFocusMission?: (missionId: string | null) => void;
 }
 
+// 비확대 그래프의 최소 폭과 확대본의 폭 — 폭에 따라 달라지는 값(첫 열 위치·열 간격 상한·라벨 폭 상한)은 이 두 점을 잇는 한 직선 위에 선다.
+// 확대본은 880 에서 늘 같은 값을 얻고, 사이드 패널은 상자 실측 폭만큼 같은 식을 이어 쓴다.
+const NARROW_W = 320;
+const ZOOM_W = 880;
+// 한글·한자·전각 — 모노 글꼴에서 라틴 두 칸 폭. 캔버스 실측이 없을 때의 어림에만 쓴다.
+const WIDE_CHAR = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/u;
+const LABEL_GAP = 6;
+const NODE_R = 9;
+let measureContext: CanvasRenderingContext2D | null | undefined;
+
+/** 라벨 폭 — 그려질 글꼴로 캔버스에서 잰다. 캔버스가 없으면 모노 글꼴 비율(라틴 0.6em, 한글·CJK 1em)로 어림한다. */
+function textWidth(text: string, font: string | null, fontSize: number): number {
+  if (font) {
+    if (measureContext === undefined) {
+      try { measureContext = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d"); } catch { measureContext = null; }
+    }
+    if (measureContext) { measureContext.font = font; return measureContext.measureText(text).width; }
+  }
+  let width = 0;
+  for (const char of text) width += (WIDE_CHAR.test(char) ? 1 : 0.6) * fontSize;
+  return width;
+}
+
+/** 폭 안에 드는 가장 긴 제목 — 넘치면 말줄임을 붙인다. 두 글자도 못 들어가면 제목을 숨긴다(번호·툴팁·임무 목록이 남는다). */
+function fitLabel(text: string, maxWidth: number, measure: (text: string) => number): string | null {
+  if (measure(text) <= maxWidth) return text;
+  const chars = [...text];
+  let lo = 2, hi = chars.length - 1, best: string | null = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const candidate = `${chars.slice(0, mid).join("")}…`;
+    if (measure(candidate) <= maxWidth) { best = candidate; lo = mid + 1; } else hi = mid - 1;
+  }
+  return best;
+}
+
 export function CoordinationGraph({ objective, t, modeLabel, onToggleEdge, onCycle, operationTitle, zoom = false, vertical = false, onZoom, canEdit, focusMissionId = null, onFocusMission }: GraphProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const rootLabelRef = useRef<SVGTextElement | null>(null);
   const [drag, setDrag] = useState<{ from: string; x0: number; y0: number; x: number; y: number; over: string | null } | null>(null);
   const movedRef = useRef(false);
   // 노드에서 시작한 누름 — 포인터 캡처 탓에 뒤따르는 click 의 target 이 svg 가 되므로, 노드 누름은 여기서 기억해 확대를 막는다.
   const pressedNodeRef = useRef(false);
+  // 사이드 패널의 그래프는 상자 폭을 그대로 쓴다 — 고정 폭을 가운데 세우면 넓은 패널에서 그래프가 한가운데로 몰린다.
+  const [boxWidth, setBoxWidth] = useState<number | null>(null);
+  // 라벨 글꼴 — 뿌리 라벨의 계산된 글꼴로 잰다. 웹 글꼴이 늦게 오면 한 번 더 잰다.
+  const [font, setFont] = useState<{ readonly spec: string; readonly size: number; readonly epoch: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (zoom || vertical) return;
+    const element = boxRef.current;
+    if (!element) return;
+    const read = () => {
+      const style = getComputedStyle(element);
+      const width = Math.floor(element.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0));
+      setBoxWidth(width > 0 ? width : null);
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [zoom, vertical]);
+  useLayoutEffect(() => {
+    if (vertical) return;
+    let alive = true;
+    const read = (epoch: number) => {
+      const element = rootLabelRef.current;
+      if (!element || !alive) return;
+      const style = getComputedStyle(element);
+      const size = parseFloat(style.fontSize) || (zoom ? 11 : 10);
+      const spec = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      setFont((previous) => previous && previous.spec === spec && previous.epoch === epoch ? previous : { spec, size, epoch });
+    };
+    read(0);
+    void document.fonts?.ready.then(() => read(1));
+    return () => { alive = false; };
+  }, [zoom, vertical]);
 
   const missions = objective.missions;
   // 미분류 — 열·행 배치에서 빼고 아래 칸에 줄 세운다.
@@ -46,32 +119,81 @@ export function CoordinationGraph({ objective, t, modeLabel, onToggleEdge, onCyc
   const byId = new Map(missions.map((mission) => [mission.id, mission]));
   const focused = focusMissionId ? byId.get(focusMissionId) ?? null : null;
   const columns = placedMissions.length ? Math.max(...placedMissions.map((mission) => depth.get(mission.id) ?? 0)) + 1 : 0;
-  const W = zoom ? 880 : 320;
-  // 첫 열의 x — 확대본은 뿌리(지휘관)와 첫 임무 사이를 넓혀 긴 제목이 뿌리 라벨을 덮지 않게 한다.
-  const left = zoom ? 150 : 88;
-  const colW = columns ? Math.min(zoom ? 150 : 92, (W - left + 4) / Math.max(columns, 1)) : 0;
+  const W = zoom ? ZOOM_W : Math.max(NARROW_W, boxWidth ?? NARROW_W);
+  const spread = (W - NARROW_W) / (ZOOM_W - NARROW_W);
+  const along = (narrow: number, wide: number) => narrow + (wide - narrow) * spread;
+  // 첫 열의 x — 넓어질수록 뿌리(지휘관)와 첫 임무 사이를 넓혀 긴 제목이 뿌리 라벨을 덮지 않게 한다.
+  const left = along(88, 150);
+  const colW = columns ? Math.min(along(92, 150), (W - left + 4) / Math.max(columns, 1)) : 0;
   const rowH = zoom ? 56 : 42;
   const byDepth = new Map<number, string[]>();
   for (const mission of placedMissions) { const d = depth.get(mission.id) ?? 0; byDepth.set(d, [...(byDepth.get(d) ?? []), mission.id]); }
   const rows = Math.max(1, ...[...byDepth.values()].map((ids) => ids.length));
-  // 노드 아래 제목은 열 간격에 맞춰 줄인다. 열이 촘촘하면(긴 일렬) 위·아래를 번갈아 써서 이웃과 겹치지 않게 하고,
-  // 그래도 서너 글자가 안 들어가면 제목을 숨긴다 — 번호와 툴팁, 그리고 위의 임무 목록이 남는다.
-  const CHAR = zoom ? 12.5 : 11;
-  const fitIn = (width: number) => Math.min(zoom ? 22 : 8, Math.floor((width - 6) / CHAR));
-  // 확대본은 늘 엇갈려 쓴다 — 이웃 두 칸을 라벨 하나가 쓰니 제목이 두 배로 보인다.
-  const stagger = columns > 1 && (zoom || fitIn(colW) < 5);
-  const fit = stagger ? fitIn(colW * 2) : fitIn(colW);
-  const showLabels = fit >= 3;
-  const lift = stagger && showLabels ? 12 : 0;
+  // 노드 제목은 위·아래를 열마다 번갈아 쓴다 — 이웃 두 칸을 라벨 하나가 쓰니 제목이 두 배로 보인다.
+  const stagger = columns > 1;
+  const lift = stagger ? 12 : 0;
   const body = Math.max(70, rows * rowH + 26) + lift;
   const trayH = loose.length ? (zoom ? 52 : 40) : 0;
   const H = body + trayH;
+  // 열 간격이 상한에 걸려 그래프가 폭을 다 못 채우면 남는 폭의 절반만큼 오른쪽으로 옮겨 가운데에 세운다.
+  const lastX = left + Math.max(columns - 1, 0) * colW;
+  const shift = columns ? Math.max(0, (W - lastX - colW) / 2) : 0;
   const pos = new Map<string, { x: number; y: number }>();
-  for (const [d, ids] of byDepth) ids.forEach((id, r) => pos.set(id, { x: left + d * colW, y: 16 + lift + r * rowH + ((rows - ids.length) * rowH) / 2 }));
+  for (const [d, ids] of byDepth) ids.forEach((id, r) => pos.set(id, { x: shift + left + d * colW, y: 16 + lift + r * rowH + ((rows - ids.length) * rowH) / 2 }));
   const trayGap = Math.min(zoom ? 64 : 30, (W - left - 12) / Math.max(loose.length, 1));
   loose.forEach((mission, i) => pos.set(mission.id, { x: left + i * trayGap, y: body + trayH / 2 - 2 }));
-  const root = { x: zoom ? 30 : 20, y: body / 2 };
-  const shorten = (text: string) => (text.length > fit ? `${text.slice(0, Math.max(1, fit - 1))}…` : text);
+  const root = { x: shift + (zoom ? 30 : 20), y: body / 2 };
+
+  // 노드 제목 — 실측 폭으로 줄인다. 한 라벨이 쓸 수 있는 반폭은 다음 중 가장 좁은 값이다:
+  // 열 간격(엇갈림이면 두 칸)과 폭 상한, 그림 가장자리, 첫 열이면 뿌리 라벨의 오른쪽 끝,
+  // 같은 높이 띠를 지나는 다른 노드의 원, 그리고 같은 띠의 이웃 라벨(둘이 나눠 쓴다).
+  const fontSize = font?.size ?? (zoom ? 11 : 10);
+  const measure = (text: string) => textWidth(text, font?.spec ?? null, fontSize);
+  const labels = new Map<string, string>();
+  {
+    const labelCap = along(88, 275);
+    // 한 열뿐이면 옆 열이 없으니 엇갈림과 같은 두 칸을 쓴다.
+    const base = Math.min(colW * 2 - LABEL_GAP, labelCap);
+    const rootRight = root.x + measure(t("objectives.graph.commander")) / 2;
+    const band = (y: number) => ({ top: y - fontSize * 0.85, bottom: y + fontSize * 0.3 });
+    const entries = placedMissions.map((mission) => {
+      const p = pos.get(mission.id)!;
+      const d = depth.get(mission.id) ?? 0;
+      const y = stagger && d % 2 === 0 ? p.y - 15 : p.y + 21;
+      const { top, bottom } = band(y);
+      let half = Math.min(measure(mission.text), base) / 2;
+      half = Math.min(half, p.x - 2, W - p.x - 2);
+      if (d === 0) half = Math.min(half, p.x - rootRight - LABEL_GAP);
+      for (const [id, q] of pos) {
+        if (id === mission.id || q.x === p.x || loose.some((candidate) => candidate.id === id)) continue;
+        if (q.y + NODE_R + 1 < top || q.y - NODE_R - 1 > bottom) continue;
+        half = Math.min(half, Math.abs(q.x - p.x) - NODE_R - 3);
+      }
+      return { mission, x: p.x, y, top, bottom, half: Math.max(0, half) };
+    });
+    const pairs: [typeof entries[number], typeof entries[number], number][] = [];
+    for (let i = 0; i < entries.length; i += 1) {
+      for (let j = i + 1; j < entries.length; j += 1) {
+        const a = entries[i]!, b = entries[j]!;
+        const dx = Math.abs(a.x - b.x);
+        if (dx === 0 || a.bottom < b.top || b.bottom < a.top) continue;
+        pairs.push([a, b, dx]);
+      }
+    }
+    pairs.sort((first, second) => first[2] - second[2]);
+    for (const [a, b, dx] of pairs) {
+      const room = dx - LABEL_GAP;
+      if (a.half + b.half <= room) continue;
+      const even = room / 2;
+      if (a.half <= even) b.half = Math.max(0, room - a.half);
+      else if (b.half <= even) a.half = Math.max(0, room - b.half);
+      else { a.half = Math.max(0, even); b.half = Math.max(0, even); }
+    }
+    for (const entry of entries) {
+      const text = fitLabel(entry.mission.text, entry.half * 2, measure);
+      if (text) labels.set(entry.mission.id, text);
+    }
+  }
 
   const point = (event: ReactPointerEvent | PointerEvent) => {
     const svg = svgRef.current;
@@ -133,7 +255,7 @@ export function CoordinationGraph({ objective, t, modeLabel, onToggleEdge, onCyc
     </div>
   );
   return (
-    <div className={`objectives-dag-box${onZoom ? " can-zoom" : ""}${zoom ? " is-zoom" : ""}`}>
+    <div ref={boxRef} className={`objectives-dag-box${onZoom ? " can-zoom" : ""}${zoom ? " is-zoom" : ""}`}>
       <svg
         ref={svgRef}
         className={`objectives-dag${drag ? " is-dragging" : ""}`}
@@ -186,14 +308,14 @@ export function CoordinationGraph({ objective, t, modeLabel, onToggleEdge, onCyc
         {loose.length ? (
           <g className="objectives-dag-tray" aria-hidden="true">
             <rect x={6} y={body + 2} width={W - 12} height={trayH - 8} rx={7} />
-            <text x={root.x + (zoom ? 18 : 10)} y={body + trayH / 2 + 1} textAnchor="middle">{t("objectives.graph.unplaced")}</text>
+            <text x={root.x - shift + (zoom ? 18 : 10)} y={body + trayH / 2 + 1} textAnchor="middle">{t("objectives.graph.unplaced")}</text>
           </g>
         ) : null}
         {drag ? <path className="objectives-edge is-ghost" d={`M${drag.x0},${drag.y0} L${drag.x},${drag.y}`} pointerEvents="none" /> : null}
         <g className="objectives-node is-root is-assigned">
           <circle cx={root.x} cy={root.y} r={9} />
           {/* 뿌리 라벨은 항상 「지휘관」 — 모드는 지휘관 행이 말하고, 긴 모드명은 그래프 왼쪽 가장자리에서 잘린다. */}
-          <text x={root.x} y={root.y + 21} textAnchor="middle">{t("objectives.graph.commander")}</text>
+          <text ref={rootLabelRef} x={root.x} y={root.y + 21} textAnchor="middle">{t("objectives.graph.commander")}</text>
           <title>{`${(objective.commander.started ? operationTitle(objective.id) : objective.title)} · ${modeLabel}`}</title>
         </g>
         {missions.map((mission, index) => {
@@ -221,7 +343,7 @@ export function CoordinationGraph({ objective, t, modeLabel, onToggleEdge, onCyc
               <text x={p.x} y={p.y + 3.5} textAnchor="middle" className="objectives-num">{index + 1}</text>
               {/* 안 읽은 임무 기록 — 노드 오른쪽 위 작은 점. 임무 줄의 기록 수를 펼치면 사라진다. */}
               {unseenRecords(mission) > 0 ? <circle className="objectives-node-unseen" cx={p.x + 7} cy={p.y - 7} r={3} /> : null}
-              {showLabels && !unplaced ? <text x={p.x} y={above ? p.y - 15 : p.y + 21} textAnchor="middle">{shorten(mission.text)}</text> : null}
+              {labels.has(mission.id) ? <text x={p.x} y={above ? p.y - 15 : p.y + 21} textAnchor="middle">{labels.get(mission.id)}</text> : null}
               <title>{`${index + 1}. ${mission.text}`}</title>
             </g>
           );
