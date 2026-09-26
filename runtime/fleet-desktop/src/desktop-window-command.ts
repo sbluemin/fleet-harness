@@ -98,6 +98,7 @@ export function createZenFullscreenController(
     window.setFullScreen(desired);
   };
 
+  let deferred: ReturnType<typeof setTimeout> | null = null;
   const onSettled = (entered: boolean) => {
     const requested = inflight;
     clearSettling();
@@ -108,7 +109,15 @@ export function createZenFullscreenController(
       attempts = 0;
       return;
     }
-    reconcile();
+    // 다음 틱에 맞춘다. Windows의 Electron은 이 이벤트를 setFullScreen 안에서, 창 상태를 바꾸기 **전에** 동기로
+    // 내보낸다 — 여기서 곧바로 isFullScreen()을 읽으면 아직 옛 값이라 켠 전체화면을 "안 켜졌다"로 보고 되풀이하다
+    // 몫을 놓아 버렸고, 그 뒤 Zen을 꺼도 전체화면이 풀리지 않았다(Windows 신고). 이벤트 안에서 다시
+    // setFullScreen을 부르는 재진입도 함께 피한다.
+    if (deferred !== null) cancel(deferred);
+    deferred = schedule(() => {
+      deferred = null;
+      reconcile();
+    }, 0);
   };
   const onEnter = () => onSettled(true);
   const onLeave = () => onSettled(false);
@@ -135,6 +144,8 @@ export function createZenFullscreenController(
     stop() {
       stopped = true;
       clearSettling();
+      if (deferred !== null) cancel(deferred);
+      deferred = null;
       window.removeListener("enter-full-screen", onEnter);
       window.removeListener("leave-full-screen", onLeave);
     },

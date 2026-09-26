@@ -132,11 +132,15 @@ export function createDesktopFullscreenSynchronizer(
       });
   };
 
-  const updateNativeFullscreen = () => {
-    nativeFullscreen = window.isFullScreen();
+  // 값은 이벤트가 말하는 방향에서 읽는다 — Windows의 Electron은 이 이벤트를 창 상태를 바꾸기 **전에** 동기로
+  // 내보내므로, 여기서 isFullScreen()을 읽으면 진입 때 false·이탈 때 true가 거꾸로 게시된다.
+  const updateNativeFullscreen = (fullscreen: boolean) => {
+    nativeFullscreen = fullscreen;
     publishPending = true;
     publishCurrent();
   };
+  const onEnterFullscreen = () => updateNativeFullscreen(true);
+  const onLeaveFullscreen = () => updateNativeFullscreen(false);
 
   const resync = () => {
     nativeFullscreen = window.isFullScreen();
@@ -144,8 +148,8 @@ export function createDesktopFullscreenSynchronizer(
     publishCurrent();
   };
 
-  window.on("enter-full-screen", updateNativeFullscreen);
-  window.on("leave-full-screen", updateNativeFullscreen);
+  window.on("enter-full-screen", onEnterFullscreen);
+  window.on("leave-full-screen", onLeaveFullscreen);
   webContents.on("did-finish-load", resync);
 
   return {
@@ -166,8 +170,8 @@ export function createDesktopFullscreenSynchronizer(
       stopped = true;
       activeOrigin = null;
       abortAllRequests();
-      window.removeListener("enter-full-screen", updateNativeFullscreen);
-      window.removeListener("leave-full-screen", updateNativeFullscreen);
+      window.removeListener("enter-full-screen", onEnterFullscreen);
+      window.removeListener("leave-full-screen", onLeaveFullscreen);
       webContents.removeListener("did-finish-load", resync);
     },
   };
