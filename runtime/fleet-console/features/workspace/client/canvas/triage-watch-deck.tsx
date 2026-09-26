@@ -487,7 +487,10 @@ export function TriageWatchDeck({
     >
       <div className="canvas-triage-deck-caption">
         {counts.waiting + counts.unseen > 0
-          ? t("canvas.triage.deckAttentionCaption", counts)
+          ? ([
+              [counts.waiting, "canvas.triage.waitingCount"],
+              [counts.unseen, "canvas.triage.unseenCount"],
+            ] as const).filter(([count]) => count > 0).map(([count, key]) => t(key, { count })).join(" · ")
           : t("canvas.triage.deckCaption", counts)}
       </div>
       <div className="canvas-triage-deck-grid" ref={gridRef}>

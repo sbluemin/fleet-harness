@@ -4559,7 +4559,7 @@
 }
 
 @keyframes triage-fresh-pulse {
-  0%, 100% { border-color: color-mix(in oklch, var(--triage-signal, var(--aurora)) 50%, var(--surface-rim)); box-shadow: none; }
+  0%, 100% { border-color: color-mix(in oklab, var(--triage-signal, var(--aurora)) 50%, var(--surface-rim)); box-shadow: none; }
   50% { border-color: var(--triage-signal, var(--aurora)); box-shadow: 0 0 16px var(--triage-signal-glow, var(--aurora-glow)); }
 }
 

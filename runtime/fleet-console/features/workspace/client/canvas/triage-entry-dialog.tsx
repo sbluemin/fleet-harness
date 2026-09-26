@@ -30,9 +30,11 @@ export function TriageEntryDialog() {
               buttons[(at + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
             }
           }}>
-          <div className="onboarding-welcome-copy"><h2 id="triage-entry-title">{t("canvas.triage.zenEntryTitle")}</h2></div>
-          <div className="onboarding-welcome-art"><ZenTaskbarWelcomeIllustration /></div>
-          <div className="onboarding-welcome-copy"><p>{t("canvas.triage.zenEntryBody")}</p></div>
+          <div className="onboarding-welcome-slide">
+            <div className="onboarding-welcome-copy"><h2 id="triage-entry-title">{t("canvas.triage.zenEntryTitle")}</h2></div>
+            <div className="onboarding-welcome-art"><ZenTaskbarWelcomeIllustration /></div>
+            <div className="onboarding-welcome-copy"><p>{t("canvas.triage.zenEntryBody")}</p></div>
+          </div>
           <div className="onboarding-welcome-foot">
             <span />
             <div className="onboarding-welcome-actions">

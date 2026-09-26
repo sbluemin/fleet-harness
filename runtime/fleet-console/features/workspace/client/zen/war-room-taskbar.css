@@ -1,5 +1,5 @@
 /* War Room A2 — 수평선은 위치(brass), 대기열 위의 선은 상태 신호다. 크롬 소유 트레이 면은 바꾸지 않는다. */
-.war-room-taskbar {
+.zen-taskbar.war-room-taskbar {
   --wr-horizon: color-mix(in oklch, var(--brass) 70%, transparent);
   --wr-horizon-glow: color-mix(in oklch, var(--brass) 11%, transparent);
   --wr-face: color-mix(in oklch, var(--brass) 3.5%, var(--surface-band));
@@ -7,7 +7,7 @@
   background: var(--wr-face);
   animation: none;
 }
-:root[data-theme="whites"] .war-room-taskbar {
+:root[data-theme="whites"] .zen-taskbar.war-room-taskbar {
   --wr-horizon: color-mix(in oklch, var(--brass) 80%, transparent);
   --wr-horizon-glow: color-mix(in oklch, var(--brass) 12%, transparent);
   --wr-face: color-mix(in oklch, var(--brass) 4%, var(--surface-band));
@@ -102,12 +102,12 @@
 .war-room-chip { --wr-chip-signal: var(--aurora); --wr-chip-ink: var(--aurora-ink); }
 .war-room-chip.is-unseen { --wr-chip-signal: var(--positive); --wr-chip-ink: var(--positive-ink); }
 /* 칩은 상자가 아니라 상태 워시다. 무대의 밑줄(brass)은 기존 Zen 활성 문법을 그대로 쓴다. */
-.war-room-taskbar .war-room-chip:is(.is-awaiting, .is-unseen) {
+.zen-taskbar.war-room-taskbar .war-room-chip:is(.is-awaiting, .is-unseen) {
   border-color: transparent;
   background: color-mix(in oklch, var(--wr-chip-signal) 7%, transparent);
   color: var(--text-primary);
 }
-.war-room-taskbar .war-room-chip:hover { background: var(--control-hover-fill); }
+.zen-taskbar.war-room-taskbar .zen-taskbar-op.war-room-chip:hover { background: var(--control-hover-fill); }
 .war-room-chip sup {
   margin-left: -3px;
   align-self: flex-start;
@@ -122,6 +122,8 @@
 @keyframes war-room-chip-in { from { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; } to { max-width: 140px; opacity: 1; } }
 @keyframes war-room-chip-wash { 50% { background: color-mix(in oklch, var(--wr-chip-signal) 14%, transparent); } }
 .war-room-summary { display: flex; align-items: center; flex: none; gap: 5px; margin-left: auto; padding: 0 8px; color: var(--text-tertiary); font: var(--t-xs) var(--font-body); white-space: nowrap; }
+.war-room-summary > span { display: inline-flex; align-items: center; gap: 5px; }
+.war-room-summary .tenant-beacon { width: 6px; height: 6px; box-shadow: none; }
 .war-room-shelves { color: var(--text-tertiary); }
 /* 모든 접힘을 사용한 뒤에도 극단적으로 좁으면 남겨 둔 다음·무대 칩의 이름만 줄인다. */
 .war-room-taskbar[data-fit="5"] .war-room-queue { flex: 1; min-width: 0; }

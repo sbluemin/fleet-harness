@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { BrandMarkIcon, BrandWordmark } from "../components/command-band.js";
-import { runZenWindowStage, setZenMode, setZenTransitionRunner, type ZenTransitionActions } from "../../integration/zen-mode.js";
+import { runZenWindowStage, setZenMode, setZenTransitionRunner, setZenTransitionActive, type ZenTransitionActions } from "../../integration/zen-mode.js";
 
 /**
  * Zen 전환 장면. 켤 때:
@@ -68,7 +68,8 @@ export function ZenTransition({ local = false }: { readonly local?: boolean } = 
     const from = next ? measureBandBrand() : measureTaskbarBrand();
     if (veil === null || mark === null || word === null || (from === null && next)) return false;
     busyRef.current = true;
-    void play(next, from, { veil, mark, word }, actions).finally(() => { busyRef.current = false; });
+    setZenTransitionActive(true);
+    void play(next, from, { veil, mark, word }, actions).finally(() => { busyRef.current = false; setZenTransitionActive(false); });
     return true;
   }), []);
 

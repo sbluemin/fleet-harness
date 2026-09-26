@@ -11,7 +11,8 @@
   display: grid;
   place-items: center;
   padding: clamp(18px, 4vw, 44px);
-  animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) both;
+  /* 끝난 opacity 애니메이션을 붙잡으면 backdrop root가 되어 카드의 뒤 배경 흐림을 막는다. */
+  animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) backwards;
 }
 
 .onboarding-welcome-scrim {
@@ -28,7 +29,7 @@
   width: min(460px, 100%);
   /* 뒤에 쌓인 카드가 아래로 비쳐 나올 자리 */
   padding-bottom: 20px;
-  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
+  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) backwards;
 }
 
 /* 큐에 쌓인 카드 — 남은 슬라이드만큼 현재 카드 아래로 한 단씩 좁아지며 비쳐 나오는 판. 카드는 반투명 유리라 뒤판 전체를

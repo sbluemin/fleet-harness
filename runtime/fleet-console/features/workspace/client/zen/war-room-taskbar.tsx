@@ -6,6 +6,7 @@ import type { OperationNode } from "../../../../core/client/src/integration/type
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
+import { OperationStatusIcon } from "../../../execution/client/components/operation-status-icon.js";
 import { CanvasModeSwitch, WarRoomModeTools } from "../canvas/canvas-mode-switch.js";
 import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized, useCanvasState } from "../canvas/canvas-store.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
@@ -32,7 +33,7 @@ export function WarRoomTaskbar({ theaters, operations, operationRuntime, onResum
   const live = operations.filter((operation) => !minimizedIds.has(operation.id) && resolveOperationActivity(operation, operationRuntime) !== "ended");
   const counts = resolveTriageCounts(live, operationRuntime);
   const queue = resolveTriageQueue(operations, operationRuntime).map((entry) => entry.operation);
-  const nextId = queue[0]?.id ?? null;
+  const nextId = queue.find((operation) => operation.id !== stagedId)?.id ?? null;
   const staged = operations.find((operation) => operation.id === stagedId);
   const entries = staged && !queue.some((operation) => operation.id === stagedId) ? [staged, ...queue] : queue;
   const pinned = new Set([nextId, stagedId].filter((id): id is string => id !== null));
@@ -155,7 +156,8 @@ export function WarRoomTaskbar({ theaters, operations, operationRuntime, onResum
         {overflow.length > 0 ? menuButton("overflow", `+${overflow.length}`, overflow) : null}
       </div>
       <span className="war-room-summary" title={summary} aria-label={summary}>
-        {fit.step > 0 ? <><span>{counts.running}</span><span>·</span><span>{counts.idle}</span></> : summary}
+        <span><OperationStatusIcon status="running" decorative />{fit.step > 0 ? counts.running : t("canvas.triage.runningCount", { count: counts.running })}</span>
+        <span><OperationStatusIcon status="idle" decorative />{fit.step > 0 ? counts.idle : t("canvas.triage.idleCount", { count: counts.idle })}</span>
       </span>
       <span className="war-room-shelves">
         {fit.step >= 3 && minimized.length + ended.length > 0

@@ -11,6 +11,17 @@ export interface ZenModeState {
 
 let state: ZenModeState = { active: false, sideBarRevealed: false };
 const listeners = new Set<() => void>();
+let transitionActive = false;
+
+/** 크롬 장면 동안 안내를 미루는 조합 신호. 기능은 Zen DOM 속성을 직접 찾지 않는다. */
+export function setZenTransitionActive(active: boolean): void {
+  if (transitionActive === active) return;
+  transitionActive = active;
+  for (const listener of listeners) listener();
+}
+export function useZenTransitionActive(): boolean {
+  return useSyncExternalStore(subscribeZenMode, () => transitionActive, () => false);
+}
 
 function emit(next: ZenModeState): void {
   state = next;
