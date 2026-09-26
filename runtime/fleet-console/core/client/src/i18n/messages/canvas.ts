@@ -143,6 +143,8 @@ export const canvasEn = {
   "canvas.groupMenu.confirmUngroupAll": "Confirm ungroup all?",
   "canvas.groupMenu.ungroupAria": "Ungroup all members and delete group",
   "canvas.groupMenu.confirmUngroupAria": "Confirm: remove all members and delete group",
+  "canvas.groupMenu.closeWindow": "Close window",
+  "canvas.groupMenu.closeWindowArmed": "Close window?",
 
   // ── sidebar ─────────────────────────────────────────────────────────────
   "sidebar.status.awaiting": "Awaiting",
@@ -412,6 +414,8 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.groupMenu.confirmUngroupAll": "전체 그룹 해제를 확인할까요?",
   "canvas.groupMenu.ungroupAria": "모든 멤버를 빼고 그룹을 삭제합니다",
   "canvas.groupMenu.confirmUngroupAria": "확인: 모든 멤버를 빼고 그룹을 삭제합니다",
+  "canvas.groupMenu.closeWindow": "창 닫기",
+  "canvas.groupMenu.closeWindowArmed": "창을 닫을까요?",
 
   "sidebar.status.awaiting": "대기",
   "sidebar.status.running": "실행 중",

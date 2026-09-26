@@ -983,6 +983,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
             onSetAccent: (key) => handleSetAccent(menuOperation.id, key),
             onSetGroupId: (groupId) => handleSetGroupId(menuOperation.id, groupId),
             onCreateGroup: (name) => handleCreateGroup(menuOperation.theaterId, name, menuOperation.id),
+            onCloseOperation: () => handleClose(menuOperation.id),
           }}
           onClose={closeOperationMenu}
         />

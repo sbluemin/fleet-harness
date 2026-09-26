@@ -7846,6 +7846,19 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--text-tertiary);
 }
 
+/* 창 닫기 — 새 그룹의 +와 같은 14px 격자·잉크. 무장하면 X도 행의 coral 잉크를 따라간다. */
+.group-context-menu-item__close {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0 -2px;
+  color: var(--text-tertiary);
+}
+
+.group-context-menu-item--danger .group-context-menu-item__close {
+  color: currentColor;
+}
+
 .group-context-menu-new-input {
   display: block;
   width: 100%;
