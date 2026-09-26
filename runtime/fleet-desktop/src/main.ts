@@ -316,10 +316,23 @@ async function boot(): Promise<void> {
       }
       throw new Error("desktop_shell_unsupported");
     },
-    resampleCapture: (png, crop, size, format, quality) => {
-      let image = nativeImage.createFromBuffer(png).crop(crop);
-      const cropped = image.getSize();
-      if (cropped.width !== size.width || cropped.height !== size.height) image = image.resize({ width: size.width, height: size.height, quality: "best" });
+    // 크기 한도는 browser-views 가 디코드 전에 검사했다. 여기서는 필요한 사본만 만든다 — 전체면 자르지 않고, 같은 크기면
+    // 늘이지 않고, 표면 밖이 없으면 캔버스를 만들지 않는다. 표면 밖 여백은 불투명 흰색이다.
+    composeCapture: (png, { crop, place, size, format, quality }) => {
+      let image = nativeImage.createFromBuffer(png);
+      if (image.isEmpty()) throw new Error("browser_capture_invalid_image");
+      const surface = image.getSize();
+      if (crop.x !== 0 || crop.y !== 0 || crop.width !== surface.width || crop.height !== surface.height) image = image.crop(crop);
+      if (crop.width !== place.width || crop.height !== place.height) image = image.resize({ width: place.width, height: place.height, quality: "best" });
+      if (place.x !== 0 || place.y !== 0 || place.width !== size.width || place.height !== size.height) {
+        const part = image.getSize();
+        const bitmap = image.toBitmap();
+        const row = place.width * 4;
+        if (part.width !== place.width || part.height !== place.height || bitmap.length !== row * place.height) throw new Error("browser_capture_invalid_image");
+        const canvas = Buffer.alloc(size.width * size.height * 4, 0xff);
+        for (let y = 0; y < place.height; y += 1) bitmap.copy(canvas, ((place.y + y) * size.width + place.x) * 4, y * row, (y + 1) * row);
+        image = nativeImage.createFromBitmap(canvas, { width: size.width, height: size.height });
+      }
       return (format === "jpeg" ? image.toJPEG(quality) : image.toPNG()).toString("base64");
     },
   });
