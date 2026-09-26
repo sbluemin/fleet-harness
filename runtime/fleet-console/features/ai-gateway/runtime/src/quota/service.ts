@@ -136,6 +136,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     if (id === "claude" && !await deps.isClaudeConnected()) {
       const value: ProviderDto = { status: "not_connected", method: (deps.platform ?? process.platform) === "darwin" ? "keychain" : "file" };
       cache.set(id, { value, expiresAt: now(), settledAt: now() });
+      lastGood.delete(id);
       return value;
     }
     const cached = cache.get(id);
@@ -159,6 +160,8 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         const newer = observationSince(id, startedAt);
         if (newer) return newer;
         if (isProviderSuccess(result)) lastGood.set(id, result);
+        // 로그아웃·만료·구독 없음은 확정된 답이다. 이전 계정의 값이 이후 실패에서 되살아나면 안 된다.
+        else if (result.status !== "error") lastGood.delete(id);
         const settledAt = now();
         // 예외 대신 오류 결과를 돌려주는 조회(자격 증명 저장소를 읽지 못함 등)도 실패다.
         const value = result.status === "error" ? staleOrError(id, result.message, settledAt) : result;
