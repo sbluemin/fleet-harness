@@ -1,6 +1,6 @@
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
-import type { ConsoleActionInput, ConsoleActionReceipt, ConsoleOperationObservation } from "../mcp/control.js";
+import type { ConsoleActionInput, ConsoleActionResult, ConsoleOperationObservation } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
@@ -820,8 +820,8 @@ export interface FleetPluginOperationGroupsHost {
  * 않는다 — `console_launch` 가 쓰는 서버 경로 그대로다. 없는 호스트에서는 없다.
  */
 export interface FleetPluginConsoleControlHost {
-  /** 접수 뒤 실행 결과(operationId 또는 실패)가 정해질 때까지 기다린다. 실패는 코드 문자열을 message 로 던진다. */
-  request(input: ConsoleActionInput, requestId?: string): Promise<ConsoleActionReceipt>;
+  /** 전달이 끝날 때까지(operationId 또는 실패) 기다린다. 실패는 코드 문자열을 message 로 던진다. 결과는 남지 않고, 같은 입력을 다시 보내면 다시 실행된다. */
+  request(input: ConsoleActionInput): Promise<ConsoleActionResult>;
   /** 한 Operation 의 지금 관측 — 활동·생명주기·표면·마지막 산출. 모르면 null. */
   observe(operationId: string): ConsoleOperationObservation | null;
   /**

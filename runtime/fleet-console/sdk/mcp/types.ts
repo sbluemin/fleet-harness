@@ -7,7 +7,7 @@ export interface PluginMcpTransport {
 
 export const FLEET_CONSOLE_USE_MCP_SERVER = "fleet-console-use";
 
-export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "./control.js";
+export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "./control.js";
 
 /**
  * Console Use 도구는 Console 화면의 자리 이름을 갖는다 — 사이드바(operations·organize), Operation 패널

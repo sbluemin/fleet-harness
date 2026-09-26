@@ -62,19 +62,12 @@ export interface ConsoleOperationObservation {
   };
 }
 
-export interface ConsoleActionReceipt {
-  readonly id: string;
-  readonly requestId: string;
-  readonly caller: ConsoleCaller;
-  readonly input: ConsoleActionInput;
-  readonly status: "accepted" | "running" | "finished" | "rejected" | "failed" | "outcome_unknown";
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly expiresAt: string;
-  readonly operationId?: string;
-  readonly policyId?: string;
-  readonly error?: string;
-  readonly outcome?: "completed" | "succeeded" | "failed" | "interrupted";
+/**
+ * 한 동작의 결과 — 영속하지 않는다. 전달(메시지 입력·시작·중단·재개)이 끝나면 호출자에게 한 번 돌아가고 남지 않는다.
+ * 턴의 종료가 아니다: 그 뒤의 활동·산출은 Operation 관측이 말한다. 이미 살아 있는 키 붙은 기동은 delivery 없이 그 Operation 을 돌려준다.
+ */
+export interface ConsoleActionResult {
+  readonly operationId: string;
   readonly delivery?: "queued" | "confirmed" | "requested";
 }
 
@@ -102,7 +95,5 @@ export interface ConsoleAutomation {
 
 export interface ConsoleControlState {
   readonly paused: boolean;
-  readonly actions: readonly ConsoleActionReceipt[];
   readonly automations: readonly ConsoleAutomation[];
-  readonly retention: { readonly actionDays: number; readonly actionLimit: number; readonly deduplication: "retained_receipts" };
 }

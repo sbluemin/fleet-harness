@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("fleet-console-use host", () => {
-  it("requires Operation authorization, deduplicates actions and bounds automation across restart", async () => {
+  it("requires Operation authorization, keeps no action ledger and bounds automation across restart", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "console-control-"));
     let time = Date.now();
     let activity: "idle" | "running" = "idle";
@@ -44,7 +44,7 @@ describe("fleet-console-use host", () => {
       };
       // 도구가 실려 있다는 것이 허용이 아니다. 기본은 거부이고, 그 Operation의 토글이
       // 참일 때만 통과한다 — 거부는 어디를 켜야 하는지를 싣는다.
-      const args = { requestId: "request-a", operationId: "op-a", text: "Check build" };
+      const args = { operationId: "op-a", text: "Check build" };
       for (const [name, body] of [["console_context", {}], ["console_operations", {}], ["console_send", args]] as const) {
         expect(await call(name, body)).toMatchObject({ error: "console_use_not_authorized", reason: "operation_not_authorized", retryable: true, remedy: { surface: "operation_panel", operationId: "op-a" } });
       }
@@ -55,15 +55,12 @@ describe("fleet-console-use host", () => {
       expect((await call("console_context", {})).caller.operationId).toBe("op-a");
       await call("console_operations", {});
       expect(onOperationUse.mock.calls).toEqual([["op-a", true]]);
-      expect((await call("console_launch", { requestId: "empty", theaterId: "theater-a", text: "   " })).error).toBe("invalid_arguments");
-      expect(control.state().actions).toHaveLength(0);
+      expect((await call("console_launch", { theaterId: "theater-a", text: "   " })).error).toBe("invalid_arguments");
       expect(executions).toBe(0);
-      const receipt = await call("console_send", args);
-      expect(receipt.status).toBe("accepted");
-      expect((await call("console_send", args)).id).toBe(receipt.id);
-      await vi.waitFor(() => expect(control.getAction(receipt.id)?.status).toBe("finished"));
-      expect(executions).toBe(1);
-      expect((await call("console_send", args)).id).toBe(receipt.id);
+      // 호출은 전달이 끝난 뒤 결과로 답하고, 남는 영수증이 없어 같은 호출은 다시 실행된다.
+      expect(await call("console_send", args)).toEqual({ action: "send", operationId: "op-a", delivery: "confirmed" });
+      expect(await call("console_send", args)).toEqual({ action: "send", operationId: "op-a", delivery: "confirmed" });
+      expect(executions).toBe(2);
       control.automation({ kind: "operation", operationId: "op-a" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
       time += 300_001;
       await control.tick();
@@ -74,7 +71,7 @@ describe("fleet-console-use host", () => {
       const automated = control.automation({ kind: "operation", operationId: "op-a" }, { name: "Check on idle", theaterId: "theater-a", trigger: { kind: "activity", operationId: "op-a", activity: "idle" }, action: { kind: "send", operationId: "op-a", text: "Run approved check" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 1 });
       activity = "running"; await control.tick();
       activity = "idle"; await control.tick();
-      await vi.waitFor(() => expect(executions).toBe(2));
+      await vi.waitFor(() => expect(executions).toBe(3));
       await control.tick();
       expect(control.state().automations.find((a) => a.id === automated.id)?.status).toBe("exhausted");
       const pending = control.automation({ kind: "operation", operationId: "op-a" }, { name: "Later", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
@@ -88,12 +85,13 @@ describe("fleet-console-use host", () => {
       const cursor = (await control.readEvents()).cursor;
       control.dispose();
       const saved = JSON.parse(readFileSync(path.join(directory, "state.json"), "utf8"));
-      const legacy = (row: { caller: { operationId: string } }) => { const { caller, ...rest } = row; return { ...rest, callerOperationId: caller.operationId }; };
-      writeFileSync(path.join(directory, "state.json"), JSON.stringify({ version: 1, actions: saved.actions.map(legacy), automations: saved.automations.map(legacy) }));
+      expect(saved.actions).toBeUndefined();
+      // 영수증 원장을 쓰던 옛 파일도 자동 정책은 그대로 읽고, 남은 영수증은 버린다.
+      writeFileSync(path.join(directory, "state.json"), JSON.stringify({ version: 2, actions: [{ id: "old", requestId: "request-a", caller: { kind: "operation", operationId: "op-a" }, input: { kind: "send", operationId: "op-a", text: "Check build" }, status: "finished" }], automations: saved.automations }));
       const restarted = createConsoleControl(deps);
       try {
+        expect(restarted.state()).toMatchObject({ paused: false });
         expect(restarted.state().automations.find((a) => a.id === pending.id)?.status).toBe("paused");
-        expect(restarted.request({ kind: "operation", operationId: "op-a" }, "request-a", { kind: "send", operationId: "op-a", text: "Check build" }).id).toBe(receipt.id);
         await expect(restarted.readEvents(cursor)).rejects.toThrow("cursor_expired");
         for (let i = restarted.state().automations.length; i < 100; i += 1) restarted.automation({ kind: "operation", operationId: "op-a" }, { name: `Briefing ${i}`, theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 1000).toISOString(), maxRuns: 1 });
         time += 2000;
@@ -151,7 +149,6 @@ describe("fleet-console-use host", () => {
     const aide = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, enabled: () => granted });
     const readOnly = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS });
     const unbound = host.connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true });
-    const other = host.forPlugin("other").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true });
     const call = async (connection: ConsoleUseMcpConnection, name: string, args: unknown = {}) => {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
       const token = connection.issueSessionToken({ label: "scuttlebutt", cwd: directory })[0]!;
@@ -160,17 +157,12 @@ describe("fleet-console-use host", () => {
     };
     try {
       expect(await call(aide, "console_context")).toMatchObject({ caller: { kind: "plugin", pluginId: "scuttlebutt" }, capabilities: { control: true } });
-      const args = { requestId: "launch-a", theaterId: "theater-a", text: "Run the requested check" };
+      const args = { theaterId: "theater-a", text: "Run the requested check" };
       expect((await call(readOnly, "console_launch", args)).error).toBe("permission_required");
       expect((await call(unbound, "console_launch", args)).error).toBe("permission_required");
       expect((await call(aide, "console_launch", { ...args, caller: { kind: "operation", operationId: "forged" } })).error).toBe("invalid_arguments");
-      const receipt = await call(aide, "console_launch", args);
-      expect(receipt).toMatchObject({ status: "accepted", caller: { kind: "plugin", pluginId: "scuttlebutt" } });
-      await vi.waitFor(() => expect(control.getAction(receipt.id)?.status).toBe("finished"));
-      expect((await call(aide, "console_launch", args)).id).toBe(receipt.id);
+      expect(await call(aide, "console_launch", args)).toEqual({ action: "launch", operationId: "new-op", delivery: "confirmed" });
       expect(executions).toBe(1);
-      // 영수증 조회 도구는 없다 — 다른 플러그인 소유자는 같은 requestId 로도 남의 영수증을 얻지 못한다(새 영수증이 선다).
-      expect((await call(other, "console_launch", args)).id).not.toBe(receipt.id);
       // 자동화는 Console 에 자리가 없어 도구에서 빠졌다 — 남아 있는 정책은 제어층이 그대로 돌리되 연결이 닫혀도 산다.
       const policy = control.automation({ kind: "plugin", pluginId: "scuttlebutt" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
       await aide.dispose();
@@ -179,15 +171,15 @@ describe("fleet-console-use host", () => {
       const nextChat = host.forPlugin("scuttlebutt").connect({ tools: CONSOLE_CONTROL_TOOLS, allowControl: true, enabled: () => granted });
       expect((await call(nextChat, "console_context")).caller).toMatchObject({ kind: "plugin", pluginId: "scuttlebutt" });
       granted = false;
-      expect((await call(nextChat, "console_launch", { ...args, requestId: "disabled" })).error).toBe("console_read_disabled");
+      expect((await call(nextChat, "console_launch", args)).error).toBe("console_read_disabled");
       expect(executions).toBe(1);
       granted = true; available = false;
-      expect((await call(nextChat, "console_launch", { ...args, requestId: "unloaded" })).error).toBe("caller_unavailable");
+      expect((await call(nextChat, "console_launch", args)).error).toBe("caller_unavailable");
       time += 300_001; await control.tick();
       expect(control.state().automations[0]).toMatchObject({ status: "paused", runs: 1, lastError: "scope_unavailable" });
       control.dispose();
       const restarted = createConsoleControl(deps);
-      try { expect(restarted.state().actions[0]?.caller).toEqual({ kind: "plugin", pluginId: "scuttlebutt" }); }
+      try { expect(restarted.state().automations[0]?.caller).toEqual({ kind: "plugin", pluginId: "scuttlebutt" }); }
       finally { restarted.dispose(); }
     } finally { await host.dispose(); control.dispose(); rmSync(directory, { recursive: true, force: true }); }
   });

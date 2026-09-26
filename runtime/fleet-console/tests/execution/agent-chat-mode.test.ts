@@ -52,47 +52,35 @@ describe("agent chat mode routes", () => {
     harness.setLive(sessionId);
     harness.allowConsoleUse(sessionId);
     harness.attachProviderSession(sessionId);
-    const receipt = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "terminal-send", { kind: "send", operationId: sessionId, text: "Check terminal output" });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(receipt.id)?.status).toBe("running"));
+    const caller = { kind: "operation" as const, operationId: sessionId };
+    expect(await harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Check terminal output" })).toEqual({ operationId: sessionId, delivery: "queued" });
     await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Check terminal output" }) });
     await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ last_assistant_message: "Public result /private/example/output.txt sk-123456789012345678901234" }) });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(receipt.id)).toMatchObject({ status: "finished", outcome: "completed" }));
     const output = harness.consoleControl.observe(sessionId)?.output;
     expect(output).toMatchObject({ status: "available", outcome: "completed", source: "terminal_hook" });
     expect(output?.text).toContain("Public result");
     expect(output?.text).not.toContain("/private/example");
     expect(output?.text).not.toContain("sk-123456789012345678901234");
     expect(harness.consoleControl.observe(sessionId)?.supportedActions).not.toContain("interrupt");
-    const actionsBeforeIdleInterrupt = harness.consoleControl.state().actions.length;
-    expect(() => harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "idle-interrupt", { kind: "interrupt", operationId: sessionId })).toThrow("nothing_to_interrupt");
-    expect(harness.consoleControl.state().actions).toHaveLength(actionsBeforeIdleInterrupt);
+    await expect(harness.consoleControl.request(caller, { kind: "interrupt", operationId: sessionId })).rejects.toThrow("nothing_to_interrupt");
     expect(harness.writes).not.toContain("");
-    const next = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "terminal-next", { kind: "send", operationId: sessionId, text: "Wait for interruption" });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(next.id)?.status).toBe("running"));
+    await harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Wait for interruption" });
     await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Wait for interruption" }) });
-    const interrupt = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "terminal-interrupt", { kind: "interrupt", operationId: sessionId });
+    // 중단은 Esc 를 친 것만으로 답하지 않는다 — 그 턴이 실제로 끝난 뒤에야 호출자에게 돌아간다.
+    let interrupted = false;
+    const interrupt = harness.consoleControl.request(caller, { kind: "interrupt", operationId: sessionId }).then((result) => { interrupted = true; return result; });
     await vi.waitFor(() => expect(harness.writes).toContain(""));
-    expect(harness.consoleControl.getAction(interrupt.id)?.status).not.toBe("finished");
+    expect(interrupted).toBe(false);
     await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ last_assistant_message: "Interrupted" }) });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(interrupt.id)).toMatchObject({ status: "finished", outcome: "interrupted" }));
-    expect(harness.consoleControl.getAction(next.id)?.outcome).toBe("interrupted");
-    const mismatch = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "terminal-mismatch", { kind: "send", operationId: sessionId, text: "Expected prompt" });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(mismatch.id)?.status).toBe("running"));
-    await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Someone else's prompt" }) });
-    expect(harness.consoleControl.getAction(mismatch.id)?.status).toBe("outcome_unknown");
+    expect(await interrupt).toEqual({ operationId: sessionId, delivery: "requested" });
     await fs.appendFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), "\n" + JSON.stringify({ type: "assistant", message: { content: [{ type: "thinking", thinking: "private thought" }, { type: "text", text: "Fresh terminal result" }] } }) + "\n");
     await harness.post(sessionId, "turn", { phase: "end", input: "{}" });
     await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.source).toBe("terminal_transcript"));
     expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("Fresh terminal result");
     expect(harness.consoleControl.observe(sessionId)?.output.text).not.toContain("private thought");
-    const launch = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "terminal-launch", { kind: "launch", theaterId: "theater-1", text: "Launch terminal check", viewMode: "terminal" });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(launch.id)?.operationId).toBeDefined());
-    const launched = harness.consoleControl.getAction(launch.id)!.operationId!;
-    harness.setLive(launched);
-    expect(harness.consoleControl.getAction(launch.id)?.status).toBe("running");
-    await harness.post(launched, "turn", { phase: "start", input: JSON.stringify({ prompt: "Launch terminal check" }) });
-    await harness.post(launched, "turn", { phase: "end", input: JSON.stringify({ last_assistant_message: "Launch completed" }) });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(launch.id)).toMatchObject({ status: "finished", outcome: "completed" }));
+    const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Launch terminal check", viewMode: "terminal" })).operationId;
+    expect(launched).not.toBe(sessionId);
+    expect(harness.operation(launched)?.payload.launchedBy).toEqual(caller);
   });
   it("routes an opted-in Console message through the existing Chat session and records its result", async () => {
     const harness = await createHarness({ disabledAgents: ["Plan"] });
@@ -101,39 +89,32 @@ describe("agent chat mode routes", () => {
     harness.attachProviderSession(sessionId);
     harness.allowConsoleUse(sessionId);
     await harness.post(sessionId, "chat");
-    const receipt = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "console-message", { kind: "send", operationId: sessionId, text: "Inspect the build" });
+    const caller = { kind: "operation" as const, operationId: sessionId };
+    const delivered = harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Inspect the build" });
     expect(harness.sends).toEqual([]);
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(receipt.id)?.status).toBe("finished"));
-    expect(harness.sends).toEqual(["Inspect the build"]);
+    expect(await delivered).toMatchObject({ operationId: sessionId });
+    await vi.waitFor(() => expect(harness.sends).toEqual(["Inspect the build"]));
     expect(harness.sdkOptions[0]?.executablePath).toBe(resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: {} }).resolved?.bin);
-    expect(harness.consoleControl.getAction(receipt.id)).toMatchObject({ outcome: "succeeded", operationId: sessionId });
-    expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("continuing");
-    const launch = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "console-launch", { kind: "launch", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(launch.id)?.status).toBe("finished"));
-    const launched = harness.consoleControl.getAction(launch.id)!;
-    expect(launched.operationId).not.toBe(sessionId);
-    expect(harness.operation(launched.operationId!)?.payload.chatBorn).toBe(true);
-    expect(harness.sends).toEqual(["Inspect the build", "Run the next check"]);
+    await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("continuing"));
+    const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" })).operationId;
+    expect(launched).not.toBe(sessionId);
+    expect(harness.operation(launched)?.payload.chatBorn).toBe(true);
+    await vi.waitFor(() => expect(harness.sends).toEqual(["Inspect the build", "Run the next check"]));
     // 목표의 지휘관은 휴면 채팅으로 태어나고, 첫 send가 PTY가 아닌 Chat 세션을 깨운다.
-    const dormant = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-dormant", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander", disableSubagents: true });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(dormant.id)?.operationId).toBeDefined());
-    const commander = harness.consoleControl.getAction(dormant.id)!.operationId!;
+    const commander = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander", disableSubagents: true })).operationId;
     expect(harness.consoleControl.observe(commander)).toMatchObject({ lifecycle: "dormant", surface: "chat" });
     expect(harness.sends).toHaveLength(2);
-    const wake = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-wake", { kind: "send", operationId: commander, text: "Begin the objective" });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(wake.id)?.status).toBe("finished"));
-    expect(harness.sends.at(-1)).toBe("Begin the objective");
+    await harness.consoleControl.request(caller, { kind: "send", operationId: commander, text: "Begin the objective" });
+    await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Begin the objective"));
     expect(harness.consoleControl.observe(commander)?.surface).toBe("chat");
     await vi.waitFor(() => expect(readOperationLaunch(harness.operation(commander)!.payload).started).toBe(true));
     // 태어날 때의 강제 차단은 채팅 프로세스의 SDK 입력에도 실린다.
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task"] });
     // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스는 전역 옵트아웃만 쓴다 — 허용이 전역 제한까지 걷지 않는다.
-    const optedIn = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-opted-in", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(optedIn.id)?.operationId).toBeDefined());
-    const member = harness.consoleControl.getAction(optedIn.id)!.operationId!;
+    const member = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true })).operationId;
     harness.setSubagentSpawn(member, "default");
-    const memberWake = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "chat-member-wake", { kind: "send", operationId: member, text: "Start the mission" });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(memberWake.id)?.status).toBe("finished"));
+    await harness.consoleControl.request(caller, { kind: "send", operationId: member, text: "Start the mission" });
+    await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Start the mission"));
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent(Plan)"] });
     // 수신 줄의 근거는 **보낸** 자식의 라이브 도구 호출과 그 결과, 그 둘뿐이다. 이 경로는 어느 쪽
     // 트랜스크립트도 읽지 않으며, 성공한 호출만이 받는 쪽 원장에 줄 하나를 세운다.
@@ -176,8 +157,7 @@ describe("agent chat mode routes", () => {
     expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Begin the objective", by: expect.objectContaining({ kind: "operation", operationId: sessionId }) }));
     // 플러그인 발신도 같은 자리에서 제 출처를 지킨다. 서버가 실은 값에서 끝내지 않고 브라우저가 읽는
     // 문까지 통과시킨다 — 화면이 세우는 라벨이 같은 pluginId여야 "누가 보냈는가"가 보존된 것이다.
-    const byPlugin = harness.consoleControl.request({ kind: "plugin", pluginId: "fleet-todo" }, "plugin-message", { kind: "send", operationId: commander, text: "Take the next step." });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(byPlugin.id)).toMatchObject({ status: "finished", outcome: "succeeded" }));
+    expect(await harness.consoleControl.request({ kind: "plugin", pluginId: "fleet-todo" }, { kind: "send", operationId: commander, text: "Take the next step." })).toMatchObject({ operationId: commander });
     const pluginFrame = await vi.waitFor(() => {
       const frame = frames.find(({ event }) => event.kind === "dispatch" && (event as { readonly text?: string }).text === "Take the next step.");
       expect(frame).toBeDefined();
@@ -189,8 +169,7 @@ describe("agent chat mode routes", () => {
     expect(origin && chatOriginLabel(origin)).toBe("fleet-todo");
     // 그 지시는 수신 줄을 만들지 않는다 — Console 발신과 세션 간 메시지는 서로 다른 문이다.
     expect(received()).toHaveLength(2);
-    const command = harness.consoleControl.request({ kind: "operation", operationId: sessionId }, "console-command", { kind: "send", operationId: sessionId, text: "/compact" });
-    await vi.waitFor(() => expect(harness.consoleControl.getAction(command.id)).toMatchObject({ status: "finished", outcome: "succeeded" }));
+    await expect(harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "/compact" })).resolves.toMatchObject({ operationId: sessionId });
   });
   it("converts an idle live claude-gateway session: marks payload, invalidates tickets, terminates the pty", async () => {
     const harness = await createHarness();

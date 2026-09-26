@@ -113,29 +113,20 @@ describe("idempotent launch keys", () => {
       const objectiveId = "11111111-2222-4333-8444-555555555555";
       const launch = { kind: "launch" as const, theaterId: THEATER.id, dormant: true, launchKey: "objectives.followup:a", newOperationId: objectiveId };
 
-      const settledId = async (control: ReturnType<typeof boot>["control"], receipt: { id: string; operationId?: string }) => {
-        for (let attempt = 0; attempt < 100 && !receipt.operationId; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 5));
-          receipt = control.getAction(receipt.id, caller) ?? receipt;
-        }
-        return receipt.operationId;
-      };
-
       const first = boot();
-      expect(() => first.control.request(caller, "invalid", { ...launch, launchKey: undefined })).toThrow();
-      expect(() => first.control.request({ kind: "operation", operationId: "unrelated" }, "other", launch)).toThrow();
+      await expect(first.control.request(caller, { ...launch, launchKey: undefined })).rejects.toThrow();
+      await expect(first.control.request({ kind: "operation", operationId: "unrelated" }, launch)).rejects.toThrow();
       // 같은 키가 동시에 두 번 와도, 이미 선 뒤에 다시 와도 기동은 한 번이다.
-      const [a, b] = [first.control.request(caller, "r1", launch), first.control.request(caller, "r2", launch)];
-      expect(await settledId(first.control, a)).toBe(objectiveId);
-      expect(await settledId(first.control, b)).toBe(objectiveId);
-      expect(first.control.request(caller, "r3", launch).operationId).toBe(objectiveId);
+      const [a, b] = await Promise.all([first.control.request(caller, launch), first.control.request(caller, launch)]);
+      expect([a.operationId, b.operationId]).toEqual([objectiveId, objectiveId]);
+      expect((await first.control.request(caller, launch)).operationId).toBe(objectiveId);
       expect(executions).toBe(1);
       expect(first.control.launchKeyState(caller, THEATER.id, "objectives.followup:a")).toEqual({ state: "live", operationId: objectiveId });
       // 다른 Theater 로 묻는 키는 그 Operation 을 드러내지 않는다.
       expect(() => first.control.launchKeyState(caller, "other", "objectives.followup:a")).toThrow();
 
       harness.operations.create(makeOperation("bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"));
-      expect(() => first.control.request(caller, "taken", { ...launch, launchKey: "objectives.followup:collision", newOperationId: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff" })).toThrow("operation_id_taken");
+      await expect(first.control.request(caller, { ...launch, launchKey: "objectives.followup:collision", newOperationId: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff" })).rejects.toThrow("operation_id_taken");
       // 용량이 차면 새 키는 받지 않지만, 이미 수락한 키의 삭제 기록은 막지 않는다.
       first.control.reserveLaunchKeys(caller, THEATER.id, ["objectives.followup:b"]);
       expect(() => first.control.reserveLaunchKeys(caller, THEATER.id, ["objectives.followup:c"])).toThrow("launch_key_capacity");
@@ -163,15 +154,15 @@ describe("idempotent launch keys", () => {
       // 재시작 — 흔적이 사라진 뒤에도 원장이 purge 를 말하고, 같은 키의 기동은 거절된다.
       const restarted = boot();
       expect(restarted.control.launchKeyState(caller, THEATER.id, "objectives.followup:a")).toEqual({ state: "purged", operationId: objectiveId });
-      expect(() => restarted.control.request(caller, "r4", launch)).toThrow("launch_key_deleted");
+      await expect(restarted.control.request(caller, launch)).rejects.toThrow("launch_key_deleted");
       expect(restarted.control.launchKeyState(caller, THEATER.id, "objectives.followup:b").state).toBe("reserved");
       expect(executions).toBe(1);
       // 호스트 상태가 비워져 Operation 이 흔적 없이 사라져도, 선 적이 있는 키는 다시 만들지 않는다.
       const keyedB = { ...launch, launchKey: "objectives.followup:b", newOperationId: "66666666-7777-4888-9999-aaaaaaaaaaaa" };
-      expect(await settledId(restarted.control, restarted.control.request(caller, "r5", keyedB))).toBe(keyedB.newOperationId);
+      expect((await restarted.control.request(caller, keyedB)).operationId).toBe(keyedB.newOperationId);
       harness.operations.replace([]);
       expect(restarted.control.launchKeyState(caller, THEATER.id, "objectives.followup:b").state).toBe("purged");
-      expect(() => restarted.control.request(caller, "r6", keyedB)).toThrow("launch_key_deleted");
+      await expect(restarted.control.request(caller, keyedB)).rejects.toThrow("launch_key_deleted");
       expect(executions).toBe(2);
       restarted.control.dispose();
     } finally { fs.rmSync(directory, { recursive: true, force: true }); }

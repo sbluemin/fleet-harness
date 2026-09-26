@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@fleet-console/infra";
 import { sanitizeLaunchPrompt } from "@fleet-console/agent-runtime/fleet";
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { ConsoleCaller, ConsoleActionInput, ConsoleActionReceipt, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
+import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
 import { LaunchKeyError, type LaunchKeyLedger, type LaunchKeyState } from "./launch-keys.js";
@@ -63,9 +63,8 @@ export function readConsoleUseFlag(payload: Record<string, unknown> | undefined)
 }
 const fail = (code: string): never => { throw new ConsoleControlError(code); };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24);
-const RETENTION_DAYS = 7;
-const ACTION_LIMIT = 500;
-const pendingStatuses = new Set(["accepted", "running"]);
+/** 전달 뒤 턴이 끝났다는 소식이 끝내 오지 않은 동작을 진행 중 목록에서 내리는 시한. */
+const INFLIGHT_LIMIT_MS = 24 * 60 * 60_000;
 
 export interface ConsoleExecutionAdapter {
   observe(operationId: string): ConsoleOperationObservation | null;
@@ -80,26 +79,38 @@ export interface ConsoleControlDeps {
   readonly launchKeys?: LaunchKeyLedger;
   readonly now?: () => number;
 }
-interface SavedState { version: 2; actions: ConsoleActionReceipt[]; automations: ConsoleAutomation[] }
-interface ControlEvent { readonly seq: number; readonly at: string; readonly kind: string; readonly operationId?: string; readonly activity?: ConsoleActivity; readonly actionId?: string; readonly automationId?: string }
+interface SavedState { version: 3; automations: ConsoleAutomation[] }
+interface ControlEvent { readonly seq: number; readonly at: string; readonly kind: string; readonly operationId?: string; readonly activity?: ConsoleActivity; readonly automationId?: string }
+/**
+ * 진행 중인 동작 — 메모리에만 있다. 접수에서 턴의 종료(또는 전달 실패)까지만 살고 영속하지 않는다.
+ * 같은 키의 기동 합류와 자동 정책의 「진행 중이면 건너뜀」이 이 목록만 본다.
+ */
+interface InFlight {
+  readonly caller: ConsoleCaller;
+  readonly input: ConsoleActionInput;
+  readonly policyId?: string;
+  readonly expiresAt: number;
+  updatedAt: number;
+  operationId?: string;
+  result?: Promise<ConsoleActionResult>;
+}
 
 export function createConsoleControl(deps: ConsoleControlDeps) {
   const now = deps.now ?? Date.now;
   const stamp = () => new Date(now()).toISOString();
   const file = path.join(deps.directory, "state.json");
-  let state: SavedState = { version: 2, actions: [], automations: [] };
+  let state: SavedState = { version: 3, automations: [] };
   let storageError = false;
   try {
     const raw = JSON.parse(fs.readFileSync(file, "utf8"));
-    // 기존 Operation 소유 기록은 그대로 승계한다. 부관은 별도 플러그인 소유자로 저장한다.
+    // 동작 영수증(옛 파일의 actions)은 더 저장하지 않는다 — 읽지 않고 버린다. v1 은 소유자 필드 이름만 다르다.
     const migrate = ({ callerOperationId, ...row }: Record<string, unknown>) => ({ ...row, caller: { kind: "operation", operationId: callerOperationId } });
-    const saved = (raw.version === 1 ? { ...raw, version: 2, actions: raw.actions.map(migrate), automations: raw.automations.map(migrate) } : raw) as SavedState;
-    if (saved.version !== 2 || !Array.isArray(saved.actions) || !Array.isArray(saved.automations)
-      || saved.actions.length > ACTION_LIMIT || saved.automations.length > 100
-      || saved.actions.some((a) => !a || typeof a.id !== "string" || typeof a.requestId !== "string" || !callerSchema.safeParse(a.caller).success || !Number.isFinite(Date.parse(a.createdAt)) || !Number.isFinite(Date.parse(a.expiresAt)) || !["approval_required", "accepted", "running", "finished", "rejected", "failed", "outcome_unknown"].includes(a.status) || !actionSchema.safeParse(a.input).success)
-      || saved.automations.some((a) => !a || typeof a.id !== "string" || !callerSchema.safeParse(a.caller).success || !Number.isSafeInteger(a.runs) || a.runs < 0 || !["approval_required", "active", "paused", "expired", "exhausted"].includes(a.status) || !automationSchema.safeParse(a.input).success)) throw new Error("invalid_state");
-    // 쓰기 직전에 죽었다면 재실행하지 않는다. 자동 정책은 기존 계약대로 재시작 뒤 일시 중지한다.
-    state = { ...saved, actions: saved.actions.map((a) => pendingStatuses.has(a.status) ? { ...a, status: "outcome_unknown", error: "host_restarted" } : (a.status as string) === "approval_required" ? { ...a, status: "rejected", error: "approval_flow_removed" } : a), automations: saved.automations.map((a) => a.status === "active" || (a.status as string) === "approval_required" ? { ...a, status: "paused" } : a) };
+    if (![1, 2, 3].includes(raw?.version) || !Array.isArray(raw.automations)) throw new Error("invalid_state");
+    const automations = (raw.version === 1 ? raw.automations.map(migrate) : raw.automations) as ConsoleAutomation[];
+    if (automations.length > 100
+      || automations.some((a) => !a || typeof a.id !== "string" || !callerSchema.safeParse(a.caller).success || !Number.isSafeInteger(a.runs) || a.runs < 0 || !["approval_required", "active", "paused", "expired", "exhausted"].includes(a.status) || !automationSchema.safeParse(a.input).success)) throw new Error("invalid_state");
+    // 자동 정책은 기존 계약대로 재시작 뒤 일시 중지한다.
+    state = { version: 3, automations: automations.map((a) => a.status === "active" || (a.status as string) === "approval_required" ? { ...a, status: "paused" } : a) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") storageError = true;
   }
@@ -109,6 +120,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   const epoch = randomUUID();
   let sequence = 0;
   const events: ControlEvent[] = [];
+  const inflight = new Map<string, InFlight>();
   const waiters = new Set<() => void>();
   const observed = new Map<string, string>();
   const previousActivity = new Map<string, ConsoleActivity>();
@@ -161,27 +173,27 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   }
   /**
    * 키 붙은 기동 — 같은 키로는 Operation 이 많아야 하나 생긴다. 살아 있으면 새로 띄우지 않고 그 Operation 을 돌려주고, 사람이
-   * 지웠으면(유예 중이든 purge 됐든) 다시 만들지 않는다. 같은 키의 기동이 진행 중이면 그 영수증에 합류한다.
+   * 지웠으면(유예 중이든 purge 됐든) 다시 만들지 않는다. 같은 키의 기동이 진행 중이면 그 결과에 합류한다.
    * 아니면 키를 예약(용량 검사)하고 새 기동으로 진행한다 — 키는 Operation payload 에 실려 생성과 함께 영속된다.
    */
-  function keyedLaunch(caller: ConsoleCaller, input: ConsoleActionInput): ConsoleActionReceipt | null {
+  function keyedLaunch(caller: ConsoleCaller, input: ConsoleActionInput): Promise<ConsoleActionResult> | null {
     if (caller.kind !== "plugin") fail("invalid_launch_option");
     const ledger = deps.launchKeys;
     if (!ledger) return fail("capability_unavailable");
     const owner = (caller as { pluginId: string }).pluginId;
     const found = launchKeyState(caller, input.theaterId!, input.launchKey!);
-    if (found.state === "live") return { id: randomUUID(), requestId: `launch-key:${input.launchKey}`, caller, input, status: "finished", createdAt: stamp(), updatedAt: stamp(), expiresAt: stamp(), operationId: found.operationId! };
+    if (found.state === "live") return Promise.resolve({ operationId: found.operationId! });
     if (found.state === "deleting" || found.state === "purged") fail("launch_key_deleted");
-    if (found.state === "pending") return pendingKeyed(caller, input.launchKey!)!;
+    if (found.state === "pending") return pendingKeyed(caller, input.launchKey!)!.result!;
     if (input.newOperationId && deps.operations().some((operation) => operation.id === input.newOperationId)) fail("operation_id_taken");
     try { ledger.reserve(owner, input.theaterId!, [input.launchKey!]); }
     catch (error) { if (error instanceof LaunchKeyError) fail(error.code); throw error; }
     return null;
   }
   function pendingKeyed(caller: ConsoleCaller, key: string) {
-    return state.actions.find((a) => sameCaller(a.caller, caller) && a.input.launchKey === key && pendingStatuses.has(a.status) && !a.operationId) ?? null;
+    return [...inflight.values()].find((a) => sameCaller(a.caller, caller) && a.input.launchKey === key && !a.operationId) ?? null;
   }
-  /** 키의 지금 상태 — 살아 있음·유예·purge 가 진행 중 기동보다 먼저다(생성 직후 영수증에 id 가 붙기 전에도 live 로 읽힌다). */
+  /** 키의 지금 상태 — 살아 있음·유예·purge 가 진행 중 기동보다 먼저다(생성 직후 진행 중 목록에 id 가 붙기 전에도 live 로 읽힌다). */
   function launchKeyState(caller: ConsoleCaller, theaterId: string, key: string): { readonly state: LaunchKeyState | "pending"; readonly operationId?: string } {
     if (caller.kind !== "plugin") fail("invalid_launch_option");
     const ledger = deps.launchKeys;
@@ -193,15 +205,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (found.state === "live" || found.state === "deleting" || found.state === "purged") return found;
     return pendingKeyed(caller, key) ? { state: "pending" } : found;
   }
-  function updateAction(id: string, patch: Partial<ConsoleActionReceipt>) {
-    const index = state.actions.findIndex((a) => a.id === id);
-    if (index < 0) return fail("action_not_found");
-    const next = { ...state.actions[index]!, ...patch, updatedAt: stamp() };
-    state.actions[index] = next;
-    persist();
-    publish({ kind: "action", actionId: id, ...(next.operationId ? { operationId: next.operationId } : {}) });
-    return next;
-  }
   function updateAutomation(id: string, patch: Partial<ConsoleAutomation>) {
     const index = state.automations.findIndex((a) => a.id === id);
     if (index < 0) return fail("automation_not_found");
@@ -211,40 +214,39 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     publish({ kind: "automation", automationId: id });
     return next;
   }
-  function request(caller: ConsoleCaller, requestId: string, raw: ConsoleActionInput, policyId?: string) {
+  /**
+   * 동작을 접수하고 전달을 시작한다. 검증 실패는 즉시 던지고, 전달의 성패는 돌려준 Promise 가 말한다.
+   * 결과는 어디에도 남지 않는다 — 같은 입력을 다시 보내면 다시 실행된다. 키 붙은 기동만 launch-keys 원장이 중복을 막는다.
+   */
+  function accept(caller: ConsoleCaller, raw: ConsoleActionInput, policyId?: string): Promise<ConsoleActionResult> {
     if (disposed) fail("console_unavailable");
-    if (storageError) fail("storage_unavailable");
     if (!callerAvailable(caller)) fail("caller_unavailable");
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
-    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId)) fail("invalid_request_id");
     const input = actionSchema.parse(raw);
-    const duplicate = state.actions.find((a) => sameCaller(a.caller, caller) && a.requestId === requestId);
-    if (duplicate) {
-      if (hash(duplicate.input) !== hash(input)) fail("request_conflict");
-      return duplicate;
-    }
     validTarget(input);
     if (input.newOperationId && caller.kind !== "plugin") fail("invalid_launch_option");
     if (input.launchKey !== undefined) {
-      const existing = keyedLaunch(caller, input);
-      if (existing) return existing;
+      const joined = keyedLaunch(caller, input);
+      if (joined) return joined;
     }
-    state.actions = state.actions.filter((a) => now() - Date.parse(a.createdAt) < RETENTION_DAYS * 86_400_000 || pendingStatuses.has(a.status));
-    if (state.actions.length >= ACTION_LIMIT) fail("action_capacity");
-    const receipt: ConsoleActionReceipt = { id: randomUUID(), requestId, caller, input, status: "accepted", createdAt: stamp(), updatedAt: stamp(), expiresAt: new Date(now() + 15 * 60_000).toISOString(), ...(policyId ? { policyId } : {}) };
-    state.actions.push(receipt);
-    persist();
-    publish({ kind: "action", actionId: receipt.id });
-    queueMicrotask(() => { void run(receipt.id).catch(() => { storageError = true; }); });
-    return receipt;
+    const id = randomUUID();
+    const entry: InFlight = { caller, input, ...(policyId ? { policyId } : {}), expiresAt: now() + 15 * 60_000, updatedAt: now() };
+    inflight.set(id, entry);
+    entry.result = Promise.resolve().then(() => dispatch(id, entry));
+    return entry.result;
   }
-  async function run(id: string) {
-    const entry = state.actions.find((a) => a.id === id);
-    if (!entry || entry.status !== "accepted") return fail("action_not_pending");
-    if (!adapter) return fail("capability_unavailable");
+  function request(caller: ConsoleCaller, input: ConsoleActionInput): Promise<ConsoleActionResult> {
+    try { return accept(caller, input); }
+    catch (error) { return Promise.reject(error instanceof ConsoleControlError ? error : new ConsoleControlError(code(error))); }
+  }
+  function pausePolicy(policyId: string, lastError: string) {
+    // 정책이 그새 지워졌거나 저장이 막혔어도 동작의 결과는 그대로 호출자에게 간다.
+    try { updateAutomation(policyId, { status: "paused", lastError }); } catch { /* persist 가 storageError 를 남긴다 */ }
+  }
+  async function dispatch(id: string, entry: InFlight): Promise<ConsoleActionResult> {
     const assertCurrent = () => {
-      if (disposed || storageError) fail("control_paused");
-      if (Date.parse(entry.expiresAt) <= now()) fail("request_expired");
+      if (disposed) fail("control_paused");
+      if (entry.expiresAt <= now()) fail("request_expired");
       if (!callerAvailable(entry.caller)) fail("caller_unavailable");
       if (!callerAuthorized(entry.caller)) fail("console_use_not_authorized");
       if (entry.policyId) {
@@ -252,27 +254,32 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         if (!policy || policy.status !== "active" || Date.parse(policy.input.expiresAt) <= now()) fail("policy_paused");
       }
     };
-    try { assertCurrent(); validTarget(entry.input); }
-    catch (error) { return updateAction(id, { status: "failed", error: code(error) }); }
-    updateAction(id, { status: "accepted" });
-    // 호출 응답은 접수만 확인한다. 실행의 실패·종료는 같은 receipt로 다시 읽는다.
-    void adapter.execute(entry.input, assertCurrent, (outcome) => {
-      updateAction(id, outcome === "unknown" ? { status: "outcome_unknown" } : { status: "finished", outcome });
-      if (entry.policyId && outcome !== "succeeded" && outcome !== "completed") updateAutomation(entry.policyId, { status: "paused", lastError: outcome });
-    }, entry.caller).then((result) => {
+    // 턴이 끝나면 진행 중 목록에서 내린다. 전달 전에 끝났다고 알려 오는 동작(재개·중단)도 있다.
+    const settled = (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => {
+      inflight.delete(id);
+      if (entry.policyId && outcome !== "succeeded" && outcome !== "completed") pausePolicy(entry.policyId, outcome);
+    };
+    try {
+      if (!adapter) fail("capability_unavailable");
+      assertCurrent();
+      validTarget(entry.input);
+      const result = await adapter!.execute(entry.input, assertCurrent, settled, entry.caller);
       // 키 붙은 기동이 섰다 — 호스트 상태가 나중에 비워져도 그 키를 「만든 적 없음」으로 답하지 않게 원장에 남긴다.
       if (entry.input.launchKey && entry.caller.kind === "plugin") {
         try { deps.launchKeys?.recordCreated(entry.caller.pluginId, entry.input.launchKey, result.operationId); }
         catch { /* 예약으로 남는다 — Operation payload 의 키가 여전히 live 를 말한다. */ }
       }
-      const current = state.actions.find((a) => a.id === id)!;
-      updateAction(id, { status: current.status === "accepted" ? "running" : current.status, operationId: result.operationId, delivery: result.delivery });
-    }, (error) => {
-      updateAction(id, { status: "failed", error: code(error) });
-      if (entry.policyId) updateAutomation(entry.policyId, { status: "paused", lastError: code(error) });
-    }).catch(() => { storageError = true; });
-    return state.actions.find((a) => a.id === id)!;
+      entry.operationId = result.operationId;
+      entry.updatedAt = now();
+      return { operationId: result.operationId, delivery: result.delivery };
+    } catch (error) {
+      inflight.delete(id);
+      const failure = code(error);
+      if (entry.policyId) pausePolicy(entry.policyId, failure);
+      throw new ConsoleControlError(failure);
+    }
   }
+  const policyBusy = (policyId: string) => [...inflight.values()].some((a) => a.policyId === policyId);
   function automation(caller: ConsoleCaller, raw: ConsoleAutomationInput) {
     if (!callerAvailable(caller)) fail("caller_unavailable");
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
@@ -283,10 +290,10 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (input.trigger.kind === "activity" && node(input.trigger.operationId)?.theaterId !== input.theaterId) fail("unknown_operation");
     if (input.action.kind !== "briefing") validTarget(input.action, input.theaterId);
     if (state.automations.length >= 100) {
-      // 상한에서만 종료된 정책의 자리를 회수한다. 재개 가능한 paused 정책과 실행 중 영수증은 보존한다.
+      // 상한에서만 종료된 정책의 자리를 회수한다. 재개 가능한 paused 정책과 진행 중 동작의 정책은 보존한다.
       state.automations = state.automations.filter((policy) => {
         const finished = Date.parse(policy.input.expiresAt) <= now() || policy.runs >= policy.input.maxRuns;
-        return !finished || state.actions.some((action) => action.policyId === policy.id && pendingStatuses.has(action.status));
+        return !finished || policyBusy(policy.id);
       });
     }
     if (state.automations.length >= 100) fail("automation_capacity");
@@ -317,17 +324,16 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         previousActivity.set(op.id, obs?.activity ?? "unknown");
       }
       for (const id of observed.keys()) if (!alive.has(id)) { observed.delete(id); previousActivity.delete(id); publish({ kind: "removed", operationId: id }); }
-      for (const action of [...state.actions]) {
-        if (action.status !== "running" || !action.operationId) continue;
-        if (!node(action.operationId)) updateAction(action.id, { status: "outcome_unknown", error: "target_removed" });
-        else if (now() - Date.parse(action.updatedAt) > 24 * 60 * 60_000) updateAction(action.id, { status: "outcome_unknown", error: "observation_timeout" });
+      // 대상이 사라졌거나 끝났다는 소식이 끝내 오지 않은 동작은 진행 중에서 내린다 — 정책이 영영 건너뛰지 않게.
+      for (const [id, action] of inflight) {
+        if ((action.operationId && !node(action.operationId)) || now() - action.updatedAt > INFLIGHT_LIMIT_MS) inflight.delete(id);
       }
       for (const item of [...state.automations]) {
         if (item.status !== "active") continue;
         if (!callerAvailable(item.caller) || !deps.theaters().some((t) => t.id === item.input.theaterId)) { updateAutomation(item.id, { status: "paused", lastError: "scope_unavailable" }); continue; }
         // 소유자가 허용을 거둔 정책은 여기서 멈춘다 — 사라진 것이 아니라 권한이 걷힌 것이라 사유를 구분한다.
         if (!callerAuthorized(item.caller)) { updateAutomation(item.id, { status: "paused", lastError: "owner_not_authorized" }); continue; }
-        if (state.actions.some((a) => a.policyId === item.id && pendingStatuses.has(a.status))) continue;
+        if (policyBusy(item.id)) continue;
         if (Date.parse(item.input.expiresAt) <= now()) { updateAutomation(item.id, { status: "expired" }); continue; }
         if (item.runs >= item.input.maxRuns) { updateAutomation(item.id, { status: "exhausted" }); continue; }
         const trigger = item.input.trigger;
@@ -339,7 +345,8 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
           if (item.input.action.kind === "briefing") updateAutomation(item.id, { briefing: briefing(item.input.theaterId), lastError: undefined });
           else {
             validTarget(item.input.action, item.input.theaterId);
-            request(item.caller, `automation:${item.id}:${item.runs + 1}`, item.input.action, item.id);
+            // 전달 실패는 dispatch 가 정책을 멈추며 남긴다.
+            accept(item.caller, item.input.action, item.id).catch(() => undefined);
           }
         } catch (error) { updateAutomation(item.id, { status: "paused", lastError: code(error) }); }
       }
@@ -377,10 +384,9 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (caller.kind !== "plugin" || !deps.launchKeys) return fail("capability_unavailable");
       return deps.launchKeys.usage(caller.pluginId);
     },
-    getAction(id: string, caller?: ConsoleCaller) { return state.actions.find((a) => a.id === id && (!caller || sameCaller(a.caller, caller))) ?? null; },
     listAutomations(caller: ConsoleCaller) { return state.automations.filter((a) => sameCaller(a.caller, caller)); },
     pauseAutomation(id: string, caller: ConsoleCaller) { const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) fail("automation_not_found"); return updateAutomation(id, { status: "paused" }); },
-    state(): ConsoleControlState { return { paused: disposed || storageError, actions: state.actions, automations: state.automations, retention: { actionDays: RETENTION_DAYS, actionLimit: ACTION_LIMIT, deduplication: "retained_receipts" } }; },
+    state(): ConsoleControlState { return { paused: disposed || storageError, automations: state.automations }; },
     resumeAutomation(id: string, caller: ConsoleCaller) {
       const item = state.automations.find((a) => a.id === id && sameCaller(a.caller, caller)); if (!item) return fail("automation_not_found");
       {
