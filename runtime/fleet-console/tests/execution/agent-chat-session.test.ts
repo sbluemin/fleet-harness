@@ -226,22 +226,20 @@ function fakeClaudeSession(
   overrides: {
     readonly sessionId?: string;
     readonly resumeOf?: string;
-    readonly pluginRoot?: string;
     readonly claudeCodeSystemPrompt?: "on" | "off";
   } = {},
 ): ClaudeSessionHandle {
   const sessionId = overrides.resumeOf ?? overrides.sessionId ?? "11111111-2222-4333-8444-555555555555";
-  const pluginRoot = overrides.pluginRoot ?? `/fleet/workspaces/tmp-workspace/sessions/${sessionId}`;
+  const pluginUrl = "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip";
   const claudeCodeSystemPrompt = overrides.claudeCodeSystemPrompt ?? "off";
   return {
     sessionId,
     coordinate: overrides.resumeOf ? { kind: "resume", sessionId } : { kind: "new", sessionId },
-    pluginRoot,
-    pluginRoots: [pluginRoot],
+    pluginUrl,
     claudeCodeSystemPrompt,
     sdk: {
       options: {
-        plugins: [{ path: pluginRoot }],
+        pluginUrl,
         settingSources: ["user", "project", "local"],
         allowAmbientMcpServers: true,
         skillOverrides: { "claude-api": "off" },

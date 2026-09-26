@@ -49,9 +49,9 @@ export async function createFleetCliRuntime(
   const legacyDirs = [fleetRoot];
   const authService = createProviderAuthService({ dataDir, legacyDirs });
   const aiGatewayStore = createAiGatewaySettingsStore({ dataDir, legacyDirs });
-  // `fleet` 런처도 트리를 한 번만 렌더한다. Console 훅은 이 프로세스에 없으므로 내용이 다르고,
-  // 그래서 같은 슬롯을 쓰더라도 Console이 발행한 트리를 덮어쓴다 — 두 호스트가 번갈아 쓰는 자리다.
-  const agentCliPlugin = await createAgentCliPlugin({ dataDir });
+  // `fleet` 런처도 플러그인을 한 번만 zip으로 묶어 자기 루프백 리스너로 내준다. Console 훅은 이
+  // 프로세스에 없으므로 내용이 Console 것과 다르지만, 디스크를 거치지 않으므로 서로를 덮어쓸 자리가 없다.
+  const agentCliPlugin = createAgentCliPlugin({});
   const agentOptionsService = createAgentOptionsService({
     store: createConsoleSettingsStore({ paths: consolePaths }),
     legacyDirs,
@@ -71,11 +71,16 @@ export async function createFleetCliRuntime(
         if (cleaned) return;
         cleaned = true;
         setWireLogTarget(undefined);
-        await agentRuntime.cleanup();
+        try {
+          await agentRuntime.cleanup();
+        } finally {
+          await agentCliPlugin.close();
+        }
       },
     };
   } catch (error) {
     setWireLogTarget(undefined);
+    await agentCliPlugin.close();
     throw error;
   }
 }

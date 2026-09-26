@@ -1,29 +1,5 @@
-import { chmodSync, lstatSync, mkdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { lstatSync, realpathSync, rmSync } from "node:fs";
 import path from "node:path";
-
-import { writeAtomicSync } from "@fleet-console/infra";
-
-const DIR_MODE = 0o700;
-const FILE_MODE = 0o600;
-
-export function ensurePrivateDir(dirPath: string, rootBase: string = dirPath): void {
-  const resolvedBase = ensureRootBase(rootBase);
-  ensurePathWithinRoot(resolvedBase, dirPath);
-  ensureDirectorySegments(resolvedBase, dirPath);
-}
-
-export function writePrivateJson(filePath: string, value: unknown, rootBase: string): void {
-  writePrivateFile(filePath, `${JSON.stringify(value, null, 2)}\n`, rootBase);
-}
-
-export function writePrivateFile(filePath: string, content: string, rootBase: string): void {
-  const resolvedBase = ensureRootBase(rootBase);
-  ensurePathWithinRoot(resolvedBase, filePath);
-  ensureDirectorySegments(resolvedBase, path.dirname(filePath));
-  assertWritableLeaf(filePath);
-  writeAtomicSync(filePath, content, { mode: FILE_MODE });
-  chmodBestEffort(filePath, FILE_MODE);
-}
 
 export function removePrivatePath(targetPath: string, rootBase: string): void {
   const resolvedBase = assertRootBaseSafe(rootBase);
@@ -35,49 +11,6 @@ export function removePrivatePath(targetPath: string, rootBase: string): void {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
     throw error;
   }
-}
-
-export function cleanupPrivateRoot(rootPath: string, rootBase?: string): void {
-  try {
-    if (rootBase !== undefined) {
-      const resolvedBase = assertRootBaseSafe(rootBase);
-      ensurePathWithinRoot(resolvedBase, rootPath);
-      assertExistingSegmentsSafe(resolvedBase, rootPath);
-    }
-    const stat = lstatSync(rootPath);
-    if (stat.isSymbolicLink()) return;
-    rmSync(rootPath, { force: true, recursive: true });
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
-    throw error;
-  }
-}
-
-function chmodBestEffort(targetPath: string, mode: number): void {
-  try {
-    chmodSync(targetPath, mode);
-  } catch (_error) {
-    return;
-  }
-}
-
-function assertWritableLeaf(filePath: string): void {
-  try {
-    const stat = lstatSync(filePath);
-    if (stat.isSymbolicLink()) throw new Error(`Plugin file is a symlink: ${filePath}`);
-    if (!stat.isFile()) throw new Error(`Plugin file is unsafe: ${filePath}`);
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
-    throw error;
-  }
-}
-
-function ensureRootBase(rootBase: string): string {
-  const resolvedBase = path.resolve(rootBase);
-  const anchor = findExistingDirectoryAnchor(path.dirname(resolvedBase));
-  ensureDirectorySegments(anchor, resolvedBase);
-  assertDirectorySafe(resolvedBase, "Plugin root base");
-  return resolvedBase;
 }
 
 function assertRootBaseSafe(rootBase: string): string {
@@ -121,32 +54,6 @@ function ensurePathWithinRoot(resolvedBase: string, candidatePath: string): void
   const relative = path.relative(resolvedBase, resolvedCandidate);
   if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) return;
   throw new Error(`Plugin path escapes root base: ${candidatePath}`);
-}
-
-function ensureDirectorySegments(resolvedBase: string, dirPath: string): void {
-  const target = path.resolve(dirPath);
-  const relative = path.relative(resolvedBase, target);
-  let current = resolvedBase;
-  for (const segment of relative.split(path.sep).filter(Boolean)) {
-    current = path.join(current, segment);
-    try {
-      const stat = lstatSync(current);
-      if (stat.isSymbolicLink()) {
-        throw new Error(`Plugin path segment is a symlink: ${current}`);
-      }
-      if (!stat.isDirectory()) {
-        throw new Error(`Plugin path segment is unsafe: ${current}`);
-      }
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-        mkdirSync(current, { mode: DIR_MODE });
-        chmodBestEffort(current, DIR_MODE);
-      } else {
-        throw error;
-      }
-    }
-    assertSegmentRealpathWithinRoot(resolvedBase, current);
-  }
 }
 
 function assertExistingSegmentsSafe(resolvedBase: string, targetPath: string): void {

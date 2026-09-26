@@ -42,7 +42,7 @@ function createFakeRuntime() {
 /** 런치가 플러그인 트리를 렌더할 자리. 실제 렌더는 스텁이 가로채므로 값 자체는 쓰이지 않는다. */
 const launchDataDir = "/tmp/fleet-console-test/console";
 /** 기동에 렌더된 트리를 대신한다 — 런치는 경로만 읽는다. */
-const launchPluginStub = { pluginRoot: `${launchDataDir}/harness/claude`, pluginRoots: [`${launchDataDir}/harness/claude`] };
+const launchPluginStub = { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} };
 
 describe("createAgentTerminalLaunchResolver launch environment", () => {
   it("advertises truecolor without replacing the compatible TERM entry", async () => {

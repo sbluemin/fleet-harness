@@ -1,6 +1,8 @@
 /** 이 세션이 들고 가는 게이트웨이 정체성의 등록 이름. */
 export const FLEET_PLUGIN_NAME = "fleet";
 
+import type { IncomingMessage, ServerResponse } from "node:http";
+
 import type { ClaudeSkillOverride } from "./gateway-skills.js";
 import type { LaunchCommandLineLimit } from "./prompt.js";
 
@@ -93,8 +95,8 @@ export interface AgentCliInjectionContext {
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
   readonly workspaceHookExec?: FleetHookExec;
   readonly mcpServers: readonly AgentCliMcpServerArg[];
-  readonly pluginRoot: string;
-  readonly pluginRoots: readonly string[];
+  /** 자식이 `--plugin-url`로 받아 갈 Fleet 플러그인 zip의 루프백 주소. */
+  readonly pluginUrl: string;
   readonly sessionCoordinate: ClaudeSessionCoordinate;
   /**
    * 이 세션의 시스템 프롬프트를 무엇으로 세울지. 생략은 `on`이며 플래그가 붙지 않는다.
@@ -142,13 +144,16 @@ export interface FleetHookExec {
 export type AgentCliInjectionCapability = AgentCliInjectionCapabilityEnabled;
 
 /**
- * 트리 한 벌을 렌더하는 데 필요한 전부. 세션 좌표는 들어오지 않는다 — 렌더 결과가 세션마다
- * 같기 때문이고, 그래서 호스트는 기동에 한 번만 렌더해 모든 세션에 같은 트리를 넘긴다.
+ * 플러그인 한 벌을 묶는 데 필요한 전부. 세션 좌표는 들어오지 않는다 — 결과가 세션마다
+ * 같기 때문이고, 그래서 호스트는 기동에 한 번만 묶어 모든 세션에 같은 주소를 넘긴다.
  */
 export interface CreateAgentCliPluginOptions {
   readonly captureSessionHookExec?: FleetHookExec;
-  /** 플러그인 트리가 사는 자리 — 호스트의 Console 슬롯. 이 패키지는 자리를 스스로 찾지 않는다. */
-  readonly dataDir: string;
+  /**
+   * zip을 얹을 호스트 리스너. 생략하면 이 패키지가 127.0.0.1에 자기 리스너를 연다.
+   * 호스트가 루프백 전용 불투명 경로를 이미 운영한다면(Console의 MCP 자리) 그것을 넘긴다.
+   */
+  readonly transport?: AgentCliPluginHttpMount;
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호를 호스트로 알리는 hook. host가 빌드해 주입한다.
   readonly turnStartHookExec?: FleetHookExec;
   readonly turnEndHookExec?: FleetHookExec;
@@ -165,9 +170,20 @@ export interface CreateAgentCliPluginOptions {
   /** 테스트가 레거시 트리 회수의 시계와 나이 창을 갈아 끼우는 자리. 프로덕션은 비워 둔다. */
 }
 
+/**
+ * 호스트 리스너의 불투명 경로 하나에 핸들러를 얹는 자리. 경로를 아는 것이 곧 자격이다.
+ * `@fleet-console/agent-runtime/mcp`의 `McpHttpTransport`와 같은 모양이라 그 구현을 그대로 넘길 수 있다.
+ */
+export interface AgentCliPluginHttpMount {
+  mount(handler: (req: IncomingMessage, res: ServerResponse) => void): { url(): Promise<string>; dispose(): void };
+}
+
+/** 기동에 한 번 묶어 둔 Fleet 플러그인. 런치는 `url()`만 쓴다. */
 export interface AgentCliPlugin {
-  readonly pluginRoot: string;
-  readonly pluginRoots: readonly string[];
+  /** 자식이 `--plugin-url`로 받아 갈 주소. 호스트 리스너가 뜬 뒤에야 정해지므로 함수다. */
+  url(): Promise<string>;
+  /** 내주던 자리를 거둔다. 이미 떠 있는 세션은 받아 둔 사본으로 계속 돈다. */
+  close(): Promise<void>;
 }
 
 export interface PluginBundleBase {

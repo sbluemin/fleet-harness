@@ -3,6 +3,8 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { withLoopbackProxyBypass } from "@fleet-console/process";
+
 import { buildClaudeGatewayArgs } from "./builders/claude.js";
 import {
   assertLaunchCommandLineBudget,
@@ -26,7 +28,7 @@ import type {
 } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
-  /** 호스트가 기동에 한 번 렌더해 둔 플러그인 트리. */
+  /** 호스트가 기동에 한 번 묶어 둔 플러그인. 런치는 그 주소만 싣는다. */
   readonly plugin: AgentCliPlugin;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
@@ -181,8 +183,7 @@ export async function injectAgentCliProfile(
     const context: AgentCliInjectionContext = {
       cliId: profile.id,
       mcpServers,
-      pluginRoot: session.pluginRoot,
-      pluginRoots: session.pluginRoots,
+      pluginUrl: session.pluginUrl,
       ...(session.skillOverrides ? { skillOverrides: session.skillOverrides } : {}),
       sessionCoordinate: session.coordinate,
       ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
@@ -237,6 +238,9 @@ export async function injectAgentCliProfile(
     }
     return {
       ...profile,
+      // 자식은 플러그인 zip을 루프백에서 받아 간다. 사용자 프록시가 그 요청을 삼키면 세션은
+      // 오류 없이 플러그인만 빠진 채 뜬다.
+      env: withLoopbackProxyBypass(profile.env),
       args: mergeArgs(promptArgs),
       // 위치 인자는 이미 args 끝에 합쳐졌으므로 비운다. 남겨 두면 하류가 한 번 더 붙일 수 있다.
       promptArgs: [],

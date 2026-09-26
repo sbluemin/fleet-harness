@@ -34,12 +34,12 @@ Fleet supports multiple concurrent instances sharing the same durable state file
 
 ## 5. Isolated Development Data
 
-Everything a user chooses in a Console — settings, credentials, AI Gateway selection, the rendered Claude harness tree, and accumulated workspace knowledge — belongs to that Console instance and lives in its slot, `<fleet-data-root>/console` by default. The Fleet data root itself holds only what is shared across hosts: the update check and the `computer-use/` and `desktop/` host directories. `pnpm fleet`, `pnpm console`, and `pnpm desktop` run through `scripts/run-isolated.mjs`, which points all three at one checkout-local root so a development run cannot read or overwrite the user's own environment:
+Everything a user chooses in a Console — settings, credentials, AI Gateway selection, and accumulated workspace knowledge — belongs to that Console instance and lives in its slot, `<fleet-data-root>/console` by default. The Fleet data root itself holds only what is shared across hosts: the update check and the `computer-use/` and `desktop/` host directories. `pnpm fleet`, `pnpm console`, and `pnpm desktop` run through `scripts/run-isolated.mjs`, which points all three at one checkout-local root so a development run cannot read or overwrite the user's own environment:
 
 | Variable | Development value | Owns |
 |---|---|---|
 | `FLEET_DATA_DIR` | `<checkout>/.fleet/isolated` | The data root: host-shared directories, and the default parent of the Console slot |
-| `FLEET_CONSOLE_DATA_DIR` | `<checkout>/.fleet/isolated/console` | The Console slot: settings, credentials, AI Gateway selection, harness tree, workspaces, durable state, runtime lock |
+| `FLEET_CONSOLE_DATA_DIR` | `<checkout>/.fleet/isolated/console` | The Console slot: settings, credentials, AI Gateway selection, workspaces, durable state, runtime lock |
 | `FLEET_DESKTOP_DATA_DIR` | `<checkout>/.fleet/isolated/desktop` | Desktop owner identity and Electron user data |
 
 Two Console instances that share a data root still get separate slots when they run on different channels or from different checkouts, so each keeps its own selection and login. The `fleet` launcher resolves the slot by the same rule as the Console server, which is what lets `fleet gateway` read what the Console was told to expose. Values left at the previous location are carried over once, on first access, and the old file is removed with them, so one place holds the answer. A file that cannot be read blocks the write that would strand it rather than silently starting empty, and a previous location that resolves to the destination itself is never treated as a source.

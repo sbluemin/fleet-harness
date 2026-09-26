@@ -1,4 +1,7 @@
 import path from "node:path";
+
+import { withLoopbackProxyBypass } from "@fleet-console/process";
+
 import {
   CLAUDE_GATEWAY_SESSION_KEYS,
   CLAUDE_GATEWAY_TURN_KEYS,
@@ -76,11 +79,12 @@ export async function createClaudeGatewaySdk(
    */
   const prepareLaunch = async (): Promise<ReturnType<typeof claudeGatewayLaunchEnv>> => {
     await configDir.writeModelCache({ baseUrl, models: catalogModels, fetchedAt: Date.now() });
-    return claudeGatewayLaunchEnv(inherited, {
+    // 자식은 게이트웨이와 플러그인 zip을 루프백에서 부른다. 사용자 프록시가 그 요청을 삼키지 않게 한다.
+    return withLoopbackProxyBypass(claudeGatewayLaunchEnv(inherited, {
       baseUrl,
       configDir: configDir.path,
       homeKind: options.home?.kind === "shared" ? "shared" : "isolated",
-    });
+    }));
   };
 
   /**
@@ -104,10 +108,6 @@ export async function createClaudeGatewaySdk(
     // 그와 별개인 ambient .mcp.json·플러그인 MCP를 막는다.
     settingSources: options.settingSources ? [...options.settingSources] : [],
     strictMcpConfig: options.allowAmbientMcpServers !== true,
-    // 플러그인의 MCP 선언은 읽지 않는다 — 좌표는 호출자가 이미 소유한다.
-    ...(options.plugins && options.plugins.length > 0
-      ? { plugins: options.plugins.map((plugin) => ({ type: "local" as const, path: plugin.path, skipMcpDiscovery: true })) }
-      : {}),
     // `--settings`와 같은 자리다. flag 소스로 병합되므로 사용자·프로젝트 설정을 대체하지 않는다.
     // 명시한 키만 연다 — settings 전체를 열면 호출자가 쓰지 않은 지시가 들어온다.
     ...vendorFlagSettings(options),
@@ -117,8 +117,9 @@ export async function createClaudeGatewaySdk(
     ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
     ...(request.forkSession === undefined ? {} : { forkSession: request.forkSession }),
     ...(request.persistSession === undefined ? {} : { persistSession: request.persistSession }),
-    // SDK에는 이름 필드가 없어 CLI 인자로 싣는다. 임의 인자 통로(`extraArgs`)는 계약에 열지 않고 이 한 키만 옮긴다.
-    ...(request.sessionName === undefined ? {} : { extraArgs: { name: request.sessionName } }),
+    // SDK에 필드가 없는 두 값을 CLI 인자로 싣는다 — 세션 이름, 그리고 URL 플러그인(vendor `plugins`는
+    // 로컬 디렉터리만 받는다). 임의 인자 통로(`extraArgs`)는 계약에 열지 않고 이 두 키만 옮긴다.
+    ...vendorExtraArgs(options.pluginUrl, request.sessionName),
     ...(request.maxTurns === undefined ? {} : { maxTurns: request.maxTurns }),
     ...(request.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: request.maxBudgetUsd }),
     ...(request.outputFormat === undefined ? {} : { outputFormat: request.outputFormat }),
@@ -416,4 +417,12 @@ function vendorServedMcpServers(
     ...(server.headers?.length ? { headers: Object.fromEntries(server.headers.map((h) => [h.name, h.value])) } : {}),
     ...(server.toolTimeoutSeconds === undefined ? {} : { timeout: Math.round(server.toolTimeoutSeconds * 1000) }),
   }]));
+}
+
+function vendorExtraArgs(pluginUrl: string | undefined, sessionName: string | undefined): { extraArgs?: Record<string, string> } {
+  const extraArgs: Record<string, string> = {
+    ...(pluginUrl === undefined ? {} : { "plugin-url": pluginUrl }),
+    ...(sessionName === undefined ? {} : { name: sessionName }),
+  };
+  return Object.keys(extraArgs).length === 0 ? {} : { extraArgs };
 }

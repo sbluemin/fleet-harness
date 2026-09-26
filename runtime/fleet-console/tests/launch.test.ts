@@ -1,7 +1,9 @@
-import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdtempSync, openSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+
+import { strFromU8, unzipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@fleet-console/agent-runtime/fleet";
@@ -69,7 +71,7 @@ function createFakeInfraServices(globalOptions: {
 /** 런치가 플러그인 트리를 렌더할 자리. 실제 렌더는 스텁이 가로채므로 값 자체는 쓰이지 않는다. */
 const launchDataDir = "/tmp/fleet-console-test/console";
 /** 기동에 렌더된 트리를 대신한다 — 런치는 경로만 읽는다. */
-const launchPluginStub = { pluginRoot: `${launchDataDir}/harness/claude`, pluginRoots: [`${launchDataDir}/harness/claude`] };
+const launchPluginStub = { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} };
 
 describe("createDefaultTerminalLaunchResolver", () => {
   afterEach(() => {
@@ -152,18 +154,27 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(injectedOptions[0]?.origin).toEqual({ kind: "resume", sessionId: "provider-session-a" });
   });
 
-  it("bakes the capture hook into the tree it renders at startup", async () => {
+  it("bakes the capture hook into the archive it packs at startup", async () => {
     // 세션 포착은 이제 런치가 아니라 기동의 렌더가 싣는다. 명령이 Console CLI 진입점을
     // 가리키지 않으면 자식의 세션이 어느 Operation의 것인지 호스트가 영영 알지 못한다.
-    const dataDir = makeTempDir("fleet-render-capture-");
-    const plugin = await renderConsoleAgentCliPlugin({
-      dataDir,
+    // 자식이 받는 그 주소에서 읽어야 묶기와 내주기까지 함께 확인된다.
+    const plugin = renderConsoleAgentCliPlugin({
       entryPath: "/console/cli.ts",
       execPath: "/node",
       tsxLoaderPath: "/loader/tsx.mjs",
     });
+    let archive: Uint8Array;
+    try {
+      const response = await fetch(await plugin.url());
+      expect(response.status).toBe(200);
+      archive = new Uint8Array(await response.arrayBuffer());
+    } finally {
+      await plugin.close();
+    }
 
-    const hooks = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
+    const entries = unzipSync(archive);
+    expect(Object.keys(entries)).toContain(".claude-plugin/plugin.json");
+    const hooks = JSON.parse(strFromU8(entries["hooks/hooks.json"]!)) as {
       hooks: { UserPromptSubmit: { hooks: { command: string; args: string[] }[] }[] };
     };
     expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]).toEqual({

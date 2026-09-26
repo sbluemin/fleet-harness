@@ -45,7 +45,7 @@ describe("launchClaudeGateway", () => {
     const globalOptions = { claudeCodeSystemPrompt: "off" as const };
     const runtime = {
       aiGatewayStore: createAiGatewaySettingsStore({ dataDir }),
-      agentCliPlugin: { pluginRoot: `${dataDir}/harness/claude`, pluginRoots: [`${dataDir}/harness/claude`] },
+      agentCliPlugin: { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} },
       infraServices: {
         agentOptionsService: { load: () => globalOptions, save: () => globalOptions, update: () => globalOptions },
       },
@@ -86,7 +86,7 @@ describe("launchClaudeGateway", () => {
     expect(args.slice(0, passthroughArgs.length)).toEqual(passthroughArgs);
     // 이 런처도 Console과 같은 전역 옵션을 읽는다 — 설정 Off가 여기서도 프롬프트를 비운다.
     expect(args[args.indexOf("--system-prompt") + 1]).toBe("");
-    expect(args.indexOf("--plugin-dir")).toBeGreaterThan(args.indexOf("hello"));
+    expect(args.indexOf("--plugin-url")).toBeGreaterThan(args.indexOf("hello"));
     expect(args.indexOf("--mcp-config")).toBeGreaterThan(args.indexOf("hello"));
     expect(options).toMatchObject({ cwd: process.cwd(), stdio: "inherit" });
     expect(options?.env).toMatchObject({

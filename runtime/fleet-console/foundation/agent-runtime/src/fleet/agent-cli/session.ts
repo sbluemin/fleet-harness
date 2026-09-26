@@ -29,7 +29,8 @@ export type { ClaudeSessionCoordinate } from "./types.js";
 
 /** `createClaudeGatewaySdk` 옵션에 그대로 펼치는 몫. */
 export interface ClaudeSessionSdkOptions {
-  readonly plugins: readonly { readonly path: string }[];
+  /** 자식이 받아 갈 Fleet 플러그인 zip 주소. CLI 표면의 `--plugin-url`과 같은 값이다. */
+  readonly pluginUrl: string;
   readonly settingSources: readonly ("user" | "project" | "local")[];
   readonly allowAmbientMcpServers: boolean;
   readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
@@ -55,8 +56,8 @@ export interface ClaudeSessionSdkProjection {
 export interface ClaudeSessionHandle {
   readonly sessionId: string;
   readonly coordinate: ClaudeSessionCoordinate;
-  readonly pluginRoot: string;
-  readonly pluginRoots: readonly string[];
+  /** 이 세션이 실을 Fleet 플러그인 zip 주소. */
+  readonly pluginUrl: string;
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
   readonly claudeCodeSystemPrompt: "on" | "append" | "off";
   /** 이 세션에서 끈 내장 서브에이전트 이름들. 생략은 전부 남는다는 뜻이다. */
@@ -123,19 +124,18 @@ export async function prepareClaudeSession(
   const claudeCodeDisabledTools = [...new Set(options.claudeCodeDisabledTools ?? [])];
   const denyRules = buildClaudeDenyRules(claudeCodeDisabledAgents, claudeCodeDisabledTools);
   const skillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
-  const plugin = options.plugin;
+  const pluginUrl = await options.plugin.url();
   return {
     sessionId: coordinate.sessionId,
     coordinate,
-    pluginRoot: plugin.pluginRoot,
-    pluginRoots: plugin.pluginRoots,
+    pluginUrl,
     ...(skillOverrides ? { skillOverrides } : {}),
     claudeCodeSystemPrompt,
     ...(claudeCodeDisabledAgents.length > 0 ? { claudeCodeDisabledAgents } : {}),
     ...(claudeCodeDisabledTools.length > 0 ? { claudeCodeDisabledTools } : {}),
     sdk: {
       options: {
-        plugins: plugin.pluginRoots.map((root) => ({ path: root })),
+        pluginUrl,
         // 터미널로 열었을 때 CLI가 읽는 층을 그대로 읽어야 한 세션의 두 얼굴이 된다 —
         // 리포의 `CLAUDE.md`와 사용자 설정을 표면에 따라 잃지 않는다.
         settingSources: ["user", "project", "local"],

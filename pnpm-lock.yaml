@@ -274,6 +274,9 @@ importers:
       '@fleet-console/process':
         specifier: workspace:*
         version: link:../process
+      fflate:
+        specifier: 0.8.2
+        version: 0.8.2
     devDependencies:
       '@types/node':
         specifier: ^24.10.0

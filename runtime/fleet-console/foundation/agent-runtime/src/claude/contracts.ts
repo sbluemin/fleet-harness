@@ -196,14 +196,16 @@ export interface ClaudeGatewaySdkOptions {
   /** 격리 config dir을 만들 부모 디렉터리. 기본값은 OS 임시 디렉터리. `home`이 공유면 무시된다. */
   readonly tempRoot?: string;
   /**
-   * 자식이 실을 로컬 플러그인 디렉터리. 그 안의 스킬·훅·에이전트·커맨드가 함께 들어온다.
+   * 자식이 세션 시작에 받아 실을 플러그인 zip의 주소(CLI `--plugin-url`). 그 안의 스킬·훅·
+   * 에이전트·커맨드가 함께 들어온다.
    *
-   * 파일 경로이지만 ambient가 아니다 — 호출자가 이 목록을 직접 만들어 넘긴다. 자식이 스스로
-   * 찾아 읽는 것과 호출자가 지목한 것의 차이가 이 패키지의 경계이고, 후자는 `systemPrompt`와
-   * 같은 자격이다. 플러그인의 MCP 선언은 읽지 않는다(`skipMcpDiscovery`) — MCP 좌표는 호출자가
-   * `mcpServers`/`servedMcpServers`로 이미 소유한다.
+   * ambient가 아니다 — 호출자가 이 주소를 직접 지목한다. 자식이 스스로 찾아 읽는 것과 호출자가
+   * 지목한 것의 차이가 이 패키지의 경계이고, 후자는 `systemPrompt`와 같은 자격이다. vendor SDK의
+   * `plugins`는 로컬 디렉터리(`type: 'local'`)만 받으므로 CLI 인자로 싣는다(SDK 0.3.283 기준).
+   * 그 경로에는 `--plugin-dir-no-mcp`에 해당하는 변형이 없어 zip의 MCP 선언도 읽힌다 — MCP 좌표를
+   * 호출자가 `mcpServers`/`servedMcpServers`로 소유하려면 zip에 MCP 선언을 싣지 말 것.
    */
-  readonly plugins?: readonly { readonly path: string }[];
+  readonly pluginUrl?: string;
   /**
    * 자식이 디스크에서 읽어도 되는 설정 층. 생략하면 아무것도 읽지 않는다.
    *
