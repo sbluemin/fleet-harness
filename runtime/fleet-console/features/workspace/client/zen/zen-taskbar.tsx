@@ -442,6 +442,9 @@ export function ZenTaskbar({
         className="zen-taskbar-chip"
         data-zen-drop-chip=""
         data-zen-fold-ops={foldOpsOf(group)}
+        // 묶음 머리는 지금 보는 Operation을 옆에 남기는 자리다 — 누르는 순간 활성 해제가 먼저 돌면 그 Operation이
+        // 막대에서 사라진다(막대 항목과 같은 active-operation-surface 유지 표식).
+        data-keep-operation-active=""
         style={{ "--group-mark": group.color } as CSSProperties}
         data-zen-taskbar-menu-anchor=""
         aria-haspopup="menu"
@@ -465,6 +468,8 @@ export function ZenTaskbar({
       className={`zen-taskbar-group-label${isFolded ? " is-collapsed" : ""}`}
       data-zen-drop-label=""
       data-zen-fold-ops={!measuring && isFolded ? foldOpsOf(group) : undefined}
+      // 접어도 지금 보는 Operation은 남는다 — 그 규칙이 서려면 접는 누름이 활성을 풀면 안 된다(칩과 같은 표식).
+      data-keep-operation-active=""
       aria-expanded={!isFolded}
       aria-label={t(isFolded ? "zen.taskbar.groupExpand" : "zen.taskbar.groupCollapse", { label: group.label, count: group.entries.length })}
       tabIndex={measuring ? -1 : undefined}
