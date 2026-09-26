@@ -198,8 +198,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     ctx.host.consoleControl?.setUserQuestions?.(operationId, "blocked");
   };
   /**
-   * 새 구성원이 태어날 뷰 — 지휘관을 따른다. 살아 있는 지휘관은 지금 보이는 표면을, 미기동·휴면이면 저장된 시작 뷰를 쓴다
-   * (표식이 없는 옛 지휘관은 터미널이다). 이미 있는 구성원의 뷰는 바꾸지 않는다.
+   * 지휘관이 지금 쓰는 뷰 — 후속 목표의 지휘관이 이어받는다. 살아 있는 지휘관은 지금 보이는 표면을, 미기동·휴면이면 저장된
+   * 시작 뷰를 쓴다(표식이 없는 옛 지휘관은 터미널이다).
    */
   const commanderView = (objectiveId: string): "terminal" | "chat" => {
     const observation = ctx.host.consoleControl?.observe(objectiveId);
@@ -342,8 +342,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
       // 라우팅은 오래 걸릴 수 있으므로 실제 기동 요청 직전에 저장된 허용값을 읽는다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
-      // 구성원은 지휘관이 지금 쓰는 표면으로 뜬다 — 채팅과 터미널은 권한 모드가 달라, 섞이면 서로의 메시지가 승인 대기에 묶인다.
-      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: allowed ? undefined : false, member: true, viewMode: commanderView(objectiveId), parentOperationId: current.id }).catch(asStoreError);
+      // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다. 채팅은 권한을 묻지 않고 터미널은
+      // 사용자의 승인 게이트 설정을 따르므로, 게이트를 켠 채 지휘관이 터미널이면 둘 사이의 메시지가 사용자 승인을 기다릴 수 있다.
+      const launchedId = await launch({ theaterId: current.theaterId, title: memberTitle(current.title, member.role), sessionName: session, ...preset, groupId: current.groupId, subagents: allowed ? undefined : false, member: true, viewMode: "chat", parentOperationId: current.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       try { current = store.setMemberOperation(objectiveId, member.id, launchedId); }
       catch (error) { ctx.host.operations.delete(launchedId); throw error; }

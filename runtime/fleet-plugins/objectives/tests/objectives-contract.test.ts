@@ -164,8 +164,8 @@ describe("Objectives contract", () => {
     expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
     // 구성원만 사람에게 묻지 않는다 — 지휘관은 질문을 그대로 가진다.
     expect(launches.map((entry) => entry.disableUserQuestions)).toEqual([undefined, true, true]);
-    // 새 구성원의 뷰는 지휘관을 따른다 — 미기동 지휘관의 저장된 시작 뷰(터미널)에서.
-    expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["terminal", "terminal"]);
+    // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다 — 미기동 지휘관의 저장된 시작 뷰가 터미널이어도.
+    expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["chat", "chat"]);
     const roster = store.find(objective.id)!;
     const blockedOperationId = roster.members.find((member) => member.id === blocked.id)!.operationId!;
     activity.set(blockedOperationId, "dormant");
@@ -202,7 +202,7 @@ describe("Objectives contract", () => {
     const routingStarted = new Promise<void>((resolve) => { enteredRouting = resolve; });
     vi.stubGlobal("fetch", () => { enteredRouting(); return routingResponse; });
     routingOrigin = "http://routing.invalid";
-    // 휴면 지휘관이 채팅으로 저장돼 있으면 새 구성원도 채팅으로 태어난다.
+    // 휴면 지휘관이 채팅으로 저장돼 있어도 새 구성원은 채팅으로 태어난다.
     operations.get(objective.id)!.payload = { ...operations.get(objective.id)!.payload, chatMode: true };
     const pendingMuster = launch.muster(objective.id);
     await routingStarted;
@@ -218,14 +218,14 @@ describe("Objectives contract", () => {
     expect(userQuestions.at(-1)).toEqual({ operationId: removedId, policy: "default" });
     expect(operations.has(removedId)).toBe(false);
 
-    // 살아 있는 지휘관은 저장값보다 지금 보이는 표면이 이긴다 — 채팅으로 저장됐어도 터미널로 떠 있으면 터미널로 태어난다.
+    // 살아 있는 지휘관이 터미널로 떠 있어도 새 구성원은 채팅으로 태어난다.
     vi.unstubAllGlobals();
     routingOrigin = null;
     activity.set(objective.id, "idle");
     surfaces.set(objective.id, "terminal");
     const late = store.memberAdd(objective.id, { role: "late" }, "human").members.at(-1)!;
     await launch.muster(objective.id);
-    expect(launches.at(-1)?.viewMode).toBe("terminal");
+    expect(launches.at(-1)?.viewMode).toBe("chat");
     launch.memberRemoved(objective.id, late.id);
 
     // 지휘관만 지워지고(삭제 사건을 놓침) 복원 불가로 확정되면 구성원은 제 목표의 지휘관으로 보인다 — 질문 차단이 남으면 안 된다.
