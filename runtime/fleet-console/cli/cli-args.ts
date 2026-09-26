@@ -55,7 +55,7 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     "",
     section("RUNTIME", colorEnabled),
     commandRow("cli", "Launch Claude Code through the Fleet AI Gateway. Bare `fleet` does the same.", colorEnabled),
-    commandRow("console", "Run the local Fleet Console server and open it.", colorEnabled),
+    commandRow("console", "Start the local Fleet Console server if needed and print its address.", colorEnabled),
     commandRow("gateway", "Configure the AI Gateway. Opens an interactive screen.", colorEnabled),
     "",
     section("RUNTIME COMMANDS", colorEnabled),

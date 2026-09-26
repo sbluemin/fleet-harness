@@ -8,7 +8,7 @@ This document is the operational doctrine for agents working inside this reposit
 - `runtime/fleet-console/foundation/agent-runtime` owns the host-agnostic one-shot executor/session/model runtime engine (`executeOneShot`, which builds a fresh provider client per call and resumes only via a caller-supplied session id), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
 - `runtime/fleet-console/foundation/infra` owns host-agnostic auth, data-dir resolution, data-dir/settings, and the durable `fs-store` I/O primitives.
 - `runtime/fleet-console` owns the standalone loopback Console Service: CLI register ingest, REST/SSE/WebSocket, Terminal PTY/provider/plugin runtime, durable state, and static UI.
-- `runtime/fleet-desktop` is an optional Electron main-process shell that supervises the Console Service's separately packaged standard Node sidecar and loads `/console/`; it never owns duplicate UI, server, PTY, plugin, provider, or state code.
+- `runtime/fleet-desktop` is an optional Electron main-process shell that procures a managed Node runtime and the Console Service into its replaceable runtime directory, supervises that Console as a sidecar, and loads `/console/`; it never owns duplicate UI, server, PTY, plugin, provider, or state code.
 
 ## 2. Ownership Model
 
