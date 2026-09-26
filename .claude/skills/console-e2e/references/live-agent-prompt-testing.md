@@ -6,8 +6,10 @@ behavior alone. Typical reasons: verifying an AI Gateway adapter against a real 
 reproducing a provider-specific tool-call defect, or measuring what a model actually put
 on the wire.
 
-The base skill still owns isolation, instrumentation, and cleanup. This page only adds
-what the agent-CLI path needs on top.
+The base skill still owns isolation, instrumentation, and cleanup. Complete
+[Claude state and trust preflight](claude-state.md) before starting either a terminal
+agent or an SDK/chat child. This page only adds provider-specific steps; its snippets
+assume the preflight environment is already applied and do not replace it.
 
 ## Browser driver
 
@@ -33,6 +35,7 @@ ps -p "$(python3 -c "import json;print(json.load(open('<e2e-dir>/console.lock'))
 Spell every `<placeholder>` out on each call, including the literal session id
 (`fleet-console-e2e-20260807-strict` in the examples) and `<e2e-dir>` / `<scratch>` /
 `<worktree>` / `<port>`; shell state does not carry between tool calls.
+Here `<e2e-dir>` means the **Console slot**, `<owned-run>/console`, not the parent run directory.
 
 ## Serve with the capture and model levers already set
 
@@ -41,15 +44,21 @@ in-process there (`runtime/fleet-console/features/ai-gateway/host/start.ts`), no
 sidecar. Setting them on the spawned agent CLI is too late.
 
 ```bash
-env -u CLAUDE_CODE_CHILD_SESSION \
-  FLEET_CONSOLE_DATA_DIR=<e2e-dir> \
+env -i HOME="<owned-run>/home" PATH="<explicit-runtime-path>" LANG="<locale>" \
+  FLEET_DATA_DIR=<owned-run>/root \
+  FLEET_CONSOLE_DATA_DIR=<owned-run>/console \
+  FLEET_DESKTOP_DATA_DIR=<owned-run>/desktop \
+  CLAUDE_CONFIG_DIR=<owned-run>/claude \
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
   FLEET_GATEWAY_WIRE_LOG=<scratch>/wire.jsonl \
   FLEET_AI_GATEWAY_MODEL='claude-gateway--opencode--deepseek-v4-flash[1m]' \
   node /abs/path/to/worktree/runtime/fleet-console/dist/cli.mjs serve
 ```
 
-- `env -u CLAUDE_CODE_CHILD_SESSION` — without it the nested Claude Code inherits the
-  parent session marker and misbehaves.
+Use the preflight's prepared directories, explicit runtime path, and authorized
+credential route; add only the platform or credential variables that route needs.
+Do not inherit the outer agent's session markers or credentials. Unsetting just
+`CLAUDE_CODE_CHILD_SESSION` does not establish that boundary.
 - `FLEET_GATEWAY_WIRE_LOG` — the request body and the argument JSON a model actually
   produced. **It is a fallback, not an override.** The Settings wire-log toggle wins
   whenever the Console has a stored value: on writes to
@@ -90,9 +99,11 @@ That combobox resists automation in four ways:
 - The button label still reads the old model if you check it in the same `eval` that
   clicked. Re-read on a later call before concluding the selection failed.
 
-API keys are a separate store and are **not** isolated: the gateway reads the real
-`~/.fleet/auth.json`, so a live turn spends the user's actual provider quota. Keep prompts
-short and say so when reporting.
+Provider credentials live in the Console slot. A fresh isolated slot does not inherit
+them; legacy credential migration is another reason to isolate the Fleet root too.
+Do not rely on the former `~/.fleet/auth.json` location or silently reconnect the real
+root. Use only the credential path authorized in the preflight. Live turns spend real
+provider quota; keep prompts short and say so when reporting.
 
 ## Clear the dialogs before the first click
 
@@ -201,17 +212,22 @@ slot variables and pnpm's `INIT_CWD` (see **Isolated Development Data** in
 `~/.claude` (`cache/gateway-models.json`, `projects/`):
 
 ```bash
-cd <run-dir> && env -i HOME="$HOME" PATH="$PATH" LANG="$LANG" TMPDIR="$TMPDIR" \
-  FLEET_DATA_DIR=<worktree>/.fleet/isolated FLEET_CONSOLE_DATA_DIR=<worktree>/.fleet/isolated/console \
-  CLAUDE_CONFIG_DIR=<worktree>/.fleet/claude-home ANTHROPIC_API_KEY=sk-ant-fleet-local \
+cd <owned-theater> && env -i HOME="<owned-run>/home" PATH="<explicit-runtime-path>" LANG="<locale>" \
+  FLEET_DATA_DIR=<owned-run>/root FLEET_CONSOLE_DATA_DIR=<owned-run>/console \
+  FLEET_DESKTOP_DATA_DIR=<owned-run>/desktop \
+  CLAUDE_CONFIG_DIR=<owned-run>/claude ANTHROPIC_API_KEY=sk-ant-fleet-local \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
   node <worktree>/runtime/fleet-console/dist/fleet.mjs -p '<prompt>' \
   --model 'claude-gateway--<provider>--<model>' --effort <level> --output-format stream-json --verbose
 ```
 
-- The placeholder key only has to carry the `sk-ant-` prefix: the gateway substitutes its own
-  provider credentials for gateway models. An isolated `CLAUDE_CONFIG_DIR` without it fails
-  with `401 Missing Anthropic credential`.
+- Complete the same folder-trust review first: `-p` does not show the interactive trust
+  dialog. Reuse the preflight's owned paths and add required platform variables explicitly.
+- The placeholder key only has to carry the `sk-ant-` prefix for this headless launcher
+  path: the gateway uses its own authorized provider credentials for gateway models.
+  It is not a real provider credential and does not make a fresh slot authenticated.
+  Do not transplant this example into chat: the SDK launch helper removes
+  `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`.
 - Pass `--effort` explicitly and confirm `reasoning.effort` in the request body. A slot's
   `efforts` list controls what the picker offers; it does not pin the effort on the wire.
 - The launcher's wire log is `<slot>/logs/fleet-cli-gateway-wire.jsonl` when the slot's
