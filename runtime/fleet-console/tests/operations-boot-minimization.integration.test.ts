@@ -122,7 +122,6 @@ vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ useExpande
 // 부분 목 — 이 스토어에 export가 늘어도(아레나 점유 폭 훅 등) 테스트가 따라 깨지지 않는다.
 vi.mock("../core/client/src/chrome/rail/rail-store.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../core/client/src/chrome/rail/rail-store.js")>()),
-  toggleRailChrome: vi.fn(),
 }));
 vi.mock("../core/client/src/chrome/rail/right-rail.js", () => ({ RightRail: () => null, RailToolIcons: () => null, useRailPanelContext: () => ({}) }));
 vi.mock("../features/updates/client/whatsnew.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));

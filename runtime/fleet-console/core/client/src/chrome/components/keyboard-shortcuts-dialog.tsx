@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { buildShortcutGroups, useActiveCompanionShortcuts } from "../../integration/shortcuts.js";
 import { useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { openPane } from "../pane/pane-store.js";
-import { openRailPanel, setRailChromeExpanded } from "../rail/rail-store.js";
+import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { getViewModeSnapshot } from "../../integration/view-mode-store.js";
 
@@ -12,7 +12,6 @@ import { getViewModeSnapshot } from "../../integration/view-mode-store.js";
 // 이 링크를 세우지 않는다.
 function openShortcutSettings(): void {
   openRailPanel(SETTINGS_RAIL_ENTRY_ID);
-  setRailChromeExpanded(true);
   openPane({ paneId: SETTINGS_PANE_ID, params: { section: "shortcuts" } });
 }
 import { useT } from "../../i18n/index.js";

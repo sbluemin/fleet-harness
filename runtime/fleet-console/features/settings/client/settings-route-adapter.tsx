@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
 import { openPane } from "../../../core/client/src/chrome/pane/pane-store.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
-import { openRailPanel, setRailChromeExpanded } from "../../../core/client/src/chrome/rail/rail-store.js";
+import { openRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { buildCoreSettingsSections, collectPluginSettingsSections, resolveSettingsSectionId } from "./sections.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "./settings-pane.js";
 
@@ -35,7 +35,6 @@ export function SettingsRouteAdapter() {
     const section = resolveSettingsSectionId(requested, available) ?? "appearance";
     openRailPanel(SETTINGS_RAIL_ENTRY_ID);
     openPane({ paneId: SETTINGS_PANE_ID, params: { section } });
-    setRailChromeExpanded(true);
     navigate("/operations", { replace: true });
   }, [location.search, navigate, registry.providers, locale, t]);
 

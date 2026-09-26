@@ -144,7 +144,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       id: "appearance",
       group: "setup",
       label: t("settings.core.appearance.label"),
-      // 우측 사이드바 불투명도는 데스크톱 페인이 테마 카드에 덧세우는 행이다 — 검색은 그
+      // 도구 패널 불투명도는 데스크톱 페인이 테마 카드에 덧세우는 행이다 — 검색은 그
       // 행 이름으로도 닿아야 한다. 모바일은 이 entries를 읽지 않으므로 여기 실어도 무해하다.
       entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.liquidGlass"), t("settings.theme.panelFade"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.theme.railOpacity"), t("settings.theme.sideBarOpacity"), t("settings.theme.sideBarBlur"), t("settings.core.appearance.keywords")],
     },
@@ -217,7 +217,7 @@ export function PluginSettingsSectionBody({ render }: { readonly render: () => R
 }
 
 export function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: ReadonlySet<GlobalSettingsField>, pluginSections: readonly PluginSettingsNavItem[], t: T, options?: {
-  /** 데스크톱 페인이 테마 카드에 덧세우는 행(우측 사이드바 불투명도) — 레일 없는 모바일은 넘기지 않는다. */
+  /** 데스크톱 페인이 테마 카드에 덧세우는 행(도구 패널 불투명도) — 도구 패널 없는 모바일은 넘기지 않는다. */
   readonly themeCardExtras?: ReactNode;
 }) {
   if (sectionId.includes(":")) {
@@ -451,7 +451,7 @@ export function ThemeCard({
             />
           </div>
 
-          {/* 재가된 배치: 우측 사이드바 불투명도는 비포커스 패널 흐리기 바로 아래에 서고, 좌측
+          {/* 재가된 배치: 도구 패널 불투명도는 비포커스 패널 흐리기 바로 아래에 서고, 좌측
               사이드바 손잡이 둘이 그 아래에 붙는다. 행 자체는 데스크톱 페인이 주입한다 — 사이드바도
               레일도 없는 모바일에 죽은 슬라이더를 세우지 않기 위해. */}
           {extras}

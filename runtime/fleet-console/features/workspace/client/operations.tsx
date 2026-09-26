@@ -24,9 +24,9 @@ import { operationAccentFromNode } from "./canvas/operation-accent.js";
 import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "./canvas/triage-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
-import { RailEdgeDock, SideBarEdgeDock } from "../../../core/client/src/chrome/components/panel-edge-docks.js";
+import { SideBarEdgeDock } from "../../../core/client/src/chrome/components/panel-edge-docks.js";
 import { RailToolIcons, RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
-import { useZenToolsSlot } from "../../../core/client/src/integration/zen-chrome-slot.js";
+import { useToolbarToolsSlot } from "../../../core/client/src/integration/toolbar-slots.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
 import { TriageSideBar } from "./sidebar/triage-side-bar.js";
 import { ZEN_TASKBAR_HEIGHT, ZenTaskbar } from "./zen/zen-taskbar.js";
@@ -548,9 +548,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleRailLaunchOperation = useCallback((pluginId: string | null, kind: OperationLaunchKind) => {
     handleSideBarLaunchKind(pluginId, kind);
   }, [handleSideBarLaunchKind]);
-  // Zen에서는 레일 아이콘 열이 걷히고 같은 도구가 막대 위 Zen 탭에 가로로 선다 — 문맥은 레일과 같다.
-  const zenToolsSlot = useZenToolsSlot();
-  const zenToolsContext = useRailPanelContext(state.activeTheaterId, STABLE_RAIL_API, handleRailLaunchOperation);
+  // 레일 도구 아이콘은 콘솔 도구모음의 도구 칸에 선다 — 도구모음은 모드에 따라 자리만 바뀌고,
+  // 도구를 여는 문맥(Theater·실행 손잡이)은 이 페이지가 준다. 패널 카드(RightRail)와 같은 문맥이다.
+  const toolbarToolsSlot = useToolbarToolsSlot();
+  const toolsContext = useRailPanelContext(state.activeTheaterId, STABLE_RAIL_API, handleRailLaunchOperation);
 
   // Quick Launch 컴포저가 남긴 의도를 여기서 소비한다. 대상 Theater로의 전환이 실제로 반영된 뒤에만
   // 실행해야 한다 — activeTheaterId가 아직 이전 Theater면 launch 좌표와 포커스 승계가 엉뚱한 캔버스로 간다.
@@ -946,7 +947,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         <div className="app-toast-host">{deletionToast}{alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}</div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
-      {zenMode && zenToolsSlot !== null ? createPortal(<RailToolIcons context={zenToolsContext} orientation="row" />, zenToolsSlot) : null}
+      {toolbarToolsSlot !== null ? createPortal(<RailToolIcons context={toolsContext} />, toolbarToolsSlot) : null}
       {zenMode ? (
         <ZenTaskbar
           theaters={state.theaters}
@@ -960,11 +961,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onFocus={handleFocus}
           onResume={handleResume}
           onSelectTheater={setActiveTheater}
+          onSetGroupId={handleSetGroupId}
         />
       ) : null}
-      {/* 접힌 패널의 문 — 각 카드가 소멸한 자리의 엣지에 서고, 두 사이드바(Map·War Room)가
+      {/* 접힌 사이드바의 문 — 카드가 소멸한 자리의 엣지에 서고, 두 사이드바(Map·War Room)가
           같은 접힘 상태를 쓰므로 독도 모드와 무관하게 이 페이지가 한 번만 세운다. */}
-      {zenMode ? null : <><SideBarEdgeDock /><RailEdgeDock /></>}
+      {zenMode ? null : <SideBarEdgeDock />}
       {/* Operation 메뉴는 War Room 전용이 아니다 — 사이드바 우클릭·War Room 카드·패널 캡션의
           More 버튼이 모두 같은 메뉴를 연다. */}
       {operationMenu && menuOperation ? (

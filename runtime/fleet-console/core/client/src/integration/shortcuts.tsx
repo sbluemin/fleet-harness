@@ -51,7 +51,6 @@ export function buildShortcutGroups(
         { combos: bound("console.command-palette"), description: t("shortcuts.console.commandPalette") },
         { combos: bound("console.quick-launch"), description: t("shortcuts.console.quickLaunch") },
         { combos: bound("console.toggle-sidebar"), description: t("shortcuts.console.toggleSidebar") },
-        { combos: bound("console.toggle-rail"), description: t("shortcuts.console.toggleRail") },
         { combos: bound("console.toggle-zen"), description: t("zen.toggle") },
         { combos: bound("console.toggle-global-shell"), description: t("shortcuts.console.toggleGlobalShell") },
         { combos: bound("console.toggle-repository"), description: t("shortcuts.console.toggleRepository") },
@@ -255,11 +254,6 @@ export function useSearchShortcutLabel(): string {
 export function useSideBarStatusViewShortcutLabel(): string {
   useShortcutOverrides();
   return shortcutCommandLabel("operations.sort-by-status");
-}
-
-export function useRailShortcutLabel(): string {
-  useShortcutOverrides();
-  return shortcutCommandLabel("console.toggle-rail");
 }
 
 // ─── editing guard — when typing swallows an Operations shortcut ───────────────
