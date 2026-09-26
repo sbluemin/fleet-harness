@@ -120,6 +120,17 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();
   const inFlight = new Map<ProviderId, Promise<ProviderDto>>();
+  /** 공급자별 마지막 추론 관측 시각. 그보다 먼저 시작한 조회는 관측값을 덮지 못한다. */
+  const observedAt = new Map<ProviderId, number>();
+
+  /**
+   * 조회가 시작된 뒤 추론 관측이 들어왔다면 그 관측값. 조회 응답은 시작 시점의 upstream 상태라,
+   * 늦게 도착해도 더 새로운 관측(예: 추론 전의 빈 key 응답 대 추론 직후의 사용량)을 이기면 안 된다.
+   */
+  function observationSince(id: ProviderId, startedAt: number): ProviderDto | undefined {
+    const at = observedAt.get(id);
+    return at !== undefined && at > startedAt ? cache.get(id)?.value : undefined;
+  }
 
   async function load(id: ProviderId, force: boolean): Promise<ProviderDto> {
     if (id === "claude" && !await deps.isClaudeConnected()) {
@@ -142,8 +153,11 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     }
     const pending = inFlight.get(id);
     if (pending) return pending;
+    const startedAt = now();
     const task = fetchers[id]()
       .then((result) => {
+        const newer = observationSince(id, startedAt);
+        if (newer) return newer;
         if (isProviderSuccess(result)) lastGood.set(id, result);
         const settledAt = now();
         // 예외 대신 오류 결과를 돌려주는 조회(자격 증명 저장소를 읽지 못함 등)도 실패다.
@@ -152,6 +166,8 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         return value;
       })
       .catch((error: unknown) => {
+        const newer = observationSince(id, startedAt);
+        if (newer) return newer;
         const failedAt = now();
         const value = staleOrError(id, sanitizeProviderError(error), failedAt);
         cache.set(id, {
@@ -208,17 +224,18 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     observe(id, windows) {
       if (windows.length === 0) return;
       const previous = lastGood.get(id) ?? cache.get(id)?.value;
-      const observedAt = now();
+      const at = now();
       const value: ProviderSuccess = {
         status: "ok",
         ...(previous?.method ? { method: previous.method } : {}),
         ...(previous?.plan ? { plan: previous.plan } : {}),
         ...(previous?.cycleDays !== undefined ? { cycleDays: previous.cycleDays } : {}),
         windows,
-        fetchedAt: observedAt,
+        fetchedAt: at,
       };
       lastGood.set(id, value);
-      cache.set(id, { value, expiresAt: observedAt + QUOTA_CACHE_TTL_MS, settledAt: observedAt });
+      cache.set(id, { value, expiresAt: at + QUOTA_CACHE_TTL_MS, settledAt: at });
+      observedAt.set(id, at);
     },
     peekSummary() {
       if (cache.size === 0) return undefined;
