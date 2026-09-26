@@ -20,7 +20,8 @@ import { claimTheaterBootMinimization } from "../integration/boot-minimization-s
 import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "../integration/deletion-undo.js";
 import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
-import { OperationBrowserWelcome } from "../chrome/components/operation-browser-welcome.js";
+import { FeatureWelcome } from "../chrome/components/feature-welcome.js";
+import { RailEntryHints } from "../chrome/rail/rail-entry-hint.js";
 import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
 import { ComputerScreenShareProvider } from "../../../../features/computer-use/client/computer-screen-share.js";
@@ -581,9 +582,10 @@ export function App() {
         <QuickLaunch />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <WhatsNewModal state={state} />
-        <OperationBrowserWelcome state={state} />
+        <FeatureWelcome state={state} />
         <CommissioningOverlay state={state} />
         <FeatureTourOverlay />
+        <RailEntryHints />
         <ControlCurtain />
         <ControlReclaimedNotice />
         <ToastHost>

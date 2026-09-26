@@ -15923,9 +15923,9 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 /* ── Reusable feature tour ──────────────────────────────────────────────── */
 
-/* Operation Browser 소개 카드 — What's New가 닫힌 뒤에만 뜨는 1회성. 이미지가 가운데, 문구가 하단,
+/* 새 기능 소개 카드(Objectives·Operation Browser) — What's New가 닫힌 뒤에만 뜨는 1회성. 이미지가 가운데, 문구가 하단,
    확인이 유일한 포커스 정거장이다. 유리 채널을 그대로 입는다(.whatsnew-card 와 같은 계약). */
-.browser-welcome-overlay {
+.feature-welcome-overlay {
   position: fixed;
   inset: 0;
   z-index: 36;
@@ -15935,7 +15935,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) both;
 }
 
-.browser-welcome-scrim {
+.feature-welcome-scrim {
   position: absolute;
   inset: 0;
   border: 0;
@@ -15943,7 +15943,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   cursor: default;
 }
 
-.browser-welcome-card {
+.feature-welcome-card {
   position: relative;
   z-index: 1;
   display: grid;
@@ -15963,18 +15963,18 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
 
-.browser-welcome-art {
+.feature-welcome-art {
   width: 100%;
   height: auto;
   border-radius: var(--radius-xs);
 }
 
-.browser-welcome-copy {
+.feature-welcome-copy {
   display: grid;
   gap: var(--space-2);
 }
 
-.browser-welcome-copy h2 {
+.feature-welcome-copy h2 {
   margin: 0;
   color: var(--text-primary);
   font-size: var(--t-xl);
@@ -15982,7 +15982,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   text-wrap: balance;
 }
 
-.browser-welcome-copy p {
+.feature-welcome-copy p {
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--t-md);
@@ -15992,12 +15992,12 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   text-wrap: pretty;
 }
 
-.browser-welcome-copy .browser-welcome-next {
+.feature-welcome-copy .feature-welcome-next {
   color: var(--text-tertiary);
   font-size: var(--t-sm);
 }
 
-.browser-welcome-confirm {
+.feature-welcome-confirm {
   justify-self: center;
   padding: 8px 22px;
   border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
@@ -16008,7 +16008,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   font-weight: var(--weight-medium);
 }
 
-.browser-welcome-confirm:hover {
+.feature-welcome-confirm:hover {
   background: color-mix(in oklch, var(--brass) 26%, transparent);
 }
 

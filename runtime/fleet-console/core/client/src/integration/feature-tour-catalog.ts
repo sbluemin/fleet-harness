@@ -182,7 +182,7 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     id: "operation-browser",
     // 앵커는 Operation 캡션의 브라우저 문 — 에이전트 Operation 이면 늘 있으므로 첫 캡션에서 뜬다.
     // 덱 카드의 캡션은 그 버튼을 숨기고 최소화·숨김 패널의 캡션은 보이지 않으므로, 펼쳐진 무대의 캡션만 짚는다.
-    // 소개 카드(OperationBrowserWelcome)가 떠 있는 동안은 모달 규칙으로 기다렸다가, 닫히면 사용법을 이어받는다.
+    // 소개 카드(FeatureWelcome)가 떠 있는 동안은 모달 규칙으로 기다렸다가, 닫히면 사용법을 이어받는다.
     // 첫 방문의 모드 투어와 겹치지 않게 한 박자 미룬다.
     spotlight: null,
     deferAfterAnotherTour: true,
@@ -214,6 +214,67 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
         anchor: '[data-chat-tour="terminal"]',
         titleKey: "featureTour.chatMode.step3Title",
         bodyKey: "featureTour.chatMode.step3Body",
+      },
+    ],
+  },
+  {
+    id: "objectives",
+    // 앵커는 Objectives 플러그인 패널에 있다 — 크로스 번들 DOM 계약이라 chat-mode와 같이 클래스가 아니라
+    // 전용 의미 속성(data-objectives-tour)으로 짚는다. 패널은 레일에도 넓은 화면에도 서므로 자리는 따지지 않고,
+    // 목록이 보일 때(상세를 열지 않았을 때)만 짚는다 — 좁은 레일에서는 상세가 목록을 display:none으로 가리지만
+    // DOM에는 남아 있어, 조건 없이 짚으면 보이지 않는 대상 앞에서 안내가 재생된다.
+    // 사용자가 직접 연 순간이 안내가 닿는 때이므로 미루지 않는다.
+    spotlight: null,
+    walkthrough: [
+      {
+        anchor: '.objectives-root:not(.has-detail) [data-objectives-tour="list"]',
+        titleKey: "featureTour.objectives.step1Title",
+        bodyKey: "featureTour.objectives.step1Body",
+      },
+      {
+        anchor: '.objectives-root:not(.has-detail) [data-objectives-tour="add"]',
+        titleKey: "featureTour.objectives.step2Title",
+        bodyKey: "featureTour.objectives.step2Body",
+        exampleKey: "featureTour.objectives.step2Example",
+      },
+      {
+        anchor: '.objectives-root:not(.has-detail) .objectives-place-main[data-objectives-tour="place"]',
+        titleKey: "featureTour.objectives.step3Title",
+        bodyKey: "featureTour.objectives.step3Body",
+      },
+    ],
+  },
+  {
+    id: "objectives-detail",
+    // 목표 하나를 처음 연 순간 — 그 목표의 구획을 화면 순서대로 짚는다. 구획은 모두 늘 렌더되므로
+    // 목표 상태와 무관하게 다섯 스텝이 선다. 목록 투어를 막 끝낸 화면에서 사용자가 스스로 연 상세이므로
+    // 미루지 않는다(미루면 목록이 DOM에 남아 있는 한 영영 뜨지 않는다).
+    spotlight: null,
+    walkthrough: [
+      {
+        anchor: '.objectives-detail [data-objectives-tour="crew"]',
+        titleKey: "featureTour.objectivesDetail.step1Title",
+        bodyKey: "featureTour.objectivesDetail.step1Body",
+      },
+      {
+        anchor: '.objectives-detail [data-objectives-tour="brief"]',
+        titleKey: "featureTour.objectivesDetail.step2Title",
+        bodyKey: "featureTour.objectivesDetail.step2Body",
+      },
+      {
+        anchor: '.objectives-detail [data-objectives-tour="criteria"]',
+        titleKey: "featureTour.objectivesDetail.step3Title",
+        bodyKey: "featureTour.objectivesDetail.step3Body",
+      },
+      {
+        anchor: '.objectives-detail [data-objectives-tour="missions"]',
+        titleKey: "featureTour.objectivesDetail.step4Title",
+        bodyKey: "featureTour.objectivesDetail.step4Body",
+      },
+      {
+        anchor: '.objectives-detail [data-objectives-tour="action"]',
+        titleKey: "featureTour.objectivesDetail.step5Title",
+        bodyKey: "featureTour.objectivesDetail.step5Body",
       },
     ],
   },

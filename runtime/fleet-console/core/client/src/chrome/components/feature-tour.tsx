@@ -2,12 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 
 import {
   FEATURE_TOURS,
+  FEATURE_TOUR_BOUNDARY_ATTRIBUTE,
   FEATURE_TOUR_BOUNDARY_SELECTOR,
   FEATURE_TOUR_LAYER_ATTRIBUTE,
   type FeatureTour,
   type FeatureTourStep,
 } from "../../integration/feature-tour-catalog.js";
-import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
+import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
 
 export type FeatureTourPhase = "spotlight" | "walkthrough";
@@ -125,10 +126,13 @@ export function FeatureTourOverlay() {
     anchor.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     const updatePosition = () => {
       const boundary = anchor.closest<HTMLElement>(FEATURE_TOUR_BOUNDARY_SELECTOR);
-      const card = cardRef.current?.getBoundingClientRect();
+      // 레이아웃 크기로 잰다 — 카드는 등장 애니메이션 동안 scale이 걸려 있어 getBoundingClientRect는 줄어든
+      // 크기를 돌려주고, 그 값으로 경계 옆 자리를 잡으면 카드가 제 폭만큼 경계 안으로 파고든다.
+      const card = cardRef.current ? { width: cardRef.current.offsetWidth, height: cardRef.current.offsetHeight } : null;
       setPosition(resolveFeatureTourCardPosition({
         anchor: anchor.getBoundingClientRect(),
         boundary: boundary?.getBoundingClientRect() ?? null,
+        alignToAnchor: boundary?.getAttribute(FEATURE_TOUR_BOUNDARY_ATTRIBUTE) === "anchor",
         cardWidth: card?.width ?? 320,
         cardHeight: card?.height ?? 180,
         viewportWidth: window.innerWidth,
@@ -218,18 +222,26 @@ export function FeatureTourOverlay() {
 export function resolveFeatureTourCardPosition(options: {
   readonly anchor: Pick<DOMRect, "left" | "right" | "top" | "bottom" | "width">;
   readonly boundary: Pick<DOMRect, "left" | "right" | "top" | "bottom" | "width" | "height"> | null;
+  /**
+   * 경계 옆에 서되 세로는 앵커 높이에 맞춘다. 키 큰 패널(예: 레일의 목표 패널) 안에서 구획을 차례로 짚을 때
+   * 경계 가운데에 서면 카드와 가리키는 구획이 멀어진다. 좌우 어디에도 자리가 없으면 경계 위아래가 아니라
+   * 앵커 기준 배치로 돌아간다 — 화면을 거의 채운 경계의 위아래에는 카드가 들어갈 틈이 없다.
+   */
+  readonly alignToAnchor?: boolean;
   readonly cardWidth: number;
   readonly cardHeight: number;
   readonly viewportWidth: number;
   readonly viewportHeight: number;
 }): CardPosition {
-  const { anchor, boundary, cardWidth, cardHeight, viewportWidth, viewportHeight } = options;
+  const { anchor, boundary, alignToAnchor = false, cardWidth, cardHeight, viewportWidth, viewportHeight } = options;
   const gap = 12;
   const margin = 12;
   const clampLeft = (left: number) => Math.min(viewportWidth - cardWidth - margin, Math.max(margin, left));
   const clampTop = (top: number) => Math.min(viewportHeight - cardHeight - margin, Math.max(margin, top));
   if (boundary) {
-    const centeredTop = clampTop(boundary.top + boundary.height / 2 - cardHeight / 2);
+    const centeredTop = alignToAnchor
+      ? clampTop(Math.max(anchor.top, boundary.top) - 8)
+      : clampTop(boundary.top + boundary.height / 2 - cardHeight / 2);
     if (boundary.right + gap + cardWidth <= viewportWidth - margin) {
       return { left: boundary.right + gap, top: centeredTop, centered: false };
     }
@@ -237,6 +249,7 @@ export function resolveFeatureTourCardPosition(options: {
       return { left: boundary.left - gap - cardWidth, top: centeredTop, centered: false };
     }
     const centeredLeft = clampLeft(boundary.left + boundary.width / 2 - cardWidth / 2);
+    if (alignToAnchor) return resolveFeatureTourCardPosition({ ...options, boundary: null });
     if (boundary.bottom + gap + cardHeight <= viewportHeight - margin) {
       return { left: centeredLeft, top: boundary.bottom + gap, centered: false };
     }
@@ -276,6 +289,21 @@ function featureTourSeenKey(tourId: string, phase: FeatureTourPhase): string {
 
 export function appendSeenFeatureTour(seen: readonly string[], key: string): readonly string[] {
   return seen.includes(key) ? seen : [...seen, key].slice(-64);
+}
+
+/**
+ * 투어 밖의 1회성 안내(소개 카드·레일 말풍선)가 본 기록을 남긴다. 닫는 즉시 뒤따르는 투어가 같은
+ * seenFeatureTours 필드를 저장할 수 있으므로, 인플라이트 저장이 끝난 틱에만 최신 값 위에 덧붙인다.
+ */
+export function rememberSeenFeatureTour(key: string): void {
+  void (async () => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const base = getGlobalSettingsStoreState().state?.seenFeatureTours ?? [];
+      if (base.includes(key)) return;
+      if (!isSavingGlobalSettingsField("seenFeatureTours") && await setGlobalSettingsField("seenFeatureTours", appendSeenFeatureTour(base, key))) return;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  })();
 }
 
 export async function persistFeatureTourSeen(

@@ -18,6 +18,7 @@ import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../feature
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
 import { EFFORT_CONFIRM_TIP_SEEN_KEY, forgetAllFeatureTours } from "./feature-tour.js";
+import { RAIL_ENTRY_HINT_SEEN_KEYS } from "../rail/rail-entry-hint.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 
@@ -578,9 +579,9 @@ function CheckGlyph() {
 
 // "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다.
 // 카탈로그의 모든 피처 투어 시청 기록(walkthrough·spotlight)·최초 설정 가이드·강도 확인 팁
-// 기록을 함께 지워, 어느 화면에 있든 온보딩을 처음부터 다시 보게 한다.
+// 기록과 레일 진입점 말풍선을 함께 지워, 어느 화면에 있든 온보딩을 처음부터 다시 보게 한다.
 function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
-  const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY]);
+  const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY, ...RAIL_ENTRY_HINT_SEEN_KEYS]);
   const afterTours = forgetAllFeatureTours(seen);
   const next = afterTours.filter((key) => !drop.has(key));
   return next.length === afterTours.length ? afterTours : next;
