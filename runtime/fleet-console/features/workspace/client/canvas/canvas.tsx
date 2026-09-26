@@ -254,7 +254,7 @@ export function OperationsCanvas({
     }
     // 전환 제목은 전역 진입 시각 기준으로 한 번만 띄운다 — 선별 중 Theater 자동 전환은 재생하지 않는다.
     const enteredAt = getTriageEnteredAt() ?? Date.now();
-    const remaining = Math.max(0, MODE_TITLE_DURATION_MS - (Date.now() - enteredAt));
+    const remaining = enteredAt === 0 ? 0 : Math.max(0, MODE_TITLE_DURATION_MS - (Date.now() - enteredAt));
     setTriageEntering(remaining > 0);
     if (remaining === 0) return;
     const timer = window.setTimeout(() => setTriageEntering(false), remaining);

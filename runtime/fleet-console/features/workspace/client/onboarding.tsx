@@ -129,7 +129,7 @@ export const workspaceOnboarding: OnboardingContribution = {
  * Zen 작업 표시줄 소개 일러스트 — 사이드바가 물러난 캔버스 아래로 작업 표시줄이 선다. 왼쪽은 Theater와 묶인 Operation
  * 목록(지금 보는 것은 brass 밑줄, 답을 기다리는 것은 aurora), 오른쪽 끝은 도구 · 종료 · Fleet 앰블럼이다. 테마 토큰만 소비한다.
  */
-function ZenTaskbarWelcomeIllustration() {
+export function ZenTaskbarWelcomeIllustration() {
   return (
     <svg viewBox="0 0 360 176" role="img" aria-hidden="true" focusable="false">
       <defs>

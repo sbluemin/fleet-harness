@@ -5,6 +5,7 @@ import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 import { animateViewportTo, fitAllOperations, releaseAlignAll, setAlignAllLayout, setStationKeeping, toggleAlignAll, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "./canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled } from "./triage-store.js";
 import { cycleTriageDeckZoomPreset } from "./triage-watch-deck.js";
+import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 
@@ -56,14 +57,15 @@ export function CanvasModeSwitch() {
   const alignMeta = useAlignAll();
   const alignOn = alignMeta !== null;
   const triageActive = useTriageActive();
+  const warRoomUnavailable = useViewMode().effective === "mobile";
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   const stationKeeping = useStationKeeping();
   const triageDeckZoomLive = useTriageDeckZoomLive();
   const canvasMode: CanvasMode = triageActive ? "warRoom" : "cruise";
-  const selectCanvasMode = (mode: CanvasMode) => {
+  const selectCanvasMode = (mode: CanvasMode, returnFocus: HTMLButtonElement) => {
     if (mode === canvasMode) return;
     if (mode === "warRoom") {
-      enterTriage(focusedTriageOperationId(document.activeElement));
+      enterTriage(focusedTriageOperationId(document.activeElement), returnFocus);
       return;
     }
     // Cruise 세그먼트는 War Room에서만 나온다 — 모두 정렬은 Cruise 위의 유지라 그대로 둔다.
@@ -171,10 +173,10 @@ export function CanvasModeSwitch() {
           className="command-band-mode-seg"
           data-canvas-mode={mode.id}
           data-tool-echo={modeToolEcho(mode.id) || undefined}
-          disabled={state.theaters.length === 0}
+          disabled={state.theaters.length === 0 || (mode.id === "warRoom" && warRoomUnavailable)}
           aria-pressed={canvasMode === mode.id}
-          aria-label={t(mode.titleKey)}
-          title={t(mode.titleKey)}
+          aria-label={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.zenUnavailable" : mode.titleKey)}
+          title={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.zenUnavailable" : mode.titleKey)}
           onMouseDown={(event) => event.preventDefault()}
           // hover는 마우스만의 것이다 — 터치·펜은 접촉과 함께 pointerenter를 내므로 여기서 열면
           // 뒤따르는 click 토글이 곧바로 닫아 버린다. 터치는 click 경로만 쓴다.
@@ -193,7 +195,7 @@ export function CanvasModeSwitch() {
           }}
           onClick={(event) => {
             if (mode.id !== canvasMode) {
-              selectCanvasMode(mode.id);
+              selectCanvasMode(mode.id, event.currentTarget);
               // 마우스로 모드를 바꾸면 포인터는 이미 새 활성 세그먼트 위에 있다 — 다시 진입할
               // 때까지 기다리게 하지 않고 그 모드의 도구를 바로 보인다. 키보드·터치는 열지 않는다.
               const native = event.nativeEvent;

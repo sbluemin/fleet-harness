@@ -2236,7 +2236,7 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).toContain('{ id: "cruise", titleKey: "chrome.commandBand.modeCruise", Icon: CruiseModeIcon },');
     expect(modeSwitch).toContain('{ id: "warRoom", titleKey: "chrome.commandBand.modeWarRoom", Icon: WarRoomModeIcon },');
     expect(modeSwitch).toContain("<mode.Icon />");
-    expect(modeSwitch).toContain("aria-label={t(mode.titleKey)}");
+    expect(modeSwitch).toContain('aria-label={t(mode.id === "warRoom" && warRoomUnavailable ? "canvas.triage.zenUnavailable" : mode.titleKey)}');
     expect(modeSwitch).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : "cruise";');
     expect(modeSwitch).toContain('aria-pressed={canvasMode === mode.id}');
     // 모드 도구는 활성 세그먼트 아래 캡슐 하나에 활성 모드의 것만 마운트한다 — 비활성 모드 도구는
@@ -2268,8 +2268,8 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).not.toContain("setModeTrayOpen");
     // 정렬이 켜지면 Cruise 세그먼트에 brass 점이 켜진다 — 캡슐 안 나누기와 같은 채널이다.
     expect(modeSwitch).toContain("stationKeeping || alignOn");
-    // 모드 스위치는 Theater 등록 여부로만 게이트한다 — 정렬 토글은 활성 Theater로 게이트한다.
-    expect(modeSwitch).toContain("disabled={state.theaters.length === 0}");
+    // War Room은 Zen 적격성도 따른다 — 정렬 토글은 활성 Theater로 게이트한다.
+    expect(modeSwitch).toContain('disabled={state.theaters.length === 0 || (mode.id === "warRoom" && warRoomUnavailable)}');
     // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
     expect(modeSwitch).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
     const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");

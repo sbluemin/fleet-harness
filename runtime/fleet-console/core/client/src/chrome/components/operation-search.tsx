@@ -381,8 +381,9 @@ export function OperationSearch({
           // 팔레트 진입 시점의 activeElement는 입력창이므로 캔버스 포커스는 previousFocusRef에서 읽는다.
           // 그 뒤 복원을 끊지 않으면 팔레트가 닫히며 이전 패널을 다시 포커스해 빈 대기열 진입의 해제가 무효화된다.
           const focusedOperationId = focusedTriageOperationId(previousFocusRef.current);
+          const returnFocus = previousFocusRef.current;
           previousFocusRef.current = null;
-          enterTriage(focusedOperationId);
+          enterTriage(focusedOperationId, returnFocus);
         }
         break;
       }
