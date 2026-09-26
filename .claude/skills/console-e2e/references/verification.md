@@ -50,10 +50,22 @@ Drive input the interaction actually uses. When the browser driver cannot produc
 ## High-risk browser boundaries
 
 - For every modal, drawer, drop-up, or shared-state deck, verify initial focus, Tab wrap, Escape close, shortcut suppression behind the modal, pointer and keyboard open paths, mutual exclusion, and focus return.
-- Clear auto-open commissioning or What's New dialogs before asserting a no-modal shortcut path. First assert no visible `[aria-modal="true"]` remains.
+- Before a no-modal shortcut or chrome-changing scenario, follow [Fresh-window chrome preflight](#fresh-window-chrome-preflight); closing one dialog does not establish a clear input path.
 - Create structural state through APIs or real UI actions. Do not seed store-managed collections in localStorage; hydration may overwrite them.
 - Target destructive controls by article-scoped accessible name. WebGL can swallow loose hit tests; confirm selector accuracy before reporting a broken action.
 - Windows ConPTY behavior must be tested on Windows. Record renderer, ConPTY toggle, resize stress, repeated frequency, page errors, and screenshots; mark it unverified elsewhere.
+
+## Fresh-window chrome preflight
+
+Use this before Zen or another chrome-changing scenario in a fresh isolated Console, unless the onboarding interaction itself is under test:
+
+1. Finish browser/context setup, including video recording, before establishing the scenario baseline. `agent-browser record start` can recreate the page, reopen What's New, and drop page instrumentation. After recording setup or a reload, re-establish and verify pre-navigation diagnostics and take a fresh snapshot; do not reuse the earlier dismissal or refs. If the driver cannot restore diagnostics, use a fresh instrumented session without recording and disclose the recording limitation.
+2. Dismiss visible commissioning, What's New, and subsequent new-feature introductions through their real dismissal or completion controls (or Escape where supported). Re-snapshot and assert no visible `[aria-modal="true"]` remains; do not assume one Escape cleared every layer.
+3. Dismiss the visible entry hint (`.onboarding-hint`, **Close hint**) and feature tours (`[data-feature-tour-id]`, **Skip** or completion controls). These need not have `aria-modal="true"`. Recheck after each action and after opening panels: a new anchor can reveal the next tour.
+4. Establish only the Operation presentation the scenario needs. If it needs visible panels, open the relevant Operations or **Open all and arrange** and confirm their presence; API-created cards alone are not open panels. An open Operation is not a Zen prerequisite: the empty-canvas control also enters Zen.
+5. With the route/layout settled and no visible onboarding layer, capture the baseline, refresh the target ref, and click once. For Zen, use a bounded wait for `.console-shell.is-zen` **and** absence of `html[data-zen-flight]`; CLI click completion is not transition completion. Then inspect for a newly triggered tour before continuing. Verify the inverse with the same state/transition checks.
+
+If the click still does not apply, preserve the before/after snapshot, visible overlays, actual pointer target/event sequence, Operation presentation, and transition state before changing them. Report a reproduced product defect separately; do not turn an unproven guard or swallowed click into a required workaround. A clean control or a recording-induced reload does not establish the cause of an earlier, uninstrumented failure.
 
 ## Verify and clean up
 
