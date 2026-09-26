@@ -20,6 +20,17 @@ import { flushSync } from "react-dom";
 const ANIMATING_ATTRIBUTE = "data-side-bar-animating";
 const SIDE_BAR_CLASS = "operations-side-bar";
 
+// 플래그의 주인은 둘이다 — 카드의 실제 width 전환(관찰자)과, 전환 없이 인셋만 움직이는 추종(탐침 구동).
+// 어느 한쪽이라도 붙들고 있으면 선다. 같은 호스트 번들 안의 두 경로라 모듈 상태로 합친다.
+let transitionHoldsFlag = false;
+let followHolds = 0;
+
+function syncAnimatingFlag(): void {
+  if (typeof document === "undefined") return;
+  if (transitionHoldsFlag || followHolds > 0) document.body.setAttribute(ANIMATING_ATTRIBUTE, "true");
+  else document.body.removeAttribute(ANIMATING_ATTRIBUTE);
+}
+
 function isSideBarWidthTransition(event: TransitionEvent): boolean {
   if (event.propertyName !== "width") return false;
   const target = event.target;
@@ -45,7 +56,8 @@ export function observeSideBarCollapseMotion(): () => void {
       cancelAnimationFrame(deferredClear);
       deferredClear = null;
     }
-    document.body.removeAttribute(ANIMATING_ATTRIBUTE);
+    transitionHoldsFlag = false;
+    syncAnimatingFlag();
   };
 
   /**
@@ -75,7 +87,8 @@ export function observeSideBarCollapseMotion(): () => void {
       deferredClear = null;
     }
     animating = event.target as HTMLElement;
-    document.body.setAttribute(ANIMATING_ATTRIBUTE, "true");
+    transitionHoldsFlag = true;
+    syncAnimatingFlag();
     if (detachWatch === null) watchForDetach();
   };
   // 해제는 한 프레임 미룬다. 아레나 인셋 추종(useSideBarFollowedInset)의 마지막 커밋이 전환이 끝난 그 프레임에
@@ -124,16 +137,14 @@ export function useSideBarFollowedInset(targetInset: number): number {
     settledTargetRef.current = targetInset;
     const fromInset = shownRef.current;
     const card = typeof document === "undefined" ? null : document.querySelector<HTMLElement>(`.${SIDE_BAR_CLASS}`);
-    // getAnimations()가 스타일을 확정하므로 이 커밋이 연 width 전환이 여기서 잡힌다 — 첫 프레임부터 따라간다.
-    const transition = card ? runningWidthTransition(card) : null;
-    if (!card || !transition) {
+    const driver = card ? followDriverFor(card) : null;
+    if (!driver) {
       setFollowed(null);
       return;
     }
-    // 진행률은 전환 자신의 곡선 적용 진행(0→1)을 읽는다 — 카드 폭은 닫힌 뒤에도 테두리만큼 남아 끝이 어긋난다.
     const insetNow = () => {
-      const progress = transition.effect?.getComputedTiming().progress;
-      if (typeof progress !== "number") return targetInset;
+      const progress = driver.progress();
+      if (progress === null) return targetInset;
       return fromInset + Math.min(1, Math.max(0, progress)) * (targetInset - fromInset);
     };
     let active = true;
@@ -150,16 +161,19 @@ export function useSideBarFollowedInset(targetInset: number): number {
       if (!active) return;
       active = false;
       cancelAnimationFrame(frame);
-      // 최종 인셋은 동기로 커밋한다 — 억제 플래그는 전환 종료 다음 프레임에 걷히므로(아래 관찰자) 그 전에 서야
-      // 마지막 몇 px이 되살아난 패널 글라이드를 타지 않는다.
+      // 최종 인셋은 동기로 커밋한다 — 억제 플래그는 한 프레임 뒤에 걷히므로 그 전에 서야 마지막 몇 px이
+      // 되살아난 패널 글라이드를 타지 않는다.
       flushSync(() => setFollowed(null));
+      driver.release(true);
     };
     setFollowed(fromInset);
     tick();
-    transition.finished.then(finish, finish);
+    driver.finished.then(finish, finish);
     return () => {
+      if (!active) return;
       active = false;
       cancelAnimationFrame(frame);
+      driver.release(false);
     };
   }, [targetInset]);
   const shown = followed ?? targetInset;
@@ -170,9 +184,111 @@ export function useSideBarFollowedInset(targetInset: number): number {
   return shown;
 }
 
-function runningWidthTransition(card: HTMLElement): Animation | null {
-  if (typeof card.getAnimations !== "function" || typeof CSSTransition === "undefined") return null;
-  return card.getAnimations().find((animation) => animation instanceof CSSTransition
+interface FollowDriver {
+  /** 이 추종이 시작된 뒤의 진행(0→1, 곡선 적용). 끝났으면 null. */
+  readonly progress: () => number | null;
+  readonly finished: Promise<unknown>;
+  /** 추종이 끝나거나 끊길 때 한 번. settled면 플래그를 한 프레임 뒤에 놓는다. */
+  readonly release: (settled: boolean) => void;
+}
+
+/**
+ * 인셋을 무엇에 실어 움직일지 고른다.
+ *
+ * - 카드가 width 전환 중이면 그 전환을 탄다. 이미 진행 중이던 전환(엣지 호버 픽이 먼저 연 폭)을 잡았다면
+ *   잡은 순간의 진행을 0으로 다시 잰다 — 그 전환의 절반이 이미 지났다고 인셋까지 절반 건너뛰면 안 된다.
+ * - 전환이 없는데 카드가 보이면(픽으로 이미 다 펼쳐진 카드를 고정) 카드는 움직이지 않지만 인셋은 움직인다.
+ *   카드의 width 전환과 같은 길이·곡선의 빈 애니메이션을 탐침으로 굴려 그 진행을 쓰고, 그동안 패널
+ *   글라이드 억제 플래그를 직접 붙든다.
+ * - 전환이 꺼진 경우(드래그 리사이즈·reduced motion)나 숨은 카드는 목표 인셋이 즉시 선다.
+ */
+function followDriverFor(card: HTMLElement): FollowDriver | null {
+  if (typeof card.getAnimations !== "function") return null;
+  // getAnimations()가 스타일을 확정하므로 이 커밋이 연 width 전환이 여기서 잡힌다 — 첫 프레임부터 따라간다.
+  const running = typeof CSSTransition === "undefined" ? undefined : card.getAnimations().find((animation) => animation instanceof CSSTransition
     && animation.transitionProperty === "width"
-    && animation.playState !== "finished") ?? null;
+    && animation.playState !== "finished");
+  if (running) {
+    const origin = effectProgress(running) ?? 0;
+    return {
+      progress: () => {
+        const progress = effectProgress(running);
+        if (progress === null) return null;
+        return origin >= 1 ? 1 : (progress - origin) / (1 - origin);
+      },
+      finished: running.finished,
+      release: () => undefined,
+    };
+  }
+  if (typeof card.animate !== "function" || getComputedStyle(card).visibility === "hidden") return null;
+  const timing = widthTransitionTiming(card);
+  if (!timing) return null;
+  let probe: Animation;
+  try {
+    probe = card.animate(null, timing);
+  } catch {
+    return null;
+  }
+  followHolds += 1;
+  syncAnimatingFlag();
+  let released = false;
+  return {
+    progress: () => effectProgress(probe),
+    finished: probe.finished,
+    release: (settled) => {
+      if (released) return;
+      released = true;
+      probe.cancel();
+      const drop = () => {
+        followHolds = Math.max(0, followHolds - 1);
+        syncAnimatingFlag();
+      };
+      if (settled) requestAnimationFrame(drop);
+      else drop();
+    },
+  };
+}
+
+function effectProgress(animation: Animation): number | null {
+  const progress = animation.effect?.getComputedTiming().progress;
+  return typeof progress === "number" ? progress : null;
+}
+
+/** 카드의 width 전환 길이·곡선 — CSS가 소유한 값을 읽기만 한다. 전환이 꺼져 있으면 null. */
+function widthTransitionTiming(card: HTMLElement): { readonly duration: number; readonly easing: string } | null {
+  const computed = getComputedStyle(card);
+  const properties = computed.transitionProperty.split(",").map((value) => value.trim());
+  const index = properties.findIndex((property) => property === "width" || property === "all");
+  if (index < 0) return null;
+  const pick = (list: string) => {
+    const values = splitTopLevel(list);
+    return values[index % values.length] ?? "";
+  };
+  const duration = parseSeconds(pick(computed.transitionDuration));
+  if (duration <= 0) return null;
+  return { duration, easing: pick(computed.transitionTimingFunction) || "ease" };
+}
+
+/** cubic-bezier(…) 안의 쉼표를 가르지 않는 목록 분리. */
+function splitTopLevel(list: string): string[] {
+  const values: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of list) {
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (char === "," && depth === 0) {
+      values.push(current.trim());
+      current = "";
+    } else current += char;
+  }
+  if (current.trim()) values.push(current.trim());
+  return values;
+}
+
+function parseSeconds(value: string): number {
+  const match = /^(\d+(?:\.\d+)?)(ms|s)$/.exec(value.trim());
+  if (!match) return 0;
+  const amount = Number.parseFloat(match[1]!);
+  return match[2] === "s" ? amount * 1000 : amount;
 }
