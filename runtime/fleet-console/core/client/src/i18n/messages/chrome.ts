@@ -222,7 +222,6 @@ export const chromeEn = {
   "chrome.commissioning.chooseFolder": "Choose a folder…",
   "chrome.commissioning.step2Title": "Open an Operation",
   "chrome.commissioning.step2Body": "Start an agent session on the canvas of your Theater.",
-  "chrome.commissioning.footer": "Folders with a Fleet Wiki also open Codex, your decision log and reference library.",
   "chrome.commissioning.skip": "Later",
 
   // directory-browser
@@ -631,7 +630,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.commissioning.chooseFolder": "폴더 선택…",
   "chrome.commissioning.step2Title": "Operation 열기",
   "chrome.commissioning.step2Body": "Theater의 캔버스에서 에이전트 세션을 시작합니다.",
-  "chrome.commissioning.footer": "Fleet Wiki가 있는 폴더라면 결정 기록과 참고 자료를 담은 Codex도 함께 열립니다.",
   "chrome.commissioning.skip": "나중에",
 
   "chrome.directoryBrowser.dialogAria": "Theater 추가",

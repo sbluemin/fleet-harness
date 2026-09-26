@@ -142,7 +142,6 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
         </ol>
 
         <footer className="commissioning-footer">
-          <p>{t("chrome.commissioning.footer")}</p>
           <button type="button" className="commissioning-skip" onClick={closeOnboarding}>{t("chrome.commissioning.skip")}</button>
         </footer>
       </section>

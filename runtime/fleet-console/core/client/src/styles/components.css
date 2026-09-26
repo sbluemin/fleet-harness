@@ -11498,16 +11498,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .commissioning-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.commissioning-footer p {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--t-xs);
-  line-height: 1.5;
-  word-break: keep-all;
+  justify-content: flex-end;
 }
 
 .commissioning-skip {
@@ -12941,10 +12932,6 @@ body[data-companion-resizing="true"] .canvas-operation {
     padding: var(--space-5) var(--space-4) var(--space-4);
   }
 
-  .commissioning-footer {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
 
 /* ---- 공유 표면 크롬 (Side/Modal 헤더·본문 공통) ---- */
