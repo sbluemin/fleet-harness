@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT, wasOperationBornDormant } from "@fleet-console/sdk/operations/browser";
+import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, ClientExecutionProvider, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
@@ -425,9 +425,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       : null;
     if (resumeBootProtection !== null || viewMode.effective === "mobile") resumeBootProtectionRef.current = null;
     if (viewMode.effective === "mobile") return;
-    for (const operation of sortedTheaterOperations(state)) {
-      ensureDefaultGeometry(operation.id, operation.geometry, wasOperationBornDormant(operation.payload));
-    }
+    for (const operation of sortedTheaterOperations(state)) ensureDefaultGeometry(operation.id, operation.geometry);
     if (!state.operationsHydrated) return;
     pruneOperations(operationOrder);
     // 각 Theater를 세션 중 처음 열 때 한 번, 그 Theater의 부팅 시점 기존 패널을 최소화한다.

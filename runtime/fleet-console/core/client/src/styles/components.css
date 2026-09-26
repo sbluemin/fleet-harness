@@ -3687,9 +3687,11 @@
   background: var(--surface-panel);
 }
 
+/* 세션 탭이 없는(지휘관 단독) 줄에서도 임무 띠는 오른쪽에 선다. */
 .canvas-operation-cluster-progress {
   display: flex;
   flex: 0 1 auto;
+  margin-left: auto;
   justify-content: flex-end;
   min-width: 0;
   max-width: min(30%, 240px);
