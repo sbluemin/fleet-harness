@@ -1388,48 +1388,41 @@ export function OperationsCanvas({
   // ── 좌표계 전환 글라이드 ──
   // Cruise에서 companion 배치가 서거나 걷히는 커밋은 월드 transform(translate·scale)을 떼거나 다시 붙인다.
   // 패널의 geometry 전이는 옛 좌표계 값에서 출발하므로 그대로 두면 첫 프레임에 행렬만큼 튄다(사이드바 폭·
-  // 팬·줌이 모두 그 행렬 안에 있다). 커밋마다 보인 패널의 프레임 기하와 행렬을 기록해 두고, 전환 커밋에서
-  // 옛 화면 자리를 새 좌표계로 옮겨 출발점으로 삼는다. War Room은 자기 FLIP이 전환을 지므로 여기서 쉰다.
-  const renderedFrameGeometries = new Map<string, OperationGeometry>();
-  const layerSnapshotRef = useRef<{
-    readonly worldDetached: boolean;
-    readonly triage: boolean;
-    readonly companionId: string | null;
-    readonly tx: number;
-    readonly ty: number;
-    readonly zoom: number;
-    readonly frames: ReadonlyMap<string, OperationGeometry>;
-  } | null>(null);
+  // 팬·줌이 모두 그 행렬 안에 있다). 전환 커밋의 렌더에서 — 아직 옛 DOM이 서 있을 때 — 패널이 실제로 보이는
+  // 상자를 재고, 커밋 뒤 그 상자를 새 좌표계로 옮겨 출발점으로 삼는다. 목표 기하가 아니라 보이는 상자를 재야
+  // 글라이드 도중 다시 토글해도 진행 중 전이·배율에서 그대로 이어진다. War Room은 자기 FLIP이 전환을 지므로 쉰다.
+  const layerSnapshotRef = useRef<{ readonly worldDetached: boolean; readonly triage: boolean; readonly companionId: string | null } | null>(null);
   const layerGlideStopRef = useRef<(() => void) | null>(null);
+  const worldDetached = panelCompanion !== null || triageActive;
+  const committedLayer = layerSnapshotRef.current;
+  const layerSwitchOperationId = committedLayer && committedLayer.worldDetached !== worldDetached && !committedLayer.triage && !triageActive
+    ? (worldDetached ? panelCompanion : committedLayer.companionId)
+    : null;
+  // 렌더 중 DOM 읽기는 이 전환 커밋에서만, 읽기로만 한다 — 커밋 전 화면을 잴 수 있는 마지막 자리다.
+  const layerSwitchFrom = layerSwitchOperationId !== null ? measureVisibleFrame(canvasRef.current, layerSwitchOperationId) : null;
+  // 전환 뒤에도 실제로 보이는 프레임만 글라이드한다 — 최소화·가림으로 걷히는 패널은 자기 연출이 있다.
+  const renderedVisibleFrameIds = new Set<string>();
   useLayoutEffect(() => {
-    const previous = layerSnapshotRef.current;
-    const current = {
-      worldDetached: panelCompanion !== null || triageActive,
-      triage: triageActive,
-      companionId: panelCompanion,
-      tx: Math.round(screenViewport.x),
-      ty: Math.round(screenViewport.y),
-      zoom: screenViewport.zoom,
-      frames: renderedFrameGeometries,
-    };
-    layerSnapshotRef.current = current;
-    if (!previous || previous.worldDetached === current.worldDetached || previous.triage || current.triage) return;
-    if (prefersReducedMotion()) return;
-    const detaching = current.worldDetached;
-    const operationId = detaching ? current.companionId : previous.companionId;
-    if (operationId === null) return;
-    const from = previous.frames.get(operationId);
-    if (!from || !current.frames.has(operationId)) return;
-    const element = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(operationId)}"]`);
+    layerSnapshotRef.current = { worldDetached, triage: triageActive, companionId: panelCompanion };
+    if (layerSwitchOperationId === null || layerSwitchFrom === null || prefersReducedMotion()) return;
+    if (!renderedVisibleFrameIds.has(layerSwitchOperationId)) return;
+    const element = canvasRef.current?.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(layerSwitchOperationId)}"]`);
     if (!element) return;
-    // 떼는 쪽: 옛 화면 자리 = 옛 행렬 × 월드 기하, 새 부모는 항등이다. 붙이는 쪽: 옛 화면 자리를 새 행렬로 되돌린다.
-    // 크기는 레이아웃 그대로 두고 배율만 요소가 넘겨받는다 — 첫 프레임의 화면 상자가 전환 직전과 같다.
-    const start = detaching
-      ? { left: previous.tx + from.x * previous.zoom, top: previous.ty + from.y * previous.zoom, width: from.width, height: from.height }
-      : { left: (from.x - current.tx) / current.zoom, top: (from.y - current.ty) / current.zoom, width: from.width, height: from.height };
-    const startScale = detaching ? previous.zoom : 1 / current.zoom;
+    // 새 부모 행렬: 떼는 쪽은 항등, 붙이는 쪽은 월드 transform과 같은 정수 translate·줌이다.
+    const parent = worldDetached
+      ? { x: 0, y: 0, zoom: 1 }
+      : { x: Math.round(screenViewport.x), y: Math.round(screenViewport.y), zoom: screenViewport.zoom };
+    // 레이아웃 크기는 잰 그대로 두고, 보이는 배율(화면 폭 ÷ 레이아웃 폭) 중 새 부모가 주지 않는 몫을 요소가 넘겨받는다.
+    const visibleScale = layerSwitchFrom.layoutWidth > 0 ? layerSwitchFrom.width / layerSwitchFrom.layoutWidth : 1;
+    const start = {
+      left: (layerSwitchFrom.x - parent.x) / parent.zoom,
+      top: (layerSwitchFrom.y - parent.y) / parent.zoom,
+      // offsetWidth는 정수라 배율을 폭에서 풀었다 — 높이는 같은 배율로 되돌려 보이는 높이를 정확히 잇는다.
+      width: layerSwitchFrom.layoutWidth,
+      height: visibleScale > 0 ? layerSwitchFrom.height / visibleScale : layerSwitchFrom.layoutHeight,
+    };
     layerGlideStopRef.current?.();
-    layerGlideStopRef.current = glideAcrossLayerSwitch(element, start, startScale, flightTiming());
+    layerGlideStopRef.current = glideAcrossLayerSwitch(element, start, visibleScale / parent.zoom, flightTiming());
   });
   useEffect(() => () => layerGlideStopRef.current?.(), []);
 
@@ -1659,16 +1652,7 @@ export function OperationsCanvas({
             : operationCompanion
             ? companionGeometryFor(companionLayerBox, 0, companionSlotWidths, topPanelZIndex)
             : snapHeldRect ? { ...baseGeometry, ...snapHeldRect } : baseGeometry;
-          // 좌표계 전환 글라이드의 출발점 — 실제로 보인 프레임만, 프레임이 쓰는 정수 픽셀 그대로 적는다.
-          if (!focusLayerHidden && !deckSlot && !minimizedSet.has(operation.id)) {
-            renderedFrameGeometries.set(operation.id, {
-              ...frameGeometry,
-              x: Math.round(frameGeometry.x),
-              y: Math.round(frameGeometry.y),
-              width: Math.round(frameGeometry.width),
-              height: Math.round(frameGeometry.height),
-            });
-          }
+          if (!focusLayerHidden && !deckSlot && !minimizedSet.has(operation.id)) renderedVisibleFrameIds.add(operation.id);
           // 보더 위 캡션(top: -32px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
           // War Room은 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
           // 스냅 칸은 캡션 높이를 본문에서 빼 두므로(snapZonesFor) 전체 칸도 이 판정을 그대로 받는다.
@@ -2056,6 +2040,28 @@ function rectToGeometry(rect: CanvasRect): OperationGeometry {
 
 function ensurePluginGeometry(operation: OperationNode): OperationGeometry {
   return operation.geometry ?? { x: 0, y: 0, width: DEFAULT_SHELL_WIDTH, height: DEFAULT_SHELL_HEIGHT, zIndex: 0 };
+}
+
+/**
+ * 패널이 지금 화면에 보이는 상자를 캔버스(월드 층 원점) 좌표로 잰다 — 진행 중인 geometry 전이와 요소·부모
+ * 배율이 모두 들어 있다. 레이아웃 크기(transform 이전)도 함께 돌려 보이는 배율을 풀 수 있게 한다.
+ */
+function measureVisibleFrame(canvasElement: HTMLElement | null, operationId: string): { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly layoutWidth: number; readonly layoutHeight: number } | null {
+  if (!canvasElement) return null;
+  const element = canvasElement.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${escapeSelectorValue(operationId)}"]`);
+  if (!element || element.offsetWidth <= 0 || element.offsetHeight <= 0) return null;
+  if (getComputedStyle(element).visibility === "hidden") return null;
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const origin = canvasElement.getBoundingClientRect();
+  return {
+    x: rect.left - origin.left - canvasElement.clientLeft + canvasElement.scrollLeft,
+    y: rect.top - origin.top - canvasElement.clientTop + canvasElement.scrollTop,
+    width: rect.width,
+    height: rect.height,
+    layoutWidth: element.offsetWidth,
+    layoutHeight: element.offsetHeight,
+  };
 }
 
 // Companion layout은 world transform이 none인 전용 화면 레이아웃이다. Map의 geometry/viewport를
