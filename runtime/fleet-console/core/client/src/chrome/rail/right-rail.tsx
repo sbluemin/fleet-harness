@@ -356,12 +356,6 @@ export function useRailPanelContext(
 }
 
 /**
- * 레일 도구 아이콘 목록 — 레일 카드의 세로 열과 Zen 탭의 가로 줄이 같은 목록·순서·켜짐을 쓴다.
- * 아이콘의 문서 id(rail-tab-*·rail-settings-toggle)는 세로 열만 싣는다: 패널 영역의 이름표와
- * 온보딩 앵커가 그 id를 가리키고, 두 줄이 함께 DOM에 있으므로(Zen 중 세로 열은 hidden) 한쪽만
- * 가져야 id가 겹치지 않는다.
- */
-/**
  * 트레이(가로 줄)에서 도구를 고른다. Zen은 레일의 펼침 플래그를 내려 패널 카드를 숨기므로(zen-chrome-toggles),
  * 레일을 접어 둔 채거나 Zen 토글로 숨긴 채 트레이에서 고르면 먼저 펼친다 — 사용자가 명시적으로 연 것이므로
  * Zen의 레일 드러냄과 같은 규칙이다. 이미 보이는 패널을 다시 고르면 평소처럼 닫는다.
@@ -376,6 +370,12 @@ function toggleRailPanelFromTray(id: string): void {
   toggleRailPanel(id);
 }
 
+/**
+ * 레일 도구 아이콘 목록 — 레일 카드의 세로 열과 Zen 탭의 가로 줄이 같은 목록·순서·켜짐을 쓴다.
+ * 아이콘의 문서 id(rail-tab-*·rail-settings-toggle)는 세로 열만 싣는다: 패널 영역의 이름표와
+ * 온보딩 앵커가 그 id를 가리키고, 두 줄이 함께 DOM에 있으므로(Zen 중 세로 열은 hidden) 한쪽만
+ * 가져야 id가 겹치지 않는다.
+ */
 export function RailToolIcons({ context, orientation }: { readonly context: RailToolContext; readonly orientation: "column" | "row" }) {
   const t = useT();
   const language = context.language;
