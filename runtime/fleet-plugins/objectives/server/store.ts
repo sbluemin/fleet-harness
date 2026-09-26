@@ -1120,13 +1120,17 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (second && first.theaterId !== second.theaterId) throw new ObjectiveStoreError("unknown_objective");
       if (second && !view(second.theaterId, second.stored)) second = null;
       if (!view(first.theaterId, first.stored) || (!second && (action === "link" || action === "unrelated"))) throw new ObjectiveStoreError("unknown_objective");
-      if (!second) return update(objectiveId, (stored) => ({ ...stored, links: (stored.links ?? []).filter((entry) => entry.objectiveId !== otherId), unrelated: (stored.unrelated ?? []).filter((id) => id !== otherId) }));
+      if (!second) return update(objectiveId, (stored) => ({
+        ...stored,
+        ...(action === "unlink" ? { links: (stored.links ?? []).filter((entry) => entry.objectiveId !== otherId) } : {}),
+        ...(action === "restore" ? { unrelated: (stored.unrelated ?? []).filter((id) => id !== otherId) } : {}),
+      }));
       const before = [first, second];
       const at = now();
       const changed = before.map(({ stored, node, recorded }, index) => {
         const peer = before[1 - index]!.stored.operationId;
-        const links = (stored.links ?? []).filter((entry) => entry.objectiveId !== peer);
-        const unrelated = (stored.unrelated ?? []).filter((id) => id !== peer);
+        const links = action === "restore" ? stored.links ?? [] : (stored.links ?? []).filter((entry) => entry.objectiveId !== peer);
+        const unrelated = action === "unlink" ? stored.unrelated ?? [] : (stored.unrelated ?? []).filter((id) => id !== peer);
         return {
           ...stored, rank: recorded ? stored.rank : virtualRank(node!),
           links: action === "link" ? [...links, { objectiveId: peer, at }] : links,

@@ -215,6 +215,11 @@ export function discardedFollowups(objective: Objective): readonly FollowupCandi
   return readFollowups(objective).filter((candidate) => candidate.state === "discarded");
 }
 
+/** 지휘관이 적은 related 가운데 사람이 지금 관계를 정할 수 있는 같은 Theater의 미완료 목표. */
+export function eligibleRelatedObjectives(objective: Objective, board: readonly Objective[]): ReadonlyMap<string, string> {
+  return new Map(board.filter((entry) => entry.id !== objective.id && entry.theaterId === objective.theaterId && !entry.done).map((entry) => [entry.id, entry.title]));
+}
+
 /**
  * 스티어링 대상 편집 — choose()와 같은 정의다. 한 번도 깨지 않은 지휘관은 보드를 처음부터 읽으므로
  * 그 전의 편집은 알릴 것이 없고, 후속 고르기도 막지 않는다. started 뒤의 편집만 스티어링이 먼저다.

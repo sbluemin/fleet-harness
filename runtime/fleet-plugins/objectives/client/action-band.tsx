@@ -7,6 +7,7 @@ import type { ObjectiveMessageKey } from "./i18n/index.js";
 import {
   clearSelection,
   discardedFollowups,
+  eligibleRelatedObjectives,
   isFollowupSelectable,
   newBatchId,
   openFollowups,
@@ -445,6 +446,7 @@ export function ActionBand(props: ActionBandProps) {
               selection={followupSelection}
               linkSelection={linkSelection}
               names={new Map(props.board?.map((entry) => [entry.id, entry.title]) ?? [])}
+              eligibleRelated={eligibleRelatedObjectives(objective, props.board ?? [])}
               t={t}
               idPrefix={`band-${objective.id}`}
               openId={followupOpenId}

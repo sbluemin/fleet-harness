@@ -698,7 +698,7 @@ export type FollowupReviseInput = z.output<typeof followupReviseSchema>;
 /** 완료와 함께 고른 후보 — 화면이 본 rev 와 함께. batchId 는 화면이 만든 멱등 키(UUID). */
 export const followupSelectionSchema = z.object({
   batchId: z.string().uuid(),
-  followups: z.array(z.object({ id: ids, rev: z.number().int().min(1), linkTargets: z.array(ids).max(5).optional() }).strict()).min(1).max(MAX_FOLLOWUPS),
+  followups: z.array(z.object({ id: ids, rev: z.number().int().min(1), linkTargets: z.array(ids).max(15).optional() }).strict()).min(1).max(MAX_FOLLOWUPS),
 });
 
 export type CreateObjectiveInput = z.output<typeof createObjectiveSchema>;

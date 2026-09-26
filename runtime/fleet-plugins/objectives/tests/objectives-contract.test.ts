@@ -801,9 +801,17 @@ describe("Objectives contract", () => {
     expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "unrelated" })).status).toBe(200);
     expect(savedObjective(related.id).unrelated).toEqual([targetId]);
     expect(savedObjective(targetId).unrelated).toEqual([related.id]);
+    // 오래된 탭에서 누른 '연결 해제'는 새로 정한 '관계 없음'을 지워서는 안 된다.
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "unlink" })).status).toBe(200);
+    expect(savedObjective(targetId).unrelated).toEqual([related.id]);
     expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "restore" })).status).toBe(200);
     expect(savedObjective(related.id).unrelated).toBeUndefined();
     expect(savedObjective(targetId).unrelated).toBeUndefined();
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "link" })).status).toBe(200);
+    // 오래된 탭의 '되돌리기'도 새 연결에는 영향을 주지 않는다.
+    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "restore" })).status).toBe(200);
+    expect(savedObjective(targetId).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([related.id]);
+    expect(savedObjective(related.id).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([targetId]);
     expect(operations.has(targetId)).toBe(false);
     expect(launches).toHaveLength(1);
     launch.resumeFollowups(source.id);

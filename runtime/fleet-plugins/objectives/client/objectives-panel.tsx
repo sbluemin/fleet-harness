@@ -17,6 +17,7 @@ import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows,
 import { dockObjective, expandObjective, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, type ObjectiveGroup } from "./objectives-state.js";
 import {
   discardedFollowups,
+  eligibleRelatedObjectives,
   followupGate,
   isFollowupSelectable,
   markFollowupsSeen,
@@ -1197,6 +1198,9 @@ function ObjectiveDetail({ objective, board, t, language, launchAvailable, call,
   // 후속 후보 — 본문 구획(읽기 전용)과 완료 뒤 결과. 후보가 없으면 서지 않는다.
   const followupOpenList = openFollowups(objective, board);
   const nearby = nearbyObjectives({ ...objective, evidence: objective.origin?.evidence ?? [] }, board, objective);
+  const eligibleRelated = eligibleRelatedObjectives(objective, board);
+  const shownRelations = new Set([...nearby.map((entry) => entry.objectiveId), ...objective.links.map((entry) => entry.objectiveId), ...objective.unrelated, objective.origin?.objectiveId]);
+  const relatedSuggestions = [...new Set(objective.related)].filter((id) => !shownRelations.has(id));
   const names = new Map(board.map((entry) => [entry.id, entry.title]));
   const followupDiscardedList = discardedFollowups(objective);
   const followupBatches = readBatches(objective);
@@ -1390,7 +1394,7 @@ function ObjectiveDetail({ objective, board, t, language, launchAvailable, call,
       </div>
       ) : null}
 
-      {(nearby.length || objective.links.length || objective.unrelated.length || objective.related.length) ? <div className="objectives-group objectives-relations">
+      {(nearby.length || objective.links.length || objective.unrelated.length || relatedSuggestions.length) ? <div className="objectives-group objectives-relations">
         <SectionHead glyph={<FollowupForkGlyph />} label={t("objectives.relations.title")} />
         {objective.links.map((link) => <div className="objectives-relation-row" key={`link:${link.objectiveId}`}>
           <button type="button" onClick={() => onOpenObjective(link.objectiveId)}>{t("objectives.relations.linked")}: {names.get(link.objectiveId) ?? t("objectives.origin.deleted")}</button>
@@ -1403,7 +1407,12 @@ function ObjectiveDetail({ objective, board, t, language, launchAvailable, call,
           <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: match.objectiveId, action: "link" })}>{t("objectives.relations.link")}</button>
           <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: match.objectiveId, action: "unrelated" })}>{t("objectives.relations.unrelated")}</button>
         </div>)}
-        {objective.related.length ? <p className="objectives-relation-hint">{t("objectives.relations.related")}: {objective.related.map((id) => names.get(id) ?? t("objectives.origin.deleted")).join(" · ")}</p> : null}
+        {relatedSuggestions.length ? <p className="objectives-relation-heading">{t("objectives.relations.related")}</p> : null}
+        {relatedSuggestions.map((id) => eligibleRelated.has(id) ? <div className="objectives-relation-row" key={`related:${id}`}>
+          <button type="button" onClick={() => onOpenObjective(id)}>{eligibleRelated.get(id)}</button>
+          <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: id, action: "link" })}>{t("objectives.relations.link")}</button>
+          <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: id, action: "unrelated" })}>{t("objectives.relations.unrelated")}</button>
+        </div> : <p className="objectives-relation-hint" key={`related:${id}`}>{names.get(id) ?? t("objectives.origin.deleted")}</p>)}
         {objective.unrelated.map((id) => <div className="objectives-relation-row is-muted" key={`unrelated:${id}`}>
           <span>{t("objectives.relations.unrelated")}: {names.get(id) ?? t("objectives.origin.deleted")}</span>
           <button type="button" onClick={() => void call("/objective/relation", { objectiveId: objective.id, otherId: id, action: "restore" })}>{t("objectives.relations.restore")}</button>
@@ -1571,6 +1580,7 @@ function ObjectiveDetail({ objective, board, t, language, launchAvailable, call,
           <FollowupCandidateList
             candidates={followupOpenList}
             names={names}
+            eligibleRelated={eligibleRelated}
             selectable={false}
             selection={EMPTY_IDS}
             t={t}
