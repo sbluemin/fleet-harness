@@ -129,7 +129,11 @@ jobs:
             const [major, minor, patch] = process.argv[1].split('.').map(Number);
             const bump = process.argv[2];
             const next = { minor: [major, minor + 1, 0], patch: [major, minor, patch + 1] }[bump];
-            console.log(next.join('.'));
+            // 1.200.0부터 시작하되 이후에는 기존 minor/patch 증가 규칙을 유지한다.
+            const floor = [1, 200, 0];
+            const difference = next.findIndex((part, index) => part !== floor[index]);
+            const belowFloor = difference !== -1 && next[difference] < floor[difference];
+            console.log((belowFloor ? floor : next).join('.'));
           " "$version_source" "$bump")
 
           echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
