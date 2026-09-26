@@ -592,7 +592,7 @@ export function App() {
           core={CORE_ONBOARDING}
           plugins={registry.onboarding}
           language={consoleLocale}
-          whatsNewOpen={state.whatsNewOpen}
+          welcomeReady={state.bootstrapped && state.version !== "" && !state.releaseNotesLoading && (state.releaseNotesFetchedAt !== null || state.releaseNotesError !== null || state.releaseNotes.length > 0) && !state.whatsNewOpen}
           firstRun={state.bootstrapped && state.theaters.length === 0 && globalSettings.state !== null && !globalSettings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)}
           ports={ONBOARDING_PORTS}
         />

@@ -43,11 +43,13 @@ export function findShowableHint(candidates: readonly EntryHintCandidate[], seen
   return null;
 }
 
-export function EntryHints({ candidates, seen, language, ports }: {
+export function EntryHints({ candidates, seen, language, ports, held }: {
   readonly candidates: readonly EntryHintCandidate[];
   readonly seen: readonly string[] | null;
   readonly language: ConsoleLocale;
   readonly ports: EntryHintPorts;
+  /** 앞 단계(웰컴)가 아직 끝나지 않았다 — 힌트는 서지 않고 기다린다. */
+  readonly held: boolean;
 }) {
   const [active, setActive] = useState<EntryHintCandidate | null>(null);
   useEffect(() => {
@@ -57,13 +59,13 @@ export function EntryHints({ candidates, seen, language, ports }: {
       const opened = candidates.filter((candidate) => !seen.includes(candidate.seenKey)
         && ports.railEntryElement(candidate.hint.railEntryId)?.getAttribute("aria-pressed") === "true");
       if (opened.length > 0) rememberSeen(opened.map((candidate) => candidate.seenKey));
-      const next = findShowableHint(candidates.filter((candidate) => !opened.includes(candidate)), seen, ports);
+      const next = held ? null : findShowableHint(candidates.filter((candidate) => !opened.includes(candidate)), seen, ports);
       setActive((current) => (current?.seenKey === next?.seenKey ? current : next));
     };
     tick();
     const timer = window.setInterval(tick, POLL_MS);
     return () => window.clearInterval(timer);
-  }, [candidates, ports, seen]);
+  }, [candidates, held, ports, seen]);
 
   return active ? <EntryHintBubble key={active.seenKey} candidate={active} language={language} ports={ports} /> : null;
 }

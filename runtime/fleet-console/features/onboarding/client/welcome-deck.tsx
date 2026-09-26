@@ -18,14 +18,16 @@ export interface WelcomeCandidate {
 /**
  * 웰컴 — 업데이트로 새로 생긴 기능을 기존 사용자에게 알리는 카드 한 장.
  *
- * What's New가 닫히는 전이에서만 서서 릴리스 노트와 겹치지 않는다. 안 본 슬라이드만 모아 큐처럼 겹쳐 보이고, 「다음」으로
+ * 릴리스 노트 판정이 끝나고 What's New가 닫힌 뒤에만 서서 릴리스 노트와 겹치지 않는다. 안 본 슬라이드만 모아 큐처럼 겹쳐 보이고, 「다음」으로
  * 앞 카드를 밀어내며 넘긴다. 안 본 것만 모으므로
  * A를 본 사람이 업데이트해 B가 생기면 카드에는 B 한 장만 선다. 어떤 경로로 닫든 보인 슬라이드는 모두 본 것이다 —
  * 카드는 "이번에 새로 생긴 것"이라는 한 번의 사건이고, 넘기지 않은 슬라이드를 다음에 다시 세우면 이미 지난 소식이 된다.
  */
-export function WelcomeDeck({ candidates, whatsNewOpen, seen, language }: {
+export function WelcomeDeck({ candidates, ready, firstRun, seen, language }: {
   readonly candidates: readonly WelcomeCandidate[];
-  readonly whatsNewOpen: boolean;
+  /** 릴리스 노트 판정이 끝났고 What's New가 닫혀 있다 — 이때부터 카드를 세울 수 있다. */
+  readonly ready: boolean;
+  readonly firstRun: boolean;
   readonly seen: readonly string[] | null;
   readonly language: ConsoleLocale;
 }) {
@@ -36,23 +38,24 @@ export function WelcomeDeck({ candidates, whatsNewOpen, seen, language }: {
   const [direction, setDirection] = useState<"next" | "previous">("next");
   const [leaving, setLeaving] = useState(false);
   const leaveTimerRef = useRef<number | null>(null);
-  const prevWhatsNewOpen = useRef(whatsNewOpen);
+  // 이번 세션에 이미 세운 슬라이드 — 닫은 뒤 본 기록 저장이 끝나기 전에 같은 카드가 다시 서지 않게 한다.
+  const presentedRef = useRef<Set<string>>(new Set());
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
   const primaryRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    const wasOpen = prevWhatsNewOpen.current;
-    prevWhatsNewOpen.current = whatsNewOpen;
-    // What's New가 "닫히는" 전이만 본다 — 설정 로드 전(seen 미상)에는 판단을 미룬다.
-    if (!wasOpen || whatsNewOpen || !seen) return;
-    const unseen = candidates.filter((candidate) => !seen.includes(candidate.seenKey));
+    // 릴리스 노트 판정이 끝나 What's New가 (열렸다면) 닫힌 뒤에 선다 — 판정이 실패해도 여기로 온다. 처음 설치한
+    // 사람과 설정 로드 전(seen 미상)에는 세우지 않는다.
+    if (!ready || firstRun || !seen || deck) return;
+    const unseen = candidates.filter((candidate) => !seen.includes(candidate.seenKey) && !presentedRef.current.has(candidate.seenKey));
     if (unseen.length === 0) return;
+    for (const candidate of unseen) presentedRef.current.add(candidate.seenKey);
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setIndex(0);
     setDirection("next");
     setDeck(unseen);
-  }, [candidates, seen, whatsNewOpen]);
+  }, [candidates, deck, firstRun, ready, seen]);
 
   useEffect(() => { if (deck && !leaving) primaryRef.current?.focus(); }, [deck, index, leaving]);
   useEffect(() => () => { if (leaveTimerRef.current !== null) window.clearTimeout(leaveTimerRef.current); }, []);
