@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
+import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { createObjectiveSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type MissionPatchInput, type ObjectiveEditKind, type Objective } from "./types.js";
 
@@ -30,7 +31,7 @@ const missionRef = z.object({ objectiveId: ids, missionId: ids, language });
 const context = z.string().max(MAX_CONTEXT).optional();
 /** 그룹 — 사이드바 그룹 그 자체. 색은 정체성 톤 키여야 영속 상태에 남는다(목록 밖 색의 그룹은 불러올 때 버려진다). */
 
-export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly ObjectiveRoute[] {
+export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store), prStatus?: PrStatusService): readonly ObjectiveRoute[] {
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>, req: http.IncomingMessage) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -144,9 +145,9 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
   const only = (patch: Record<string, unknown>, keys: readonly string[]): boolean => Object.keys(patch).every((key) => keys.includes(key));
 
   return [
-    { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() })) },
+    { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => { prStatus?.refresh(); return { objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() }; }) },
     // 따로 만든 Operation 도 목표다 — 화면이 처음 보는 에이전트 Operation 을 목표 모양으로 받아 간다.
-    { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
+    { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표를 만들면 지휘관 Operation 이 dormant 로 함께 태어난다 — 깨우는 것은 「구상」·「시작」이다.
     { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander Operation.", handler: json(createObjectiveSchema, async ({ language, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ theaterId, title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
     { name: "objective/relation", method: "POST", summary: "Link two objectives, remove a link, set them aside, or restore them; only the person's board can change relations.", handler: json(objectiveRef.extend({ otherId: ids, action: z.enum(["link", "unlink", "unrelated", "restore"]) }).strict(), ({ objectiveId, otherId, action }) => objective(store.relation(objectiveId, otherId, action))) },

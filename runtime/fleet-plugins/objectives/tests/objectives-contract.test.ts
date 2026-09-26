@@ -17,6 +17,7 @@ import { createObjectiveRoutes } from "../server/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../server/store.js";
 import { MAX_FOLLOWUPS, type ObjectiveEvent } from "../server/types.js";
 import { RESULT_LIMITS, type ObjectiveResult } from "../server/results.js";
+import { createGhPrLookup, createPrStatusService } from "../server/pr-status.js";
 
 /**
  * 목표의 필수 계약 — 목표 레코드는 Operation 없이 태어나고, 개시·구상 때 같은 id 의 지휘관이 한 번만 선다.
@@ -726,6 +727,72 @@ describe("Objectives contract", () => {
     expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/example/project/pull/999" } }, commander)).structuredContent.error).toBe("too_many_results");
     store.complete(objective.id);
     expect((await call("detach_result", { objectiveId: objective.id, resultId }, commander)).structuredContent.error).toBe("objective_done");
+  });
+
+  it("automatically observes shared PRs, shows failed lookups instead of stale success, and discards late or disposed requests", async () => {
+    const { store, add, events } = harness();
+    add("pr-owner"); add("also-owner");
+    const url = "https://github.com/example/project/pull/7";
+    const first = store.resultAdd("pr-owner", { kind: "pr", url }).result;
+    store.resultAdd("also-owner", { kind: "pr", url });
+    const mission = store.missionAdd("pr-owner", { text: "Ready" }).missions[0]!;
+    store.missionDone("pr-owner", mission.id, ["Done"]);
+    store.handOff("pr-owner", { by: "human" });
+    const handoff = store.find("pr-owner")!.handoff;
+    const updatedAt = first.updatedAt;
+    let mode: "open" | "merged" | "closed" | "auth" | "pending" = "open";
+    let finish: (() => void) | undefined;
+    let aborted = false;
+    const execute = vi.fn(async (_args: readonly string[], signal: AbortSignal) => {
+      if (mode === "auth") throw Object.assign(new Error("failed"), { stderr: "gh auth login: secret-stderr-token" });
+      if (mode === "pending") return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        finish = () => resolve({ stdout: JSON.stringify({ number: 7, html_url: url, state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z" }), stderr: "" });
+        signal.addEventListener("abort", () => { aborted = true; reject(Object.assign(new Error("aborted"), { code: "ABORT_ERR" })); }, { once: true });
+      });
+      return { stdout: `HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ number: 7, html_url: "https://github.com/Example/Project/pull/7", state: mode === "open" ? "open" : "closed", merged: mode === "merged", merged_at: mode === "merged" ? "2026-01-01T00:00:00Z" : null })}`, stderr: "" };
+    });
+    vi.useFakeTimers();
+    const service = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: ".", execute }) });
+    const observed = () => store.find("pr-owner")!.results.find((entry) => entry.id === first.id) as Extract<ObjectiveResult, { kind: "pr" }>;
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(observed().observation).toMatchObject({ state: "open", stale: false });
+      expect(store.find("also-owner")!.results[0]).toHaveProperty("observation.state", "open");
+      mode = "auth";
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
+      expect(observed().observation).toMatchObject({ state: "error", error: { code: "auth_required" }, lastSuccess: { state: "open" } });
+      expect(JSON.stringify(events)).not.toContain("secret-stderr-token");
+      const count = execute.mock.calls.length;
+      service.refresh(); service.refresh();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(execute).toHaveBeenCalledTimes(count);
+      mode = "closed";
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
+      expect(observed().observation.state).toBe("closed");
+      mode = "merged";
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
+      expect(observed().observation.state).toBe("merged");
+      expect(observed().updatedAt).toBe(updatedAt);
+      expect(store.find("pr-owner")!.handoff).toEqual(handoff);
+      expect(store.find("pr-owner")!.awaitingReview).toBe(true);
+      mode = "pending";
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prSettledRefreshMs);
+      expect(observed().observation.stale).toBe(true);
+      store.resultUpdate("pr-owner", first.id, { url: "https://github.com/example/project/pull/8" });
+      store.resultRemove("also-owner", store.find("also-owner")!.results[0]!.id);
+      finish!();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(observed().observation.state).toBe("unchecked");
+      service.refresh("pr-owner");
+      await vi.advanceTimersByTimeAsync(0);
+      const beforeDispose = events.length;
+      await service.dispose();
+      expect(aborted).toBe(true);
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prSettledRefreshMs);
+      expect(events).toHaveLength(beforeDispose);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { await service.dispose(); vi.useRealTimers(); }
   });
 
   it("keeps criteria proposed until the person decides, then awaits hand-off and reaches review only through hand_off", async () => {

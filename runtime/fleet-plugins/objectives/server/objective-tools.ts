@@ -3,6 +3,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
 
 import type { LaunchService } from "./launch.js";
+import type { PrStatusService } from "./pr-status.js";
 import { resultInputSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { criterionProposalSchema, followupBodySchema, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
@@ -31,8 +32,9 @@ const NO_FIXED_NAME = "No fixed session name. The from address on the Commander'
 const FOLLOWUP_ANYTIME = "Follow-up candidates can be placed on the objective at any time with the Commander's followup tool.";
 const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS} {point, because} and fellShort: 1–${MAX_RETRO_PAIRS} {point, ifOnly}, each field one line of at most ${MAX_RETRO_TEXT} characters.`;
 
-export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService): readonly PluginMcpTool[] {
-  const { objectiveView } = createBoardViews(ctx, store);
+export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService): readonly PluginMcpTool[] {
+  const { objectiveView: boardView } = createBoardViews(ctx, store);
+  const objectiveView = (objective: Objective) => { prStatus?.refresh(objective.id); return boardView(store.find(objective.id) ?? objective); };
   const followupNearby = (objective: Objective, candidateId: string) => {
     const candidate = objective.followups.find((entry) => entry.id === candidateId);
     return candidate ? nearbyObjectives({ title: candidate.title, note: candidate.brief, criteria: candidate.criteria.map((text) => ({ text })), evidence: candidate.evidence }, store.list(objective.theaterId), objective) : [];

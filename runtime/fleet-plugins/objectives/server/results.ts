@@ -15,6 +15,7 @@ export const RESULT_LIMITS = {
   prRefreshMs: 60 * 1000,
   prSettledRefreshMs: 15 * 60 * 1000,
   prTimeoutMs: 15 * 1000,
+  prResponseBytes: 1024 * 1024,
   prConcurrency: 2,
   prBackoffMs: [60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000],
 } as const;

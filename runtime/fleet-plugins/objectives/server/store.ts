@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { readOperationLaunch, type OperationNode } from "@fleet-console/sdk/operations";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
-import { checkedResultInput, patchedResultInput, prTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch } from "./results.js";
+import { checkedResultInput, patchedResultInput, prTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema } from "./results.js";
 import {
   MAX_CRITERIA,
   MAX_CRITERION_TEXT,
@@ -188,6 +188,8 @@ export interface ObjectiveStore {
   resultAdd(objectiveId: string, input: ResultInput): { readonly objective: Objective; readonly result: ObjectiveResult };
   resultUpdate(objectiveId: string, resultId: string, patch: ResultPatch): Objective;
   resultRemove(objectiveId: string, resultId: string): Objective;
+  /** 조회를 시작한 대상이 그대로 있을 때만 사실을 갱신한다. 지휘관 편집 시각·충족 판단은 바꾸지 않는다. */
+  resultObserved(objectiveId: string, resultId: string, url: string, observation: PrObservation): void;
   attachmentAdd(objectiveId: string, input: { readonly name: string; readonly type: ObjectiveAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly objective: Objective; readonly attachment: ObjectiveAttachment };
   attachmentRemove(objectiveId: string, attachmentId: string): Objective;
   /** 첨부 파일의 절대 경로 — 서버 안(파일 서빙·지휘관의 도구 응답)에서만 쓴다. */
@@ -1031,6 +1033,21 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (!stored.results?.some((entry) => entry.id === resultId)) throw new ObjectiveStoreError("unknown_result");
       return { ...stored, results: stored.results.filter((entry) => entry.id !== resultId) };
     }),
+
+    resultObserved(objectiveId, resultId, url, raw) {
+      const parsed = prObservationSchema.safeParse(raw);
+      if (!parsed.success) throw new ObjectiveStoreError("invalid_pr_observation");
+      try {
+        update(objectiveId, (stored) => {
+          const previous = stored.results?.find((entry) => entry.id === resultId);
+          if (previous?.kind !== "pr" || previous.url !== url || JSON.stringify(previous.observation) === JSON.stringify(parsed.data)) return stored;
+          return { ...stored, results: stored.results!.map((entry) => entry.id === resultId ? { ...previous, observation: parsed.data } : entry) };
+        });
+      } catch (error) {
+        // 조회 중 사라진 목표를 되살리거나 그 레코드를 새로 만들지 않는다.
+        if (!(error instanceof ObjectiveStoreError && error.code === "unknown_objective")) throw error;
+      }
+    },
 
     attachmentAdd(objectiveId, input) {
       const { theaterId, stored } = locate(objectiveId);
