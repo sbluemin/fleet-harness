@@ -75,7 +75,7 @@ Drive input the interaction actually uses. When the browser driver cannot produc
 
 ## Plan activation paths by starting state
 
-Before measuring an activation flow, including non-modal surfaces, list its starting states and target control. For each state, check whether another surface covers the target or blocks pointer input; record the covering surface and starting focus. Use a screenshot and hit-test inspection to plan the route, then real input and its event target to establish actual reachability.
+Before measuring an activation flow, including non-modal surfaces, list its starting states and target control. For each state, check whether another surface covers the target or blocks pointer input; record the covering surface and starting focus. Use a screenshot and [Pointer target preflight](#pointer-target-preflight) to plan and verify each pointer route.
 
 - Verify pointer and keyboard activation paths where available. Keep the requested starting state intact: closing a covering surface or moving a panel creates a separate control case, not evidence for the covered state.
 - When pointer input cannot reach the target, measure through an available user path such as Tab/Shift+Tab followed by Enter or Space as supported. Record the focus origin and actual keys; a terminal may consume Tab. If no supported path reaches the target, report the block rather than forcing activation.
