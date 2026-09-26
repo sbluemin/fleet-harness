@@ -11,7 +11,7 @@ import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 
 import { createPluginAdmiralMcpHost } from "../core/host/plugin-host/mcp.js";
 import { discoverFleetPlugins } from "../core/host/plugin-host/plugin-host.js";
-import { createFleetPluginHost } from "../core/host/plugin-host/plugin-host.js";
+import { createFleetPluginHost, createPluginClientAssets } from "../core/host/plugin-host/plugin-host.js";
 import { RouteRegistry } from "../core/host/transport/route-registry/registry.js";
 import { UpgradeRegistry } from "../core/host/transport/route-registry/registry.js";
 import type { FleetPluginHostCapabilities } from "../core/host/plugin-host/plugin-host.js";
@@ -182,10 +182,10 @@ describe("plugin host", () => {
     expect(failedAgentCleanup).toHaveBeenCalledOnce();
   });
 
-  it("hard-skips external plugins with missing or mismatched apiVersion", () => {
+  it("hard-skips external plugins with missing or mismatched apiVersion and reports them to the browser", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-api-gate-"));
     tempDirs.push(dir);
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     writePlugin(path.join(dir, "runtime", "fleet-plugins", "built-in"), "built-in", {}, false);
     writePlugin(path.join(dir, "home", ".fleet", "plugins", "missing"), "missing", {}, false);
     writePlugin(path.join(dir, "home", ".fleet", "plugins", "future"), "future", { apiVersion: 999 }, false);
@@ -201,8 +201,12 @@ describe("plugin host", () => {
     });
 
     expect(host.plugins.map((plugin) => plugin.manifest.id)).toEqual(["built-in", "ok"]);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Plugin missing skipped: unsupported apiVersion"));
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Plugin future skipped: unsupported apiVersion"));
+    // 거절이 서버 로그에만 남으면 데몬에서는 아무 데도 닿지 않는다 — 브라우저 manifest가 이유를 실어야 한다.
+    const skipped = createPluginClientAssets({ plugins: host.plugins, skipped: host.skipped }).manifest().skipped ?? [];
+    expect([...skipped].sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+      { id: "future", reason: "unsupported_api_version" },
+      { id: "missing", reason: "unsupported_api_version" },
+    ]);
   });
 
   it("rejects plugin route attempts outside scope or overlapping prefixes", async () => {

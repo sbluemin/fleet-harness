@@ -1012,7 +1012,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
     },
   });
-  const pluginClientAssets = createPluginClientAssets({ plugins: pluginHost.plugins });
+  const pluginClientAssets = createPluginClientAssets({ plugins: pluginHost.plugins, skipped: pluginHost.skipped });
   async function resolveOperationCatalog(): Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }> {
     const result: OperationCatalogPlugin[] = [{ id: "terminal", title: "Agent", kinds: await coreLaunchKinds() }];
     for (const plugin of pluginHost.plugins) {

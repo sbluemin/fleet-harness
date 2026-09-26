@@ -16,7 +16,7 @@ import { expandedPaneSurface } from "../chrome/pane/expanded-pane-surface.js";
 export interface PluginLoadFailure {
   readonly id: string;
   readonly name?: string;
-  readonly reason: "unsupported_client_entry" | "client_build_failed" | "duplicate_id" | "invalid_client_module" | "client_load_failed";
+  readonly reason: "unsupported_api_version" | "unsupported_client_entry" | "client_build_failed" | "duplicate_id" | "invalid_client_module" | "client_load_failed";
 }
 
 export interface PluginRegistry {

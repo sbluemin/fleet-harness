@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import { SDK_API_VERSION } from "@fleet-console/sdk/version";
 
 import { ActiveCompanionShortcutsProvider, availableCompanionPanels, type CompanionShortcutEntry, takeKeyboardShortcutsReturnFocus, usableCompanionShortcuts } from "../integration/shortcuts.js";
 import { companionDefaultChord, companionShortcutCommandId, shortcutCommandLabel } from "../integration/shortcut-bindings.js";
@@ -590,7 +591,9 @@ export function App() {
             open={pluginFailuresNotice}
             tone="warn"
             title={t(registry.failures.length === 1 ? "chrome.toast.pluginSkipped_one" : "chrome.toast.pluginSkipped_other", { count: registry.failures.length })}
-            message={registry.failures.map((failure) => failure.name ?? failure.id).join(", ")}
+            message={registry.failures.map((failure) => failure.reason === "unsupported_api_version"
+              ? t("chrome.toast.pluginSkippedApiVersion", { name: failure.name ?? failure.id, version: SDK_API_VERSION })
+              : failure.name ?? failure.id).join(", ")}
             onDismiss={() => setPluginFailuresNotice(false)}
           />
           <Toast
