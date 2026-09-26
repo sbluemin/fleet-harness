@@ -145,6 +145,7 @@ export function ObjectiveResults({ objective, t, language }: { readonly objectiv
 function PrRow({ result, t, language, now, missionTag }: { readonly result: PrResult; readonly t: T; readonly language: ConsoleLocale; readonly now: number; readonly missionTag: string }) {
   const observation = result.observation;
   const ago = (time: number) => relative(time, now, language);
+  const repository = `${result.owner}/${result.repo}`;
   const word = (state: PrState) => t(STATE_KEYS[state]);
   // 조회 실패가 주 상태다 — 오래됨 표시는 성공한 관측에만 붙는다. 시각에 올리면 절대 시각이 뜬다.
   const stale = observation.stale && observation.state !== "error" && observation.state !== "unchecked";
@@ -169,8 +170,10 @@ function PrRow({ result, t, language, now, missionTag }: { readonly result: PrRe
     <div className="objectives-result-row">
       <span className="objectives-row-ic"><PrGlyph /></span>
       <span className="objectives-result-body">
-        <a className="objectives-result-title" href={result.url} target="_blank" rel="noreferrer noopener"><span className="objectives-result-num">#{result.number}</span>{result.label ?? `${result.owner}/${result.repo}`}</a>
-        <span className="objectives-result-sub"><span className="is-mono">{result.owner}/{result.repo}</span>{missionTag}</span>
+        <a className="objectives-result-title" href={result.url} target="_blank" rel="noreferrer noopener"><span className="objectives-result-num">#{result.number}</span>{result.label ?? repository}</a>
+        {/* 제목 자리에 저장소가 섰으면 보조 줄에서 다시 말하지 않는다. */}
+        {result.label ? <span className="objectives-result-sub"><span className="is-mono">{repository}</span>{missionTag}</span>
+          : missionTag ? <span className="objectives-result-sub">{missionTag.replace(/^ · /, "")}</span> : null}
         {result.note ? <span className="objectives-result-sub">{result.note}</span> : null}
         {lines}
       </span>
