@@ -645,13 +645,6 @@ body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-plugins { 
   transform-origin: 0 0;
   will-change: transform;
 }
-/* 배우의 원점은 출발한 모서리다 — 끌 때는 오른쪽 아래. 전환 도중 창이 줄어도(Desktop 전체화면 해제)
-   제자리 구간이 그 모서리에 붙어 있다. */
-.zen-transition[data-anchor="end"] .zen-transition-mark,
-.zen-transition[data-anchor="end"] .zen-transition-wordmark {
-  top: 100%;
-  left: 100%;
-}
 html[data-zen-flight] .command-band .command-band-brand-glyph,
 html[data-zen-flight] .command-band .command-band-brand-wordmark,
 html[data-zen-flight] .zen-bar-brand { visibility: hidden; }

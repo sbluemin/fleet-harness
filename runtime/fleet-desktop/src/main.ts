@@ -27,7 +27,7 @@ import { createDesktopLogger, describeError, type DesktopLogger } from "./loggin
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { createDesktopUpdateSynchronizer } from "./desktop-update-sync.js";
 import { createDesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
-import { createDesktopWindowCommandSynchronizer } from "./desktop-window-command.js";
+import { createDesktopWindowCommandSynchronizer, createZenFullscreenController, type ZenFullscreenController } from "./desktop-window-command.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
 import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables } from "./runtime/console-installer.js";
@@ -251,12 +251,10 @@ async function boot(): Promise<void> {
    * 창 조작 명령 — 화면(Zen)이 이 창의 네이티브 전체화면을 켜고 끈다. 셸 갱신 명령처럼 창이 보고 있는
    * 콘솔에서 듣는다. 전체화면 진입·이탈은 OS가 이미 사용자에게 내준 조작이라 별도 확인을 두지 않는다.
    */
+  let zenFullscreen: ZenFullscreenController | null = null;
   const windowCommands = createDesktopWindowCommandSynchronizer({
     fetch: consoleFetch,
-    perform: (command) => {
-      if (!window || window.isDestroyed()) return;
-      window.base.setFullScreen(command === "enter-fullscreen");
-    },
+    perform: (command) => zenFullscreen?.perform(command),
   });
   let fullscreenSynchronizer: ReturnType<typeof createDesktopFullscreenSynchronizer> | null = null;
   /**
@@ -421,6 +419,7 @@ async function boot(): Promise<void> {
         });
         window = createdWindow;
         fullscreenSynchronizer = createDesktopFullscreenSynchronizer(desktopFullscreenHost(createdWindow), { fetch: consoleFetch });
+        zenFullscreen = createZenFullscreenController(createdWindow.base);
         overlayRefresher = process.platform === "win32"
           ? createTitleBarOverlayRefresher(createdWindow.base, {
             screen,
@@ -434,6 +433,8 @@ async function boot(): Promise<void> {
           browserViews.stop();
           fullscreenSynchronizer?.stop();
           fullscreenSynchronizer = null;
+          zenFullscreen?.stop();
+          zenFullscreen = null;
           windowCommands.stop();
           overlayRefresher?.stop();
           overlayRefresher = null;

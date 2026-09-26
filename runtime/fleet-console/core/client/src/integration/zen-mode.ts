@@ -47,7 +47,29 @@ export function setZenTransitionRunner(runner: ZenTransitionRunner): () => void 
   };
 }
 
+/**
+ * 사용자 요청 앞에 끼는 관문. Desktop은 창 전환(네이티브 전체화면)을 먼저 끝낸 뒤에 Zen을 바꾼다 —
+ * 창이 커지거나 줄어드는 동안 장면이 시작되면 장면이 끊겨 보인다. 관문이 요청을 맡으면(true) 준비가
+ * 끝났을 때 proceed()를 부르고, 맡지 않으면 곧바로 진행한다. 강제 종료(setZenMode)는 관문을 타지 않는다.
+ */
+export type ZenRequestGate = (next: boolean, proceed: () => void) => boolean;
+
+let requestGate: ZenRequestGate | null = null;
+
+export function setZenRequestGate(gate: ZenRequestGate): () => void {
+  requestGate = gate;
+  return () => {
+    if (requestGate === gate) requestGate = null;
+  };
+}
+
 export function requestZenMode(next: boolean): void {
+  if (state.active === next) return;
+  if (requestGate?.(next, () => runZenRequest(next))) return;
+  runZenRequest(next);
+}
+
+function runZenRequest(next: boolean): void {
   if (state.active === next) return;
   if (transitionRunner?.(next)) return;
   setZenMode(next);
