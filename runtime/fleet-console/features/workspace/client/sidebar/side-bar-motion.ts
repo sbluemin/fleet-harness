@@ -262,25 +262,34 @@ interface FollowDriver {
 /**
  * 인셋을 무엇에 실어 움직일지 고른다.
  *
- * - 이 커밋이 막 연 width 전환(진행 0)이면 그 전환을 탄다 — 인셋이 카드와 같은 곡선으로 함께 간다.
+ * 카드가 움직이는 축은 둘이다 — 일반 접기·펼치기·픽은 width, Zen의 숨김·드러냄은 translate(layout.css,
+ * 숨김 240ms·드러냄 340ms spring)다. 인셋은 지금 카드를 실제로 옮기는 쪽을 따라야 카드와 틈·겹침이 없다.
+ *
+ * - 이 커밋이 막 연 width·translate·transform 전환(진행 0)이면 그 전환을 탄다 — 인셋이 카드와 같은 길이·
+ *   곡선으로 함께 간다. 관찰자는 width 전환만 보고 억제 플래그를 세우므로, 그 밖의 축을 탈 때는 추종이
+ *   플래그를 직접 붙든다.
  * - 이미 진행 중이던 전환(엣지 호버 픽이 먼저 연 폭)을 잡았거나, 전환이 없는데 카드가 보이면(픽으로 다
  *   펼쳐진 카드를 고정) 카드의 남은 진행에 인셋을 실을 수 없다. 남은 짧은 구간에 인셋 전체를 몰면 첫
- *   프레임부터 큰 걸음이 된다. 그래서 카드의 width 전환과 같은 길이·곡선의 빈 애니메이션을 탐침으로 새로
- *   굴려 그 진행을 쓴다 — 캔버스가 카드보다 조금 늦게 끝나도 걸음은 일반 토글과 같다. 그동안 패널
- *   글라이드 억제 플래그를 직접 붙든다.
+ *   프레임부터 큰 걸음이 된다. 그래서 빈 애니메이션을 탐침으로 새로 굴려 그 진행을 쓴다 — 캔버스가 카드보다
+ *   조금 늦게 끝나도 걸음은 일반 토글과 같다. 탐침의 길이·곡선은 잡힌 전환 축의 것을, 없으면 width 전환의
+ *   것을 쓴다. 그동안 패널 글라이드 억제 플래그를 직접 붙든다.
  * - 전환이 꺼진 경우(드래그 리사이즈·reduced motion)에만 목표 인셋이 즉시 선다.
  */
 function followDriverFor(card: HTMLElement): FollowDriver | null {
   if (typeof card.getAnimations !== "function") return null;
-  // getAnimations()가 스타일을 확정하므로 이 커밋이 연 width 전환이 여기서 잡힌다 — 첫 프레임부터 따라간다.
-  const running = typeof CSSTransition === "undefined" ? undefined : card.getAnimations().find((animation) => animation instanceof CSSTransition
-    && animation.transitionProperty === "width"
+  // getAnimations()가 스타일을 확정하므로 이 커밋이 연 전환이 여기서 잡힌다 — 첫 프레임부터 따라간다.
+  const moving = typeof CSSTransition === "undefined" ? [] : card.getAnimations().filter((animation): animation is CSSTransition => animation instanceof CSSTransition
+    && CARD_MOTION_PROPERTIES.includes(animation.transitionProperty)
     && animation.playState !== "finished");
+  // 같은 커밋에 여러 축이 움직이면 width를 먼저 본다 — 일반 경로의 기존 동작 그대로다.
+  const running = CARD_MOTION_PROPERTIES.map((property) => moving.find((animation) => animation.transitionProperty === property))
+    .find((animation) => animation !== undefined);
   if (running && (effectProgress(running) ?? 0) <= FRESH_TRANSITION_PROGRESS) {
-    return { progress: () => effectProgress(running), finished: running.finished, done: () => running.playState === "finished", release: () => undefined };
+    const release = running.transitionProperty === "width" ? () => undefined : holdAnimatingFlag();
+    return { progress: () => effectProgress(running), finished: running.finished, done: () => running.playState === "finished", release };
   }
   if (typeof card.animate !== "function") return null;
-  const timing = widthTransitionTiming(card);
+  const timing = cardTransitionTiming(card, running?.transitionProperty ?? "width");
   if (!timing) return null;
   let probe: Animation;
   try {
@@ -288,24 +297,35 @@ function followDriverFor(card: HTMLElement): FollowDriver | null {
   } catch {
     return null;
   }
-  followHolds += 1;
-  syncAnimatingFlag();
-  let released = false;
+  const release = holdAnimatingFlag();
   return {
     progress: () => effectProgress(probe),
     finished: probe.finished,
     done: () => probe.playState === "finished",
     release: (settled) => {
-      if (released) return;
-      released = true;
       probe.cancel();
-      const drop = () => {
-        followHolds = Math.max(0, followHolds - 1);
-        syncAnimatingFlag();
-      };
-      if (settled) afterNextFrame(drop);
-      else drop();
+      release(settled);
     },
+  };
+}
+
+/** 카드를 옮기는 전환 축 — 앞쪽이 우선이다. */
+const CARD_MOTION_PROPERTIES: readonly string[] = ["width", "translate", "transform"];
+
+/** 추종이 억제 플래그를 붙든다. 반환한 해제는 한 번만 듣고, settled면 다음 프레임에 놓는다. */
+function holdAnimatingFlag(): (settled: boolean) => void {
+  followHolds += 1;
+  syncAnimatingFlag();
+  let released = false;
+  return (settled) => {
+    if (released) return;
+    released = true;
+    const drop = () => {
+      followHolds = Math.max(0, followHolds - 1);
+      syncAnimatingFlag();
+    };
+    if (settled) afterNextFrame(drop);
+    else drop();
   };
 }
 
@@ -314,11 +334,11 @@ function effectProgress(animation: Animation): number | null {
   return typeof progress === "number" ? progress : null;
 }
 
-/** 카드의 width 전환 길이·곡선 — CSS가 소유한 값을 읽기만 한다. 전환이 꺼져 있으면 null. */
-function widthTransitionTiming(card: HTMLElement): { readonly duration: number; readonly easing: string } | null {
+/** 카드의 한 축(width·translate 등) 전환 길이·곡선·지연 — CSS가 소유한 값을 읽기만 한다. 전환이 꺼져 있으면 null. */
+function cardTransitionTiming(card: HTMLElement, property: string): { readonly duration: number; readonly easing: string; readonly delay: number } | null {
   const computed = getComputedStyle(card);
   const properties = computed.transitionProperty.split(",").map((value) => value.trim());
-  const index = properties.findIndex((property) => property === "width" || property === "all");
+  const index = properties.findIndex((candidate) => candidate === property || candidate === "all");
   if (index < 0) return null;
   const pick = (list: string) => {
     const values = splitTopLevel(list);
@@ -326,7 +346,7 @@ function widthTransitionTiming(card: HTMLElement): { readonly duration: number; 
   };
   const duration = parseSeconds(pick(computed.transitionDuration));
   if (duration <= 0) return null;
-  return { duration, easing: pick(computed.transitionTimingFunction) || "ease" };
+  return { duration, easing: pick(computed.transitionTimingFunction) || "ease", delay: parseSeconds(pick(computed.transitionDelay)) };
 }
 
 /** cubic-bezier(…) 안의 쉼표를 가르지 않는 목록 분리. */
