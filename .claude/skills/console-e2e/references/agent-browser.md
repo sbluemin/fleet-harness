@@ -6,7 +6,7 @@ Default driver for Console browser E2E. Switch to [Fleet Browser](fleet-browser.
 
 Record the host OS/architecture. On Windows ARM64, when the native wrapper is unavailable, or when the result depends on platform-specific input, read [the platform automation reference](platform-automation.md) before running browser commands.
 
-Load the `agent-browser` skill, then the installed CLI workflow:
+Load the `agent-browser` skill, then the installed CLI workflow. Multi-command examples here and in the verification reference show scenario order, not a batch to paste: run each CLI command separately under the deadline below, repeating the resolver definition or using the resolved executable in each tool call.
 
 ```bash
 ab() {
@@ -18,6 +18,19 @@ ab skills get dogfood
 ```
 
 Choose one unique session id matching `^fleet-console-e2e-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$` and repeat that literal in every call; shell variables, `ab()`, and cwd do not survive between tool calls. The examples use `fleet-console-e2e-20260725-a7c3`, `<worktree>`, `<scratchpad>`, and `<port>`: substitute recorded absolute values consistently.
+
+## Bound commands and recover stuck input
+
+Run each agent-browser command in its own tool call with an explicit wall-clock deadline (normally `Bash.timeout: 30000`), including `open`, input, `find`, `reload`, and diagnostics; the resolver above does not impose a deadline, and a long timeout around a batch is not a substitute. Choose and record a longer finite deadline before an expected slow operation, such as first-time installation or a deliberate longer wait, rather than repeatedly extending a hung interaction. This also applies to `npx` and Windows native-wrapper calls; if the execution tool cannot bound a command, report that blocker instead of running it unbounded.
+
+For a directly executed native CLI on macOS without `timeout`, an additional command-local guard is `perl -e 'alarm 30; exec @ARGV; die "exec failed: $!\n"' -- agent-browser --session <owned-session-id> <command>`. Set the enclosing tool deadline slightly longer (for example, 40000 ms). Change the alarm seconds as well when intentionally allowing a longer operation. The alarm limits only the direct process: do not rely on it to bound an `npx`/Node wrapper's child processes or clean up the daemon. Record a tool timeout or alarm termination as such, not as a product assertion failure.
+
+Suspect stuck automation input when one key press produces an event flood (for example, repeated `Unidentified` keydown/keypress), an action fires more times than the input sent, or subsequent observation/navigation commands stop returning. These are diagnostic signals, not proof of a product defect or of a driver fault.
+
+1. Stop sending input or retrying `find`/`reload` in the suspect session. Preserve available command, timing, event-count, and error evidence; bound any diagnostic attempt too.
+2. Run the [owned-session cleanup](#cleanup) helper with a finite enclosing tool deadline. A timed-out CLI command may leave its daemon and browser alive. If cleanup fails or times out, report cleanup as unconfirmed and stop this route rather than using global closes, killing unknown processes, or accumulating replacement sessions.
+3. After verified cleanup, choose a new unique session id, open the same owned runtime with fresh pre-navigation instrumentation, restore the scenario's starting state, and repeat the exact action sequence once. Do not use a reload of the suspect session as the fresh-session control.
+4. Compare the runs before classifying the failure. A failure confined to the contaminated session is evidence of an automation/session issue; report that the product defect was not reproduced in the fresh session, not that it is disproved. A fresh-session recurrence needs further driver/product isolation before changing product code. If the fresh run blocks too, stop and report the verification blocker instead of retrying indefinitely. Clean up the replacement session on either outcome.
 
 ## Open with instrumentation
 
