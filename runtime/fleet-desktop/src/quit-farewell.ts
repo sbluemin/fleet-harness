@@ -152,7 +152,10 @@ export function createQuitFarewell(deps: QuitFarewellDependencies): QuitFarewell
 
 const FAREWELL_TITLE: Record<EntryLanguage, string> = { ko: "Fleet 종료 중…", en: "Quitting Fleet…" };
 
-/** 인사 화면은 한 줄만 말한다 — 태그라인·버전·개발 배지는 비운다. */
-export function farewellSnapshot(lang: EntryLanguage, phase: EntryFarewell, palette?: EntryPalette, from: EntryFarewellOrigin = "band"): EntryPageSnapshot {
-  return { platform: process.platform, lang, dev: false, tagline: "", tone: "busy", title: FAREWELL_TITLE[lang], versions: "", farewell: phase, farewellFrom: from, ...(palette ? { palette } : {}) };
+/**
+ * 인사 화면은 한 줄만 말한다 — 태그라인·버전·개발 배지는 비운다. dev는 시작 화면과 같은 출처(!app.isPackaged)여야
+ * 개발 빌드의 앰블럼(열린 링 · 「Fleet·DEV」)이 떠나는 Console의 앰블럼 자리에서 출발한다.
+ */
+export function farewellSnapshot(lang: EntryLanguage, dev: boolean, phase: EntryFarewell, palette?: EntryPalette, from: EntryFarewellOrigin = "band"): EntryPageSnapshot {
+  return { platform: process.platform, lang, dev, tagline: "", tone: "busy", title: FAREWELL_TITLE[lang], versions: "", farewell: phase, farewellFrom: from, ...(palette ? { palette } : {}) };
 }

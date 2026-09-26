@@ -413,7 +413,7 @@ async function boot(): Promise<void> {
       return view;
     },
     entryPagePath: desktopResources.entryPagePath,
-    snapshot: (phase) => farewellSnapshot(entryLanguage, phase, entryPalette, consoleInZen ? "tray" : "band"),
+    snapshot: (phase) => farewellSnapshot(entryLanguage, !isPackaged, phase, entryPalette, consoleInZen ? "tray" : "band"),
     pushEntry: pushEntrySnapshot,
     log: (message) => logger.error(message),
   });

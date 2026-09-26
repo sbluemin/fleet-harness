@@ -153,7 +153,7 @@ body { overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral
    바탕이 차오르는 동안 가운데로 돌아와 "종료 중"을 말한다. 아래의 Console은 판이 차오를 때까지 비친다. */
 .is-farewell body { transition: background-color var(--duration-fade) ease; }
 .is-veiled body { background-color: transparent; }
-.is-farewell .tagline { display: none; }
+.is-farewell .tagline, .is-farewell .dev-tag { display: none; }
 .is-farewell .brand-mark, .is-farewell .wordmark { transition-delay: 60ms; }
 /* Zen에서 종료하면 앰블럼은 Band가 아니라 작업 표시줄 오른쪽 끝 트레이에 앉아 있다 — 인사도 그 자리에서
    출발한다. 세로 자리는 Console 트레이 앰블럼(18px 마크 · 13px 워드마크)의 실측이다. Band가 없으므로 넘겨주기 밑줄도 긋지 않는다. */
