@@ -6,15 +6,12 @@ Default driver for Console browser E2E. Switch to [Fleet Browser](fleet-browser.
 
 Record the host OS/architecture. On Windows ARM64, when the native wrapper is unavailable, or when the result depends on platform-specific input, read [the platform automation reference](platform-automation.md) before running browser commands.
 
-Load the `agent-browser` skill, then the installed CLI workflow:
+Load the `agent-browser` skill, then the installed CLI workflow. Multi-command examples here and in the verification reference show scenario order, not a batch to paste: run each CLI command separately under the deadline below, repeating the resolver definition or using the resolved executable in each tool call.
 
 ```bash
 ab() {
-  if command -v agent-browser >/dev/null 2>&1; then set -- agent-browser "$@";
-  else set -- npx --yes agent-browser "$@"; fi
-  if command -v timeout >/dev/null 2>&1; then timeout 30 "$@";
-  elif command -v gtimeout >/dev/null 2>&1; then gtimeout 30 "$@";
-  else perl -e 'alarm 30; exec @ARGV; die "exec failed: $!\n"' -- "$@"; fi
+  if command -v agent-browser >/dev/null 2>&1; then agent-browser "$@";
+  else npx --yes agent-browser "$@"; fi
 }
 ab skills get core --full
 ab skills get dogfood
@@ -24,7 +21,9 @@ Choose one unique session id matching `^fleet-console-e2e-[A-Za-z0-9][A-Za-z0-9_
 
 ## Bound commands and recover stuck input
 
-Apply a per-command wall-clock limit to every agent-browser call, including `open`, input, `find`, `reload`, and diagnostics; a long timeout around a batch is not a substitute. The wrapper above defaults to 30 seconds and uses Perl when macOS has no `timeout`/`gtimeout`. Confirm a limiter is available before starting; use the platform route's equivalent when these commands are unavailable. Choose and record a longer finite limit in advance for an expected slow operation, such as first-time installation, rather than repeatedly extending a hung interaction. Keep the enclosing tool deadline longer than the individual command limit.
+Run each agent-browser command in its own tool call with an explicit wall-clock deadline (normally `Bash.timeout: 30000`), including `open`, input, `find`, `reload`, and diagnostics; the resolver above does not impose a deadline, and a long timeout around a batch is not a substitute. Choose and record a longer finite deadline before an expected slow operation, such as first-time installation or a deliberate longer wait, rather than repeatedly extending a hung interaction. This also applies to `npx` and Windows native-wrapper calls; if the execution tool cannot bound a command, report that blocker instead of running it unbounded.
+
+For a directly executed native CLI on macOS without `timeout`, an additional command-local guard is `perl -e 'alarm 30; exec @ARGV; die "exec failed: $!\n"' -- agent-browser --session <owned-session-id> <command>`. Set the enclosing tool deadline slightly longer (for example, 40000 ms). Change the alarm seconds as well when intentionally allowing a longer operation. The alarm limits only the direct process: do not rely on it to bound an `npx`/Node wrapper's child processes or clean up the daemon. Record a tool timeout or alarm termination as such, not as a product assertion failure.
 
 Suspect stuck automation input when one key press produces an event flood (for example, repeated `Unidentified` keydown/keypress), an action fires more times than the input sent, or subsequent observation/navigation commands stop returning. These are diagnostic signals, not proof of a product defect or of a driver fault.
 
