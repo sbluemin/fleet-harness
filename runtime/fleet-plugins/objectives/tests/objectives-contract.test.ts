@@ -18,11 +18,8 @@ import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "
 import type { ObjectiveEvent } from "../server/types.js";
 
 /**
- * 목표의 필수 계약 — 목표는 곧 에이전트 Operation 이다: 목표를 만들면 지휘관 Operation 이 dormant 로 함께 태어나고,
- * 따로 만든 Operation 도 목표로 보인다(담당·플러그인 Operation 은 아니다). 저장 무결성(워크스페이스 디렉터리에 목표마다
- * objective.json 하나로 목표 고유값만, 순환 거절, 계획이 잠긴 임무 보존, 기록 누적, 첨부는 Operation 이 사라질 때 함께), 권한 경계
- * (지휘관 = 목표 자신의 Operation 만 쓰기, 옛 보드로 쓴 계획 거절), 그룹 = 지휘관 Operation 의 그룹, 검토 대기는 모든 임무와
- * 근거 있는 기준 충족에서 저절로.
+ * 목표의 필수 계약 — 목표 레코드는 Operation 없이 태어나고, 개시·구상 때 같은 id 의 지휘관이 한 번만 선다.
+ * 따로 만든 Agent Operation 은 가상 목표로 남고, 저장·권한·그룹·검토 계약을 보존한다.
  */
 
 const dirs: string[] = [];
@@ -98,7 +95,7 @@ function harness(routingOrigin: () => string | null = () => null) {
       consoleControl: {
         launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
         reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
-        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string }) => {
+        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string }) => {
           const receipt = { id: "r", requestId: "r", caller: { kind: "plugin", pluginId: "objectives" }, input, status: "running", createdAt: "", updatedAt: "", expiresAt: "" };
           if (input.kind === "send") { sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { ...receipt, operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
@@ -108,12 +105,12 @@ function harness(routingOrigin: () => string | null = () => null) {
           if (input.launchKey && deletedKeys.has(input.launchKey)) throw new Error("launch_key_deleted");
           if (input.launchKey && keyed.has(input.launchKey)) return { ...receipt, operationId: keyed.get(input.launchKey) };
           await new Promise((resolve) => setTimeout(resolve, 5));
-          const id = `launched-${launches.length + 1}`;
+          const id = input.newOperationId ?? `launched-${launches.length + 1}`;
           if (input.launchKey) keyed.set(input.launchKey, id);
           launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableUserQuestions: input.disableUserQuestions, groupId: input.groupId });
           // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
           activity.set(id, input.dormant ? "dormant" : "idle");
-          add(id, { title: input.title ?? id, groupId: input.groupId ?? null, payload: { ...(input.viewMode === "chat" ? { chatMode: true } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } } });
+          add(id, { title: input.title ?? id, groupId: input.groupId ?? null, payload: { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } } });
           if (input.launchKey && hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
           return { ...receipt, operationId: id };
         },
@@ -162,6 +159,8 @@ describe("Objectives contract", () => {
     const allowed = store.memberAdd(objective.id, { role: "build", subagents: true }, "human").members[0]!;
     const blocked = store.memberAdd(objective.id, { role: "research" }, "human").members[1]!;
     expect(store.find(objective.id)!.members.map((member) => member.subagents)).toEqual([true, false]);
+    await launch.requestPlan(objective.id);
+    store.setPlanning(objective.id, false);
     await launch.muster(objective.id);
     expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
     // 구성원만 사람에게 묻지 않는다 — 지휘관은 질문을 그대로 가진다.
@@ -243,26 +242,21 @@ describe("Objectives contract", () => {
     expect(store.find(blockedOperationId)).toMatchObject({ id: blockedOperationId });
   });
 
-  it("creates an objective as a dormant Commander Operation and keeps only objective-owned values in its own objective.json", async () => {
-    const { store, events, launch, operations, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, slept, interrupted, resumed } = harness();
+  it("creates a pending objective and launches its Commander once on demand", async () => {
+    const { store, events, launch, operations, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, slept, interrupted, resumed, hostFault } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
-    // 목표 = 지휘관 Operation — 첫 프롬프트 없이 dormant 로, 이름 붙은 CLI 세션 사양과 그룹을 들고 태어난다.
-    expect(launches).toEqual([expect.objectContaining({ dormant: true, viewMode: "terminal", title: "Release", groupId: "g-ship", text: undefined })]);
-    const head = launches[0]!.sessionName!.replace(/-cmdr$/, "");
-    expect(objective).toMatchObject({ id: "launched-1", title: "Release", groupId: "g-ship", commander: { sessionName: `${head}-cmdr`, started: false }, note: "brief" });
-    // 목표가 띄우는 세션은 콘솔 사용을 켜지 않는다 — 일은 fleet-objectives 로 한다.
-    expect(operations.get(objective.id)!.payload.consoleUse).toBeUndefined();
+    expect(launches).toEqual([]);
+    expect(operations.has(objective.id)).toBe(false);
+    expect(store.list("t1")).toContainEqual(expect.objectContaining({ id: objective.id, title: "Release", groupId: "g-ship" }));
+    expect(savedObjective(objective.id).operationId).toBe(objective.id);
+    expect(savedObjective(objective.id)).toHaveProperty("pending.title", "Release");
+    const head = objective.commander.sessionName!.replace(/-cmdr$/, "");
     const [a, b, c] = objective.missions;
-    // 순환은 저장 전에 거절된다.
     expect(() => store.missionPatch(objective.id, a!.id, { prerequisites: [c!.id] })).toThrow(ObjectiveStoreError);
-    // 첫 실행 전 뷰는 Operation 프리셋에만 저장하고, 모델·세션 이름은 유지한다.
-    expect(launch.setPreset(objective.id, { viewMode: "chat" }).commander).toMatchObject({ viewMode: "chat", model: "opus[1m]", sessionName: `${head}-cmdr` });
-    // 수동 재개된 유휴 채팅은 아직 provider 좌표가 없어도 이미 프리셋을 읽었다.
-    activity.set(objective.id, "idle");
-    expect(() => launch.setPreset(objective.id, { viewMode: "terminal" })).toThrow("objective_busy");
-    expect(() => launch.setPreset(objective.id, { model: "sonnet" })).toThrow("objective_busy");
-    activity.set(objective.id, "dormant");
+    expect(launch.setPreset(objective.id, { viewMode: "chat" }).commander.viewMode).toBe("chat");
     expect(launch.setPreset(objective.id, { viewMode: "terminal" }).commander.viewMode).toBe("terminal");
+    launch.rename(objective.id, "Release renamed");
+    expect(store.find(objective.id)!.title).toBe("Release renamed");
     // 구성원 명단 — 임무는 구성원만 가리킨다. 두 임무가 한 구성원을 나눠 쓴다.
     const research = store.memberAdd(objective.id, { role: "research" }, "human").members[0]!.id;
     const build = store.memberAdd(objective.id, { role: "build" }, "human").members[1]!.id;
@@ -270,7 +264,14 @@ describe("Objectives contract", () => {
     store.missionPatch(objective.id, b!.id, { member: build }, { by: "human" });
     store.missionPatch(objective.id, c!.id, { member: build });
     // 개시 — 구성원 전원을 한꺼번에, 첫 메시지 없이(대기) 서브에이전트 없이 띄운 뒤 지휘관에게만 한 줄을 보낸다.
-    await launch.startCommander(objective.id);
+    hostFault.afterCreate = 1;
+    await expect(launch.startCommander(objective.id)).rejects.toThrow("request_timeout");
+    expect(savedObjective(objective.id)).toHaveProperty("pending.title", "Release renamed");
+    const starts = await Promise.all([launch.startCommander(objective.id), launch.startCommander(objective.id)]);
+    expect(starts.map((entry) => entry.operationId)).toEqual([objective.id, objective.id]);
+    expect(launches.filter((entry) => entry.dormant)).toHaveLength(1);
+    expect(savedObjective(objective.id)).not.toHaveProperty("pending");
+    expect(operations.get(objective.id)!.payload.consoleUse).toBeUndefined();
     expect(sent).toEqual([{ operationId: objective.id, text: expect.stringContaining(objective.id) }]);
     expect(launches.slice(1)).toEqual([
       expect.objectContaining({ sessionName: `${head}-member-1`, dormant: undefined, disableSubagents: true, text: undefined }),
@@ -320,7 +321,7 @@ describe("Objectives contract", () => {
     for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(JSON.stringify(saved)).not.toContain(`"${key}"`);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
-    expect(reloaded.find(objective.id)).toMatchObject({ title: "Release", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [] });
+    expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [] });
     expect(reloaded.find(objective.id)!.missions[0]!.records.map((record) => [record.kind, record.lines])).toEqual([["done", ["a done"]], ["redone", ["a redone", "fixed the gap"]]]);
     // 모든 쓰기가 사건으로 나갔다 — 화면은 이 프레임으로 갱신된다.
     expect(events.filter((event) => event.op === "upsert" && event.objectiveId === objective.id).length).toBeGreaterThanOrEqual(8);
@@ -579,9 +580,11 @@ describe("Objectives contract", () => {
     add("wiki", { pluginId: "codex", type: "codex-wiki" });
     const made = await launch.create({ theaterId: "t1", title: "Made in Objectives", groupId: null, missions: [{ text: "one" }] });
     store.memberAdd(made.id, { role: "build" }, "human");
+    await launch.requestPlan(made.id);
+    store.setPlanning(made.id, false);
     await launch.muster(made.id);
     // 레코드 없는 Operation 은 빈 목표로 선다 — 구성원(launched-2)과 플러그인 Operation 은 목표가 아니다.
-    expect(store.list("t1").map((objective) => objective.id).sort()).toEqual(["launched-1", "sidebar"]);
+    expect(store.list("t1").map((objective) => objective.id).sort()).toEqual([made.id, "sidebar"].sort());
     expect(store.find("sidebar")).toMatchObject({ title: "Made in the sidebar", groupId: "g-a", note: "", missions: [], awaitingReview: false });
     expect(store.find("launched-2")).toBeNull();
     // 첫 편집이 레코드를 만든다.
@@ -600,6 +603,8 @@ describe("Objectives contract", () => {
     const { store, launch, operations } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Ship", groupId: "g-review", missions: [{ text: "a" }] });
     store.memberAdd(objective.id, { role: "build" }, "human");
+    await launch.requestPlan(objective.id);
+    store.setPlanning(objective.id, false);
     const worker = (await launch.muster(objective.id))[0]!.operationId;
     expect(operations.get(worker)!.groupId).toBe("g-review");
     // 목표에서 옮기면 지휘관 Operation 이 옮겨지고, 구성원이 따라간다 — 목표의 그룹은 저장하지 않는다.
@@ -614,6 +619,7 @@ describe("Objectives contract", () => {
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
     const { store, call, launch } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
+    await launch.requestPlan(objective.id);
     const commander = objective.id;
     const other = (await launch.create({ theaterId: "t1", title: "Other", groupId: null })).id;
     // 다른 목표의 지휘관은 이 목표를 쓰지도 읽지도 못한다.
@@ -665,11 +671,11 @@ describe("Objectives contract", () => {
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["shipped p1", "tests pass"] }, commander)).isError).toBe(false);
     // 같은 목표에 시작이 겹치면 하나만 간다.
     const results = await Promise.allSettled([launch.startCommander(other), launch.startCommander(other)]);
-    expect(results.filter((result) => result.status === "fulfilled").length).toBe(1);
+    expect(results.filter((result) => result.status === "fulfilled").length).toBe(2);
   });
 
   it("keeps criteria proposed until the person decides, then reaches review only with evidence", async () => {
-    const { store, call, route, launch, events, savedObjective } = harness();
+    const { store, call, route, launch, events, savedObjective, launches, operations } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Criteria", groupId: null, missions: [{ text: "fix" }] });
     const as = objective.id;
     const first = store.criterionAdd(as, "tests pass", "human").criteria[0]!;
@@ -678,6 +684,9 @@ describe("Objectives contract", () => {
     // 기준 제안은 사람이 구상을 명시적으로 요청한 국면에서만 열린다.
     expect((await plan([{ text: "new" }])).structuredContent.error).toBe("criteria_not_planning");
     expect((await route("plan/request", { objectiveId: as })).status).toBe(200);
+    expect((await route("plan/request", { objectiveId: as })).status).toBe(200);
+    expect(launches.filter((entry) => entry.dormant)).toHaveLength(1);
+    expect(operations.has(as)).toBe(true);
     const before = events.length;
     expect((await plan([{ revise: 1, text: "tests and types pass" }, { text: "lint passes" }, { retire: second.id, reason: "redundant" }])).isError).toBe(false);
     expect(events.length).toBe(before + 1); // 임무와 제안을 한 번의 저장/방송으로 적용한다.
@@ -730,103 +739,27 @@ describe("Objectives contract", () => {
     expect(store.find(as)!.criteriaProposals).toEqual([]); // 대상 기준 삭제와 제안 삭제는 같은 보드 변경이다.
   });
 
-  it("records evidenced follow-ups from the Commander only and turns the picked ones into dormant objectives exactly once", async () => {
-    const { store, call, route, launch, launches, keyed, deletedKeys, reservedKeys, hostFault, savedObjective, savedIds, operations } = harness();
-    const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }], viewMode: "chat" });
-    const member = store.memberAdd(source.id, { role: "review" }, "human").members[0]!;
-    store.setMemberOperation(source.id, member.id, "member-op");
-    const candidate = (title: string) => ({ title, summary: `${title} in one line`, brief: `${title} brief`, criteria: [`${title} holds`], evidence: [{ kind: "file", path: "src/a.ts", line: 3 }, { kind: "command", text: "pnpm test a" }] });
-    const followup = (args: Record<string, unknown>, operationId = source.id) => call("followup", { objectiveId: source.id, ...args }, operationId);
-    // 쓰기는 지휘관만, 근거는 필수이고 경로는 Theater 상대만 받는다.
-    expect((await followup({ add: candidate("member") }, "member-op")).structuredContent.error).toBe("not_commander");
-    expect((await followup({ add: { ...candidate("bare"), evidence: [] } })).structuredContent.error).toBe("invalid_arguments");
-    expect((await followup({ add: { ...candidate("abs"), evidence: [{ kind: "file", path: "/Users/me/secret.ts" }] } })).structuredContent.error).toBe("invalid_arguments");
-    for (const title of ["A", "B", "C"]) expect((await followup({ add: candidate(title) })).isError).toBe(false);
-    let [a, b, c] = store.find(source.id)!.followups;
-    await followup({ revise: { id: a!.id, summary: "A, sharper" } });
-    expect((await route("followup/discard", { objectiveId: source.id, candidateId: c!.id })).status).toBe(200);
-    [a, b, c] = store.find(source.id)!.followups;
-    expect(a).toMatchObject({ rev: 2, state: "open" });
-    expect(c).toMatchObject({ state: "discarded", brief: "", evidence: [], discarded: { by: "human" } });
-
-    // 고른 완료는 검토 대기에서만, 사람의 편집(스티어링 우선)과 옛 rev 는 서버가 거절한다 — 아무것도 쓰거나 예약하지 않는다.
-    const pick = (batchId: string, picks: { id: string; rev: number }[]) => route("objective/complete", { objectiveId: source.id, batchId, followups: picks });
+  it("creates follow-up records once without launching their Operations", async () => {
+    const { store, route, launch, launches, operations, savedObjective } = harness();
+    const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
+    await launch.requestPlan(source.id);
+    const missionId = store.find(source.id)!.missions[0]!.id;
+    store.missionDone(source.id, missionId, ["fixed"]);
+    const candidate = store.followupAdd(source.id, { title: "Next", summary: "Next step", brief: "Next brief", criteria: ["Verified"], evidence: [{ kind: "command", text: "pnpm test" }] }).followups[0]!;
     const batchId = "3f1c8f3e-1111-4a8b-9c0d-000000000001";
-    expect((await pick(batchId, [{ id: a!.id, rev: 2 }])).value.error).toBe("not_in_review");
-    store.missionDone(source.id, store.find(source.id)!.missions[0]!.id, ["fixed"]);
-    // 스티어링은 깬 적 있는 지휘관에게만 — 세션 좌표가 적힌 지휘관으로 만든다.
-    const commander = operations.get(source.id)!;
-    commander.payload = { ...commander.payload, session: { ...(commander.payload.session as object), id: "session-1", capturedAt: "2026-09-25T00:00:00Z", source: "hook" } };
-    store.setEdited(source.id, ["note"]);
-    expect((await pick(batchId, [{ id: a!.id, rev: 2 }])).value.error).toBe("steer_required");
-    store.setEdited(source.id, null);
-    expect((await pick(batchId, [{ id: a!.id, rev: 1 }])).value.error).toBe("followup_changed");
-    expect(reservedKeys.size).toBe(0);
-    expect(store.find(source.id)!.done).toBeNull();
-
-    // 첫 기동은 Operation 을 세운 뒤 응답을 잃는다 — 성공으로 치지 않고, 같은 키의 재조회가 그 Operation 을 입양한다.
-    hostFault.afterCreate = 1;
-    const launched = launches.length;
-    expect((await pick(batchId, [{ id: a!.id, rev: 2 }, { id: b!.id, rev: 1 }])).status).toBe(200);
-    expect((await pick(batchId, [{ id: a!.id, rev: 2 }, { id: b!.id, rev: 1 }])).status).toBe(200); // 같은 배치는 멱등이다.
-    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items.every((entry) => entry.state !== "creating")).toBe(true));
-    const [first, second] = store.find(source.id)!.followupBatches[0]!.items;
-    const unconfirmed = first!.state === "confirming" ? first! : second!;
-    expect(unconfirmed).toMatchObject({ state: "confirming", error: "request_timeout" });
-    expect((await route("followup/abandon", { objectiveId: source.id, batchId, candidateId: unconfirmed.candidateId })).value.error).toBe("followup_not_failed");
-    expect((await route("followup/retry", { objectiveId: source.id, batchId, candidateId: unconfirmed.candidateId })).status).toBe(200);
-    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items.every((entry) => entry.state === "created")).toBe(true));
-    expect(launches.length - launched).toBe(2); // 후보 둘에 Operation 둘 — 재조회는 새로 띄우지 않았다.
-    expect(new Set(keyed.values()).size).toBe(2);
-
-    const done = store.find(source.id)!;
-    expect(done.done).not.toBeNull();
-    // 끝난 후보는 목록에서 빠지고 배치에 남는다. 폐기 흔적은 그대로.
-    expect(done.followups.map((entry) => entry.state)).toEqual(["discarded"]);
-    const created = store.find(done.followupBatches[0]!.items.find((entry) => entry.candidateId === a!.id)!.operationId!)!;
-    expect(created).toMatchObject({ title: "A", note: "A brief", missions: [], members: [], groupId: "g-a", commander: { viewMode: "chat", started: false },
-      addedBy: { operationId: source.id }, origin: { objectiveId: source.id, title: "Source", candidateId: a!.id, evidence: [{ kind: "file", path: "src/a.ts", line: 3 }, { kind: "command", text: "pnpm test a" }] } });
-    expect(created.criteria).toMatchObject([{ text: "A holds", by: "human" }]);
-    // 만든 뒤 사람이 지운 후속은 원본에서 「삭제됨」으로 보이고, 돌아오면 다시 「생성됨」이다(저장은 그대로).
-    const createdNode = operations.get(created.id)!;
-    operations.delete(created.id);
-    expect(store.find(source.id)!.followupBatches[0]!.items.find((entry) => entry.candidateId === a!.id)!.state).toBe("deleted");
-    operations.set(created.id, createdNode);
-    expect(store.find(source.id)!.followupBatches[0]!.items.find((entry) => entry.candidateId === a!.id)!.state).toBe("created");
-    // 사람이 지운 키는 다시 만들지 않는다 — 다시 연 목표에서 고른 후보라도 삭제로 끝난다.
-    expect((await route("objective/complete", { objectiveId: source.id, undone: true })).status).toBe(200);
-    await followup({ add: candidate("D") });
-    const d = store.find(source.id)!.followups.find((entry) => entry.title === "D")!;
-    deletedKeys.add(`objectives.followup:${d.id}`);
-    const before = launches.length;
-    expect((await pick("3f1c8f3e-1111-4a8b-9c0d-000000000002", [{ id: d.id, rev: 1 }])).status).toBe(200);
-    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[1]!.items[0]!.state).toBe("deleted"));
-    expect(launches.length).toBe(before);
-    // 남은 후보가 있으면 고르지 않은 완료(목록 체크)도 스티어링 우선을 지난다. 정상 검토에서는 0건 완료가 되고 후보는 남는다.
-    expect((await route("objective/complete", { objectiveId: source.id, undone: true })).status).toBe(200);
-    await followup({ add: candidate("E") });
-    store.setEdited(source.id, ["note"]);
-    expect((await route("objective/complete", { objectiveId: source.id })).value.error).toBe("steer_required");
-    store.setEdited(source.id, null);
-    expect((await route("objective/complete", { objectiveId: source.id })).status).toBe(200);
-    expect(store.find(source.id)!.followups.find((entry) => entry.title === "E")).toMatchObject({ state: "open" });
-    // 기동을 기다리는 사이 원본을 지우면 이 요청이 막 만든 대상만 닫는다 — 원본을 되돌려도 같은 키로 다시 만들지 않는다.
-    expect((await route("objective/complete", { objectiveId: source.id, undone: true })).status).toBe(200);
-    const e = store.find(source.id)!.followups.find((entry) => entry.title === "E")!;
-    const racing = launches.length;
-    expect((await pick("3f1c8f3e-1111-4a8b-9c0d-000000000003", [{ id: e.id, rev: 1 }])).status).toBe(200);
-    const sourceNode = operations.get(source.id)!;
-    operations.delete(source.id);
-    await vi.waitFor(() => expect(launches.length).toBe(racing + 1));
-    const raced = `launched-${racing + 1}`;
-    await vi.waitFor(() => expect(operations.has(raced)).toBe(false));
-    operations.set(source.id, sourceNode);
+    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev }] });
+    expect((await pick()).status).toBe(200);
+    expect((await pick()).status).toBe(200);
+    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("created"));
+    const targetId = store.find(source.id)!.followupBatches[0]!.items[0]!.operationId!;
+    expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id } });
+    expect(savedObjective(targetId)).toHaveProperty("pending.title", "Next");
+    expect(operations.has(targetId)).toBe(false);
+    expect(launches).toHaveLength(1);
     launch.resumeFollowups(source.id);
-    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches.at(-1)!.items[0]!.state).toBe("deleted"));
-    expect(launches.length).toBe(racing + 1);
-    expect(savedObjective(source.id).followupBatches![0]!.items).toHaveLength(2);
-    // 기동 키 원장은 저장 파일에 들어가지 않는다 — 어느 목표의 파일에도 없다.
-    for (const id of savedIds()) expect(JSON.stringify(savedObjective(id))).not.toContain("objectives.followup:");
+    expect(store.list("t1").filter((entry) => entry.id === targetId)).toHaveLength(1);
+    launch.remove(targetId);
+    expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("deleted");
   });
 
   it("registers even when a registered Theater folder is gone", () => {

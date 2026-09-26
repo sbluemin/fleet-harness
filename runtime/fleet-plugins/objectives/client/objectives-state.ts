@@ -9,7 +9,7 @@ import type { Objective, ObjectiveEvent } from "../server/types.js";
  *
  * 화면은 응답이 아니라 사건으로 갱신된다 — 자기 변경도 `objectives:objective` 프레임으로 들어온다. 그룹은 코어의
  * `group:changed`/`group:removed` 를 같은 스트림에서 듣는다. Operation 의 활동은 호스트 consoleState 가 진실이다.
- * 목표는 곧 에이전트 Operation 이라, Console 어디서든 Operation 이 생기면 그 목표를 받아 오고 사라지면 목록에서 뺀다.
+ * 따로 만든 에이전트 Operation 도 가상 목표로 받아 온다. Operation 이 없는 새 목표는 보드 사건에서 받는다.
  */
 
 export interface ObjectiveGroup {

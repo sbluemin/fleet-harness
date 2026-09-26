@@ -341,7 +341,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         || arrowAction === "minimize"
         || arrowAction === "triage-set-aside")) return;
       if ((arrowAction === "snap-full" || arrowAction === "minimize" || arrowAction === "triage-noop" || arrowAction === "triage-set-aside")
-        && getCompanionOperationId() !== null) return;
+        && getCompanionOperationId() !== null) {
+        // Cruise의 companion 레이어는 전체 칸 자리에 선 상태로 읽힌다 — ↓는 전체 칸의 ⤡처럼 레이어를 닫고
+        // 들어오기 전 자리로 돌아간다. ↑는 이미 전체 칸이라 할 일이 없다. War Room 무대는 그대로 막는다.
+        if (arrowAction === "minimize" && !triageActive) closeCompanionLayer(commitSnappedGeometry);
+        return;
+      }
       if (triageActive) {
         if (arrowAction === "triage-noop") return;
         const stageId = document.querySelector<HTMLElement>(".canvas-operation.is-triage-stage[data-operation-id]")?.dataset.operationId;

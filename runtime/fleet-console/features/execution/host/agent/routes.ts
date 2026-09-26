@@ -535,7 +535,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -1071,7 +1071,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly newOperationId?: string; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1087,7 +1087,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return;
     }
     launchOptions.assertCurrent?.();
-    const sessionId = crypto.randomUUID();
+    if (launchOptions.newOperationId && ctx.host.operations.get(launchOptions.newOperationId)) throw new ConsoleControlError("operation_id_taken");
+    const sessionId = launchOptions.newOperationId ?? crypto.randomUUID();
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
     workspaceContext.observe(sessionId, theaterId, cwd);
     // 원문은 argv에 오르지 않고 파일 포인터가 첫 UserPromptSubmit이 된다. 그 지시는 절대

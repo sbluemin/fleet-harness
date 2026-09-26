@@ -897,6 +897,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       consoleDataDir: durablePaths.dir,
       pluginDataDir: (pluginId) => path.join(durablePaths.dir, "plugins", pluginId),
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.realpath ?? null,
+      listTheaterIds: () => theaters.list().map((theater) => theater.id),
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
       workspaceHash,
       ensureWorkspaceDirectory: (cwd: string) => {

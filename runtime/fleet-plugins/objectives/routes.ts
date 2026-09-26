@@ -49,7 +49,7 @@ export default definePlugin({
     };
     const releaseChannel = ctx.host.events.registerSseChannel(OBJECTIVE_CHANNEL);
     ctx.host.lifecycle.registerCleanup(releaseChannel);
-    const store = createObjectiveStore({ dirOf, operations: ctx.host.operations, emit: (event) => ctx.host.events.publish(OBJECTIVE_CHANNEL, event) });
+    const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, emit: (event) => ctx.host.events.publish(OBJECTIVE_CHANNEL, event) });
 
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
     const launch = createLaunchService(ctx, store);

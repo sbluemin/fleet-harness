@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
@@ -9,24 +9,15 @@ import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type Objectiv
 import type { MemberPatchInput, Objective, ObjectiveMember, PlanInput, SlotBy, MissionAddInput, MissionPatchInput } from "./types.js";
 
 /**
- * 기동·통지 — 목표의 지휘관 Operation 을 만들고 깨우고, 담당 Operation 을 띄운다.
- *
- * 목표를 만들면 지휘관 Operation 이 dormant 로 함께 태어난다(프로세스 없음). 「구상」·「시작」은 그 Operation 에 한 줄을
- * 보내 깨운다 — 첫 깨움은 새 세션이고, 태어날 때 정한 세션 이름·모델로 뜬다. 담당은 지휘관이 위임하는 순간 뜨는 이름 붙은
- * CLI 세션이라 지휘관이 Claude Code 의 세션 간 메시지로 지시한다 — Console 은 그 대화를 중계하지 않는다.
+ * 목표는 레코드로 태어난다. 첫 「개시」·「구상」에서만 같은 id 의 dormant 지휘관 Operation 을 세우고 깨운다.
  */
 
 export interface LaunchService {
   describe(): { readonly available: boolean };
-  /** 목표를 만든다 — 지휘관 Operation 을 dormant 로 먼저 만들고 그 id 로 목표 레코드를 세운다. */
+  /** 목표 레코드만 만든다. 후속 후보는 안정적인 objectiveId 를 지정할 수 있다. */
+  create(input: { readonly theaterId: string; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
   /**
-   * `launchKey` 가 있으면 멱등 생성이다 — 같은 키로는 지휘관 Operation 이 많아야 하나 생기고, 이미 있으면 그 Operation 에 입양만
-   * 하며(레코드가 이미 있으면 그대로 돌려준다), 사람이 지운 키는 `launch_key_deleted` 로 거절된다. 입양이 실패해도 Operation 을
-   * 지우지 않는다 — 같은 키로 다시 부르면 이어서 입양한다.
-   */
-  create(input: { readonly theaterId: string; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly launchKey?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
-  /**
-   * 고른 후속 후보와 함께 완료한다 — 기동 키 용량을 먼저 확보하고 완료·배치 기록을 한 번에 쓴 뒤, 지휘관을 재우고 후속 목표를
+   * 고른 후속 후보와 함께 완료한다 — 완료·배치 기록을 한 번에 쓴 뒤 지휘관을 재우고 후속 목표 레코드를
    * 뒤에서 만든다. 같은 배치로 다시 부르면 그대로 돌려준다.
    */
   completeWithFollowups(objectiveId: string, selection: { readonly batchId: string; readonly followups: readonly { readonly id: string; readonly rev: number }[] }, options?: LaunchOptions): Objective;
@@ -60,7 +51,7 @@ export interface LaunchService {
   busy(objectiveId: string): boolean;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
   steer(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
-  /** 전체 중단 — 지휘관과 모든 담당 Operation 에 인터럽트를 보낸다. */
+  /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
   stop(objectiveId: string): Promise<{ readonly objective: Objective; readonly interrupted: number }>;
   /** Operation 이 삭제 유예에 들어갔다 — 지휘관이었다면 담당 Operation 도 함께 닫는다. */
   operationDeleted(operationId: string): void;
@@ -121,7 +112,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
-  const launch = async (input: { theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; member?: boolean; parentOperationId?: string; launchKey?: string }): Promise<string> => {
+  const launch = async (input: { newOperationId?: string; theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; member?: boolean; parentOperationId?: string; launchKey?: string }): Promise<string> => {
     const receipt = await control().request({
       kind: "launch",
       theaterId: input.theaterId,
@@ -139,6 +130,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 구성원은 태어날 때부터 지휘관 아래 선다 — 코어가 목록 표면에서 빼고 지휘관이 대표한다.
       ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}),
       ...(input.launchKey ? { launchKey: input.launchKey } : {}),
+      ...(input.newOperationId ? { newOperationId: input.newOperationId } : {}),
     }, `objectives:launch:${randomUUID()}`);
     if (!receipt.operationId) throw new ObjectiveStoreError(receipt.error ?? "launch_failed");
     return receipt.operationId;
@@ -148,10 +140,37 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const memberTitle = (title: string, role: string): string => `${title} › ${role}`.slice(0, 120);
   // 같은 목표에 기동 요청이 겹치면 Operation 이 둘 뜬다 — 기동이 끝날 때까지 자리를 잡아 둔다.
   const pending = new Set<string>();
-  const claim = async <T,>(key: string, run: () => Promise<T>): Promise<T> => {
+  const commanderClaims = new Map<string, { readonly mode: "start" | "plan"; readonly task: Promise<unknown> }>();
+  const claim = async <T,>(key: string, run: () => Promise<T>, mode?: "start" | "plan"): Promise<T> => {
+    const existing = commanderClaims.get(key);
+    if (existing) {
+      if (existing.mode !== mode) throw new ObjectiveStoreError("slot_taken");
+      return existing.task as Promise<T>;
+    }
     if (pending.has(key)) throw new ObjectiveStoreError("slot_taken");
     pending.add(key);
-    try { return await run(); } finally { pending.delete(key); }
+    const task = run();
+    if (mode) commanderClaims.set(key, { mode, task });
+    try { return await task; } finally { pending.delete(key); commanderClaims.delete(key); }
+  };
+
+  // 최초 기동은 호스트의 영속 launchKey 와 같은 UUID 에 묶는다. 실패 후 재시도는 기존 Operation 을 되찾는다.
+  const ensureCommander = async (objectiveId: string): Promise<void> => {
+    const pendingCommander = store.pending(objectiveId);
+    const existing = ctx.host.operations.get(objectiveId);
+    const key = `objectives.commander:${objectiveId}`;
+    if (existing) {
+      if (pendingCommander) {
+        const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
+        if (marker?.owner !== ctx.pluginId || marker.key !== key) throw new ObjectiveStoreError("operation_id_taken");
+        store.launched(objectiveId);
+      }
+      return;
+    }
+    if (!pendingCommander) throw new ObjectiveStoreError("unknown_operation");
+    const launchedId = await launch({ ...pendingCommander, dormant: true, launchKey: key, newOperationId: objectiveId }).catch(asStoreError);
+    if (launchedId !== objectiveId) throw new ObjectiveStoreError("operation_id_taken");
+    store.launched(objectiveId);
   };
 
   /** 라우팅이 없거나 실패하면 지휘관 프리셋으로 돌아간다. 역할·설명을 라우터에 건넨다. */
@@ -291,6 +310,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
   const muster = (objectiveId: string): ReturnType<LaunchService["muster"]> => claim(`${objectiveId}:muster`, async () => {
     let current = objective(objectiveId);
+    if (!ctx.host.operations.get(objectiveId)) throw new ObjectiveStoreError("unknown_operation");
     if (current.planning) throw new ObjectiveStoreError("planning_only");
     if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
     if (current.done) throw new ObjectiveStoreError("objective_done");
@@ -338,93 +358,39 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return members;
   });
 
-  /** 후보 하나의 멱등 기동 키 — 후보 id(전체 UUID)에 묶인다. 한 후보에서는 목표가 많아야 하나 생긴다. */
-  const followupKey = (candidateId: string) => `objectives.followup:${candidateId}`;
-  // 한 프로세스 안에서 같은 후보의 작업자가 둘 뜨지 않게 한다 — 영속 보증은 기동 키 원장이 한다.
-  const followupWorkers = new Set<string>();
-  const FOLLOWUP_PENDING_POLL_MS = 250;
-  const FOLLOWUP_PENDING_DEADLINE_MS = 30_000;
-  const lookupFollowup = (theaterId: string, candidateId: string) => {
-    const state = ctx.host.consoleControl?.launchState;
-    if (!state) throw new ObjectiveStoreError("launch_unavailable");
-    return state({ theaterId, key: followupKey(candidateId) });
+  // 후보 UUID 를 별도 이름 공간의 안정 UUID 로 바꾼다. 배치가 재시작되어도 같은 후보는 같은 목표다.
+  const followupId = (candidateId: string): string => {
+    const hex = createHash("sha256").update(`objectives.followup:${candidateId}`).digest("hex");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
   };
-  const safeCode = (error: unknown, fallback: string) => { const code = error instanceof Error ? error.message : ""; return /^[a-z_]{1,64}$/.test(code) ? code : fallback; };
-  /**
-   * 배치 항목 하나를 끝까지 해소한다. 결과는 키 상태로만 판정한다:
-   * - live·absent·reserved → 같은 키로 생성(이미 있으면 입양만) → created
-   * - deleting·purged → 사람이 지웠다 → deleted(다시 만들지 않는다)
-   * - pending → 이 호스트의 기동을 기다린다 → 끝나지 않으면 confirming
-   * - 조회 불가 → confirming(같은 키의 재조회만 허용) · 생성 실패 후 키가 absent·reserved 면 failed(같은 키로 다시 만들 수 있다)
-   * 원본이 사라졌으면(삭제 유예) 멈춘다 — 항목은 creating 으로 남고 원본이 복원되면 이어 간다. 기록 쓰기가 실패해도 항목이
-   * creating 으로 남아 다음 기동에서 같은 키로 이어 간다.
-   */
+  const followupWorkers = new Set<string>();
   const runFollowup = async (objectiveId: string, batchId: string, candidateId: string): Promise<void> => {
     const workerKey = `${objectiveId}:${candidateId}`;
     if (followupWorkers.has(workerKey)) return;
     followupWorkers.add(workerKey);
-    const settle = (next: Parameters<ObjectiveStore["followupSettle"]>[3]) => {
-      try { store.followupSettle(objectiveId, batchId, candidateId, next); }
-      catch (error) { console.warn(`[objectives] follow-up ${candidateId} record deferred: ${safeCode(error, "record_failed")}`); }
-    };
     try {
       const source = store.find(objectiveId);
-      // 저장 모양 그대로 — 동결된 기동 조건과 근거 원형(화면 모양이 아닌)이 새 목표로 간다.
       const batch = source ? store.followupBatch(objectiveId, batchId) : null;
       const entry = batch?.items.find((candidate) => candidate.candidateId === candidateId);
       if (!source || !batch || !entry || entry.state !== "creating") return;
-      const frozen = batch.launch;
-      let state: ReturnType<typeof lookupFollowup>;
+      const id = followupId(candidateId);
       try {
-        state = lookupFollowup(source.theaterId, candidateId);
-        const deadline = Date.now() + FOLLOWUP_PENDING_DEADLINE_MS;
-        while (state.state === "pending" && Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, FOLLOWUP_PENDING_POLL_MS));
-          state = lookupFollowup(source.theaterId, candidateId);
-        }
-      } catch (error) { settle({ state: "confirming", error: safeCode(error, "launch_state_unavailable") }); return; }
-      if (state.state === "pending") { settle({ state: "confirming", error: "launch_pending" }); return; }
-      if (state.state === "deleting" || state.state === "purged") { settle({ state: "deleted", ...(state.operationId ? { operationId: state.operationId } : {}) }); return; }
-      // 원본이 그사이 지워졌다면 만들지 않는다 — 사람의 삭제 뒤에 자동으로 무언가를 세우지 않는다.
-      if (!store.find(objectiveId)) return;
-      // 이 작업자가 새로 띄우는 기동인가 — 직전 키가 absent·reserved 였다. 키는 이 플러그인·이 후보에만 묶이고 같은 후보의 작업자는
-      // 이 프로세스에 하나뿐이라, 기동 뒤 그 키로 선 Operation 은 이 작업자가 만든 것이다.
-      const launchesNew = state.state === "absent" || state.state === "reserved";
-      /**
-       * 기동을 기다리는 사이 사람이 원본을 지웠다 — 이 작업자가 막 만든 대상만 닫는다(보통 삭제라 되돌릴 수 있다). 이미 있던 대상,
-       * 다른 목표·후보에서 나왔거나 독립된 레코드가 있는 대상은 건드리지 않는다. 닫지 못하면 경고만 남기고 항목은 creating 으로 둔다
-       * — 원본이 복원되면 같은 키 조회로 이어 간다.
-       */
-      const cancelIfSourceGone = (targetId: string | undefined): boolean => {
-        if (store.find(objectiveId) || !launchesNew || !targetId) return false;
-        const target = store.find(targetId);
-        const ours = !store.recorded(targetId) || (target?.origin?.objectiveId === objectiveId && target.origin.candidateId === candidateId);
-        if (!ours) { console.warn(`[objectives] follow-up ${candidateId}: source gone, kept existing target ${targetId}`); return true; }
-        let closed = false;
-        try { closed = ctx.host.operations.delete(targetId); } catch { closed = false; }
-        if (!closed) console.warn(`[objectives] follow-up ${candidateId}: source gone, could not close new target ${targetId}`);
-        return true;
-      };
-      try {
-        const created = await service.create({
-          theaterId: source.theaterId, title: entry.snapshot.title, groupId: frozen.groupId, viewMode: frozen.viewMode,
+        const existing = store.find(id);
+        if (existing && (existing.origin?.objectiveId !== objectiveId || existing.origin.candidateId !== candidateId)) throw new ObjectiveStoreError("objective_id_taken");
+        const created = existing ?? await service.create({
+          theaterId: source.theaterId, title: entry.snapshot.title, groupId: batch.launch.groupId, viewMode: batch.launch.viewMode,
           note: entry.snapshot.brief, criteria: entry.snapshot.criteria, addedBy: objectiveId,
-          origin: { objectiveId, candidateId, batchId, evidence: entry.snapshot.evidence },
-          launchKey: followupKey(candidateId),
-        }, { language: frozen.language });
-        if (cancelIfSourceGone(created.id)) return;
-        settle({ state: "created", operationId: created.id, attempted: true });
+          origin: { objectiveId, candidateId, batchId, evidence: entry.snapshot.evidence }, objectiveId: id,
+        }, { language: batch.launch.language });
+        if (!store.find(objectiveId)) {
+          if (!existing && store.pending(created.id)) store.removePending(created.id);
+          return;
+        }
+        store.followupSettle(objectiveId, batchId, candidateId, { state: "created", operationId: created.id, attempted: true });
       } catch (error) {
-        const code = safeCode(error, "launch_failed");
-        let after: ReturnType<typeof lookupFollowup> | null = null;
-        try { after = lookupFollowup(source.theaterId, candidateId); } catch { after = null; }
-        // 기동은 섰는데 입양 전에 실패했고 그사이 원본이 지워졌다 — 같은 키로 선 대상을 같은 규칙으로 닫는다.
-        if (after?.state === "live" && cancelIfSourceGone(after.operationId)) return;
-        if (after && (after.state === "deleting" || after.state === "purged")) settle({ state: "deleted", ...(after.operationId ? { operationId: after.operationId } : {}), attempted: true });
-        // 키로 만든 Operation 이 없음이 확정됐다 — 같은 키로 다시 만들 수 있는 실패다.
-        else if (after && (after.state === "absent" || after.state === "reserved")) settle({ state: "failed", error: code, attempted: true });
-        // 만들어졌거나(입양 실패) 결과를 알 수 없다 — 성공으로 치지 않고 같은 키의 재조회만 남긴다.
-        else settle({ state: "confirming", error: code, attempted: true });
+        const code = error instanceof Error ? error.message : "record_failed";
+        try { store.followupSettle(objectiveId, batchId, candidateId, { state: "failed", error: /^[a-z_]{1,64}$/.test(code) ? code : "record_failed", attempted: true }); }
+        catch { /* 원본 삭제 또는 저장 실패 — 재시작 때 같은 id 로 다시 확인한다. */ }
       }
     } finally { followupWorkers.delete(workerKey); }
   };
@@ -432,36 +398,23 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const service: LaunchService = {
     describe: () => ({ available: !!ctx.host.consoleControl }),
 
-    async create(input, options) {
-      const language = languageOf(options);
-      const { launchKey, ...init } = input;
-      // 키 붙은 생성은 띄우기 전에 입양 조건을 먼저 따진다 — 띄운 뒤에는 그 Operation 을 지워 되돌릴 수 없다.
-      if (launchKey) checkedCriteria(init);
-      const operationId = await launch({ theaterId: input.theaterId, title: input.title, sessionName: commanderSession(), ...COMMANDER_PRESET, groupId: input.groupId, viewMode: input.viewMode, dormant: true, ...(launchKey ? { launchKey } : {}) }).catch(asStoreError);
-      rememberLanguage(operationId, language);
-      if (launchKey && store.recorded(operationId)) return objective(operationId);
-      try {
-        return store.adopt(operationId, init);
-      } catch (error) {
-        // 레코드를 세우지 못한 지휘관은 가리킬 목표가 없다 — 남기지 않는다. 키 붙은 생성은 남겨 같은 키로 이어서 입양한다.
-        if (!launchKey) { try { ctx.host.operations.delete(operationId); } catch { /* ignore */ } }
-        throw error;
-      }
+    async create(input, _options) {
+      const { objectiveId, ...init } = input;
+      checkedCriteria(init);
+      const id = objectiveId ?? randomUUID();
+      if (store.recorded(id)) return objective(id);
+      if (ctx.host.operations.get(id)) throw new ObjectiveStoreError("operation_id_taken");
+      return store.adopt(id, init, {
+        theaterId: input.theaterId, title: input.title, groupId: input.groupId, createdAt: Date.now(),
+        sessionName: commanderSession(), ...COMMANDER_PRESET, viewMode: input.viewMode ?? "terminal",
+      });
     },
 
     completeWithFollowups(objectiveId, selection, options) {
       const current = objective(objectiveId);
-      const capability = ctx.host.consoleControl;
-      if (!capability?.reserveLaunchKeys || !capability.launchState) throw new ObjectiveStoreError("launch_unavailable");
       const { objective: completed, fresh } = store.completeWithFollowups(objectiveId, {
         ...selection,
         launch: { groupId: current.groupId, viewMode: commanderView(objectiveId), language: languageOf(options) },
-      }, (candidateIds) => {
-        try { capability.reserveLaunchKeys!({ theaterId: current.theaterId, keys: candidateIds.map(followupKey) }); }
-        catch (error) {
-          const code = error instanceof Error ? error.message : "";
-          throw new ObjectiveStoreError(code === "launch_key_capacity" ? "followup_capacity" : /^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
-        }
       });
       if (fresh) void sleepCompleted(completed);
       service.resumeFollowups(objectiveId);
@@ -492,6 +445,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     remove(objectiveId) {
       const current = objective(objectiveId);
       // 레코드는 Operation 이 복원 불가로 사라질 때(operation:purged) 거둔다 — 유예 동안 복원하면 목표도 돌아온다.
+      if (store.pending(objectiveId)) { store.removePending(objectiveId); service.followupTargetChanged(objectiveId); return current; }
       if (!ctx.host.operations.delete(objectiveId)) throw new ObjectiveStoreError("unknown_objective");
       return current;
     },
@@ -504,6 +458,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     },
 
     rename(objectiveId, title) {
+      if (store.pending(objectiveId)) return store.patchPending(objectiveId, { title });
       patchOperation(objectiveId, { title });
       return objective(objectiveId);
     },
@@ -512,6 +467,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const current = objective(objectiveId);
       // 없는 그룹이나 다른 Theater 의 그룹으로 옮기지 않는다.
       if (groupId !== null && ctx.host.operations.groups?.get(groupId)?.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_group");
+      if (store.pending(objectiveId)) return store.patchPending(objectiveId, { groupId });
       patchOperation(objectiveId, { groupId });
       // 담당 이동과 방송은 호스트의 operation:grouped 가 맡는다(operationGrouped).
       return objective(objectiveId);
@@ -519,6 +475,11 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
     setPreset(objectiveId, preset) {
       const node = ctx.host.operations.get(objectiveId);
+      if (!node && store.pending(objectiveId)) {
+        if (pending.has(objectiveId)) throw new ObjectiveStoreError("objective_busy");
+        if (objective(objectiveId).done) throw new ObjectiveStoreError("objective_done");
+        return store.patchPending(objectiveId, preset);
+      }
       if (!node) throw new ObjectiveStoreError("unknown_objective");
       // 수동 재개는 첫 메시지 전에도 세션을 초기화한다 — 살아 있는 세션의 프리셋을 뒤에서 바꾸지 않는다.
       if (readOperationLaunch(node.payload).started || pending.has(objectiveId) || control().observe(objectiveId)?.lifecycle === "live" || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
@@ -533,6 +494,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       let current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
       if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
+      await ensureCommander(objectiveId);
       // 따로 만든 Operation 도 지휘관이 될 수 있다 — 보드를 읽고 쓰려면 콘솔 사용이 켜져 있어야 한다.
       rememberLanguage(objectiveId, language);
       // 개시는 구상을 끝내고 구성원을 먼저 대기 기동·재개한다.
@@ -548,12 +510,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (firstWake) announceStarted(objectiveId);
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
       return { objective: store.setEdited(objectiveId, null), operationId: objectiveId };
-    }),
+    }, "start"),
 
     requestPlan: (objectiveId, options) => claim(objectiveId, async () => {
       const language = languageOf(options);
       let current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
+      await ensureCommander(objectiveId);
       rememberLanguage(objectiveId, language);
       // 구상은 계획과 메모만이다 — 임무 수행도, 담당 기동도 「시작」이 한다.
       if (!current.planning) current = store.setPlanning(objectiveId, true);
@@ -563,7 +526,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (!(await send(objectiveId, planTurn(current, language)))) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
       return { objective: current, operationId: objectiveId };
-    }),
+    }, "plan"),
 
     missionPatched: (objectiveId, missionId, patch) => store.missionPatch(objectiveId, missionId, patch),
     missionAdded: (objectiveId, input, options) => store.missionAdd(objectiveId, input, { unplaced: options?.by === "human", ...(options?.by === "human" ? { by: "human" as const } : {}) }),
@@ -594,6 +557,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     async steer(objectiveId, options) {
       const current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
+      if (!ctx.host.operations.get(objectiveId)) throw new ObjectiveStoreError("unknown_operation");
       if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
       // 스티어링 턴에서 기준 제안은 불가하다. 전송 전에 닫아 턴 전환 중 계획 쓰기와 경합하지 않는다.
       if (current.criteriaOpen) store.setCriteriaOpen(objectiveId, false);

@@ -18,7 +18,8 @@ import {
   type SideBarOperationMenuAction,
 } from "./interaction.js";
 import { OperationDetailCard } from "./operation-detail-card.js";
-import { getLoadedTheaterId, useSnapHold } from "../canvas/canvas-store.js";
+import { getLoadedTheaterId, useCompanionOperationId, useSnapHold } from "../canvas/canvas-store.js";
+import { SNAP_FULL_ZONES } from "../canvas/snap-layouts.js";
 import { SnapMark } from "../canvas/snap-mark.js";
 
 /** 포인터가 잠깐 지나가는 것과 겨누는 것을 가르는 시간. 목록을 훑는 동안 카드가 따라 뜨면 안 된다. */
@@ -161,8 +162,10 @@ export function OperationsSideBarChip({
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => (preview ? null : getOperationWrap(operation.id)), () => null);
   // 스냅 유지 — 활성 Theater의 묶음에 든 패널은 이름 뒤에 칸 모양 표식이 선다(캡션과 같은 컴포넌트).
   const snapHold = useSnapHold();
+  // companion 레이어를 연 패널은 전체 칸 자리에 서 있다 — 진입 경로(자유 패널·전체 칸)와 관계없이 캡션과 같은 전체 칸 표식을 단다.
+  const companionLayer = useCompanionOperationId() === operation.id && operation.theaterId === getLoadedTheaterId();
   const snapZoneIndex = snapHold !== null && operation.theaterId === getLoadedTheaterId() ? snapHold.assignments[operation.id] : undefined;
-  const snapZone = snapZoneIndex !== undefined ? snapHold?.zones[snapZoneIndex] ?? null : null;
+  const snapZone = companionLayer ? SNAP_FULL_ZONES.zones[0]! : snapZoneIndex !== undefined ? snapHold?.zones[snapZoneIndex] ?? null : null;
   const chipClassName = [
     "side-bar-chip",
     consoleUseWrapClassName(wrap),

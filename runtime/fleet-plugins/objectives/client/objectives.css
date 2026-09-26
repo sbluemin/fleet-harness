@@ -447,7 +447,8 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-start:disabled { opacity: 0.5; cursor: default; }
 .objectives-start-word { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--weight-bold); font-size: var(--t-base); color: var(--brass); letter-spacing: -0.01em; }
 .objectives-start-word svg { width: 12px; height: 12px; }
-.objectives-start-sub { min-width: 0; font-size: var(--t-xs); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-start-sub { display: flex; align-items: baseline; min-width: 0; font-size: var(--t-xs); color: var(--text-secondary); overflow: hidden; white-space: nowrap; }
+.objectives-start-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .objectives-start-arrow { color: var(--brass); font-size: var(--t-base); }
 .objectives-start.is-stop { border-color: color-mix(in oklch, var(--coral) 40%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--coral) 12%, transparent), color-mix(in oklch, var(--coral) 4%, transparent)); }
 .objectives-start.is-stop:hover { border-color: var(--coral); }
@@ -497,8 +498,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-band.has-alt.is-stop::before { border-color: color-mix(in oklch, var(--coral) 26%, transparent); }
 /* 띠의 틀은 뒤로 비치는 한 장(::before) 위에 선다 — 틀이 분할 칸으로 옮아도 윗 테두리가 그 한 장에 덮이지 않게. */
 .objectives-band .objectives-start, .objectives-band .objectives-split { position: relative; }
-.objectives-band-draft { margin-right: 6px; color: var(--text-primary); font-weight: var(--weight-medium); }
-.objectives-band-also { color: var(--text-tertiary); }
+.objectives-band-draft { flex: none; margin-right: 6px; color: var(--text-primary); font-weight: var(--weight-medium); }
+.objectives-band-also { flex: none; white-space: pre; color: var(--text-tertiary); }
 .objectives-band-error { padding: 6px 4px 2px; font-size: var(--t-xs); line-height: 1.5; color: var(--coral); }
 /* 펼친 자리 — 띠가 위로 자라 한 장이 된다. 맨 아래 줄은 그대로 보내기 띠다. */
 .objectives-comp { overflow: hidden; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(180deg, color-mix(in oklch, var(--brass) 4%, var(--surface-panel)), color-mix(in oklch, var(--brass) 10%, var(--surface-panel))); animation: objectives-unfold 240ms var(--ease-spring); }

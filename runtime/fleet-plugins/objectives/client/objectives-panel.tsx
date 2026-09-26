@@ -531,7 +531,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                 </div>
                 <div className="objectives-objective-side">
                   <LaunchWords objective={objective} t={t} rows={launchRows} autoLabel={t("objectives.commander.effortAuto")} defaultLabel={t("objectives.launch.default")} state={objective.commander.started ? operationState(objective.id) : null} />
-                  <button type="button" className="objectives-glyph objectives-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={(event) => { event.stopPropagation(); focusOperation(objective.id); }}><GoGlyph /></button>
+                  {!!operationOf(objective.id) ? <button type="button" className="objectives-glyph objectives-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={(event) => { event.stopPropagation(); focusOperation(objective.id); }}><GoGlyph /></button> : null}
                   <button type="button" className={`objectives-star${objective.important ? " is-on" : ""}`} aria-label={t("objectives.objective.important")} aria-pressed={objective.important} onClick={(event) => { event.stopPropagation(); void call("/objective/patch", { objectiveId: objective.id, patch: { important: !objective.important } }); }}>{objective.important ? "★" : "☆"}</button>
                 </div>
               </div>
@@ -1529,6 +1529,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           memberAwaiting={memberAwaiting}
           launchAvailable={launchAvailable}
           commanderState={stateLabel(operationState(objective.id))}
+          commanderExists={operationState(objective.id) !== "closed"}
           request={request}
           onFocusOperation={focusOperation}
         />
