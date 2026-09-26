@@ -4,8 +4,8 @@ branch: console-improvements-2
 
 ### fleet-console
 #### Added
-- Agent panels now tuck themselves into the taskbar when their turn finishes, unless you are looking at them or brought them back yourself; the unread mark stays until you check them.
-  ko: 에이전트 패널은 작업이 끝나면 스스로 작업 표시줄로 내려갑니다. 보고 있는 패널이나 직접 다시 꺼낸 패널은 그대로 두고, 확인 전까지 읽지 않음 표시는 남습니다.
+- Operation panels now tuck themselves into the taskbar when their session ends, unless you are looking at them or brought them back yourself. Finishing a turn leaves the panel where it is.
+  ko: Operation 패널은 세션이 종료되면 스스로 작업 표시줄로 내려갑니다. 보고 있는 패널이나 직접 다시 꺼낸 패널은 그대로 두며, 한 턴이 끝난 것만으로는 내려가지 않습니다.
 - The Operation menu now ends with Close window, which closes the Operation after a second press and can be undone from the toast.
   ko: Operation 메뉴 맨 아래에 창 닫기가 생겼습니다. 한 번 더 눌러 닫고, 알림에서 실행 취소할 수 있습니다.
 - In the Zen taskbar, click a group or status name to fold it down to its count, click the Operation you are viewing to minimize it, and right-click an Operation for the same menu as in the sidebar. Minimized Operations are shown dimmed.
