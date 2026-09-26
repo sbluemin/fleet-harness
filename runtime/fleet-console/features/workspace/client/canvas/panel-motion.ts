@@ -51,12 +51,17 @@ function panelElement(operationId: string): HTMLElement | null {
 }
 
 // Zen은 사이드바를 걷어(visibility:hidden) 칩이 보이지 않는다 — 그때는 같은 Operation의 작업 표시줄 항목이
-// 비행의 끝점이다. 사이드바를 잠깐 드러낸 Zen에서는 보이는 사이드바 칩이 그대로 끝점이다.
+// 비행의 끝점이고, 항목이 접힌 묶음 속에 들어가 막대에 없으면 그 묶음의 이름·칩이 끝점이다.
+// 사이드바를 잠깐 드러낸 Zen에서는 보이는 사이드바 칩이 그대로 끝점이다.
 function chipElement(operationId: string): HTMLElement | null {
   const id = escapeSelectorValue(operationId);
   const sideBarChip = document.querySelector<HTMLElement>(`[data-side-bar-chip-id="${id}"]`);
-  if (isVisiblyRendered(sideBarChip)) return sideBarChip;
-  return document.querySelector<HTMLElement>(`[data-zen-op="${id}"]`) ?? sideBarChip;
+  const candidates = [
+    sideBarChip,
+    document.querySelector<HTMLElement>(`[data-zen-op="${id}"]`),
+    document.querySelector<HTMLElement>(`[data-zen-fold-ops~="${id}"]`),
+  ];
+  return candidates.find(isVisiblyRendered) ?? sideBarChip;
 }
 
 function isVisiblyRendered(element: HTMLElement | null): element is HTMLElement {

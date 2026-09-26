@@ -26,7 +26,9 @@ import "./zen-taskbar.css";
  * 왼쪽은 지금 Theater의 Operation 목록이다. Theater는 이름을 눌러 위로 여는 메뉴에서 바꾸고,
  * 목록은 사이드바와 같은 상태별 보기 토글(같은 부품, Alt+S)을 따라 상태 또는 사용자 그룹으로 나뉜다.
  * 묶음 이름의 잉크가 사이드바와 같은 상태·그룹 색을 말하고, Operation 이름은 제 강조색을 입는다.
- * 지금 보는 Operation을 막대에서 한 번 더 누르면 최소화한다 — 작업 표시줄의 익숙한 토글이다.
+ * 지금 보는 Operation을 막대에서 한 번 더 누르면 최소화한다 — 작업 표시줄의 익숙한 토글이다. 최소화한 것은
+ * 사이드바의 최소화 칩과 같은 규칙으로 잉크를 한 단계 낮춰 「치워 둠」을 말한다.
+ * 묶음 이름을 누르면 그 묶음을 접는다 — 이름 옆에 개수만 남고 항목은 걷히되, 지금 보는 Operation은 남는다.
  * 막대가 모자라면 모든 묶음을 「이름 + 개수」 칩으로 접고, 지금 보는 Operation 하나만 자기
  * 묶음 칩 옆에 이름째 남긴다 — Operation이 몇 개로 늘어도 막대 길이가 묶음 수에만 비례한다.
  *
@@ -101,6 +103,30 @@ type OpenMenu =
   | { readonly kind: "group"; readonly key: string; readonly anchor: DOMRect };
 
 const MENU_SELECTOR = ".zen-taskbar-menu";
+
+// ── 묶음 접힘 ────────────────────────────────────────────────────────
+// Zen 작업 표시줄 전용의 세션 메모리다. 사이드바의 그룹 접힘(Theater별 영속)·상태 칸 접힘과 공유하지 않는다 —
+// 가로 한 줄 막대의 자리 사정은 세로 목록과 달라, 여기서 접은 것이 사이드바를 접으면 안 된다.
+// 키는 Theater + 묶음 키이고 묶음 키가 보기 축(status:/group:)을 품으므로 두 보기의 접힘은 따로 산다.
+let foldedGroups: ReadonlySet<string> = new Set();
+const foldListeners = new Set<() => void>();
+
+function subscribeFoldedGroups(listener: () => void): () => void {
+  foldListeners.add(listener);
+  return () => { foldListeners.delete(listener); };
+}
+
+function getFoldedGroups(): ReadonlySet<string> {
+  return foldedGroups;
+}
+
+function toggleFoldedGroup(key: string): void {
+  const next = new Set(foldedGroups);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  foldedGroups = next;
+  for (const listener of foldListeners) listener();
+}
 const MENU_GAP = 8;
 const MENU_WIDTH = 272;
 
@@ -122,6 +148,7 @@ export function ZenTaskbar({
   const t = useT();
   const statusAxis = useSideBarStatusAxis();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
+  const folded = useSyncExternalStore(subscribeFoldedGroups, getFoldedGroups, getFoldedGroups);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [compact, setCompact] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -328,20 +355,24 @@ export function ZenTaskbar({
     return { transform: drag.axis === "x" ? `translateX(${Math.round(drag.offset)}px)` : `translateY(${Math.round(drag.offset)}px)` };
   };
 
+  const foldKeyOf = (group: TaskbarGroup) => `${activeTheaterId ?? ""}\0${group.key}`;
+
   const accentOf = (operation: OperationNode): string | null => {
     const key = canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation);
     return key ? resolveAccentColor(key) : null;
   };
 
   const renderOperation = (entry: SideBarEntry, measuring: boolean) => {
-    const statusLabel = entry.status === "awaiting" ? t("sidebar.status.awaiting")
+    const activityLabel = entry.status === "awaiting" ? t("sidebar.status.awaiting")
       : entry.status === "running" || entry.status === "background" ? t("sidebar.status.running")
         : entry.status === "ended" ? t("zen.taskbar.ended") : t("sidebar.status.idle");
+    const statusLabel = entry.minimized ? `${activityLabel}, ${t("zen.taskbar.minimized")}` : activityLabel;
     const dragging = !measuring && drag?.dragging === true && drag.id === entry.operation.id;
     const className = [
       "zen-taskbar-op",
       entry.active ? "is-active" : "",
       !entry.minimized && entry.status !== "ended" ? "is-open" : "",
+      entry.minimized ? "is-minimized" : "",
       entry.status === "awaiting" ? "is-awaiting" : "",
       dragging ? "is-dragging" : "",
       reorderEnabled && !measuring ? "is-reorderable" : "",
@@ -379,6 +410,7 @@ export function ZenTaskbar({
         type="button"
         className="zen-taskbar-chip"
         data-zen-drop-chip=""
+        data-zen-fold-ops={foldOpsOf(group)}
         style={{ "--group-mark": group.color } as CSSProperties}
         data-zen-taskbar-menu-anchor=""
         aria-haspopup="menu"
@@ -394,19 +426,40 @@ export function ZenTaskbar({
     );
   };
 
-  const renderGroups = (mode: "expanded" | "compact", measuring: boolean): ReactNode => taskbarGroups.map((group, index) => (
-    <span key={group.key} className="zen-taskbar-group" data-zen-drop-group={measuring ? undefined : group.key}>
-      {index > 0 ? <span className="zen-taskbar-sep" aria-hidden="true" /> : null}
-      {mode === "compact" && !measuring
-        ? <>{renderGroupChip(group)}{group.entries.filter((entry) => entry.active).map((entry) => renderOperation(entry, false))}</>
-        : <>
-          <span className="zen-taskbar-group-label" data-zen-drop-label="" aria-hidden="true" style={{ "--group-mark": group.color } as CSSProperties}>
-            {group.label}
-          </span>
-          {group.entries.map((entry) => renderOperation(entry, measuring))}
-        </>}
-    </span>
-  ));
+  // 묶음 이름 — 눌러 접고 편다. 접힌 묶음은 이름 옆에 개수만 남기고 항목을 걷되, 지금 보는 Operation은
+  // 남긴다(넘쳐 접힌 칩과 같은 규칙). 측정용 사본도 같은 접힘으로 그려야 넘침 판정이 보이는 막대와 맞는다.
+  const renderGroupLabel = (group: TaskbarGroup, isFolded: boolean, measuring: boolean) => (
+    <button
+      type="button"
+      className={`zen-taskbar-group-label${isFolded ? " is-collapsed" : ""}`}
+      data-zen-drop-label=""
+      data-zen-fold-ops={!measuring && isFolded ? foldOpsOf(group) : undefined}
+      aria-expanded={!isFolded}
+      aria-label={t(isFolded ? "zen.taskbar.groupExpand" : "zen.taskbar.groupCollapse", { label: group.label, count: group.entries.length })}
+      tabIndex={measuring ? -1 : undefined}
+      style={{ "--group-mark": group.color } as CSSProperties}
+      onClick={measuring ? undefined : () => toggleFoldedGroup(foldKeyOf(group))}
+    >
+      {group.label}
+      {isFolded ? <span className="zen-taskbar-group-count" aria-hidden="true">{group.entries.length}</span> : null}
+      <FoldChevron />
+    </button>
+  );
+
+  const renderGroups = (mode: "expanded" | "compact", measuring: boolean): ReactNode => taskbarGroups.map((group, index) => {
+    const isFolded = folded.has(foldKeyOf(group));
+    return (
+      <span key={group.key} className="zen-taskbar-group" data-zen-drop-group={measuring ? undefined : group.key}>
+        {index > 0 ? <span className="zen-taskbar-sep" aria-hidden="true" /> : null}
+        {mode === "compact" && !measuring
+          ? <>{renderGroupChip(group)}{group.entries.filter((entry) => entry.active).map((entry) => renderOperation(entry, false))}</>
+          : <>
+            {renderGroupLabel(group, isFolded, measuring)}
+            {(isFolded ? group.entries.filter((entry) => entry.active) : group.entries).map((entry) => renderOperation(entry, measuring))}
+          </>}
+      </span>
+    );
+  });
 
   const openGroup = menu?.kind === "group" ? taskbarGroups.find((group) => group.key === menu.key) ?? null : null;
 
@@ -481,7 +534,7 @@ export function ZenTaskbar({
                 key={entry.operation.id}
                 type="button"
                 role="menuitem"
-                className={`zen-taskbar-menu-item${entry.active ? " is-active" : ""}${drag?.dragging && drag.id === entry.operation.id ? " is-dragging" : ""}`}
+                className={`zen-taskbar-menu-item${entry.active ? " is-active" : ""}${entry.minimized ? " is-minimized" : ""}${drag?.dragging && drag.id === entry.operation.id ? " is-dragging" : ""}`}
                 data-zen-op={entry.operation.id}
                 data-keep-operation-active=""
                 aria-current={entry.active ? "true" : undefined}
@@ -519,7 +572,9 @@ function menuPlacement(anchor: DOMRect): CSSProperties {
 
 /**
  * 포인터 자리에서 끌기의 도착점을 찾는다. 막대(x축)에서는 묶음 이름의 가운데보다 왼쪽이면 앞 묶음의 끝이고,
- * 그 밖에서는 가운데를 지나지 않은 첫 Operation 앞이다. 접힌 막대에서는 다른 묶음의 칩 위가 그 묶음의 끝이다.
+ * 그 밖에서는 가운데를 지나지 않은 첫 Operation 앞이다. 넘쳐 접힌 막대에서는 다른 묶음의 칩 위가 그 묶음의 끝이다.
+ * 사용자가 이름을 눌러 접은 묶음은 칩이 아니라 이름으로 서므로 펼친 막대의 규칙을 그대로 탄다 — 보이는 항목
+ * (지금 보는 Operation)이 없으면 그 이름의 오른쪽 절반이 묶음의 끝이다.
  * 메뉴(y축)는 묶음 하나라 Operation만 본다.
  */
 function findDropTarget(container: HTMLElement, axis: "x" | "y", point: number, sourceId: string): DropTarget | null {
@@ -565,6 +620,18 @@ function findDropTarget(container: HTMLElement, axis: "x" | "y", point: number, 
     previous = { key, end: last === null ? (axis === "x" ? containerRect.left : containerRect.top) : (axis === "x" ? last.right + 1 : last.bottom + 1) };
   }
   return previous === null ? null : { groupKey: previous.key, beforeId: null, line: lineAt(previous.end) };
+}
+
+/**
+ * 접힌 묶음의 끝점 표식 — 칩 속에 들어간 Operation id를 공백으로 잇는다. 최소화·복원 비행(panel-motion)이
+ * 막대에서 사라진 Operation의 착지점을 이 칩·이름에서 찾는다([data-zen-fold-ops~="id"]).
+ */
+function foldOpsOf(group: TaskbarGroup): string {
+  return group.entries.map((entry) => entry.operation.id).join(" ");
+}
+
+function FoldChevron() {
+  return <svg className="zen-taskbar-fold-chevron" viewBox="0 0 8 8" aria-hidden="true"><path d="M1.5 2.8 4 5.3l2.5-2.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 function UpChevron() {
