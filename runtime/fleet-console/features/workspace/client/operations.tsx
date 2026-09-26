@@ -28,6 +28,7 @@ import { SideBarEdgeDock } from "../../../core/client/src/chrome/components/pane
 import { RailToolIcons, RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
 import { useToolbarToolsSlot } from "../../../core/client/src/integration/toolbar-slots.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
+import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
 import { TriageSideBar } from "./sidebar/triage-side-bar.js";
 import { ZEN_TASKBAR_HEIGHT, ZenTaskbar } from "./zen/zen-taskbar.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
@@ -115,15 +116,23 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // Zen은 사이드바를 걷고 화면 아래에 작업 표시줄을 세운다 — 막대 높이만 아래 인셋으로 비운다.
   // Zen 바(종료·도구)는 사용자가 옮기는 부유 도구막대라 인셋에 불참한다(아래 Operation을 덮어도 된다는
   // 제품 결정).
+  const sideBarInset = sideBarOccupiedPx > 0 ? sideBarOccupiedPx + CHROME_FLOAT_GUTTER : 0;
   const arenaInsets: CanvasArenaInsets = useMemo(() => ({
-    left: sideBarOccupiedPx > 0 ? sideBarOccupiedPx + CHROME_FLOAT_GUTTER : 0,
+    left: sideBarInset,
     top: 0,
     right: railOccupiedPx > 0 ? railOccupiedPx + CHROME_FLOAT_GUTTER : 0,
     bottom: zenMode ? ZEN_TASKBAR_HEIGHT : 0,
-  }), [railOccupiedPx, sideBarOccupiedPx, zenMode]);
+  }), [railOccupiedPx, sideBarInset, zenMode]);
   useEffect(() => {
     setCanvasArenaInsets(arenaInsets);
   }, [arenaInsets]);
+  // 캔버스는 사이드바 카드가 여닫히는 동안 그 진행을 따라가는 인셋을 받는다 — 월드·companion·스냅 칸이
+  // 카드와 같은 속도로 움직인다. 스토어(fit-all 등 계산)에는 목표 인셋을 심어 전환 중에도 결론이 같다.
+  const followedSideBarInset = useSideBarFollowedInset(sideBarInset);
+  const canvasArenaInsets: CanvasArenaInsets = useMemo(
+    () => (followedSideBarInset === arenaInsets.left ? arenaInsets : { ...arenaInsets, left: followedSideBarInset }),
+    [arenaInsets, followedSideBarInset],
+  );
 
   const operationOrder = useMemo(
     () => sortedTheaterOperations(state).map((operation) => operation.id),
@@ -932,7 +941,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       <div className="operations-center-stage" ref={bodyRef} tabIndex={-1}>
         <OperationsCanvas
           state={state}
-          arenaInsets={arenaInsets}
+          arenaInsets={canvasArenaInsets}
           catalog={catalog}
           canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
@@ -949,7 +958,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onAlignNotice={handleAlignNotice}
         />
       </div>
-      <div className="operations-toast-region" style={{ left: arenaInsets.left, right: arenaInsets.right }}>
+      <div className="operations-toast-region" style={{ left: canvasArenaInsets.left, right: canvasArenaInsets.right }}>
         <div className="app-toast-host">{deletionToast}{alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}</div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
