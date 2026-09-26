@@ -208,6 +208,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
     readAiGatewaySettings: aiGatewayStore.read,
     assignRouting: (request, options) => assign(request, options?.signal),
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
+    // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
+    observeMuseCodeUsage: (windows) => quota.observe("muse-code", windows),
   });
   return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels };
 }
