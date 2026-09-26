@@ -609,7 +609,7 @@ function liftTopZIndex(toAtLeast: number): void {
   topZIndex = Math.max(topZIndex, toAtLeast);
 }
 
-export function ensureDefaultGeometry(sessionId: string, persisted?: OperationGeometry | null, initiallyMinimized = false): OperationGeometry {
+export function ensureDefaultGeometry(sessionId: string, persisted?: OperationGeometry | null): OperationGeometry {
   const existing = state.operations[sessionId];
   if (existing) return existing;
   const index = Object.keys(state.operations).length;
@@ -625,14 +625,7 @@ export function ensureDefaultGeometry(sessionId: string, persisted?: OperationGe
     geometry = { ...geometry, x: spot.x, y: spot.y };
   }
   liftTopZIndex(geometry.zIndex);
-  if (initiallyMinimized && getCompanionOperationId() === sessionId) forceDropCompanionOperationId();
-  // 첫 기하와 최소화를 한 스냅샷에 심어 새 휴면 패널이 펼쳐진 프레임을 만들지 않는다.
-  setState({
-    operations: { ...state.operations, [sessionId]: geometry },
-    ...(initiallyMinimized && !state.minimized.includes(sessionId)
-      ? { minimized: [...state.minimized, sessionId], snapHold: snapHoldWithout(state.snapHold, [sessionId]) }
-      : {}),
-  });
+  setState({ operations: { ...state.operations, [sessionId]: geometry } });
   return geometry;
 }
 
