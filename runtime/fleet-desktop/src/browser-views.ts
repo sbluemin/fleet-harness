@@ -48,6 +48,117 @@ export interface DesktopBrowserViewsDeps {
    * 창을 든 기계에서만 답할 수 있는 것. 없으면 그런 명령은 `desktop_shell_unsupported` 로 거절된다.
    */
   readonly shellCommand?: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+  /**
+   * 뷰 표면 PNG 에서 `crop`(원본 픽셀)을 잘라 `place` 크기로 맞추고, `size` 캔버스의 `place` 자리에 놓아 요청 형식의
+   * base64 로 돌려준다. 캔버스의 나머지(표면 밖)는 비어 있다. 있으면 clip 이 붙은 `Page.captureScreenshot` 을
+   * Chromium 의 캡처 에뮬레이션 없이 수행한다 — 없으면 명령을 그대로 보낸다.
+   */
+  readonly composeCapture?: (png: Buffer, plan: CapturePlan) => string;
+}
+
+export interface CaptureRect { x: number; y: number; width: number; height: number }
+
+/** 원본 표면에서 자를 자리(`crop`), 그 조각을 놓을 캔버스 자리(`place`), 캔버스 크기(`size`) — 모두 정수 픽셀. */
+export interface CapturePlan {
+  readonly crop: CaptureRect;
+  readonly place: CaptureRect;
+  readonly size: { readonly width: number; readonly height: number };
+  readonly format: "png" | "jpeg";
+  readonly quality: number;
+}
+
+/** CDP 가 jpeg quality 를 받지 않았을 때 Chromium 이 쓰는 값. */
+const DEFAULT_JPEG_QUALITY = 80;
+
+/**
+ * 이번 native 캡처의 명시적 안전 한도. 넘으면 오류로 끝내고 옛 clip 경로로 돌아가지 않는다 — 그 길은 사람이 보는 뷰를
+ * 깜빡이게 한다. 근거는 제품의 최대 임의 뷰포트(3840×2400 CSS, service.ts resolveBrowserViewportSize)다: 출력은 그 전체
+ * 캡처의 두 배까지, 원본 표면은 그 뷰포트를 배율 2 로 그린 크기까지. 모든 고DPI·대형 뷰포트 구성을 받는다는 보장은 아니고,
+ * 압축 크기에 걸리는 relay 한도와 같은 제한도 아니다. 한 건의 메모리는 대략 디코드한 표면 두 벌(원본·crop)과 출력 서너 벌
+ * (resize·캔버스·인코딩·base64)이며, 디코더·인코더 내부 버퍼는 이 추산에 들어 있지 않다.
+ */
+const CAPTURE_MAX_SIDE = 16_384;
+const CAPTURE_MAX_OUTPUT_PIXELS = 3840 * 2400 * 2;
+const CAPTURE_MAX_SURFACE_PIXELS = 7680 * 4800;
+/** 캡처는 한 번에 하나씩 돈다. 기다리는 줄이 이만큼 차면 새 캡처는 바로 거절한다 — 과부하 방지용 안전 제한. */
+const CAPTURE_QUEUE_LIMIT = 8;
+/** 한 캡처가 이보다 오래 줄에 있거나 돌면 만료한다(콘솔의 명령 시간 초과와 같은 값). 이미 보낸 CDP 명령은 취소되지 않는다. */
+const CAPTURE_TIMEOUT_MS = 60_000;
+/** 표면이 뷰포트보다 클 수 있는 몫 — 스크롤바(CSS px). 계산한 배율과 실제 표면이 이 이상 어긋나면 잘못 자르지 않고 멈춘다. */
+const CAPTURE_SCROLLBAR_ALLOWANCE_CSS = 32;
+
+interface ViewportCapture { readonly clip: CaptureRect; readonly scale: number; readonly format: "png" | "jpeg"; readonly quality: number }
+
+/**
+ * clip 이 붙은 캡처를 셸이 대신 풀 수 있는 모양인지. 전체 페이지(captureBeyondViewport)나 nativeImage 가 쓰지 못하는
+ * 형식은 Chromium 에 그대로 맡긴다.
+ */
+function viewportCapture(params: Record<string, unknown>): ViewportCapture | null {
+  if (params.captureBeyondViewport === true || params.fromSurface === false) return null;
+  const format = params.format === undefined || params.format === "png" ? "png" : params.format === "jpeg" ? "jpeg" : null;
+  if (!format) return null;
+  const clip = params.clip as Record<string, unknown> | undefined;
+  if (!clip || typeof clip !== "object") return null;
+  const x = Number(clip.x), y = Number(clip.y), width = Number(clip.width), height = Number(clip.height);
+  const scale = clip.scale === undefined ? 1 : Number(clip.scale);
+  if (![x, y, width, height, scale].every(Number.isFinite) || width <= 0 || height <= 0 || scale <= 0) return null;
+  const quality = typeof params.quality === "number" && Number.isFinite(params.quality) ? Math.min(100, Math.max(0, Math.round(params.quality))) : DEFAULT_JPEG_QUALITY;
+  return { clip: { x, y, width, height }, scale, format, quality };
+}
+
+interface CaptureScales {
+  /** 출력 px ÷ CSS px — Chromium 의 clip 계약(CSS × clip.scale × 기기 배율). 페이지 스케일은 들어가지 않는다. */
+  readonly output: number;
+  /** 원본 표면 px ÷ CSS px — 기기 배율 × 페이지 스케일. 뷰포트 meta 가 없는 모바일 페이지는 1보다 작아진다. */
+  readonly source: number;
+  /** 스크롤바를 뺀 뷰포트(CSS px). */
+  readonly viewport: { readonly width: number; readonly height: number };
+}
+
+function captureScales(metrics: unknown, clipScale: number): CaptureScales | null {
+  const box = (value: unknown) => (value && typeof value === "object" ? value as Record<string, unknown> : {});
+  const visual = box((metrics as Record<string, unknown> | null)?.visualViewport);
+  const css = box((metrics as Record<string, unknown> | null)?.cssVisualViewport);
+  const device = Number(visual.clientWidth) / Number(css.clientWidth);
+  const pageScale = visual.scale === undefined ? 1 : Number(visual.scale);
+  const width = Number(css.clientWidth), height = Number(css.clientHeight);
+  if (![device, pageScale, width, height].every(Number.isFinite) || device <= 0 || pageScale <= 0 || width <= 0 || height <= 0) return null;
+  return { output: clipScale * device, source: device * pageScale, viewport: { width, height } };
+}
+
+const safeSize = (width: number, height: number, maxPixels: number): boolean =>
+  Number.isSafeInteger(width) && Number.isSafeInteger(height) && width >= 1 && height >= 1
+  && width <= CAPTURE_MAX_SIDE && height <= CAPTURE_MAX_SIDE && width * height <= maxPixels;
+
+/**
+ * 요청 clip(뷰포트 CSS 좌표)을 원본 표면 위의 자르기와 요청 크기 캔버스 위의 자리로 옮긴다. 표면 밖으로 나간 부분은
+ * 늘리지 않고 비워 둔다 — 출력 1px 이 늘 같은 CSS 거리여야 콘솔이 알린 offset·배율로 되짚은 좌표가 맞는다.
+ */
+function capturePlan(capture: ViewportCapture, scales: CaptureScales, surface: { width: number; height: number }): CapturePlan {
+  const { clip } = capture;
+  const size = { width: Math.round(clip.width * scales.output), height: Math.round(clip.height * scales.output) };
+  if (!safeSize(size.width, size.height, CAPTURE_MAX_OUTPUT_PIXELS)) throw new Error("browser_capture_region_too_large");
+  // 계산한 원본 배율이 실제 표면과 맞는지 — 어긋나면 엉뚱한 곳을 자르게 되므로 조용히 진행하지 않는다.
+  const slack = CAPTURE_SCROLLBAR_ALLOWANCE_CSS * scales.source + 2;
+  const expected = { width: scales.viewport.width * scales.source, height: scales.viewport.height * scales.source };
+  if (surface.width + 2 < expected.width || surface.width > expected.width + slack || surface.height + 2 < expected.height || surface.height > expected.height + slack) {
+    throw new Error("browser_capture_geometry_mismatch");
+  }
+  // 표면이 담은 CSS 범위(스크롤바 포함)와 clip 의 교집합.
+  const x0 = Math.max(clip.x, 0), y0 = Math.max(clip.y, 0);
+  const x1 = Math.min(clip.x + clip.width, surface.width / scales.source), y1 = Math.min(clip.y + clip.height, surface.height / scales.source);
+  const crop = { x: Math.round(x0 * scales.source), y: Math.round(y0 * scales.source), width: 0, height: 0 };
+  crop.width = Math.min(surface.width, Math.round(x1 * scales.source)) - crop.x;
+  crop.height = Math.min(surface.height, Math.round(y1 * scales.source)) - crop.y;
+  if (!(x1 > x0 && y1 > y0) || crop.width < 1 || crop.height < 1) throw new Error("browser_capture_outside_viewport");
+  const whole = x0 === clip.x && y0 === clip.y && x1 === clip.x + clip.width && y1 === clip.y + clip.height;
+  let place: CaptureRect = { x: 0, y: 0, width: size.width, height: size.height };
+  if (!whole) {
+    const x = Math.min(size.width - 1, Math.round((x0 - clip.x) * scales.output));
+    const y = Math.min(size.height - 1, Math.round((y0 - clip.y) * scales.output));
+    place = { x, y, width: Math.max(1, Math.min(size.width - x, Math.round((x1 - x0) * scales.output))), height: Math.max(1, Math.min(size.height - y, Math.round((y1 - y0) * scales.output))) };
+  }
+  return { crop, place, size, format: capture.format, quality: capture.quality };
 }
 
 export interface DesktopBrowserViews {
@@ -66,6 +177,34 @@ interface LiveView {
   lastBounds: { x: number; y: number; width: number; height: number } | null;
 }
 
+/**
+ * clip 을 Chromium 에 넘기면 캡처하는 동안 라이브 뷰에 디바이스 에뮬레이션(배율·viewport offset)이 걸린다 — 사람이 보고
+ * 있는 뷰가 한두 프레임 축소된 페이지와 검은 바탕으로 깜빡이고, 스크롤한 페이지에서는 clip 이 문서 좌표로 읽혀 빈 프레임이
+ * 나온다. 그래서 셸은 지금 그려진 표면을 clip 없이 받고, 콘솔이 뜻한 뷰포트 CSS 좌표의 clip 과 배율을 여기서 적용한다.
+ * `alive` 가 거짓이 되면(만료·중지·뷰 소멸) 늦게 도착한 CDP 응답으로 native 처리를 이어 가지 않는다.
+ */
+async function captureWithoutEmulation(entry: LiveView, capture: ViewportCapture, compose: NonNullable<DesktopBrowserViewsDeps["composeCapture"]>, alive: () => boolean): Promise<{ data: string }> {
+  const target = entry.view.webContents.debugger;
+  const metrics = await target.sendCommand("Page.getLayoutMetrics", {});
+  if (!alive()) throw new Error("browser_capture_expired");
+  const scales = captureScales(metrics, capture.scale);
+  if (!scales) throw new Error("browser_capture_geometry_unavailable");
+  // 표면을 받기 전에 출력 한도부터 — 받을 필요도 없는 캡처로 큰 PNG 를 만들지 않는다.
+  const output = { width: Math.round(capture.clip.width * scales.output), height: Math.round(capture.clip.height * scales.output) };
+  if (!safeSize(output.width, output.height, CAPTURE_MAX_OUTPUT_PIXELS)) throw new Error("browser_capture_region_too_large");
+  const surface = await target.sendCommand("Page.captureScreenshot", { format: "png" }) as { data?: unknown };
+  if (!alive()) throw new Error("browser_capture_expired");
+  if (typeof surface.data !== "string") throw new Error("browser_capture_invalid_image");
+  const png = Buffer.from(surface.data, "base64");
+  if (png.length < 24 || png.readUInt32BE(0) !== 0x89504e47) throw new Error("browser_capture_invalid_image");
+  // 디코드 전에 헤더로 표면 크기부터 본다.
+  const dimensions = { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+  if (!safeSize(dimensions.width, dimensions.height, CAPTURE_MAX_SURFACE_PIXELS)) throw new Error("browser_capture_surface_too_large");
+  const plan = capturePlan(capture, scales, dimensions);
+  if (!alive()) throw new Error("browser_capture_expired");
+  return { data: compose(png, plan) };
+}
+
 export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): DesktopBrowserViews {
   const fetchFor = deps.fetch ?? globalThis.fetch;
   const log = deps.log ?? (() => {});
@@ -78,6 +217,13 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[] } = emptyOutbox();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let flushing: Promise<void> = Promise.resolve();
+  /**
+   * 이 셸의 native 캡처 줄 — 동시에 도는 디코드·합성을 한 건으로 줄인다. 만료된 캡처가 남긴 CDP 명령은 취소되지 않으므로
+   * 메모리·처리가 늘 한 건이라는 보장은 아니다.
+   */
+  let captureChain: Promise<void> = Promise.resolve();
+  let capturesWaiting = 0;
+  const captureTasks = new Set<{ expire: () => void }>();
 
   function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[] }; }
 
@@ -234,6 +380,47 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (report) push({ detached: [id] });
   };
 
+  /**
+   * 캡처 한 건을 줄에 세운다. 결과는 한 번만 올라가고, 시간 초과·중지·뷰 소멸 뒤에는 늦게 온 결과를 버린다. 한 건이
+   * 멎어도 만료 타이머가 줄을 풀어 다음 캡처가 진행된다.
+   */
+  const enqueueCapture = (id: number, entry: LiveView, capture: ViewportCapture, compose: NonNullable<DesktopBrowserViewsDeps["composeCapture"]>): void => {
+    if (capturesWaiting >= CAPTURE_QUEUE_LIMIT) { push({ results: [{ id, error: "browser_capture_busy" }] }); return; }
+    const token = session;
+    let expired = false;
+    let settled = false;
+    let release: (() => void) | null = null;
+    const settle = (outcome: { result?: unknown; error?: string }): void => {
+      if (settled) return;
+      settled = true;
+      // 중지나 다른 콘솔로의 이동 뒤에는 새 연결의 outbox 로 옛 명령의 답을 흘리지 않는다.
+      if (session === token) push({ results: [{ id, ...outcome }] });
+    };
+    const task = {
+      expire: (): void => {
+        if (expired) return;
+        expired = true;
+        clearTimeout(timer);
+        settle({ error: "desktop_command_timeout" });
+        release?.();
+      },
+    };
+    const timer = setTimeout(task.expire, CAPTURE_TIMEOUT_MS);
+    const alive = (): boolean => !expired && session === token && live.get(entry.spec.id) === entry && entry.attached && !entry.view.webContents.isDestroyed();
+    captureTasks.add(task);
+    capturesWaiting += 1;
+    captureChain = captureChain.then(() => new Promise<void>((resolve) => {
+      capturesWaiting -= 1;
+      let done = false;
+      release = () => { if (done) return; done = true; clearTimeout(timer); captureTasks.delete(task); resolve(); };
+      if (expired) { release(); return; }
+      if (!alive()) { settle({ error: "desktop_view_missing" }); release(); return; }
+      captureWithoutEmulation(entry, capture, compose, alive)
+        .then((result) => { if (alive()) settle({ result }); else if (!expired) settle({ error: "desktop_view_missing" }); }, (error: unknown) => { if (!expired) settle({ error: error instanceof Error ? error.message : "desktop_command_failed" }); })
+        .finally(() => release?.());
+    })).catch(() => undefined);
+  };
+
   const run = (command: DesktopBrowserSnapshot["commands"][number]): void => {
     if (executed.has(command.id)) return;
     executed.add(command.id);
@@ -252,6 +439,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     }
     const entry = live.get(command.viewId);
     if (!entry || !entry.attached) { push({ results: [{ id: command.id, error: "desktop_view_missing" }] }); return; }
+    const capture = command.method === "Page.captureScreenshot" && deps.composeCapture ? viewportCapture(command.params) : null;
+    if (capture && deps.composeCapture) { enqueueCapture(command.id, entry, capture, deps.composeCapture); return; }
     entry.view.webContents.debugger.sendCommand(command.method, command.params)
       .then((result) => push({ results: [{ id: command.id, result }] }))
       .catch((error: unknown) => push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }));
@@ -297,6 +486,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
 
   function stop(): void {
     session += 1;
+    for (const task of [...captureTasks]) task.expire();
     stream.stop();
     for (const id of [...live.keys()]) drop(id, false);
     executed.clear();
