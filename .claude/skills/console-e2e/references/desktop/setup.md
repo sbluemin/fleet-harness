@@ -20,7 +20,7 @@ Use a unique CDP port and agent-browser session. CDP grants full renderer contro
 
 1. Read root and `runtime/fleet-desktop/CLAUDE.md`.
 2. Record OS/architecture, source commit, Electron version, and whether the target is dev, unpacked, unsigned, or signed release.
-3. Inspect running Fleet Desktop/Console processes and locks. Do not quit the installed user app, delete a lock, or signal a process you did not launch.
+3. Inspect running Fleet Desktop/Console processes and locks. Do not quit the installed user app, delete a lock, or signal a process you did not launch. If terminal or SDK/chat agents may start, complete [Claude state and trust preflight](../claude-state.md) before launch; pass its explicit environment to `pnpm desktop` and verify the owned Console child's selected non-secret paths and run-specific files using the preflight's boundary evidence, never a full environment dump. Desktop data isolation does not isolate Claude state.
 4. Build Console and Desktop from the target checkout. Ensure the package manager binary is also on `PATH` because nested package scripts invoke it by name.
 5. Record the rollback point and owned resources: app PID/session, CDP port, Console directory/lock, log path, screenshots, and package output.
 6. Confirm the launch by a CDP page target, never by a live process. A main-process failure still leaves helper processes running, so a process list cannot distinguish a booted app from a failed one, and the failure is waiting on the user's screen as a modal dialog. Missing target, unwritten data directory, or a launcher that returns while processes persist all mean the app did not boot: read the failure before relaunching, and never repeat a blind launch.

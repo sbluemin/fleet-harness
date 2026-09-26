@@ -22,6 +22,7 @@ Read references only when starting the corresponding activity.
 
 | Situation | Read and use |
 |---|---|
+| Any run that may start Claude CLI or an SDK child, including chat | [Claude state and trust preflight](references/claude-state.md), before booting the host or launching an Operation |
 | Browser build and boot | [Isolated Console setup](references/setup.md) |
 | Browser connection, interaction, diagnostics, session cleanup | [agent-browser](references/agent-browser.md) — default driver |
 | agent-browser unavailable or blocked in this environment | [Fleet Browser fallback](references/fleet-browser.md); record why before switching |
