@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { resultInputSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
+import { EvidenceError, readOwnedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { criterionProposalSchema, followupBodySchema, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
@@ -13,7 +14,7 @@ import { nearbyObjectives } from "./nearby.js";
 /**
  * `fleet-objectives` — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Operation 에 실리므로
  * 권한은 호스트가 넘긴 호출자(`context.caller`)로 여기서 가른다: 읽기는 그 목표의 참여자만, 쓰기는 지휘관만.
- * 구성원은 읽기만 한다 — 결과는 지휘관에게 SendMessage 로 보고하고 지휘관이 기록한다. 화면 제스처는 없다.
+ * 구성원은 보드를 읽고 자기 root의 증거만 보존할 수 있다 — 결과물 연결·보드 기록은 지휘관이 한다. 화면 제스처는 없다.
  * 구상 중(「구상」을 누른 뒤 「개시」 전)에는 편성만 쓴다 — 임무 완료·기동은 거절한다.
  *
  * 문구 원칙 — 도구 설명·힌트·안내는 메타적으로 가볍게: 도구가 무엇인지와 사실·경계(권한·소유·비용·보드 일관성)만 말하고,
@@ -63,7 +64,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       const parsed = schema.safeParse(raw ?? {});
       if (!parsed.success) return refuse("invalid_arguments");
       try { return await run(parsed.data, context.caller, context); }
-      catch (error) { return error instanceof ObjectiveStoreError ? refuse(error.code, error.details) : refuse("objectives_failed"); }
+      catch (error) { return error instanceof ObjectiveStoreError ? refuse(error.code, error.details) : error instanceof EvidenceError ? refuse(error.code, error.reason ? { reason: error.reason } : {}) : refuse("objectives_failed"); }
     },
   });
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Operation 에게는 참여자가 아님을 말한다. */
@@ -71,13 +72,13 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     tool(name, `Commander only. ${description}`, schema, (args, caller) => {
       const objective = find((args as { objectiveId: string }).objectiveId);
       const role = roleIn(objective, caller);
-      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it reads the objective but does not change it; the Commander receives reports and decisions to make by SendMessage to its session.", commander: { session: objective.commander.sessionName, ...(objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) } });
+      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it reads the board and may seal its own evidence, but only the Commander changes the board; the Commander receives reports and decisions to make by SendMessage to its session.", commander: { session: objective.commander.sessionName, ...(objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) } });
       if (!role) return refuse("not_participant");
       return run(args, objective, caller!);
     });
 
   return [
-    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective.`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from their own host-owned temporary root, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective.`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findMember(caller.operationId);
       if (assigned) {
@@ -102,6 +103,14 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!roleIn(find(objectiveId), caller)) return refuse("not_participant");
       const scope = context.ownedTemp?.read() ?? { error: "scope_unavailable", reason: "not_issued" };
       return "error" in scope ? refuse(scope.error, { reason: scope.reason }) : text({ scopeId: scope.id, root: scope.root, note: "Bash temporary files may be outside this root." });
+    }),
+    tool("seal_evidence_from_path", `Copy a file from this participating session's host-owned temporary root into this objective's evidence store. PNG, JPEG, WebP and GIF images are limited to ${RESULT_LIMITS.imageBytes / 1024 / 1024} MiB; UTF-8 MD, TXT, LOG and JSON text to ${RESULT_LIMITS.textBytes / 1024 / 1024} MiB. Symlinks, hardlinks, non-regular files, other roots and files changed during reading are refused. The returned evidenceId is an immutable copy; only the Commander attaches it as a result. Unattached copies expire after ${RESULT_LIMITS.pendingEvidenceTtlMs / 3_600_000} hours.`, z.object({ objectiveId: ids, path: z.string().min(1).max(RESULT_LIMITS.sourcePath) }).strict(), async ({ objectiveId, path: source }, caller, context) => {
+      if (!roleIn(find(objectiveId), caller)) return refuse("not_participant");
+      const bytes = await readOwnedEvidence(source, context.ownedTemp, context.signal);
+      // 읽기를 기다리는 동안 명단이 바뀌었다면 그 목표에 bytes를 남기지 않는다.
+      if (!roleIn(find(objectiveId), caller) || caller?.kind !== "operation") return refuse("not_participant");
+      const sealed = store.evidenceSeal(objectiveId, caller.operationId, bytes);
+      return text({ ...sealed, expiresAt: sealed.capturedAt + RESULT_LIMITS.pendingEvidenceTtlMs });
     }),
     commanderTool("attach_result", `Attach a PR or sealed evidence reference to this objective. At most ${RESULT_LIMITS.count} results, including ${RESULT_LIMITS.evidenceCount} evidence files. PR URLs support github.com only; their status is server-observed, not caller-supplied. Evidence requires an evidenceId sealed for this objective; raw paths and URLs are not accepted as evidence. Duplicate targets are refused as result_exists. Results do not change missions, criteria, or hand-off readiness.`,
       z.object({ objectiveId: ids, result: resultInputSchema }).strict(),

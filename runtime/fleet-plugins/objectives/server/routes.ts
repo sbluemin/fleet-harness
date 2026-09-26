@@ -45,7 +45,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     return true;
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
-    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_objective", "unknown_mission", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_proposal", "unknown_group", "unknown_followup"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
+    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_objective", "unknown_mission", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_proposal", "unknown_group", "unknown_followup", "unknown_evidence", "unknown_result"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
     const code = error instanceof Error ? error.message : "objective_failed";
     ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "objective_failed" });
   };
@@ -91,6 +91,21 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       res.writeHead(200, { "Content-Type": attachment.type, "Content-Length": data.length, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "private, max-age=3600", "Content-Security-Policy": "default-src 'none'" });
       res.end(data);
     } catch { ctx.host.http.writeJson(res, 404, { error: "unknown_attachment" }); }
+    return true;
+  };
+
+  const resultFile: RouteHandler = async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const params = query(req);
+    try {
+      const { data, metadata } = await store.evidenceRead(params.get("objectiveId") ?? "", params.get("resultId") ?? "");
+      res.writeHead(200, { "Content-Type": metadata.mediaType === "text/plain" ? "text/plain; charset=utf-8" : metadata.mediaType, "Content-Length": data.length, "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "private, no-store", "Content-Security-Policy": "default-src 'none'" });
+      res.end(data);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") ctx.host.http.writeJson(res, 404, { error: "unknown_evidence" });
+      else fail(res, error);
+    }
     return true;
   };
 
@@ -221,6 +236,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "criterion/approve-all", method: "POST", summary: "Approve all proposed success criterion changes.", handler: json(objectiveRef, ({ objectiveId }) => objective(store.proposalsApproveAll(objectiveId))) },
     { name: "criterion/reject", method: "POST", summary: "Reject one proposed success criterion change.", handler: json(objectiveRef.extend({ proposalId: ids }), ({ objectiveId, proposalId }) => objective(store.proposalReject(objectiveId, proposalId))) },
     { name: "criterion/annotate", method: "POST", summary: "Annotate a proposed success criterion change (empty text removes the annotation).", handler: json(objectiveRef.extend({ proposalId: ids, annotation: z.string().max(300) }), ({ objectiveId, proposalId, annotation }) => objective(store.proposalAnnotate(objectiveId, proposalId, annotation))) },
+    { name: "result/file", method: "GET", summary: "Read preserved evidence by objectiveId and resultId; images are inline and documents are plain UTF-8 text.", handler: resultFile },
     { name: "attachment/add", method: "POST", summary: "Attach an image to an objective's brief (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per objective).", handler: attachmentAdd },
     { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },
     { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(objectiveRef.extend({ attachmentId: ids }), steerable(() => true, ({ objectiveId, attachmentId }) => edited(["note"], () => store.attachmentRemove(objectiveId, attachmentId)))) },

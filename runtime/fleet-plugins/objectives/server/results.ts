@@ -9,9 +9,11 @@ export const RESULT_LIMITS = {
   totalEvidenceBytes: 100 * 1024 * 1024,
   pendingEvidence: 20,
   pendingEvidenceTtlMs: 24 * 60 * 60 * 1000,
+  evidenceGcMs: 60 * 60 * 1000,
   label: 120,
   note: 300,
   url: 2048,
+  sourcePath: 4096,
   prRefreshMs: 60 * 1000,
   prSettledRefreshMs: 15 * 60 * 1000,
   prTimeoutMs: 15 * 1000,
@@ -63,6 +65,9 @@ export const evidenceMetadataSchema = z.object({
   capturedAt: timestamp,
 }).strict().refine((value) => value.mediaType !== "text/plain" || value.bytes <= RESULT_LIMITS.textBytes);
 export type EvidenceMetadata = z.output<typeof evidenceMetadataSchema>;
+/** 미첨부 증거도 목표가 보존한다. 소유 Operation은 서버 manifest에만 남는다. */
+export const storedEvidenceSchema = evidenceMetadataSchema.safeExtend({ ownerOperationId: z.string().min(1).max(128) });
+export type StoredEvidence = z.output<typeof storedEvidenceSchema>;
 
 export class ResultValidationError extends Error {
   constructor(readonly code: string) { super(code); }

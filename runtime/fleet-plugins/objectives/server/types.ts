@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ObjectiveResult } from "./results.js";
+import type { ObjectiveResult, StoredEvidence } from "./results.js";
 export type { ObjectiveResult, PrObservation } from "./results.js";
 
 /**
@@ -278,6 +278,8 @@ export interface StoredObjective {
   readonly attachments?: readonly ObjectiveAttachment[];
   /** 지휘관이 붙인 결과물 — 브리핑 입력·임무 기록·완료 조건과 별개다. */
   readonly results?: readonly ObjectiveResult[];
+  /** 서버 전용 bytes manifest. 브라우저에는 results의 공개 metadata만 보낸다. */
+  readonly evidence?: readonly StoredEvidence[];
   readonly dueDate?: string;
   readonly today?: true;
   /** 에이전트가 도구로 더한 목표 — 더한 Operation. 사람이 만든 목표에는 없다. */

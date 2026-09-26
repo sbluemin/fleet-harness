@@ -10,6 +10,7 @@ import { createGhPrLookup, createPrStatusService, type PrStatusService } from ".
 import { createObjectiveRoutes } from "./server/routes.js";
 import { createObjectiveStore } from "./server/store.js";
 import { OBJECTIVE_CHANNEL } from "./server/types.js";
+import { RESULT_LIMITS } from "./server/results.js";
 
 /**
  * 목표 — Theater 의 에이전트 Operation 하나하나가 목표다.
@@ -57,6 +58,11 @@ export default definePlugin({
     } });
     prStatus = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: ctx.host.paths.consoleDataDir }), onError: (code) => console.warn(`[objectives] ${code}`) });
     ctx.host.lifecycle.registerCleanup(() => prStatus!.dispose());
+    const collectEvidence = () => { try { store.evidenceCollect(); } catch { console.warn("[objectives] evidence_cleanup_failed"); } };
+    collectEvidence();
+    const evidenceGc = setInterval(collectEvidence, RESULT_LIMITS.evidenceGcMs);
+    evidenceGc.unref?.();
+    ctx.host.lifecycle.registerCleanup(() => clearInterval(evidenceGc));
 
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
     const launch = createLaunchService(ctx, store);
