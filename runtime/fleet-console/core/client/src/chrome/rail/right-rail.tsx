@@ -19,7 +19,7 @@ import { getState, subscribe } from "../../integration/store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
-import { closeRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, setRailChromeExpanded, setRailPeeking, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth, useRailPeeking } from "./rail-store.js";
+import { closeRailPanel, getRailStoreSnapshot, openRailPanel, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, setRailChromeExpanded, setRailPeeking, toggleRailPanel, useRailActivePanelId, useRailChromeExpanded, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth, useRailPeeking } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   clearStoredPanelWidth,
@@ -75,9 +75,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const soloMaxWidthRef = useRef(soloMaxWidth);
   soloMaxWidthRef.current = soloMaxWidth;
   const extraWidth = soloWidth === null ? requestedExtraWidth : 0;
-  // Zen에서는 레일 접힘 선호를 보지 않는다 — 아이콘 열이 작업 표시줄 트레이로 옮겨 가고 카드는 도구를 고를 때만
-  // 서므로, 접어 둔 채 Zen에 들어와도 트레이에서 고른 도구가 떠야 한다. 선호 자체는 그대로라 Zen을 끄면 다시 접힌다.
-  const railChromeExpanded = useRailChromeExpanded() || zenMode;
+  const railChromeExpanded = useRailChromeExpanded();
   const railPeeking = useRailPeeking();
   const overlayAlpha = useRailOverlayAlpha();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
@@ -363,6 +361,21 @@ export function useRailPanelContext(
  * 온보딩 앵커가 그 id를 가리키고, 두 줄이 함께 DOM에 있으므로(Zen 중 세로 열은 hidden) 한쪽만
  * 가져야 id가 겹치지 않는다.
  */
+/**
+ * 트레이(가로 줄)에서 도구를 고른다. Zen은 레일의 펼침 플래그를 내려 패널 카드를 숨기므로(zen-chrome-toggles),
+ * 레일을 접어 둔 채거나 Zen 토글로 숨긴 채 트레이에서 고르면 먼저 펼친다 — 사용자가 명시적으로 연 것이므로
+ * Zen의 레일 드러냄과 같은 규칙이다. 이미 보이는 패널을 다시 고르면 평소처럼 닫는다.
+ */
+function toggleRailPanelFromTray(id: string): void {
+  const rail = getRailStoreSnapshot();
+  if (!rail.railChromeExpanded) {
+    setRailChromeExpanded(true);
+    if (rail.activePanelId !== id) openRailPanel(id);
+    return;
+  }
+  toggleRailPanel(id);
+}
+
 export function RailToolIcons({ context, orientation }: { readonly context: RailToolContext; readonly orientation: "column" | "row" }) {
   const t = useT();
   const language = context.language;
@@ -418,7 +431,7 @@ export function RailToolIcons({ context, orientation }: { readonly context: Rail
         aria-controls={activePanelId === SETTINGS_RAIL_ENTRY_ID ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
         aria-label={t("settings.title")}
         title={t("settings.title")}
-        onClick={() => toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)}
+        onClick={() => (anchored ? toggleRailPanel(SETTINGS_RAIL_ENTRY_ID) : toggleRailPanelFromTray(SETTINGS_RAIL_ENTRY_ID))}
       >
         <GearGlyph />
       </button>
@@ -580,8 +593,9 @@ function RailIcon({ entry, context, language, isActive, anchored }: RailIconProp
       entry.activate(context);
       return;
     }
-    toggleRailPanel(entry.id);
-  }, [context, entry]);
+    if (anchored) toggleRailPanel(entry.id);
+    else toggleRailPanelFromTray(entry.id);
+  }, [anchored, context, entry]);
   useShortcutOverrides();
   const command = CORE_SHORTCUT_COMMANDS.find((candidate) => candidate.railEntryId === entry.id);
   const shortcut = command === undefined ? "" : shortcutCommandLabel(command.id);
