@@ -31,6 +31,22 @@ function syncAnimatingFlag(): void {
   else document.body.removeAttribute(ANIMATING_ATTRIBUTE);
 }
 
+/**
+ * 다음 프레임에 부른다. transitionend·약속 콜백 안에서 건 rAF는 같은 프레임의 콜백 목록에 들어가 그 프레임
+ * 스타일 계산 전에 돈다 — 억제 플래그를 걷는 일이 마지막 인셋 커밋과 한 프레임에 겹치면 그 몇 px이 패널
+ * 글라이드를 탄다. 한 번 더 미뤄 마지막 커밋의 스타일 계산이 플래그 아래에서 끝나게 한다.
+ */
+function afterNextFrame(callback: () => void): () => void {
+  let inner = 0;
+  const outer = requestAnimationFrame(() => {
+    inner = requestAnimationFrame(callback);
+  });
+  return () => {
+    cancelAnimationFrame(outer);
+    cancelAnimationFrame(inner);
+  };
+}
+
 function isSideBarWidthTransition(event: TransitionEvent): boolean {
   if (event.propertyName !== "width") return false;
   const target = event.target;
@@ -44,7 +60,7 @@ export function observeSideBarCollapseMotion(): () => void {
   // 버블링된 전환 이벤트를 받는다. 동시에 두 개가 살아 있지 않아 참조 계수는 필요하지 않다.
   let animating: HTMLElement | null = null;
   let detachWatch: number | null = null;
-  let deferredClear: number | null = null;
+  let deferredClear: (() => void) | null = null;
 
   const clear = () => {
     animating = null;
@@ -53,7 +69,7 @@ export function observeSideBarCollapseMotion(): () => void {
       detachWatch = null;
     }
     if (deferredClear !== null) {
-      cancelAnimationFrame(deferredClear);
+      deferredClear();
       deferredClear = null;
     }
     transitionHoldsFlag = false;
@@ -83,7 +99,7 @@ export function observeSideBarCollapseMotion(): () => void {
     if (!isSideBarWidthTransition(event)) return;
     // 되돌리기(cancel 직후 새 run)는 이전 종료가 예약한 해제를 무른다 — 새 전환 도중 플래그가 걷히면 안 된다.
     if (deferredClear !== null) {
-      cancelAnimationFrame(deferredClear);
+      deferredClear();
       deferredClear = null;
     }
     animating = event.target as HTMLElement;
@@ -91,12 +107,12 @@ export function observeSideBarCollapseMotion(): () => void {
     syncAnimatingFlag();
     if (detachWatch === null) watchForDetach();
   };
-  // 해제는 한 프레임 미룬다. 아레나 인셋 추종(useSideBarFollowedInset)의 마지막 커밋이 전환이 끝난 그 프레임에
+  // 해제는 다음 프레임으로 미룬다. 아레나 인셋 추종(useSideBarFollowedInset)의 마지막 커밋이 전환이 끝난 그 프레임에
   // 서는데, 그때 플래그가 이미 걷혀 있으면 마지막 몇 px이 되살아난 패널 글라이드를 탄다.
   const stop = (event: TransitionEvent) => {
     if (!isSideBarWidthTransition(event)) return;
-    if (deferredClear !== null) cancelAnimationFrame(deferredClear);
-    deferredClear = requestAnimationFrame(() => {
+    deferredClear?.();
+    deferredClear = afterNextFrame(() => {
       deferredClear = null;
       clear();
     });
@@ -135,25 +151,39 @@ export function useSideBarFollowedInset(targetInset: number): number {
   useLayoutEffect(() => {
     if (settledTargetRef.current === targetInset) return;
     settledTargetRef.current = targetInset;
-    const fromInset = shownRef.current;
     const card = typeof document === "undefined" ? null : document.querySelector<HTMLElement>(`.${SIDE_BAR_CLASS}`);
-    const driver = card ? followDriverFor(card) : null;
-    if (!driver) {
+    let driver = card ? followDriverFor(card) : null;
+    if (!card || !driver) {
       setFollowed(null);
       return;
     }
-    const insetNow = () => {
-      const progress = driver.progress();
-      if (progress === null) return targetInset;
+    // 지금 구동의 출발 인셋과, 마지막으로 커밋한 인셋. 구동이 바뀌면(아래 인계) 보이는 자리에서 다시 출발한다.
+    let fromInset = shownRef.current;
+    let lastInset = fromInset;
+    // 진행을 읽을 수 없으면(끊긴 전환) 지금 자리를 지킨다 — 목표는 finish만 세운다.
+    const insetNow = (current: FollowDriver) => {
+      const progress = current.progress();
+      if (progress === null) return lastInset;
       return fromInset + Math.min(1, Math.max(0, progress)) * (targetInset - fromInset);
     };
     let active = true;
     let frame = 0;
+    const commit = (inset: number | null) => {
+      if (inset !== null) lastInset = inset;
+      // rAF·약속 콜백의 갱신은 기본 우선순위로 미뤄져 페인트보다 늦을 수 있다 — 같은 프레임에 커밋한다.
+      flushSync(() => setFollowed(inset));
+    };
+    let handover = 0;
     const tick = () => {
       frame = requestAnimationFrame(() => {
-        if (!active) return;
-        // rAF 안의 갱신은 기본 우선순위로 미뤄져 페인트보다 늦을 수 있다 — 같은 프레임에 커밋한다.
-        flushSync(() => setFollowed(insetNow()));
+        if (!active || !driver) return;
+        // 끝난 프레임에 바로 목표를 세운다 — finished 약속은 이 프레임보다 늦게 풀릴 수 있고, 그사이 억제
+        // 플래그가 걷히면 마지막 몇 px이 패널 글라이드를 탄다.
+        if (driver.done()) {
+          finish();
+          return;
+        }
+        commit(insetNow(driver));
         tick();
       });
     };
@@ -161,19 +191,51 @@ export function useSideBarFollowedInset(targetInset: number): number {
       if (!active) return;
       active = false;
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(handover);
       // 최종 인셋은 동기로 커밋한다 — 억제 플래그는 한 프레임 뒤에 걷히므로 그 전에 서야 마지막 몇 px이
       // 되살아난 패널 글라이드를 타지 않는다.
-      flushSync(() => setFollowed(null));
-      driver.release(true);
+      commit(null);
+      driver?.release(true);
     };
+    // 타던 카드 전환이 끝나지 않고 끊기면 목표로 건너뛰지 않는다. 끊김은 두 갈래다.
+    // - 되돌리기: 카드 클래스가 먼저 바뀌어 옛 전환이 끊기고, 새 목표 인셋은 같은 프레임 안에 뒤따라 커밋된다.
+    //   그 사이 옛 목표로 한 걸음이라도 가면 패널이 닫힌 자리로 떨어졌다 돌아온다.
+    // - 목표는 그대로인데 카드가 폭을 되돌림(⌘B로 접었는데 포인터가 엣지에 남아 픽이 폭을 붙듦 등): 카드에
+    //   실을 전환이 없다.
+    // 그래서 끊기면 그 자리를 지키고 다음 프레임에 판정한다. 그때까지 목표가 바뀌었으면 이 effect는 이미
+    // 걷혔고 새 effect가 보이는 인셋에서 출발한다. 아니면 보이는 인셋에서 새 구동(되돌린 전환이나 탐침)으로
+    // 넘긴다. 전환이 꺼진 경우에만 목표가 즉시 선다.
+    const follow = (current: FollowDriver) => {
+      current.finished.then(
+        () => { if (driver === current) finish(); },
+        () => {
+          if (!active || driver !== current) return;
+          cancelAnimationFrame(handover);
+          handover = requestAnimationFrame(() => {
+            if (!active || driver !== current) return;
+            const next = followDriverFor(card);
+            if (!next) {
+              finish();
+              return;
+            }
+            fromInset = lastInset;
+            driver = next;
+            current.release(false);
+            follow(next);
+          });
+        },
+      );
+    };
+    // 첫 커밋은 이 layout effect 안이라 동기 재렌더로 충분하다(flushSync는 커밋 중에 부를 수 없다).
     setFollowed(fromInset);
     tick();
-    driver.finished.then(finish, finish);
+    follow(driver);
     return () => {
       if (!active) return;
       active = false;
       cancelAnimationFrame(frame);
-      driver.release(false);
+      cancelAnimationFrame(handover);
+      driver?.release(false);
     };
   }, [targetInset]);
   const shown = followed ?? targetInset;
@@ -191,6 +253,8 @@ interface FollowDriver {
   /** 이 추종이 시작된 뒤의 진행(0→1, 곡선 적용). 끝났으면 null. */
   readonly progress: () => number | null;
   readonly finished: Promise<unknown>;
+  /** 구동이 끝까지 진행했는가(끊김은 아니다). */
+  readonly done: () => boolean;
   /** 추종이 끝나거나 끊길 때 한 번. settled면 플래그를 한 프레임 뒤에 놓는다. */
   readonly release: (settled: boolean) => void;
 }
@@ -204,7 +268,7 @@ interface FollowDriver {
  *   프레임부터 큰 걸음이 된다. 그래서 카드의 width 전환과 같은 길이·곡선의 빈 애니메이션을 탐침으로 새로
  *   굴려 그 진행을 쓴다 — 캔버스가 카드보다 조금 늦게 끝나도 걸음은 일반 토글과 같다. 그동안 패널
  *   글라이드 억제 플래그를 직접 붙든다.
- * - 전환이 꺼진 경우(드래그 리사이즈·reduced motion)나 숨은 카드는 목표 인셋이 즉시 선다.
+ * - 전환이 꺼진 경우(드래그 리사이즈·reduced motion)에만 목표 인셋이 즉시 선다.
  */
 function followDriverFor(card: HTMLElement): FollowDriver | null {
   if (typeof card.getAnimations !== "function") return null;
@@ -213,9 +277,9 @@ function followDriverFor(card: HTMLElement): FollowDriver | null {
     && animation.transitionProperty === "width"
     && animation.playState !== "finished");
   if (running && (effectProgress(running) ?? 0) <= FRESH_TRANSITION_PROGRESS) {
-    return { progress: () => effectProgress(running), finished: running.finished, release: () => undefined };
+    return { progress: () => effectProgress(running), finished: running.finished, done: () => running.playState === "finished", release: () => undefined };
   }
-  if (typeof card.animate !== "function" || getComputedStyle(card).visibility === "hidden") return null;
+  if (typeof card.animate !== "function") return null;
   const timing = widthTransitionTiming(card);
   if (!timing) return null;
   let probe: Animation;
@@ -230,6 +294,7 @@ function followDriverFor(card: HTMLElement): FollowDriver | null {
   return {
     progress: () => effectProgress(probe),
     finished: probe.finished,
+    done: () => probe.playState === "finished",
     release: (settled) => {
       if (released) return;
       released = true;
@@ -238,7 +303,7 @@ function followDriverFor(card: HTMLElement): FollowDriver | null {
         followHolds = Math.max(0, followHolds - 1);
         syncAnimatingFlag();
       };
-      if (settled) requestAnimationFrame(drop);
+      if (settled) afterNextFrame(drop);
       else drop();
     },
   };
