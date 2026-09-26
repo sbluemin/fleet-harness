@@ -59,43 +59,74 @@ describe("in-process MCP JSON-RPC server", () => {
     });
   });
 
-  it("tools/call은 세션별 FIFO pending call로 resolve된다", async () => {
+  it("같은 세션의 병렬 tools/call 결과를 각 요청에 돌려주고 늦은 결과를 버린다", async () => {
+    const registry = createMcpToolRegistry();
     const snapshotStore = createMcpToolSnapshotStore();
     const server = createServedMcpEndpoint({ toolSnapshotStore: snapshotStore });
     activeServers.push(server);
-    snapshotStore.registerToolsForSession(TOKEN, [{
-      name: "echo",
-      description: "echo tool",
-      parameters: { type: "object" },
-    }]);
-    server.setOnToolCallArrived(TOKEN, (toolName, args) => {
-      expect(toolName).toBe("echo");
-      expect(args).toEqual({ value: "hello" });
-      queueMicrotask(() => {
-        server.resolveNextToolCall(TOKEN, "call-1", {
-          content: [{ type: "text", text: "ok" }],
-          isError: false,
+    const runtime: McpRouterRuntime = { registry, server, snapshotStore };
+    const invocations = new Map<string, { toolCallId: string; resolve(value: string): void }>();
+    let markFirstStarted!: () => void;
+    let markSecondStarted!: () => void;
+    const firstStarted = new Promise<void>((resolve) => { markFirstStarted = resolve; });
+    const secondStarted = new Promise<void>((resolve) => { markSecondStarted = resolve; });
+    registry.registerAgentTool({
+      ...makeToolSpec("echo"),
+      execute(args, ctx) {
+        const value = (args as { value: string }).value;
+        return new Promise<string>((resolve) => {
+          invocations.set(value, { toolCallId: ctx.toolCallId!, resolve });
+          if (value === "first") markFirstStarted();
+          else markSecondStarted();
         });
-      });
-      return "call-1";
-    });
-
-    const response = await postJsonRpc(await server.start(), TOKEN, {
-      jsonrpc: "2.0",
-      id: "call",
-      method: "tools/call",
-      params: { name: "echo", arguments: { value: "hello" } },
-    });
-
-    expect(response).toEqual({
-      jsonrpc: "2.0",
-      id: "call",
-      result: {
-        content: [{ type: "text", text: "ok" }],
-        isError: false,
       },
     });
-    expect(server.hasPendingToolCall(TOKEN)).toBe(false);
+    const manager = createExecutorSessionManager({ runtimes: [{ name: "tools", runtime }] });
+    const token = manager.issueSessionToken({ label: "parallel", cwd: process.cwd() })[0]!.token;
+    const url = await server.start();
+    const call = (id: string) => postJsonRpc(url, token, {
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: { name: "echo", arguments: { value: id } },
+    });
+
+    const firstResponse = call("first");
+    await firstStarted;
+    const secondResponse = call("second");
+    await secondStarted;
+    expect(() => server.resolveToolCall(token, "unknown", {
+      content: [{ type: "text", text: "stale" }], isError: false,
+    })).not.toThrow();
+    invocations.get("second")!.resolve("second result");
+    expect(await secondResponse).toEqual({
+      jsonrpc: "2.0", id: "second",
+      result: { content: [{ type: "text", text: "second result" }], isError: false },
+    });
+    invocations.get("first")!.resolve("first result");
+    expect(await firstResponse).toEqual({
+      jsonrpc: "2.0", id: "first",
+      result: { content: [{ type: "text", text: "first result" }], isError: false },
+    });
+    server.resolveToolCall(token, invocations.get("first")!.toolCallId, {
+      content: [{ type: "text", text: "late" }], isError: false,
+    });
+
+    server.setOnToolCallArrived(token, () => {
+      server.resolveToolCall(token, "unknown", {
+        content: [{ type: "text", text: "wrong" }], isError: false,
+      });
+      server.resolveToolCall(token, "synchronous", {
+        content: [{ type: "text", text: "sync result" }], isError: false,
+      });
+      return "synchronous";
+    });
+    expect(await call("third")).toEqual({
+      jsonrpc: "2.0", id: "third",
+      result: { content: [{ type: "text", text: "sync result" }], isError: false },
+    });
+    expect(server.hasPendingToolCall(token)).toBe(false);
+    manager.cleanup();
   });
 });
 
