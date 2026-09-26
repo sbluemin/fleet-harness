@@ -2515,6 +2515,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const operation = ctx.host.operations.get(sessionId);
     const cwd = operation && (readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId));
     if (!cwd || (deps.isClaudePathTrusted && !trustedPtySessions.has(sessionId) && !(await deps.isClaudePathTrusted(cwd)))) return;
+    // 신뢰 조회 중 더 새 이름이 저장됐다면 낡은 /rename을 나중에 보내지 않는다.
+    if (ctx.host.operations.get(sessionId)?.title !== operation.title) return;
     const renameCommand = terminalRuntime.getRenameCommand(sessionId);
     if (!renameCommand) return;
     const safeLabel = sanitizePtyMessageText(label.replace(/[\r\n\t]+/g, " ")).trim();
