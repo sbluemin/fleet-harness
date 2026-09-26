@@ -204,7 +204,11 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     const windows = value.windows ?? [];
     const current = windows.filter((window) => window.resetsAt === undefined || window.resetsAt > at);
     if (windows.length > 0 && current.length === 0) return fallback;
-    return current.length === windows.length ? value : { ...value, windows: current };
+    // 크레딧도 창과 같다. 가장 이른 만료가 지나면 남은 개수를 알 수 없으므로 뺀다.
+    const creditsLapsed = value.credits?.nextExpiresAt !== undefined && value.credits.nextExpiresAt <= at;
+    if (current.length === windows.length && !creditsLapsed) return value;
+    const { credits, ...rest } = value;
+    return { ...rest, windows: current, ...(credits && !creditsLapsed ? { credits } : {}) };
   }
 
   /**
