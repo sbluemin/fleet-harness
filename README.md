@@ -1,116 +1,150 @@
 <p align="center">
-  <img src=".github/logo.png" width="420" alt="Fleet" />
+  <img src=".github/logo.webp" width="96" alt="" />
 </p>
 
-<h1 align="center">Every frontier coding agent.<br/>One console. Any screen.</h1>
+<h1 align="center">Fleet</h1>
 
 <p align="center">
-  <strong>Fleet runs your coding agents as live, server-owned sessions on your machine</strong> —<br/>
-  and lets you command them from a browser, a native desktop window, or the phone in your pocket.
+  <b>A quiet console for a fleet of coding agents.</b><br/>
+  Run Claude Code on every frontier model, keep each session alive on your own machine,<br/>
+  and supervise the whole fleet from a browser, the desktop app, or your phone.
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-console"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-console?color=c9a455" alt="npm"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-4aab8f" alt="License"></a>
-  <br/>
-  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a>
+  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-console"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-console?style=flat-square&color=c9a455&label=npm" alt="npm version"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-5c9e92?style=flat-square" alt="MIT license"></a>
+  <a href="https://sbluemin.github.io/fleet-harness/"><img src="https://img.shields.io/badge/site-sbluemin.github.io-2b2f38?style=flat-square" alt="Project site"></a>
 </p>
 
-<img src=".github/console-canvas.png" alt="Fleet Console running four operations side by side — Claude, Codex GPT-5.6, and Cursor Grok sessions with a live shell" width="100%" />
+<p align="center">
+  <b>English</b> · <a href="README.ko.md">한국어</a>
+</p>
 
-<p align="center"><sub>Earlier Fleet capture: one Theater, four live Operations — Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.6 beside a plain shell. Cursor Gateway sessions shown here are no longer available in the current version. Every screenshot in this README is a real capture of Fleet running this repository.</sub></p>
+<br/>
 
-Working with one AI coding agent is a workflow. Working with five is a mess of terminal tabs — until you give them a deck to land on. Fleet turns every agent session into an **Operation**: a real PTY owned by a local server, laid out on an infinite canvas, observable from any device you trust.
+<img src=".github/console-canvas.webp" alt="Fleet Console with three live Operations in one Theater: Claude Fable and Codex GPT-6-Sol in terminal view, Claude Opus in chat view" width="100%" />
 
-## Start in one command
+<p align="center"><sub>One Theater, three Operations on three models. Fable traces the AI Gateway, GPT-6-Sol drafts a release note, and Opus gives a repository tour in chat view. The capture is from this repository.</sub></p>
 
-Requires Node.js 20.19+ and at least one authenticated agent CLI on `PATH`.
+<br/>
+
+## Start
 
 ```bash
 npm install -g @dotobokuri/fleet-console
-
 fleet console
 ```
 
-<img src=".github/cli-console.png" alt="The fleet CLI: help banner and a real fleet console start, printing the local endpoint" width="100%" />
+`fleet console` starts a local server and prints its address. Open that address in any browser. You need Node.js 20.19 or later and Claude Code installed and signed in. Running `fleet` on its own opens Claude Code in your terminal, routed through the same AI Gateway.
 
-Everything runs on your machine. The server binds to loopback by default, the browser never receives provider tokens, and remote access stays off until you deliberately turn it on.
+Add a project folder as a **Theater**, then right-click the canvas to launch your first **Operation**.
 
-## Agents that outlive the tab
+## Sessions that outlive the tab
 
-An Operation is owned by the local Fleet Console server, not by your browser. Close the tab and the PTY keeps running, its output keeps buffering; reopen the console and the session replays its scrollback and carries on. Idle agents go dormant after a threshold you choose and come back with one click. Closing an Operation stays undoable for a few seconds, so a misclick costs nothing.
+An Operation is a Claude Code session owned by the Fleet server, not by the page you're looking at. You can close the tab, reload, or switch devices, and the session keeps running. When you come back, its scrollback replays. Each Operation can be shown as a full terminal or as a chat view, and you can switch between the two mid-session. Idle sessions go dormant and wake with a click. A closed panel can be reopened with <kbd>⌘</kbd><kbd>Z</kbd>.
 
-A **Theater** is a project folder. Register as many as you work in — every panel, session, and tool follows the active one.
+## Every frontier model, behind one launch menu
 
-## Every frontier model behind one launch menu
+<img src=".github/console-launch-menu.webp" alt="The launch menu: Claude's Fable, Opus and Sonnet, then enabled gateway models such as Codex GPT-6-Sol and xAI Grok-4.7" width="300" align="right" />
 
-<img src=".github/console-launch-menu.png" alt="Earlier Fleet launch-menu capture showing Claude, Codex, and now-removed Cursor Gateway models over the live canvas" width="100%" />
+The launch menu lists Claude's own models first, then every gateway model you've enabled under **Settings → AI Gateway**. The same list appears in Claude Code's `/model` picker.
 
-<sub>This launch-menu capture is from an earlier version; its Cursor Gateway choices are no longer available.</sub>
+The gateway is a local Claude Code endpoint, not an API proxy. Claude Code keeps its native agent loop and tools. Other vendors' credentials stay inside the Console and never enter the agent process. Fleet reuses the sign-in you already have in each vendor's own CLI.
 
-Right-click the canvas and launch Claude Code on any model you have enabled — its built-in Claude models, or gateway models that ride credentials the Console holds for you. The gateway is a local Claude Code endpoint, not an API proxy: the native agent loop, tool grammar, and authentication are preserved, and non-Anthropic credentials never enter the agent process.
+<br clear="right"/>
 
-| Provider | Credential | Models |
+| Provider | Sign-in | Models |
 |---|---|---|
-| **Codex** | ChatGPT subscription | GPT-6 Astra · Sol · Luna · GPT-5.6 Terra, each with 524K and 1M context variants and a Fast variant |
+| **Codex** | ChatGPT subscription | GPT-6 Astra · Sol · Luna, GPT-5.6 Terra, each at 272K, 524K or 1M context, with a Fast twin |
 | **Antigravity** | Google subscription | Gemini 3.8 Flash · Gemini 3.1 Pro |
-| **OpenCode Go** | API key | GLM-5.3 · GLM-5.3 Flash · DeepSeek V4 Flash Vision / V4.1 Flash / V4 Pro · Muse Spark 1.3 Contributor |
 | **xAI** | Grok subscription | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
+| **Muse Code** | Muse Code subscription | Muse Spark 1.3 · Muse Spark 1.3 Contributor |
+| **OpenCode Go** | API key | GLM-5.3 · GLM-5.3 Flash · DeepSeek V4 Pro · V4.1 Flash · V4 Flash Vision |
 
-Enable exactly the roster you want under **Settings → AI Gateway** — only those models appear in the launch menu and in Claude Code's `/model` picker. Models that support reasoning effort carry their own ladder — how far it climbs varies by model, and only some reach **MAX**. Every AI Gateway model also offers **ULTRACODE** in both launch intensity controls, which launches Claude Code with xhigh effort and standing multi-agent orchestration in one move. Usage-limit meters read the same risk verdict the gateway uses, so a window being spent faster than it refills shows as at-risk before a run stops.
+Each model carries its own reasoning ladder. Every row also offers **ULTRACODE**, which launches Claude Code at xhigh effort with standing multi-agent orchestration. With **AI Gateway routing** turned on, subagents and workflow stages are assigned to gateway models, and providers whose usage window is nearly spent are skipped. The **Usage limits** meters use the same measure, so you see a window running hot before it stops a run.
 
-## A canvas that scales from one agent to a fleet
+## Hand off work that takes more than one turn
 
-<img src=".github/console-war-room.png" alt="War Room mode: one staged operation and a status-sorted sidebar" width="100%" />
+<img src=".github/console-objectives.webp" alt="An objective in planning: brief, two success criteria, a Commander-proposed docs-auditor member, and the first missions, with Commence ready" width="100%" />
 
-Operations live on an infinite canvas, and a switch in the command band decides how much of the arranging you do yourself:
+An **Objective** is work you hand off whole. You write what you want and how you'll know it's done, and a Commander session carries it through.
 
-| Mode | What it does | Shortcut |
+1. **Brief.** Describe the work and add success criteria.
+2. **Plan.** The Commander lays out missions, their prerequisites, and any member sessions it needs. Nothing runs yet.
+3. **Commence.** The Commander works the missions itself or passes them to members. Each member has its own role, model, and effort.
+4. **Hand-off.** The objective comes back with a retrospective. You review it, complete it, and can turn follow-up candidates into new objectives.
+
+Open Objectives from the toolbar or with <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd>.
+
+## A canvas that arranges itself
+
+Operations live on an infinite canvas. You choose how much of the arranging you do yourself.
+
+| | What it does | Keys |
 |---|---|---|
-| **Cruise** | Place panels wherever you want them; Station Keeping keeps them from overlapping | — |
-| **Tactical** | Lay every panel out at once, in grid, columns, or rows | <kbd>Alt</kbd>+<kbd>F</kbd> |
-| **War Room** | Take waiting panels one at a time from a cross-Theater queue | <kbd>Alt</kbd>+<kbd>T</kbd> |
+| **Cruise** | Place panels anywhere. Station Keeping keeps them from overlapping. | |
+| **Align all** | Lays every panel out as a grid, columns, or rows. Toggle it off and each panel returns to where it was. | <kbd>Alt</kbd><kbd>F</kbd> |
+| **Snap layouts** | Drag a panel to the top edge for halves, thirds, 2×2 and more. Snap Assist offers panels for the empty slots. | <kbd>⌘</kbd><kbd>Alt</kbd><kbd>←</kbd> <kbd>→</kbd> |
+| **War Room** | Puts one waiting Operation on stage at a time, across every Theater. | <kbd>Alt</kbd><kbd>T</kbd> |
+| **Zen** | Hides the chrome and leaves a slim taskbar of Theaters and Operations. | <kbd>⌘</kbd><kbd>Alt</kbd><kbd>Z</kbd> |
 
-War Room is the one to reach for when several agents are waiting on you: it stages a single Operation, keeps the rest in an up-next rail, and lets you defer one without losing its place. <kbd>Alt</kbd>+<kbd>S</kbd> sorts the sidebar by status — working, waiting, idle — and every Operation wears the glyph and colour of the provider that launched it. <kbd>⌘</kbd>+<kbd>K</kbd> searches Operations across every Theater; <kbd>⌘</kbd>+<kbd>P</kbd> opens the command palette.
+<kbd>⌘</kbd><kbd>K</kbd> jumps to any Operation, file, or wiki page. <kbd>⌘</kbd><kbd>P</kbd> opens the command palette, <kbd>⌘</kbd><kbd>J</kbd> opens Quick Launch, and <kbd>Alt</kbd><kbd>S</kbd> sorts the sidebar by status. Every shortcut can be rebound. On Windows and Linux, <kbd>⌘</kbd> is <kbd>Ctrl</kbd>.
 
-## The whole project, beside the terminal
+## The project, beside the session
 
-<img src=".github/console-repository.png" alt="The Repository panel: commit graph, worktrees, and branches of the active Theater beside live operations" width="100%" />
+<img src=".github/console-repository.webp" alt="The Repository tool: branches, remotes, tags and stashes beside a commit graph of this repository" width="100%" />
 
-The Activity Rail ships with eight built-in panels — **Alerts, Codex, Shell, Files, Repository, Skills, Ledger,** and **Usage limits** — and installed plugins can contribute their own. The Repository panel alone gives you history, working changes, compare, worktrees, branches, tags, and stashes for the active Theater without leaving the operation you are supervising. Ledger and Usage limits keep token spend and provider quota in the same rail, so you notice a window filling up before a run stops.
+The toolbar opens tools that follow the active Theater:
 
-**Session Analyst** adds read-only intelligence to any single Operation: ask what happened, what deserves review, or for a handoff brief — it reads the session without disturbing the agent, publishes longer answers as rendered, evidence-cited artifacts, and runs on whichever CLI, model, and effort you give it.
+- **Repository**: history, changes, compare, worktrees, branches, tags, and stashes.
+- **Files**: a tree with quick peek, pinned folders, and git status tints.
+- **Shell**: one terminal for the whole Console, a keystroke away (<kbd>Ctrl</kbd><kbd>`</kbd>).
+- **Codex**: the project wiki. An experimental Cowork mode lets an AI draft edits to a page, and nothing changes until you apply them.
+- **Skills**: browse and install skills.
+- **Ledger** and **Usage limits**: token spend and provider quotas.
+- **Objectives**: the work you've handed off.
 
-## Your fleet, in your pocket
+Beside any single Operation you can also open these companions:
 
-<img src=".github/console-remote-pairing.png" alt="Connect a device: the console shows a QR access link with a 15-minute expiry and waits for the phone to pair" width="100%" />
+- **Session Analyst** (<kbd>Alt</kbd><kbd>A</kbd>) reads a session without disturbing it and answers what happened, what needs review, or how to hand it off.
+- **Operation Browser** (<kbd>Alt</kbd><kbd>B</kbd>, Desktop only) is a browser the agent drives on the same tabs you see, and you can annotate a page for it.
 
-Turn on **Remote access**, and this console can be opened by devices you pair — and only by devices you pair. Show the QR code, scan it with the Fleet Android app (or paste the link), and the phone is in:
+With **Console Use**, agents can operate the Console itself. **Computer Use** extends that to Mac apps. Both are granted per Operation, and each request is approved inside the panel.
 
-<img src=".github/mobile-android.png" alt="Fleet on Android: the paired-consoles deck, the Operations list, and a full Claude Code session running on the phone" width="100%" />
+## On any screen
 
-The same Operations you left on the desk — the middle phone lists them, the right one is a full Claude Code session, scrollback and all. The mobile app keeps its own doctrine of paranoia:
+**Desktop.** Fleet Console Desktop is a thin native shell for macOS, Windows, and Linux, available from [GitHub Releases](https://github.com/sbluemin/fleet-harness/releases/latest). It manages its own Console runtime and updates itself on macOS and Windows.
 
-- **Pairing is the only door.** A remote listener answers nothing else without a session. Access links work once, expire in 15 minutes unused, and each pairs exactly one device — but the pairing itself survives restarts on both ends.
-- **Certificates are pinned.** Every link carries the console's certificate fingerprint; a console that answers with a different certificate simply does not open. The Android shell verifies the pin natively before the WebView sees a single byte.
-- **One controller at a time.** When another device takes control, everyone else drops to watching behind an explicit curtain — no two keyboards typing into one PTY. Monitoring-only links exist for screens that should watch and never type.
-- **Public reach is opt-in twice.** LAN listening is one decision; advertising a public hostname over a NAT route is a separate, explicitly acknowledged one, with the router rule spelled out in the fields a router actually asks for and a failure budget on the pairing door so an exposed endpoint cannot be hammered for free.
+**Remote access.** Remote access is experimental and off by default. Once you turn it on, a Console opens only to devices you pair:
 
-The Android app lives in this repository under `runtime/fleet-mobile` (debug builds via its build script); Fleet Console Desktop — a thin native shell with tray lifecycle, managed runtime, and platform updates over the same verified origin — installs from the [latest GitHub Release](https://github.com/sbluemin/fleet-harness/releases/latest).
+- Access links work once and expire after 15 minutes.
+- Every link is pinned to the Console's certificate.
+- Only one device controls at a time; the others watch behind a clear curtain.
+- Monitoring-only links let a screen watch without typing.
+- Reaching the Console over the public internet is a separate opt-in.
+
+<img src=".github/mobile-android.webp" alt="Fleet on Android: paired consoles, the Operations list, and a Claude Code session running on the phone" width="100%" />
+
+**Mobile.** The same Operations you left on your desk are on your phone, with full scrollback. The Android and iOS apps are in tester distribution; the source lives in [`runtime/fleet-mobile`](runtime/fleet-mobile).
+
+## Local by default
+
+- The server binds to loopback. Nothing is reachable from other machines until you enable remote access.
+- Provider credentials stay in the Console. The browser only receives one-use terminal tickets.
+- Sessions, settings, and history live on your machine under `~/.fleet`.
 
 ## Make it yours
 
-Light or dark, then the dark tone that suits the room — **Instrument**, **Maritime**, or **Carbon**. UI and terminal typography are configurable independently, down to the fonts installed on your machine. The console speaks English and Korean across its chrome, settings, shortcuts, and built-in plugins, and switches immediately without a reload. Fleet Wiki keeps architecture decisions and product history in the same workspace as execution, so the reasoning behind a change outlives the transcript that produced it.
-
-> Fleet Console is a research preview.
+Choose a theme: **Instrument**, **Maritime**, or **Carbon** (dark), or **Whites** (light). You can add Liquid glass, pick interface and terminal fonts from those installed on your machine, and rebind every shortcut. The Console speaks English and Korean and switches between them without a reload.
 
 ## Go deeper
 
-- [Fleet Development Reference](docs/fleet-development-reference.md) — extend hosts and use the SDK
-- [Admiral Workflow Reference](docs/admiral-workflow-reference.md) — orchestration architecture and doctrine
-- [Desktop guide](runtime/fleet-desktop/README.md) — artifacts, update behavior, and current limits
-- [Changelog](CHANGELOG.md) — release history
+- [Fleet Development Reference](docs/fleet-development-reference.md): extend hosts, build plugins, and run an isolated development Console
+- [Console Agent SDK](docs/console-agent-sdk.md): the contracts plugins build on
+- [Admiral Workflow Reference](docs/admiral-workflow-reference.md): orchestration architecture and doctrine
+- [Desktop guide](runtime/fleet-desktop/README.md): artifacts, updates, and current limits
+- [Changelog](CHANGELOG.md): release history
 
 ## License
 
-MIT
+[MIT](LICENSE)
