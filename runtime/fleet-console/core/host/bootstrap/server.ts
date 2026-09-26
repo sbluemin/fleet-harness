@@ -964,20 +964,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
     // Console 제어 — `console_launch`·`console_send` 가 지나는 길 그대로, 호출자는 그 플러그인. 시트를 거치지 않는다.
     consoleControlFor: (pluginId) => ({
-      request: async (input, requestId) => {
+      request: async (input) => {
         consoleAgentOwners.add(pluginId);
-        const caller = { kind: "plugin" as const, pluginId };
-        const receipt = consoleControl.request(caller, requestId ?? `${pluginId}:${crypto.randomUUID()}`, input);
-        const deadline = Date.now() + 20_000;
-        for (;;) {
-          const current = consoleControl.getAction(receipt.id, caller) ?? receipt;
-          if (current.operationId || (current.status !== "accepted" && current.status !== "running")) {
-            if (!current.operationId && current.status !== "finished") throw new Error(current.error ?? "execution_unavailable");
-            return current;
-          }
-          if (Date.now() > deadline) throw new Error("request_timeout");
-          await new Promise((resolve) => setTimeout(resolve, 60));
-        }
+        // 전달이 끝날 때까지 기다린다 — 결과는 남지 않는다. 멈춘 전달이 플러그인을 붙잡지 않게 시한을 둔다(전달 자체는 계속된다).
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("request_timeout")), 20_000); });
+        try { return await Promise.race([consoleControl.request({ kind: "plugin", pluginId }, input), timeout]); }
+        finally { clearTimeout(timer); }
       },
       observe: (operationId) => consoleControl.observe(operationId),
       launchState: (input) => { consoleAgentOwners.add(pluginId); return consoleControl.launchKeyState({ kind: "plugin", pluginId }, input.theaterId, input.key); },

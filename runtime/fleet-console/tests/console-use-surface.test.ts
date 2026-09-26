@@ -59,12 +59,12 @@ describe("Console Use surface boundaries", () => {
       return JSON.parse(json.result.content[0].text);
     };
     // 남의 Operation 은 답하지 못하고, 자식이라도 계획 승인은 거부되며, 자식의 입력 질문만 통과한다.
-    expect((await call("op-parent", "console_send", { requestId: "r1", operationId: "op-human", askId: "ask-h", answers: ["yes"] })).error).toBe("not_launched_by_caller");
-    expect((await call("op-parent", "console_send", { requestId: "r2", operationId: "op-child", askId: "ask-plan", answers: ["yes"] })).error).toBe("unsupported_ask");
-    expect(await call("op-parent", "console_send", { requestId: "r3", operationId: "op-child", askId: "ask-q", answers: ["internal links only"] })).toMatchObject({ outcome: "answered" });
+    expect((await call("op-parent", "console_send", { operationId: "op-human", askId: "ask-h", answers: ["yes"] })).error).toBe("not_launched_by_caller");
+    expect((await call("op-parent", "console_send", { operationId: "op-child", askId: "ask-plan", answers: ["yes"] })).error).toBe("unsupported_ask");
+    expect(await call("op-parent", "console_send", { operationId: "op-child", askId: "ask-q", answers: ["internal links only"] })).toMatchObject({ outcome: "answered" });
     expect(answered).toEqual(["op-child:ask-q"]);
     // 한 호출은 한 제스처다 — text·askId·interrupt 는 함께 못 쓴다.
-    expect((await call("op-parent", "console_send", { requestId: "r4", operationId: "op-child", askId: "ask-q", text: "and this" })).error).toBe("invalid_arguments");
+    expect((await call("op-parent", "console_send", { operationId: "op-child", askId: "ask-q", text: "and this" })).error).toBe("invalid_arguments");
     // 자기 자신은 닫지 못한다. 닫기 어댑터가 없으면 capability_unavailable 로 답한다.
     expect((await call("op-parent", "console_panel", { operationId: "op-parent", action: "close" })).error).toBe("cannot_close_self");
     expect((await call("op-parent", "console_panel", { operationId: "op-child", action: "close" })).error).toBe("capability_unavailable");

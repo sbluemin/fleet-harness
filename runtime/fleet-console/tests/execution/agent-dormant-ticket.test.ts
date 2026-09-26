@@ -38,9 +38,7 @@ describe("agent dormant ticket guards", () => {
     const harness = await createHarness();
     const control = harness.control;
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    const receipt = control.request(caller, "dormant-launch", { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true });
-    await vi.waitFor(() => expect(control.getAction(receipt.id)?.operationId).toBeTruthy());
-    const id = control.getAction(receipt.id)!.operationId!;
+    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).operationId;
     expect(harness.attach).not.toHaveBeenCalled();
     expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "chat", supportedActions: ["send", "resume"] });
     const operation = harness.operations.find((op) => op.id === id)!;
@@ -49,8 +47,7 @@ describe("agent dormant ticket guards", () => {
     harness.patch(id, { payload: withOperationLaunchPreset(operation.payload, { model: "sonnet", effort: "low", viewMode: "terminal" }) });
     expect(harness.operations.find((op) => op.id === id)!.payload).not.toHaveProperty("chatBorn");
     expect(control.observe(id)?.surface).toBe("terminal");
-    const sent = control.request(caller, "wake-commander", { kind: "send", operationId: id, text: "Begin" });
-    await vi.waitFor(() => expect(control.getAction(sent.id)?.delivery).toBe("queued"));
+    expect(await control.request(caller, { kind: "send", operationId: id, text: "Begin" })).toEqual({ operationId: id, delivery: "queued" });
     expect(harness.attach).toHaveBeenCalledTimes(1);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId: id, model: "sonnet", effort: "low", sessionName: "commander", disableSubagents: true }));
     expect(harness.attach.mock.calls[0]![0]).not.toHaveProperty("resumeSessionId");
@@ -81,11 +78,10 @@ describe("agent dormant ticket guards", () => {
     const sessionId = await harness.createLiveSession();
     await harness.transitionToDormant(sessionId);
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    expect(() => harness.control.request(caller, "resume-with-text", { kind: "resume", operationId: sessionId, text: "wrong" })).toThrow();
-    const receipt = harness.control.request(caller, "resume-member", { kind: "resume", operationId: sessionId });
-    await vi.waitFor(() => expect(harness.control.getAction(receipt.id)?.delivery).toBe("confirmed"));
+    await expect(harness.control.request(caller, { kind: "resume", operationId: sessionId, text: "wrong" } as never)).rejects.toThrow();
+    expect(await harness.control.request(caller, { kind: "resume", operationId: sessionId })).toEqual({ operationId: sessionId, delivery: "confirmed" });
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId }));
-    expect(() => harness.control.request(caller, "resume-live", { kind: "resume", operationId: sessionId })).toThrow("not_dormant");
+    await expect(harness.control.request(caller, { kind: "resume", operationId: sessionId })).rejects.toThrow("not_dormant");
   });
 
   it("rejects ticket issuance for a dormant session with operation_dormant", async () => {

@@ -103,7 +103,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   /** 전달됐는지를 돌려준다 — 못 닿은 알림에 기대 상태를 지우면 다음 시작이 같은 변경을 말하지 못한다. */
   const send = async (operationId: string, text: string): Promise<boolean> => {
     if (!ctx.host.consoleControl || !ctx.host.operations.get(operationId)) return false;
-    try { await ctx.host.consoleControl.request({ kind: "send", operationId, text }, `objectives:notice:${randomUUID()}`); return true; }
+    try { await ctx.host.consoleControl.request({ kind: "send", operationId, text }); return true; }
     catch { return false; }
   };
   // 호스트 제어 경로의 거절(invalid_launch_option 등)은 코드 그대로 호출자에게 — 뭉개지 않는다.
@@ -113,7 +113,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
   const launch = async (input: { newOperationId?: string; theaterId: string; title: string; sessionName: string; model?: string; effort?: string; groupId: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; member?: boolean; parentOperationId?: string; launchKey?: string }): Promise<string> => {
-    const receipt = await control().request({
+    const result = await control().request({
       kind: "launch",
       theaterId: input.theaterId,
       title: input.title,
@@ -131,9 +131,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}),
       ...(input.launchKey ? { launchKey: input.launchKey } : {}),
       ...(input.newOperationId ? { newOperationId: input.newOperationId } : {}),
-    }, `objectives:launch:${randomUUID()}`);
-    if (!receipt.operationId) throw new ObjectiveStoreError(receipt.error ?? "launch_failed");
-    return receipt.operationId;
+    });
+    return result.operationId;
   };
 
   // 호스트의 제목 한도(120자) 안에서 「목표 › 역할」.
@@ -251,8 +250,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
           if (observation.activity !== "idle" && !endPendingWork) {
             if (observation.activity === "ended" || observation.activity === "unknown") { warn(`activity_${observation.activity}`); return; }
             try {
-              const receipt = await capability.request({ kind: "interrupt", operationId }, `objectives:complete:${randomUUID()}`);
-              if (receipt.status === "failed" || receipt.status === "rejected") { warn(receipt.error ?? "interrupt_failed"); return; }
+              await capability.request({ kind: "interrupt", operationId });
             } catch (error) {
               // 관측과 접수 사이에 스스로 유휴가 된 경우는 중단 없이 바로 휴면을 시도한다.
               if (!(error instanceof Error && error.message === "nothing_to_interrupt")) throw error;
@@ -330,8 +328,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         // 앞선 구성원의 기동·재개를 기다리는 동안 바뀐 허용값도 이번 재개부터 반영한다.
         rememberSubagentSpawn(operationId, objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
         blockMemberQuestions(operationId);
-        const receipt = await control().request({ kind: "resume", operationId }, `objectives:resume:${randomUUID()}`).catch(asStoreError);
-        if (receipt.status === "failed" || receipt.status === "rejected") throw new ObjectiveStoreError(receipt.error ?? "resume_failed");
+        await control().request({ kind: "resume", operationId }).catch(asStoreError);
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "resumed" });
         continue;
       }
@@ -562,8 +559,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 스티어링 턴에서 기준 제안은 불가하다. 전송 전에 닫아 턴 전환 중 계획 쓰기와 경합하지 않는다.
       if (current.criteriaOpen) store.setCriteriaOpen(objectiveId, false);
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
-      const receipt = await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context) }, `objectives:steer:${randomUUID()}`).catch(asStoreError);
-      if (receipt.status === "rejected" || receipt.status === "failed") asStoreError(new Error(receipt.error ?? "steer_failed"));
+      await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context) }).catch(asStoreError);
       // 지휘관에게 닿았다 — 쌓인 편집을 지우고, 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다.
       store.setEdited(objectiveId, null);
       return store.clearMet(objectiveId);
@@ -577,7 +573,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       let interrupted = 0;
       for (const operationId of ids) {
         if (!stoppable(operationId)) continue;
-        try { await control().request({ kind: "interrupt", operationId }, `objectives:stop:${randomUUID()}`); interrupted += 1; }
+        try { await control().request({ kind: "interrupt", operationId }); interrupted += 1; }
         catch { /* 이미 멈췄거나 받을 수 없는 Operation — 나머지는 계속 멈춘다. */ }
       }
       return { objective: current, interrupted };
