@@ -90,6 +90,7 @@ export class ComputerUseService {
     readonly localControl: () => boolean;
     platform: ComputerUsePlatform;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
+    readonly onFailure?: (kind: string, error: unknown) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
   }) {}
 
@@ -136,16 +137,25 @@ export class ComputerUseService {
   activeOwner(): string | null { return this.state === "stopping" ? null : this.owner; }
   captureUnavailableOwner(): string | null { return this.captureUnavailable ? this.activeOwner() : null; }
 
-  release(owner: string): void { if (this.owner === owner) void this.stop(); }
+  release(owner: string): void { if (this.owner === owner) this.stopDetached(); }
   /** 소유자 라벨이 조건에 맞으면 놓는다 — 연결별 접두를 모르는 호출자(허용 회수 라우트)용. */
-  releaseWhere(predicate: (owner: string) => boolean): void { if (this.owner !== null && predicate(this.owner)) void this.stop(); }
+  releaseWhere(predicate: (owner: string) => boolean): void { if (this.owner !== null && predicate(this.owner)) this.stopDetached(); }
+
+  private reportFailure(kind: string, error: unknown): void {
+    try { this.deps.onFailure?.(kind, error); } catch { /* A diagnostic must not reject teardown. */ }
+  }
+
+  stopDetached(): void {
+    void this.stop().catch((error) => this.reportFailure("computer_use_stop_failed", error));
+  }
 
   async stop(): Promise<void> {
     if (this.stopping) return this.stopping;
     this.state = "stopping";
     this.captureApp = null;
     this.captureUnavailable = false;
-    this.deps.onCaptureTarget?.(null);
+    try { this.deps.onCaptureTarget?.(null); }
+    catch (error) { this.reportFailure("computer_use_capture_release_failed", error); }
     this.controller?.abort();
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
@@ -158,9 +168,16 @@ export class ComputerUseService {
     this.broker = null;
     this.stopping = Promise.resolve().then(async () => {
       try {
-        await broker?.stop();
+        let stopFailed = false;
+        try { await broker?.stop(); }
+        catch (error) {
+          stopFailed = true;
+          this.reportFailure("computer_use_stop_failed", error);
+          this.error = "computer_use_cleanup_failed";
+          this.warning = "computer_use_cleanup_unconfirmed";
+        }
         if (broker) {
-          this.cleanupStatus = broker.cleanupStatus;
+          this.cleanupStatus = stopFailed ? "failed" : broker.cleanupStatus;
           this.threadReleaseStatus = broker.threadReleaseStatus;
           this.cleanupFailure = broker.cleanupFailure;
           this.warning = this.cleanupStatus === "failed" ? "computer_use_cleanup_unconfirmed" : null;
@@ -266,7 +283,7 @@ export class ComputerUseService {
     this.owner = owner;
     this.controller ??= new AbortController();
     const lifetime = this.controller;
-    const onAbort = () => { void this.stop(); };
+    const onAbort = () => { this.stopDetached(); };
     signal?.addEventListener("abort", onAbort, { once: true });
     if (this.idleTimer) clearTimeout(this.idleTimer);
     let actionText: readonly Record<string, unknown>[] = [];
@@ -292,6 +309,14 @@ export class ComputerUseService {
         const created = await this.deps.platform.createBroker({
           directory: this.deps.directory,
           onStage: (stage) => { if (!lifetime.signal.aborted) this.stage = stage; },
+          onFailure: (kind, error) => {
+            this.reportFailure(kind, error);
+            if (kind === "computer_use_directory_cleanup_failed") {
+              this.cleanupStatus = "failed";
+              this.cleanupFailure = "directory_cleanup";
+              this.warning = "computer_use_cleanup_unconfirmed";
+            }
+          },
           approve: async () => !lifetime.signal.aborted && this.deps.enabled() && this.deps.localControl(),
         });
         if (lifetime.signal.aborted) { await created?.stop(); throw new Error("computer_use_stopped"); }
@@ -389,7 +414,7 @@ export class ComputerUseService {
       this.stage = null;
       if (this.owner === owner && !lifetime.signal.aborted) {
         this.state = "ready";
-        this.idleTimer = setTimeout(() => { void this.stop(); }, IDLE_TIMEOUT_MS);
+        this.idleTimer = setTimeout(() => { this.stopDetached(); }, IDLE_TIMEOUT_MS);
       }
     }
   }

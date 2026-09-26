@@ -183,6 +183,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   if (browserMcp) ctx.host.lifecycle.registerCleanup(() => browserMcp.dispose());
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
     additionalMcpSessions: [consoleUse, ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : []), ...(browserMcp ? [browserMcp] : [])],
+    onFailure: ctx.recordFailure,
   });
   const observability = createConsoleObservabilityStore({
     canonicalizeTheaterPath: ctx.host.paths.canonicalizeTheaterPath,
@@ -2412,12 +2413,21 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         observability.notifySessionUpdated(parked);
       }
     } else {
+      try {
+        ctx.host.operations.delete(operationId);
+      } catch (error) {
+        // 저장 실패로 삭제가 롤백된 Operation은 PTY 없이 남는다. 살아 있는 세션으로 보이지 않게 한다.
+        if (ctx.host.operations.get(operationId)) {
+          const dormant = observability.updateTerminalSessionStatus(operationId, "dormant");
+          if (dormant) observability.notifySessionUpdated(dormant);
+          terminalRuntime.invalidateTicketsForSession(operationId);
+        }
+        throw error;
+      }
       workspaceContext.forget(operationId);
       observability.removeTerminalSession(operationId);
-      // 재개 불가 종료는 Operation 삭제와 같은 결말이다 — 첨부의 수명이 Operation을 따르므로
-      // 이 경로도 회수해야 플러그인 종료까지 파일이 눌러앉지 않는다(removeSession과 같은 계약).
+      // 삭제가 확정된 뒤에만 첨부를 회수한다. 롤백된 Operation의 파일은 보존한다.
       launchAttachments.releaseSession(operationId);
-      ctx.host.operations.delete(operationId);
     }
   }
 

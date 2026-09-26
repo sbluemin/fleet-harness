@@ -60,7 +60,7 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
     daemon.stderr?.resume();
     let failed = false;
     daemon.on("error", () => { failed = true; });
-    daemon.once("exit", () => { if (!this.closed) void this.stop(); });
+    daemon.once("exit", () => { if (!this.closed) void this.stop().catch((error) => this.reportFailure("computer_use_driver_stop_failed", error)); });
     try {
       let ready = false;
       for (let i = 0; i < 100; i++) {
@@ -239,6 +239,10 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
     return { content, structuredContent: data, isError: response.isError === true || (isRecord(data) && data.effect === "refused") };
   }
 
+  private reportFailure(kind: string, error: unknown): void {
+    try { this.options.onFailure?.(kind, error); } catch { /* Preserve stop settlement. */ }
+  }
+
   stop(): Promise<void> {
     if (this.stopping) return this.stopping;
     this.closed = true;
@@ -260,7 +264,15 @@ export class CuaComputerUseBackend implements ComputerUseBackend {
           await exited; clearTimeout(kill);
         }
         this.snapshots.clear(); this.targets.clear();
-        if (this.directory) await fs.rm(this.directory, { recursive: true, force: true });
+        if (this.directory) {
+          try { await fs.rm(this.directory, { recursive: true, force: true }); }
+          catch (error) {
+            this.cleanupStatus = "failed";
+            this.cleanupFailure = "directory_cleanup";
+            this.reportFailure("computer_use_directory_cleanup_failed", error);
+          }
+          this.directory = null;
+        }
       }
     })();
     return this.stopping;

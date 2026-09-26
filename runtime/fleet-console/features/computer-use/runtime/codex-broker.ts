@@ -44,7 +44,7 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
   readonly tools = new Map<string, ComputerUseTool>();
   cleanupStatus: "not_requested" | "not_needed" | "notified" | "failed" = "not_requested";
   threadReleaseStatus: "not_requested" | "not_needed" | "released" | "failed" = "not_requested";
-  cleanupFailure: "timeout" | "client_unavailable" | "client_exit" | null = null;
+  cleanupFailure: ComputerUseBackend["cleanupFailure"] = null;
 
   constructor(private readonly deps: ComputerUseBackendOptions & { readonly installation: ComputerUseInstallation; readonly runtime: ComputerUseRuntimeDependencies }) {}
 
@@ -65,9 +65,9 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
     child.stdout.on("data", (chunk: string) => this.receive(chunk));
     // stderr에는 경로·인증 정보가 포함될 수 있다. 브라우저나 일반 로그에 싣지 않는다.
     child.stderr.resume();
-    child.stdin.on("error", () => { this.fail(new Error("computer_use_connection_lost")); void this.stop(); });
-    child.on("error", () => { this.fail(new Error("computer_use_process_failed")); void this.stop(); });
-    child.on("exit", () => { this.fail(new Error("computer_use_process_exited")); void this.stop(); });
+    child.stdin.on("error", () => { this.fail(new Error("computer_use_connection_lost")); this.stopDetached(); });
+    child.on("error", () => { this.fail(new Error("computer_use_process_failed")); this.stopDetached(); });
+    child.on("exit", () => { this.fail(new Error("computer_use_process_exited")); this.stopDetached(); });
     try {
       await this.request("initialize", {
         clientInfo: { name: "fleet-computer-use", version: "1" },
@@ -158,7 +158,7 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error("computer_use_timeout_outcome_unknown"));
-        void this.stop();
+        this.stopDetached();
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       try { this.write({ id, method, params }); }
@@ -173,7 +173,7 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
 
   private receive(chunk: string): void {
     this.buffer += chunk;
-    if (Buffer.byteLength(this.buffer) > MAX_FRAME_BYTES) { this.fail(new Error("computer_use_response_too_large")); void this.stop(); return; }
+    if (Buffer.byteLength(this.buffer) > MAX_FRAME_BYTES) { this.fail(new Error("computer_use_response_too_large")); this.stopDetached(); return; }
     let newline: number;
     while ((newline = this.buffer.indexOf("\n")) >= 0) {
       const line = this.buffer.slice(0, newline);
@@ -181,7 +181,7 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
       if (!line.trim()) continue;
       let message: Record<string, unknown>;
       try { message = JSON.parse(line); if (!isRecord(message)) throw new Error(); }
-      catch { this.fail(new Error("computer_use_invalid_response")); void this.stop(); return; }
+      catch { this.fail(new Error("computer_use_invalid_response")); this.stopDetached(); return; }
       if (typeof message.method === "string" && (typeof message.id === "number" || typeof message.id === "string")) {
         void this.respond(message);
       } else if (typeof message.id === "number") {
@@ -212,12 +212,20 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
         && (schema.required === undefined || (Array.isArray(schema.required) && schema.required.length === 0));
       const accepted = emptyForm && await this.deps.approve(params);
       if (!this.closed) this.write({ id: message.id, result: { action: accepted ? "accept" : "decline", content: accepted ? {} : null, _meta: null } });
-    } catch { if (!this.closed) void this.stop(); }
+    } catch { if (!this.closed) this.stopDetached(); }
   }
 
   private fail(error: Error): void {
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error); }
     this.pending.clear();
+  }
+
+  private reportFailure(kind: string, error: unknown): void {
+    try { this.deps.onFailure?.(kind, error); } catch { /* Preserve stop settlement. */ }
+  }
+
+  private stopDetached(): void {
+    void this.stop().catch((error) => this.reportFailure("computer_use_broker_stop_failed", error));
   }
 
   stop(): Promise<void> {
@@ -271,6 +279,13 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
   private async removeDirectory(): Promise<void> {
     const directory = this.directory;
     this.directory = null;
-    if (directory) await fs.rm(directory, { recursive: true, force: true });
+    if (directory) {
+      try { await fs.rm(directory, { recursive: true, force: true }); }
+      catch (error) {
+        this.cleanupStatus = "failed";
+        this.cleanupFailure = "directory_cleanup";
+        this.reportFailure("computer_use_directory_cleanup_failed", error);
+      }
+    }
   }
 }

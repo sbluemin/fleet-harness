@@ -17,6 +17,7 @@ export interface TerminalSessionManagerDeps {
   readonly resolveTitleListener?: (context: TerminalTicketContext) => TerminalTitleListener | undefined;
   // PTY가 종료되거나 세션이 정리될 때(멱등) 정확히 한 번 호출 — 콘솔 세션 목록 정리에 쓰인다.
   readonly onSessionExit?: (sessionId: string) => unknown;
+  readonly onFailure?: (kind: string, error: unknown) => void;
   /** Monotonic clock for idle tracking. Defaults to `performance.now`. */
   readonly now?: () => number;
 }
@@ -427,12 +428,16 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }), "utf8"), { binary: false });
   }
 
+  function reportFailure(kind: string, error: unknown): void {
+    try { deps.onFailure?.(kind, error); } catch { /* Do not create another detached rejection. */ }
+  }
+
   function removeSession(session: TerminalSession, options: KillSessionOptions = {}): void {
     if (sessions.get(session.id) !== session) return;
-    void killSession(session, options);
+    void killSession(session, options).catch((error) => reportFailure("terminal_cleanup_failed", error));
     sessions.delete(session.id);
     // 인스턴스 일치 가드 덕분에 PTY 자가종료(onExit)와 운영자 terminate가 겹쳐도 세션당 한 번만 통지된다.
-    void notifySessionExit(session.id);
+    void notifySessionExit(session.id).catch((error) => reportFailure("terminal_exit_failed", error));
   }
 
   async function notifySessionExit(sessionId: string): Promise<void> {
@@ -442,12 +447,19 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   async function killSession(session: TerminalSession, options: KillSessionOptions = {}): Promise<void> {
     const killPty = options.killPty ?? true;
     clearGraceTimer(session);
-    session.activeSocket?.close(4001, "terminal_closed");
+    const closeSocket = (socket: TerminalSocket) => {
+      try { socket.close(4001, "terminal_closed"); }
+      catch (error) { reportFailure("terminal_socket_cleanup_failed", error); }
+    };
+    if (session.activeSocket) closeSocket(session.activeSocket);
     session.activeSocket = null;
     // 관전자도 같은 이유로 끝난다 — 남겨 두면 죽은 PTY를 보며 살아 있는 화면인 척한다.
-    for (const viewer of session.viewers) viewer.close(4001, "terminal_closed");
+    for (const viewer of session.viewers) closeSocket(viewer);
     session.viewers.clear();
-    for (const disposable of session.disposables) disposable.dispose();
+    for (const disposable of session.disposables) {
+      try { disposable.dispose(); }
+      catch (error) { reportFailure("terminal_disposable_cleanup_failed", error); }
+    }
     try {
       if (killPty) killPtyBestEffort(session.pty, session.ptyFds);
     } finally {

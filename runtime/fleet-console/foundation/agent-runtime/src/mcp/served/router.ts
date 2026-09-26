@@ -19,6 +19,7 @@ export interface McpRouterRuntime {
   registry: McpToolRegistry;
   server: McpRouterServer;
   snapshotStore: McpToolSnapshotStore;
+  onFailure?: (kind: string, error: unknown) => void;
 }
 
 export function specToMcpTool(spec: AgentToolSpec): McpTool {
@@ -47,6 +48,14 @@ export function installExecutorToolCallRouter(
           content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
           isError: true,
         });
+      })
+      .catch((error: unknown) => {
+        // Tool effects may already have happened; do not retry the call or claim an execution failure.
+        try {
+          if (runtime.onFailure) runtime.onFailure("mcp_result_delivery_failed", error);
+          else process.stderr.write(`[fleet-mcp] tool result delivery failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+        }
+        catch { /* Logging cannot reject another detached Promise. */ }
       });
     return toolCallId;
   });

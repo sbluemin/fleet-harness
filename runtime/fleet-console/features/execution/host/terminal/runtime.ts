@@ -57,6 +57,7 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
         for (const listener of terminalTitleListeners.get(operationType) ?? []) listener(sessionId, title);
       };
     },
+    onFailure: ctx.recordFailure,
     onSessionExit: async (sessionId) => {
       await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
     },

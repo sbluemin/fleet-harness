@@ -10,6 +10,7 @@ export interface PluginAdmiralMcpHostOptions {
    * 모델 인자나 토큰 밖의 값으로 호출자를 정하지 않는다.
    */
   readonly resolveCaller?: (label: string) => ConsoleCaller | null;
+  readonly onFailure?: (kind: string, error: unknown) => void;
 }
 
 /** 연결마다 붙인 접두사(`<uuid>:`)를 벗긴다 — uuid 에는 콜론이 없으므로 첫 콜론까지가 접두사다. */
@@ -52,7 +53,7 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
         });
       }
       const server = createServedMcpEndpoint({ transport, serverInfo: { name }, toolSnapshotStore: snapshotStore });
-      const manager = createExecutorSessionManager({ runtimes: [{ name, runtime: { registry, snapshotStore, server } }] });
+      const manager = createExecutorSessionManager({ runtimes: [{ name, runtime: { registry, snapshotStore, server, onFailure: options.onFailure } }] });
       const registration: Registration = { manager, stop: () => { controller.abort(); manager.cleanup(); return server.stop(); } };
       registrations.set(name, registration);
       return () => {

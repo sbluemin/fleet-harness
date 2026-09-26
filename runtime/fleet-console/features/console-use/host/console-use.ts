@@ -58,6 +58,7 @@ export interface ConsoleUseDeps {
   /** 호출 하나가 화면 어디에 닿았는지 — 호스트가 SSE 로 모든 클라이언트에 흘려 대상을 감싸는 표식을 그린다. */
   readonly onCall?: (event: ConsoleUseCallEvent) => void;
   readonly transport?: McpHttpTransport;
+  readonly onFailure?: (kind: string, error: unknown) => void;
   readonly theaters?: () => readonly { readonly id: string; readonly name: string }[];
   readonly operations?: () => readonly OperationNode[];
   /**
@@ -711,7 +712,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       for (const entry of contributed.values()) registerContributed(entry);
       registrars.add(registerContributed);
       const server = createServedMcpEndpoint({ transport: deps.transport, serverInfo: { name: FLEET_CONSOLE_USE_MCP_SERVER }, toolSnapshotStore: snapshotStore });
-      const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_CONSOLE_USE_MCP_SERVER, runtime: { registry, snapshotStore, server } }] });
+      const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_CONSOLE_USE_MCP_SERVER, runtime: { registry, snapshotStore, server, onFailure: deps.onFailure } }] });
       let closing: Promise<void> | undefined;
       const embeddedServer = createEmbeddedMcpServer({
         name: FLEET_CONSOLE_USE_MCP_SERVER,
