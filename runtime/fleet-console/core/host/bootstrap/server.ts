@@ -1,6 +1,6 @@
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
-import { createOperationArchiveStorage, archiveEvent, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
+import { createOperationArchiveStorage, archiveEvent, archiveSessionNodes, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
 import { createOperationArchiveCoordinator } from "../../../features/workspace/host/operation-archive.js";
 import { createOperationArchiveRouter, OPERATION_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/operation-archive-routes.js";
 import crypto from "node:crypto";
@@ -462,9 +462,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 그룹 이동은 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮긴다.
   const operations = createOperationStore({
     onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event),
-    isReserved: (id) => archiveStorage.entries().some((entry) => entry.operation.id === id) || deletionCoordinator.hasPendingOperation(id),
+    isReserved: (id) => archiveStorage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingOperation(id),
     assertRelationMutable: (id) => operationArchive.assertMutable(id),
-    hasArchivedChildren: (id) => archiveStorage.entries().some((entry) => entry.operation.parentOperationId === id),
   });
   const folderGrants = createFolderGrantStore();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
@@ -618,7 +617,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     beforePurge: (purged) => {
       if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
       launchKeys.recordPurged(purged);
-      for (const operation of purged) purgeCoreOperation(operation);
+      for (const operation of purged.flatMap(archiveSessionNodes)) purgeCoreOperation(operation);
     },
     // 삭제·복원은 화면 사건이기도 하다. 누른 창은 스스로 다시 조회하지만 다른 창과 에이전트가 닫은
     // 경우는 이 스트림이 유일한 길이다 — 안 흘리면 그 Operation 은 다음 재수화까지 화면에 남는다.
@@ -669,15 +668,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       } else if (intent === "open" || intent === "activate") publishPluginEvent("operation:reveal", { operationId: id, reason: "", at: Date.now() });
     },
     publish: (event) => {
-      const node = event.operation;
-      if (event.channel === "operation:purged") {
-        if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
-        launchKeys.recordPurged([node]);
-        purgeCoreOperation(node);
+      for (const node of archiveSessionNodes(event.operation)) {
+        if (event.channel === "operation:purged") {
+          if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
+          launchKeys.recordPurged([node]);
+          purgeCoreOperation(node);
+        }
+        publishPluginEvent(event.channel, { eventId: `${event.eventId}:${node.id}`, operationId: node.id, theaterId: node.theaterId, pluginId: node.pluginId, type: node.type,
+          ...(event.channel === "operation:restored" ? { operation: node } : {}) }, true);
+        if (event.channel === "operation:archived") pendingClusterRemoved.add(node.id);
       }
-      publishPluginEvent(event.channel, { eventId: event.eventId, operationId: node.id, theaterId: node.theaterId, pluginId: node.pluginId, type: node.type,
-        ...(event.channel === "operation:restored" ? { operation: node } : {}) }, true);
-      if (event.channel === "operation:archived") pendingClusterRemoved.add(node.id);
     },
     publishChanged: publishArchiveChanged,
   });

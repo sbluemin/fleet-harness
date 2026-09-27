@@ -6,6 +6,7 @@ import {
   previewOperationPurge,
   purgeArchivedOperations,
   restoreOperationCluster,
+  readOperationLaunch,
   type OperationDescription,
   type OperationPurgeConfirmation,
 } from "@fleet-console/sdk/operations/browser";
@@ -31,25 +32,18 @@ const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]
 
 interface ArchiveCluster {
   readonly rootId: string;
-  /** 보관된 최상위 노드. 상위만 열려 있고 하위만 보관된 부분 보관이면 null. */
-  readonly root: OperationDescription | null;
-  readonly members: readonly OperationDescription[];
+  readonly root: OperationDescription;
+  readonly members: readonly { readonly id: string; readonly title: string }[];
   readonly archivedAt: number;
 }
 
 function clustersOf(entries: readonly OperationDescription[]): readonly ArchiveCluster[] {
-  const byRoot = new Map<string, OperationDescription[]>();
-  for (const entry of entries) {
-    const list = byRoot.get(entry.rootOperationId) ?? [];
-    list.push(entry);
-    byRoot.set(entry.rootOperationId, list);
-  }
-  return [...byRoot.entries()]
-    .map(([rootId, list]) => {
-      const root = list.find((entry) => entry.operation.id === rootId) ?? null;
-      const members = list.filter((entry) => entry.operation.id !== rootId).sort((a, b) => a.operation.title.localeCompare(b.operation.title));
-      return { rootId, root, members, archivedAt: Math.max(...list.map((entry) => entry.archivedAt ?? 0)) };
-    })
+  return entries.map((root) => ({
+      rootId: root.operation.id,
+      root,
+      members: (root.operation.childSessions ?? []).map((child) => ({ id: child.id, title: readOperationLaunch(child.payload).sessionName ?? child.id.slice(0, 8) })),
+      archivedAt: root.archivedAt ?? 0,
+    }))
     .sort((a, b) => b.archivedAt - a.archivedAt);
 }
 
@@ -236,32 +230,29 @@ function ArchiveClusterItem({ cluster, now, restoring, confirming, purged, curre
     if (wasConfirmingRef.current && !confirming && !purged) purgeRef.current?.focus();
     wasConfirmingRef.current = confirming;
   }, [confirming, purged]);
-  const activeRoot = cluster.root === null ? state.operations.find((operation) => operation.id === cluster.rootId) ?? null : null;
-  const rootOperation = cluster.root?.operation ?? activeRoot;
-  const rootOpen = cluster.root === null;
-  const title = rootOperation?.title ?? cluster.members[0]?.operation.title ?? cluster.rootId;
-  const theaterId = rootOperation?.theaterId ?? cluster.members[0]?.operation.theaterId ?? null;
+  const rootOperation = cluster.root.operation;
+  const title = rootOperation.title;
+  const theaterId = rootOperation.theaterId;
   const theaterLabel = state.theaters.find((theater) => theater.id === theaterId)?.label ?? null;
   const groupId = rootOperation?.groupId ?? null;
   const group = groupId ? state.groups.find((candidate) => candidate.id === groupId) ?? null : null;
   const groupLost = groupId !== null && group === null;
-  const archivedCount = cluster.members.length + (cluster.root ? 1 : 0);
+  const archivedCount = 1;
   const kids = cluster.members.length;
   const meta = [
     theaterLabel,
     group ? group.name : t("archive.meta.ungrouped"),
     t("archive.meta.archivedAt", { when: formatRelativeTime(cluster.archivedAt, locale, now) }),
-    rootOpen ? t("archive.meta.childrenOnly", { count: kids }) : kids > 0 ? t("archive.meta.children", { count: kids }) : null,
+    kids > 0 ? t("archive.meta.children", { count: kids }) : null,
   ].filter((part): part is string => !!part).join(" · ");
 
   return (
     <article className={`archive-sheet-item${confirming ? " is-confirming" : ""}`} aria-label={title}>
       <p className="archive-sheet-item-title">{title}</p>
       <p className="archive-sheet-item-meta">{meta}</p>
-      {kids > 0 || rootOpen ? (
+      {kids > 0 ? (
         <ul className="archive-sheet-members">
-          {rootOpen && rootOperation ? <li className="is-open"><span>{rootOperation.title}</span><small>{t("archive.member.open")}</small></li> : null}
-          {cluster.members.map((member) => <li key={member.operation.id} className="is-child"><span>{member.operation.title}</span></li>)}
+          {cluster.members.map((member) => <li key={member.id} className="is-child"><span>{member.title}</span></li>)}
         </ul>
       ) : null}
       {confirming ? (
@@ -281,7 +272,7 @@ function ArchiveClusterItem({ cluster, now, restoring, confirming, purged, curre
             <button ref={purgeRef} type="button" className="archive-sheet-purge" onClick={onAskPurge}>{t("archive.purge")}</button>
           </div>
           {groupLost ? <p className="archive-sheet-note">{t("archive.note.groupLost")}</p> : null}
-          {rootOpen ? <p className="archive-sheet-note">{t("archive.note.underOpenParent")}</p> : kids > 0 ? <p className="archive-sheet-note">{t("archive.note.withChildren", { count: kids })}</p> : null}
+          {kids > 0 ? <p className="archive-sheet-note">{t("archive.note.withChildren", { count: kids })}</p> : null}
         </>
       )}
     </article>

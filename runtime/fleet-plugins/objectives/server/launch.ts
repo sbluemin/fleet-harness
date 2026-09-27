@@ -63,8 +63,8 @@ export interface LaunchService {
   muster(objectiveId: string): Promise<readonly { readonly id: string; readonly role: string; readonly session: string; readonly operationId: string; readonly state: "live" | "launched" | "resumed" | "unknown" }[]>;
   /** 사람 경로의 구성원 수정. 서브에이전트 허용이 바뀌면 다음 기동 정책만 호스트에 알리고, 떠 있는 프로세스는 건드리지 않는다. */
   memberPatched(objectiveId: string, memberId: string, patch: MemberPatchInput): Promise<Objective>;
-  /** 명단에서 빼고 그 Operation 을 닫는다. 삭제 유예 뒤 복원되면 일반 Operation 이므로 질문 정책을 먼저 되돌린다. */
-  memberRemoved(objectiveId: string, memberId: string): { readonly objective: Objective; readonly missionIds: readonly string[] };
+  /** 필요하면 부모를 휴면 복원한 뒤 자식 세션을 즉시 삭제하고 명단에서 뺀다. */
+  memberRemoved(objectiveId: string, memberId: string): Promise<{ readonly objective: Objective; readonly missionIds: readonly string[] }>;
   /** 지휘관 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. */
   busy(objectiveId: string): boolean;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
@@ -561,7 +561,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const current = editableObjective(objectiveId);
       const member = current.members.find((member) => member.id === memberId);
       if (!member) throw new ObjectiveStoreError("unknown_member");
-      if (patch.subagents !== undefined && member.operationId && referenceNode(member.operationId)) await accessOperation(member.operationId);
+      if (patch.subagents !== undefined && referenceNode(member.id)) await accessOperation(member.id);
       editableObjective(objectiveId);
       const next = store.memberPatch(objectiveId, memberId, patch);
       if (patch.subagents !== undefined) {
@@ -570,14 +570,18 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return next;
     }),
 
-    memberRemoved(objectiveId, memberId) {
+    memberRemoved: (objectiveId, memberId) => orderedOperationRequest(objectiveId, async () => {
+      const current = editableObjective(objectiveId);
+      if (!current.members.some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
+      if (!store.pending(objectiveId)) await accessOperation(objectiveId);
+      editableObjective(objectiveId);
       if (ctx.host.operations.get(memberId)) {
         if (!ctx.host.operations.deleteChild) throw new ObjectiveStoreError("capability_unavailable");
         if (!ctx.host.operations.deleteChild(memberId)) throw new ObjectiveStoreError("child_delete_failed");
       }
       const result = store.memberRemove(objectiveId, memberId);
       return { objective: result.objective, missionIds: result.missionIds };
-    },
+    }),
 
     busy: (objectiveId) => working(objective(objectiveId).id),
 
@@ -658,9 +662,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
     operationChanged(operationId) {
       const current = store.find(operationId) ?? store.findMember(operationId)?.objective;
-      // 복원된 Operation의 그룹만 맞춘다. 사건 처리 중 보관된 다른 Operation을 깨우지는 않는다.
-      if (current && !current.done) followGroup(current);
-      store.refresh(operationId);
+      if (current) store.refresh(current.id);
     },
 
     dispose: () => { for (const timer of announceTimers) clearTimeout(timer); announceTimers.clear(); },

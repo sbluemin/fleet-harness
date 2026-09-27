@@ -424,7 +424,7 @@ export function App() {
     undoInFlightRef.current = true;
     const request = entry.kind === "archive"
       ? undoOperationArchive({ targetId: entry.receipt.targetId, archiveId: entry.receipt.archiveId })
-        .then(() => fetchOperations(null).then(hydrateOperations))
+        .then(() => Promise.allSettled([fetchOperations(null).then(hydrateOperations)]))
       : restoreDeletion(entry.deletion.deletionId)
         .then(() => Promise.allSettled([
           fetchTheaters(null).then(hydrateTheaters),

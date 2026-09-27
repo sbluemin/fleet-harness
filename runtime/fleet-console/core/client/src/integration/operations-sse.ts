@@ -1,4 +1,5 @@
 import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
+import { refreshOperationArchive } from "./operation-archive.js";
 import { OPERATION_CLUSTER_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
@@ -250,6 +251,8 @@ export function connectOperationsSse(): void {
     sessionResumeRefused = false;
     setConnectionState("live");
     refreshObserverStatus();
+    // 단절 중 놓친 보관·복원·삭제 사건은 서버가 재전송하지 않는다.
+    void refreshOperationArchive();
   };
 
   source.onerror = () => {

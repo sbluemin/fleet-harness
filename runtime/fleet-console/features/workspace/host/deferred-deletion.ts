@@ -279,7 +279,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
 
   function hasPendingOperation(operationId: string): boolean {
     sweepExpired();
-    return tombstones.some((item) => deletionOperations(item).some((operation) => operation.id === operationId));
+    return tombstones.some((item) => deletionOperations(item).some((operation) => operation.id === operationId || operation.childSessions?.some((child) => child.id === operationId)));
   }
 
   function hasPendingTheater(theaterId: string): boolean {

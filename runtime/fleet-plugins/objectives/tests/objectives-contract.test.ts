@@ -112,12 +112,14 @@ function harness(routingOrigin: () => string | null = () => null) {
     },
     access: async (id: string, _intent?: string) => {
       accessCalls.push(id);
-      const operation = operations.get(id) ?? archivedOperations.get(id);
-      if (!operation) throw new Error("unknown_operation");
-      const restoredIds = archivedOperations.has(id) ? [id] : [];
-      operations.set(id, operation); archivedOperations.delete(id);
-      if (restoredIds.length) activity.set(id, "dormant");
-      return { targetId: id, rootOperationId: id, restoredIds, operations: [operation] };
+      const target = operations.get(id) ?? archivedOperations.get(id);
+      if (!target) throw new Error("unknown_operation");
+      const rootId = target.parentOperationId ?? id;
+      const operation = operations.get(rootId) ?? archivedOperations.get(rootId)!;
+      const restoredIds = archivedOperations.has(rootId) ? [rootId] : [];
+      operations.set(rootId, operation); archivedOperations.delete(rootId);
+      if (restoredIds.length) activity.set(rootId, "dormant");
+      return { targetId: id, rootOperationId: rootId, restoredIds, operations: [operation] };
     },
     get: (id: string) => operations.get(id) ?? null,
     list: () => [...operations.values()],
@@ -322,7 +324,8 @@ describe("Objectives contract", () => {
     expect(launches.at(-1)?.viewMode).toBe("chat");
 
     // 명단에서 뺀 구성원은 코어 부모의 childSessions에서도 없어진다.
-    launch.memberRemoved(objective.id, routed.id);
+    await operationsHost.archive(objective.id);
+    await launch.memberRemoved(objective.id, routed.id);
     expect(operations.has(routed.id)).toBe(false);
     expect(operations.get(objective.id)!.childSessions?.some((child) => child.id === routed.id)).toBe(false);
 
@@ -334,7 +337,7 @@ describe("Objectives contract", () => {
     const late = store.memberAdd(objective.id, { role: "late" }, "human").members.at(-1)!;
     await launch.muster(objective.id);
     expect(launches.at(-1)?.viewMode).toBe("chat");
-    launch.memberRemoved(objective.id, late.id);
+    await launch.memberRemoved(objective.id, late.id);
 
     // 부모 삭제는 자식 레코드도 함께 거두며, 재기동 대상으로 다시 분리되지 않는다.
     operations.delete(objective.id);

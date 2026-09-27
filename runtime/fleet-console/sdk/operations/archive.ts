@@ -74,9 +74,13 @@ export type OperationArchiveErrorCode =
   | "unknown_operation" | "operation_busy" | "pending_deletion"
   | "archive_not_found" | "archive_revision_conflict" | "archive_undo_conflict"
   | "archive_cluster_conflict" | "archive_recovery_required" | "archive_stop_failed"
-  | "operation_not_archived" | "restore_parent_missing" | "invalid_archive_request";
+  | "operation_not_archived" | "restore_parent_missing" | "invalid_archive_request" | "child_session_not_closable";
 
-/** Host는 이 capability를 구현한다. get/list는 여전히 active 저장소만 읽는다. */
+/**
+ * Host는 이 capability를 구현한다. get/list는 여전히 active 저장소만 읽는다.
+ * 보관·삭제는 최상위 Operation만 받으며 childSessions를 함께 이동한다.
+ * describe/access/restore에 자식 ID를 주면 소유 Operation을 찾는다. access의 사용 대상 ID는 유지한다.
+ */
 export interface OperationArchiveCapability {
   /** 실행 소유자가 이동 중 새 입력·기동을 거절할 때 사용하는 Core fence. */
   isTransitioning?(id: string): boolean;

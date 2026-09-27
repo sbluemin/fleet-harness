@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import { OPERATION_PURGED_EVENT, accessOperation, describeOperation } from "@fleet-console/sdk/operations/browser";
+import { OPERATION_PURGED_EVENT, accessOperation, describeOperation, readOperationLaunch } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, ConsoleOperationSummary, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
 import type { Objective, ObjectiveEvent } from "../server/types.js";
@@ -61,7 +61,6 @@ function referencedOperationIds(): ReadonlySet<string> {
   for (const state of theaters.values()) {
     for (const objective of state.objectives) {
       ids.add(objective.id);
-      for (const member of objective.members) if (member.operationId) ids.add(member.operationId);
     }
   }
   return ids;
@@ -88,8 +87,12 @@ function describeMissingOperations(): void {
           // 보관된 Operation 은 실행이 멈춘 상태다 — 지금의 휴면 줄과 같은 모양으로 선다.
           activity: "ended",
           ownActivity: "ended",
-          ...(description.operation.parentOperationId ? { parentOperationId: description.operation.parentOperationId } : {}),
         });
+        if (description) for (const child of description.operation.childSessions ?? []) {
+          described.set(child.id, { id: child.id, theaterId: description.operation.theaterId, type: "agent",
+            title: readOperationLaunch(child.payload).sessionName ?? child.id.slice(0, 8),
+            parentOperationId: description.operation.id, activity: "ended", ownActivity: "ended" });
+        }
       })
       .catch(() => { /* 읽지 못하면 이번에는 닫힘으로 두고 다음 변화 때 다시 묻는다 */ })
       .finally(() => {

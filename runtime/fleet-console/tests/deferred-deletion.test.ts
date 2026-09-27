@@ -87,20 +87,22 @@ describe("deferred deletion coordinator", () => {
 });
 
 describe("Operation archive persistence and deletion", () => {
-  // 기존 유예 삭제 시험은 두 파일 이동·부분 보관·복원 경계를 거치지 않는다.
-  it("parks a subtree outside active state, restores its whole Cluster, and never purges on archive", async () => {
+  // 기존 유예 삭제 시험은 두 파일 이동·자식 세션 보존·복원 경계를 거치지 않는다.
+  it("parks an Operation with its child sessions and restores the complete dormant record", async () => {
     await withArchiveDirectory(async (directory) => {
       const h = createArchiveHarness(directory);
       h.operations.create({ ...makeOperation("parent"), pluginId: null, payload: { session: { harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" } } });
-      h.operations.create({ ...makeOperation("child"), parentOperationId: "parent" });
+      h.operations.createChild({ parentOperationId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" });
       h.save();
-      const receipt = await h.archive.archive("child");
-      expect(h.operations.list().map((node) => node.id)).toEqual(["parent"]);
-      expect(h.archive.describe("child")?.location).toBe("archived");
-      expect(h.operations.get("child")).toBeNull();
+      await expect(h.archive.archive("11111111-1111-4111-8111-111111111111")).rejects.toThrow("child_session_not_closable");
+      const receipt = await h.archive.archive("parent");
+      expect(h.stopped).toEqual(["parent", "11111111-1111-4111-8111-111111111111"]);
+      expect(h.operations.list()).toEqual([]);
+      expect(h.archive.describe("11111111-1111-4111-8111-111111111111")?.location).toBe("archived");
+      expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
       expect(h.events.map((event) => event.channel)).toEqual(["operation:archived"]);
-      expect(() => h.operations.create(makeOperation("child"))).toThrow("operation_exists");
-      expect(JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8")).operations.map((node: OperationNode) => node.id)).toEqual(["parent"]);
+      expect(() => h.operations.create(makeOperation("11111111-1111-4111-8111-111111111111"))).toThrow("operation_exists");
+      expect(JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8")).operations.map((node: OperationNode) => node.id)).toEqual([]);
       const router = createOperationArchiveRouter({ archive: h.archive, isAuthorized: () => false,
         readJsonBody: async <T,>() => ({}) as T, sanitize: createSanitizedOpDto,
         writeJson: (res, status, body) => Object.assign(res, { status, body }),
@@ -112,38 +114,23 @@ describe("Operation archive persistence and deletion", () => {
       const denied: { status?: number } = {};
       await router({ req: { method: "POST" } as never, res: denied as never, pathname: "/api/v1/operations/child/restore" });
       expect(denied.status).toBe(401);
-      expect(h.operations.get("child")).toBeNull();
+      expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
       const restarted = createArchiveHarness(directory);
       expect(restarted.archive.listArchived().total).toBe(1);
       const restored = await restarted.archive.undoArchive(receipt);
       expect(restored.rootOperationId).toBe("parent");
-      expect(restored.operations.map((node) => node.id).sort()).toEqual(["child", "parent"]);
+      expect(restored.operations.map((node) => node.id).sort()).toEqual(["parent"]);
       expect(restored.operations.every((node) => node.payload.restoredDormant === true)).toBe(true);
       expect(restarted.operations.get("parent")?.payload.session).toEqual({ harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" });
+      expect(restarted.operations.get("11111111-1111-4111-8111-111111111111")?.payload.restoredDormant).toBe(true);
+      expect(restarted.operations.list()).toHaveLength(1);
       expect(restarted.archive.listArchived().entries).toEqual([]);
       await restarted.archive.archive("parent");
       const confirm = restarted.archive.previewPurge("parent");
       await expect(restarted.archive.purge({ ...confirm, revision: confirm.revision - 1 })).rejects.toThrow("archive_revision_conflict");
       await restarted.archive.purge(confirm);
-      expect(restarted.events.filter((event) => event.channel === "operation:purged").map((event) => event.operation.id).sort()).toEqual(["child", "parent"]);
+      expect(restarted.events.filter((event) => event.channel === "operation:purged").map((event) => event.operation.id).sort()).toEqual(["parent"]);
       expect(createArchiveHarness(directory).archive.describe("parent")).toBeNull();
-    });
-  });
-
-  it("purges only archived descendants of an active root after confirming the whole partial cluster", async () => {
-    await withArchiveDirectory(async (directory) => {
-      const h = createArchiveHarness(directory);
-      h.operations.create(makeOperation("parent"));
-      h.operations.create({ ...makeOperation("child-a"), parentOperationId: "parent" });
-      h.operations.create({ ...makeOperation("child-b"), parentOperationId: "parent" });
-      h.save();
-      await h.archive.archive("child-a");
-      await h.archive.archive("child-b");
-      const confirmation = h.archive.previewPurge("parent");
-      expect(confirmation.operationIds).toEqual(["child-a", "child-b"]);
-      await h.archive.purge(confirmation);
-      expect(h.operations.list().map((node) => node.id)).toEqual(["parent"]);
-      expect(createArchiveHarness(directory).archive.listArchived().total).toBe(0);
     });
   });
 
@@ -171,21 +158,21 @@ describe("Operation archive persistence and deletion", () => {
     await withArchiveDirectory(async (directory) => {
       const h = createArchiveHarness(directory);
       h.operations.create(makeOperation("parent"));
-      h.operations.create({ ...makeOperation("child"), parentOperationId: "parent" }); h.save();
-      await h.archive.archive("child");
+      h.operations.createChild({ parentOperationId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" }); h.save();
+      await h.archive.archive("parent");
       const theaterDeletion = h.deletion.deleteTheater(THEATER.id)!;
       expect(theaterDeletion.archivedOperationCount).toBe(1);
       await h.deletion.restore(theaterDeletion.deletionId);
-      expect(h.operations.get("parent")).not.toBeNull();
-      expect(h.operations.get("child")).toBeNull();
-      expect(h.archive.describe("child")?.location).toBe("archived");
+      expect(h.operations.get("parent")).toBeNull();
+      expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
+      expect(h.archive.describe("11111111-1111-4111-8111-111111111111")?.location).toBe("archived");
       await h.archive.archive("parent");
       const deletion = h.deletion.deleteOperation("parent")!;
       expect(h.archive.listArchived().total).toBe(0);
-      await expect(h.archive.access("child")).rejects.toThrow("pending_deletion");
+      await expect(h.archive.access("11111111-1111-4111-8111-111111111111")).rejects.toThrow("pending_deletion");
       h.clock.value = deletion.expiresAt;
       h.deletion.sweepExpired();
-      expect(h.purged).toEqual(["child", "parent"]);
+      expect(h.purged).toEqual(["parent"]);
       const boot = createArchiveHarness(directory);
       expect(boot.archive.listArchived().total).toBe(0);
       expect(boot.deletion.list()).toEqual([]);
@@ -228,11 +215,12 @@ function createArchiveHarness(directory: string) {
     return { ...store, save: (value: unknown) => { if (fault.finalize && !(value as { transaction?: unknown }).transaction) throw new Error("archive_finalize_failed"); store.save(value); } };
   }) as typeof createDurableJsonStore });
   const state = storage.load();
-  const operations = createOperationStore({ now: () => clock.value, isReserved: (id) => storage.entries().some((entry) => entry.operation.id === id) });
+  const operations = createOperationStore({ now: () => clock.value, isReserved: (id) => storage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) });
   const theaters = new TheaterRegistry(); theaters.restore(state.theaters.length ? state.theaters : [THEATER]);
   operations.replace(state.operations); operations.replaceGroups(state.groups ?? []);
   const events: Array<{ channel: string; operation: OperationNode }> = [];
   const purged: string[] = [];
+  const stopped: string[] = [];
   const snapshot = (tombstones = deletion.list()): DurableConsoleState => ({ version: STATE_VERSION, theaters: theaters.list(), operations: operations.list(), groups: operations.listAllGroups(), deletionTombstones: tombstones });
   const save = (tombstones?: readonly DurableDeletionTombstone[], entries?: readonly ArchivedOperation[]) => storage.save(snapshot(tombstones), entries);
   const deletion = createDeferredDeletionCoordinator({ operations, theaters, archives: storage.entries, save,
@@ -243,10 +231,10 @@ function createArchiveHarness(directory: string) {
   deletion.load(state.deletionTombstones ?? []);
   const archive = createOperationArchiveCoordinator({ operations, storage, snapshot,
     theaterExists: (id) => !!theaters.get(id), pendingDeletion: deletion.hasPendingOperation,
-    stop: async () => {}, use: async () => {}, now: () => clock.value,
+    stop: async (node) => { stopped.push(node.id); }, use: async () => {}, now: () => clock.value,
     publish: (event) => events.push(event), publishChanged: () => {},
   });
-  return { operations, theaters, archive, deletion, storage, save, fault, clock, events, purged };
+  return { operations, theaters, archive, deletion, storage, save, fault, clock, events, purged, stopped };
 }
 
 describe("idempotent launch keys", () => {

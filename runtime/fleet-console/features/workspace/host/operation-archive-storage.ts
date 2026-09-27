@@ -167,6 +167,14 @@ export function createOperationArchiveStorage(deps: {
 
 export type OperationArchiveStorage = ReturnType<typeof createOperationArchiveStorage>;
 
+/** 실행 정리용 투영이다. 자식은 별도 보관 레코드나 active 최상위 노드로 저장하지 않는다. */
+export function archiveSessionNodes(operation: OperationNode): readonly OperationNode[] {
+  return [operation, ...(operation.childSessions ?? []).map((child): OperationNode => ({
+    id: child.id, theaterId: operation.theaterId, type: "agent", pluginId: null,
+    title: child.id, parentOperationId: operation.id, payload: child.payload, geometry: null, ts: child.ts,
+  }))];
+}
+
 export function archiveEvent(channel: ArchiveLifecycleEvent["channel"], operation: OperationNode): ArchiveLifecycleEvent {
   return { eventId: crypto.randomUUID(), channel, operation };
 }
@@ -209,7 +217,7 @@ function readArchiveDocument(value: unknown): ArchiveDocument {
 }
 function validateLocations(active: readonly OperationNode[], entries: readonly ArchivedOperation[], deletions: readonly DurableDeletionTombstone[]): void {
   const ids = new Set<string>();
-  for (const node of [...active, ...entries.map((entry) => entry.operation), ...deletions.flatMap(deletionOperations)]) {
+  for (const node of [...active, ...entries.map((entry) => entry.operation), ...deletions.flatMap(deletionOperations)].flatMap(archiveSessionNodes)) {
     if (ids.has(node.id)) throw new OperationArchiveError(409, "archive_cluster_conflict");
     ids.add(node.id);
   }

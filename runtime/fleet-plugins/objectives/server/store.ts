@@ -457,7 +457,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const launch = node ? readOperationLaunch(node.payload) : { sessionName: pending!.sessionName, model: pending!.model, effort: pending!.effort, viewMode: pending!.viewMode, started: false };
     const addedBy = stored.addedBy ? { operationId: stored.addedBy, title: operationNode(stored.addedBy)?.title ?? null } : null;
     const members = (stored.members ?? []).map((member) => {
-      const memberNode = operationNode(member.id);
+      const memberNode = node?.childSessions?.find((child) => child.id === member.id);
       const preset = memberNode ? readOperationLaunch(memberNode.payload) : null;
       return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}),
         subagents: member.subagents === true, launch: member.launch ?? { mode: "route" as const },
