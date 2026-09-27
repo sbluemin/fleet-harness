@@ -93,7 +93,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
           // 구성원이 보고·판단 요청을 보낼 주소 — 지휘관 세션 이름. 모르면 null 이다(따로 만든 Operation 이 지휘관인 목표).
           commander: { session: assigned.objective.commander.sessionName, ...(assigned.objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) },
           member: { id: member.id, role: member.role, subagents: member.subagents, ...(member.brief ? { brief: member.brief } : {}) },
-          missions: assigned.objective.missions.flatMap((mission, index) => mission.member === member.id ? [{ n: index + 1, missionId: mission.id, text: mission.text, ready: !mission.done && missionReady(assigned.objective.missions, mission), done: mission.done }] : []),
+          missions: assigned.objective.missions.flatMap((mission, index) => mission.member === member.id ? [{ n: index + 1, missionId: mission.id, text: mission.text, done: mission.done, ...(mission.done ? {} : { ready: missionReady(assigned.objective.missions, mission) }) }] : []),
           objective: objectiveView(assigned.objective) });
       }
       const own = store.find(caller.operationId);
