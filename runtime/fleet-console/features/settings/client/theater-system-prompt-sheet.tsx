@@ -68,11 +68,10 @@ export function TheaterSystemPromptSheet() {
   const queueRef = useRef(Promise.resolve());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchControllerRef = useRef<AbortController | null>(null);
+  // 열기/닫기 순서는 렌더보다 앞설 수 있다. 비동기 GET은 렌더 중 동기화되는 state가 아닌 토큰으로 소유권을 판정한다.
+  const openIdRef = useRef(0);
   const revisionRef = useRef(0);
   const dirtyRef = useRef(false);
-  requestRef.current = request;
-  draftRef.current = draft;
-  storedRef.current = stored;
 
   const persist = useCallback((theaterId: string, next: TheaterSystemPrompt) => {
     if (next.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS) { setStatus("over"); return; }
@@ -95,6 +94,8 @@ export function TheaterSystemPromptSheet() {
             clearTimeout(timerRef.current ?? undefined);
             const opener = requestRef.current?.returnFocus;
             const theater = requestRef.current?.theater.label ?? "";
+            ++openIdRef.current;
+            fetchControllerRef.current?.abort();
             requestRef.current = null;
             setRequest(null);
             if (opener?.isConnected) opener.focus();
@@ -117,10 +118,12 @@ export function TheaterSystemPromptSheet() {
   }, [clearTimer, persist]);
 
   const close = useCallback(() => {
+    ++openIdRef.current;
     fetchControllerRef.current?.abort();
     flush();
     const opener = requestRef.current?.returnFocus;
     requestRef.current = null;
+    focusAfterResetRef.current = null;
     setRequest(null);
     setTipVisible(false);
     setUndo(null);
@@ -133,13 +136,17 @@ export function TheaterSystemPromptSheet() {
       fetchControllerRef.current?.abort();
       if (requestRef.current) flush();
       clearTimer();
+      const openId = ++openIdRef.current;
       revisionRef.current++;
       dirtyRef.current = false;
       requestRef.current = next;
+      focusAfterResetRef.current = null;
+      storedRef.current = null;
+      draftRef.current = { mode: "on", body: "" };
       setRequest(next);
       setTipVisible(false);
       setStored(null);
-      setDraft({ mode: "on", body: "" });
+      setDraft(draftRef.current);
       setUndo(null);
       setStatus("untouched");
       setLoadFailed(false);
@@ -150,7 +157,8 @@ export function TheaterSystemPromptSheet() {
         if (controller.signal.aborted) return null;
         return fetchTheaterSystemPrompt(next.theater.id, controller.signal);
       }).then((result) => {
-        if (!result || controller.signal.aborted || requestRef.current !== next) return;
+        if (openIdRef.current !== openId) return;
+        if (!result || controller.signal.aborted) { setLoading(false); setLoadFailed(true); return; }
         const { prompt } = result;
         storedRef.current = prompt;
         draftRef.current = prompt ?? { mode: "on", body: "" };
@@ -158,22 +166,22 @@ export function TheaterSystemPromptSheet() {
         setDraft(draftRef.current);
         setLoading(false);
       }).catch((error) => {
-        if (!controller.signal.aborted && requestRef.current === next) {
-          if ((error as { status?: number }).status === 404) {
-            requestRef.current = null;
-            setRequest(null);
-            if (next.returnFocus?.isConnected) next.returnFocus.focus();
-            announceForgotten(next.theater.label);
-          } else { setLoading(false); setLoadFailed(true); }
-        }
+        if (openIdRef.current !== openId) return;
+        if ((error as { status?: number }).status === 404) {
+          ++openIdRef.current;
+          requestRef.current = null;
+          setRequest(null);
+          if (next.returnFocus?.isConnected) next.returnFocus.focus();
+          announceForgotten(next.theater.label);
+        } else { setLoading(false); setLoadFailed(true); }
       });
     };
     window.addEventListener(OPEN_EVENT, open);
-    return () => { window.removeEventListener(OPEN_EVENT, open); fetchControllerRef.current?.abort(); clearTimer(); };
+    return () => { window.removeEventListener(OPEN_EVENT, open); ++openIdRef.current; fetchControllerRef.current?.abort(); clearTimer(); };
   }, [clearTimer, flush]);
 
   useLayoutEffect(() => {
-    if (request && !loading && !loadFailed) selectRef.current?.querySelector<HTMLButtonElement>('button[role="combobox"]')?.focus();
+    if (request && requestRef.current === request && !loading && !loadFailed) selectRef.current?.querySelector<HTMLButtonElement>('button[role="combobox"]')?.focus();
   }, [request, loading, loadFailed]);
 
   useLayoutEffect(() => {
@@ -200,7 +208,8 @@ export function TheaterSystemPromptSheet() {
   }, [request, mobile, loading]);
 
   useEffect(() => {
-    if (!request || registeredLabel !== null) return;
+    if (!request || requestRef.current !== request || registeredLabel !== null) return;
+    ++openIdRef.current;
     fetchControllerRef.current?.abort();
     clearTimer();
     requestRef.current = null;
