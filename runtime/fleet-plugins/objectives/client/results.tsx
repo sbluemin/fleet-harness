@@ -88,8 +88,10 @@ export function ResultsHeadTools({ objective, t, expanded }: { readonly objectiv
 export function ObjectiveResults({ objective, t, language }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale }) {
   const now = useNow();
   // 열린 보기는 결과물 id 로만 기억한다 — 교체되면 지금 객체(새 파일·형식)를 다시 고르고, 떼어지면 닫힌다.
+  // 이미지는 보기 안에서 넘겨 볼 수 있으므로 닫을 때 초점은 처음 누른 자리가 아니라 마지막으로 본 결과물의 입구로 돌아간다.
   const [viewingId, setViewingId] = useState<string | null>(null);
-  const openerRef = useRef<HTMLButtonElement | null>(null);
+  const openerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const openerRef = (id: string) => (node: HTMLButtonElement | null) => { if (node) openerRefs.current.set(id, node); else openerRefs.current.delete(id); };
   const evidence = objective.results.filter((result): result is EvidenceResult => result.kind === "evidence");
   const prs = objective.results.filter((result): result is PrResult => result.kind === "pr");
   const images = evidence.filter((result) => result.mediaType !== "text/plain");
@@ -99,9 +101,15 @@ export function ObjectiveResults({ objective, t, language }: { readonly objectiv
     return index >= 0 ? ` · ${t("objectives.results.mission", { n: index + 1 })}` : "";
   };
   const uploaded = (result: EvidenceResult) => t("objectives.results.uploaded", { ago: relative(result.capturedAt, now, language) });
-  const open = (result: EvidenceResult, opener: HTMLButtonElement) => { openerRef.current = opener; setViewingId(result.id); };
-  const close = () => { setViewingId(null); openerRef.current?.focus(); };
+  const close = () => { if (viewingId) openerRefs.current.get(viewingId)?.focus(); setViewingId(null); };
   const viewingLive = viewingId ? evidence.find((result) => result.id === viewingId) ?? null : null;
+  const imageIndex = viewingLive ? images.indexOf(viewingLive) : -1;
+  const viewerImages = images.map((result) => ({
+    src: resultFileUrl(objective.id, result),
+    title: result.label ?? null,
+    note: result.note ?? null,
+    caption: `${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)}${missionTag(result.sourceMissionId)}`,
+  }));
 
   return (
     <div className="objectives-results">
@@ -111,7 +119,7 @@ export function ObjectiveResults({ objective, t, language }: { readonly objectiv
           {images.map((result) => {
             const title = result.label ?? result.name;
             return (
-              <button key={result.id} type="button" className="objectives-result-thumb" aria-label={t("objectives.results.zoom", { name: title })} title={`${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)}`} onClick={(event) => open(result, event.currentTarget)}>
+              <button key={result.id} ref={openerRef(result.id)} type="button" className="objectives-result-thumb" aria-label={t("objectives.results.zoom", { name: title })} title={`${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)}`} onClick={() => setViewingId(result.id)}>
                 <span className="objectives-result-img"><img src={resultFileUrl(objective.id, result)} alt="" loading="lazy" draggable={false} /></span>
                 <span className="objectives-result-name">{title}</span>
               </button>
@@ -120,7 +128,7 @@ export function ObjectiveResults({ objective, t, language }: { readonly objectiv
         </div>
       ) : null}
       {texts.map((result) => (
-        <button key={result.id} type="button" className="objectives-result-row is-button" aria-label={t("objectives.results.openAria", { name: result.label ?? result.name })} onClick={(event) => open(result, event.currentTarget)}>
+        <button key={result.id} ref={openerRef(result.id)} type="button" className="objectives-result-row is-button" aria-label={t("objectives.results.openAria", { name: result.label ?? result.name })} onClick={() => setViewingId(result.id)}>
           <span className="objectives-row-ic"><DocGlyph /></span>
           <span className="objectives-result-body">
             <span className="objectives-result-title is-mono">{result.label ?? result.name}</span>
@@ -137,7 +145,7 @@ export function ObjectiveResults({ objective, t, language }: { readonly objectiv
       {viewingLive ? createPortal(
         viewingLive.mediaType === "text/plain"
           ? <EvidenceTextView t={t} src={resultFileUrl(objective.id, viewingLive)} name={viewingLive.name} caption={`${viewingLive.name} · ${bytesLabel(viewingLive.bytes)} · ${uploaded(viewingLive)}`} onClose={close} />
-          : <AttachmentView t={t} src={resultFileUrl(objective.id, viewingLive)} caption={`${viewingLive.name}${viewingLive.width && viewingLive.height ? ` · ${viewingLive.width}×${viewingLive.height}` : ""} · ${uploaded(viewingLive)}`} onClose={close} />,
+          : <AttachmentView t={t} images={viewerImages} index={imageIndex} onIndex={(index) => setViewingId(images[index]!.id)} onClose={close} />,
         document.body,
       ) : null}
     </div>
