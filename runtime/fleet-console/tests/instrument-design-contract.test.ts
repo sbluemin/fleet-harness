@@ -2180,13 +2180,13 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".panel-edge-dock-filament {");
     // 엣지 독은 캔버스 위 부유 크롬이다 — 캔버스 제스처가 삼키지 않도록 blocker 마크를 단다.
     expect(edgeDocks).toContain("data-canvas-blocker");
-    // 도구모음이 중앙 트랙의 단독 승객이다. 캔버스 모드 스위치는 상태별 보기 토글 바로 왼쪽 — 좌측 사이드바
-    // 머리와 Zen 작업 표시줄 — 에 선다.
+    // 도구모음이 중앙 트랙의 단독 승객이다. 캔버스 모드 스위치는 상태별 보기 토글 왼쪽 — 좌측 사이드바
+    // 머리와 Zen 작업 표시줄 — 에 선다. Zen에는 사이드바 하단 입구가 없어 보관함 입구가 둘 사이에 선다.
     expect(commandBand).toContain(`      <div className="command-band-center">
         <span ref={setToolbarHost} className="command-band-toolbar" />`);
     expect(toolbar).not.toContain("CanvasModeSwitch");
     expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).toContain("<CanvasModeSwitch />\n            <SideBarStatusViewToggle active={statusAxis} />");
-    expect(source("../../../features/workspace/client/zen/zen-taskbar.tsx")).toContain("<CanvasModeSwitch /><SideBarStatusViewToggle active={statusAxis} />");
+    expect(source("../../../features/workspace/client/zen/zen-taskbar.tsx")).toContain("<CanvasModeSwitch /><ArchiveTaskbarEntry /><SideBarStatusViewToggle active={statusAxis} />");
     // 접힘 상태도 펼침 상태와 같은 단일 간격으로 잇는다. 별도 구분선과 캡 표면은 사라진
     // 사이드바 경계를 다시 만들어 Command Band를 두 판처럼 보이게 하므로 두지 않는다.
     expect(commandBand).not.toContain("command-band-dock-divider");

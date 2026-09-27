@@ -7,6 +7,7 @@ import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/clie
 import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
 import { OperationStatusIcon } from "../../../execution/client/components/operation-status-icon.js";
+import { ArchiveTaskbarEntry } from "../archive/archive-entry.js";
 import { CanvasModeSwitch, WarRoomModeTools } from "../canvas/canvas-mode-switch.js";
 import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized, useCanvasState } from "../canvas/canvas-store.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
@@ -170,7 +171,7 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
     {triageGlowHost ? createPortal(<div ref={glowRef} className={`war-room-glow${attentionClasses}`} />, triageGlowHost) : null}
     <div className="zen-taskbar-left war-room-taskbar-row" ref={rowRef}>
       {fit.step < 5 ? <span className="war-room-kicker">{t("canvas.triage.modeKicker")}</span> : null}
-      <span className="zen-taskbar-axis"><CanvasModeSwitch /></span>
+      <span className="zen-taskbar-axis"><CanvasModeSwitch /><ArchiveTaskbarEntry /></span>
       <span className="war-room-tools"><WarRoomModeTools compact={fit.step >= 2} /></span>
       <span className="zen-taskbar-sep" aria-hidden="true" />
       <div ref={queueRef} className={`war-room-queue${attentionClasses}`}>
