@@ -105,15 +105,32 @@ export function UseRequestCorner({ language, compact, describeSource }: {
     setUseRequestCornerState(compact ? { compactOpen: true } : { expanded: true });
   };
 
-  const liveRegion = <span className="use-corner-live" role="status" aria-live="polite">{announcement}</span>;
-  if (!hasRequests) return <div className="use-corner is-empty">{liveRegion}</div>;
+  // 누르고 있는 Enter·Space 의 반복은 더미 어디에서도 확정·토글이 되지 않는다 — 표시와 「접기」가 초점을 서로 넘겨주므로
+  // 카드 밖 버튼까지 막지 않으면 누르고 있는 Enter 하나가 펼침·접힘을 되풀이한다.
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.repeat && (event.key === "Enter" || event.key === " ")) event.preventDefault();
+  };
+  const soonest = hasRequests ? Math.min(...ordered.map((request) => useRequestSecondsLeft(request, now))) : 0;
+  const glyphOf = newest ?? ordered[0] ?? null;
+  const open = hasRequests ? ordered.find((request) => request.id === corner.openId) ?? newest! : null;
+  // 접힌 줄은 남은 시간이 짧은 것부터 — 가장 먼저 끝날 요청이 묻히지 않게.
+  const rest = ordered.filter((request) => request !== open);
+  const shown = rest.slice(0, MAX_FOLDED_ROWS);
+  const hidden = rest.length - shown.length;
+  const showStack = hasRequests && expanded;
 
-  const soonest = Math.min(...ordered.map((request) => useRequestSecondsLeft(request, now)));
-  if (!expanded) {
-    const glyphOf = newest ?? ordered[0]!;
-    return (
-      <div className="use-corner is-folded" data-canvas-blocker data-keep-operation-active>
-        {liveRegion}
+  // 루트와 낭독 영역은 빈 상태·접힘·펼침 어디서나 같은 자리에 머문다 — 다시 마운트되는 live region 은 토글 직후의 도착을 놓친다.
+  return (
+    <div
+      className={`use-corner${!hasRequests ? " is-empty" : expanded ? "" : " is-folded"}`}
+      role={showStack ? "region" : undefined}
+      aria-label={showStack ? t("terminal.useRequest.corner.region") : undefined}
+      data-canvas-blocker
+      data-keep-operation-active
+      onKeyDown={onKeyDown}
+    >
+      <span className="use-corner-live" role="status" aria-live="polite">{announcement}</span>
+      {hasRequests && !expanded && glyphOf ? (
         <button
           ref={chipRef}
           type="button"
@@ -127,51 +144,44 @@ export function UseRequestCorner({ language, compact, describeSource }: {
           <span className="use-corner-chip-count">{ordered.length}</span>
           <span className="use-corner-time">{formatUseRequestTime(soonest)}</span>
         </button>
-      </div>
-    );
-  }
-
-  const open = ordered.find((request) => request.id === corner.openId) ?? newest!;
-  // 접힌 줄은 남은 시간이 짧은 것부터 — 가장 먼저 끝날 요청이 묻히지 않게.
-  const rest = ordered.filter((request) => request !== open);
-  const shown = rest.slice(0, MAX_FOLDED_ROWS);
-  const hidden = rest.length - shown.length;
-  return (
-    <div className="use-corner" role="region" aria-label={t("terminal.useRequest.corner.region")} data-canvas-blocker data-keep-operation-active>
-      {liveRegion}
-      <div className="use-corner-head">
-        <span>{t("terminal.useRequest.corner.count", { count: ordered.length })}{rest.length > 0 ? ` · ${t("terminal.useRequest.corner.bySoonest")}` : ""}</span>
-        <button ref={foldRef} type="button" className="use-corner-fold" aria-expanded="true" onClick={fold}>{t("terminal.useRequest.corner.fold")}</button>
-      </div>
-      {shown.map((request) => {
-        const left = useRequestSecondsLeft(request, now);
-        const source = describeSource(request.operationId);
-        return (
-          <button
-            key={request.id}
-            type="button"
-            className={`use-corner-row${fresh.has(request.id) ? " is-fresh" : ""}${left <= LATE_SECONDS ? " is-late" : ""}`}
-            onClick={() => setUseRequestCornerState({ openId: request.id })}
-          >
-            <span className="use-corner-glyph" aria-hidden="true"><UseRequestGlyph capability={request.capability} /></span>
-            <span className="use-corner-row-label">{titleOf(request, t)} · {source?.memberName ?? source?.operationTitle ?? ""}</span>
-            <span className="use-corner-time">{formatUseRequestTime(left)}</span>
-          </button>
-        );
-      })}
-      {hidden > 0 ? <span className="use-corner-more">{t("terminal.useRequest.corner.more", { count: hidden })}</span> : null}
-      <UseRequestCornerCard
-        key={open.id}
-        request={open}
-        source={describeSource(open.operationId)}
-        fresh={fresh.has(open.id)}
-        now={now}
-        language={language}
-        cardRef={(element) => {
-          if (element) cardRefs.current.set(open.id, element);
-          else cardRefs.current.delete(open.id);
-        }}
-      />
+      ) : null}
+      {showStack && open ? (
+        <>
+          <div className="use-corner-head">
+            <span>{t("terminal.useRequest.corner.count", { count: ordered.length })}{rest.length > 0 ? ` · ${t("terminal.useRequest.corner.bySoonest")}` : ""}</span>
+            <button ref={foldRef} type="button" className="use-corner-fold" aria-expanded="true" onClick={fold}>{t("terminal.useRequest.corner.fold")}</button>
+          </div>
+          {shown.map((request) => {
+            const left = useRequestSecondsLeft(request, now);
+            const source = describeSource(request.operationId);
+            return (
+              <button
+                key={request.id}
+                type="button"
+                className={`use-corner-row${fresh.has(request.id) ? " is-fresh" : ""}${left <= LATE_SECONDS ? " is-late" : ""}`}
+                onClick={() => setUseRequestCornerState({ openId: request.id })}
+              >
+                <span className="use-corner-glyph" aria-hidden="true"><UseRequestGlyph capability={request.capability} /></span>
+                <span className="use-corner-row-label">{titleOf(request, t)} · {source?.memberName ?? source?.operationTitle ?? ""}</span>
+                <span className="use-corner-time">{formatUseRequestTime(left)}</span>
+              </button>
+            );
+          })}
+          {hidden > 0 ? <span className="use-corner-more">{t("terminal.useRequest.corner.more", { count: hidden })}</span> : null}
+          <UseRequestCornerCard
+            key={open.id}
+            request={open}
+            source={describeSource(open.operationId)}
+            fresh={fresh.has(open.id)}
+            now={now}
+            language={language}
+            cardRef={(element) => {
+              if (element) cardRefs.current.set(open.id, element);
+              else cardRefs.current.delete(open.id);
+            }}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
