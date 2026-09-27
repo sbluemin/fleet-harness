@@ -78,7 +78,9 @@ jobs:
               continue
             fi
             # A removal is the only declared way to delete a note, and only a note that is actually gone at HEAD.
+            # canary.md aggregates several direct-canary changes, so it is never removable as one feature's note.
             if [ "$has_changelog_amend" = "true" ] \
+              && [ "$fragment" != ".changelog.d/canary.md" ] \
               && ! git cat-file -e "$HEAD_REF:$fragment" 2>/dev/null \
               && printf '%s\n' "$declared_removals" | grep -Fxq "${fragment#.changelog.d/}"; then
               removed="${removed}${fragment}"$'\n'
