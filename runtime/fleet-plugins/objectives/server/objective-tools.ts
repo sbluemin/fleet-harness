@@ -38,6 +38,8 @@ const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS
 export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService): readonly PluginMcpTool[] {
   const { objectiveView: boardView } = createBoardViews(ctx, store);
   const objectiveView = (objective: Objective) => { prStatus?.refresh(objective.id); return boardView(store.find(objective.id) ?? objective); };
+  /** 쓰기 응답은 확인과 새로 생긴 가리킴만 — 보드 전체는 read·mine 이 준다. 결과물이 바뀌면 PR 관측만 앞당긴다. */
+  const added = <T extends { readonly id: string }>(before: readonly T[], after: readonly T[]): T | undefined => after.find((entry) => !before.some((prior) => prior.id === entry.id));
   const find = (objectiveId: string): Objective => {
     const objective = store.find(objectiveId);
     if (!objective) throw new ObjectiveStoreError("unknown_objective");
@@ -92,7 +94,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!own) return refuse("not_participant");
       return text({ role: "commander", objectiveId: own.id, objective: readView(own, caller) });
     }),
-    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order and shift as it changes; missionIds do not. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
+    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order and shift as it changes; missionIds do not. Tools that change the board return only what they created, not the board. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
       const objective = find(objectiveId);
       if (!roleIn(objective, caller)) return refuse("not_participant");
       return text({ objective: readView(objective, caller) });
@@ -115,14 +117,15 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       z.object({ objectiveId: ids, result: resultInputSchema }).strict(),
       ({ result }, objective) => {
         const attached = store.resultAdd(objective.id, result);
-        return text({ ok: true, resultId: attached.result.id, objective: objectiveView(attached.objective) });
+        prStatus?.refresh(objective.id);
+        return text({ ok: true, resultId: attached.result.id });
       }),
     commanderTool("update_result", "Update a result by resultId without changing its kind. Omitted fields stay; null clears label, note, or sourceMissionId. A PR URL change resets its observation to unchecked. Evidence replacement requires another sealed evidenceId. Completed objectives refuse result changes as objective_done.",
       z.object({ objectiveId: ids, resultId: ids, patch: resultPatchSchema }).strict(),
-      ({ resultId, patch }, objective) => text({ ok: true, objective: objectiveView(store.resultUpdate(objective.id, resultId, patch)) })),
+      ({ resultId, patch }, objective) => { store.resultUpdate(objective.id, resultId, patch); prStatus?.refresh(objective.id); return text({ ok: true, resultId }); }),
     commanderTool("detach_result", "Detach a result by resultId. This removes the objective's reference, not a PR. Unknown result ids are refused as unknown_result; completed objectives refuse changes as objective_done.",
       z.object({ objectiveId: ids, resultId: ids }).strict(),
-      ({ resultId }, objective) => text({ ok: true, objective: objectiveView(store.resultRemove(objective.id, resultId)) })),
+      ({ resultId }, objective) => { store.resultRemove(objective.id, resultId); return text({ ok: true, resultId }); }),
     commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added (unplaced) missions stay and are referenced by missionId; restating one is refused as mission_kept. A mission's prerequisites are numbers n counting from 1 over this plan's own missions, or the missionId of a mission that stays. A mission may name a roster member by id or role; none means the Commander. Roster members are accepted only while empty (members_exist). Only a person's explicit Plan request opens success-criterion proposals: criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Use {text} to propose adding, {revise: criterion number or id, text} to revise, or {retire: criterion number or id, reason} to retire. Proposals require the person's approval and block commencement and steering until resolved (criteria_not_planning, criteria_pending). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed.",
       z.object({ objectiveId: ids, missions: z.array(z.object({ text: z.string().trim().min(1).max(200), prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional() }).strict()).max(40).optional(), criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional() }).strict(),
       (args, objective) => {
@@ -133,10 +136,14 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const repeated = objective.missions.filter((mission) => (mission.done || mission.unplaced || mission.records.length > 0 || mission.memberBy === "human") && args.missions.some((planned) => same(planned.text) === same(mission.text)));
         if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((mission) => ({ missionId: mission.id, text: mission.text, ...(mission.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board and are referenced by missionId." });
         const planned = launch.planApplied(objective.id, { missions: args.missions, ...(args.members ? { members: args.members } : {}), ...(args.criteria !== undefined ? { criteria: args.criteria } : {}) });
-        return text({ ok: true, objective: objectiveView(planned) });
+        return text({ ok: true, missions: planned.missions.map((mission, index) => ({ n: index + 1, missionId: mission.id, text: mission.text })) });
       }),
     commanderTool("add_mission", "Append a mission, optionally naming its member by roster id or role; none means the Commander.", z.object({ objectiveId: ids, text: z.string().trim().min(1).max(200), member: memberReference.optional() }).strict(),
-      (args, objective) => text({ ok: true, objective: objectiveView(launch.missionAdded(objective.id, { text: args.text, ...(args.member ? { member: resolveMember(objective, args.member) } : {}) })) })),
+      (args, objective) => {
+        const next = launch.missionAdded(objective.id, { text: args.text, ...(args.member ? { member: resolveMember(objective, args.member) } : {}) });
+        const mission = added(objective.missions, next.missions);
+        return text({ ok: true, ...(mission ? { missionId: mission.id, n: next.missions.indexOf(mission) + 1 } : {}) });
+      }),
     commanderTool("place_mission", "Set an open mission's prerequisites by mission number n, counting from 1 in lineup order ([] makes it ready), and optionally its member (null means the Commander). A member the person chose stays. Missions the person added stay unready until placed.",
       z.object({ ...missionRef, prerequisites: z.array(z.number().int().min(1)).max(40), member: memberReference.nullable().optional() }).strict(),
       (args, objective) => {
@@ -145,21 +152,21 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const prerequisites = args.prerequisites.map((n) => objective.missions[n - 1]?.id);
         if (prerequisites.some((id) => !id)) return refuse("unknown_mission");
         const assignment = args.member !== undefined && target.memberBy !== "human" ? { member: args.member === null ? null : resolveMember(objective, args.member) } : {};
-        const next = launch.missionPatched(objective.id, target.id, { prerequisites: prerequisites.filter((id): id is string => !!id && id !== target.id), ...assignment });
-        return text({ ok: true, objective: objectiveView(next) });
+        launch.missionPatched(objective.id, target.id, { prerequisites: prerequisites.filter((id): id is string => !!id && id !== target.id), ...assignment });
+        return text({ ok: true, missionId: target.id });
       }),
     commanderTool("request_decision", `Place a decision request on the Objectives surfaces the person sees: questions the person answers there, not a notice that clears when read or when a session is opened. Storage limits are 1–${MAX_DECISION_QUESTIONS} questions per request and either no options or 2–${MAX_DECISION_OPTIONS} per question; the person can always write an answer of their own. The person sends every answer at once. An objective holds one current request; a new request replaces all of the previous one. missionId and memberId are optional context per question. expectedRevision is the board's decisionRequestRevision; a different value is refused as decision_request_changed. Once the answers reach the Commander, the request clears and each answer stays in decisions, which members read too, and stays through reruns. A request cleared by the person's board edits, by a referenced mission or member leaving the board, by withdrawal or by replacement becomes no decision. A request and its answers are not tool permission and do not mark criteria met.`,
       z.object({ objectiveId: ids, expectedRevision: z.number().int().min(0), questions: z.array(decisionQuestionSchema).min(1).max(MAX_DECISION_QUESTIONS) }).strict(),
       ({ expectedRevision, questions }, objective) => {
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
         const placed = store.decisionRequest(objective.id, { expectedRevision, questions });
-        return text({ ok: true, decisionRequest: placed.request, decisionRequestRevision: placed.objective.decisionRequestRevision, replacedRequestId: placed.replacedRequestId, objective: objectiveView(placed.objective) });
+        return text({ ok: true, requestId: placed.request.id, decisionRequestRevision: placed.objective.decisionRequestRevision, replacedRequestId: placed.replacedRequestId });
       }),
     commanderTool("withdraw_decision_request", "Withdraw the current decision request named by requestId. With no current request nothing changes; a different current request is refused as decision_request_changed. A withdrawal is not the person's answer, so it leaves no decision; decisions, missions and criteria stay as they are.",
       z.object({ objectiveId: ids, requestId: ids }).strict(),
       ({ requestId }, objective) => {
         const withdrawn = store.decisionWithdraw(objective.id, requestId);
-        return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequest: withdrawn.objective.decisionRequest, decisionRequestRevision: withdrawn.objective.decisionRequestRevision, objective: objectiveView(withdrawn.objective) });
+        return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequestRevision: withdrawn.objective.decisionRequestRevision });
       }),
     commanderTool("muster", "Bring every roster member to a live session: absent members launch waiting for a first message, dormant ones resume their own session, live ones stay as they are. A waiting session costs nothing until it receives a message; a session left idle after working can go dormant, and SendMessage and ListAgents reach only live sessions. A member knows only what it has been sent and what it has read, and keeps that across missions.",
       z.object({ objectiveId: ids }).strict(),
@@ -177,16 +184,17 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const done = store.missionDone(objective.id, target.id, lines);
         // 마지막 임무를 마쳤다 — 인계 대기로 넘어갔으면 인계를, 아니면 달성 기준을 스스로 다시 따지게 한다. 이미 넘긴 목표에는 붙이지 않는다.
         const next = done.awaitingHandoff ? handoffPrompt(done) : done.missions.every((mission) => mission.done) && !done.awaitingReview ? criteriaCheckPrompt(done) : undefined;
-        return text({ ok: true, ...(next ? { next } : {}), objective: objectiveView(done) });
+        return text({ ok: true, missionId: target.id, ...(next ? { next } : {}) });
       }),
     commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. A candidate holds an improvement to the product features of the project worked on, as its users experience them; a finding with no user impact is not placed on the objective and stays only in the Commander's final report. Candidates can be added at any time until the objective is complete. add a candidate {title, summary (one line), userImpact (one line: what a user experiences differently), fromMission (the missionId of this objective's mission it came from), brief, criteria (1–10), evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note; at least one is a file with a line or a command)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective carrying that title, brief and criteria and no missions, and its evidence reaches that objective's Commander. A picked candidate is frozen; the person can also discard candidates.`,
       z.object({ objectiveId: ids, add: followupBodySchema.optional(), revise: followupReviseSchema.extend({ id: ids }).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
       (args, objective) => {
         const actions = [args.add, args.revise, args.withdraw].filter((value) => value !== undefined);
         if (actions.length !== 1) return refuse("invalid_arguments", { hint: "Exactly one of add, revise or withdraw." });
-        if (args.add) { const next = store.followupAdd(objective.id, args.add); return text({ ok: true, objective: objectiveView(next) }); }
-        if (args.revise) { const { id, ...patch } = args.revise; const next = store.followupRevise(objective.id, id, patch); return text({ ok: true, objective: objectiveView(next) }); }
-        return text({ ok: true, objective: objectiveView(store.followupWithdraw(objective.id, args.withdraw!.id)) });
+        if (args.add) { const candidate = added(objective.followups, store.followupAdd(objective.id, args.add).followups); return text({ ok: true, ...(candidate ? { id: candidate.id } : {}) }); }
+        if (args.revise) { const { id, ...patch } = args.revise; store.followupRevise(objective.id, id, patch); return text({ ok: true, id }); }
+        store.followupWithdraw(objective.id, args.withdraw!.id);
+        return text({ ok: true, id: args.withdraw!.id });
       }),
     // 회고 형식이 어긋나면 invalid_arguments 대신 형식을 말하는 거절로 — 입력 스키마는 모델에게 온전한 모양을 보인다.
     { ...commanderTool("hand_off", `Hand an objective awaiting hand-off to the person's review with a retrospective: the Commander's synthesis of the members' retrospectives and its own. ${RETROSPECTIVE_FORMAT} because and ifOnly point at instructions, skills, tools or approaches; whoever maintains those reads each pair on its own, without this objective's context. The retrospective stays on the objective as a record and does not become work. A hand-off does not depend on the number of follow-up candidates. Refused as not_awaiting_handoff unless every mission is done, every criterion is met and it has not been handed off; a hand-off on a board the person has since edited is refused as board_changed.`,
@@ -196,7 +204,8 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
         const retrospective = retrospectiveSchema.safeParse(args.retrospective);
         if (!retrospective.success) return refuse("retrospective_format", { hint: RETROSPECTIVE_FORMAT });
-        return text({ ok: true, objective: objectiveView(store.handOff(objective.id, { by: "commander", retrospective: retrospective.data })) });
+        store.handOff(objective.id, { by: "commander", retrospective: retrospective.data });
+        return text({ ok: true });
       }), inputSchema: z.toJSONSchema(z.object({ objectiveId: ids, retrospective: retrospectiveSchema }).strict()) },
     commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. That line is text; PRs and files the person can open are results attached through attach_result. Once every mission is done and every criterion is met, the objective awaits hand-off; it reaches the person's review only when handed off, and the person completes it. New or reopened missions and the person's edits clear every mark and any hand-off. A mark made on a board the person has since edited is refused as board_changed.",
       z.object({ objectiveId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_EVIDENCE).optional() }).strict(),
@@ -207,7 +216,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (!target) return refuse("unknown_criterion", { criteria: objective.criteria.length });
         if (args.met && !args.evidence) return refuse("evidence_required", { hint: "A met mark carries one line of evidence." });
         const next = store.criterionMet(objective.id, target.id, args.met ? args.evidence! : null);
-        return text({ ok: true, ...(next.awaitingHandoff ? { next: handoffPrompt(next) } : {}), objective: objectiveView(next) });
+        return text({ ok: true, n: args.n, met: args.met, ...(next.awaitingHandoff ? { next: handoffPrompt(next) } : {}) });
       }),
   ];
 }

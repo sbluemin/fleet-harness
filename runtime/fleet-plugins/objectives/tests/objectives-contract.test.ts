@@ -754,7 +754,7 @@ describe("Objectives contract", () => {
     };
     const created = await throughGate({ add: { title: "From Console Use", note: "brief", criteria: ["ships", "tested"] } });
     expect(created.isError).toBe(false);
-    const id = (created.structuredContent.objective as { id: string }).id;
+    const id = created.structuredContent.objectiveId as string;
     // 브리핑·기준은 기본 요구사항으로, 임무·구성원 없이, 호출 Operation 의 그룹과 만든 표시를 들고 태어난다.
     expect(store.find(id)).toMatchObject({ note: "brief", groupId: "g-console", missions: [], members: [], addedBy: { operationId: caller.id } });
     expect(store.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
@@ -958,7 +958,11 @@ describe("Objectives contract", () => {
     const revision = store.find(commander)!.decisionRequestRevision;
     expect((await call("request_decision", { objectiveId: commander, expectedRevision: revision, questions }, commander)).structuredContent.error).toBe("board_changed");
     await call("read", { objectiveId: commander }, commander);
-    const placed = (await call("request_decision", { objectiveId: commander, expectedRevision: revision, questions }, commander)).structuredContent.decisionRequest as { id: string; questions: { id: string; options: { id: string }[] }[] };
+    const requested = (await call("request_decision", { objectiveId: commander, expectedRevision: revision, questions }, commander)).structuredContent;
+    // 쓰기 응답은 새 요청 id만 — 질문·선택지 id는 사람이 보는 보드에서 읽는다.
+    expect(requested).not.toHaveProperty("objective");
+    const placed = store.find(commander)!.decisionRequest!;
+    expect(placed.id).toBe(requested.requestId);
     const answers = [{ questionId: placed.questions[0]!.id, selectedOptionIds: [placed.questions[0]!.options[0]!.id], text: "then stop" }, { questionId: placed.questions[1]!.id, selectedOptionIds: [], text: "no" }];
     // 빈 답·빠진 질문은 받지 않는다. 전달이 실패하면 요청이 남고 결정은 쌓이지 않는다.
     expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [answers[0]] })).value.error).toBe("invalid_answers");

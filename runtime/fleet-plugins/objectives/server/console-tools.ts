@@ -87,7 +87,7 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
           ...(add.criteria?.length ? { criteria: [...add.criteria] } : {}),
           ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : {}),
         }, { language: languageOf(caller) });
-        return text({ ok: true, objective: objectiveView(objective) });
+        return text({ ok: true, objectiveId: objective.id });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code);
         return refuse("objectives_failed");
