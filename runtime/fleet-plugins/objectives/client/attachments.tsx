@@ -172,7 +172,19 @@ export function AttachmentView({ t, images, index, onIndex, onClose }: {
   const step = (delta: -1 | 1) => { const next = index + delta; if (next >= 0 && next < count) onIndex(next); };
   const latest = useRef({ onClose, step, count });
   latest.current = { onClose, step, count };
+  const captionRef = useRef<HTMLElement | null>(null);
   useEffect(() => { closeRef.current?.focus(); }, []);
+  // 설명 줄 수만큼 이미지 높이를 덜어 보기 전체가 화면 안에 머물게 한다 — 닫기 글리프까지 잘리지 않는다.
+  useLayoutEffect(() => {
+    const figure = figureRef.current;
+    const caption = captionRef.current;
+    if (!figure || !caption) return;
+    const sync = () => figure.style.setProperty("--objectives-att-caption", `${caption.offsetHeight}px`);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(caption);
+    return () => observer.disconnect();
+  }, []);
   // 끝에 닿아 누른 글리프가 꺼지면 초점이 body 로 빠진다 — 보기 안으로 되돌린다. 이웃 장은 미리 받아 넘김을 가볍게 한다.
   useEffect(() => {
     const active = document.activeElement;
@@ -210,7 +222,7 @@ export function AttachmentView({ t, images, index, onIndex, onClose }: {
             <button type="button" className="objectives-att-view-step is-next" aria-label={t("objectives.att.next")} title={t("objectives.att.next")} disabled={index === count - 1} onClick={() => step(1)}><StepGlyph direction={1} /></button>
           </> : null}
         </div>
-        <figcaption aria-live="polite">
+        <figcaption ref={captionRef} aria-live="polite">
           {image.title ? <span className="objectives-att-view-title">{image.title}</span> : null}
           {image.note ? <span className="objectives-att-view-note">{image.note}</span> : null}
           <span className="objectives-att-view-meta">{position ? <b>{position}</b> : null}{position ? " · " : ""}{image.caption}</span>
