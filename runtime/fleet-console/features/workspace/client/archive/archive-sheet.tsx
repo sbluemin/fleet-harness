@@ -19,8 +19,8 @@ import { getState, hydrateOperations, setActiveOperation, setActiveTheater } fro
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 
 /**
- * 보관함 — 보관한 Operation을 조회·복원·영구 삭제하는 한 곳. 사이드바 맨 아래 「보관함 N」, ⌘K 「보관함 열기」,
- * 보관 토스트의 「보관함」이 모두 이 시트를 연다.
+ * 보관함 — 보관한 Operation을 조회·복원·영구 삭제하는 한 곳. 사이드바 맨 아래 「보관함 N」, Zen 작업 표시줄의
+ * 보관함 글리프, ⌘P 명령 모드의 「보관함 열기」, 보관 토스트의 「보관함」이 모두 이 시트를 연다.
  *
  * 항목은 Cluster 하나다: 상위 Operation 아래 하위 Operation을 들여 쓰고, Theater·그룹·보관 시각을 밝힌다.
  * 복원은 늘 Cluster 전체를 휴면으로 돌리고 세션을 자동 실행하지 않는다. 영구 삭제는 여기서만 한다.

@@ -19,6 +19,7 @@ import { getStatusTransitionTick, useSideBarStatusAxis } from "../sidebar/operat
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import { useTriageActive } from "../canvas/triage-store.js";
+import { ArchiveTaskbarEntry } from "../archive/archive-entry.js";
 import { WarRoomTaskbar } from "./war-room-taskbar.js";
 import "./zen-taskbar.css";
 
@@ -528,8 +529,9 @@ function CruiseTaskbar({
               </span>
               <span className="zen-taskbar-theater-name">{theater.label}</span>
             </button>
-            {/* 일반 사이드바와 같은 캔버스 모드·상태별 보기 토글 — 모드마다 다른 스위치를 두지 않는다. */}
-            <span className="zen-taskbar-axis"><CanvasModeSwitch /><SideBarStatusViewToggle active={statusAxis} /></span>
+            {/* 일반 사이드바와 같은 캔버스 모드·상태별 보기 토글 — 모드마다 다른 스위치를 두지 않는다.
+                Zen에는 사이드바 하단 입구가 없으므로 보관함 입구가 모드 스위치 옆에 선다. */}
+            <span className="zen-taskbar-axis"><CanvasModeSwitch /><ArchiveTaskbarEntry /><SideBarStatusViewToggle active={statusAxis} /></span>
             <span className="zen-taskbar-sep" aria-hidden="true" />
           </>
         ) : null}

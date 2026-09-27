@@ -7128,7 +7128,8 @@ body[data-companion-resizing="true"] .canvas-operation {
     transition: none;
   }
 
-  .side-bar-status-view-toggle {
+  .side-bar-status-view-toggle,
+  .zen-taskbar-archive {
     transition: none;
   }
 
@@ -18281,6 +18282,43 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .side-bar-archive-button:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: -2px;
+}
+
+/* Zen 작업 표시줄의 보관함 입구 — 옆의 캔버스 모드 세그먼트·상태별 보기 토글과 같은 24px 유령 버튼. 눌림 상태가 없는
+   동작 버튼이라 다텀을 세우지 않는다. 비어 있으면 잉크만 한 단계 낮추고, 누르면 여전히 빈 보관함을 연다. */
+.zen-taskbar-archive {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.zen-taskbar-archive svg {
+  width: 14px;
+  height: 14px;
+}
+
+.zen-taskbar-archive.is-empty {
+  color: color-mix(in oklch, var(--text-tertiary) 55%, transparent);
+}
+
+.zen-taskbar-archive:hover,
+.zen-taskbar-archive:focus-visible {
+  background: var(--control-wash-hover);
+  color: var(--text-secondary);
+}
+
+.zen-taskbar-archive:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
 }
 
 .side-bar-archive-glyph,
