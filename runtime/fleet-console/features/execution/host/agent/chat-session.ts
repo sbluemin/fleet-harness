@@ -56,7 +56,7 @@ import {
 import { FLEET_PLUGIN_NAME, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
-import { chatChildEnv, CONSOLE_SCRATCHPAD_ENV } from "../terminal/launch-env.js";
+import { chatChildEnv } from "../terminal/launch-env.js";
 import type { CapturedAgentSession } from "./types.js";
 import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 
@@ -184,7 +184,6 @@ export interface AgentChatSessionSeed {
    */
   readonly onCwdChanged?: (cwd: string) => void;
   readonly bindWorkspaceHook?: (providerSessionId: string) => WorkspaceHookBinding;
-  readonly scratchpad?: () => string | undefined;
   /**
    * 활동축이 이 세션의 보고를 받을 수 있는지 묻기만 한다 — 아무것도 쓰지 않는다.
    * 쓰는 프로브는 진행 중 턴을 유휴로 뒤집고 그 전이를 방송해, 첫 턴이 도는 중에 들어온
@@ -2077,7 +2076,6 @@ class AgentChatSession {
             this.push({ kind: "error", code: "chat_cli_unavailable" });
             throw error;
           });
-          const scratchpad = this.seed.scratchpad?.();
           const sdk = await this.createSdk({
       modelPolicy: claudeGatewayModelPolicy,
             ...(executablePath === undefined ? {} : { executablePath }),
@@ -2093,7 +2091,6 @@ class AgentChatSession {
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
             env: {
               ...chatChildEnv(process.env),
-              ...(scratchpad ? { CLAUDE_CODE_TMPDIR: scratchpad, [CONSOLE_SCRATCHPAD_ENV]: scratchpad, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/tmp" } : {}),
               ...this.workspaceHook?.env,
               FLEET_COMPACT_BASE_URL: this.seed.baseUrl,
               ...(this.seed.compactHookToken

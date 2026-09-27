@@ -2,8 +2,25 @@ import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import type { PromptLanguage } from "./prompts.js";
+import type { ObjectiveResult } from "./results.js";
 import type { ObjectiveStore } from "./store.js";
 import { commanderMode, latestRecord, missionReady, type Objective } from "./types.js";
+
+/** 모델이 읽는 보드에서 비어 있는 값(null·빈 문자열·빈 배열·false)은 싣지 않는다 — 없음은 비어 있음이다. */
+const withoutEmpty = <T extends Record<string, unknown>>(value: T): Partial<T> =>
+  Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== null && entry !== undefined && entry !== "" && entry !== false && !(Array.isArray(entry) && entry.length === 0))) as Partial<T>;
+
+/**
+ * 결과물 한 건 — 모델이 가리키고 판단하는 데 쓰는 것만. 해시·크기·형식·저장 시각은 서버가 지키는 값이고, PR 의 host·owner·repo·number 는 url 에 있다.
+ * PR 관측은 지금 상태 하나로, 조회가 실패했을 때만 마지막으로 확인한 상태를 함께 싣는다.
+ */
+const resultView = (result: ObjectiveResult) => {
+  const common = withoutEmpty({ id: result.id, kind: result.kind, label: result.label, note: result.note, sourceMissionId: result.sourceMissionId });
+  if (result.kind === "evidence") return { ...common, name: result.name };
+  const observation = result.observation;
+  return { ...common, url: result.url, state: observation.state, ...withoutEmpty({ title: observation.title, stale: observation.stale }),
+    ...(observation.state === "error" ? { error: observation.error.code, ...(observation.lastSuccess ? { lastState: observation.lastSuccess.state } : {}) } : {}) };
+};
 
 /**
  * 보드 보기 — `fleet-objectives`(지휘관·담당의 작업 도구)와 `console_objectives`(Console Use)가 같은 모양으로 목표를 읽는다.
@@ -34,54 +51,74 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     const observation = ctx.host.consoleControl?.observe(operationId) ?? null;
     return { operationId, title: node.title, state: observation ? (observation.lifecycle === "dormant" ? "dormant" : observation.activity) : "unknown" };
   };
-  const graph = (objective: Objective) => ({
-    commander: { ...observe(objective.id), session: objective.commander.sessionName },
-    mode: commanderMode(objective.missions),
-    ...(objective.planning ? { planning: true } : {}),
-    // n 은 1부터 세는 임무 번호(편성 순서), missionId 는 변하지 않는 가리킴.
-    missions: objective.missions.map((mission, index) => ({
-      n: index + 1, missionId: mission.id, text: mission.text, done: mission.done,
-      // 선행도 같은 1-based 번호로 — 목록에 없는 가리킴은 버린다.
-      prerequisites: mission.prerequisites.map((id) => objective.missions.findIndex((candidate) => candidate.id === id) + 1).filter((value) => value >= 1),
-      why: mission.why,
-      member: mission.member ? ((member) => member ? { id: member.id, role: member.role } : null)(objective.members.find((candidate) => candidate.id === mission.member)) : null,
-      ...(mission.unplaced ? { unplaced: true } : {}),
-      ready: !mission.done && missionReady(objective.missions, mission),
-      // 다음 임무가 받는 것 — 가장 최근 기록과 기록 수. 앞선 기록은 사람이 화면에서 읽는다.
-      record: ((latest) => (latest ? { lines: latest.lines, kind: latest.kind, at: latest.at ? new Date(latest.at).toISOString() : null } : null))(latestRecord(mission)),
-      records: mission.records.length,
-      // 구성원 세션 상태는 명단에서 읽는다. 한 구성원은 여러 임무를 맡는다.
-    })),
-  });
+  const graph = (objective: Objective) => {
+    const nOf = (missionId: string) => objective.missions.findIndex((candidate) => candidate.id === missionId) + 1;
+    return {
+      // 지휘관 Operation 은 목표와 같은 id·제목이다 — 상태와 세션 이름만.
+      commander: { state: observe(objective.id).state, session: objective.commander.sessionName },
+      ...(objective.planning ? { planning: true } : {}),
+      // n 은 1부터 세는 임무 번호(편성 순서), missionId 는 변하지 않는 가리킴.
+      missions: objective.missions.map((mission, index) => {
+        // 선행과 그 이유를 같은 1-based 번호로 — 목록에 없는 가리킴은 버린다.
+        const why = Object.fromEntries(Object.entries(mission.why ?? {}).flatMap(([id, reason]) => (nOf(id) >= 1 && reason ? [[String(nOf(id)), reason]] : [])));
+        const latest = latestRecord(mission);
+        return {
+          n: index + 1, missionId: mission.id, text: mission.text, done: mission.done,
+          prerequisites: mission.prerequisites.map(nOf).filter((value) => value >= 1),
+          ...(Object.keys(why).length ? { why } : {}),
+          member: mission.member ? ((member) => member ? { id: member.id, role: member.role } : null)(objective.members.find((candidate) => candidate.id === mission.member)) : null,
+          ...(mission.unplaced ? { unplaced: true } : {}),
+          ...(mission.done ? {} : { ready: missionReady(objective.missions, mission) }),
+          // 다음 임무가 받는 것 — 가장 최근 기록과 기록 수. 앞선 기록은 사람이 화면에서 읽는다.
+          ...(latest ? { record: { lines: latest.lines, kind: latest.kind, ...(latest.at ? { at: new Date(latest.at).toISOString() } : {}) }, records: mission.records.length } : {}),
+          // 구성원 세션 상태는 명단에서 읽는다. 한 구성원은 여러 임무를 맡는다.
+        };
+      }),
+    };
+  };
   const objectiveView = (objective: Objective) => ({
-    id: objective.id, theaterId: objective.theaterId, groupId: objective.groupId, title: objective.title, note: objective.note,
-    // 메모에 붙인 이미지 — 이미지 자체는 싣지 않고 이 기계의 절대 경로만. 필요할 때 Read 로 연다(브라우저에는 이 경로가 가지 않는다).
-    attachments: (objective.attachments ?? []).map((attachment) => ({ n: attachment.n, name: attachment.name, type: attachment.type, bytes: attachment.bytes, ...(attachment.width ? { width: attachment.width, height: attachment.height } : {}), path: store.attachmentPath(objective, attachment) })),
-    results: objective.results,
-    dueDate: objective.dueDate, today: objective.today,
-    // 달성 기준 — n 은 1부터, 기준을 가리키는 번호. met 은 지휘관이 충족으로 표시한 근거(없으면 미충족).
-    criteria: objective.criteria.map((criterion, index) => ({ n: index + 1, id: criterion.id, text: criterion.text, by: criterion.by, met: criterion.met ?? null })),
-    criteriaOpen: objective.criteriaOpen,
-    criteriaProposals: objective.criteriaProposals.map((proposal, index) => ({ n: index + 1, id: proposal.id, kind: proposal.kind, target: proposal.target ?? null,
-      targetN: proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null,
-      text: proposal.text ?? null, reason: proposal.reason ?? null, annotation: proposal.annotation ?? null })),
-    members: objective.members.map((member) => ({ id: member.id, role: member.role, brief: member.brief ?? null, by: member.by, subagents: member.subagents, model: member.model ?? null, effort: member.effort ?? null, session: member.sessionName,
-      ...(ctx.host.operations.get(member.id) ? observe(member.id) : { operationId: null, state: "missing" as const }) })),
-    done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
-    handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
-    addedBy: objective.addedBy, graph: graph(objective),
-    // 후속 후보 — 지휘관이 고치거나 거둘 수 있는 것은 open 뿐이다. 폐기 흔적은 제목·요약만.
-    followups: objective.followups.map((candidate) => (candidate.state === "discarded"
-      ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary }
-      : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence })),
-    followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error })) })),
-    // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
-    origin: objective.origin,
-    // 결정 요청(지휘관이 사람에게 묻는 지금의 질문들)과 결정(사람이 보낸 답 — 답한 순간의 질문 사본과 함께).
-    decisionRequest: objective.decisionRequest,
+    id: objective.id, theaterId: objective.theaterId, title: objective.title,
+    ...withoutEmpty({
+      // 사람이 쓴 목표 설명 — 도구 설명이 부르는 이름(brief)으로 싣는다.
+      groupId: objective.groupId, brief: objective.note,
+      // 메모에 붙인 이미지 — 이미지 자체는 싣지 않고 이 기계의 절대 경로만. 필요할 때 Read 로 연다(브라우저에는 이 경로가 가지 않는다).
+      attachments: (objective.attachments ?? []).map((attachment) => ({ n: attachment.n, name: attachment.name, type: attachment.type, bytes: attachment.bytes, ...(attachment.width ? { width: attachment.width, height: attachment.height } : {}), path: store.attachmentPath(objective, attachment) })),
+      results: objective.results.map(resultView),
+      dueDate: objective.dueDate, today: objective.today,
+      // 달성 기준 — n 은 1부터, 기준을 가리키는 번호. met 은 지휘관이 충족으로 표시한 근거(없으면 미충족).
+      criteria: objective.criteria.map((criterion, index) => ({ n: index + 1, id: criterion.id, text: criterion.text, by: criterion.by, met: criterion.met ?? null })),
+      criteriaOpen: objective.criteriaOpen,
+      criteriaProposals: objective.criteriaProposals.map((proposal, index) => ({ n: index + 1, id: proposal.id, kind: proposal.kind,
+        ...withoutEmpty({ target: proposal.target, targetN: proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null, text: proposal.text, reason: proposal.reason, annotation: proposal.annotation }) })),
+      // 구성원 id 가 곧 그 세션의 Operation id 다.
+      members: objective.members.map((member) => ({ id: member.id, role: member.role, ...withoutEmpty({ brief: member.brief, model: member.model, effort: member.effort }), by: member.by, subagents: member.subagents, session: member.sessionName,
+        state: ctx.host.operations.get(member.id) ? observe(member.id).state : "missing" as const })),
+      done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
+      handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
+      addedBy: objective.addedBy,
+    }),
+    graph: graph(objective),
+    ...withoutEmpty({
+      // 후속 후보 — 지휘관이 고치거나 거둘 수 있는 것은 open 뿐이다. 폐기 흔적은 제목·요약만.
+      followups: objective.followups.map((candidate) => (candidate.state === "discarded"
+        ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary }
+        : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence.map((entry) => withoutEmpty({ ...entry })) })),
+      followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, ...withoutEmpty({ operationId: entry.operationId, error: entry.error }) })) })),
+      // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
+      origin: objective.origin,
+      // 지금의 결정 요청 — 철회에 쓰는 id 와 지휘관이 낸 질문. 선택지 id 는 사람의 화면이 쓰는 값이다.
+      decisionRequest: objective.decisionRequest ? { id: objective.decisionRequest.id, questions: objective.decisionRequest.questions.map((question) => ({ text: question.text,
+        ...withoutEmpty({ options: question.options.map((option) => option.label), multiSelect: question.multiSelect, missionId: question.missionId, memberId: question.memberId }) })) } : null,
+    }),
     decisionRequestRevision: objective.decisionRequestRevision,
     ...(objective.decisionDelivery ? { decisionDelivering: true } : {}),
-    decisions: objective.decisions.map((decision) => ({ ...decision, at: new Date(decision.at).toISOString() })),
+    // 결정 — 사람이 보낸 답. 질문과 고른 선택지의 이름, 직접 쓴 말만 싣는다.
+    ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ question: decision.question.text,
+      ...withoutEmpty({
+        selected: decision.answer.selectedOptionIds.flatMap((id) => decision.question.options.filter((option) => option.id === id).map((option) => option.label)),
+        text: decision.answer.text, missionId: decision.missionId, memberId: decision.memberId,
+      }),
+      at: new Date(decision.at).toISOString() })) }),
   });
   const rowView = (objective: Objective) => ({ id: objective.id, groupId: objective.groupId, title: objective.title, done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null });
   /** 알림 문구의 언어 — 목표가 띄운 세션에 objectiveLanguage 로 남아 있다. */

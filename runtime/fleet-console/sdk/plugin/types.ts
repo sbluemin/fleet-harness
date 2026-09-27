@@ -848,8 +848,6 @@ export interface FleetPluginConsoleControlHost {
    * 백그라운드 작업이 남은 세션은 그 작업을 끝낸다. 사람이 그 작업의 종결을 결정한 경우에만 쓴다. 실행 중인 턴은 여전히 not_idle 이다.
    */
   sleep?(operationId: string, options?: { readonly endPendingWork?: boolean }): Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
-  /** 플러그인 자신의 Theater 워크스페이스 영역에 있는 경로만 검증해 Operation에 기록한다. null은 이 플러그인이 기록한 경로를 해제한다. */
-  setScratchpad?(operationId: string, path: string | null): void;
   /**
    * 이미 있는 Operation의 다음 프로세스 기동(휴면 재개·채팅을 새로 띄우는 실행)에 쓸 서브에이전트 정책.
    * live 프로세스는 중단하지 않고, 세션 스냅샷도 바꾸지 않는다. 없는 Operation은 무시한다.

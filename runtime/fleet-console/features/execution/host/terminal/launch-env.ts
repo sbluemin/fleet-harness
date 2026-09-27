@@ -1,5 +1,4 @@
 export const TERMINAL_TERM = "xterm-256color";
-export const CONSOLE_SCRATCHPAD_ENV = "FLEET_CONSOLE_SCRATCHPAD";
 
 export function withTerminalCapabilities(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
@@ -28,9 +27,6 @@ const CONSOLE_INTERNAL_ENV_KEYS = [
 // 찾는 데 필요하고, FLEET_CONSOLE_SESSION_ID는 세션별로 명시 주입되므로 유지한다.
 export function stripConsoleInternalEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const next: NodeJS.ProcessEnv = { ...env };
-  // Console이 주입한 부모 scratchpad만 떼고, 사용자가 직접 설정한 TMPDIR은 보존한다.
-  if (next.CLAUDE_CODE_TMPDIR && next.CLAUDE_CODE_TMPDIR === next[CONSOLE_SCRATCHPAD_ENV]) delete next.CLAUDE_CODE_TMPDIR;
-  delete next[CONSOLE_SCRATCHPAD_ENV];
   for (const key of CONSOLE_INTERNAL_ENV_KEYS) delete next[key];
   return next;
 }

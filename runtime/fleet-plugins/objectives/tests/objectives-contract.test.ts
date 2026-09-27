@@ -87,7 +87,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const sent: { operationId: string; text: string }[] = [];
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
   const interrupted: string[] = [];
-  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string; scratchpad?: string }[] = [];
+  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string }[] = [];
   const resumed: string[] = [];
   const subagentSpawns: { operationId: string; policy: "blocked" | "default" }[] = [];
   const userQuestions: { operationId: string; policy: "blocked" | "default" }[] = [];
@@ -150,7 +150,7 @@ function harness(routingOrigin: () => string | null = () => null) {
       consoleControl: {
         launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
         reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
-        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string; parentOperationId?: string; childSessionId?: string; scratchpad?: string }) => {
+        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string; parentOperationId?: string; childSessionId?: string }) => {
           if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
           if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
@@ -165,10 +165,10 @@ function harness(routingOrigin: () => string | null = () => null) {
             return { operationId: id };
           }
           if (input.launchKey) keyed.set(input.launchKey, id);
-          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableUserQuestions: input.disableUserQuestions, groupId: input.groupId, scratchpad: input.scratchpad });
+          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableUserQuestions: input.disableUserQuestions, groupId: input.groupId });
           // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
           activity.set(id, input.dormant ? "dormant" : "idle");
-          const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.scratchpad ? { scratchpad: input.scratchpad, scratchpadOwner: "objectives" } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
+          const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
           if (input.childSessionId && input.parentOperationId) {
             const parent = operations.get(input.parentOperationId)!;
             parent.childSessions = [...(parent.childSessions ?? []), { id, payload, ts: { createdAt: clock++, updatedAt: clock } }];
@@ -180,11 +180,6 @@ function harness(routingOrigin: () => string | null = () => null) {
           const state = activity.get(id);
           return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"), supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
         },
-        setScratchpad: (operationId: string, value: string | null) => {
-          const node = operations.get(operationId); if (!node) return;
-          if (value === null) { const { scratchpad: _scratchpad, scratchpadOwner: _owner, ...rest } = node.payload; node.payload = rest; }
-          else node.payload = { ...node.payload, scratchpad: value, scratchpadOwner: "objectives" };
-        },
         setSubagentSpawn: (operationId: string, policy: "blocked" | "default") => { subagentSpawns.push({ operationId, policy }); },
         setUserQuestions: (operationId: string, policy: "blocked" | "default") => { userQuestions.push({ operationId, policy }); },
       },
@@ -193,7 +188,8 @@ function harness(routingOrigin: () => string | null = () => null) {
   } as unknown as FleetPluginServerContext;
   const launch = createLaunchService(ctx, store);
   grouped.push((event) => launch.operationGrouped(event));
-  const tools = createObjectiveMcpTools(ctx, store, launch);
+  // 결정 요청은 기본으로 기다리지 않는다 — 기다림은 그 계약을 다루는 테스트가 따로 켠다.
+  const tools = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 0 });
   const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
   const consoleTool = createObjectiveConsoleTools(ctx, store, launch)[0]!;
   const route = async (name: string, body: Record<string, unknown>): Promise<{ status: number; value: Record<string, unknown> }> => {
@@ -457,7 +453,7 @@ describe("Objectives contract", () => {
     expect((await call("detach_result", { objectiveId: objective.id, resultId: prId }, objective.id)).structuredContent.error).toBe("unknown_result");
     expect(savedObjective(objective.id).results).toBeUndefined();
     // 구성원은 자기 증거를 seal하고 지휘관이 결과물로 붙인다. 원본·세션 종료 후에도 목표의 복사본이 열린다.
-    const ownedRoot = store.scratchpadDir(objective.theaterId, objective.id);
+    const ownedRoot = store.sharedDir(objective.theaterId, objective.id);
     fs.mkdirSync(ownedRoot, { recursive: true, mode: 0o700 });
     const screenshot = path.join(fs.realpathSync(ownedRoot), "G01.png");
     const document = path.join(fs.realpathSync(ownedRoot), "EVIDENCE.md");
@@ -537,7 +533,7 @@ describe("Objectives contract", () => {
     expect(store.find("alpha")!.note).toBe("a");
     expect(bytes("alpha")).toEqual(alphaBefore);
     expect(reload().find("alpha")!.note).toBe("a");
-    const sourceDir = store.scratchpadDir("t1", "alpha"); fs.mkdirSync(sourceDir, { recursive: true });
+    const sourceDir = store.sharedDir("t1", "alpha"); fs.mkdirSync(sourceDir, { recursive: true });
     const source = path.join(fs.realpathSync(sourceDir), "EVIDENCE.md"); fs.writeFileSync(source, "# preserved source");
     const binaryDir = path.join(objectivesDir, "alpha", "evidence");
     const write = fs.writeFileSync.bind(fs); let writes = 0;
@@ -837,17 +833,17 @@ describe("Objectives contract", () => {
     expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "p3" }], members: [] }, commander)).structuredContent.error).toBe("members_exist");
     store.setPlanning(objective.id, false);
     const mustered = await call("muster", { objectiveId: objective.id }, commander);
-    const member = (mustered.structuredContent.members as { operationId: string; state: string }[])[0]!;
+    const member = (mustered.structuredContent.members as { id: string; state: string }[])[0]!;
     expect(member.state).toBe("launched");
     // 구성원은 제 역할과 맡은 임무를 읽지만 쓰지 못한다.
     // 구성원은 보고·판단 요청을 보낼 지휘관의 세션 주소를 함께 받는다.
-    expect((await call("mine", {}, member.operationId)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, commander: { session: store.find(objective.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
+    expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, commander: { session: store.find(objective.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
     expect(store.find(objective.id)!.commander.sessionName).toMatch(/-cmdr$/);
-    expect((await call("read", { objectiveId: objective.id }, member.operationId)).isError).toBe(false);
+    expect((await call("read", { objectiveId: objective.id }, member.id)).isError).toBe(false);
     expect((await call("mine", {}, commander)).structuredContent).toMatchObject({ role: "commander", objectiveId: objective.id });
     // 새 결과물 도구도 같은 인증 caller 경계를 지난다. 구성원·외부·호출자 없음이 보드 쓰기로 이어지지 않는다.
     const resultInput = { kind: "pr", url: "https://github.com/example/project/pull/1" };
-    expect((await call("attach_result", { objectiveId: objective.id, result: resultInput }, member.operationId)).structuredContent.error).toBe("not_commander");
+    expect((await call("attach_result", { objectiveId: objective.id, result: resultInput }, member.id)).structuredContent.error).toBe("not_commander");
     const attached = await call("attach_result", { objectiveId: objective.id, result: resultInput }, commander);
     const resultId = attached.structuredContent.resultId;
     expect(attached.isError).toBe(false);
@@ -857,16 +853,16 @@ describe("Objectives contract", () => {
     expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: "12345678-1234-4123-8123-123456789012" } }, commander)).structuredContent.error).toBe("unknown_evidence");
     expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", path: "/private/user-file" } }, commander)).structuredContent.error).toBe("invalid_arguments");
     expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://elsewhere.invalid/o/r/pull/1" } }, commander)).structuredContent.error).toBe("unsupported_pr_host");
-    expect((await call("read", { objectiveId: objective.id }, member.operationId)).structuredContent.objective).toHaveProperty("results", expect.arrayContaining([expect.objectContaining({ id: resultId })]));
+    expect((await call("read", { objectiveId: objective.id }, member.id)).structuredContent.objective).toHaveProperty("results", expect.arrayContaining([expect.objectContaining({ id: resultId })]));
     expect(store.find(objective.id)!.results).toHaveLength(1);
-    const own = store.scratchpadDir(objective.theaterId, objective.id); fs.mkdirSync(own, { recursive: true });
+    const own = store.sharedDir(objective.theaterId, objective.id); fs.mkdirSync(own, { recursive: true });
     const root = fs.realpathSync(own);
     const ownFile = path.join(root, "EVIDENCE.md"); fs.writeFileSync(ownFile, "shared evidence");
-    const seal = (source: string, by = member.operationId) => call("seal_evidence_from_path", { objectiveId: objective.id, path: source }, by);
+    const seal = (source: string, by = member.id) => call("seal_evidence_from_path", { objectiveId: objective.id, path: source }, by);
     expect((await seal(ownFile, other)).structuredContent.error).toBe("not_participant");
-    expect((await call("scratchpad", { objectiveId: objective.id }, member.operationId)).structuredContent.root).toBe(root);
+    expect((await call("evidence_dir", { objectiveId: objective.id }, member.id)).structuredContent.root).toBe(root);
     const foreign = path.join(workspace, "other-session.md"); fs.writeFileSync(foreign, "not this session");
-    expect((await seal(foreign)).structuredContent.error).toBe("evidence_outside_scratchpad");
+    expect((await seal(foreign)).structuredContent.error).toBe("evidence_outside_dir");
     fs.renameSync(root, `${root}-saved`);
     fs.symlinkSync(`${root}-saved`, root);
     expect((await seal(path.join(root, "EVIDENCE.md"))).structuredContent.error).toBe("unsafe_path");
@@ -896,7 +892,7 @@ describe("Objectives contract", () => {
     const sealed = await seal(ownFile);
     expect(sealed.isError).toBe(false);
     expect((await call("attach_result", { objectiveId: other, result: { kind: "evidence", evidenceId: sealed.structuredContent.evidenceId } }, other)).structuredContent.error).toBe("unknown_evidence");
-    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: sealed.structuredContent.evidenceId } }, member.operationId)).structuredContent.error).toBe("not_commander");
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: sealed.structuredContent.evidenceId } }, member.id)).structuredContent.error).toBe("not_commander");
     // 사람이 선행 없이 더한 임무는 미분류 — 지휘관이 자리를 정하기 전까지 준비되지 않는다.
     launch.missionAdded(objective.id, { text: "missed" }, { by: "human" });
     const board = async () => ((await call("read", { objectiveId: objective.id }, commander)).structuredContent.objective as { graph: { missions: { n: number; unplaced?: boolean; ready: boolean; prerequisites: number[]; member: { role: string } | null }[] } }).graph.missions;
@@ -910,7 +906,7 @@ describe("Objectives contract", () => {
     // 계획이 남기는 임무를 같은 문구로 다시 만들어 두 벌을 세우지 못한다.
     expect((await call("plan", { objectiveId: objective.id, missions: [{ text: " Missed " }] }, commander)).structuredContent).toMatchObject({ error: "mission_kept", kept: [{ text: "missed", unplaced: true }] });
     // 배치는 지휘관만 — 담당 구성원도 함께 정한다.
-    expect((await call("place_mission", { objectiveId: objective.id, n: missed.n, prerequisites: [1] }, member.operationId)).structuredContent.error).toBe("not_commander");
+    expect((await call("place_mission", { objectiveId: objective.id, n: missed.n, prerequisites: [1] }, member.id)).structuredContent.error).toBe("not_commander");
     expect((await call("place_mission", { objectiveId: objective.id, n: missed.n, prerequisites: [1], member: "build" }, commander)).isError).toBe(false);
     expect((await board()).find((mission) => mission.prerequisites.includes(1) && mission.unplaced === undefined && mission.member?.role === "build")).toBeTruthy();
     // 사람이 정한 담당은 「지휘관 직접」이라도 지휘관이 덮지 못한다(계획 보존은 첫 계약에서).
@@ -921,7 +917,7 @@ describe("Objectives contract", () => {
     await call("place_mission", { objectiveId: objective.id, n: p2N, prerequisites: [1], member: "build" }, commander);
     expect(store.find(objective.id)!.missions.find((mission) => mission.id === p2.id)!.member).toBeNull();
     // 완료는 결론 먼저 1–3줄의 기록과 함께이고, 산문 문단은 거절된다. 구성원은 완료하지 못한다.
-    expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["r"] }, member.operationId)).structuredContent.error).toBe("not_commander");
+    expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["r"] }, member.id)).structuredContent.error).toBe("not_commander");
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["x".repeat(400)] }, commander)).structuredContent.error).toBe("summary_format");
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["shipped p1", "tests pass"] }, commander)).isError).toBe(false);
     // 같은 목표에 시작이 겹치면 하나만 간다.
@@ -935,13 +931,13 @@ describe("Objectives contract", () => {
   });
 
   it("keeps the person's answers to a decision request as decisions only once delivered, and clears a request the board no longer supports without recording one", async () => {
-    const { store, call, launch, route, sent, activity, hostFault, operationsHost, objectivesDir } = harness();
+    const { ctx, store, call, launch, route, sent, activity, hostFault, operationsHost, objectivesDir } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Ask", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
     await call("plan", { objectiveId: commander, missions: [{ text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
     store.setPlanning(commander, false);
-    const member = ((await call("muster", { objectiveId: commander }, commander)).structuredContent.members as { operationId: string }[])[0]!.operationId;
+    const member = ((await call("muster", { objectiveId: commander }, commander)).structuredContent.members as { id: string }[])[0]!.id;
     const missionId = store.find(commander)!.missions[0]!.id;
     const questions = [
       { text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }], missionId, memberId: member },
@@ -994,9 +990,21 @@ describe("Objectives contract", () => {
     expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [{ ...answers[0]!, text: "merge" }, answers[1]] })).value.error).toBe("decision_already_submitted");
     expect(sent.length).toBe(sends);
     // 구성원은 사람의 답을 보드에서 읽고, 결정은 다시 읽어 들인 저장에도 그대로다.
-    expect((await call("read", { objectiveId: commander }, member)).structuredContent.objective).toMatchObject({ decisions: [{ answer: { text: "then stop" } }, { answer: { text: "no" } }] });
+    expect((await call("read", { objectiveId: commander }, member)).structuredContent.objective).toMatchObject({ decisions: [{ question: "How far should publishing go?", text: "then stop", missionId, memberId: member }, { text: "no" }] });
     const reloaded = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), operations: operationsHost, emit: () => {} });
     expect(reloaded.find(commander)!.decisions).toHaveLength(2);
+    // 기다리는 요청 — 그 안에 온 답은 도구 응답으로 돌아가고 결정으로 남는다. 프롬프트는 보내지 않는다.
+    const waiting = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 60_000 }).find((tool) => tool.name === "request_decision")!;
+    const ask = (revision: number) => waiting.execute({ objectiveId: commander, expectedRevision: revision, questions: [{ text: "Publish?", options: [{ label: "Yes" }, { label: "No" }] }] }, { cwd: "/", caller: { kind: "operation", operationId: commander } }) as Promise<{ structuredContent: Record<string, unknown> }>;
+    const pendingAsk = ask(store.find(commander)!.decisionRequestRevision);
+    await vi.waitFor(() => { expect(store.find(commander)!.decisionRequest).not.toBeNull(); });
+    const live = store.find(commander)!.decisionRequest!;
+    const beforeAnswer = sent.length;
+    expect((await route("decision/answer", { objectiveId: commander, requestId: live.id, answers: [{ questionId: live.questions[0]!.id, selectedOptionIds: [live.questions[0]!.options[0]!.id], text: "" }] })).status).toBe(200);
+    expect((await pendingAsk).structuredContent).toMatchObject({ answered: true, answers: [{ question: "Publish?", selected: ["Yes"] }] });
+    expect(sent.length).toBe(beforeAnswer);
+    expect(store.find(commander)).toMatchObject({ decisionRequest: null });
+    expect(store.find(commander)!.decisions.at(-1)).toMatchObject({ requestId: live.id });
   });
 
   it("automatically observes shared PRs, shows failed lookups instead of stale success, and discards late or disposed requests", async () => {

@@ -21,7 +21,7 @@ import { createSessionIdentityResolver } from "./session-identity.js";
 import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 import { buildConsoleCaptureHookCommand, buildConsoleHookEntry, buildConsoleTurnHookCommand, buildConsoleWorkspaceHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../terminal/terminal-types.js";
-import { CONSOLE_SCRATCHPAD_ENV, stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "../terminal/launch-env.js";
+import { stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "../terminal/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
@@ -56,7 +56,6 @@ export interface TerminalLaunchResolverDeps {
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
-  readonly scratchpadFor?: (operationId: string) => string | undefined;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
@@ -207,7 +206,6 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       bindWorkspaceHook: deps.bindWorkspaceHook,
-      scratchpadFor: deps.scratchpadFor,
       resolveProfile,
       cliId: context?.cliId,
       model: context?.model,
@@ -244,7 +242,6 @@ async function createAgentCliLaunchSpec(options: {
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
-  readonly scratchpadFor?: (operationId: string) => string | undefined;
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
   readonly sessionName?: string;
@@ -298,8 +295,7 @@ async function createAgentCliLaunchSpec(options: {
       prompt: options.prompt,
       sessionName: options.sessionName,
     });
-    const scratchpad = cliId === "claude" ? options.scratchpadFor?.(options.sessionId) : undefined;
-    const injectedProfile = await options.injectProfile(scratchpad ? { ...profile, env: { ...profile.env, CLAUDE_CODE_TMPDIR: scratchpad, [CONSOLE_SCRATCHPAD_ENV]: scratchpad, XDG_RUNTIME_DIR: options.env.XDG_RUNTIME_DIR || "/tmp" } } : profile, {
+    const injectedProfile = await options.injectProfile(profile, {
       plugin: options.plugin,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       workspaceHookExec: buildConsoleWorkspaceHookCommand(options.hookEntry),

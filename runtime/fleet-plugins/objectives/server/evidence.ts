@@ -31,10 +31,10 @@ function metadata(data: Buffer, filePath: string): Omit<EvidenceBytes, "data"> {
   return { name, mediaType: "text/plain", bytes: data.length, sha256: createHash("sha256").update(data).digest("hex") };
 }
 
-/** 참여 중인 목표의 공유 scratchpad 안에서만 읽는다. */
-export async function readScratchpadEvidence(filePath: string, scratchpad: string, signal?: AbortSignal): Promise<EvidenceBytes> {
+/** 참여 중인 목표의 증거 공유 디렉터리 안에서만 읽는다. */
+export async function readSharedEvidence(filePath: string, scratchpad: string, signal?: AbortSignal): Promise<EvidenceBytes> {
   if (!path.isAbsolute(filePath) || /[\u0000-\u001f\u007f]/.test(filePath) || filePath.split(/[\\/]/).some((part) => part === "..")) throw new EvidenceError("unsafe_path");
-  if (!inside(scratchpad, filePath)) throw new EvidenceError("evidence_outside_scratchpad");
+  if (!inside(scratchpad, filePath)) throw new EvidenceError("evidence_outside_dir");
   const live = () => {
     if (signal?.aborted) throw new EvidenceError("evidence_cancelled");
   };
@@ -42,7 +42,7 @@ export async function readScratchpadEvidence(filePath: string, scratchpad: strin
     live();
     if ((await fs.promises.lstat(scratchpad)).isSymbolicLink()) throw new EvidenceError("evidence_symlink");
     const root = await fs.promises.realpath(scratchpad);
-    if (root !== scratchpad || !inside(root, filePath)) throw new EvidenceError("evidence_outside_scratchpad");
+    if (root !== scratchpad || !inside(root, filePath)) throw new EvidenceError("evidence_outside_dir");
     let current = root;
     for (const segment of path.relative(root, filePath).split(path.sep)) {
       current = path.join(current, segment);
@@ -50,7 +50,7 @@ export async function readScratchpadEvidence(filePath: string, scratchpad: strin
       if (stat.isSymbolicLink()) throw new EvidenceError("evidence_symlink");
     }
     const real = await fs.promises.realpath(filePath);
-    if (!inside(root, real)) throw new EvidenceError("evidence_outside_scratchpad");
+    if (!inside(root, real)) throw new EvidenceError("evidence_outside_dir");
     const stat = await fs.promises.lstat(filePath, { bigint: true });
     if (!stat.isFile()) throw new EvidenceError("evidence_not_regular");
     if (stat.nlink !== 1n) throw new EvidenceError("evidence_hardlink");

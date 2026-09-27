@@ -6,7 +6,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { decisionTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import type { DecisionAnswersInput, MemberPatchInput, Objective, ObjectiveMember, PlanInput, SlotBy, MissionAddInput, MissionPatchInput } from "./types.js";
+import type { DecisionAnswer, DecisionAnswersInput, MemberPatchInput, Objective, ObjectiveMember, PlanInput, SlotBy, MissionAddInput, MissionPatchInput } from "./types.js";
 
 /**
  * 목표는 레코드로 태어난다. 첫 「개시」·「구상」에서만 같은 id 의 dormant 지휘관 Operation 을 세우고 깨운다.
@@ -72,6 +72,11 @@ export interface LaunchService {
    * 기준 제안이 남아도 보내며, 충족 판단·구상 상태를 건드리지 않고 구성원을 기동하지 않는다.
    */
   answerDecision(objectiveId: string, input: DecisionAnswersInput, options?: LaunchOptions): Promise<Objective>;
+  /**
+   * 지휘관이 방금 올린 요청의 답을 기다린다 — 그 안에 사람이 답하면 답을 돌려주고(프롬프트는 보내지 않고 결정으로 남긴다),
+   * 요청이 그새 정리됐으면 "cleared", 시한이 지나거나 호출이 끊기면 null 이다. null 뒤의 답은 지금처럼 프롬프트로 간다.
+   */
+  awaitDecision(objectiveId: string, requestId: string, waitMs: number, signal?: AbortSignal): Promise<readonly DecisionAnswer[] | "cleared" | null>;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
   steer(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
@@ -100,7 +105,8 @@ const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.langua
 const COMMANDER_PRESET = { model: "opus[1m]", effort: "high" } as const;
 /** 세션 이름 — 다른 세션이 이 세션을 부르는 주소. 담당 이름은 지휘관 이름의 머리를 잇는다. */
 const commanderSession = () => `objective-${randomUUID().slice(0, 6)}-cmdr`;
-const memberSession = (commander: string | null, index: number) => `${(commander ?? `objective-${randomUUID().slice(0, 6)}-cmdr`).replace(/-cmdr$/, "")}-member-${index}`;
+/** 지휘관 이름이 없으면(따로 만든 Operation 이 지휘관) 목표 id 로 머리를 고정한다 — 한 목표의 구성원이 같은 머리를 잇는다. */
+const memberSession = (objectiveId: string, commander: string | null, index: number) => `${commander ? commander.replace(/-cmdr$/, "") : `objective-${objectiveId.slice(0, 6)}`}-member-${index}`;
 
 export function createLaunchService(ctx: FleetPluginServerContext, store: ObjectiveStore): LaunchService {
   const control = () => {
@@ -152,14 +158,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
-  const enableScratchpad = (operationId: string, objectiveId: string) => {
-    const node = ctx.host.operations.get(operationId);
-    if (node) ctx.host.consoleControl?.setScratchpad?.(operationId, store.scratchpadDir(node.theaterId, objectiveId));
-  };
   const launch = async (input: { objectiveId: string; newOperationId?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; parentOperationId?: string; childSessionId?: string; launchKey?: string }): Promise<string> => {
     const result = await control().request({
       kind: "launch",
-      scratchpad: store.scratchpadDir(input.theaterId, input.objectiveId),
       theaterId: input.theaterId,
       ...(input.title ? { title: input.title } : {}),
       viewMode: input.viewMode ?? "terminal",
@@ -179,6 +180,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     });
     return result.operationId;
   };
+
+  // 답을 기다리는 지휘관 도구 호출 — 목표·요청마다 하나. 답이 오면 프롬프트 대신 이 호출이 답을 받는다.
+  const decisionWaiters = new Map<string, (answers: readonly DecisionAnswer[] | "cleared" | null) => void>();
 
   // 같은 목표에 기동 요청이 겹치면 Operation 이 둘 뜬다 — 기동이 끝날 때까지 자리를 잡아 둔다.
   const pending = new Set<string>();
@@ -203,7 +207,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const key = `objectives.commander:${objectiveId}`;
     if (existing) {
       await accessOperation(objectiveId);
-      enableScratchpad(objectiveId, objectiveId);
       // 이 변경 전에 태어났거나 따로 만든 Operation 을 지휘관으로 쓰는 경우 — 다음 기동부터 사람 질문을 뺀다.
       blockUserQuestions(objectiveId);
       if (pendingCommander) {
@@ -329,10 +332,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const observation = operationId ? ctx.host.consoleControl?.observe(operationId) : null;
       const node = operationId ? ctx.host.operations.get(operationId) : null;
       if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
-      if (node && operationId) enableScratchpad(operationId, objectiveId);
       if (operationId && node && observation?.lifecycle === "live") {
         blockUserQuestions(operationId);
-        members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "live" });
+        members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1), operationId, state: "live" });
         continue;
       }
       if (operationId && node && observation?.lifecycle === "dormant") {
@@ -340,15 +342,15 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         rememberSubagentSpawn(operationId, objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
         blockUserQuestions(operationId);
         await control().request({ kind: "resume", operationId }).catch(asStoreError);
-        members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "resumed" });
+        members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1), operationId, state: "resumed" });
         continue;
       }
       // 관측이 없는 Operation 은 세울지 판단할 수 없다 — 그 구성원만 건너뛰고 알린다(한 구성원 때문에 개시 전체를 막지 않는다).
-      if (operationId && node) { members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "unknown" }); continue; }
+      if (operationId && node) { members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1), operationId, state: "unknown" }); continue; }
       const used = new Set(current.members.flatMap((candidate) => candidate.sessionName ? [candidate.sessionName] : []));
       let number = index + 1;
-      let session = memberSession(current.commander.sessionName, number);
-      while (used.has(session)) session = memberSession(current.commander.sessionName, ++number);
+      let session = memberSession(current.id, current.commander.sessionName, number);
+      while (used.has(session)) session = memberSession(current.id, current.commander.sessionName, ++number);
       const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
       // 라우팅은 오래 걸릴 수 있으므로 실제 기동 요청 직전에 저장된 허용값을 읽는다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
@@ -599,6 +601,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       try {
         const accepted = store.decisionAccept(objectiveId, input);
         if (accepted.recorded) return accepted.objective;
+        // 지휘관이 이 요청의 답을 기다리는 중이다 — 도구 응답으로 건네고 결정으로 남긴다. 프롬프트는 보내지 않는다.
+        const waiter = decisionWaiters.get(`${objectiveId}:${accepted.request.id}`);
+        if (waiter) {
+          decisionWaiters.delete(`${objectiveId}:${accepted.request.id}`);
+          const settled = store.decisionSettle(objectiveId, accepted.request.id, true);
+          waiter(accepted.answers);
+          return settled;
+        }
         try {
           await accessOperation(objectiveId);
           await control().request({ kind: "send", operationId: objectiveId, text: decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options)) });
@@ -610,6 +620,31 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         }
         return store.decisionSettle(objectiveId, accepted.request.id, true);
       } finally { pending.delete(key); }
+    },
+
+    awaitDecision(objectiveId, requestId, waitMs, signal) {
+      if (waitMs <= 0 || signal?.aborted) return Promise.resolve(null);
+      const key = `${objectiveId}:${requestId}`;
+      return new Promise((resolve) => {
+        let finished = false;
+        const finish = (value: readonly DecisionAnswer[] | "cleared" | null) => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timer);
+          clearInterval(poll);
+          signal?.removeEventListener("abort", onAbort);
+          if (decisionWaiters.get(key) === finish) decisionWaiters.delete(key);
+          resolve(value);
+        };
+        const onAbort = () => finish(null);
+        decisionWaiters.set(key, finish);
+        const timer = setTimeout(() => finish(null), waitMs);
+        // 사람의 보드 편집 등으로 요청이 사라졌다 — 답은 오지 않는다.
+        const poll = setInterval(() => {
+          if (decisionWaiters.get(key) === finish && store.find(objectiveId)?.decisionRequest?.id !== requestId) finish("cleared");
+        }, 1_000);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
     },
 
     async steer(objectiveId, options) {
@@ -692,7 +727,11 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (current) store.refresh(current.id);
     },
 
-    dispose: () => { for (const timer of announceTimers) clearTimeout(timer); announceTimers.clear(); },
+    dispose: () => {
+      for (const timer of announceTimers) clearTimeout(timer);
+      announceTimers.clear();
+      for (const waiter of [...decisionWaiters.values()]) waiter(null);
+    },
   };
   return service;
 }

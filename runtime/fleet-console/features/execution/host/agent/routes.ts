@@ -254,17 +254,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     });
   });
   ctx.host.lifecycle.registerCleanup(unbindChatAttach);
-  const scratchpadFor = (operationId: string): string | undefined => {
-    const node = ctx.host.operations.get(operationId);
-    const candidate = node?.payload.scratchpad;
-    const owner = node?.payload.scratchpadOwner;
-    if (typeof candidate !== "string" || typeof owner !== "string") return undefined;
-    try { return ctx.consoleControl?.setScratchpad({ kind: "plugin", pluginId: owner }, operationId, candidate); }
-    catch (error) {
-      console.warn(`[execution] scratchpad_unavailable for Operation ${operationId}: ${error instanceof Error ? error.message : String(error)}`);
-      return undefined; // 링크 교체된 디렉터리는 자식 환경에 주입하지 않는다.
-    }
-  };
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
     ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
@@ -273,7 +262,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     plugin: ctx.agentCliPlugin,
     infraServices: deps,
     readAgentCliPaths,
-    scratchpadFor,
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
     },
@@ -573,7 +561,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.scratchpad && caller.kind === "plugin" ? { scratchpad: input.scratchpad, scratchpadOwner: caller.pluginId } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -1112,7 +1100,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly scratchpad?: string; readonly scratchpadOwner?: string; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly newOperationId?: string; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly newOperationId?: string; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1155,7 +1143,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
       ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
       ...(launchOptions.dormant ? { dormantBorn: true } : {}),
-      ...(launchOptions.scratchpad && launchOptions.scratchpadOwner ? { scratchpad: launchOptions.scratchpad, scratchpadOwner: launchOptions.scratchpadOwner } : {}),
       // 멱등 기동 키 — 생성과 같은 영속 저장에 실려야 「없음」이 「만든 적 없음」으로 확정된다. 브라우저 DTO 에서는 빠진다.
       ...(launchOptions.launchKey ? { launchKey: launchOptions.launchKey } : {}),
     };
@@ -2205,7 +2192,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         onTurnSettled: () => deps.onTurnSettled?.(node.id),
         // 채팅 자식의 cwd도 같은 이유로 세션이 직접 알린다 — "지금 어디" 축이 두 얼굴에서 같이 따라간다.
         onCwdChanged: (nextCwd) => workspaceContext.observe(node.id, node.theaterId, nextCwd),
-        scratchpad: () => scratchpadFor(node.id),
         bindWorkspaceHook: (providerSessionId) => workspaceHooks.bind(node.id, providerSessionId,
           () => observability.getTerminalSessionInfo(node.id)?.chatActive === true),
         reportActivity: (working) => {

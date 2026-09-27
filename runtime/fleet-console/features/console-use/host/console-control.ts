@@ -24,7 +24,7 @@ const actionObjectSchema = z.object({
   display: z.string().min(1).max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
   groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
-  disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(), scratchpad: z.string().min(1).max(4096).optional(),
+  disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
   parentOperationId: z.string().min(1).max(128).optional(),
   childSessionId: z.uuid().optional(),
   launchKey: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
@@ -33,7 +33,7 @@ const actionObjectSchema = z.object({
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && !value.text)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.scratchpad !== undefined || value.parentOperationId !== undefined || value.childSessionId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.childSessionId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.newOperationId && !value.launchKey) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if ((value.parentOperationId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.childSessionId && (value.launchKey || value.newOperationId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
@@ -79,8 +79,6 @@ export interface ConsoleControlDeps {
   readonly resolveOperation?: (id: string) => OperationNode | null;
   readonly theaters: () => readonly { readonly id: string; readonly name: string }[];
   readonly pluginAvailable?: (pluginId: string) => boolean;
-  /** Theater 워크스페이스 안의 플러그인 전용 저장 영역. */
-  readonly pluginWorkspaceDir?: (pluginId: string, theaterId: string) => string | null;
   /** 멱등 기동 키 원장 — 없으면 키 붙은 기동은 capability_unavailable. */
   readonly launchKeys?: LaunchKeyLedger;
   readonly now?: () => number;
@@ -166,44 +164,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     const operation = node(caller.operationId);
     return !!operation && readConsoleUseFlag(operation.payload) !== null;
   }
-  function checkedScratchpad(caller: ConsoleCaller, theaterId: string, candidate: string): string {
-    if (caller.kind !== "plugin") return fail("invalid_launch_option");
-    const boundary = deps.pluginWorkspaceDir?.(caller.pluginId, theaterId);
-    if (!boundary || !path.isAbsolute(candidate) || candidate.split(/[\\/]/).includes("..") || /[\u0000-\u001f\u007f]/.test(candidate)) return fail("invalid_scratchpad");
-    try {
-      fs.mkdirSync(boundary, { recursive: true, mode: 0o700 });
-      if (fs.lstatSync(boundary).isSymbolicLink()) return fail("invalid_scratchpad");
-      const root = fs.realpathSync(boundary);
-      const relativeTo = (base: string) => {
-        const relative = path.relative(base, candidate);
-        return relative && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative) ? relative : null;
-      };
-      // macOS의 /var → /private/var처럼 시스템 조상이 링크일 수 있다.
-      const lexical = relativeTo(boundary);
-      const relative = lexical ?? relativeTo(root);
-      if (!relative) return fail("invalid_scratchpad");
-      let current = lexical ? boundary : root;
-      for (const segment of relative.split(path.sep)) {
-        current = path.join(current, segment);
-        try { if (fs.lstatSync(current).isSymbolicLink()) fail("invalid_scratchpad"); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-      }
-      fs.mkdirSync(candidate, { recursive: true, mode: 0o700 });
-      const resolved = fs.realpathSync(candidate);
-      const inside = path.relative(root, resolved);
-      if (!inside || inside === ".." || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) fail("invalid_scratchpad");
-      return resolved;
-    } catch (error) {
-      if (error instanceof ConsoleControlError) throw error;
-      return fail("invalid_scratchpad");
-    }
-  }
-  function setScratchpad(caller: ConsoleCaller, operationId: string, candidate: string): string {
-    if (caller.kind !== "plugin") return fail("invalid_launch_option");
-    const operation = node(operationId);
-    if (!operation) return fail("unknown_operation");
-    return checkedScratchpad(caller, operation.theaterId, candidate);
-  }
   function observe(id: string) { return adapter?.observe(id) ?? null; }
   function validTarget(input: ConsoleActionInput, theaterId?: string) {
     if (input.kind === "launch") {
@@ -270,7 +230,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
     const input = actionSchema.parse(raw);
     validTarget(input);
-    if ((input.newOperationId || input.childSessionId || input.scratchpad !== undefined) && caller.kind !== "plugin") fail("invalid_launch_option");
+    if ((input.newOperationId || input.childSessionId) && caller.kind !== "plugin") fail("invalid_launch_option");
     if (input.childSessionId) {
       const pending = [...inflight.values()].find((entry) => entry.input.childSessionId === input.childSessionId);
       if (pending) {
@@ -278,7 +238,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
         return pending.result!;
       }
     }
-    if (input.kind === "launch" && input.scratchpad) input.scratchpad = checkedScratchpad(caller, input.theaterId!, input.scratchpad);
     if (input.launchKey !== undefined) {
       const joined = keyedLaunch(caller, input);
       if (joined) return joined;
@@ -317,10 +276,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
       if (!adapter) fail("capability_unavailable");
       assertCurrent();
       validTarget(entry.input);
-      const action = entry.input.kind === "launch" && entry.input.scratchpad
-        ? { ...entry.input, scratchpad: checkedScratchpad(entry.caller, entry.input.theaterId!, entry.input.scratchpad) }
-        : entry.input;
-      const result = await adapter!.execute(action, assertCurrent, settled, entry.caller);
+      const result = await adapter!.execute(entry.input, assertCurrent, settled, entry.caller);
       // 키 붙은 기동이 섰다 — 호스트 상태가 나중에 비워져도 그 키를 「만든 적 없음」으로 답하지 않게 원장에 남긴다.
       if (entry.input.launchKey && entry.caller.kind === "plugin") {
         try { deps.launchKeys?.recordCreated(entry.caller.pluginId, entry.input.launchKey, result.operationId); }
@@ -342,7 +298,6 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
     const input = automationSchema.parse(raw);
     // 예약도 원래 호출자의 권한으로 접수한다. 실행 시에는 accept가 같은 경계를 다시 검사한다.
-    if (input.action.kind !== "briefing" && input.action.scratchpad !== undefined && caller.kind !== "plugin") fail("invalid_launch_option");
     const expires = Date.parse(input.expiresAt);
     if (expires <= now() || expires > now() + 30 * 86_400_000) fail("invalid_expiry");
     if (!deps.theaters().some((t) => t.id === input.theaterId)) fail("unknown_theater");
@@ -432,7 +387,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   function code(error: unknown) { return error instanceof ConsoleControlError ? error.code : error instanceof z.ZodError ? "invalid_arguments" : "execution_unavailable"; }
   return {
     attach(value: ConsoleExecutionAdapter) { if (adapter) throw new Error("Console execution already attached"); adapter = value; return () => { if (adapter === value) adapter = null; }; },
-    observe, request, automation, readEvents, briefing, tick, setScratchpad,
+    observe, request, automation, readEvents, briefing, tick,
     launchKeyState,
     reserveLaunchKeys(caller: ConsoleCaller, theaterId: string, keys: readonly string[]) {
       if (caller.kind !== "plugin") return fail("invalid_launch_option");

@@ -95,8 +95,6 @@ describe("operations platform", () => {
         ticket: "ticket-secret",
         token: "token-secret",
         transcriptPath: "/secret/transcript.jsonl",
-        scratchpad: "/secret/scratchpad",
-        scratchpadOwner: "internal-plugin",
         prompt: "secret prompt",
         persona: "secret persona",
         toolAllowlist: ["secret-tool"],
