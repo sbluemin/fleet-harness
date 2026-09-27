@@ -5,6 +5,7 @@
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
+import type { MemberRating } from "../server/roles.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 
 type T = Translate<ObjectiveMessageKey>;
@@ -21,6 +22,8 @@ export interface RetrospectiveProps {
   readonly by: "commander" | "human";
   readonly good: readonly RetroPair[];
   readonly regret: readonly RetroPair[];
+  /** 구성원별 평가 — 지휘관이 인계 때 남겼을 때만. 같은 Theater 의 다음 구상이 「지난 역할」로 읽는다. */
+  readonly ratings?: readonly MemberRating[];
 }
 
 function RetroTable({ head, asideHead, pairs }: { readonly head: string; readonly asideHead: string; readonly pairs: readonly RetroPair[] }) {
@@ -34,12 +37,29 @@ function RetroTable({ head, asideHead, pairs }: { readonly head: string; readonl
   );
 }
 
-export function Retrospective({ t, by, good, regret }: RetrospectiveProps) {
+export function Retrospective({ t, by, good, regret, ratings = [] }: RetrospectiveProps) {
   if (by === "human" || (good.length === 0 && regret.length === 0)) return <div className="objectives-retro-none">{t("objectives.retro.byHuman")}</div>;
   return (
     <div className="objectives-retro">
       {good.length ? <RetroTable head={t("objectives.retro.good")} asideHead={t("objectives.retro.goodWhy")} pairs={good} /> : null}
       {regret.length ? <RetroTable head={t("objectives.retro.regret")} asideHead={t("objectives.retro.regretIf")} pairs={regret} /> : null}
+      {ratings.length ? (
+        <table className="objectives-retro-table objectives-retro-ratings">
+          <thead><tr><th scope="col">{t("objectives.retro.ratings")}</th><th scope="col">{t("objectives.retro.ratingNote")}</th></tr></thead>
+          <tbody>
+            {ratings.map((rating) => (
+              <tr key={rating.memberId}>
+                <td>
+                  <span className="objectives-retro-member">{rating.role}</span>
+                  <span className={`objectives-retro-rating is-${rating.rating}`}>{t(rating.rating === "well" ? "objectives.retro.well" : "objectives.retro.short")}</span>
+                  {rating.as ? <span className="objectives-retro-filed">{t("objectives.retro.filedAs", { role: rating.as })}</span> : null}
+                </td>
+                <td>{rating.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
     </div>
   );
 }
