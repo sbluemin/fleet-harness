@@ -38,7 +38,7 @@ For an Objectives roster with existing member sessions but no model turn, seed *
 
 1. In the owned isolated Console, register the target worktree as a Theater and create an objective with one roster member through the UI or authorized API, **without** Plan, Commence, muster, or resume. Record the generated Theater, objective, and member ids. Creating the objective/roster does not require a provider turn.
 2. Stop only that owned runtime and confirm it has stopped before editing. Preserve its generated Theater registration, state version, other state fields, and objective metadata. Never use the user's Console slot or edit a running server's files.
-3. In `$E2E_DIR/console/state.json` (currently version 2), add the commander below to `operations`, or update its existing entry, without duplicating its id. Replace `fixture-objective`, `fixture-member`, `<registered-theater-id>`, and `<absolute-worktree>` with the recorded values. The code block is a **state excerpt**, not a replacement for the whole file.
+3. In `$E2E_DIR/console/state.json`, keep the generated `version` unchanged and add the commander below to `operations`, or update its existing entry, without duplicating its id. Replace `fixture-objective`, `fixture-member`, `<registered-theater-id>`, and `<absolute-worktree>` with the recorded values. The code block is a **state excerpt**, not a replacement for the whole file.
 
 ```json
 {
