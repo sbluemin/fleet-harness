@@ -137,9 +137,7 @@ vi.mock("../features/workspace/client/sidebar/operations-side-bar-store.js", asy
   subscribeOperationActivityTracking: () => () => {},
   toggleSideBarStatusAxis: vi.fn(),
 }));
-// TriageSideBar가 같은 모듈의 목록 조립 헬퍼를 함께 읽으므로 부분 목이어야 한다.
-vi.mock("../features/workspace/client/sidebar/operations-side-bar.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../features/workspace/client/sidebar/operations-side-bar.js")>()),
+vi.mock("../features/workspace/client/sidebar/operations-side-bar.js", () => ({
   OperationsSideBar: ({ onClose, onFocus, onMinimize, onResume }: { readonly onClose: (operationId: string) => void; readonly onFocus: (operationId: string) => void; readonly onMinimize: (operationId: string) => void; readonly onResume: (operationId: string) => void }) => {
     sideBarMocks.onFocus = onFocus;
     sideBarMocks.onResume = onResume;

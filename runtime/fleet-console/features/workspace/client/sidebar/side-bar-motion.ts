@@ -56,8 +56,8 @@ function isSideBarWidthTransition(event: TransitionEvent): boolean {
 export function observeSideBarCollapseMotion(): () => void {
   if (typeof document === "undefined") return () => undefined;
 
-  // 두 사이드바(Map·War Room)가 같은 클래스를 달고 교대로 마운트되므로, 개별 ref 대신 문서 단에서
-  // 버블링된 전환 이벤트를 받는다. 동시에 두 개가 살아 있지 않아 참조 계수는 필요하지 않다.
+  // Cruise 사이드바는 모드·페이지에 따라 마운트되므로 문서 단에서 버블링된 전환 이벤트를 받는다.
+  // 동시에 두 개가 살아 있지 않아 참조 계수는 필요하지 않다.
   let animating: HTMLElement | null = null;
   let detachWatch: number | null = null;
   let deferredClear: (() => void) | null = null;
@@ -78,9 +78,9 @@ export function observeSideBarCollapseMotion(): () => void {
 
   /**
    * 전환 중이던 사이드바가 트리에서 빠지면 종료 이벤트가 document까지 오지 않는다 — 이벤트는
-   * 분리된 노드에서 발생하므로 버블링 경로에 document가 없다. Map↔War Room 전환은 사이드바
-   * 컴포넌트를 통째로 교체하므로(pages/operations.tsx의 triageActive 분기) 접기 200ms 안에
-   * 모드를 바꾸면 이 경로를 밟고, 플래그가 남아 패널 모션이 다음 토글까지 죽는다.
+   * 분리된 노드에서 발생하므로 버블링 경로에 document가 없다. War Room 진입은 사이드바를
+   * 언마운트하므로 접기 200ms 안에 모드를 바꾸면 이 경로를 밟고,
+   * 플래그가 남아 패널 모션이 다음 토글까지 죽는다.
    * 관찰자는 App에 계속 살아 있어 스스로 회복하지도 못한다. 그래서 분리 여부를 직접 지켜본다.
    */
   const watchForDetach = () => {

@@ -29,7 +29,6 @@ import { RailToolIcons, RightRail, useRailPanelContext } from "../../../core/cli
 import { useToolbarToolsSlot } from "../../../core/client/src/integration/toolbar-slots.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
 import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
-import { TriageSideBar } from "./sidebar/triage-side-bar.js";
 import { ZEN_TASKBAR_HEIGHT, ZenTaskbar } from "./zen/zen-taskbar.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
 import { sideBarOccupiedWidth, toggleSideBarStatusAxis, useSideBarState } from "./sidebar/operations-side-bar-store.js";
@@ -114,7 +113,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const railOccupiedPx = useRailOccupiedPx();
   const zenState = useZenModeState();
   const zenSideBarHidden = zenMode && !zenState.sideBarRevealed;
-  const sideBarOccupiedPx = zenSideBarHidden ? 0 : sideBarOccupiedWidth(sideBar);
+  const sideBarOccupiedPx = triageActive || zenSideBarHidden ? 0 : sideBarOccupiedWidth(sideBar);
   // Zen은 사이드바를 걷고 화면 아래에 작업 표시줄을 세운다 — 막대 높이만 아래 인셋으로 비운다.
   // Zen 바(종료·도구)는 사용자가 옮기는 부유 도구막대라 인셋에 불참한다(아래 Operation을 덮어도 된다는
   // 제품 결정).
@@ -132,8 +131,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 카드와 같은 속도로 움직인다. 스토어(fit-all 등 계산)에는 목표 인셋을 심어 전환 중에도 결론이 같다.
   const followedSideBarInset = useSideBarFollowedInset(sideBarInset);
   const canvasArenaInsets: CanvasArenaInsets = useMemo(
-    () => (followedSideBarInset === arenaInsets.left ? arenaInsets : { ...arenaInsets, left: followedSideBarInset }),
-    [arenaInsets, followedSideBarInset],
+    () => (triageActive || followedSideBarInset === arenaInsets.left ? arenaInsets : { ...arenaInsets, left: followedSideBarInset }),
+    [arenaInsets, followedSideBarInset, triageActive],
   );
 
   const operationOrder = useMemo(
@@ -887,25 +886,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           </button>
         </p>
       ) : null}
+      {triageActive ? null : (
       <div className="zen-sidebar-chrome" inert={zenSideBarHidden} data-zen-hidden={zenSideBarHidden || undefined}>
-      {triageActive ? (
-        <TriageSideBar
-          theaters={state.theaters}
-          operations={state.operations}
-          groups={state.groups}
-          operationRuntime={state.operationRuntime}
-          operationNotifications={state.operationNotifications}
-          catalog={catalog}
-          plugins={registry.providers}
-          renderKindIcon={renderKindIcon}
-          canLaunch={canLaunch}
-          onLaunchKind={handleSideBarLaunchKind}
-          onPick={pickTriageOperation}
-          onClose={handleClose}
-          onRename={handleRename}
-          onOpenOperationMenu={(operationId, anchor, returnFocus) => setOperationMenu({ operationId, anchor, returnFocus, fromSidebar: true })}
-        />
-      ) : (
       <OperationsSideBar
         theaters={state.theaters}
         activeTheaterId={state.activeTheaterId}
@@ -938,8 +920,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         onCancelAddTheater={cancelAddTheater}
         onForgetTheater={handleForgetTheater}
       />
-      )}
       </div>
+      )}
       <div className="operations-center-stage" ref={bodyRef} tabIndex={-1}>
         <OperationsCanvas
           state={state}
@@ -986,9 +968,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onSetGroupId={handleSetGroupId}
         />
       ) : null}
-      {/* 접힌 사이드바의 문 — 카드가 소멸한 자리의 엣지에 서고, 두 사이드바(Map·War Room)가
-          같은 접힘 상태를 쓰므로 독도 모드와 무관하게 이 페이지가 한 번만 세운다. */}
-      {zenMode ? null : <SideBarEdgeDock />}
+      {/* 접힌 Cruise 사이드바의 문 — War Room에는 사이드바도 엣지 드러냄도 없다. */}
+      {triageActive || zenMode ? null : <SideBarEdgeDock />}
       {/* Operation 메뉴는 War Room 전용이 아니다 — 사이드바 우클릭·War Room 카드·패널 캡션의
           More 버튼이 모두 같은 메뉴를 연다. */}
       {operationMenu && menuOperation ? (

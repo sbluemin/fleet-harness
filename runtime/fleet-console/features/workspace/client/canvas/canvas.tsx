@@ -637,6 +637,18 @@ export function OperationsCanvas({
   const triageStageTheaterId = triageStage?.operation.theaterId ?? null;
   useLayoutEffect(() => { publishTriageStage(triageStageId); }, [triageStageId]);
   useEffect(() => () => publishTriageStage(null), []);
+  const notifiedTriageStageRef = useRef<{ operationId: string; theaterId: string } | null>(null);
+  useEffect(() => {
+    if (!triageActive || !triageStageId || !triageStageTheaterId) {
+      notifiedTriageStageRef.current = null;
+      return;
+    }
+    const previous = notifiedTriageStageRef.current;
+    if (previous?.operationId === triageStageId && previous.theaterId === triageStageTheaterId) return;
+    notifiedTriageStageRef.current = { operationId: triageStageId, theaterId: triageStageTheaterId };
+    // 실제 등단은 수동·자동 모두 이 경계를 지난다. 모달·편집 중 포커스 보호와 선택 추종은 별개다.
+    notifyMapOperationSelected(triageStageId);
+  }, [triageActive, triageStageId, triageStageTheaterId, notifyMapOperationSelected]);
   useEffect(() => {
     // 종료 시 "마지막으로 무대에 올랐던 Theater"로 복귀하기 위한 이력 — 무대가 설 때만 기록한다.
     if (triageStageTheaterId !== null) recordTriageStageTheater(triageStageTheaterId);
@@ -1770,10 +1782,11 @@ export function OperationsCanvas({
             theaterLabel: null,
             onActivate: () => {
               setActiveOperation(operation.id);
-              // 선별 중에는 기록하지 않는다 — 무대는 슬롯 geometry이고, 외부 Theater 무대의 기록은
-              // 활성 Theater 캔버스 store를 오염시킨다.
-              if (!operationCompanion && !triageActive) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
-              if (!triageActive) notifyMapOperationSelected(operation.id);
+              // War Room 선택 알림은 실제 무대 수명이 소유한다. 클릭마다 다시 발행하지 않으며,
+              // 슬롯 geometry도 활성 Theater의 Cruise 캔버스에 기록하지 않는다.
+              if (triageActive) return;
+              if (!operationCompanion) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
+              notifyMapOperationSelected(operation.id);
             },
             onClose: () => {
               if (triageActive) dismissTriageOperation(operation.id);

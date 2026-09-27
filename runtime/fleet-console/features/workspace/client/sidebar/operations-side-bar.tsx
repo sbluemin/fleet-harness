@@ -283,8 +283,8 @@ function StatusRecoveryShelves({
   return (
     <li className="side-bar-status-recovery-shelves">
       {minimizedSection.entries.length > 0 ? (
-        <section className="triage-side-bar-minimized-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
-          <ol className="triage-side-bar-minimized-list" aria-label={minimizedSection.label}>
+        <section className="side-bar-recovery-minimized-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
+          <ol className="side-bar-recovery-minimized-list" aria-label={minimizedSection.label}>
             <StatusSectionSlot theaterId={theaterId} section={minimizedSection}>
               {minimizedSection.entries.map((entry, index) => renderEntry(entry, index, "minimized"))}
             </StatusSectionSlot>
@@ -292,8 +292,8 @@ function StatusRecoveryShelves({
         </section>
       ) : null}
       {dormantSection.entries.length > 0 ? (
-        <footer className="triage-side-bar-dormant-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
-          <ol className="triage-side-bar-dormant-list" aria-label={dormantSection.label}>
+        <footer className="side-bar-recovery-dormant-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
+          <ol className="side-bar-recovery-dormant-list" aria-label={dormantSection.label}>
             <StatusSectionSlot theaterId={theaterId} section={dormantSection}>
               {dormantSection.entries.map((entry, index) => renderEntry(entry, index, "ended"))}
             </StatusSectionSlot>

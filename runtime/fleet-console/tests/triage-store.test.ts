@@ -83,7 +83,6 @@ import {
   subscribeTriage,
   visitTriageTheater,
 } from "../features/workspace/client/canvas/triage-store.js";
-import { resolveTriageSideBarSections, TriageSideBar } from "../features/workspace/client/sidebar/triage-side-bar.js";
 import type { OperationNode } from "../core/client/src/integration/types.js";
 import { TriageClearPlate } from "../features/workspace/client/canvas/canvas-overlays.js";
 import { resolveTriageDeckPromotion, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../features/workspace/client/canvas/triage-watch-deck.js";
