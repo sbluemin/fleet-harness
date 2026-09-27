@@ -37,6 +37,8 @@ export interface ServedMcpEndpoint {
   stop(): Promise<void>;
   setOnToolCallArrived(token: string, cb: ToolCallArrivedCallback | null): void;
   resolveToolCall(token: string, toolCallId: string, result: McpCallToolResult): void;
+  /** Ends a pending call whose result could not be delivered; never re-runs the tool. */
+  failToolCall(token: string, toolCallId: string): boolean;
   hasPendingToolCall(token: string): boolean;
   clearPendingForSession(token: string): void;
 }
@@ -48,6 +50,8 @@ interface PendingToolCall {
   readonly response?: http.ServerResponse;
   onResponseClose?: () => void;
   resolve(result: JsonRpcResponse): void;
+  /** Minimal termination with a fixed payload; must not serialize the undelivered result. */
+  fail(): void;
 }
 
 interface PendingToolResult {
@@ -72,6 +76,8 @@ const MCP_TOOL_CALL_TIMEOUT_MS = 5 * 60 * 1000;
 const MCP_KEEPALIVE_INTERVAL_MS = 60_000;
 const MCP_SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MCP_PROTOCOL_VERSION = "2025-03-26";
+const MCP_RESULT_DELIVERY_FAILED_TEXT =
+  "Tool result delivery failed; the tool may already have run and its effects may have occurred. Do not assume it did not execute.";
 
 export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}): ServedMcpEndpoint {
   const snapshotStore = deps.toolSnapshotStore ?? createMcpToolSnapshotStore();
@@ -265,42 +271,64 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
     const synchronousResult = synchronousResults.find((entry) => entry.toolCallId === toolCallId);
     if (synchronousResult) return makeResult(id, synchronousResult.result);
 
-    return new Promise<JsonRpcResponse>((resolve) => {
+    return new Promise<JsonRpcResponse>((resolvePromise) => {
       let writableQueue = callQueues.get(token);
       if (!writableQueue) {
         writableQueue = [];
         callQueues.set(token, writableQueue);
       }
+      let settled = false;
+      const immediate = options?.immediateResponse;
+      const settle = (payload: JsonRpcResponse, body?: string): void => {
+        if (immediate && body !== undefined && !immediate.writableEnded) {
+          options?.stopKeepalive?.();
+          immediate.end(body);
+        }
+        // Mark settled only after writing, so a write failure still leaves fail() able to end the call.
+        settled = true;
+        resolvePromise(payload);
+      };
       const pending: PendingToolCall = {
         toolName,
         toolCallId,
         timeout: setTimeout(() => {
+          if (settled) return;
           removePendingToolCall(token, pending);
           const payload = makeResult(id, {
             content: [{ type: "text", text: "Tool call timed out" }],
             isError: true,
           });
-          if (options?.immediateResponse && !options.immediateResponse.writableEnded) {
-            options.stopKeepalive?.();
-            options.immediateResponse.end(JSON.stringify(payload));
-          }
-          resolve(payload);
+          settle(payload, JSON.stringify(payload));
         }, MCP_TOOL_CALL_TIMEOUT_MS),
         response: options?.response,
         resolve: (result) => {
+          if (settled) return;
           const payload = { ...result, id: id ?? null };
-          if (options?.immediateResponse && !options.immediateResponse.writableEnded) {
-            options.stopKeepalive?.();
-            options.immediateResponse.end(JSON.stringify(payload));
+          // Serialize before settling so a failure leaves this call open for fail().
+          settle(payload, immediate ? JSON.stringify(payload) : undefined);
+        },
+        fail: () => {
+          if (settled) return;
+          settled = true;
+          const payload = makeDeliveryFailedResult(id);
+          if (immediate && !immediate.writableEnded) {
+            try {
+              options?.stopKeepalive?.();
+              immediate.end(JSON.stringify(payload));
+            } catch {
+              // A partially written body cannot be repaired; drop the connection instead of hanging.
+              immediate.destroy();
+            }
           }
-          resolve(payload);
+          resolvePromise(payload);
         },
       };
       if (options?.response) {
         pending.onResponseClose = () => {
+          if (settled) return;
           removePendingToolCall(token, pending);
           options.stopKeepalive?.();
-          resolve(makeResult(id, {
+          settle(makeResult(id, {
             content: [{ type: "text", text: "Client disconnected" }],
             isError: true,
           }));
@@ -386,12 +414,25 @@ export function createServedMcpEndpoint(deps: CreateServedMcpEndpointDeps = {}):
         const pending = queue.splice(index, 1)[0]!;
         if (queue.length === 0) callQueues.delete(token);
         cleanupPendingToolCall(pending);
-        pending.resolve(makeResult(null, result));
+        try {
+          pending.resolve(makeResult(null, result));
+        } catch {
+          // The timer and queue entry are gone, so this call must be ended here with a fixed payload.
+          pending.fail();
+        }
         return;
       }
 
       // Only a result produced inside the arrival callback can precede its pending call.
       arrivingResults.get(token)?.push({ toolCallId, result });
+    },
+    failToolCall(token, toolCallId) {
+      const queue = callQueues.get(token);
+      const pending = queue?.find((entry) => entry.toolCallId === toolCallId);
+      if (!pending) return false;
+      removePendingToolCall(token, pending);
+      pending.fail();
+      return true;
     },
     hasPendingToolCall(token) {
       const queue = callQueues.get(token);
@@ -528,6 +569,13 @@ function makeResult(
   result: unknown,
 ): JsonRpcResponse {
   return { jsonrpc: "2.0", id: id ?? null, result };
+}
+
+function makeDeliveryFailedResult(id: string | number | null | undefined): JsonRpcResponse {
+  return makeResult(id, {
+    content: [{ type: "text", text: MCP_RESULT_DELIVERY_FAILED_TEXT }],
+    isError: true,
+  });
 }
 
 function makeError(

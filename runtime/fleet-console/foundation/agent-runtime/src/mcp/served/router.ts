@@ -11,6 +11,7 @@ export interface McpRouterServer {
   start(): Promise<string>;
   setOnToolCallArrived(token: string, cb: ToolCallArrivedCallback | null): void;
   resolveToolCall(token: string, toolCallId: string, result: McpCallToolResult): void;
+  failToolCall(token: string, toolCallId: string): boolean;
   clearPendingForSession(token: string): void;
 }
 
@@ -51,6 +52,8 @@ export function installExecutorToolCallRouter(
       })
       .catch((error: unknown) => {
         // Tool effects may already have happened; do not retry the call or claim an execution failure.
+        try { runtime.server.failToolCall(sessionToken, toolCallId); }
+        catch { /* Termination must not block failure logging. */ }
         try {
           if (runtime.onFailure) runtime.onFailure("mcp_result_delivery_failed", error);
           else process.stderr.write(`[fleet-mcp] tool result delivery failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
