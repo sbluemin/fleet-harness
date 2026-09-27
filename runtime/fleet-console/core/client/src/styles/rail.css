@@ -225,6 +225,27 @@
   transition: background 140ms;
 }
 
+/* 평상시 표식 — 가장자리가 끌 수 있는 곳임을 세로 가운데의 짧은 손잡이로만 말한다. 가장자리 전체를 칠하는 띠는
+   가리키거나 끌거나 포커스했을 때만 선다(아래 규칙). 조작 영역은 여전히 4px 전체다. */
+.right-rail-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  width: 2px;
+  height: 36px;
+  margin-top: -18px;
+  border-radius: 2px;
+  background: var(--hairline-strong);
+  pointer-events: none;
+}
+
+.right-rail-resize-handle:hover::after,
+.right-rail-resize-handle:focus-visible::after,
+.right-rail.is-dragging .right-rail-resize-handle::after {
+  opacity: 0;
+}
+
 .right-rail-resize-handle:hover {
   background: color-mix(in oklch, var(--brass) 50%, transparent);
 }

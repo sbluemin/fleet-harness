@@ -53,16 +53,40 @@ const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentCol
 /** 브리핑 — 봉인된 작전 명령서. 문서 오른쪽 아래 모서리를 인장이 대신한다. */
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
 
-/** 펼친 상태의 상세 패널 폭 — 보는 사람의 브라우저에 남긴다(시작 보기 선택과 같은 자리). 카드 열은 최소 420px 을 지킨다. */
-const DETAIL_DEFAULT = 480;
-const DETAIL_MIN = 360;
-const DETAIL_MAX = 760;
-const MAIN_MIN = 420;
-const DETAIL_WIDTH_KEY = "fleet.objectives.detail-width";
-function readDetailWidth(): number {
-  try { const value = Number(localStorage.getItem(DETAIL_WIDTH_KEY)); return Number.isFinite(value) && value >= DETAIL_MIN && value <= DETAIL_MAX ? value : DETAIL_DEFAULT; } catch { return DETAIL_DEFAULT; }
+/**
+ * 상세 패널 폭 — 자리마다 따로 보는 사람의 브라우저에 남긴다(시작 보기 선택과 같은 자리). 레일은 좁은 자리, 확장 표면은
+ * 넓은 자리라 한쪽에서 맞춘 폭이 다른 쪽을 좁히지 않게 기억을 나눈다. 레일은 끌기 전까지 기억이 없고(null), 그동안은
+ * 손잡이가 생기기 전의 모습(960 미만 반반, 그 이상 480)을 그대로 세운다 — 두 번 누르면 기억을 지워 그 모습으로 돌아간다.
+ */
+interface DetailSplit {
+  readonly key: string;
+  readonly detailMin: number;
+  readonly detailMax: number;
+  readonly mainMin: number;
+  /** 기억이 없을 때의 상세 폭. 레일은 표면 폭을 따른다. */
+  readonly fallback: (rootWidth: number) => number;
+  /** 두 번 눌렀을 때 남길 값 — null 이면 기억을 지운다. */
+  readonly reset: number | null;
 }
-function saveDetailWidth(width: number): void { try { localStorage.setItem(DETAIL_WIDTH_KEY, String(width)); } catch { /* 저장을 차단한 브라우저에서도 이번 폭은 유지한다. */ } }
+const EXPANDED_DETAIL_DEFAULT = 480;
+const DETAIL_SPLIT: Readonly<Record<ObjectiveContext["place"], DetailSplit>> = {
+  expanded: { key: "fleet.objectives.detail-width", detailMin: 360, detailMax: 760, mainMin: 420, fallback: () => EXPANDED_DETAIL_DEFAULT, reset: EXPANDED_DETAIL_DEFAULT },
+  rail: { key: "fleet.objectives.rail-detail-width", detailMin: 300, detailMax: Infinity, mainMin: 240, fallback: (rootWidth) => Math.round(rootWidth < 960 ? rootWidth / 2 : 480), reset: null },
+};
+function readDetailWidth(split: DetailSplit): number | null {
+  try {
+    const raw = localStorage.getItem(split.key);
+    if (raw === null) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= split.detailMin && value <= split.detailMax ? value : null;
+  } catch { return null; }
+}
+function saveDetailWidth(split: DetailSplit, width: number | null): void {
+  try {
+    if (width === null) localStorage.removeItem(split.key);
+    else localStorage.setItem(split.key, String(width));
+  } catch { /* 저장을 차단한 브라우저에서도 이번 폭은 유지한다. */ }
+}
 function todayIso(): string { return new Date().toISOString().slice(0, 10); }
 /** 한글 IME 조합 중의 Return 은 확정이지 제출이 아니다 — 조합 확정과 제출로 두 번 오는 keydown 중 앞의 것을 거른다. */
 function submitKey(event: ReactKeyboardEvent<HTMLElement>): boolean { return event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229; }
@@ -161,7 +185,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const addInputRef = useRef<HTMLInputElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [rootWidth, setRootWidth] = useState(0);
-  const [detailWidth, setDetailWidth] = useState(readDetailWidth);
+  const split = DETAIL_SPLIT[ctx.place];
+  const [detailWidth, setDetailWidth] = useState(() => readDetailWidth(split));
   const [resizing, setResizing] = useState(false);
   useLayoutEffect(() => {
     const node = rootRef.current;
@@ -438,10 +463,11 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   if (!theaterId) return <div className="objectives-container"><div className="objectives-root"><div className="objectives-main"><div className="objectives-empty">{t("objectives.objectives.emptyTheater")}</div></div></div></div>;
 
   const addGroup = addGroupId ? groupOf(addGroupId) : null;
-  // 폭 조절은 펼친 상태에서만 — 레일은 상세가 카드 목록을 대신한다. 표면이 좁아지면 저장한 폭은 두고 보이는 폭만 줄인다.
-  const sized = ctx.place === "expanded" && !!current;
-  const detailMax = Math.max(DETAIL_MIN, Math.min(DETAIL_MAX, rootWidth - MAIN_MIN));
-  const shownDetail = Math.max(DETAIL_MIN, Math.min(detailWidth, detailMax));
+  // 두 자리 모두 상세가 서면 폭을 조절한다(600 미만의 한 열에서는 CSS 가 손잡이를 거둔다). 표면이 좁아지면 저장한 폭은 두고
+  // 보이는 폭만 줄인다.
+  const sized = !!current;
+  const detailMax = Math.max(split.detailMin, Math.min(split.detailMax, rootWidth - split.mainMin));
+  const shownDetail = Math.max(split.detailMin, Math.min(detailWidth ?? split.fallback(rootWidth), detailMax));
   const pickAddGroup = (groupId: string) => { setAddGroupId(groupId); requestAnimationFrame(() => addInputRef.current?.focus()); };
   return (
     // 온보딩 경계(SDK 계약) — 투어 카드가 패널을 가리지 않고 패널 옆, 짚는 구획 높이에 선다(레일이든 넓은 화면이든
@@ -452,8 +478,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         highlightTimer.current = null;
         setHighlightMission(null);
       }
-    }}><div ref={rootRef} className={`objectives-root${current ? " has-detail" : ""}${sized ? " is-sized" : ""}${resizing ? " is-resizing" : ""}`} style={sized ? { "--objectives-detail-w": `${shownDetail}px` } as CSSProperties : undefined}>
-      {sized ? <DetailGrip t={t} width={shownDetail} max={detailMax} rootRef={rootRef} onResize={setDetailWidth} onResizing={setResizing} /> : null}
+    }}><div ref={rootRef} className={`objectives-root${current ? " has-detail" : ""}${resizing ? " is-resizing" : ""}`} style={sized ? { "--objectives-detail-w": `${shownDetail}px` } as CSSProperties : undefined}>
+      {sized ? <DetailGrip t={t} split={split} width={shownDetail} max={detailMax} rootRef={rootRef} onResize={setDetailWidth} onResizing={setResizing} /> : null}
       <section ref={mainRef} className="objectives-main">
         <div className="objectives-title">
           <ScopeWords current={list} onPick={setList} t={t} count={listCount} dropOver={drag?.over ?? null} />
@@ -580,11 +606,13 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
 /**
  * 상세 패널 폭 손잡이 — 상세의 왼쪽 가장자리. 끌기·←/→(Shift 는 크게)·Home/End 로 바꾸고 두 번 누르면 기본 폭으로 돌아간다.
+ * 한도와 기억은 자리(split)가 정한다. 움직이지 않은 누름은 기억하지 않는다 — 레일은 기억이 없는 동안 표면 폭을 따르므로,
+ * 클릭 한 번이 그 순간의 폭을 박제하면 안 된다.
  * 확대 표면은 transform 조상이라 화면 거리와 CSS 거리가 다를 수 있어 끌기는 표면의 배율로 나눈다.
  */
-function DetailGrip({ t, width, max, rootRef, onResize, onResizing }: { t: T; width: number; max: number; rootRef: RefObject<HTMLDivElement | null>; onResize: (width: number) => void; onResizing: (value: boolean) => void }) {
-  const clamp = (value: number) => Math.round(Math.max(DETAIL_MIN, Math.min(max, value)));
-  const commit = (value: number) => { const next = clamp(value); onResize(next); saveDetailWidth(next); };
+function DetailGrip({ t, split, width, max, rootRef, onResize, onResizing }: { t: T; split: DetailSplit; width: number; max: number; rootRef: RefObject<HTMLDivElement | null>; onResize: (width: number | null) => void; onResizing: (value: boolean) => void }) {
+  const clamp = (value: number) => Math.round(Math.max(split.detailMin, Math.min(max, value)));
+  const commit = (value: number | null) => { const next = value === null ? null : clamp(value); onResize(next); saveDetailWidth(split, next); };
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -602,7 +630,7 @@ function DetailGrip({ t, width, max, rootRef, onResize, onResizing }: { t: T; wi
       handle.removeEventListener("pointerup", onEnd);
       handle.removeEventListener("pointercancel", onEnd);
       onResizing(false);
-      saveDetailWidth(last);
+      if (last !== startWidth) saveDetailWidth(split, last);
     };
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onEnd);
@@ -610,14 +638,14 @@ function DetailGrip({ t, width, max, rootRef, onResize, onResizing }: { t: T; wi
   };
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? 64 : 16;
-    const next = event.key === "ArrowLeft" ? width + step : event.key === "ArrowRight" ? width - step : event.key === "Home" ? max : event.key === "End" ? DETAIL_MIN : null;
+    const next = event.key === "ArrowLeft" ? width + step : event.key === "ArrowRight" ? width - step : event.key === "Home" ? max : event.key === "End" ? split.detailMin : null;
     if (next === null) return;
     event.preventDefault();
     commit(next);
   };
   return (
-    <div className="objectives-detail-grip" role="separator" aria-orientation="vertical" aria-label={t("objectives.detail.width")} title={t("objectives.detail.widthTip")} aria-valuemin={DETAIL_MIN} aria-valuemax={max} aria-valuenow={width} tabIndex={0}
-      onPointerDown={onPointerDown} onDoubleClick={() => commit(DETAIL_DEFAULT)} onKeyDown={onKeyDown} />
+    <div className="objectives-detail-grip" role="separator" aria-orientation="vertical" aria-label={t("objectives.detail.width")} title={t("objectives.detail.widthTip")} aria-valuemin={split.detailMin} aria-valuemax={max} aria-valuenow={width} tabIndex={0}
+      onPointerDown={onPointerDown} onDoubleClick={() => commit(split.reset)} onKeyDown={onKeyDown} />
   );
 }
 

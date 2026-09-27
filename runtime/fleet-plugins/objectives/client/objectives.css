@@ -13,9 +13,8 @@
   color: var(--text-primary);
   background: var(--surface-panel);
 }
-.objectives-root.has-detail { grid-template-columns: minmax(0, 1fr) minmax(360px, 480px); }
-/* 펼친 상태 — 상세 폭은 손잡이로 바꾼 값(--objectives-detail-w). 카드 열의 최소 폭은 JS 가 폭을 제한해 지킨다. */
-.objectives-root.has-detail.is-sized { grid-template-columns: minmax(0, 1fr) var(--objectives-detail-w, 480px); }
+/* 상세 폭은 손잡이로 바꾼 값 또는 자리의 기본값(--objectives-detail-w). 카드 열의 최소 폭은 JS 가 폭을 제한해 지킨다. */
+.objectives-root.has-detail { grid-template-columns: minmax(0, 1fr) var(--objectives-detail-w, 480px); }
 .objectives-detail-grip { position: absolute; top: 0; bottom: 0; right: calc(var(--objectives-detail-w, 480px) - 5px); width: 10px; z-index: 3; cursor: col-resize; touch-action: none; outline: none; }
 .objectives-detail-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background-color var(--duration-fast); }
 .objectives-detail-grip:hover::after, .objectives-detail-grip:focus-visible::after, .objectives-root.is-resizing .objectives-detail-grip::after { background: var(--brass); }
@@ -793,12 +792,9 @@ span.objectives-row-main { cursor: default; }
 
 /* 연결 선택 */
 
-@container objectives-panel (width < 960px) {
-  .objectives-root.has-detail:not(.is-sized) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-}
 @container objectives-panel (width < 600px) {
-  /* <960 의 두 열 규칙(:not(.is-sized))보다 한 단 높여야 좁은 폭에서 한 열이 이긴다. */
-  .objectives-root, .objectives-root.has-detail, .objectives-root.has-detail:not(.is-sized), .objectives-root.has-detail.is-sized { grid-template-columns: minmax(0, 1fr); }
+  /* 좁은 폭은 한 열이다 — 상세가 목록을 대신하고 손잡이는 거둔다. 기억한 폭은 지우지 않아 다시 넓히면 돌아온다. */
+  .objectives-root, .objectives-root.has-detail { grid-template-columns: minmax(0, 1fr); }
   .objectives-detail-grip { display: none; }
   .objectives-scope { gap: 14px; }
   .objectives-root.has-detail .objectives-main { display: none; }
