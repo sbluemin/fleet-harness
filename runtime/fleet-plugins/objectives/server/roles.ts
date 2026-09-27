@@ -121,15 +121,15 @@ export function curate(curation: RoleCuration, input: RoleCurateInput): RoleCura
   return { hidden: [...hidden], merged };
 }
 
-type RatingShape = { memberId?: unknown; as?: unknown; rating?: unknown; note?: unknown };
+type RatingShape = { memberId?: unknown; role?: unknown; as?: unknown; rating?: unknown; note?: unknown };
 /** 목표의 인계 평가 — 저장된 모양을 믿지 않고 한 건씩 확인한다. */
-function ratingsOf(objective: Pick<Objective, "handoff">): ReadonlyMap<string, Pick<MemberRating, "as" | "rating" | "note">> {
+function ratingsOf(objective: Pick<Objective, "handoff">): ReadonlyMap<string, Pick<MemberRating, "as" | "rating" | "note"> & { readonly role?: string }> {
   const raw = (objective.handoff as { ratings?: unknown } | null)?.ratings;
-  const map = new Map<string, Pick<MemberRating, "as" | "rating" | "note">>();
+  const map = new Map<string, Pick<MemberRating, "as" | "rating" | "note"> & { readonly role?: string }>();
   if (!Array.isArray(raw)) return map;
   for (const entry of raw as RatingShape[]) {
     if (!entry || typeof entry.memberId !== "string" || (entry.rating !== "well" && entry.rating !== "short") || typeof entry.note !== "string") continue;
-    map.set(entry.memberId, { rating: entry.rating, note: entry.note, ...(typeof entry.as === "string" && entry.as.trim() ? { as: entry.as.trim() } : {}) });
+    map.set(entry.memberId, { rating: entry.rating, note: entry.note, ...(typeof entry.role === "string" && entry.role.trim() ? { role: entry.role.trim() } : {}), ...(typeof entry.as === "string" && entry.as.trim() ? { as: entry.as.trim() } : {}) });
   }
   return map;
 }
@@ -148,11 +148,15 @@ export function pastRoles(objectives: readonly Objective[], curation: RoleCurati
     const ratings = ratingsOf(objective);
     const at = objective.handoff?.at ?? objective.createdAt;
     const parallel = new Map<string, number>();
-    for (const member of objective.members) {
+    // 평가는 인계 때의 기록이다 — 그 뒤 사람이 구성원 이름을 바꾸거나 빼도(완료 전에는 둘 다 된다) 평가 당시의 역할로
+    // 묶고, 빠진 구성원의 평가도 남긴다. 임무는 지금 명단에 남은 구성원만 잇는다(빠진 구성원의 임무는 지휘관 직접으로 돌아갔다).
+    const people = [...objective.members.map((member) => ({ id: member.id, role: member.role })),
+      ...[...ratings].flatMap(([id, rating]) => (rating.role && !objective.members.some((member) => member.id === id) ? [{ id, role: rating.role }] : []))];
+    for (const member of people) {
       const missions = objective.missions.filter((mission) => mission.member === member.id);
       const rating = ratings.get(member.id);
       if (!rating && !missions.some((mission) => mission.done)) continue;
-      const filed = rating?.as ?? member.role;
+      const filed = rating?.as ?? rating?.role ?? member.role;
       const role = resolveRole(curation, filed);
       const entry = roles.get(role) ?? { role, aliases: new Set<string>(), objectives: new Set<string>(), members: 0, maxParallel: 1, assigned: 0, done: 0, well: 0, short: 0, notes: [], lastAt: 0 };
       for (const name of [member.role, filed]) if (name !== role) entry.aliases.add(name);
