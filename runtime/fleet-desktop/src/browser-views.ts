@@ -332,6 +332,12 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const shell = deps.shell();
     if (!shell || shell.isDestroyed()) return;
     const view = deps.createView(spec.partition, spec.profile ?? null);
+    // 에이전트가 정한 크기(setDeviceMetricsOverride)는 Chromium 이 페이지 위젯(RWHV) 자체를 그 크기로 키워 만든다 —
+    // 표면 캡처와 먼 좌표 입력이 이 확대에 기댄다. 그런데 macOS 의 WebContentsViewCocoa 는 자식을 잘라내지 않아, 커진
+    // 위젯이 이 뷰의 bounds(패널 자리) 밖 Console 위까지 그려진다. 라운드 모서리가 뷰 레이어에 마스크를 걸어 보이는
+    // 곳만 bounds 로 자른다. 1px 은 눈에 띄지 않는다. Electron 이 창에 붙을 때(OnViewAddedToWidget) 다시 적용하고,
+    // 렌더러가 바뀌어도 뷰 쪽 설정이라 남는다. Windows·Linux 에서는 둥근 모서리가 렌더 표면 하나를 더 쓸 뿐 같은 자르기다.
+    view.setBorderRadius(1);
     const contentBounds = shell.stack.layoutConsole();
     const panelBounds = dipBounds(spec);
     const parkViewport = panelBounds && panelBounds.width > 0 && panelBounds.height > 0

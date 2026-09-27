@@ -22,6 +22,8 @@ import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP
 export const BROWSER_DEFAULT_VIEWPORT = { width: 1280, height: 800 } as const;
 const MAX_TABS = 8;
 const IDLE_SHUTDOWN_MS = 5 * 60_000;
+/** 뷰 크기 변경이 멎은 뒤 정한 뷰포트를 다시 걸기까지 — 사이드바 애니메이션 한 번이 마지막 한 번의 재적용이 된다. */
+const VIEWPORT_REAPPLY_MS = 100;
 const CONSOLE_RING = 500;
 const NETWORK_RING = 400;
 const BODY_LIMIT = 64 * 1024;
@@ -142,6 +144,10 @@ interface Tab {
   consoleErrors: number;
   network: Map<string, NetworkEntry>;
   refs: Map<string, number>;
+  /** 마지막으로 보낸 prefers-color-scheme(`""` 은 시스템). 아직 보내지 않았으면 없다. */
+  emulatedScheme?: string;
+  /** 뷰 크기 변경 뒤 정한 크기를 다시 거는 대기 — 연속 변경(사이드바 애니메이션)을 마지막 한 번으로 모은다. */
+  viewportReapply?: ReturnType<typeof setTimeout>;
 }
 
 interface OperationBrowser {
@@ -378,7 +384,10 @@ export class BrowserService {
 
   async dispose(): Promise<void> {
     this.disposed = true;
-    for (const op of this.operations.values()) for (const call of op.agentCalls) call.abort();
+    for (const op of this.operations.values()) {
+      for (const call of op.agentCalls) call.abort();
+      for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
+    }
     this.stateListeners.clear();
     await this.stopEngine();
     this.operations.clear();
@@ -463,6 +472,7 @@ export class BrowserService {
     for (const call of op.agentCalls) call.abort();
     op.agentCalls.clear();
     await this.disposeContext(op);
+    for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
     op.tabs.clear();
     op.pendingTabs = 0;
     op.activeTabId = null;
@@ -585,6 +595,7 @@ export class BrowserService {
     const op = this.operation(operationId);
     const tab = this.tab(op, tabId);
     op.tabs.delete(tab.id);
+    this.cancelViewportReapply(tab);
     if (this.client) { try { await this.client.send("Target.closeTarget", { targetId: tab.targetId }); } catch { /* 이미 닫혔다 */ } }
     // 활성 탭을 닫았으면 남은 탭을 앞으로 세운다 — 엔진에도 알려야 그 뷰가 보인다(뷰는 활성인 것 하나만 그려진다).
     if (op.activeTabId === tab.id) {
@@ -809,6 +820,10 @@ export class BrowserService {
     const p = event.params as Record<string, any>;
     switch (event.method) {
       case "Fleet.viewResized": {
+        // 뷰 크기가 바뀌면 Chromium 이 위젯을 새 뷰 크기로 되돌린다 — 에뮬레이션 뷰포트는 남아도 표면이 줄어 캡처가
+        // 어긋난다. 정한 크기를 다시 걸어 위젯을 그 크기로 되돌린다(보이는 곳은 셸이 뷰 자리에서 잘라낸다). 연속 변경은
+        // 마지막 한 번으로 모은다 — 그 사이의 캡처는 screenshot 이 먼저 다시 건다.
+        if (!op.viewportFollowsPane) this.scheduleViewportReapply(tab, op);
         // 요청 탭의 실측만 본다. 다른 탭·parking 창 크기 이벤트로 활성 pane 을 덮지 않는다.
         if (tab.id !== op.activeTabId) return;
         const width = Math.max(1, Math.round(Number(p.width) || 0)), height = Math.max(1, Math.round(Number(p.height) || 0)), scale = Math.max(1, Number(p.scale) || 1);
@@ -818,6 +833,7 @@ export class BrowserService {
       case "Target.detachedFromTarget": {
         // 셸이 뷰를 잃었다(렌더러 사망·창 종료). 탭도 함께 접고, 활성이었으면 남은 탭을 앞으로 세운다.
         op.tabs.delete(tab.id);
+        this.cancelViewportReapply(tab);
         if (op.activeTabId === tab.id) {
           const next = [...op.tabs.keys()].pop() ?? null;
           op.activeTabId = null;
@@ -838,7 +854,7 @@ export class BrowserService {
         this.emitState(op);
         // 교차 출처 항해로 렌더러가 바뀌면 페이지의 innerWidth 는 그대로여도 컴포지터가 창 표면(1280×657)으로
         // 되돌아가 스크린캐스트 프레임이 창 크기로 온다. 에뮬레이션을 다시 걸어야 프레임이 뷰포트를 따른다.
-        if (this.client) void this.applyViewport(this.client, tab, op).catch(() => undefined);
+        if (this.client) void this.applyViewport(this.client, tab, op, { media: true }).catch(() => undefined);
         return;
       }
       case "Page.frameStartedLoading": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = true; this.emitState(op); return;
@@ -848,7 +864,7 @@ export class BrowserService {
         tab.loading = false;
         const client = this.client;
         if (client) void this.refreshTab(client, tab).then(() => this.emitState(op));
-        if (client) void this.applyViewport(client, tab, op).catch(() => undefined);
+        if (client) void this.applyViewport(client, tab, op, { media: true }).catch(() => undefined);
         return;
       }
       case "Runtime.consoleAPICalled": {
@@ -918,8 +934,13 @@ export class BrowserService {
     this.emitState(op);
   }
 
-  /** 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋·임의 크기만 뷰 안에서 흉내 낸다. */
-  private async applyViewport(client: CdpClient, tab: Tab, op: OperationBrowser): Promise<void> {
+  /**
+   * 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋·임의 크기만 뷰 안에서 흉내 낸다.
+   * 대기 중인 재적용은 여기서 풀린다. 색 구성은 바뀌었을 때만 보내고, 새 문서가 뜬 뒤처럼 반드시 다시 알려야 하는
+   * 곳은 `media` 로 강제한다.
+   */
+  private async applyViewport(client: CdpClient, tab: Tab, op: OperationBrowser, options: { media?: boolean } = {}): Promise<void> {
+    this.cancelViewportReapply(tab);
     const viewport = op.viewport;
     if (op.viewportFollowsPane) {
       await client.send("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined);
@@ -927,7 +948,26 @@ export class BrowserService {
       const mobile = viewport.preset === "mobile" || viewport.preset === "tablet";
       await client.send("Emulation.setDeviceMetricsOverride", { width: viewport.width, height: viewport.height, deviceScaleFactor: 0, mobile, screenWidth: viewport.width, screenHeight: viewport.height }, tab.sessionId);
     }
-    await client.send("Emulation.setEmulatedMedia", { features: viewport.colorScheme ? [{ name: "prefers-color-scheme", value: viewport.colorScheme }] : [] }, tab.sessionId);
+    const scheme = viewport.colorScheme ?? "";
+    if (!options.media && tab.emulatedScheme === scheme) return;
+    await client.send("Emulation.setEmulatedMedia", { features: scheme ? [{ name: "prefers-color-scheme", value: scheme }] : [] }, tab.sessionId);
+    tab.emulatedScheme = scheme;
+  }
+
+  private scheduleViewportReapply(tab: Tab, op: OperationBrowser): void {
+    this.cancelViewportReapply(tab);
+    tab.viewportReapply = setTimeout(() => {
+      tab.viewportReapply = undefined;
+      const client = this.client;
+      if (!client || op.viewportFollowsPane || op.tabs.get(tab.id) !== tab) return;
+      void this.applyViewport(client, tab, op).catch(() => undefined);
+    }, VIEWPORT_REAPPLY_MS);
+  }
+
+  private cancelViewportReapply(tab: Tab): void {
+    if (tab.viewportReapply === undefined) return;
+    clearTimeout(tab.viewportReapply);
+    tab.viewportReapply = undefined;
   }
 
   async setViewport(operationId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent"): Promise<BrowserViewport> {
@@ -1141,6 +1181,8 @@ export class BrowserService {
     const tab = this.tab(op, options.tabId);
     const client = await this.engineClient();
     const format = options.format ?? "png";
+    // 정한 크기를 먼저 다시 건다 — 그 사이 뷰가 줄었으면 위젯이 뷰 크기로 줄어 표면이 뷰포트보다 작다.
+    if (!op.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
     // Companion 미개방이어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다.
     // cssLayoutViewport.clientWidth 는 스크롤바를 빼므로 native pane 과 다를 수 있다 — 같기를 기다리지 않는다.
     // 리사이즈와 캡처가 겹치면 같은 탭의 pane·layout 쌍이 두 번 연속 같아야 한다.
@@ -1168,7 +1210,14 @@ export class BrowserService {
     // 캡처 clip 은 요청 탭의 layout 만 쓴다 — 다른 활성 탭 pane 과 섞지 않는다.
     const clip = options.clip ?? { x: 0, y: 0, width: layout.width, height: layout.height };
     this.throwIfAborted(options.signal);
-    const result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: 1 / pane.scale }, captureBeyondViewport: false }, tab.sessionId);
+    let result: { data: string };
+    try {
+      result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: 1 / pane.scale }, captureBeyondViewport: false }, tab.sessionId);
+    } catch (error) {
+      // Chromium 은 캡처 동안 에뮬레이션을 잠시 바꿨다 되돌린다 — 실패한 캡처가 페이지를 뷰 크기로 풀어 두지 않게 다시 건다.
+      if (!op.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
+      throw error;
+    }
     const pixels = capturePixels(result.data);
     const after = await this.layoutViewport(client, tab);
     const paneAfter = this.paneOfTab(tab);
