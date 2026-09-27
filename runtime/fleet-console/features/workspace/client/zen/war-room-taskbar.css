@@ -124,8 +124,8 @@
   background: color-mix(in oklch, var(--wr-chip-signal) 7%, transparent);
   color: var(--text-primary);
 }
-/* 결정 요청만 선 칩(허용 대기·도착이 아닌 것)은 brass 워시 — 허용 대기가 함께 있으면 청록 워시와 표식이 함께 선다. */
-.zen-taskbar.war-room-taskbar .war-room-chip.is-decision:not(.is-awaiting, .is-unseen) {
+/* 결정 요청이 선 칩은 brass 워시 — 도착(초록)보다 앞선다. 허용 대기가 함께 있으면 청록 워시와 표식이 함께 선다. */
+.zen-taskbar.war-room-taskbar .war-room-chip.is-decision:not(.is-awaiting) {
   border-color: transparent;
   background: color-mix(in oklch, var(--brass) 8%, transparent);
   color: var(--text-primary);

@@ -31,7 +31,7 @@ const NO_FIXED_NAME = "No fixed session name. The from address on the Commander'
 /** read·mine 설명의 한 줄 — 후속 후보는 언제든 담을 수 있다. */
 const FOLLOWUP_ANYTIME = "Follow-up candidates can be placed on the objective at any time with the Commander's followup tool.";
 /** read·mine 설명의 한 줄 — 결정 요청과 결정이 보드에 있다는 사실. */
-const DECISIONS_ON_BOARD = "The board holds the current decisionRequest and decisionRequestRevision, and decisions: the person's answers recorded after successful delivery, with the questions and options as answered. Only the person's board submissions create decision records; there is no model write tool for them, the Commander and members read them, and they survive reruns. The person may not be watching the Commander's panel text. Reading does not clear a request or change a decision.";
+const DECISIONS_ON_BOARD = "AskUserQuestion is unavailable in Commander and member sessions. The board holds the current decisionRequest and decisionRequestRevision, and decisions: the person's answers recorded after successful delivery, with the questions and options as answered. Only the person's board submissions create decision records; there is no model write tool for them, the Commander and members read them, and they survive reruns. The person may not be watching the Commander's panel text. Reading does not clear a request or change a decision.";
 const DECISION_DELIVERING = "The person's answers have been accepted, but delivery and recording are not yet finalized. The current request cannot be replaced or withdrawn.";
 const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS} {point, because} and fellShort: 1–${MAX_RETRO_PAIRS} {point, ifOnly}, each field one line of at most ${MAX_RETRO_TEXT} characters.`;
 

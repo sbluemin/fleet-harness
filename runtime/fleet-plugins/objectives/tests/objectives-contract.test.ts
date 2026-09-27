@@ -272,7 +272,7 @@ describe("Objectives contract", () => {
     await launch.muster(objective.id);
     expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
     // 구성원만 사람에게 묻지 않는다 — 지휘관은 질문을 그대로 가진다.
-    expect(launches.map((entry) => entry.disableUserQuestions)).toEqual([undefined, true, true]);
+    expect(launches.map((entry) => entry.disableUserQuestions)).toEqual([true, true, true]);
     // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다 — 미기동 지휘관의 저장된 시작 뷰가 터미널이어도.
     expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["chat", "chat"]);
     const roster = store.find(objective.id)!;
