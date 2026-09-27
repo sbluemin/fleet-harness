@@ -902,14 +902,15 @@ class AgentChatSession {
    * turn-end만 기준으로 잡으면 그 **과거** 턴의 여는 좌표를 골라 live로 흘려 버린다 — 그러면 지난 턴이
    * 새 도착·working으로 읽혀 재접속마다 미확인·예약 집계가 흔들린다. 두 경계의 더 뒤에서부터 찾는다.
    * 여는 좌표가 상한에 밀려 없으면 `synthetic`으로, 꼬리를 live로 흘리며 합성 opener를 앞세운다.
-   * 정비 줄이 도는 중(`commandLane`)이면 여는 좌표는 `command`이고, 직전 정비 줄의 `command-end`도 바닥이 된다.
+   * 정비 줄이 도는 중(`commandLane`)이면 여는 좌표는 `command`이고, 그때만 직전 정비 줄의 `command-end`도 바닥이 된다.
    */
   private inFlightLiveSplit(snapshot: readonly AgentChatJournalEvent[], commandLane: boolean): { readonly from: number; readonly synthetic: boolean } {
     let lastEnd = -1;
     let lastReplayEnd = -1;
     for (let i = snapshot.length - 1; i >= 0; i -= 1) {
       const kind = snapshot[i]?.event.kind;
-      if ((kind === "turn-end" || kind === "command-end") && lastEnd === -1) lastEnd = i;
+      // 일반 턴 안의 자동 압축도 `command-end`(경계)를 남기지만 그 턴은 아직 열려 있다 — 바닥은 정비 줄일 때만 그것을 본다.
+      if ((kind === "turn-end" || (commandLane && kind === "command-end")) && lastEnd === -1) lastEnd = i;
       if (kind === "replay-end" && lastReplayEnd === -1) lastReplayEnd = i;
       if (lastEnd !== -1 && lastReplayEnd !== -1) break;
     }
