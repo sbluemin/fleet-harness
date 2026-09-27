@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  alignZonesFor,
   getSnapFullOperationId,
   getSnapshot,
   loadForTheater,
@@ -102,5 +103,46 @@ describe("캔버스 전체 칸 스냅", () => {
     // 패널은 칸 크기(아레나만큼)로 굳는다.
     expect(restoreSnapFullOperation(OPERATION_ID)).toBe(true);
     expect(getSnapshot().operations[OPERATION_ID]).toMatchObject({ width: RESTING.width, height: RESTING.height });
+  });
+});
+
+describe("모두 정렬 레이아웃 최소 크기 계약", () => {
+  const arena = { x: 0, y: 0, width: 1920, height: 1080 };
+
+  it("열 정렬은 띠 하나의 폭이 320px 아래로 내려가면 grid 배치로 자동 대체한다", () => {
+    // 32개 패널: 가용 폭 (1920 - 36 - 8*31) / 32 = 51.1px < 320px -> grid 분수
+    const fallbackZones = alignZonesFor(32, "columns", arena);
+    const gridZones = alignZonesFor(32, "grid", arena);
+    expect(fallbackZones).toEqual(gridZones);
+
+    // 2개 패널: 가용 폭 (1920 - 36 - 8) / 2 = 938px >= 320px -> columns 분수 유지
+    const preservedZones = alignZonesFor(2, "columns", arena);
+    expect(preservedZones).toEqual([
+      [0, 0, 0.5, 1],
+      [0.5, 0, 0.5, 1],
+    ]);
+  });
+
+  it("행 정렬은 띠 하나의 본문 높이가 200px 아래로 내려가면 grid 배치로 자동 대체한다", () => {
+    // 32개 패널: 가용 높이 (1080 - 36 - 32*32 - 8*31) / 32 < 0 < 200px -> grid 분수
+    const fallbackZones = alignZonesFor(32, "rows", arena);
+    const gridZones = alignZonesFor(32, "grid", arena);
+    expect(fallbackZones).toEqual(gridZones);
+
+    // 2개 패널: 가용 높이 (1080 - 36 - 32*2 - 8) / 2 = 486px >= 200px -> rows 분수 유지
+    const preservedZones = alignZonesFor(2, "rows", arena);
+    expect(preservedZones).toEqual([
+      [0, 0, 1, 0.5],
+      [0, 0.5, 1, 0.5],
+    ]);
+  });
+
+  it("아레나 크기가 없으면 원래 분수를 그대로 반환한다", () => {
+    expect(alignZonesFor(4, "columns")).toEqual([
+      [0, 0, 0.25, 1],
+      [0.25, 0, 0.25, 1],
+      [0.5, 0, 0.25, 1],
+      [0.75, 0, 0.25, 1],
+    ]);
   });
 });

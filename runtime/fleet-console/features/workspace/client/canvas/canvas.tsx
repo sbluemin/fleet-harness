@@ -1335,12 +1335,12 @@ export function OperationsCanvas({
     operationOrderFromNodes(theaterOperations),
     [],
   ).filter((operation) => !minimizedSet.has(operation.id)).map((operation) => operation.id);
-  // 멤버십·칸 재계산 — 최소화·추가·닫힘·순서 변경·자리 교환·빼내기·나누기 변경이 바뀌면 다시 나눈다.
+  // 멤버십·칸 재계산 — 최소화·추가·닫힘·순서 변경·자리 교환·빼내기·나누기 변경·아레나 크기 변화가 있으면 다시 나눈다.
   // reconcile은 같으면 손대지 않아 effect와 발산하지 않는다.
-  const alignOrderKey = alignOrderedIds.join("|");
+  const alignOrderKey = `${alignOrderedIds.join("|")}:${Math.round(snapArena.width)}x${Math.round(snapArena.height)}`;
   useEffect(() => {
     if (!alignMeta) return;
-    reconcileAlignAll(alignOrderedIds);
+    reconcileAlignAll(alignOrderedIds, snapArena);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alignMeta, alignOrderKey]);
   // 자리 복원 없이 풀리면 묶음의 최종 기하를 서버에 한 번 커밋한다 — 풀린 순간부터 자유
