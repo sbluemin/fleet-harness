@@ -837,7 +837,10 @@ class AgentChatSession {
       // 경계 안에 두면 클라이언트가 done으로 닫고, 서버는 여전히 열린 것으로 알아 새 turn-start를
       // 내지 않으므로 이후 델타가 무시되어 정확히 이 수정이 없애려는 "끝난 척" 상태로 굳는다.
       // 그래서 꼬리를 live로 흘리되 앞에 합성 turn-start를 세워 working 턴을 열어 받게 한다.
-      const split = this.turnOpen ? this.inFlightLiveSplit(snapshot) : null;
+      // 정비 줄(`/compact` 등)도 도는 중이면 같은 규율을 진다 — 그 줄은 `turnOpen`을 세우지 않지만,
+      // 경계 안에 들어가면 클라이언트의 replay-end가 working 줄을 숫자 없는 「완료」로 닫는다.
+      const lane = this.commandLane;
+      const split = this.turnOpen || lane !== null ? this.inFlightLiveSplit(snapshot, lane !== null) : null;
       const liveFrom = split ? split.from : -1;
       const syntheticStart = split?.synthetic ?? false;
       const replayEnd = liveFrom === -1 ? snapshot.length : liveFrom;
@@ -854,7 +857,12 @@ class AgentChatSession {
         let seq = firstLiveSeq - lead;
         listener({ seq, event: { kind: "replay-start" } });
         listener({ seq: seq += 1, event: { kind: "replay-end", turns: 0 } });
-        if (syntheticStart) listener({ seq: seq += 1, event: { kind: "turn-start" } });
+        if (syntheticStart) {
+          listener({
+            seq: seq += 1,
+            event: lane !== null ? { kind: "command", name: lane.name, at: Date.now() } : { kind: "turn-start" },
+          });
+        }
       } else {
         // 남아 있는 원래 경계는 snapshot 전체의 바깥 경계가 아니다. 그대로 보내면 원래 replay-end
         // 뒤에 쌓인 과거 live 턴이 새 도착으로 읽히므로, 합성한 바깥 경계만 전달한다. replayed가
@@ -893,21 +901,23 @@ class AgentChatSession {
    * resume 트랜스크립트의 마지막 턴은 소요 시간 좌표가 없으면 turn-end 없이 남으므로(closeReplayedTurn),
    * turn-end만 기준으로 잡으면 그 **과거** 턴의 여는 좌표를 골라 live로 흘려 버린다 — 그러면 지난 턴이
    * 새 도착·working으로 읽혀 재접속마다 미확인·예약 집계가 흔들린다. 두 경계의 더 뒤에서부터 찾는다.
-   * 여는 좌표가 상한에 밀려 없으면 `synthetic`으로, 꼬리를 live로 흘리며 합성 turn-start를 앞세운다.
+   * 여는 좌표가 상한에 밀려 없으면 `synthetic`으로, 꼬리를 live로 흘리며 합성 opener를 앞세운다.
+   * 정비 줄이 도는 중(`commandLane`)이면 여는 좌표는 `command`이고, 그때만 직전 정비 줄의 `command-end`도 바닥이 된다.
    */
-  private inFlightLiveSplit(snapshot: readonly AgentChatJournalEvent[]): { readonly from: number; readonly synthetic: boolean } {
+  private inFlightLiveSplit(snapshot: readonly AgentChatJournalEvent[], commandLane: boolean): { readonly from: number; readonly synthetic: boolean } {
     let lastEnd = -1;
     let lastReplayEnd = -1;
     for (let i = snapshot.length - 1; i >= 0; i -= 1) {
       const kind = snapshot[i]?.event.kind;
-      if (kind === "turn-end" && lastEnd === -1) lastEnd = i;
+      // 일반 턴 안의 자동 압축도 `command-end`(경계)를 남기지만 그 턴은 아직 열려 있다 — 바닥은 정비 줄일 때만 그것을 본다.
+      if ((kind === "turn-end" || (commandLane && kind === "command-end")) && lastEnd === -1) lastEnd = i;
       if (kind === "replay-end" && lastReplayEnd === -1) lastReplayEnd = i;
       if (lastEnd !== -1 && lastReplayEnd !== -1) break;
     }
     const floor = Math.max(lastEnd, lastReplayEnd);
     for (let i = floor + 1; i < snapshot.length; i += 1) {
       const kind = snapshot[i]?.event.kind;
-      if (kind === "dispatch" || kind === "turn-start") return { from: i, synthetic: false };
+      if (commandLane ? kind === "command" : kind === "dispatch" || kind === "turn-start") return { from: i, synthetic: false };
     }
     return { from: floor + 1, synthetic: true };
   }
