@@ -61,6 +61,8 @@ interface OperationsCanvasProps {
   readonly state: ConsoleState;
   /** 전면 캔버스 위 부유 크롬(사이드바·레일 카드)이 가리는 가장자리 — 아레나 계산의 원료. */
   readonly arenaInsets: CanvasArenaInsets;
+  /** 작업 표시줄의 빛을 패널 뒤에 그리는 명시적 포털 자리. */
+  readonly onTriageGlowHost: (element: HTMLDivElement | null) => void;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
   readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
@@ -120,6 +122,7 @@ const EMPTY_HIDDEN_COMPANION_IDS: readonly string[] = [];
 export function OperationsCanvas({
   state,
   arenaInsets,
+  onTriageGlowHost,
   catalog,
   canLaunch,
   renderKindIcon,
@@ -1591,6 +1594,7 @@ export function OperationsCanvas({
       } as CSSProperties}
     >
       <CanvasGrid viewport={screenViewport} />
+      {triageActive ? <div className="canvas-triage-glow" ref={onTriageGlowHost} aria-hidden="true" /> : null}
       <div
         style={{
           // 자기 기하로 덮는 층(companion·War Room)에서는 transform 제거(none)로 net scale 1.

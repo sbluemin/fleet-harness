@@ -21,7 +21,7 @@ type Shelf = "minimized" | "ended" | "shelves" | "overflow";
 interface Menu { readonly kind: Shelf; readonly anchor: DOMRect }
 
 /** 전역 덱의 대응 대기열. 공용 도구모음은 크롬의 기존 트레이에 그대로 있고 이 표면은 복제하지 않는다. */
-export function WarRoomTaskbar({ theaters, operations, operationRuntime, onResume, onOpenOperationMenu }: ZenTaskbarProps) {
+export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operationRuntime, onResume, onOpenOperationMenu }: ZenTaskbarProps) {
   const t = useT();
   useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
   const arrivals = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
@@ -38,6 +38,26 @@ export function WarRoomTaskbar({ theaters, operations, operationRuntime, onResum
   const entries = staged && !queue.some((operation) => operation.id === stagedId) ? [staged, ...queue] : queue;
   const pinned = new Set([nextId, stagedId].filter((id): id is string => id !== null));
   const rowRef = useRef<HTMLDivElement>(null);
+  const queueRef = useRef<HTMLDivElement>(null);
+  const glowRef = useRef<HTMLDivElement>(null);
+  // 막대가 소유한 실제 큐 구간을 명시적 캔버스 포털로 넘긴다. React 상태를 추가로 돌리지 않고
+  // 같은 레이아웃 단계에서 맞춰, 넘침 접힘·번역·리사이즈에도 주의선과 배경의 빛이 갈라지지 않는다.
+  const measureGlow = useCallback(() => {
+    if (!triageGlowHost || !queueRef.current || !glowRef.current) return;
+    const queue = queueRef.current.getBoundingClientRect();
+    const host = triageGlowHost.getBoundingClientRect();
+    glowRef.current.style.setProperty("--wr-queue-left", `${queue.left - host.left - 10}px`);
+    glowRef.current.style.setProperty("--wr-queue-width", `${queue.width + 20}px`);
+  }, [triageGlowHost]);
+  useLayoutEffect(measureGlow);
+  useLayoutEffect(() => {
+    if (!triageGlowHost || !rowRef.current || !queueRef.current) return;
+    const observer = new ResizeObserver(measureGlow);
+    observer.observe(triageGlowHost);
+    observer.observe(rowRef.current);
+    observer.observe(queueRef.current);
+    return () => observer.disconnect();
+  }, [triageGlowHost, measureGlow]);
   const [fit, setFit] = useState({ step: 0, count: entries.length });
   const [, remeasureChips] = useState(0);
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -145,13 +165,15 @@ export function WarRoomTaskbar({ theaters, operations, operationRuntime, onResum
   };
   const menuItems = menu?.kind === "overflow" ? overflow : menu?.kind === "minimized" ? minimized : menu?.kind === "ended" ? ended : [...minimized, ...ended];
   const summary = `${t("canvas.triage.runningCount", { count: counts.running })} · ${t("canvas.triage.idleCount", { count: counts.idle })}`;
+  const attentionClasses = `${counts.waiting + counts.unseen > 0 ? " has-attention" : ""}${counts.waiting === 0 ? " is-positive" : ""}${newIds.size > 0 ? " is-arriving" : ""}`;
   return <nav className={`zen-taskbar war-room-taskbar${entering ? " is-entering" : ""}`} aria-label={t("chrome.commandBand.modeWarRoom")} data-fit={fit.step}>
+    {triageGlowHost ? createPortal(<div ref={glowRef} className={`war-room-glow${attentionClasses}`} />, triageGlowHost) : null}
     <div className="zen-taskbar-left war-room-taskbar-row" ref={rowRef}>
       {fit.step < 5 ? <span className="war-room-kicker">{t("canvas.triage.modeKicker")}</span> : null}
       <span className="zen-taskbar-axis"><CanvasModeSwitch /></span>
       <span className="war-room-tools"><WarRoomModeTools compact={fit.step >= 2} /></span>
       <span className="zen-taskbar-sep" aria-hidden="true" />
-      <div className={`war-room-queue${counts.waiting + counts.unseen > 0 ? " has-attention" : ""}${counts.waiting === 0 ? " is-positive" : ""}${newIds.size > 0 ? " is-arriving" : ""}`}>
+      <div ref={queueRef} className={`war-room-queue${attentionClasses}`}>
         {entries.length ? shown.map(chip) : <span className="zen-taskbar-empty">{t("canvas.triage.queueEmpty")}</span>}
         {overflow.length > 0 ? menuButton("overflow", `+${overflow.length}`, overflow) : null}
       </div>

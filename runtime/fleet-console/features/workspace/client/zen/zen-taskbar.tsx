@@ -47,6 +47,7 @@ import "./zen-taskbar.css";
 export const ZEN_TASKBAR_HEIGHT = 36;
 
 export interface ZenTaskbarProps {
+  readonly triageGlowHost: HTMLDivElement | null;
   readonly theaters: readonly TheaterInfo[];
   readonly activeTheaterId: string | null;
   readonly operations: readonly OperationNode[];

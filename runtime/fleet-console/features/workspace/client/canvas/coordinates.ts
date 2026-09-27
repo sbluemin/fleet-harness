@@ -70,13 +70,13 @@ export function triageStageGeometryFor(
   slotIndex = 0,
   slotCount = 1,
 ): OperationGeometry {
-  // 무대는 스냅 칸과 같은 18px 인셋이다. 기준 상자는 캔버스 박스가 아니라 아레나
-  // (부유 크롬 인셋을 뺀 유효 뷰포트)다 — 전면 캔버스에서 박스 기준 18px는 무대를 부유
-  // 사이드바·레일 밑으로 넣는다. 18px은 크롬 폭의 대체가 아니라 모드 프레임 여백이다.
+  // War Room은 Zen 아레나(작업 표시줄 높이를 뺀 유효 뷰포트)를 쓴다. 틀의 위·좌·우는
+  // 아레나에서 10px 안쪽, 바닥은 수평선(아레나 끝)이므로 무대는 위·좌·우 18px, 아래 8px로
+  // 네 변 모두 틀과 8px을 띄운다. 단일 칸·동반 칸과 FLIP 목적 좌표가 같은 기하를 쓴다.
   return modeSlotGeometryFor({
     x: arena.x + 18,
     y: arena.y + 18 + OPERATION_WINDOW_CAPTION_HEIGHT,
     width: Math.max(320, arena.width - 36),
-    height: Math.max(240, arena.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT),
+    height: Math.max(240, arena.height - 18 - 8 - OPERATION_WINDOW_CAPTION_HEIGHT),
   }, slotIndex, slotCount, 8, zIndex);
 }

@@ -65,6 +65,7 @@ interface OperationsProps {
 
 export function Operations({ state, claimBootPanelMinimization, onDeferredDeletion, deletionToast }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [triageGlowHost, setTriageGlowHost] = useState<HTMLDivElement | null>(null);
   const snapFullOperationId = useSnapFullOperationId();
   const companionOperationId = useCompanionOperationId();
   const minimized = useMinimized();
@@ -943,6 +944,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         <OperationsCanvas
           state={state}
           arenaInsets={canvasArenaInsets}
+          onTriageGlowHost={setTriageGlowHost}
           catalog={catalog}
           canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
@@ -966,6 +968,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       {toolbarToolsSlot !== null ? createPortal(<RailToolIcons context={toolsContext} />, toolbarToolsSlot) : null}
       {zenMode ? (
         <ZenTaskbar
+          triageGlowHost={triageGlowHost}
           theaters={state.theaters}
           activeTheaterId={state.activeTheaterId}
           operations={state.operations}
