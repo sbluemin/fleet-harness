@@ -5,14 +5,16 @@
 // 칸 나누기 규칙은 모두 정렬(alignZonesFor)과 같은 가족이다 — 모드 프레임 여백 18px,
 // 칸 사이 8px, 캡션 32px는 칸 위 띠를 캡션이 채운다는 전제로 본문에서 뺀다.
 
-import { OPERATION_WINDOW_CAPTION_HEIGHT, SNAP_FULL_PRESET_ID } from "./canvas-store.js";
+import {
+  OPERATION_WINDOW_CAPTION_HEIGHT,
+  SNAP_FRAME_INSET,
+  SNAP_FULL_PRESET_ID,
+  SNAP_GAP,
+  type SnapRect,
+} from "./canvas-store.js";
 
-export interface SnapRect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
+export { SNAP_FRAME_INSET, SNAP_GAP };
+export type { SnapRect };
 
 export interface SnapPoint {
   readonly x: number;
@@ -46,9 +48,6 @@ export const SNAP_PRESETS: readonly SnapPreset[] = [
   { id: "stack", zones: [[0, 0, 1 / 2, 1], [1 / 2, 0, 1 / 2, 1 / 2], [1 / 2, 1 / 2, 1 / 2, 1 / 2]] },
 ];
 
-// 모드 프레임 여백(정렬 칸과 같은 18px)과 칸 사이 간격.
-export const SNAP_FRAME_INSET = 18;
-export const SNAP_GAP = 8;
 // 끌던 패널이 이 띠(아레나 위쪽)에 닿으면 레이아웃 바가 내려온다. 열린 뒤에는 히스테리시스만큼 더 참는다.
 export const SNAP_TOP_BAND = 44;
 export const SNAP_TOP_BAND_HYSTERESIS = 12;
