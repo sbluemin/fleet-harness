@@ -56,7 +56,7 @@ describe("fleet-console-use host", () => {
       await call("console_operations", {});
       expect(onOperationUse.mock.calls).toEqual([["op-a", true]]);
       expect((await call("console_launch", { theaterId: "theater-a", text: "   " })).error).toBe("invalid_arguments");
-      expect((await call("console_launch", { theaterId: "theater-a", text: "Check build", ownedTemp: true })).error).toBe("invalid_arguments");
+      expect((await call("console_launch", { theaterId: "theater-a", text: "Check build", scratchpad: "/outside" })).error).toBe("invalid_arguments");
       expect(executions).toBe(0);
       // 호출은 전달이 끝난 뒤 결과로 답하고, 남는 영수증이 없어 같은 호출은 다시 실행된다.
       expect(await call("console_send", args)).toEqual({ action: "send", operationId: "op-a", delivery: "confirmed" });

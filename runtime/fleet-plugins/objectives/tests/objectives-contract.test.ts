@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 
 import type { OperationGroupedEvent, OperationNode } from "@fleet-console/sdk/operations";
-import type { OwnedTempAccess } from "@fleet-console/sdk/mcp";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -84,7 +83,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
   const slept: string[] = [];
   const interrupted: string[] = [];
-  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string }[] = [];
+  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string; scratchpad?: string }[] = [];
   const resumed: string[] = [];
   const subagentSpawns: { operationId: string; policy: "blocked" | "default" }[] = [];
   const userQuestions: { operationId: string; policy: "blocked" | "default" }[] = [];
@@ -125,7 +124,7 @@ function harness(routingOrigin: () => string | null = () => null) {
       consoleControl: {
         launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
         reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
-        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string; parentOperationId?: string; childSessionId?: string }) => {
+        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string; parentOperationId?: string; childSessionId?: string; scratchpad?: string }) => {
           if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
           if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
@@ -140,10 +139,10 @@ function harness(routingOrigin: () => string | null = () => null) {
             return { operationId: id };
           }
           if (input.launchKey) keyed.set(input.launchKey, id);
-          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableUserQuestions: input.disableUserQuestions, groupId: input.groupId });
+          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableUserQuestions: input.disableUserQuestions, groupId: input.groupId, scratchpad: input.scratchpad });
           // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
           activity.set(id, input.dormant ? "dormant" : "idle");
-          const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
+          const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.scratchpad ? { scratchpad: input.scratchpad, scratchpadOwner: "objectives" } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
           if (input.childSessionId && input.parentOperationId) {
             const parent = operations.get(input.parentOperationId)!;
             parent.childSessions = [...(parent.childSessions ?? []), { id, payload, ts: { createdAt: clock++, updatedAt: clock } }];
@@ -154,6 +153,11 @@ function harness(routingOrigin: () => string | null = () => null) {
         observe: (id: string) => {
           const state = activity.get(id);
           return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"), supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
+        },
+        setScratchpad: (operationId: string, value: string | null) => {
+          const node = operations.get(operationId); if (!node) return;
+          if (value === null) { const { scratchpad: _scratchpad, scratchpadOwner: _owner, ...rest } = node.payload; node.payload = rest; }
+          else node.payload = { ...node.payload, scratchpad: value, scratchpadOwner: "objectives" };
         },
         setSubagentSpawn: (operationId: string, policy: "blocked" | "default") => { subagentSpawns.push({ operationId, policy }); },
         setUserQuestions: (operationId: string, policy: "blocked" | "default") => { userQuestions.push({ operationId, policy }); },
@@ -169,7 +173,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const launch = createLaunchService(ctx, store);
   grouped.push((event) => launch.operationGrouped(event));
   const tools = createObjectiveMcpTools(ctx, store, launch);
-  const call = async (name: string, args: Record<string, unknown>, operationId?: string, ownedTemp?: OwnedTempAccess) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}), ...(ownedTemp ? { ownedTemp } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
+  const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
   const consoleTool = createObjectiveConsoleTools(ctx, store, launch)[0]!;
   const route = async (name: string, body: Record<string, unknown>): Promise<{ status: number; value: Record<string, unknown> }> => {
     routeBody = body;
@@ -386,16 +390,14 @@ describe("Objectives contract", () => {
     expect((await call("detach_result", { objectiveId: objective.id, resultId: prId }, objective.id)).structuredContent.error).toBe("unknown_result");
     expect(savedObjective(objective.id).results).toBeUndefined();
     // 구성원은 자기 증거를 seal하고 지휘관이 결과물로 붙인다. 원본·세션 종료 후에도 목표의 복사본이 열린다.
-    const ownedRoot = path.join(workspace, "own-temp");
+    const ownedRoot = store.scratchpadDir(objective.theaterId, objective.id);
     fs.mkdirSync(ownedRoot, { recursive: true, mode: 0o700 });
     const screenshot = path.join(fs.realpathSync(ownedRoot), "G01.png");
     const document = path.join(fs.realpathSync(ownedRoot), "EVIDENCE.md");
     fs.writeFileSync(screenshot, PNG); fs.writeFileSync(document, "# 검증\n\n확인했습니다.\n");
-    let scopeLive = true;
-    const scope: OwnedTempAccess = { read: () => scopeLive ? { id: "owned-root", root: fs.realpathSync(ownedRoot) } : { error: "scope_unavailable" } };
-    const image = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, research, scope);
-    const text = await call("seal_evidence_from_path", { objectiveId: objective.id, path: document }, research, scope);
-    const pendingEvidence = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, research, scope);
+    const image = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, research);
+    const text = await call("seal_evidence_from_path", { objectiveId: objective.id, path: document }, research);
+    const pendingEvidence = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, research);
     expect(image.structuredContent).not.toHaveProperty("error");
     expect(text.structuredContent).not.toHaveProperty("error");
     expect(pendingEvidence.structuredContent).not.toHaveProperty("error");
@@ -413,7 +415,7 @@ describe("Objectives contract", () => {
     const textResponse = await resultFile(objective.id, imageId);
     expect(textResponse).toMatchObject({ status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Content-Disposition": "inline", "Cache-Control": "private, no-store" } });
     expect(textResponse.data.toString("utf8")).toBe("# 검증\n\n확인했습니다.\n");
-    scopeLive = false; fs.rmSync(ownedRoot, { recursive: true }); operations.delete(research);
+    fs.rmSync(ownedRoot, { recursive: true }); operations.delete(research);
     const evidenceReload = createObjectiveStore({ dirOf: () => objectivesDir, operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect((await evidenceReload.evidenceRead(objective.id, imageId)).data).toEqual(textResponse.data);
     expect(JSON.stringify((await route("objective/get", { objectiveId: objective.id })).value)).not.toContain(ownedRoot);
@@ -468,14 +470,13 @@ describe("Objectives contract", () => {
     expect(store.find("alpha")!.note).toBe("a");
     expect(bytes("alpha")).toEqual(alphaBefore);
     expect(reload().find("alpha")!.note).toBe("a");
-    const sourceDir = path.join(workspace, "owned-source"); fs.mkdirSync(sourceDir);
+    const sourceDir = store.scratchpadDir("t1", "alpha"); fs.mkdirSync(sourceDir, { recursive: true });
     const source = path.join(fs.realpathSync(sourceDir), "EVIDENCE.md"); fs.writeFileSync(source, "# preserved source");
-    const scope: OwnedTempAccess = { read: () => ({ id: "alpha-root", root: fs.realpathSync(sourceDir) }) };
     const binaryDir = path.join(objectivesDir, "alpha", "evidence");
     const write = fs.writeFileSync.bind(fs); let writes = 0;
     const beforeBinary = bytes("alpha"); const beforeEvents = events.length;
     const failMetadata = vi.spyOn(fs, "writeFileSync").mockImplementation((...args) => { if (++writes === 2) throw new Error("ENOSPC"); return write(...args); });
-    expect((await call("seal_evidence_from_path", { objectiveId: "alpha", path: source }, "alpha", scope)).isError).toBe(true);
+    expect((await call("seal_evidence_from_path", { objectiveId: "alpha", path: source }, "alpha")).isError).toBe(true);
     failMetadata.mockRestore();
     expect(bytes("alpha")).toEqual(beforeBinary);
     expect(events).toHaveLength(beforeEvents);
@@ -514,7 +515,7 @@ describe("Objectives contract", () => {
     expect(() => linked.attachmentAdd("alpha", { name: "shot.png", type: "image/png", data: PNG })).toThrow(/unsafe_path/);
     expect(fs.readdirSync(stray)).toEqual([]);
     fs.rmdirSync(binaryDir); fs.symlinkSync(stray, binaryDir);
-    expect((await call("seal_evidence_from_path", { objectiveId: "alpha", path: source }, "alpha", scope)).structuredContent.error).toBe("unsafe_path");
+    expect((await call("seal_evidence_from_path", { objectiveId: "alpha", path: source }, "alpha")).structuredContent.error).toBe("unsafe_path");
     expect(fs.readdirSync(stray)).toEqual([]);
     fs.unlinkSync(binaryDir);
 
@@ -791,15 +792,18 @@ describe("Objectives contract", () => {
     expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://elsewhere.invalid/o/r/pull/1" } }, commander)).structuredContent.error).toBe("unsupported_pr_host");
     expect((await call("read", { objectiveId: objective.id }, member.operationId)).structuredContent.objective).toHaveProperty("results", expect.arrayContaining([expect.objectContaining({ id: resultId })]));
     expect(store.find(objective.id)!.results).toHaveLength(1);
-    const own = path.join(workspace, "source-root"); fs.mkdirSync(own, { recursive: true });
+    const own = store.scratchpadDir(objective.theaterId, objective.id); fs.mkdirSync(own, { recursive: true });
     const root = fs.realpathSync(own);
-    const ownFile = path.join(root, "EVIDENCE.md"); fs.writeFileSync(ownFile, "owned evidence");
-    const scope: OwnedTempAccess = { read: () => ({ id: "member-root", root }) };
-    const seal = (source: string, by = member.operationId, access: OwnedTempAccess | undefined = scope) => call("seal_evidence_from_path", { objectiveId: objective.id, path: source }, by, access);
+    const ownFile = path.join(root, "EVIDENCE.md"); fs.writeFileSync(ownFile, "shared evidence");
+    const seal = (source: string, by = member.operationId) => call("seal_evidence_from_path", { objectiveId: objective.id, path: source }, by);
     expect((await seal(ownFile, other)).structuredContent.error).toBe("not_participant");
-    expect((await call("seal_evidence_from_path", { objectiveId: objective.id, path: ownFile }, member.operationId)).structuredContent.error).toBe("scope_unavailable");
+    expect((await call("scratchpad", { objectiveId: objective.id }, member.operationId)).structuredContent.root).toBe(root);
     const foreign = path.join(workspace, "other-session.md"); fs.writeFileSync(foreign, "not this session");
-    expect((await seal(foreign)).structuredContent.error).toBe("evidence_outside_scope");
+    expect((await seal(foreign)).structuredContent.error).toBe("evidence_outside_scratchpad");
+    fs.renameSync(root, `${root}-saved`);
+    fs.symlinkSync(`${root}-saved`, root);
+    expect((await seal(path.join(root, "EVIDENCE.md"))).structuredContent.error).toBe("unsafe_path");
+    fs.rmSync(root); fs.renameSync(`${root}-saved`, root);
     fs.symlinkSync(foreign, path.join(root, "link.md"));
     expect((await seal(path.join(root, "link.md"))).structuredContent.error).toBe("evidence_symlink");
     fs.linkSync(foreign, path.join(root, "hard.md"));

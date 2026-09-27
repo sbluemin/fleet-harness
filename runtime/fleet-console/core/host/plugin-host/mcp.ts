@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
-import type { AdmiralMcpSession, ConsoleCaller, OwnedTempAccess, PluginMcpTool } from "@fleet-console/sdk/mcp";
+import type { AdmiralMcpSession, ConsoleCaller, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
 export interface PluginAdmiralMcpHostOptions {
@@ -25,7 +25,6 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
   type Registration = { manager: ReturnType<typeof createExecutorSessionManager>; stop(): Promise<void> };
   const registrations = new Map<string, Registration>();
   const retiring = new Set<Promise<void>>();
-  const ownedTemps = new Map<string, OwnedTempAccess>();
   let disposed = false;
   return {
     register(pluginId: string, tools: readonly PluginMcpTool[]): () => void {
@@ -49,8 +48,7 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
             if (!parsed.success) return { content: [{ type: "text", text: "Invalid MCP arguments" }], isError: true };
             const label = unscopedLabel(context.sessionLabel);
             const caller = label && options.resolveCaller ? options.resolveCaller(label) : null;
-            const ownedTemp = context.sessionLabel ? ownedTemps.get(context.sessionLabel) : undefined;
-            return tool.execute(parsed.data, { ...context, ...(caller ? { caller } : {}), ...(caller && ownedTemp ? { ownedTemp } : {}), signal: context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal });
+            return tool.execute(parsed.data, { ...context, ...(caller ? { caller } : {}), signal: context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal });
           },
         });
       }
@@ -68,7 +66,7 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
         void closing.then(() => retiring.delete(closing), () => {});
       };
     },
-    connect(scopeOptions?: { readonly ownedTemp?: (label: string) => OwnedTempAccess }): AdmiralMcpSession {
+    connect(): AdmiralMcpSession {
       const prefix = randomUUID();
       const scopedLabel = (label: string) => `${prefix}:${label.trim()}`;
       const labels = new Map<string, readonly Registration[]>();
@@ -85,26 +83,20 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
           try {
             const tokens = active.flatMap(({ manager }) => manager.issueSessionToken({ ...request, label: scopedLabel(request.label) }));
             labels.set(request.label.trim(), active);
-            // 도구 실행 때 최신 root를 조회하지 않는다. 이 token이 발급될 때의 lease만 가진다.
-            const access = scopeOptions?.ownedTemp?.(request.label.trim());
-            if (access) ownedTemps.set(scopedLabel(request.label), access);
             return tokens;
           } catch (error) {
             for (const { manager } of active) manager.releaseSessionToken(scopedLabel(request.label));
             labels.delete(request.label.trim());
-            ownedTemps.delete(scopedLabel(request.label));
             throw error;
           }
         },
         releaseSessionToken(label) {
           for (const { manager } of labels.get(label.trim()) ?? []) manager.releaseSessionToken(scopedLabel(label));
           labels.delete(label.trim());
-          ownedTemps.delete(scopedLabel(label));
         },
         cleanup() {
           for (const [label, active] of labels) {
             for (const { manager } of active) manager.releaseSessionToken(scopedLabel(label));
-            ownedTemps.delete(scopedLabel(label));
           }
           labels.clear();
         },
@@ -114,7 +106,6 @@ export function createPluginAdmiralMcpHost(transport?: McpHttpTransport, options
       disposed = true;
       const active = [...registrations.values()];
       registrations.clear();
-      ownedTemps.clear();
       for (const { manager } of active) manager.cleanup();
       const results = await Promise.allSettled([...retiring, ...active.map((entry) => entry.stop())]);
       retiring.clear();

@@ -56,8 +56,7 @@ import {
 import { FLEET_PLUGIN_NAME, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
-import { chatChildEnv } from "../terminal/launch-env.js";
-import type { OwnedTempLease } from "./owned-file-scopes.js";
+import { chatChildEnv, CONSOLE_SCRATCHPAD_ENV } from "../terminal/launch-env.js";
 import type { CapturedAgentSession } from "./types.js";
 import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 
@@ -185,7 +184,7 @@ export interface AgentChatSessionSeed {
    */
   readonly onCwdChanged?: (cwd: string) => void;
   readonly bindWorkspaceHook?: (providerSessionId: string) => WorkspaceHookBinding;
-  readonly bindOwnedTemp?: (providerSessionId: string) => OwnedTempLease | undefined;
+  readonly scratchpad?: () => string | undefined;
   /**
    * 활동축이 이 세션의 보고를 받을 수 있는지 묻기만 한다 — 아무것도 쓰지 않는다.
    * 쓰는 프로브는 진행 중 턴을 유휴로 뒤집고 그 전이를 방송해, 첫 턴이 도는 중에 들어온
@@ -492,7 +491,6 @@ class AgentChatSession {
   /** admiral이 확정한 이 세션의 좌표. 세션당 한 번 받아 두고 dispose에서 반납한다. */
   private claudeSession: ClaudeSessionHandle | null = null;
   private workspaceHook: WorkspaceHookBinding | null = null;
-  private ownedTemp: OwnedTempLease | null = null;
   private claudeSessionFlight: Promise<ClaudeSessionHandle> | null = null;
   /**
    * Fleet MCP 좌표. 세션당 한 번 발급하고 dispose에서 되돌린다 — 턴마다 발급하면 반납되지 않은
@@ -1330,8 +1328,6 @@ class AgentChatSession {
     this.sdk = null;
     this.workspaceHook?.dispose();
     this.workspaceHook = null;
-    this.ownedTemp?.release();
-    this.ownedTemp = null;
     if (sdk) await sdk.dispose().catch(() => undefined);
     if (this.readerDone) await this.readerDone.catch(() => undefined);
     // 줄 서 있던 디스패치를 깨운다. 닫을 턴이 없어 closeTurn이 그냥 돌아가는 경로에서도 이들을
@@ -2077,11 +2073,11 @@ class AgentChatSession {
           });
         this.workspaceHook = this.seed.bindWorkspaceHook?.(claudeSession.sessionId) ?? null;
         try {
-          this.ownedTemp = this.seed.bindOwnedTemp?.(claudeSession.sessionId) ?? null;
           const executablePath = await this.seed.resolveExecutablePath?.().catch((error: unknown) => {
             this.push({ kind: "error", code: "chat_cli_unavailable" });
             throw error;
           });
+          const scratchpad = this.seed.scratchpad?.();
           const sdk = await this.createSdk({
       modelPolicy: claudeGatewayModelPolicy,
             ...(executablePath === undefined ? {} : { executablePath }),
@@ -2097,7 +2093,7 @@ class AgentChatSession {
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
             env: {
               ...chatChildEnv(process.env),
-              ...this.ownedTemp?.env,
+              ...(scratchpad ? { CLAUDE_CODE_TMPDIR: scratchpad, [CONSOLE_SCRATCHPAD_ENV]: scratchpad, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/tmp" } : {}),
               ...this.workspaceHook?.env,
               FLEET_COMPACT_BASE_URL: this.seed.baseUrl,
               ...(this.seed.compactHookToken
@@ -2122,8 +2118,6 @@ class AgentChatSession {
         } catch (error) {
           this.workspaceHook?.dispose();
           this.workspaceHook = null;
-          this.ownedTemp?.release();
-          this.ownedTemp = null;
           // 트리는 그대로 둔다 — 이 세션의 것이고, 다음 시도가 같은 자리를 다시 쓴다.
           this.claudeSession = null;
           throw error;
@@ -2787,12 +2781,6 @@ class AgentChatSession {
       this.session = null;
       this.workspaceHook?.dispose();
       this.workspaceHook = null;
-      if (this.ownedTemp) {
-        this.ownedTemp.release();
-        this.seed.releaseFleetMcpServers?.();
-        this.fleetMcpServers = null;
-      }
-      this.ownedTemp = null;
       const sdk = this.sdk;
       this.sdk = null;
       if (sdk) void sdk.dispose().catch(() => undefined);

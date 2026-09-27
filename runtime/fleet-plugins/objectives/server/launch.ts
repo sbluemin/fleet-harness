@@ -133,14 +133,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
-  const enableOwnedTemp = (operationId: string) => {
+  const enableScratchpad = (operationId: string, objectiveId: string) => {
     const node = ctx.host.operations.get(operationId);
-    if (node && node.payload.ownedTemp !== true) ctx.host.operations.patch(operationId, { payload: { ...node.payload, ownedTemp: true } });
+    if (node) ctx.host.consoleControl?.setScratchpad?.(operationId, store.scratchpadDir(node.theaterId, objectiveId));
   };
-  const launch = async (input: { newOperationId?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; member?: boolean; parentOperationId?: string; childSessionId?: string; launchKey?: string }): Promise<string> => {
+  const launch = async (input: { objectiveId: string; newOperationId?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; member?: boolean; parentOperationId?: string; childSessionId?: string; launchKey?: string }): Promise<string> => {
     const result = await control().request({
       kind: "launch",
-      ownedTemp: true,
+      scratchpad: store.scratchpadDir(input.theaterId, input.objectiveId),
       theaterId: input.theaterId,
       ...(input.title ? { title: input.title } : {}),
       viewMode: input.viewMode ?? "terminal",
@@ -183,7 +183,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const existing = ctx.host.operations.get(objectiveId);
     const key = `objectives.commander:${objectiveId}`;
     if (existing) {
-      enableOwnedTemp(objectiveId);
+      enableScratchpad(objectiveId, objectiveId);
       if (pendingCommander) {
         const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
         if (marker?.owner !== ctx.pluginId || marker.key !== key) throw new ObjectiveStoreError("operation_id_taken");
@@ -192,7 +192,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return;
     }
     if (!pendingCommander) throw new ObjectiveStoreError("unknown_operation");
-    const launchedId = await launch({ ...pendingCommander, dormant: true, launchKey: key, newOperationId: objectiveId }).catch(asStoreError);
+    const launchedId = await launch({ ...pendingCommander, objectiveId, dormant: true, launchKey: key, newOperationId: objectiveId }).catch(asStoreError);
     if (launchedId !== objectiveId) throw new ObjectiveStoreError("operation_id_taken");
     store.launched(objectiveId);
   };
@@ -334,7 +334,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const node = ctx.host.operations.get(operationId);
       const observation = node ? ctx.host.consoleControl?.observe(operationId) : null;
       if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
-      if (node && operationId) enableOwnedTemp(operationId);
+      if (node && operationId) enableScratchpad(operationId, objectiveId);
       if (operationId && node && observation?.lifecycle === "live") {
         blockMemberQuestions(operationId);
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.commander.sessionName, index + 1), operationId, state: "live" });
@@ -359,7 +359,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
       // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다. 채팅은 권한을 묻지 않고 터미널은
       // 사용자의 승인 게이트 설정을 따르므로, 게이트를 켠 채 지휘관이 터미널이면 둘 사이의 메시지가 사용자 승인을 기다릴 수 있다.
-      const launchedId = await launch({ theaterId: current.theaterId, sessionName: session, ...preset, subagents: allowed ? undefined : false, member: true, viewMode: "chat", parentOperationId: current.id, childSessionId: member.id }).catch(asStoreError);
+      const launchedId = await launch({ objectiveId, theaterId: current.theaterId, sessionName: session, ...preset, subagents: allowed ? undefined : false, member: true, viewMode: "chat", parentOperationId: current.id, childSessionId: member.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       // 라우팅·기동 중 변경된 허용값도 다음 기동 정책에는 반영한다. 첫 프로세스는 중단하지 않는다.
       const linked = objective(objectiveId).members.find((candidate) => candidate.id === member.id);

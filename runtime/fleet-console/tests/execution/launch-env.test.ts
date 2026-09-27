@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { chatChildEnv, stripConsoleInternalEnv } from "../../features/execution/host/terminal/launch-env.js";
+import { chatChildEnv, CONSOLE_SCRATCHPAD_ENV, stripConsoleInternalEnv } from "../../features/execution/host/terminal/launch-env.js";
 
 describe("stripConsoleInternalEnv", () => {
   it("removes desktop protocol markers and internal hints while keeping hook-required keys", () => {
@@ -15,8 +15,8 @@ describe("stripConsoleInternalEnv", () => {
       FLEET_CONSOLE_PACKAGE_ROOT: "/apps/fleet/resources/sidecar/fleet-console",
       FLEET_CONSOLE_DIR: "/Users/op/.fleet/console",
       FLEET_CONSOLE_SESSION_ID: "session-1",
-      FLEET_OWNED_TEMP_SCOPE: "parent-root",
       CLAUDE_CODE_TMPDIR: "/parent/private-temp",
+      [CONSOLE_SCRATCHPAD_ENV]: "/parent/private-temp",
       XDG_RUNTIME_DIR: "/messaging-runtime",
     });
     expect(env.PATH).toBe("/usr/bin");
@@ -24,7 +24,8 @@ describe("stripConsoleInternalEnv", () => {
     expect(env.FLEET_CONSOLE_DIR).toBe("/Users/op/.fleet/console");
     expect(env.FLEET_CONSOLE_SESSION_ID).toBe("session-1");
     expect(env.CLAUDE_CODE_TMPDIR).toBeUndefined();
-    expect(env.FLEET_OWNED_TEMP_SCOPE).toBeUndefined();
+    expect(env[CONSOLE_SCRATCHPAD_ENV]).toBeUndefined();
+    expect(stripConsoleInternalEnv({ CLAUDE_CODE_TMPDIR: "/user/tmp" }).CLAUDE_CODE_TMPDIR).toBe("/user/tmp");
     expect(env.XDG_RUNTIME_DIR).toBe("/messaging-runtime");
     expect(env.FLEET_CONSOLE_OWNER_ID).toBeUndefined();
     expect(env.FLEET_CONSOLE_OWNER_KIND).toBeUndefined();
