@@ -65,7 +65,6 @@ function ArchiveSheetDialog() {
   const archive = useOperationArchive();
   const dialogRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const [confirmingRoot, setConfirmingRoot] = useState<string | null>(null);
   // 방금 영구 삭제한 항목과 그 자리 — 목록을 다시 읽어 항목이 사라진 뒤 포커스를 같은 자리의 다음 항목으로 옮긴다.
   const [purged, setPurged] = useState<{ readonly rootId: string; readonly index: number } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
@@ -128,8 +127,7 @@ function ArchiveSheetDialog() {
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      if (confirmingRoot !== null) setConfirmingRoot(null);
-      else closeArchiveSheet();
+      closeArchiveSheet();
       return;
     }
     if (event.key !== "Tab") return;
@@ -182,16 +180,13 @@ function ArchiveSheetDialog() {
                   cluster={cluster}
                   now={now}
                   restoring={restoring === cluster.rootId}
-                  confirming={confirmingRoot === cluster.rootId}
                   currentRevision={archive.revision}
                   onRestore={() => restore(cluster)}
-                  onAskPurge={() => { setNotice(null); setConfirmingRoot(cluster.rootId); }}
-                  onCancelPurge={() => setConfirmingRoot(null)}
-                  purged={purged?.rootId === cluster.rootId}
+                  onPurgeStart={() => setNotice(null)}
+                  onPurgeRefused={setNotice}
                   onPurged={() => {
                     // 목록이 갱신될 때까지 포커스를 시트에 둔다 — 사라질 항목으로 돌려보내지 않는다.
                     setPurged({ rootId: cluster.rootId, index });
-                    setConfirmingRoot(null);
                     dialogRef.current?.focus();
                     void refreshOperationArchive();
                   }}
@@ -206,30 +201,19 @@ function ArchiveSheetDialog() {
   );
 }
 
-function ArchiveClusterItem({ cluster, now, restoring, confirming, purged, currentRevision, onRestore, onAskPurge, onCancelPurge, onPurged }: {
+function ArchiveClusterItem({ cluster, now, restoring, currentRevision, onRestore, onPurgeStart, onPurgeRefused, onPurged }: {
   readonly cluster: ArchiveCluster;
   readonly now: number;
   readonly restoring: boolean;
-  readonly confirming: boolean;
   readonly currentRevision: number;
   readonly onRestore: () => void;
-  readonly onAskPurge: () => void;
-  readonly onCancelPurge: () => void;
+  readonly onPurgeStart: () => void;
+  readonly onPurgeRefused: (notice: CoreMessageKey) => void;
   readonly onPurged: () => void;
-  /** 이 항목을 방금 영구 삭제했다 — 곧 목록에서 빠지므로 포커스를 이 항목으로 돌려보내지 않는다. */
-  readonly purged: boolean;
 }) {
   const t = useT();
   const locale = useConsoleLocale();
   const state = useConsoleState();
-  // 확인 카드를 닫으면 포커스를 그 카드를 연 「영구 삭제…」로 돌린다 — 카드와 함께 포커스가 사라지면 Esc·Tab이
-  // 시트에 닿지 않는다.
-  const purgeRef = useRef<HTMLButtonElement>(null);
-  const wasConfirmingRef = useRef(confirming);
-  useLayoutEffect(() => {
-    if (wasConfirmingRef.current && !confirming && !purged) purgeRef.current?.focus();
-    wasConfirmingRef.current = confirming;
-  }, [confirming, purged]);
   const rootOperation = cluster.root.operation;
   const title = rootOperation.title;
   const theaterId = rootOperation.theaterId;
@@ -237,7 +221,6 @@ function ArchiveClusterItem({ cluster, now, restoring, confirming, purged, curre
   const groupId = rootOperation?.groupId ?? null;
   const group = groupId ? state.groups.find((candidate) => candidate.id === groupId) ?? null : null;
   const groupLost = groupId !== null && group === null;
-  const archivedCount = 1;
   const kids = cluster.members.length;
   const meta = [
     theaterLabel,
@@ -246,127 +229,88 @@ function ArchiveClusterItem({ cluster, now, restoring, confirming, purged, curre
     kids > 0 ? t("archive.meta.children", { count: kids }) : null,
   ].filter((part): part is string => !!part).join(" · ");
 
+  // 한 줄 항목 — 왼쪽은 이름과 메타(하위가 있으면 그 목록과 복원 안내), 오른쪽 끝은 복원·영구 삭제가 나란히 선다.
   return (
-    <article className={`archive-sheet-item${confirming ? " is-confirming" : ""}`} aria-label={title}>
-      <p className="archive-sheet-item-title">{title}</p>
-      <p className="archive-sheet-item-meta">{meta}</p>
-      {kids > 0 ? (
-        <ul className="archive-sheet-members">
-          {cluster.members.map((member) => <li key={member.id} className="is-child"><span>{member.title}</span></li>)}
-        </ul>
-      ) : null}
-      {confirming ? (
-        <ArchivePurgeConfirm
+    <article className="archive-sheet-item" aria-label={title}>
+      <div className="archive-sheet-item-main">
+        <p className="archive-sheet-item-title" title={title}>{title}</p>
+        <p className="archive-sheet-item-meta">{meta}</p>
+        {kids > 0 ? (
+          <ul className="archive-sheet-members">
+            {cluster.members.map((member) => <li key={member.id} className="is-child"><span>{member.title}</span></li>)}
+          </ul>
+        ) : null}
+        {groupLost ? <p className="archive-sheet-note">{t("archive.note.groupLost")}</p> : null}
+        {kids > 0 ? <p className="archive-sheet-note">{t("archive.note.withChildren", { count: kids })}</p> : null}
+      </div>
+      <div className="archive-sheet-actions">
+        <button type="button" className="archive-sheet-restore" onClick={onRestore} disabled={restoring}>{t("archive.restore")}</button>
+        <ArchivePurgeButton
           targetId={cluster.rootId}
-          fallbackCount={archivedCount}
+          title={title}
           currentRevision={currentRevision}
           preview={previewOperationPurge}
           purge={purgeArchivedOperations}
-          onCancel={onCancelPurge}
+          onStart={onPurgeStart}
+          onRefused={onPurgeRefused}
           onPurged={onPurged}
         />
-      ) : (
-        <>
-          <div className="archive-sheet-actions">
-            <button type="button" className="archive-sheet-restore" onClick={onRestore} disabled={restoring}>{t("archive.restore")}</button>
-            <button ref={purgeRef} type="button" className="archive-sheet-purge" onClick={onAskPurge}>{t("archive.purge")}</button>
-          </div>
-          {groupLost ? <p className="archive-sheet-note">{t("archive.note.groupLost")}</p> : null}
-          {kids > 0 ? <p className="archive-sheet-note">{t("archive.note.withChildren", { count: kids })}</p> : null}
-        </>
-      )}
+      </div>
     </article>
   );
 }
 
-type PurgeStage =
-  | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly confirmation: OperationPurgeConfirmation }
-  | { readonly kind: "busy"; readonly confirmation: OperationPurgeConfirmation }
-  | { readonly kind: "stale" }
-  | { readonly kind: "failed" };
-
 /**
- * 영구 삭제 확인 — 되돌릴 수 없는 유일한 동작이라 안전장치를 겹겹이 둔다.
- * - 확인할 대상 집합과 revision을 먼저 서버에서 받아(preview) 그대로 확정 요청에 싣는다.
- * - 초기 포커스는 「취소」다. 「영구 삭제」는 따로 눌러야 하고, 키를 누르고 있어 생기는 반복 입력은 받지 않는다.
- * - 카드를 연 뒤 보관함이 바뀌면(revision이 달라지면) 확정을 거절하고 다시 열게 한다. 서버도 같은 이유로 거절한다.
- * - 지우는 범위는 Console이 가진 것만 밝힌다.
+ * 영구 삭제 — 한 번 누르면 확인 없이 지운다. 서버에서 대상 집합과 revision을 받아(preview) 그대로 확정 요청에
+ * 싣고, 그 사이 보관함이 바뀌었으면(클라이언트가 먼저 알든 서버가 409로 알리든) 아무것도 지우지 않고 알린다.
  */
-export function ArchivePurgeConfirm({ targetId, fallbackCount, currentRevision, preview, purge, onCancel, onPurged }: {
+export function ArchivePurgeButton({ targetId, title, currentRevision, preview, purge, onStart, onRefused, onPurged }: {
   readonly targetId: string;
-  readonly fallbackCount: number;
+  readonly title: string;
   readonly currentRevision: number;
   readonly preview: (operationId: string) => Promise<OperationPurgeConfirmation>;
   readonly purge: (confirmation: OperationPurgeConfirmation) => Promise<unknown>;
-  readonly onCancel: () => void;
+  readonly onStart: () => void;
+  readonly onRefused: (notice: CoreMessageKey) => void;
   readonly onPurged: () => void;
 }) {
   const t = useT();
-  const [stage, setStage] = useState<PurgeStage>({ kind: "loading" });
-  const cancelRef = useRef<HTMLButtonElement>(null);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  // 요청 중 도착한 최신 revision을 읽는다 — 누른 순간의 값에 묶이면 그 사이의 변경을 놓친다.
+  const revisionRef = useRef(currentRevision);
+  revisionRef.current = currentRevision;
 
-  useEffect(() => {
-    let alive = true;
-    void preview(targetId)
-      .then((confirmation) => { if (alive) setStage({ kind: "ready", confirmation }); })
-      .catch(() => { if (alive) setStage({ kind: "failed" }); });
-    return () => { alive = false; };
-  }, [preview, targetId]);
-  useLayoutEffect(() => { cancelRef.current?.focus(); }, []);
-
-  const confirm = () => {
-    if (stage.kind !== "ready") return;
-    // 확인한 뒤 보관함이 바뀌었다 — 본 적 없는 대상까지 지울 수 있으니 확정하지 않는다.
-    if (currentRevision >= 0 && currentRevision !== stage.confirmation.revision) {
-      setStage({ kind: "stale" });
-      return;
+  const run = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    onStart();
+    let notice: CoreMessageKey | null = null;
+    try {
+      const confirmation = await preview(targetId);
+      // 보관함이 바뀌었다 — 본 적 없는 대상까지 지울 수 있으니 확정하지 않는다.
+      if (revisionRef.current >= 0 && revisionRef.current !== confirmation.revision) notice = "archive.notice.purgeStale";
+      else await purge(confirmation);
+    } catch (error) {
+      notice = error instanceof ApiError && error.message === "archive_revision_conflict" ? "archive.notice.purgeStale" : "archive.notice.purgeFailed";
     }
-    const confirmation = stage.confirmation;
-    setStage({ kind: "busy", confirmation });
-    void purge(confirmation)
-      .then(() => onPurged())
-      .catch((error: unknown) => {
-        const code = error instanceof ApiError ? error.message : "";
-        setStage(code === "archive_revision_conflict" ? { kind: "stale" } : { kind: "failed" });
-      });
+    busyRef.current = false;
+    setBusy(false);
+    if (notice) onRefused(notice);
+    else onPurged();
   };
 
-  const count = stage.kind === "ready" || stage.kind === "busy" ? stage.confirmation.operationIds.length : fallbackCount;
   return (
-    <div className="archive-purge-confirm" role="alertdialog" aria-labelledby={`archive-purge-${targetId}`}>
-      <p id={`archive-purge-${targetId}`} className="archive-purge-title">{t("archive.purgeConfirm.title")}</p>
-      <p className="archive-purge-label">{t("archive.purgeConfirm.removes")}</p>
-      <ul>
-        <li>{count > 1 ? t("archive.purgeConfirm.removesOperations", { count }) : t("archive.purgeConfirm.removesOperation")}</li>
-        <li>{t("archive.purgeConfirm.removesFiles")}</li>
-      </ul>
-      <p className="archive-purge-label">{t("archive.purgeConfirm.keeps")}</p>
-      <ul>
-        <li>{t("archive.purgeConfirm.keepsWork")}</li>
-        <li>{t("archive.purgeConfirm.keepsTranscripts")}</li>
-      </ul>
-      <p className="archive-sheet-note">{t("archive.purgeConfirm.toolsNote")}</p>
-      {stage.kind === "stale" ? <p className="archive-purge-error" role="status">{t("archive.purgeConfirm.stale")}</p> : null}
-      {stage.kind === "failed" ? <p className="archive-purge-error" role="status">{t("archive.purgeConfirm.failed")}</p> : null}
-      <div className="archive-purge-row">
-        <button
-          type="button"
-          className="archive-purge-confirm-button"
-          disabled={stage.kind !== "ready"}
-          onClick={confirm}
-          onKeyDownCapture={(event) => {
-            // 키를 누르고 있는 반복 입력은 확정으로 받지 않는다.
-            if (event.repeat && (event.key === "Enter" || event.key === " ")) {
-              event.preventDefault();
-              event.stopPropagation();
-            }
-          }}
-        >
-          {t("archive.purgeConfirm.confirm")}
-        </button>
-        <button ref={cancelRef} type="button" className="archive-purge-cancel" onClick={onCancel}>{t("archive.purgeConfirm.cancel")}</button>
-      </div>
-    </div>
+    <button
+      type="button"
+      className="archive-sheet-purge"
+      onClick={() => { void run(); }}
+      // 지우는 동안에도 disabled로 두지 않는다 — 포커스가 BODY로 빠지면 Esc·Tab이 시트에 닿지 않는다.
+      aria-disabled={busy || undefined}
+      aria-label={t("archive.purgeAria", { title })}
+    >
+      {t("archive.purge")}
+    </button>
   );
 }

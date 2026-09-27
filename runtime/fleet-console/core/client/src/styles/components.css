@@ -18459,20 +18459,20 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-2) var(--space-4) var(--space-4);
+  padding: var(--space-1) var(--space-3) var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .archive-sheet-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .archive-sheet-bucket {
-  margin: var(--space-2) 0 0;
+  margin: var(--space-2) 0 0 var(--space-1);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -18487,25 +18487,32 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   text-align: center;
 }
 
+/* 한 줄 항목 — 왼쪽 이름·메타, 오른쪽 끝 복원·영구 삭제. */
 .archive-sheet-item {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
+  align-items: center;
+  gap: var(--space-3);
+  padding: 6px var(--space-3);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
 }
 
-.archive-sheet-item.is-confirming {
-  border-color: color-mix(in oklch, var(--coral) 45%, transparent);
+.archive-sheet-item-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .archive-sheet-item-title {
   margin: 0;
+  overflow: hidden;
   color: var(--text-primary);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .archive-sheet-item-meta,
@@ -18513,6 +18520,12 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--t-xs);
+}
+
+.archive-sheet-item-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .archive-sheet-members {
@@ -18536,30 +18549,22 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   padding-left: var(--space-3);
 }
 
-.archive-sheet-members li.is-open {
-  color: var(--text-tertiary);
-}
-
-.archive-sheet-members small {
-  color: var(--text-tertiary);
-}
-
-.archive-sheet-actions,
-.archive-purge-row {
+.archive-sheet-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex: none;
   align-items: center;
-  gap: var(--space-1) var(--space-3);
-  margin-top: var(--space-1);
+  gap: var(--space-3);
 }
 
 .archive-sheet-restore,
-.archive-sheet-purge,
-.archive-purge-cancel {
-  padding: 0;
-  border: 0;
+.archive-sheet-purge {
+  height: 24px;
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
   background: none;
   font-size: var(--t-sm);
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -18573,13 +18578,11 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   cursor: default;
 }
 
-.archive-sheet-purge,
-.archive-purge-cancel {
+.archive-sheet-purge {
   color: var(--text-tertiary);
 }
 
-.archive-sheet-restore:hover,
-.archive-purge-cancel:hover {
+.archive-sheet-restore:hover:not(:disabled) {
   color: var(--text-primary);
 }
 
@@ -18587,72 +18590,15 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   color: var(--coral-ink);
 }
 
+.archive-sheet-purge[aria-disabled="true"] {
+  cursor: progress;
+  opacity: 0.6;
+}
+
 .archive-sheet-restore:focus-visible,
 .archive-sheet-purge:focus-visible,
-.archive-purge-cancel:focus-visible,
-.archive-purge-confirm-button:focus-visible,
 .archive-sheet-close:focus-visible,
 .app-toast-link:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
-}
-
-/* 영구 삭제 확인 — 되돌릴 수 없는 유일한 동작이라 이 카드만 coral 채널을 쓴다. */
-.archive-purge-confirm {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-top: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
-  border-radius: var(--radius-xs);
-  background: var(--coral-glow);
-}
-
-.archive-purge-confirm ul {
-  margin: 0;
-  padding-left: var(--space-4);
-  color: var(--text-secondary);
-  font-size: var(--t-xs);
-}
-
-.archive-purge-title {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-}
-
-.archive-purge-label {
-  margin: var(--space-1) 0 0;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.04em;
-}
-
-.archive-purge-error {
-  margin: 0;
-  color: var(--coral-ink);
-  font-size: var(--t-xs);
-}
-
-.archive-purge-confirm-button {
-  padding: 4px 12px;
-  border: 1px solid color-mix(in oklch, var(--coral) 60%, transparent);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--coral) 20%, transparent);
-  color: var(--coral-ink);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-  cursor: pointer;
-}
-
-.archive-purge-confirm-button:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--coral) 32%, transparent);
-}
-
-.archive-purge-confirm-button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
