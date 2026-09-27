@@ -193,7 +193,7 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--by-tone) 14%, transparent);
   color: color-mix(in oklab, var(--by-tone) 40%, var(--text-secondary));
   font-size: var(--t-2xs);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
   line-height: 1;
   white-space: nowrap;
@@ -1284,7 +1284,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-a { margin: 0; font-size: var(--t-sm); color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .objectives-decision-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-meta span { display: inline-flex; align-items: center; gap: 4px; }
-.objectives-decision-meta .objectives-member-mark { width: 14px; height: 14px; font-size: 9px; }
+.objectives-decision-meta .objectives-member-mark { width: 14px; height: 14px; font-size: var(--t-2xs); }
 .objectives-decisions-fold { align-self: flex-start; padding: 4px 0 0; border: 0; background: none; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
 .objectives-decisions-fold:hover { color: var(--text-primary); }
 .objectives-decisions-fold:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }

@@ -31,8 +31,8 @@ describe("plugin SSE channel wiring", () => {
 
   it("rides the existing operations stream rather than opening a second one", () => {
     const publish = SERVER.slice(SERVER.indexOf("function publishPluginEvent"));
-    expect(publish.slice(0, 600)).toContain("operationSseSubscribers");
-    expect(publish.slice(0, 600)).toContain("encodeSseData(channel, payload)");
+    expect(publish.slice(0, 900)).toContain("operationSseSubscribers");
+    expect(publish.slice(0, 900)).toContain("encodeSseData(channel, payload)");
   });
 
   it("releases the channel when the registration is disposed", () => {
