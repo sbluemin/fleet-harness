@@ -92,7 +92,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
         await agent.stopForArchive(operation.id);
         await analysis.stopForArchive(operation.id);
       } else if (!await runtime.terminateAndWait(operation.id, 10_000)) throw new Error("archive_stop_failed");
-      ctx.host.browserMcp?.revokeOperation(operation.id);
+      await ctx.host.browserMcp?.revokeOperation(operation.id);
       ctx.host.computerUseMcp?.revokeOperation(operation.id);
       ctx.host.useRequests?.settle(operation.id);
       ctx.host.consoleUse.endOperationUse?.(operation.id);
