@@ -1251,7 +1251,6 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-send:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 24%, transparent); }
 .objectives-decision-send:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-decision-send:disabled { opacity: 0.5; cursor: default; }
-.objectives-decision-foot { margin: 0; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-fault { margin: 0; font-size: var(--t-xs); color: var(--coral); }
 .objectives-decision-trace { margin: 0 14px 6px; font-size: var(--t-xs); color: var(--text-tertiary); }
 /* 「결정」 — 질문(옅게)·답(원문)·시각과 관련 임무·구성원. 임무 줄의 결정 표식이 가리키면 잠시 비춘다. */

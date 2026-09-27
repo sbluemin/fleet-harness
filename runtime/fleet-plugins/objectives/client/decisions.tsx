@@ -71,7 +71,6 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
       setFault(code === "decision_request_changed" ? t("objectives.decision.changed") : code === "decision_delivering" ? t("objectives.decision.delivering") : t("objectives.decision.failed"));
     } finally { setSending(false); }
   };
-  const anyMember = request.questions.some((question) => !!question.memberId);
   return (
     <section className="objectives-decision-request" aria-label={t("objectives.decision.request")}>
       <div className="objectives-decision-head">
@@ -135,7 +134,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
       </div>
       {fault ? <p className="objectives-decision-fault" role="status">{fault}</p>
         : unconfirmed ? <p className="objectives-decision-fault" role="status">{t("objectives.decision.unknown")}</p>
-        : <p className="objectives-decision-foot">{many ? t("objectives.decision.footMany") : ""}{t("objectives.decision.foot")}{anyMember ? t("objectives.decision.footMember") : ""}</p>}
+        : null}
     </section>
   );
 }
