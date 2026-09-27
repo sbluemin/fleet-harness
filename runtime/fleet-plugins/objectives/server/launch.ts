@@ -4,9 +4,9 @@ import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { decisionTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import type { MemberPatchInput, Objective, ObjectiveMember, PlanInput, SlotBy, MissionAddInput, MissionPatchInput } from "./types.js";
+import type { DecisionAnswersInput, MemberPatchInput, Objective, ObjectiveMember, PlanInput, SlotBy, MissionAddInput, MissionPatchInput } from "./types.js";
 
 /**
  * 목표는 레코드로 태어난다. 첫 「개시」·「구상」에서만 같은 id 의 dormant 지휘관 Operation 을 세우고 깨운다.
@@ -67,6 +67,11 @@ export interface LaunchService {
   memberRemoved(objectiveId: string, memberId: string): Promise<{ readonly objective: Objective; readonly missionIds: readonly string[] }>;
   /** 지휘관 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. */
   busy(objectiveId: string): boolean;
+  /**
+   * 사람의 결정 답 — 지휘관에게 질문과 답을 보내고(휴면이면 깨워서), 닿았을 때만 결정으로 남기고 요청을 정리한다. 스티어링과 달리
+   * 기준 제안이 남아도 보내며, 충족 판단·구상 상태를 건드리지 않고 구성원을 기동하지 않는다.
+   */
+  answerDecision(objectiveId: string, input: DecisionAnswersInput, options?: LaunchOptions): Promise<Objective>;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
   steer(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
@@ -583,6 +588,27 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     }),
 
     busy: (objectiveId) => working(objective(objectiveId).id),
+
+    async answerDecision(objectiveId, input, options) {
+      // 같은 요청의 답이 이미 가는 중이다 — 두 번 보내면 지휘관이 같은 답을 두 번 받는다.
+      const key = `${objectiveId}:decision`;
+      if (pending.has(key)) throw new ObjectiveStoreError("decision_delivering");
+      pending.add(key);
+      try {
+        const accepted = store.decisionAccept(objectiveId, input);
+        if (accepted.recorded) return accepted.objective;
+        try {
+          await accessOperation(objectiveId);
+          await control().request({ kind: "send", operationId: objectiveId, text: decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options)) });
+        } catch (error) {
+          // 닿지 않았다 — 요청과 답은 화면에 그대로 남고 결정은 쌓이지 않는다. 호스트의 거절 사유는 함께 돌려준다.
+          store.decisionSettle(objectiveId, accepted.request.id, false);
+          const reason = error instanceof Error && /^[a-z_]{1,64}$/.test(error.message) ? error.message : undefined;
+          throw new ObjectiveStoreError("decision_delivery_failed", undefined, reason ? { reason } : {});
+        }
+        return store.decisionSettle(objectiveId, accepted.request.id, true);
+      } finally { pending.delete(key); }
+    },
 
     async steer(objectiveId, options) {
       const current = objective(objectiveId);

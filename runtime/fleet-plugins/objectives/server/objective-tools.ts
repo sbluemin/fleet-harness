@@ -7,7 +7,7 @@ import type { PrStatusService } from "./pr-status.js";
 import { resultInputSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { EvidenceError, readScratchpadEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, followupBodySchema, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
+import { criterionProposalSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
 
 /**
@@ -30,6 +30,9 @@ const BOARD_CHANGED = "The person edited the objective after your last read.";
 const NO_FIXED_NAME = "No fixed session name. The from address on the Commander's latest message reaches that live session.";
 /** read·mine 설명의 한 줄 — 후속 후보는 언제든 담을 수 있다. */
 const FOLLOWUP_ANYTIME = "Follow-up candidates can be placed on the objective at any time with the Commander's followup tool.";
+/** read·mine 설명의 한 줄 — 결정 요청과 결정이 보드에 있다는 사실. */
+const DECISIONS_ON_BOARD = "The board also holds the Commander's current decisionRequest with its decisionRequestRevision, and decisions: each answer the person sent to a decision request, with a copy of the question and options as they were answered. The person may not be watching the Commander's panel text. Reading does not clear a request or change a decision.";
+const DECISION_DELIVERING = "The person's answers to the current decision request are being delivered to the Commander.";
 const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS} {point, because} and fellShort: 1–${MAX_RETRO_PAIRS} {point, ifOnly}, each field one line of at most ${MAX_RETRO_TEXT} characters.`;
 
 export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService): readonly PluginMcpTool[] {
@@ -59,7 +62,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       const parsed = schema.safeParse(raw ?? {});
       if (!parsed.success) return refuse("invalid_arguments");
       try { return await run(parsed.data, context.caller, context); }
-      catch (error) { return error instanceof ObjectiveStoreError ? refuse(error.code, error.details) : error instanceof EvidenceError ? refuse(error.code, error.reason ? { reason: error.reason } : {}) : refuse("objectives_failed"); }
+      catch (error) { return error instanceof ObjectiveStoreError ? refuse(error.code, error.code === "decision_delivering" ? { hint: DECISION_DELIVERING } : error.details) : error instanceof EvidenceError ? refuse(error.code, error.reason ? { reason: error.reason } : {}) : refuse("objectives_failed"); }
     },
   });
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Operation 에게는 참여자가 아님을 말한다. */
@@ -73,7 +76,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     });
 
   return [
-    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's shared scratchpad, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective.`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's shared scratchpad, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective.`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findMember(caller.operationId);
       if (assigned) {
@@ -89,7 +92,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!own) return refuse("not_participant");
       return text({ role: "commander", objectiveId: own.id, objective: readView(own, caller) });
     }),
-    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order and shift as it changes; missionIds do not. ${FOLLOWUP_ANYTIME}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
+    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order and shift as it changes; missionIds do not. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
       const objective = find(objectiveId);
       if (!roleIn(objective, caller)) return refuse("not_participant");
       return text({ objective: readView(objective, caller) });
@@ -144,6 +147,19 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const assignment = args.member !== undefined && target.memberBy !== "human" ? { member: args.member === null ? null : resolveMember(objective, args.member) } : {};
         const next = launch.missionPatched(objective.id, target.id, { prerequisites: prerequisites.filter((id): id is string => !!id && id !== target.id), ...assignment });
         return text({ ok: true, objective: objectiveView(next) });
+      }),
+    commanderTool("request_decision", `Place a decision request on the Objectives surfaces the person sees: questions the person answers there, not a notice that clears when read or when a session is opened. At most ${MAX_DECISION_QUESTIONS} questions per request; each question has no options or 2–${MAX_DECISION_OPTIONS}, and the person can always write an answer of their own. The person sends every answer at once. An objective holds one current request; a new request replaces all of the previous one. missionId and memberId are optional context per question. expectedRevision is the board's decisionRequestRevision; a different value is refused as decision_request_changed. Once the answers reach the Commander, the request clears and each answer stays in decisions, which members read too, and stays through reruns. A request cleared by the person's board edits, by a referenced mission or member leaving the board, by withdrawal or by replacement becomes no decision. A request and its answers are not tool permission and do not mark criteria met.`,
+      z.object({ objectiveId: ids, expectedRevision: z.number().int().min(0), questions: z.array(decisionQuestionSchema).min(1).max(MAX_DECISION_QUESTIONS) }).strict(),
+      ({ expectedRevision, questions }, objective) => {
+        if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
+        const placed = store.decisionRequest(objective.id, { expectedRevision, questions });
+        return text({ ok: true, decisionRequest: placed.request, decisionRequestRevision: placed.objective.decisionRequestRevision, replacedRequestId: placed.replacedRequestId, objective: objectiveView(placed.objective) });
+      }),
+    commanderTool("withdraw_decision_request", "Withdraw the current decision request named by requestId. With no current request nothing changes; a different current request is refused as decision_request_changed. A withdrawal is not the person's answer, so it leaves no decision; decisions, missions and criteria stay as they are.",
+      z.object({ objectiveId: ids, requestId: ids }).strict(),
+      ({ requestId }, objective) => {
+        const withdrawn = store.decisionWithdraw(objective.id, requestId);
+        return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequest: withdrawn.objective.decisionRequest, decisionRequestRevision: withdrawn.objective.decisionRequestRevision, objective: objectiveView(withdrawn.objective) });
       }),
     commanderTool("muster", "Bring every roster member to a live session: absent members launch waiting for a first message, dormant ones resume their own session, live ones stay as they are. A waiting session costs nothing until it receives a message; a session left idle after working can go dormant, and SendMessage and ListAgents reach only live sessions. A member knows only what it has been sent and what it has read, and keeps that across missions.",
       z.object({ objectiveId: ids }).strict(),

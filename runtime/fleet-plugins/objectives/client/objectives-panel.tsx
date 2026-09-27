@@ -7,6 +7,7 @@ import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
 import { commanderMode, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting } from "./action-band.js";
+import { DecisionGlyph, DecisionList, DecisionRequestBlock, RequestGlyph } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ObjectiveResults, ResultsGlyph, ResultsHeadTools } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
@@ -534,6 +535,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                   <div className="objectives-objective-meta">
                     {objective.missions.length ? <span>✓ {objective.missions.filter((mission) => mission.done).length}/{objective.missions.length}</span> : null}
                     {objective.awaitingHandoff && !objective.done ? <span className="objectives-objective-handoff">{t("objectives.handoff.label")}</span> : null}
+                    {objective.decisionRequest && !objective.done ? <span className="objectives-objective-request"><RequestGlyph />{t("objectives.decision.label")}{objective.decisionRequest.questions.length > 1 ? <em>{t("objectives.decision.labelMany", { count: objective.decisionRequest.questions.length })}</em> : null}</span> : null}
                     {objective.dueDate ? <span className={`objectives-objective-due${objective.dueDate < todayIso() && !objective.done ? " is-overdue" : ""}`}><CalGlyph />{dueLabel(objective.dueDate, language)}</span> : null}
                     {showGroup ? <span>{showGroup.name}</span> : null}
                     {objective.addedBy ? <span className="objectives-by">{t("objectives.objective.addedBy", { name: objective.addedBy.title ?? "—" })}</span> : null}
@@ -861,7 +863,7 @@ function OpChip({ state, label, title, onRemove, removeLabel }: { state: string;
   );
 }
 
-type DetailSection = "detail:criteria" | "detail:missions" | "detail:results" | "detail:followups" | "detail:members" | "detail:retro";
+type DetailSection = "detail:criteria" | "detail:missions" | "detail:results" | "detail:decisions" | "detail:followups" | "detail:members" | "detail:retro";
 
 interface DetailProps {
   readonly objective: Objective;
@@ -1179,6 +1181,32 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const focused = focusMission ? objective.missions.find((mission) => mission.id === focusMission) ?? null : null;
   const numberOf = (missionId: string) => objective.missions.findIndex((mission) => mission.id === missionId) + 1;
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  // 결정 — 질문·기록에 붙은 구성원 표식과, 그 세션으로 가는 길(세션이 떠 있을 때만). 임무 줄의 결정 표식이 가리킨 결정은 잠시 비춘다.
+  const memberMarkOf = (memberId: string) => {
+    const member = objective.members.find((candidate) => candidate.id === memberId);
+    return member ? { mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, role: member.role, live: member.sessionName !== null && operationState(member.id) !== "closed" } : null;
+  };
+  const [decisionFlash, setDecisionFlash] = useState<string | null>(null);
+  const [decisionTrace, setDecisionTrace] = useState<string | null>(null);
+  useEffect(() => { setDecisionFlash(null); setDecisionTrace(null); }, [objective.id]);
+  useEffect(() => { if (objective.decisionRequest) setDecisionTrace(null); }, [objective.decisionRequest]);
+  useEffect(() => {
+    if (!decisionFlash) return;
+    const frame = requestAnimationFrame(() => detailRef.current?.querySelector(`[data-decision-id="${CSS.escape(decisionFlash)}"]`)?.scrollIntoView({ block: "nearest" }));
+    const timer = setTimeout(() => setDecisionFlash(null), 1600);
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
+  }, [decisionFlash, detailRef]);
+  const showDecision = (decisionId: string) => { onOpenSection("detail:decisions"); setDecisionFlash(decisionId); };
+  const showMission = (missionId: string) => {
+    onOpenSection("detail:missions");
+    setFocusMission(missionId);
+    requestAnimationFrame(() => detailRef.current?.querySelector(`[data-mission-id="${CSS.escape(missionId)}"]`)?.scrollIntoView({ block: "nearest" }));
+  };
+  const sendDecision = async (requestId: string, answers: readonly { questionId: string; selectedOptionIds: readonly string[]; text: string }[]) => {
+    await request("/decision/answer", { objectiveId: objective.id, requestId, answers });
+    setDecisionTrace(t("objectives.decision.sent", { count: answers.length }));
+  };
 
   // 사람을 부르는 세션 — 지휘관 자신이 먼저, 다음은 명단 순서의 구성원(임무가 없는 구성원의 질문도 본다).
   // 지휘관 판정은 끌어올리기 전 자기 활동으로 한다 — 구성원만 묻고 있을 때 「지휘관이 기다립니다」로 서지 않게.
@@ -1514,6 +1542,11 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
                       {unseen > 0 ? <i aria-hidden="true" /> : <ThreadGlyph />}{records.length}
                     </button>
                   ) : null}
+                  {((decisions) => decisions.length > 0 ? (
+                    <button type="button" className="objectives-records-count objectives-decision-link" aria-label={t("objectives.decisions.missionLink", { index: index + 1, count: decisions.length })} title={t("objectives.decisions.missionLink", { index: index + 1, count: decisions.length })} onClick={() => showDecision(decisions.at(-1)!.id)}>
+                      <DecisionGlyph />{decisions.length}
+                    </button>
+                  ) : null)(objective.decisions.filter((decision) => decision.missionId === mission.id))}
                   {/* 무엇을 기다리는지 번호로 말한다 — 끝나지 않은 선행만. 구성원 상태는 담당 줄이 말한다. */}
                   {!mission.done && !mission.unplaced ? (ready
                     ? <span className="objectives-wait is-ready">{t("objectives.missions.ready")}</span>
@@ -1558,6 +1591,23 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           document.body,
         ) : null}
       </div>
+
+      {/* 결정 — 임무 아래, 후속 후보 위. 사람이 결정 요청에 보낸 답이 질문마다 쌓인다(지휘관·구성원도 보드에서 읽는다). 답이 없으면 서지 않는다. */}
+      {objective.decisions.length > 0 ? (
+      <div className="objectives-group">
+        <SectionHead
+          glyph={<DecisionGlyph />}
+          label={t("objectives.decisions.title")}
+          tools={<span className="objectives-criteria-count">{objective.decisions.length}</span>}
+          controls="objectives-sec-decisions"
+          expanded={sectionOpen("detail:decisions")}
+          onToggle={() => onToggleSection("detail:decisions")}
+        />
+        <div id="objectives-sec-decisions" hidden={!sectionOpen("detail:decisions")}>
+          <DecisionList objective={objective} t={t} language={language} flash={decisionFlash} memberMark={memberMarkOf} />
+        </div>
+      </div>
+      ) : null}
 
       {/* 후속 후보 — 임무 아래, 회고 위. 후보가 있을 때만 서고, 체크 없이 같은 줄·상세를 읽는다(폐기는 여기서도 된다).
           검토 대기에서는 띠로 보내 고르고, edited·gated·작업 중에는 읽기·폐기만 한다. */}
@@ -1616,6 +1666,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
 
       </div>
       <div className="objectives-detail-bottom" data-objectives-tour="action">
+        {/* 결정 요청 — 띠와 따로 서서 작업 중에도 가려지지 않는다. 보내고 나면 한 줄 흔적만 잠시 남는다. */}
+        {objective.decisionRequest && !objective.done ? (
+          <DecisionRequestBlock objective={objective} t={t} language={language} send={sendDecision} missionNumber={numberOf} memberMark={memberMarkOf} onOpenSession={focusOperation} onShowMission={showMission} />
+        ) : decisionTrace ? <p className="objectives-decision-trace" role="status">{decisionTrace}</p> : null}
         <ActionBand
           objective={objective}
           t={t}

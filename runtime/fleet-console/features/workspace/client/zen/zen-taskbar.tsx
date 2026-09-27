@@ -21,6 +21,8 @@ import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import { useTriageActive } from "../canvas/triage-store.js";
 import { ArchiveTaskbarEntry } from "../archive/archive-entry.js";
 import { WarRoomTaskbar } from "./war-room-taskbar.js";
+import { useClusterIndex } from "../operation-clusters.js";
+import { DecisionRequestMark, hasDecisionRequest } from "../decision-request-mark.js";
 import "./zen-taskbar.css";
 
 /**
@@ -174,6 +176,7 @@ function CruiseTaskbar({
   const dragRef = useRef<DragState | null>(null);
   const suppressClickRef = useRef(false);
 
+  const clusterIndex = useClusterIndex();
   const theater = theaters.find((candidate) => candidate.id === activeTheaterId) ?? null;
   const theaterOperations = operations.filter((operation) => operation.theaterId === activeTheaterId);
   const order = operationOrderFromNodes(theaterOperations);
@@ -399,7 +402,8 @@ function CruiseTaskbar({
     const activityLabel = entry.status === "awaiting" ? t("sidebar.status.awaiting")
       : entry.status === "running" || entry.status === "background" ? t("sidebar.status.running")
         : entry.status === "ended" ? t("zen.taskbar.ended") : t("sidebar.status.idle");
-    const statusLabel = entry.minimized ? `${activityLabel}, ${t("zen.taskbar.minimized")}` : activityLabel;
+    const decision = hasDecisionRequest(clusterIndex, entry.operation.id);
+    const statusLabel = `${entry.minimized ? `${activityLabel}, ${t("zen.taskbar.minimized")}` : activityLabel}${decision ? `, ${t("operation.decisionRequest")}` : ""}`;
     const dragging = !measuring && drag?.dragging === true && drag.id === entry.operation.id;
     const menuOpen = !measuring && openMenuOperationId === entry.operation.id;
     const className = [
@@ -437,6 +441,7 @@ function CruiseTaskbar({
       >
         <OperationNameMark operation={entry.operation} status={entry.mark} decorative className="zen-taskbar-op-mark" />
         <span className="zen-taskbar-op-title">{entry.operation.title}</span>
+        {decision ? <DecisionRequestMark decorative /> : null}
       </button>
     );
   };
@@ -595,6 +600,7 @@ function CruiseTaskbar({
               >
                 <OperationNameMark operation={entry.operation} status={entry.mark} decorative className="zen-taskbar-op-mark" />
                 <span className="zen-taskbar-menu-title">{entry.operation.title}</span>
+                {hasDecisionRequest(clusterIndex, entry.operation.id) ? <DecisionRequestMark /> : null}
               </button>
             ))}
         </div>,

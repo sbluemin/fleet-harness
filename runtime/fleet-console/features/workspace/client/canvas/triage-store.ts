@@ -665,11 +665,22 @@ export function isTriageClearedTransition(
     && (current === "running" || current === "background" || current === "ended");
 }
 
+/**
+ * 결정 요청이 선 묶음 뿌리 — 플러그인 묶음 서술자가 말하는 사실이다. 허용 대기(활동 awaiting)와 별개로 사람의 답을 기다리므로
+ * 선별 대기열에 들고, 허용 대기 다음·도착 앞에 선다. 서술자를 읽는 표면(캔버스)이 넣어 두어 모든 큐 호출이 같은 순서를 본다.
+ */
+let decisionRoots: ReadonlySet<string> = new Set();
+export function setTriageDecisionRoots(ids: ReadonlySet<string>): void {
+  if (ids.size === decisionRoots.size && [...ids].every((id) => decisionRoots.has(id))) return;
+  decisionRoots = ids;
+  emitTriage();
+}
+
 export function isTriageWaitingOperation(
   operation: OperationNode,
   operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
 ): boolean {
-  return resolveOperationDisplayActivity({
+  return decisionRoots.has(operation.id) || resolveOperationDisplayActivity({
     activity: resolveOperationActivity(operation, operationRuntime),
     operationId: operation.id,
     idleArrivalIds: getIdleArrivalIds(),
@@ -700,7 +711,7 @@ export function reconcileTriageStageCompanion(
   return next;
 }
 
-// 전역 큐다 — Theater 필터가 없다. 우선순위(지목=0/복귀=1/awaiting=2/도착=3)·미룸 뒤로·
+// 전역 큐다 — Theater 필터가 없다. 우선순위(지목=0/복귀=1/awaiting=2/결정 요청=3/도착=4)·미룸 뒤로·
 // seenAt→createdAt→id 타이브레이크는 기존 per-Theater 큐와 같은 규칙을 전 Theater에 걸쳐 적용한다.
 export function resolveTriageQueue(
   operations: readonly OperationNode[],
@@ -739,7 +750,7 @@ export function resolveTriageQueue(
       picked,
       deferredAt: deferredAt.get(operation.id) ?? null,
       seenAt: seenAt.get(operation.id) ?? now,
-      priority: picked ? 0 : returned ? 1 : activity === "awaiting" ? 2 : 3,
+      priority: picked ? 0 : returned ? 1 : activity === "awaiting" ? 2 : decisionRoots.has(operation.id) ? 3 : 4,
     });
   }
 

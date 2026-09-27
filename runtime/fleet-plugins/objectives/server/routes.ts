@@ -9,7 +9,7 @@ import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.j
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { createObjectiveSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type MissionPatchInput, type ObjectiveEditKind, type Objective } from "./types.js";
+import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type MissionPatchInput, type ObjectiveEditKind, type Objective } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -223,6 +223,8 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       if (launch.busy(body.objectiveId)) throw new ObjectiveStoreError("objective_busy");
       return launch.startCommander(body.objectiveId, { language: body.language, context: body.context });
     }) },
+    // 결정 요청에 대한 사람의 답 — 보드 편집이 아니다(edited 를 쌓지 않는다). 지휘관이 일하는 중에도 받고, 기준 제안이 남아도 보낸다.
+    { name: "decision/answer", method: "POST", summary: "Answer the Commander's current decision request: every question at once. The answers reach the Commander (waking it when idle or dormant); once delivered they stay as decisions and the request clears.", handler: json(decisionAnswersSchema.extend({ objectiveId: ids, language }), ({ objectiveId, language, requestId, answers }) => launch.answerDecision(objectiveId, { requestId, answers }, { language }).then(objective)) },
     { name: "commander/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(objectiveRef.extend({ context }), ({ objectiveId, language, context: note }) => launch.steer(objectiveId, { language, context: note }).then(objective)) },
     { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();

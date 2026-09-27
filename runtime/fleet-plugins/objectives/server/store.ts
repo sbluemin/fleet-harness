@@ -52,6 +52,12 @@ import {
   type StoredFollowupItem,
   type StoredOrigin,
   type Retrospective,
+  type Decision,
+  type DecisionAnswer,
+  type DecisionAnswersInput,
+  type DecisionQuestionInput,
+  type DecisionRequest,
+  storedDecisionFieldsSchema,
 } from "./types.js";
 
 /**
@@ -216,10 +222,39 @@ export interface ObjectiveStore {
   followupBatch(objectiveId: string, batchId: string): StoredFollowupBatch | null;
   /** 이 id 에 목표 레코드가 있는가 — 후속 재시도의 중복 생성을 막는다. */
   recorded(operationId: string): boolean;
+  /** 지휘관의 결정 요청 — 현재 요청을 통째로 새 id 들로 대체한다. revision 이 다르거나 답을 보내는 중이면 거절한다. */
+  decisionRequest(objectiveId: string, input: { readonly expectedRevision: number; readonly questions: readonly DecisionQuestionInput[] }): { readonly objective: Objective; readonly request: DecisionRequest; readonly replacedRequestId: string | null };
+  /** 지휘관의 철회 — 그 요청이 지금 요청일 때만. 요청이 없으면 변화 없이 withdrawn false. */
+  decisionWithdraw(objectiveId: string, requestId: string): { readonly objective: Objective; readonly withdrawn: boolean };
+  /**
+   * 사람의 답을 검증해 전달 중으로 둔다. 그 요청의 답이 이미 결정으로 남았으면 같은 답은 recorded, 다른 답은 거절한다.
+   */
+  decisionAccept(objectiveId: string, input: DecisionAnswersInput): { readonly recorded: true; readonly objective: Objective } | { readonly recorded: false; readonly objective: Objective; readonly request: DecisionRequest; readonly answers: readonly DecisionAnswer[] };
+  /** 전달 결과 — 닿았으면 질문마다 결정을 쌓고 요청을 정리한다. 못 닿았으면 전달 중 표시만 거두고 요청은 남는다. */
+  decisionSettle(objectiveId: string, requestId: string, delivered: boolean): Objective;
 }
 
 const MAX_SEGMENT = 200;
 const safeSegment = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "_");
+
+/**
+ * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 옛 보드를 전제로 한 늦은 요청은 지휘관 도구의 board_changed 가
+ * 막는다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
+ */
+function withoutDecisionRequest(stored: StoredObjective): StoredObjective {
+  if (!stored.decisionRequest || stored.decisionDelivery?.requestId === stored.decisionRequest.id) return stored;
+  return { ...stored, decisionRequest: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
+}
+
+/** 질문이 가리키던 임무·구성원이 보드에서 사라졌다 — 그 요청은 더는 같은 질문이 아니다. */
+function withLiveDecisionReferences(stored: StoredObjective): StoredObjective {
+  const request = stored.decisionRequest;
+  if (!request) return stored;
+  const missions = new Set(stored.missions.map((mission) => mission.id));
+  const members = new Set((stored.members ?? []).map((member) => member.id));
+  const dangling = request.questions.some((question) => (question.missionId && !missions.has(question.missionId)) || (question.memberId && !members.has(question.memberId)));
+  return dangling ? withoutDecisionRequest(stored) : stored;
+}
 
 /** 새 자리를 벌릴 때 쓰는 걸음 — 보드 끝에 붙이거나 저장 목표를 새로 만들 때 이만큼 띄운다. */
 const RANK_STEP = 1024;
@@ -314,6 +349,7 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
       const manifest = evidence.map((entry) => entry.data!);
       if (new Set(manifest.map((entry) => entry.evidenceId)).size !== manifest.length || manifest.reduce((sum, entry) => sum + entry.bytes, 0) > RESULT_LIMITS.totalEvidenceBytes) throw new ObjectiveStoreError("invalid_stored_evidence");
       if (results.data.some((entry) => entry.kind === "evidence" && !manifest.some((file) => file.evidenceId === entry.evidenceId && file.sha256 === entry.sha256 && file.bytes === entry.bytes && file.mediaType === entry.mediaType))) throw new ObjectiveStoreError("invalid_stored_evidence");
+      if (!storedDecisionFieldsSchema.safeParse({ decisionRequest: parsed.decisionRequest, decisionRequestRevision: parsed.decisionRequestRevision, decisionDelivery: parsed.decisionDelivery, decisions: parsed.decisions }).success) throw new ObjectiveStoreError("invalid_stored_decisions");
       return { ...parsed, operationId: parsed.operationId, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [], results: results.data, evidence: manifest };
     }
   } catch { /* 깨진 JSON 또는 results/evidence 필드 — 원본을 격리하고 그 목표만 레코드 없음으로 본다. */ }
@@ -360,6 +396,10 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
   if (!objective.handoff) delete out.handoff;
+  if (!objective.decisionRequest) delete out.decisionRequest;
+  if (!objective.decisionRequestRevision) delete out.decisionRequestRevision;
+  if (!objective.decisionDelivery) delete out.decisionDelivery;
+  if (!objective.decisions?.length) delete out.decisions;
   out.missions = objective.missions.map((mission) => {
     const next: Record<string, unknown> = { ...mission };
     if (mission.done !== true) delete next.done;
@@ -505,6 +545,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       })),
       followupHistory: stored.followupHistory ?? null,
       origin: stored.origin ? { objectiveId: stored.origin.objectiveId, title: operationNode(stored.origin.objectiveId)?.title ?? load(node?.theaterId ?? pending!.theaterId).get(stored.origin.objectiveId)?.pending?.title ?? null, candidateId: stored.origin.candidateId, userImpact: stored.origin.userImpact, evidence: stored.origin.evidence.map(evidenceView) } : null,
+      decisionRequest: stored.decisionRequest ?? null,
+      decisionRequestRevision: stored.decisionRequestRevision ?? 0,
+      decisionDelivery: stored.decisionDelivery ? { requestId: stored.decisionDelivery.requestId, at: stored.decisionDelivery.at } : null,
+      decisions: stored.decisions ?? [],
       recorded: load(node?.theaterId ?? pending!.theaterId).has(stored.operationId),
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
@@ -595,7 +639,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective): Objective => {
     const { theaterId, recorded, stored, node } = locate(objectiveId);
     // 인계 기록은 할 일이 끝난 동안에만 산다 — 기준 표시를 거두는 변경이 곧 인계를 거두고 목표를 진행 중으로 돌린다.
-    const mutated = withValidHandoff(mutate(stored));
+    const mutated = withLiveDecisionReferences(withValidHandoff(mutate(stored)));
     if (mutated === stored) return project(stored, node);
     if (mutated.missions.length > MAX_MISSIONS) throw new ObjectiveStoreError("too_many_missions");
     if (hasCycle(graphOf(mutated.missions))) throw new ObjectiveStoreError("dependency_cycle");
@@ -870,7 +914,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 인계 대기는 넘기기를 거쳐야 완료된다. 남은 후보가 있으면 고르지 않은 완료도 후보 검토의 경계를 지난다 —
       // 그 밖의(진행 중이며 후보가 없는) 목표의 완료는 지금 그대로다.
       if (awaitingHandoff(stored) || (stored.followups ?? []).some((candidate) => candidate.state === "open")) assertReviewable(stored);
-      return { ...stored, done: { at: now() }, planning: undefined, criteriaOpen: undefined, operationIntent };
+      return { ...withoutDecisionRequest(stored), done: { at: now() }, planning: undefined, criteriaOpen: undefined, operationIntent };
     }),
     reopen: (objectiveId, operationIntent) => update(objectiveId, (stored) => (stored.done ? { ...stored, done: undefined, operationIntent } : stored)),
     operationIntent: (objectiveId) => { try { return locate(objectiveId).stored.operationIntent; } catch (error) { if (error instanceof ObjectiveStoreError && error.code === "unknown_objective") return undefined; throw error; } },
@@ -1020,9 +1064,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return update(objectiveId, (stored) => {
         if (kinds === null) return stored.edited ? { ...stored, edited: undefined } : stored;
         if (kinds.length === 0) return stored;
+        // 사람이 보드 내용을 고쳤다 — 앞선 결정 요청은 옛 보드를 전제로 한 질문이다.
+        const next = withoutDecisionRequest(stored);
         const merged = [...new Set([...(stored.edited?.kinds ?? []), ...kinds])];
-        if (stored.edited && merged.length === stored.edited.kinds.length) return stored;
-        return { ...stored, edited: { at: now(), kinds: merged } };
+        if (stored.edited && merged.length === stored.edited.kinds.length) return next;
+        return { ...next, edited: { at: now(), kinds: merged } };
       });
     },
 
@@ -1056,12 +1102,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     proposalApprove: (objectiveId, proposalId) => update(objectiveId, (stored) => {
       const proposal = stored.criteriaProposals?.find((entry) => entry.id === proposalId);
       if (!proposal) throw new ObjectiveStoreError("unknown_proposal");
-      const next = approve(stored, proposal);
+      const next = withoutDecisionRequest(approve(stored, proposal));
       return { ...next, criteriaProposals: stored.criteriaProposals?.filter((entry) => entry.id !== proposalId) };
     }),
     proposalsApproveAll: (objectiveId) => update(objectiveId, (stored) => {
       if (!stored.criteriaProposals?.length) return stored;
-      const next = stored.criteriaProposals.reduce(approve, stored);
+      const next = withoutDecisionRequest(stored.criteriaProposals.reduce(approve, stored));
       return { ...next, criteriaProposals: undefined };
     }),
     proposalReject: (objectiveId, proposalId) => update(objectiveId, (stored) => {
@@ -1325,6 +1371,97 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const node = operationNode(operationId);
       return !!node && load(node.theaterId).has(operationId) || theaterIds().some((id) => !!load(id).get(operationId)?.pending);
     },
+
+    decisionRequest(objectiveId, input) {
+      let request!: DecisionRequest;
+      let replacedRequestId: string | null = null;
+      const objective = update(objectiveId, (stored) => {
+        if (stored.done) throw new ObjectiveStoreError("objective_done");
+        // 사람의 답이 지휘관에게 가는 중이다 — 그 요청을 덮으면 답이 어느 질문의 것인지 흐려진다.
+        if (stored.decisionDelivery) throw new ObjectiveStoreError("decision_delivering");
+        if ((stored.decisionRequestRevision ?? 0) !== input.expectedRevision) throw new ObjectiveStoreError("decision_request_changed", undefined, { decisionRequestRevision: stored.decisionRequestRevision ?? 0 });
+        for (const question of input.questions) {
+          if (question.missionId && !stored.missions.some((mission) => mission.id === question.missionId)) throw new ObjectiveStoreError("unknown_mission");
+          if (question.memberId && !(stored.members ?? []).some((member) => member.id === question.memberId)) throw new ObjectiveStoreError("unknown_member");
+        }
+        replacedRequestId = stored.decisionRequest?.id ?? null;
+        request = {
+          id: randomUUID(), createdAt: now(),
+          questions: input.questions.map((question) => ({
+            id: randomUUID(), text: question.text,
+            options: question.options.map((option) => ({ id: randomUUID(), label: option.label, ...(option.description ? { description: option.description } : {}) })),
+            multiSelect: question.options.length > 0 && question.multiSelect === true,
+            ...(question.missionId ? { missionId: question.missionId } : {}),
+            ...(question.memberId ? { memberId: question.memberId } : {}),
+          })),
+        };
+        return { ...stored, decisionRequest: request, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
+      });
+      return { objective, request, replacedRequestId };
+    },
+
+    decisionWithdraw(objectiveId, requestId) {
+      let withdrawn = false;
+      const objective = update(objectiveId, (stored) => {
+        const current = stored.decisionRequest;
+        if (!current) return stored;
+        if (current.id !== requestId) throw new ObjectiveStoreError("decision_request_changed", undefined, { requestId: current.id });
+        if (stored.decisionDelivery?.requestId === current.id) throw new ObjectiveStoreError("decision_delivering");
+        withdrawn = true;
+        return { ...stored, decisionRequest: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
+      });
+      return { objective, withdrawn };
+    },
+
+    decisionAccept(objectiveId, input) {
+      const { stored, node } = locate(objectiveId);
+      // 이미 결정으로 남은 요청 — 같은 답의 재전송은 그 결과를, 다른 답은 덮지 않고 거절한다.
+      const recorded = (stored.decisions ?? []).filter((decision) => decision.requestId === input.requestId);
+      if (recorded.length > 0) {
+        const same = input.answers.length === recorded.length && input.answers.every((answer) => {
+          const decision = recorded.find((entry) => entry.questionId === answer.questionId);
+          return !!decision && decision.answer.text === answer.text && decision.answer.selectedOptionIds.length === answer.selectedOptionIds.length && answer.selectedOptionIds.every((id) => decision.answer.selectedOptionIds.includes(id));
+        });
+        if (!same) throw new ObjectiveStoreError("decision_already_submitted");
+        return { recorded: true, objective: project(stored, node) };
+      }
+      if (stored.done) throw new ObjectiveStoreError("objective_done");
+      const request = stored.decisionRequest;
+      if (!request || request.id !== input.requestId) throw new ObjectiveStoreError("decision_request_changed");
+      // 모든 질문에 정확히 한 번 — 고른 것은 그 질문의 선택지여야 하고, 하나 고르기는 하나까지, 빈 답은 받지 않는다.
+      const byQuestion = new Map(input.answers.map((answer) => [answer.questionId, answer]));
+      if (byQuestion.size !== input.answers.length || input.answers.length !== request.questions.length) throw new ObjectiveStoreError("invalid_answers");
+      const answers: DecisionAnswer[] = request.questions.map((question) => {
+        const answer = byQuestion.get(question.id);
+        if (!answer) throw new ObjectiveStoreError("invalid_answers");
+        const picked = new Set(answer.selectedOptionIds);
+        if (picked.size !== answer.selectedOptionIds.length || [...picked].some((id) => !question.options.some((option) => option.id === id)) || (!question.multiSelect && picked.size > 1)) throw new ObjectiveStoreError("invalid_answers");
+        if (picked.size === 0 && !answer.text.trim()) throw new ObjectiveStoreError("invalid_answers");
+        return { questionId: question.id, selectedOptionIds: question.options.filter((option) => picked.has(option.id)).map((option) => option.id), text: answer.text };
+      });
+      const objective = update(objectiveId, (current) => ({ ...current, decisionDelivery: { requestId: request.id, answers, at: now() } }));
+      return { recorded: false, objective, request, answers };
+    },
+
+    decisionSettle: (objectiveId, requestId, delivered) => update(objectiveId, (stored) => {
+      const delivery = stored.decisionDelivery;
+      if (!delivery || delivery.requestId !== requestId) return stored;
+      const request = stored.decisionRequest?.id === requestId ? stored.decisionRequest : null;
+      if (!delivered || !request) return { ...stored, decisionDelivery: undefined };
+      // 지휘관에게 닿았다 — 질문마다 답한 순간의 사본으로 결정 한 건. 요청은 정리된다.
+      const decisions: Decision[] = request.questions.map((question) => {
+        const answer = delivery.answers.find((entry) => entry.questionId === question.id)!;
+        return {
+          id: randomUUID(), requestId, questionId: question.id,
+          question: { text: question.text, options: question.options.map((option) => ({ ...option })), multiSelect: question.multiSelect },
+          answer: { selectedOptionIds: [...answer.selectedOptionIds], text: answer.text },
+          at: delivery.at,
+          ...(question.missionId ? { missionId: question.missionId } : {}),
+          ...(question.memberId ? { memberId: question.memberId } : {}),
+        };
+      });
+      return { ...stored, decisionDelivery: undefined, decisionRequest: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1, decisions: [...(stored.decisions ?? []), ...decisions] };
+    }),
   };
 
   /** 떨어뜨린 한 줄의 새 자리 — 쓰는 순서대로 담는다. */

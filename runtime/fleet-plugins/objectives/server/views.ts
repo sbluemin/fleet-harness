@@ -77,6 +77,11 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, operationId: entry.operationId, error: entry.error })) })),
     // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
     origin: objective.origin,
+    // 결정 요청(지휘관이 사람에게 묻는 지금의 질문들)과 결정(사람이 보낸 답 — 답한 순간의 질문 사본과 함께).
+    decisionRequest: objective.decisionRequest,
+    decisionRequestRevision: objective.decisionRequestRevision,
+    ...(objective.decisionDelivery ? { decisionDelivering: true } : {}),
+    decisions: objective.decisions.map((decision) => ({ ...decision, at: new Date(decision.at).toISOString() })),
   });
   const rowView = (objective: Objective) => ({ id: objective.id, groupId: objective.groupId, title: objective.title, done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null });
   /** 알림 문구의 언어 — 목표가 띄운 세션에 objectiveLanguage 로 남아 있다. */

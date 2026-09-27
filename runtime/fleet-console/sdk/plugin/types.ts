@@ -529,6 +529,11 @@ export interface OperationCluster {
   readonly members: readonly OperationClusterMember[];
   /** 띠·위치 표시를 누르면 — 플러그인의 표면으로 간다. 구성원 id 가 오면 그 구성원을 집는다. */
   readonly open?: (operationId?: string) => void;
+  /**
+   * 뿌리가 사람에게 답을 청한 결정 요청이 있다 — 호스트는 뿌리 행·칩·선별 대기열에 전용 표식을 세운다. 도구 허용 대기(활동
+   * `awaiting`)와 별개의 사실이라 활동 축을 바꾸지 않는다. 답은 플러그인 표면(`open`)에서 한다.
+   */
+  readonly decisionRequest?: boolean;
 }
 
 export interface OperationClusterSource {

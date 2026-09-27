@@ -1,4 +1,4 @@
-import { MAX_CONTEXT, type ObjectiveEditKind, type Objective } from "./types.js";
+import { MAX_CONTEXT, type DecisionAnswer, type DecisionRequest, type ObjectiveEditKind, type Objective } from "./types.js";
 
 /**
  * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `fleet-objectives` 도구 설명과 보드를 읽고
@@ -62,4 +62,25 @@ export function startTurn(objective: Objective, language: PromptLanguage, contex
     ? `\n\n마지막으로 읽은 뒤 사람이 목표를 바꿨습니다(${what}). 진행하기 전에 \`fleet-objectives\` 로 이 목표를 다시 읽으세요.`
     : `\n\nThe person changed this objective since you last read it (${what}). Read it again with \`fleet-objectives\` before you proceed.`;
   return `${word}${changed}${quoted(context)}`;
+}
+
+/**
+ * 결정 답 — 사람이 보드에서 결정 요청에 답했다. 질문과 답을 원문 그대로 싣고(자르지 않는다), 답이 결정으로 남는다는 사실만
+ * 덧붙인다. 답이 무슨 뜻인지, 다음에 무엇을 할지는 지휘관이 읽는다.
+ */
+export function decisionTurn(objective: Objective, request: DecisionRequest, answers: readonly DecisionAnswer[], language: PromptLanguage): string {
+  const ko = language === "ko";
+  const quote = (value: string) => `> ${value.split("\n").join("\n> ")}`;
+  const blocks = request.questions.map((question, index) => {
+    const answer = answers.find((entry) => entry.questionId === question.id);
+    const picked = question.options.filter((option) => answer?.selectedOptionIds.includes(option.id)).map((option) => option.label);
+    const lines = [`${index + 1}. ${quote(question.text)}`];
+    if (picked.length) lines.push(`${ko ? "고른 것" : "Chosen"}: ${picked.join(" · ")}`);
+    if (answer?.text.trim()) lines.push(`${ko ? "직접 쓴 말" : "Written"}:\n${quote(answer.text)}`);
+    return lines.join("\n");
+  });
+  const head = ko
+    ? `사람이 목표 \`${objective.id}\` 의 결정 요청에 답했습니다. 답은 보드의 decisions 에 질문마다 남았습니다.`
+    : `The person answered the decision request on objective \`${objective.id}\`. Each answer stays in the board's decisions.`;
+  return `${head}\n\n${blocks.join("\n\n")}`;
 }
