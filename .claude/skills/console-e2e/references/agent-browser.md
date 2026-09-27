@@ -65,6 +65,44 @@ ab --session fleet-console-e2e-20260725-a7c3 wait --load domcontentloaded
 
 Replace `/console/operations` only when the scenario targets another route. `--headed false` overrides a user/project `headed` config; pass `--headed` instead when the task requires a headed visual gate. The launch mode belongs to the daemon: if a running daemon ignores the flag, report the actual mode rather than claiming the requested one, and never `close --all` or kill an unknown daemon to reset it.
 
+## Mock page API responses before navigation
+
+For page-level API fixtures, use a `window.fetch` wrapper in `open --init-script`, not `agent-browser network route`. In a Console verification run, `network route` did not intercept the app's fetches; accepting the route command is not evidence that a fixture reached the page. This is the preferred page-fetch recipe, not a claim that network routing never works.
+
+Append the following to the **same** init script as the diagnostics above, before opening a new owned browser session. This example supplies an empty Agent CLI launch list without probing installed CLIs through this endpoint; replace the exact path and JSON with the current endpoint's browser DTO for the scenario.
+
+```js
+(() => {
+  const nativeFetch = window.fetch.bind(window);
+  const hits = window.__fleetE2EMockHits = [];
+  window.fetch = async (input, init) => {
+    const request = input instanceof Request ? input : null;
+    const url = new URL(request ? request.url : String(input), location.href);
+    const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
+    if (url.origin !== location.origin || method !== 'GET' || url.pathname !== '/api/v1/agent/state') {
+      return nativeFetch(input, init);
+    }
+    const signal = init?.signal ?? request?.signal;
+    if (signal?.aborted) throw signal.reason;
+    hits.push({ method, pathname: url.pathname });
+    return new Response(JSON.stringify({ agentClis: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+})();
+```
+
+Use the instrumented `open --init-script "$INIT"` command above; do not first open the app and then install the wrapper with `eval`. After the app's normal load/action, inspect the hit list (without manually fetching the endpoint just to make it nonempty):
+
+```bash
+ab --session fleet-console-e2e-20260725-a7c3 eval 'JSON.stringify(window.__fleetE2EMockHits)'
+```
+
+Require a matching hit **and** the expected UI state before claiming interception. A wrapper-created response does not reach the network, so a missing network-log entry is not a failure by itself. If the init script must change after opening, clean up the owned session and reopen with a new unique id and the complete script; do not accumulate browsers while debugging a missed first-load request.
+
+Keep unmatched requests unchanged and scope mocks to the owned origin, exact endpoint, method, and any scenario-specific query/body discriminator. For a POST read endpoint, inspect a cloned `Request` rather than consuming the body that a passthrough request still needs. Never broadly mock writes, authentication, permission denials, or provider launches to make a check pass. This wrapper covers page `fetch`, not worker fetches, XHR, WebSockets, or server-side calls; live events may overwrite a mocked snapshot. Report the mocked lane as UI-only evidence, not proof of backend behavior or agent activity. For durable objective/member identity, use the [child-session fixture](setup.md#objective-member-child-session-fixture) rather than inventing session names in a response.
+
 ## Cleanup
 
 After the first `open` attempt, run on every success and failure path:
