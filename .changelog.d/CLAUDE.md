@@ -36,7 +36,7 @@ A change experienced in multiple runtimes may have a complete note for each dist
 
 - One new fragment per branch. Obtain its name with `node scripts/compile-changelog-fragments.mjs --name-for-branch`; declare that branch in `branch:` frontmatter. A branch rename changes both together.
 - Authorized direct `canary` work appends to `canary.md`, without frontmatter. Never overwrite another change.
-- Preserve base fragments by default. Amend pending notes when folding in an unreleased correction or when the user explicitly requests editorial cleanup. Preserve their filenames and branch identity. Each amended base fragment requires the `changelog-amend` PR label and a `Changelog-Amend: <file-name>.md` PR-body line. Do not delete or rename a base fragment.
+- Preserve base fragments by default. Amend pending notes when folding in an unreleased correction or when the user explicitly requests editorial cleanup. Preserve their filenames and branch identity. Each amended base fragment requires the `changelog-amend` PR label and a `Changelog-Amend: <file-name>.md` PR-body line. Do not rename a base fragment. Delete a branch fragment (never `canary.md`) only when the PR withdraws the unreleased feature it describes, with the same label and a `Changelog-Remove: <file-name>.md` PR-body line.
 - Use runtime headings and `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes` sections. New bullets have no package tag.
 - Each English ASCII bullet is immediately followed by `  ko: ` and its Korean translation containing Hangul. Preserve necessary technical tokens between languages. The compiler and `scripts/changelog-korean-seed.test.mjs` validate the bilingual contract.
 
