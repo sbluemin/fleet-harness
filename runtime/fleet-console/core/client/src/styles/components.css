@@ -6632,6 +6632,56 @@ body[data-companion-resizing="true"] .canvas-operation {
   overflow-wrap: anywhere;
 }
 
+/* 함대 지도의 상세 카드 — 사이드바 상세 카드와 같은 면이다. 지도 이름표는 180px에서 잘리므로 카드가
+   제목 전체를 첫 줄로 되돌려 준다. 제목은 네 줄까지 늘고 그 너머만 말줄임한다. */
+.fleet-map-detail-title {
+  display: -webkit-box;
+  margin: 0 0 3px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  color: var(--text-primary);
+  font: var(--weight-medium) var(--t-sm) / 1.4 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+/* 상태 — 마크는 사이드바·작업 표시줄과 같은 조형이고 글자는 신호의 ink 티어다. 입력 대기(aurora)와
+   미확인 완료(positive)는 문구와 색이 함께 갈린다. 유휴는 초록 글자를 쓰지 않아 미확인 완료와 섞이지 않고,
+   모름(상태 확인 불가)은 중립 마크와 3티어 글자로 선다. */
+.fleet-map-detail-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fleet-map-detail-status.is-awaiting { color: var(--aurora-ink); }
+.fleet-map-detail-status.is-unseen { color: var(--positive-ink); }
+.fleet-map-detail-status.is-running,
+.fleet-map-detail-status.is-background { color: var(--warn-ink); }
+.fleet-map-detail-status.is-ended,
+.fleet-map-detail-status.is-unknown { color: var(--text-tertiary); }
+
+/* 브랜치는 위치의 둘째 줄이다 — 글리프는 3티어 잉크로 물러서고 이름만 본문 티어로 읽힌다. */
+.fleet-map-detail-branch {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--text-tertiary);
+}
+
+.fleet-map-detail-branch svg {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  transform: translateY(1px);
+}
+
+.fleet-map-detail-branch > span { color: var(--text-secondary); }
+
 .side-bar-chip-rename-input {
   flex: none;
   width: 100%;

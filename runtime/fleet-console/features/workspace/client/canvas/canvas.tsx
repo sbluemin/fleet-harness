@@ -1942,6 +1942,7 @@ export function OperationsCanvas({
           theaters={state.theaters}
           operations={fleetMapOperations}
           operationRuntime={operationRuntime}
+          operationRuntimeHydration={state.operationRuntimeHydration}
           activeTheaterId={state.activeTheaterId}
           aspect={fleetMapAspect}
           leaving={!fleetMapActive}

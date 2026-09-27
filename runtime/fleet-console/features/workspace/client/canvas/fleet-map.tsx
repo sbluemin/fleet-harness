@@ -1,5 +1,5 @@
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import { useEffect, useId, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationMarkVisual, resolveOperationActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
@@ -7,6 +7,17 @@ import { getIdleArrivalIds } from "../../../execution/client/operation-marks.js"
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveFleetMapDriftStyle, resolveFleetMapMarkerLayout, resolveFleetMapZoneLayout } from "./fleet-map-layout.js";
+import { FleetMapDetailCard, type FleetMapDetailStatus } from "./fleet-map-detail-card.js";
+
+/** 포인터가 점을 스쳐 지나가는 것과 겨누는 것을 가르는 시간 — 사이드바 상세 카드와 같은 값이다. */
+const DETAIL_HOVER_DELAY_MS = 400;
+
+interface OpenDetail {
+  readonly operationId: string;
+  readonly anchor: DOMRect;
+  readonly bounds: DOMRect;
+  readonly obstacles: readonly DOMRect[];
+}
 
 export interface FleetMapTheater {
   readonly id: string;
@@ -19,6 +30,8 @@ interface FleetMapProps {
   /** 최소화되지 않은 전 Theater의 Operation. 휴면도 싣는다 — Cruise는 휴면 패널을 그리는 모드다. */
   readonly operations: readonly OperationNode[];
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
+  /** 런타임 맵을 믿을 수 있는가 — 준비되지 않았거나 끊겼으면 겨눈 카드는 상태를 "확인 불가"로 말한다. */
+  readonly operationRuntimeHydration: OperationRuntimeHydration;
   readonly activeTheaterId: string | null;
   /** 판의 가로/세로 비 — 구역 원 배치가 픽셀 겹침을 피하는 데 쓴다. */
   readonly aspect: number;
@@ -46,6 +59,7 @@ export function FleetMap({
   theaters,
   operations,
   operationRuntime,
+  operationRuntimeHydration,
   activeTheaterId,
   aspect,
   leaving,
@@ -84,15 +98,144 @@ export function FleetMap({
         aspect,
       );
 
+  // ── 겨눈 점의 상세 카드 ──────────────────────────────────────────────────
+  // 포인터는 잠깐 머문 뒤에, 키보드 포커스는 곧바로 연다. 터치는 열지 않는다 — 첫 탭은 오늘처럼 이동이다.
+  // 카드는 읽기만 한다: 여닫는 동안 활성 Operation·Theater·줌·미확인 표시는 그대로다.
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const [detail, setDetail] = useState<(OpenDetail & { readonly markerKey: string }) | null>(null);
+  const detailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Escape·누름·메뉴로 닫은 점 — 그 점에 새로 들어오거나 새로 포커스하기 전에는 저절로 다시 열지 않는다.
+  const suppressedDetailRef = useRef<string | null>(null);
+  const leavingRef = useRef(leaving);
+  leavingRef.current = leaving;
+  const detailId = useId();
+  const markerKeyFor = (operationId: string): string | null => {
+    for (const markers of markersByTheater.values()) {
+      const marker = markers.find((candidate) => candidate.operationId === operationId);
+      if (marker) return `${marker.x},${marker.y}`;
+    }
+    return null;
+  };
+  const openMarkerKey = detail ? markerKeyFor(detail.operationId) : null;
+  const cancelDetailTimer = () => {
+    if (detailTimerRef.current) {
+      clearTimeout(detailTimerRef.current);
+      detailTimerRef.current = null;
+    }
+  };
+  const closeDetail = () => {
+    cancelDetailTimer();
+    setDetail(null);
+  };
+  const openDetail = (operationId: string, element: HTMLElement) => {
+    const map = mapRef.current;
+    const markerKey = markerKeyFor(operationId);
+    if (!map || leavingRef.current || markerKey === null) return;
+    // 이웃 점은 열 때 한 번 잰다. 점은 유영하지만 진폭이 작고, 겨눈 점은 멈춰 있다.
+    const obstacles = Array.from(map.querySelectorAll<HTMLElement>("[data-fleet-map-dot]"))
+      .filter((dot) => dot !== element)
+      .map((dot) => dot.getBoundingClientRect());
+    setDetail({ operationId, anchor: element.getBoundingClientRect(), bounds: map.getBoundingClientRect(), obstacles, markerKey });
+  };
+  const releaseSuppressionFor = (operationId: string) => {
+    if (suppressedDetailRef.current !== null && suppressedDetailRef.current !== operationId) suppressedDetailRef.current = null;
+  };
+  const suppressDetail = (operationId: string) => {
+    suppressedDetailRef.current = operationId;
+    closeDetail();
+  };
+  const armDetail = (operationId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType !== "mouse" || leaving) return;
+    releaseSuppressionFor(operationId);
+    if (detail && detail.operationId !== operationId) setDetail(null);
+    cancelDetailTimer();
+    if (suppressedDetailRef.current === operationId) return;
+    const element = event.currentTarget;
+    detailTimerRef.current = setTimeout(() => {
+      detailTimerRef.current = null;
+      openDetail(operationId, element);
+    }, DETAIL_HOVER_DELAY_MS);
+  };
+  const disarmDetail = (operationId: string) => {
+    if (suppressedDetailRef.current === operationId) suppressedDetailRef.current = null;
+    cancelDetailTimer();
+    if (detail?.operationId === operationId) setDetail(null);
+  };
+  const focusDetail = (operationId: string, event: ReactFocusEvent<HTMLButtonElement>) => {
+    releaseSuppressionFor(operationId);
+    if (suppressedDetailRef.current === operationId || leaving) return;
+    if (!matchesFocusVisible(event.currentTarget)) return;
+    cancelDetailTimer();
+    openDetail(operationId, event.currentTarget);
+  };
+  const blurDetail = (operationId: string, event: ReactFocusEvent<HTMLButtonElement>) => {
+    // 메뉴로 초점이 건너간 것은 떠난 것이 아니다 — 메뉴가 닫히며 초점을 돌려줄 때 카드가 다시 뜨면 안 된다.
+    const toMenu = event.relatedTarget instanceof Element && event.relatedTarget.closest('[role="menu"]') !== null;
+    if (suppressedDetailRef.current === operationId && !toMenu) suppressedDetailRef.current = null;
+    if (detail?.operationId === operationId) closeDetail();
+  };
+
+  // 열린 카드는 열 때 잰 자리를 들고 있다 — 지도가 걷히거나 점이 옮겨지거나 사라지면 그 자리는 거짓이다.
+  useEffect(() => {
+    if (!detail) return;
+    if (leaving || openMarkerKey === null || openMarkerKey !== detail.markerKey) closeDetail();
+  });
+  useEffect(() => {
+    closeDetail();
+  }, [activeTheaterId, aspect]);
+  useEffect(() => {
+    if (!detail) return;
+    const openId = detail.operationId;
+    const dismiss = () => closeDetail();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") suppressDetail(openId);
+    };
+    // 빈 바다의 휠·누름은 캔버스 조작(줌·팬)이다 — 카드는 함께 물러난다. 점 위 휠은 캔버스 대상이 아니다.
+    const onWheel = (event: WheelEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-fleet-map-dot]")) return;
+      dismiss();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("wheel", onWheel, { capture: true, passive: true });
+    window.addEventListener("pointerdown", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("blur", dismiss);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("wheel", onWheel, true);
+      window.removeEventListener("pointerdown", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("blur", dismiss);
+    };
+  }, [detail]);
+  useEffect(() => () => cancelDetailTimer(), []);
+
+  const detailOperation = detail ? operations.find((operation) => operation.id === detail.operationId) ?? null : null;
+  const detailStatus = (operation: OperationNode): FleetMapDetailStatus => {
+    // 점은 모름을 표시 어휘(유휴)로 접어 그리지만, 카드는 모름을 모름이라고 말한다.
+    if (operationRuntimeHydration !== "ready") return "unknown";
+    const activity = resolveOperationActivity(operation, operationRuntime);
+    if (!operationRuntime[operation.id] && activity === "idle") return "unknown";
+    return operationMarkVisual(resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }));
+  };
+
   const openOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    suppressDetail(operationId);
     onOperationContextMenu?.(operationId, new DOMRect(event.clientX, event.clientY, 0, 0), event.currentTarget);
   };
   const openOperationMenuFromKeyboard = (operationId: string, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "Escape") {
+      if (detail?.operationId !== operationId) return;
+      event.preventDefault();
+      suppressDetail(operationId);
+      return;
+    }
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
     event.stopPropagation();
+    suppressDetail(operationId);
     onOperationContextMenu?.(operationId, event.currentTarget.getBoundingClientRect(), event.currentTarget);
   };
   // 구역의 빈 자리 우클릭은 그 Theater의 실행 메뉴다 — 점은 자기 메뉴를 열고 여기 닿지 않는다.
@@ -125,10 +268,19 @@ export function FleetMap({
         style={{ left: `${marker.x}%`, top: `${marker.y}%`, ...resolveFleetMapDriftStyle(operation.id, visual === "running") }}
         aria-label={t("canvas.fleetMap.dotAria", { title: operation.title })}
         aria-haspopup="menu"
+        aria-describedby={detail?.operationId === operation.id ? detailId : undefined}
         tabIndex={leaving ? -1 : 0}
+        onPointerEnter={(event) => armDetail(operation.id, event)}
+        onPointerLeave={() => disarmDetail(operation.id)}
+        onPointerDown={() => suppressDetail(operation.id)}
+        onFocus={(event) => focusDetail(operation.id, event)}
+        onBlur={(event) => blurDetail(operation.id, event)}
         onContextMenu={(event) => openOperationMenu(operation.id, event)}
         onKeyDown={(event) => openOperationMenuFromKeyboard(operation.id, event)}
-        onClick={() => onPick(operation.id)}
+        onClick={() => {
+          closeDetail();
+          onPick(operation.id);
+        }}
       >
         <span className="canvas-fleet-map-dot-label">{operation.title}</span>
       </button>
@@ -137,6 +289,7 @@ export function FleetMap({
 
   return (
     <div
+      ref={mapRef}
       className={`canvas-fleet-map ${leaving ? "is-leaving" : ""}`}
       data-fleet-map
       aria-hidden={leaving || undefined}
@@ -201,6 +354,25 @@ export function FleetMap({
           );
         })}
       </div>
+      {detail && detailOperation && !leaving ? (
+        <FleetMapDetailCard
+          id={detailId}
+          operation={detailOperation}
+          status={detailStatus(detailOperation)}
+          anchor={detail.anchor}
+          bounds={detail.bounds}
+          obstacles={detail.obstacles}
+        />
+      ) : null}
     </div>
   );
+}
+
+/** 키보드로 온 포커스만 카드를 곧바로 연다 — 클릭·탭으로 생긴 포커스는 이동의 부산물이다. */
+function matchesFocusVisible(element: HTMLElement): boolean {
+  try {
+    return element.matches(":focus-visible");
+  } catch {
+    return false;
+  }
 }
