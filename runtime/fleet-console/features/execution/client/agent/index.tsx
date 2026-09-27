@@ -51,12 +51,9 @@ import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitch
 
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
 import {
-  CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS,
-  getSystemPromptSettingsStoreState,
   loadSystemPromptSettings,
   setSystemPromptSettingsField,
   useSystemPromptSettingsStore,
-  type ClaudeCodeSystemPromptMode,
 } from "../../../settings/client/execution-settings.js";
 import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, fetchClaudeBuiltInAgents, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
@@ -1110,12 +1107,6 @@ function ClaudeCodeHarnessCard() {
       {settings.error ? <p className="global-settings-error" role="alert">{translateServerMessage(locale, settings.error)}</p> : null}
       {state ? (
         <>
-          <ClaudeCodeSystemPromptRow
-            mode={state.claudeCodeSystemPrompt}
-            savedPrompt={state.claudeCodeCustomSystemPrompt}
-            savingMode={saving.has("claudeCodeSystemPrompt")}
-            savingPrompt={saving.has("claudeCodeCustomSystemPrompt")}
-          />
           <ClaudeBuiltInAgentsRows
             disabled={state.claudeCodeDisabledAgents}
             saving={saving.has("claudeCodeDisabledAgents")}
@@ -1130,167 +1121,6 @@ function ClaudeCodeHarnessCard() {
 }
 
 
-function claudeSystemPromptCaptionKey(mode: ClaudeCodeSystemPromptMode, body: string): TerminalMessageKey {
-  if (mode === "on") return "terminal.settings.claudeSystemPromptCaptionOn";
-  const empty = body.length === 0;
-  if (mode === "append") {
-    return empty
-      ? "terminal.settings.claudeSystemPromptCaptionAppendEmpty"
-      : "terminal.settings.claudeSystemPromptCaptionAppend";
-  }
-  return empty
-    ? "terminal.settings.claudeSystemPromptCaptionOffEmpty"
-    : "terminal.settings.claudeSystemPromptCaptionOff";
-}
-
-function promptDraftNeedsSave(draft: string, saved: string): boolean {
-  return draft !== saved && draft.length <= CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS;
-}
-
-/**
- * 모드 선택지는 곧 결과이고, 본문은 키 입력마다 저장하지 않는다 — 포커스가 떠나거나
- * 편집 영역이 언마운트될 때 PUT이 나간다. 저장 성공 후에는 서버가 정규화한 본문을
- * 초안의 기준으로 삼아, trim 때문에 dirty가 남지 않게 한다.
- */
-function ClaudeCodeSystemPromptRow({
-  mode,
-  savedPrompt,
-  savingMode,
-  savingPrompt,
-}: {
-  readonly mode: ClaudeCodeSystemPromptMode;
-  readonly savedPrompt: string;
-  readonly savingMode: boolean;
-  readonly savingPrompt: boolean;
-}) {
-  const locale = useTerminalLocale();
-  const t = getT(locale);
-  const promptId = React.useId();
-  const countId = React.useId();
-  const statusId = React.useId();
-  const hintId = React.useId();
-  const overLimitId = React.useId();
-  const [draft, setDraft] = React.useState(savedPrompt);
-  const [edited, setEdited] = React.useState(false);
-  const draftRef = React.useRef(draft);
-  const savedPromptRef = React.useRef(savedPrompt);
-  const inFlightRef = React.useRef<string | null>(null);
-  const mountedRef = React.useRef(true);
-  draftRef.current = draft;
-  savedPromptRef.current = savedPrompt;
-  const limit = CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS;
-  const overLimit = draft.length > limit;
-  // 「저장됨」은 이 행이 기억하는 사실이 아니라 저장소가 말하는 사실이다. 저장이 도는 중에
-  // 다시 편집해 두 번째 쓰기가 큐에 들어가면 그 호출은 결과를 기다리지 않고 참을 돌려주므로,
-  // 그 값을 믿고 표식을 세우면 뒤늦게 실패한 저장까지 성공으로 보고하게 된다. 실패한 쓰기는
-  // 저장소가 이전 값으로 되감으므로, 초안이 저장된 값과 같은지만 보면 거짓말이 끼어들 자리가 없다.
-  const promptSaved = edited && !savingPrompt && draft === savedPrompt;
-  const showEditor = mode === "append" || mode === "off";
-  const formatCount = (value: number) => value.toLocaleString(locale === "ko" ? "ko-KR" : "en-US");
-  const describedBy = [
-    countId,
-    hintId,
-    savingPrompt || promptSaved ? statusId : null,
-    overLimit ? overLimitId : null,
-  ].filter((id): id is string => id !== null).join(" ");
-
-  const flushPrompt = React.useCallback(() => {
-    const sent = draftRef.current;
-    if (!promptDraftNeedsSave(sent, savedPromptRef.current)) return;
-    // 같은 초안이 이미 나가는 중이면 다시 보내지 않는다(blur 직후 언마운트).
-    if (sent === inFlightRef.current) return;
-    inFlightRef.current = sent;
-    void setSystemPromptSettingsField("claudeCodeCustomSystemPrompt", sent).then((ok) => {
-      if (inFlightRef.current === sent) inFlightRef.current = null;
-      if (!ok || !mountedRef.current) return;
-      const canonical = getSystemPromptSettingsStoreState().state?.claudeCodeCustomSystemPrompt ?? "";
-      if (draftRef.current !== sent) return;
-      setDraft(canonical);
-    });
-  }, []);
-
-  React.useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  React.useEffect(() => {
-    if (!showEditor) return;
-    return () => { flushPrompt(); };
-  }, [showEditor, flushPrompt]);
-
-  return (
-    <div className="global-settings-row is-stack" role="group" aria-labelledby="claude-code-system-prompt-label">
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            <span id="claude-code-system-prompt-label">{t("terminal.settings.claudeSystemPromptTitle")}</span>
-            <SettingsHelp title={t("terminal.settings.claudeSystemPromptTitle")}>{t("terminal.settings.claudeSystemPromptHelp")}</SettingsHelp>
-          </p>
-        </div>
-        <Select
-          aria-labelledby="claude-code-system-prompt-label"
-          value={mode}
-          disabled={savingMode}
-          options={[
-            { value: "on", label: t("terminal.settings.claudeSystemPromptOn") },
-            { value: "append", label: t("terminal.settings.claudeSystemPromptAppend") },
-            { value: "off", label: t("terminal.settings.claudeSystemPromptOff") },
-          ]}
-          onChange={(value) => {
-            if (value !== "on" && value !== "append" && value !== "off") return;
-            void setSystemPromptSettingsField("claudeCodeSystemPrompt", value);
-          }}
-        />
-      </div>
-      {showEditor ? (
-        <div className="agent-cli-path-form">
-          <label htmlFor={promptId}>{t("terminal.settings.claudeSystemPromptBody")}</label>
-          <textarea
-            id={promptId}
-            className="ai-gateway-routing-task"
-            rows={8}
-            value={draft}
-            aria-invalid={overLimit}
-            aria-describedby={describedBy}
-            onChange={(event) => {
-              const next = event.target.value;
-              draftRef.current = next;
-              setEdited(true);
-              setDraft(next);
-            }}
-            onBlur={flushPrompt}
-          />
-          <div className="agent-cli-path-actions">
-            <p id={countId} className="global-settings-help">
-              {t("terminal.settings.claudeSystemPromptCount", {
-                used: formatCount(draft.length),
-                limit: formatCount(limit),
-              })}
-            </p>
-            {savingPrompt ? (
-              <p id={statusId} className="global-settings-help" aria-live="polite">
-                {t("terminal.settings.claudeSystemPromptSaving")}
-              </p>
-            ) : promptSaved ? (
-              <p id={statusId} className="global-settings-help" aria-live="polite">
-                {t("terminal.settings.claudeSystemPromptSaved")}
-              </p>
-            ) : null}
-          </div>
-          <p id={hintId} className="global-settings-help">{t("terminal.settings.claudeSystemPromptSaveHint")}</p>
-          {overLimit ? (
-            <p id={overLimitId} className="agent-cli-path-error" role="alert">
-              {t("terminal.settings.claudeSystemPromptOverLimit", { limit: formatCount(limit) })}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      <p className="global-settings-help">{t(claudeSystemPromptCaptionKey(mode, savedPrompt))}</p>
-      <p className="global-settings-help">{t("terminal.settings.claudeSystemPromptApplies")}</p>
-    </div>
-  );
-}
 
 /**
  * Fleet이 아는 내장 서브에이전트의 역할과 설명 키. **이 표는 카탈로그가 아니다** — 목록 자체는

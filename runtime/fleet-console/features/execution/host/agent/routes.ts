@@ -46,11 +46,8 @@ import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
-import {
-  resolveClaudeCodeCustomSystemPrompt,
-  resolveClaudeCodeDisabledAgents,
-  resolveClaudeCodeSystemPrompt,
-} from "../../../settings/host/execution-settings-routes.js";
+import { resolveClaudeCodeDisabledAgents } from "../../../settings/host/execution-settings-routes.js";
+import type { TheaterSystemPromptService } from "../../../settings/host/agent-options.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
@@ -68,6 +65,7 @@ type OperationRenamedEvent = {
 interface AgentRouteDeps {
   readonly organize?: Pick<ConsoleUseActions, "rename" | "group">;
   readonly agentOptionsService: AgentOptionsService;
+  readonly theaterSystemPrompts?: TheaterSystemPromptService;
   readonly isClaudePathTrusted?: (cwd: string) => Promise<boolean>;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
@@ -261,6 +259,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     dataDir: ctx.host.paths.consoleDataDir,
     plugin: ctx.agentCliPlugin,
     infraServices: deps,
+    ...(deps.theaterSystemPrompts ? { theaterSystemPrompts: deps.theaterSystemPrompts } : {}),
     readAgentCliPaths,
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
@@ -2057,7 +2056,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 터미널 런치가 `-n`으로 싣는 것과 같은 이름 — 다른 세션이 이 세션을 부르는 주소다.
     const sessionName = readAgentSession(node.payload)?.sessionName;
     // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
-    // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트 모드도 PTY 경로와 같은 전역 설정을 읽는다.
+    // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트도 PTY와 같은 Theater 설정을 읽는다.
     const claudeConfigDir = resolveClaudeConfigDir();
     const gatewayBaseUrl = resolveAnalysisGatewayBaseUrl(origin);
     // 공유 홈의 discovery 캐시는 호스트 소유다 — SDK 쪽은 이 홈에 쓰지 않으므로 여기서 세운다.
@@ -2089,8 +2088,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // admiral이 정한다 — CLI는 기본 프롬프트를 쓸 때 플래그를 싣지 않고 SDK는 그때 preset을
     // 싣는, 서로 뒤집힌 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
     const chatGlobalOptions = deps.agentOptionsService.load();
-    const chatClaudeCodeSystemPrompt = resolveClaudeCodeSystemPrompt(chatGlobalOptions);
-    const chatClaudeCodeCustomSystemPrompt = resolveClaudeCodeCustomSystemPrompt(chatGlobalOptions);
+    const chatTheaterPrompt = deps.theaterSystemPrompts?.read(node.theaterId);
     const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node.payload)
       ? [ALL_SUBAGENTS]
       : resolveClaudeCodeDisabledAgents(chatGlobalOptions);
@@ -2170,8 +2168,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           cwd,
           dataDir: ctx.host.paths.consoleDataDir,
           plugin: ctx.agentCliPlugin,
-          claudeCodeSystemPrompt: chatClaudeCodeSystemPrompt,
-          claudeCodeCustomSystemPrompt: chatClaudeCodeCustomSystemPrompt,
+          ...(chatTheaterPrompt ? { claudeCodeSystemPrompt: chatTheaterPrompt.mode, claudeCodeCustomSystemPrompt: chatTheaterPrompt.body } : {}),
           claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
           ...(userQuestionsBlocked(node.payload) ? { claudeCodeDisabledTools: [USER_QUESTION_TOOL] } : {}),
           origin: sessionOrigin.kind === "resume"

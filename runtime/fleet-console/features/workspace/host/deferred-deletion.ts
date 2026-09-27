@@ -63,7 +63,7 @@ interface DeferredDeletionCoordinatorDeps {
    * 유예가 끝난 Operation 의 흔적을 지우기 **전에** 부른다 — 멱등 기동 키 원장이 purge 를 선기록한다. 던지면 이번 정리를
    * 미루고 다시 시도한다(tombstone 은 그대로 남아 키가 계속 「삭제 중」으로 읽힌다).
    */
-  readonly beforePurge?: (operations: readonly OperationNode[]) => void;
+  readonly beforePurge?: (operations: readonly OperationNode[], tombstone: DurableDeletionTombstone) => void;
   readonly now?: () => number;
   readonly randomId?: () => string;
   readonly setTimer?: (callback: () => void, delay: number) => ReturnType<typeof setTimeout>;
@@ -249,7 +249,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const expired = due.filter((item) => {
       if (!deps.beforePurge) return true;
       try {
-        deps.beforePurge(deletionOperations(item));
+        deps.beforePurge(deletionOperations(item), item);
         purgeRetryAt.delete(item.deletionId);
         return true;
       } catch {

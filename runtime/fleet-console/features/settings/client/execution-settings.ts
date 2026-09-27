@@ -50,6 +50,8 @@ export interface AiGatewayCatalog {
 }
 
 export type ClaudeCodeSystemPromptMode = "on" | "append" | "off";
+export interface TheaterSystemPrompt { readonly mode: ClaudeCodeSystemPromptMode; readonly body: string }
+export interface TheaterSystemPromptState { readonly theaterId: string; readonly prompt: TheaterSystemPrompt | null }
 
 /** 서버 PUT 상한. 초과 본문은 400. */
 export const CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS = 16_000;
@@ -62,9 +64,6 @@ export type DelegationRoutingMode = "jev" | "model";
 
 export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
-  readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
-  /** 사용자 지침 본문. 와이어에 없으면 빈 문자열. */
-  readonly claudeCodeCustomSystemPrompt: string;
   /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
   readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewaySettings | null;
@@ -80,8 +79,6 @@ export interface SystemPromptSettingsState {
 
 export type SystemPromptSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
-  | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
-  | { readonly claudeCodeCustomSystemPrompt: string }
   | { readonly claudeCodeDisabledAgents: readonly string[] }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly wireLogEnabled: boolean }
@@ -122,6 +119,30 @@ export async function saveSystemPromptSettings(settings: SystemPromptSettingsUpd
   return state;
 }
 
+export async function fetchTheaterSystemPrompt(theaterId: string, signal?: AbortSignal): Promise<TheaterSystemPromptState> {
+  const response = await fetch(`/api/v1/agent/theater-system-prompt?theaterId=${encodeURIComponent(theaterId)}`, { signal });
+  await assertOk(response);
+  return assertTheaterSystemPromptState(await response.json(), theaterId, response.status);
+}
+
+export async function saveTheaterSystemPrompt(theaterId: string, prompt: TheaterSystemPrompt | null, signal?: AbortSignal): Promise<TheaterSystemPromptState> {
+  const response = await fetch(`/api/v1/agent/theater-system-prompt?theaterId=${encodeURIComponent(theaterId)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }), signal,
+  });
+  await assertOk(response);
+  return assertTheaterSystemPromptState(await response.json(), theaterId, response.status);
+}
+
+function assertTheaterSystemPromptState(value: unknown, theaterId: string, status: number): TheaterSystemPromptState {
+  if (!value || typeof value !== "object") throw new TerminalSettingsApiError(status, "Invalid Theater system prompt response");
+  const result = value as Partial<TheaterSystemPromptState>;
+  const prompt = result.prompt;
+  if (result.theaterId !== theaterId || !(prompt === null || (prompt && isClaudeCodeSystemPromptMode(prompt.mode) && typeof prompt.body === "string"))) {
+    throw new TerminalSettingsApiError(status, "Invalid Theater system prompt response");
+  }
+  return { theaterId, prompt };
+}
+
 async function assertOk(response: Response): Promise<void> {
   if (response.ok) return;
   let message = response.statusText || `HTTP ${response.status}`;
@@ -139,8 +160,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   if (
     !payload
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
-    || !isClaudeCodeSystemPromptMode(payload.claudeCodeSystemPrompt)
-    || (payload.claudeCodeCustomSystemPrompt !== undefined && typeof payload.claudeCodeCustomSystemPrompt !== "string")
     || !isStringList(payload.claudeCodeDisabledAgents)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.wireLogEnabled !== "boolean"
@@ -153,8 +172,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   }
   return {
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
-    claudeCodeSystemPrompt: payload.claudeCodeSystemPrompt,
-    claudeCodeCustomSystemPrompt: payload.claudeCodeCustomSystemPrompt ?? "",
     claudeCodeDisabledAgents: payload.claudeCodeDisabledAgents,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
@@ -205,7 +222,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeCustomSystemPrompt" | "claudeCodeDisabledAgents" | "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeDisabledAgents" | "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -316,12 +333,6 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 }
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
-  if (field === "claudeCodeSystemPrompt") {
-    return { claudeCodeSystemPrompt: state.claudeCodeSystemPrompt };
-  }
-  if (field === "claudeCodeCustomSystemPrompt") {
-    return { claudeCodeCustomSystemPrompt: state.claudeCodeCustomSystemPrompt };
-  }
   if (field === "claudeCodeDisabledAgents") {
     return { claudeCodeDisabledAgents: state.claudeCodeDisabledAgents };
   }

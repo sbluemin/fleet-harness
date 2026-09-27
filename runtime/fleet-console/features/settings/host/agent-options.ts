@@ -5,10 +5,57 @@ import {
   sanitizeAgentOptionsData,
   type AgentOptionsData,
   type AgentOptionsService,
+  type ClaudeCodeTheaterSystemPrompt,
   type DurableJsonStore,
 } from "@fleet-console/infra";
 
 import type { ConsoleSettingsData } from "./settings-domain.js";
+
+/** Host-side Theater admission keeps the shared infra schema independent of workspace registration. */
+export interface TheaterSystemPromptService {
+  readonly exists: (theaterId: string) => boolean;
+  readonly read: (theaterId: string | undefined) => ClaudeCodeTheaterSystemPrompt | null;
+  readonly save: (theaterId: string, prompt: ClaudeCodeTheaterSystemPrompt | null) => ClaudeCodeTheaterSystemPrompt | null;
+  /** Called only when a forgotten Theater's grace period expires. Idempotent for purge retries. */
+  readonly purge: (theaterId: string) => void;
+}
+
+export function createTheaterSystemPromptService(
+  options: AgentOptionsService,
+  isRegistered: (theaterId: string) => boolean,
+): TheaterSystemPromptService {
+  return {
+    exists: isRegistered,
+    read(theaterId) {
+      return theaterId && isRegistered(theaterId)
+        ? options.load().claudeCodeTheaterSystemPrompts?.[theaterId] ?? null
+        : null;
+    },
+    save(theaterId, prompt) {
+      if (!isRegistered(theaterId)) throw new Error("theater_not_found");
+      // Default mode with no user instructions is absence, not a redundant override.
+      const value = prompt?.mode === "on" && prompt.body.trim().length === 0 ? null : prompt;
+      const updated = options.update((current) => {
+        const prompts = { ...current.claudeCodeTheaterSystemPrompts };
+        if (value === null) delete prompts[theaterId];
+        else prompts[theaterId] = value;
+        const { claudeCodeTheaterSystemPrompts: _previous, ...rest } = current;
+        return Object.keys(prompts).length ? { ...rest, claudeCodeTheaterSystemPrompts: prompts } : rest;
+      });
+      return updated.claudeCodeTheaterSystemPrompts?.[theaterId] ?? null;
+    },
+    purge(theaterId) {
+      // The registry no longer contains the Theater, so only its stored id is needed here.
+      options.update((current) => {
+        if (!current.claudeCodeTheaterSystemPrompts?.[theaterId]) return current;
+        const prompts = { ...current.claudeCodeTheaterSystemPrompts };
+        delete prompts[theaterId];
+        const { claudeCodeTheaterSystemPrompts: _previous, ...rest } = current;
+        return Object.keys(prompts).length ? { ...rest, claudeCodeTheaterSystemPrompts: prompts } : rest;
+      });
+    },
+  };
+}
 
 /** 옛 자리의 파일 이름. Console 설정 파일과 이름이 같아 디렉터리만으로 구분된다. */
 const LEGACY_OPTIONS_FILE_NAME = "settings.json";
