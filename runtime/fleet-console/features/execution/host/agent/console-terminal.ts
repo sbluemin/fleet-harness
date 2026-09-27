@@ -128,8 +128,12 @@ export function createConsoleTerminalObserver(deps: {
       }
     }
   }
+  /** Stop hook은 Esc로 끊긴 턴에는 오지 않는다. 중단을 기다리는 턴만 PTY 작업 신호가 꺼진 것을 그 턴의 끝으로 받는다. */
+  function idle(id: string) {
+    if (pending.get(id)?.interrupt) void end(id, undefined).catch(() => complete(id, "unknown"));
+  }
   return {
-    begin, start, end, interrupt,
+    begin, start, end, interrupt, idle,
     read: (id: string): PublicOutput => outputs.get(id)?.output ?? unavailable(),
     cancel(id: string) { complete(id, "unknown"); },
     forget(id: string) { complete(id, "unknown"); outputs.delete(id); },

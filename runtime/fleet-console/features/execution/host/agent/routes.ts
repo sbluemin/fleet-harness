@@ -275,6 +275,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return !!session && session.chatActive !== true && session.status !== "dormant";
     }),
   });
+  const consoleTerminal = createConsoleTerminalObserver({
+    transcript: (id) => readProviderSession(ctx.host.operations.get(id)?.payload)?.transcriptPath,
+    cwd: (id) => { const op = ctx.host.operations.get(id); return op ? readPayloadString(op.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(op.theaterId) ?? undefined : undefined; },
+  });
+  ctx.host.lifecycle.registerCleanup(() => consoleTerminal.dispose());
   const unsubscribeTitle = terminalRuntime.onTitle(AGENT_OPERATION_TYPE, (sessionId, title) => {
     // spinner는 프레임마다 타이틀을 방출하므로 tracker가 이미 있으면 세션 조회(DTO 투영)를 건너뛴다.
     let tracker = oscActivityTrackers.get(sessionId);
@@ -291,7 +296,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           const updated = observability.setTerminalSessionModelActivity(sessionId, modelActivity);
           if (updated) observability.notifySessionUpdated(updated);
           // Stop hook 은 사람이 Esc 로 끊은 턴에는 오지 않는다 — PTY 의 작업 신호가 꺼지는 순간이 그 턴의 결말이다.
-          if (before === "working" && modelActivity !== "working") deps.onTurnSettled?.(sessionId);
+          if (before === "working" && modelActivity !== "working") {
+            deps.onTurnSettled?.(sessionId);
+            consoleTerminal.idle(sessionId);
+          }
         },
       });
       oscActivityTrackers.set(sessionId, tracker);
@@ -338,11 +346,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     ownedTemps.purge(payload.operationId);
   });
 
-  const consoleTerminal = createConsoleTerminalObserver({
-    transcript: (id) => readProviderSession(ctx.host.operations.get(id)?.payload)?.transcriptPath,
-    cwd: (id) => { const op = ctx.host.operations.get(id); return op ? readPayloadString(op.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(op.theaterId) ?? undefined : undefined; },
-  });
-  ctx.host.lifecycle.registerCleanup(() => consoleTerminal.dispose());
   const consoleObservationTimes = new Map<string, string>();
   const consoleAttentionReasons = new Map<string, "input" | "permission">();
   const unsubscribeConsoleObservation = observability.subscribeAll((event) => {
