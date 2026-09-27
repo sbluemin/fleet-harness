@@ -406,8 +406,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
    */
   const delivering = new Set<string>();
   /**
-   * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 옛 보드를 전제로 한 늦은 요청은 지휘관 도구의 board_changed 가
-   * 막는다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
+   * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 아직 읽지 않은 사람 편집이 남아 있으면 지휘관 도구의
+   * board_changed 가 새 요청을 거절한다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
    */
   const withoutDecisionRequest = (stored: StoredObjective): StoredObjective => {
     if (!stored.decisionRequest || delivering.has(stored.decisionRequest.id)) return stored;
