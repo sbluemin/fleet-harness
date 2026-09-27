@@ -790,4 +790,3 @@ function RestorePanelIcon() {
     </svg>
   );
 }
-
