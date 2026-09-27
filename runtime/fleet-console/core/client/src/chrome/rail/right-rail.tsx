@@ -16,7 +16,6 @@ import { useT } from "../../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";
 import { getState, subscribe } from "../../integration/store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
-import { useTriageActive } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
 import { reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
@@ -89,9 +88,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   // 겹침을 막아 주지 않는다. 레일 폭 상한이 이 점유를 빼지 않으면 드래그·End 키 한 번에
   // 레일 카드가 사이드바 카드를 덮는다(Codex 리뷰 확정). 아레나 좌측 인셋과 같은 산식이다.
   const sideBar = useSideBarState();
-  // War Room에는 사이드바가 없다 — Cruise 표시 선호가 펼침이어도 그 자리를 비워 두지 않는다.
-  const triageActive = useTriageActive();
-  const sideBarOccupiedPx = !triageActive && sideBarOccupiedWidth(sideBar) > 0 ? sideBarOccupiedWidth(sideBar) + 24 : 0;
+  const sideBarOccupiedPx = sideBarOccupiedWidth(sideBar) > 0 ? sideBarOccupiedWidth(sideBar) + 24 : 0;
   // 카드+extra가 함께 쓰는 가용 예산. 카드 상한은 예산에서 extra를 뺀 값이되, 예산이
   // 바닥나면 MIN 바닥이 이긴다 — 그때 넘치는 쪽은 아래 슬롯 총폭 캡이 extra를 깎아 회수한다.
   const widthBudget = Math.floor(viewportWidth - 148 - sideBarOccupiedPx);
