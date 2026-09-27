@@ -131,9 +131,15 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       const bandRight = bandRightRef.current;
       setRightContentWidth(bandRight === null ? 0 : Math.max(0, ...Array.from(bandRight.children, (child) => (child instanceof HTMLElement ? width - child.offsetLeft : 0))));
       // scrollWidth를 읽는다 — 중앙 트랙이 소요 폭보다 좁게 눌린 프레임에서도 자연 폭을
-      // 돌려주므로, 눌린 값이 판정에 되먹임되어 접힘/복귀가 진동하는 일이 없다.
+      // 돌려주므로, 눌린 값이 판정에 되먹임되어 접힘/복귀가 진동하는 일이 없다(도구모음이 스스로
+      // 줄어들지 않는다는 전제 — layout.css .console-toolbar-drawer의 flex: none).
+      // 중앙 트랙은 도구모음에 좌우 패딩을 더한 폭을 요구한다. 플로우에서는 시작 패딩이 0으로
+      // 내려가므로 두 모드에서 같은 끝 패딩의 두 배를 쓴다 — 모드마다 소요 폭이 달라지면 경계
+      // 폭에서 가운데와 플로우 사이를 오간다.
       const toolbarHost = toolbarHostRef.current;
-      setCenterContentWidth(toolbarHost === null ? 0 : toolbarHost.scrollWidth);
+      const centerTrack = toolbarHost?.parentElement ?? null;
+      const centerPadding = centerTrack === null ? 0 : 2 * (Number.parseFloat(getComputedStyle(centerTrack).paddingInlineEnd) || 0);
+      setCenterContentWidth(toolbarHost === null ? 0 : toolbarHost.scrollWidth + centerPadding);
     };
     measure();
     const observer = new ResizeObserver(measure);
