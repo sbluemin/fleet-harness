@@ -5,6 +5,99 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.200.0] - 2026-09-27
+
+### fleet-cli
+
+#### Breaking Changes
+- Removed Cursor support from `fleet gateway`, including its model selections and diagnostics option. Existing Cursor model invocations are no longer supported; use another Gateway provider.
+
+### fleet-console
+
+#### Added
+- Inspect individual Agent Chat tool calls, including file contents and changes, in expandable details with readable code and diffs.
+- Operation panels now tuck themselves into the taskbar when their session ends, unless you are looking at them or brought them back yourself. Finishing a turn leaves the panel where it is.
+- The Operation menu now ends with Close window, which closes the Operation after a second press and can be undone from the toast.
+- In the Zen taskbar, click a group or status name to fold it down to its count, click the Operation you are viewing to minimize it, and right-click an Operation for the same menu as in the sidebar. Minimized Operations are shown dimmed.
+- Every button in the top toolbar now shows the same tooltip as the Zen button, including its shortcut.
+- Let agents with Console use reorder Operations and groups in the sidebar.
+- Messages agents send each other with SendMessage now appear in the receiving chat as expandable lines labeled with the sender; they are not restored after the session closes, switches to terminal view, or the Console restarts.
+- Use Muse Code subscription models through AI Gateway and check their usage in Quota with an existing `muse` CLI sign-in. macOS may ask for permission to read the saved login from Keychain.
+- Objectives Commanders can ask you questions on the board, and a marker on the sidebar, Zen and War Room shows when your answer is needed. Your answers stay under Decisions, where member sessions can read them.
+- Review an objective's results in one place: the Commander can attach pull requests and evidence files such as screenshots or notes, which stay viewable after member sessions end. GitHub.com pull request states update on their own through your signed-in GitHub CLI, and a failed lookup is shown as a failure.
+- Objectives introduces itself with a hint beside its sidebar icon and step-by-step tours of the list and an objective's details.
+- Resize the list and detail columns of Objectives in the right rail by dragging the divider between them; the rail remembers its own width.
+- Hand multi-step work to Objectives: write a brief and success criteria, and a Commander Operation plans the missions, carries them out itself or with member sessions, and returns the objective for your review once every criterion is met. Open it from the right rail or with Cmd+Shift+Y (Ctrl+Shift+Y on Windows and Linux).
+- While planning, the Commander can propose changes to the success criteria for your approval, and on completion you can turn the follow-up candidates it gathered into new objectives.
+- Before an objective comes back for review, the Commander gathers a retrospective from its members and hands it over with the objective: what went well and why, and what fell short and what would have helped. If the Commander stalls, you can move the objective to review yourself.
+- Align all open panels at once with Alt+F or the Cruise capsule; the arrangement follows panels as they open, close, or reorder, and pressing again restores every panel.
+- When an agent needs Console use or Computer Use that its Operation has not been allowed, the request now appears at the lower right of the Map, where you can decline, allow it for this task only, keep allowing it, or jump to that panel, and you can collapse pending requests into a single indicator.
+- War Room cards now show an objective's member and mission chips, and picking a member chip switches that card to the member's session without staging it.
+
+#### Changed
+- Keep tool targets and received-message previews readable in the chat ledger, including at narrow widths.
+- The chat view is calmer and easier to scan: messages, code blocks, and details share one quiet surface, Korean wraps at word boundaries, and changed files appear as aligned rows whose summary stays visible when finished work is collapsed.
+- The sidebar Operation order you arrange now stays the same across browsers and devices; your existing order carries over.
+- Codex models in AI Gateway now carry their own reasoning across tool calls and turns instead of working it out again each time.
+- Usage limits keeps showing each provider's last usage, marked with its age, when a refresh fails, until those limits reset.
+- Objectives Commanders ask you through decision requests on the board instead of pop-up questions in their session, the same way member sessions already work.
+- The Objectives action band now says a session is waiting for your permission, keeping "decision" for decision requests.
+- After an update, features that are new to you appear together in one welcome card you can page through; features you already saw are not shown again, and a fresh install starts without it.
+- The first-run setup guide and the screens shown before your first Theater are simpler and quieter.
+- The resize edge of right-rail tool panels now shows a small grip so you can see where to drag.
+- Step through an objective's result and brief images without closing the viewer, and read each result's description alongside it.
+- Objectives drops its left list column: pick Today, Due, All, or Left by agents from the words above the cards, and every group in the Theater appears as its own section you can drop cards into or add to.
+- Resize the objective detail panel by dragging its edge when Objectives is expanded.
+- The host switcher icon now changes shape while you are connected to another machine's Console, so a remote session is recognizable at a glance.
+- Browse repository history, working changes, and stashes in one workspace with the first diff ready, and refresh and fetch with a single toolbar button.
+- The left sidebar no longer narrows to a rail; collapsing and resizing it still work in Cruise.
+- Development consoles replace the Local chip with a distinct Fleet DEV wordmark and emblem. Click the emblem for environment diagnostics, or the wordmark to return home.
+- Maximizing an Operation in Cruise now snaps it to the full view and restores its previous position, size, and zoom; Alt+Up does the same, and War Room no longer offers maximize.
+- Snapped Operations show their slot in the caption and sidebar, empty slots offer only visible Operations, and the session analyst and Operation browser open inside the full-view snap and put the panel back when closed.
+- Adding a Theater now explains and applies Claude Code folder trust before its first Agent launch; if trust cannot be saved, the Theater is not added and you can retry.
+- War Room now opens in Zen mode with a stable deck and a dedicated taskbar instead of a sidebar, gathering waiting work across Theaters. The open Objectives rail follows each staged Operation and shows only its Theater's goals. Leaving War Room keeps Zen on; turning Zen off returns to Cruise.
+- In Zen mode, the sidebar shortcut and command palette toggle now reveal or hide the left sidebar without leaving Zen.
+- The right sidebar is now a single toolbar in the middle of the top bar that gathers the tools, settings, search, remote hosts, help, docked aides, and the Zen button, while tool panels still open on the right side.
+- The Cruise and War Room switch now sits beside the view-by-status button, at the top of the left sidebar and in the Zen taskbar.
+- Zen mode now keeps a slim taskbar at the bottom of the screen for picking a Theater and jumping between its Operations, with the same toolbar at its right end beside the Fleet emblem, so the sidebars can stay out of the way. Drag Operations along the taskbar to reorder them or move them to another group, and the sidebar keeps the new order.
+- Switching Theaters no longer turns Zen mode off.
+
+#### Fixed
+- A docked Quick Launch bar no longer covers the chat input, and chat-view agents can receive messages from other agents before their first prompt.
+- The objective graph now spreads across the whole detail panel instead of staying narrow in the middle, and its labels no longer overlap.
+- Keep other Console sessions running when one background request fails, while recording the failure for diagnosis.
+- Opening or closing the Session Analyst or Fleet Browser from an Operation's caption now glides the Operation from where it stands, instead of jumping from the wrong place first when the sidebar is open or the canvas is zoomed or panned.
+- Operations on the canvas now move together with the left sidebar as it opens or closes, instead of snapping to their final place ahead of it.
+- Console no longer exits when an agent runs Console tools in parallel.
+- Long links that Claude Code wraps across several lines in an Operation terminal now open as the whole address from any of those lines, instead of only the first line's fragment.
+- Claude models routed through AI Gateway now run the same latest version your installed Claude Code uses for Opus, Fable, Sonnet, and Haiku, instead of an older fixed version, and Gateway settings show that version.
+- An agent's Console tool call no longer hangs when its result cannot be returned; the agent is told the tool may already have run.
+- With many Operations open, opening and closing the sidebar or docked tool panels no longer stutters, and the terminals you are looking at keep their fast renderer instead of silently falling back.
+- External plugins with a missing or unsupported `apiVersion` no longer disappear silently; the skipped-plugin notice names each one and the `apiVersion` its `plugin.json` needs.
+
+#### Removed
+- Creating, renaming, and recoloring groups from Objectives; manage groups from the Console sidebar instead.
+- Retired Tactical as a separate canvas mode; its grid, column, and row layouts live on in align all.
+- The shortcut for showing or hiding the right sidebar (Cmd+Alt+B) is gone along with the sidebar.
+
+#### Breaking Changes
+- Closing an Operation now archives it instead of deleting it, whether from its caption, the sidebar, a context menu, the command palette, the mobile view, or Console Use. Undo right away from the toast or with Cmd+Z (Ctrl+Z), and open Archive at the bottom of the sidebar, or from the taskbar in Zen Mode, to restore an Operation with its conversation or delete it permanently.
+- Completing an objective now archives its Operation together with its child sessions. Operations of objectives completed before this update stay open until you reopen the objective and complete it again.
+- Removed the Cursor provider from AI Gateway, including saved model selections, usage, and diagnostics. Existing Cursor model sessions are no longer supported; start a new Operation with another provider. Ledger spending totals no longer include past Cursor usage.
+- Removed the Moonshot-Kimi provider from AI Gateway, including its login and logout commands; stored Moonshot keys are not deleted automatically.
+
+### fleet-desktop
+
+#### Changed
+- Turning on Zen mode in Fleet Desktop now takes the window full screen, so the window buttons no longer float over your work; turning Zen off restores the window, and leaving full screen also ends Zen.
+- The start and quit screens are clearer and follow your Console theme: starting shows progress in one line in your system language with the app and Console versions, and quitting shows a short farewell instead of a frozen window.
+- Fleet Desktop now always opens Console in its desktop layout, and the view-mode toggle no longer appears there.
+
+#### Fixed
+- When an agent sets a Fleet Browser page larger than the open browser panel, the page now stays inside the panel instead of covering the rest of Console.
+- Fleet Browser screenshots of an agent-sized page no longer fail after the panel or window is resized, and a failed screenshot no longer shrinks the page to the panel size.
+- Taking a Fleet Browser screenshot no longer makes the open browser page flicker in the Desktop window.
+
 ## [1.107.0] - 2026-09-23
 
 ### fleet-console
