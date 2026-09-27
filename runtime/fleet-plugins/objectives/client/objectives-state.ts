@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
+import { OPERATION_PURGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, ConsoleOperationSummary, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
 import type { Objective, ObjectiveEvent } from "../server/types.js";
@@ -43,7 +44,6 @@ let operationsSnapshot: readonly ConsoleOperationSummary[] = [];
 const inflight = new Map<string, Promise<void>>();
 /** 받으러 간 목표 — 같은 Operation 을 두 번 묻지 않는다. */
 const fetching = new Set<string>();
-let knownOperationIds: ReadonlySet<string> = new Set();
 
 /** 구성원 Operation — 임무가 아직 없어도 목표가 아니며 명단에서 제외되어야 한다. */
 function memberIds(objectives: readonly Objective[]): ReadonlySet<string> {
@@ -51,19 +51,14 @@ function memberIds(objectives: readonly Objective[]): ReadonlySet<string> {
 }
 
 /**
- * Operation 목록과 목표를 맞춘다 — 읽어 둔 Theater 에 처음 보는 에이전트 Operation 이 있으면 그 목표를 받아 오고,
- * 목록에서 빠진 Operation(닫힘·삭제 유예)의 목표는 뺀다. 복원되면 다시 처음 보는 Operation 이 되어 돌아온다.
+ * Operation 목록과 목표를 맞춘다 — 읽어 둔 Theater 에 처음 보는 에이전트 Operation 이 있으면 그 목표를 받아 온다.
+ * 목록에서 빠졌다는 것만으로는 목표를 빼지 않는다: 완료한 목표의 Operation 은 보관되어 일반 목록에서 사라지지만
+ * 목표는 완료 목록에 그대로 있어야 한다. 목표가 실제로 사라지는 때는 영구 삭제(operation:purged)와 서버의 remove
+ * 사건뿐이다(removeObjectiveLocally·installObjectiveState).
  */
 function reconcileOperations(api: ClientApiCapability): void {
-  const current = new Set(operationsSnapshot.map((operation) => operation.id));
-  const gone = [...knownOperationIds].filter((id) => !current.has(id));
-  knownOperationIds = current;
   for (const [theaterId, state] of theaters) {
     if (!state.loaded) continue;
-    if (gone.length) {
-      const drop = new Set(gone);
-      if (state.objectives.some((objective) => drop.has(objective.id))) setTheater(theaterId, { objectives: state.objectives.filter((objective) => !drop.has(objective.id)) });
-    }
     // 제목은 Operation 의 것이다 — 자동 작명처럼 사건 없이 바뀐 제목도 Operation 목록에서 따라간다.
     const titles = new Map(operationsSnapshot.map((operation) => [operation.id, operation.title]));
     const stale = (theaters.get(theaterId) ?? state).objectives;
@@ -125,6 +120,11 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     const exists = current.groups.some((candidate) => candidate.id === group.id);
     setTheater(group.theaterId, { groups: (exists ? current.groups.map((candidate) => (candidate.id === group.id ? group : candidate)) : [...current.groups, group]).slice().sort((a, b) => a.order - b.order) });
   });
+  // 영구 삭제된 Operation 의 목표는 되살아날 수 없다 — 서버도 같은 때 remove 를 보내지만, 받는 순서와 무관하게 거둔다.
+  const offPurged = ctx.consoleEvents.subscribe(OPERATION_PURGED_EVENT, (payload) => {
+    const operationId = (payload as { operationId?: unknown } | null)?.operationId;
+    if (typeof operationId === "string") removeObjectiveLocally(operationId);
+  });
   const offRemoved = ctx.consoleEvents.subscribe("group:removed", (payload) => {
     const data = payload as { groupId?: string; theaterId?: string } | null;
     if (!data || typeof data.groupId !== "string") return;
@@ -161,11 +161,18 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   };
   if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
   return () => {
-    offItem(); offGroup(); offRemoved(); offConsole();
+    offItem(); offGroup(); offPurged(); offRemoved(); offConsole();
     if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
     if (focusOutTimer !== null) clearTimeout(focusOutTimer);
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
   };
+}
+
+/** 목표 하나를 이 화면에서 거둔다 — 영구 삭제 사건과, 휴지통처럼 사람이 지운 직후에 쓴다(서버의 remove 는 유예가 끝난 뒤에 온다). */
+export function removeObjectiveLocally(objectiveId: string): void {
+  for (const [theaterId, state] of theaters) {
+    if (state.objectives.some((objective) => objective.id === objectiveId)) setTheater(theaterId, { objectives: state.objectives.filter((objective) => objective.id !== objectiveId) });
+  }
 }
 
 export function objectivesApi(): ClientApiCapability | null {
@@ -211,7 +218,7 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
     .then((state) => {
       setTheater(theaterId, { objectives: state.objectives, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
       // 읽는 사이 생긴 Operation 도 목표로 — 스냅숏 기준으로 한 번 맞춘다.
-      if (installed) { knownOperationIds = new Set(); operationsSnapshot = installed.consoleState.getOperations({ nested: true }); reconcileOperations(installed.api); }
+      if (installed) { operationsSnapshot = installed.consoleState.getOperations({ nested: true }); reconcileOperations(installed.api); }
     })
     .catch(() => { setTheater(theaterId, { loaded: true }); })
     .finally(() => { inflight.delete(theaterId); });
