@@ -19,6 +19,21 @@
 .objectives-detail-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background-color var(--duration-fast); }
 .objectives-detail-grip:hover::after, .objectives-detail-grip:focus-visible::after, .objectives-root.is-resizing .objectives-detail-grip::after { background: var(--brass); }
 .objectives-root.is-resizing, .objectives-root.is-resizing * { cursor: col-resize; user-select: none; }
+/* 세 칸 — 목표 표면이 1120 이상이면 목록 | 내용·계획 | 운영·판단. 두 칸과 같은 DOM(상세 aside > 스크롤 > 두 칸 + 하단)을 쓰고
+   배치만 바꾼다: aside·스크롤을 걷어(display: contents) 두 칸과 하단이 표면 grid 에 선다. 각 칸은 상세와 같은 면·선·여백에
+   자기 objectives-detail 컨테이너를 가져 DAG 세로 전환(420)·구성원 줄바꿈(340)이 칸 폭을 따른다. 운영 칸 폭은 --objectives-detail-w
+   — 오른쪽 손잡이는 두 칸의 상세 손잡이와 같은 규칙에 선다. 목록 손잡이만 목록 칸 오른쪽 가장자리로 옮긴다. */
+.objectives-detail-pane { display: contents; }
+/* 두 칸에서는 두 칸이 한 스크롤로 이어진다 — 운영 칸의 첫 묶음도 앞 묶음과 같은 머리선으로 갈린다(형제 선택자가 칸 경계를 넘지 못해서). */
+.objectives-detail:not(.is-three) .objectives-detail-pane.is-ops > .objectives-group:first-child { border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
+.objectives-root.is-three { grid-template-columns: var(--objectives-list-w, 300px) minmax(0, 1fr) var(--objectives-detail-w, 340px); grid-template-rows: minmax(0, 1fr) auto; }
+.objectives-root.is-three > .objectives-main { grid-column: 1; grid-row: 1 / -1; }
+.objectives-detail.is-three, .objectives-detail.is-three > .objectives-detail-scroll { display: contents; }
+.objectives-detail.is-three .objectives-detail-pane { display: block; min-width: 0; min-height: 0; overflow: auto; border-left: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised)); container: objectives-detail / inline-size; }
+.objectives-detail.is-three .objectives-detail-pane.is-content { grid-column: 2; grid-row: 1 / -1; padding: 6px 0 8px; }
+.objectives-detail.is-three .objectives-detail-pane.is-ops { grid-column: 3; grid-row: 1; padding-top: 6px; }
+.objectives-detail.is-three > .objectives-detail-bottom { grid-column: 3; grid-row: 2; min-width: 0; padding-bottom: 8px; border-left: 1px solid var(--surface-rim); container: objectives-detail / inline-size; }
+.objectives-detail-grip.is-list { right: auto; left: calc(var(--objectives-list-w, 300px) - 5px); }
 .objectives-place-button {
   flex: none;
   display: grid;
