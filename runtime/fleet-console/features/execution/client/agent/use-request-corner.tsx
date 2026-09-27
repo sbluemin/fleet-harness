@@ -119,6 +119,8 @@ export function UseRequestCorner({ language, compact, describeSource }: {
   const hidden = rest.length - shown.length;
   const showStack = hasRequests && expanded;
 
+  const openFresh = open ? fresh.has(open.id) : false;
+
   // 루트와 낭독 영역은 빈 상태·접힘·펼침 어디서나 같은 자리에 머문다 — 다시 마운트되는 live region 은 토글 직후의 도착을 놓친다.
   return (
     <div
@@ -139,40 +141,58 @@ export function UseRequestCorner({ language, compact, describeSource }: {
           aria-label={t("terminal.useRequest.corner.show", { count: ordered.length })}
           onClick={unfold}
         >
-          <span className="use-corner-glyph" aria-hidden="true"><UseRequestGlyph capability={glyphOf.capability} /></span>
+          <UseRequestRing capability={glyphOf.capability} seconds={soonest} size="sm" />
           <span className="use-corner-chip-label">{t("terminal.useRequest.corner.chip")}</span>
-          <span className="use-corner-chip-count">{ordered.length}</span>
+          {ordered.length > 1 ? <span className="use-corner-count">{ordered.length}</span> : null}
           <span className="use-corner-time">{formatUseRequestTime(soonest)}</span>
         </button>
       ) : null}
       {showStack && open ? (
-        <>
+        <div className={`use-corner-panel${openFresh ? " is-fresh" : ""}${soonest <= LATE_SECONDS ? " is-late" : ""}`}>
           <div className="use-corner-head">
-            <span>{t("terminal.useRequest.corner.count", { count: ordered.length })}{rest.length > 0 ? ` · ${t("terminal.useRequest.corner.bySoonest")}` : ""}</span>
-            <button ref={foldRef} type="button" className="use-corner-fold" aria-expanded="true" onClick={fold}>{t("terminal.useRequest.corner.fold")}</button>
+            <span className="use-corner-caption">{t("terminal.useRequest.corner.chip")}</span>
+            {ordered.length > 1 ? <span className="use-corner-count">{ordered.length}</span> : null}
+            {rest.length > 0 ? <span className="use-corner-order">{t("terminal.useRequest.corner.bySoonest")}</span> : null}
+            <button
+              ref={foldRef}
+              type="button"
+              className="use-corner-fold"
+              aria-expanded="true"
+              aria-label={t("terminal.useRequest.corner.fold")}
+              title={t("terminal.useRequest.corner.fold")}
+              onClick={fold}
+            >
+              <FoldGlyph />
+            </button>
           </div>
-          {shown.map((request) => {
-            const left = useRequestSecondsLeft(request, now);
-            const source = describeSource(request.operationId);
-            return (
-              <button
-                key={request.id}
-                type="button"
-                className={`use-corner-row${fresh.has(request.id) ? " is-fresh" : ""}${left <= LATE_SECONDS ? " is-late" : ""}`}
-                onClick={() => setUseRequestCornerState({ openId: request.id })}
-              >
-                <span className="use-corner-glyph" aria-hidden="true"><UseRequestGlyph capability={request.capability} /></span>
-                <span className="use-corner-row-label">{titleOf(request, t)} · {source?.memberName ?? source?.operationTitle ?? ""}</span>
-                <span className="use-corner-time">{formatUseRequestTime(left)}</span>
-              </button>
-            );
-          })}
-          {hidden > 0 ? <span className="use-corner-more">{t("terminal.useRequest.corner.more", { count: hidden })}</span> : null}
+          {shown.length > 0 ? (
+            <div className="use-corner-rows">
+              {shown.map((request) => {
+                const left = useRequestSecondsLeft(request, now);
+                const source = describeSource(request.operationId);
+                return (
+                  <button
+                    key={request.id}
+                    type="button"
+                    className={`use-corner-row${fresh.has(request.id) ? " is-fresh" : ""}${left <= LATE_SECONDS ? " is-late" : ""}`}
+                    onClick={() => setUseRequestCornerState({ openId: request.id })}
+                  >
+                    <span className="use-corner-glyph" aria-hidden="true"><UseRequestGlyph capability={request.capability} /></span>
+                    <span className="use-corner-row-label">
+                      {titleOf(request, t)}
+                      <span className="use-corner-row-source">{source?.memberName ?? source?.operationTitle ?? ""}</span>
+                    </span>
+                    <span className="use-corner-time">{formatUseRequestTime(left)}</span>
+                  </button>
+                );
+              })}
+              {hidden > 0 ? <span className="use-corner-more">{t("terminal.useRequest.corner.more", { count: hidden })}</span> : null}
+            </div>
+          ) : null}
           <UseRequestCornerCard
             key={open.id}
             request={open}
             source={describeSource(open.operationId)}
-            fresh={fresh.has(open.id)}
             now={now}
             language={language}
             cardRef={(element) => {
@@ -180,16 +200,15 @@ export function UseRequestCorner({ language, compact, describeSource }: {
               else cardRefs.current.delete(open.id);
             }}
           />
-        </>
+        </div>
       ) : null}
     </div>
   );
 }
 
-function UseRequestCornerCard({ request, source, fresh, now, language, cardRef }: {
+function UseRequestCornerCard({ request, source, now, language, cardRef }: {
   readonly request: OperationUseRequest;
   readonly source: UseRequestSource | null;
-  readonly fresh: boolean;
   readonly now: number;
   readonly language: ConsoleLocale | undefined;
   readonly cardRef: (element: HTMLElement | null) => void;
@@ -200,54 +219,93 @@ function UseRequestCornerCard({ request, source, fresh, now, language, cardRef }
   const isConsole = request.capability === "console";
   const blocked = request.blocked === "experiment_disabled";
   const titleId = `use-corner-${request.id}`;
+  const sourceName = source?.memberName ?? source?.operationTitle ?? "";
   return (
     <div
       ref={cardRef}
-      className={`use-corner-card${fresh ? " is-fresh" : ""}${left <= LATE_SECONDS ? " is-late" : ""}`}
+      className={`use-corner-card${left <= LATE_SECONDS ? " is-late" : ""}`}
       role="group"
       aria-labelledby={titleId}
       tabIndex={-1}
       onKeyDown={onKeyDown}
     >
       <div className="use-corner-card-head">
-        <span className="use-corner-glyph is-tile" aria-hidden="true"><UseRequestGlyph capability={request.capability} /></span>
+        <UseRequestRing capability={request.capability} seconds={left} size="lg" />
         <span className="use-corner-titles">
           <span className="use-corner-title" id={titleId}>{t(isConsole ? "terminal.useRequest.consoleTitle" : "terminal.useRequest.computerTitle")}</span>
-          <span className="use-corner-source">
-            {source?.memberName
-              ? <><span className="use-corner-source-parent">{source.operationTitle} ›</span> <span className="use-corner-source-name">{source.memberName}</span></>
-              : <span className="use-corner-source-name">{source?.operationTitle ?? ""}</span>}
-          </span>
+          {/* 요청한 Operation 이름이 곧 그 패널로 가는 길이다 — 따로 「패널로 이동」 줄을 두지 않는다. */}
+          <button
+            type="button"
+            className="use-corner-source"
+            aria-label={t("terminal.useRequest.corner.goTo", { name: sourceName })}
+            title={t("terminal.useRequest.corner.goTo", { name: sourceName })}
+            onClick={() => focusOperation(request.operationId)}
+          >
+            {source?.memberName ? <span className="use-corner-source-parent">{source.operationTitle} ›</span> : null}
+            <span className="use-corner-source-name">{sourceName}</span>
+            <GoGlyph />
+          </button>
         </span>
         <span className="use-corner-time" aria-label={t("terminal.useRequest.corner.left", { time: formatUseRequestTime(left) })}>{formatUseRequestTime(left)}</span>
       </div>
-      <p className="use-corner-lead">
-        {blocked
-          ? t("terminal.useRequest.blocked")
-          : t(isConsole ? "terminal.useRequest.corner.consoleLead" : "terminal.useRequest.corner.computerLead")}
-        {!blocked && request.tools.length > 0 ? <> <span className="use-corner-tools">{request.tools.join(" · ")}</span></> : null}
-      </p>
+      {blocked ? <p className="use-corner-lead">{t("terminal.useRequest.blocked")}</p> : null}
+      {!blocked && request.tools.length > 0 ? (
+        <ul className="use-corner-tools" aria-label={t("terminal.useRequest.corner.tools")}>
+          {request.tools.map((tool) => <li key={tool}>{tool}</li>)}
+        </ul>
+      ) : null}
       {blocked ? (
         <div className="use-corner-actions">
-          <button type="button" className="agent-chat-ask-send is-quiet" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
+          <button type="button" className="use-corner-button is-plain" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
           <span className="use-request-gap" />
-          <button type="button" className="agent-chat-ask-send" onClick={openUseRequestSettings}>{t("terminal.useRequest.openSettings")}</button>
+          <button type="button" className="use-corner-button is-primary" onClick={openUseRequestSettings}>{t("terminal.useRequest.openSettings")}</button>
         </div>
       ) : (
-        <div className="use-corner-actions">
-          <button type="button" className="use-corner-deny" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
-          <span className="use-request-gap" />
-          <button type="button" className="agent-chat-ask-send is-quiet" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
-          <button type="button" className="agent-chat-ask-send" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
-        </div>
+        <>
+          <div className="use-corner-actions">
+            <button type="button" className="use-corner-button is-plain" disabled={pending} onClick={answer("deny")}>{t("terminal.useRequest.deny")}</button>
+            <span className="use-request-gap" />
+            <button type="button" className="use-corner-button is-quiet" disabled={pending} onClick={answer("always")}>{t("terminal.useRequest.always")}</button>
+            <button type="button" className="use-corner-button is-primary" disabled={pending} onClick={answer("turn")}>{t("terminal.useRequest.turn")}</button>
+          </div>
+          <p className="use-corner-fine">{t("terminal.useRequest.corner.fine")}</p>
+        </>
       )}
-      <div className="use-corner-foot">
-        <button type="button" className="use-corner-go" onClick={() => focusOperation(request.operationId)}>{t("terminal.useRequest.corner.goTo")}</button>
-        {blocked ? null : <span>{t("terminal.useRequest.corner.fine")}</span>}
-      </div>
       {failed ? <p className="use-request-error" role="alert">{t("terminal.useRequest.failed")}</p> : null}
-      <span className="use-corner-line" aria-hidden="true"><span style={{ width: `${Math.min(100, (left / HOLD_SECONDS) * 100)}%` }} /></span>
     </div>
+  );
+}
+
+/**
+ * 남은 시간 고리 — 글리프를 두른 원이 4분 시한만큼 줄어든다. 줄어드는 호가 곧 남은 시간이고, 1분 이하에서는
+ * 호가 aurora 로 짙어진다. 대기 점멸은 고리 바탕의 느린 숨으로 말한다.
+ */
+function UseRequestRing({ capability, seconds, size }: { readonly capability: OperationUseRequest["capability"]; readonly seconds: number; readonly size: "sm" | "lg" }) {
+  const remaining = Math.max(0, Math.min(100, (seconds / HOLD_SECONDS) * 100));
+  return (
+    <span className={`use-corner-ring is-${size}`} aria-hidden="true">
+      <svg viewBox="0 0 36 36">
+        <circle className="use-corner-ring-track" cx="18" cy="18" r="16.5" pathLength={100} />
+        <circle className="use-corner-ring-arc" cx="18" cy="18" r="16.5" pathLength={100} strokeDasharray={`${remaining} 100`} />
+      </svg>
+      <span className="use-corner-ring-glyph"><UseRequestGlyph capability={capability} /></span>
+    </span>
+  );
+}
+
+function FoldGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function GoGlyph() {
+  return (
+    <svg className="use-corner-source-go" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5.5 10.5 10.5 5.5M6.5 5.5h4v4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

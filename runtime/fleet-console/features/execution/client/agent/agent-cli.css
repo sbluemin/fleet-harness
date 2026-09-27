@@ -1871,8 +1871,9 @@
 
 /* ── Map 우하단 허용 요청 더미 ─────────────────────────────────────
    캔버스 우하단 계기 열(.canvas-corner-dock)의 MAP 위에 선다. War Room 덱(z80)이 아레나 전체를 덮고 포인터를
-   쥐므로 더미는 그보다 위(81)에 선다. 열과 더미의 빈 곳은 클릭을 통과시키고, 카드·줄·표시만 포인터를 쥔다.
-   색은 채널 규칙을 따른다: 대기는 aurora(테두리·글리프·시한 선·1분 이하 강조), 주 동작과 hover·focus 는 brass.
+   쥐므로 더미는 그보다 위(81)에 선다. 열과 더미의 빈 곳은 클릭을 통과시키고, 판·표시만 포인터를 쥔다.
+   바로 아래 MAP 과 한 벌의 계기로 읽히도록 같은 유리 면·반경·그림자·대문자 캡션을 쓴다.
+   색은 채널 규칙을 따른다: 대기는 aurora(테두리 기운·남은 시간 고리·1분 이하 강조), 주 동작과 hover·focus 는 brass.
    coral 은 위험·확정 채널이라 시한 강조에 쓰지 않는다. */
 .use-corner {
   position: relative;
@@ -1880,7 +1881,6 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
   width: 336px;
   max-width: calc(100vw - 2 * var(--space-4));
   pointer-events: none;
@@ -1890,55 +1890,107 @@
 .use-corner.is-folded { width: auto; align-items: flex-end; }
 .use-corner-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-.use-corner-head {
+/* 판 — 캡션 줄, (여럿이면) 나머지 요청 줄, 펼친 요청이 한 면에 쌓인다. */
+.use-corner-panel {
   pointer-events: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in oklch, var(--aurora) 26%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-floating);
+}
+.use-corner-panel.is-late { border-color: color-mix(in oklch, var(--aurora) 48%, var(--surface-rim)); }
+
+/* 캡션 — MAP 라벨과 같은 모노 대문자 트래킹. */
+.use-corner-head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 3px 6px 3px var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--surface-panel-raised) 92%, transparent);
+  min-height: 30px;
+  padding: 4px 4px 0 12px;
+}
+.use-corner-caption {
   color: var(--text-tertiary);
   font: var(--weight-bold) var(--t-2xs) var(--font-mono);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
-.use-corner-head > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.use-corner-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--aurora) 16%, transparent);
+  color: var(--aurora-ink);
+  font: var(--weight-bold) var(--t-2xs) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.use-corner-order {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.use-corner-count + .use-corner-fold,
+.use-corner-caption + .use-corner-fold { margin-left: auto; }
 .use-corner-fold {
+  display: grid;
+  place-items: center;
   flex: none;
-  padding: 2px 6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+.use-corner-fold svg { width: 14px; height: 14px; }
+.use-corner-fold:hover { background: var(--control-hover-fill); color: var(--brass-ink); }
+
+/* 나머지 요청 — 판 안의 한 줄씩. 누르면 그 요청이 아래에 펼쳐진다. */
+.use-corner-rows {
+  display: flex;
+  flex-direction: column;
+  margin: 6px 6px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+.use-corner-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 6px;
   border: 0;
   border-radius: var(--radius-xs);
   background: none;
   color: var(--text-secondary);
-  font: var(--weight-medium) var(--t-xs) var(--font-body);
-  letter-spacing: 0;
-  cursor: pointer;
-}
-.use-corner-fold:hover { color: var(--brass-ink); }
-
-.use-corner-row {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: 6px var(--space-3);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--surface-panel-raised) 94%, transparent);
-  box-shadow: var(--shadow-floating);
-  color: var(--text-secondary);
   font: var(--t-sm) var(--font-body);
   text-align: left;
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
 }
-.use-corner-row:hover { border-color: color-mix(in oklch, var(--brass) 50%, var(--hairline-strong)); color: var(--text-primary); }
+.use-corner-row:hover { background: var(--control-hover-fill); color: var(--text-primary); }
 .use-corner-row-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.use-corner-more { align-self: flex-end; padding: 0 var(--space-1); color: var(--text-tertiary); font-size: var(--t-xs); }
+.use-corner-row-source { margin-left: var(--space-2); color: var(--text-tertiary); }
+.use-corner-row.is-late { color: var(--text-primary); }
+.use-corner-more { padding: 4px 6px 0; color: var(--text-tertiary); font-size: var(--t-2xs); }
 
 .use-corner-glyph {
-  position: relative;
   display: inline-grid;
   place-items: center;
   flex: none;
@@ -1947,26 +1999,6 @@
   color: var(--aurora);
 }
 .use-corner-glyph svg { width: 14px; height: 14px; }
-.use-corner-glyph.is-tile {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-xs);
-  background: var(--aurora-glow);
-}
-.use-corner-glyph.is-tile svg { width: 16px; height: 16px; }
-/* 대기 점멸 — 질문 카드의 대기 점(agent-chat-ask-wait)과 같은 문법이다. */
-.use-corner-glyph.is-tile::after,
-.use-corner-chip .use-corner-glyph::after {
-  content: "";
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--aurora);
-  animation: agent-chat-ask-wait 2s ease-in-out infinite;
-}
 
 .use-corner-time {
   flex: none;
@@ -1975,122 +2007,195 @@
   font-variant-numeric: tabular-nums;
 }
 /* 1분 이하 — 대비를 올리고 aurora 로 말한다. */
-.use-corner-row.is-late { color: var(--text-primary); border-color: color-mix(in oklch, var(--aurora) 45%, var(--hairline-strong)); }
 .use-corner-row.is-late .use-corner-time,
 .use-corner-chip.is-late .use-corner-time,
 .use-corner-card.is-late .use-corner-time { color: var(--aurora-ink); font-weight: var(--weight-bold); }
 
-.use-corner-card {
-  pointer-events: auto;
+/* 남은 시간 고리 — 글리프를 두른 호가 4분 시한만큼 줄어든다. 바탕 원의 느린 숨이 대기 점멸이다. */
+.use-corner-ring {
   position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  color: var(--aurora);
+}
+.use-corner-ring.is-sm { width: 20px; height: 20px; }
+.use-corner-ring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+.use-corner-ring circle { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.use-corner-ring-track {
+  stroke: color-mix(in oklch, var(--aurora) 22%, transparent);
+  animation: use-corner-breathe 2.4s ease-in-out infinite;
+}
+.use-corner-ring-arc {
+  stroke: color-mix(in oklch, var(--aurora) 72%, transparent);
+  stroke-linecap: round;
+  transition: stroke-dasharray 1s linear;
+}
+.is-late .use-corner-ring-arc,
+.use-corner-chip.is-late .use-corner-ring-arc { stroke: var(--aurora); stroke-width: 2; }
+.use-corner-ring-glyph { display: grid; place-items: center; width: 16px; height: 16px; }
+.use-corner-ring-glyph svg { width: 16px; height: 16px; }
+.use-corner-ring.is-sm .use-corner-ring-glyph,
+.use-corner-ring.is-sm .use-corner-ring-glyph svg { width: 11px; height: 11px; }
+@keyframes use-corner-breathe {
+  0%, 100% { stroke: color-mix(in oklch, var(--aurora) 16%, transparent); }
+  50% { stroke: color-mix(in oklch, var(--aurora) 34%, transparent); }
+}
+
+/* 펼친 요청 — 판의 본문. 제목·출처(누르면 그 패널로)·시간, 요청한 도구, 답. */
+.use-corner-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-3) calc(var(--space-3) + 2px);
-  overflow: hidden;
+  gap: 10px;
+  padding: 10px 12px 12px;
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in oklch, var(--aurora) 42%, var(--hairline));
-  background: color-mix(in oklch, var(--aurora) 5%, var(--surface-panel-raised));
-  box-shadow: var(--shadow-floating);
+  outline: none;
 }
-.use-corner-card:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
-.use-corner-card-head { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
-.use-corner-titles { display: grid; gap: 1px; flex: 1; min-width: 0; }
-.use-corner-title { color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); }
-.use-corner-source { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--t-xs); }
-.use-corner-source-parent { color: var(--text-tertiary); }
-.use-corner-source-name { color: var(--text-primary); }
-.use-corner-card-head .use-corner-time { padding-top: 2px; font-size: var(--t-xs); }
-.use-corner-lead { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
-.use-corner-tools { color: var(--text-secondary); font: var(--t-xs) var(--font-mono); overflow-wrap: anywhere; }
-.use-corner-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.use-corner-actions .agent-chat-ask-send { padding: 6px var(--space-3); font-size: var(--t-sm); }
-.use-corner-deny {
-  padding: 6px var(--space-2);
-  border: 1px solid transparent;
+.use-corner-card:focus-visible { box-shadow: inset 0 0 0 2px var(--control-focus-ring); }
+.use-corner-card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.use-corner-titles { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; flex: 1; min-width: 0; }
+.use-corner-title { color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); line-height: 1.3; }
+.use-corner-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: -4px;
+  padding: 1px 4px;
+  border: 0;
   border-radius: var(--radius-xs);
   background: none;
   color: var(--text-secondary);
-  font: var(--weight-medium) var(--t-sm) var(--font-body);
+  font: var(--t-xs) var(--font-body);
+  white-space: nowrap;
   cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
-.use-corner-deny:hover:not(:disabled) { color: var(--text-primary); border-color: var(--hairline-strong); }
-.use-corner-deny:disabled { opacity: 0.45; cursor: default; }
-.use-corner-foot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); color: var(--text-tertiary); font-size: var(--t-xs); }
-.use-corner-foot > span { min-width: 0; text-align: right; }
-.use-corner-go {
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: none;
+.use-corner-source-parent { flex: none; color: var(--text-tertiary); }
+.use-corner-source-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.use-corner-source-go { flex: none; width: 12px; height: 12px; opacity: 0; transition: opacity var(--duration-fast) var(--ease-spring); }
+.use-corner-source:hover { background: var(--control-hover-fill); color: var(--brass-ink); }
+.use-corner-source:hover .use-corner-source-go,
+.use-corner-source:focus-visible .use-corner-source-go { opacity: 1; }
+.use-corner-card-head > .use-corner-time { align-self: flex-start; padding-top: 3px; font-size: var(--t-xs); }
+
+.use-corner-lead { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
+.use-corner-tools { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.use-corner-tools li {
+  padding: 2px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-spectral) 6%, transparent);
   color: var(--text-secondary);
-  font: var(--weight-medium) var(--t-xs) var(--font-body);
-  cursor: pointer;
+  font: var(--t-2xs) var(--font-mono);
+  overflow-wrap: anywhere;
 }
-.use-corner-go:hover { color: var(--brass-ink); }
-.use-corner-deny:focus-visible,
-.use-corner-go:focus-visible,
+
+/* 답 — 거절은 글자만, 계속 허용은 선만, 이번 작업만 허용은 brass 기운의 면으로 선다. */
+.use-corner-actions { display: flex; align-items: center; gap: 6px; }
+.use-corner-button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
+  font: var(--weight-medium) var(--t-sm) var(--font-body);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+.use-corner-button:disabled { opacity: 0.45; cursor: default; }
+.use-corner-button.is-plain { margin-left: -6px; padding: 0 8px; color: var(--text-tertiary); }
+.use-corner-button.is-plain:hover:not(:disabled) { color: var(--text-primary); background: var(--control-hover-fill); }
+.use-corner-button.is-quiet { border-color: var(--hairline-strong); color: var(--text-secondary); }
+.use-corner-button.is-quiet:hover:not(:disabled) { border-color: color-mix(in oklch, var(--brass) 55%, var(--hairline-strong)); color: var(--brass-ink); }
+.use-corner-button.is-primary {
+  border-color: color-mix(in oklch, var(--brass) 48%, transparent);
+  background: color-mix(in oklch, var(--brass) 18%, transparent);
+  color: var(--brass-ink);
+}
+.use-corner-button.is-primary:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--brass) 70%, transparent);
+  background: color-mix(in oklch, var(--brass) 28%, transparent);
+}
+.use-corner-fine { margin: -2px 0 0; color: var(--text-tertiary); font-size: var(--t-2xs); line-height: 1.5; text-wrap: pretty; }
+
+.use-corner-button:focus-visible,
+.use-corner-source:focus-visible,
 .use-corner-fold:focus-visible,
 .use-corner-row:focus-visible,
 .use-corner-chip:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
-/* 4분 시한 선 — 카드 아래 가장자리 전체. 줄어드는 길이가 남은 시간이다. */
-.use-corner-line { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: color-mix(in oklch, var(--aurora) 14%, transparent); }
-.use-corner-line > span { display: block; height: 100%; background: var(--aurora); transition: width 1s linear; }
 
-/* 접힌 더미 — 같은 자리의 대기 표시 하나. */
+/* 접힌 더미 — 같은 자리의 대기 표시 하나. MAP 과 같은 유리 면. */
 .use-corner-chip {
   pointer-events: auto;
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 28px;
-  padding: 0 var(--space-3) 0 var(--space-2);
-  border: 1px solid color-mix(in oklch, var(--aurora) 50%, var(--hairline-strong));
+  height: 32px;
+  padding: 0 12px 0 6px;
+  border: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--surface-rim));
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--aurora) 12%, var(--surface-panel-raised));
+  background: color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font: var(--weight-medium) var(--t-sm) var(--font-body);
   white-space: nowrap;
   cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-spring);
 }
-.use-corner-chip:hover { border-color: color-mix(in oklch, var(--brass) 55%, var(--hairline-strong)); }
-.use-corner-chip-count { color: var(--aurora-ink); font-family: var(--font-mono); }
+.use-corner-chip:hover { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim)); }
+.use-corner-chip.is-late { border-color: color-mix(in oklch, var(--aurora) 52%, var(--surface-rim)); }
 
-/* 도착 — 카드·줄은 아래에서 올라오며 aurora 고리가 한 번 퍼지고, 접힌 표시는 고리만 한 번 퍼진다(저절로 펴지지 않는다). */
-.use-corner-card.is-fresh,
-.use-corner-row.is-fresh { animation: use-corner-in 260ms var(--ease-spring) both; }
-.use-corner-card.is-fresh::before,
+/* 도착 — 판은 아래에서 떠오르며 aurora 고리가 한 번 퍼지고, 접힌 표시는 고리만 한 번 퍼진다(저절로 펴지지 않는다). */
+.use-corner-panel.is-fresh { animation: use-corner-in 280ms var(--ease-spring) both; }
+.use-corner-row.is-fresh { animation: use-corner-row-in 280ms var(--ease-spring) both; }
+.use-corner-panel.is-fresh::before,
 .use-corner-chip.is-fresh::before {
   content: "";
   position: absolute;
   inset: -1px;
   border-radius: inherit;
-  border: 2px solid var(--aurora);
+  border: 1.5px solid var(--aurora);
   pointer-events: none;
   animation: use-corner-ring 1.1s ease-out 1 forwards;
 }
-.use-corner-card.is-fresh::before { inset: 0; }
 @keyframes use-corner-in {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
   to { opacity: 1; transform: none; }
 }
+@keyframes use-corner-row-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 @keyframes use-corner-ring {
-  from { opacity: 0.9; transform: scale(1); }
-  to { opacity: 0; transform: scale(1.12, 1.4); }
+  from { opacity: 0.8; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.04, 1.08); }
 }
 .use-corner-chip.is-fresh::before { animation-name: use-corner-chip-ring; }
 @keyframes use-corner-chip-ring {
-  from { opacity: 0.9; transform: scale(1); }
-  to { opacity: 0; transform: scale(1.3, 2); }
+  from { opacity: 0.8; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.2, 1.6); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .use-corner-card.is-fresh,
+  .use-corner-panel.is-fresh,
   .use-corner-row.is-fresh,
-  .use-corner-card.is-fresh::before,
+  .use-corner-panel.is-fresh::before,
   .use-corner-chip.is-fresh::before,
-  .use-corner-glyph::after,
+  .use-corner-ring-track,
   .use-request-strip { animation: none; }
-  .use-corner-line > span { transition: none; }
+  .use-corner-ring-arc { transition: none; }
 }
