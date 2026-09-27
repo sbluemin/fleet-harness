@@ -18404,7 +18404,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .archive-sheet-item.is-confirming {
-  border-color: color-mix(in oklch, var(--coral) 50%, var(--surface-rim));
+  border-color: color-mix(in oklch, var(--coral) 45%, transparent);
 }
 
 .archive-sheet-item-title {

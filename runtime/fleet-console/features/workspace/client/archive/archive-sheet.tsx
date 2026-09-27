@@ -181,7 +181,7 @@ function ArchiveSheetDialog() {
                   onRestore={() => restore(cluster)}
                   onAskPurge={() => { setNotice(null); setConfirmingRoot(cluster.rootId); }}
                   onCancelPurge={() => setConfirmingRoot(null)}
-                  onPurged={() => { setConfirmingRoot(null); void refreshOperationArchive(); }}
+                  onPurged={() => { setConfirmingRoot(null); dialogRef.current?.focus(); void refreshOperationArchive(); }}
                 />
               </div>
             );
@@ -207,6 +207,14 @@ function ArchiveClusterItem({ cluster, now, restoring, confirming, currentRevisi
   const t = useT();
   const locale = useConsoleLocale();
   const state = useConsoleState();
+  // 확인 카드를 닫으면 포커스를 그 카드를 연 「영구 삭제…」로 돌린다 — 카드와 함께 포커스가 사라지면 Esc·Tab이
+  // 시트에 닿지 않는다.
+  const purgeRef = useRef<HTMLButtonElement>(null);
+  const wasConfirmingRef = useRef(confirming);
+  useLayoutEffect(() => {
+    if (wasConfirmingRef.current && !confirming) purgeRef.current?.focus();
+    wasConfirmingRef.current = confirming;
+  }, [confirming]);
   const activeRoot = cluster.root === null ? state.operations.find((operation) => operation.id === cluster.rootId) ?? null : null;
   const rootOperation = cluster.root?.operation ?? activeRoot;
   const rootOpen = cluster.root === null;
@@ -249,7 +257,7 @@ function ArchiveClusterItem({ cluster, now, restoring, confirming, currentRevisi
         <>
           <div className="archive-sheet-actions">
             <button type="button" className="archive-sheet-restore" onClick={onRestore} disabled={restoring}>{t("archive.restore")}</button>
-            <button type="button" className="archive-sheet-purge" onClick={onAskPurge}>{t("archive.purge")}</button>
+            <button ref={purgeRef} type="button" className="archive-sheet-purge" onClick={onAskPurge}>{t("archive.purge")}</button>
           </div>
           {groupLost ? <p className="archive-sheet-note">{t("archive.note.groupLost")}</p> : null}
           {rootOpen ? <p className="archive-sheet-note">{t("archive.note.underOpenParent")}</p> : kids > 0 ? <p className="archive-sheet-note">{t("archive.note.withChildren", { count: kids })}</p> : null}
