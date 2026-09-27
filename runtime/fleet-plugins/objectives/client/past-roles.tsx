@@ -71,11 +71,13 @@ function PastRoleRow({ role, t, touchable, merged, targets, onAdd, onCurate }: {
         <span className="objectives-past-role">{role.role}</span>
         {role.aliases.length ? <span className="objectives-past-aliases" title={role.aliases.join(", ")}>{t("objectives.pastRoles.aliases", { names: role.aliases.join(", ") })}</span> : null}
       </span>
+      {/* 사실 한 칸은 줄바꿈하지 않는다 — 좁은 폭에서는 칸과 칸 사이(· 앞)에서만 넘어간다. */}
       <span className="objectives-past-facts">
-        {t("objectives.pastRoles.facts", { objectives: role.objectives, done: role.missions.done, assigned: role.missions.assigned })}
-        {role.maxParallel > 1 ? ` · ${t("objectives.pastRoles.parallel", { count: role.maxParallel })}` : ""}
-        {role.well ? <span className="objectives-past-well"> · {t("objectives.pastRoles.well", { count: role.well })}</span> : null}
-        {role.short ? <span className="objectives-past-short"> · {t("objectives.pastRoles.short", { count: role.short })}</span> : null}
+        <span>{t("objectives.pastRoles.objectives", { count: role.objectives })}</span>
+        <span>{` · ${t("objectives.pastRoles.missions", { done: role.missions.done, assigned: role.missions.assigned })}`}</span>
+        {role.maxParallel > 1 ? <span>{` · ${t("objectives.pastRoles.parallel", { count: role.maxParallel })}`}</span> : null}
+        {role.well ? <span className="objectives-past-well">{` · ${t("objectives.pastRoles.well", { count: role.well })}`}</span> : null}
+        {role.short ? <span className="objectives-past-short">{` · ${t("objectives.pastRoles.short", { count: role.short })}`}</span> : null}
       </span>
       {touchable ? (
         <span className="objectives-past-actions">

@@ -674,6 +674,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-past-role { flex: none; font-size: var(--t-sm); font-weight: var(--weight-medium); color: var(--text-primary); white-space: nowrap; }
 .objectives-past-aliases { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-past-facts { grid-area: facts; min-width: 0; font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); color: var(--text-tertiary); }
+.objectives-past-facts > span { display: inline-block; white-space: pre; }
 .objectives-past-well { color: var(--positive); }
 .objectives-past-short { color: var(--coral); }
 .objectives-past-note { grid-area: note; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); line-height: 1.45; color: var(--text-secondary); }
