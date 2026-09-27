@@ -790,7 +790,7 @@ export interface FleetPluginOperationsHost {
   createChild?(input: { readonly parentOperationId: string; readonly childSessionId: string; readonly payload?: Record<string, unknown> }): OperationNode;
   patch(id: string, input: OperationPatchInput): OperationNode | null;
   delete(id: string): boolean;
-  /** 구성원 전용 삭제. 호스트가 바인딩한 호출 플러그인이 부모의 launchedBy와 일치해야 한다. */
+  /** 구성원 전용 삭제. 호스트가 바인딩한 호출 플러그인이 부모의 launchedBy와 일치해야 한다. 요청 플러그인 없이 부르는 것은 코어 실행 호스트의 롤백·정리뿐이다. */
   deleteChild?(id: string, requesterPluginId?: string): boolean;
   /** 같은 Theater·사이드바 그룹 안에서 순서를 바꾼다. unknown_operation, mixed_sections, unknown_anchor는 오류로 던진다. */
   reorder?(input: { readonly theaterId: string; readonly operationIds: readonly string[]; readonly position: FleetPluginSidebarPosition; readonly groupId: string | null }): { readonly operationIds: readonly string[]; readonly groupId: string | null; readonly members: readonly string[] };

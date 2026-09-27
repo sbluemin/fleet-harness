@@ -638,7 +638,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function deleteChildForPlugin(id: string, requesterPluginId?: string): boolean {
     const found = operations.getChild(id);
     if (!found) return false;
-    if (!requesterPluginId) throw new Error("child_delete_forbidden");
+    // 요청 플러그인이 없는 호출은 코어 실행 호스트의 롤백·정리뿐이다 — 플러그인 표면은 plugin-host 가 늘 호출 플러그인을 묶는다.
     const before = operations.list();
     operations.deleteChild(id, requesterPluginId);
     try { persistDurableState(); } catch (error) { operations.replace(before); throw error; }

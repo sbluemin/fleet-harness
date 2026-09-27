@@ -327,7 +327,9 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     try {
       const changes = new Map<string, ConsoleActivity>();
       const alive = new Set<string>();
-      for (const op of deps.operations()) {
+      // 자식 세션도 지켜본다 — nested 스캔이 돌려준 행의 변화가 waitMs 를 깨워야 한다.
+      const watched = deps.operations().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => deps.resolveOperation?.(child.id) ?? [])]);
+      for (const op of watched) {
         alive.add(op.id);
         const obs = observe(op.id);
         // 사이드바 순서·그룹 소속도 목록의 일부다 — 바뀌면 console_operations 의 waitMs 를 깨운다.

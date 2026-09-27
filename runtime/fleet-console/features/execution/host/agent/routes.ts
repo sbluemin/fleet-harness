@@ -183,6 +183,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const browserMcp = ctx.host.browserMcp?.connect();
   if (browserMcp) ctx.host.lifecycle.registerCleanup(() => browserMcp.dispose());
   const ownedTemps = createOwnedFileScopes({ dataDir: ctx.host.paths.consoleDataDir });
+  // 세션 레코드 삭제 — 자식 세션은 부모 레코드 안에서 지운다(롤백·정리). 최상위 Operation 은 평소 삭제 경로다.
+  const deleteSessionRecord = (id: string): boolean => ctx.host.operations.get(id)?.parentOperationId ? (ctx.host.operations.deleteChild?.(id) ?? false) : ctx.host.operations.delete(id);
   ctx.host.lifecycle.registerCleanup(() => ownedTemps.dispose());
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
     additionalMcpSessions: [consoleUse, ctx.host.admiralMcp.connect({ ownedTemp: (label) => {
@@ -1053,7 +1055,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         launchAttachments.unreserve(launchOptions.attachmentIds);
       }
       // 빈 채팅 패널을 남기지 않는다 — 첫 턴을 걸지 못한 Operation은 존재하지 않는 편이 낫다.
-      ctx.host.operations.delete(sessionId);
+      deleteSessionRecord(sessionId);
       workspaceContext.forget(sessionId);
       observability.removeTerminalSession(sessionId);
       reply(status, { error });
@@ -2445,7 +2447,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
     } else {
       try {
-        ctx.host.operations.delete(operationId);
+        deleteSessionRecord(operationId);
       } catch (error) {
         // 저장 실패로 삭제가 롤백된 Operation은 PTY 없이 남는다. 살아 있는 세션으로 보이지 않게 한다.
         if (ctx.host.operations.get(operationId)) {
@@ -2474,7 +2476,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     observability.removeTerminalSession(sessionId);
     // 첨부 파일의 수명은 Operation을 따른다 — dormant·재개를 지나도 남고, 삭제와 함께 거둔다.
     launchAttachments.releaseSession(sessionId);
-    ctx.host.operations.delete(sessionId);
+    deleteSessionRecord(sessionId);
   }
 
   async function cleanup(): Promise<void> {

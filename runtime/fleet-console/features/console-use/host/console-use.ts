@@ -533,10 +533,13 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       return { operationId: op.id, action: "sleep", lifecycle: result.lifecycle };
     }
     if (args.action === "close") {
-      if (me.kind === "operation" && me.operationId === op.id) throw new ConsoleControlError("cannot_close_self");
+      // 부모를 닫으면 그 자식도 함께 끝난다 — 자식 세션이 자기 부모를 닫는 것은 자기를 닫는 것과 같다.
+      if (me.kind === "operation" && (me.operationId === op.id || resolveOperation(me.operationId)?.parentOperationId === op.id)) throw new ConsoleControlError("cannot_close_self");
       // 자식 세션은 부모 레코드 안에 산다 — 유예 삭제·복원은 최상위 Operation 만 되살리므로 여기서 닫지 않는다. 소유 플러그인이 지운다.
       if (op.parentOperationId) throw new ConsoleControlError("child_session_not_closable");
-      const activity = control?.observe(op.id)?.activity;
+      // 일하는 자식이 있으면 부모도 바쁜 것으로 본다 — 목록 행과 같은 끌어올리기 규칙이다.
+      const own = control?.observe(op.id)?.activity;
+      const activity = own === undefined ? undefined : liftNestedActivity(own, (op.childSessions ?? []).map((child) => control?.observe(child.id)?.activity ?? "unknown"));
       if ((activity === "running" || activity === "awaiting" || activity === "background") && !sameCaller(launchedBy(op), me)) throw new ConsoleControlError("target_busy");
       const receipt = need("close")(op.id, me);
       if (!receipt) throw new ConsoleControlError("already_closing");
