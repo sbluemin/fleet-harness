@@ -831,7 +831,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onExit={() => removeSession(session.sessionId)}
       />
       <ComputerScreenShare operationId={context.operationId} />
-      <UseRequestCards operationId={context.operationId} language={context.language} placement="terminal" />
+      <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={context.language} placement="terminal" />
       {linkOpen.card}
     </div>
   );

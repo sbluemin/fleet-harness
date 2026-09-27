@@ -60,7 +60,6 @@ export interface StoredMember {
   /** 서브에이전트 허용. 없거나 false면 강제 차단이다. true만 저장한다. */
   readonly subagents?: true;
   readonly by: "human" | "commander";
-  readonly operationId?: string;
 }
 
 export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents"> {

@@ -26,14 +26,17 @@ const actionObjectSchema = z.object({
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
   disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(), ownedTemp: z.boolean().optional(),
   parentOperationId: z.string().min(1).max(128).optional(),
+  childSessionId: z.uuid().optional(),
   launchKey: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
   newOperationId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).optional(),
 }).strict();
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && !value.text)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.ownedTemp !== undefined || value.parentOperationId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.ownedTemp !== undefined || value.parentOperationId !== undefined || value.childSessionId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.newOperationId && !value.launchKey) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if ((value.parentOperationId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.childSessionId && (value.launchKey || value.newOperationId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "interrupt" && (value.text || value.display || value.displayFormat)) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
   if (value.kind === "resume" && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_resume" });
@@ -73,6 +76,7 @@ export interface ConsoleExecutionAdapter {
 export interface ConsoleControlDeps {
   readonly directory: string;
   readonly operations: () => readonly OperationNode[];
+  readonly resolveOperation?: (id: string) => OperationNode | null;
   readonly theaters: () => readonly { readonly id: string; readonly name: string }[];
   readonly pluginAvailable?: (pluginId: string) => boolean;
   /** 멱등 기동 키 원장 — 없으면 키 붙은 기동은 capability_unavailable. */
@@ -143,7 +147,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (events.length > 1000) events.splice(0, events.length - 1000);
     for (const wake of waiters) wake();
   }
-  function node(id: string) { return deps.operations().find((op) => op.id === id); }
+  function node(id: string) { return deps.resolveOperation?.(id) ?? deps.operations().find((op) => op.id === id); }
   function callerAvailable(caller: ConsoleCaller) { return caller.kind === "operation" ? !!node(caller.operationId) : deps.pluginAvailable?.(caller.pluginId) === true; }
   /**
    * 소유자가 아직 콘솔 사용을 허용받고 있는가. 존재(`callerAvailable`)와 다른 축이다 — 살아 있는
@@ -187,7 +191,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (found.state === "live") return Promise.resolve({ operationId: found.operationId! });
     if (found.state === "deleting" || found.state === "purged") fail("launch_key_deleted");
     if (found.state === "pending") return pendingKeyed(caller, input.launchKey!)!.result!;
-    if (input.newOperationId && deps.operations().some((operation) => operation.id === input.newOperationId)) fail("operation_id_taken");
+    if (input.newOperationId && node(input.newOperationId)) fail("operation_id_taken");
     try { ledger.reserve(owner, input.theaterId!, [input.launchKey!]); }
     catch (error) { if (error instanceof LaunchKeyError) fail(error.code); throw error; }
     return null;
@@ -226,7 +230,14 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
     const input = actionSchema.parse(raw);
     validTarget(input);
-    if ((input.newOperationId || input.ownedTemp !== undefined) && caller.kind !== "plugin") fail("invalid_launch_option");
+    if ((input.newOperationId || input.childSessionId || input.ownedTemp !== undefined) && caller.kind !== "plugin") fail("invalid_launch_option");
+    if (input.childSessionId) {
+      const pending = [...inflight.values()].find((entry) => entry.input.childSessionId === input.childSessionId);
+      if (pending) {
+        if (pending.input.parentOperationId !== input.parentOperationId || !sameCaller(pending.caller, caller)) fail("operation_id_taken");
+        return pending.result!;
+      }
+    }
     if (input.launchKey !== undefined) {
       const joined = keyedLaunch(caller, input);
       if (joined) return joined;
@@ -316,7 +327,9 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     try {
       const changes = new Map<string, ConsoleActivity>();
       const alive = new Set<string>();
-      for (const op of deps.operations()) {
+      // 자식 세션도 지켜본다 — nested 스캔이 돌려준 행의 변화가 waitMs 를 깨워야 한다.
+      const watched = deps.operations().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => deps.resolveOperation?.(child.id) ?? [])]);
+      for (const op of watched) {
         alive.add(op.id);
         const obs = observe(op.id);
         // 사이드바 순서·그룹 소속도 목록의 일부다 — 바뀌면 console_operations 의 waitMs 를 깨운다.

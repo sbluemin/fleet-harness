@@ -606,7 +606,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       publishPluginEvent(channel, payload);
       const event = payload as { readonly operationId?: unknown; readonly operation?: unknown };
       if (channel === OPERATION_DELETED_EVENT_CHANNEL && typeof event.operationId === "string") broadcastOperationRemoved(event.operationId);
-      else if (channel === OPERATION_RESTORED_EVENT_CHANNEL && event.operation && typeof event.operation === "object") broadcastOperationChanged(event.operation as OperationNode);
+      else if (channel === OPERATION_RESTORED_EVENT_CHANNEL && event.operation && typeof event.operation === "object") {
+        const operation = event.operation as OperationNode;
+        // 복원된 자식은 내부 수명 이벤트만 낸다. 화면은 부모의 childSessions에서 파생한다.
+        if (!operation.parentOperationId) broadcastOperationChanged(operation);
+      }
     },
     unregisterTheaterWorkspaces: (theaterId) => {
       publishTheaterLifecycle("forgotten", theaterId);
@@ -628,7 +632,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   // 플러그인 capability는 기존 boolean 표면을 유지하되 실제 삭제는 receipt coordinator가 소유한다.
   function deleteOperationForPlugin(operationId: string): boolean {
+    if (operations.getChild(operationId)) return false;
     return deletionCoordinator.deleteOperation(operationId) !== null;
+  }
+  function deleteChildForPlugin(id: string, requesterPluginId?: string): boolean {
+    const found = operations.getChild(id);
+    if (!found) return false;
+    // 요청 플러그인이 없는 호출은 코어 실행 호스트의 롤백·정리뿐이다 — 플러그인 표면은 plugin-host 가 늘 호출 플러그인을 묶는다.
+    const before = operations.list();
+    operations.deleteChild(id, requesterPluginId);
+    try { persistDurableState(); } catch (error) { operations.replace(before); throw error; }
+    publishPluginEvent(OPERATION_DELETED_EVENT_CHANNEL, { operationId: id, pluginId: null, type: "agent" });
+    publishPluginEvent("operation:purged", { operationId: id, pluginId: null, type: "agent" });
+    broadcastOperationChanged(operations.get(found.parent.id)!);
+    return true;
   }
   let desktopFullscreen = false;
   /**
@@ -662,7 +679,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleAgentOwners = new Set<string>();
-  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), launchKeys, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
+  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), launchKeys, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), resolveOperation: operations.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
   const computerUseDirectory = path.join(fleetDataDir, "computer-use");
   const computerUseInstaller = new CuaDriverInstaller(computerUseDirectory);
@@ -677,7 +694,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const computerUse = new ComputerUseService({
     onCaptureTarget: (target) => {
       const operationId = target ? computerUseMcp.operationIdForOwner(target.owner) : null;
-      if (!target || !operationId || !operations.list().some((operation) => operation.id === operationId)) { computerCaptureTarget = null; return; }
+      if (!target || !operationId || !operations.get(operationId)) { computerCaptureTarget = null; return; }
       if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
         && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.operationId === operationId) {
         computerCaptureTarget = { ...computerCaptureTarget, title: target.title };
@@ -700,6 +717,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     service: computerUse,
     requests: useRequests,
     operations: () => operations.list(),
+    resolveOperation: operations.get,
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
@@ -735,6 +753,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     service: browserService,
     screenshots: browserScreenshots,
     operations: () => operations.list(),
+    resolveOperation: operations.get,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
   const consoleUseActivity = new Map<string, number>();
@@ -748,16 +767,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   pluginSseChannels.add(OPERATION_CLOSING_EVENT_CHANNEL);
   const listOperationUse = () => {
     const experiments = readExperimentSettings(consoleSettingsStore);
-    const current = operations.list();
     const consoleOperations: string[] = [];
     for (const [id] of consoleUseActivity) {
-      if (!current.some((operation) => operation.id === id)) continue;
+      const operation = operations.get(id);
+      if (!operation) continue;
       // 「이번 작업만」 허가로 쓰는 중이어도 사용 중이다.
-      if (current.some((operation) => operation.id === id && ((operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true || useRequests.granted(id, "console")))) consoleOperations.push(id);
+      if ((operation.payload.consoleUse as { enabled?: boolean } | undefined)?.enabled === true || useRequests.granted(id, "console")) consoleOperations.push(id);
     }
     const owner = computerUse.activeOwner();
     const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
-    const browserOperations = browserService.status().operations.filter((id) => current.some((operation) => operation.id === id) && browserService.state(id).driving);
+    const browserOperations = browserService.status().operations.filter((id) => !!operations.get(id) && browserService.state(id).driving);
     return { console: consoleOperations, computer: computerOperation, browser: browserOperations };
   };
   /**
@@ -781,6 +800,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onFailure: recordFailure,
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
     operations: () => operations.list(),
+    resolveOperation: operations.get,
     // `auto`는 브라우저가 푸는 값이라 호스트는 못박은 경우에만 답한다.
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
@@ -810,16 +830,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         broadcastOperationChanged(operation);
         return operation;
       },
+      createChild: (input) => {
+        const existing = operations.getChild(input.childSessionId);
+        const before = existing ? null : operations.list();
+        const child = operations.createChild(input);
+        if (before) {
+          try { persistDurableState(); } catch (error) { operations.replace(before); throw error; }
+          broadcastOperationChanged(operations.get(input.parentOperationId)!);
+        }
+        return child;
+      },
       patch: (id, input) => {
-        const before = operations.get(id);
+        const parentId = operations.getChild(id)?.parent.id;
+        const before = operations.get(parentId ?? id);
         const operation = operations.patch(id, input);
         if (operation && before) {
           persistDurableState();
           // 브라우저가 볼 수 있는 투영이 실제로 달라졌을 때만 밀어낸다 — 민감 필드
           // (providerSession 등)만 바뀐 patch는 sanitized DTO가 같아 계속 침묵하고,
           // payload 모드 마커(예: chatMode)처럼 뷰 분기를 쥔 변화는 리로드 없이 도달한다.
-          if (sanitizedOperationJson(before) !== sanitizedOperationJson(operation)) {
-            broadcastOperationChanged(operation);
+          const changed = operations.get(parentId ?? id)!;
+          if (sanitizedOperationJson(before) !== sanitizedOperationJson(changed)) {
+            broadcastOperationChanged(changed);
           }
         } else if (operation) {
           persistDurableState();
@@ -827,6 +859,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return operation;
       },
       delete: deleteOperationForPlugin,
+      deleteChild: deleteChildForPlugin,
       reorder: (input) => consoleActions.reorder!(input),
       registerOperationType: (type) => {
         pluginOperationTypes.add(type);
@@ -1300,7 +1333,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     const using = listOperationUse();
     // 패널 안 허용 요청과 「이번 작업만」 허가 — 도구 이름·사유·시한만 싣는다(인자·내용·경로는 없다).
-    const live = new Set(operations.list().map((operation) => operation.id));
+    const live = new Set(operations.list().flatMap((operation) => [operation.id, ...(operation.childSessions ?? []).map((child) => child.id)]));
     const { requests, grants } = useRequests.list();
     writeJson(res, 200, {
       console: using.console,

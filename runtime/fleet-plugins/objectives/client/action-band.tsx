@@ -184,8 +184,8 @@ export function ActionBand(props: ActionBandProps) {
   const [compactResult, setCompactResult] = useState<CompactResult | null>(null);
   const compactTimers = useRef<{ arm?: ReturnType<typeof setTimeout>; done?: ReturnType<typeof setTimeout>; result?: ReturnType<typeof setTimeout> }>({});
   useEffect(() => () => { const timers = compactTimers.current; clearTimeout(timers.arm); clearTimeout(timers.done); clearTimeout(timers.result); }, []);
-  const compactSessions = new Set([objective.id, ...objective.members.flatMap((member) => (member.operationId ? [member.operationId] : []))]).size;
-  const compactExcluded = objective.members.filter((member) => !member.operationId).length;
+  const compactSessions = new Set([objective.id, ...objective.members.filter((member) => member.sessionName !== null).map((member) => member.id)]).size;
+  const compactExcluded = objective.members.filter((member) => member.sessionName === null).length;
   const compactLocked = compactSessions === 0;
   const disarm = () => {
     clearTimeout(compactTimers.current.arm);

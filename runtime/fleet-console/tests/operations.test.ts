@@ -26,14 +26,31 @@ afterEach(async () => {
 describe("operations platform", () => {
   it("creates, renames, and deletes OperationNodes", () => {
     const store = createOperationStore({ now: () => 10 });
-    const op = store.create({ id: "op", theaterId: "theater", type: "agent", pluginId: "terminal", title: "Agent" });
+    const op = store.create({ id: "op", theaterId: "theater", type: "agent", pluginId: "terminal", title: "Agent", payload: { launchedBy: { kind: "plugin", pluginId: "objectives" } } });
     const renamed = store.patch(op.id, { title: "Renamed" });
 
     expect(store.listByTheater("theater")).toHaveLength(1);
     expect(renamed?.title).toBe("Renamed");
+    expect(store.list()[0]).not.toHaveProperty("childSessions");
+
+    const childId = "22222222-2222-4222-8222-222222222222";
+    const child = store.createChild({ parentOperationId: op.id, childSessionId: childId, payload: { session: { sessionName: "objective-member-1" } } });
+    expect(child.title).toBe("objective-member-1");
+    expect(store.createChild({ parentOperationId: op.id, childSessionId: childId })).toEqual(child);
+    expect(store.list()).toHaveLength(1);
+    expect(store.list()[0]?.childSessions?.map((entry) => entry.id)).toEqual([childId]);
+    expect(store.list()[0]).not.toHaveProperty("parentOperationId");
+    expect(() => store.create(makeOperation({ id: childId }))).toThrow("operation_exists");
+    store.create(makeOperation({ id: "other" }));
+    expect(() => store.createChild({ parentOperationId: "other", childSessionId: childId })).toThrow("operation_exists");
+    expect(() => store.patch(childId, { title: "not allowed" })).toThrow("invalid_child_patch");
+    expect(() => store.deleteChild(childId, "other-plugin")).toThrow("child_delete_forbidden");
+    expect(store.get(childId)).not.toBeNull();
+    store.deleteChild(childId, "objectives");
+    expect(store.list()[0]).not.toHaveProperty("childSessions");
 
     store.delete(op.id);
-
+    store.delete("other");
     expect(store.list()).toEqual([]);
   });
 

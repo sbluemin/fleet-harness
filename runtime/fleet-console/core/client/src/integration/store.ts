@@ -1,6 +1,6 @@
 import { readStoredWhatsNewSeenVersion, evaluateAutomaticWhatsNew, remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists, writeStoredWhatsNewSeenVersion } from "../../../../features/updates/client/release-state.js";
 import { rememberSeen } from "../../../../features/onboarding/client/seen-store.js";
-import { normalizeOperationOwner, partitionListedOperations } from "@fleet-console/sdk/operations/browser";
+import { normalizeOperationOwner } from "@fleet-console/sdk/operations/browser";
 import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
@@ -60,6 +60,8 @@ const listeners = new Set<Listener>();
 // 플러그인의 관측값은 원천으로 보존한다. 공개 축만 부모가 대표하는 구성원의 살아 있는 활동을 반영한다.
 let rawOperationRuntime: Readonly<Record<string, OperationRuntimeState>> = {};
 let nestedMembersByParent: ReadonlyMap<string, readonly string[]> = new Map();
+// 호스트가 붙잡은 Console/Computer 허용 요청도 사람의 답을 기다리는 활동이다.
+let pendingUseRequestIds: ReadonlySet<string> = new Set();
 
 let notificationSeq = 0;
 
@@ -158,8 +160,8 @@ export function setState(patch: Partial<ConsoleState>): void {
 }
 
 /**
- * `operations` 를 싣는 쓰기는 언제나 **전체** 목록이다 — 여기서 한 번 갈라 목록 표면이 쓰는 기본 목록(`operations`)과
- * 부모가 대표하는 구성원(`nestedOperations`)으로 나눈다. 판정은 SDK `isListedOperation` 하나라 서버의 Console Use 스캔과 같다.
+ * `operations`는 최상위 부모 목록이다. 각 부모의 `childSessions`에서 구성원 표시 뷰(`nestedOperations`)를
+ * 매번 파생하며, 자식을 별도 평면 목록으로 저장하거나 방송하지 않는다.
  * 구성원 구성이 바뀌면 부모의 공개 활동(구성원의 대기·실행 끌어올리기)도 여기서 다시 센다.
  */
 function partitionOperationsPatch(patch: Partial<ConsoleState>): Partial<ConsoleState> {
@@ -168,12 +170,16 @@ function partitionOperationsPatch(patch: Partial<ConsoleState>): Partial<Console
     const { nestedOperations: _derived, ...rest } = patch;
     return rest;
   }
-  const { listed, nested } = partitionListedOperations(patch.operations);
+  const nested = patch.operations.flatMap((parent) => (parent.childSessions ?? []).map((child): OperationNode => ({
+    id: child.id, theaterId: parent.theaterId, type: "agent", pluginId: null,
+    title: child.id.slice(0, 8), payload: child.payload, geometry: null, ts: child.ts,
+    parentOperationId: parent.id,
+  })));
   const members = membersByParent(nested);
   const membersChanged = !sameMembersByParent(members, nestedMembersByParent);
   nestedMembersByParent = members;
   const derived = membersChanged && !("operationRuntime" in patch) ? deriveNestedRuntime(rawOperationRuntime, members, state.operationRuntime) : null;
-  return { ...patch, operations: listed, nestedOperations: nested, ...(derived && derived !== state.operationRuntime ? { operationRuntime: derived } : {}) };
+  return { ...patch, nestedOperations: nested, ...(derived && derived !== state.operationRuntime ? { operationRuntime: derived } : {}) };
 }
 
 function membersByParent(nested: readonly OperationNode[]): ReadonlyMap<string, readonly string[]> {
@@ -496,7 +502,7 @@ export function hydrateOperations(operations: readonly OperationNode[]): void {
 // 초기 요청 응답이 늦는 동안 launch 수화가 먼저 도착할 수 있다. 그 패널을 초기 응답이 덮어쓰지 않게 합친다.
 export function hydrateInitialOperations(operations: readonly OperationNode[]): void {
   const initialIds = new Set(operations.map((operation) => operation.id));
-  const launchedBeforeInitialHydration = allOperations().filter((operation) => !initialIds.has(operation.id));
+  const launchedBeforeInitialHydration = state.operations.filter((operation) => !initialIds.has(operation.id));
   setState({ operations: [...operations.map(normalizeOperationOwner), ...launchedBeforeInitialHydration], operationsHydrated: true });
   migrateLegacyOperationOrders(operations);
 }
@@ -548,7 +554,7 @@ export function setOperationOrder(theaterId: string, ids: readonly string[]): vo
   const positions = new Map(orderedIds.map((id, index) => [id, index]));
   const revision = (orderRevisions.get(theaterId) ?? 0) + 1;
   orderRevisions.set(theaterId, revision);
-  setState({ operations: allOperations().map((operation) => operation.theaterId !== theaterId ? operation : {
+  setState({ operations: state.operations.map((operation) => operation.theaterId !== theaterId ? operation : {
     ...operation,
     order: positions.get(operation.id),
   }) });
@@ -586,9 +592,8 @@ export function applyOperationUpdate(operation: OperationNode, confirmedOrder = 
     suppressedOrders.add(operation.theaterId);
     operation = { ...operation, order: findOperation(operation.id)?.order };
   }
-  const all = allOperations();
-  const index = all.findIndex((op) => op.id === operation.id);
-  const operations = [...all];
+  const index = state.operations.findIndex((op) => op.id === operation.id);
+  const operations = [...state.operations];
   // MCP·다른 창에서 생성한 Operation은 로컬 launch 응답이 없다. 같은 이벤트로 추가·갱신한다.
   if (index === -1) operations.push(normalizeOperationOwner(operation));
   else operations[index] = normalizeOperationOwner(operation);
@@ -600,9 +605,8 @@ export function applyOperationUpdate(operation: OperationNode, confirmedOrder = 
  * 활성 대상이었다면 비운다: 없는 패널을 겨눈 채 두면 캔버스가 사라진 카드를 기다린다.
  */
 export function applyOperationRemoved(operationId: string): void {
-  const all = allOperations();
-  if (!all.some((operation) => operation.id === operationId)) return;
-  const operations = all.filter((operation) => operation.id !== operationId);
+  if (!findOperation(operationId)) return;
+  const operations = state.operations.filter((operation) => operation.id !== operationId);
   const operationNotifications = removeNotificationForOperation(state.operationNotifications, operationId);
   const activeOperationId = state.activeOperationId === operationId ? null : state.activeOperationId;
   // 사라진 구성원을 보이던 부모 패널은 부모 자신으로 돌아온다. 부모가 사라지면 그 선택도 거둔다.
@@ -686,6 +690,13 @@ export function clearOperationRuntime(operationId: string): void {
   setState({ operationRuntime: deriveNestedRuntime(rawOperationRuntime, nestedMembersByParent, state.operationRuntime) });
 }
 
+export function setOperationUseRequestIds(ids: readonly string[]): void {
+  const next = new Set(ids);
+  if (next.size === pendingUseRequestIds.size && [...next].every((id) => pendingUseRequestIds.has(id))) return;
+  pendingUseRequestIds = next;
+  setState({ operationRuntime: deriveNestedRuntime(rawOperationRuntime, nestedMembersByParent, state.operationRuntime) });
+}
+
 /** 부모의 공개 활동 — 살아 있는 구성원이 기다리면 부모도 대기, 일하면 부모는 백그라운드다. 부모 자신의 실행이 먼저다. */
 function deriveNestedRuntime(
   raw: Readonly<Record<string, OperationRuntimeState>>,
@@ -693,10 +704,11 @@ function deriveNestedRuntime(
   previous: Readonly<Record<string, OperationRuntimeState>>,
 ): Readonly<Record<string, OperationRuntimeState>> {
   const result: Record<string, OperationRuntimeState> = { ...raw };
+  for (const id of pendingUseRequestIds) if (raw[id]?.lifecycle === "live") result[id] = { lifecycle: "live", activity: "awaiting" };
   for (const [rootId, memberIds] of membersByRoot) {
-    const root = raw[rootId];
+    const root = result[rootId];
     if (!root || root.lifecycle !== "live") continue;
-    const members = memberIds.map((id) => raw[id]).filter((value): value is Extract<OperationRuntimeState, { lifecycle: "live" }> => value?.lifecycle === "live");
+    const members = memberIds.map((id) => result[id]).filter((value): value is Extract<OperationRuntimeState, { lifecycle: "live" }> => value?.lifecycle === "live");
     const activity = liftNestedActivity(root.activity, members.map((member) => member.activity));
     if (activity !== root.activity) result[rootId] = { lifecycle: "live", activity };
   }

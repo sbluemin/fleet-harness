@@ -23,8 +23,8 @@ export function setUseRequestApi(api: PluginInstallContext["api"] | null): void 
   cardApi = api;
 }
 
-export function UseRequestCards({ operationId, language, placement }: { readonly operationId: string; readonly language: ConsoleLocale | undefined; readonly placement: "chat" | "terminal" }) {
-  const requests = useOperationUseRequests(operationId);
+export function UseRequestCards({ operationId, childSessionIds, language, placement }: { readonly operationId: string; readonly childSessionIds?: readonly string[]; readonly language: ConsoleLocale | undefined; readonly placement: "chat" | "terminal" }) {
+  const requests = useOperationUseRequests(operationId, childSessionIds);
   if (requests.length === 0) return null;
   return (
     <div className={`use-request-stack is-${placement}`} data-keep-operation-active>

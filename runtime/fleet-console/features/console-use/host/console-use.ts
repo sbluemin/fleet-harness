@@ -6,7 +6,7 @@ import type { UseHoldOutcome, UseRequestBroker } from "./use-requests.js";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore, type AgentToolSpec, type AgentToolCtx } from "@fleet-console/agent-runtime/tools";
 import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
-import { isListedOperation, type OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationNode } from "@fleet-console/sdk/operations";
 import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
 import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
 
@@ -61,6 +61,8 @@ export interface ConsoleUseDeps {
   readonly onFailure?: (kind: string, error: unknown) => void;
   readonly theaters?: () => readonly { readonly id: string; readonly name: string }[];
   readonly operations?: () => readonly OperationNode[];
+  /** ID로 대상을 찾을 때는 부모 목록에 없는 자식 세션도 해석한다. */
+  readonly resolveOperation?: (id: string) => OperationNode | null;
   /**
    * 패널 안 허용 요청. 주어지면 허용받지 않은 Operation 호출자의 호출은 거부되는 대신 붙잡혀 그 패널에
    * 허용/거절 카드를 띄우고, 「이번 작업만」 허가도 허용으로 친다. 없으면(테스트·플러그인 없는 구성) 곧바로 거부한다.
@@ -169,7 +171,7 @@ function denyConsoleUse(deps: ConsoleUseDeps, ctx: AgentToolCtx) {
   const label = ctx.sessionLabel ?? "";
   const id = label.startsWith("chat:") ? label.slice(5) : label;
   const fallback = deps.language?.() ?? "en";
-  const operation = deps.operations?.().find((op) => op.id === id);
+  const operation = deps.resolveOperation?.(id) ?? deps.operations?.().find((op) => op.id === id);
   if (!operation) return refuse("caller_unresolved", null, fallback);
   const flag = readConsoleUseFlag(operation.payload);
   const language = flag?.language ?? fallback;
@@ -198,6 +200,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
   if (!deps.theaters || !deps.operations) return [];
   const theaters = deps.theaters;
   const operations = deps.operations;
+  const resolveOperation = (id: string) => deps.resolveOperation?.(id) ?? operations().find((op) => op.id === id) ?? null;
   const control = deps.control;
   const caller = (ctx: AgentToolCtx): ConsoleCaller | null => {
     // 플러그인 소유자는 호스트가 바인딩한다. 모델 인자·브라우저 초점·토큰 라벨로 가장하지 않는다.
@@ -205,7 +208,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     if (pluginId) return { kind: "plugin", pluginId };
     const label = ctx.sessionLabel ?? "";
     const id = label.startsWith("chat:") ? label.slice(5) : label;
-    return operations().some((op) => op.id === id) ? { kind: "operation", operationId: id } : null;
+    return resolveOperation(id) ? { kind: "operation", operationId: id } : null;
   };
   const requireCaller = (ctx: AgentToolCtx) => {
     const id = caller(ctx);
@@ -224,16 +227,23 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     const names = new Map(theaters().map((theater) => [theater.id, theater.name]));
     // 사이드바가 그리는 순서와 같게 센다 — 그룹 순서대로 멤버(Operation 순서), 그 뒤 미그룹. 없는 그룹을 가리키면 미그룹이다.
     const groupRank = new Map((readActions().groups?.() ?? []).map((group, index) => [group.id, { theaterId: group.theaterId, index }]));
-    const all = operations();
-    const listIndex = new Map(all.map((op, index) => [op.id, index]));
+    const listedOperations = operations();
+    const all: OperationNode[] = [...listedOperations];
+    for (const parent of listedOperations) for (const child of parent.childSessions ?? []) {
+      const value = child.payload.session;
+      const sessionName = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).sessionName : undefined;
+      all.push({ id: child.id, theaterId: parent.theaterId, type: "agent", pluginId: null,
+        title: typeof sessionName === "string" && sessionName.length ? sessionName : child.id.slice(0, 8),
+        parentOperationId: parent.id, payload: child.payload, geometry: null, ts: child.ts });
+    }
+    const listIndex = new Map(listedOperations.map((op, index) => [op.id, index]));
     const section = (op: OperationNode) => {
       const groupId = (op as OperationNode & { readonly groupId?: string | null }).groupId;
       const rank = groupId ? groupRank.get(groupId) : undefined;
       return rank && rank.theaterId === op.theaterId ? rank.index : Number.MAX_SAFE_INTEGER;
     };
     // 구성원(부모가 대표하는 Operation)은 사이드바에 서지 않는다 — 자리 번호도 보이는 행끼리만 센다. 구성원 행은 부모의 자리를 진다.
-    const byId = new Map(all.map((op) => [op.id, op]));
-    const listed = (op: OperationNode) => isListedOperation(op, (id) => byId.get(id));
+    const listed = (op: OperationNode) => !op.parentOperationId;
     const sidebarOrders = new Map<string, number>();
     const theaterPositions = new Map<string, number>();
     for (const op of all.filter(listed).sort((a, b) => section(a) - section(b) || listIndex.get(a.id)! - listIndex.get(b.id)!)) {
@@ -293,7 +303,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     if (!fn) throw new ConsoleControlError("capability_unavailable");
     return fn as NonNullable<ConsoleUseActions[K]>;
   };
-  const node = (id: string) => { const op = operations().find((r) => r.id === id); if (!op) throw new ConsoleControlError("unknown_operation"); return op; };
+  const node = (id: string) => { const op = resolveOperation(id); if (!op) throw new ConsoleControlError("unknown_operation"); return op; };
   const launchedBy = (op: OperationNode): ConsoleCaller | null => {
     const raw = op.payload.launchedBy;
     if (!raw || typeof raw !== "object") return null;
@@ -320,7 +330,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       gesture(ctx, "console_context", "Console 사용 시작", "wait");
       return {
         schemaVersion: 2,
-        caller: callerId?.kind === "operation" ? { ...callerId, theaterId: operations().find((op) => op.id === callerId.operationId)!.theaterId } : callerId,
+        caller: callerId?.kind === "operation" ? { ...callerId, theaterId: node(callerId.operationId).theaterId } : callerId,
         theaters: theaters(),
         using: readActions().using?.() ?? { console: [], computer: null, browser: [] },
         focus: "unavailable",
@@ -361,7 +371,8 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       // 쓰기는 전부 검증이 끝난 뒤에 — 그룹을 지운 다음 Operation 쪽 인자가 틀렸다고 답하면 되돌릴 수 없는 쓰기가 실패 응답 뒤에 남는다.
       if (!args.operationIds && !args.groupPatch) throw new ConsoleControlError("invalid_arguments");
       if (args.operationIds && args.title !== undefined && args.operationIds.length !== 1) throw new ConsoleControlError("invalid_arguments");
-      const nodesAhead = args.operationIds?.map(node) ?? [];
+      // 사이드바 정리는 부모 목록의 행만 다룬다. 자식 세션은 부모 안에서만 표시된다.
+      const nodesAhead = args.operationIds?.map((id) => { const op = operations().find((entry) => entry.id === id); if (!op) throw new ConsoleControlError("unknown_operation"); return op; }) ?? [];
       if (nodesAhead.length && nodesAhead.some((op) => op.theaterId !== nodesAhead[0]!.theaterId)) throw new ConsoleControlError("mixed_theaters");
       if (args.operationIds && args.title === undefined && args.accent === undefined && args.group === undefined && args.position === undefined) throw new ConsoleControlError("invalid_arguments");
       if (!args.operationIds && (args.title !== undefined || args.accent !== undefined || args.group !== undefined || args.position !== undefined)) throw new ConsoleControlError("invalid_arguments");
@@ -522,8 +533,13 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       return { operationId: op.id, action: "sleep", lifecycle: result.lifecycle };
     }
     if (args.action === "close") {
-      if (me.kind === "operation" && me.operationId === op.id) throw new ConsoleControlError("cannot_close_self");
-      const activity = control?.observe(op.id)?.activity;
+      // 부모를 닫으면 그 자식도 함께 끝난다 — 자식 세션이 자기 부모를 닫는 것은 자기를 닫는 것과 같다.
+      if (me.kind === "operation" && (me.operationId === op.id || resolveOperation(me.operationId)?.parentOperationId === op.id)) throw new ConsoleControlError("cannot_close_self");
+      // 자식 세션은 부모 레코드 안에 산다 — 유예 삭제·복원은 최상위 Operation 만 되살리므로 여기서 닫지 않는다. 소유 플러그인이 지운다.
+      if (op.parentOperationId) throw new ConsoleControlError("child_session_not_closable");
+      // 일하는 자식이 있으면 부모도 바쁜 것으로 본다 — 목록 행과 같은 끌어올리기 규칙이다.
+      const own = control?.observe(op.id)?.activity;
+      const activity = own === undefined ? undefined : liftNestedActivity(own, (op.childSessions ?? []).map((child) => control?.observe(child.id)?.activity ?? "unknown"));
       if ((activity === "running" || activity === "awaiting" || activity === "background") && !sameCaller(launchedBy(op), me)) throw new ConsoleControlError("target_busy");
       const receipt = need("close")(op.id, me);
       if (!receipt) throw new ConsoleControlError("already_closing");

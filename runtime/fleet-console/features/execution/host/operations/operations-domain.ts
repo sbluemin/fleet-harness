@@ -3,6 +3,7 @@ import type {
   OperationGroupedEvent,
   OperationNode as SdkOperationNode,
   OperationPatchInput as SdkOperationPatchInput,
+  ChildSession,
 } from "@fleet-console/sdk/operations";
 
 export type { OperationGeometry, OperationTimestamps } from "@fleet-console/sdk/operations";
@@ -52,6 +53,10 @@ export interface OperationStore {
   list(): readonly OperationNode[];
   listByTheater(theaterId: string): readonly OperationNode[];
   get(id: string): OperationNode | null;
+  getChild(id: string): { readonly parent: OperationNode; readonly child: ChildSession } | null;
+  listChildren(parentId: string): readonly ChildSession[];
+  createChild(input: { readonly parentOperationId: string; readonly childSessionId: string; readonly payload?: Record<string, unknown> }): OperationNode;
+  deleteChild(id: string, requesterPluginId?: string): boolean;
   create(input: OperationCreateInput): OperationNode;
   upsert(input: OperationCreateInput): OperationNode;
   patch(id: string, input: OperationPatchInput): OperationNode | null;
@@ -104,6 +109,7 @@ export function createSanitizedOpDto(node: OperationNode, options: OperationSani
   if (isResumableSession(node.payload?.session)) payload.resumeAvailable = true;
   return {
     ...node,
+    ...(node.childSessions ? { childSessions: node.childSessions.map((child) => ({ ...child, payload: sanitizeChildPayload(child.payload, sensitiveFields) })) } : {}),
     // 구 버전의 열린 탭도 읽을 수 있는 wire 신원. 영속 상태의 core 소유권은 바꾸지 않는다.
     pluginId: node.pluginId === null && node.type === "agent" ? "terminal" : node.pluginId,
     payload,
@@ -112,6 +118,21 @@ export function createSanitizedOpDto(node: OperationNode, options: OperationSani
 
 // resume 라우트가 현재 지원하는 provider/sessionId 최소형과 동일하게 판정한다.
 // 제거된 provider의 durable payload는 보존하되, 실행 불가능한 Resume 표면은 노출하지 않는다.
+function sanitizeChildPayload(input: Record<string, unknown>, sensitiveFields: ReadonlySet<string>): Record<string, unknown> {
+  const payload = sanitizeRecord(input, new Set([...sensitiveFields, "providerTitle", "launchKey"]));
+  if (isRecord(payload.session)) {
+    const session = payload.session;
+    payload.session = {
+      ...(session.harness === "claude-code" ? { harness: "claude-code" } : {}),
+      ...(typeof session.model === "string" ? { model: session.model } : {}),
+      ...(typeof session.effort === "string" ? { effort: session.effort } : {}),
+    };
+  }
+  delete payload.resumeAvailable;
+  if (isResumableSession(input.session)) payload.resumeAvailable = true;
+  return payload;
+}
+
 function isResumableSession(value: unknown): boolean {
   if (!isRecord(value)) return false;
   return value.harness === "claude-code" && typeof value.id === "string" && value.id.length > 0;
@@ -165,24 +186,69 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
     return list().filter((node) => node.theaterId === theaterId);
   }
 
-  function get(id: string): OperationNode | null {
-    return nodes.get(id) ?? null;
+  function getChild(id: string): { readonly parent: OperationNode; readonly child: ChildSession } | null {
+    for (const parent of nodes.values()) {
+      const child = parent.childSessions?.find((candidate) => candidate.id === id);
+      if (child) return { parent, child };
+    }
+    return null;
   }
 
-  /**
-   * 부모는 한 층뿐이다 — 같은 Theater 의, 자기 부모가 없는 Operation 이어야 하고, 구성원을 거느린 Operation 은 구성원이 될 수 없다.
-   * 목록 판정(`isListedOperation`)이 한 층만 보므로 사슬을 만들면 판정 밖에 숨는 Operation 이 생긴다.
-   */
-  function assertParent(child: { readonly id: string; readonly theaterId: string }, parentId: string): void {
-    const parent = nodes.get(parentId);
-    if (!parent || parent.id === child.id || parent.theaterId !== child.theaterId || parent.parentOperationId) throw new Error("invalid_parent_operation");
-    for (const node of nodes.values()) if (node.parentOperationId === child.id) throw new Error("invalid_parent_operation");
+  function listChildren(parentId: string): readonly ChildSession[] {
+    return nodes.get(parentId)?.childSessions ?? [];
+  }
+
+  /** 실행 라우트용 읽기 뷰이며 nodes 맵이나 영속 snapshot에는 넣지 않는다. */
+  function projectChild(parent: OperationNode, child: ChildSession): OperationNode {
+    const session = child.payload.session;
+    const name = session && typeof session === "object" && !Array.isArray(session) ? (session as Record<string, unknown>).sessionName : undefined;
+    return {
+      id: child.id, theaterId: parent.theaterId, type: "agent", pluginId: null,
+      title: typeof name === "string" && name.length > 0 ? name : child.id.slice(0, 8),
+      parentOperationId: parent.id, payload: child.payload, geometry: null, ts: child.ts,
+    };
+  }
+
+  function get(id: string): OperationNode | null {
+    const parent = nodes.get(id);
+    if (parent) return parent;
+    const found = getChild(id);
+    return found ? projectChild(found.parent, found.child) : null;
+  }
+
+  function createChild(input: { readonly parentOperationId: string; readonly childSessionId: string; readonly payload?: Record<string, unknown> }): OperationNode {
+    const parent = nodes.get(input.parentOperationId);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.childSessionId)) throw new Error("invalid_child_session_id");
+    if (!parent || parent.id === input.childSessionId || getChild(parent.id)) throw new Error("invalid_parent_operation");
+    const existing = getChild(input.childSessionId);
+    if (existing) {
+      if (existing.parent.id !== parent.id) throw new Error("operation_exists");
+      return projectChild(existing.parent, existing.child);
+    }
+    if (nodes.has(input.childSessionId)) throw new Error("operation_exists");
+    const at = now();
+    const child: ChildSession = { id: input.childSessionId, payload: input.payload ?? {}, ts: { createdAt: at, updatedAt: at } };
+    nodes.set(parent.id, { ...parent, childSessions: [...(parent.childSessions ?? []), child], ts: { ...parent.ts, updatedAt: at } });
+    return projectChild(nodes.get(parent.id)!, child);
+  }
+
+  function deleteChild(id: string, requesterPluginId?: string): boolean {
+    const found = getChild(id);
+    if (!found) return false;
+    if (requesterPluginId) {
+      const by = found.parent.payload.launchedBy;
+      if (!by || typeof by !== "object" || (by as { kind?: string; pluginId?: string }).kind !== "plugin" || (by as { pluginId?: string }).pluginId !== requesterPluginId) throw new Error("child_delete_forbidden");
+    }
+    const at = now();
+    const { childSessions: _removed, ...rest } = found.parent;
+    const remaining = found.parent.childSessions!.filter((child) => child.id !== id);
+    nodes.set(found.parent.id, { ...rest, ...(remaining.length ? { childSessions: remaining } : {}), ts: { ...found.parent.ts, updatedAt: at } });
+    return true;
   }
 
   function create(input: OperationCreateInput): OperationNode {
     const id = input.id ?? crypto.randomUUID();
-    if (nodes.has(id)) throw new Error("operation_exists");
-    if (input.parentOperationId) assertParent({ id, theaterId: input.theaterId }, input.parentOperationId);
+    if (nodes.has(id) || getChild(id)) throw new Error("operation_exists");
     const node = normalizeCreateInput(input, id, now());
     nodes.set(node.id, node);
     return node;
@@ -204,8 +270,15 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
 
   function patch(id: string, input: OperationPatchInput): OperationNode | null {
     const existing = nodes.get(id);
-    if (!existing) return null;
-    if (input.parentOperationId) assertParent(existing, input.parentOperationId);
+    if (!existing) {
+      const found = getChild(id);
+      if (!found) return null;
+      if (Object.keys(input).some((key) => key !== "payload")) throw new Error("invalid_child_patch");
+      const at = now();
+      const child = { ...found.child, ...(input.payload !== undefined ? { payload: input.payload } : {}), ts: { ...found.child.ts, updatedAt: at } };
+      nodes.set(found.parent.id, { ...found.parent, childSessions: found.parent.childSessions!.map((candidate) => candidate.id === id ? child : candidate), ts: { ...found.parent.ts, updatedAt: at } });
+      return projectChild(nodes.get(found.parent.id)!, child);
+    }
     const updated = normalizePatch(existing, input, now());
     nodes.set(id, updated);
     grouped(existing, updated);
@@ -232,6 +305,7 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
   }
 
   function deleteNode(id: string): boolean {
+    if (getChild(id)) return deleteChild(id);
     if (!nodes.has(id)) return false;
     nodes.delete(id);
     return true;
@@ -251,7 +325,16 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
   function replace(nextNodes: readonly OperationNode[]): void {
     nodes.clear();
     const validNodes = sanitizeReplacementNodes(nextNodes);
-    for (const node of validNodes) nodes.set(node.id, node);
+    const used = new Set(validNodes.map((node) => node.id));
+    for (const node of validNodes) {
+      const childSessions = (node.childSessions ?? []).filter((child) => {
+        if (used.has(child.id)) return false;
+        used.add(child.id);
+        return true;
+      });
+      const { childSessions: _unverified, ...rest } = node;
+      nodes.set(node.id, { ...rest, ...(childSessions.length ? { childSessions } : {}) });
+    }
   }
 
   function createGroup(input: OperationGroupCreateInput): OperationGroup {
@@ -324,7 +407,7 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
     }
   }
 
-  return { list, listByTheater, get, create, upsert, patch, reorder, delete: deleteNode, deleteByTheater, replace, createGroup, updateGroup, deleteGroup, listGroups, listAllGroups, deleteGroupsByTheater, replaceGroups };
+  return { list, listByTheater, get, getChild, listChildren, createChild, deleteChild, create, upsert, patch, reorder, delete: deleteNode, deleteByTheater, replace, createGroup, updateGroup, deleteGroup, listGroups, listAllGroups, deleteGroupsByTheater, replaceGroups };
 }
 
 function normalizeCreateInput(input: OperationCreateInput, id: string, timestamp: number): OperationNode {
@@ -337,7 +420,6 @@ function normalizeCreateInput(input: OperationCreateInput, id: string, timestamp
     ...(input.accent ? { accent: input.accent.trim() } : {}),
     ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
     ...(input.order !== undefined ? { order: input.order } : {}),
-    ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}),
     payload: input.payload ?? {},
     geometry: input.geometry ?? null,
     ts: {
@@ -349,13 +431,8 @@ function normalizeCreateInput(input: OperationCreateInput, id: string, timestamp
 
 function normalizePatch(existing: OperationNode, input: OperationPatchInput, timestamp: number): OperationNode {
   const title = input.title?.trim();
-  if (input.parentOperationId === null && existing.parentOperationId) {
-    const { parentOperationId: _released, ...rest } = existing;
-    return normalizePatch(rest, { ...input, parentOperationId: undefined }, timestamp);
-  }
   return {
     ...existing,
-    ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}),
     ...(title !== undefined ? { title: title.length > 0 ? title : existing.title } : {}),
     ...(input.accent !== undefined ? { accent: input.accent && input.accent.trim() ? input.accent.trim() : undefined } : {}),
     ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
@@ -576,6 +653,10 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     return;
   }
   if (req.method === "DELETE") {
+    if (deps.store.getChild(id)) {
+      deps.writeJson(res, 403, { error: "child_delete_requires_plugin" });
+      return;
+    }
     const deletion = deps.deleteOperation(id);
     deps.writeJson(res, 200, { ok: true, deletion });
     return;
@@ -583,6 +664,10 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
   const body = await deps.readJsonBody<PatchOperationBody>(req);
   if (!body) {
     deps.writeJson(res, 400, { error: "invalid_operation_patch" });
+    return;
+  }
+  if (deps.store.getChild(id) && Object.keys(body).some((key) => key !== "payload")) {
+    deps.writeJson(res, 400, { error: "invalid_child_patch" });
     return;
   }
   // accent/groupId는 문자열(설정)·null(해제)·생략(무변경)만 허용한다. geometry의 null-clear 계약과 동일하다.
@@ -620,7 +705,7 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
         previousTitle: previousNode.title,
       });
     }
-    deps.broadcastOperationChanged?.(deps.store.get(id) ?? node);
+    deps.broadcastOperationChanged?.(deps.store.get(deps.store.getChild(id)?.parent.id ?? id) ?? node);
     deps.writeJson(res, 200, { operation: sanitizeOperationNode(node, deps) });
   } catch (error) {
     deps.writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_operation_patch" });

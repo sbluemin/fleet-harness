@@ -401,7 +401,7 @@ describe("console static and terminal ticket boundary", () => {
           operationId: "commander-1",
           rank: 0,
           note: "",
-          members: [{ id: "member-1", role: "Bravo", by: "human", operationId: "bravo", subagents: true }],
+          members: [{ id: "member-1", role: "Bravo", by: "human", subagents: true }],
           missions: [],
         })}\n`);
         fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
@@ -422,21 +422,16 @@ describe("console static and terminal ticket boundary", () => {
               pluginId: null,
               type: "agent",
               payload: { cwd: dir, session: { harness: "claude-code", sessionName: "objective-cmdr" } },
+              childSessions: [{
+                id: "member-1",
+                payload: {
+                  cwd: dir,
+                  subagentSpawn: "default",
+                  session: { harness: "claude-code", sessionName: "objective-member-1", disableSubagents: true },
+                },
+                ts: { createdAt: 1_001, updatedAt: 1_001 },
+              }],
               ts: { createdAt: 1_000, updatedAt: 1_000 },
-            },
-            {
-              id: "bravo",
-              theaterId,
-              title: "Objective › Bravo",
-              pluginId: null,
-              type: "agent",
-              parentOperationId: "commander-1",
-              payload: {
-                cwd: dir,
-                subagentSpawn: "default",
-                session: { harness: "claude-code", sessionName: "objective-member-1", disableSubagents: true },
-              },
-              ts: { createdAt: 1_001, updatedAt: 1_001 },
             },
           ],
         }));
@@ -450,9 +445,11 @@ describe("console static and terminal ticket boundary", () => {
     });
     expect(response.status).toBe(200);
     const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as {
-      readonly operations: ReadonlyArray<{ readonly id?: string; readonly payload?: { readonly subagentSpawn?: string } }>;
+      readonly operations: ReadonlyArray<{ readonly id?: string; readonly parentOperationId?: string; readonly childSessions?: ReadonlyArray<{ readonly id: string; readonly payload: { readonly subagentSpawn?: string } }> }>;
     };
-    expect(state.operations.find((operation) => operation.id === "bravo")?.payload?.subagentSpawn).toBe("blocked");
+    expect(state.operations).toHaveLength(1);
+    expect(state.operations[0]).not.toHaveProperty("parentOperationId");
+    expect(state.operations[0]?.childSessions?.find((child) => child.id === "member-1")?.payload.subagentSpawn).toBe("blocked");
   });
 
   it("applies Claude trust only on consent while preserving global settings and rejecting invalid JSON", async () => {
