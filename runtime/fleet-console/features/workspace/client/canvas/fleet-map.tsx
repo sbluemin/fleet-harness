@@ -151,7 +151,9 @@ export function FleetMap({
     }, DETAIL_HOVER_DELAY_MS);
   };
   const disarmDetail = (operationId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (suppressedDetailRef.current === operationId) suppressedDetailRef.current = null;
+    // 메뉴가 떠 있는 동안의 이탈은 메뉴의 막이 점을 덮어 생긴 것이지 사람이 떠난 것이 아니다. 여기서 억제를
+    // 풀면 메뉴가 닫히며 초점을 돌려줄 때 카드가 저절로 다시 뜬다. 메뉴가 걷힌 뒤 실제로 떠날 때 푼다.
+    if (suppressedDetailRef.current === operationId && !menuOpen()) suppressedDetailRef.current = null;
     cancelDetailTimer();
     // 키보드로 연 카드는 초점이 그 점에 남아 있는 한 포인터가 떠나도 남는다 — 읽던 사람은 아직 그 점에 있다.
     if (detail?.operationId !== operationId) return;
@@ -371,6 +373,11 @@ export function FleetMap({
       ) : null}
     </div>
   );
+}
+
+/** 문서에 메뉴가 떠 있는가 — 공용 Operation 메뉴는 화면 전체를 덮는 막과 함께 body에 선다. */
+function menuOpen(): boolean {
+  return document.querySelector('[role="menu"]') !== null;
 }
 
 /** 반 픽셀 넘게 옮겨졌는가 — 같은 자리를 다시 잰 값의 부동소수 흔들림은 이동으로 치지 않는다. */
