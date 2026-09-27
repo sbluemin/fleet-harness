@@ -112,8 +112,11 @@ export function curate(curation: RoleCuration, input: RoleCurateInput): RoleCura
   else if (input.kind === "show") hidden.delete(input.role);
   else if (input.kind === "unmerge") delete merged[input.role];
   else {
-    if (input.role === input.into || resolveRole(curation, input.into) === input.role) return null;
+    if (input.role === input.into) return null;
+    // 이 이름이 이미 다른 곳에 합쳐져 있으면 그 연결을 갈아 끼운 뒤의 그래프로 따진다 — 고리가 없으면 두 이름이 같은 끝에 닿는다.
     merged[input.role] = input.into;
+    const next = { hidden: [], merged };
+    if (resolveRole(next, input.role) !== resolveRole(next, input.into)) return null;
     // 합친 이름은 합쳐진 쪽의 숨김을 따른다 — 제 숨김 표시는 거둔다.
     hidden.delete(input.role);
   }
