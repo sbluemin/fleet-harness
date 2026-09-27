@@ -65,7 +65,6 @@ export interface SystemPromptSettingsState {
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
   /** 사용자 지침 본문. 와이어에 없으면 빈 문자열. */
   readonly claudeCodeCustomSystemPrompt: string;
-  readonly claudeCodeSkipPermissions: boolean;
   /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
   readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewaySettings | null;
@@ -83,7 +82,6 @@ export type SystemPromptSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
   | { readonly claudeCodeCustomSystemPrompt: string }
-  | { readonly claudeCodeSkipPermissions: boolean }
   | { readonly claudeCodeDisabledAgents: readonly string[] }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly wireLogEnabled: boolean }
@@ -143,7 +141,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
     || !isClaudeCodeSystemPromptMode(payload.claudeCodeSystemPrompt)
     || (payload.claudeCodeCustomSystemPrompt !== undefined && typeof payload.claudeCodeCustomSystemPrompt !== "string")
-    || typeof payload.claudeCodeSkipPermissions !== "boolean"
     || !isStringList(payload.claudeCodeDisabledAgents)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.wireLogEnabled !== "boolean"
@@ -158,7 +155,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
     claudeCodeSystemPrompt: payload.claudeCodeSystemPrompt,
     claudeCodeCustomSystemPrompt: payload.claudeCodeCustomSystemPrompt ?? "",
-    claudeCodeSkipPermissions: payload.claudeCodeSkipPermissions,
     claudeCodeDisabledAgents: payload.claudeCodeDisabledAgents,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
@@ -209,7 +205,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeCustomSystemPrompt" | "claudeCodeSkipPermissions" | "claudeCodeDisabledAgents" | "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "claudeCodeCustomSystemPrompt" | "claudeCodeDisabledAgents" | "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -328,9 +324,6 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   }
   if (field === "claudeCodeDisabledAgents") {
     return { claudeCodeDisabledAgents: state.claudeCodeDisabledAgents };
-  }
-  if (field === "claudeCodeSkipPermissions") {
-    return { claudeCodeSkipPermissions: state.claudeCodeSkipPermissions };
   }
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
   if (field === "wireLogEnabled") {

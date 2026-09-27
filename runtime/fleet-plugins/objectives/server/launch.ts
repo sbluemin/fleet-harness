@@ -345,8 +345,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
       // 라우팅은 오래 걸릴 수 있으므로 실제 기동 요청 직전에 저장된 허용값을 읽는다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
-      // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다. 채팅은 권한을 묻지 않고 터미널은
-      // 사용자의 승인 게이트 설정을 따르므로, 게이트를 켠 채 지휘관이 터미널이면 둘 사이의 메시지가 사용자 승인을 기다릴 수 있다.
+      // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다.
       const launchedId = await launch({ objectiveId, theaterId: current.theaterId, sessionName: session, ...preset, subagents: allowed ? undefined : false, member: true, viewMode: "chat", parentOperationId: current.id, childSessionId: member.id }).catch(asStoreError);
       rememberLanguage(launchedId, ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
       // 라우팅·기동 중 변경된 허용값도 다음 기동 정책에는 반영한다. 첫 프로세스는 중단하지 않는다.

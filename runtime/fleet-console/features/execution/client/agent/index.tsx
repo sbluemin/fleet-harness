@@ -155,7 +155,7 @@ export const generalSettingsSection = defineSettingsSection({
 
 /**
  * 에이전트를 **어떻게 실행하는가**의 방. 터미널 섹션이 화면을 그리는 법을 말하는 것과 같은
- * 층에서, 이 섹션은 자식 프로세스의 정책을 말한다 — 승인 게이트, 시스템 프롬프트, 휴면,
+ * 층에서, 이 섹션은 자식 프로세스의 정책을 말한다 — 시스템 프롬프트, 서브에이전트, 휴면,
  * 실행 파일. 하네스가 하나뿐인 지금도 카드를 하네스별로 세워 두는 이유는, 둘째 하네스가
  * 왔을 때 옮길 것이 없어야 하기 때문이다.
  */
@@ -166,7 +166,6 @@ export const harnessSettingsSection = defineSettingsSection({
   keywords: [
     (locale) => [
       getT(locale)("terminal.settings.harnessClaudeCode"),
-      getT(locale)("terminal.settings.skipPermissionsTitle"),
       getT(locale)("terminal.settings.claudeSystemPromptTitle"),
       getT(locale)("terminal.settings.builtInAgentsTitle"),
       getT(locale)("terminal.settings.idleAgent"),
@@ -1090,7 +1089,7 @@ function HarnessSection() {
 }
 
 /**
- * 한 하네스의 실행 정책이 한 카드에 모인다 — 승인 게이트와 시스템 프롬프트는 둘 다
+ * 한 하네스의 실행 정책이 한 카드에 모인다 — 시스템 프롬프트와 내장 서브에이전트는 둘 다
  * "이 자식을 어떻게 띄우는가"이고, 둘 다 새 세션부터 듣는다. 하네스가 늘면 이 카드가
  * 그 수만큼 서고, 방의 구조는 그대로다.
  */
@@ -1111,31 +1110,6 @@ function ClaudeCodeHarnessCard() {
       {settings.error ? <p className="global-settings-error" role="alert">{translateServerMessage(locale, settings.error)}</p> : null}
       {state ? (
         <>
-          {/* 행 제목이 컨트롤의 이름이 되도록 그룹으로 묶는다 — 토글 자신이 말하는 것은
-              켬/끔뿐이라, 무엇을 켜는지는 이 연결이 없으면 화면 밖에서 사라진다. id는 제목
-              글자만 감싼 span이 진다: 팁 버튼이 라벨 안에 서면 그 접근성 이름까지 그룹
-              이름에 딸려 들어간다. */}
-          <div className="global-settings-row" role="group" aria-labelledby="claude-code-skip-permissions-label">
-            <div className="global-settings-row-text">
-              <p className="global-settings-resp-title">
-                <span id="claude-code-skip-permissions-label">{t("terminal.settings.skipPermissionsTitle")}</span>
-                <SettingsHelp title={t("terminal.settings.skipPermissionsTitle")}>
-                  {t("terminal.settings.skipPermissionsHelp")}
-                </SettingsHelp>
-              </p>
-              {/* 위험은 설명이 아니라 상태다 — 켜져 있는 동안 인라인에 남는다. */}
-              {state.claudeCodeSkipPermissions ? (
-                <p className="harness-hazard" role="note">{t("terminal.settings.skipPermissionsWarn")}</p>
-              ) : null}
-            </div>
-            {/* 행 제목이 뜻을 말하므로 스위치 옆에 "켬/끔" 글자를 따로 세우지 않는다 — Settings의 다른 스위치와 같다. */}
-            <SettingsToggle
-              checked={state.claudeCodeSkipPermissions}
-              disabled={saving.has("claudeCodeSkipPermissions")}
-              ariaLabel={t("terminal.settings.skipPermissionsTitle")}
-              onChange={(next) => void setSystemPromptSettingsField("claudeCodeSkipPermissions", next)}
-            />
-          </div>
           <ClaudeCodeSystemPromptRow
             mode={state.claudeCodeSystemPrompt}
             savedPrompt={state.claudeCodeCustomSystemPrompt}
@@ -1352,8 +1326,7 @@ function claudeBuiltInAgentGroup(name: string): ClaudeBuiltInAgentGroupId {
 
 /**
  * 내장 서브에이전트 선택. 컨트롤은 체크박스다 — 스위치가 아니다. 이 자리가 묻는 것은 "이 설정
- * 하나를 켜는가"가 아니라 "쓸 수 있는 것 중 무엇을 남기는가"이고, 같은 카드에 선 승인 게이트가
- * 스위치라서 목록에까지 스위치를 세우면 위험한 단일 설정과 목록 한 줄이 같은 무게로 읽힌다.
+ * 하나를 켜는가"가 아니라 "쓸 수 있는 것 중 무엇을 남기는가"이다.
  *
  * 저장되는 것은 끈 이름뿐이므로 로스터에서 사라진 이름도 목록에 남는다 — 되돌릴 길이 없으면
  * 규칙만 살아남는다.

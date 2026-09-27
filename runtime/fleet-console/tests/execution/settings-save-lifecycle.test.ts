@@ -6,7 +6,6 @@ const BASE: SystemPromptSettingsState = {
   agentIdleDormantMinutes: 60,
   claudeCodeSystemPrompt: "on",
   claudeCodeCustomSystemPrompt: "",
-  claudeCodeSkipPermissions: false,
   claudeCodeDisabledAgents: [],
   aiGateway: null,
   aiGatewayCatalog: { providers: [] },
@@ -75,11 +74,11 @@ describe("terminal settings save lifecycle", () => {
     let resolveRead!: (response: Response) => void;
     fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveRead = resolve; }));
     const read = store.loadSystemPromptSettings();
-    fetchMock.mockResolvedValueOnce(response({ ...BASE, claudeCodeSkipPermissions: true }));
-    await store.setSystemPromptSettingsField("claudeCodeSkipPermissions", true);
+    fetchMock.mockResolvedValueOnce(response({ ...BASE, wireLogEnabled: true }));
+    await store.setSystemPromptSettingsField("wireLogEnabled", true);
     resolveRead(response(BASE));
     await read;
-    expect(store.getSystemPromptSettingsStoreState().state?.claudeCodeSkipPermissions).toBe(true);
+    expect(store.getSystemPromptSettingsStoreState().state?.wireLogEnabled).toBe(true);
     expect(store.getSystemPromptSettingsStoreState().loading).toBe(false);
 
     const controller = new AbortController();
@@ -89,6 +88,6 @@ describe("terminal settings save lifecycle", () => {
     resolveRead(response(BASE));
     await cancelled;
     expect(store.getSystemPromptSettingsStoreState().loading).toBe(false);
-    expect(store.getSystemPromptSettingsStoreState().state?.claudeCodeSkipPermissions).toBe(true);
+    expect(store.getSystemPromptSettingsStoreState().state?.wireLogEnabled).toBe(true);
   });
 });

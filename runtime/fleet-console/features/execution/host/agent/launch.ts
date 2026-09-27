@@ -15,7 +15,6 @@ import type { AgentOptionsService } from "@fleet-console/infra";
 import {
   resolveClaudeCodeCustomSystemPrompt,
   resolveClaudeCodeDisabledAgents,
-  resolveClaudeCodeSkipPermissions,
   resolveClaudeCodeSystemPrompt,
 } from "../../../settings/host/execution-settings-routes.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
@@ -308,7 +307,6 @@ async function createAgentCliLaunchSpec(options: {
       // 사용자가 고른 값이며 새 세션에만 적용된다 — 실행 중인 세션은 자기 런치 구성을 유지한다.
       claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.agentOptionsService.load()),
       claudeCodeCustomSystemPrompt: resolveClaudeCodeCustomSystemPrompt(options.infraServices.agentOptionsService.load()),
-      claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(options.infraServices.agentOptionsService.load()),
       claudeCodeDisabledAgents: options.disableSubagents ? [ALL_SUBAGENTS] : resolveClaudeCodeDisabledAgents(options.infraServices.agentOptionsService.load()),
       ...(options.disableUserQuestions ? { claudeCodeDisabledTools: [USER_QUESTION_TOOL] } : {}),
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.

@@ -57,11 +57,6 @@ export interface InjectAgentCliProfileOptions {
    */
   readonly claudeCodeCustomSystemPrompt?: string;
   /**
-   * Claude Code의 승인 게이트를 이 런치에서 건너뛸지. 생략하면 `false` — 자식이 도구마다
-   * 터미널에서 묻는다. argv 표면에만 실린다(SDK 표면은 `session.ts` 참조).
-   */
-  readonly claudeCodeSkipPermissions?: boolean;
-  /**
    * 이 세션에서 끌 Claude Code 내장 서브에이전트 이름들. 생략·빈 목록이면 전부 남는다.
    * argv와 SDK 두 표면에 같은 규칙으로 실린다(`session.ts`).
    */
@@ -189,9 +184,6 @@ export async function injectAgentCliProfile(
       ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
       ...(customSystemPromptFile ? { claudeCodeCustomSystemPromptFile: customSystemPromptFile } : {}),
-      ...(options.claudeCodeSkipPermissions !== undefined
-        ? { claudeCodeSkipPermissions: options.claudeCodeSkipPermissions }
-        : {}),
       ...(session.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: session.claudeCodeDisabledAgents } : {}),
       ...(session.claudeCodeDisabledTools ? { claudeCodeDisabledTools: session.claudeCodeDisabledTools } : {}),
     };

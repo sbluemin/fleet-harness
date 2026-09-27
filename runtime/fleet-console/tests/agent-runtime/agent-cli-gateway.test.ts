@@ -70,12 +70,10 @@ describe("claude-gateway profile", () => {
 
 describe("claude-gateway argument composition", () => {
 
-  it("carries the permission opt-in from launch options all the way into argv", async () => {
-    const root = createTempRoot("fleet-admiral-gateway-permission-optin-");
+  it("launches Claude Code with the permission gate skipped", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-permission-bypass-");
     const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
-    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      claudeCodeSkipPermissions: true,
-    }));
+    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root));
 
     try {
       expect(injected.args).toContain("--dangerously-skip-permissions");
@@ -257,7 +255,6 @@ function baseInjectOptions(
     readonly captureSessionHookExec?: FleetHookExec;
     readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
     readonly claudeCodeCustomSystemPrompt?: string;
-    readonly claudeCodeSkipPermissions?: boolean;
     readonly claudeCodeDisabledAgents?: readonly string[];
     readonly claudeCodeDisabledTools?: readonly string[];
   } = {},
@@ -267,9 +264,6 @@ function baseInjectOptions(
     ...(overrides.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: overrides.claudeCodeSystemPrompt } : {}),
     ...(overrides.claudeCodeCustomSystemPrompt
       ? { claudeCodeCustomSystemPrompt: overrides.claudeCodeCustomSystemPrompt }
-      : {}),
-    ...(overrides.claudeCodeSkipPermissions !== undefined
-      ? { claudeCodeSkipPermissions: overrides.claudeCodeSkipPermissions }
       : {}),
     ...(overrides.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: overrides.claudeCodeDisabledAgents } : {}),
     ...(overrides.claudeCodeDisabledTools ? { claudeCodeDisabledTools: overrides.claudeCodeDisabledTools } : {}),

@@ -4,8 +4,8 @@
  * **저장은 소유하지 않는다.** 이 값들은 Console 설정 화면에서 고르는 것이라 그 Console
  * 인스턴스의 슬롯(`console/settings.json`)에 살고, 그 자리를 아는 것은 호스트뿐이다.
  * 한때 이 모듈이 `<Fleet 루트>/settings.json`을 직접 열었는데, 그 경로가 호스트의 유효
- * 루트를 거치지 않아 슬롯만 격리한 실행이 사용자의 진짜 파일에 `claudeCodeSkipPermissions`
- * 같은 값을 쓰는 누수가 있었다. 저장 자리는 주입으로만 건너온다.
+ * 루트를 거치지 않아 슬롯만 격리한 실행이 사용자의 진짜 파일에 실행 옵션을 쓰는 누수가
+ * 있었다. 저장 자리는 주입으로만 건너온다.
  */
 
 /**
@@ -47,14 +47,6 @@ export interface AgentOptionsData {
    */
   readonly claudeCodeCustomSystemPrompt?: string;
   /**
-   * Whether Fleet launches Claude Code with its permission gate skipped. Key absent means
-   * `false`: the child boots on its own default and asks before each tool. Turning this on is
-   * an explicit user choice and only the surfaces that can actually show a prompt carry it —
-   * the terminal and the `fleet` launcher. Chat keeps bypass regardless, because that surface
-   * has no permission gate of its own to honour the choice with.
-   */
-  readonly claudeCodeSkipPermissions?: boolean;
-  /**
    * Claude Code built-in subagents the user opted out of, by agent name (`Explore`, `Plan`,
    * ...). Key absent or empty means every built-in stays available, which is what a launch
    * without any rule already does. Fleet reads the live roster from the installed CLI, so
@@ -83,27 +75,23 @@ export function sanitizeAgentOptionsData(value: unknown): AgentOptionsValidation
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
   const claudeCodeSystemPrompt = sanitizeClaudeCodeSystemPrompt(value.claudeCodeSystemPrompt);
   const claudeCodeCustomSystemPrompt = sanitizeClaudeCodeCustomSystemPrompt(value.claudeCodeCustomSystemPrompt);
-  const claudeCodeSkipPermissions = sanitizeClaudeCodeSkipPermissions(value.claudeCodeSkipPermissions);
   const claudeCodeDisabledAgents = sanitizeClaudeCodeDisabledAgents(value.claudeCodeDisabledAgents);
   const data: AgentOptionsData = {
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
     ...(claudeCodeSystemPrompt !== undefined ? { claudeCodeSystemPrompt } : {}),
     ...(claudeCodeCustomSystemPrompt !== undefined ? { claudeCodeCustomSystemPrompt } : {}),
-    ...(claudeCodeSkipPermissions !== undefined ? { claudeCodeSkipPermissions } : {}),
     ...(claudeCodeDisabledAgents !== undefined ? { claudeCodeDisabledAgents } : {}),
   };
   const allowedKeys = new Set([
     "agentIdleDormantMinutes",
     "claudeCodeSystemPrompt",
     "claudeCodeCustomSystemPrompt",
-    "claudeCodeSkipPermissions",
     "claudeCodeDisabledAgents",
   ]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
     ("claudeCodeSystemPrompt" in value && claudeCodeSystemPrompt === undefined) ||
     ("claudeCodeCustomSystemPrompt" in value && claudeCodeCustomSystemPrompt !== value.claudeCodeCustomSystemPrompt) ||
-    ("claudeCodeSkipPermissions" in value && claudeCodeSkipPermissions === undefined) ||
     ("claudeCodeDisabledAgents" in value && !sameStringList(value.claudeCodeDisabledAgents, claudeCodeDisabledAgents));
 
   return { data, changed };
@@ -141,14 +129,6 @@ export function sanitizeClaudeCodeCustomSystemPrompt(value: unknown): string | u
   // 성공하고도 화면은 계속 저장되지 않은 것처럼 보인다.
   if (normalized.trim().length === 0) return undefined;
   return normalized.length > MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS ? undefined : normalized;
-}
-
-/**
- * Only a real boolean survives. A truthy string from a hand-edited file must not read as
- * consent to skip the permission gate, so anything else drops the key back to the default.
- */
-function sanitizeClaudeCodeSkipPermissions(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
 }
 
 /**

@@ -51,7 +51,6 @@ interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
   readonly claudeCodeSystemPrompt?: unknown;
   readonly claudeCodeCustomSystemPrompt?: unknown;
-  readonly claudeCodeSkipPermissions?: unknown;
   readonly claudeCodeDisabledAgents?: unknown;
   readonly aiGateway?: unknown;
   readonly wireLogEnabled?: unknown;
@@ -66,7 +65,6 @@ type TerminalSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
   | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
   | { readonly claudeCodeCustomSystemPrompt: string | undefined }
-  | { readonly claudeCodeSkipPermissions: boolean }
   | { readonly claudeCodeDisabledAgents: readonly string[] | undefined }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly wireLogEnabled: boolean }
@@ -82,7 +80,6 @@ export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
   readonly claudeCodeCustomSystemPrompt: string;
-  readonly claudeCodeSkipPermissions: boolean;
   /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
   readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewayUpdateValue | null;
@@ -238,7 +235,6 @@ function toTerminalSettingsState(
       : data.agentIdleDormantMinutes,
     claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(data),
     claudeCodeCustomSystemPrompt: resolveClaudeCodeCustomSystemPrompt(data),
-    claudeCodeSkipPermissions: resolveClaudeCodeSkipPermissions(data),
     claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(data),
     aiGateway: configured
       ? {
@@ -269,14 +265,6 @@ export function resolveClaudeCodeCustomSystemPrompt(data: AgentOptionsData): str
   return data.claudeCodeCustomSystemPrompt ?? "";
 }
 
-/**
- * 키가 없으면 꺼진 것으로 읽는다 — 승인 게이트를 건너뛰는 것은 사용자가 명시적으로 켠
- * 경우에만 참이어야 하고, 저장된 적 없는 상태가 그 동의를 대신할 수는 없다.
- */
-export function resolveClaudeCodeSkipPermissions(data: AgentOptionsData): boolean {
-  return data.claudeCodeSkipPermissions === true;
-}
-
 /** 키가 없으면 빈 목록 — 규칙 없는 런치가 이미 하는 일이다. */
 export function resolveClaudeCodeDisabledAgents(data: AgentOptionsData): readonly string[] {
   return data.claudeCodeDisabledAgents ?? [];
@@ -297,11 +285,6 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "agentIdleDormantMinutes") {
     return isAgentIdleDormantMinutes(body.agentIdleDormantMinutes)
       ? { agentIdleDormantMinutes: body.agentIdleDormantMinutes }
-      : null;
-  }
-  if (keys[0] === "claudeCodeSkipPermissions") {
-    return typeof body.claudeCodeSkipPermissions === "boolean"
-      ? { claudeCodeSkipPermissions: body.claudeCodeSkipPermissions }
       : null;
   }
   if (keys[0] === "claudeCodeDisabledAgents") {

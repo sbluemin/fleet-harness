@@ -39,9 +39,6 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
       ...(globalOptions.claudeCodeCustomSystemPrompt
         ? { claudeCodeCustomSystemPrompt: globalOptions.claudeCodeCustomSystemPrompt }
         : {}),
-      // 승인 게이트도 같은 전역 옵션을 읽는다 — 한쪽만 배선하면 Console과 `fleet`이
-      // 조용히 다른 권한 정책으로 뜬다. 키 부재는 건너뛰지 않음(false)이다.
-      claudeCodeSkipPermissions: globalOptions.claudeCodeSkipPermissions === true,
       // 내장 서브에이전트 옵트아웃도 같은 전역 옵션이다 — 키 부재는 전부 켜짐이다.
       ...(globalOptions.claudeCodeDisabledAgents?.length
         ? { claudeCodeDisabledAgents: globalOptions.claudeCodeDisabledAgents }

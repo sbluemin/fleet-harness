@@ -1514,29 +1514,9 @@
 }
 
 
-/* 건너뛰기가 켜져 있는 동안에만 서는 줄. 위험은 상태이므로 coral이 말하되 글자에서만
-   말한다 — 면을 칠하면 같은 카드의 시스템 프롬프트 행까지 경보로 읽힌다. */
-.harness-hazard {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--coral-ink);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  line-height: 1.55;
-}
-
-.harness-hazard::before {
-  content: "\25B2";
-  flex: none;
-  padding-top: 2px;
-  font-size: var(--t-2xs);
-}
-
 /* 내장 서브에이전트 — Claude Code 카드 안의 하위 목록. 머리 행은 카드 행 문법을 그대로 쓰고,
    항목은 묶음별로 선다. 컨트롤은 체크박스다: 이 자리는 설정 하나를 켜는 곳이 아니라 쓸 수 있는
-   것 중에서 고르는 곳이고, 같은 카드의 승인 게이트만 스위치로 남아 위험을 혼자 말한다. */
+   것 중에서 고르는 곳이다. */
 .claude-agents {
   display: grid;
   gap: var(--space-3);

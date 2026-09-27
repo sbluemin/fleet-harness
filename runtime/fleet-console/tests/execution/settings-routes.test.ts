@@ -33,8 +33,6 @@ describe("terminal settings routes", () => {
       agentIdleDormantMinutes: 60,
       // 키가 없는 설정 파일은 플래그 없는 런치와 같은 뜻이다 — Claude Code 프롬프트가 켜진 세션.
       claudeCodeSystemPrompt: "on",
-      // 승인 게이트는 그 반대다 — 저장된 적 없는 상태가 건너뛰기 동의를 대신할 수 없다.
-      claudeCodeSkipPermissions: false,
       aiGateway: null,
       wireLogEnabled: false,
       delegationRoutingEnabled: false,
@@ -79,17 +77,6 @@ describe("terminal settings routes", () => {
       delegationRoutingMode: "model",
       models: [{ id: "codex--gpt-6-sol" }],
     });
-  });
-
-  it("PUT /api/v1/agent/settings stores the Claude Code permission opt-in", async () => {
-    const harness = createRouteHarness({
-      body: { claudeCodeSkipPermissions: true },
-      data: {},
-    });
-    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
-    expect(harness.writes[0]?.status).toBe(200);
-    expect(harness.writes[0]?.body).toMatchObject({ claudeCodeSkipPermissions: true });
-    expect(harness.currentData()).toEqual({ claudeCodeSkipPermissions: true });
   });
 
   it("PUT /api/v1/agent/settings stores the built-in subagent opt-out and clears it on an empty list", async () => {
