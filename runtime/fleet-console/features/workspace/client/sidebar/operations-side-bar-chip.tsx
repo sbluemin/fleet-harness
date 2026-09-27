@@ -242,7 +242,7 @@ export function OperationsSideBarChip({
     if (!detailAnchor) return;
     const dismiss = () => setDetailAnchor(null);
     const onScroll = (event: Event) => {
-      if (scrollMovesAnchor(event, detailAnchor)) dismiss();
+      if (scrollMovesAnchor(event, detailAnchor, chipRef.current)) dismiss();
     };
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", dismiss);

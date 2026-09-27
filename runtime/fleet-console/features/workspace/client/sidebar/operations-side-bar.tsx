@@ -31,7 +31,7 @@ import { clusterChipPropsFor } from "./cluster-rows.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
-import { scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
+import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import {
   consumeStatusLandings,
@@ -1789,8 +1789,10 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
       event.preventDefault();
       onClose();
     };
+    // 앵커 자리의 주인은 열린 뒤 한 번만 짚는다 — 오버레이가 덮은 뒤라 오버레이는 건너뛴다.
+    const anchorElement = anchorElementAt(anchor, menuRef.current?.parentElement);
     const onScroll = (event: Event) => {
-      if (scrollMovesAnchor(event, anchor)) onClose();
+      if (scrollMovesAnchor(event, anchor, anchorElement)) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", onClose);
