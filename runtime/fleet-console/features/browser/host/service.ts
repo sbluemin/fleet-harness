@@ -809,6 +809,9 @@ export class BrowserService {
     const p = event.params as Record<string, any>;
     switch (event.method) {
       case "Fleet.viewResized": {
+        // 뷰 크기가 바뀌면 Chromium 이 위젯을 새 뷰 크기로 되돌린다 — 에뮬레이션 뷰포트는 남아도 표면이 줄어 캡처가
+        // 어긋난다. 정한 크기를 다시 걸어 위젯을 그 크기로 되돌린다(보이는 곳은 셸이 뷰 자리에서 잘라낸다).
+        if (!op.viewportFollowsPane && this.client) void this.applyViewport(this.client, tab, op).catch(() => undefined);
         // 요청 탭의 실측만 본다. 다른 탭·parking 창 크기 이벤트로 활성 pane 을 덮지 않는다.
         if (tab.id !== op.activeTabId) return;
         const width = Math.max(1, Math.round(Number(p.width) || 0)), height = Math.max(1, Math.round(Number(p.height) || 0)), scale = Math.max(1, Number(p.scale) || 1);
@@ -1141,6 +1144,8 @@ export class BrowserService {
     const tab = this.tab(op, options.tabId);
     const client = await this.engineClient();
     const format = options.format ?? "png";
+    // 정한 크기를 먼저 다시 건다 — 그 사이 뷰가 줄었으면 위젯이 뷰 크기로 줄어 표면이 뷰포트보다 작다.
+    if (!op.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
     // Companion 미개방이어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다.
     // cssLayoutViewport.clientWidth 는 스크롤바를 빼므로 native pane 과 다를 수 있다 — 같기를 기다리지 않는다.
     // 리사이즈와 캡처가 겹치면 같은 탭의 pane·layout 쌍이 두 번 연속 같아야 한다.
@@ -1168,7 +1173,14 @@ export class BrowserService {
     // 캡처 clip 은 요청 탭의 layout 만 쓴다 — 다른 활성 탭 pane 과 섞지 않는다.
     const clip = options.clip ?? { x: 0, y: 0, width: layout.width, height: layout.height };
     this.throwIfAborted(options.signal);
-    const result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: 1 / pane.scale }, captureBeyondViewport: false }, tab.sessionId);
+    let result: { data: string };
+    try {
+      result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: 1 / pane.scale }, captureBeyondViewport: false }, tab.sessionId);
+    } catch (error) {
+      // Chromium 은 캡처 동안 에뮬레이션을 잠시 바꿨다 되돌린다 — 실패한 캡처가 페이지를 뷰 크기로 풀어 두지 않게 다시 건다.
+      if (!op.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
+      throw error;
+    }
     const pixels = capturePixels(result.data);
     const after = await this.layoutViewport(client, tab);
     const paneAfter = this.paneOfTab(tab);
