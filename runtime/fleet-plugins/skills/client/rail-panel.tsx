@@ -112,7 +112,28 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
     setReadMoreEntry(null);
   }, [installLog.status, installTarget, handleInstallSuccess]);
 
-  const handleOverlayUpdated = useCallback(() => setInstalledRefreshKey((key) => key + 1), []);
+  // 열린 창에서 업데이트가 끝나면 목록을 다시 읽고, 새 목록의 같은 스킬로 창의 항목을 바꾼다 —
+  // 그래야 창이 설명·메타데이터·SKILL.md를 업데이트된 내용으로 다시 읽는다(창은 닫지 않는다).
+  // 업데이트 시점의 목록을 기억해 두고, 그와 다른(다시 읽은) 목록이 도착했을 때만 바꾼다.
+  // 콜백은 안정적이어야 한다 — 창은 이 콜백의 정체가 바뀌면 완료 효과를 다시 실행한다.
+  const overlayRefreshFromRef = useRef<readonly SkillListItem[] | null>(null);
+  const installedListRef = useRef(state.installedList);
+  installedListRef.current = state.installedList;
+  const handleOverlayUpdated = useCallback(() => {
+    overlayRefreshFromRef.current = installedListRef.current;
+    setInstalledRefreshKey((key) => key + 1);
+  }, []);
+
+  useEffect(() => {
+    const from = overlayRefreshFromRef.current;
+    if (!from || state.installedList === from || state.installedLoading || !hasInstalledStateForContext(state, contextKey)) return;
+    overlayRefreshFromRef.current = null;
+    setReadMoreEntry((entry) => {
+      if (!entry?.isInstalled) return entry;
+      const fresh = state.installedList.find((candidate) => candidate.name === entry.skill.name && candidate.scope === entry.skill.scope);
+      return fresh ? { ...entry, skill: fresh } : entry;
+    });
+  }, [contextKey, state]);
 
   const handleOverlayInstall = useCallback((scope: Scope, targets: InstallTarget[]) => {
     if (!readMoreEntry || installLog.status === "running") return;
