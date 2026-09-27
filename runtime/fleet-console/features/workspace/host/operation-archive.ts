@@ -146,8 +146,10 @@ export function createOperationArchiveCoordinator(deps: OperationArchiveDeps) {
   function previewPurge(id: string): OperationPurgeConfirmation {
     const target = requireNode(id);
     const nodes = descendants(target);
-    if (nodes.some((node) => deps.operations.get(node.id))) throw new OperationArchiveError(409, "operation_not_archived");
-    return { targetId: id, operationIds: nodes.map((node) => node.id).sort(), revision: deps.storage.revision() };
+    const archived = nodes.filter((node) => !deps.operations.get(node.id));
+    // 열린 상위 아래의 부분 보관은 보관된 하위만 지운다. 보관된 대상을 고른 경우에는 열린 하위가 섞이면 거절한다.
+    if (archived.length === 0 || (!deps.operations.get(id) && archived.length !== nodes.length)) throw new OperationArchiveError(409, "operation_not_archived");
+    return { targetId: id, operationIds: archived.map((node) => node.id).sort(), revision: deps.storage.revision() };
   }
   const purge = (confirmation: OperationPurgeConfirmation) => enqueue(async () => {
     const current = previewPurge(confirmation.targetId);

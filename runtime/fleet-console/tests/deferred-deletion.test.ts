@@ -130,6 +130,23 @@ describe("Operation archive persistence and deletion", () => {
     });
   });
 
+  it("purges only archived descendants of an active root after confirming the whole partial cluster", async () => {
+    await withArchiveDirectory(async (directory) => {
+      const h = createArchiveHarness(directory);
+      h.operations.create(makeOperation("parent"));
+      h.operations.create({ ...makeOperation("child-a"), parentOperationId: "parent" });
+      h.operations.create({ ...makeOperation("child-b"), parentOperationId: "parent" });
+      h.save();
+      await h.archive.archive("child-a");
+      await h.archive.archive("child-b");
+      const confirmation = h.archive.previewPurge("parent");
+      expect(confirmation.operationIds).toEqual(["child-a", "child-b"]);
+      await h.archive.purge(confirmation);
+      expect(h.operations.list().map((node) => node.id)).toEqual(["parent"]);
+      expect(createArchiveHarness(directory).archive.listArchived().total).toBe(0);
+    });
+  });
+
   it("recovers a durable move before publishing either storage location after a crash", async () => {
     await withArchiveDirectory(async (directory) => {
       const h = createArchiveHarness(directory);

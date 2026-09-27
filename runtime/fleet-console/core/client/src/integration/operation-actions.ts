@@ -37,7 +37,7 @@ export function isArchivingOperation(operationId: string): boolean {
   return archivingOperationIds.has(operationId);
 }
 
-// 사람이 Operation을 치우는 단일 경로: 화면 정리 → Core 보관 → 재수화.
+// 사람이 Operation을 치우는 단일 경로: Core 보관 → 화면 정리 → 재수화.
 // 캔버스 캡션·사이드바 칩·우클릭 메뉴·트리아지·모바일·플러그인 본문의 onClose와 ⌘K가 이 함수를 공유한다.
 // plugin.closeOperation은 부르지 않는다 — 그 훅은 세션과 첨부를 지우는 파괴적 정리였고, 보관의 실행 종료는
 // 서버가 비파괴로 맡는다. 보관은 하위 Operation까지 함께 치우므로 receipt의 operationIds가 토스트의 개수다.
@@ -45,12 +45,12 @@ export function isArchivingOperation(operationId: string): boolean {
 export async function archiveOperationFromUi(operationId: string): Promise<ArchiveOutcome | null> {
   if (archivingOperationIds.has(operationId)) return null;
   archivingOperationIds.add(operationId);
-  // companion·선별 대상을 먼저 풀어야 사라진 Operation이 휴면 프레임으로 남지 않는다.
-  if (getCompanionOperationId() === operationId) forceDropCompanionOperationId();
-  if (isTriageActive()) dismissTriageOperation(operationId);
   let outcome: ArchiveOutcome;
   try {
     outcome = { ok: true, receipt: await archiveOperation(operationId) };
+    // 서버가 확정한 뒤에만 companion·선별 대상을 푼다. 실패 시 열린 화면을 그대로 둔다.
+    if (getCompanionOperationId() === operationId) forceDropCompanionOperationId();
+    if (isTriageActive()) dismissTriageOperation(operationId);
     for (const id of outcome.receipt.operationIds) forgetTriageOperation(id);
   } catch (error) {
     outcome = { ok: false, error: error instanceof ApiError ? error.message : "archive_failed" };
