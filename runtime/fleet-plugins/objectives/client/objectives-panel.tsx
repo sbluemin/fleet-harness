@@ -772,7 +772,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const count = objective.missions.filter((mission) => mission.member === member.id).length;
       const state = member.sessionName !== null ? operationState(member.id) : "closed";
       const display = memberLaunchDisplay(member, memberLaunched(member, operationState), t, rows);
-      const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.state.awaiting") : t("objectives.members.idle");
+      const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
       const allowed = memberSubagents(member);
       return (
         <div key={member.id} className="objectives-member-slot">

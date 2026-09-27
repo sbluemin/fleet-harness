@@ -528,7 +528,7 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.members.subagentsLive": "실행 중인 세션은 그대로입니다 · 다음 기동부터 적용",
   "objectives.members.routeHint": "구성원을 띄울 때 AI Gateway가 역할 설명으로 모델을 고릅니다",
   "objectives.members.missions": "임무 {count}개",
-  "objectives.members.idle": "대기",
+  "objectives.members.idle": "쉬는 중",
   "objectives.members.working": "작업 중",
   "objectives.members.dormant": "휴면",
   "objectives.members.dormantHint": "필요하면 지휘관이 다시 깨웁니다",
