@@ -29,6 +29,7 @@ import { createTerminalScrollFollow, type TerminalScrollFollowController } from 
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForTerminalFallbackFonts } from "./terminal-fallback-fonts.js";
+import { useTerminalWebglGrant } from "./terminal-webgl-budget.js";
 import "./terminal-key-bar.css";
 
 type TerminalThemeId = "instrument" | "maritime" | "carbon" | "whites";
@@ -45,6 +46,10 @@ export interface TerminalSurfaceProps {
   readonly onExit?: () => void;
   // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
   readonly active?: boolean;
+  /**
+   * 본문이 화면에 서 있는지(주차되지 않았는지). WebGL 슬롯은 보이는 터미널만 요청한다 — 생략하면 보인다고 본다.
+   */
+  readonly visible?: boolean;
   readonly keyboardFocusRequestId?: number;
   // 맵 캔버스의 줌 배율(viewport.zoom). 캔버스 외 셸 패널 사용처는 기본 1.
   // 캔버스가 부모에 transform:scale(zoom)을 걸면 xterm의 마우스 셀 좌표 계산이 scale을 보정하지 못해
@@ -200,7 +205,7 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, knownLinks, locale }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, knownLinks, locale }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -213,6 +218,9 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
+  const webgl = useTerminalWebglGrant({ wanted: terminalRenderer === "webgl", visible, active: active !== false, touchKey: keyboardFocusRequestId });
+  const onWebglLostRef = useRef(webgl.onLost);
+  onWebglLostRef.current = webgl.onLost;
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
   const statusDetailReporterRef = useRef<TerminalStatusDetailReporter | null>(null);
   const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
@@ -657,13 +665,15 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   }, []);
 
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
+  // 슬롯(terminal-webgl-budget)을 받은 동안만 붙인다 — 슬롯을 내주면 이 effect의 정리가 addon을 떼어
+  // DOM 렌더러로 돌아가고, 다시 받으면 새 addon을 붙인다.
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
 
     let disposed = false;
 
-    if (terminalRenderer === "webgl") {
+    if (webgl.granted) {
       try {
         const webglAddon = new WebglAddon();
         webglAddonRef.current = webglAddon;
@@ -678,6 +688,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
             // xterm WebglAddon dispose 버그를 렌더러 폴백 경로에서도 흡수한다.
           }
           if (webglAddonRef.current === webglAddon) webglAddonRef.current = null;
+          onWebglLostRef.current();
         });
         terminal.loadAddon(webglAddon);
       } catch {
@@ -688,6 +699,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
           // xterm WebglAddon dispose 버그를 WebGL 초기화 실패 경로에서도 흡수한다.
         }
         webglAddonRef.current = null;
+        onWebglLostRef.current();
       }
     }
 
@@ -702,7 +714,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         // xterm 내부 dispose 버그(메인 cleanup의 terminal.dispose 경로 포함)를 흡수한다.
       }
     };
-  }, [terminalRenderer, operationId, mountedTerminalEpoch]);
+  }, [webgl.granted, operationId, mountedTerminalEpoch]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

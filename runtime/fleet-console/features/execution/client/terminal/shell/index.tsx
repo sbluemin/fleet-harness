@@ -175,6 +175,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
       surface="shell"
       theme={theme ?? context.theme ?? "instrument"}
       active={mount.target !== null && context.focused}
+      visible={mount.target !== null}
       zoom={1}
       locale={language ?? context.language ?? "en"}
       // 첫 기동에서만 서버가 읽는다 — 이후 cwd는 서버가 못 박아 두므로 Theater를
