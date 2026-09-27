@@ -37,6 +37,7 @@ type Saved = {
   readonly members?: readonly { readonly role: string; readonly subagents?: boolean }[];
   readonly criteriaProposals?: readonly unknown[];
   readonly followupBatches?: readonly { readonly items: readonly unknown[] }[];
+  readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active" };
   readonly results?: readonly ObjectiveResult[];
 };
 
@@ -71,6 +72,10 @@ function harness(routingOrigin: () => string | null = () => null) {
     }
   }
   const operations = new OperationRecords();
+  // Core 저장소 구현을 재현하지 않는다. 플러그인 경계에서는 지정 ID의 위치만 바꾸는 adapter다.
+  const archivedOperations = new OperationRecords();
+  const archiveCalls: string[] = [];
+  const accessCalls: string[] = [];
   let clock = 1_000;
   const add = (id: string, init: Partial<Node> = {}) => {
     const node: Node = { id, theaterId: "t1", type: "agent", pluginId: null, title: id, groupId: null, payload: {}, geometry: null, ts: { createdAt: clock++, updatedAt: clock }, ...init };
@@ -81,7 +86,6 @@ function harness(routingOrigin: () => string | null = () => null) {
   const deleted: string[] = [];
   const sent: { operationId: string; text: string }[] = [];
   const activity = new Map<string, "idle" | "running" | "awaiting" | "background" | "dormant">();
-  const slept: string[] = [];
   const interrupted: string[] = [];
   const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string; scratchpad?: string }[] = [];
   const resumed: string[] = [];
@@ -95,6 +99,26 @@ function harness(routingOrigin: () => string | null = () => null) {
   const reservedKeys = new Set<string>();
   const hostFault = { afterCreate: 0, sendError: null as string | null };
   const operationsHost = {
+    describe: (id: string) => {
+      const operation = operations.get(id) ?? archivedOperations.get(id);
+      return operation ? { operation, location: archivedOperations.has(id) ? "archived" as const : "active" as const, rootOperationId: operation.parentOperationId ?? id, archivedAt: archivedOperations.has(id) ? 1 : null } : null;
+    },
+    archive: async (id: string) => {
+      archiveCalls.push(id);
+      const operation = operations.get(id) ?? archivedOperations.get(id);
+      if (!operation) throw new Error("unknown_operation");
+      archivedOperations.set(id, operation); operations.delete(id); activity.set(id, "dormant");
+      return { archiveId: `archive-${id}`, targetId: id, rootOperationId: id, operationIds: [id], archivedAt: 1, revision: archiveCalls.length };
+    },
+    access: async (id: string, _intent?: string) => {
+      accessCalls.push(id);
+      const operation = operations.get(id) ?? archivedOperations.get(id);
+      if (!operation) throw new Error("unknown_operation");
+      const restoredIds = archivedOperations.has(id) ? [id] : [];
+      operations.set(id, operation); archivedOperations.delete(id);
+      if (restoredIds.length) activity.set(id, "dormant");
+      return { targetId: id, rootOperationId: id, restoredIds, operations: [operation] };
+    },
     get: (id: string) => operations.get(id) ?? null,
     list: () => [...operations.values()],
     patch: (id: string, input: { title?: string; payload?: Record<string, unknown>; groupId?: string | null }) => {
@@ -106,7 +130,7 @@ function harness(routingOrigin: () => string | null = () => null) {
       return node;
     },
     // 호스트처럼 지운 Operation 의 기동 키는 삭제로 읽힌다(유예·purge).
-    delete: (id: string) => { deleted.push(id); for (const [key, target] of keyed) if (target === id) deletedKeys.add(key); return operations.delete(id); },
+    delete: (id: string) => { deleted.push(id); for (const [key, target] of keyed) if (target === id) deletedKeys.add(key); return operations.delete(id) || archivedOperations.delete(id); },
     deleteChild: (id: string) => { if (!operations.get(id)?.parentOperationId) return false; deleted.push(id); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
@@ -161,11 +185,6 @@ function harness(routingOrigin: () => string | null = () => null) {
         },
         setSubagentSpawn: (operationId: string, policy: "blocked" | "default") => { subagentSpawns.push({ operationId, policy }); },
         setUserQuestions: (operationId: string, policy: "blocked" | "default") => { userQuestions.push({ operationId, policy }); },
-        sleep: async (id: string, options?: { endPendingWork?: boolean }) => {
-          const state = activity.get(id);
-          if (state !== "idle" && !(options?.endPendingWork && (state === "awaiting" || state === "background"))) return { ok: false, error: "not_idle" };
-          slept.push(id); activity.set(id, "dormant"); return { ok: true, lifecycle: "dormant" };
-        },
       },
       paths: { resolveTheaterPath: () => theaterPath },
     },
@@ -197,12 +216,34 @@ function harness(routingOrigin: () => string | null = () => null) {
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { store, events, launch, call, consoleTool, route, resultFile, operations, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault };
+  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
 
 describe("Objectives contract", () => {
+  // Core의 두 파일 복구 시험으로는 목표 파일의 done와 미완료 요청 사이 틈을 검증할 수 없다.
+  it("recovers a completion request from its record and retains that record until public purge", async () => {
+    const h = harness();
+    h.add("completion-recovery", { payload: { session: { harness: "claude-code", sessionName: "existing-session" } } });
+    h.store.adopt("completion-recovery", { note: "retain this record" });
+    vi.spyOn(h.operationsHost, "archive").mockRejectedValueOnce(new Error("archive_stop_failed"));
+    await expect(h.launch.complete("completion-recovery")).rejects.toThrow("archive_stop_failed");
+    expect(h.savedObjective("completion-recovery").operationIntent?.action).toBe("archive");
+    const reloaded = createObjectiveStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], operations: h.operationsHost, emit: () => {} });
+    const launch = createLaunchService(h.ctx, reloaded);
+    await launch.resumeOperationIntents();
+    expect(h.operations.has("completion-recovery")).toBe(false);
+    expect(reloaded.find("completion-recovery")).toMatchObject({ done: expect.any(Object), note: "retain this record", commander: { sessionName: "existing-session" } });
+    expect(h.savedObjective("completion-recovery").operationIntent).toBeUndefined();
+    launch.remove("completion-recovery");
+    expect(h.archivedOperations.has("completion-recovery")).toBe(false);
+    expect(fs.existsSync(h.objectiveFile("completion-recovery"))).toBe(true);
+    launch.operationPurged("completion-recovery");
+    expect(fs.existsSync(h.objectiveFile("completion-recovery"))).toBe(false);
+    launch.dispose();
+  });
+
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
     let routingOrigin: string | null = null;
     const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, userQuestions, savedObjective, operations, surfaces } = harness(() => routingOrigin);
@@ -289,7 +330,7 @@ describe("Objectives contract", () => {
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
-    const { store, events, launch, call, route, resultFile, operations, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, slept, interrupted, resumed, hostFault } = harness();
+    const { store, events, launch, call, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
     expect(launches).toEqual([]);
     expect(operations.has(objective.id)).toBe(false);
@@ -349,15 +390,23 @@ describe("Objectives contract", () => {
     activity.set(research, "awaiting");
     expect(clusterMember(research)).toMatchObject({ progress: "done", awaitingInput: true });
     activity.set(research, "idle");
-    // 완료는 지휘관과 구성원을 휴면시키되 연결을 풀지 않는다. 답을 기다리는 터미널 지휘관과 백그라운드 작업이 남은 구성원은 그대로 재우고, 실행 중인 구성원은 중단한 뒤 재운다.
+    // 완료는 Core에 지휘관 ID 하나만 요청한다. active 목록에서 빠져도 기록·연결은 계속 보인다.
     activity.set(objective.id, "awaiting");
-    activity.set(research, "running");
-    activity.set(build, "background");
-    expect(launch.complete(objective.id).done).toBeTruthy();
-    await expect.poll(() => slept.length).toBe(3);
-    expect(interrupted).toEqual([research]);
-    expect(slept.sort()).toEqual([objective.id, research, build].sort());
-    expect(store.reopen(objective.id).missions.map((mission) => mission.member)).toEqual([research, build, build]);
+    expect((await launch.complete(objective.id)).done).toBeTruthy();
+    expect(archiveCalls).toEqual([objective.id]);
+    expect(operations.has(objective.id)).toBe(false);
+    expect(archivedOperations.has(objective.id)).toBe(true);
+    expect(store.list("t1").find((item) => item.id === objective.id)?.done).toBeTruthy();
+    expect((await launch.reopen(objective.id)).missions.map((mission) => mission.member)).toEqual([research, build, build]);
+    expect(accessCalls.at(-1)).toBe(objective.id);
+    expect(operations.has(objective.id)).toBe(true);
+    // 옛 완료 기록은 active에 그대로 남을 수 있다. 완료 해제는 성공하고, 재완료부터 새 경로를 탄다.
+    store.complete(objective.id);
+    expect(operations.has(objective.id)).toBe(true);
+    await launch.reopen(objective.id);
+    await launch.complete(objective.id);
+    expect(archiveCalls).toEqual([objective.id, objective.id]);
+    await launch.reopen(objective.id);
     // 계획은 완료·기록·사람이 담당을 정한 임무를 보존하고 나머지를 바꾼다; 새 임무는 편성 순으로 선다.
     const planned = store.plan(objective.id, { missions: [{ text: "x", prerequisites: [{ n: 2, why: "shares files" }] }, { text: "y", prerequisites: [{ missionId: a!.id, why: "builds on a" }] }] });
     expect(planned.missions.map((mission) => mission.text)).toEqual(["a", "b", "y", "x"]);

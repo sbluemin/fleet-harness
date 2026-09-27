@@ -286,6 +286,8 @@ export interface StoredObjective {
   readonly edited?: { readonly at: number; readonly kinds: readonly ObjectiveEditKind[] };
   /** 목표 완료 — 완료는 늘 사람이 누른다. */
   readonly done?: { readonly at: number };
+  /** Core 요청 접수 전 중단을 복구하는 내부 의도. UI 상태나 구성원별 세대가 아니다. */
+  readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active" };
   /** 인계 기록 — 있으면 인계 대기를 지나 검토 대기다. */
   readonly handoff?: StoredHandoff;
   readonly criteria?: readonly StoredCriterion[];

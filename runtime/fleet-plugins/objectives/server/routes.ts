@@ -185,11 +185,11 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     // 목표를 지우면 지휘관 Operation 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
     { name: "objective/remove", method: "POST", summary: "Delete an objective by closing its Commander Operation (restorable during the undo window).", handler: json(objectiveRef, unlessBusy(({ objectiveId }) => objective(launch.remove(objectiveId)))) },
     // 후속 후보를 고른 완료는 새 경계다 — 검토 대기·스티어링 우선·제안 대기를 서버가 원자적으로 다시 따진다. 고른 것이 없으면 지금 완료 그대로.
-    { name: "objective/complete", method: "POST", summary: "Complete an objective and put its Operations to sleep, or reopen it with undone. With followups (and a batchId), the chosen follow-up candidates become dormant objectives.", handler: json(objectiveRef.extend({ undone: z.boolean().optional(), batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }), unlessBusy(({ objectiveId, undone, batchId, followups, language }) => {
-      if (undone) return objective(store.reopen(objectiveId));
-      if (!followups?.length) return objective(launch.complete(objectiveId));
+    { name: "objective/complete", method: "POST", summary: "Complete an objective using the Core Operation lifecycle, or reopen it with undone. With followups (and a batchId), the chosen follow-up candidates become dormant objectives.", handler: json(objectiveRef.extend({ undone: z.boolean().optional(), batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }), unlessBusy(async ({ objectiveId, undone, batchId, followups, language }) => {
+      if (undone) return objective(await launch.reopen(objectiveId));
+      if (!followups?.length) return objective(await launch.complete(objectiveId));
       if (!batchId) throw new ObjectiveStoreError("invalid_request");
-      return objective(launch.completeWithFollowups(objectiveId, { batchId, followups }, { language }));
+      return objective(await launch.completeWithFollowups(objectiveId, { batchId, followups }, { language }));
     })) },
     // 사람의 넘기기 — 지휘관이 넘기지 않은 인계 대기를 회고 없이 검토 대기로. 사람이 넘겼다는 사실이 인계 기록에 남는다.
     { name: "objective/hand-off", method: "POST", summary: "Hand an objective awaiting hand-off to review without a retrospective; the record says the person handed it off.", handler: json(objectiveRef, unlessBusy(({ objectiveId }) => objective(store.handOff(objectiveId, { by: "human" })))) },

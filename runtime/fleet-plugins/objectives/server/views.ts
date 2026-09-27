@@ -27,8 +27,10 @@ export function roleIn(objective: Objective, caller: ConsoleCaller | undefined):
 
 export function createBoardViews(ctx: FleetPluginServerContext, store: ObjectiveStore) {
   const observe = (operationId: string) => {
-    const node = ctx.host.operations.get(operationId);
+    const reference = ctx.host.operations.describe?.(operationId);
+    const node = reference?.operation ?? ctx.host.operations.get(operationId);
     if (!node) return { operationId, title: null, state: "closed" as const };
+    if (reference?.location === "archived") return { operationId, title: node.title, state: "dormant" as const };
     const observation = ctx.host.consoleControl?.observe(operationId) ?? null;
     return { operationId, title: node.title, state: observation ? (observation.lifecycle === "dormant" ? "dormant" : observation.activity) : "unknown" };
   };

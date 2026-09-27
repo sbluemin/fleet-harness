@@ -32,10 +32,10 @@ export interface LaunchService {
   /** 목표 레코드만 만든다. 후속 후보는 안정적인 objectiveId 를 지정할 수 있다. */
   create(input: { readonly theaterId: string; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
   /**
-   * 고른 후속 후보와 함께 완료한다 — 완료·배치 기록을 한 번에 쓴 뒤 지휘관을 재우고 후속 목표 레코드를
+   * 고른 후속 후보와 함께 완료한다 — 완료·배치 기록을 한 번에 쓴 뒤 Core에 보관을 요청하고 후속 목표 레코드를
    * 뒤에서 만든다. 같은 배치로 다시 부르면 그대로 돌려준다.
    */
-  completeWithFollowups(objectiveId: string, selection: { readonly batchId: string; readonly followups: readonly { readonly id: string; readonly rev: number }[] }, options?: LaunchOptions): Objective;
+  completeWithFollowups(objectiveId: string, selection: { readonly batchId: string; readonly followups: readonly { readonly id: string; readonly rev: number }[] }, options?: LaunchOptions): Promise<Objective>;
   /** failed·confirming 배치 항목을 같은 스냅샷·같은 키로 다시 확인하거나 만든다. */
   retryFollowup(objectiveId: string, batchId: string, candidateId: string): Objective;
   /** 끝나지 않은 후속 생성(creating)을 이어 간다 — 기동 때와 원본이 복원될 때. objectiveId 가 없으면 모든 목표. */
@@ -44,8 +44,11 @@ export interface LaunchService {
   followupTargetChanged(operationId: string): void;
   /** 목표를 지운다 — 지휘관 Operation 을 닫는다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다). */
   remove(objectiveId: string): Objective;
-  /** 완료를 먼저 기록한 뒤 지휘관과 담당 Operation을 비동기로 휴면시킨다. */
-  complete(objectiveId: string): Objective;
+  /** 완료 기록과 Core 요청 의도를 저장한 뒤 지휘관 ID 하나로 보관을 요청한다. */
+  complete(objectiveId: string): Promise<Objective>;
+  reopen(objectiveId: string): Promise<Objective>;
+  /** 재시작 때 미완료 Core 요청만 재접수한다. 완료 상태만 보고 다시 보관하지 않는다. */
+  resumeOperationIntents(): Promise<void>;
   rename(objectiveId: string, title: string): Objective;
   regroup(objectiveId: string, groupId: string | null): Objective;
   /** 지휘관의 모델·강도 — 지휘관 Operation 에 쓴다(다음 깨움부터 쓰인다). */
@@ -105,6 +108,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (!found) throw new ObjectiveStoreError("unknown_objective");
     return found;
   };
+  const referenceNode = (id: string) => ctx.host.operations.describe ? ctx.host.operations.describe(id)?.operation ?? null : ctx.host.operations.get(id);
   const patchOperation = (operationId: string, patch: { title?: string; groupId?: string | null; payload?: Record<string, unknown> }) => {
     if (!ctx.host.operations.patch(operationId, patch)) throw new ObjectiveStoreError("unknown_objective");
   };
@@ -180,9 +184,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   // 최초 기동은 호스트의 영속 launchKey 와 같은 UUID 에 묶는다. 실패 후 재시도는 기존 Operation 을 되찾는다.
   const ensureCommander = async (objectiveId: string): Promise<void> => {
     const pendingCommander = store.pending(objectiveId);
-    const existing = ctx.host.operations.get(objectiveId);
+    const existing = referenceNode(objectiveId);
     const key = `objectives.commander:${objectiveId}`;
     if (existing) {
+      if (ctx.host.operations.access) await ctx.host.operations.access(objectiveId, "ensure-active").catch(asStoreError);
       enableScratchpad(objectiveId, objectiveId);
       if (pendingCommander) {
         const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
@@ -241,63 +246,32 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return !!observation && observation.lifecycle !== "dormant" && WORKING.has(observation.activity);
   };
   const stoppable = (operationId: string) => { const observation = ctx.host.consoleControl?.observe(operationId); return !!observation && observation.lifecycle !== "dormant" && observation.activity !== "idle" && observation.activity !== "ended"; };
-  const settleIntervalMs = 100;
-  const settleDeadlineMs = 10_000;
-  const waitFor = async (ready: () => boolean, cancelled: () => boolean = () => false): Promise<boolean> => {
-    const deadline = Date.now() + settleDeadlineMs;
-    while (!ready()) {
-      if (cancelled() || Date.now() >= deadline) return false;
-      await new Promise<void>((resolve) => setTimeout(resolve, settleIntervalMs));
-    }
-    return true;
+  // 완료·완료 해제의 순서만 지킨다. Cluster 구성·정지·복원은 Core가 소유한다.
+  const operationRequests = new Map<string, Promise<unknown>>();
+  const orderedOperationRequest = async <T,>(id: string, run: () => Promise<T>): Promise<T> => {
+    const task = (operationRequests.get(id) ?? Promise.resolve()).catch(() => undefined).then(run);
+    operationRequests.set(id, task);
+    try { return await task; } finally { if (operationRequests.get(id) === task) operationRequests.delete(id); }
   };
-  const sleepCompleted = async (current: Objective): Promise<void> => {
-    const capability = ctx.host.consoleControl;
-    const sleep = capability?.sleep?.bind(capability);
-    if (!capability || !sleep) return;
-    // 지휘관과 명단의 모든 구성원 — 임무를 맡지 않은 구성원도 함께 재운다.
-    const ids = new Set([current.id, ...current.members.filter((candidate) => !!ctx.host.operations.get(candidate.id)).map((candidate) => candidate.id)]);
-    await Promise.all([...ids].map(async (operationId) => {
-      const warn = (reason: string) => console.warn(`[objectives] Could not sleep completed Operation ${operationId}: ${reason}`);
-      const stillCompleted = () => {
-        const latest = store.find(current.id);
-        return !!latest?.done && (operationId === current.id || latest.members.some((candidate) => candidate.id === operationId && !!ctx.host.operations.get(candidate.id)));
-      };
-      try {
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          if (!stillCompleted()) return; // 완료를 되돌렸거나 연결을 풀었다면 아직 시작하지 않은 휴면은 취소한다.
-          const observation = capability.observe(operationId);
-          if (!observation) { warn("observation_unavailable"); return; }
-          if (observation.lifecycle === "dormant") return;
-          if (observation.lifecycle !== "live") { warn("lifecycle_unknown"); return; }
-          // 터미널의 답 대기와 백그라운드 작업은 멈출 턴이 없어 interrupt 를 받지 않는다 — 완료는 사람이 내린 종결이므로 그 대기·작업을 끝내고 바로 재운다.
-          const endPendingWork = (observation.activity === "awaiting" || observation.activity === "background") && !observation.supportedActions.includes("interrupt");
-          if (observation.activity !== "idle" && !endPendingWork) {
-            if (observation.activity === "ended" || observation.activity === "unknown") { warn(`activity_${observation.activity}`); return; }
-            try {
-              await capability.request({ kind: "interrupt", operationId });
-            } catch (error) {
-              // 관측과 접수 사이에 스스로 유휴가 된 경우는 중단 없이 바로 휴면을 시도한다.
-              if (!(error instanceof Error && error.message === "nothing_to_interrupt")) throw error;
-            }
-            if (!await waitFor(() => {
-              const next = capability.observe(operationId);
-              return next?.lifecycle === "dormant" || next?.lifecycle === "live" && next.activity === "idle";
-            }, () => !stillCompleted())) { if (stillCompleted()) warn("interrupt_timeout"); return; }
-          }
-          if (!stillCompleted()) return;
-          if (capability.observe(operationId)?.lifecycle === "dormant") return;
-          const result = await sleep(operationId, endPendingWork ? { endPendingWork: true } : undefined);
-          if (!result.ok) {
-            if (result.error === "already_dormant") return;
-            if (result.error === "not_idle" && attempt === 0) continue;
-            warn(result.error); return;
-          }
-          if (result.lifecycle === "ending" && !await waitFor(() => capability.observe(operationId)?.lifecycle === "dormant", () => !stillCompleted()) && stillCompleted()) warn("sleep_timeout");
-          return;
-        }
-      } catch (error) { warn(error instanceof Error ? error.message : "unexpected_failure"); }
-    }));
+  const operationIntent = (id: string, action: "archive" | "ensure-active") => {
+    if (pending.has(id) || pending.has(`${id}:muster`)) throw new ObjectiveStoreError("objective_busy");
+    if (store.pending(id)) return undefined;
+    if (action === "archive" ? !ctx.host.operations.archive : !ctx.host.operations.access) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
+    return { requestId: randomUUID(), action };
+  };
+  const applyOperationIntent = async (id: string): Promise<void> => {
+    const intent = store.operationIntent(id);
+    if (!intent) return;
+    try {
+      if (intent.action === "archive") {
+        if (!ctx.host.operations.archive) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
+        await ctx.host.operations.archive(id);
+      } else {
+        if (!ctx.host.operations.access) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
+        await ctx.host.operations.access(id, "ensure-active");
+      }
+      store.acknowledgeOperationIntent(id, intent.requestId);
+    } catch (error) { asStoreError(error); }
   };
   /** 지휘관이 한 번도 깨지 않았다 — 보드를 처음부터 읽으므로 앞서 쌓인 편집 기록은 뜻이 없다. */
   const neverStarted = (operationId: string) => { const node = ctx.host.operations.get(operationId); return !!node && !readOperationLaunch(node.payload).started; };
@@ -415,23 +389,23 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       checkedCriteria(init);
       const id = objectiveId ?? randomUUID();
       if (store.recorded(id)) return objective(id);
-      if (ctx.host.operations.get(id)) throw new ObjectiveStoreError("operation_id_taken");
+      if (referenceNode(id)) throw new ObjectiveStoreError("operation_id_taken");
       return store.adopt(id, init, {
         theaterId: input.theaterId, title: input.title, groupId: input.groupId, createdAt: Date.now(),
         sessionName: commanderSession(), ...COMMANDER_PRESET, viewMode: input.viewMode ?? "terminal",
       });
     },
 
-    completeWithFollowups(objectiveId, selection, options) {
+    completeWithFollowups: (objectiveId, selection, options) => orderedOperationRequest(objectiveId, async () => {
       const current = objective(objectiveId);
-      const { objective: completed, fresh } = store.completeWithFollowups(objectiveId, {
+      store.completeWithFollowups(objectiveId, {
         ...selection,
         launch: { groupId: current.groupId, viewMode: commanderView(objectiveId), language: languageOf(options) },
-      });
-      if (fresh) void sleepCompleted(completed);
+      }, current.done ? undefined : operationIntent(objectiveId, "archive"));
+      await applyOperationIntent(objectiveId);
       service.resumeFollowups(objectiveId);
-      return completed;
-    },
+      return objective(objectiveId);
+    }),
 
     retryFollowup(objectiveId, batchId, candidateId) {
       const next = store.followupRetry(objectiveId, batchId, candidateId);
@@ -462,11 +436,26 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return current;
     },
 
-    complete(objectiveId) {
-      const completed = store.complete(objectiveId);
-      // 기록이 먼저 확정된다. PTY 휴면 확정은 오래 걸릴 수 있으므로 HTTP 응답을 붙잡지 않는다.
-      void sleepCompleted(completed);
-      return completed;
+    complete: (objectiveId) => orderedOperationRequest(objectiveId, async () => {
+      const current = objective(objectiveId);
+      store.complete(objectiveId, current.done ? undefined : operationIntent(objectiveId, "archive"));
+      await applyOperationIntent(objectiveId);
+      return objective(objectiveId);
+    }),
+
+    reopen: (objectiveId) => orderedOperationRequest(objectiveId, async () => {
+      const current = objective(objectiveId);
+      store.reopen(objectiveId, current.done ? operationIntent(objectiveId, "ensure-active") : undefined);
+      await applyOperationIntent(objectiveId);
+      return objective(objectiveId);
+    }),
+
+    async resumeOperationIntents() {
+      for (const current of store.all()) {
+        if (!store.operationIntent(current.id)) continue;
+        try { await orderedOperationRequest(current.id, () => applyOperationIntent(current.id)); }
+        catch (error) { console.warn(`[objectives] Operation request remains pending: ${error instanceof Error ? error.message : "unexpected_failure"}`); }
+      }
     },
 
     rename(objectiveId, title) {
