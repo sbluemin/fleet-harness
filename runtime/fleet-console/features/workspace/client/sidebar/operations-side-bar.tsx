@@ -1,5 +1,7 @@
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { ArchiveEntry } from "../archive/archive-entry.js";
+import { openTheaterSystemPrompt, subscribeTheaterSystemPromptChange } from "../../../settings/client/theater-system-prompt-sheet.js";
+import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../settings/client/execution-settings.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { consoleUseWrapClassName, gestureCallerLabel, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
@@ -195,6 +197,7 @@ interface TheaterActionsMenuProps {
   readonly anchor: DOMRect;
   readonly onCreateGroup: (name: string) => void;
   readonly onForgetTheater: () => void;
+  readonly onOpenSystemPrompt: () => void;
   readonly onClose: () => void;
 }
 
@@ -1237,6 +1240,10 @@ export function OperationsSideBar({
             onForgetTheater(contextMenuTheater.id);
             closeActiveContextMenu();
           }}
+          onOpenSystemPrompt={() => {
+            openTheaterSystemPrompt(contextMenuTheater, activeContextMenu.returnFocus ?? null, activeContextMenu.anchor);
+            setActiveContextMenu(null);
+          }}
           onClose={closeActiveContextMenu}
         />
       ) : null}
@@ -1719,9 +1726,16 @@ function TheaterInactiveSection({
   );
 }
 
-function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForgetTheater, onClose }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onClose }: TheaterActionsMenuProps) {
   const t = useT();
   const [showNewInput, setShowNewInput] = useState(false);
+  const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchTheaterSystemPrompt(theater.id, controller.signal).then((state) => setPrompt(state.prompt)).catch(() => undefined);
+    const unsubscribe = subscribeTheaterSystemPromptChange((id, value) => { if (id === theater.id) setPrompt(value); });
+    return () => { controller.abort(); unsubscribe(); };
+  }, [theater.id]);
   const [newName, setNewName] = useState(() => t("sidebar.theater.defaultGroupName", { n: groupCount + 1 }));
   const composingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -1783,6 +1797,12 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
         }}
         onPointerDown={(event) => event.stopPropagation()}
       >
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenSystemPrompt}>
+          <span className="theater-menu-check" aria-hidden="true">✦</span>
+          <span className="theater-menu-label">{t("sidebar.theater.prompt.menu")}</span>
+          <span className="theater-prompt-menu-state">{prompt ? t(`sidebar.theater.prompt.mode${prompt.mode === "on" ? "On" : prompt.mode === "append" ? "Append" : "Off"}`) : t("sidebar.theater.prompt.unset")}</span>
+        </button>
+        <div className="theater-menu-divider" aria-hidden="true" />
         {showNewInput ? (
           <input
             ref={inputRef}

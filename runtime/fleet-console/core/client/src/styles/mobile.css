@@ -340,6 +340,11 @@
   overflow: auto;
 }
 
+.mobile-theater-card { position: relative; min-width: 0; }
+.mobile-theater-card .mobile-theater-row { width: 100%; padding-right: 48px; }
+.mobile-theater-more { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); min-width: 40px; min-height: 40px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font-weight: var(--weight-bold); letter-spacing: 2px; }
+.mobile-theater-more[aria-expanded="true"], .mobile-theater-more:hover { background: var(--ink-veil); }
+.mobile-theater-menu.theater-menu { position: absolute; z-index: 50; top: calc(100% - 4px); right: 6px; left: auto; width: max-content; min-width: 240px; }
 .mobile-theater-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

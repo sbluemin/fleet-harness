@@ -1,0 +1,53 @@
+.theater-prompt-backdrop {
+  position: fixed; inset: 0; z-index: 1190; background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
+}
+.theater-prompt-sheet {
+  position: fixed; z-index: 1191; width: 420px; max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px); overflow-y: auto; padding: 16px;
+  display: grid; gap: 13px; background: var(--surface-panel); color: var(--text-primary);
+  border: 1px solid var(--surface-rim-strong); border-radius: 10px; box-shadow: var(--shadow-floating);
+  font-size: var(--t-md);
+}
+.theater-prompt-sheet button { cursor: pointer; }
+.theater-prompt-header { display: flex; gap: 9px; align-items: center; min-width: 0; }
+.theater-prompt-mark { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 6px; background: var(--brass); color: var(--text-on-brass); font: var(--weight-medium) var(--t-2xs) var(--font-mono); }
+.theater-prompt-heading { min-width: 0; display: grid; line-height: 1.3; }
+.theater-prompt-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-lg); }
+.theater-prompt-heading small { color: var(--text-tertiary); font: var(--t-xs) var(--font-mono); }
+.theater-prompt-close { flex: none; margin-left: auto; width: 30px; height: 30px; border: 1px solid var(--surface-rim); border-radius: 6px; background: none; font-size: var(--t-xl); line-height: 1; }
+.theater-prompt-scope { margin: 0; color: var(--text-secondary); line-height: 1.6; }
+.theater-prompt-tip-wrap { display: inline-block; position: relative; margin-left: 6px; }
+.theater-prompt-tip { width: 18px; height: 18px; border: 0; border-radius: 50%; background: var(--ink-veil); color: var(--text-tertiary); font: var(--t-xs) var(--font-mono); }
+.theater-prompt-tip-wrap [role="tooltip"] { display: none; position: absolute; z-index: 2; top: 24px; right: -12px; width: min(290px, calc(100vw - 40px)); padding: 10px; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel); box-shadow: var(--shadow-floating); color: var(--text-secondary); }
+.theater-prompt-tip:hover + [role="tooltip"], .theater-prompt-tip:focus + [role="tooltip"] { display: block; }
+.theater-prompt-state { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; padding: 10px 11px; background: var(--ink-deep); border: 1px solid var(--hairline); border-radius: 6px; }
+.theater-prompt-state > span { display: inline-flex; gap: 7px; align-items: center; font-weight: var(--weight-medium); }
+.theater-prompt-state i, .theater-prompt-save i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--hairline-strong); }
+.theater-prompt-state i.is-own { background: var(--brass); }
+.theater-prompt-state small { color: var(--text-secondary); }
+.theater-prompt-state button { padding: 0; border: 0; background: none; color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+.theater-prompt-state > button { margin-left: auto; }
+.theater-prompt-state p { flex-basis: 100%; margin: 0; color: var(--text-secondary); }
+.theater-prompt-field { display: grid; gap: 7px; color: var(--text-secondary); font: var(--t-sm) var(--font-mono); }
+.theater-prompt-field .theater-prompt-select { width: 100%; min-width: 0; }
+.theater-prompt-field .fc-select__trigger { background: var(--surface-panel-raised); border-color: var(--surface-rim-strong); }
+.fc-select__popup[aria-labelledby="theater-prompt-mode-label"] { z-index: 1192; }
+.theater-prompt-field textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font: var(--t-md) var(--font-body); }
+.theater-prompt-field textarea { resize: vertical; min-height: 104px; font-family: var(--font-mono); line-height: 1.6; }
+.theater-prompt-field small { justify-self: end; color: var(--text-tertiary); }
+.theater-prompt-field small.is-over { color: var(--coral-ink); }
+.theater-prompt-caption { margin: 0; color: var(--text-secondary); }
+.theater-prompt-warning { margin: 0; padding: 9px 11px; color: var(--warn-ink); background: var(--warn-glow); border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: 6px; }
+.theater-prompt-save { display: flex; gap: 8px; align-items: center; min-height: 18px; margin: 0; color: var(--text-tertiary); font: var(--t-xs) var(--font-mono); }
+.theater-prompt-save.is-saving i { background: var(--warn); }
+.theater-prompt-save.is-saved i { background: var(--positive); }
+.theater-prompt-save.is-over, .theater-prompt-save.is-error { color: var(--coral-ink); }
+.theater-prompt-kept { padding: 8px 10px; border: 1px dashed var(--hairline-strong); border-radius: 6px; color: var(--text-secondary); }
+.theater-prompt-kept summary { cursor: pointer; }
+.theater-prompt-kept p { margin: 5px 0 0; color: var(--text-tertiary); font-size: var(--t-xs); }
+.theater-prompt-kept pre { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--t-sm) var(--font-mono); }
+.theater-prompt-menu-state { margin-left: auto; padding-left: 12px; color: var(--text-tertiary); font: var(--t-2xs) var(--font-mono); white-space: nowrap; }
+.theater-prompt-settings-note { margin: 2px 0 14px; display: grid; gap: 5px; color: var(--text-secondary); font-size: var(--t-md); }
+.theater-prompt-settings-note button { justify-self: start; padding: 0; border: 0; background: none; color: var(--brass-ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.theater-prompt-backdrop.is-mobile { background: color-mix(in oklch, var(--ink-abyss) 48%, transparent); }
+.theater-prompt-sheet.is-mobile { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: 100%; max-width: none; max-height: min(86dvh, calc(100dvh - 12px)); padding: 18px 16px max(18px, env(safe-area-inset-bottom)); border-radius: 16px 16px 0 0; }

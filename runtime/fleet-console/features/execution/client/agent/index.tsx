@@ -21,6 +21,9 @@ import { SettingsCheckbox, SettingsHelpTip, SettingsToggle, defineSettingsSectio
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
+import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
+import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
+import { openTheaterSystemPrompt } from "../../../settings/client/theater-system-prompt-sheet.js";
 import { fetchAnalysisCatalog, fetchAnalysisReady } from "../../../analyst/client/analysis-api.js";
 import { AnalystChatPanel } from "../../../analyst/client/analysis-chat-panel.js";
 import { disposeAnalysisStore, useAnalysisStore } from "../../../analyst/client/analysis-store.js";
@@ -1086,9 +1089,7 @@ function HarnessSection() {
 }
 
 /**
- * 한 하네스의 실행 정책이 한 카드에 모인다 — 시스템 프롬프트와 내장 서브에이전트는 둘 다
- * "이 자식을 어떻게 띄우는가"이고, 둘 다 새 세션부터 듣는다. 하네스가 늘면 이 카드가
- * 그 수만큼 서고, 방의 구조는 그대로다.
+ * 공통 실행 정책은 이 카드에 남고, Theater마다 다른 시스템 프롬프트는 그 Theater의 시트에서 정한다.
  */
 function ClaudeCodeHarnessCard() {
   const locale = useTerminalLocale();
@@ -1096,6 +1097,9 @@ function ClaudeCodeHarnessCard() {
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields;
+  const consoleState = useConsoleState();
+  const mobile = useViewMode().effective === "mobile";
+  const theater = consoleState.theaters.find((item) => item.id === consoleState.activeTheaterId);
 
   return (
     <section className="global-settings-card" aria-label={t("terminal.settings.harnessClaudeCode")}>
@@ -1104,6 +1108,10 @@ function ClaudeCodeHarnessCard() {
         {t("terminal.settings.harnessClaudeCode")}
         <SettingsHelp title={t("terminal.settings.harnessClaudeCode")}>{t("terminal.settings.harnessFoot")}</SettingsHelp>
       </h3>
+      <div className="theater-prompt-settings-note">
+        <span>{t(mobile ? "terminal.settings.theaterPromptNoticeMobile" : "terminal.settings.theaterPromptNotice")}</span>
+        {theater ? <button type="button" onClick={(event) => openTheaterSystemPrompt(theater, event.currentTarget, event.currentTarget.getBoundingClientRect())}>{t("terminal.settings.theaterPromptOpen", { theater: theater.label })}</button> : null}
+      </div>
       {settings.error ? <p className="global-settings-error" role="alert">{translateServerMessage(locale, settings.error)}</p> : null}
       {state ? (
         <>
@@ -1271,6 +1279,7 @@ function ClaudeBuiltInAgentsRows({ disabled, saving, onChange }: {
         <div className="global-settings-row-text">
           <p className="global-settings-resp-title">
             <span id="claude-code-built-in-agents-label">{t("terminal.settings.builtInAgentsTitle")}</span>
+            <small className="global-settings-help">{t("terminal.settings.builtInAgentsScope")}</small>
             <SettingsHelp title={t("terminal.settings.builtInAgentsTitle")}>{t("terminal.settings.builtInAgentsHelp")}</SettingsHelp>
           </p>
           {/* 꺼진 개수와 적용 시점은 누르는 자리에 선다 — 카드 제목 팁 안에만 있으면 화면 밖이다.

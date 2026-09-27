@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../../../features/settings/client/execution-settings.js";
+import { openTheaterSystemPrompt, subscribeTheaterSystemPromptChange } from "../../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { useNavigate } from "react-router-dom";
 
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
@@ -22,6 +24,28 @@ export function MobileTheaterPage({ state }: { readonly state: ConsoleState }) {
   const t = useT();
   const navigate = useNavigate();
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!menuId) return;
+    const controller = new AbortController();
+    void fetchTheaterSystemPrompt(menuId, controller.signal).then((value) => setPrompt(value.prompt)).catch(() => undefined);
+    const unsubscribe = subscribeTheaterSystemPromptChange((id, value) => { if (id === menuId) setPrompt(value); });
+    const outside = (event: PointerEvent) => { if (event.target instanceof Node && !menuRef.current?.contains(event.target) && !openerRef.current?.contains(event.target)) setMenuId(null); };
+    document.addEventListener("pointerdown", outside);
+    window.requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus());
+    return () => { controller.abort(); unsubscribe(); document.removeEventListener("pointerdown", outside); };
+  }, [menuId]);
+  const menuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") { event.preventDefault(); setMenuId(null); openerRef.current?.focus(); return; }
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]') ?? []);
+    if (!items.length) return;
+    const index = items.findIndex((item) => item === document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" ? (index + 1) % items.length : event.key === "ArrowUp" ? (index - 1 + items.length) % items.length : -1;
+    if (next >= 0) { event.preventDefault(); items[next]?.focus(); }
+  };
 
   const enter = (theaterId: string) => {
     setActiveTheater(theaterId);
@@ -46,25 +70,26 @@ export function MobileTheaterPage({ state }: { readonly state: ConsoleState }) {
           const awaiting = operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
           const here = theater.id === state.activeTheaterId;
           return (
-            <button
-              type="button"
-              className="mobile-theater-row"
-              key={theater.id}
-              aria-current={here ? "true" : undefined}
-              onClick={() => enter(theater.id)}
-            >
-              <span className="mobile-theater-mark" aria-hidden="true">{theaterInitials(theater.label)}</span>
-              <span className="mobile-theater-copy">
-                <strong>{theater.label}</strong>
-                <span className="mobile-theater-summary">
-                  <span>{t(operations.length === 1 ? "mobile.theaters.opCount_one" : "mobile.theaters.opCount_other", { count: operations.length })}</span>
-                  {awaiting > 0 ? <span className="mobile-theater-awaiting">{t("mobile.theaters.awaiting", { count: awaiting })}</span> : null}
+            <div className="mobile-theater-card" key={theater.id}>
+              <button type="button" className="mobile-theater-row" aria-current={here ? "true" : undefined} onClick={() => enter(theater.id)}>
+                <span className="mobile-theater-mark" aria-hidden="true">{theaterInitials(theater.label)}</span>
+                <span className="mobile-theater-copy">
+                  <strong>{theater.label}</strong>
+                  <span className="mobile-theater-summary">
+                    <span>{t(operations.length === 1 ? "mobile.theaters.opCount_one" : "mobile.theaters.opCount_other", { count: operations.length })}</span>
+                    {awaiting > 0 ? <span className="mobile-theater-awaiting">{t("mobile.theaters.awaiting", { count: awaiting })}</span> : null}
+                  </span>
                 </span>
-              </span>
-              {here
-                ? <span className="mobile-theater-here">{t("mobile.theaters.here")}</span>
-                : <span className="mobile-operation-chevron" aria-hidden="true">›</span>}
-            </button>
+                {here ? <span className="mobile-theater-here">{t("mobile.theaters.here")}</span> : <span className="mobile-operation-chevron" aria-hidden="true">›</span>}
+              </button>
+              <button type="button" className="mobile-theater-more" ref={menuId === theater.id ? openerRef : undefined} aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.label })} aria-haspopup="menu" aria-expanded={menuId === theater.id} onClick={(event) => { openerRef.current = event.currentTarget; setPrompt(null); setMenuId(menuId === theater.id ? null : theater.id); }}>···</button>
+              {menuId === theater.id ? <div className="theater-menu mobile-theater-menu" role="menu" ref={menuRef} onKeyDown={menuKeyDown} aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.label })}>
+                <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { setMenuId(null); openTheaterSystemPrompt(theater, openerRef.current); }}>
+                  <span className="theater-menu-label">{t("sidebar.theater.prompt.menu")}</span>
+                  <span className="theater-prompt-menu-state">{prompt ? t(`sidebar.theater.prompt.mode${prompt.mode === "on" ? "On" : prompt.mode === "append" ? "Append" : "Off"}`) : t("sidebar.theater.prompt.unset")}</span>
+                </button>
+              </div> : null}
+            </div>
           );
         })}
         <button
