@@ -132,8 +132,8 @@ function ratingsOf(objective: Pick<Objective, "handoff">): ReadonlyMap<string, P
 }
 
 /**
- * 지난 역할 — exclude(보고 있는 목표)를 뺀 목표들의 구성원을 역할별로 모은다. 임무를 한 번도 맡지 않고 평가도 없는
- * 구성원(구상만 된 명단)은 쓰인 것이 아니라서 세지 않는다. 숨긴 역할은 includeHidden 일 때만 hidden: true 로 싣는다.
+ * 지난 역할 — exclude(보고 있는 목표)를 뺀 목표들의 구성원을 역할별로 모은다. 끝낸 임무도 평가도 없는 구성원
+ * (구상만 됐거나 아직 아무것도 끝내지 않은 명단)은 쓰인 것이 아니라서 세지 않는다. 숨긴 역할은 includeHidden 일 때만 hidden: true 로 싣는다.
  * 순서는 쓰인 목표 수, 평가(잘됨−아쉬움), 최근 사용, 이름.
  */
 export function pastRoles(objectives: readonly Objective[], curation: RoleCuration, options: { readonly exclude?: string; readonly includeHidden?: boolean } = {}): readonly PastRole[] {
@@ -148,7 +148,7 @@ export function pastRoles(objectives: readonly Objective[], curation: RoleCurati
     for (const member of objective.members) {
       const missions = objective.missions.filter((mission) => mission.member === member.id);
       const rating = ratings.get(member.id);
-      if (missions.length === 0 && !rating) continue;
+      if (!rating && !missions.some((mission) => mission.done)) continue;
       const filed = rating?.as ?? member.role;
       const role = resolveRole(curation, filed);
       const entry = roles.get(role) ?? { role, aliases: new Set<string>(), objectives: new Set<string>(), members: 0, maxParallel: 1, assigned: 0, done: 0, well: 0, short: 0, notes: [], lastAt: 0 };
