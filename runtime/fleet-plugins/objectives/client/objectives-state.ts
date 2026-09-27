@@ -108,13 +108,20 @@ function memberIds(objectives: readonly Objective[]): ReadonlySet<string> {
 
 /**
  * Operation 목록과 목표를 맞춘다 — 읽어 둔 Theater 에 처음 보는 에이전트 Operation 이 있으면 그 목표를 받아 온다.
- * 목록에서 빠졌다는 것만으로는 목표를 빼지 않는다: 완료한 목표의 Operation 은 보관되어 일반 목록에서 사라지지만
- * 목표는 완료 목록에 그대로 있어야 한다. 목표가 실제로 사라지는 때는 영구 삭제(operation:purged)와 서버의 remove
- * 사건뿐이다(removeObjectiveLocally·installObjectiveState).
+ * 기록이 있는 목표는 목록에서 빠졌다는 것만으로 빼지 않는다: 완료한 목표의 Operation 은 보관되어 일반 목록에서
+ * 사라지지만 목표는 완료 목록에 그대로 있어야 한다. 그런 목표가 실제로 사라지는 때는 영구 삭제(operation:purged)와
+ * 서버의 remove 사건뿐이다(removeObjectiveLocally·installObjectiveState).
+ * 기록이 없는 항목(`recorded === false`, 따로 만든 에이전트 Operation 이 「미분류」에 선 것)은 Operation 그 자체라
+ * 목록에서 빠지면(보관·삭제) 곧바로 거둔다 — 서버의 목록도 같은 규칙으로 그 항목을 뺀다. 복원되면 처음 보는
+ * Operation 으로 다시 받아 온다.
  */
 function reconcileOperations(api: ClientApiCapability): void {
+  const listed = new Set(operationsSnapshot.map((operation) => operation.id));
   for (const [theaterId, state] of theaters) {
     if (!state.loaded) continue;
+    if (state.objectives.some((objective) => objective.recorded === false && !listed.has(objective.id))) {
+      setTheater(theaterId, { objectives: state.objectives.filter((objective) => objective.recorded !== false || listed.has(objective.id)) });
+    }
     // 제목은 Operation 의 것이다 — 자동 작명처럼 사건 없이 바뀐 제목도 Operation 목록에서 따라간다.
     const titles = new Map(operationsSnapshot.map((operation) => [operation.id, operation.title]));
     const stale = (theaters.get(theaterId) ?? state).objectives;
