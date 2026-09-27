@@ -6,12 +6,23 @@ import { useT } from "../../../core/client/src/i18n/index.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import type { TheaterInfo } from "../../../core/client/src/integration/types.js";
 import { useTheaterLabel } from "../../../core/client/src/hooks/use-store.js";
+import { theaterInitials } from "../../workspace/client/sidebar/theater-initials.js";
 import { CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS, fetchTheaterSystemPrompt, saveTheaterSystemPrompt, type ClaudeCodeSystemPromptMode, type TheaterSystemPrompt } from "./execution-settings.js";
 import "./theater-system-prompt-sheet.css";
 
 interface OpenRequest { readonly theater: TheaterInfo; readonly anchor: DOMRect | null; readonly returnFocus: HTMLElement | null }
 const OPEN_EVENT = "fleet:theater-system-prompt-open";
 const CHANGED_EVENT = "fleet:theater-system-prompt-changed";
+const FORGOTTEN_EVENT = "fleet:theater-system-prompt-forgotten";
+
+export function subscribeTheaterSystemPromptForgotten(listener: () => void): () => void {
+  window.addEventListener(FORGOTTEN_EVENT, listener);
+  return () => window.removeEventListener(FORGOTTEN_EVENT, listener);
+}
+
+function announceForgotten() {
+  window.dispatchEvent(new Event(FORGOTTEN_EVENT));
+}
 
 export function openTheaterSystemPrompt(theater: TheaterInfo, returnFocus: HTMLElement | null, anchor?: DOMRect | null): void {
   window.dispatchEvent(new CustomEvent<OpenRequest>(OPEN_EVENT, { detail: { theater, returnFocus, anchor: anchor ?? null } }));
@@ -39,10 +50,17 @@ export function TheaterSystemPromptSheet() {
   const [draft, setDraft] = useState<TheaterSystemPrompt>({ mode: "on", body: "" });
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "over" | "error">("saved");
+  const [status, setStatus] = useState<"untouched" | "idle" | "saving" | "saved" | "over" | "error">("untouched");
   const [undo, setUndo] = useState<TheaterSystemPrompt | null>(null);
+  const [sheetTop, setSheetTop] = useState(8);
+  const [tipVisible, setTipVisible] = useState(false);
+  const [tipPosition, setTipPosition] = useState({ top: 0, left: 0 });
   const dialogRef = useRef<HTMLElement>(null);
   const selectRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef<HTMLButtonElement>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+  const undoRef = useRef<HTMLButtonElement>(null);
+  const focusAfterResetRef = useRef<"undo" | "select" | null>(null);
   const requestRef = useRef(request);
   const draftRef = useRef(draft);
   const storedRef = useRef(stored);
@@ -72,8 +90,14 @@ export function TheaterSystemPromptSheet() {
         }
       } catch (error) {
         if (requestRef.current?.theater.id === theaterId && revision === revisionRef.current) {
-          if ((error as { status?: number }).status === 404) { clearTimeout(timerRef.current ?? undefined); requestRef.current?.returnFocus?.focus(); setRequest(null); }
-          else { dirtyRef.current = true; setStatus("error"); }
+          if ((error as { status?: number }).status === 404) {
+            clearTimeout(timerRef.current ?? undefined);
+            const opener = requestRef.current?.returnFocus;
+            requestRef.current = null;
+            setRequest(null);
+            if (opener?.isConnected) opener.focus();
+            announceForgotten();
+          } else { dirtyRef.current = true; setStatus("error"); }
         }
       }
     });
@@ -94,7 +118,9 @@ export function TheaterSystemPromptSheet() {
     fetchControllerRef.current?.abort();
     flush();
     const opener = requestRef.current?.returnFocus;
+    requestRef.current = null;
     setRequest(null);
+    setTipVisible(false);
     setUndo(null);
     if (opener?.isConnected) window.requestAnimationFrame(() => opener.focus());
   }, [flush]);
@@ -107,11 +133,13 @@ export function TheaterSystemPromptSheet() {
       clearTimer();
       revisionRef.current++;
       dirtyRef.current = false;
+      requestRef.current = next;
       setRequest(next);
+      setTipVisible(false);
       setStored(null);
       setDraft({ mode: "on", body: "" });
       setUndo(null);
-      setStatus("saved");
+      setStatus("untouched");
       setLoadFailed(false);
       setLoading(true);
       const controller = new AbortController();
@@ -120,19 +148,21 @@ export function TheaterSystemPromptSheet() {
         if (controller.signal.aborted) return null;
         return fetchTheaterSystemPrompt(next.theater.id, controller.signal);
       }).then((result) => {
-        if (!result) return;
+        if (!result || controller.signal.aborted || requestRef.current !== next) return;
         const { prompt } = result;
-        if (requestRef.current?.theater.id !== next.theater.id) return;
         storedRef.current = prompt;
         draftRef.current = prompt ?? { mode: "on", body: "" };
         setStored(prompt);
         setDraft(draftRef.current);
         setLoading(false);
-        window.requestAnimationFrame(() => selectRef.current?.querySelector<HTMLButtonElement>('button[role="combobox"]')?.focus());
       }).catch((error) => {
-        if (!controller.signal.aborted && requestRef.current?.theater.id === next.theater.id) {
-          if ((error as { status?: number }).status === 404) { next.returnFocus?.focus(); setRequest(null); }
-          else { setLoading(false); setLoadFailed(true); }
+        if (!controller.signal.aborted && requestRef.current === next) {
+          if ((error as { status?: number }).status === 404) {
+            requestRef.current = null;
+            setRequest(null);
+            if (next.returnFocus?.isConnected) next.returnFocus.focus();
+            announceForgotten();
+          } else { setLoading(false); setLoadFailed(true); }
         }
       });
     };
@@ -141,35 +171,76 @@ export function TheaterSystemPromptSheet() {
   }, [clearTimer, flush]);
 
   useLayoutEffect(() => {
-    if (request && !loading) selectRef.current?.querySelector<HTMLButtonElement>('button[role="combobox"]')?.focus();
-  }, [request, loading]);
+    if (request && !loading && !loadFailed) selectRef.current?.querySelector<HTMLButtonElement>('button[role="combobox"]')?.focus();
+  }, [request, loading, loadFailed]);
+
+  useLayoutEffect(() => {
+    if (!request || !focusAfterResetRef.current) return;
+    if (focusAfterResetRef.current === "undo") undoRef.current?.focus();
+    else selectRef.current?.querySelector<HTMLButtonElement>('button[role="combobox"]')?.focus();
+    focusAfterResetRef.current = null;
+  }, [request, undo]);
+
+  useLayoutEffect(() => {
+    if (!request || mobile || !dialogRef.current) return;
+    const sheet = dialogRef.current;
+    const measure = () => {
+      const viewportHeight = window.innerHeight;
+      const height = Math.min(sheet.scrollHeight, viewportHeight - 16);
+      const top = Math.max(8, Math.min(request.anchor?.top ?? 80, viewportHeight - height - 8));
+      setSheetTop((current) => current === top ? current : top);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(sheet);
+    window.addEventListener("resize", measure);
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, [request, mobile, loading]);
 
   useEffect(() => {
     if (!request || registeredLabel !== null) return;
     fetchControllerRef.current?.abort();
     clearTimer();
+    requestRef.current = null;
     setRequest(null);
     if (request.returnFocus?.isConnected) request.returnFocus.focus();
+    announceForgotten();
   }, [request, registeredLabel, clearTimer]);
+
+  useLayoutEffect(() => {
+    if (!request || !tipVisible) return;
+    const place = () => {
+      const box = tipRef.current?.getBoundingClientRect();
+      if (!box) return;
+      setTipPosition({ top: Math.max(8, Math.min(window.innerHeight - (tooltipRef.current?.offsetHeight ?? 90) - 8, box.bottom + 6)), left: Math.max(8, Math.min(window.innerWidth - 298, box.right - 290)) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [request, tipVisible]);
 
   useEffect(() => {
     if (!request) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         if (selectRef.current?.querySelector('[aria-expanded="true"]')) return;
-        event.preventDefault(); event.stopPropagation(); close();
+        event.preventDefault(); event.stopPropagation();
+        if (tipVisible) setTipVisible(false);
+        else close();
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [request, close]);
+  }, [request, close, tipVisible]);
 
   if (!request) return null;
   const theater = request.theater;
   const sidebarRight = document.querySelector(".operations-side-bar")?.getBoundingClientRect().right ?? request.anchor?.right ?? 8;
   const position = !mobile ? {
     left: Math.max(8, Math.min(window.innerWidth - 428, sidebarRight + 8)),
-    top: Math.max(8, Math.min(request.anchor?.top ?? 80, window.innerHeight - (dialogRef.current?.offsetHeight ?? 480) - 8)),
+    top: sheetTop,
+    maxHeight: `calc(100dvh - ${sheetTop + 8}px)`,
   } : undefined;
   const modeNames: Record<ClaudeCodeSystemPromptMode, string> = {
     on: t("sidebar.theater.prompt.modeOn"), append: t("sidebar.theater.prompt.modeAppend"), off: t("sidebar.theater.prompt.modeOff"),
@@ -202,6 +273,7 @@ export function TheaterSystemPromptSheet() {
     const empty = { mode: "on" as const, body: "" };
     draftRef.current = empty;
     setDraft(empty);
+    focusAfterResetRef.current = "undo";
     persist(theater.id, empty);
   };
   const restore = () => {
@@ -209,6 +281,7 @@ export function TheaterSystemPromptSheet() {
     draftRef.current = undo;
     setDraft(undo);
     persist(theater.id, undo);
+    focusAfterResetRef.current = "select";
     setUndo(null);
   };
   const trapTab = (event: KeyboardEvent<HTMLElement>) => {
@@ -222,29 +295,30 @@ export function TheaterSystemPromptSheet() {
     <div className={`theater-prompt-backdrop${mobile ? " is-mobile" : ""}`} onPointerDown={close} aria-hidden="true" />
     <section ref={dialogRef} className={`theater-prompt-sheet${mobile ? " is-mobile" : ""}`} style={position} role="dialog" aria-modal="true" aria-label={t("sidebar.theater.prompt.dialogAria", { theater: theater.label })} onKeyDown={trapTab}>
       <header className="theater-prompt-header">
-        <span className="theater-prompt-mark" aria-hidden="true">{theater.label.trim().split(/[\s\-_.]+/).map((part) => Array.from(part)[0]).slice(0, 2).join("").toUpperCase() || "--"}</span>
+        <span className="theater-prompt-mark" aria-hidden="true">{theaterInitials(theater.label)}</span>
         <span className="theater-prompt-heading"><strong>{theater.label}</strong><small>{t("sidebar.theater.prompt.title")}</small></span>
         <button type="button" className="theater-prompt-close" onClick={close} aria-label={t("sidebar.theater.prompt.close")}>×</button>
       </header>
       <p className="theater-prompt-scope">{t("sidebar.theater.prompt.scope")}
-        <span className="theater-prompt-tip-wrap"><button type="button" className="theater-prompt-tip" aria-label={t("sidebar.theater.prompt.tipAria")}>?</button><span role="tooltip">{t("sidebar.theater.prompt.tip")}</span></span>
+        <span className="theater-prompt-tip-wrap"><button ref={tipRef} type="button" className="theater-prompt-tip" aria-label={t("sidebar.theater.prompt.tipAria")} aria-describedby="theater-prompt-tip-description" onMouseEnter={() => setTipVisible(true)} onMouseLeave={() => setTipVisible(false)} onFocus={() => setTipVisible(true)} onBlur={() => setTipVisible(false)}>?</button></span>
       </p>
       {!loading && !loadFailed ? <div className="theater-prompt-state"><span><i className={stored ? "is-own" : ""} />{stored ? t("sidebar.theater.prompt.own") : t("sidebar.theater.prompt.unset")}</span><small>{stored ? t("sidebar.theater.prompt.ownDetail") : t("sidebar.theater.prompt.unsetDetail")}</small>
         {stored ? <button type="button" onClick={reset}>{t("sidebar.theater.prompt.reset")}</button> : null}
-        {undo ? <p role="status">{t("sidebar.theater.prompt.resetDone")} <button type="button" onClick={restore}>{t("sidebar.theater.prompt.undo")}</button></p> : null}
+        {undo ? <p role="status">{t("sidebar.theater.prompt.resetDone")} <button ref={undoRef} type="button" onClick={restore}>{t("sidebar.theater.prompt.undo")}</button></p> : null}
       </div> : null}
       {loading ? <p role="status">{t("sidebar.theater.prompt.loading")}</p> : loadFailed ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.prompt.loadFailed")}</p> : <>
         <div className="theater-prompt-field" ref={selectRef}><span id="theater-prompt-mode-label">{t("sidebar.theater.prompt.modeLabel")}</span>
           <Select className="theater-prompt-select" aria-labelledby="theater-prompt-mode-label" value={draft.mode} options={(Object.keys(modeNames) as ClaudeCodeSystemPromptMode[]).map((mode) => ({ value: mode, label: modeNames[mode] }))} onChange={(mode) => changeMode(mode as ClaudeCodeSystemPromptMode)} />
         </div>
-        {draft.mode === "on" && draft.body.trim() ? <div className="theater-prompt-kept"><details><summary>{t("sidebar.theater.prompt.kept", { count: draft.body.length })}</summary><pre>{draft.body}</pre></details><p>{t("sidebar.theater.prompt.keptHelp")}</p></div> : null}
-        <label className="theater-prompt-field">{t("sidebar.theater.prompt.bodyLabel")}
-          <textarea value={draft.body} onChange={(event) => changeBody(event.target.value)} onBlur={flush} rows={5} />
+        {draft.mode === "on" && draft.body ? <div className="theater-prompt-kept"><details><summary>{t("sidebar.theater.prompt.kept", { count: draft.body.length })}</summary><pre>{draft.body}</pre></details></div> : null}
+        {draft.mode !== "on" ? <label className="theater-prompt-field">{t("sidebar.theater.prompt.bodyLabel")}
+          <textarea value={draft.body} onChange={(event) => changeBody(event.target.value)} onBlur={flush} rows={5} aria-invalid={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS} aria-describedby={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? "theater-prompt-length-error" : undefined} />
           <small className={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? "is-over" : ""}>{draft.body.length.toLocaleString()} / 16,000</small>
-        </label>
+        </label> : null}
         <p className={draft.mode === "off" ? "theater-prompt-warning" : "theater-prompt-caption"}>{caption}</p>
-        <p className={`theater-prompt-save is-${status}`} role="status" aria-live="polite"><i />{t(`sidebar.theater.prompt.save.${status}`)}</p>
+        {status !== "untouched" ? <p id={status === "over" ? "theater-prompt-length-error" : undefined} className={`theater-prompt-save is-${status}`} role={status === "over" ? "alert" : "status"} aria-live="polite"><i />{t(`sidebar.theater.prompt.save.${status}`)}</p> : null}
       </>}
     </section>
+    <span ref={tooltipRef} id="theater-prompt-tip-description" role="tooltip" className="theater-prompt-tooltip" hidden={!tipVisible} style={tipPosition}>{t("sidebar.theater.prompt.tip")}</span>
   </>, document.body);
 }

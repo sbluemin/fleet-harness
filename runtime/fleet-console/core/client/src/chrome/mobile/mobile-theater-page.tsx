@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useT } from "../../i18n/index.js";
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
-import { theaterInitials } from "../../../../../features/workspace/client/sidebar/operations-side-bar.js";
+import { theaterInitials } from "../../../../../features/workspace/client/sidebar/theater-initials.js";
 import { setActiveTheater } from "../../integration/store.js";
 import { registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import type { ConsoleState } from "../../integration/types.js";
@@ -26,13 +26,18 @@ export function MobileTheaterPage({ state }: { readonly state: ConsoleState }) {
   const [browserOpen, setBrowserOpen] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
+  const [promptLoaded, setPromptLoaded] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!menuId) return;
     const controller = new AbortController();
-    void fetchTheaterSystemPrompt(menuId, controller.signal).then((value) => setPrompt(value.prompt)).catch(() => undefined);
-    const unsubscribe = subscribeTheaterSystemPromptChange((id, value) => { if (id === menuId) setPrompt(value); });
+    void fetchTheaterSystemPrompt(menuId, controller.signal).then((value) => {
+      if (controller.signal.aborted) return;
+      setPrompt(value.prompt);
+      setPromptLoaded(true);
+    }).catch(() => undefined);
+    const unsubscribe = subscribeTheaterSystemPromptChange((id, value) => { if (id === menuId) { setPrompt(value); setPromptLoaded(true); } });
     const outside = (event: PointerEvent) => { if (event.target instanceof Node && !menuRef.current?.contains(event.target) && !openerRef.current?.contains(event.target)) setMenuId(null); };
     document.addEventListener("pointerdown", outside);
     window.requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus());
@@ -82,11 +87,11 @@ export function MobileTheaterPage({ state }: { readonly state: ConsoleState }) {
                 </span>
                 {here ? <span className="mobile-theater-here">{t("mobile.theaters.here")}</span> : <span className="mobile-operation-chevron" aria-hidden="true">›</span>}
               </button>
-              <button type="button" className="mobile-theater-more" ref={menuId === theater.id ? openerRef : undefined} aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.label })} aria-haspopup="menu" aria-expanded={menuId === theater.id} onClick={(event) => { openerRef.current = event.currentTarget; setPrompt(null); setMenuId(menuId === theater.id ? null : theater.id); }}>···</button>
+              <button type="button" className="mobile-theater-more" ref={menuId === theater.id ? openerRef : undefined} aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.label })} aria-haspopup="menu" aria-expanded={menuId === theater.id} onClick={(event) => { openerRef.current = event.currentTarget; setPrompt(null); setPromptLoaded(false); setMenuId(menuId === theater.id ? null : theater.id); }}>···</button>
               {menuId === theater.id ? <div className="theater-menu mobile-theater-menu" role="menu" ref={menuRef} onKeyDown={menuKeyDown} aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.label })}>
                 <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { setMenuId(null); openTheaterSystemPrompt(theater, openerRef.current); }}>
                   <span className="theater-menu-label">{t("sidebar.theater.prompt.menu")}</span>
-                  <span className="theater-prompt-menu-state">{prompt ? t(`sidebar.theater.prompt.mode${prompt.mode === "on" ? "On" : prompt.mode === "append" ? "Append" : "Off"}`) : t("sidebar.theater.prompt.unset")}</span>
+                  <span className="theater-prompt-menu-state">{promptLoaded ? (prompt ? t(`sidebar.theater.prompt.mode${prompt.mode === "on" ? "On" : prompt.mode === "append" ? "Append" : "Off"}`) : t("sidebar.theater.prompt.unset")) : null}</span>
                 </button>
               </div> : null}
             </div>

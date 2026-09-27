@@ -42,7 +42,7 @@ import { SettingsRouteAdapter } from "../../../../features/settings/client/setti
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
-import { TheaterSystemPromptSheet } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
+import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
@@ -91,6 +91,13 @@ export function App() {
   const [undoClock, setUndoClock] = useState(Date.now());
   // 보관·되돌리기가 거절됐을 때의 짧은 안내 — 조용히 삼키지 않는다.
   const [undoNotice, setUndoNotice] = useState<{ readonly key: CoreMessageKey; readonly nonce: number } | null>(null);
+  const [promptForgottenNotice, setPromptForgottenNotice] = useState(false);
+  useEffect(() => subscribeTheaterSystemPromptForgotten(() => setPromptForgottenNotice(true)), []);
+  useEffect(() => {
+    if (!promptForgottenNotice) return;
+    const timer = setTimeout(() => setPromptForgottenNotice(false), THEME_NOTICE_AUTO_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [promptForgottenNotice]);
   const pendingUndosRef = useRef(pendingUndos);
   const undoInFlightRef = useRef(false);
   pendingUndosRef.current = pendingUndos;
@@ -666,6 +673,7 @@ export function App() {
             title={themeNotice === "light" ? t("chrome.toast.themeLight") : t("chrome.toast.themeDark")}
             onDismiss={() => setThemeNotice(null)}
           />
+          <Toast open={promptForgottenNotice} tone="warn" title={t("sidebar.theater.prompt.forgotten")} onDismiss={() => setPromptForgottenNotice(false)} />
           {mobileLayout ? deletionToast : null}
         </ToastHost>
       </div>

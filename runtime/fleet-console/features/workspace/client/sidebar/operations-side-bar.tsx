@@ -1,6 +1,8 @@
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { ArchiveEntry } from "../archive/archive-entry.js";
 import { openTheaterSystemPrompt, subscribeTheaterSystemPromptChange } from "../../../settings/client/theater-system-prompt-sheet.js";
+import { theaterInitials } from "./theater-initials.js";
+export { theaterInitials } from "./theater-initials.js";
 import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../settings/client/execution-settings.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { consoleUseWrapClassName, gestureCallerLabel, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
@@ -1730,10 +1732,16 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
   const t = useT();
   const [showNewInput, setShowNewInput] = useState(false);
   const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
+  const [promptLoaded, setPromptLoaded] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    void fetchTheaterSystemPrompt(theater.id, controller.signal).then((state) => setPrompt(state.prompt)).catch(() => undefined);
-    const unsubscribe = subscribeTheaterSystemPromptChange((id, value) => { if (id === theater.id) setPrompt(value); });
+    setPromptLoaded(false);
+    void fetchTheaterSystemPrompt(theater.id, controller.signal).then((state) => {
+      if (controller.signal.aborted) return;
+      setPrompt(state.prompt);
+      setPromptLoaded(true);
+    }).catch(() => undefined);
+    const unsubscribe = subscribeTheaterSystemPromptChange((id, value) => { if (id === theater.id) { setPrompt(value); setPromptLoaded(true); } });
     return () => { controller.abort(); unsubscribe(); };
   }, [theater.id]);
   const [newName, setNewName] = useState(() => t("sidebar.theater.defaultGroupName", { n: groupCount + 1 }));
@@ -1800,7 +1808,7 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
         <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenSystemPrompt}>
           <span className="theater-menu-check" aria-hidden="true">✦</span>
           <span className="theater-menu-label">{t("sidebar.theater.prompt.menu")}</span>
-          <span className="theater-prompt-menu-state">{prompt ? t(`sidebar.theater.prompt.mode${prompt.mode === "on" ? "On" : prompt.mode === "append" ? "Append" : "Off"}`) : t("sidebar.theater.prompt.unset")}</span>
+          <span className="theater-prompt-menu-state">{promptLoaded ? (prompt ? t(`sidebar.theater.prompt.mode${prompt.mode === "on" ? "On" : prompt.mode === "append" ? "Append" : "Off"}`) : t("sidebar.theater.prompt.unset")) : null}</span>
         </button>
         <div className="theater-menu-divider" aria-hidden="true" />
         {showNewInput ? (
@@ -1881,26 +1889,6 @@ function PlusIcon() {
       <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
     </svg>
   );
-}
-
-export function theaterInitials(label: string): string {
-  // 하이픈/언더스코어/점도 단어 경계로 취급 — "fleet-harness" → "FH" (재가 시안 문법)
-  const words = label.trim().split(/[\s\-_.]+/).filter(Boolean);
-  const initials = words.length > 1
-    ? words.flatMap((word) => firstGrapheme(word))
-    : graphemes(label).filter((grapheme) => /[\p{L}\p{N}]/u.test(grapheme));
-  return initials.slice(0, 2).join("").toUpperCase() || "--";
-}
-
-function firstGrapheme(value: string): string[] {
-  return graphemes(value).slice(0, 1);
-}
-
-function graphemes(value: string): string[] {
-  if (typeof Intl.Segmenter === "function") {
-    return [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)].map((segment) => segment.segment);
-  }
-  return Array.from(value);
 }
 
 function TrashIcon() {
