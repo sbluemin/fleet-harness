@@ -573,8 +573,12 @@ export function mountReadingInto(
         ...markdownCopyOptions(t),
       });
 
+      const relatedHtml = renderRelatedList(entry.frontmatter.id, entry.frontmatter.tags, index);
+      const backlinksHtml = renderBacklinks(entry.backlinks ?? []);
+      // 옆단이 있다는 사실은 클래스로 싣는다 — 넓은 시트의 2열 배치가 `:has(> .related-list)` 대신 이것을 읽는다.
+      const documentClass = relatedHtml || backlinksHtml ? "document has-related" : "document";
       readContainer.innerHTML = `
-        <article class="document">
+        <article class="${documentClass}">
           <header class="document-header">
             ${renderSheetBreadcrumb(entry.frontmatter.title)}
             <h1>${escapeHtml(entry.frontmatter.title)}</h1>
@@ -583,8 +587,8 @@ export function mountReadingInto(
           <div class="markdown-body" id="codex-reader-body">
             ${markdownHtml}
           </div>
-          ${renderRelatedList(entry.frontmatter.id, entry.frontmatter.tags, index)}
-          ${renderBacklinks(entry.backlinks ?? [])}
+          ${relatedHtml}
+          ${backlinksHtml}
         </article>
       `;
 

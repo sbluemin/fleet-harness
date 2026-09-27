@@ -38,6 +38,7 @@ import { fetchGlobalSettingsState } from "../../../../features/settings/client/g
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
 import { connectOperationsSse } from "../integration/operations-sse.js";
 import { installOperationArchive } from "../integration/operation-archive.js";
+import { installModalOpenMarker } from "../integration/modal-open-marker.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "../integration/store.js";
@@ -83,6 +84,8 @@ applyDesktopShellMarker();
 // 사이드바 유리 취향은 브라우저-로컬이라 서버 왕복을 기다릴 이유가 없다 — 테마와 같은 줄에서
 // 첫 페인트 앞에 실어 두면 기본 재질이 잠깐 스쳤다 바뀌는 일이 없다.
 applyStoredSideBarGlass();
+// 모달 표시는 CSS :has()가 아니라 루트 속성으로 흐른다 — 문서 전체 스타일 재계산을 막는다(modal-open-marker.ts).
+installModalOpenMarker();
 
 try {
   const settings = await fetchGlobalSettingsState();

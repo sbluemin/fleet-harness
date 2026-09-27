@@ -21,8 +21,9 @@
 }
 
 /* 차단형 오버레이가 열린 동안에는 부유 위젯이 스스로 되살린 표면까지 입력을 놓는다 —
-   모달의 입력 독점이 위젯의 상주보다 우선한다. */
-body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
+   모달의 입력 독점이 위젯의 상주보다 우선한다. 모달 여부는 `body:has(...)`로 묻지 않는다 — 그 앵커는
+   문서의 모든 노드·글자 변경마다 body 서브트리 전체를 다시 계산하게 만든다(modal-open-marker.ts). */
+:root[data-modal-open] .floating-widget-layer * {
   pointer-events: none;
 }
 
@@ -602,10 +603,10 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
    닿을 자리가 없고 그 답 말풍선이 글리프를 닻으로 삼는다 — Quick Launch로 부관을 부르는 동안
    정작 그 부관이 사라졌다(인도 검수). visibility가 아니라 display로 내린다: 자리를 남기면 빈 칸이 선다.
    상단 바는 모달이 뜨면 aria-modal 경계 밖이라 따로 물러나지 않아도 닿지 않는다. */
-body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-zen,
-body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-drawer,
-body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-fold { display: none; }
-body:has([aria-modal="true"]:not([hidden])) .zen-bar .console-toolbar-plugins { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
+:root[data-modal-open] .zen-bar .console-toolbar-zen,
+:root[data-modal-open] .zen-bar .console-toolbar-drawer,
+:root[data-modal-open] .zen-bar .console-toolbar-fold { display: none; }
+:root[data-modal-open] .zen-bar .console-toolbar-plugins { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
 
 /* Zen 전환 장면 — 불투명한 커튼 한 겹과 그 위를 나는 앰블럼(zen-transition.tsx).
    앰블럼이 나는 동안 제자리의 브랜드(밴드·작업 표시줄)는 비워 둔다 — 둘이 겹쳐 보이면 한 마크가
