@@ -457,10 +457,13 @@ function seatFromFallback(
   reason: string,
   exposure: GatewayAssignmentExposure,
 ): BatchSeat {
-  const decision = fallbackGatewayRoutingAssignment(request, exposure);
+  // 배치의 fallback 좌석은 참고값이다 — 호출자는 fallback이면 자기 기본값으로 띄운다. 쓰이지 않은 배정이
+  // 공급자 부하·최근 배정 집계를 부풀리지 않도록 부하는 사본으로 계산하고 기록하지 않는다.
+  const scratch = { ...exposure, providerLoad: new Map(exposure.providerLoad ?? []) };
+  const decision = fallbackGatewayRoutingAssignment(request, scratch);
   return {
     decision: toBatchDecision(key, { ...decision, because: `${decision.because} · fallback: ${reason}` }, true),
-    commit: true,
+    commit: false,
   };
 }
 
