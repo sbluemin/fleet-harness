@@ -93,6 +93,8 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     sweepExpired();
     const existing = tombstones.find((item) => item.kind === "operation" && item.targetId === operationId);
     if (existing) return toReceipt(existing);
+    // 유예 삭제는 최상위 Operation 만 다룬다 — 자식 세션의 합성 뷰를 묘비에 담으면 복원 때 부모 밖으로 떨어진다.
+    if (deps.operations.getChild(operationId)) return null;
     const operation = deps.operations.get(operationId);
     if (!operation) return null;
     const previousOperations = deps.operations.list();

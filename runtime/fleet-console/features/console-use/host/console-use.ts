@@ -534,6 +534,8 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     }
     if (args.action === "close") {
       if (me.kind === "operation" && me.operationId === op.id) throw new ConsoleControlError("cannot_close_self");
+      // 자식 세션은 부모 레코드 안에 산다 — 유예 삭제·복원은 최상위 Operation 만 되살리므로 여기서 닫지 않는다. 소유 플러그인이 지운다.
+      if (op.parentOperationId) throw new ConsoleControlError("child_session_not_closable");
       const activity = control?.observe(op.id)?.activity;
       if ((activity === "running" || activity === "awaiting" || activity === "background") && !sameCaller(launchedBy(op), me)) throw new ConsoleControlError("target_busy");
       const receipt = need("close")(op.id, me);
