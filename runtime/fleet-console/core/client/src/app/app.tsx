@@ -41,6 +41,7 @@ import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
+import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
@@ -630,6 +631,7 @@ export function App() {
         />
         <QuickLaunch />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
+        <ArchiveSheet />
         <WhatsNewModal state={state} />
         <CommissioningOverlay state={state} />
         <OnboardingHost

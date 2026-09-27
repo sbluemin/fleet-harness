@@ -1,4 +1,5 @@
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
+import { ArchiveEntry } from "../archive/archive-entry.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { consoleUseWrapClassName, gestureCallerLabel, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
@@ -1175,6 +1176,8 @@ export function OperationsSideBar({
         )}
       </ol>
       </div>
+
+      <ArchiveEntry />
 
       <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
 

@@ -18234,3 +18234,332 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   .quick-launch-card .effort-track,
   .quick-launch-card .effort-track-apex-toggle { border-color: ButtonBorder; }
 }
+
+/* ── 보관함 ─────────────────────────────────────────────────────────────
+   사이드바 맨 아래의 입구와, 그것이 여는 확대 시트. 보관은 되돌릴 수 있는 치움이라 입구·복원은 중립·brass 잉크를
+   쓰고, coral은 되돌릴 수 없는 영구 삭제 확인에만 선다. */
+.side-bar-archive {
+  flex: none;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border-top: 1px solid var(--surface-rim);
+}
+
+.side-bar-archive-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.side-bar-archive-button:hover {
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.side-bar-archive-button:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: -2px;
+}
+
+.side-bar-archive-glyph,
+.archive-sheet-glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--text-tertiary);
+}
+
+.side-bar-archive-glyph svg,
+.archive-sheet-glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.side-bar-archive-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-bar-archive-count,
+.archive-sheet-count {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.archive-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
+  -webkit-backdrop-filter: var(--glass-backdrop-scrim);
+  backdrop-filter: var(--glass-backdrop-scrim);
+}
+
+.archive-sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, calc(100vw - 32px));
+  height: min(84vh, calc(100dvh - 64px));
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: var(--shadow-floating);
+  outline: none;
+}
+
+.archive-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.archive-sheet-head h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+}
+
+.archive-sheet-count {
+  flex: 1;
+}
+
+.archive-sheet-close {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+}
+
+.archive-sheet-close:hover {
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.archive-sheet-notice {
+  margin: var(--space-2) var(--space-4) 0;
+  color: var(--warn-ink);
+  font-size: var(--t-sm);
+}
+
+.archive-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.archive-sheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.archive-sheet-bucket {
+  margin: var(--space-2) 0 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+}
+
+.archive-sheet-empty {
+  margin: var(--space-4) 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  text-align: center;
+}
+
+.archive-sheet-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+}
+
+.archive-sheet-item.is-confirming {
+  border-color: color-mix(in oklch, var(--coral) 50%, var(--surface-rim));
+}
+
+.archive-sheet-item-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.archive-sheet-item-meta,
+.archive-sheet-note {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+.archive-sheet-members {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+.archive-sheet-members li {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.archive-sheet-members li.is-child {
+  padding-left: var(--space-3);
+}
+
+.archive-sheet-members li.is-open {
+  color: var(--text-tertiary);
+}
+
+.archive-sheet-members small {
+  color: var(--text-tertiary);
+}
+
+.archive-sheet-actions,
+.archive-purge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-1);
+}
+
+.archive-sheet-restore,
+.archive-sheet-purge,
+.archive-purge-cancel {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.archive-sheet-restore {
+  color: var(--brass-ink);
+  font-weight: var(--weight-medium);
+}
+
+.archive-sheet-restore:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.archive-sheet-purge,
+.archive-purge-cancel {
+  color: var(--text-tertiary);
+}
+
+.archive-sheet-restore:hover,
+.archive-purge-cancel:hover {
+  color: var(--text-primary);
+}
+
+.archive-sheet-purge:hover {
+  color: var(--coral-ink);
+}
+
+.archive-sheet-restore:focus-visible,
+.archive-sheet-purge:focus-visible,
+.archive-purge-cancel:focus-visible,
+.archive-purge-confirm-button:focus-visible,
+.archive-sheet-close:focus-visible,
+.app-toast-link:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+/* 영구 삭제 확인 — 되돌릴 수 없는 유일한 동작이라 이 카드만 coral 채널을 쓴다. */
+.archive-purge-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
+  border-radius: var(--radius-xs);
+  background: var(--coral-glow);
+}
+
+.archive-purge-confirm ul {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+.archive-purge-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+}
+
+.archive-purge-label {
+  margin: var(--space-1) 0 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.04em;
+}
+
+.archive-purge-error {
+  margin: 0;
+  color: var(--coral-ink);
+  font-size: var(--t-xs);
+}
+
+.archive-purge-confirm-button {
+  padding: 4px 12px;
+  border: 1px solid color-mix(in oklch, var(--coral) 60%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--coral) 20%, transparent);
+  color: var(--coral-ink);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.archive-purge-confirm-button:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--coral) 32%, transparent);
+}
+
+.archive-purge-confirm-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
