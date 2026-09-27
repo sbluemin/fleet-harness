@@ -1744,7 +1744,8 @@ export function OperationsCanvas({
                     rootActivity={resolveOperationActivity(operation, ownOperationRuntime())}
                     onPick={(operationId) => {
                       selectNestedBody(operation.id, operationId);
-                      // 덱 카드의 본문은 읽는 자리다 — 칩은 보이는 본문만 바꾸고, 활성·포커스는 무대 승격이 진다.
+                      // 덱 카드의 본문은 inert라 키보드 포커스를 보낼 곳이 없다 — 칩은 보이는 본문만 바꾼다.
+                      // 포인터로 누른 카드가 활성이 되는 것은 캡션과 같은 카드 크롬의 관례다(줄의 pointerdown).
                       if (deckSlot) return;
                       setActiveOperation(operation.id);
                       requestOperationKeyboardFocus(operation.id);
