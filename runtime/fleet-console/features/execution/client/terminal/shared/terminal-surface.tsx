@@ -218,7 +218,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
-  const webgl = useTerminalWebglGrant({ wanted: terminalRenderer === "webgl", visible, active: active !== false });
+  const webgl = useTerminalWebglGrant({ wanted: terminalRenderer === "webgl", visible, active: active !== false, touchKey: keyboardFocusRequestId });
   const onWebglLostRef = useRef(webgl.onLost);
   onWebglLostRef.current = webgl.onLost;
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
