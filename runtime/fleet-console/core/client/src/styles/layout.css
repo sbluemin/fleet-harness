@@ -445,8 +445,12 @@
 
 /* 서랍 — 도구·찾기·도움말. 접으면 열 폭이 0으로 말려 Zen 버튼 쪽으로 빨려 들며 흐려진다.
    플러그인 항목과 Zen 버튼은 서랍 밖이라 남는다. */
+/* flex: none — 펼친 서랍은 자기 내용 폭 아래로 눌리지 않는다. 눌리면 도움말이 뒤따르는 부관 칸 밑으로
+   파고들고, 밴드는 눌린 폭을 자연 폭으로 재어 가운데 정렬을 포기하지 않는다(command-band.tsx 실측).
+   접힘은 0fr 트랙이 내용 폭 자체를 0으로 줄이므로 수축 없이도 말려 들어간다. */
 .console-toolbar-drawer {
   display: grid;
+  flex: none;
   grid-template-columns: 1fr;
   min-width: 0;
   transition:
