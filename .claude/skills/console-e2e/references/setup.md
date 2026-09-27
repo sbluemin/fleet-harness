@@ -76,7 +76,7 @@ For an Objectives roster with existing member sessions but no model turn, seed *
 }
 ```
 
-The generated objective record lives under the **isolated Console slot's** `workspaces/<workspace-key>/objectives/<objective-id>/objective.json`. Locate the record created in step 1 rather than guessing the workspace key or using a legacy Fleet-root path. Its relevant fields match the state excerpt as follows (substitute the same generated ids; retain its other fields):
+The generated objective record lives under the **isolated Console slot's** `workspaces/<workspace-key>/objectives/<objective-id>/objective.json`. Locate the record created in step 1 rather than guessing the workspace key or using a legacy Fleet-root path. **Remove its `pending` field when adding the commander Operation**, while the owned runtime is still stopped; preserve the remaining metadata. `pending` means no commander Operation exists yet, so retaining both sends later edits down the pending-only path instead of updating the Operation. Its relevant fields match the state excerpt as follows (substitute the same generated ids; retain its other fields except `pending`):
 
 ```json
 {
