@@ -150,7 +150,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (objective.planning) return refuse("planning_only", { hint: PLANNING_ONLY });
         return text({ members: await launch.muster(objectiveId) });
       }),
-    commanderTool("complete_mission", `Mark a mission done with a record of 1–${MAX_RECORD_LINES} lines, conclusion first, each at most ${MAX_RECORD_LINE} characters. The person reads every record and the latest one is shown with the missions that follow; completing a mission again appends a record.`,
+    commanderTool("complete_mission", `Mark a mission done with a record of 1–${MAX_RECORD_LINES} lines, conclusion first, each at most ${MAX_RECORD_LINE} characters. The person reads every record and the latest one is shown with the missions that follow; completing a mission again appends a record. Records are text; PRs and files the person can open are results attached through attach_result.`,
       z.object({ ...missionRef, summary: z.array(z.string().max(2000)).min(1).max(20) }).strict(),
       (args, objective) => {
         if (objective.planning) return refuse("planning_only", { hint: PLANNING_ONLY });
@@ -181,7 +181,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (!retrospective.success) return refuse("retrospective_format", { hint: RETROSPECTIVE_FORMAT });
         return text({ ok: true, objective: objectiveView(store.handOff(objective.id, { by: "commander", retrospective: retrospective.data })) });
       }), inputSchema: z.toJSONSchema(z.object({ objectiveId: ids, retrospective: retrospectiveSchema }).strict()) },
-    commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. Once every mission is done and every criterion is met, the objective awaits hand-off; it reaches the person's review only when handed off, and the person completes it. New or reopened missions and the person's edits clear every mark and any hand-off. A mark made on a board the person has since edited is refused as board_changed.",
+    commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. That line is text; PRs and files the person can open are results attached through attach_result. Once every mission is done and every criterion is met, the objective awaits hand-off; it reaches the person's review only when handed off, and the person completes it. New or reopened missions and the person's edits clear every mark and any hand-off. A mark made on a board the person has since edited is refused as board_changed.",
       z.object({ objectiveId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_EVIDENCE).optional() }).strict(),
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
@@ -195,17 +195,22 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
   ];
 }
 
+function handoffInventory(objective: Objective): string {
+  const candidates = objective.followups.filter((candidate) => candidate.state === "open").length;
+  const results = objective.results.length;
+  return `The objective holds ${candidates} follow-up ${candidates === 1 ? "candidate" : "candidates"} and ${results} attached ${results === 1 ? "result" : "results"}.`;
+}
+
 /**
  * 인계 전환 — 할 일이 끝나 인계 대기로 넘어간 지휘관에게 돌려주는 사실. 목표를 넘어 남는 것(후보)과 목표와 함께 끝나는 것
- * (기록·메시지), 지금 후보 수, 인계의 단계만 말한다. 상한은 말하지 않고, 후보 0건도 인계가 된다는 사실을 함께 둔다 —
+ * (기록·메시지), 지금 후보·결과물 수, 인계의 단계만 말한다. 상한은 말하지 않고, 후보 0건도 인계가 된다는 사실을 함께 둔다 —
  * 판단을 요구할 뿐 등록을 요구하지 않는다.
  */
 export function handoffPrompt(objective: Objective): string {
-  const candidates = objective.followups.filter((candidate) => candidate.state === "open").length;
   const members = objective.members.length > 0;
   return [
     "Every mission is done and every criterion is met: the objective awaits hand-off, and it reaches the person's review only through hand_off.",
-    `Only follow-up candidates carry beyond this objective; mission records and messages end with it, so a finding that is not a candidate reaches no later objective. The objective holds ${candidates} follow-up ${candidates === 1 ? "candidate" : "candidates"}, and a hand-off with none is valid.`,
+    `Only follow-up candidates carry beyond this objective; mission records and messages end with it, so a finding that is not a candidate reaches no later objective. ${handoffInventory(objective)} A hand-off with no follow-up candidates is valid.`,
     members
       ? "The hand-off step: the Commander requests each member's retrospective by SendMessage, gathers them, and synthesizes them with its own into the retrospective that hand_off carries. SendMessage reaches only live sessions; muster brings dormant members back."
       : "The hand-off step: the Commander writes the retrospective that hand_off carries.",
@@ -221,5 +226,5 @@ export function criteriaCheckPrompt(objective: Objective): string {
   const open = objective.criteria.map((criterion, index) => ({ criterion, n: index + 1 })).filter(({ criterion }) => !criterion.met);
   if (open.length === 0) return handoffPrompt(objective);
   const list = open.map(({ criterion, n }) => `${n}. ${criterion.text}`).join("\n");
-  return `Every mission is done. The objective awaits hand-off once each criterion below is marked met with evidence; the person relies on that judgment rather than re-checking, and a criterion that does not hold yet means the objective is not finished.\n\nCriteria not yet met:\n${list}`;
+  return `Every mission is done. The objective awaits hand-off once each criterion below is marked met with evidence; the person relies on that judgment rather than re-checking, and a criterion that does not hold yet means the objective is not finished.\n\n${handoffInventory(objective)}\n\nCriteria not yet met:\n${list}`;
 }
