@@ -24,7 +24,7 @@ const actionObjectSchema = z.object({
   display: z.string().min(1).max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
   groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
-  disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
+  disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(), ownedTemp: z.boolean().optional(),
   parentOperationId: z.string().min(1).max(128).optional(),
   launchKey: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
   newOperationId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).optional(),
@@ -32,7 +32,7 @@ const actionObjectSchema = z.object({
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && !value.text)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.ownedTemp !== undefined || value.parentOperationId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.newOperationId && !value.launchKey) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "interrupt" && (value.text || value.display || value.displayFormat)) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
@@ -226,7 +226,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
     const input = actionSchema.parse(raw);
     validTarget(input);
-    if (input.newOperationId && caller.kind !== "plugin") fail("invalid_launch_option");
+    if ((input.newOperationId || input.ownedTemp !== undefined) && caller.kind !== "plugin") fail("invalid_launch_option");
     if (input.launchKey !== undefined) {
       const joined = keyedLaunch(caller, input);
       if (joined) return joined;
@@ -286,6 +286,8 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (!callerAvailable(caller)) fail("caller_unavailable");
     if (!callerAuthorized(caller)) fail("console_use_not_authorized");
     const input = automationSchema.parse(raw);
+    // 예약도 원래 호출자의 권한으로 접수한다. 실행 시에는 accept가 같은 경계를 다시 검사한다.
+    if (input.action.kind !== "briefing" && input.action.ownedTemp !== undefined && caller.kind !== "plugin") fail("invalid_launch_option");
     const expires = Date.parse(input.expiresAt);
     if (expires <= now() || expires > now() + 30 * 86_400_000) fail("invalid_expiry");
     if (!deps.theaters().some((t) => t.id === input.theaterId)) fail("unknown_theater");
