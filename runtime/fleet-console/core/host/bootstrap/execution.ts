@@ -83,7 +83,26 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     // 「이번 작업만」 허가도 턴과 함께 풀린다.
     onTurnSettled: (operationId) => { ctx.host.useRequests?.settle(operationId); ctx.host.browserMcp?.endAgentSession(operationId); ctx.host.computerUseMcp?.revokeOperation(operationId); ctx.host.consoleUse.endOperationUse?.(operationId); },
   });
-  return { launchKinds: agent.launchKinds, actions: { ...agent.actions, analystAsk: analysis.ask, analystArtifacts: analysis.artifacts, analystState: analysis.state } };
+  return {
+    launchKinds: agent.launchKinds,
+    actions: { ...agent.actions, analystAsk: analysis.ask, analystArtifacts: analysis.artifacts, analystState: analysis.state },
+    stopForArchive: async (operation: import("@fleet-console/sdk/operations").OperationNode) => {
+      runtime.invalidateTicketsForSession(operation.id);
+      if (operation.pluginId === null && operation.type === "agent") {
+        await agent.stopForArchive(operation.id);
+        await analysis.stopForArchive(operation.id);
+      } else if (!await runtime.terminateAndWait(operation.id, 10_000)) throw new Error("archive_stop_failed");
+      await ctx.host.browserMcp?.revokeOperation(operation.id);
+      ctx.host.computerUseMcp?.revokeOperation(operation.id);
+      ctx.host.useRequests?.settle(operation.id);
+      ctx.host.consoleUse.endOperationUse?.(operation.id);
+    },
+    purgeOperation: (operation: import("@fleet-console/sdk/operations").OperationNode) => {
+      if (operation.pluginId !== null || operation.type !== "agent") return;
+      agent.purgeOperation(operation.id);
+      analysis.purgeOperation(operation.id);
+    },
+  };
 }
 
 function isOperationDeletedEvent(value: unknown): value is { readonly operationId: string; readonly pluginId: string | null } {

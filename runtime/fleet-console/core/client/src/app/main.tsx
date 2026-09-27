@@ -37,6 +37,7 @@ import { HostPickerScreen } from "../../../../features/remote-access/client/host
 import { fetchGlobalSettingsState } from "../../../../features/settings/client/global-settings-api.js";
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
 import { connectOperationsSse } from "../integration/operations-sse.js";
+import { installOperationArchive } from "../integration/operation-archive.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "../integration/store.js";
@@ -115,6 +116,8 @@ if (app && hostPicker) {
   const registry = await loadPluginRegistry();
   // 제스처는 id 로 대상·호출자를 찾는다 — 구성원이 부른 Console Use 도 제 이름으로 선다.
   installConsoleUseGestures({ operations: () => operationsIncludingNested(), subscribeConsoleChannel });
+  // 보관함의 수와 목록 — 보관된 Operation은 일반 목록에 없으므로 자기 사건으로 따라간다.
+  installOperationArchive(subscribeConsoleChannel);
   connectOperationsSse();
   createRoot(app).render(
     <StrictMode>

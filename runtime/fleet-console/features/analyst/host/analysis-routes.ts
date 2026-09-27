@@ -6,7 +6,7 @@ interface AnalystHostContext {
     readonly experiments?: FleetPluginHostCapabilities["experiments"];
     readonly server: Pick<FleetPluginHostCapabilities["server"], "origin">;
     readonly paths: Pick<FleetPluginHostCapabilities["paths"], "resolveTheaterPath">;
-    readonly operations: Pick<FleetPluginHostCapabilities["operations"], "get">;
+    readonly operations: Pick<FleetPluginHostCapabilities["operations"], "get" | "isTransitioning">;
     readonly security: Pick<FleetPluginHostCapabilities["security"], "isTerminalAuthorized" | "validateHost">;
     readonly http: Pick<FleetPluginHostCapabilities["http"], "readJsonBody" | "writeJson">;
     readonly events: Pick<FleetPluginHostCapabilities["events"], "subscribe">;
@@ -96,6 +96,8 @@ type InFlightStartDeletionMarker = {
 
 /** Console Use 가 쓰는 분석가 서비스 — 라우트와 같은 레지스트리·카탈로그·전사 규칙 위에서 한 질문을 끝까지 돌린다. */
 export interface AnalysisConsoleService {
+  stopForArchive(operationId: string): Promise<void>;
+  purgeOperation(operationId: string): void;
   ask(operationId: string, question: string, by: ConsoleCaller, signal?: AbortSignal): Promise<{ readonly ok: true; readonly answer: string; readonly artifacts: readonly { readonly id: string; readonly title: string }[] } | { readonly ok: false; readonly error: string }>;
   artifacts(operationId: string, artifactId?: string): { readonly artifacts: readonly { readonly id: string; readonly title: string }[]; readonly html?: string } | { readonly error: string };
   /** 사람이 패널에서 보는 것과 같은 원장 — 시작 여부·모델·최근 항목·아티팩트 목록. */
@@ -133,7 +135,7 @@ export function registerAnalysisRoutes(ctx: AnalystHostContext, deps: AnalysisRo
     if (!transcript.transcriptPath) return "transcript_missing";
     const cwd = ctx.host.paths.resolveTheaterPath(operation.theaterId);
     const origin = ctx.host.server.origin();
-    if (!cwd || !origin) return "analyst_unavailable";
+    if (!cwd || !origin || !getAgentOperation(ctx, operation.id)) return "analyst_unavailable";
     try {
       const result = await registry.start(operation.id, (onEvent) => createSession({
         baseUrl: resolveAnalysisGatewayBaseUrl(origin), model: selection.model, effort: selection.effort || undefined, cwd,
@@ -143,6 +145,11 @@ export function registerAnalysisRoutes(ctx: AnalystHostContext, deps: AnalysisRo
     } catch { return "analyst_unavailable"; }
   };
   const service: AnalysisConsoleService = {
+    async stopForArchive(operationId) {
+      for (const marker of inFlightStartDeletionMarkers) if (marker.operationId === operationId) marker.deleted = true;
+      await registry.stop(operationId);
+    },
+    purgeOperation: (operationId) => { registry.clearArtifacts(operationId); },
     async ask(operationId, question, by, signal) {
       const operation = getAgentOperation(ctx, operationId);
       if (!operation) return { ok: false, error: "unknown_operation" };
@@ -823,6 +830,7 @@ async function handleStop(ctx: AnalystHostContext, req: http.IncomingMessage, re
 }
 
 function getAgentOperation(ctx: AnalystHostContext, operationId: string): OperationNode | null {
+  if (ctx.host.operations.isTransitioning?.(operationId)) return null;
   const operation = ctx.host.operations.get(operationId);
   return operation?.pluginId === null && operation.type === AGENT_OPERATION_TYPE ? operation : null;
 }

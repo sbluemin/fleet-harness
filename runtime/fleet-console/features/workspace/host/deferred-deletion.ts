@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
-import type { DurableDeletionTombstone, DurableOperationGroup } from "./durable-state.js";
+import { deletionOperations, type DurableDeletionTombstone, type DurableOperationGroup } from "./durable-state.js";
+import type { ArchivedOperation } from "./operation-archive-storage.js";
 import type { OperationNode, OperationStore } from "../../execution/host/operations/operations-domain.js";
 import { DELETION_GRACE_MS } from "../../execution/host/operations/operations-domain.js";
 import type { TheaterRegistration } from "./theaters/theater-domain.js";
@@ -11,6 +12,8 @@ export interface DeferredDeletionReceipt {
   readonly kind: "operation" | "theater";
   readonly targetId: string;
   readonly expiresAt: number;
+  /** Theater 잊기의 기존 toast에 표시할 보관 Operation 수. */
+  readonly archivedOperationCount?: number;
 }
 
 export interface DeferredDeletionResponse {
@@ -49,7 +52,9 @@ export interface DeferredDeletionCoordinator {
 interface DeferredDeletionCoordinatorDeps {
   readonly operations: OperationStore;
   readonly theaters: TheaterRegistry;
-  readonly save: (tombstones: readonly DurableDeletionTombstone[]) => void;
+  readonly save: (tombstones: readonly DurableDeletionTombstone[], archives?: readonly ArchivedOperation[]) => void;
+  readonly archives?: () => readonly ArchivedOperation[];
+  readonly assertMutable?: (id: string) => void;
   readonly publish: (channel: string, payload: unknown) => void;
   readonly unregisterTheaterWorkspaces: (theaterId: string) => void;
   readonly validateTheaterRestore: (theater: TheaterRegistration) => Promise<void>;
@@ -91,12 +96,23 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
 
   function deleteOperation(operationId: string): DeferredDeletionReceipt | null {
     sweepExpired();
-    const existing = tombstones.find((item) => item.kind === "operation" && item.targetId === operationId);
+    const existing = tombstones.find((item) => deletionOperations(item).some((node) => node.id === operationId));
     if (existing) return toReceipt(existing);
-    // 유예 삭제는 최상위 Operation 만 다룬다 — 자식 세션의 합성 뷰를 묘비에 담으면 복원 때 부모 밖으로 떨어진다.
+    // 자식 세션은 부모와 함께 저장한다. 합성 실행 뷰를 독립 묘비로 만들지 않는다.
     if (deps.operations.getChild(operationId)) return null;
-    const operation = deps.operations.get(operationId);
+    const archives = deps.archives?.() ?? [];
+    const all = [...deps.operations.list(), ...archives.map((entry) => entry.operation)];
+    const operation = all.find((node) => node.id === operationId);
     if (!operation) return null;
+    const ids = new Set([operationId]);
+    let previousSize = -1;
+    while (previousSize !== ids.size) {
+      previousSize = ids.size;
+      for (const node of all) if (node.parentOperationId && ids.has(node.parentOperationId)) ids.add(node.id);
+    }
+    const affected = all.filter((node) => ids.has(node.id));
+    for (const node of affected) deps.assertMutable?.(node.id);
+    const archived = Object.fromEntries(archives.filter((entry) => ids.has(entry.operation.id)).map((entry) => [entry.operation.id, { archiveId: entry.archiveId, archivedAt: entry.archivedAt }]));
     const previousOperations = deps.operations.list();
     const deletedAt = now();
     const tombstone: DurableDeletionTombstone = {
@@ -106,17 +122,19 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
       expiresAt: deletedAt + DELETION_GRACE_MS,
       kind: "operation",
       operation,
+      ...(affected.length > 1 ? { descendants: affected.filter((node) => node.id !== operationId) } : {}),
+      ...(Object.keys(archived).length ? { archived } : {}),
     };
     const nextTombstones = [...tombstones, tombstone];
-    deps.operations.delete(operationId);
+    for (const node of affected) deps.operations.delete(node.id);
     try {
-      deps.save(nextTombstones);
+      deps.save(nextTombstones, archives.filter((entry) => !ids.has(entry.operation.id)));
     } catch (error) {
       deps.operations.replace(previousOperations);
       throw error;
     }
     tombstones = nextTombstones;
-    publishOperation(OPERATION_DELETED_EVENT_CHANNEL, operation);
+    for (const node of affected) publishOperation(OPERATION_DELETED_EVENT_CHANNEL, node);
     schedule();
     return toReceipt(tombstone);
   }
@@ -130,7 +148,10 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const previousTheaters = deps.theaters.list();
     const previousOperations = deps.operations.list();
     const previousGroups = deps.operations.listAllGroups();
-    const deletedOperations = deps.operations.listByTheater(theaterId);
+    const archives = deps.archives?.() ?? [];
+    const archived = Object.fromEntries(archives.filter((entry) => entry.operation.theaterId === theaterId).map((entry) => [entry.operation.id, { archiveId: entry.archiveId, archivedAt: entry.archivedAt }]));
+    const deletedOperations = [...deps.operations.listByTheater(theaterId), ...archives.filter((entry) => entry.operation.theaterId === theaterId).map((entry) => entry.operation)];
+    for (const node of deletedOperations) deps.assertMutable?.(node.id);
     const deletedGroups = deps.operations.listGroups(theaterId);
     const deletedAt = now();
     const tombstone: DurableDeletionTombstone = {
@@ -142,12 +163,13 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
       theater,
       operations: deletedOperations,
       groups: deletedGroups,
+      ...(Object.keys(archived).length ? { archived } : {}),
     };
     const nextTombstones = [...tombstones, tombstone];
     deps.theaters.remove(theaterId);
     deps.operations.deleteByTheater(theaterId);
     try {
-      deps.save(nextTombstones);
+      deps.save(nextTombstones, archives.filter((entry) => entry.operation.theaterId !== theaterId));
     } catch (error) {
       deps.theaters.restore(previousTheaters);
       deps.operations.replace(previousOperations);
@@ -168,28 +190,33 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
       if (tombstone) sweepExpired();
       throw new DeferredDeletionError(404, "deletion_not_found");
     }
+    const archives = deps.archives?.() ?? [];
+    const restoredNodes = deletionOperations(tombstone);
+    const archivedIds = new Set(Object.keys(tombstone.archived ?? {}));
+    const restoredArchives = restoredNodes.filter((node) => archivedIds.has(node.id)).map((operation) => ({ operation, ...tombstone.archived![operation.id]! }));
+    const activeRestores = restoredNodes.filter((node) => !archivedIds.has(node.id));
     if (tombstone.kind === "operation") {
-      if (deps.operations.get(tombstone.targetId) || !deps.theaters.get(tombstone.operation.theaterId)) {
+      if (restoredNodes.some((node) => deps.operations.get(node.id) || archives.some((entry) => entry.operation.id === node.id)) || !deps.theaters.get(tombstone.operation.theaterId)) {
         throw new DeferredDeletionError(409, "restore_conflict");
       }
       const previousOperations = deps.operations.list();
       const nextTombstones = tombstones.filter((item) => item.deletionId !== deletionId);
-      deps.operations.replace([...previousOperations, tombstone.operation]);
+      deps.operations.replace([...previousOperations, ...activeRestores]);
       try {
-        deps.save(nextTombstones);
+        deps.save(nextTombstones, [...archives, ...restoredArchives]);
       } catch (error) {
         deps.operations.replace(previousOperations);
         throw error;
       }
       tombstones = nextTombstones;
-      publishOperation(OPERATION_RESTORED_EVENT_CHANNEL, tombstone.operation);
+      for (const node of activeRestores) publishOperation(OPERATION_RESTORED_EVENT_CHANNEL, node);
       schedule();
       return { ok: true, kind: tombstone.kind, targetId: tombstone.targetId };
     }
 
     await deps.validateTheaterRestore(tombstone.theater);
     if (deps.theaters.get(tombstone.targetId)
-      || tombstone.operations.some((operation) => deps.operations.get(operation.id))
+      || tombstone.operations.some((operation) => deps.operations.get(operation.id) || archives.some((entry) => entry.operation.id === operation.id))
       || hasGroupConflict(tombstone.groups, deps.operations.listAllGroups())) {
       throw new DeferredDeletionError(409, "restore_conflict");
     }
@@ -198,10 +225,10 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const previousGroups = deps.operations.listAllGroups();
     const nextTombstones = tombstones.filter((item) => item.deletionId !== deletionId);
     deps.theaters.restore([...previousTheaters, tombstone.theater]);
-    deps.operations.replace([...previousOperations, ...tombstone.operations]);
+    deps.operations.replace([...previousOperations, ...activeRestores]);
     deps.operations.replaceGroups([...previousGroups, ...tombstone.groups]);
     try {
-      deps.save(nextTombstones);
+      deps.save(nextTombstones, [...archives, ...restoredArchives]);
     } catch (error) {
       deps.theaters.restore(previousTheaters);
       deps.operations.replace(previousOperations);
@@ -210,7 +237,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     }
     tombstones = nextTombstones;
     await deps.registerTheaterWorkspace(tombstone.theater);
-    for (const operation of tombstone.operations) publishOperation(OPERATION_RESTORED_EVENT_CHANNEL, operation);
+    for (const operation of activeRestores) publishOperation(OPERATION_RESTORED_EVENT_CHANNEL, operation);
     schedule();
     return { ok: true, kind: tombstone.kind, targetId: tombstone.targetId };
   }
@@ -222,7 +249,7 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     const expired = due.filter((item) => {
       if (!deps.beforePurge) return true;
       try {
-        deps.beforePurge(item.kind === "operation" ? [item.operation] : item.operations);
+        deps.beforePurge(deletionOperations(item));
         purgeRetryAt.delete(item.deletionId);
         return true;
       } catch {
@@ -245,20 +272,14 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
     }
     tombstones = nextTombstones;
     for (const tombstone of expired) {
-      if (tombstone.kind === "operation") {
-        publishOperation(OPERATION_PURGED_EVENT_CHANNEL, tombstone.operation);
-      } else {
-        for (const operation of tombstone.operations) publishOperation(OPERATION_PURGED_EVENT_CHANNEL, operation);
-      }
+      for (const operation of deletionOperations(tombstone)) publishOperation(OPERATION_PURGED_EVENT_CHANNEL, operation);
     }
     schedule();
   }
 
   function hasPendingOperation(operationId: string): boolean {
     sweepExpired();
-    return tombstones.some((item) => item.kind === "operation"
-      ? item.targetId === operationId
-      : item.operations.some((operation) => operation.id === operationId));
+    return tombstones.some((item) => deletionOperations(item).some((operation) => operation.id === operationId || operation.childSessions?.some((child) => child.id === operationId)));
   }
 
   function hasPendingTheater(theaterId: string): boolean {
@@ -333,6 +354,7 @@ function toReceipt(tombstone: DurableDeletionTombstone): DeferredDeletionReceipt
     kind: tombstone.kind,
     targetId: tombstone.targetId,
     expiresAt: tombstone.expiresAt,
+    archivedOperationCount: Object.keys(tombstone.archived ?? {}).length,
   };
 }
 

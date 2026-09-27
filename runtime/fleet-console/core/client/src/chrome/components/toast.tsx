@@ -12,6 +12,9 @@ interface ToastProps {
   readonly onDismiss?: () => void;
   readonly actionLabel?: string;
   readonly onAction?: () => void;
+  /** 메시지 줄 끝의 보조 동작(예: 「보관함」). 주 동작 단추와 겹치지 않게 글자 링크로 선다. */
+  readonly secondaryActionLabel?: string;
+  readonly onSecondaryAction?: () => void;
   readonly progress?: number;
 }
 
@@ -22,7 +25,7 @@ export function ToastHost({ children }: { readonly children: ReactNode }) {
 }
 
 // 우하단 고정 토스트 아이템. 연결 이상 등 어떤 알림에도 재사용할 수 있도록 tone/title/message/onDismiss만 받는다.
-export function Toast({ open, title, message, tone = "info", onDismiss, actionLabel, onAction, progress }: ToastProps) {
+export function Toast({ open, title, message, tone = "info", onDismiss, actionLabel, onAction, secondaryActionLabel, onSecondaryAction, progress }: ToastProps) {
   const t = useT();
   if (!open) return null;
   return (
@@ -30,7 +33,17 @@ export function Toast({ open, title, message, tone = "info", onDismiss, actionLa
       <span className="app-toast-dot" aria-hidden="true" />
       <div className="app-toast-body">
         <p className="app-toast-title">{title}</p>
-        {message ? <p className="app-toast-message">{message}</p> : null}
+        {message || (secondaryActionLabel && onSecondaryAction) ? (
+          <p className="app-toast-message">
+            {message}
+            {secondaryActionLabel && onSecondaryAction ? (
+              <>
+                {message ? <span aria-hidden="true"> · </span> : null}
+                <button type="button" className="app-toast-link" onClick={onSecondaryAction}>{secondaryActionLabel}</button>
+              </>
+            ) : null}
+          </p>
+        ) : null}
         {typeof progress === "number" ? (
           <span className="app-toast-progress" aria-hidden="true">
             <span style={{ transform: `scaleX(${Math.max(0, Math.min(1, progress))})` }} />

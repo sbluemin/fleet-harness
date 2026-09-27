@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-import { readOperationLaunch, type OperationNode } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, type OperationNode, type OperationDescription } from "@fleet-console/sdk/operations";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import { checkedResultInput, patchedResultInput, prTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
@@ -82,7 +82,7 @@ export interface ObjectiveStoreOptions {
   /** Theater 의 목표 디렉터리 — `workspaces/<프로젝트>/objectives`. Theater 경로를 모르면 null. */
   readonly dirOf: (theaterId: string) => string | null;
   readonly theaterIds?: () => readonly string[];
-  readonly operations: { get(id: string): OperationNode | null; list(): readonly OperationNode[] };
+  readonly operations: { get(id: string): OperationNode | null; list(): readonly OperationNode[]; describe?(id: string): OperationDescription | null };
   readonly emit: (event: ObjectiveEvent) => void;
   readonly now?: () => number;
 }
@@ -147,8 +147,10 @@ export interface ObjectiveStore {
   forget(operationId: string): void;
   /** 순서만 바꾼다 — 같은 Theater 의 다른 항목 앞(before) 또는 뒤(after)로. */
   move(objectiveId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): Objective;
-  complete(objectiveId: string): Objective;
-  reopen(objectiveId: string): Objective;
+  complete(objectiveId: string, operationIntent?: StoredObjective["operationIntent"]): Objective;
+  reopen(objectiveId: string, operationIntent?: StoredObjective["operationIntent"]): Objective;
+  operationIntent(objectiveId: string): StoredObjective["operationIntent"];
+  acknowledgeOperationIntent(objectiveId: string, requestId: string): void;
   /** 인계 대기의 목표를 검토 대기로 넘긴다 — 인계 기록을 남긴다. 지휘관은 회고와 함께, 사람은 회고 없이. */
   handOff(objectiveId: string, input: { readonly by: "commander"; readonly retrospective: Retrospective } | { readonly by: "human" }): Objective;
   /** `unplaced` — 사람이 선행 없이 더한 임무는 미분류로 들어간다(지휘관이 자리를 잡는다). */
@@ -203,7 +205,7 @@ export interface ObjectiveStore {
   /** 사람이 open 후보를 버린다 — 제목·요약과 시각만 흔적으로 남는다(멱등). */
   followupDiscard(objectiveId: string, candidateId: string): Objective;
   /** 고른 후보의 rev 를 검증하고 완료·배치·후보 잠금을 한 번에 쓴다. 같은 배치는 그대로 돌려준다. */
-  completeWithFollowups(objectiveId: string, selection: FollowupSelection): { readonly objective: Objective; readonly fresh: boolean };
+  completeWithFollowups(objectiveId: string, selection: FollowupSelection, operationIntent?: StoredObjective["operationIntent"]): { readonly objective: Objective; readonly fresh: boolean };
   /** 배치 항목의 생성 결과를 기록한다. 끝난 항목(created·deleted)은 후보 목록에서 빠지고 배치에만 남는다. */
   followupSettle(objectiveId: string, batchId: string, candidateId: string, next: { readonly state: FollowupItemState; readonly operationId?: string; readonly error?: string; readonly attempted?: boolean }): Objective;
   /** failed·confirming 항목을 다시 creating 으로 — 같은 스냅샷·같은 키로 다시 확인하거나 만든다. */
@@ -300,6 +302,8 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     const parsed = JSON.parse(raw) as Partial<StoredObjective>;
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
+      const intent = parsed.operationIntent;
+      if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_operation_intent");
       const results = storedResultsSchema.safeParse(parsed.results === undefined ? [] : parsed.results);
       // 새 필드도 같은 손상 경계다. 아래 quarantine이 원본을 보존하며 다른 목표 읽기는 계속된다.
       if (!results.success) throw new ObjectiveStoreError("invalid_stored_results");
@@ -370,6 +374,10 @@ function compact(objective: StoredObjective): StoredObjective {
 }
 
 export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveStore {
+  // 기록의 참조는 읽기 전용 describe로 푼다. 화면 조회가 Core access를 호출하지 않는다.
+  const operationNode = (id: string): OperationNode | null => options.operations.describe
+    ? options.operations.describe(id)?.operation ?? null
+    : options.operations.get(id);
   const now = options.now ?? (() => Date.now());
   /** Theater 마다 목표 id → 레코드. 폴더를 처음 볼 때 한 번 읽어 올리고, 그 뒤로는 이 캐시가 저장소의 모양이다. */
   const cache = new Map<string, Map<string, StoredObjective>>();
@@ -447,9 +455,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const pending = stored.pending;
     if (!node && !pending) throw new ObjectiveStoreError("unknown_objective");
     const launch = node ? readOperationLaunch(node.payload) : { sessionName: pending!.sessionName, model: pending!.model, effort: pending!.effort, viewMode: pending!.viewMode, started: false };
-    const addedBy = stored.addedBy ? { operationId: stored.addedBy, title: options.operations.get(stored.addedBy)?.title ?? null } : null;
+    const addedBy = stored.addedBy ? { operationId: stored.addedBy, title: operationNode(stored.addedBy)?.title ?? null } : null;
     const members = (stored.members ?? []).map((member) => {
-      const memberNode = options.operations.get(member.id);
+      const memberNode = node?.childSessions?.find((child) => child.id === member.id);
       const preset = memberNode ? readOperationLaunch(memberNode.payload) : null;
       return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}),
         subagents: member.subagents === true, launch: member.launch ?? { mode: "route" as const },
@@ -492,11 +500,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           candidateId: entry.candidateId, rev: entry.rev,
           snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, userImpact: entry.snapshot.userImpact, fromMission: entry.snapshot.fromMission, brief: entry.snapshot.brief, criteria: [...entry.snapshot.criteria], evidence: entry.snapshot.evidence.map(evidenceView) },
           // 만든 뒤 사람이 지운 후속은 보기 시점에 「삭제됨」 — 저장은 created 그대로라 복원하면 돌아오고 누계·멱등성은 그대로다.
-          state: entry.state === "created" && entry.operationId && !options.operations.get(entry.operationId) && !load(node?.theaterId ?? pending!.theaterId).get(entry.operationId)?.pending ? "deleted" as const : entry.state, operationId: entry.operationId ?? null, error: entry.error ?? null, attempts: entry.attempts, settledAt: entry.settledAt ?? null,
+          state: entry.state === "created" && entry.operationId && !operationNode(entry.operationId) && !load(node?.theaterId ?? pending!.theaterId).get(entry.operationId)?.pending ? "deleted" as const : entry.state, operationId: entry.operationId ?? null, error: entry.error ?? null, attempts: entry.attempts, settledAt: entry.settledAt ?? null,
         })),
       })),
       followupHistory: stored.followupHistory ?? null,
-      origin: stored.origin ? { objectiveId: stored.origin.objectiveId, title: options.operations.get(stored.origin.objectiveId)?.title ?? load(node?.theaterId ?? pending!.theaterId).get(stored.origin.objectiveId)?.pending?.title ?? null, candidateId: stored.origin.candidateId, userImpact: stored.origin.userImpact, evidence: stored.origin.evidence.map(evidenceView) } : null,
+      origin: stored.origin ? { objectiveId: stored.origin.objectiveId, title: operationNode(stored.origin.objectiveId)?.title ?? load(node?.theaterId ?? pending!.theaterId).get(stored.origin.objectiveId)?.pending?.title ?? null, candidateId: stored.origin.candidateId, userImpact: stored.origin.userImpact, evidence: stored.origin.evidence.map(evidenceView) } : null,
       recorded: load(node?.theaterId ?? pending!.theaterId).has(stored.operationId),
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
@@ -523,7 +531,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const memberIds = (objectives: Iterable<StoredObjective>): ReadonlySet<string> => new Set([...objectives].flatMap((entry) => (entry.members ?? []).map((member) => member.id)));
   /** 목표가 되는 Operation 인가 — 이 Theater 의 에이전트 Operation 이고 다른 목표의 담당이 아니다. */
   const objectiveNode = (theaterId: string, operationId: string): OperationNode | null => {
-    const node = options.operations.get(operationId);
+    const node = operationNode(operationId);
     if (!node || node.theaterId !== theaterId || !isObjectiveOperation(node)) return null;
     return memberIds(load(theaterId).values()).has(operationId) ? null : node;
   };
@@ -540,13 +548,18 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const visible = (theaterId: string): readonly BoardEntry[] => {
     const objectives = load(theaterId);
     const members = memberIds(objectives.values());
-    const present = options.operations.list()
+    const references = new Map(options.operations.list().map((node) => [node.id, node]));
+    for (const stored of objectives.values()) {
+      const node = operationNode(stored.operationId);
+      if (node) references.set(node.id, node);
+    }
+    const present = [...references.values()]
       .filter((node) => node.theaterId === theaterId && isObjectiveOperation(node) && !members.has(node.id))
       .map((node) => {
         const stored = objectives.get(node.id);
         return { stored: stored ?? bareRecord(node.id), node, bare: !stored, rank: stored ? stored.rank : virtualRank(node) };
       });
-    const pending = [...objectives.values()].filter((stored) => stored.pending?.theaterId === theaterId && !options.operations.get(stored.operationId)).map((stored) => ({ stored, node: null, bare: false, rank: stored.rank }));
+    const pending = [...objectives.values()].filter((stored) => stored.pending?.theaterId === theaterId && !operationNode(stored.operationId)).map((stored) => ({ stored, node: null, bare: false, rank: stored.rank }));
     return [...present, ...pending].sort((a, b) => a.rank - b.rank || (a.node?.ts.createdAt ?? a.stored.pending?.createdAt ?? 0) - (b.node?.ts.createdAt ?? b.stored.pending?.createdAt ?? 0) || a.stored.operationId.localeCompare(b.stored.operationId));
   };
   /** 방송에 싣는 보드 줄 — 화면이 서버의 순서를 그대로 따를 수 있게 보이는 목표 전부를 싣는다. */
@@ -554,7 +567,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
   /** 목표 하나 — 레코드가 없으면(따로 만든 Operation) 빈 목표이고 `recorded` 는 false 다. */
   const locate = (objectiveId: string): { theaterId: string; recorded: boolean; stored: StoredObjective; node: OperationNode | null } => {
-    const found = options.operations.get(objectiveId);
+    const found = operationNode(objectiveId);
     const node = found ? objectiveNode(found.theaterId, objectiveId) : null;
     const theaterId = node?.theaterId ?? theaterIds().find((id) => load(id).get(objectiveId)?.pending);
     if (!theaterId) throw new ObjectiveStoreError("unknown_objective");
@@ -731,7 +744,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     adopt(operationId, init, pending) {
-      const node = options.operations.get(operationId);
+      const node = operationNode(operationId);
       if (!pending && (!node || !isObjectiveOperation(node))) throw new ObjectiveStoreError("unknown_operation");
       const theaterId = pending?.theaterId ?? node!.theaterId;
       if (load(theaterId).has(operationId)) throw new ObjectiveStoreError("already_objective");
@@ -786,7 +799,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     })),
 
     refresh(operationId) {
-      const node = options.operations.get(operationId);
+      const node = operationNode(operationId);
       if (!node) {
         for (const theaterId of theaterIds()) {
           const stored = load(theaterId).get(operationId);
@@ -852,14 +865,18 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     // 완료는 상태이지 연결 해제가 아니다 — 담당 연결은 그대로 남아 묶음·이동이 살아 있다.
-    complete: (objectiveId) => update(objectiveId, (stored) => {
+    complete: (objectiveId, operationIntent) => update(objectiveId, (stored) => {
       if (stored.done) return stored;
       // 인계 대기는 넘기기를 거쳐야 완료된다. 남은 후보가 있으면 고르지 않은 완료도 후보 검토의 경계를 지난다 —
       // 그 밖의(진행 중이며 후보가 없는) 목표의 완료는 지금 그대로다.
       if (awaitingHandoff(stored) || (stored.followups ?? []).some((candidate) => candidate.state === "open")) assertReviewable(stored);
-      return { ...stored, done: { at: now() }, planning: undefined, criteriaOpen: undefined };
+      return { ...stored, done: { at: now() }, planning: undefined, criteriaOpen: undefined, operationIntent };
     }),
-    reopen: (objectiveId) => update(objectiveId, (stored) => (stored.done ? { ...stored, done: undefined } : stored)),
+    reopen: (objectiveId, operationIntent) => update(objectiveId, (stored) => (stored.done ? { ...stored, done: undefined, operationIntent } : stored)),
+    operationIntent: (objectiveId) => { try { return locate(objectiveId).stored.operationIntent; } catch (error) { if (error instanceof ObjectiveStoreError && error.code === "unknown_objective") return undefined; throw error; } },
+    acknowledgeOperationIntent(objectiveId, requestId) {
+      update(objectiveId, (stored) => stored.operationIntent?.requestId === requestId ? { ...stored, operationIntent: undefined } : stored);
+    },
     handOff: (objectiveId, input) => update(objectiveId, (stored) => {
       if (!awaitingHandoff(stored)) throw new ObjectiveStoreError("not_awaiting_handoff");
       const at = now();
@@ -1230,7 +1247,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { ...stored, followups };
     }),
 
-    completeWithFollowups(objectiveId, selection) {
+    completeWithFollowups(objectiveId, selection, operationIntent) {
       let fresh = false;
       const objective = update(objectiveId, (stored) => {
         const batches = stored.followupBatches ?? [];
@@ -1257,7 +1274,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         fresh = true;
         return foldBatches({
           ...stored,
-          done: { at: now() }, planning: undefined, criteriaOpen: undefined,
+          done: { at: now() }, planning: undefined, criteriaOpen: undefined, operationIntent,
           followups: (stored.followups ?? []).map((candidate) => (chosenIds.has(candidate.id) ? { ...candidate, state: "selected" as const, batchId: selection.batchId } : candidate)),
           followupBatches: [...batches, { id: selection.batchId, at: now(), launch: selection.launch, items }],
         });
@@ -1305,7 +1322,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       catch { return null; }
     },
     recorded(operationId) {
-      const node = options.operations.get(operationId);
+      const node = operationNode(operationId);
       return !!node && load(node.theaterId).has(operationId) || theaterIds().some((id) => !!load(id).get(operationId)?.pending);
     },
   };
@@ -1420,7 +1437,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   function assertReviewable(stored: StoredObjective): void {
     if (stored.criteriaProposals?.length) throw new ObjectiveStoreError("criteria_pending");
     // 스티어링은 한 번이라도 깬 지휘관에게만 뜻이 있다 — 화면의 띠와 같은 정의(started && 편집 종류).
-    const commander = options.operations.get(stored.operationId);
+    const commander = operationNode(stored.operationId);
     const started = !!commander && readOperationLaunch(commander.payload).started;
     if (started && stored.edited?.kinds.length) throw new ObjectiveStoreError("steer_required");
     if (!awaitingReview(stored)) throw new ObjectiveStoreError("not_in_review");

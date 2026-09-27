@@ -161,6 +161,8 @@ import crypto from "node:crypto";
 
 export interface OperationStoreDeps {
   readonly now?: () => number;
+  readonly isReserved?: (id: string) => boolean;
+  readonly assertRelationMutable?: (id: string) => void;
   /**
    * Operation 의 그룹이 실제로 바뀐 순간 — 모든 이동(HTTP·Console Use·플러그인 patch·그룹 삭제)이 이 저장소의 쓰기를
    * 지나므로 여기서 한 번만 알린다. 재수화(replace)는 이동이 아니라 알리지 않는다.
@@ -217,6 +219,8 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
   }
 
   function createChild(input: { readonly parentOperationId: string; readonly childSessionId: string; readonly payload?: Record<string, unknown> }): OperationNode {
+    deps.assertRelationMutable?.(input.parentOperationId);
+    deps.assertRelationMutable?.(input.childSessionId);
     const parent = nodes.get(input.parentOperationId);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.childSessionId)) throw new Error("invalid_child_session_id");
     if (!parent || parent.id === input.childSessionId || getChild(parent.id)) throw new Error("invalid_parent_operation");
@@ -225,7 +229,7 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
       if (existing.parent.id !== parent.id) throw new Error("operation_exists");
       return projectChild(existing.parent, existing.child);
     }
-    if (nodes.has(input.childSessionId)) throw new Error("operation_exists");
+    if (nodes.has(input.childSessionId) || deps.isReserved?.(input.childSessionId)) throw new Error("operation_exists");
     const at = now();
     const child: ChildSession = { id: input.childSessionId, payload: input.payload ?? {}, ts: { createdAt: at, updatedAt: at } };
     nodes.set(parent.id, { ...parent, childSessions: [...(parent.childSessions ?? []), child], ts: { ...parent.ts, updatedAt: at } });
@@ -235,6 +239,8 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
   function deleteChild(id: string, requesterPluginId?: string): boolean {
     const found = getChild(id);
     if (!found) return false;
+    deps.assertRelationMutable?.(found.parent.id);
+    deps.assertRelationMutable?.(id);
     if (requesterPluginId) {
       const by = found.parent.payload.launchedBy;
       if (!by || typeof by !== "object" || (by as { kind?: string; pluginId?: string }).kind !== "plugin" || (by as { pluginId?: string }).pluginId !== requesterPluginId) throw new Error("child_delete_forbidden");
@@ -248,7 +254,7 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
 
   function create(input: OperationCreateInput): OperationNode {
     const id = input.id ?? crypto.randomUUID();
-    if (nodes.has(id) || getChild(id)) throw new Error("operation_exists");
+    if (nodes.has(id) || getChild(id) || deps.isReserved?.(id)) throw new Error("operation_exists");
     const node = normalizeCreateInput(input, id, now());
     nodes.set(node.id, node);
     return node;

@@ -1762,7 +1762,6 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     const restingActions = components.match(/\.side-bar-chip-close,\n\.side-bar-chip-minimize \{[^}]*\}/)?.[0] ?? "";
     const revealedActions = components.match(/\.side-bar-chip:hover \.side-bar-chip-close,[^]*?\.side-bar-chip:focus-within \.side-bar-chip-minimize \{[^}]*\}/)?.[0] ?? "";
-    const armedClose = components.match(/\.side-bar-chip \.side-bar-chip-close\.is-armed \{[^}]*\}/)?.[0] ?? "";
 
     expect(restingActions).toContain("flex: 0 0 0;");
     expect(restingActions).toContain("width: 0;");
@@ -1779,14 +1778,7 @@ describe("Instrument core design contract", () => {
     expect(revealedActions).toContain("margin-left: 0;");
     expect(revealedActions).toContain("opacity: 1;");
     expect(revealedActions).toContain("pointer-events: auto;");
-    expect(armedClose).toContain("width: auto;");
-    expect(armedClose).toContain("margin-left: 0;");
-    expect(armedClose).toContain("border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);");
-    expect(armedClose).toContain("opacity: 1;");
-    expect(armedClose).toContain("pointer-events: auto;");
-    expect(components.indexOf(".side-bar-chip .side-bar-chip-close.is-armed")).toBeGreaterThan(components.indexOf(".side-bar-chip:hover .side-bar-chip-close"));
     expect(components).toContain(".side-bar-chip-close,\n  .side-bar-chip-minimize {\n    transition-duration: 0.01ms;");
-    expect(components).toContain(".side-bar-chip .side-bar-chip-close.is-armed {\n    animation: none;");
   });
 
   // 「한 패널만 크게」는 스냅 유지의 전체 칸이 진다 — 옛 최대화 상태를 들고 있는지 묻던 계약은
@@ -3481,10 +3473,8 @@ describe("Instrument core design contract", () => {
     expect(operationFrame).toContain("onKeyDown={handleRenameKeyDown}");
     expect(operationFrame).toContain("onBlur={rename.handleBlur}");
     expect(operationFrame).toContain("onPointerDown={stopIdentityPointer}");
-    expect(operationFrame).toContain("onBegin: () => {\n      disarmClose();\n    },");
     const identityPointerBlock = operationFrame.match(/const stopIdentityPointer = \([^]*?\n  };/)?.[0] ?? "";
     expect(identityPointerBlock).toContain("if (rename.renaming) event.stopPropagation();");
-    expect(identityPointerBlock).toContain("disarmClose();");
     expect(identityPointerBlock).not.toContain("onActivate();");
     expect(operationFrame).toContain('event.key !== "Enter" && event.key !== "F2"');
     expect(operationFrame).toContain("rename.renaming ? (");
@@ -3624,7 +3614,6 @@ describe("Instrument core design contract", () => {
     // 무장 안내는 Alt 홀드와 무관하게 떠 있어야 한다 — 확인 기한이 1.5초뿐이다.
     expect(components).toContain(".canvas-operation-glance-hud.is-armed-set-aside {");
     expect(components).toContain("/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며");
-    expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
     // War Room/스냅 칸은 슬롯을 32px 내려 캡션을 본문 밖에 둔다.
     // 스냅·정렬 칸은 같은 32px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
     expect(source("../../../features/workspace/client/canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 32");
@@ -3778,19 +3767,13 @@ describe("Instrument core design contract", () => {
 
   // 모바일 세션 Close는 coral 무장·brass 포커스·44px 바닥을 데스크톱 프레임과 공유한다.
   // mobile.css는 OWNED_SOURCES에 올리지 않는다 — 탭 레일도 같은 파일에 있고, 이 문법은 이 핀이 담당한다.
-  it("pins the mobile session close arm grammar — coral danger, brass focus, 44px floor", () => {
+  it("pins the mobile session archive button grammar — brass focus, 44px floor", () => {
     const css = source("styles/mobile.css");
     const close = css.match(/^\.mobile-session-close \{[^}]*\}/m)?.[0] ?? "";
     expect(close).toContain("min-width: 44px;");
     expect(close).toContain("min-height: 44px;");
-    const armed = css.match(/^\.mobile-session-close\.is-armed \{[^}]*\}/m)?.[0] ?? "";
-    expect(armed).toContain("border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);");
-    expect(armed).toContain("background: color-mix(in oklch, var(--coral) 20%, transparent);");
-    expect(armed).toContain("color: var(--coral-ink);");
-    expect(armed).toContain("animation: chip-close-arm 1.5s linear forwards;");
     const focus = css.match(/^\.mobile-session-close:focus-visible \{[^}]*\}/m)?.[0] ?? "";
     expect(focus).toContain("outline: 2px solid color-mix(in srgb, var(--brass) 55%, transparent);");
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.mobile-session-close\.is-armed \{\s*animation: none;/);
   });
 });
 

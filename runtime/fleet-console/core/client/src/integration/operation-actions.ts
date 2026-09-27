@@ -1,11 +1,12 @@
-// Operation lifecycle actions issued from chrome: close a card for good, or resume
-// a dormant one in place.
+// Operation lifecycle actions issued from chrome: archive a card, or resume a dormant
+// one in place.
 
-import { readOperationLaunch, wasOperationBornDormant } from "@fleet-console/sdk/operations/browser";
+import { ApiError, archiveOperation, readOperationLaunch, wasOperationBornDormant, type OperationArchiveReceipt } from "@fleet-console/sdk/operations/browser";
 import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 import type { OperationNode } from "./types.js";
-import { type DeferredDeletionReceipt, deleteOperation, fetchOperations } from "./api.js";
-import { minimizeOperation } from "../../../../features/workspace/client/canvas/canvas-store.js";
+import { fetchOperations } from "./api.js";
+import { forceDropCompanionOperationId, getCompanionOperationId, minimizeOperation } from "../../../../features/workspace/client/canvas/canvas-store.js";
+import { dismissTriageOperation, forgetTriageOperation, isTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { playMinimizeFlight } from "../../../../features/workspace/client/canvas/panel-motion.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { clearIdleArrival } from "../../../../features/execution/client/operation-marks.js";
@@ -22,24 +23,43 @@ export function minimizeOperationCompletely(operationId: string): void {
   minimizeOperation(operationId);
 }
 
-// ─── close ─────────────────────────────────────────────────────────────────────
+// ─── archive ───────────────────────────────────────────────────────────────────
 
-// Operation 닫기의 단일 경로: plugin 정리 → host DELETE → 재수화.
-// operations 페이지(캔버스 프레임/사이드바 칩)와 팔레트 close 명령이 이 함수를 공유한다.
-// 호스트가 삭제를 유예하므로 receipt를 그대로 돌려주고, 호출자가 undo 토스트에 쓴다.
-export async function closeOperationCompletely(
-  operationId: string,
-  plugin: ClientExecutionProvider | null,
-): Promise<DeferredDeletionReceipt | null> {
+export type ArchiveOutcome =
+  | { readonly ok: true; readonly receipt: OperationArchiveReceipt }
+  | { readonly ok: false; readonly error: string };
+
+// 같은 Operation을 두 입구가 동시에 보관하려 할 때(두 번 누름, 캡션과 ⌘K) 요청을 하나로 모은다.
+const archivingOperationIds = new Set<string>();
+
+/** 보관 요청이 날아가는 중인가 — 그 사이 도착한 늦은 동작(예: 재개 뒤의 포커스)이 사라질 패널을 다시 세우지 않게 한다. */
+export function isArchivingOperation(operationId: string): boolean {
+  return archivingOperationIds.has(operationId);
+}
+
+// 사람이 Operation을 치우는 단일 경로: Core 보관 → 화면 정리 → 재수화.
+// 캔버스 캡션·사이드바 칩·우클릭 메뉴·트리아지·모바일·플러그인 본문의 onClose와 ⌘K가 이 함수를 공유한다.
+// plugin.closeOperation은 부르지 않는다 — 그 훅은 세션과 첨부를 지우는 파괴적 정리였고, 보관의 실행 종료는
+// 서버가 비파괴로 맡는다. 보관은 하위 Operation까지 함께 치우므로 receipt의 operationIds가 토스트의 개수다.
+// 이미 진행 중인 같은 요청은 null을 돌려준다(호출자는 아무것도 하지 않는다).
+export async function archiveOperationFromUi(operationId: string): Promise<ArchiveOutcome | null> {
+  if (archivingOperationIds.has(operationId)) return null;
+  archivingOperationIds.add(operationId);
+  let outcome: ArchiveOutcome;
   try {
-    if (plugin?.closeOperation) await plugin.closeOperation(operationId);
-  } catch { /* 플러그인 close 오류는 무시 */ }
-  let deletion: DeferredDeletionReceipt | null = null;
-  try {
-    deletion = (await deleteOperation(operationId)).deletion;
-  } catch { /* 삭제 요청 실패는 무시하고 재수화로 실제 상태를 따른다 */ }
+    outcome = { ok: true, receipt: await archiveOperation(operationId) };
+    // 서버가 확정한 뒤에만 companion·선별 대상을 푼다. 실패 시 열린 화면을 그대로 둔다.
+    if (getCompanionOperationId() === operationId) forceDropCompanionOperationId();
+    if (isTriageActive()) dismissTriageOperation(operationId);
+    for (const id of outcome.receipt.operationIds) forgetTriageOperation(id);
+  } catch (error) {
+    outcome = { ok: false, error: error instanceof ApiError ? error.message : "archive_failed" };
+  } finally {
+    archivingOperationIds.delete(operationId);
+  }
+  if (getState().activeOperationId !== null && outcome.ok && outcome.receipt.operationIds.includes(getState().activeOperationId!)) setActiveOperation(null);
   await fetchOperations(null).then(hydrateOperations).catch(() => {});
-  return deletion;
+  return outcome;
 }
 
 // ─── resume ────────────────────────────────────────────────────────────────────

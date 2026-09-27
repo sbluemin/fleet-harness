@@ -8,8 +8,12 @@ import { createConsoleControl } from "../features/console-use/host/console-contr
 import { createLaunchKeyLedger } from "../features/console-use/host/launch-keys.js";
 
 import { createDeferredDeletionCoordinator, DeferredDeletionError } from "../features/workspace/host/deferred-deletion.js";
-import type { DurableDeletionTombstone } from "../features/workspace/host/durable-state.js";
-import { createOperationStore, type OperationNode } from "../features/execution/host/operations/operations-domain.js";
+import { STATE_VERSION, type DurableConsoleState, type DurableDeletionTombstone } from "../features/workspace/host/durable-state.js";
+import { createDurableJsonStore, type DurableJsonStore } from "@fleet-console/infra";
+import { createOperationArchiveStorage, type ArchivedOperation } from "../features/workspace/host/operation-archive-storage.js";
+import { createOperationArchiveCoordinator } from "../features/workspace/host/operation-archive.js";
+import { createOperationArchiveRouter } from "../features/workspace/host/operation-archive-routes.js";
+import { createSanitizedOpDto, createOperationStore, type OperationNode } from "../features/execution/host/operations/operations-domain.js";
 import { TheaterRegistry, type TheaterRegistration } from "../features/workspace/host/theaters/theater-domain.js";
 
 const THEATER: TheaterRegistration = {
@@ -81,6 +85,157 @@ describe("deferred deletion coordinator", () => {
     expect(startup.events).toEqual([expect.objectContaining({ channel: "operation:purged" })]);
   });
 });
+
+describe("Operation archive persistence and deletion", () => {
+  // 기존 유예 삭제 시험은 두 파일 이동·자식 세션 보존·복원 경계를 거치지 않는다.
+  it("parks an Operation with its child sessions and restores the complete dormant record", async () => {
+    await withArchiveDirectory(async (directory) => {
+      const h = createArchiveHarness(directory);
+      h.operations.create({ ...makeOperation("parent"), pluginId: null, payload: { session: { harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" } } });
+      h.operations.createChild({ parentOperationId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" });
+      h.save();
+      await expect(h.archive.archive("11111111-1111-4111-8111-111111111111")).rejects.toThrow("child_session_not_closable");
+      const receipt = await h.archive.archive("parent");
+      expect(h.stopped).toEqual(["parent", "11111111-1111-4111-8111-111111111111"]);
+      expect(h.operations.list()).toEqual([]);
+      expect(h.archive.describe("11111111-1111-4111-8111-111111111111")?.location).toBe("archived");
+      expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
+      expect(h.events.map((event) => event.channel)).toEqual(["operation:archived"]);
+      expect(() => h.operations.create(makeOperation("11111111-1111-4111-8111-111111111111"))).toThrow("operation_exists");
+      expect(JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8")).operations.map((node: OperationNode) => node.id)).toEqual([]);
+      const router = createOperationArchiveRouter({ archive: h.archive, isAuthorized: () => false,
+        readJsonBody: async <T,>() => ({}) as T, sanitize: createSanitizedOpDto,
+        writeJson: (res, status, body) => Object.assign(res, { status, body }),
+      });
+      const readback: { status?: number; body?: unknown } = {};
+      await router({ req: { method: "GET" } as never, res: readback as never, pathname: "/api/v1/operations/parent/describe" });
+      expect(readback.status).toBe(200);
+      expect(JSON.stringify(readback.body)).not.toMatch(/provider-session|\/private\/transcript/);
+      const denied: { status?: number } = {};
+      await router({ req: { method: "POST" } as never, res: denied as never, pathname: "/api/v1/operations/child/restore" });
+      expect(denied.status).toBe(401);
+      expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
+      const restarted = createArchiveHarness(directory);
+      expect(restarted.archive.listArchived().total).toBe(1);
+      const restored = await restarted.archive.undoArchive(receipt);
+      expect(restored.rootOperationId).toBe("parent");
+      expect(restored.operations.map((node) => node.id).sort()).toEqual(["parent"]);
+      expect(restored.operations.every((node) => node.payload.restoredDormant === true)).toBe(true);
+      expect(restarted.operations.get("parent")?.payload.session).toEqual({ harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" });
+      expect(restarted.operations.get("11111111-1111-4111-8111-111111111111")?.payload.restoredDormant).toBe(true);
+      expect(restarted.operations.list()).toHaveLength(1);
+      expect(restarted.archive.listArchived().entries).toEqual([]);
+      await restarted.archive.archive("parent");
+      const confirm = restarted.archive.previewPurge("parent");
+      await expect(restarted.archive.purge({ ...confirm, revision: confirm.revision - 1 })).rejects.toThrow("archive_revision_conflict");
+      await restarted.archive.purge(confirm);
+      expect(restarted.events.filter((event) => event.channel === "operation:purged").map((event) => event.operation.id).sort()).toEqual(["parent"]);
+      expect(createArchiveHarness(directory).archive.describe("parent")).toBeNull();
+    });
+  });
+
+  it("recovers a durable move before publishing either storage location after a crash", async () => {
+    await withArchiveDirectory(async (directory) => {
+      const h = createArchiveHarness(directory);
+      h.operations.create(makeOperation("op")); h.save();
+      h.fault.state = true;
+      await expect(h.archive.archive("op")).rejects.toThrow("state_write_failed");
+      expect(() => h.save()).toThrow("archive_recovery_required");
+      expect(h.events).toEqual([]);
+      const recovered = createArchiveHarness(directory);
+      expect(recovered.operations.get("op")).toBeNull();
+      expect(recovered.archive.describe("op")?.location).toBe("archived");
+      recovered.fault.finalize = true;
+      await expect(recovered.archive.restore("op")).rejects.toThrow("archive_finalize_failed");
+      const restored = createArchiveHarness(directory);
+      expect(restored.operations.get("op")).not.toBeNull();
+      expect(restored.archive.listArchived().total).toBe(0);
+      expect(restored.operations.list()).toHaveLength(1);
+    });
+  });
+
+  it("deletes archived clusters through grace and purge, preserving original locations on Theater undo", async () => {
+    await withArchiveDirectory(async (directory) => {
+      const h = createArchiveHarness(directory);
+      h.operations.create(makeOperation("parent"));
+      h.operations.createChild({ parentOperationId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" }); h.save();
+      await h.archive.archive("parent");
+      const theaterDeletion = h.deletion.deleteTheater(THEATER.id)!;
+      expect(theaterDeletion.archivedOperationCount).toBe(1);
+      await h.deletion.restore(theaterDeletion.deletionId);
+      expect(h.operations.get("parent")).toBeNull();
+      expect(h.operations.get("11111111-1111-4111-8111-111111111111")).toBeNull();
+      expect(h.archive.describe("11111111-1111-4111-8111-111111111111")?.location).toBe("archived");
+      await h.archive.archive("parent");
+      const deletion = h.deletion.deleteOperation("parent")!;
+      expect(h.archive.listArchived().total).toBe(0);
+      await expect(h.archive.access("11111111-1111-4111-8111-111111111111")).rejects.toThrow("pending_deletion");
+      h.clock.value = deletion.expiresAt;
+      h.deletion.sweepExpired();
+      expect(h.purged).toEqual(["parent"]);
+      const boot = createArchiveHarness(directory);
+      expect(boot.archive.listArchived().total).toBe(0);
+      expect(boot.deletion.list()).toEqual([]);
+      expect(boot.operations.list()).toEqual([]);
+      expect(fs.readFileSync(path.join(directory, "operations-archive.json"), "utf8")).not.toContain('"id": "parent"');
+    });
+  });
+
+  it("refuses corrupt or conflicting stores instead of replacing them with empty state", async () => {
+    await withArchiveDirectory(async (directory) => {
+      const h = createArchiveHarness(directory); h.operations.create(makeOperation("op")); h.save();
+      await h.archive.archive("op");
+      const archiveFile = path.join(directory, "operations-archive.json");
+      const intact = fs.readFileSync(archiveFile, "utf8");
+      fs.unlinkSync(archiveFile);
+      expect(() => createArchiveHarness(directory)).toThrow("archive_recovery_required");
+      expect(fs.existsSync(archiveFile)).toBe(false);
+      fs.writeFileSync(archiveFile, intact);
+      fs.writeFileSync(archiveFile, "{broken");
+      expect(() => createArchiveHarness(directory)).toThrow("archive_recovery_required");
+      expect(fs.readFileSync(archiveFile, "utf8")).toBe("{broken");
+    });
+  });
+});
+
+async function withArchiveDirectory(run: (directory: string) => Promise<void>): Promise<void> {
+  const root = path.resolve(".fleet/isolated/archive-tests");
+  fs.mkdirSync(root, { recursive: true });
+  const directory = fs.mkdtempSync(path.join(root, "case-"));
+  try { await run(directory); } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+}
+
+function createArchiveHarness(directory: string) {
+  const fault = { state: false, finalize: false };
+  const clock = { value: 1_000 };
+  const diskState = createDurableJsonStore<DurableConsoleState>({ filePath: path.join(directory, "state.json"), lockDir: null, sensitivity: "sensitive", sanitize: (value) => value as DurableConsoleState });
+  const stateStore: DurableJsonStore<DurableConsoleState> = { ...diskState, save: (state) => { if (fault.state) throw new Error("state_write_failed"); diskState.save(state); } };
+  const storage = createOperationArchiveStorage({ directory, stateStore, createStore: ((deps: Parameters<typeof createDurableJsonStore>[0]) => {
+    const store = createDurableJsonStore(deps);
+    return { ...store, save: (value: unknown) => { if (fault.finalize && !(value as { transaction?: unknown }).transaction) throw new Error("archive_finalize_failed"); store.save(value); } };
+  }) as typeof createDurableJsonStore });
+  const state = storage.load();
+  const operations = createOperationStore({ now: () => clock.value, isReserved: (id) => storage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) });
+  const theaters = new TheaterRegistry(); theaters.restore(state.theaters.length ? state.theaters : [THEATER]);
+  operations.replace(state.operations); operations.replaceGroups(state.groups ?? []);
+  const events: Array<{ channel: string; operation: OperationNode }> = [];
+  const purged: string[] = [];
+  const stopped: string[] = [];
+  const snapshot = (tombstones = deletion.list()): DurableConsoleState => ({ version: STATE_VERSION, theaters: theaters.list(), operations: operations.list(), groups: operations.listAllGroups(), deletionTombstones: tombstones });
+  const save = (tombstones?: readonly DurableDeletionTombstone[], entries?: readonly ArchivedOperation[]) => storage.save(snapshot(tombstones), entries);
+  const deletion = createDeferredDeletionCoordinator({ operations, theaters, archives: storage.entries, save,
+    now: () => clock.value, beforePurge: (nodes) => purged.push(...nodes.map((node) => node.id).sort()),
+    publish: () => {}, unregisterTheaterWorkspaces: () => {}, validateTheaterRestore: async () => {}, registerTheaterWorkspace: async () => {},
+    setTimer: () => ({ unref() {} }) as unknown as ReturnType<typeof setTimeout>, clearTimer: () => {},
+  });
+  deletion.load(state.deletionTombstones ?? []);
+  const archive = createOperationArchiveCoordinator({ operations, storage, snapshot,
+    theaterExists: (id) => !!theaters.get(id), pendingDeletion: deletion.hasPendingOperation,
+    stop: async (node) => { stopped.push(node.id); }, use: async () => {}, now: () => clock.value,
+    publish: (event) => events.push(event), publishChanged: () => {},
+  });
+  return { operations, theaters, archive, deletion, storage, save, fault, clock, events, purged, stopped };
+}
 
 describe("idempotent launch keys", () => {
   // 저장 무결성 경계 — 키 하나에 Operation 은 많아야 하나, 사람이 지운 키는 purge·재시작 뒤에도 다시 생기지 않는다.

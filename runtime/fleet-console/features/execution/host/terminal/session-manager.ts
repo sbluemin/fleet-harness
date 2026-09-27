@@ -85,6 +85,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   const now = deps.now ?? (() => performance.now());
   const sessions = new Map<string, TerminalSession>();
   const pendingSessions = new Map<string, Promise<TerminalSession>>();
+  const pendingLaunchGuards = new Map<string, { cancelled: boolean }>();
 
   function canAttach(): boolean {
     // 동시 세션 상한이 제거되어 항상 새 세션 부착을 허용한다.
@@ -150,6 +151,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   function terminate(sessionId: string): boolean {
+    const guard = pendingLaunchGuards.get(sessionId);
+    if (guard) guard.cancelled = true;
     const session = sessions.get(sessionId);
     if (!session) return false;
     // PTY 자식까지 죽이고(removeSession 기본 killPty: true) onSessionExit로 콘솔 세션 목록을 정리한다.
@@ -158,8 +161,17 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   async function terminateAndWait(sessionId: string, timeoutMs: number): Promise<boolean> {
+    const guard = pendingLaunchGuards.get(sessionId);
+    if (guard) guard.cancelled = true;
     const session = sessions.get(sessionId);
-    if (!session) return true;
+    if (!session) {
+      const pending = pendingSessions.get(sessionId);
+      if (!pending) return true;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([pending.then(() => true, () => true), new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs); })]);
+      } finally { if (timer) clearTimeout(timer); }
+    }
     // 종료 통지는 kill 신호를 보낸 직후 나간다 — 같은 Claude 세션을 이어 쓸 다음 필자는 프로세스가
     // 실제로 사라진 것을 확인한 뒤에야 설 수 있다. pid를 모르면 확인할 수 없으므로 false다.
     const pid = session.pty.pid;
@@ -233,11 +245,14 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     } finally {
       if (pendingSessions.get(context.sessionId) === pendingLaunch) {
         pendingSessions.delete(context.sessionId);
+        pendingLaunchGuards.delete(context.sessionId);
       }
     }
   }
 
   async function launchSession(context: TerminalTicketContext): Promise<TerminalSession> {
+    const guard = { cancelled: false };
+    pendingLaunchGuards.set(context.sessionId, guard);
     const launch = await deps.launch(context.cwd, {
       sessionId: context.sessionId,
       ...(context.operationId ? { operationId: context.operationId } : {}),
@@ -255,6 +270,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(context.disableUserQuestions ? { disableUserQuestions: true } : {}),
       ...(context.colorScheme ? { colorScheme: context.colorScheme } : {}),
     });
+    if (guard.cancelled) {
+      await runLaunchCleanup(launch.cleanup);
+      throw new Error("terminal_launch_cancelled");
+    }
     let pty: TerminalPtyHandle;
     let ptyFds: readonly number[] = [];
     try {

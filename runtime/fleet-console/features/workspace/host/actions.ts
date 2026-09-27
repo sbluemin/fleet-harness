@@ -18,6 +18,7 @@ function insertPosition<T extends { readonly id: string }>(remaining: readonly T
 interface WorkspaceActionDeps {
   readonly operations: ReturnType<typeof createOperationStore>;
   readonly deletionCoordinator: ReturnType<typeof createDeferredDeletionCoordinator>;
+  readonly archive?: (id: string) => Promise<import("@fleet-console/sdk/operations").OperationArchiveReceipt>;
   readonly listOperationUse: NonNullable<ConsoleUseActions["using"]>;
   readonly patchOperation: FleetPluginHostCapabilities["operations"]["patch"];
   readonly publishPluginEvent: (channel: string, payload: unknown) => void;
@@ -30,14 +31,14 @@ export function createWorkspaceActions(deps: WorkspaceActionDeps): ConsoleUseAct
   const { operations, deletionCoordinator, listOperationUse, patchOperation, publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastOperationChanged } = deps;
   return {
     using: listOperationUse,
-    close: (operationId, by) => {
+    close: async (operationId, by) => {
       if (deletionCoordinator.hasPendingOperation(operationId)) return null;
+      if (!deps.archive) throw new Error("capability_unavailable");
       const targetTitle = operations.get(operationId)?.title ?? operationId;
-      const receipt = deletionCoordinator.deleteOperation(operationId);
-      if (!receipt) return null;
-      persistDurableState();
-      publishPluginEvent(OPERATION_CLOSING_EVENT_CHANNEL, { receipt, targetTitle, by: by.kind === "operation" ? { ...by, title: operations.get(by.operationId)?.title ?? by.operationId } : by });
-      return { deletionId: receipt.deletionId, undoUntil: new Date(receipt.expiresAt).toISOString() };
+      const caller = by.kind === "operation" ? { ...by, title: operations.get(by.operationId)?.title ?? by.operationId } : by;
+      const receipt = await deps.archive(operationId);
+      publishPluginEvent(OPERATION_CLOSING_EVENT_CHANNEL, { receipt, targetTitle, by: caller });
+      return receipt;
     },
     groups: (theaterId) => (theaterId ? operations.listGroups(theaterId) : operations.listAllGroups()).map((group) => ({ id: group.id, name: group.name, color: group.color, theaterId: group.theaterId, order: group.order })),
     groupPatch: ({ id, name, color, delete: remove, position }) => {

@@ -325,6 +325,16 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
   // 이 플러그인은 런타임 축의 권위를 가진다 — 첫 스냅샷이 도착하기 전까지는 그 축을 신뢰할 수 없다고
   // 먼저 선언하고 시작한다.
   ctx.runtime.setHydration("pending");
+  // 서버 보관 종료 뒤에는 클라이언트 캐시만 해제한다. 늦은 stop 요청이 복원된 세션을 끊지 않는다.
+  const disposeArchive = ctx.consoleEvents.subscribe("operation:cluster-changed", (payload) => {
+    const ids = (payload as { removedIds?: unknown } | null)?.removedIds;
+    if (!Array.isArray(ids)) return;
+    for (const id of ids) if (typeof id === "string") {
+      disposeAnalysisStore(id, { stopServer: false });
+      disposeViewSwitch(id);
+      removeSession(id);
+    }
+  });
   const disposeConnection = startAgentConnection({
     operations: ctx.operations,
     notifications: ctx.notifications,
@@ -338,6 +348,7 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
     disposeWatch();
     disposeReveal();
     disposeConnection();
+    disposeArchive();
   };
 }
 

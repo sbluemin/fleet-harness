@@ -37,7 +37,7 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
  */
 export type PaletteGlyphId =
   | "theater-monogram" | "theater-add" | "operation-new"
-  | "operation-open" | "operation-resume" | "operation-close" | "operation-rename" | "operation-group" | "operation-accent" | "operation-minimize"
+  | "operation-open" | "operation-resume" | "operation-archive" | "operation-rename" | "operation-group" | "operation-accent" | "operation-minimize"
   | "view-minimize-all" | "view-fit" | "view-war-room" | "view-align-all" | "view-station-keeping" | "view-status-axis"
   | "rail-entry" | "console-sidebar" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
 
@@ -47,7 +47,8 @@ export type PaletteCommandAction =
   | { readonly kind: "new-theater" }
   | { readonly kind: "new-operation" }
   | { readonly kind: "resume-operation"; readonly operationId: string }
-  | { readonly kind: "close-operation"; readonly operationId: string }
+  | { readonly kind: "archive-operation"; readonly operationId: string }
+  | { readonly kind: "open-archive" }
   | { readonly kind: "minimize-all-operations" }
   | { readonly kind: "fit-all-panels" }
   | { readonly kind: "toggle-triage-mode" }
@@ -129,7 +130,7 @@ export function buildPaletteCommands(
   current: ConsoleState,
   railPanels: readonly PaletteRailPanelInfo[],
   t: T,
-  options?: { readonly canUndoLastClose?: boolean; readonly warRoomAvailable?: boolean; readonly triageActive?: boolean },
+  options?: { readonly canUndoLastClose?: boolean; readonly undoKind?: "archive" | "deletion" | null; readonly warRoomAvailable?: boolean; readonly triageActive?: boolean },
 ): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
   const language = resolveActiveLocale();
@@ -146,8 +147,11 @@ export function buildPaletteCommands(
     (operation) => operation.id === current.activeOperationId && operation.theaterId === current.activeTheaterId,
   ) ?? null;
   if (options?.canUndoLastClose === true) {
-    push({ commandId: "undo-close", label: t("palette.undoClose"), aliasLabel: alias("palette.undoClose"), action: { kind: "undo-close" }, group: "console", glyph: "console-undo", shortcut: "console.undo-close" });
+    // 되돌릴 마지막 일이 보관이면 「보관 되돌리기」, Theater 잊기 같은 삭제면 기존 「실행 취소」다.
+    const undoKey = options.undoKind === "deletion" ? "palette.undoClose" : "palette.undoArchive";
+    push({ commandId: "undo-close", label: t(undoKey), aliasLabel: alias(undoKey), action: { kind: "undo-close" }, group: "console", glyph: "console-undo", shortcut: "console.undo-close" });
   }
+  push({ commandId: "open-archive", label: t("palette.openArchive"), aliasLabel: alias("palette.openArchive"), action: { kind: "open-archive" }, group: "console", glyph: "operation-archive" });
   // 현재 Operation — 이 구역만이 Operation을 가리키는 명령을 가진다. 다른 Operation의 동작은
   // 검색 결과 행의 동작 띠가 맡는다(Operation마다 재개·닫기 쌍을 늘어놓던 옛 홈은 첫 화면을
   // 그 쌍으로 채웠다).
@@ -160,7 +164,8 @@ export function buildPaletteCommands(
     push({ commandId: "assign-operation-group", label: t("palette.assignGroup"), aliasLabel: alias("palette.assignGroup"), action: { kind: "assign-operation-group", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-group", subject });
     push({ commandId: "set-operation-accent", label: t("palette.setAccent"), aliasLabel: alias("palette.setAccent"), action: { kind: "set-operation-accent", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-accent", subject });
     push({ commandId: "minimize-operation", label: t("palette.minimizeOperation"), aliasLabel: alias("palette.minimizeOperation"), action: { kind: "minimize-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-minimize", subject });
-    push({ commandId: `close-operation:${activeOperation.id}`, label: t("palette.closeOperation", { title: subject }), aliasLabel: alias("palette.closeOperation", { title: subject }), action: { kind: "close-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-close", subject, danger: true, undoable: true });
+    // 보관은 되돌릴 수 있고 보관함에서 다시 꺼낼 수 있다 — 파괴 명령이 아니므로 coral로 세우지 않는다.
+    push({ commandId: `archive-operation:${activeOperation.id}`, label: t("palette.archiveOperation", { title: subject }), aliasLabel: alias("palette.archiveOperation", { title: subject }), action: { kind: "archive-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-archive", subject, undoable: true });
   }
   for (const theater of current.theaters) {
     push({ commandId: `switch-theater:${theater.id}`, label: t("palette.switchTheater", { label: theater.label }), aliasLabel: alias("palette.switchTheater", { label: theater.label }), current: theater.id === current.activeTheaterId, action: { kind: "switch-theater", theaterId: theater.id }, group: "theater", glyph: "theater-monogram", monogramSource: theater.label });

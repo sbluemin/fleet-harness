@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { ArchiveGlyph } from "./archive-glyph.js";
 import type { PaletteCommandEntry, PaletteCommandGroup, PaletteGlyphId } from "../../integration/palette-commands.js";
 import { theaterInitials } from "../../../../../features/workspace/client/sidebar/operations-side-bar.js";
 
@@ -21,7 +22,7 @@ const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-monogram" | 
   "operation-new": <Glyph><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3" /><path d="M4.5 4.5l1.6 1.6M9.9 9.9l1.6 1.6M4.5 11.5l1.6-1.6M9.9 6.1l1.6-1.6" /></Glyph>,
   "operation-open": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M6 10l4-4M6.5 6H10v3.5" /></Glyph>,
   "operation-resume": <Glyph><path d="M5 3.5v9l7.5-4.5z" /></Glyph>,
-  "operation-close": <Glyph><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></Glyph>,
+  "operation-archive": <ArchiveGlyph strokeWidth={1.125} />,
   "operation-rename": <Glyph><path d="M3 13l.9-3.4L10.6 2.9a1.3 1.3 0 0 1 1.8 0l.7.7a1.3 1.3 0 0 1 0 1.8L6.4 12.1z" /><path d="M9.7 3.8l2.5 2.5" /></Glyph>,
   "operation-group": <Glyph><path d="M2.5 8.2V3.5a1 1 0 0 1 1-1h4.7l5.3 5.3-5.7 5.7z" /><circle cx="5.5" cy="5.5" r=".9" fill="currentColor" stroke="none" /></Glyph>,
   "operation-accent": <Glyph><path d="M8 2.5s4 4.2 4 7a4 4 0 0 1-8 0c0-2.8 4-7 4-7z" /></Glyph>,

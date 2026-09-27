@@ -4,9 +4,11 @@ import { consoleUseWrapClassName, getOperationWrap, subscribeConsoleUseGestures 
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 
+import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/archive-glyph.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationActivityVisual, type OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
+import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import type { GlanceHudModel } from "./glance-hud.js";
 import type { GroupContextMenuAlign } from "./group-context-menu.js";
 import { resolveAccentColor } from "./operation-accent.js";
@@ -117,7 +119,6 @@ type ResizeDirection = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 const RESIZE_DIRECTIONS: readonly ResizeDirection[] = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
 const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
-const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 3;
 // 최대화 버튼 위 머무름 → 분할 배치 메뉴. 캡션 툴팁과 같은 리듬의 짧은 지연이다.
 const SNAP_MENU_HOVER_DELAY_MS = 350;
@@ -131,12 +132,14 @@ const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail
 
 export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, snapFull = false, snapHeld = false, resizeDisabled = false, alignHeld = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapZone = null, interactionDisabled = false, triageStage = false, triagePicked = false, triageNext = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onToggleSnapFull, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
+  // 말풍선의 되돌리기 단축키가 사용자 재지정을 따라가도록 구독한다. 단축키를 풀어 두었으면 「보관」만 말한다.
+  useShortcutOverrides();
+  const undoShortcut = shortcutCommandLabel("console.undo-close");
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
-  const closeArmTimeoutRef = useRef<number | null>(null);
   const arrivalFlashTimeoutRef = useRef<number | null>(null);
   const focusArrivalTimeoutRef = useRef<number | null>(null);
   // 마운트 시점의 unseen을 이전 값으로 삼는다 — 이미 미확인인 채로 되살아난 프레임(Theater 재진입 등)은
@@ -147,16 +150,12 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   const previousActiveRef = useRef(active);
   const lastVisibleGeometryRef = useRef(geometry);
   const restoreIdentityFocusRef = useRef(false);
-  const [isCloseArmed, setIsCloseArmed] = useState(false);
   const [arrivalFlash, setArrivalFlash] = useState(false);
   const [focusArrival, setFocusArrival] = useState(false);
   const [dragging, setDragging] = useState(false);
   const displayTitle = operation.title;
   const rename = useInlineRename({
     currentTitle: operation.title,
-    onBegin: () => {
-      disarmClose();
-    },
     onCommit: (title) => {
       onRename(title);
       restoreIdentityFocusRef.current = true;
@@ -191,7 +190,6 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   ].filter(Boolean).join(" ");
 
   useEffect(() => () => {
-    if (closeArmTimeoutRef.current !== null) window.clearTimeout(closeArmTimeoutRef.current);
     if (arrivalFlashTimeoutRef.current !== null) window.clearTimeout(arrivalFlashTimeoutRef.current);
     if (focusArrivalTimeoutRef.current !== null) window.clearTimeout(focusArrivalTimeoutRef.current);
   }, []);
@@ -280,26 +278,6 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     if (operationRef.current?.contains(document.activeElement)) onRenderHiddenFocus?.();
   }, [renderHidden, onRenderHiddenDismissMenu, onRenderHiddenFocus]);
 
-  const clearCloseArmTimer = () => {
-    if (closeArmTimeoutRef.current === null) return;
-    window.clearTimeout(closeArmTimeoutRef.current);
-    closeArmTimeoutRef.current = null;
-  };
-
-  const disarmClose = () => {
-    clearCloseArmTimer();
-    setIsCloseArmed(false);
-  };
-
-  const armClose = () => {
-    clearCloseArmTimer();
-    setIsCloseArmed(true);
-    closeArmTimeoutRef.current = window.setTimeout(() => {
-      closeArmTimeoutRef.current = null;
-      setIsCloseArmed(false);
-    }, CLOSE_ARM_DURATION_MS);
-  };
-
   // 캡처가 포인터업 없이 끊기면(언마운트·lostpointercapture) 라이브 좌표를 커밋한다.
   // 버리면 Station Keeping이 정착하지 못해 캡션이 이웃 위에 겹친 채 멈춘다.
   const finishPointerManipulation = (shouldCommit: boolean) => {
@@ -326,7 +304,6 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   };
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    disarmClose();
     if (interactionDisabled) return;
     if (event.button !== 0) return;
     event.stopPropagation();
@@ -474,7 +451,6 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   const stopIdentityPointer = (event: ReactPointerEvent<HTMLButtonElement | HTMLInputElement>) => {
     // 이름 입력 중만 드래그를 막는다. 제목 버튼은 캡션과 같이 창을 움직인다.
     if (rename.renaming) event.stopPropagation();
-    disarmClose();
   };
 
   const stopOperationPointer = (event: ReactPointerEvent<HTMLElement>) => {
@@ -487,14 +463,12 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   };
 
   const minimize = () => {
-    disarmClose();
     const activeElement = typeof document !== "undefined" ? document.activeElement : null;
     if (activeElement instanceof HTMLElement && operationRef.current?.contains(activeElement)) activeElement.blur();
     onMinimize();
   };
 
   const toggleSnapFull = () => {
-    disarmClose();
     onToggleSnapFull?.();
   };
 
@@ -509,18 +483,13 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   };
 
   const openOperationMenu = (anchor: DOMRect, returnFocus: HTMLElement | null) => {
-    disarmClose();
     onActivate();
     // 캡션에서 연 메뉴는 버튼 오른쪽 변에 맞춰 패널 안쪽으로 펼친다.
     onOpenMenu?.(anchor, returnFocus, "end");
   };
 
-  const close = () => {
-    if (!isCloseArmed) {
-      armClose();
-      return;
-    }
-    disarmClose();
+  // 캡션의 보관은 한 번에 끝난다 — 되돌리기는 토스트와 ⌘Z가, 복원은 보관함이 맡는다.
+  const archive = () => {
     onClose();
   };
 
@@ -696,9 +665,10 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
                 </button>
               </CaptionTipHost>
             ) : null}
-            <CaptionTipHost label={isCloseArmed ? t("canvas.frame.confirmCloseTitle") : t("canvas.frame.closeTitle")}>
-              <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? t("canvas.frame.confirmCloseAria", { title: displayTitle }) : t("canvas.frame.closeAria", { title: displayTitle })}>
-                {isCloseArmed ? t("canvas.frame.closeArmed") : <CloseIcon />}
+            {/* 되돌리기 단축키는 사용자가 바꿀 수 있으니 등록부에서 읽는다(시안 v7: 「보관 · ⌘Z로 되돌리기」). */}
+            <CaptionTipHost label={undoShortcut ? t("canvas.frame.archiveTip", { shortcut: undoShortcut }) : t("canvas.frame.archiveTitle")}>
+              <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={archive} aria-label={t("canvas.frame.archiveAria", { title: displayTitle })}>
+                <ArchiveGlyph />
               </button>
             </CaptionTipHost>
           </div>
@@ -817,14 +787,6 @@ function RestorePanelIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M6.2 3.5v2.7H3.5M9.8 3.5v2.7h2.7M12.5 9.8H9.8v2.7M3.5 9.8h2.7v2.7" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-export function CloseIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
     </svg>
   );
 }

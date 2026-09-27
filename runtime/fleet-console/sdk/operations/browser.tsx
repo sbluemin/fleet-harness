@@ -1,3 +1,4 @@
+export * from "./archive.js";
 export { normalizeOperationOwner, readOperationLaunch, wasOperationBornDormant } from "./types.js";
 import { normalizeOperationOwner } from "./types.js";
 import * as React from "react";
@@ -26,6 +27,48 @@ export class ApiError extends Error {
 }
 
 export const OPERATION_CATALOG_CHANGED_EVENT = "fleet:operation-catalog-changed";
+
+import type { OperationAccessIntent, OperationAccessResult, OperationArchiveReceipt, OperationArchiveSnapshot, OperationDescription, OperationPurgeConfirmation, OperationPurgeResult } from "./archive.js";
+
+async function archiveRequest<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`/api/v1/operations${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    signal,
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new ApiError(response.status, typeof payload?.error === "string" ? payload.error : "Operation archive request failed", payload);
+  return payload as T;
+}
+
+export function archiveOperation(operationId: string, signal?: AbortSignal): Promise<OperationArchiveReceipt> {
+  return archiveRequest(`/${encodeURIComponent(operationId)}/archive`, {}, signal);
+}
+export async function accessOperation(operationId: string, intent: OperationAccessIntent = "ensure-active", signal?: AbortSignal): Promise<OperationAccessResult> {
+  const result = await archiveRequest<OperationAccessResult>(`/${encodeURIComponent(operationId)}/access`, { intent }, signal);
+  return { ...result, operations: result.operations.map(assertOperationNode) };
+}
+export function restoreOperationCluster(operationId: string, signal?: AbortSignal): Promise<OperationAccessResult> {
+  return accessOperation(operationId, "ensure-active", signal);
+}
+export async function undoOperationArchive(receipt: Pick<OperationArchiveReceipt, "targetId" | "archiveId">, signal?: AbortSignal): Promise<OperationAccessResult> {
+  const result = await archiveRequest<OperationAccessResult>("/archive/undo", receipt, signal);
+  return { ...result, operations: result.operations.map(assertOperationNode) };
+}
+export async function describeOperation(operationId: string, signal?: AbortSignal): Promise<OperationDescription | null> {
+  const result = await archiveRequest<OperationDescription | null>(`/${encodeURIComponent(operationId)}/describe`, undefined, signal);
+  return result ? { ...result, operation: assertOperationNode(result.operation) } : null;
+}
+export async function fetchOperationArchive(theaterId?: string, signal?: AbortSignal): Promise<OperationArchiveSnapshot> {
+  const result = await archiveRequest<OperationArchiveSnapshot>(`/archive${theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : ""}`, undefined, signal);
+  return { ...result, entries: result.entries.map((entry) => ({ ...entry, operation: assertOperationNode(entry.operation) })) };
+}
+export function previewOperationPurge(operationId: string, signal?: AbortSignal): Promise<OperationPurgeConfirmation> {
+  return archiveRequest(`/archive/${encodeURIComponent(operationId)}/purge-preview`, undefined, signal);
+}
+export function purgeArchivedOperations(confirmation: OperationPurgeConfirmation, signal?: AbortSignal): Promise<OperationPurgeResult> {
+  return archiveRequest("/archive/purge", confirmation, signal);
+}
 
 export async function fetchOperationCatalog(signal?: AbortSignal): Promise<readonly OperationCatalogPlugin[]> {
   const response = await fetch("/api/v1/operations/catalog", { signal });

@@ -17,7 +17,10 @@ import { ReconnectButton } from "../chrome/components/reconnect-button.js";
 import { Toast, ToastHost } from "../chrome/components/toast.js";
 import { UpdateCurtain } from "../../../../features/updates/client/update-curtain.js";
 import { claimTheaterBootMinimization } from "../integration/boot-minimization-session.js";
-import { appendPendingDeletion, deletionCountdownSeconds, latestPendingDeletion } from "../integration/deletion-undo.js";
+import { appendPendingUndo, archiveUndo, deletionUndo, latestPendingUndo, undoCountdownSeconds, type PendingUndo } from "../integration/deletion-undo.js";
+import { openArchiveSheet } from "../integration/operation-archive.js";
+import type { ArchiveOutcome } from "../integration/operation-actions.js";
+import { ApiError, undoOperationArchive } from "@fleet-console/sdk/operations/browser";
 import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../features/console-use/client/gestures.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
 import { OnboardingHost } from "../../../../features/onboarding/client/onboarding-host.js";
@@ -38,6 +41,7 @@ import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
+import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
@@ -50,7 +54,7 @@ import { MobileTabBar } from "../chrome/mobile/mobile-tab-bar.js";
 import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { MobileTheaterPage } from "../chrome/mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
-import { useConsoleLocale, useT } from "../i18n/index.js";
+import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { syncExperimentModelOptionPlugins } from "../integration/experiment-model-options.js";
 import { isZenMode, setZenMode, toggleZenMode, useZenModeState, useZenTransitionActive } from "../integration/zen-mode.js";
@@ -80,14 +84,16 @@ export function App() {
   const registry = usePluginRegistry();
   const surfaceDescriptors = useExpandedSurfaceDescriptors();
   const globalSettings = useGlobalSettingsStore();
-  const [pendingDeletions, setPendingDeletions] = useState<readonly DeferredDeletionReceipt[]>([]);
-  // 에이전트가 닫은 Operation 의 저자 — 되돌리기 배너가 "누가 닫았는지" 를 말한다. 배너가 내려가면 함께 잊는다.
-  const [deletionAuthors, setDeletionAuthors] = useState<ReadonlyMap<string, { readonly caller: string; readonly title: string }>>(new Map());
+  const [pendingUndos, setPendingUndos] = useState<readonly PendingUndo[]>([]);
+  // 에이전트가 치운 Operation 의 저자 — 되돌리기 배너가 "누가 보관했는지" 를 말한다. 배너가 내려가면 함께 잊는다.
+  const [undoAuthors, setUndoAuthors] = useState<ReadonlyMap<string, { readonly caller: string; readonly title: string }>>(new Map());
   const [undoClock, setUndoClock] = useState(Date.now());
-  const pendingDeletionsRef = useRef(pendingDeletions);
+  // 보관·되돌리기가 거절됐을 때의 짧은 안내 — 조용히 삼키지 않는다.
+  const [undoNotice, setUndoNotice] = useState<{ readonly key: CoreMessageKey; readonly nonce: number } | null>(null);
+  const pendingUndosRef = useRef(pendingUndos);
   const undoInFlightRef = useRef(false);
-  pendingDeletionsRef.current = pendingDeletions;
-  const activeDeletion = latestPendingDeletion(pendingDeletions, undoClock);
+  pendingUndosRef.current = pendingUndos;
+  const activeUndo = latestPendingUndo(pendingUndos, undoClock);
   const t = useT();
   const consoleLocale = useConsoleLocale();
   const releaseNotesLocale = resolveReleaseNotesLocale(globalSettings.state?.language ?? "auto");
@@ -351,74 +357,104 @@ export function App() {
   }, [state.keyboardShortcutsOpen]);
 
   useEffect(() => {
-    if (pendingDeletions.length === 0) return;
+    if (pendingUndos.length === 0) return;
     const updateClock = () => {
       const nextNow = Date.now();
       setUndoClock(nextNow);
-      setPendingDeletions((current) => {
-        const next = current.filter((deletion) => deletion.expiresAt > nextNow);
-        pendingDeletionsRef.current = next;
+      setPendingUndos((current) => {
+        const next = current.filter((entry) => entry.expiresAt > nextNow);
+        pendingUndosRef.current = next;
         return next;
       });
     };
     updateClock();
     const timer = window.setInterval(updateClock, 100);
     return () => window.clearInterval(timer);
-  }, [pendingDeletions.length]);
+  }, [pendingUndos.length]);
 
-  const enqueueDeletion = useCallback((deletion: DeferredDeletionReceipt | null) => {
-    if (!deletion || deletion.expiresAt <= Date.now()) return;
+  useEffect(() => {
+    if (!undoNotice) return;
+    const timer = window.setTimeout(() => setUndoNotice(null), THEME_NOTICE_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [undoNotice]);
+
+  const enqueueUndo = useCallback((entry: PendingUndo) => {
+    if (entry.expiresAt <= Date.now()) return;
     setUndoClock(Date.now());
-    setPendingDeletions((current) => {
-      const next = appendPendingDeletion(current, deletion);
-      pendingDeletionsRef.current = next;
+    setPendingUndos((current) => {
+      const next = appendPendingUndo(current, entry);
+      pendingUndosRef.current = next;
       return next;
     });
   }, []);
 
-  // Console Use 의 닫기 — 사람이 누른 것과 같은 되돌리기 창을 이 화면에도 세운다.
+  const dropUndo = useCallback((key: string) => {
+    setPendingUndos((current) => {
+      const next = current.filter((item) => item.key !== key);
+      pendingUndosRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const enqueueDeletion = useCallback((deletion: DeferredDeletionReceipt | null) => {
+    if (deletion) enqueueUndo(deletionUndo(deletion));
+  }, [enqueueUndo]);
+
+  // 보관은 한 번에 끝난다 — 되돌리기 창은 토스트가 보이는 동안만이고, 그 뒤 복원은 보관함에서 한다.
+  const enqueueArchive = useCallback((outcome: ArchiveOutcome) => {
+    if (outcome.ok) enqueueUndo(archiveUndo(outcome.receipt, Date.now() + UNDO_WINDOW_MS));
+    else setUndoNotice({ key: "chrome.toast.archiveFailed", nonce: Date.now() });
+  }, [enqueueUndo]);
+
+  // Console Use 의 보관 — 사람이 누른 것과 같은 되돌리기 창을 이 화면에도 세운다.
   useEffect(() => subscribeClosingByAgent((closing: ClosingByAgent) => {
-    if (closing.kind !== "operation") return;
     const caller = closing.by.kind === "operation" ? closing.by.title ?? closing.by.operationId : closing.by.pluginId;
-    setDeletionAuthors((current) => new Map(current).set(closing.deletionId, { caller, title: closing.targetTitle }));
-    enqueueDeletion({ deletionId: closing.deletionId, kind: closing.kind, targetId: closing.targetId, expiresAt: closing.expiresAt });
-  }), [enqueueDeletion]);
+    const entry = closing.kind === "archive"
+      ? archiveUndo(closing.receipt, Date.now() + UNDO_WINDOW_MS)
+      : closing.receipt.kind === "operation" ? deletionUndo(closing.receipt) : null;
+    if (!entry) return;
+    setUndoAuthors((current) => new Map(current).set(entry.key, { caller, title: closing.targetTitle }));
+    enqueueUndo(entry);
+  }), [enqueueUndo]);
 
   const undoLastClose = useCallback(() => {
     if (undoInFlightRef.current) return;
-    const currentNow = Date.now();
-    const deletion = latestPendingDeletion(pendingDeletionsRef.current, currentNow);
-    if (!deletion) return;
+    const entry = latestPendingUndo(pendingUndosRef.current, Date.now());
+    if (!entry) return;
     undoInFlightRef.current = true;
-    void restoreDeletion(deletion.deletionId)
-      .then(() => {
-        setPendingDeletions((current) => {
-          const next = current.filter((item) => item.deletionId !== deletion.deletionId);
-          pendingDeletionsRef.current = next;
-          return next;
-        });
-        return Promise.allSettled([
+    const request = entry.kind === "archive"
+      ? undoOperationArchive({ targetId: entry.receipt.targetId, archiveId: entry.receipt.archiveId })
+        .then(() => Promise.allSettled([fetchOperations(null).then(hydrateOperations)]))
+      : restoreDeletion(entry.deletion.deletionId)
+        .then(() => Promise.allSettled([
           fetchTheaters(null).then(hydrateTheaters),
           fetchOperations(null).then(hydrateOperations),
           fetchGroups(null).then(hydrateGroups),
-        ]);
-      })
-      .catch(() => {
-        if (deletion.expiresAt <= Date.now()) {
-          setPendingDeletions((current) => {
-            const next = current.filter((item) => item.deletionId !== deletion.deletionId);
-            pendingDeletionsRef.current = next;
-            return next;
-          });
+        ]));
+    void request
+      .then(() => dropUndo(entry.key))
+      .catch((error: unknown) => {
+        if (entry.kind === "archive") {
+          // 다른 창에서 이미 복원·재보관·삭제됐다면 이 되돌리기는 더 이상 가리킬 것이 없다 — 사실대로 알리고 내린다.
+          dropUndo(entry.key);
+          const code = error instanceof ApiError ? error.message : "";
+          setUndoNotice({ key: code === "archive_undo_conflict" || code === "unknown_operation" ? "chrome.toast.archiveUndoStale" : "chrome.toast.archiveUndoFailed", nonce: Date.now() });
+          return;
         }
+        if (entry.expiresAt <= Date.now()) dropUndo(entry.key);
       })
       .finally(() => {
         undoInFlightRef.current = false;
       });
-  }, []);
+  }, [dropUndo]);
 
   const canUndoLastClose = useCallback(
-    () => pendingDeletionsRef.current.some((deletion) => deletion.expiresAt > Date.now()),
+    () => pendingUndosRef.current.some((entry) => entry.expiresAt > Date.now()),
+    [],
+  );
+
+  const lastUndoKind = useCallback(
+    () => latestPendingUndo(pendingUndosRef.current, Date.now())?.kind ?? null,
     [],
   );
 
@@ -485,16 +521,35 @@ export function App() {
     });
   }, [canUndoLastClose, consoleLocale, navigate, railBindings, resolvePanelShortcut, undoLastClose]);
 
+  const undoAuthor = activeUndo ? undoAuthors.get(activeUndo.key) : undefined;
+  const undoTitle = activeUndo === null
+    ? ""
+    : activeUndo.kind === "deletion"
+      ? activeUndo.deletion.kind === "theater"
+        ? (activeUndo.deletion.archivedOperationCount ?? 0) > 0
+          ? t("chrome.toast.theaterForgottenWithArchived", { count: activeUndo.deletion.archivedOperationCount ?? 0 })
+          : t("chrome.toast.theaterForgotten")
+        : undoAuthor ? t("chrome.toast.operationClosedBy", undoAuthor) : t("chrome.toast.operationClosed")
+      : undoAuthor
+        ? t("chrome.toast.operationArchivedBy", undoAuthor)
+        : activeUndo.receipt.operationIds.length > 1
+          ? t("chrome.toast.operationsArchived", { count: activeUndo.receipt.operationIds.length })
+          : t("chrome.toast.operationArchived");
   const deletionToast = (
-    <Toast
-      open={activeDeletion !== null}
-      tone="undo"
-      title={activeDeletion?.kind === "theater" ? t("chrome.toast.theaterForgotten") : activeDeletion && deletionAuthors.get(activeDeletion.deletionId) ? t("chrome.toast.operationClosedBy", deletionAuthors.get(activeDeletion.deletionId)!) : t("chrome.toast.operationClosed")}
-      message={activeDeletion ? t("chrome.toast.secondsRemaining", { count: deletionCountdownSeconds(activeDeletion, undoClock) }) : undefined}
-      actionLabel={t("chrome.toast.undo")}
-      onAction={undoLastClose}
-      progress={activeDeletion ? (activeDeletion.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
-    />
+    <>
+      <Toast
+        open={activeUndo !== null}
+        tone="undo"
+        title={undoTitle}
+        message={activeUndo ? t("chrome.toast.secondsRemaining", { count: undoCountdownSeconds(activeUndo, undoClock) }) : undefined}
+        actionLabel={activeUndo?.kind === "archive" ? t("chrome.toast.archiveUndo") : t("chrome.toast.undo")}
+        onAction={undoLastClose}
+        secondaryActionLabel={activeUndo?.kind === "archive" ? t("chrome.toast.openArchive") : undefined}
+        onSecondaryAction={activeUndo?.kind === "archive" ? openArchiveSheet : undefined}
+        progress={activeUndo ? (activeUndo.expiresAt - undoClock) / UNDO_WINDOW_MS : undefined}
+      />
+      <Toast open={undoNotice !== null} tone="warn" title={undoNotice ? t(undoNotice.key) : ""} onDismiss={() => setUndoNotice(null)} />
+    </>
   );
 
   return (
@@ -550,7 +605,7 @@ export function App() {
             <main className="console-route-content">
               <Routes>
                 <Route path="/" element={<Navigate to="/operations" replace />} />
-                <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} deletionToast={mobileLayout ? null : deletionToast} />} />
+                <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
                 {/* Theater is a phone-only destination: the desktop switches Theater from the band
                     and lists every Theater in its sidebar, so this route has nothing to add there. */}
                 <Route path="/theaters" element={mobileLayout ? <MobileTheaterPage state={state} /> : <Navigate to="/operations" replace />} />
@@ -569,12 +624,14 @@ export function App() {
           state={state}
           railPanels={paletteRailPanels}
           plugins={registry.providers}
-          onDeferredDeletion={enqueueDeletion}
+          onArchived={enqueueArchive}
           canUndoLastClose={canUndoLastClose}
+          lastUndoKind={lastUndoKind}
           onUndoLastClose={undoLastClose}
         />
         <QuickLaunch />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
+        <ArchiveSheet />
         <WhatsNewModal state={state} />
         <CommissioningOverlay state={state} />
         <OnboardingHost

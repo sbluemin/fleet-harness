@@ -3,13 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
+import { ArchiveGlyph } from "../components/archive-glyph.js";
 import { useT } from "../../i18n/index.js";
 import type { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import type { OperationGeometry, OperationNode } from "../../integration/types.js";
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
 
 // Same two-tap arm as OperationFrame — a single tap names the intent, a second tap disposes.
-const CLOSE_ARM_DURATION_MS = 1500;
 
 /**
  * An open operation is the terminal plus a named title. Leave remains the platform back
@@ -28,8 +28,6 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
   readonly onClose: () => void;
 }) {
   const t = useT();
-  const closeArmTimeoutRef = useRef<number | null>(null);
-  const [isCloseArmed, setIsCloseArmed] = useState(false);
   const [geometry, setGeometry] = useState<OperationGeometry>({ x: 0, y: 0, width: 390, height: 640, zIndex: 0 });
   const measure = useCallback((element: HTMLDivElement | null) => {
     if (!element) return;
@@ -47,43 +45,8 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
   const [measureTarget, setMeasureTarget] = useState<HTMLDivElement | null>(null);
   useEffect(() => measure(measureTarget), [measure, measureTarget]);
 
-  const clearCloseArmTimer = () => {
-    if (closeArmTimeoutRef.current === null) return;
-    window.clearTimeout(closeArmTimeoutRef.current);
-    closeArmTimeoutRef.current = null;
-  };
-
-  const disarmClose = () => {
-    clearCloseArmTimer();
-    setIsCloseArmed(false);
-  };
-
-  const armClose = () => {
-    clearCloseArmTimer();
-    setIsCloseArmed(true);
-    closeArmTimeoutRef.current = window.setTimeout(() => {
-      closeArmTimeoutRef.current = null;
-      setIsCloseArmed(false);
-    }, CLOSE_ARM_DURATION_MS);
-  };
-
-  useEffect(() => {
-    setIsCloseArmed(false);
-    if (closeArmTimeoutRef.current !== null) {
-      window.clearTimeout(closeArmTimeoutRef.current);
-      closeArmTimeoutRef.current = null;
-    }
-    return () => {
-      if (closeArmTimeoutRef.current !== null) window.clearTimeout(closeArmTimeoutRef.current);
-    };
-  }, [operation.id]);
-
-  const close = () => {
-    if (!isCloseArmed) {
-      armClose();
-      return;
-    }
-    disarmClose();
+  // 세션 머리의 보관도 데스크톱과 같이 한 번에 끝난다 — 되돌리기는 같은 토스트가 맡는다.
+  const archive = () => {
     onClose();
   };
 
@@ -149,25 +112,17 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
         ) : null}
         <button
           type="button"
-          className={`mobile-session-close${isCloseArmed ? " is-armed" : ""}`}
-          onClick={close}
-          aria-label={isCloseArmed ? t("canvas.frame.confirmCloseAria", { title }) : t("canvas.frame.closeAria", { title })}
-          title={isCloseArmed ? t("canvas.frame.confirmCloseTitle") : t("canvas.frame.closeTitle")}
+          className="mobile-session-close"
+          onClick={archive}
+          aria-label={t("canvas.frame.archiveAria", { title })}
+          title={t("canvas.frame.archiveTitle")}
         >
-          {isCloseArmed ? t("canvas.frame.closeArmed") : <CloseIcon />}
+          <ArchiveGlyph />
         </button>
       </div>
       <div className="mobile-session-body" ref={setMeasureTarget}>
         <OperationBodySlot operationId={operation.id} config={config} className="mobile-operation-body-slot" />
       </div>
     </section>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
-    </svg>
   );
 }

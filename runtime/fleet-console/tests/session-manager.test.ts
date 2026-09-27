@@ -52,6 +52,24 @@ describe("terminal session manager", () => {
     expect(ptys[0]?.killed()).toBe(true);
   });
 
+  it("cancels a pending launch before a per-Operation stop reports completion", async () => {
+    const gate = createDeferred<void>();
+    const startShell = vi.fn(() => createMockPty());
+    const cleanup = vi.fn();
+    const manager = createTerminalSessionManager({
+      launch: async () => { await gate.promise; return { bin: "mock", args: [], cwd: "/", env: {}, cleanup }; },
+      startShell,
+    });
+    const created = manager.createSession({ sessionId: "archive-target", cwd: "/" });
+    const rejected = expect(created).rejects.toThrow("terminal_launch_cancelled");
+    const stopped = manager.terminateAndWait("archive-target", 1000);
+    gate.resolve();
+    await rejected;
+    expect(await stopped).toBe(true);
+    expect(startShell).not.toHaveBeenCalled();
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
   it("stops a session that finishes launching while server shutdown is waiting", async () => {
     const launchGate = createDeferred<void>();
     const exitGate = createDeferred<void>();

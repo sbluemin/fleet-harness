@@ -31,7 +31,8 @@ import {
 import { noteCommandRun, readRecentCommandIds } from "../../integration/palette-recent.js";
 import { PaletteActionGlyph, PaletteCommandGlyph, PaletteRailIcon, PaletteSectionGlyph } from "./palette-glyphs.js";
 import { resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
-import { closeOperationCompletely, resumeOperationInPlace } from "../../integration/operation-actions.js";
+import { archiveOperationFromUi, resumeOperationInPlace, type ArchiveOutcome } from "../../integration/operation-actions.js";
+import { openArchiveSheet } from "../../integration/operation-archive.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
 import {
   buildPaletteCommands,
@@ -44,9 +45,8 @@ import {
 } from "../../integration/palette-commands.js";
 import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from "../../integration/shortcuts.js";
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
-import type { DeferredDeletionReceipt } from "../../integration/api.js";
-import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping, toggleAlignAll } from "../../../../../features/workspace/client/canvas/canvas-store.js";
-import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, useTriageActive, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
+import { getLoadedTheaterId, ensureDefaultGeometry, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping, toggleAlignAll } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { enterTriage, focusedTriageOperationId, isTriageActive, setTriageActive, useTriageActive, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
@@ -75,9 +75,11 @@ interface OperationSearchProps {
   readonly railPanels: readonly PaletteSearchPanel[];
   // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
   readonly plugins: readonly ClientExecutionProvider[];
-  // 팔레트 close도 캔버스·사이드바와 같은 유예 큐에 receipt를 넣어야 Undo가 경로에 상관없이 동작한다.
-  readonly onDeferredDeletion?: (deletion: DeferredDeletionReceipt | null) => void;
+  // 팔레트 보관도 캔버스·사이드바와 같은 되돌리기 큐에 receipt를 넣어야 ⌘Z가 경로에 상관없이 동작한다.
+  readonly onArchived?: (outcome: ArchiveOutcome) => void;
   readonly canUndoLastClose?: () => boolean;
+  /** 되돌릴 마지막 일의 종류 — 「보관 되돌리기」와 Theater 잊기의 「실행 취소」를 가른다. */
+  readonly lastUndoKind?: () => "archive" | "deletion" | null;
   readonly onUndoLastClose?: () => void;
 }
 
@@ -89,8 +91,9 @@ export function OperationSearch({
   state,
   railPanels,
   plugins,
-  onDeferredDeletion,
+  onArchived,
   canUndoLastClose,
+  lastUndoKind,
   onUndoLastClose,
 }: OperationSearchProps) {
   const t = useT();
@@ -126,9 +129,10 @@ export function OperationSearch({
   );
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
+  const undoKind = useMemo(() => lastUndoKind?.() ?? null, [state.operationSearchOpen, lastUndoKind]);
   const commands = useMemo(
-    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, warRoomAvailable, triageActive }),
-    [state, railPanels, t, undoAvailable, zenMode, warRoomAvailable, triageActive],
+    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, undoKind, warRoomAvailable, triageActive }),
+    [state, railPanels, t, undoAvailable, zenMode, warRoomAvailable, triageActive, undoKind],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
@@ -338,18 +342,15 @@ export function OperationSearch({
         resumeOperationInPlace(action.operationId, state.operations, plugins, focusOperation);
         break;
       }
-      case "close-operation": {
+      case "archive-operation": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        // Analyze/companion 대상을 닫을 때는 캔버스/사이드바 close 경로(operations.tsx handleClose)와
-        // 같이 companion을 먼저 해제한다 — 두면 삭제된 op가 fallback dormant 프레임으로 잔존한다(Codex P2).
-        if (getCompanionOperationId() === action.operationId) forceDropCompanionOperationId();
-        const operation = state.operations.find((op) => op.id === action.operationId);
-        const plugin = (operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : null) ?? null;
-        void closeOperationCompletely(action.operationId, plugin).then((deletion) => {
-          forgetTriageOperation(action.operationId);
-          onDeferredDeletion?.(deletion);
-        });
+        void archiveOperationFromUi(action.operationId).then((outcome) => { if (outcome) onArchived?.(outcome); });
+        break;
+      }
+      case "open-archive": {
+        previousFocusRef.current = null;
+        openArchiveSheet();
         break;
       }
       case "minimize-all-operations": {
@@ -542,7 +543,7 @@ export function OperationSearch({
         { id: "minimize", label: t("chrome.operationSearch.actionMinimize"), glyph: "operation-minimize", run: () => runAction({ kind: "minimize-operation", operationId: entry.operationId }, false) },
       );
     }
-    actions.push({ id: "close", label: t("chrome.operationSearch.actionClose"), glyph: "operation-close", danger: true, run: () => runAction({ kind: "close-operation", operationId: entry.operationId }, false) });
+    actions.push({ id: "archive", label: t("chrome.operationSearch.actionArchive"), glyph: "operation-archive", run: () => runAction({ kind: "archive-operation", operationId: entry.operationId }, false) });
     return actions;
   };
 
@@ -892,7 +893,7 @@ export function OperationSearch({
 interface RowAction {
   readonly id: string;
   readonly label: string;
-  readonly glyph: "operation-open" | "operation-resume" | "operation-rename" | "operation-minimize" | "operation-close";
+  readonly glyph: "operation-open" | "operation-resume" | "operation-rename" | "operation-minimize" | "operation-archive";
   readonly danger?: boolean;
   readonly run: () => void;
 }

@@ -309,14 +309,14 @@ describe("console static and terminal ticket boundary", () => {
       operations: [{ id: "future-operation" }],
     });
     let stateFile = "";
-    await startFixture({
+    await expect(startFixture({
       beforeCreateServer: ({ fleetDataDir }) => {
         const consoleDir = path.join(fleetDataDir, "console");
         fs.mkdirSync(consoleDir, { recursive: true });
         stateFile = path.join(consoleDir, "state.json");
         fs.writeFileSync(stateFile, original);
       },
-    });
+    })).rejects.toThrow("archive_recovery_required");
 
     expect(fs.readFileSync(stateFile, "utf8")).toBe(original);
   });

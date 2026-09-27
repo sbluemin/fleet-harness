@@ -16,7 +16,7 @@ export interface AnalysisStore {
   readonly refreshCatalog: () => void;
   /** 서버에 살아 있는 분석가(에이전트가 시작한 것 포함)를 이어받는다 — 원장을 그리고 스트림을 붙인다. 이미 시작된 스토어면 아무 일도 없다. */
   readonly adopt: () => void;
-  readonly dispose: () => void;
+  readonly dispose: (options?: { readonly stopServer?: boolean }) => void;
   readonly updateContext: (settings: ClientSettingsCapability | undefined, language: "en" | "ko" | undefined) => void;
 }
 
@@ -54,8 +54,8 @@ export function getAnalysisStore(operationId: string, api: ClientApiCapability, 
   return store;
 }
 
-export function disposeAnalysisStore(operationId: string): void {
-  stores.get(operationId)?.dispose();
+export function disposeAnalysisStore(operationId: string, options?: { readonly stopServer?: boolean }): void {
+  stores.get(operationId)?.dispose(options);
 }
 
 // re-arm 전용 조회 API — dispose된 Operation의 store를 재생성하지 않아야 한다(orphan 방지).
@@ -152,7 +152,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
     await Promise.race([connected, new Promise<void>((resolve) => setTimeout(resolve, CONNECT_WAIT_MS))]);
   };
 
-  const dispose = () => {
+  const dispose = (options?: { readonly stopServer?: boolean }) => {
     if (disposed) return;
     if (adoptRetry) { clearTimeout(adoptRetry); adoptRetry = null; }
     const previousDisposal = disposalFlights.get(operationId);
@@ -171,7 +171,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, _ini
       if (pendingStart) await pendingStart.catch(() => {});
       if (pendingReset) await pendingReset.catch(() => {});
       if (pendingStop) await pendingStop.catch(() => {});
-      await stopAnalysis(api, operationId);
+      if (options?.stopServer !== false) await stopAnalysis(api, operationId);
     })().catch(() => {});
     disposalFlights.set(operationId, flight);
     void flight.finally(() => {
