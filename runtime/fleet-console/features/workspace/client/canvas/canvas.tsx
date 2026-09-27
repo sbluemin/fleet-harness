@@ -31,6 +31,7 @@ import { applySnapZone, closeCompanionLayer, toggleOperationSnapFull } from "./s
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, glideAcrossLayerSwitch, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
+import { UseRequestCorner, type UseRequestSource } from "../../../execution/client/agent/use-request-corner.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, ModeTitle, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
 import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
@@ -197,6 +198,16 @@ export function OperationsCanvas({
   }, [registry.providers]);
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
+  // 허용 요청은 구성원 세션 id 로 올 수 있다 — 지휘관 이름과 구성원 이름을 캡션 선반과 같은 원천(묶음 → 제목)으로 푼다.
+  const describeUseRequestSource = useCallback((operationId: string): UseRequestSource | null => {
+    const own = state.operations.find((operation) => operation.id === operationId);
+    if (own) return { operationTitle: own.title, memberName: null };
+    const member = state.nestedOperations.find((operation) => operation.id === operationId);
+    const parent = member ? state.operations.find((operation) => operation.id === member.parentOperationId) : undefined;
+    if (!member || !parent) return null;
+    const laid = clusterIndex.rootOf.get(parent.id)?.formation.byOperationId.get(member.id)?.member;
+    return { operationTitle: parent.title, memberName: laid?.name ?? nestedSubjectName(parent, member) };
+  }, [clusterIndex, state.nestedOperations, state.operations]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const glanceVisible = useGlanceHold();
   const disabled = !state.activeTheaterId || state.addingTheater;
@@ -2076,30 +2087,39 @@ export function OperationsCanvas({
         />,
         document.body,
       ) : null}
-      <CanvasMinimap
-        operations={visibleOperations}
-        pluginOperations={Object.fromEntries(theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).map((operation) => [operation.id, {
-          theaterId: operation.theaterId,
-          geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
-        }]))}
-        accents={Object.fromEntries(theaterOperations.flatMap((operation) => {
-          const accentKey = canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation);
-          const color = accentKey ? resolveAccentColor(accentKey) : null;
-          return color ? [[operation.id, color] as const] : [];
-        }))}
-        viewport={canvas.viewport}
-        // 렌즈와 점프의 기준 창은 아레나다 — 캔버스 박스로 재면 크롬에 덮인 영역을
-        // "보이는 창"으로 치고, 점프가 대상을 부유 카드 밑 중앙에 앉힌다.
-        canvasSize={{ width: arena.width, height: arena.height }}
-        onJump={(center) => setViewport({
-          x: arena.width / 2 - center.x * canvas.viewport.zoom,
-          y: arena.height / 2 - center.y * canvas.viewport.zoom,
-          zoom: canvas.viewport.zoom,
-        })}
-      />
+      {/* 우하단 계기 자리 — 허용 요청 더미가 MAP(접히면 Map 버튼) 위에 붙어 선다. 둘은 이 열에서 쌓일 뿐 서로를
+          밀거나 덮지 않고, MAP 이 숨는 모드(Zen·War Room·전체 칸)에서는 더미가 아레나 우하단으로 내려앉는다.
+          열 자체는 쌓임 맥락을 만들지 않아 각자의 z-index 가 캔버스 층에서 그대로 겨룬다. */}
+      <div className="canvas-corner-dock">
+        <UseRequestCorner language={language} compact={arena.width < USE_REQUEST_CORNER_MIN_ARENA_WIDTH} describeSource={describeUseRequestSource} />
+        <CanvasMinimap
+          operations={visibleOperations}
+          pluginOperations={Object.fromEntries(theaterOperations.filter((operation) => !minimizedSet.has(operation.id)).map((operation) => [operation.id, {
+            theaterId: operation.theaterId,
+            geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
+          }]))}
+          accents={Object.fromEntries(theaterOperations.flatMap((operation) => {
+            const accentKey = canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation);
+            const color = accentKey ? resolveAccentColor(accentKey) : null;
+            return color ? [[operation.id, color] as const] : [];
+          }))}
+          viewport={canvas.viewport}
+          // 렌즈와 점프의 기준 창은 아레나다 — 캔버스 박스로 재면 크롬에 덮인 영역을
+          // "보이는 창"으로 치고, 점프가 대상을 부유 카드 밑 중앙에 앉힌다.
+          canvasSize={{ width: arena.width, height: arena.height }}
+          onJump={(center) => setViewport({
+            x: arena.width / 2 - center.x * canvas.viewport.zoom,
+            y: arena.height / 2 - center.y * canvas.viewport.zoom,
+            zoom: canvas.viewport.zoom,
+          })}
+        />
+      </div>
     </main>
   );
 }
+
+/** 더미(폭 336px)와 양쪽 여백을 담지 못하는 아레나에서는 더미가 늘 접힌 표시로 선다 — 떠 있는 사이드바를 덮지 않게. */
+const USE_REQUEST_CORNER_MIN_ARENA_WIDTH = 400;
 
 function rectToGeometry(rect: CanvasRect): OperationGeometry {
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, zIndex: 0 };

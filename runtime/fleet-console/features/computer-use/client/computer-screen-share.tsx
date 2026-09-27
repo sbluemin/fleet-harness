@@ -41,6 +41,10 @@ export function useOperationUseRequests(operationId: string, childSessionIds: re
   const represented = new Set([operationId, ...childSessionIds]);
   return activity.requests.filter((request) => represented.has(request.operationId));
 }
+/** 이 Console 이 답을 기다리는 허용 요청 전부 — Map 우하단 더미가 Operation 을 가리지 않고 모은다. */
+export function useAllOperationUseRequests(): readonly OperationUseRequest[] {
+  return useContext(OperationUseContext).requests;
+}
 
 function readRequests(value: unknown): OperationUseRequest[] {
   if (!Array.isArray(value)) return [];
