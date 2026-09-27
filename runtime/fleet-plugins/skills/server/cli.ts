@@ -46,8 +46,32 @@ export function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, "");
 }
 
+/**
+ * 전역 범위의 기준 홈. Console이 띄우는 Claude 자식과 같은 환경(`HOME`)을 따른다 — 패널이 보여
+ * 주는 전역 스킬이 그 세션이 실제로 싣는 스킬과 달라지지 않게 하려는 것이다. 개발 격리는 Fleet
+ * 상태만 옮기고 Agent 상태는 옮기지 않으므로(docs/fleet-development-reference.md §5), 전역 범위를
+ * 격리하려면 `HOME`과 `CLAUDE_CONFIG_DIR`을 함께 바꿔 띄운다.
+ */
 export function defaultCwd(): string {
   return os.homedir();
+}
+
+/**
+ * Claude Code의 사용자 설정 디렉터리. 전역 Claude 스킬은 `<이 경로>/skills`에 놓인다.
+ * skills CLI(`CLAUDE_CONFIG_DIR?.trim() || ~/.claude`)와 같은 규칙이어야 두 쪽이 한 폴더를 본다.
+ */
+export function claudeConfigDir(): string {
+  const configured = process.env["CLAUDE_CONFIG_DIR"]?.trim();
+  return configured ? path.resolve(configured) : path.join(os.homedir(), ".claude");
+}
+
+/**
+ * CLI 자식 환경. 설치 텔레메트리(출처·스킬 이름을 add-skill.vercel.sh로 보냄)는 기본으로 끈다 —
+ * 사용자가 켠 적 없는 외부 전송을 Console이 대신 켜 두지 않는다. 나머지는 Console 환경을 그대로
+ * 물려준다(`HOME`·`CLAUDE_CONFIG_DIR`·`CODEX_HOME`·`XDG_CONFIG_HOME`이 CLI의 경로를 정한다).
+ */
+export function cliChildEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return { ...env, DISABLE_TELEMETRY: "1" };
 }
 
 export function resetCliStateForTest(): void {
@@ -145,7 +169,7 @@ export function createDefaultExecutor(cliHome: string): CliExecutor {
             process.execPath,
             [mjsPath, ...args],
             // windowsHide: GUI 콘솔에서 하위 node.exe 콘솔 창이 순간 표시되는 것을 막는다.
-            withHidden({ shell: false, cwd, timeout, maxBuffer: 10 * 1024 * 1024 }),
+            withHidden({ shell: false, cwd, timeout, maxBuffer: 10 * 1024 * 1024, env: cliChildEnv() }),
           );
 
           const stdoutParts: string[] = [];

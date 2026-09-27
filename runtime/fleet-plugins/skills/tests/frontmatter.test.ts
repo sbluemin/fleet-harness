@@ -29,14 +29,17 @@ afterEach(async () => {
 
 describe("readSkillDescription", () => {
 
-  it("refuses a skill directory that resolves outside the scope root", async () => {
-    // CLI가 보고한 경로라도 scope 경계를 벗어나면 읽지 않는다.
+  it("refuses a skill directory that resolves outside every scope root", async () => {
+    // CLI가 보고한 경로라도 scope 경계를 벗어나면 읽지 않는다. 전역 범위처럼 루트가 둘이어도
+    // (홈과 Claude 설정 디렉터리) 어느 루트에도 속하지 않으면 거부한다.
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-outside-"));
     created.push(outside);
     await fs.writeFile(path.join(outside, "SKILL.md"), "---\ndescription: Secret.\n---\n", "utf-8");
     const { root } = await makeSkill("decoy", "---\ndescription: ok\n---\n");
+    const { root: claudeConfig, skillDir: claudeSkill } = await makeSkill("config-skill", "---\ndescription: From config.\n---\n");
 
-    await expect(readSkillDescription(outside, root)).resolves.toBeUndefined();
+    await expect(readSkillDescription(outside, [root, claudeConfig])).resolves.toBeUndefined();
+    await expect(readSkillDescription(claudeSkill, [root, claudeConfig])).resolves.toBe("From config.");
   });
 
   it("refuses a symlinked SKILL.md that escapes the skill directory", async () => {
@@ -48,6 +51,6 @@ describe("readSkillDescription", () => {
     const { root, skillDir } = await makeSkill("linked", null);
     await fs.symlink(secret, path.join(skillDir, "SKILL.md"));
 
-    await expect(readSkillDescription(skillDir, root)).resolves.toBeUndefined();
+    await expect(readSkillDescription(skillDir, [root])).resolves.toBeUndefined();
   });
 });

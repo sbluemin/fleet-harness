@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { UpdateSummary } from "../server/skill-types.js";
+
 export type JobLogStatus = "idle" | "running" | "done" | "error";
 export interface JobLogState {
   readonly status: JobLogStatus;
   readonly lines: readonly string[];
+  /** 업데이트 작업이 성공하면 서버가 lock 지문을 비교해 싣는 결과. */
+  readonly summary?: UpdateSummary;
 }
 export interface UseJobLogReturn extends JobLogState {
   readonly start: (postUrl: string, body: Record<string, unknown>) => void;
@@ -59,11 +63,12 @@ export function useJobLog(): UseJobLogReturn {
           try {
             const response = await fetch(`/plugins/skills/jobs?jobId=${encodeURIComponent(jobId)}&cursor=${cursor}`, { signal: controller.signal });
             if (!response.ok) throw new Error("job_poll_failed");
-            const data = await response.json() as { lines: string[]; nextCursor: number; status: JobLogStatus };
+            const data = await response.json() as { lines: string[]; nextCursor: number; status: JobLogStatus; summary?: UpdateSummary };
             if (!Array.isArray(data.lines) || !["running", "done", "error"].includes(data.status)) throw new Error("invalid_job_status");
             if (current !== generation.current) return;
             cursor = data.nextCursor;
-            setState((prev) => ({ status: data.status, lines: [...prev.lines, ...data.lines] }));
+            const summary = data.status === "done" && Array.isArray(data.summary?.updated) ? data.summary : undefined;
+            setState((prev) => ({ status: data.status, lines: [...prev.lines, ...data.lines], ...(summary ? { summary } : {}) }));
             if (data.status === "running") pollRef.current = setTimeout(() => { void poll(); }, POLL_MS);
             else runningRef.current = false;
           } catch { fail(); }

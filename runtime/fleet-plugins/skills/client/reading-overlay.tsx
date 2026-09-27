@@ -4,20 +4,23 @@ import { createPortal } from "react-dom";
 import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
-import type { AgentId, Scope, SkillListItem } from "../server/skill-types.js";
+import type { InstallTarget, Scope, SkillListItem } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
-import { AGENT_LABELS, InstallFlow } from "./install-flow.js";
+import { InstallFlow } from "./install-flow.js";
 import { MarkdownView } from "./markdown-view.js";
 import { JobStatusDock } from "./skill-feedback.js";
-import type { UseJobLogReturn } from "./use-job-log.js";
+import { updateResultLabel } from "./update-result.js";
+import { useJobLog, type UseJobLogReturn } from "./use-job-log.js";
 
 interface ReadingOverlayProps {
   readonly skill: SkillListItem;
   readonly isInstalled: boolean;
   readonly theaterId: string | null;
   readonly onClose: () => void;
-  readonly onInstall: (scope: Scope, agents: AgentId[]) => void;
+  readonly onInstall: (scope: Scope, targets: InstallTarget[]) => void;
   readonly onRemoved: () => void;
+  /** 이 스킬 하나를 업데이트하는 작업이 끝났다 — 창은 열어 둔 채 목록만 다시 읽는다. */
+  readonly onUpdated: () => void;
   readonly installLog: UseJobLogReturn;
   readonly t: Translate<SkillsMessageKey>;
   readonly language: ConsoleLocale | undefined;
@@ -25,7 +28,7 @@ interface ReadingOverlayProps {
 
 const FOCUSABLE_SELECTOR = "a[href],button:not([disabled]),input:not([disabled]),summary,[tabindex]:not([tabindex='-1'])";
 
-export function ReadingOverlay({ skill, isInstalled, theaterId, onClose, onInstall, onRemoved, installLog, t, language }: ReadingOverlayProps) {
+export function ReadingOverlay({ skill, isInstalled, theaterId, onClose, onInstall, onRemoved, onUpdated, installLog, t, language }: ReadingOverlayProps) {
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [retryKey, setRetryKey] = useState(0);
@@ -38,6 +41,20 @@ export function ReadingOverlay({ skill, isInstalled, theaterId, onClose, onInsta
   const installButtonRef = useRef<HTMLButtonElement>(null);
   const aliveRef = useRef(true);
   const removingRef = useRef(false);
+  const updateLog = useJobLog();
+  // 레지스트리에서 설치해 lock에 출처가 있는 스킬만 업데이트할 원천이 있다. 손으로 놓은 스킬은 없다.
+  const canUpdate = isInstalled && Boolean(skill.source);
+
+  useEffect(() => {
+    if (updateLog.status === "done") onUpdated();
+  }, [updateLog.status, onUpdated]);
+
+  const startUpdate = () => {
+    if (updateLog.status === "running") return;
+    updateLog.start("/plugins/skills/update", {
+      scope: skill.scope, skill: skill.name, ...(skill.scope === "project" ? { theaterId } : {}),
+    });
+  };
 
   useEffect(() => {
     aliveRef.current = true;
@@ -145,7 +162,12 @@ export function ReadingOverlay({ skill, isInstalled, theaterId, onClose, onInsta
           <dl className="skills-detail-facts">
             <dt>{t("skills.detail.status")}</dt><dd>{t(isInstalled ? "skills.status.installed" : "skills.detail.notInstalled")}</dd>
             <dt>{t("skills.scope.label")}</dt><dd>{isInstalled ? t(skill.scope === "project" ? "skills.scope.projectHint" : "skills.scope.globalHint") : t("skills.detail.chooseAtInstall")}</dd>
-            {isInstalled && <><dt>{t("skills.install.agents")}</dt><dd>{skill.agents.map((agent) => AGENT_LABELS[agent as AgentId] ?? agent).join(", ") || t("skills.detail.agentsUnknown")}</dd></>}
+            {isInstalled && <>
+              <dt>{t("skills.target.claude")}</dt>
+              <dd>{t(skill.claudeCode ? "skills.detail.claudeOn" : "skills.detail.claudeOff")}</dd>
+              <dt>{t("skills.detail.otherClis")}</dt>
+              <dd>{skill.agents.join(", ") || t("skills.detail.otherClisNone")}</dd>
+            </>}
           </dl>
           <details className="skills-detail-document" open={!installOpen}>
             <summary>{t("skills.action.readSkillMd")}</summary>
@@ -160,14 +182,24 @@ export function ReadingOverlay({ skill, isInstalled, theaterId, onClose, onInsta
         </div>
         {(isInstalled || !installOpen) && <div className="skills-overlay-footer">
           <p className="skills-permission-warning">{t("skills.overlay.permissionWarning")}</p>
-          {isInstalled ? <button type="button" disabled={removing} className={`skills-btn skills-btn--remove${removeArmed ? " is-armed" : ""}`}
-            onClick={() => { void remove(); }} aria-label={t(removeArmed ? "skills.action.removeConfirmAria" : "skills.action.removeAria", { name: skill.name })}>
-            {t(removing ? "skills.action.removing" : removeArmed ? "skills.action.removeConfirm" : "skills.action.remove")}
-          </button> : !installOpen && <button ref={installButtonRef} type="button" className="skills-btn skills-btn--primary"
+          {isInstalled ? <div className="skills-overlay-actions">
+            {canUpdate && <button type="button" className="skills-btn skills-btn--ghost" disabled={updateLog.status === "running" || removing}
+              onClick={startUpdate} aria-label={t("skills.action.updateOneAria", { name: skill.name })}>
+              {t(updateLog.status === "running" ? "skills.action.updating" : "skills.action.update")}
+            </button>}
+            <button type="button" disabled={removing || updateLog.status === "running"} className={`skills-btn skills-btn--remove${removeArmed ? " is-armed" : ""}`}
+              onClick={() => { void remove(); }} aria-label={t(removeArmed ? "skills.action.removeConfirmAria" : "skills.action.removeAria", { name: skill.name })}>
+              {t(removing ? "skills.action.removing" : removeArmed ? "skills.action.removeConfirm" : "skills.action.remove")}
+            </button>
+          </div> : !installOpen && <button ref={installButtonRef} type="button" className="skills-btn skills-btn--primary"
             disabled={installLog.status === "running"} onClick={() => setInstallOpen(true)}>{t("skills.install.settings")}</button>}
         </div>}
         {!isInstalled && <JobStatusDock status={installLog.status} lines={installLog.lines} runningLabel={t("skills.status.installing")}
           doneLabel={t("skills.status.installed")} errorLabel={t("skills.status.installFailed")} onDismiss={installLog.reset} t={t} />}
+        {isInstalled && <JobStatusDock status={updateLog.status} lines={updateLog.lines}
+          runningLabel={t("skills.status.updatingNamed", { name: skill.name })}
+          doneLabel={updateResultLabel(updateLog.summary, t)} errorLabel={t("skills.status.updateFailed")}
+          onDismiss={updateLog.reset} onRetry={startUpdate} t={t} />}
       </div>
     </div>, document.body,
   );

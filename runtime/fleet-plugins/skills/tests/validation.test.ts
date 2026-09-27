@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateAgent, validateScope, validateSkill, validateSource } from "../server/validation.js";
+import { validateTarget, validateScope, validateSkill, validateSource } from "../server/validation.js";
 
 describe("validateSource", () => {
 
@@ -34,10 +34,10 @@ describe("validateSkill", () => {
   });
 });
 
-describe("validateAgent", () => {
+describe("validateTarget", () => {
 
-  it.each(["-g", "--agent", "vscode", "", null, 42])("rejects %s", (a) => {
-    expect(validateAgent(a)).toBe(false);
+  it.each(["-g", "--agent", "vscode", "codex", "", null, 42])("rejects %s", (a) => {
+    expect(validateTarget(a)).toBe(false);
   });
 });
 

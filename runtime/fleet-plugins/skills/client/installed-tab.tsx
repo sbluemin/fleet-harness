@@ -8,6 +8,7 @@ import type { SkillsMessageKey } from "./i18n/index.js";
 import { filterInstalled, namesInOtherScope } from "./installed-view.js";
 import { JobStatusDock } from "./skill-feedback.js";
 import { SkillCard } from "./skill-card.js";
+import { updateResultLabel } from "./update-result.js";
 import {
   hasInstalledStateForContext,
   setFilterText,
@@ -51,6 +52,8 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   const updateLog = useJobLog();
   const updateScopeRef = useRef<Scope | null>(null);
   const [listFailed, setListFailed] = useState(false);
+  // 상태 독은 몇 초 뒤 닫히므로, 무엇이 바뀌었는지는 그 scope의 선반 아래에 남긴다.
+  const [lastResult, setLastResult] = useState<{ readonly scope: Scope; readonly label: string } | null>(null);
   const listRequestRef = useRef(0);
   useEffect(() => () => { listRequestRef.current += 1; }, []);
 
@@ -76,11 +79,15 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
     if (updateLog.status === "done" || updateLog.status === "error") {
       loadList(theaterId);
     }
-  }, [updateLog.status, theaterId, loadList]);
+    if (updateLog.status === "done" && updateScopeRef.current) {
+      setLastResult({ scope: updateScopeRef.current, label: updateResultLabel(updateLog.summary, t) });
+    }
+  }, [updateLog.status, updateLog.summary, theaterId, loadList, t]);
 
   const handleUpdate = useCallback((updScope: Scope) => {
     if (updateLog.status === "running") return;
     updateScopeRef.current = updScope;
+    setLastResult(null);
     const body: Record<string, unknown> = { scope: updScope };
     if (updScope === "project" && theaterId) {
       body["theaterId"] = theaterId;
@@ -160,6 +167,9 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
             </button>
           </div>
         )}
+        {lastResult?.scope === visibleScope && (
+          <p className="skills-update-result" role="status">{lastResult.label}</p>
+        )}
 
         {installedLoading && <div className="skills-empty-state">{t("skills.empty.loading")}</div>}
 
@@ -193,7 +203,7 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
         status={updateLog.status}
         lines={updateLog.lines}
         runningLabel={t("skills.status.updatingSkills")}
-        doneLabel={t("skills.status.updated")}
+        doneLabel={updateResultLabel(updateLog.summary, t)}
         errorLabel={t("skills.status.updateFailed")}
         onDismiss={updateLog.reset}
         onRetry={handleRetry}
