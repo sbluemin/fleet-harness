@@ -4,7 +4,7 @@
 
 Decide autonomously whether the change is a product-visible feature-level delta a user would notice in a shipped runtime. `.changelog.d/CLAUDE.md` owns the inclusion criterion and authoring contract.
 
-When a fragment is warranted, use one of two mutually exclusive paths. A new feature-level change adds exactly one fragment named after its own branch. A correction to behavior whose fragment is still unreleased in `.changelog.d/` rewrites that existing fragment instead, applies the `changelog-amend` label, and adds one exact `Changelog-Amend: <file-name>.md` line to the PR body per rewritten fragment; it adds no branch fragment. Inspect pending fragments and the public release baseline before choosing the path. Stage and commit a new fragment **together with the change it describes**. Read a new fragment's filename from `node scripts/compile-changelog-fragments.mjs --name-for-branch`; never derive it by hand.
+When a fragment is warranted, use one of two mutually exclusive paths. A new feature-level change adds exactly one fragment named after its own branch. A correction to behavior whose fragment is still unreleased in `.changelog.d/` rewrites that existing fragment instead, applies the `changelog-amend` label, and adds one exact `Changelog-Amend: <file-name>.md` line to the PR body per rewritten fragment; it adds no branch fragment. Withdrawing an unreleased feature deletes its pending fragment the same way, declared with `Changelog-Remove: <file-name>.md`. Inspect pending fragments and the public release baseline before choosing the path. Stage and commit a new fragment **together with the change it describes**. Read a new fragment's filename from `node scripts/compile-changelog-fragments.mjs --name-for-branch`; never derive it by hand.
 
 Only when authoring, read `.changelog.d/CLAUDE.md` for the current filename, frontmatter, bilingual syntax, and runtime/section contract. Validate with `node scripts/compile-changelog-fragments.mjs --check`; never use `canary.md` for a PR.
 
@@ -31,7 +31,7 @@ When the change is not a feature-level product delta — refactors, boundary gat
 2. `git push -u origin <head>` and verify `git status --short --branch` reports up-to-date with the remote.
 3. Build PR metadata: derive `<title>` (≤ 70 chars, Conventional Commits) and `<body>` (`## Summary` 1–3 bullets + `## Test Plan` checklist) if not provided. Do not add a Changelog checklist to the PR body.
    - When a new release note was committed, the fragment itself is the record; no PR-body ceremony is required.
-   - For an amendment, apply the `changelog-amend` label after creating the PR and add one `Changelog-Amend: <file-name>.md` line per amended fragment to the body; do not add a branch fragment.
+   - For an amendment or removal, apply the `changelog-amend` label after creating the PR and add one `Changelog-Amend:` or `Changelog-Remove: <file-name>.md` line per fragment to the body; do not add a branch fragment.
    - When no fragment was warranted, leave the PR body without changelog declarations.
 4. Show the final title/body/base/head/draft. Create without another confirmation when the user requested this PR lifecycle or authorized publication. Automatic skill invocation or file reading alone grants no publishing authority. Ask when authority is missing, metadata is genuinely ambiguous, or a safety guard trips. Declare shell variables within the same call that uses them.
    ```bash

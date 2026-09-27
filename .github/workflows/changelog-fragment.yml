@@ -52,6 +52,10 @@ jobs:
           fi
           declared_amendments=$(printf '%s\n' "$PR_BODY" | tr -d '\r' \
             | sed -n 's/^Changelog-Amend:[[:space:]]*//p' | sed 's/[[:space:]]*$//' | grep -v '^$' || true)
+          # Withdrawing an unreleased feature leaves its pending note describing nothing, and a note cannot be
+          # emptied. Removal is declared the same way as an amendment, under the same label, with its own line.
+          declared_removals=$(printf '%s\n' "$PR_BODY" | tr -d '\r' \
+            | sed -n 's/^Changelog-Remove:[[:space:]]*//p' | sed 's/[[:space:]]*$//' | grep -v '^$' || true)
 
           # Every fragment already on the base branch belongs to another change that has not been released yet.
           # This PR must leave all of them byte-identical unless it declares an amendment: an undeclared edit
@@ -61,15 +65,23 @@ jobs:
           base_fragments=$(git ls-tree -r --name-only "$merge_base" -- .changelog.d | fragment_filter)
           disturbed=""
           amended=""
+          removed=""
           while IFS= read -r fragment; do
             [ -n "$fragment" ] || continue
             git diff --quiet "$merge_base" "$HEAD_REF" -- "$fragment" && continue
             # An amendment rewrites a note; it never removes one. Requiring the path to still exist at HEAD keeps
-            # deletes and renames on the failing path even when the file is declared.
+            # deletes and renames on the failing path even when the file is declared as amended.
             if [ "$has_changelog_amend" = "true" ] \
               && git cat-file -e "$HEAD_REF:$fragment" 2>/dev/null \
               && printf '%s\n' "$declared_amendments" | grep -Fxq "${fragment#.changelog.d/}"; then
               amended="${amended}${fragment}"$'\n'
+              continue
+            fi
+            # A removal is the only declared way to delete a note, and only a note that is actually gone at HEAD.
+            if [ "$has_changelog_amend" = "true" ] \
+              && ! git cat-file -e "$HEAD_REF:$fragment" 2>/dev/null \
+              && printf '%s\n' "$declared_removals" | grep -Fxq "${fragment#.changelog.d/}"; then
+              removed="${removed}${fragment}"$'\n'
               continue
             fi
             disturbed="${disturbed}${fragment}"$'\n'
@@ -77,27 +89,32 @@ jobs:
           if [ -n "$amended" ]; then
             printf 'Declared changelog amendments:\n%s' "$amended"
           fi
+          if [ -n "$removed" ]; then
+            printf 'Declared changelog removals:\n%s' "$removed"
+          fi
           if [ -n "$disturbed" ]; then
             echo "::error::This PR changes a changelog fragment that already exists on the base branch, which discards another change's unreleased release note."
             printf '%s' "$disturbed"
             echo "Leave other branches' fragments untouched. If the name collides with yours, rename this branch so it derives a free filename, then rename your fragment and its branch: frontmatter to match."
             echo "To correct an unreleased note on purpose, apply the changelog-amend label AND add one line per fragment to the PR body:"
             echo "  Changelog-Amend: <fragment-file-name>.md"
+            echo "To delete the note of an unreleased feature this PR withdraws, use the same label with:"
+            echo "  Changelog-Remove: <fragment-file-name>.md"
             exit 1
           fi
 
-          # A declared amendment is itself the changelog record for a correction to unreleased behavior.
+          # A declared amendment or removal is itself the changelog record for a change to unreleased behavior.
           # Keep it exclusive of a new branch fragment and of the legacy no-changelog label.
-          if [ -n "$amended" ]; then
+          if [ -n "$amended$removed" ]; then
             if [ -n "$fragment_files" ]; then
-              echo "::error::This PR both amends an existing unreleased fragment and adds a branch fragment. Keep only the amendment."
+              echo "::error::This PR both amends or removes an existing unreleased fragment and adds a branch fragment. Keep only the declared change."
               exit 1
             fi
             if [ "$has_no_changelog" = "true" ]; then
-              echo "::error::This PR carries both a changelog amendment and the no-changelog label. Remove no-changelog."
+              echo "::error::This PR carries both a declared changelog amendment or removal and the no-changelog label. Remove no-changelog."
               exit 1
             fi
-            echo "Existing unreleased changelog fragment amended; no branch fragment required."
+            echo "Existing unreleased changelog fragment amended or removed; no branch fragment required."
             exit 0
           fi
 
