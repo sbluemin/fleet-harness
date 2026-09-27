@@ -63,7 +63,8 @@ const runBuiltSmoke = process.env.FLEET_BUILT_SMOKE === "1";
     fs.writeFileSync(preload, `import fs from 'node:fs';\nconst timer = setInterval(() => { if (!fs.existsSync(${JSON.stringify(lock)})) return; clearInterval(timer); Promise.reject(new Error('request_path_rejection_probe')); }, 25);\n`);
     const env: NodeJS.ProcessEnv = { ...process.env, FLEET_DATA_DIR: root, FLEET_CONSOLE_DATA_DIR: slot };
     delete env.INIT_CWD;
-    const child = spawn(process.execPath, ["--import", preload, cliDist, "serve"], { env, stdio: "ignore" });
+    // --import takes a module specifier: a bare Windows path (C:\...) reads as a "c:" URL scheme and Node exits.
+    const child = spawn(process.execPath, ["--import", pathToFileURL(preload).href, cliDist, "serve"], { env, stdio: "ignore" });
     try {
       let payload: { endpoint: string; token: string } | null = null;
       let diagnostic: { kind: string; message: string; stack: string | null } | null = null;
