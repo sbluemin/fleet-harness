@@ -1175,9 +1175,10 @@
 }
 
 /* 호스트 스위처 — 도구모음의 원격 글리프(도움말 왼쪽). 모양·겨눔·열림은 이웃 도구 칸(.console-toolbar
-   .command-band-button)과 같은 문법을 입고, 여기서는 상태 점만 더한다. */
+   .command-band-button)과 같은 문법을 입고, 여기서는 상태 잉크와 공유 점만 더한다. */
 .host-switcher { position: relative; display: flex; }
 
+.host-switcher-chip.is-away { color: var(--aurora-ink); }
 .host-switcher-chip.is-shared { color: var(--warn-ink); }
 
 .host-switcher-dot {

@@ -379,7 +379,8 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
     <div className={`host-switcher${inPicker ? " is-picker-surface" : ""}`}>
       {inPicker ? null : (
         // 원격 — 도구모음의 글리프 한 칸(도움말 왼쪽). 어느 콘솔에 서 있는지는 이름표가 아니라 겨눌 때의
-        // 말풍선(도구모음 말풍선의 data-tip)이 말하고, 글리프 모서리의 점은 집을 떠나 있거나(aurora) 제어를 나눠 준 때(warn)만 선다.
+        // 말풍선(도구모음 말풍선의 data-tip)이 말한다. 집을 떠나 있으면 글리프 자체가 화면 속 전파로 바뀌어
+        // 모양만으로 원격임을 알린다. 제어를 나눠 준 때(warn)는 그보다 앞서며, 모서리 점은 그때만 선다.
         <button
           ref={triggerRef}
           type="button"
@@ -394,10 +395,8 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
             setOpen((previous) => !previous);
           }}
         >
-          <RemoteGlyph />
-          {state.controlHolder !== null || !standingAtHome
-            ? <span className={`host-switcher-dot ${state.controlHolder !== null ? "is-shared" : "is-live"}`} aria-hidden="true" />
-            : null}
+          {state.controlHolder === null && !standingAtHome ? <RemoteAwayGlyph /> : <RemoteGlyph />}
+          {state.controlHolder !== null ? <span className="host-switcher-dot is-shared" aria-hidden="true" /> : null}
         </button>
       )}
       {open ? (
@@ -569,6 +568,11 @@ function formatSeen(epochMs: number): string {
 // 원격 — 가운데 점에서 양옆으로 퍼지는 전파. 다른 기계의 콘솔로 건너가는 문이다.
 function RemoteGlyph() {
   return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" /><path d="M5.4 5.4a3.7 3.7 0 0 0 0 5.2M10.6 5.4a3.7 3.7 0 0 1 0 5.2M3.3 3.3a6.6 6.6 0 0 0 0 9.4M12.7 3.3a6.6 6.6 0 0 1 0 9.4" /></svg>;
+}
+
+/** 집을 떠나 있을 때의 원격 글리프 — 같은 전파가 다른 기계의 화면 안에서 퍼진다. */
+function RemoteAwayGlyph() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="1.7" y="2.4" width="12.6" height="8.8" rx="1.6" /><path d="M5.6 13.7h4.8M5.8 4.9a2.8 2.8 0 0 0 0 3.8M10.2 4.9a2.8 2.8 0 0 1 0 3.8" /><circle cx="8" cy="6.8" r="1.3" fill="currentColor" stroke="none" /></svg>;
 }
 
 function CheckGlyph() {
