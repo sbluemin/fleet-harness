@@ -1,5 +1,8 @@
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
+import { createOperationArchiveStorage, archiveEvent, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
+import { createOperationArchiveCoordinator } from "../../../features/workspace/host/operation-archive.js";
+import { createOperationArchiveRouter, OPERATION_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/operation-archive-routes.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -60,7 +63,7 @@ import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } fro
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "../../../features/updates/host/update-check.js";
 import { DeferredDeletionError, createDeferredDeletionCoordinator, type DeferredDeletionReceipt } from "../../../features/workspace/host/deferred-deletion.js";
-import { STATE_VERSION, backupDurableStateV3, backupDurableStateV4, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, type DurableConsoleState } from "../../../features/workspace/host/durable-state.js";
+import { deletionOperations, STATE_VERSION, backupDurableStateV3, backupDurableStateV4, createConsoleDurableStateStore, readDurableStateVersion, type DurableConsoleState } from "../../../features/workspace/host/durable-state.js";
 import { migrateLegacyCaptures } from "../../../features/workspace/host/legacy-capture-migration.js";
 import type { TheaterRegistration } from "../../../features/workspace/host/theaters/theater-domain.js";
 import { TheaterFolderListError, TheaterRegistry, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
@@ -457,7 +460,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const updateApply = deps.updateApply ?? createConsoleUpdateApplyService();
   const theaters = new TheaterRegistry();
   // 그룹 이동은 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮긴다.
-  const operations = createOperationStore({ onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event) });
+  const operations = createOperationStore({
+    onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event),
+    isReserved: (id) => archiveStorage.entries().some((entry) => entry.operation.id === id) || deletionCoordinator.hasPendingOperation(id),
+    assertRelationMutable: (id) => operationArchive.assertMutable(id),
+    hasArchivedChildren: (id) => archiveStorage.entries().some((entry) => entry.operation.parentOperationId === id),
+  });
   const folderGrants = createFolderGrantStore();
   // channel은 createConsoleDataPaths가 release SSoT로 자체 감지한다(hook 서브프로세스·fallback과 동일 경로).
   // 플러그인 fleet 루트: 명시 dataDir → (FLEET_DATA_DIR 부재 시) 콘솔 슬롯 override → getFleetDataDir.
@@ -474,6 +482,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
   const recordFailure = createConsoleFailureLog(durablePaths.dir);
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
+  const archiveStorage = createOperationArchiveStorage({ directory: durablePaths.dir, stateStore: durableStateStore });
+  let stopForArchive: ((operation: OperationNode) => Promise<void>) | null = null;
+  let purgeCoreOperation: ((operation: OperationNode) => void) | null = null;
+  let resumeArchivedOperation: ConsoleUseActions["resume"];
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   // Agent 실행 옵션은 Console 설정 파일의 한 섹션이다. 옛 자리(Fleet 루트의 settings.json)는
   // 인스턴스를 가리지 않는 한 벌이었으므로 이 슬롯으로 한 번 승계한다.
@@ -579,8 +591,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     publishPluginEvent(`theater:${event}`, { theaterId });
   }
 
-  function publishPluginEvent(channel: string, payload: unknown): void {
-    for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
+  function publishPluginEvent(channel: string, payload: unknown, isolateListeners = false): void {
+    for (const listener of pluginEventListeners.get(channel) ?? []) {
+      if (!isolateListeners) listener(payload);
+      else try { listener(payload); } catch (error) { recordFailure("operation_lifecycle_listener_failed", error); }
+    }
     // 브라우저로 나가는 것은 플러그인이 명시적으로 올린 채널뿐이다. 모든 in-process
     // 이벤트를 흘리면 서버 내부 채널이 그대로 브라우저 계약이 되고, 그중 하나는
     // 언젠가 민감한 필드를 싣는다.
@@ -591,18 +606,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 멱등 기동 키 원장 — 살아 있는 키는 Operation, 유예 중인 키는 tombstone 에서 읽고, purge 는 흔적을 지우기 전에 선기록한다.
   const launchKeys = createLaunchKeyLedger({
     directory: path.join(durablePaths.dir, "console-use"),
-    operations: () => operations.list(),
-    tombstoned: () => deletionCoordinator.list().flatMap((item) => item.kind === "operation" ? [item.operation] : item.operations),
+    operations: () => [...operations.list(), ...archiveStorage.entries().map((entry) => entry.operation)],
+    tombstoned: () => deletionCoordinator.list().flatMap(deletionOperations),
   });
   const deletionCoordinator = createDeferredDeletionCoordinator({
     operations,
     theaters,
     save: saveDurableState,
-    beforePurge: (purged) => launchKeys.recordPurged(purged),
+    archives: () => archiveStorage.entries(),
+    assertMutable: (id) => operationArchive.assertMutable(id),
+    beforePurge: (purged) => {
+      if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
+      launchKeys.recordPurged(purged);
+      for (const operation of purged) purgeCoreOperation(operation);
+    },
     // 삭제·복원은 화면 사건이기도 하다. 누른 창은 스스로 다시 조회하지만 다른 창과 에이전트가 닫은
     // 경우는 이 스트림이 유일한 길이다 — 안 흘리면 그 Operation 은 다음 재수화까지 화면에 남는다.
     // in-process 채널은 전체 노드를 싣기에 그대로 내보내지 않고, 제거는 id 만·복원은 정화된 DTO 로 낸다.
     publish: (channel, payload) => {
+      if (channel === "operation:purged") { operationArchive.flushEvents(); return; }
       publishPluginEvent(channel, payload);
       const event = payload as { readonly operationId?: unknown; readonly operation?: unknown };
       if (channel === OPERATION_DELETED_EVENT_CHANNEL && typeof event.operationId === "string") broadcastOperationRemoved(event.operationId);
@@ -630,6 +652,36 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       publishTheaterLifecycle("restored", theater.id);
     },
   });
+  const pendingClusterRemoved = new Set<string>();
+  const operationArchive = createOperationArchiveCoordinator({
+    operations, storage: archiveStorage,
+    snapshot: () => snapshotDurableState(deletionCoordinator.list()),
+    theaterExists: (id) => !!theaters.get(id),
+    pendingDeletion: (id) => deletionCoordinator.hasPendingOperation(id),
+    stop: async (operation) => {
+      if (!stopForArchive) throw new OperationArchiveError(503, "archive_stop_failed");
+      await stopForArchive(operation);
+    },
+    use: async (id, intent) => {
+      if (intent === "resume") {
+        const result = await resumeArchivedOperation?.(id);
+        if (!result?.ok) throw new OperationArchiveError(409, result && !result.ok ? result.error : "archive_stop_failed");
+      } else if (intent === "open" || intent === "activate") publishPluginEvent("operation:reveal", { operationId: id, reason: "", at: Date.now() });
+    },
+    publish: (event) => {
+      const node = event.operation;
+      if (event.channel === "operation:purged") {
+        if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
+        launchKeys.recordPurged([node]);
+        purgeCoreOperation(node);
+      }
+      publishPluginEvent(event.channel, { eventId: event.eventId, operationId: node.id, theaterId: node.theaterId, pluginId: node.pluginId, type: node.type,
+        ...(event.channel === "operation:restored" ? { operation: node } : {}) }, true);
+      if (event.channel === "operation:archived") pendingClusterRemoved.add(node.id);
+    },
+    publishChanged: publishArchiveChanged,
+  });
+  for (const channel of ["operation:archive-changed", "operation:cluster-changed", "operation:purged"]) pluginSseChannels.add(channel);
   // 플러그인 capability는 기존 boolean 표면을 유지하되 실제 삭제는 receipt coordinator가 소유한다.
   function deleteOperationForPlugin(operationId: string): boolean {
     if (operations.getChild(operationId)) return false;
@@ -787,7 +839,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * Console Use 확장면 중 서버가 소유하는 묶음 — Operation 저장소(이름·액센트·그룹), 삭제 유예(닫기), 사용 목록,
    * 화면 사건(보이기). 재개·뷰·대화·분석가는 실행층이 같은 객체에 채운다(`ctx.consoleActions`).
    */
-  const consoleActions = createWorkspaceActions({ operations, deletionCoordinator, listOperationUse, patchOperation: (id, input) => pluginHostCapabilities.operations.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastOperationChanged });
+  const consoleActions = createWorkspaceActions({ operations, deletionCoordinator, archive: operationArchive.archive, listOperationUse, patchOperation: (id, input) => pluginHostCapabilities.operations.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastOperationChanged });
   // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.
   let sleepOperation: ConsoleUseActions["sleep"];
   const consoleUse = createConsoleUseMcpHost({
@@ -825,6 +877,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       register: () => { throw new Error("Plugin MCP registration requires a plugin context"); },
     },
     operations: {
+      describe: operationArchive.describe,
+      listArchived: operationArchive.listArchived,
+      archive: operationArchive.archive,
+      access: operationArchive.access,
+      restore: operationArchive.restore,
+      undoArchive: operationArchive.undoArchive,
+      previewPurge: operationArchive.previewPurge,
+      purge: operationArchive.purge,
+      isTransitioning: operationArchive.isTransitioning,
       list: () => operations.list(),
       get: (id) => operations.get(id),
       create: (input) => {
@@ -845,6 +906,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return child;
       },
       patch: (id, input) => {
+        archiveStorage.assertReady();
         const parentId = operations.getChild(id)?.parent.id;
         const before = operations.get(parentId ?? id);
         const operation = operations.patch(id, input);
@@ -1319,7 +1381,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       });
     },
   });
-  routeRegistry.register("/api/v1/operations", operationsRouter);
+  const operationArchiveRouter = createOperationArchiveRouter({ archive: operationArchive, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson, sanitize: sanitizeArchiveOperation });
+  routeRegistry.register("/api/v1/operations", async (context) => await operationArchiveRouter(context) || operationsRouter(context));
   routeRegistry.register("/api/v1/theaters", async (context) => {
     return false;
   });
@@ -1428,6 +1491,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 그 게이트가 알고 있다.
     if (!isRequestHostAllowed(req)) {
       writeJson(res, 403, { error: "host_mismatch" });
+      return;
+    }
+    if (archiveStorage.blocked() && (pathname.startsWith("/api/") || pathname.startsWith("/mcp/")) && pathname !== "/api/v1/health") {
+      writeJson(res, 503, { error: "archive_recovery_required" });
       return;
     }
     if (pathname === "/" && (req.method === "GET" || req.method === "HEAD")) {
@@ -1744,7 +1811,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    writeJson(res, 200, { version, routes: buildApiCatalog([...executionApiCatalog, ...pluginHost.apiCatalog]) });
+    writeJson(res, 200, { version, routes: buildApiCatalog([...OPERATION_ARCHIVE_API_CATALOG, ...executionApiCatalog, ...pluginHost.apiCatalog]) });
   }
 
   function handleEnvironmentDiagnostics(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -1913,26 +1980,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function rehydrateDurableState(): Promise<void> {
-    let state: DurableConsoleState;
-    let restored = false;
     const loadedVersion = readDurableStateVersion(durablePaths.stateFile);
-    try {
-      state = durableStateStore.load();
-      theaters.restore(state.theaters);
-      operations.replace(state.operations);
-      operations.replaceGroups(state.groups ?? []);
-      restored = true;
-    } catch (error) {
-      console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
-      state = emptyDurableConsoleState();
-      theaters.restore([]);
-      operations.replace([]);
-      operations.replaceGroups([]);
-    }
+    // 이동 저널·버전·손상은 빈 Console로 숨기지 않는다. 공개·실행 전에 쌍 파일을 복구한다.
+    const state = archiveStorage.load();
+    theaters.restore(state.theaters);
+    operations.replace(state.operations);
+    operations.replaceGroups(state.groups ?? []);
     deletionCoordinator.load(state.deletionTombstones ?? []);
     // 지원하는 구버전을 실제로 복원한 경우에만 sanitizer의 단계형 이주를 현재 버전으로 확정한다.
     // 알 수 없는 버전이나 복원 실패를 빈 v4 상태로 덮으면 재시도할 원본 자체를 잃는다.
-    if (restored && (loadedVersion === 1 || loadedVersion === 2 || loadedVersion === 3 || loadedVersion === 4)) {
+    if (loadedVersion !== null && loadedVersion < STATE_VERSION) {
+      try { fs.copyFileSync(durablePaths.stateFile, `${durablePaths.stateFile}.pre-archive-backup`, fs.constants.COPYFILE_EXCL); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
       if (loadedVersion === 3) backupDurableStateV3(durablePaths.stateFile);
       if (loadedVersion === 4) backupDurableStateV4(durablePaths.stateFile);
       persistDurableState();
@@ -1958,9 +2017,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       consoleDataDir: durablePaths.dir,
       operations,
       // 삭제 유예 중인 Operation은 live store에 없으므로 tombstone에서 flatten해 넘긴다.
-      tombstonedOperations: deletionCoordinator.list().flatMap((tombstone) => (
-        tombstone.kind === "operation" ? [tombstone.operation] : tombstone.operations
-      )),
+      tombstonedOperations: deletionCoordinator.list().flatMap(deletionOperations),
       save: () => saveDurableState(deletionCoordinator.list()),
     });
   }
@@ -2216,14 +2273,31 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
-  function saveDurableState(deletionTombstones: ReturnType<typeof deletionCoordinator.list>): void {
-    durableStateStore.save({
-      version: STATE_VERSION,
-      theaters: theaters.list(),
-      operations: operations.list(),
-      groups: operations.listAllGroups(),
-      deletionTombstones,
-    });
+  function snapshotDurableState(deletionTombstones: ReturnType<typeof deletionCoordinator.list>): DurableConsoleState {
+    return { version: STATE_VERSION, theaters: theaters.list(), operations: operations.list(), groups: operations.listAllGroups(), deletionTombstones };
+  }
+
+  function saveDurableState(deletionTombstones: ReturnType<typeof deletionCoordinator.list>, archives = archiveStorage.entries()): void {
+    const nextIds = new Set(deletionTombstones.map((item) => item.deletionId));
+    const present = new Set([...operations.list().map((node) => node.id), ...archives.map((entry) => entry.operation.id)]);
+    const purged = deletionCoordinator.list().filter((item) => !nextIds.has(item.deletionId))
+      .flatMap(deletionOperations).filter((node) => !present.has(node.id));
+    const previousRevision = archiveStorage.revision();
+    archiveStorage.save(snapshotDurableState(deletionTombstones), archives, purged.map((node) => archiveEvent("operation:purged", node)));
+    if (archiveStorage.revision() !== previousRevision) publishArchiveChanged();
+  }
+
+  function sanitizeArchiveOperation(node: OperationNode): OperationNode {
+    const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
+      ...(pluginHost.sensitiveFieldsByPluginId.get(node.pluginId) ?? []), ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
+    ];
+    return createSanitizedOpDto(node, { sensitiveFields });
+  }
+
+  function publishArchiveChanged(): void {
+    publishPluginEvent("operation:archive-changed", { revision: archiveStorage.revision(), total: archiveStorage.entries().length });
+    publishPluginEvent("operation:cluster-changed", { removedIds: [...pendingClusterRemoved], operations: operations.list().map(sanitizeArchiveOperation) });
+    pendingClusterRemoved.clear();
   }
 
   async function stopServer(): Promise<void> {
@@ -2283,11 +2357,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         }), consoleActions, pluginHostCapabilities.storage);
         coreLaunchKinds = execution.launchKinds;
         sleepOperation = execution.actions.sleep;
+        resumeArchivedOperation = execution.actions.resume;
+        stopForArchive = execution.stopForArchive;
+        purgeCoreOperation = execution.purgeOperation;
         consoleUse.activate({ ...consoleActions, ...execution.actions });
         await pluginHost.boot();
         // 플러그인이 붙은 뒤에 복원 사실을 알린다 — 부팅 순서상 이보다 앞서 알리면
         // 아직 구독하지 않은 플러그인이 그 Theater들을 영영 못 본다.
         announceRestoredTheaters();
+        operationArchive.flushEvents();
+        deletionCoordinator.sweepExpired();
         await pluginClientAssets.prepare();
         const listenPlan = resolveConsolePortListenPlan();
         const result = await listenConsolePort(listenPlan);

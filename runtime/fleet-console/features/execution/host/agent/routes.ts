@@ -167,7 +167,7 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
-  return { launchKinds: api.launchKinds, actions: api.actions };
+  return { launchKinds: api.launchKinds, actions: api.actions, stopForArchive: api.stopForArchive, purgeOperation: api.purgeOperation };
 }
 
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
@@ -181,6 +181,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   if (computerUseMcp) ctx.host.lifecycle.registerCleanup(() => computerUseMcp.dispose());
   const browserMcp = ctx.host.browserMcp?.connect();
   if (browserMcp) ctx.host.lifecycle.registerCleanup(() => browserMcp.dispose());
+  const archiveStops = new Set<string>();
   // 세션 레코드 삭제 — 자식 세션은 부모 레코드 안에서 지운다(롤백·정리). 최상위 Operation 은 평소 삭제 경로다.
   const deleteSessionRecord = (id: string): boolean => ctx.host.operations.get(id)?.parentOperationId ? (ctx.host.operations.deleteChild?.(id) ?? false) : ctx.host.operations.delete(id);
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
@@ -342,6 +343,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     workspaceContext.forget(id);
     observability.removeTerminalSession(id);
   });
+  ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("operation:archived", (payload) => {
+    if (isOperationDeletedEventPayload(payload) && payload.pluginId === null) observability.removeTerminalSession(payload.operationId);
+  }));
   const unsubscribeRestore = ctx.host.events.subscribe(OPERATION_RESTORED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRestoredEvent(payload) || payload.pluginId !== null || payload.type !== AGENT_OPERATION_TYPE) return;
     const operation = ctx.host.operations.get(payload.operationId);
@@ -583,6 +587,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         return { operationId: launchedId, delivery: "queued" };
       }
       const operationId = input.operationId!;
+      if (ctx.host.operations.isTransitioning?.(operationId)) throw new ConsoleControlError("operation_busy");
       const targetSession = observability.getTerminalSessionInfo(operationId);
       const targetChat = targetSession?.chatActive === true;
       assertCurrent();
@@ -708,6 +713,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ctx.host.http.writeJson(res, 400, { error: "terminal_session_not_found" });
         return true;
       }
+      if (ctx.host.operations.isTransitioning?.(body.operationId)) { ctx.host.http.writeJson(res, 409, { error: "operation_busy" }); return true; }
       const operation = ctx.host.operations.get(body.operationId);
       if (!operation) {
         ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
@@ -1014,6 +1020,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (action === "attention") return handleAttention(req, res, sessionId);
     if (action === "auto-name") return handleAutoName(req, res, sessionId);
     if (action === "capture") return handleCapture(req, res, sessionId);
+    if (ctx.host.operations.isTransitioning?.(sessionId)) { ctx.host.http.writeJson(res, 409, { error: "operation_busy" }); return true; }
     if (action === "resume") return handleResume(req, res, sessionId);
     if (action === "message") return handleMessage(req, res, sessionId);
     if (action === "chat") return handleChat(req, res, sessionId);
@@ -1279,6 +1286,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
   /** handleResume 의 본체 — Console Use 의 console_resume 도 같은 길을 쓴다(chat 접기·좌표 판정·코어 재기동). */
   async function resumeOperation(sessionId: string, fresh: boolean): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
+    if (ctx.host.operations.isTransitioning?.(sessionId)) return { ok: false, status: 409, error: "operation_busy" };
     const node = ctx.host.operations.get(sessionId);
     if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { ok: false, status: 404, error: "session_not_found" };
     const payload = node.payload;
@@ -1664,6 +1672,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 되돌린다.
    */
   async function wakeChatOperation(operationId: string): Promise<{ ok: true; session: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
+    if (ctx.host.operations.isTransitioning?.(operationId)) return { ok: false, status: 409, error: "operation_busy" };
     const node = ctx.host.operations.get(operationId);
     if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { ok: false, status: 404, error: "session_not_found" };
     if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { ok: false, status: 409, error: "chat_not_active" };
@@ -1671,6 +1680,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (current.chatActive === true) return { ok: true, session: current };
     const seed = await resolveChatSeed(node);
     if (!seed.ok) return { ok: false, status: seed.status, error: seed.error };
+    if (!ctx.host.operations.get(operationId) || ctx.host.operations.isTransitioning?.(operationId)) return { ok: false, status: 409, error: "operation_busy" };
     const adopted = observability.setTerminalSessionChatActive(operationId, true);
     if (adopted) observability.notifySessionUpdated(adopted);
     try {
@@ -2406,6 +2416,26 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     });
   }
 
+  async function stopForArchive(operationId: string): Promise<void> {
+    archiveStops.add(operationId);
+    try {
+      terminalRuntime.invalidateTicketsForSession(operationId);
+      await chatRegistry.dispose(operationId);
+      if (!await terminalRuntime.terminateAndWait(operationId, 10_000)) throw new Error("archive_stop_failed");
+      workspaceContext.forget(operationId);
+      observability.setTerminalSessionWorkspace(operationId, null);
+      observability.setTerminalSessionChatActive(operationId, false);
+      const parked = observability.updateTerminalSessionStatus(operationId, "dormant");
+      if (parked) observability.notifySessionUpdated(parked);
+      const operation = ctx.host.operations.get(operationId);
+      if (operation) ctx.host.operations.patch(operationId, { payload: { ...operation.payload, restoredDormant: true } });
+    } finally { archiveStops.delete(operationId); }
+  }
+
+  function purgeOperation(operationId: string): void {
+    launchAttachments.releaseSession(operationId);
+  }
+
   async function handleExit(operationId: string): Promise<void> {
     trustedPtySessions.delete(operationId);
     consoleTerminal.cancel(operationId);
@@ -2413,6 +2443,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     resetOscActivity(operationId);
     pendingRuntimeSessions.delete(operationId);
     const providerSession = readProviderSession(ctx.host.operations.get(operationId)?.payload);
+    if (archiveStops.has(operationId)) {
+      if (providerSession) observability.updateTerminalSessionProviderSession(operationId, providerSession);
+      const parked = observability.updateTerminalSessionStatus(operationId, "dormant");
+      if (parked) observability.notifySessionUpdated(parked);
+      return;
+    }
     if (providerSession) {
       observability.updateTerminalSessionProviderSession(operationId, providerSession);
       // 휴면은 추적 대상이 아니다 — 추적기에서 잊는 것만으로는 스토어에 남은 투영이 DTO에 계속 실리고,
@@ -2630,7 +2666,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
 
 
-  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions };
+  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, stopForArchive, purgeOperation };
 
   function methodNotAllowed(res: Parameters<typeof handle>[0]["res"]): true {
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });

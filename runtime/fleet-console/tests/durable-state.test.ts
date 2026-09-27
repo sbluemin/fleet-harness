@@ -20,8 +20,8 @@ afterEach(() => {
 
 describe("durable console state", () => {
   it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 5, theaters: [], operations: [], groups: [], deletionTombstones: [] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 5, theaters: [], operations: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 6, theaters: [], operations: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 6, theaters: [], operations: [], groups: [], deletionTombstones: [] });
   });
 
   it("migrates v1 flat session records into v2 OperationNodes", () => {
@@ -50,7 +50,7 @@ describe("durable console state", () => {
       ],
     });
 
-    expect(migrated.version).toBe(5);
+    expect(migrated.version).toBe(6);
     expect(migrated.theaters).toHaveLength(1);
     expect(migrated.groups).toEqual([]);
     expect(migrated.operations).toEqual([

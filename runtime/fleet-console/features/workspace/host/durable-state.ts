@@ -25,10 +25,12 @@ export interface DurableDeletionBase {
   readonly targetId: string;
   readonly deletedAt: number;
   readonly expiresAt: number;
+  /** 삭제 전 보관 위치. undo가 active로 승격시키지 않도록 보존한다. */
+  readonly archived?: Readonly<Record<string, { readonly archiveId: string; readonly archivedAt: number }>>;
 }
 
 export type DurableDeletionTombstone =
-  | (DurableDeletionBase & { readonly kind: "operation"; readonly operation: OperationNode })
+  | (DurableDeletionBase & { readonly kind: "operation"; readonly operation: OperationNode; readonly descendants?: readonly OperationNode[] })
   | (DurableDeletionBase & {
       readonly kind: "theater";
       readonly theater: TheaterRegistration;
@@ -37,7 +39,8 @@ export type DurableDeletionTombstone =
     });
 
 export interface DurableConsoleState {
-  readonly version: 5;
+  readonly version: 6;
+  readonly revision?: number;
   readonly theaters: readonly TheaterRegistration[];
   readonly operations: readonly OperationNode[];
   readonly groups?: readonly DurableOperationGroup[];
@@ -50,7 +53,7 @@ export interface CreateConsoleDurableStateStoreDeps {
   readonly now?: () => number;
 }
 
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 6;
 const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";
@@ -84,6 +87,7 @@ export function sanitizeDurableConsoleState(value: unknown): DurableConsoleState
   if (upgraded.version !== STATE_VERSION) return emptyDurableConsoleState();
   return {
     version: STATE_VERSION,
+    ...(readNonNegativeInteger(upgraded.revision) !== null ? { revision: readNonNegativeInteger(upgraded.revision)! } : {}),
     theaters: readTheaterRegistrations(upgraded.theaters),
     operations: readOperations(upgraded.operations),
     groups: readOperationGroups(upgraded.groups),
@@ -130,7 +134,7 @@ function migrateToCurrentVersion(value: Record<string, unknown>): Record<string,
   if (current.version === 1) current = migrateV1ToV2(current);
   if (current.version === 2) current = migrateV2ToV3(current);
   if (current.version === 3) current = migrateV3ToV4(current);
-  if (current.version === 4) current = { ...current, version: STATE_VERSION };
+  if (current.version === 4 || current.version === 5) current = { ...current, version: STATE_VERSION };
   return current;
 }
 
@@ -279,7 +283,7 @@ function sanitizeTheaterRegistration(value: unknown): TheaterRegistration | null
   };
 }
 
-function sanitizeOperationNode(value: unknown): OperationNode | null {
+export function sanitizeOperationNode(value: unknown): OperationNode | null {
   if (!isRecord(value)) return null;
   const id = readNonEmptyString(value.id);
   const theaterId = readNonEmptyString(value.theaterId);
@@ -418,17 +422,32 @@ function readDeletionTombstones(value: unknown): readonly DurableDeletionTombsto
   return tombstones;
 }
 
-function sanitizeDeletionTombstone(value: unknown): DurableDeletionTombstone | null {
+export function deletionOperations(value: DurableDeletionTombstone): readonly OperationNode[] {
+  return value.kind === "operation" ? [value.operation, ...(value.descendants ?? [])] : value.operations;
+}
+
+export function sanitizeDeletionTombstone(value: unknown): DurableDeletionTombstone | null {
   if (!isRecord(value)) return null;
   const deletionId = readNonEmptyString(value.deletionId);
   const targetId = readNonEmptyString(value.targetId);
   const deletedAt = readFiniteNumber(value.deletedAt);
   const expiresAt = readFiniteNumber(value.expiresAt);
   if (!deletionId || !targetId || deletedAt === null || expiresAt === null) return null;
+  const archived: Record<string, { archiveId: string; archivedAt: number }> = {};
+  if (value.archived !== undefined) {
+    if (!isRecord(value.archived)) return null;
+    for (const [id, entry] of Object.entries(value.archived)) {
+      if (!isRecord(entry) || !readNonEmptyString(entry.archiveId) || readFiniteNumber(entry.archivedAt) === null) return null;
+      Object.defineProperty(archived, id, { value: { archiveId: entry.archiveId, archivedAt: entry.archivedAt }, enumerable: true });
+    }
+  }
+  const location = Object.keys(archived).length ? { archived } : {};
   if (value.kind === "operation") {
     const operation = sanitizeOperationNode(value.operation);
     if (!operation || operation.id !== targetId) return null;
-    return { deletionId, targetId, deletedAt, expiresAt, kind: "operation", operation };
+    const descendants = value.descendants === undefined ? [] : readOperations(value.descendants);
+    if (value.descendants !== undefined && (!Array.isArray(value.descendants) || descendants.length !== value.descendants.length)) return null;
+    return { deletionId, targetId, deletedAt, expiresAt, kind: "operation", operation, ...location, ...(descendants.length ? { descendants } : {}) };
   }
   if (value.kind === "theater") {
     const theater = sanitizeTheaterRegistration(value.theater);
@@ -443,7 +462,7 @@ function sanitizeDeletionTombstone(value: unknown): DurableDeletionTombstone | n
       || groups.length !== value.groups.length
       || operations.some((operation) => operation.theaterId !== targetId)
       || groups.some((group) => group.theaterId !== targetId)) return null;
-    return { deletionId, targetId, deletedAt, expiresAt, kind: "theater", theater, operations, groups };
+    return { deletionId, targetId, deletedAt, expiresAt, kind: "theater", theater, operations, groups, ...location };
   }
   return null;
 }

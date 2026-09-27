@@ -161,6 +161,9 @@ import crypto from "node:crypto";
 
 export interface OperationStoreDeps {
   readonly now?: () => number;
+  readonly isReserved?: (id: string) => boolean;
+  readonly assertRelationMutable?: (id: string) => void;
+  readonly hasArchivedChildren?: (id: string) => boolean;
   /**
    * Operation 의 그룹이 실제로 바뀐 순간 — 모든 이동(HTTP·Console Use·플러그인 patch·그룹 삭제)이 이 저장소의 쓰기를
    * 지나므로 여기서 한 번만 알린다. 재수화(replace)는 이동이 아니라 알리지 않는다.
@@ -248,7 +251,7 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
 
   function create(input: OperationCreateInput): OperationNode {
     const id = input.id ?? crypto.randomUUID();
-    if (nodes.has(id) || getChild(id)) throw new Error("operation_exists");
+    if (nodes.has(id) || getChild(id) || deps.isReserved?.(id)) throw new Error("operation_exists");
     const node = normalizeCreateInput(input, id, now());
     nodes.set(node.id, node);
     return node;

@@ -78,6 +78,8 @@ export type OperationArchiveErrorCode =
 
 /** Host는 이 capability를 구현한다. get/list는 여전히 active 저장소만 읽는다. */
 export interface OperationArchiveCapability {
+  /** 실행 소유자가 이동 중 새 입력·기동을 거절할 때 사용하는 Core fence. */
+  isTransitioning?(id: string): boolean;
   describe(id: string): OperationDescription | null;
   listArchived(theaterId?: string): OperationArchiveSnapshot;
   archive(id: string): Promise<OperationArchiveReceipt>;

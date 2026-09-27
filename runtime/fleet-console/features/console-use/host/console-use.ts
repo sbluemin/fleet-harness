@@ -6,7 +6,7 @@ import type { UseHoldOutcome, UseRequestBroker } from "./use-requests.js";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore, type AgentToolSpec, type AgentToolCtx } from "@fleet-console/agent-runtime/tools";
 import { FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleCaller, type ConsoleUseCallEvent, type ConsoleUseMcpConnection, type ConsoleUseMcpHost, type ConsoleUseSnapshot, type PluginMcpTool } from "@fleet-console/sdk/mcp";
-import type { OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationNode, OperationArchiveReceipt } from "@fleet-console/sdk/operations";
 import { liftNestedActivity } from "@fleet-console/sdk/operations/activity";
 import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
 
@@ -25,8 +25,8 @@ export interface ConsoleUseActions {
    * 유휴 청소기가 밟는 그 길이다. 돌아온 `lifecycle` 이 `ending` 이면 종료는 시작됐고 휴면 전이는 아직이다.
    */
   sleep?(operationId: string): Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
-  /** 삭제 유예로 닫는다. 유예 창 안에서는 사람이 「마지막 닫기 실행 취소」로 되돌릴 수 있다. */
-  close?(operationId: string, by: ConsoleCaller): { readonly deletionId: string; readonly undoUntil: string } | null;
+  /** 보관한다. 짧은 되돌리기 표면 뒤에도 보관함에서 복원할 수 있다. */
+  close?(operationId: string, by: ConsoleCaller): Promise<OperationArchiveReceipt | null> | { readonly deletionId: string; readonly undoUntil: string } | null;
   rename?(operationId: string, title: string): boolean;
   /** 사이드바의 그룹 — 목록·수정·빈 그룹 삭제. Theater 를 주면 그 Theater 만. */
   groups?(theaterId?: string): readonly { readonly id: string; readonly name: string; readonly color: string; readonly theaterId: string; readonly order: number }[];
@@ -509,7 +509,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     gesture(ctx, "console_send", `${op.title} 에 메시지 보냄`, "input", opTarget(op.id));
     return { action: "send", ...await control!.request(me, { kind: "send", operationId: op.id, text: args.text! }) };
   }));
-  specs.push(define("console_panel", "Press a caption button of an Operation: resume (dormant only; live ones take console_send), sleep (put an idle Operation dormant on either surface: its terminal process or chat session ends, the card stays on the Ended shelf and resume wakes it with its session and, on chat, its previous conversation; refused for yourself and while it is running, awaiting, or has background work), close (kept recoverable for a short undo window; refused for yourself and for a running Operation you did not launch), view (chat/terminal; interrupts the in-flight turn like the button does), or reveal (bring it to the front with a one-line reason; once per session, only when the person's judgment is needed).", z.object({ operationId: ids, action: z.enum(["resume", "sleep", "close", "view", "reveal"]), mode: z.enum(["chat", "terminal"]).optional(), reason: z.string().trim().min(1).max(200).optional() }).strict(), async (args, ctx) => {
+  specs.push(define("console_panel", "Press a caption button of an Operation: resume (dormant only; live ones take console_send), sleep (put an idle Operation dormant on either surface: its terminal process or chat session ends, the card stays on the Ended shelf and resume wakes it with its session and, on chat, its previous conversation; refused for yourself and while it is running, awaiting, or has background work), close (archives the Operation and its descendants; a short undo window is followed by restoration from Archive; refused for yourself and for a running Operation you did not launch), view (chat/terminal; interrupts the in-flight turn like the button does), or reveal (bring it to the front with a one-line reason; once per session, only when the person's judgment is needed).", z.object({ operationId: ids, action: z.enum(["resume", "sleep", "close", "view", "reveal"]), mode: z.enum(["chat", "terminal"]).optional(), reason: z.string().trim().min(1).max(200).optional() }).strict(), async (args, ctx) => {
     const me = requireCaller(ctx);
     const op = node(args.operationId);
     if (args.action === "resume") {
@@ -541,10 +541,12 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       const own = control?.observe(op.id)?.activity;
       const activity = own === undefined ? undefined : liftNestedActivity(own, (op.childSessions ?? []).map((child) => control?.observe(child.id)?.activity ?? "unknown"));
       if ((activity === "running" || activity === "awaiting" || activity === "background") && !sameCaller(launchedBy(op), me)) throw new ConsoleControlError("target_busy");
-      const receipt = need("close")(op.id, me);
+      const receipt = await need("close")(op.id, me);
       if (!receipt) throw new ConsoleControlError("already_closing");
       gesture(ctx, "console_panel", `${op.title} 닫음 (되돌리기 가능)`, "press", opTarget(op.id));
-      return { operationId: op.id, action: "close", closing: true, undoUntil: receipt.undoUntil, deletionId: receipt.deletionId };
+      return "archiveId" in receipt
+        ? { operationId: op.id, action: "close", archived: true, receipt }
+        : { operationId: op.id, action: "close", closing: true, undoUntil: receipt.undoUntil, deletionId: receipt.deletionId };
     }
     if (args.action === "view") {
       if (!args.mode) throw new ConsoleControlError("invalid_arguments");
