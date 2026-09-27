@@ -185,12 +185,11 @@ export function AttachmentView({ t, images, index, onIndex, onClose }: {
     observer.observe(caption);
     return () => observer.disconnect();
   }, []);
-  // 끝에 닿아 누른 글리프가 꺼지면 초점이 body 로 빠진다 — 보기 안으로 되돌린다. 이웃 장은 미리 받아 넘김을 가볍게 한다.
+  // 끝에 닿아 누른 글리프가 꺼지면 초점이 body 로 빠진다 — 보기 안으로 되돌린다.
   useEffect(() => {
     const active = document.activeElement;
     if (!figureRef.current?.contains(active) || (active instanceof HTMLButtonElement && active.disabled)) closeRef.current?.focus();
-    for (const neighbor of [images[index - 1], images[index + 1]]) if (neighbor) new Image().src = neighbor.src;
-  }, [images, index]);
+  }, [index]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); latest.current.onClose(); return; }
