@@ -31,6 +31,7 @@ import { clusterChipPropsFor } from "./cluster-rows.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
+import { scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import {
   consumeStatusLandings,
@@ -1788,17 +1789,20 @@ function TheaterActionsMenu({ theater, groupCount, anchor, onCreateGroup, onForg
       event.preventDefault();
       onClose();
     };
+    const onScroll = (event: Event) => {
+      if (scrollMovesAnchor(event, anchor)) onClose();
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", onClose);
     window.addEventListener("blur", onClose);
-    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onClose);
       window.removeEventListener("blur", onClose);
-      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
-  }, [onClose]);
+  }, [anchor, onClose]);
 
   const confirmNewGroup = () => {
     const name = newName.trim();
