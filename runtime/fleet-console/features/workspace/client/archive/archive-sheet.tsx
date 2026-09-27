@@ -72,6 +72,8 @@ function ArchiveSheetDialog() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const [confirmingRoot, setConfirmingRoot] = useState<string | null>(null);
+  // 방금 영구 삭제한 항목과 그 자리 — 목록을 다시 읽어 항목이 사라진 뒤 포커스를 같은 자리의 다음 항목으로 옮긴다.
+  const [purged, setPurged] = useState<{ readonly rootId: string; readonly index: number } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [notice, setNotice] = useState<CoreMessageKey | null>(null);
 
@@ -92,6 +94,16 @@ function ArchiveSheetDialog() {
   }, []);
 
   const clusters = clustersOf(archive.snapshot?.entries ?? []);
+
+  // 영구 삭제한 항목이 목록에서 빠지면 포커스가 사라진 항목과 함께 BODY로 빠지고 Esc가 시트에 닿지 않는다.
+  // 같은 자리에 선 다음 항목(마지막이었다면 새 마지막 항목)의 「영구 삭제…」로, 남은 항목이 없으면 시트로 옮긴다.
+  useLayoutEffect(() => {
+    if (!purged || clusters.some((cluster) => cluster.rootId === purged.rootId)) return;
+    const items = dialogRef.current?.querySelectorAll<HTMLElement>(".archive-sheet-item") ?? [];
+    const next = items.length > 0 ? items[Math.min(purged.index, items.length - 1)]?.querySelector<HTMLElement>(".archive-sheet-purge") : null;
+    (next ?? dialogRef.current)?.focus();
+    setPurged(null);
+  });
   const now = Date.now();
 
   const restore = (cluster: ArchiveCluster) => {
@@ -165,7 +177,7 @@ function ArchiveSheetDialog() {
         <div className="archive-sheet-body">
           {clusters.length === 0 ? (
             <p className="archive-sheet-empty">{archive.loading && archive.snapshot === null ? t("archive.loading") : archive.error && archive.snapshot === null ? t("archive.loadFailed") : t("archive.empty")}</p>
-          ) : clusters.map((cluster) => {
+          ) : clusters.map((cluster, index) => {
             const bucket = bucketOf(cluster.archivedAt, now);
             const head = bucket !== lastBucket ? <h3 className="archive-sheet-bucket">{t(BUCKET_KEY[bucket])}</h3> : null;
             lastBucket = bucket;
@@ -181,7 +193,14 @@ function ArchiveSheetDialog() {
                   onRestore={() => restore(cluster)}
                   onAskPurge={() => { setNotice(null); setConfirmingRoot(cluster.rootId); }}
                   onCancelPurge={() => setConfirmingRoot(null)}
-                  onPurged={() => { setConfirmingRoot(null); dialogRef.current?.focus(); void refreshOperationArchive(); }}
+                  purged={purged?.rootId === cluster.rootId}
+                  onPurged={() => {
+                    // 목록이 갱신될 때까지 포커스를 시트에 둔다 — 사라질 항목으로 돌려보내지 않는다.
+                    setPurged({ rootId: cluster.rootId, index });
+                    setConfirmingRoot(null);
+                    dialogRef.current?.focus();
+                    void refreshOperationArchive();
+                  }}
                 />
               </div>
             );
@@ -193,7 +212,7 @@ function ArchiveSheetDialog() {
   );
 }
 
-function ArchiveClusterItem({ cluster, now, restoring, confirming, currentRevision, onRestore, onAskPurge, onCancelPurge, onPurged }: {
+function ArchiveClusterItem({ cluster, now, restoring, confirming, purged, currentRevision, onRestore, onAskPurge, onCancelPurge, onPurged }: {
   readonly cluster: ArchiveCluster;
   readonly now: number;
   readonly restoring: boolean;
@@ -203,6 +222,8 @@ function ArchiveClusterItem({ cluster, now, restoring, confirming, currentRevisi
   readonly onAskPurge: () => void;
   readonly onCancelPurge: () => void;
   readonly onPurged: () => void;
+  /** 이 항목을 방금 영구 삭제했다 — 곧 목록에서 빠지므로 포커스를 이 항목으로 돌려보내지 않는다. */
+  readonly purged: boolean;
 }) {
   const t = useT();
   const locale = useConsoleLocale();
@@ -212,9 +233,9 @@ function ArchiveClusterItem({ cluster, now, restoring, confirming, currentRevisi
   const purgeRef = useRef<HTMLButtonElement>(null);
   const wasConfirmingRef = useRef(confirming);
   useLayoutEffect(() => {
-    if (wasConfirmingRef.current && !confirming) purgeRef.current?.focus();
+    if (wasConfirmingRef.current && !confirming && !purged) purgeRef.current?.focus();
     wasConfirmingRef.current = confirming;
-  }, [confirming]);
+  }, [confirming, purged]);
   const activeRoot = cluster.root === null ? state.operations.find((operation) => operation.id === cluster.rootId) ?? null : null;
   const rootOperation = cluster.root?.operation ?? activeRoot;
   const rootOpen = cluster.root === null;
