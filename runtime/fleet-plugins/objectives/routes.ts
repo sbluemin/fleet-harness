@@ -55,7 +55,7 @@ export default definePlugin({
     const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, emit: (event) => {
       ctx.host.events.publish(OBJECTIVE_CHANNEL, event);
       prStatus?.refresh(event.objectiveId);
-    } });
+    }, emitRoles: (event) => ctx.host.events.publish(OBJECTIVE_CHANNEL, event) });
     prStatus = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: ctx.host.paths.consoleDataDir }), onError: (code) => console.warn(`[objectives] ${code}`) });
     ctx.host.lifecycle.registerCleanup(() => prStatus!.dispose());
     const collectEvidence = () => { try { store.evidenceCollect(); } catch { console.warn("[objectives] evidence_cleanup_failed"); } };

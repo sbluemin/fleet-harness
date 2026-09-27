@@ -657,6 +657,32 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-status.is-running, .objectives-member-status.is-background { color: var(--aurora); }
 .objectives-member-status.is-idle { color: var(--positive); }
 .objectives-member-status.is-awaiting { color: var(--warn); }
+/* 지난 역할 — 명단 아래. 이 Theater 의 다른 목표에서 쓰인 역할과 그 사실. 구성원 줄보다 한 단계 낮은 무게로, 표식은 정체성 톤 대신 무채색. */
+.objectives-past { margin-top: 4px; padding-top: 2px; border-top: 1px dashed var(--hairline); }
+.objectives-past-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 14px 6px 22px; border: 0; background: transparent; color: var(--text-tertiary); font: var(--weight-medium) var(--t-2xs)/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; text-align: left; cursor: pointer; }
+.objectives-past-head:hover, .objectives-past-head:focus-visible { color: var(--text-secondary); outline: none; }
+.objectives-past-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; transition: transform var(--duration-fast); }
+.objectives-past-chev svg { width: 10px; height: 10px; }
+.objectives-past-head.is-open .objectives-past-chev { transform: rotate(90deg); }
+.objectives-past-count { letter-spacing: 0; }
+.objectives-past-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-areas: "mark name actions" ". facts actions" ". note note"; align-items: center; gap: 1px 10px; padding: 5px 14px 5px 22px; }
+.objectives-past-row:hover { background: var(--control-rest); }
+.objectives-past-row.is-hidden { opacity: 0.55; }
+.objectives-past-row > .objectives-member-mark { grid-area: mark; }
+.objectives-member-mark.is-past { --member-tone: var(--text-tertiary); }
+.objectives-past-name { grid-area: name; display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.objectives-past-role { flex: none; font-size: var(--t-sm); font-weight: var(--weight-medium); color: var(--text-primary); white-space: nowrap; }
+.objectives-past-aliases { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-past-facts { grid-area: facts; min-width: 0; font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); color: var(--text-tertiary); }
+.objectives-past-facts > span { display: inline-block; white-space: pre; }
+.objectives-past-well { color: var(--positive); }
+.objectives-past-short { color: var(--coral); }
+.objectives-past-note { grid-area: note; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); line-height: 1.45; color: var(--text-secondary); }
+.objectives-past-actions { grid-area: actions; display: flex; align-items: center; gap: 2px; opacity: 0.45; transition: opacity 120ms; }
+.objectives-past-row:hover .objectives-past-actions, .objectives-past-row:focus-within .objectives-past-actions { opacity: 1; }
+.objectives-past-foot { display: flex; gap: 14px; padding: 4px 14px 2px 52px; }
+.objectives-past-link { padding: 0; border: 0; background: transparent; color: var(--text-tertiary); font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); cursor: pointer; }
+.objectives-past-link:hover, .objectives-past-link:focus-visible { color: var(--brass); outline: none; }
 .objectives-assign-new input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-body); }
 .objectives-assign-new input:focus { outline: none; border-color: var(--brass); }
 .objectives-mission-sub .objectives-member-mark, .objectives-assign-menu .objectives-member-mark { width: 16px; height: 16px; font-size: var(--t-2xs); }
@@ -1162,6 +1188,12 @@ button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass); 
 .objectives-retro-table td + td { color: var(--text-secondary); }
 .objectives-retro-table tbody tr + tr td { border-top: 1px solid color-mix(in oklch, var(--hairline) 70%, transparent); }
 .objectives-retro-none { margin: 2px 14px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
+/* 인계 기록의 구성원 평가 — 역할·평가 낱말·묶는 이름, 옆 칸은 평가 한 줄. */
+.objectives-retro-member { margin-right: 6px; font-weight: var(--weight-medium); }
+.objectives-retro-rating { font: var(--weight-medium) var(--t-2xs)/1 var(--font-mono); }
+.objectives-retro-rating.is-well { color: var(--positive); }
+.objectives-retro-rating.is-short { color: var(--coral); }
+.objectives-retro-filed { display: block; margin-top: 2px; font-size: var(--t-2xs); color: var(--text-tertiary); }
 /* 결과물 — 달성 기준 바로 아래. 증거(썸네일·문서)가 먼저, PR 이 뒤. 행은 기준 행과 같은 들여쓰기(아이콘 열 22px + 14px 간격).
    PR 상태 낱말은 기준의 「충족」과 같은 모노 낱말이고, 점이 상태를 한 번 더 말한다 — 채운 점은 확인된 끝, 고리는 진행, 점선은 모름. */
 .objectives-results { display: flex; flex-direction: column; padding-bottom: 6px; }

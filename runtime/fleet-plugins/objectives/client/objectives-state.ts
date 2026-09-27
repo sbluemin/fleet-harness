@@ -3,7 +3,8 @@ import { useEffect, useSyncExternalStore } from "react";
 import { OPERATION_PURGED_EVENT, accessOperation, describeOperation, readOperationLaunch } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, ConsoleOperationSummary, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
-import type { Objective, ObjectiveEvent } from "../server/types.js";
+import { EMPTY_CURATION, parseCuration, type RoleCuration } from "../server/roles.js";
+import type { Objective, ObjectiveEvent, RoleCurationEvent } from "../server/types.js";
 
 /**
  * 표면·캡션·팔레트가 함께 구독하는 모듈 스토어.
@@ -26,6 +27,8 @@ interface TheaterState {
   readonly groups: readonly ObjectiveGroup[];
   readonly loaded: boolean;
   readonly launchAvailable: boolean;
+  /** 지난 역할의 사람 정리(숨김·합침). */
+  readonly roles: RoleCuration;
 }
 
 export interface RevealTarget {
@@ -34,7 +37,7 @@ export interface RevealTarget {
   readonly at: number;
 }
 
-const EMPTY: TheaterState = { objectives: [], groups: [], loaded: false, launchAvailable: false };
+const EMPTY: TheaterState = { objectives: [], groups: [], loaded: false, launchAvailable: false, roles: EMPTY_CURATION };
 const theaters = new Map<string, TheaterState>();
 const listeners = new Set<() => void>();
 let installed: PluginInstallContext | null = null;
@@ -162,7 +165,8 @@ function setTheater(theaterId: string, next: Partial<TheaterState>): void {
 export function installObjectiveState(ctx: PluginInstallContext): () => void {
   installed = ctx;
   const offItem = ctx.consoleEvents.subscribe("objectives:objective", (payload) => {
-    const event = payload as ObjectiveEvent | null;
+    const event = payload as ObjectiveEvent | RoleCurationEvent | null;
+    if (event?.op === "roles") { if (typeof event.theaterId === "string") setTheater(event.theaterId, { roles: parseCuration(event.roles) }); return; }
     if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
     const current = theaters.get(event.theaterId) ?? EMPTY;
     if (event.op === "remove") { setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
@@ -285,9 +289,9 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
   if (current?.loaded && !force) return Promise.resolve();
   const pending = inflight.get(theaterId);
   if (pending) return pending;
-  const task = post<{ objectives: Objective[]; groups: ObjectiveGroup[]; launch: { available: boolean } }>(api, "/state", { theaterId })
+  const task = post<{ objectives: Objective[]; groups: ObjectiveGroup[]; launch: { available: boolean }; roles?: RoleCuration }>(api, "/state", { theaterId })
     .then((state) => {
-      setTheater(theaterId, { objectives: state.objectives, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
+      setTheater(theaterId, { objectives: state.objectives, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available, roles: parseCuration(state.roles) });
       // 읽는 사이 생긴 Operation 도 목표로 — 스냅숏 기준으로 한 번 맞춘다.
       if (installed) { operationsSnapshot = installed.consoleState.getOperations({ nested: true }); reconcileOperations(installed.api); }
     })
