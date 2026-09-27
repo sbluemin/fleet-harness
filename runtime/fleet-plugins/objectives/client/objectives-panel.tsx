@@ -538,7 +538,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                     {objective.decisionRequest && !objective.done ? <span className="objectives-objective-request"><RequestGlyph />{t("objectives.decision.label")}{objective.decisionRequest.questions.length > 1 ? <em>{t("objectives.decision.labelMany", { count: objective.decisionRequest.questions.length })}</em> : null}</span> : null}
                     {objective.dueDate ? <span className={`objectives-objective-due${objective.dueDate < todayIso() && !objective.done ? " is-overdue" : ""}`}><CalGlyph />{dueLabel(objective.dueDate, language)}</span> : null}
                     {showGroup ? <span>{showGroup.name}</span> : null}
-                    {objective.addedBy ? <span className="objectives-by">{t("objectives.objective.addedBy", { name: objective.addedBy.title ?? "—" })}</span> : null}
+                    {objective.addedBy ? (() => { const name = objective.addedBy.title ?? "—"; const label = t("objectives.objective.addedBy", { name }); return <span className="objectives-by" title={label}><span className="objectives-by-name" aria-hidden="true">{name}</span><span className="objectives-by-sr">{label}</span></span>; })() : null}
                   </div>
                 </div>
                 <div className="objectives-objective-side">
