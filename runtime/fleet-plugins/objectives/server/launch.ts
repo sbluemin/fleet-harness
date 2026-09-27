@@ -5,6 +5,7 @@ import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEv
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { decisionTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import type { DecisionAnswer, DecisionAnswersInput, MemberPatchInput, Objective, ObjectiveMember, PlanInput, SlotBy, MissionAddInput, MissionPatchInput } from "./types.js";
 
@@ -222,22 +223,40 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     store.launched(objectiveId);
   };
 
-  /** 라우팅이 없거나 실패하면 지휘관 프리셋으로 돌아간다. 역할·설명을 라우터에 건넨다. */
-  const routeMember = async (current: Objective, member: ObjectiveMember): Promise<{ model?: string; effort?: string }> => {
+  /**
+   * 새로 띄울 라우팅 구성원에게 모델을 한 번에 묻는다. 판단이 자리를 준 경우만 그 모델과 그 강도를 쓰고,
+   * 폴백·실패·없는 키·origin 없음은 지휘관 프리셋(모델과 강도를 함께)이다. 개시를 막지 않는다.
+   */
+  const routeLaunchingMembers = async (current: Objective, launching: readonly ObjectiveMember[]): Promise<Map<string, { model?: string; effort?: string }>> => {
     const fallback = { model: current.commander.model, effort: current.commander.effort };
-    const origin = (ctx.host as { server?: { origin?: () => string | null } }).server?.origin?.() ?? null;
-    if (!origin) return fallback;
-    try {
-      const response = await fetch(`${origin}/api/v1/ai-gateway/routing-test`, {
-        method: "POST",
-        headers: { "content-type": "application/json", origin },
-        body: JSON.stringify({ prompt: `${current.title}\n\n${member.role}\n${member.brief ?? ""}\n${current.note.slice(0, 2000)}` }),
-        signal: AbortSignal.timeout(45_000),
-      });
-      if (!response.ok) return fallback;
-      const decision = await response.json() as { model?: string; effort?: string };
-      return decision.model ? { model: decision.model, effort: decision.effort ?? fallback.effort } : fallback;
-    } catch { return fallback; }
+    const presets = new Map<string, { model?: string; effort?: string }>();
+    for (const member of launching) presets.set(member.id, fallback);
+    if (launching.length === 0) return presets;
+    const origin = ctx.host.server.origin();
+    if (!origin) return presets;
+    // 요청 한도(항목 수·prompt 합계)를 넘으면 전원이 폴백된다. 한도만큼 나누고, 항목마다 합계를 나눠 가진다(노트만 줄어든다).
+    for (let start = 0; start < launching.length; start += ROUTING_ASSIGN_MAX_ITEMS) {
+      const chunk = launching.slice(start, start + ROUTING_ASSIGN_MAX_ITEMS);
+      const max = Math.floor(ROUTING_ASSIGN_MAX_PROMPT_SUM / chunk.length);
+      try {
+        const response = await fetch(`${origin}/api/v1/ai-gateway/routing-assign`, {
+          method: "POST",
+          headers: { "content-type": "application/json", origin },
+          body: JSON.stringify({ items: chunk.map((member) => ({ key: member.id, prompt: memberRoutingPrompt(current, member, max) })) }),
+          signal: AbortSignal.timeout(45_000),
+        });
+        if (!response.ok) continue;
+        const body = await response.json() as { decisions?: readonly { key?: string; model?: string; effort?: string; fallback?: boolean }[] };
+        if (!Array.isArray(body?.decisions)) continue;
+        for (const decision of body.decisions) {
+          if (!decision?.key || !presets.has(decision.key)) continue;
+          if (decision.fallback === false && typeof decision.model === "string" && decision.model) {
+            presets.set(decision.key, { model: decision.model, effort: typeof decision.effort === "string" ? decision.effort : undefined });
+          }
+        }
+      } catch { /* 이 묶음은 지휘관 프리셋 그대로 — 개시를 막지 않는다. */ }
+    }
+    return presets;
   };
   /** 다음 프로세스 기동에 쓸 정책. 세션 payload를 직접 고치지 않고, 떠 있는 프로세스는 중단하지 않는다. */
   const rememberSubagentSpawn = (operationId: string, allowed: boolean) => {
@@ -322,6 +341,19 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (current.done) throw new ObjectiveStoreError("objective_done");
     await accessOperation(objectiveId);
     current = editableObjective(objectiveId);
+    // 루프가 새로 띄울 구성원만 — Operation 이 있으면 살렸거나 재개하거나 관측 불가로 건너뛰고, 다른 Theater 면 루프가 거기서 멈춘다.
+    const launching: ObjectiveMember[] = [];
+    for (const member of current.members) {
+      const operationId = member.id;
+      const reference = operationId ? referenceNode(operationId) : null;
+      if (reference && reference.theaterId !== current.theaterId) break;
+      const node = operationId ? ctx.host.operations.get(operationId) : null;
+      if (node && node.theaterId !== current.theaterId) break;
+      // 보관된 Operation(reference 만 있음)은 루프가 복원해 재개하므로 좌석을 받지 않는다.
+      if (operationId && (node || reference)) continue;
+      if (member.launch.mode === "route") launching.push(member);
+    }
+    const routed = await routeLaunchingMembers(current, launching);
     const members: Array<{ id: string; role: string; session: string; operationId: string; state: "live" | "launched" | "resumed" | "unknown" }> = [];
     for (let index = 0; index < current.members.length; index += 1) {
       const member = current.members[index]!;
@@ -351,8 +383,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       let number = index + 1;
       let session = memberSession(current.id, current.commander.sessionName, number);
       while (used.has(session)) session = memberSession(current.id, current.commander.sessionName, ++number);
-      const preset = member.launch.mode === "route" ? await routeMember(current, member) : memberPreset(current, member);
-      // 라우팅은 오래 걸릴 수 있으므로 실제 기동 요청 직전에 저장된 허용값을 읽는다.
+      const preset = member.launch.mode === "route" ? routed.get(member.id) ?? { model: current.commander.model, effort: current.commander.effort } : memberPreset(current, member);
+      // 앞선 기동을 기다리는 동안 바뀐 허용값도 이번 기동부터 반영한다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
       // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다.
       const launchedId = await launch({ objectiveId, theaterId: current.theaterId, sessionName: session, ...preset, subagents: allowed ? undefined : false, viewMode: "chat", parentOperationId: current.id, childSessionId: member.id }).catch(asStoreError);

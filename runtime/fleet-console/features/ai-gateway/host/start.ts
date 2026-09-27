@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
-import { chooseRoutingModel } from "./routing-model.js";
+import { chooseRoutingModel, chooseRoutingModels } from "./routing-model.js";
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
   createClaudeNativeModelSync,
@@ -10,7 +10,9 @@ import {
   GATEWAY_PROVIDERS,
   GatewayRoutingDistribution,
   decideGatewayRoutingAssignment,
+  decideGatewayRoutingBatch,
   JEV_ROUTING_TIMEOUT_MS,
+  JEV_ROUTING_BATCH_TIMEOUT_MS,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
   createAiGatewaySettingsStore,
@@ -144,6 +146,12 @@ export function startAiGateway(ctx: GatewayStartContext) {
     timeoutMs: JEV_ROUTING_TIMEOUT_MS,
     maxAttempts: 1,
   });
+  // 배치 판단은 한 건 배정보다 길다. 클라이언트를 나누어 짧은 예산이 배치를 끊지 않게 한다.
+  const jevBatchClient = new SystemOneClient({
+    readApiKey: () => authService.getApiKey(TYPESAFE_AUTH_PROVIDER_ID),
+    timeoutMs: JEV_ROUTING_BATCH_TIMEOUT_MS,
+    maxAttempts: 1,
+  });
   async function assign(request: unknown, signal?: AbortSignal, test = false) {
       // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
       void quota.getSummary().catch(() => undefined);
@@ -194,6 +202,46 @@ export function startAiGateway(ctx: GatewayStartContext) {
     } finally { testing = false; res.off("close", abort); }
     return true;
   }, [{ method: "POST", path: "", summary: "Test the configured routing decision with a real provider request.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
+  ctx.registerRouter("ai-gateway/routing-assign", async ({ req, res }) => {
+    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
+    const items = parseRoutingAssignItems(await ctx.host.http.readJsonBody<unknown>(req));
+    if (!items) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    const selection = currentExposure();
+    if (!selection.delegationRoutingEnabled || selection.delegationModels.length === 0) {
+      ctx.host.http.writeJson(res, 409, { error: "routing_disabled_or_no_candidates" }); return true;
+    }
+    void quota.getSummary().catch(() => undefined);
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(); };
+    res.once("close", abort);
+    try {
+      const decisions = await decideGatewayRoutingBatch(items, selection, {
+        ...(selection.delegationRoutingMode === "model" ? {
+          choose: (input, signal) => chooseRoutingModels({
+            ...input, signal,
+            settings: aiGatewayStore.read(),
+            baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
+            directory: path.join(ctx.dataDir, "routing-model"),
+          }),
+        } : { client: jevBatchClient }),
+        refreshExposure: () => currentExposure(),
+        signal: controller.signal,
+      });
+      if (!res.destroyed && !controller.signal.aborted) {
+        ctx.host.http.writeJson(res, 200, {
+          mode: selection.delegationRoutingMode === "jev" ? "jev" : "model",
+          decisions,
+        });
+      }
+    } catch (error) {
+      // 호출자가 끊기면 본문 없이 끝낸다. 판단 실패는 항목별 fallback으로 이미 돌아온다.
+      if (res.destroyed || controller.signal.aborted) return true;
+      throw error;
+    } finally { res.off("close", abort); }
+    return true;
+  }, [{ method: "POST", path: "", summary: "Assign a model and reasoning effort to each of several tasks in one routing decision.", category: "Console Execution", gate: "origin-write", transport: "http" }]);
   const resolveClaudeExecutable = ctx.resolveClaudeExecutable;
   // Claude alias가 가리키는 버전은 Console이 띄우는 그 CLI가 정한다. 필요한 순간에만 묻는다.
   const claudeNativeModels = resolveClaudeExecutable
@@ -212,4 +260,35 @@ export function startAiGateway(ctx: GatewayStartContext) {
     observeMuseCodeUsage: (windows) => quota.observe("muse-code", windows),
   });
   return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels };
+}
+
+const ROUTING_ASSIGN_MAX_ITEMS = 20;
+const ROUTING_ASSIGN_MAX_KEY_CHARS = 64;
+const ROUTING_ASSIGN_MAX_PROMPT_CHARS = 16_384;
+const ROUTING_ASSIGN_MAX_PROMPT_SUM_CHARS = 131_072;
+const ROUTING_ASSIGN_KEY = /^[A-Za-z0-9._:-]+$/;
+
+/** 아는 필드만 읽는다. 모르는 필드는 버리고, 깨진 항목이 하나라도 있으면 요청 전체를 거절한다. */
+function parseRoutingAssignItems(body: unknown): readonly { readonly key: string; readonly prompt: string }[] | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const items = (body as { items?: unknown }).items;
+  if (!Array.isArray(items) || items.length < 1 || items.length > ROUTING_ASSIGN_MAX_ITEMS) return undefined;
+  const seen = new Set<string>();
+  let total = 0;
+  const parsed: { key: string; prompt: string }[] = [];
+  for (const entry of items) {
+    if (typeof entry !== "object" || entry === null) return undefined;
+    const record = entry as { key?: unknown; prompt?: unknown };
+    const key = record.key;
+    const prompt = record.prompt;
+    if (typeof key !== "string" || key.length < 1 || key.length > ROUTING_ASSIGN_MAX_KEY_CHARS || !ROUTING_ASSIGN_KEY.test(key) || seen.has(key)) {
+      return undefined;
+    }
+    if (typeof prompt !== "string" || prompt.trim() === "" || prompt.length > ROUTING_ASSIGN_MAX_PROMPT_CHARS) return undefined;
+    total += prompt.length;
+    if (total > ROUTING_ASSIGN_MAX_PROMPT_SUM_CHARS) return undefined;
+    seen.add(key);
+    parsed.push({ key, prompt });
+  }
+  return parsed;
 }

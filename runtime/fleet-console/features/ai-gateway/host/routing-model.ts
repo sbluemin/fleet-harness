@@ -2,6 +2,22 @@ import { mkdir } from "node:fs/promises";
 import { createClaudeGatewaySdk } from "@fleet-console/agent-runtime/claude";
 import { claudeGatewayModelPolicy, buildGatewayModelConstraints, findGatewayModel, resolveAiGatewaySelection, toClaudeGatewayModelId, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 
+interface RoutingModelTurn {
+  readonly baseUrl: string;
+  readonly directory: string;
+  readonly settings: AiGatewayStoredSettings;
+  readonly instructions: readonly string[];
+  readonly state: unknown;
+  readonly criteria: Readonly<Record<string, string>>;
+  readonly signal?: AbortSignal;
+  readonly schema: {
+    readonly type: "object";
+    readonly properties: Readonly<Record<string, { readonly type: "string"; readonly enum: readonly string[] }>>;
+    readonly required: readonly string[];
+    readonly additionalProperties: false;
+  };
+}
+
 /** 판단 전용 실행. 도구·플러그인·사용자 작업 디렉터리를 제공하지 않는다. */
 export async function chooseRoutingModel(input: {
   readonly baseUrl: string;
@@ -12,6 +28,57 @@ export async function chooseRoutingModel(input: {
   readonly criteria: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
 }): Promise<string> {
+  const keys = Object.keys(input.criteria);
+  const parsed = await runRoutingModelTurn({
+    ...input,
+    schema: {
+      type: "object",
+      properties: { choice: { type: "string", enum: keys } },
+      required: ["choice"],
+      additionalProperties: false,
+    },
+  });
+  if (!parsed || typeof parsed !== "object" || !("choice" in parsed) || typeof parsed.choice !== "string"
+    || !Object.hasOwn(input.criteria, parsed.choice)) throw new Error("Invalid routing model choice");
+  return parsed.choice;
+}
+
+/**
+ * 배치 판단. 스키마의 필수 속성은 태스크 id `t0`…`tN-1`이고, 각각 후보 키 enum이다.
+ * 빠지거나 후보가 아닌 값은 결과에서 빼 호출자가 그 항목만 fallback하게 한다.
+ * 구조화 결과 자체가 없으면 한 건 경로와 같이 던진다.
+ */
+export async function chooseRoutingModels(input: {
+  readonly baseUrl: string;
+  readonly directory: string;
+  readonly settings: AiGatewayStoredSettings;
+  readonly instructions: readonly string[];
+  readonly state: unknown;
+  readonly criteria: Readonly<Record<string, string>>;
+  readonly tasks: readonly string[];
+  readonly signal?: AbortSignal;
+}): Promise<Record<string, string>> {
+  const keys = Object.keys(input.criteria);
+  const parsed = await runRoutingModelTurn({
+    ...input,
+    schema: {
+      type: "object",
+      properties: Object.fromEntries(input.tasks.map(id => [id, { type: "string" as const, enum: keys }])),
+      required: input.tasks,
+      additionalProperties: false,
+    },
+  });
+  if (!parsed || typeof parsed !== "object") throw new Error("Invalid routing model choice");
+  const record = parsed as Record<string, unknown>;
+  const choices: Record<string, string> = {};
+  for (const id of input.tasks) {
+    const value = record[id];
+    if (typeof value === "string" && Object.hasOwn(input.criteria, value)) choices[id] = value;
+  }
+  return choices;
+}
+
+async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
   const selected = input.settings.delegationRoutingModel ?? "sonnet";
   const model = findGatewayModel(selected);
   const isClaude = model?.provider === "claude" || ["sonnet", "opus"].includes(selected);
@@ -46,10 +113,7 @@ export async function chooseRoutingModel(input: {
       model: id, ...(effort ? { effort } : {}), cwd: input.directory,
       systemPrompt: { mode: "replace", text: input.instructions.join("\n\n") },
       prompt: JSON.stringify({ state: input.state, candidates: input.criteria }),
-      outputFormat: { type: "json_schema", schema: {
-        type: "object", properties: { choice: { type: "string", enum: Object.keys(input.criteria) } },
-        required: ["choice"], additionalProperties: false,
-      } },
+      outputFormat: { type: "json_schema", schema: input.schema },
       tools: [], persistSession: false, maxTurns: 1, permissionMode: "dontAsk", abortController: controller,
     });
     let parsed: unknown;
@@ -58,9 +122,7 @@ export async function chooseRoutingModel(input: {
     }
     if (controller.signal.aborted) throw controller.signal.reason;
     if (parsed === undefined) throw new Error("Routing model returned no structured result");
-    if (!parsed || typeof parsed !== "object" || !("choice" in parsed) || typeof parsed.choice !== "string"
-      || !Object.hasOwn(input.criteria, parsed.choice)) throw new Error("Invalid routing model choice");
-    return parsed.choice;
+    return parsed;
   } finally {
     clearTimeout(timer);
     input.signal?.removeEventListener("abort", abort);

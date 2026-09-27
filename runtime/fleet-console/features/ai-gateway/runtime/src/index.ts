@@ -173,8 +173,13 @@ export {
 } from "./fleet/routing-assignment.js";
 export {
   JEV_ROUTING_TIMEOUT_MS,
+  JEV_ROUTING_BATCH_TIMEOUT_MS,
   decideGatewayRoutingAssignment,
+  decideGatewayRoutingBatch,
   type GatewayRoutingDecisionOptions,
+  type GatewayRoutingBatchItem,
+  type GatewayRoutingBatchDecision,
+  type GatewayRoutingBatchOptions,
 } from "./fleet/routing-decision.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 
