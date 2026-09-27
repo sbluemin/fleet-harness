@@ -128,6 +128,58 @@ describe("in-process MCP JSON-RPC server", () => {
     expect(server.hasPendingToolCall(token)).toBe(false);
     manager.cleanup();
   });
+
+  it("결과를 전달하지 못한 tools/call을 재실행 없이 전달 실패 오류로 즉시 끝낸다", async () => {
+    const registry = createMcpToolRegistry();
+    const snapshotStore = createMcpToolSnapshotStore();
+    const server = createServedMcpEndpoint({ toolSnapshotStore: snapshotStore });
+    activeServers.push(server);
+    const failures: string[] = [];
+    const runtime: McpRouterRuntime = {
+      registry, server, snapshotStore,
+      onFailure: (kind) => { failures.push(kind); },
+    };
+    let executions = 0;
+    registry.registerAgentTool({
+      ...makeToolSpec("effect"),
+      async execute() {
+        executions += 1;
+        const error = new Error("unused");
+        Object.defineProperty(error, "message", { get() { throw new Error("unreadable error"); } });
+        throw error;
+      },
+    });
+    const manager = createExecutorSessionManager({ runtimes: [{ name: "tools", runtime }] });
+    const token = manager.issueSessionToken({ label: "delivery", cwd: process.cwd() })[0]!.token;
+    const url = await server.start();
+    const expectDeliveryFailure = (response: JsonRpcResponse, id: string) => {
+      expect(response.id).toBe(id);
+      const result = response.result as { content: Array<{ text: string }>; isError: boolean };
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toMatch(/delivery failed.*may already have run/);
+    };
+
+    // The error result cannot be built, so the router must end the call itself.
+    expectDeliveryFailure(await postJsonRpc(url, token, {
+      jsonrpc: "2.0", id: "build", method: "tools/call", params: { name: "effect", arguments: {} },
+    }), "build");
+    expect(executions).toBe(1);
+    expect(failures).toEqual(["mcp_result_delivery_failed"]);
+
+    // The result reaches the pending call but cannot be serialized onto the response.
+    server.setOnToolCallArrived(token, () => "circular");
+    const response = postJsonRpc(url, token, {
+      jsonrpc: "2.0", id: "serialize", method: "tools/call", params: { name: "effect", arguments: {} },
+    });
+    await waitFor(() => server.hasPendingToolCall(token));
+    const circular: Record<string, unknown> = { type: "text", text: "done" };
+    circular.self = circular;
+    server.resolveToolCall(token, "circular", { content: [circular as never], isError: false });
+    expectDeliveryFailure(await response, "serialize");
+    expect(server.hasPendingToolCall(token)).toBe(false);
+    expect(server.failToolCall(token, "circular")).toBe(false);
+    manager.cleanup();
+  });
 });
 
 describe("executor session manager", () => {
@@ -240,4 +292,11 @@ async function postJsonRpc(
     body: JSON.stringify(body),
   });
   return await response.json() as JsonRpcResponse;
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200 && !condition(); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  expect(condition()).toBe(true);
 }
