@@ -11,6 +11,8 @@ export interface DeferredDeletionReceipt {
   readonly kind: "operation" | "theater";
   readonly targetId: string;
   readonly expiresAt: number;
+  /** Theater 잊기의 기존 toast에 표시할 보관 Operation 수. */
+  readonly archivedOperationCount?: number;
 }
 
 export interface DeferredDeletionResponse {

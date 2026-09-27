@@ -1,3 +1,4 @@
+import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
 import type { ConsoleActionInput, ConsoleActionResult, ConsoleOperationObservation } from "../mcp/control.js";
@@ -783,7 +784,8 @@ export interface FleetPluginServerHost {
 
 export type FleetPluginSidebarPosition = "first" | "last" | { readonly before: string } | { readonly after: string };
 
-export interface FleetPluginOperationsHost {
+/** 구버전 호스트와 테스트 adapter에는 새 capability가 없을 수 있다. */
+export interface FleetPluginOperationsHost extends Partial<OperationArchiveCapability> {
   list(): readonly OperationNode[];
   get(id: string): OperationNode | null;
   create(input: OperationCreateInput): OperationNode;
