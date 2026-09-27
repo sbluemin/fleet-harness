@@ -817,7 +817,7 @@ describe("Instrument core design contract", () => {
     expect(minimap).toContain("collapsedBeforeAlignRef");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap-fab {");
-    // companion은 프레임이 뜨는 두 모드에서 18px 인셋 슬롯에 머무르므로 경계를 지울 이유가 없다.
+    // companion은 두 모드 모두 프레임 안쪽 슬롯에 머무르므로 경계를 지울 이유가 없다.
     expect(components).not.toContain(".operations-canvas.is-companion-layout .canvas-mode-frame");
     // 프레임의 물러남은 즉시, 복귀는 패널 geometry가 제자리로 돌아온 뒤다 — display 토글로
     // 되돌리면 복원 전환 동안 브래킷이 줄어드는 패널 위에 다시 찍힌다.
@@ -3670,7 +3670,7 @@ describe("Instrument core design contract", () => {
     expect(canvasZoom).not.toContain("is-panel-density-high");
     expect(components).not.toContain(".operations-canvas.is-panel-density-high");
     expect(source("../../../features/workspace/client/canvas/coordinates.ts")).toContain("y: arena.y + 18 + OPERATION_WINDOW_CAPTION_HEIGHT");
-    expect(source("../../../features/workspace/client/canvas/coordinates.ts")).toContain("arena.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT");
+    expect(source("../../../features/workspace/client/canvas/coordinates.ts")).toContain("arena.height - 18 - 8 - OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("../../../features/workspace/client/canvas/coordinates.ts")).not.toContain("operationWindowFrameFor");
     expect(source("../../../features/workspace/client/canvas/canvas.tsx")).not.toContain("operationWindowFrameFor");
     expect(source("../../../features/workspace/client/canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");

@@ -1,13 +1,16 @@
 /* War Room A2 — 수평선은 위치(brass), 대기열 위의 선은 상태 신호다. 크롬 소유 트레이 면은 바꾸지 않는다. */
-.zen-taskbar.war-room-taskbar {
+.zen-taskbar.war-room-taskbar, .war-room-glow {
   --wr-horizon: color-mix(in oklch, var(--brass) 70%, transparent);
   --wr-horizon-glow: color-mix(in oklch, var(--brass) 11%, transparent);
   --wr-face: color-mix(in oklch, var(--brass) 3.5%, var(--surface-band));
+}
+.zen-taskbar.war-room-taskbar {
   border-top: 0;
   background: var(--wr-face);
   animation: none;
 }
-:root[data-theme="whites"] .zen-taskbar.war-room-taskbar {
+:root[data-theme="whites"] .zen-taskbar.war-room-taskbar,
+:root[data-theme="whites"] .war-room-glow {
   --wr-horizon: color-mix(in oklch, var(--brass) 80%, transparent);
   --wr-horizon-glow: color-mix(in oklch, var(--brass) 12%, transparent);
   --wr-face: color-mix(in oklch, var(--brass) 4%, var(--surface-band));
@@ -23,7 +26,19 @@
   transform-origin: center;
   pointer-events: none;
 }
-.war-room-taskbar::after {
+/* 막대(z-rail)의 자식이면 24px/18px 번짐이 패널 입력창 위를 칠한다. 이 포털은 배경 다음,
+   패널 월드(z-auto, transform 문맥) 앞의 z-0 층이다. 수평선은 동일한 아레나 하단에 앵커된다. */
+.operations-canvas.is-triage > .canvas-triage-glow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--arena-bottom, 0px);
+  height: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.war-room-glow { position: absolute; inset: 0; pointer-events: none; }
+.war-room-glow::before {
   content: "";
   position: absolute;
   left: 0;
@@ -83,17 +98,19 @@
   background: linear-gradient(90deg, transparent, var(--wr-attention) 14% 86%, transparent);
   pointer-events: none;
 }
-.war-room-queue.has-attention::after {
+.war-room-glow { --wr-attention: var(--aurora); }
+.war-room-glow.is-positive { --wr-attention: var(--positive); }
+.war-room-glow.has-attention::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
+  left: var(--wr-queue-left, 0px);
+  width: var(--wr-queue-width, 0px);
   top: -18px;
   height: 18px;
   background: radial-gradient(60% 100% at 50% 100%, color-mix(in oklch, var(--wr-attention) 14%, transparent), transparent);
   pointer-events: none;
 }
-.war-room-queue.is-arriving::after { animation: war-room-arrival 1.1s var(--ease-glide) 1; transform-origin: bottom; }
+.war-room-glow.is-arriving::after { animation: war-room-arrival 1.1s var(--ease-glide) 1; transform-origin: bottom; }
 @keyframes war-room-arrival {
   0% { opacity: 0; transform: scaleY(0.4); }
   35% { opacity: 1; transform: scaleY(2.2); }
@@ -131,6 +148,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .war-room-taskbar.is-entering::before, .war-room-taskbar.is-entering .war-room-taskbar-row,
-  .war-room-queue.is-arriving::after, .war-room-chip.is-new { animation: none; }
+  .war-room-glow.is-arriving::after, .war-room-chip.is-new { animation: none; }
   .war-room-chip { transition: none; }
 }

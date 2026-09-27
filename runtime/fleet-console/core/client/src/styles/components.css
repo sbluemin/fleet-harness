@@ -3968,15 +3968,13 @@
   line-height: 1.55;
 }
 
-/* 덱은 캔버스 안에서 네 변에 같은 여백만 두고 선다. 바닥에만 74px을 남기던 종전 값은 판 아래
-   아무것도 서지 않는 빈 띠였고(실측: 그 자리에 닿는 것은 캔버스 배경뿐), 그만큼 칸의 높이와
-   한 행의 수용량을 깎았다. */
+/* 덱은 네 변 모두 틀에서 16px 안쪽이다. War Room의 틀 바닥은 수평선이므로 아래만
+   아레나 끝에서 16px이고, 위는 틀의 10px까지 더한 26px이다. */
 .canvas-triage-deck {
   position: absolute;
-  /* 아레나 인셋 위에 26px — 전면 캔버스에서 박스 기준 26px는 첫 열 칸·밴드 헤드·지도 점을
-     부유 사이드바 카드 밑에 넣는다(사전 감사 blocker). 가로는 프레임을 따라 12px 가산으로
-     다가선다(max(10px, 아레나 − 4px) + 16px) — 프레임↔덱 내부 리듬 16px 유지. */
-  inset: calc(var(--arena-top, 0px) + 26px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 26px) max(26px, var(--arena-left, 0px) + 12px);
+  /* 박스가 아니라 아레나 기준이다. 가로는 프레임을 따라 12px 가산으로 다가선다
+     (max(10px, 아레나 − 4px) + 16px). 아래는 작업 표시줄 높이 + 16px이다. */
+  inset: calc(var(--arena-top, 0px) + 26px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 16px) max(26px, var(--arena-left, 0px) + 12px);
   z-index: 80;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -4045,7 +4043,7 @@
 
 .canvas-fleet-map {
   position: absolute;
-  /* 덱과 같은 자리 — 아레나 인셋 위 26px, 가로는 부유 카드에 12px 가산으로 다가선다. */
+  /* Cruise 지도는 위·아래 26px을 유지한다. 가로는 부유 카드에 12px 가산으로 다가선다. */
   inset: calc(var(--arena-top, 0px) + 26px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 26px) max(26px, var(--arena-left, 0px) + 12px);
   /* Console 전역 실행 메뉴 아래, 월드(무 z-index)와 미니맵(14)보다는 위. */
   z-index: 20;
