@@ -1696,9 +1696,11 @@ export function OperationsCanvas({
             && screenViewport.y + frameGeometry.y * operationZoom < TITLEBAR_OUTSET_PX * operationZoom;
           // 지휘관 패널은 고른 구성원의 본문을 보인다 — 프레임은 지휘관, 본문 마운트만 풀에서 옮겨 온다.
           // 고를 수 있는 것은 이 패널이 대표하는 구성원뿐이다(코어의 부모 관계). 묶음 선언이 아직 오지 않은 Theater 에서도 같다.
-          // War Room 덱 칸에는 노드 줄이 없어 누구 본문인지 말할 수 없으므로 지휘관 자신의 본문을 둔다.
+          // War Room 덱 카드도 같은 노드 줄을 지고 고른 본문을 보인다. Snap Assist 후보 칸은 자리를 고르는 판이라
+          // 노드 줄이 없고, 누구 본문인지 말할 수 없으므로 지휘관 자신의 본문을 둔다.
+          const snapAssistTile = deckSlot !== null && !triageDeckSlots.has(operation.id);
           const chosenBody = clusterBodySelection[operation.id];
-          const bodyNode = chosenBody && !deckSlot
+          const bodyNode = chosenBody && !snapAssistTile
             ? state.nestedOperations.find((candidate) => candidate.id === chosenBody && candidate.parentOperationId === operation.id) ?? null
             : null;
           const bodyMember = bodyNode ? clusterRoot?.formation.byOperationId.get(bodyNode.id)?.member ?? null : null;
@@ -1725,7 +1727,7 @@ export function OperationsCanvas({
               title: bodyMember?.name ?? bodyNode.title,
               tone: bodyMember?.tone ?? canvas.operationAccent[bodyNode.id] ?? operationAccentFromNode(bodyNode),
             } : null,
-            cluster: clusterRoot
+            cluster: clusterRoot && !snapAssistTile
               ? {
                 strip: (
                   <ClusterStrip
@@ -1742,6 +1744,9 @@ export function OperationsCanvas({
                     rootActivity={resolveOperationActivity(operation, ownOperationRuntime())}
                     onPick={(operationId) => {
                       selectNestedBody(operation.id, operationId);
+                      // 덱 카드의 본문은 inert라 키보드 포커스를 보낼 곳이 없다 — 칩은 보이는 본문만 바꾼다.
+                      // 포인터로 누른 카드가 활성이 되는 것은 캡션과 같은 카드 크롬의 관례다(줄의 pointerdown).
+                      if (deckSlot) return;
                       setActiveOperation(operation.id);
                       requestOperationKeyboardFocus(operation.id);
                     }}
