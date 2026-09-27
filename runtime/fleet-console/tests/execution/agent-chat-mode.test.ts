@@ -47,7 +47,7 @@ afterEach(async () => {
 
 describe("agent chat mode routes", () => {
   it("tracks Terminal requests to matching hook turns, projects public output, and confirms interruption", async () => {
-    const harness = await createHarness();
+    const harness = await createHarness({ cliId: "claude" });
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
     harness.allowConsoleUse(sessionId);
@@ -66,17 +66,20 @@ describe("agent chat mode routes", () => {
     expect(harness.writes).not.toContain("");
     await harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "Wait for interruption" });
     await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Wait for interruption" }) });
+    harness.emitTitle(sessionId, "\u25d0 Wait for interruption");
     // 중단은 Esc 를 친 것만으로 답하지 않는다 — 그 턴이 실제로 끝난 뒤에야 호출자에게 돌아간다.
+    // Esc 로 끊긴 턴에는 Stop hook 이 오지 않으므로, PTY 의 작업 신호가 꺼지는 것이 그 끝의 증거다.
     let interrupted = false;
     const interrupt = harness.consoleControl.request(caller, { kind: "interrupt", operationId: sessionId }).then((result) => { interrupted = true; return result; });
     await vi.waitFor(() => expect(harness.writes).toContain(""));
     expect(interrupted).toBe(false);
-    await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ last_assistant_message: "Interrupted" }) });
+    harness.emitTitle(sessionId, "\u2733 Wait for interruption");
     expect(await interrupt).toEqual({ operationId: sessionId, delivery: "requested" });
+    expect(harness.consoleControl.observe(sessionId)?.output.outcome).toBe("interrupted");
     await fs.appendFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), "\n" + JSON.stringify({ type: "assistant", message: { content: [{ type: "thinking", thinking: "private thought" }, { type: "text", text: "Fresh terminal result" }] } }) + "\n");
     await harness.post(sessionId, "turn", { phase: "end", input: "{}" });
-    await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.source).toBe("terminal_transcript"));
-    expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("Fresh terminal result");
+    await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("Fresh terminal result"));
+    expect(harness.consoleControl.observe(sessionId)?.output.source).toBe("terminal_transcript");
     expect(harness.consoleControl.observe(sessionId)?.output.text).not.toContain("private thought");
     const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Launch terminal check", viewMode: "terminal" })).operationId;
     expect(launched).not.toBe(sessionId);
@@ -381,6 +384,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   let route: RouteHandler | undefined;
   const tickets = createPluginTerminalTicketRegistry();
   let chatAttach: Parameters<TerminalRuntime["bindChatAttach"]>[0] | null = null;
+  let titleListener: Parameters<TerminalRuntime["onTitle"]>[1] | null = null;
   const attach = vi.fn<TerminalRuntime["attach"]>(async () => {
     if (options.holdAttachAfterFirst && attach.mock.calls.length > 1) await options.holdAttachAfterFirst;
   });
@@ -406,7 +410,10 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
     resolveSessionIdentity: async () => null,
     onExit: () => () => {},
-    onTitle: () => () => {},
+    onTitle: (_type, listener) => {
+      titleListener = listener;
+      return () => { titleListener = null; };
+    },
     registerLaunchResolver: () => () => {},
     bindChatAttach: (attachChat) => {
       chatAttach = attachChat;
@@ -549,6 +556,8 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     sends,
     responses,
     writes,
+    /** PTY가 방출하는 OSC 제목 — Claude Code의 작업 스피너와 유휴 글리프. */
+    emitTitle: (sessionId: string, title: string) => titleListener?.(sessionId, title),
     operation: (id: string) => operations.find((operation) => operation.id === id),
     createSession: async (): Promise<string> => {
       if (!route) throw new Error("Agent route was not registered");
