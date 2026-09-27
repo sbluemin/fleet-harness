@@ -314,7 +314,7 @@ describe("Objectives contract", () => {
     const pendingMuster = launch.muster(objective.id);
     await routingStarted;
     await launch.memberPatched(objective.id, routed.id, { subagents: false });
-    finishRouting(Response.json({ model: "sonnet" }));
+    finishRouting(Response.json({ mode: "model", decisions: [{ key: routed.id, model: "sonnet", label: "sonnet", because: "sonnet · AI model", fallback: false }] }));
     await pendingMuster;
     expect(launches.at(-1)?.disableSubagents).toBe(true);
     expect(launches.at(-1)?.viewMode).toBe("chat");
