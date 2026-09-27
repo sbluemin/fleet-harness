@@ -119,6 +119,12 @@ const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT;
 // 프리뷰 config는 identity 비교로 재발행이 억제되므로 공유 불변 배열을 쓴다.
 const EMPTY_HIDDEN_COMPANION_IDS: readonly string[] = [];
 
+function isEditingOutsideTerminal(element: Element | null): boolean {
+  return element instanceof HTMLElement
+    && !element.closest(".xterm")
+    && (element.isContentEditable || !!element.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'));
+}
+
 export function OperationsCanvas({
   state,
   arenaInsets,
@@ -637,6 +643,23 @@ export function OperationsCanvas({
   const triageStageTheaterId = triageStage?.operation.theaterId ?? null;
   useLayoutEffect(() => { publishTriageStage(triageStageId); }, [triageStageId]);
   useEffect(() => () => publishTriageStage(null), []);
+  const notifiedTriageStageRef = useRef<{ operationId: string; theaterId: string; editing: boolean } | null>(null);
+  useEffect(() => {
+    if (!triageActive || !triageStageId || !triageStageTheaterId) {
+      notifiedTriageStageRef.current = null;
+      return;
+    }
+    const previous = notifiedTriageStageRef.current;
+    if (previous?.operationId === triageStageId && previous.theaterId === triageStageTheaterId) return;
+    // 알림이 레일의 입력 요소를 교체할 수 있으므로 원래 편집 포커스는 발행 전에 잡는다.
+    notifiedTriageStageRef.current = {
+      operationId: triageStageId,
+      theaterId: triageStageTheaterId,
+      editing: isEditingOutsideTerminal(document.activeElement),
+    };
+    // 실제 등단은 수동·자동 모두 이 경계를 지난다. 모달·편집 중 포커스 보호와 선택 추종은 별개다.
+    notifyMapOperationSelected(triageStageId);
+  }, [triageActive, triageStageId, triageStageTheaterId, notifyMapOperationSelected]);
   useEffect(() => {
     // 종료 시 "마지막으로 무대에 올랐던 Theater"로 복귀하기 위한 이력 — 무대가 설 때만 기록한다.
     if (triageStageTheaterId !== null) recordTriageStageTheater(triageStageTheaterId);
@@ -796,13 +819,11 @@ export function OperationsCanvas({
     if (autoFocusedTriageStageRef.current?.theaterId === nextStage.theaterId
       && autoFocusedTriageStageRef.current.operationId === nextStage.operationId) return;
     autoFocusedTriageStageRef.current = nextStage;
+    if (notifiedTriageStageRef.current?.editing) return;
     const frame = window.requestAnimationFrame(() => {
       if (document.querySelector(ONBOARDING_TOUR_LAYER_SELECTOR) || hasVisibleModal(document)) return;
-      const activeElement = document.activeElement;
-      if (activeElement instanceof HTMLElement
-        && activeElement.closest(".canvas-operation")
-        && activeElement.matches("input, textarea, [contenteditable='true']")
-        && !activeElement.closest(".xterm")) return;
+      // 알림 이후 새로 시작한 편집도 보호한다. 레일·팔레트 입력을 캔버스 밖이라는 이유로 빼지 않는다.
+      if (isEditingOutsideTerminal(document.activeElement)) return;
       setActiveOperation(triageStageId, { acknowledged: false });
       requestOperationKeyboardFocus(triageStageId);
     });
@@ -1770,10 +1791,11 @@ export function OperationsCanvas({
             theaterLabel: null,
             onActivate: () => {
               setActiveOperation(operation.id);
-              // 선별 중에는 기록하지 않는다 — 무대는 슬롯 geometry이고, 외부 Theater 무대의 기록은
-              // 활성 Theater 캔버스 store를 오염시킨다.
-              if (!operationCompanion && !triageActive) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
-              if (!triageActive) notifyMapOperationSelected(operation.id);
+              // War Room 선택 알림은 실제 무대 수명이 소유한다. 클릭마다 다시 발행하지 않으며,
+              // 슬롯 geometry도 활성 Theater의 Cruise 캔버스에 기록하지 않는다.
+              if (triageActive) return;
+              if (!operationCompanion) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
+              notifyMapOperationSelected(operation.id);
             },
             onClose: () => {
               if (triageActive) dismissTriageOperation(operation.id);

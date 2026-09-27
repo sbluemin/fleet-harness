@@ -46,7 +46,7 @@ import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping, toggleAlignAll } from "../../../../../features/workspace/client/canvas/canvas-store.js";
-import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
+import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, useTriageActive, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
@@ -95,6 +95,7 @@ export function OperationSearch({
 }: OperationSearchProps) {
   const t = useT();
   const zenMode = useZenMode();
+  const triageActive = useTriageActive();
   const warRoomAvailable = useViewMode().effective !== "mobile";
   const sessions = useAgentState().sessions;
   const railBindings = useRailEntries();
@@ -126,8 +127,8 @@ export function OperationSearch({
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
   const commands = useMemo(
-    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, warRoomAvailable }),
-    [state, railPanels, t, undoAvailable, zenMode, warRoomAvailable],
+    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, warRoomAvailable, triageActive }),
+    [state, railPanels, t, undoAvailable, zenMode, warRoomAvailable, triageActive],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
@@ -433,6 +434,7 @@ export function OperationSearch({
         break;
       }
       case "toggle-sidebar": {
+        if (isTriageActive()) break;
         if (isZenMode() && location.pathname.startsWith("/operations")) {
           previousFocusRef.current = null;
           const shown = toggleZenSideBar();

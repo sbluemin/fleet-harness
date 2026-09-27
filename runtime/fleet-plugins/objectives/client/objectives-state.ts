@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import type { ClientApiCapability, ConsoleOperationSummary, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
@@ -136,12 +136,36 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
   const offConsole = ctx.consoleState.subscribe(() => {
     const current = ctx.consoleState.getActiveTheaterId();
-    if (current && current !== lastTheater) { lastTheater = current; void loadTheater(ctx.api, current); }
+    if (current !== lastTheater) {
+      lastTheater = current;
+      clearSelectionTheater();
+      if (current) void loadTheater(ctx.api, current);
+    }
     operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
     reconcileOperations(ctx.api);
     notify();
   });
-  return () => { offItem(); offGroup(); offRemoved(); offConsole(); if (installed === ctx) installed = null; };
+  let focusOutTimer: ReturnType<typeof setTimeout> | null = null;
+  const onFocusOut = (event: FocusEvent) => {
+    if (focusOutTimer !== null) { clearTimeout(focusOutTimer); focusOutTimer = null; }
+    if (!pendingSelectionOperationId || isObjectiveEditing(event.relatedTarget)) return;
+    // 실제 포인터 이동은 focusout과 다음 focus 사이에 microtask를 실행할 수 있다.
+    // 이동 대상을 먼저 확인하고, 전체 포커스 전이가 끝난 다음 task에서 한 번 더 판정한다.
+    focusOutTimer = setTimeout(() => {
+      focusOutTimer = null;
+      if (installed !== ctx || isObjectiveEditing()) return;
+      const operationId = pendingSelectionOperationId;
+      pendingSelectionOperationId = null;
+      if (operationId) handleMapOperationSelected(operationId);
+    }, 0);
+  };
+  if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
+  return () => {
+    offItem(); offGroup(); offRemoved(); offConsole();
+    if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
+    if (focusOutTimer !== null) clearTimeout(focusOutTimer);
+    if (installed === ctx) { installed = null; clearSelectionTheater(); }
+  };
 }
 
 export function objectivesApi(): ClientApiCapability | null {
@@ -278,14 +302,46 @@ export function useObjectiveView(theaterId: string | null): ObjectiveViewState {
 }
 
 let latestSelectionToken = 0;
+let pendingSelectionOperationId: string | null = null;
+
+function isObjectiveEditing(element: EventTarget | null = typeof document === "undefined" ? null : document.activeElement): boolean {
+  return typeof HTMLElement !== "undefined" && element instanceof HTMLElement
+    && !!element.closest(".objectives-root")
+    && (element.isContentEditable || !!element.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'));
+}
+
+let selectionTheater: { readonly contextTheaterId: string | null; readonly theaterId: string } | null = null;
+
+function clearSelectionTheater(): void {
+  pendingSelectionOperationId = null;
+  selectionTheater = null;
+  latestSelectionToken += 1;
+  notify();
+}
+
+/** 전역 Theater와 다른 무대도 목표 표면만 따라간다. 다른 레일 도구의 문맥은 바꾸지 않는다. */
+export function useObjectiveDisplayTheater(contextTheaterId: string | null): string | null {
+  const read = () => selectionTheater?.contextTheaterId === contextTheaterId ? selectionTheater.theaterId : contextTheaterId;
+  const theaterId = useSyncExternalStore(subscribeObjective, read, read);
+  useEffect(() => {
+    if (selectionTheater && selectionTheater.contextTheaterId !== contextTheaterId) clearSelectionTheater();
+  }, [contextTheaterId]);
+  return theaterId;
+}
 
 /**
- * 맵 모드의 frame 활성 또는 Fleet Map 점 선택 시 열려 있는 목표 레일 패널의 선택을 동기화한다.
+ * Cruise의 frame·Fleet Map 선택과 War Room의 수동·자동 등단을 열린 목표 레일에 반영한다.
  * 레일이 닫혀 있거나 확장 전용 표면일 때는 자동 열기/전환 없이 조용히 무시하고, 미연결 Operation 은 기존 선택을 보존한다.
  */
 export function handleMapOperationSelected(operationId: string): void {
   if (!installed?.rail.isOpen("objectives")) return;
   const token = ++latestSelectionToken;
+  pendingSelectionOperationId = null;
+  // 자동 등단으로 현재 목표의 편집 DOM을 교체하지 않는다. 입력을 떠나면 가장 최근 등단만 적용한다.
+  if (isObjectiveEditing()) {
+    pendingSelectionOperationId = operationId;
+    return;
+  }
 
   const allOps = operationsSnapshot;
   const op = allOps.find((candidate) => candidate.id === operationId)
@@ -305,42 +361,23 @@ export function handleMapOperationSelected(operationId: string): void {
   }
   if (!targetTheaterId) return;
 
-  const currentTheaterState = theaters.get(targetTheaterId);
-  if (currentTheaterState?.loaded) {
-    const matchingObjective = currentTheaterState.objectives.find(
-      (objective) => objective.id === operationId || objective.members.some((m) => m.id === operationId && m.sessionName !== null)
+  const theaterId = targetTheaterId;
+  selectionTheater = { contextTheaterId: activeTheaterId(), theaterId };
+  const select = () => {
+    if (token !== latestSelectionToken || !installed?.rail.isOpen("objectives")) return;
+    if (selectionTheater?.theaterId !== theaterId) return;
+    // 조회를 기다리는 사이 시작한 편집도 같은 보류 규칙을 따른다.
+    if (isObjectiveEditing()) { pendingSelectionOperationId = operationId; return; }
+    const matchingObjective = theaters.get(theaterId)?.objectives.find(
+      (objective) => objective.id === operationId || objective.members.some((member) => member.id === operationId && member.sessionName !== null),
     );
     if (!matchingObjective) return;
-
-    const nextList = "all";
-    patchObjectiveView(targetTheaterId, (current) => {
-      if (current.selected === matchingObjective.id && current.list === nextList && current.externalSelectionId === matchingObjective.id) return current;
-      return { selected: matchingObjective.id, list: nextList, externalSelectionId: matchingObjective.id };
-    });
-    return;
-  }
-
-  const api = installed.api;
-  if (!api) return;
-  void loadTheater(api, targetTheaterId).then(() => {
-    if (token !== latestSelectionToken) return;
-    if (!installed?.rail.isOpen("objectives")) return;
-    if (activeTheaterId() !== targetTheaterId) return;
-
-    const loadedState = theaters.get(targetTheaterId);
-    if (!loadedState?.loaded) return;
-
-    const matchingObjective = loadedState.objectives.find(
-      (objective) => objective.id === operationId || objective.members.some((m) => m.id === operationId && m.sessionName !== null)
-    );
-    if (!matchingObjective) return;
-
-    const nextList = "all";
-    patchObjectiveView(targetTheaterId, (current) => {
-      if (current.selected === matchingObjective.id && current.list === nextList && current.externalSelectionId === matchingObjective.id) return current;
-      return { selected: matchingObjective.id, list: nextList, externalSelectionId: matchingObjective.id };
-    });
-  });
+    patchObjectiveView(theaterId, () => ({ selected: matchingObjective.id, list: "all", externalSelectionId: matchingObjective.id }));
+  };
+  if (theaters.get(theaterId)?.loaded) select();
+  else void loadTheater(installed.api, theaterId).then(select);
+  // 연결된 목표가 없어도 목록은 무대 소속 Theater만 보여 준다.
+  notify();
 }
 
 export function focusOperation(operationId: string): void {

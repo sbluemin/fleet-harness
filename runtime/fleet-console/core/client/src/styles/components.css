@@ -5715,17 +5715,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   }
 }
 
-/* 선별 처리 전용 사이드바 — Map 사이드바(.operations-side-bar)의 표면·접힘 문법을 그대로
-   상속한다. 세 living 섹션은 스크롤 큐를 소유하고, 휴면은 separator 아래 선반에만 선다:
-   휴면 수량은 보이되 큐·덱·지도 문법에는 합류시키지 않는다. 칸 이름은 StatusSectionSlot
-   한 줄이 말하므로 바깥 캡션은 두지 않는다. */
-.triage-side-bar-sections {
-  padding-top: var(--space-1);
-}
-
-/* 펼친 목록의 몸통 — 두 사이드바가 같은 래퍼를 쓴다. Map 사이드바는 Theater 목록 하나가 몸통을
-   채우고, War Room은 섹션 목록과 두 선반을 한 열로 세운다. 선반은 목록 뒤에 흐른다(카드 바닥에
-   고정하지 않는다 — 목록과 선반 사이의 빈 면이 War Room 사이드바의 구멍이었다). */
+/* Cruise 사이드바에서 펼친 Theater 목록의 몸통. */
 .side-bar-wide {
   display: flex;
   flex: 1 1 auto;
@@ -5733,18 +5723,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   min-height: 0;
 }
 
-.triage-side-bar .side-bar-wide > .operations-side-bar-chips {
-  flex: 0 1 auto;
-}
-
-.triage-side-bar-empty {
-  padding: var(--space-2) var(--space-3) var(--space-3);
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
-  line-height: 1.45;
-}
-
-.triage-side-bar-dormant-shelf {
+.side-bar-recovery-dormant-shelf {
   flex: none;
   border-top: 1px solid var(--surface-rim);
   padding: var(--space-1) 0;
@@ -5753,24 +5732,22 @@ body[data-companion-resizing="true"] .canvas-operation {
 /* STATUS 캡션 줄 — 예전 바깥 <p> 문법을 슬롯 헤더가 흡수했다. 클래스 이름은 투어·계약이
    복구 전용으로 읽지 않도록 슬롯에만 남긴다. */
 
-.triage-side-bar-dormant-list {
+.side-bar-recovery-dormant-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
 /* 최소화 선반 — 휴면 선반과 같은 무채색 문법을 쓰되 그 위에 선다. 내가 직접 내린 것이 세션이
-   스스로 잠든 것보다 손에 가깝기 때문이다. War Room과 Theater STATUS 모두 0건이어도 자리를
-   지켜 회수 위치가 상태 변화에 따라 움직이지 않게 한다. */
-.triage-side-bar-minimized-shelf {
+   스스로 잠든 것보다 손에 가깝기 때문이다. 빈 선반은 렌더하지 않는다. */
+.side-bar-recovery-minimized-shelf {
   flex: none;
   border-top: 1px solid var(--surface-rim);
   padding: var(--space-1) 0;
 }
 
-/* Theater 안의 복구 선반(상태별 보기) — War Room 선반과 같은 요소이지만 Theater 섹션 안에서는
-   구분선을 갖지 않는다. 선을 그으면 Theater 경계처럼 읽혀 여러 Theater가 섰을 때 어느 Theater의
-   선반인지 갈린다. 여기서는 상태 섹션(대기·실행 중·유휴)과 같은 문법으로 잇달아 선다. */
+/* Theater 안의 복구 선반(상태별 보기)은 구분선을 갖지 않는다. 선을 그으면 Theater 경계처럼
+   읽히므로 상태 섹션(대기·실행 중·유휴)과 같은 문법으로 잇달아 선다. */
 .side-bar-status-recovery-shelves {
   list-style: none;
 }
@@ -5785,7 +5762,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   padding-bottom: 0;
 }
 
-.triage-side-bar-minimized-list {
+.side-bar-recovery-minimized-list {
   list-style: none;
   margin: 0;
   padding: 0;

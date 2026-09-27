@@ -14,7 +14,7 @@ import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewGlyph, StartViewPicker, startViewLabel, type StartView } from "./launch-control.js";
-import { dockObjective, expandObjective, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, type ObjectiveGroup } from "./objectives-state.js";
+import { dockObjective, expandObjective, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater, type ObjectiveGroup } from "./objectives-state.js";
 import {
   discardedFollowups,
   followupGate,
@@ -150,7 +150,7 @@ function dueBucket(due: string | null): DueFilter | null {
 export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const t = getT(ctx.language);
   const language = ctx.language === "ko" ? "ko" : "en";
-  const theaterId = ctx.theaterId;
+  const theaterId = useObjectiveDisplayTheater(ctx.theaterId);
   const state = useObjectiveTheater(theaterId);
   const operations = useOperationSummaries();
   const reveal = useReveal();

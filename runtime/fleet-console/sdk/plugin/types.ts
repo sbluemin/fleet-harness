@@ -242,7 +242,8 @@ export interface ClientExecutionProvider {
    */
   readonly experimentModelOptions?: () => Promise<readonly ExperimentModelOption[]>;
   /**
-   * 맵 모드에서 명시적으로 frame 활성 선택 또는 Fleet Map 점 선택 시 호출된다.
+   * Cruise의 명시적 frame·Fleet Map 점 선택 또는 War Room의 실제 무대 변경(수동·자동) 시 호출된다.
+   * 무대가 비면 호출하지 않는다. 이 알림은 키보드 포커스 이동을 뜻하지 않는다.
    */
   readonly onMapOperationSelected?: (operationId: string) => void;
 }

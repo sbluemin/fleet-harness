@@ -1748,25 +1748,10 @@ describe("Instrument core design contract", () => {
     expect(disabledHover).toContain("var(--brass) 10%");
   });
 
-  it("pins the demoted dormant shelf outside the live queue", () => {
-    const sidebar = source("../../../features/workspace/client/sidebar/triage-side-bar.tsx");
+  it("keeps sidebar status headers in the neutral text channel", () => {
     const components = source("styles/components.css");
-    const shelf = components.match(/\.triage-side-bar-dormant-shelf \{[^}]*\}/)?.[0] ?? "";
     const caption = components.match(/\.side-bar-status-header \{[^}]*\}/)?.[0] ?? "";
     const captionToggle = components.match(/\.side-bar-status-header__toggle \{[^}]*\}/)?.[0] ?? "";
-
-    expect(sidebar).toContain('const livingSections = sections.filter((section) => section.status !== "ended")');
-    expect(sidebar).toContain('className="operations-side-bar-chips triage-side-bar-sections"');
-    // 선반은 Operation 메뉴를 갖지 않는 표면이므로 브라우저 메뉴도 열지 않는다 — 칩의
-    // menuEnabled=false는 핸들러를 떼기만 하므로 억제는 선반 자신이 진다.
-    expect(sidebar).toMatch(/<footer className="triage-side-bar-dormant-shelf" onContextMenu=\{\(event\) => event\.preventDefault\(\)\}>/);
-    expect(sidebar).toContain('<ol className="triage-side-bar-dormant-list"');
-    expect(sidebar).toContain("defaultCollapsed");
-    expect(sidebar.indexOf('className="triage-side-bar-dormant-shelf"')).toBeGreaterThan(
-      sidebar.indexOf('className="operations-side-bar-chips triage-side-bar-sections"'),
-    );
-    expect(shelf).toContain("border-top: 1px solid var(--surface-rim);");
-    expect(shelf).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
     expect(caption).toMatch(/color: var\(--text-(?:primary|secondary|tertiary|on-brass)\)/);
     expect(caption).toMatch(/font-weight: var\(--weight-(?:regular|medium|bold)\)/);
     expect(caption).toContain("background: transparent;");
@@ -1832,7 +1817,6 @@ describe("Instrument core design contract", () => {
     expect(operations).toContain("toggleSideBarStatusAxis();");
     // 상태별 보기는 스위치 하나다 — 스트립에 토글로 한 번만 서고(Theater 행에 되돌리면 배치가
     // 스코프를 속인다), 켜지면 Theater마다 상태 섹션이 선다. 기본 화면은 Theater 묶음만 말한다.
-    const triageSidebar = source("../../../features/workspace/client/sidebar/triage-side-bar.tsx");
     expect(sidebar).not.toContain('className="side-bar-status-axis-toggle"');
     expect(sidebar).not.toContain("operations-side-bar-axis");
     expect(sidebar).toContain("<SideBarStatusViewToggle active={statusAxis} />");
@@ -1841,17 +1825,10 @@ describe("Instrument core design contract", () => {
     // 0건 섹션·선반은 서지 않는다 — 빈 칸이 축을 설명하던 자리는 퇴역했다.
     expect(sidebar).toContain("statusSections.filter((section) => section.entries.length > 0)");
     expect(sidebar).toContain("if (minimizedSection.entries.length === 0 && dormantSection.entries.length === 0) return null;");
-    expect(triageSidebar).toContain("const visibleLivingSections = livingSections.filter((section) => section.entries.length > 0);");
-    expect(triageSidebar).toContain("{minimizedEntries.length > 0 ? (");
-    // 선반은 목록 뒤에 흐른다 — 카드 바닥에 고정하면 목록과 선반 사이가 War Room 사이드바의 구멍이 된다.
-    expect(components).toMatch(/\.triage-side-bar \.side-bar-wide > \.operations-side-bar-chips \{[^}]*flex: 0 1 auto;/);
     expect(components).toMatch(/\.side-bar-status-view-toggle\[aria-pressed="true"\] \{[^}]*background: var\(--control-wash\);/);
-    expect(sidebar).not.toContain("triage-side-bar-caption");
-    expect(components).not.toContain(".triage-side-bar-caption");
     expect(components).toContain(".side-bar-status-section--minimized {");
     expect(sidebar).toContain("trackOperationActivityTransitions({");
     expect(sidebar).toContain("const landedIds = consumeStatusLandings();");
-    expect(triageSidebar).toContain("const landedIds = consumeStatusLandings();");
     expect(sidebar).not.toContain("recordStatusTransitions(movedIds);");
     expect(app).toContain("useEffect(() => subscribeOperationActivityTracking(), []);");
     expect(sidebar).toContain("if (!statusAxis) {");
@@ -2197,11 +2174,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).not.toContain("command-band-rail-toggle");
     expect(commandBand).not.toContain("panelTogglesVisible");
     const sidebarPanelSource = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
-    const triageSidebarSource = source("../../../features/workspace/client/sidebar/triage-side-bar.tsx");
     const railPanelSource = source("chrome/rail/right-rail.tsx");
     const edgeDocks = source("chrome/components/panel-edge-docks.tsx");
     expect(sidebarPanelSource).toContain("<SideBarCollapseControl />");
-    expect(triageSidebarSource).toContain("<SideBarCollapseControl />");
     expect(railPanelSource).not.toContain("right-rail-collapse");
     expect(edgeDocks).not.toContain("RailEdgeDock");
     // 접힘 순간 포커스는 접힌 뒤에도 남는 안정 좌표(그 패널의 엣지 독 트리거)로 넘어간다.
@@ -4622,22 +4597,11 @@ describe("War Room deck panel grammar", () => {
     expect(fleetMap).not.toContain('<div\n      className={`canvas-fleet-map ${leaving ? "is-leaving" : ""}`}\n      data-canvas-blocker');
   });
 
-  it("keeps the minimized shelf neutral and above the dormant shelf", () => {
-    const sidebar = source("../../../features/workspace/client/sidebar/triage-side-bar.tsx");
-    const shelf = components.match(/\.triage-side-bar-minimized-shelf \{[^}]*\}/)?.[0] ?? "";
+  it("keeps the minimized status section neutral", () => {
     const section = components.match(/\.side-bar-status-section--minimized \{[^}]*\}/)?.[0] ?? "";
-    expect(shelf).toContain("border-top: 1px solid var(--surface-rim);");
     // 최소화는 활동 상태가 아니라 표시 선택이다 — 상태 축의 신호색도, 휴면이 쓰는 brass 혼합도 빌리지 않는다.
-    expect(shelf).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
     expect(section).toContain("--activity-color: var(--ink-fog);");
     expect(section).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
-    // 손에 가까운 순서: 살아 있는 축 → 내가 내린 것 → 세션이 스스로 잠든 것.
-    expect(sidebar.indexOf('className="triage-side-bar-minimized-shelf"')).toBeGreaterThan(
-      sidebar.indexOf('className="operations-side-bar-chips triage-side-bar-sections"'),
-    );
-    expect(sidebar.indexOf('className="triage-side-bar-dormant-shelf"')).toBeGreaterThan(
-      sidebar.indexOf('className="triage-side-bar-minimized-shelf"'),
-    );
   });
 });
 
