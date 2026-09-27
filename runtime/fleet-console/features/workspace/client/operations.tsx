@@ -10,7 +10,7 @@ import type { ClientApiCapability, ClientExecutionProvider, OperationKindDescrip
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../../../core/client/src/integration/active-operation-surface.js";
 import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../../../core/client/src/integration/shortcuts.js";
-import { closeOperationCompletely, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace } from "../../../core/client/src/integration/operation-actions.js";
+import { archiveOperationFromUi, isArchivingOperation, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace, type ArchiveOutcome } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { claimTopZIndex, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getAlignAll, getLoadedTheaterId, getSnapFullOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, restoreSnapFullOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setTheaterOperationGeometry, toggleAlignAll, useCompanionOperationId, useMinimized, useSnapFullOperationId, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
@@ -52,17 +52,16 @@ const DEFAULT_SHELL_HEIGHT = 360;
 // 부유 크롬 카드의 가장자리 인셋(12px) + 카드와 아레나 사이 숨(12px). 카드 자신의 폭에 더해
 // 아레나 인셋이 된다 — CSS의 카드 인셋(var(--space-3))과 한 값이어야 한다.
 const CHROME_FLOAT_GUTTER = 24;
-// 사용자 close와 PTY 자가종료가 같은 operation의 close path를 중복 실행하는 것을 막는다.
-const closingOperationIds = new Set<string>();
 
 interface OperationsProps {
   readonly state: ConsoleState;
   readonly claimBootPanelMinimization: (theaterId: string) => readonly string[] | null;
   readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void;
+  readonly onArchived: (outcome: ArchiveOutcome) => void;
   readonly deletionToast?: ReactNode;
 }
 
-export function Operations({ state, claimBootPanelMinimization, onDeferredDeletion, deletionToast }: OperationsProps) {
+export function Operations({ state, claimBootPanelMinimization, onDeferredDeletion, onArchived, deletionToast }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [triageGlowHost, setTriageGlowHost] = useState<HTMLDivElement | null>(null);
   const snapFullOperationId = useSnapFullOperationId();
@@ -816,20 +815,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     );
   }, [refreshOperationsAndGroups, runMutation]);
 
+  // 사람이 Operation을 치우는 모든 입구(캡션·칩·우클릭·트리아지·모바일·플러그인 본문 onClose)는 한 번에 보관한다.
   const handleClose = useCallback((operationId: string) => {
-    if (closingOperationIds.has(operationId)) return;
-    if (getCompanionOperationId() === operationId) forceDropCompanionOperationId();
-    if (isTriageActive()) dismissTriageOperation(operationId);
-    closingOperationIds.add(operationId);
-    const pluginId = stateRef.current.operations.find((op) => op.id === operationId)?.pluginId;
-    const plugin = (pluginId !== undefined ? registry.providers.find((p) => p.id === pluginId) : null) ?? null;
-    void closeOperationCompletely(operationId, plugin)
-      .then((deletion) => {
-        forgetTriageOperation(operationId);
-        onDeferredDeletion(deletion);
-      })
-      .finally(() => closingOperationIds.delete(operationId));
-  }, [onDeferredDeletion, registry.providers]);
+    void archiveOperationFromUi(operationId).then((outcome) => { if (outcome) onArchived(outcome); });
+  }, [onArchived]);
 
   const poolCapabilities = useMemo(() => createHostCapabilities(() => {
     void fetchOperations(null).then(hydrateOperations).catch(() => {});
@@ -1044,7 +1033,7 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
       const liveState = getState();
       const liveOperation = liveState.operations.find((candidate) => candidate.id === operationId);
       const operationWasHidden = !operationWasMinimized && getCanvasSnapshot().minimized.includes(operationId);
-      if (requestEpochRef.current !== requestEpoch || getFocusLayerRevision() !== focusLayerRevision || getCompanionOperationId() !== currentCompanionOperationId || liveState.activeTheaterId !== operation.theaterId || getLoadedTheaterId() !== operation.theaterId || operationWasHidden || closingOperationIds.has(operationId) || !liveOperation || liveOperation.pluginId !== operation.pluginId || liveOperation.type !== operation.type || liveOperation.theaterId !== operation.theaterId) return;
+      if (requestEpochRef.current !== requestEpoch || getFocusLayerRevision() !== focusLayerRevision || getCompanionOperationId() !== currentCompanionOperationId || liveState.activeTheaterId !== operation.theaterId || getLoadedTheaterId() !== operation.theaterId || operationWasHidden || isArchivingOperation(operationId) || !liveOperation || liveOperation.pluginId !== operation.pluginId || liveOperation.type !== operation.type || liveOperation.theaterId !== operation.theaterId) return;
     }
     if (operation && (!descriptor || descriptorCompanions.length === 0 || !canOpenCompanions)) {
       forceDropCompanionOperationId();

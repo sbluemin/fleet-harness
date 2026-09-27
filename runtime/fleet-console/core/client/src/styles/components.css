@@ -6894,44 +6894,10 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 12px;
 }
 
-/* .side-bar-chip 프리픽스는 reveal 규칙과 같은 특이도를 유지해 포인터가 떠나도 ARM 폭을 보존한다. */
-.side-bar-chip .side-bar-chip-close.is-armed {
-  flex: none;
-  background: color-mix(in oklch, var(--coral) 20%, transparent);
-  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
-  color: var(--coral-ink);
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  width: auto;
-  height: 20px;
-  padding: 0 6px;
-  margin-left: 0;
-  opacity: 1;
-  pointer-events: auto;
-  animation: chip-close-arm 1.5s linear forwards;
-}
-
-.side-bar-chip .side-bar-chip-close.is-armed:hover,
-.side-bar-chip .side-bar-chip-close.is-armed:focus-visible {
-  background: color-mix(in oklch, var(--coral) 32%, transparent);
-  outline: none;
-}
-
-@keyframes chip-close-arm {
-  from { opacity: 1; }
-  80%  { opacity: 1; }
-  to   { opacity: 0.4; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .side-bar-chip-close,
   .side-bar-chip-minimize {
     transition-duration: 0.01ms;
-  }
-
-  .side-bar-chip .side-bar-chip-close.is-armed {
-    animation: none;
   }
 
   .side-bar-chip--status-landed {
@@ -7861,19 +7827,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--text-tertiary);
 }
 
-/* 창 닫기 — 새 그룹의 +와 같은 14px 격자·잉크. 무장하면 X도 행의 coral 잉크를 따라간다. */
-.group-context-menu-item__close {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  margin: 0 -2px;
-  color: var(--text-tertiary);
-}
-
-.group-context-menu-item--danger .group-context-menu-item__close {
-  color: currentColor;
-}
-
 .group-context-menu-new-input {
   display: block;
   width: 100%;
@@ -8189,29 +8142,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   transition-delay: 0s;
 }
 
-.canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {
-  flex: none;
-  width: auto;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
-  background: color-mix(in oklch, var(--coral) 20%, transparent);
-  color: var(--coral-ink);
-  font-family: var(--font-body);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  opacity: 1;
-  pointer-events: auto;
-  animation: chip-close-arm 1.5s linear forwards;
-}
-
-.canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close:hover,
-.canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close:focus-visible {
-  background: color-mix(in oklch, var(--coral) 32%, transparent);
-  color: var(--coral-ink);
-  outline: none;
-}
-
 /* 캡션은 name → More → 상시 컨트롤 순서다. 창 컨트롤은 패널 속성이라 호버 전개하지 않는다. */
 
 @media (prefers-reduced-motion: reduce) {
@@ -8222,10 +8152,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   .canvas-operation-window-controls,
   .canvas-operation-icon-button {
     transition-duration: 0.01ms;
-  }
-
-  .canvas-operation-icon-button.is-armed-close {
-    animation: none;
   }
 
   /* 상태 레일은 색면으로 단락한다 — 트래블 그라디언트는 균일 채움으로 되돌리고, 도착 플래시는
@@ -8318,6 +8244,12 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .operations-canvas.is-glance .canvas-operation-glance-hud {
   opacity: 1;
+}
+
+@keyframes chip-close-arm {
+  from { opacity: 1; }
+  80%  { opacity: 1; }
+  to   { opacity: 0.4; }
 }
 
 /* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며, 확인 기한을 안내 줄 자리에서 보여준다. */
@@ -11554,6 +11486,23 @@ body[data-companion-resizing="true"] .canvas-operation {
   font-size: var(--t-xs);
   line-height: 1.5;
   word-break: break-word;
+}
+
+/* 메시지 줄 끝의 보조 동작(「보관함」) — 주 동작 단추와 겹치지 않게 글자 링크로 선다. */
+.app-toast-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.app-toast-link:hover,
+.app-toast-link:focus-visible {
+  color: var(--text-primary);
 }
 
 .app-toast-progress {

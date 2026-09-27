@@ -197,7 +197,6 @@ interface TheaterActionsMenuProps {
   readonly onClose: () => void;
 }
 
-const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
@@ -356,10 +355,8 @@ export function OperationsSideBar({
   const statusAxis = useSideBarStatusAxis();
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
-  const closeArmTimeoutRef = useRef<number | null>(null);
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
   const didMountStatusLandingRef = useRef(false);
-  const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -470,7 +467,6 @@ export function OperationsSideBar({
         entry={entry}
         cluster={recovery ? null : clusterPropsFor(entry)}
         index={globalIndex}
-        isCloseArmed={armedCloseId === entry.operation.id}
         accentValue={accentValue}
         groupMark={groupMark}
         statusAxis
@@ -482,8 +478,6 @@ export function OperationsSideBar({
         dragging={false}
         dragOffsetY={0}
         dropTarget={false}
-        onArmClose={armClose}
-        onDisarmClose={disarmClose}
         onClose={onClose}
         onMinimize={onMinimize}
         onFocus={ended ? onResume : onFocus}
@@ -497,30 +491,6 @@ export function OperationsSideBar({
     );
   };
 
-  const clearCloseArmTimer = useCallback(() => {
-    if (closeArmTimeoutRef.current === null) return;
-    window.clearTimeout(closeArmTimeoutRef.current);
-    closeArmTimeoutRef.current = null;
-  }, []);
-
-  const disarmClose = useCallback(() => {
-    clearCloseArmTimer();
-    setArmedCloseId(null);
-  }, [clearCloseArmTimer]);
-
-  const armClose = useCallback(
-    (operationId: string) => {
-      clearCloseArmTimer();
-      setArmedCloseId(operationId);
-      closeArmTimeoutRef.current = window.setTimeout(() => {
-        closeArmTimeoutRef.current = null;
-        setArmedCloseId(null);
-      }, CLOSE_ARM_DURATION_MS);
-    },
-    [clearCloseArmTimer],
-  );
-
-  useEffect(() => clearCloseArmTimer, [clearCloseArmTimer]);
 
   useEffect(() => subscribeSideBarOperationAction((request) => {
     const operation = operations.find((candidate) => candidate.id === request.operationId);
@@ -552,11 +522,6 @@ export function OperationsSideBar({
     return false;
   }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxis]);
 
-  useEffect(() => {
-    if (armedCloseId === null) return;
-    if (allEntries.some((entry) => entry.operation.id === armedCloseId)) return;
-    disarmClose();
-  }, [armedCloseId, allEntries, disarmClose]);
 
   // App의 동기 store 구독이 렌더 배칭 전의 각 전이를 기록한다. 아래 백업 호출은 App 없는
   // jsdom 경로를 자기완결적으로 유지하고, pending landing만 사이드바 표시 수명주기로 소비한다.
@@ -766,7 +731,6 @@ export function OperationsSideBar({
     if (event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest("button")) return;
     setActiveContextMenu(null);
-    disarmClose();
     const sourceEntry = allEntries.find((e) => e.operation.id === operationId);
     const sourceGroupId = sourceEntry?.operation.groupId ?? null;
     updateDrag({
@@ -788,7 +752,6 @@ export function OperationsSideBar({
     if (event.target instanceof Element && event.target.closest("button")) return;
     if (!orderedGroupIds.includes(groupId)) return;
     setActiveContextMenu(null);
-    disarmClose();
     updateDrag({
       kind: "group",
       sourceGroupId: groupId,
@@ -807,7 +770,6 @@ export function OperationsSideBar({
     const orderedTheaterIds = theaters.map((theater) => theater.id);
     if (!orderedTheaterIds.includes(theaterId)) return;
     setActiveContextMenu(null);
-    disarmClose();
     updateDrag({
       kind: "theater",
       sourceTheaterId: theaterId,
@@ -1146,7 +1108,6 @@ export function OperationsSideBar({
                         entry={entry}
                         cluster={clusterPropsFor(entry)}
                         index={globalIndex}
-                        isCloseArmed={armedCloseId === entry.operation.id}
                         accentValue={accentValue}
                         dragging={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging}
                         dragOffsetY={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging ? drag.currentY - drag.startY : 0}
@@ -1158,8 +1119,6 @@ export function OperationsSideBar({
                           && drag.dropIndex === sectionLocalIndex
                           && drag.sourceId !== entry.operation.id
                         }
-                        onArmClose={armClose}
-                        onDisarmClose={disarmClose}
                         onClose={onClose}
                         onMinimize={onMinimize}
                         onFocus={onFocus}
@@ -1629,7 +1588,6 @@ function TheaterInactiveSection({
         key={entry.operation.id}
         entry={entry}
         index={index}
-        isCloseArmed={false}
         accentValue={accentValue}
         groupMark={resolveEntryGroupMark(entry, groups)}
         statusAxis
@@ -1642,8 +1600,6 @@ function TheaterInactiveSection({
         dragOffsetY={0}
         dropTarget={false}
         preview
-        onArmClose={() => {}}
-        onDisarmClose={() => {}}
         onClose={() => {}}
         onMinimize={() => {}}
         onFocus={ended ? onResume : onFocus}
@@ -1733,14 +1689,11 @@ function TheaterInactiveSection({
                           key={entry.operation.id}
                           entry={entry}
                           index={index}
-                          isCloseArmed={false}
                           accentValue={accentValue}
                           dragging={false}
                           dragOffsetY={0}
                           dropTarget={false}
                           preview
-                          onArmClose={() => {}}
-                          onDisarmClose={() => {}}
                           onClose={() => {}}
                           onMinimize={() => {}}
                           onFocus={onFocus}

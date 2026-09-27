@@ -9,6 +9,8 @@
  * 표식은 잠깐이고(GAZE_MS / MARK_MS), 걷히기 직전 잠깐 `leaving` 이 되어 페이드할 틈을 준다.
  */
 
+import type { OperationArchiveReceipt } from "@fleet-console/sdk/operations/browser";
+
 export const CONSOLE_USE_CALL_CHANNEL = "console-use:call";
 export const OPERATION_CLOSING_CHANNEL = "operation:closing";
 /** 시선 표식이 남는 시간. 같은 대상에 잇단 읽기는 이 창 안에서 하나로 합쳐진다. */
@@ -35,14 +37,23 @@ export interface ConsoleUseGesture {
   readonly at: number;
 }
 
-export interface ClosingByAgent {
-  readonly deletionId: string;
-  readonly kind: "operation" | "theater";
-  readonly targetId: string;
-  readonly expiresAt: number;
-  readonly targetTitle: string;
-  readonly by: GestureCaller & { readonly title?: string };
-}
+/**
+ * 에이전트가 Operation을 치웠다는 알림. Console Use의 닫기는 이제 보관이라 `archive`로 오고,
+ * 보관 도입 전 서버가 보내던 삭제 receipt는 `deletion`으로 계속 받는다.
+ */
+export type ClosingByAgent =
+  | {
+    readonly kind: "archive";
+    readonly receipt: OperationArchiveReceipt;
+    readonly targetTitle: string;
+    readonly by: GestureCaller & { readonly title?: string };
+  }
+  | {
+    readonly kind: "deletion";
+    readonly receipt: { readonly deletionId: string; readonly kind: "operation" | "theater"; readonly targetId: string; readonly expiresAt: number };
+    readonly targetTitle: string;
+    readonly by: GestureCaller & { readonly title?: string };
+  };
 
 /** 대상 하나를 감싸는 표식 — 제스처와, 걷히는 중인지. 같은 대상 재호출은 객체를 갈아 끼우되 도착을 다시 재생하지 않는다(클래스가 그대로라). */
 export interface ConsoleUseWrap {
@@ -162,11 +173,20 @@ export function subscribeClosingByAgent(listener: (closing: ClosingByAgent) => v
   return () => { closingListeners.delete(listener); };
 }
 
-function isClosingByAgent(value: unknown): value is { readonly receipt: { readonly deletionId: string; readonly kind: "operation" | "theater"; readonly targetId: string; readonly expiresAt: number }; readonly targetTitle?: unknown; readonly by: ClosingByAgent["by"] } {
-  if (!value || typeof value !== "object") return false;
+function readClosingByAgent(value: unknown): ClosingByAgent | null {
+  if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const receipt = record.receipt as Record<string, unknown> | undefined;
-  return !!receipt && typeof receipt === "object" && typeof receipt.deletionId === "string" && typeof receipt.targetId === "string" && typeof receipt.expiresAt === "number" && (receipt.kind === "operation" || receipt.kind === "theater") && !!record.by && typeof record.by === "object";
+  if (!receipt || typeof receipt !== "object" || !record.by || typeof record.by !== "object" || typeof receipt.targetId !== "string") return null;
+  const by = record.by as ClosingByAgent["by"];
+  const targetTitle = typeof record.targetTitle === "string" ? record.targetTitle : receipt.targetId;
+  if (typeof receipt.archiveId === "string" && Array.isArray(receipt.operationIds) && typeof receipt.rootOperationId === "string") {
+    return { kind: "archive", receipt: receipt as unknown as OperationArchiveReceipt, targetTitle, by };
+  }
+  if (typeof receipt.deletionId === "string" && typeof receipt.expiresAt === "number" && (receipt.kind === "operation" || receipt.kind === "theater")) {
+    return { kind: "deletion", receipt: { deletionId: receipt.deletionId, kind: receipt.kind, targetId: receipt.targetId, expiresAt: receipt.expiresAt }, targetTitle, by };
+  }
+  return null;
 }
 
 interface GestureServices {
@@ -183,8 +203,8 @@ export function installConsoleUseGestures(services: GestureServices): () => void
   const { subscribeConsoleChannel } = services;
   const disposeCalls = subscribeConsoleChannel(CONSOLE_USE_CALL_CHANNEL, (payload) => { if (isConsoleUseGesture(payload)) recordConsoleUseGesture(payload); });
   const disposeClosing = subscribeConsoleChannel(OPERATION_CLOSING_CHANNEL, (payload) => {
-    if (!isClosingByAgent(payload)) return;
-    const closing: ClosingByAgent = { ...payload.receipt, targetTitle: typeof payload.targetTitle === "string" ? payload.targetTitle : payload.receipt.targetId, by: payload.by };
+    const closing = readClosingByAgent(payload);
+    if (!closing) return;
     for (const listener of closingListeners) listener(closing);
   });
   return () => { installed = false; operations = () => []; disposeCalls(); disposeClosing(); };

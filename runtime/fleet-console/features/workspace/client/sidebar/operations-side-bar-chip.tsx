@@ -9,6 +9,7 @@ import { usePluginRegistry } from "../../../../core/client/src/integration/plugi
 import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
 import { OperationWorkspaceContext, chipWorkspace, describeWorkspace, visibleWorkspace } from "../../../execution/client/components/operation-workspace-context.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
+import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/archive-glyph.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { type OperationActivityVisual, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
@@ -52,7 +53,6 @@ interface SideBarChipProps {
   readonly entry: SideBarEntry;
   readonly cluster?: SideBarChipCluster | null;
   readonly index: number;
-  readonly isCloseArmed: boolean;
   readonly accentValue: string | null;
   readonly groupMark?: { readonly name: string; readonly color: string } | null;
   /**
@@ -80,8 +80,6 @@ interface SideBarChipProps {
   readonly menuEnabled?: boolean;
   /** 휴면 선반처럼 본동작이 focus가 아닌 resume인 표면 — 접근성 이름과 툴팁도 같은 동사를 쓴다. */
   readonly resumeOnActivate?: boolean;
-  readonly onArmClose: (operationId: string) => void;
-  readonly onDisarmClose: () => void;
   readonly onClose: (operationId: string) => void;
   readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
@@ -99,7 +97,6 @@ interface SideBarChipProps {
 export function OperationsSideBarChip({
   entry,
   index,
-  isCloseArmed,
   accentValue,
   groupMark = null,
   theaterName = null,
@@ -115,8 +112,6 @@ export function OperationsSideBarChip({
   dropTarget,
   preview = false,
   cluster = null,
-  onArmClose,
-  onDisarmClose,
   onClose,
   onMinimize,
   onFocus,
@@ -158,7 +153,7 @@ export function OperationsSideBarChip({
     : active
       ? t("sidebar.chip.focusedAria", { title: ariaTitle, groupContext })
       : t("sidebar.chip.focusAria", { title: ariaTitle, groupContext });
-  const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
+  const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next) });
   // Console Use — 에이전트가 이 Operation 을 읽거나 만지면 행 전체가 그 채널 색으로 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => (preview ? null : getOperationWrap(operation.id)), () => null);
   // 스냅 유지 — 활성 Theater의 묶음에 든 패널은 이름 뒤에 칸 모양 표식이 선다(캡션과 같은 컴포넌트).
@@ -177,7 +172,6 @@ export function OperationsSideBarChip({
     dropTarget ? "side-bar-chip--drop-target" : "",
     chipContext ? "side-bar-chip--with-context" : "",
   ].filter(Boolean).join(" ");
-  const closeClassName = ["side-bar-chip-close", isCloseArmed ? "is-armed" : ""].filter(Boolean).join(" ");
   const chipStyle = {
     "--i": index,
     ...(accentValue ? { "--user-accent": accentValue } : {}),
@@ -185,8 +179,7 @@ export function OperationsSideBarChip({
   } as CSSProperties;
 
   const focus = () => {
-    onDisarmClose();
-    if (suppressClickRef.current) {
+        if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
@@ -199,7 +192,7 @@ export function OperationsSideBarChip({
   // 끌고 있거나 닫기가 armed면 열지 않는다: 그 순간의 칩은 읽는 자리가 아니라 조작하는 자리다.
   // preview 칩이 내려놓는 것은 close·rename·accent 같은 조작 어포던스이지 읽을 거리가 아니다.
   // 폴더를 칩에서 내린 뒤로는 카드가 그 자리를 지므로, 여기서 막으면 미리보기만 위치를 잃는다.
-  const detailBlocked = rename.renaming || dragging || isCloseArmed;
+  const detailBlocked = rename.renaming || dragging;
   // 지연 타이머는 걸릴 때의 렌더를 붙들고 있다 — 기다리는 사이에 바뀐 차단 상태를 ref로 다시 본다.
   const detailBlockedRef = useRef(detailBlocked);
   detailBlockedRef.current = detailBlocked;
@@ -219,21 +212,16 @@ export function OperationsSideBarChip({
       if (!detailBlockedRef.current) setDetailAnchor(element.getBoundingClientRect());
     }, DETAIL_HOVER_DELAY_MS);
   };
-  const close = (event: SyntheticEvent<HTMLButtonElement>) => {
+  // 칩의 보관은 한 번에 끝난다 — 되돌리기는 토스트와 ⌘Z가, 복원은 보관함이 맡는다.
+  const archive = (event: SyntheticEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    if (!isCloseArmed) {
-      onArmClose(operation.id);
-      return;
-    }
-    onDisarmClose();
     onClose(operation.id);
   };
   // accent 진입 = 우클릭(컨텍스트 메뉴) / 키보드 Menu 키. 칩 본클릭은 focus 전용이므로
   // rail tier에서 중앙 아이콘을 눌러도 focus가 동작한다.
   const openAccent = (event: SyntheticEvent<HTMLLIElement>) => {
     event.preventDefault();
-    onDisarmClose();
-    onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect());
+        onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect());
   };
 
   // 카드는 열릴 때 잰 칩 자리를 들고 있다 — 목록이 스크롤되거나 창이 바뀌면 그 자리는 이미 거짓이다.
@@ -279,18 +267,16 @@ export function OperationsSideBarChip({
     if (request.action === "assign-group" || request.action === "set-accent") {
       // 메뉴 호스트가 없는 표면에서 소비를 자칭하면 팔레트 요청이 침묵 실패한다 — 미소비로 남긴다.
       if (!menuEnabled) return false;
-      onDisarmClose();
-      // 팔레트로 부른 칩은 사이드바 스크롤 밖일 수 있다. rect를 읽기 전에 끌어와야 메뉴가 화면 안에 앵커링된다.
+            // 팔레트로 부른 칩은 사이드바 스크롤 밖일 수 있다. rect를 읽기 전에 끌어와야 메뉴가 화면 안에 앵커링된다.
       chip.scrollIntoView({ block: "nearest" });
       onOpenAccent(operation.id, chip.getBoundingClientRect(), chip, request.action);
       return true;
     }
     if (!minimizeEnabled) return false;
-    onDisarmClose();
-    onMinimize(operation.id);
+        onMinimize(operation.id);
     chip.focus();
     return true;
-  }), [menuEnabled, minimizeEnabled, onDisarmClose, onMinimize, onOpenAccent, operation.id, preview, rename]);
+  }), [menuEnabled, minimizeEnabled, onMinimize, onOpenAccent, operation.id, preview, rename]);
 
   return (
     <li
@@ -312,7 +298,6 @@ export function OperationsSideBarChip({
       onPointerEnter={armDetail}
       onPointerLeave={closeDetail}
       onFocus={(event) => {
-        if (!isCloseArmed) onDisarmClose();
         if (event.target === event.currentTarget && !detailBlocked) setDetailAnchor(event.currentTarget.getBoundingClientRect());
       }}
       onBlur={closeDetail}
@@ -338,8 +323,7 @@ export function OperationsSideBarChip({
         }
         if (!preview && menuEnabled && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
           event.preventDefault();
-          onDisarmClose();
-          onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget);
+                    onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget);
           return;
         }
         if (event.key === "Enter" || event.key === " ") {
@@ -407,10 +391,7 @@ export function OperationsSideBarChip({
           onPointerDown={stopClosePointer}
           onClick={(event) => {
             event.stopPropagation();
-            // 다른 칩 액션(focus·rename·accent)과 동일하게, 최소화 전에 armed close를 먼저 해제한다 —
-            // 그러지 않으면 최소화 후에도 "Close?" armed 상태가 타임아웃까지 남아 단발 클릭 close 위험이 생긴다.
-            onDisarmClose();
-            onMinimize(operation.id);
+                        onMinimize(operation.id);
           }}
           aria-label={t("sidebar.chip.minimizeAria", { title })}
           title={t("sidebar.chip.minimizeTitle")}
@@ -421,13 +402,13 @@ export function OperationsSideBarChip({
       {preview ? null : (
         <button
           type="button"
-          className={closeClassName}
+          className="side-bar-chip-close"
           onPointerDown={stopClosePointer}
-          onClick={close}
-          aria-label={isCloseArmed ? t("sidebar.chip.confirmCloseAria", { title }) : t("sidebar.chip.closeAria", { title })}
-          title={isCloseArmed ? t("sidebar.chip.confirmCloseTitle") : t("sidebar.chip.closeTitle")}
+          onClick={archive}
+          aria-label={t("sidebar.chip.archiveAria", { title })}
+          title={t("sidebar.chip.archiveTitle")}
         >
-          {isCloseArmed ? t("sidebar.chip.closeArmed") : <SideBarCloseIcon />}
+          <ArchiveGlyph />
         </button>
       )}
       {detailAnchor ? (
@@ -448,20 +429,6 @@ export function OperationsSideBarChip({
 
 function displayTitle(operation: OperationNode): string {
   return operation.title;
-}
-
-function SideBarCloseIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
 }
 
 function SideBarMinimizeIcon() {

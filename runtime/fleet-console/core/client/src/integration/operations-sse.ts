@@ -1,4 +1,5 @@
 import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
+import { OPERATION_CLUSTER_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
@@ -117,6 +118,27 @@ export function connectOperationsSse(): void {
       if (typeof data.operationId !== "string") return;
       forgetTriageOperation(data.operationId);
       applyOperationRemoved(data.operationId);
+    } catch {
+      // ignore malformed SSE event
+    }
+  });
+
+  // 보관·복원은 Cluster 단위로 한 번에 일어난다 — 빠진 Operation 과 돌아온 Operation 을 같은 프레임에서 반영한다.
+  // 보관된 노드는 일반 목록에 싣지 않는다(서버도 operations 에 active 노드만 보낸다).
+  source.addEventListener(OPERATION_CLUSTER_CHANGED_EVENT, (e) => {
+    if (!isCurrentSource()) return;
+    try {
+      const data = JSON.parse((e as MessageEvent<string>).data) as { readonly removedIds?: unknown; readonly operations?: unknown };
+      if (Array.isArray(data.removedIds)) {
+        for (const id of data.removedIds) {
+          if (typeof id !== "string") continue;
+          forgetTriageOperation(id);
+          applyOperationRemoved(id);
+        }
+      }
+      if (Array.isArray(data.operations)) {
+        for (const operation of data.operations) if (isRecord(operation)) applyOperationUpdate(operation as unknown as OperationNode);
+      }
     } catch {
       // ignore malformed SSE event
     }

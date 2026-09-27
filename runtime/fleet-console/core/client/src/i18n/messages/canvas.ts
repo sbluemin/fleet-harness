@@ -113,11 +113,8 @@ export const canvasEn = {
   "canvas.frame.snapFullTitle": "Snap to the whole view",
   "canvas.frame.snapFullRestoreAria": "Return operation {title} to its previous spot",
   "canvas.frame.snapFullRestoreTitle": "Return to the previous spot",
-  "canvas.frame.confirmCloseAria": "Confirm close operation {title}",
-  "canvas.frame.closeAria": "Close operation {title}",
-  "canvas.frame.confirmCloseTitle": "Confirm close",
-  "canvas.frame.closeTitle": "Close operation",
-  "canvas.frame.closeArmed": "Close?",
+  "canvas.frame.archiveAria": "Archive operation {title}",
+  "canvas.frame.archiveTitle": "Archive",
 
   "canvas.companion.aria": "Companion {title}",
   "canvas.companion.dividerAria": "Resize panels",
@@ -158,8 +155,7 @@ export const canvasEn = {
   "canvas.groupMenu.confirmUngroupAll": "Confirm ungroup all?",
   "canvas.groupMenu.ungroupAria": "Ungroup all members and delete group",
   "canvas.groupMenu.confirmUngroupAria": "Confirm: remove all members and delete group",
-  "canvas.groupMenu.closeWindow": "Close window",
-  "canvas.groupMenu.closeWindowArmed": "Close window?",
+  "canvas.groupMenu.archive": "Archive",
 
   // ── sidebar ─────────────────────────────────────────────────────────────
   "sidebar.status.awaiting": "Awaiting",
@@ -254,11 +250,8 @@ export const canvasEn = {
   "sidebar.chip.groupAria": "Group {name}",
   "sidebar.chip.minimizeAria": "Minimize operation {title}",
   "sidebar.chip.minimizeTitle": "Minimize operation",
-  "sidebar.chip.confirmCloseAria": "Confirm close operation {title}",
-  "sidebar.chip.closeAria": "Close operation {title}",
-  "sidebar.chip.confirmCloseTitle": "Confirm close",
-  "sidebar.chip.closeTitle": "Close operation",
-  "sidebar.chip.closeArmed": "Close?",
+  "sidebar.chip.archiveAria": "Archive operation {title}",
+  "sidebar.chip.archiveTitle": "Archive",
 
   // ── sidebar 헤더/필터 (전면 해도 개편 P2) ────────────────────────────────
 
@@ -392,11 +385,8 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.frame.snapFullTitle": "전체 칸에 배치",
   "canvas.frame.snapFullRestoreAria": "Operation {title} 직전 자리로",
   "canvas.frame.snapFullRestoreTitle": "직전 자리로",
-  "canvas.frame.confirmCloseAria": "Operation {title} 닫기 확인",
-  "canvas.frame.closeAria": "Operation {title} 닫기",
-  "canvas.frame.confirmCloseTitle": "닫기 확인",
-  "canvas.frame.closeTitle": "Operation 닫기",
-  "canvas.frame.closeArmed": "닫을까요?",
+  "canvas.frame.archiveAria": "Operation {title} 보관",
+  "canvas.frame.archiveTitle": "보관",
 
   "canvas.companion.aria": "Companion {title}",
   "canvas.companion.dividerAria": "패널 폭 조절",
@@ -437,8 +427,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.groupMenu.confirmUngroupAll": "전체 그룹 해제를 확인할까요?",
   "canvas.groupMenu.ungroupAria": "모든 멤버를 빼고 그룹을 삭제합니다",
   "canvas.groupMenu.confirmUngroupAria": "확인: 모든 멤버를 빼고 그룹을 삭제합니다",
-  "canvas.groupMenu.closeWindow": "창 닫기",
-  "canvas.groupMenu.closeWindowArmed": "창을 닫을까요?",
+  "canvas.groupMenu.archive": "보관",
 
   "sidebar.status.awaiting": "대기",
   "sidebar.status.running": "실행 중",
@@ -532,11 +521,8 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "sidebar.chip.groupAria": "그룹 {name}",
   "sidebar.chip.minimizeAria": "Operation {title} 최소화",
   "sidebar.chip.minimizeTitle": "Operation 최소화",
-  "sidebar.chip.confirmCloseAria": "Operation {title} 닫기 확인",
-  "sidebar.chip.closeAria": "Operation {title} 닫기",
-  "sidebar.chip.confirmCloseTitle": "닫기 확인",
-  "sidebar.chip.closeTitle": "Operation 닫기",
-  "sidebar.chip.closeArmed": "닫을까요?",
+  "sidebar.chip.archiveAria": "Operation {title} 보관",
+  "sidebar.chip.archiveTitle": "보관",
 
 
   "pane.caption.expand": "확대",

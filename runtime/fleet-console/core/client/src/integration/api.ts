@@ -44,6 +44,8 @@ export interface DeferredDeletionReceipt {
   readonly kind: "operation" | "theater";
   readonly targetId: string;
   readonly expiresAt: number;
+  /** Theater 잊기가 함께 지우는 보관 Operation 수 — 되돌리기 토스트가 밝힌다. */
+  readonly archivedOperationCount?: number;
 }
 
 export interface DeferredDeletionResponse {
@@ -641,6 +643,9 @@ function assertDeferredDeletionResponse(value: unknown, status: number): Deferre
       kind: deletion.kind,
       targetId: deletion.targetId,
       expiresAt: deletion.expiresAt,
+      ...(typeof deletion.archivedOperationCount === "number" && Number.isFinite(deletion.archivedOperationCount) && deletion.archivedOperationCount > 0
+        ? { archivedOperationCount: Math.floor(deletion.archivedOperationCount) }
+        : {}),
     },
   };
 }
