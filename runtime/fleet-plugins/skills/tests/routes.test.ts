@@ -182,17 +182,19 @@ describe("legacy relPath rejection", () => {
 // ─── extractSkillMarkdown ─────────────────────────────────────────────────────
 
 describe("job output redaction", () => {
-  it("masks home, resolved cwd, plugin cache paths, and credential URLs before job output is stored", () => {
+  it("masks home, Claude config, resolved cwd, plugin cache paths, and credential URLs before job output is stored", () => {
     const output = redactJobOutput(
-      "cwd=/Users/operator/worktree/pkg cache=/Users/operator/.fleet/plugins/skills/cli/node_modules credential=https://alice:secret@example.com/pkg token=https://example.com/pkg?access_token=abc123",
+      "cwd=/Users/operator/worktree/pkg cache=/Users/operator/.fleet/plugins/skills/cli/node_modules claude=/srv/claude-config/skills/pdf credential=https://alice:secret@example.com/pkg token=https://example.com/pkg?access_token=abc123",
       {
         cwd: "/Users/operator/worktree/pkg",
         homeDir: "/Users/operator",
+        claudeConfigDir: "/srv/claude-config",
         pluginDataDir: "/Users/operator/.fleet/plugins/skills",
       },
     );
 
     expect(output).not.toContain("/Users/operator");
+    expect(output).not.toContain("/srv/claude-config");
     expect(output).not.toContain("alice:secret");
     expect(output).not.toContain("abc123");
     expect(output).toContain("[redacted path]");

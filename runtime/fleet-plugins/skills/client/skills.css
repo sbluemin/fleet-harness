@@ -219,6 +219,50 @@
   margin-top: var(--space-1);
 }
 
+/* 출처는 제 줄을 갖는다 — 에이전트 줄과 한 줄을 나누던 때는 「v…」「Leon…」으로 잘려 식별이 안 됐다. */
+.skills-card-source {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Fleet 세션 적용 여부는 상태다: 적용이면 positive 점, 아니면 점 없이 흐린 글자. */
+.skills-card-target {
+  align-items: center;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  font-size: var(--t-sm);
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.skills-card-target.is-on { color: var(--text-secondary); }
+
+.skills-card-target.is-on::before {
+  background: var(--positive);
+  border-radius: 50%;
+  content: "";
+  height: 6px;
+  width: 6px;
+}
+
+.skills-update-result {
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.skills-overlay-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.skills-overlay-actions .skills-btn--remove { margin-left: 0; }
+
 .skills-card-installs {
   color: var(--text-tertiary);
   font-size: var(--t-sm);

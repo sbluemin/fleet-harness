@@ -5,18 +5,23 @@ import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { type CliExecutor, defaultCwd, stripAnsi } from "./cli.js";
-import { appendChunk, createJob, finishJob, getJobResult } from "./jobs.js";
-import { readSkillDescription } from "./frontmatter.js";
+import { type CliExecutor, claudeConfigDir, defaultCwd, stripAnsi } from "./cli.js";
+import { appendChunk, createJob, finishJob, getJobResult, setJobSummary } from "./jobs.js";
+import { readSkillDescription, resolveContainedSkillMd } from "./frontmatter.js";
 import { ProjectPathError, resolveProjectCwd } from "./project-path.js";
 import { searchRegistry } from "./registry-search.js";
-import type { AgentId, Scope, SkillListItem } from "./skill-types.js";
-import { isPlainObject, validateAgent, validateScope, validateSkill, validateSource } from "./validation.js";
+import type { InstallTarget, Scope, SkillListItem } from "./skill-types.js";
+import { isPlainObject, validateScope, validateSkill, validateSource, validateTarget } from "./validation.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
 interface LockFileEntry {
   source?: string;
+  /** v1(프로젝트) lock의 내용 해시. */
+  computedHash?: string;
+  /** v3(전역) lock의 폴더 해시. */
+  skillFolderHash?: string;
+  updatedAt?: string;
 }
 
 /** v1은 이름을 최상위 키로 두고, v3는 `skills` 아래로 한 겹 넣는다. */
@@ -24,6 +29,11 @@ type LockFile = Record<string, LockFileEntry | unknown> & { skills?: Record<stri
 
 interface LockLookup {
   readonly sources: Map<string, string>;
+  /**
+   * 스킬별 내용 지문(해시, 없으면 갱신 시각). 업데이트 전후를 비교해 무엇이 바뀌었는지 안다 —
+   * CLI 출력 문구를 해석하지 않는 이유는 그 문구가 버전마다 바뀌기 때문이다.
+   */
+  readonly fingerprints: Map<string, string>;
   /** lock을 실제로 읽어냈는가 — 읽지 못했다면 출처의 부재는 "모름"이지 "로컬"이 아니다. */
   readonly lockRead: boolean;
 }
@@ -38,12 +48,14 @@ interface RawSkillEntry {
 interface JobOutputRedactionPaths {
   readonly cwd: string;
   readonly homeDir: string;
+  readonly claudeConfigDir: string;
   readonly pluginDataDir: string;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-const ALL_AGENTS: AgentId[] = ["claude-code", "codex", "cursor", "opencode"];
+/** CLI가 claude-code에 붙이는 표시 이름. 목록의 다른 CLI 줄에서는 뺀다(따로 판정해 보여 준다). */
+const CLAUDE_CODE_DISPLAY_NAME = "Claude Code";
 const PREVIEW_TIMEOUT_MS = 30_000;
 const CLI_TIMEOUT_MS = 120_000;
 const USERINFO_URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+@[^\s]+/gi;
@@ -86,11 +98,14 @@ function isLockShape(parsed: unknown): parsed is LockFile {
   return hasSourceEntry(parsed);
 }
 
-function collectLockSources(lock: LockFile, sources: Map<string, string>): void {
+function collectLockSources(lock: LockFile, sources: Map<string, string>, fingerprints: Map<string, string>): void {
   const table = isPlainObject(lock.skills) ? lock.skills : (lock as Record<string, unknown>);
   for (const [name, entry] of Object.entries(table)) {
     if (isPlainObject(entry) && typeof entry["source"] === "string") {
       sources.set(name, entry["source"]);
+      const fingerprint = [entry["computedHash"], entry["skillFolderHash"], entry["updatedAt"]]
+        .find((value): value is string => typeof value === "string" && value !== "");
+      if (fingerprint) fingerprints.set(name, fingerprint);
     }
   }
 }
@@ -105,6 +120,7 @@ function collectLockSources(lock: LockFile, sources: Map<string, string>): void 
  */
 async function readSkillSources(cwd: string): Promise<LockLookup> {
   const sources = new Map<string, string>();
+  const fingerprints = new Map<string, string>();
 
   for (const candidate of [
     path.join(cwd, "skills-lock.json"),
@@ -120,15 +136,15 @@ async function readSkillSources(cwd: string): Promise<LockLookup> {
       const parsed = JSON.parse(raw) as unknown;
       // 파싱된 lock은 항목이 하나도 없어도 "읽은" 것이다 — 빈 lock은 모름이 아니라 비어 있음이다.
       if (isLockShape(parsed)) {
-        collectLockSources(parsed, sources);
-        return { sources, lockRead: true };
+        collectLockSources(parsed, sources, fingerprints);
+        return { sources, fingerprints, lockRead: true };
       }
     } catch {
       // 손상/모르는 스키마 → 읽지 못한 것으로 남긴다
     }
   }
 
-  return { sources, lockRead: false };
+  return { sources, fingerprints, lockRead: false };
 }
 
 async function runListCommand(args: string[], cwd: string, executor: CliExecutor): Promise<RawSkillEntry[]> {
@@ -180,7 +196,7 @@ export function redactJobOutput(chunk: string, paths: JobOutputRedactionPaths): 
   let redacted = chunk
     .replace(USERINFO_URL_RE, "[redacted credential URL]")
     .replace(TOKEN_URL_PARAM_RE, "$1[redacted]");
-  const sensitivePaths = [...new Set([paths.cwd, paths.homeDir, paths.pluginDataDir])]
+  const sensitivePaths = [...new Set([paths.cwd, paths.homeDir, paths.claudeConfigDir, paths.pluginDataDir])]
     .filter(Boolean)
     .sort((a, b) => b.length - a.length);
   for (const sensitivePath of sensitivePaths) {
@@ -193,8 +209,35 @@ function getJobOutputRedactionPaths(ctx: FleetPluginServerContext, cwd: string):
   return {
     cwd,
     homeDir: os.homedir(),
+    claudeConfigDir: claudeConfigDir(),
     pluginDataDir: ctx.host.paths.pluginDataDir("skills"),
   };
+}
+
+/** scope의 정당한 경계. 전역은 홈과, 홈 밖에 있을 수 있는 Claude 설정 디렉터리 둘이다. */
+function scopeRoots(scope: Scope, cwd: string): readonly string[] {
+  return scope === "global" ? [cwd, claudeConfigDir()] : [cwd];
+}
+
+/** Claude Code 스킬 폴더. 프로젝트는 Theater의 `.claude/skills`, 전역은 Claude 설정 디렉터리 아래다. */
+function claudeSkillsDir(scope: Scope, cwd: string): string {
+  return scope === "global" ? path.join(claudeConfigDir(), "skills") : path.join(cwd, ".claude", "skills");
+}
+
+/**
+ * Fleet의 Claude 세션이 이 스킬을 싣는가. CLI의 에이전트 보고는 설치 감지(`~/.claude` 존재 등)에
+ * 기대므로 쓰지 않고, 스킬 폴더 이름이 Claude 스킬 폴더에 SKILL.md와 함께 있는지를 직접 본다.
+ * 심링크로 걸린 스킬도 센다(`stat`은 링크를 따라간다).
+ */
+async function isLoadedByClaude(scope: Scope, cwd: string, skillPath: string): Promise<boolean> {
+  const dirName = path.basename(skillPath);
+  if (!dirName || dirName === "." || dirName === "..") return false;
+  try {
+    const stat = await fs.stat(path.join(claudeSkillsDir(scope, cwd), dirName, "SKILL.md"));
+    return stat.isFile();
+  } catch {
+    return false;
+  }
 }
 
 function spawnJobAsync(
@@ -203,6 +246,7 @@ function spawnJobAsync(
   cwd: string,
   redactionPaths: JobOutputRedactionPaths,
   executor: CliExecutor,
+  beforeFinish?: () => Promise<void>,
 ): void {
   setImmediate(() => {
     void executor(args, {
@@ -211,7 +255,12 @@ function spawnJobAsync(
       onChunk: (chunk) => appendChunk(jobId, redactJobOutput(chunk, redactionPaths)),
       onBootstrap: (line) => appendChunk(jobId, redactJobOutput(line + "\n", redactionPaths)),
     })
-      .then((result) => finishJob(jobId, result.exitCode))
+      .then(async (result) => {
+        // 요약은 작업이 끝났다고 알리기 **전에** 싣는다 — 완료를 본 클라이언트가 요약 없는 응답을
+        // 받는 틈이 없어야 한다. 요약 실패는 작업 결과를 바꾸지 않는다.
+        if (result.exitCode === 0 && beforeFinish) await beforeFinish().catch(() => {});
+        finishJob(jobId, result.exitCode);
+      })
       .catch(() => finishJob(jobId, 1));
   });
 }
@@ -227,19 +276,21 @@ async function toListItems(
   raw: readonly RawSkillEntry[],
   scope: Scope,
   lock: LockLookup,
-  allowedRoot: string,
+  cwd: string,
 ): Promise<SkillListItem[]> {
+  const allowedRoots = scopeRoots(scope, cwd);
   return Promise.all(raw.map(async (entry) => {
-    const description = entry.path
-      ? await readSkillDescription(entry.path, allowedRoot)
-      : undefined;
+    const [description, claudeCode] = entry.path
+      ? await Promise.all([readSkillDescription(entry.path, allowedRoots), isLoadedByClaude(scope, cwd, entry.path)])
+      : [undefined, false];
     const source = lock.sources.get(entry.name);
     // lock을 읽었는데 이 스킬이 없을 때만 "관리 밖"이라고 단언할 수 있다.
     const unmanaged = !source && lock.lockRead;
     return {
       name: entry.name,
       scope,
-      agents: entry.agents,
+      agents: (Array.isArray(entry.agents) ? entry.agents : []).filter((agent) => agent !== CLAUDE_CODE_DISPLAY_NAME),
+      claudeCode,
       ...(source ? { source } : {}),
       ...(unmanaged ? { unmanaged: true } : {}),
       ...(description ? { description } : {}),
@@ -385,16 +436,17 @@ export async function handleInstall(
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { source, skill, scope, agents, theaterId: rawTheaterId } = body;
+  const { source, skill, scope, targets, theaterId: rawTheaterId } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
 
   if (!validateSource(source)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   if (!validateScope(scope)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
-  if (!Array.isArray(agents) || agents.length === 0) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
-  for (const agent of agents) {
-    if (!validateAgent(agent)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+  if (!Array.isArray(targets) || targets.length === 0) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+  for (const target of targets) {
+    if (!validateTarget(target)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
   }
+  const selected = [...new Set(targets as InstallTarget[])];
 
   let projectCwd: string | null = null;
   if (scope === "project") {
@@ -411,7 +463,23 @@ export async function handleInstall(
   const jobId = createJob(scope, theaterId ?? "__global__");
   if (!jobId) { ctx.host.http.writeJson(res, 409, { error: "job_in_progress" }); return; }
 
-  const agentArgs = (agents as AgentId[]).flatMap((a) => ["--agent", a]);
+  // CLI는 프로젝트에 여러 대상을 받으면 공용 폴더에 한 벌을 두고 Claude 폴더에 링크를 거는데,
+  // Theater에 `.claude/`가 없으면 그 링크를 성공으로 보고하면서 **조용히 건너뛴다**(skills 1.5.14
+  // installSkillForAgent). 그러면 Claude Code를 골랐는데도 Fleet 세션은 스킬을 싣지 못한다.
+  // 사용자가 Claude Code를 고른 경우에만 그 디렉터리 하나를 미리 만든다(이미 있으면 그대로 둔다).
+  if (scope === "project" && selected.includes("claude-code")) {
+    try {
+      await fs.mkdir(path.join(cwd, ".claude"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        finishJob(jobId, 1);
+        ctx.host.http.writeJson(res, 500, { error: "prepare_failed" });
+        return;
+      }
+    }
+  }
+
+  const agentArgs = selected.flatMap((target) => ["--agent", target]);
   // F4: project 스코프는 플래그 생략(add 기본=project), global만 -g
   const scopeFlag = scope === "global" ? ["-g"] : [];
   const args = ["add", source, "-y", "--skill", skill, ...scopeFlag, ...agentArgs];
@@ -432,10 +500,12 @@ export async function handleUpdate(
   const body = await ctx.host.http.readJsonBody<Record<string, unknown>>(req);
   if (!isPlainObject(body) || "relPath" in body) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
-  const { scope, theaterId: rawTheaterId } = body;
+  const { scope, skill, theaterId: rawTheaterId } = body;
   const theaterId = typeof rawTheaterId === "string" ? rawTheaterId : undefined;
 
   if (!validateScope(scope)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
+  // 생략하면 scope 전체, 있으면 그 스킬 하나만 갱신한다.
+  if (skill !== undefined && !validateSkill(skill)) { ctx.host.http.writeJson(res, 400, { error: "invalid_argument" }); return; }
 
   let projectCwd: string | null = null;
   if (scope === "project") {
@@ -453,9 +523,19 @@ export async function handleUpdate(
   if (!jobId) { ctx.host.http.writeJson(res, 409, { error: "job_in_progress" }); return; }
 
   const scopeFlag = scope === "global" ? "-g" : "-p";
-  const args = ["update", "-y", scopeFlag];
+  const args = ["update", ...(skill !== undefined ? [skill] : []), "-y", scopeFlag];
+  const before = await readSkillSources(cwd);
 
-  spawnJobAsync(jobId, args, cwd, getJobOutputRedactionPaths(ctx, cwd), executor);
+  spawnJobAsync(jobId, args, cwd, getJobOutputRedactionPaths(ctx, cwd), executor, async () => {
+    const after = await readSkillSources(cwd);
+    // 어느 한쪽 lock이라도 읽지 못했다면 비교할 근거가 없다 — "바뀐 것 없음"이라고 단정하지 않는다.
+    if (!before.lockRead || !after.lockRead) return;
+    const updated = [...after.fingerprints]
+      .filter(([name, fingerprint]) => before.fingerprints.has(name) && before.fingerprints.get(name) !== fingerprint)
+      .map(([name]) => name)
+      .sort((left, right) => left.localeCompare(right));
+    setJobSummary(jobId, { updated });
+  });
 
   ctx.host.http.writeJson(res, 202, { jobId });
 }
@@ -598,33 +678,17 @@ export async function handleInstalledFile(
     const entry = rawSkills.find((e) => e.name === skill && e.scope === scope);
     if (!entry?.path) { ctx.host.http.writeJson(res, 404, { error: "skill_not_found" }); return; }
 
-    const skillRoot = entry.path;
-    const skillMdPath = path.join(skillRoot, "SKILL.md");
+    // CLI가 보고한 경로 자체도 신뢰하지 않는다 — scope의 정당한 경계(project=Theater 루트,
+    // global=홈과 Claude 설정 디렉터리)를 벗어나면 읽지 않는다. `.agents/skills`로 고정하지 않는
+    // 이유: Claude 단독 설치는 `.claude/skills`(전역은 `CLAUDE_CONFIG_DIR/skills`)에 놓인다.
+    const contained = await resolveContainedSkillMd(entry.path, scopeRoots(scope, cwd));
+    if (contained.kind === "missing") { ctx.host.http.writeJson(res, 404, { error: "skill_not_found" }); return; }
+    if (contained.kind === "outside") { ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" }); return; }
 
-    const [realAllowedRoot, realRoot, realMd] = await Promise.all([
-      // CLI가 보고한 skillRoot 자체도 신뢰하지 않는다 — scope의 정당한 상위 경계
-      // (project=theater 루트, global=홈)를 벗어나면 읽지 않는다. `.agents/skills`로
-      // 고정하지 않는 이유: claude 단독 설치는 `.claude/skills` 아래에 놓인다.
-      fs.realpath(cwd),
-      fs.realpath(skillRoot),
-      fs.realpath(skillMdPath).catch(() => null),
-    ]);
-
-    if (!realMd) { ctx.host.http.writeJson(res, 404, { error: "skill_not_found" }); return; }
-    if (realRoot !== realAllowedRoot && !realRoot.startsWith(realAllowedRoot + path.sep)) {
-      ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" });
-      return;
-    }
-    if (realMd !== realRoot && !realMd.startsWith(realRoot + path.sep)) {
-      ctx.host.http.writeJson(res, 403, { error: "path_outside_theater" });
-      return;
-    }
-
-    const markdown = await fs.readFile(realMd, "utf-8");
+    const markdown = await fs.readFile(contained.path, "utf-8");
     ctx.host.http.writeJson(res, 200, { markdown });
   } catch {
     ctx.host.http.writeJson(res, 502, { error: "read_failed" });
   }
 }
 
-export { ALL_AGENTS };

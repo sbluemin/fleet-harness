@@ -2,7 +2,7 @@
 
 const SOURCE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9._-]+$/;
 const SKILL_RE = /^[a-z0-9][a-z0-9._-]*$/;
-const VALID_AGENTS = new Set(["claude-code", "codex", "cursor", "opencode"]);
+const VALID_TARGETS = new Set(["claude-code", "universal"]);
 const VALID_SCOPES = new Set(["project", "global"]);
 
 // ─── functions ───────────────────────────────────────────────────────────────
@@ -19,8 +19,8 @@ export function validateSkill(skill: unknown): skill is string {
   return typeof skill === "string" && !skill.startsWith("-") && SKILL_RE.test(skill);
 }
 
-export function validateAgent(agent: unknown): agent is string {
-  return typeof agent === "string" && !agent.startsWith("-") && VALID_AGENTS.has(agent);
+export function validateTarget(target: unknown): target is "claude-code" | "universal" {
+  return typeof target === "string" && !target.startsWith("-") && VALID_TARGETS.has(target);
 }
 
 export function validateScope(scope: unknown): scope is "project" | "global" {

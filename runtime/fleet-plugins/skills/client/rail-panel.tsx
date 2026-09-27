@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useJobLog } from "./use-job-log.js";
 import { JobStatusDock } from "./skill-feedback.js";
-import type { AgentId } from "../server/skill-types.js";
+import type { InstallTarget } from "../server/skill-types.js";
 
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
@@ -112,12 +112,14 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
     setReadMoreEntry(null);
   }, [installLog.status, installTarget, handleInstallSuccess]);
 
-  const handleOverlayInstall = useCallback((scope: Scope, agents: AgentId[]) => {
+  const handleOverlayUpdated = useCallback(() => setInstalledRefreshKey((key) => key + 1), []);
+
+  const handleOverlayInstall = useCallback((scope: Scope, targets: InstallTarget[]) => {
     if (!readMoreEntry || installLog.status === "running") return;
     const skill = readMoreEntry.skill;
     setInstallTarget({ name: skill.name, scope });
     installLog.start("/plugins/skills/install", {
-      source: skill.source, skill: skill.name, scope, agents,
+      source: skill.source, skill: skill.name, scope, targets,
       ...(scope === "project" ? { theaterId } : {}),
     });
   }, [readMoreEntry, installLog, theaterId]);
@@ -196,6 +198,7 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
         onClose={closeOverlay}
         onInstall={handleOverlayInstall}
         installLog={installLog}
+        onUpdated={handleOverlayUpdated}
         onRemoved={() => {
           setReadMoreEntry((entry) => entry === readMoreEntry ? null : entry);
           setInstalledRefreshKey((key) => key + 1);

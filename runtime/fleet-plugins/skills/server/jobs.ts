@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { stripAnsi } from "./cli.js";
+import type { UpdateSummary } from "./skill-types.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -12,6 +13,7 @@ interface Job {
   exitCode?: number;
   createdAt: number;
   partialLine: string;
+  summary?: UpdateSummary;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -80,6 +82,12 @@ export function appendChunk(id: string, chunk: string): void {
   }
 }
 
+/** 끝나기 전에 결과 요약을 싣는다. 완료 응답과 요약이 같은 폴링에 함께 도착한다. */
+export function setJobSummary(id: string, summary: UpdateSummary): void {
+  const job = jobs.get(id);
+  if (job) job.summary = summary;
+}
+
 export function finishJob(id: string, exitCode: number): void {
   const job = jobs.get(id);
   if (!job) return;
@@ -106,7 +114,7 @@ export function finishJob(id: string, exitCode: number): void {
 export function getJobResult(
   id: string,
   cursor: number,
-): { lines: string[]; nextCursor: number; status: JobStatus; exitCode?: number } | null {
+): { lines: string[]; nextCursor: number; status: JobStatus; exitCode?: number; summary?: UpdateSummary } | null {
   const job = jobs.get(id);
   if (!job) return null;
 
@@ -116,6 +124,7 @@ export function getJobResult(
     nextCursor: cursor + slice.length,
     status: job.status,
     exitCode: job.exitCode,
+    ...(job.status === "done" && job.summary ? { summary: job.summary } : {}),
   };
 }
 
