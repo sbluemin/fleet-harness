@@ -27,6 +27,8 @@ const WAR_ROOM_OWNED_SELECTOR = [
   ".canvas-triage-deck-pick",
   ".canvas-minimap",
   ".canvas-context-menu",
+  // 우하단 허용 요청 더미처럼 덱 위에 떠서 답을 받는 표면 — 누르는 것은 빈 자리가 아니다.
+  "[data-keep-operation-active]",
 ].join(", ");
 
 export function isMapActivationSurface(target: EventTarget | null): boolean {

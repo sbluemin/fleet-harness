@@ -4907,14 +4907,28 @@
   line-height: 1.4;
 }
 
+/* 우하단 계기 열 — MAP(또는 접힌 Map 버튼)과 그 위의 허용 요청 더미가 함께 선다.
+   아레나 안 도킹이다: 레일 카드가 점유한 폭(--arena-right)과 Zen 작업 표시줄(--arena-bottom)을 피한다(사전 감사 high).
+   열은 z-index 를 두지 않아 쌓임 맥락을 만들지 않는다 — MAP(14)과 더미(81)가 캔버스 층에서 각자 겨룬다.
+   빈 곳은 클릭을 통과시키고, 계기와 카드만 포인터를 쥔다. */
+.canvas-corner-dock {
+  position: absolute;
+  right: calc(var(--arena-right, 0px) + var(--space-4));
+  bottom: calc(var(--arena-bottom, 0px) + var(--space-4));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
 /* 우하단 캔버스 미니맵 — 침묵하는 계기. 크롬은 중립 헤어라인으로 소등하고,
    brass는 위치 채널(뷰포트 렌즈·hover/focus)에서만 발화한다. */
 .canvas-minimap {
-  position: absolute;
-  /* 아레나 안 도킹 — 레일 카드가 점유한 폭(--arena-right)을 피해서 선다(사전 감사 high). */
-  right: calc(var(--arena-right, 0px) + var(--space-4));
-  bottom: calc(var(--arena-bottom, 0px) + var(--space-4));
+  position: relative;
   z-index: 14;
+  flex: none;
+  pointer-events: auto;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
@@ -5023,10 +5037,10 @@
 
 /* 접힌 Map — 우하단 단일 Map 아이콘 버튼. 휴지 상태는 중립, brass는 hover/focus에서만. */
 .canvas-minimap-fab {
-  position: absolute;
-  right: calc(var(--arena-right, 0px) + var(--space-4));
-  bottom: calc(var(--arena-bottom, 0px) + var(--space-4));
+  position: relative;
   z-index: 14;
+  flex: none;
+  pointer-events: auto;
   display: grid;
   place-items: center;
   width: 32px;
