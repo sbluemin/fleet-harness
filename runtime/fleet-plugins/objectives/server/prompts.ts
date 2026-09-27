@@ -65,22 +65,22 @@ export function startTurn(objective: Objective, language: PromptLanguage, contex
 }
 
 /**
- * 결정 답 — 사람이 보드에서 결정 요청에 답했다. 질문과 답을 원문 그대로 싣고(자르지 않는다), 답이 결정으로 남는다는 사실만
- * 덧붙인다. 답이 무슨 뜻인지, 다음에 무엇을 할지는 지휘관이 읽는다.
+ * 결정 답 — 사람이 보드에서 결정 요청에 답했다. 요청 id 와 질문·고른 선택지(설명 포함)·직접 쓴 말을 원문 그대로 싣는다(자르지
+ * 않는다). 결정 기록은 이 메시지가 닿은 뒤에 확정되므로 기록이 남았다고 말하지 않는다. 답의 뜻과 다음 일은 지휘관이 읽는다.
  */
 export function decisionTurn(objective: Objective, request: DecisionRequest, answers: readonly DecisionAnswer[], language: PromptLanguage): string {
   const ko = language === "ko";
   const quote = (value: string) => `> ${value.split("\n").join("\n> ")}`;
   const blocks = request.questions.map((question, index) => {
     const answer = answers.find((entry) => entry.questionId === question.id);
-    const picked = question.options.filter((option) => answer?.selectedOptionIds.includes(option.id)).map((option) => option.label);
+    const picked = question.options.filter((option) => answer?.selectedOptionIds.includes(option.id)).map((option) => quote(option.description ? `${option.label} — ${option.description}` : option.label));
     const lines = [`${index + 1}. ${quote(question.text)}`];
-    if (picked.length) lines.push(`${ko ? "고른 것" : "Chosen"}: ${picked.join(" · ")}`);
+    if (picked.length) lines.push(`${ko ? "고른 것" : "Chosen"}:\n${picked.join("\n")}`);
     if (answer?.text.trim()) lines.push(`${ko ? "직접 쓴 말" : "Written"}:\n${quote(answer.text)}`);
     return lines.join("\n");
   });
   const head = ko
-    ? `사람이 목표 \`${objective.id}\` 의 결정 요청에 답했습니다. 답은 보드의 decisions 에 질문마다 남았습니다.`
-    : `The person answered the decision request on objective \`${objective.id}\`. Each answer stays in the board's decisions.`;
+    ? `사람이 목표 \`${objective.id}\` 의 결정 요청 \`${request.id}\` 에 답했습니다. 아래는 해당 질문과 사람이 제출한 답입니다.`
+    : `The person answered decision request \`${request.id}\` on objective \`${objective.id}\`. The questions and the person's submitted answers follow.`;
   return `${head}\n\n${blocks.join("\n\n")}`;
 }

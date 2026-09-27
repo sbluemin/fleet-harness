@@ -237,25 +237,6 @@ export interface ObjectiveStore {
 const MAX_SEGMENT = 200;
 const safeSegment = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "_");
 
-/**
- * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 옛 보드를 전제로 한 늦은 요청은 지휘관 도구의 board_changed 가
- * 막는다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
- */
-function withoutDecisionRequest(stored: StoredObjective): StoredObjective {
-  if (!stored.decisionRequest || stored.decisionDelivery?.requestId === stored.decisionRequest.id) return stored;
-  return { ...stored, decisionRequest: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
-}
-
-/** 질문이 가리키던 임무·구성원이 보드에서 사라졌다 — 그 요청은 더는 같은 질문이 아니다. */
-function withLiveDecisionReferences(stored: StoredObjective): StoredObjective {
-  const request = stored.decisionRequest;
-  if (!request) return stored;
-  const missions = new Set(stored.missions.map((mission) => mission.id));
-  const members = new Set((stored.members ?? []).map((member) => member.id));
-  const dangling = request.questions.some((question) => (question.missionId && !missions.has(question.missionId)) || (question.memberId && !members.has(question.memberId)));
-  return dangling ? withoutDecisionRequest(stored) : stored;
-}
-
 /** 새 자리를 벌릴 때 쓰는 걸음 — 보드 끝에 붙이거나 저장 목표를 새로 만들 때 이만큼 띄운다. */
 const RANK_STEP = 1024;
 /**
@@ -419,6 +400,28 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     ? options.operations.describe(id)?.operation ?? null
     : options.operations.get(id);
   const now = options.now ?? (() => Date.now());
+  /**
+   * 지금 이 프로세스가 지휘관에게 보내고 있는 답의 요청 id. 저장된 decisionDelivery 는 기동이 끊기면 결과를 모르는 채 남으므로,
+   * 대체·철회·정리를 막는 것은 실제로 보내는 동안뿐이다. 남은 표시는 사람의 재전송이나 요청의 정리와 함께 거둔다.
+   */
+  const delivering = new Set<string>();
+  /**
+   * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 옛 보드를 전제로 한 늦은 요청은 지휘관 도구의 board_changed 가
+   * 막는다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
+   */
+  const withoutDecisionRequest = (stored: StoredObjective): StoredObjective => {
+    if (!stored.decisionRequest || delivering.has(stored.decisionRequest.id)) return stored;
+    return { ...stored, decisionRequest: undefined, decisionDelivery: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
+  };
+  /** 질문이 가리키던 임무·구성원이 보드에서 사라졌다 — 그 요청은 더는 같은 질문이 아니다. */
+  const withLiveDecisionReferences = (stored: StoredObjective): StoredObjective => {
+    const request = stored.decisionRequest;
+    if (!request) return stored;
+    const missions = new Set(stored.missions.map((mission) => mission.id));
+    const members = new Set((stored.members ?? []).map((member) => member.id));
+    const dangling = request.questions.some((question) => (question.missionId && !missions.has(question.missionId)) || (question.memberId && !members.has(question.memberId)));
+    return dangling ? withoutDecisionRequest(stored) : stored;
+  };
   /** Theater 마다 목표 id → 레코드. 폴더를 처음 볼 때 한 번 읽어 올리고, 그 뒤로는 이 캐시가 저장소의 모양이다. */
   const cache = new Map<string, Map<string, StoredObjective>>();
 
@@ -1378,7 +1381,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const objective = update(objectiveId, (stored) => {
         if (stored.done) throw new ObjectiveStoreError("objective_done");
         // 사람의 답이 지휘관에게 가는 중이다 — 그 요청을 덮으면 답이 어느 질문의 것인지 흐려진다.
-        if (stored.decisionDelivery) throw new ObjectiveStoreError("decision_delivering");
+        if (stored.decisionRequest && delivering.has(stored.decisionRequest.id)) throw new ObjectiveStoreError("decision_delivering");
         if ((stored.decisionRequestRevision ?? 0) !== input.expectedRevision) throw new ObjectiveStoreError("decision_request_changed", undefined, { decisionRequestRevision: stored.decisionRequestRevision ?? 0 });
         for (const question of input.questions) {
           if (question.missionId && !stored.missions.some((mission) => mission.id === question.missionId)) throw new ObjectiveStoreError("unknown_mission");
@@ -1395,7 +1398,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
             ...(question.memberId ? { memberId: question.memberId } : {}),
           })),
         };
-        return { ...stored, decisionRequest: request, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
+        return { ...stored, decisionRequest: request, decisionDelivery: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
       });
       return { objective, request, replacedRequestId };
     },
@@ -1406,9 +1409,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const current = stored.decisionRequest;
         if (!current) return stored;
         if (current.id !== requestId) throw new ObjectiveStoreError("decision_request_changed", undefined, { requestId: current.id });
-        if (stored.decisionDelivery?.requestId === current.id) throw new ObjectiveStoreError("decision_delivering");
+        if (delivering.has(current.id)) throw new ObjectiveStoreError("decision_delivering");
         withdrawn = true;
-        return { ...stored, decisionRequest: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
+        return { ...stored, decisionRequest: undefined, decisionDelivery: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
       });
       return { objective, withdrawn };
     },
@@ -1439,11 +1442,16 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         if (picked.size === 0 && !answer.text.trim()) throw new ObjectiveStoreError("invalid_answers");
         return { questionId: question.id, selectedOptionIds: question.options.filter((option) => picked.has(option.id)).map((option) => option.id), text: answer.text };
       });
+      if (delivering.has(request.id)) throw new ObjectiveStoreError("decision_delivering");
       const objective = update(objectiveId, (current) => ({ ...current, decisionDelivery: { requestId: request.id, answers, at: now() } }));
+      delivering.add(request.id);
       return { recorded: false, objective, request, answers };
     },
 
-    decisionSettle: (objectiveId, requestId, delivered) => update(objectiveId, (stored) => {
+    decisionSettle: (objectiveId, requestId, delivered) => {
+      // 보내기는 끝났다 — 기록이 실패해도 이 요청을 더는 「보내는 중」으로 붙들지 않는다.
+      delivering.delete(requestId);
+      return update(objectiveId, (stored) => {
       const delivery = stored.decisionDelivery;
       if (!delivery || delivery.requestId !== requestId) return stored;
       const request = stored.decisionRequest?.id === requestId ? stored.decisionRequest : null;
@@ -1461,7 +1469,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         };
       });
       return { ...stored, decisionDelivery: undefined, decisionRequest: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1, decisions: [...(stored.decisions ?? []), ...decisions] };
-    }),
+      });
+    },
   };
 
   /** 떨어뜨린 한 줄의 새 자리 — 쓰는 순서대로 담는다. */
