@@ -145,8 +145,20 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     reconcileOperations(ctx.api);
     notify();
   });
+  const onFocusOut = () => {
+    if (!pendingSelectionOperationId) return;
+    // focusout 중에는 activeElement가 아직 이동 전일 수 있다. 다음 편집 칸으로 옮긴 경우도 기다린다.
+    queueMicrotask(() => {
+      if (installed !== ctx || isObjectiveEditing()) return;
+      const operationId = pendingSelectionOperationId;
+      pendingSelectionOperationId = null;
+      if (operationId) handleMapOperationSelected(operationId);
+    });
+  };
+  if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
   return () => {
     offItem(); offGroup(); offRemoved(); offConsole();
+    if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
   };
 }
@@ -285,9 +297,20 @@ export function useObjectiveView(theaterId: string | null): ObjectiveViewState {
 }
 
 let latestSelectionToken = 0;
+let pendingSelectionOperationId: string | null = null;
+
+function isObjectiveEditing(): boolean {
+  if (typeof document === "undefined") return false;
+  const element = document.activeElement;
+  return element instanceof HTMLElement
+    && !!element.closest(".objectives-root")
+    && (element.isContentEditable || !!element.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'));
+}
+
 let selectionTheater: { readonly contextTheaterId: string | null; readonly theaterId: string } | null = null;
 
 function clearSelectionTheater(): void {
+  pendingSelectionOperationId = null;
   selectionTheater = null;
   latestSelectionToken += 1;
   notify();
@@ -310,6 +333,12 @@ export function useObjectiveDisplayTheater(contextTheaterId: string | null): str
 export function handleMapOperationSelected(operationId: string): void {
   if (!installed?.rail.isOpen("objectives")) return;
   const token = ++latestSelectionToken;
+  pendingSelectionOperationId = null;
+  // 자동 등단으로 현재 목표의 편집 DOM을 교체하지 않는다. 입력을 떠나면 가장 최근 등단만 적용한다.
+  if (isObjectiveEditing()) {
+    pendingSelectionOperationId = operationId;
+    return;
+  }
 
   const allOps = operationsSnapshot;
   const op = allOps.find((candidate) => candidate.id === operationId)
@@ -334,6 +363,8 @@ export function handleMapOperationSelected(operationId: string): void {
   const select = () => {
     if (token !== latestSelectionToken || !installed?.rail.isOpen("objectives")) return;
     if (selectionTheater?.theaterId !== theaterId) return;
+    // 조회를 기다리는 사이 시작한 편집도 같은 보류 규칙을 따른다.
+    if (isObjectiveEditing()) { pendingSelectionOperationId = operationId; return; }
     const matchingObjective = theaters.get(theaterId)?.objectives.find(
       (objective) => objective.id === operationId || objective.members.some((member) => member.id === operationId && member.sessionName !== null),
     );
