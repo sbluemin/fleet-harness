@@ -5439,9 +5439,10 @@ body[data-companion-resizing="true"] .canvas-operation {
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
 }
 
-/* War Room 무대는 틀 안에 고정된다. 부양 그림자가 바닥의 8px 틈을 덮어 수평선 빛을
-   어둡게 만들지 않도록 외부 그림자만 걷고, 패널 자체의 유리 rim·bevel은 보존한다. */
-.operations-canvas.is-triage .canvas-operation.is-triage-stage.is-active {
+/* War Room 무대 줄은 틀 안에 고정된다. 활성 여부와 동반 칸에 관계없이 외부 그림자를
+   걷어 바닥의 8px 틈을 보존한다. 유리 rim·bevel과 캡션의 기존 활성 표시는 그대로 둔다. */
+.operations-canvas.is-triage .canvas-operation.is-triage-stage,
+.operations-canvas.is-triage .canvas-companion-frame {
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel);
 }
 
