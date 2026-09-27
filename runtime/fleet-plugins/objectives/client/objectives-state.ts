@@ -47,7 +47,7 @@ let knownOperationIds: ReadonlySet<string> = new Set();
 
 /** 구성원 Operation — 임무가 아직 없어도 목표가 아니며 명단에서 제외되어야 한다. */
 function memberIds(objectives: readonly Objective[]): ReadonlySet<string> {
-  return new Set(objectives.flatMap((objective) => objective.members.flatMap((member) => member.operationId ? [member.operationId] : [])));
+  return new Set(objectives.flatMap((objective) => objective.members.filter((member) => member.sessionName !== null).map((member) => member.id)));
 }
 
 /**
@@ -294,7 +294,7 @@ export function handleMapOperationSelected(operationId: string): void {
   let targetTheaterId: string | null = op?.theaterId ?? null;
   if (!targetTheaterId) {
     for (const [tId, tState] of theaters) {
-      if (tState.objectives.some((objective) => objective.id === operationId || objective.members.some((m) => m.operationId === operationId))) {
+      if (tState.objectives.some((objective) => objective.id === operationId || objective.members.some((m) => m.id === operationId && m.sessionName !== null))) {
         targetTheaterId = tId;
         break;
       }
@@ -308,7 +308,7 @@ export function handleMapOperationSelected(operationId: string): void {
   const currentTheaterState = theaters.get(targetTheaterId);
   if (currentTheaterState?.loaded) {
     const matchingObjective = currentTheaterState.objectives.find(
-      (objective) => objective.id === operationId || objective.members.some((m) => m.operationId === operationId)
+      (objective) => objective.id === operationId || objective.members.some((m) => m.id === operationId && m.sessionName !== null)
     );
     if (!matchingObjective) return;
 
@@ -331,7 +331,7 @@ export function handleMapOperationSelected(operationId: string): void {
     if (!loadedState?.loaded) return;
 
     const matchingObjective = loadedState.objectives.find(
-      (objective) => objective.id === operationId || objective.members.some((m) => m.operationId === operationId)
+      (objective) => objective.id === operationId || objective.members.some((m) => m.id === operationId && m.sessionName !== null)
     );
     if (!matchingObjective) return;
 

@@ -131,7 +131,6 @@ export interface ObjectiveStore {
   all(): readonly Objective[];
   find(objectiveId: string): Objective | null;
   /** 지휘관의 담당 Operation 들 — 지휘관 Operation 이 이미 사라진 뒤에도 레코드에서 찾는다. */
-  membersOf(commanderId: string): readonly string[];
   /** 이 Operation 이 맡은 목표와 구성원. */
   findMember(operationId: string): { readonly objective: Objective; readonly memberId: string; readonly missionId: string | null } | null;
   /** 새 목표 레코드를 세운다 — pending 이 없으면 기존 Operation 을 입양한다. */
@@ -162,7 +161,6 @@ export interface ObjectiveStore {
   memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: "human" | "commander"): Objective;
   memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): Objective;
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
-  setMemberOperation(objectiveId: string, memberId: string, operationId: string | null): Objective;
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(objectiveId: string, from: string, to: string, why?: string): { readonly objective: Objective; readonly linked: boolean };
   edgesLinear(objectiveId: string): Objective;
@@ -352,7 +350,8 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!(objective.criteria?.length)) delete out.criteria;
   if (!(objective.criteriaProposals?.length)) delete out.criteriaProposals;
   if (!objective.members?.length) delete out.members;
-  else out.members = objective.members.map((member) => ({ ...member, ...(member.brief ? {} : { brief: undefined }), ...(member.launch ? {} : { launch: undefined }), ...(member.operationId ? {} : { operationId: undefined }), ...(member.subagents === true ? {} : { subagents: undefined }) }));
+  else out.members = objective.members.map((member) => ({ id: member.id, role: member.role, by: member.by,
+    ...(member.brief ? { brief: member.brief } : {}), ...(member.launch ? { launch: member.launch } : {}), ...(member.subagents === true ? { subagents: true } : {}) }));
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
   if (!objective.handoff) delete out.handoff;
@@ -449,9 +448,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const launch = node ? readOperationLaunch(node.payload) : { sessionName: pending!.sessionName, model: pending!.model, effort: pending!.effort, viewMode: pending!.viewMode, started: false };
     const addedBy = stored.addedBy ? { operationId: stored.addedBy, title: options.operations.get(stored.addedBy)?.title ?? null } : null;
     const members = (stored.members ?? []).map((member) => {
-      const memberNode = member.operationId ? options.operations.get(member.operationId) : null;
+      const memberNode = options.operations.get(member.id);
       const preset = memberNode ? readOperationLaunch(memberNode.payload) : null;
-      return { ...member, subagents: member.subagents === true, launch: member.launch ?? { mode: "route" as const }, sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: preset.model } : {}), ...(preset?.effort ? { effort: preset.effort } : {}) };
+      return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}),
+        subagents: member.subagents === true, launch: member.launch ?? { mode: "route" as const },
+        sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: preset.model } : {}), ...(preset?.effort ? { effort: preset.effort } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     return {
@@ -507,7 +508,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           member: member?.id ?? null,
           ...(mission.memberBy ? { memberBy: mission.memberBy } : {}),
           ...(mission.unplaced ? { unplaced: true as const } : {}),
-          operationId: member?.operationId ?? null,
+          operationId: member && options.operations.get(member.id) ? member.id : null,
           sessionName: member?.sessionName ?? null,
           ...(member?.launch.mode === "model" && member.model ? { model: member.model } : {}),
           ...(member?.launch.mode === "model" && member.effort ? { effort: member.effort } : {}),
@@ -518,7 +519,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     };
   };
   /** 담당 Operation — 목표가 아니라 목표의 임무를 맡은 세션이다. */
-  const memberIds = (objectives: Iterable<StoredObjective>): ReadonlySet<string> => new Set([...objectives].flatMap((entry) => (entry.members ?? []).flatMap((member) => (member.operationId ? [member.operationId] : []))));
+  const memberIds = (objectives: Iterable<StoredObjective>): ReadonlySet<string> => new Set([...objectives].flatMap((entry) => (entry.members ?? []).map((member) => member.id)));
   /** 목표가 되는 Operation 인가 — 이 Theater 의 에이전트 Operation 이고 다른 목표의 담당이 아니다. */
   const objectiveNode = (theaterId: string, operationId: string): OperationNode | null => {
     const node = options.operations.get(operationId);
@@ -714,16 +715,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     list: (theaterId) => visible(theaterId).map(({ stored, node }) => project(stored, node)),
     all: () => theaterIds().flatMap((theaterId) => store.list(theaterId)),
     find: (objectiveId) => { try { const { stored, node } = locate(objectiveId); return project(stored, node); } catch { return null; } },
-    membersOf(commanderId) {
-      for (const theaterId of theaterIds()) {
-        const stored = load(theaterId).get(commanderId);
-        if (stored) return (stored.members ?? []).flatMap((member) => (member.operationId ? [member.operationId] : []));
-      }
-      return [];
-    },
     findMember(operationId) {
       for (const objective of store.all()) {
-        const member = objective.members.find((candidate) => candidate.operationId === operationId);
+        const member = objective.members.find((candidate) => candidate.id === operationId);
         if (member) return { objective, memberId: member.id, missionId: objective.missions.find((mission) => mission.member === member.id)?.id ?? null };
       }
       return null;
@@ -800,7 +794,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       }
       // 담당 Operation 이 바뀌었다(세션 이름 등) — 그 임무가 있는 목표를 다시 방송한다.
       for (const owner of load(node.theaterId).values()) {
-        if (!(owner.members ?? []).some((member) => member.operationId === operationId)) continue;
+        if (!(owner.members ?? []).some((member) => member.id === operationId)) continue;
         const objective = view(node.theaterId, owner);
         if (objective) options.emit({ op: "upsert", theaterId: node.theaterId, objectiveId: objective.id, objective });
       }
@@ -817,10 +811,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           objectives.delete(operationId);
           options.emit({ op: "remove", theaterId, objectiveId: operationId });
         }
-        // 담당이었다면 그 연결만 푼다 — 맡긴 목표의 파일 한 건씩만 다시 쓴다.
-        for (const owner of [...objectives.values()]) {
-          if (!(owner.members ?? []).some((member) => member.operationId === operationId)) continue;
-          commit(theaterId, { ...owner, members: owner.members?.map((member) => (member.operationId === operationId ? { ...member, operationId: undefined } : member)) });
+        // 세션이 사라져도 구성원 id와 역할은 남는다. 다음 개시가 같은 id로 다시 만들 수 있다.
+        for (const owner of objectives.values()) {
+          if (!(owner.members ?? []).some((member) => member.id === operationId)) continue;
+          const projected = view(theaterId, owner);
+          if (projected) options.emit({ op: "upsert", theaterId, objectiveId: projected.id, objective: projected });
         }
       }
     },
@@ -939,10 +934,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const objective = update(objectiveId, (stored) => ({ ...stored, members: stored.members?.filter((member) => member.id !== memberId), missions: stored.missions.map((mission) => mission.member === memberId ? { ...mission, member: undefined, memberBy: undefined } : mission) }));
       return { objective, removed, missionIds };
     },
-    setMemberOperation: (objectiveId, memberId, operationId) => update(objectiveId, (stored) => {
-      if (!(stored.members ?? []).some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
-      return { ...stored, members: stored.members!.map((member) => member.id === memberId ? { ...member, operationId: operationId ?? undefined } : member) };
-    }),
 
     edgeToggle(objectiveId, from, to, why) {
       let linked = false;

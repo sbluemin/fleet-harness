@@ -525,7 +525,7 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
         ...deps.host.consoleUse,
         ...(deps.contributeConsoleUse ? { contribute: (tools) => deps.contributeConsoleUse!(plugin.manifest.id, tools) } : {}),
       },
-    });
+    }, plugin.manifest.id);
     if (agent) registrationTransaction.host.lifecycle.registerCleanup(() => agent.dispose());
     try {
       await register({
@@ -566,7 +566,7 @@ interface PluginRegistrationTransaction {
   rollback(): Promise<void>;
 }
 
-function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities): PluginRegistrationTransaction {
+function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities, pluginId: string): PluginRegistrationTransaction {
   const rollbackActions: Array<() => void | Promise<void>> = [];
   const consoleMcpConnections = new Set<ReturnType<FleetPluginHostCapabilities["consoleUse"]["connect"]>>();
   let consoleMcpCleanupRegistered = false;
@@ -654,6 +654,7 @@ function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities):
       },
       operations: {
         ...host.operations,
+        ...(host.operations.deleteChild ? { deleteChild: (id: string) => host.operations.deleteChild!(id, pluginId) } : {}),
         registerOperationType: (type) => track(host.operations.registerOperationType(type)),
         registerPayloadSanitizer: (pluginId, fields) => track(host.operations.registerPayloadSanitizer(pluginId, fields)),
         registerLaunchCatalog: (pluginId, provider) => track(host.operations.registerLaunchCatalog(pluginId, provider)),

@@ -1701,7 +1701,7 @@ export function OperationsCanvas({
             // 본문의 주인이 캡션 선반의 주인이다 — 제목 뒤 「› 이름」이 그 사실을 말한다. 이름·톤은 묶음이 준 것을 먼저 쓴다.
             subject: bodyNode ? {
               name: bodyMember?.name ?? nestedSubjectName(operation, bodyNode),
-              title: bodyNode.title,
+              title: bodyMember?.name ?? bodyNode.title,
               tone: bodyMember?.tone ?? canvas.operationAccent[bodyNode.id] ?? operationAccentFromNode(bodyNode),
             } : null,
             cluster: clusterRoot

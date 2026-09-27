@@ -42,7 +42,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
   for (const objective of objectives) {
     const commander = objective.id;
     const live = (operationId: string | null | undefined): string | null => (operationId && operationId !== commander && activity.has(operationId) ? operationId : null);
-    const liveMembers = objective.members.flatMap((member) => { const operationId = live(member.operationId); return operationId ? [{ member, operationId }] : []; });
+    const liveMembers = objective.members.flatMap((member) => { const operationId = live(member.id); return operationId ? [{ member, operationId }] : []; });
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Operation 이 살아 있으면 묶음이 선다.
     if ((objective.missions.length === 0 && liveMembers.length === 0) || !activity.has(commander)) continue;
     // 구성원 Operation → 대표 임무. 끝나지 않은 첫 임무가 이기고, 모두 끝났으면 마지막 임무.

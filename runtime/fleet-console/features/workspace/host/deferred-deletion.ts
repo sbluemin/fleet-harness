@@ -302,6 +302,14 @@ export function createDeferredDeletionCoordinator(deps: DeferredDeletionCoordina
       type: operation.type,
       ...(channel === OPERATION_RESTORED_EVENT_CHANNEL ? { operation } : {}),
     });
+    for (const child of operation.childSessions ?? []) {
+      deps.publish(channel, {
+        operationId: child.id,
+        pluginId: null,
+        type: "agent",
+        ...(channel === OPERATION_RESTORED_EVENT_CHANNEL ? { operation: deps.operations.get(child.id) } : {}),
+      });
+    }
   }
 
   return {

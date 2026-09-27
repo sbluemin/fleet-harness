@@ -19,6 +19,7 @@ export interface ComputerUseMcpDeps {
    * 구성) 실험 플래그만 본다.
    */
   readonly operations?: () => readonly OperationNode[];
+  readonly resolveOperation?: (id: string) => OperationNode | null;
   readonly experimentEnabled?: () => boolean;
   readonly language?: () => "en" | "ko" | null;
   /**
@@ -126,7 +127,7 @@ function computerUseDenial(deps: ComputerUseMcpDeps, sessionLabel: string | unde
   if (!deps.operations) return null;
   const id = operationIdFromSessionLabel(sessionLabel);
   const fallback = deps.language?.() ?? "en";
-  const operation = deps.operations().find((op) => op.id === id);
+  const operation = deps.resolveOperation?.(id) ?? deps.operations().find((op) => op.id === id);
   if (!operation) return { reason: "caller_unresolved", operationId: null, language: fallback };
   const flag = readComputerUseFlag(operation.payload);
   const language = flag?.language ?? fallback;

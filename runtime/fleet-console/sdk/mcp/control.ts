@@ -36,6 +36,8 @@ export interface ConsoleActionInput {
    * 태어난 뒤에 붙이면 첫 방송에 부모 없는 행이 실려 목록에 한 번 선다 — 그래서 기록은 생성과 함께다.
    */
   readonly parentOperationId?: string;
+  /** 플러그인 전용 자식 UUID. 같은 부모와 같은 id는 기존 세션을 돌려준다. */
+  readonly childSessionId?: string;
   /**
    * launch 전용·플러그인 호출자 전용 — 멱등 기동 키(`[A-Za-z0-9._:-]{1,128}`, 호출 플러그인 범위). 같은 키로는 Operation 이 많아야
    * 하나 생긴다: 살아 있으면 그 Operation 을 돌려주고, 삭제됐으면(유예 중·purge) `launch_key_deleted` 로 거절한다. 키는 생성과

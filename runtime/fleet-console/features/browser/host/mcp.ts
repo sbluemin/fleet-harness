@@ -14,6 +14,7 @@ export interface BrowserMcpDeps extends BrowserToolDeps {
   readonly service: BrowserService;
   readonly onFailure?: (kind: string, error: unknown) => void;
   readonly operations: () => readonly OperationNode[];
+  readonly resolveOperation?: (id: string) => OperationNode | null;
   readonly language?: () => "en" | "ko" | null;
 }
 
@@ -43,7 +44,7 @@ function refuse(reason: BrowserRefusal, operationId: string | null, language: "e
 function deny(deps: BrowserMcpDeps, sessionLabel: string | undefined) {
   const id = operationIdFromSessionLabel(sessionLabel);
   const fallback = deps.language?.() ?? "en";
-  const operation = deps.operations().find((op) => op.id === id);
+  const operation = deps.resolveOperation?.(id) ?? deps.operations().find((op) => op.id === id);
   if (!operation) return { denied: refuse("caller_unresolved", null, fallback), operationId: null };
   // 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 있고 브라우저·모바일 화면이 없을 때만 열린다.
   const availability = deps.service.availability();

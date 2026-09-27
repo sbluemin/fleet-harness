@@ -327,7 +327,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     void injectRenameCommand(payload.operationId, payload.title);
   });
   const unsubscribeChatDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
-    if (isOperationDeletedEventPayload(payload) && payload.pluginId === null) void chatRegistry.dispose(payload.operationId);
+    if (!isOperationDeletedEventPayload(payload) || payload.pluginId !== null) return;
+    const id = payload.operationId;
+    void chatRegistry.dispose(id);
+    terminalRuntime.terminate(id);
+    consoleTerminal.forget(id);
+    reminderWriter.cancel(id);
+    workspaceContext.forget(id);
+    observability.removeTerminalSession(id);
   });
   const unsubscribeRestore = ctx.host.events.subscribe(OPERATION_RESTORED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRestoredEvent(payload) || payload.pluginId !== null || payload.type !== AGENT_OPERATION_TYPE) return;
@@ -544,14 +551,20 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const cwd = ctx.host.paths.resolveTheaterPath(input.theaterId!);
         if (!cwd) throw new ConsoleControlError("unknown_theater");
         // 부모는 세션을 만들기 전에 따진다 — 저장소도 거절하지만, 그때는 이미 세운 대기 세션이 남는다.
-        if (input.parentOperationId) {
-          const parent = ctx.host.operations.get(input.parentOperationId);
-          if (!parent || parent.theaterId !== input.theaterId || parent.parentOperationId) throw new ConsoleControlError("invalid_parent_operation");
+        if (input.childSessionId) {
+          if (caller.kind !== "plugin") throw new ConsoleControlError("invalid_launch_option");
+          const parent = ctx.host.operations.list().find((candidate) => candidate.id === input.parentOperationId);
+          if (!parent || parent.theaterId !== input.theaterId) throw new ConsoleControlError("invalid_parent_operation");
+          const existing = ctx.host.operations.get(input.childSessionId);
+          if (existing) {
+            if (existing.parentOperationId !== parent.id) throw new ConsoleControlError("operation_id_taken");
+            return { operationId: input.childSessionId, delivery: "confirmed" };
+          }
         }
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.ownedTemp === true && caller.kind === "plugin" ? { ownedTemp: true } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.ownedTemp === true && caller.kind === "plugin" ? { ownedTemp: true } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -561,7 +574,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 제목은 태어날 때 붙였다(createSession) — 여기서 rename 사건을 내면 PTY 에 `/rename` 이 쳐진다.
         // 태어날 때부터 그룹에 — 사람이 그룹 헤더의 + 로 여는 것과 같은 자리. 그룹은 호스트 저장소 필드라 표면을 지난다.
         // 그룹이 그 사이 지워졌어도 시작은 성공이다 — 실패로 돌려주면 재시도가 같은 Operation 을 하나 더 만든다.
-        if (input.groupId && deps.organize?.group) { try { deps.organize.group({ mode: "assign", theaterId: input.theaterId!, groupId: input.groupId, operationIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
+        if (!input.childSessionId && input.groupId && deps.organize?.group) { try { deps.organize.group({ mode: "assign", theaterId: input.theaterId!, groupId: input.groupId, operationIds: [launchedId] }); } catch { /* 미분류로 남는다 */ } }
         return { operationId: launchedId, delivery: "queued" };
       }
       const operationId = input.operationId!;
@@ -1087,7 +1100,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly ownedTemp?: boolean; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly newOperationId?: string; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly ownedTemp?: boolean; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly newOperationId?: string; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1104,7 +1117,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     launchOptions.assertCurrent?.();
     if (launchOptions.newOperationId && ctx.host.operations.get(launchOptions.newOperationId)) throw new ConsoleControlError("operation_id_taken");
-    const sessionId = launchOptions.newOperationId ?? crypto.randomUUID();
+    const sessionId = launchOptions.childSessionId ?? launchOptions.newOperationId ?? crypto.randomUUID();
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
     workspaceContext.observe(sessionId, theaterId, cwd);
     // 원문은 argv에 오르지 않고 파일 포인터가 첫 UserPromptSubmit이 된다. 그 지시는 절대
@@ -1134,20 +1147,22 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // 멱등 기동 키 — 생성과 같은 영속 저장에 실려야 「없음」이 「만든 적 없음」으로 확정된다. 브라우저 DTO 에서는 빠진다.
       ...(launchOptions.launchKey ? { launchKey: launchOptions.launchKey } : {}),
     };
-    ctx.host.operations.create({
-      id: session.sessionId,
-      theaterId,
-      type: AGENT_OPERATION_TYPE,
-      pluginId: null,
-      title: namedSession.label ?? session.label ?? path.basename(cwd),
-      // 태어날 때의 강제 차단은 세션 스냅샷과 별개인 다음 기동 정책에도 남긴다. 허용 기동은 전역 정책만 쓴다.
-      // 질문 차단도 같은 자리의 다음 기동 정책이다 — 휴면 재개·채팅 전환·PTY 재기동이 모두 이 값을 읽는다.
-      payload: ((withPolicy) => launchOptions.disableUserQuestions ? withUserQuestions(withPolicy, "blocked") : withPolicy)(launchOptions.disableSubagents ? withSubagentSpawn(bornPayload, "blocked") : bornPayload),
-      ...(launchOptions.geometry ? { geometry: launchOptions.geometry } : {}),
-      // 부모는 태어날 때 함께 — 생성 방송(operation:changed)이 부모 없는 행을 한 번이라도 실으면 목록에 선다.
-      ...(launchOptions.parentOperationId ? { parentOperationId: launchOptions.parentOperationId } : {}),
-      createdAt: session.createdAt,
-    });
+    const payload = ((withPolicy) => launchOptions.disableUserQuestions ? withUserQuestions(withPolicy, "blocked") : withPolicy)(launchOptions.disableSubagents ? withSubagentSpawn(bornPayload, "blocked") : bornPayload);
+    if (launchOptions.parentOperationId && launchOptions.childSessionId) {
+      if (!ctx.host.operations.createChild) throw new ConsoleControlError("capability_unavailable");
+      ctx.host.operations.createChild({ parentOperationId: launchOptions.parentOperationId, childSessionId: session.sessionId, payload });
+    } else {
+      ctx.host.operations.create({
+        id: session.sessionId,
+        theaterId,
+        type: AGENT_OPERATION_TYPE,
+        pluginId: null,
+        title: namedSession.label ?? session.label ?? path.basename(cwd),
+        payload,
+        ...(launchOptions.geometry ? { geometry: launchOptions.geometry } : {}),
+        createdAt: session.createdAt,
+      });
+    }
     if (launchOptions.dormant) {
       const dormant = injectOperation(ctx.host.operations.get(sessionId)!);
       observability.notifySessionUpdated(dormant);
@@ -2298,7 +2313,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (result?.renamed) {
       observability.notifySessionUpdated(result.session);
       const autoNameCwd = readPayloadString(ctx.host.operations.get(sessionId)?.payload ?? {}, "cwd") ?? result.session.cwdLabel;
-      ctx.host.operations.patch(sessionId, { title: result.session.label ?? path.basename(autoNameCwd) });
+      if (!ctx.host.operations.get(sessionId)?.parentOperationId) ctx.host.operations.patch(sessionId, { title: result.session.label ?? path.basename(autoNameCwd) });
     }
     ctx.host.http.writeJson(res, 200, { ok: true, renamed: result?.renamed === true });
     return true;
@@ -2518,7 +2533,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const cwd = readPayloadString(operation.payload, "cwd") || applied.session.cwdLabel;
         const providerSession = readProviderSession(operation.payload);
         ctx.host.operations.patch(sessionId, {
-          title: applied.session.label ?? applied.session.cwdLabel,
+          ...(!operation.parentOperationId ? { title: applied.session.label ?? applied.session.cwdLabel } : {}),
           payload: toOperationPayload(operation.payload, cwd, applied.session, providerSession, observability.getDurableOperation(sessionId)?.providerTitle),
         });
       })
@@ -2572,7 +2587,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   function rehydrateDormantAgentOperations(): void {
-    for (const operation of ctx.host.operations.list()) {
+    const parents = ctx.host.operations.list();
+    const sessions = parents.flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => {
+      const operation = ctx.host.operations.get(child.id);
+      return operation ? [operation] : [];
+    })]);
+    for (const operation of sessions) {
       if (operation.pluginId !== null || operation.type !== AGENT_OPERATION_TYPE) continue;
       const providerSession = readProviderSession(operation.payload);
       // 채팅 표면에 있는 Operation은 첫 턴 전에는 providerSession이 없다 — 채팅으로 태어났든

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../../../core/client/src/i18n/index.js";
+import { setOperationUseRequestIds } from "../../../core/client/src/integration/store.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import "../../execution/client/agent/computer-screen-share.css";
 
@@ -35,9 +36,10 @@ export function useOperationUse(operationId: string) {
   };
 }
 /** 이 Operation 이 답을 기다리는 허용 요청(도구군마다 하나). */
-export function useOperationUseRequests(operationId: string): readonly OperationUseRequest[] {
+export function useOperationUseRequests(operationId: string, childSessionIds: readonly string[] = []): readonly OperationUseRequest[] {
   const activity = useContext(OperationUseContext);
-  return activity.requests.filter((request) => request.operationId === operationId);
+  const represented = new Set([operationId, ...childSessionIds]);
+  return activity.requests.filter((request) => represented.has(request.operationId));
 }
 
 function readRequests(value: unknown): OperationUseRequest[] {
@@ -64,12 +66,16 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
         if (!response.ok) throw new Error("operation_use_unavailable");
         const next = await response.json() as { console: string[]; computer: string[]; browser?: string[]; requests?: unknown; grants?: { console?: unknown; computer?: unknown } };
         const ids = (value: unknown) => Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-        if (!controller.signal.aborted) setActivity({ console: next.console, computer: next.computer, browser: next.browser ?? [], requests: readRequests(next.requests), grants: { console: ids(next.grants?.console), computer: ids(next.grants?.computer) } });
-      } catch { if (!controller.signal.aborted) setActivity(EMPTY_ACTIVITY); }
+        if (!controller.signal.aborted) {
+          const requests = readRequests(next.requests);
+          setActivity({ console: next.console, computer: next.computer, browser: next.browser ?? [], requests, grants: { console: ids(next.grants?.console), computer: ids(next.grants?.computer) } });
+          setOperationUseRequestIds(requests.map((request) => request.operationId));
+        }
+      } catch { if (!controller.signal.aborted) { setActivity(EMPTY_ACTIVITY); setOperationUseRequestIds([]); } }
       finally { if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 400); }
     };
     void poll();
-    return () => { controller.abort(); clearTimeout(timer); };
+    return () => { controller.abort(); clearTimeout(timer); setOperationUseRequestIds([]); };
   }, []);
   useEffect(() => {
     if (!isDesktopShell()) return;

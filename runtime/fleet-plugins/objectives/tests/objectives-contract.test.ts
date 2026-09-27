@@ -47,7 +47,31 @@ function harness(routingOrigin: () => string | null = () => null) {
   const theaterPath = path.join(dir, "project");
   const workspace = path.join(dir, "data", "workspaces", "project");
   const events: ObjectiveEvent[] = [];
-  const operations = new Map<string, Node>();
+  class OperationRecords extends Map<string, Node> {
+    override get(id: string): Node | undefined {
+      const parent = super.get(id);
+      if (parent) return parent;
+      for (const owner of super.values()) {
+        const child = owner.childSessions?.find((entry) => entry.id === id);
+        if (child) return { id, theaterId: owner.theaterId, type: "agent", pluginId: null,
+          title: String((child.payload.session as { sessionName?: string } | undefined)?.sessionName ?? id.slice(0, 8)),
+          parentOperationId: owner.id, payload: child.payload, geometry: null, ts: child.ts };
+      }
+      return undefined;
+    }
+    override has(id: string): boolean { return !!this.get(id); }
+    override delete(id: string): boolean {
+      if (super.delete(id)) return true;
+      for (const owner of super.values()) {
+        if (!owner.childSessions?.some((child) => child.id === id)) continue;
+        const rest = owner.childSessions.filter((child) => child.id !== id);
+        owner.childSessions = rest.length ? rest : undefined;
+        return true;
+      }
+      return false;
+    }
+  }
+  const operations = new OperationRecords();
   let clock = 1_000;
   const add = (id: string, init: Partial<Node> = {}) => {
     const node: Node = { id, theaterId: "t1", type: "agent", pluginId: null, title: id, groupId: null, payload: {}, geometry: null, ts: { createdAt: clock++, updatedAt: clock }, ...init };
@@ -84,6 +108,7 @@ function harness(routingOrigin: () => string | null = () => null) {
     },
     // 호스트처럼 지운 Operation 의 기동 키는 삭제로 읽힌다(유예·purge).
     delete: (id: string) => { deleted.push(id); for (const [key, target] of keyed) if (target === id) deletedKeys.add(key); return operations.delete(id); },
+    deleteChild: (id: string) => { if (!operations.get(id)?.parentOperationId) return false; deleted.push(id); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
   const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++ });
@@ -100,7 +125,7 @@ function harness(routingOrigin: () => string | null = () => null) {
       consoleControl: {
         launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
         reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
-        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string }) => {
+        request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string; parentOperationId?: string; childSessionId?: string }) => {
           if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
           if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
@@ -109,12 +134,20 @@ function harness(routingOrigin: () => string | null = () => null) {
           if (input.launchKey && deletedKeys.has(input.launchKey)) throw new Error("launch_key_deleted");
           if (input.launchKey && keyed.has(input.launchKey)) return { operationId: keyed.get(input.launchKey) };
           await new Promise((resolve) => setTimeout(resolve, 5));
-          const id = input.newOperationId ?? `launched-${launches.length + 1}`;
+          const id = input.childSessionId ?? input.newOperationId ?? `launched-${launches.length + 1}`;
+          if (input.childSessionId && operations.has(id)) {
+            if (operations.get(id)?.parentOperationId !== input.parentOperationId) throw new Error("operation_id_taken");
+            return { operationId: id };
+          }
           if (input.launchKey) keyed.set(input.launchKey, id);
           launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableUserQuestions: input.disableUserQuestions, groupId: input.groupId });
           // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
           activity.set(id, input.dormant ? "dormant" : "idle");
-          add(id, { title: input.title ?? id, groupId: input.groupId ?? null, payload: { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } } });
+          const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
+          if (input.childSessionId && input.parentOperationId) {
+            const parent = operations.get(input.parentOperationId)!;
+            parent.childSessions = [...(parent.childSessions ?? []), { id, payload, ts: { createdAt: clock++, updatedAt: clock } }];
+          } else add(id, { title: input.title ?? id, groupId: input.groupId ?? null, payload });
           if (input.launchKey && hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
           return { operationId: id };
         },
@@ -182,11 +215,11 @@ describe("Objectives contract", () => {
     // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다 — 미기동 지휘관의 저장된 시작 뷰가 터미널이어도.
     expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["chat", "chat"]);
     const roster = store.find(objective.id)!;
-    const blockedOperationId = roster.members.find((member) => member.id === blocked.id)!.operationId!;
+    const blockedOperationId = blocked.id;
     activity.set(blockedOperationId, "dormant");
     launch.memberPatched(objective.id, blocked.id, { subagents: true });
     expect(store.find(objective.id)!.members.find((member) => member.id === blocked.id)!.subagents).toBe(true);
-    const allowedOperationId = roster.members.find((member) => member.id === allowed.id)!.operationId!;
+    const allowedOperationId = allowed.id;
     expect(subagentSpawns).toEqual([
       { operationId: allowedOperationId, policy: "default" },
       { operationId: blockedOperationId, policy: "blocked" },
@@ -201,10 +234,11 @@ describe("Objectives contract", () => {
     expect(userQuestions).toContainEqual({ operationId: blockedOperationId, policy: "blocked" });
     launch.memberPatched(objective.id, allowed.id, { subagents: false });
     expect(store.find(objective.id)!.members.find((member) => member.id === allowed.id)!.subagents).toBe(false);
-    expect(subagentSpawns.at(-1)).toEqual({ operationId: roster.members.find((member) => member.id === allowed.id)!.operationId, policy: "blocked" });
+    expect(subagentSpawns.at(-1)).toEqual({ operationId: allowed.id, policy: "blocked" });
     const stored = savedObjective(objective.id).members!;
     expect(stored.find((member) => member.role === "research")!.subagents).toBe(true);
     expect(stored.find((member) => member.role === "build")).not.toHaveProperty("subagents");
+    expect(stored.every((member) => !Object.keys(member).some((key) => ["operationId", "session", "sessionName", "model", "effort"].includes(key)))).toBe(true);
     const refused = await call("plan", { objectiveId: objective.id, missions: [{ text: "next" }], members: [{ role: "extra", subagents: true }] }, objective.id);
     expect(refused.isError).toBe(true);
     expect(refused.structuredContent.error).toBe("invalid_arguments");
@@ -227,11 +261,10 @@ describe("Objectives contract", () => {
     expect(launches.at(-1)?.disableSubagents).toBe(true);
     expect(launches.at(-1)?.viewMode).toBe("chat");
 
-    // 명단에서 뺀 구성원은 복원되면 일반 Operation 이다 — 질문 정책을 되돌린 뒤 닫는다.
+    // 명단에서 뺀 구성원은 코어 부모의 childSessions에서도 없어진다.
     launch.memberRemoved(objective.id, routed.id);
-    const removedId = launches.length > 0 ? `launched-${launches.length}` : "";
-    expect(userQuestions.at(-1)).toEqual({ operationId: removedId, policy: "default" });
-    expect(operations.has(removedId)).toBe(false);
+    expect(operations.has(routed.id)).toBe(false);
+    expect(operations.get(objective.id)!.childSessions?.some((child) => child.id === routed.id)).toBe(false);
 
     // 살아 있는 지휘관이 터미널로 떠 있어도 새 구성원은 채팅으로 태어난다.
     vi.unstubAllGlobals();
@@ -243,17 +276,12 @@ describe("Objectives contract", () => {
     expect(launches.at(-1)?.viewMode).toBe("chat");
     launch.memberRemoved(objective.id, late.id);
 
-    // 지휘관만 지워지고(삭제 사건을 놓침) 복원 불가로 확정되면 구성원은 제 목표의 지휘관으로 보인다 — 질문 차단이 남으면 안 된다.
-    // 되돌리는 것은 이 목표가 기록한 구성원 중 남아 있는 Operation 뿐이다: 이미 없는 것·무관한 Operation 에는 쓰지 않는다.
-    operations.delete(allowedOperationId);
+    // 부모 삭제는 자식 레코드도 함께 거두며, 재기동 대상으로 다시 분리되지 않는다.
     operations.delete(objective.id);
-    userQuestions.length = 0;
-    launch.operationPurged("unrelated-operation");
-    expect(userQuestions).toEqual([]);
+    expect(operations.has(blockedOperationId)).toBe(false);
+    expect(operations.has(allowedOperationId)).toBe(false);
     launch.operationPurged(objective.id);
-    expect(userQuestions).toEqual([{ operationId: blockedOperationId, policy: "default" }]);
-    expect(operations.has(blockedOperationId)).toBe(true);
-    expect(store.find(blockedOperationId)).toMatchObject({ id: blockedOperationId });
+    expect(store.find(blockedOperationId)).toBeNull();
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
@@ -300,31 +328,31 @@ describe("Objectives contract", () => {
     expect(() => launch.setPreset(objective.id, { viewMode: "chat" })).toThrow("objective_busy");
     expect(store.find(objective.id)!.commander.viewMode).toBe("terminal");
     // 위임할 때마다 새 Operation 을 만들지 않는다 — 같은 구성원의 임무는 같은 Operation 이다.
-    expect(store.find(objective.id)!.missions.map((mission) => mission.operationId)).toEqual(["launched-2", "launched-3", "launched-3"]);
+    expect(store.find(objective.id)!.missions.map((mission) => mission.operationId)).toEqual([research, build, build]);
     // 임무 진행(blocked/done)은 그대로 두되, 실제 구성원 입력 대기를 별도 신호로 cluster 서술자에 전달한다.
     const clusterMember = (id: string) => clustersOf([store.find(objective.id)!], new Map([...activity].map(([key, value]) => [key, value])))[0]!.members.find((member) => member.operationId === id)!;
-    activity.set("launched-3", "awaiting");
-    expect(clusterMember("launched-3")).toMatchObject({ progress: "blocked", awaitingInput: true });
-    activity.set("launched-3", "idle");
-    expect(clusterMember("launched-3")).toMatchObject({ progress: "blocked", awaitingInput: false });
+    activity.set(build, "awaiting");
+    expect(clusterMember(build)).toMatchObject({ progress: "blocked", awaitingInput: true });
+    activity.set(build, "idle");
+    expect(clusterMember(build)).toMatchObject({ progress: "blocked", awaitingInput: false });
     // 다시 세워도 살아 있는 구성원은 그대로, 휴면한 구성원은 새로 띄우지 않고 세션째 재개한다.
-    activity.set("launched-2", "dormant");
+    activity.set(research, "dormant");
     expect((await launch.muster(objective.id)).map((member) => member.state)).toEqual(["resumed", "live"]);
-    expect([launches.length, resumed]).toEqual([3, ["launched-2"]]);
+    expect([launches.length, resumed]).toEqual([3, [research]]);
     // 다시 작업해 다시 완료하면 기록이 쌓인다(종류는 위치로).
     store.missionDone(objective.id, a!.id, ["a done"]);
     store.missionDone(objective.id, a!.id, ["a redone", "fixed the gap"]);
-    activity.set("launched-2", "awaiting");
-    expect(clusterMember("launched-2")).toMatchObject({ progress: "done", awaitingInput: true });
-    activity.set("launched-2", "idle");
+    activity.set(research, "awaiting");
+    expect(clusterMember(research)).toMatchObject({ progress: "done", awaitingInput: true });
+    activity.set(research, "idle");
     // 완료는 지휘관과 구성원을 휴면시키되 연결을 풀지 않는다. 답을 기다리는 터미널 지휘관과 백그라운드 작업이 남은 구성원은 그대로 재우고, 실행 중인 구성원은 중단한 뒤 재운다.
     activity.set(objective.id, "awaiting");
-    activity.set("launched-2", "running");
-    activity.set("launched-3", "background");
+    activity.set(research, "running");
+    activity.set(build, "background");
     expect(launch.complete(objective.id).done).toBeTruthy();
     await expect.poll(() => slept.length).toBe(3);
-    expect(interrupted).toEqual(["launched-2"]);
-    expect(slept.sort()).toEqual([objective.id, "launched-2", "launched-3"].sort());
+    expect(interrupted).toEqual([research]);
+    expect(slept.sort()).toEqual([objective.id, research, build].sort());
     expect(store.reopen(objective.id).missions.map((mission) => mission.member)).toEqual([research, build, build]);
     // 계획은 완료·기록·사람이 담당을 정한 임무를 보존하고 나머지를 바꾼다; 새 임무는 편성 순으로 선다.
     const planned = store.plan(objective.id, { missions: [{ text: "x", prerequisites: [{ n: 2, why: "shares files" }] }, { text: "y", prerequisites: [{ missionId: a!.id, why: "builds on a" }] }] });
@@ -365,9 +393,9 @@ describe("Objectives contract", () => {
     fs.writeFileSync(screenshot, PNG); fs.writeFileSync(document, "# 검증\n\n확인했습니다.\n");
     let scopeLive = true;
     const scope: OwnedTempAccess = { read: () => scopeLive ? { id: "owned-root", root: fs.realpathSync(ownedRoot) } : { error: "scope_unavailable" } };
-    const image = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, "launched-2", scope);
-    const text = await call("seal_evidence_from_path", { objectiveId: objective.id, path: document }, "launched-2", scope);
-    const pendingEvidence = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, "launched-2", scope);
+    const image = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, research, scope);
+    const text = await call("seal_evidence_from_path", { objectiveId: objective.id, path: document }, research, scope);
+    const pendingEvidence = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, research, scope);
     expect(image.structuredContent).not.toHaveProperty("error");
     expect(text.structuredContent).not.toHaveProperty("error");
     expect(pendingEvidence.structuredContent).not.toHaveProperty("error");
@@ -385,7 +413,7 @@ describe("Objectives contract", () => {
     const textResponse = await resultFile(objective.id, imageId);
     expect(textResponse).toMatchObject({ status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Content-Disposition": "inline", "Cache-Control": "private, no-store" } });
     expect(textResponse.data.toString("utf8")).toBe("# 검증\n\n확인했습니다.\n");
-    scopeLive = false; fs.rmSync(ownedRoot, { recursive: true }); operations.delete("launched-2");
+    scopeLive = false; fs.rmSync(ownedRoot, { recursive: true }); operations.delete(research);
     const evidenceReload = createObjectiveStore({ dirOf: () => objectivesDir, operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect((await evidenceReload.evidenceRead(objective.id, imageId)).data).toEqual(textResponse.data);
     expect(JSON.stringify((await route("objective/get", { objectiveId: objective.id })).value)).not.toContain(ownedRoot);
@@ -405,7 +433,7 @@ describe("Objectives contract", () => {
     expect(path.dirname(file)).toBe(path.join(objectivesDir, objective.id, "attachments"));
     launch.remove(objective.id);
     launch.operationDeleted(objective.id);
-    expect(operations.has("launched-2") || operations.has("launched-3")).toBe(false);
+    expect(operations.has(research) || operations.has(build)).toBe(false);
     // 유예 동안은 디렉터리째 남아 있다(복원하면 목표도 돌아온다).
     expect(fs.existsSync(file)).toBe(true);
     expect(fs.existsSync(pendingFile)).toBe(true);
@@ -686,14 +714,14 @@ describe("Objectives contract", () => {
     add("sidebar", { title: "Made in the sidebar", groupId: "g-a" });
     add("wiki", { pluginId: "codex", type: "codex-wiki" });
     const made = await launch.create({ theaterId: "t1", title: "Made in Objectives", groupId: null, missions: [{ text: "one" }] });
-    store.memberAdd(made.id, { role: "build" }, "human");
+    const madeMember = store.memberAdd(made.id, { role: "build" }, "human").members[0]!;
     await launch.requestPlan(made.id);
     store.setPlanning(made.id, false);
     await launch.muster(made.id);
     // 레코드 없는 Operation 은 빈 목표로 선다 — 구성원(launched-2)과 플러그인 Operation 은 목표가 아니다.
     expect(store.list("t1").map((objective) => objective.id).sort()).toEqual([made.id, "sidebar"].sort());
     expect(store.find("sidebar")).toMatchObject({ title: "Made in the sidebar", groupId: "g-a", note: "", missions: [], awaitingReview: false });
-    expect(store.find("launched-2")).toBeNull();
+    expect(store.find(madeMember.id)).toBeNull();
     // 첫 편집이 레코드를 만든다.
     expect(savedIds()).not.toContain("sidebar");
     store.patch("sidebar", { note: "now it has a brief" });
@@ -702,24 +730,22 @@ describe("Objectives contract", () => {
     const helper = store.memberAdd("sidebar", { role: "helper" }, "human").members.at(-1)!;
     await launch.muster("sidebar");
     expect(launches.at(-1)?.disableUserQuestions).toBe(true);
-    const helperOperation = store.find("sidebar")!.members.find((member) => member.id === helper.id)!.operationId!;
+    const helperOperation = helper.id;
     expect((await call("mine", {}, helperOperation)).structuredContent).toMatchObject({ role: "member", commander: { session: null } });
   });
 
-  it("keeps an objective in its Commander Operation's group and moves the members with it", async () => {
+  it("keeps the group on the parent without adding group metadata to children", async () => {
     const { store, launch, operations } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Ship", groupId: "g-review", missions: [{ text: "a" }] });
     store.memberAdd(objective.id, { role: "build" }, "human");
     await launch.requestPlan(objective.id);
     store.setPlanning(objective.id, false);
     const worker = (await launch.muster(objective.id))[0]!.operationId;
-    expect(operations.get(worker)!.groupId).toBe("g-review");
-    // 목표에서 옮기면 지휘관 Operation 이 옮겨지고, 구성원이 따라간다 — 목표의 그룹은 저장하지 않는다.
+    expect(operations.get(worker)!.groupId).toBeUndefined();
+    expect(operations.get(objective.id)!.childSessions?.map((child) => child.id)).toEqual([worker]);
     launch.regroup(objective.id, "g-done");
-    expect([operations.get(objective.id)!.groupId, operations.get(worker)!.groupId, store.find(objective.id)!.groupId]).toEqual(["g-done", "g-done", "g-done"]);
-    // 사이드바에서 구성원만 옮긴 것은 목표를 움직이지 않는다; 없는 그룹으로는 옮기지 않는다.
-    operations.get(worker)!.groupId = "g-other";
-    expect(store.find(objective.id)!.groupId).toBe("g-done");
+    expect([operations.get(objective.id)!.groupId, store.find(objective.id)!.groupId]).toEqual(["g-done", "g-done"]);
+    expect(operations.get(worker)!.groupId).toBeUndefined();
     expect(() => launch.regroup(objective.id, "nope")).toThrow(ObjectiveStoreError);
   });
 

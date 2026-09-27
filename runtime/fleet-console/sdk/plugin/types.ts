@@ -167,8 +167,8 @@ export interface ClientExecutionProvider {
    *
    * 그룹은 사람이 정리하는 목록이고, 묶음은 플러그인이 아는 실행 구조다. 호스트는 관계·라벨·진행만 받아 뿌리의
    * 캡션에 진척도 띠(와 단계 목록), 뿌리 패널 본문에 구성원 세션으로 바꿔 보는 노드 줄(「N 노드」, N 은 members
-   * 선언 순서의 자리)을 그린다. 묶음은 그리기만 한다 — 구성원이 목록 표면에 서지 않게 하는 것은 코어의 부모 관계
-   * (`OperationNode.parentOperationId`, launch 의 `parentOperationId`)이고, 진행의 진실은 플러그인 쪽에 남는다.
+   * 선언 순서의 자리)을 그린다. 묶음은 그리기만 한다 — 구성원이 목록 표면에 서지 않게 하는 것은 코어의 부모 `childSessions`
+   * 저장 관계이고, 진행의 진실은 플러그인 쪽에 남는다.
    * `get()` 은 바뀌지 않았으면 같은 참조를 돌려줘야 한다(useSyncExternalStore).
    */
   readonly operationClusters?: OperationClusterSource;
@@ -786,8 +786,12 @@ export interface FleetPluginOperationsHost {
   list(): readonly OperationNode[];
   get(id: string): OperationNode | null;
   create(input: OperationCreateInput): OperationNode;
+  /** 실행 호스트가 부모 안에 자식 세션을 저장한다. */
+  createChild?(input: { readonly parentOperationId: string; readonly childSessionId: string; readonly payload?: Record<string, unknown> }): OperationNode;
   patch(id: string, input: OperationPatchInput): OperationNode | null;
   delete(id: string): boolean;
+  /** 구성원 전용 삭제. 호스트가 바인딩한 호출 플러그인이 부모의 launchedBy와 일치해야 한다. */
+  deleteChild?(id: string, requesterPluginId?: string): boolean;
   /** 같은 Theater·사이드바 그룹 안에서 순서를 바꾼다. unknown_operation, mixed_sections, unknown_anchor는 오류로 던진다. */
   reorder?(input: { readonly theaterId: string; readonly operationIds: readonly string[]; readonly position: FleetPluginSidebarPosition; readonly groupId: string | null }): { readonly operationIds: readonly string[]; readonly groupId: string | null; readonly members: readonly string[] };
   registerOperationType(type: string): () => void;

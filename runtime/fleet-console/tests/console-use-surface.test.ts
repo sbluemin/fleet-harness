@@ -22,11 +22,9 @@ describe("Console Use surface boundaries", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "console-surface-"));
     const me = { kind: "operation" as const, operationId: "op-parent" };
     const operations = [
-      { id: "op-parent", title: "Parent", theaterId: "theater-a", type: "agent", pluginId: null, payload: { consoleUse: { enabled: true, language: "en" } } as Record<string, unknown>, geometry: null, ts: { createdAt: 1, updatedAt: 1 } },
+      { id: "op-parent", title: "Parent", theaterId: "theater-a", type: "agent", pluginId: null, payload: { consoleUse: { enabled: true, language: "en" } } as Record<string, unknown>, childSessions: [{ id: "op-member", payload: { session: { sessionName: "objective-member-1" } }, ts: { createdAt: 4, updatedAt: 4 } }], geometry: null, ts: { createdAt: 1, updatedAt: 1 } },
       { id: "op-child", title: "Child", theaterId: "theater-a", type: "agent", pluginId: null, payload: { launchedBy: me } as Record<string, unknown>, geometry: null, ts: { createdAt: 2, updatedAt: 2 } },
       { id: "op-human", title: "Human's", theaterId: "theater-a", type: "agent", pluginId: null, payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 3, updatedAt: 3 } },
-      // 부모가 대표하는 구성원 — 사이드바처럼 스캔에서도 빠지고, 명시적으로 물을 때만 선다.
-      { id: "op-member", title: "Parent › Member", theaterId: "theater-a", type: "agent", pluginId: null, parentOperationId: "op-parent", payload: {} as Record<string, unknown>, geometry: null, ts: { createdAt: 4, updatedAt: 4 } },
     ];
     const answered: string[] = [];
     const slept: string[] = [];
@@ -35,7 +33,7 @@ describe("Console Use surface boundaries", () => {
       answer: (id, askId) => { answered.push(`${id}:${askId}`); return { ok: true, outcome: "answered" }; },
       sleep: async (id) => { slept.push(id); return { ok: true, lifecycle: "dormant" }; },
     };
-    const deps = { directory, operations: () => operations, theaters: () => [{ id: "theater-a", name: "Project" }] };
+    const deps = { directory, operations: () => operations, resolveOperation: (id: string) => operations.find((op) => op.id === id) ?? (id === "op-member" ? { id, title: "objective-member-1", theaterId: "theater-a", type: "agent", pluginId: null, parentOperationId: "op-parent", payload: operations[0]!.childSessions![0]!.payload, geometry: null, ts: operations[0]!.childSessions![0]!.ts } : null), theaters: () => [{ id: "theater-a", name: "Project" }] };
     const control = createConsoleControl(deps);
     // 관측: 자식은 도는 중, 사람의 것은 유휴 터미널. 휴면은 프로세스를 죽이므로 유휴 터미널만 통과한다.
     // 부모(호출자)는 쉬고 그 구성원이 입력을 기다린다 — 스캔에서는 부모 행이 구성원의 대기를 대표해야 한다.
@@ -89,7 +87,8 @@ describe("Console Use surface boundaries", () => {
     expect(contributedCalls).toBe(1);
     // 구성원은 스캔의 기본 목록에서 빠지고(부관·Admiral 이 평범한 행으로 보지 않는다) nested 로 물을 때만 부모와 함께 선다.
     expect((await call("op-parent", "console_operations", {})).operations.map((row: { id: string }) => row.id)).toEqual(["op-child", "op-human", "op-parent"]);
-    expect((await call("op-parent", "console_operations", { nested: true })).operations).toEqual(expect.arrayContaining([expect.objectContaining({ id: "op-member", parentOperationId: "op-parent", activity: "awaiting" })]));
+    expect((await call("op-parent", "console_operations", { nested: true })).operations).toEqual(expect.arrayContaining([expect.objectContaining({ id: "op-member", title: "objective-member-1", parentOperationId: "op-parent", activity: "awaiting" })]));
+    expect(await call("op-parent", "console_operation", { operationId: "op-member" })).toMatchObject({ id: "op-member", parentOperationId: "op-parent", activity: "awaiting" });
     // 기본 스캔의 부모 행은 구성원의 대기를 대표한다 — 사이드바처럼 「누가 기다리나」 스캔이 비지 않는다.
     expect((await call("op-parent", "console_operations", { activity: "awaiting" })).operations).toEqual([expect.objectContaining({ id: "op-parent", activity: "awaiting", attention: { kind: "input" } })]);
     // console_operation 은 자식의 열린 질문과 계보를 함께 싣는다.

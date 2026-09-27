@@ -17,7 +17,7 @@ import {
   markIdleArrival,
   resetIdleArrivalForTests,
 } from "../features/execution/client/operation-marks.js";
-import { clearOperationRuntime, findOperation, focusOperation, getState, hydrateOperations, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setOperationRuntime, setState as setConsoleState } from "../core/client/src/integration/store.js";
+import { clearOperationRuntime, findOperation, focusOperation, getState, hydrateOperations, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setOperationRuntime, setOperationUseRequestIds, setState as setConsoleState } from "../core/client/src/integration/store.js";
 import { fetchOperations } from "../core/client/src/integration/api.js";
 import {
   detachAlignAllPanel,
@@ -187,10 +187,10 @@ describe("triage store", () => {
     } finally { off(); act(() => setZenMode(false)); }
   });
   it("keeps a member under its Commander: off every list, on the Commander's activity, and reachable by id", async () => {
-    const commander = operation("commander", 1);
-    const member = { ...operation("member", 2), parentOperationId: commander.id };
-    // 서버 목록을 받는 길(파서 → 수화) 그대로 싣는다 — 파서가 부모를 떨어뜨리면 구성원이 모든 목록에 선다.
-    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ operations: [commander, member] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const member = operation("member", 2);
+    const commander = { ...operation("commander", 1), childSessions: [{ id: member.id, payload: member.payload, ts: member.ts }] };
+    // 서버 목록에는 부모 하나만 오고, 자식 본문은 그 childSessions에서 파생한다.
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ operations: [commander] }), { status: 200, headers: { "Content-Type": "application/json" } }));
     try { hydrateOperations(await fetchOperations()); } finally { vi.unstubAllGlobals(); }
     setConsoleState({ activeTheaterId: THEATER_ID, activeOperationId: null });
     const off = subscribeOperationActivityTracking();
@@ -205,6 +205,9 @@ describe("triage store", () => {
       expect(getState().operationRuntime[commander.id]).toEqual({ lifecycle: "live", activity: "background" });
       expect(getIdleArrivalIds().has(commander.id)).toBe(false);
       expect(resolveTriageQueue(getState().operations, getState().operationRuntime)).toEqual([]);
+      setOperationUseRequestIds([member.id]);
+      expect(getState().operationRuntime[commander.id]).toEqual({ lifecycle: "live", activity: "awaiting" });
+      setOperationUseRequestIds([]);
 
       setOperationRuntime(member.id, { lifecycle: "live", activity: "awaiting" });
       expect(getState().operationRuntime[commander.id]).toEqual({ lifecycle: "live", activity: "awaiting" });
@@ -212,7 +215,7 @@ describe("triage store", () => {
 
       // 구성원 구성이 그대로인 쓰기(제목 바뀜)는 공개 활동을 다시 세지 않는다.
       const unchangedRuntime = getState().operationRuntime;
-      setConsoleState({ operations: [commander, { ...member, title: "renamed" }] });
+      setConsoleState({ operations: [{ ...commander, title: "renamed" }] });
       expect(getState().operationRuntime).toBe(unchangedRuntime);
 
       // 구성원이 끝나면 도착은 지휘관의 것이다 — 숨은 구성원은 도착 표식을 남기지 않는다(보이지 않는 Theater 틱의 원천).

@@ -21,7 +21,7 @@ export function refuse(error: string, extra: Record<string, unknown> = {}) {
 export function roleIn(objective: Objective, caller: ConsoleCaller | undefined): { role: "commander" } | { role: "member"; memberId: string } | null {
   if (caller?.kind !== "operation") return null;
   if (objective.id === caller.operationId) return { role: "commander" };
-  const member = objective.members.find((candidate) => candidate.operationId === caller.operationId);
+  const member = objective.members.find((candidate) => candidate.id === caller.operationId && candidate.sessionName !== null);
   return member ? { role: "member", memberId: member.id } : null;
 }
 
@@ -64,7 +64,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       targetN: proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null,
       text: proposal.text ?? null, reason: proposal.reason ?? null, annotation: proposal.annotation ?? null })),
     members: objective.members.map((member) => ({ id: member.id, role: member.role, brief: member.brief ?? null, by: member.by, subagents: member.subagents, model: member.model ?? null, effort: member.effort ?? null, session: member.sessionName,
-      ...(member.operationId ? observe(member.operationId) : { operationId: null, state: "missing" as const }) })),
+      ...(ctx.host.operations.get(member.id) ? observe(member.id) : { operationId: null, state: "missing" as const }) })),
     done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
     handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
     addedBy: objective.addedBy, graph: graph(objective),

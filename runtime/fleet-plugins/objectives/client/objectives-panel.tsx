@@ -709,7 +709,7 @@ function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, t: T, r
   return { title: chosen.title, label: `${chosen.words.model} · ${chosen.words.effort}` };
 }
 /** 사라진 Operation 은 실행값을 읽을 곳이 없다 — 띄우기 전처럼 설정 선택을 보인다(다음 개시가 연결을 새로 세운다). */
-const memberLaunched = (member: ObjectiveMember, operationState: (operationId: string) => string): boolean => !!member.operationId && operationState(member.operationId) !== "closed";
+const memberLaunched = (member: ObjectiveMember, operationState: (operationId: string) => string): boolean => member.sessionName !== null && operationState(member.id) !== "closed";
 /** 저장값만. false와 키 없음은 꺼짐. 실행 중 세션에 적용됐는지는 여기서 말하지 않는다. */
 const memberSubagents = (member: ObjectiveMember): boolean => member.subagents === true;
 const MEMBER_LIVE = new Set(["running", "background", "idle", "awaiting"]);
@@ -768,7 +768,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
     {objective.members.map((member, index) => {
       const count = objective.missions.filter((mission) => mission.member === member.id).length;
-      const state = member.operationId ? operationState(member.operationId) : "closed";
+      const state = member.sessionName !== null ? operationState(member.id) : "closed";
       const display = memberLaunchDisplay(member, memberLaunched(member, operationState), t, rows);
       const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.state.awaiting") : t("objectives.members.idle");
       const allowed = memberSubagents(member);
@@ -1184,14 +1184,14 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   // 지휘관 판정은 끌어올리기 전 자기 활동으로 한다 — 구성원만 묻고 있을 때 「지휘관이 기다립니다」로 서지 않게.
   const commanderAwaiting = !objective.done && operationOwnState(objective.id) === "awaiting";
   const memberAwaiting: MemberAwaiting | null = objective.done ? null : (() => {
-    const member = objective.members.find((candidate) => candidate.operationId && operationState(candidate.operationId) === "awaiting");
-    if (!member?.operationId) return null;
+    const member = objective.members.find((candidate) => candidate.sessionName !== null && operationState(candidate.id) === "awaiting");
+    if (!member) return null;
     const mission = objective.missions.findIndex((mission) => !mission.done && mission.member === member.id);
-    return { operationId: member.operationId, role: member.role, mission: mission >= 0 ? mission + 1 : null };
+    return { operationId: member.id, role: member.role, mission: mission >= 0 ? mission + 1 : null };
   })();
   // 작업 중 — 지휘관 자신이나 구성원 누군가가 돈다. 편집 잠금은 지금처럼 끌어올린 지휘관 활동(busy)이고, 하단 한 자리는
   // 지휘관 자신의 실행과 구성원 각자의 실행을 따로 본다(구성원이 묻는 동안 끌어올린 값은 대기라 실행을 가린다).
-  const working = !objective.done && (WORKING.has(operationOwnState(objective.id)) || objective.members.some((member) => !!member.operationId && WORKING.has(operationState(member.operationId))));
+  const working = !objective.done && (WORKING.has(operationOwnState(objective.id)) || objective.members.some((member) => member.sessionName !== null && WORKING.has(operationState(member.id))));
 
   // 달성 기준 제안 — 결정(승인·거절)과 어노테이션은 줄마다 한다. 열린 어노테이션 칸은 한 번에 하나다.
   const proposals = objective.criteriaProposals;

@@ -149,6 +149,7 @@ export interface OperationGroup {
 }
 
 export interface OperationNode {
+  readonly childSessions?: readonly { readonly id: string; readonly payload: Record<string, unknown>; readonly ts: { readonly createdAt: number; readonly updatedAt: number } }[];
   readonly id: string;
   readonly theaterId: string;
   readonly order?: number;
@@ -161,7 +162,7 @@ export interface OperationNode {
   readonly accent?: string | null;
   // 사용자 지정 그룹 id(서버 영속). null이면 Ungrouped, 미설정 시 부재(Ungrouped와 동일 취급).
   readonly groupId?: string | null;
-  // 이 Operation 을 대표하는 부모(서버 영속, 코어 소유). 목록에 서는지는 SDK isListedOperation 이 판정한다.
+  // 부모 childSessions에서 만든 자식 표시 뷰에만 있다. 최상위 Operation에는 영속하지 않는다.
   readonly parentOperationId?: string;
   readonly ts: {
     readonly createdAt: number;
@@ -248,7 +249,7 @@ export interface ConsoleState {
   readonly portHonored: boolean;
   readonly theaters: readonly TheaterInfo[];
   /**
-   * 목록 표면이 쓰는 Operation — 부모가 대표하는 구성원은 빠진다(SDK `isListedOperation`). 새 표면은 이것만 읽으면 된다.
+   * 목록 표면이 쓰는 최상위 Operation — 자식은 부모의 childSessions에서 파생되어 이 목록에 들지 않는다.
    * id 로 찾을 때는 `findOperation`, 부모의 구성원은 `nestedOperationsOf` 로 명시적으로 연다.
    */
   readonly operations: readonly OperationNode[];
