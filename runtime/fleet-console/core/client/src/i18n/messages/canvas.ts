@@ -115,6 +115,7 @@ export const canvasEn = {
   "canvas.frame.snapFullRestoreTitle": "Return to the previous spot",
   "canvas.frame.archiveAria": "Archive operation {title}",
   "canvas.frame.archiveTitle": "Archive",
+  "canvas.frame.archiveTip": "Archive · {shortcut} to undo",
 
   "canvas.companion.aria": "Companion {title}",
   "canvas.companion.dividerAria": "Resize panels",
@@ -387,6 +388,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.frame.snapFullRestoreTitle": "직전 자리로",
   "canvas.frame.archiveAria": "Operation {title} 보관",
   "canvas.frame.archiveTitle": "보관",
+  "canvas.frame.archiveTip": "보관 · {shortcut}로 되돌리기",
 
   "canvas.companion.aria": "Companion {title}",
   "canvas.companion.dividerAria": "패널 폭 조절",

@@ -8,6 +8,7 @@ import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/arch
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationActivityVisual, type OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
+import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import type { GlanceHudModel } from "./glance-hud.js";
 import type { GroupContextMenuAlign } from "./group-context-menu.js";
 import { resolveAccentColor } from "./operation-accent.js";
@@ -131,6 +132,9 @@ const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail
 
 export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, snapFull = false, snapHeld = false, resizeDisabled = false, alignHeld = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapZone = null, interactionDisabled = false, triageStage = false, triagePicked = false, triageNext = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onToggleSnapFull, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
+  // 말풍선의 되돌리기 단축키가 사용자 재지정을 따라가도록 구독한다. 단축키를 풀어 두었으면 「보관」만 말한다.
+  useShortcutOverrides();
+  const undoShortcut = shortcutCommandLabel("console.undo-close");
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const identityTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -661,7 +665,8 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
                 </button>
               </CaptionTipHost>
             ) : null}
-            <CaptionTipHost label={t("canvas.frame.archiveTitle")}>
+            {/* 되돌리기 단축키는 사용자가 바꿀 수 있으니 등록부에서 읽는다(시안 v7: 「보관 · ⌘Z로 되돌리기」). */}
+            <CaptionTipHost label={undoShortcut ? t("canvas.frame.archiveTip", { shortcut: undoShortcut }) : t("canvas.frame.archiveTitle")}>
               <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={archive} aria-label={t("canvas.frame.archiveAria", { title: displayTitle })}>
                 <ArchiveGlyph />
               </button>
