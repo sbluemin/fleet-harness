@@ -23,6 +23,7 @@ import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 import { buildConsoleCaptureHookCommand, buildConsoleHookEntry, buildConsoleTurnHookCommand, buildConsoleWorkspaceHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../terminal/terminal-types.js";
 import { stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "../terminal/launch-env.js";
+import type { OwnedTempLease } from "./owned-file-scopes.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
@@ -57,6 +58,7 @@ export interface TerminalLaunchResolverDeps {
   readonly injectProfile?: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
+  readonly bindOwnedTemp?: (operationId: string, provider: string, resume: string | undefined, env: NodeJS.ProcessEnv) => OwnedTempLease | undefined;
   readonly resolveProfile?: typeof resolveAgentCliProfile;
   readonly createSessionIdentityResolver?: typeof createSessionIdentityResolver;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
@@ -183,6 +185,8 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       );
     }
     if (override) {
+      // 임의 명령에는 호스트 소유 root를 전달할 계약이 없다.
+      deps.bindOwnedTemp?.(context?.sessionId ?? "default", "override", undefined, launchEnv);
       const resolvedOverride = resolveWindowsLaunchBinary(
         override.bin,
         override.args,
@@ -207,6 +211,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       bindWorkspaceHook: deps.bindWorkspaceHook,
+      bindOwnedTemp: deps.bindOwnedTemp,
       resolveProfile,
       cliId: context?.cliId,
       model: context?.model,
@@ -243,6 +248,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
+  readonly bindOwnedTemp?: (operationId: string, provider: string, resume: string | undefined, env: NodeJS.ProcessEnv) => OwnedTempLease | undefined;
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
   readonly sessionName?: string;
@@ -296,7 +302,9 @@ async function createAgentCliLaunchSpec(options: {
       prompt: options.prompt,
       sessionName: options.sessionName,
     });
-    const injectedProfile = await options.injectProfile(profile, {
+    const ownedTemp = options.bindOwnedTemp?.(options.sessionId, cliId, options.resumeSessionId, options.env);
+    if (ownedTemp) cleanupStack.push(() => ownedTemp.release());
+    const injectedProfile = await options.injectProfile(ownedTemp ? { ...profile, env: { ...profile.env, ...ownedTemp.env } } : profile, {
       plugin: options.plugin,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       workspaceHookExec: buildConsoleWorkspaceHookCommand(options.hookEntry),
@@ -318,6 +326,7 @@ async function createAgentCliLaunchSpec(options: {
           }
         : {}),
     });
+    ownedTemp?.bindSession(injectedProfile.session.sessionId);
     options.onRuntimeSessionStart?.({
       cliId: injectedProfile.id,
       cliLabel: injectedProfile.label,

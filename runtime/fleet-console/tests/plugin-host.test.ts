@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 
 import { createPluginAdmiralMcpHost } from "../core/host/plugin-host/mcp.js";
+import { createOwnedFileScopes } from "../features/execution/host/agent/owned-file-scopes.js";
 import { discoverFleetPlugins } from "../core/host/plugin-host/plugin-host.js";
 import { createFleetPluginHost, createPluginClientAssets } from "../core/host/plugin-host/plugin-host.js";
 import { RouteRegistry } from "../core/host/transport/route-registry/registry.js";
@@ -93,7 +94,15 @@ describe("plugin host", () => {
     origin = `http://127.0.0.1:${(listener.address() as { port: number }).port}`;
     // 호출자는 세션 라벨로만 푼다 — 모르는 라벨은 호출자 없이(fail-closed).
     const mcp = createPluginAdmiralMcpHost(transport.transport, { resolveCaller: (label) => (label === "op-1" ? { kind: "operation", operationId: "op-1" } : null) });
-    const first = mcp.connect();
+    const scopeDir = path.join(dir, "owned-data");
+    let clock = 1000;
+    let scopes = createOwnedFileScopes({ dataDir: scopeDir, now: () => clock, limits: { inactiveMs: 100, inactiveBytes: 20, totalBytes: 100 } });
+    const lease = scopes.acquire({ operationId: "op-1", label: "op-1", provider: "claude", env: { CLAUDE_CODE_TMPDIR: "/original-temp" } });
+    lease.bindSession("provider-1");
+    expect(lease.env.XDG_RUNTIME_DIR).toBe("/original-temp");
+    const issued = scopes.access("op-1").read();
+    expect(issued).toHaveProperty("root", fs.realpathSync(lease.env.CLAUDE_CODE_TMPDIR!));
+    const first = mcp.connect({ ownedTemp: (label) => scopes.access(label) });
     const second = mcp.connect();
     const cleanups: Array<() => void | Promise<void>> = [];
     const host = createFleetPluginHost({
@@ -102,7 +111,7 @@ describe("plugin host", () => {
       host: { ...noopHostCapabilities, lifecycle: { registerCleanup: (cleanup) => { cleanups.push(cleanup); return () => {}; } } },
       importModule: async () => ({ register: (ctx) => {
         ctx.host.admiralMcp.register([{ name: "project", description: "Read session project", inputSchema: { type: "object", properties: {} },
-          execute: async (_args, context) => ({ content: [{ type: "text", text: `${context.cwd}|${context.caller?.kind === "operation" ? context.caller.operationId : "-"}` }], isError: false }),
+          execute: async (_args, context) => ({ content: [{ type: "text", text: `${context.cwd}|${context.caller?.kind === "operation" ? context.caller.operationId : "-"}` }], ...(context.ownedTemp ? { structuredContent: context.ownedTemp.read() } : {}), isError: false }),
         }]);
       } }),
     });
@@ -125,13 +134,45 @@ describe("plugin host", () => {
       expect((await call(one.token)).body).toMatchObject({ result: { content: [{ text: "/first|op-1" }] } });
       expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });
       expect((await call(ghost.token)).body).toMatchObject({ result: { content: [{ text: "/ghost|-" }] } });
+      expect((await call(one.token)).body).toHaveProperty("result.structuredContent", issued);
+      expect((await call(two.token)).body.result.structuredContent).toBeUndefined();
+      lease.release();
+      const resumed = scopes.acquire({ operationId: "op-1", label: "op-1", provider: "claude", resume: "provider-1", env: { XDG_RUNTIME_DIR: "/existing-runtime" } });
+      expect(resumed.env.CLAUDE_CODE_TMPDIR).toBe(lease.env.CLAUDE_CODE_TMPDIR);
+      expect(resumed.env.XDG_RUNTIME_DIR).toBe("/existing-runtime");
+      // 같은 label의 새 lease가 생겨도 옛 token이 새 root를 읽지 않는다.
+      expect((await call(one.token)).body).toHaveProperty("result.structuredContent.error", "scope_unavailable");
+      first.releaseSessionToken("op-1");
+      const renewed = first.issueSessionToken({ label: "op-1", cwd: "/first" })[0]!;
+      expect((await call(renewed.token)).body).toHaveProperty("result.structuredContent", issued);
+      resumed.release(); scopes.dispose();
+      scopes = createOwnedFileScopes({ dataDir: scopeDir, now: () => clock, limits: { inactiveMs: 100, inactiveBytes: 20, totalBytes: 100 } });
+      const restarted = scopes.acquire({ operationId: "op-1", label: "op-1", provider: "claude", resume: "provider-1", env: {} });
+      expect(restarted.env.CLAUDE_CODE_TMPDIR).toBe(lease.env.CLAUDE_CODE_TMPDIR);
+      fs.writeFileSync(path.join(restarted.env.CLAUDE_CODE_TMPDIR!, "evidence.txt"), "preserved");
+      clock += 1000;
+      scopes.collect();
+      expect(fs.existsSync(restarted.env.CLAUDE_CODE_TMPDIR!)).toBe(true);
+      restarted.release(); clock += 101; scopes.collect();
+      expect(fs.existsSync(restarted.env.CLAUDE_CODE_TMPDIR!)).toBe(false);
+      expect(() => scopes.acquire({ operationId: "op-1", label: "op-1", provider: "codex", env: {} })).toThrow("scope_unsupported_provider");
+      const fresh = scopes.acquire({ operationId: "op-1", label: "op-1", provider: "claude", env: {} });
+      fresh.bindSession("new-provider");
+      expect(fresh.env.CLAUDE_CODE_TMPDIR).not.toBe(lease.env.CLAUDE_CODE_TMPDIR);
+      const borrowed = scopes.access("op-1");
+      fs.writeFileSync(path.join(fresh.env.CLAUDE_CODE_TMPDIR!, "large"), Buffer.alloc(101));
+      expect(() => scopes.acquire({ operationId: "op-2", label: "op-2", provider: "claude", env: {} })).toThrow("scope_capacity");
+      expect(fs.existsSync(fresh.env.CLAUDE_CODE_TMPDIR!)).toBe(true);
+      scopes.purge("op-1");
+      expect(borrowed.read()).toMatchObject({ error: "scope_unavailable" });
+      expect(fs.existsSync(fresh.env.CLAUDE_CODE_TMPDIR!)).toBe(false);
       first.cleanup();
       expect((await call(one.token)).body).toMatchObject({ error: { code: -32602 } });
       expect((await call(two.token)).body).toMatchObject({ result: { content: [{ text: "/second|op-1" }] } });
       for (const cleanup of cleanups) await cleanup();
       expect((await second.getEndpoint()).servers).toEqual([]);
     } finally {
-      first.cleanup(); second.cleanup(); await host.cleanup(); await mcp.dispose(); await transport.dispose();
+      first.cleanup(); second.cleanup(); scopes.dispose(); await host.cleanup(); await mcp.dispose(); await transport.dispose();
       await new Promise<void>((resolve) => { listener.close(() => resolve()); listener.closeAllConnections(); });
     }
   });

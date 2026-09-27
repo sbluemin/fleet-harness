@@ -6,9 +6,11 @@ import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 import { createObjectiveConsoleTools } from "./server/console-tools.js";
 import { createLaunchService } from "./server/launch.js";
 import { createObjectiveMcpTools } from "./server/objective-tools.js";
+import { createGhPrLookup, createPrStatusService, type PrStatusService } from "./server/pr-status.js";
 import { createObjectiveRoutes } from "./server/routes.js";
 import { createObjectiveStore } from "./server/store.js";
 import { OBJECTIVE_CHANNEL } from "./server/types.js";
+import { RESULT_LIMITS } from "./server/results.js";
 
 /**
  * 목표 — Theater 의 에이전트 Operation 하나하나가 목표다.
@@ -49,7 +51,18 @@ export default definePlugin({
     };
     const releaseChannel = ctx.host.events.registerSseChannel(OBJECTIVE_CHANNEL);
     ctx.host.lifecycle.registerCleanup(releaseChannel);
-    const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, emit: (event) => ctx.host.events.publish(OBJECTIVE_CHANNEL, event) });
+    let prStatus: PrStatusService | undefined;
+    const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, emit: (event) => {
+      ctx.host.events.publish(OBJECTIVE_CHANNEL, event);
+      prStatus?.refresh(event.objectiveId);
+    } });
+    prStatus = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: ctx.host.paths.consoleDataDir }), onError: (code) => console.warn(`[objectives] ${code}`) });
+    ctx.host.lifecycle.registerCleanup(() => prStatus!.dispose());
+    const collectEvidence = () => { try { store.evidenceCollect(); } catch { console.warn("[objectives] evidence_cleanup_failed"); } };
+    collectEvidence();
+    const evidenceGc = setInterval(collectEvidence, RESULT_LIMITS.evidenceGcMs);
+    evidenceGc.unref?.();
+    ctx.host.lifecycle.registerCleanup(() => clearInterval(evidenceGc));
 
     // 기동·통지는 한 서비스여야 한다 — 라우트와 Console 도구가 각자 만들면 같은 목표의 기동이 겹친다.
     const launch = createLaunchService(ctx, store);
@@ -80,7 +93,7 @@ export default definePlugin({
     try { launch.resumeFollowups(); }
     catch (error) { console.warn(`[objectives] follow-up resume skipped: ${error instanceof Error ? error.message : String(error)}`); }
 
-    const routes = createObjectiveRoutes(ctx, store, launch);
+    const routes = createObjectiveRoutes(ctx, store, launch, prStatus);
     for (const route of routes) {
       registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
     }
@@ -88,6 +101,6 @@ export default definePlugin({
     // 두 표면 — Console Use 의 보드(`console_objectives`, 사람처럼 보고 더한다)와 목표 수행 세션의 작업 도구(`fleet-objectives`).
     const releaseConsoleTools = ctx.host.consoleUse.contribute?.(createObjectiveConsoleTools(ctx, store, launch));
     if (releaseConsoleTools) ctx.host.lifecycle.registerCleanup(releaseConsoleTools);
-    ctx.host.lifecycle.registerCleanup(ctx.host.admiralMcp.register(createObjectiveMcpTools(ctx, store, launch)));
+    ctx.host.lifecycle.registerCleanup(ctx.host.admiralMcp.register(createObjectiveMcpTools(ctx, store, launch, prStatus)));
   },
 });

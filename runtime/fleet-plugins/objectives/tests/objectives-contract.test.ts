@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import type { OperationGroupedEvent, OperationNode } from "@fleet-console/sdk/operations";
+import type { OwnedTempAccess } from "@fleet-console/sdk/mcp";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -16,6 +17,8 @@ import { createObjectiveMcpTools } from "../server/objective-tools.js";
 import { createObjectiveRoutes } from "../server/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../server/store.js";
 import { MAX_FOLLOWUPS, type ObjectiveEvent } from "../server/types.js";
+import { RESULT_LIMITS, type ObjectiveResult } from "../server/results.js";
+import { createGhPrLookup, createPrStatusService } from "../server/pr-status.js";
 
 /**
  * 목표의 필수 계약 — 목표 레코드는 Operation 없이 태어나고, 개시·구상 때 같은 id 의 지휘관이 한 번만 선다.
@@ -37,6 +40,7 @@ type Saved = {
   readonly followupBatches?: readonly { readonly items: readonly unknown[] }[];
   readonly links?: readonly { readonly objectiveId: string; readonly at: number }[];
   readonly unrelated?: readonly string[];
+  readonly results?: readonly ObjectiveResult[];
 };
 
 function harness(routingOrigin: () => string | null = () => null) {
@@ -86,11 +90,12 @@ function harness(routingOrigin: () => string | null = () => null) {
   };
   const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++ });
   let routeBody: unknown;
+  let authorized = true;
   let routeResult: { status: number; value: unknown } = { status: 0, value: null };
   const ctx = {
     pluginId: "objectives",
     host: {
-      security: { isTerminalAuthorized: () => true },
+      security: { isTerminalAuthorized: () => authorized },
       http: { readJsonBody: async () => routeBody, writeJson: (_res: unknown, status: number, value: unknown) => { routeResult = { status, value }; } },
       server: { origin: routingOrigin },
       operations: operationsHost,
@@ -133,7 +138,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const launch = createLaunchService(ctx, store);
   grouped.push((event) => launch.operationGrouped(event));
   const tools = createObjectiveMcpTools(ctx, store, launch);
-  const call = async (name: string, args: Record<string, unknown>, operationId?: string) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
+  const call = async (name: string, args: Record<string, unknown>, operationId?: string, ownedTemp?: OwnedTempAccess) => await tools.find((tool) => tool.name === name)!.execute(args, { cwd: dir, ...(operationId ? { caller: { kind: "operation" as const, operationId } } : {}), ...(ownedTemp ? { ownedTemp } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
   const consoleTool = createObjectiveConsoleTools(ctx, store, launch)[0]!;
   const route = async (name: string, body: Record<string, unknown>): Promise<{ status: number; value: Record<string, unknown> }> => {
     routeBody = body;
@@ -142,12 +147,22 @@ function harness(routingOrigin: () => string | null = () => null) {
     await handler({ req: { method: "POST" } as never, res: {} as never, pathname: name });
     return routeResult as { status: number; value: Record<string, unknown> };
   };
+  const resultFile = async (objectiveId: string, resultId: string, allow = true) => {
+    authorized = allow;
+    routeResult = { status: 0, value: null };
+    const output = { status: 0, headers: {} as Record<string, string | number>, data: Buffer.alloc(0) as Buffer };
+    try {
+      await createObjectiveRoutes(ctx, store, launch).find((entry) => entry.name === "result/file")!.handler({ req: { method: "GET", url: `/?objectiveId=${encodeURIComponent(objectiveId)}&resultId=${encodeURIComponent(resultId)}` } as never,
+        res: { writeHead: (status: number, headers: Record<string, string | number>) => { output.status = status; output.headers = headers; }, end: (data: Buffer) => { output.data = data; } } as never, pathname: "result/file" });
+      return { ...output, status: output.status || routeResult.status, error: (routeResult.value as { error?: string } | null)?.error };
+    } finally { authorized = true; }
+  };
   // 저장은 목표마다 디렉터리 하나 — `<objectives>/<목표>/objective.json`.
   const objectivesDir = path.join(workspace, "objectives");
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { store, events, launch, call, consoleTool, route, operations, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault };
+  return { store, events, launch, call, consoleTool, route, resultFile, operations, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, slept, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -244,7 +259,7 @@ describe("Objectives contract", () => {
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
-    const { store, events, launch, operations, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, slept, interrupted, resumed, hostFault } = harness();
+    const { store, events, launch, call, route, resultFile, operations, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, slept, interrupted, resumed, hostFault } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
     expect(launches).toEqual([]);
     expect(operations.has(objective.id)).toBe(false);
@@ -327,6 +342,60 @@ describe("Objectives contract", () => {
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [] });
     expect(reloaded.find(objective.id)!.missions[0]!.records.map((record) => [record.kind, record.lines])).toEqual([["done", ["a done"]], ["redone", ["a redone", "fixed the gap"]]]);
+    // 결과물은 임무 기록과 독립된 지휘관 도구다. 이전 저장에는 없고, 등록·수정·재시작을 지나 ID와 참조가 남는다.
+    expect(reloaded.find(objective.id)!.results).toEqual([]);
+    const pr = await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/Example/Project/pull/12/", sourceMissionId: a!.id } }, objective.id);
+    expect(pr.isError).toBe(false);
+    const prId = pr.structuredContent.resultId as string;
+    expect(store.find(objective.id)!.results).toContainEqual(expect.objectContaining({ id: prId, kind: "pr", url: "https://github.com/example/project/pull/12", observation: { state: "unchecked", checkedAt: null, stale: true } }));
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/example/project/pull/12" } }, objective.id)).structuredContent).toMatchObject({ error: "result_exists", resultId: prId });
+    expect((await call("update_result", { objectiveId: objective.id, resultId: prId, patch: { url: "https://github.com/example/project/pull/13", label: "Review", note: "Ready" } }, objective.id)).isError).toBe(false);
+    const restored = createObjectiveStore({ dirOf: () => objectivesDir, operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
+    expect(restored.find(objective.id)!.results).toEqual(store.find(objective.id)!.results);
+    expect(restored.find(objective.id)!.results).toContainEqual(expect.objectContaining({ id: prId, url: "https://github.com/example/project/pull/13", label: "Review", note: "Ready" }));
+    expect((await route("objective/get", { objectiveId: objective.id })).value.objective).toHaveProperty("results", restored.find(objective.id)!.results);
+    expect((await call("update_result", { objectiveId: objective.id, resultId: prId, patch: { label: null, note: null } }, objective.id)).isError).toBe(false);
+    expect(store.find(objective.id)!.results[0]).not.toHaveProperty("label");
+    expect((await call("detach_result", { objectiveId: objective.id, resultId: prId }, objective.id)).isError).toBe(false);
+    expect((await call("detach_result", { objectiveId: objective.id, resultId: prId }, objective.id)).structuredContent.error).toBe("unknown_result");
+    expect(savedObjective(objective.id).results).toBeUndefined();
+    // 구성원은 자기 증거를 seal하고 지휘관이 결과물로 붙인다. 원본·세션 종료 후에도 목표의 복사본이 열린다.
+    const ownedRoot = path.join(workspace, "own-temp");
+    fs.mkdirSync(ownedRoot, { recursive: true, mode: 0o700 });
+    const screenshot = path.join(fs.realpathSync(ownedRoot), "G01.png");
+    const document = path.join(fs.realpathSync(ownedRoot), "EVIDENCE.md");
+    fs.writeFileSync(screenshot, PNG); fs.writeFileSync(document, "# 검증\n\n확인했습니다.\n");
+    let scopeLive = true;
+    const scope: OwnedTempAccess = { read: () => scopeLive ? { id: "owned-root", root: fs.realpathSync(ownedRoot) } : { error: "scope_unavailable" } };
+    const image = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, "launched-2", scope);
+    const text = await call("seal_evidence_from_path", { objectiveId: objective.id, path: document }, "launched-2", scope);
+    const pendingEvidence = await call("seal_evidence_from_path", { objectiveId: objective.id, path: screenshot }, "launched-2", scope);
+    expect(image.structuredContent).not.toHaveProperty("error");
+    expect(text.structuredContent).not.toHaveProperty("error");
+    expect(pendingEvidence.structuredContent).not.toHaveProperty("error");
+    expect(store.find(objective.id)!.results).toEqual([]);
+    const imageResult = await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: image.structuredContent.evidenceId } }, objective.id);
+    expect(imageResult.isError).toBe(false);
+    const imageId = imageResult.structuredContent.resultId as string;
+    expect((await resultFile(objective.id, imageId, false)).status).toBe(401);
+    const imageResponse = await resultFile(objective.id, imageId);
+    expect(imageResponse).toMatchObject({ status: 200, headers: { "Content-Type": "image/png", "X-Content-Type-Options": "nosniff" } });
+    expect(imageResponse.data).toEqual(PNG);
+    // 같은 결과물의 bytes를 바꾸려면 별도로 seal한 immutable evidenceId로 교체한다.
+    expect((await call("update_result", { objectiveId: objective.id, resultId: imageId, patch: { evidenceId: text.structuredContent.evidenceId } }, objective.id)).isError).toBe(false);
+    expect(fs.existsSync(path.join(objectivesDir, objective.id, "evidence", `${image.structuredContent.evidenceId}.png`))).toBe(false);
+    const textResponse = await resultFile(objective.id, imageId);
+    expect(textResponse).toMatchObject({ status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Content-Disposition": "inline", "Cache-Control": "private, no-store" } });
+    expect(textResponse.data.toString("utf8")).toBe("# 검증\n\n확인했습니다.\n");
+    scopeLive = false; fs.rmSync(ownedRoot, { recursive: true }); operations.delete("launched-2");
+    const evidenceReload = createObjectiveStore({ dirOf: () => objectivesDir, operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
+    expect((await evidenceReload.evidenceRead(objective.id, imageId)).data).toEqual(textResponse.data);
+    expect(JSON.stringify((await route("objective/get", { objectiveId: objective.id })).value)).not.toContain(ownedRoot);
+    expect(JSON.stringify(events)).not.toContain("ownerOperationId");
+    expect((await call("detach_result", { objectiveId: objective.id, resultId: imageId }, objective.id)).isError).toBe(false);
+    expect((await resultFile(objective.id, imageId)).status).toBe(404);
+    const pendingFile = path.join(objectivesDir, objective.id, "evidence", `${pendingEvidence.structuredContent.evidenceId}.png`);
+    expect(fs.existsSync(pendingFile)).toBe(true);
     // 모든 쓰기가 사건으로 나갔다 — 화면은 이 프레임으로 갱신된다.
     expect(events.filter((event) => event.op === "upsert" && event.objectiveId === objective.id).length).toBeGreaterThanOrEqual(8);
     // 메모 첨부 — 머리 바이트가 이미지가 아니면 받지 않는다; 목표를 지우면 지휘관 Operation 이 닫히고 구성원도 따라 닫히며,
@@ -341,6 +410,7 @@ describe("Objectives contract", () => {
     expect(operations.has("launched-2") || operations.has("launched-3")).toBe(false);
     // 유예 동안은 디렉터리째 남아 있다(복원하면 목표도 돌아온다).
     expect(fs.existsSync(file)).toBe(true);
+    expect(fs.existsSync(pendingFile)).toBe(true);
     expect(fs.existsSync(objectiveFile(objective.id))).toBe(true);
     // 확정 삭제는 그 목표의 디렉터리 전체를 거둔다.
     launch.operationPurged(objective.id);
@@ -348,8 +418,8 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual([]);
   });
 
-  it("writes one objective's file per change and turns no link, failed write, failed read or failed delete into success", () => {
-    const { store, events, add, operations, objectivesDir, objectiveFile, savedIds, workspace } = harness();
+  it("writes one objective's file per change and turns no link, failed write, failed read or failed delete into success", async () => {
+    const { store, events, call, add, operations, objectivesDir, objectiveFile, savedIds, workspace } = harness();
     const bytes = (objectiveId: string) => fs.readFileSync(objectiveFile(objectiveId));
     const reload = () => createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     add("alpha");
@@ -372,6 +442,19 @@ describe("Objectives contract", () => {
     expect(store.find("alpha")!.note).toBe("a");
     expect(bytes("alpha")).toEqual(alphaBefore);
     expect(reload().find("alpha")!.note).toBe("a");
+    const sourceDir = path.join(workspace, "owned-source"); fs.mkdirSync(sourceDir);
+    const source = path.join(fs.realpathSync(sourceDir), "EVIDENCE.md"); fs.writeFileSync(source, "# preserved source");
+    const scope: OwnedTempAccess = { read: () => ({ id: "alpha-root", root: fs.realpathSync(sourceDir) }) };
+    const binaryDir = path.join(objectivesDir, "alpha", "evidence");
+    const write = fs.writeFileSync.bind(fs); let writes = 0;
+    const beforeBinary = bytes("alpha"); const beforeEvents = events.length;
+    const failMetadata = vi.spyOn(fs, "writeFileSync").mockImplementation((...args) => { if (++writes === 2) throw new Error("ENOSPC"); return write(...args); });
+    expect((await call("seal_evidence_from_path", { objectiveId: "alpha", path: source }, "alpha", scope)).isError).toBe(true);
+    failMetadata.mockRestore();
+    expect(bytes("alpha")).toEqual(beforeBinary);
+    expect(events).toHaveLength(beforeEvents);
+    expect(fs.readdirSync(binaryDir)).toEqual([]);
+    expect(fs.readFileSync(source, "utf8")).toBe("# preserved source");
 
     // 읽기 실패는 빈 보드가 아니다 — 없는 폴더만 빈 보드이고, 권한·입출력 오류는 전파돼 남은 파일을 빈 편집으로 덮지 않는다.
     const guarded = reload();
@@ -404,12 +487,34 @@ describe("Objectives contract", () => {
     fs.symlinkSync(stray, path.join(objectivesDir, "alpha", "attachments"));
     expect(() => linked.attachmentAdd("alpha", { name: "shot.png", type: "image/png", data: PNG })).toThrow(/unsafe_path/);
     expect(fs.readdirSync(stray)).toEqual([]);
+    fs.rmdirSync(binaryDir); fs.symlinkSync(stray, binaryDir);
+    expect((await call("seal_evidence_from_path", { objectiveId: "alpha", path: source }, "alpha", scope)).structuredContent.error).toBe("unsafe_path");
+    expect(fs.readdirSync(stray)).toEqual([]);
+    fs.unlinkSync(binaryDir);
 
     // 깨진 파일 하나는 그 목표만 빈 목표로 돌리고 격리 사본을 남긴다.
     fs.writeFileSync(objectiveFile("alpha"), "{ not json");
     const recovered = reload();
     expect(recovered.find("alpha")).toMatchObject({ note: "", missions: [] });
     expect(fs.readdirSync(path.join(objectivesDir, "alpha")).some((name) => name.startsWith("objective.json.broken-"))).toBe(true);
+    // 손상된 results는 기존 JSON 손상과 같은 경계다. 그 목표의 원본을 격리하고 다른 목표는 그대로 읽는다.
+    recovered.patch("alpha", { note: "other objective survives" });
+    const priorBackups = new Set(fs.readdirSync(path.join(objectivesDir, "beta")));
+    const recoveryBytes = path.join(objectivesDir, "beta", "evidence", "12345678-1234-4123-8123-123456789012.txt");
+    fs.mkdirSync(path.dirname(recoveryBytes), { recursive: true }); fs.writeFileSync(recoveryBytes, "recovery evidence");
+    fs.writeFileSync(objectiveFile("beta"), JSON.stringify({ operationId: "beta", rank: 1, note: "preserve", missions: [], results: [{ kind: "pr", url: "invalid" }], evidence: [{ evidenceId: "12345678-1234-4123-8123-123456789012" }] }));
+    const corruptResults = bytes("beta");
+    const isolated = reload();
+    expect(isolated.list("t1")).toHaveLength(2);
+    expect(isolated.find("alpha")!.note).toBe("other objective survives");
+    expect(isolated.find("beta")).toMatchObject({ note: "", results: [] });
+    const backup = fs.readdirSync(path.join(objectivesDir, "beta")).find((name) => name.startsWith("objective.json.broken-") && !priorBackups.has(name))!;
+    expect(fs.readFileSync(path.join(objectivesDir, "beta", backup))).toEqual(corruptResults);
+    isolated.patch("beta", { note: "new record" });
+    expect(fs.readFileSync(path.join(objectivesDir, "beta", backup))).toEqual(corruptResults);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    isolated.evidenceCollect(); warning.mockRestore();
+    expect(fs.readFileSync(recoveryBytes, "utf8")).toBe("recovery evidence");
   });
 
   it("keeps the dropped position of objectives with and without records, through reload and a stopped respread", () => {
@@ -626,7 +731,7 @@ describe("Objectives contract", () => {
   });
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
-    const { store, call, launch } = harness();
+    const { store, call, launch, workspace, events } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -653,11 +758,62 @@ describe("Objectives contract", () => {
     expect(store.find(objective.id)!.commander.sessionName).toMatch(/-cmdr$/);
     expect((await call("read", { objectiveId: objective.id }, member.operationId)).isError).toBe(false);
     expect((await call("mine", {}, commander)).structuredContent).toMatchObject({ role: "commander", objectiveId: objective.id });
+    // 새 결과물 도구도 같은 인증 caller 경계를 지난다. 구성원·외부·호출자 없음이 보드 쓰기로 이어지지 않는다.
+    const resultInput = { kind: "pr", url: "https://github.com/example/project/pull/1" };
+    expect((await call("attach_result", { objectiveId: objective.id, result: resultInput }, member.operationId)).structuredContent.error).toBe("not_commander");
+    const attached = await call("attach_result", { objectiveId: objective.id, result: resultInput }, commander);
+    const resultId = attached.structuredContent.resultId;
+    expect(attached.isError).toBe(false);
+    expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { label: "foreign" } }, other)).structuredContent.error).toBe("not_participant");
+    expect((await call("detach_result", { objectiveId: objective.id, resultId })).structuredContent.error).toBe("not_participant");
+    expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { path: "/private/user-file" } }, commander)).structuredContent.error).toBe("invalid_arguments");
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: "12345678-1234-4123-8123-123456789012" } }, commander)).structuredContent.error).toBe("unknown_evidence");
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", path: "/private/user-file" } }, commander)).structuredContent.error).toBe("invalid_arguments");
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://elsewhere.invalid/o/r/pull/1" } }, commander)).structuredContent.error).toBe("unsupported_pr_host");
+    expect((await call("read", { objectiveId: objective.id }, member.operationId)).structuredContent.objective).toHaveProperty("results", expect.arrayContaining([expect.objectContaining({ id: resultId })]));
+    expect(store.find(objective.id)!.results).toHaveLength(1);
+    const own = path.join(workspace, "source-root"); fs.mkdirSync(own, { recursive: true });
+    const root = fs.realpathSync(own);
+    const ownFile = path.join(root, "EVIDENCE.md"); fs.writeFileSync(ownFile, "owned evidence");
+    const scope: OwnedTempAccess = { read: () => ({ id: "member-root", root }) };
+    const seal = (source: string, by = member.operationId, access: OwnedTempAccess | undefined = scope) => call("seal_evidence_from_path", { objectiveId: objective.id, path: source }, by, access);
+    expect((await seal(ownFile, other)).structuredContent.error).toBe("not_participant");
+    expect((await call("seal_evidence_from_path", { objectiveId: objective.id, path: ownFile }, member.operationId)).structuredContent.error).toBe("scope_unavailable");
+    const foreign = path.join(workspace, "other-session.md"); fs.writeFileSync(foreign, "not this session");
+    expect((await seal(foreign)).structuredContent.error).toBe("evidence_outside_scope");
+    fs.symlinkSync(foreign, path.join(root, "link.md"));
+    expect((await seal(path.join(root, "link.md"))).structuredContent.error).toBe("evidence_symlink");
+    fs.linkSync(foreign, path.join(root, "hard.md"));
+    expect((await seal(path.join(root, "hard.md"))).structuredContent.error).toBe("evidence_hardlink");
+    const directory = path.join(root, "folder"); fs.mkdirSync(directory);
+    expect((await seal(directory)).structuredContent.error).toBe("evidence_not_regular");
+    fs.writeFileSync(path.join(root, "active.svg"), '<svg onload="alert(1)"/>');
+    expect((await seal(path.join(root, "active.svg"))).structuredContent.error).toBe("evidence_type");
+    fs.writeFileSync(path.join(root, "large.txt"), Buffer.alloc(RESULT_LIMITS.imageBytes + 1));
+    expect((await seal(path.join(root, "large.txt"))).structuredContent.error).toBe("evidence_too_large");
+    // 실제 source를 읽는 도중 바꾼다. 스토어/SSE는 반쪽 증거를 받지 않는다.
+    const originalOpen = fs.promises.open.bind(fs.promises);
+    const changed = vi.spyOn(fs.promises, "open").mockImplementationOnce(async (...args) => {
+      const handle = await originalOpen(...args);
+      const read = handle.read.bind(handle);
+      handle.read = (async (...readArgs: Parameters<typeof read>) => { const result = await read(...readArgs); fs.appendFileSync(ownFile, " changed"); return result; }) as typeof handle.read;
+      return handle;
+    });
+    const beforeSeal = events.length;
+    expect((await seal(ownFile)).structuredContent.error).toBe("evidence_changed");
+    changed.mockRestore();
+    expect(events).toHaveLength(beforeSeal);
+    const sealed = await seal(ownFile);
+    expect(sealed.isError).toBe(false);
+    expect((await call("attach_result", { objectiveId: other, result: { kind: "evidence", evidenceId: sealed.structuredContent.evidenceId } }, other)).structuredContent.error).toBe("unknown_evidence");
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: sealed.structuredContent.evidenceId } }, member.operationId)).structuredContent.error).toBe("not_commander");
     // 사람이 선행 없이 더한 임무는 미분류 — 지휘관이 자리를 정하기 전까지 준비되지 않는다.
     launch.missionAdded(objective.id, { text: "missed" }, { by: "human" });
     const board = async () => ((await call("read", { objectiveId: objective.id }, commander)).structuredContent.objective as { graph: { missions: { n: number; unplaced?: boolean; ready: boolean; prerequisites: number[]; member: { role: string } | null }[] } }).graph.missions;
     // 지휘관이 읽기 전에 사람이 바꾼 보드로는 계획을 쓸 수 없다.
     store.setEdited(objective.id, ["missions"]);
+    expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { note: "Stored independently" } }, commander)).isError).toBe(false);
+    expect(store.find(objective.id)!.edited?.kinds).toEqual(["missions"]);
     expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "stale" }] }, commander)).structuredContent.error).toBe("board_changed");
     const missed = (await board()).find((mission) => mission.unplaced)!;
     expect(missed).toMatchObject({ unplaced: true, ready: false });
@@ -681,6 +837,78 @@ describe("Objectives contract", () => {
     // 같은 목표에 시작이 겹치면 하나만 간다.
     const results = await Promise.allSettled([launch.startCommander(other), launch.startCommander(other)]);
     expect(results.filter((result) => result.status === "fulfilled").length).toBe(2);
+    // 결과물 수의 상한과 완료 잠금은 도구 호출을 우회한 저장에서도 유지된다.
+    for (let n = 2; n <= RESULT_LIMITS.count; n += 1) store.resultAdd(objective.id, { kind: "pr", url: `https://github.com/example/project/pull/${n}` });
+    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/example/project/pull/999" } }, commander)).structuredContent.error).toBe("too_many_results");
+    store.complete(objective.id);
+    expect((await call("detach_result", { objectiveId: objective.id, resultId }, commander)).structuredContent.error).toBe("objective_done");
+  });
+
+  it("automatically observes shared PRs, shows failed lookups instead of stale success, and discards late or disposed requests", async () => {
+    const { store, add, events } = harness();
+    add("pr-owner"); add("also-owner");
+    const url = "https://github.com/example/project/pull/7";
+    const first = store.resultAdd("pr-owner", { kind: "pr", url }).result;
+    store.resultAdd("also-owner", { kind: "pr", url });
+    const mission = store.missionAdd("pr-owner", { text: "Ready" }).missions[0]!;
+    store.missionDone("pr-owner", mission.id, ["Done"]);
+    store.handOff("pr-owner", { by: "human" });
+    const handoff = store.find("pr-owner")!.handoff;
+    const updatedAt = first.updatedAt;
+    let mode: "open" | "merged" | "closed" | "auth" | "pending" = "open";
+    let finish: (() => void) | undefined;
+    let aborted = false;
+    const execute = vi.fn(async (_args: readonly string[], signal: AbortSignal) => {
+      if (mode === "auth") throw Object.assign(new Error("failed"), { stderr: "gh auth login: secret-stderr-token" });
+      if (mode === "pending") return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        finish = () => resolve({ stdout: JSON.stringify({ number: 7, html_url: url, state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z" }), stderr: "" });
+        signal.addEventListener("abort", () => { aborted = true; reject(Object.assign(new Error("aborted"), { code: "ABORT_ERR" })); }, { once: true });
+      });
+      if (mode === "open") await new Promise((resolve) => setTimeout(resolve, 250));
+      return { stdout: `HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ title: "Review\u0000\nresult", number: 7, html_url: "https://github.com/Example/Project/pull/7", state: mode === "open" ? "open" : "closed", merged: mode === "merged", merged_at: mode === "merged" ? "2026-01-01T00:00:00Z" : null })}`, stderr: "" };
+    });
+    vi.useFakeTimers();
+    const service = createPrStatusService(store, { lookup: createGhPrLookup({ cwd: ".", execute }) });
+    const observed = () => store.find("pr-owner")!.results.find((entry) => entry.id === first.id) as Extract<ObjectiveResult, { kind: "pr" }>;
+    try {
+      await vi.advanceTimersByTimeAsync(250);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(observed().observation).toMatchObject({ state: "open", stale: false, title: "Review result" });
+      expect(store.find("also-owner")!.results[0]).toHaveProperty("observation.state", "open");
+      mode = "auth";
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
+      expect(observed().observation).toMatchObject({ state: "error", error: { code: "auth_required" }, lastSuccess: { state: "open" } });
+      expect(JSON.stringify(events)).not.toContain("secret-stderr-token");
+      const count = execute.mock.calls.length;
+      service.refresh(); service.refresh();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(execute).toHaveBeenCalledTimes(count);
+      mode = "closed";
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
+      expect(observed().observation.state).toBe("closed");
+      mode = "merged";
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prRefreshMs);
+      expect(observed().observation.state).toBe("merged");
+      expect(observed().updatedAt).toBe(updatedAt);
+      expect(store.find("pr-owner")!.handoff).toEqual(handoff);
+      expect(store.find("pr-owner")!.awaitingReview).toBe(true);
+      mode = "pending";
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prSettledRefreshMs);
+      expect(observed().observation.stale).toBe(true);
+      store.resultUpdate("pr-owner", first.id, { url: "https://github.com/example/project/pull/8" });
+      store.resultRemove("also-owner", store.find("also-owner")!.results[0]!.id);
+      finish!();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(observed().observation.state).toBe("unchecked");
+      service.refresh("pr-owner");
+      await vi.advanceTimersByTimeAsync(0);
+      const beforeDispose = events.length;
+      await service.dispose();
+      expect(aborted).toBe(true);
+      await vi.advanceTimersByTimeAsync(RESULT_LIMITS.prSettledRefreshMs);
+      expect(events).toHaveLength(beforeDispose);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { await service.dispose(); vi.useRealTimers(); }
   });
 
   it("keeps criteria proposed until the person decides, then awaits hand-off and reaches review only through hand_off", async () => {

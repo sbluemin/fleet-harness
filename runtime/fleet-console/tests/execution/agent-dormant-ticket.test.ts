@@ -38,12 +38,21 @@ describe("agent dormant ticket guards", () => {
     const harness = await createHarness();
     const control = harness.control;
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).operationId;
+    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, ownedTemp: true, viewMode: "chat", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).operationId;
     expect(harness.attach).not.toHaveBeenCalled();
     expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "chat", supportedActions: ["send", "resume"] });
     const operation = harness.operations.find((op) => op.id === id)!;
     expect(readOperationLaunch(operation.payload)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "chat", started: false });
-    expect(operation.payload).toMatchObject({ chatBorn: true, chatMode: true });
+    expect(operation.payload).toMatchObject({ chatBorn: true, chatMode: true, ownedTemp: true });
+    // 실제 제어 스키마와 실행 어댑터를 지난 opt-in만 저장된다. false도 launch 밖에서는 옵션을 끼울 수 없다.
+    await expect(control.request(caller, { kind: "send", operationId: id, text: "Begin", ownedTemp: false })).rejects.toThrow("invalid_arguments");
+    harness.patch(id, { payload: { ...operation.payload, consoleUse: { enabled: true, language: "ko" } } });
+    const operationCaller = { kind: "operation" as const, operationId: id };
+    const ownedLaunch = { kind: "launch" as const, theaterId: "theater-1", dormant: true, ownedTemp: true };
+    await expect(control.request(operationCaller, ownedLaunch)).rejects.toThrow("invalid_launch_option");
+    expect(() => control.automation(operationCaller, { name: "Unauthorized root", theaterId: "theater-1", trigger: { kind: "interval", minutes: 5 }, action: ownedLaunch, expiresAt: new Date(Date.now() + 3600_000).toISOString(), maxRuns: 1 })).toThrow("invalid_launch_option");
+    expect(control.state().automations).toHaveLength(0);
+    expect(harness.operations).toHaveLength(1);
     harness.patch(id, { payload: withOperationLaunchPreset(operation.payload, { model: "sonnet", effort: "low", viewMode: "terminal" }) });
     expect(harness.operations.find((op) => op.id === id)!.payload).not.toHaveProperty("chatBorn");
     expect(control.observe(id)?.surface).toBe("terminal");

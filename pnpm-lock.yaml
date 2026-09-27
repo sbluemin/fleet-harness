@@ -587,6 +587,9 @@ importers:
 
   runtime/fleet-plugins/objectives:
     dependencies:
+      '@fleet-console/markdown':
+        specifier: workspace:*
+        version: link:../../fleet-console/foundation/markdown
       '@fleet-console/sdk':
         specifier: workspace:*
         version: link:../../fleet-console/sdk

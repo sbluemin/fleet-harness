@@ -45,6 +45,7 @@ import { createTranscriptLinkReader, MAX_LINK_TEXT_CHARS, selectLinksIn } from "
 import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
+import { createOwnedFileScopes } from "./owned-file-scopes.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
 import {
   resolveClaudeCodeCustomSystemPrompt,
@@ -181,8 +182,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   if (computerUseMcp) ctx.host.lifecycle.registerCleanup(() => computerUseMcp.dispose());
   const browserMcp = ctx.host.browserMcp?.connect();
   if (browserMcp) ctx.host.lifecycle.registerCleanup(() => browserMcp.dispose());
+  const ownedTemps = createOwnedFileScopes({ dataDir: ctx.host.paths.consoleDataDir });
+  ctx.host.lifecycle.registerCleanup(() => ownedTemps.dispose());
   const runtime = await createFleetGatewayAgentRuntimeLifecycle({
-    additionalMcpSessions: [consoleUse, ctx.host.admiralMcp.connect(), ...(computerUseMcp ? [computerUseMcp] : []), ...(browserMcp ? [browserMcp] : [])],
+    additionalMcpSessions: [consoleUse, ctx.host.admiralMcp.connect({ ownedTemp: (label) => {
+      const node = ctx.host.operations.get(label.startsWith("chat:") ? label.slice(5) : label);
+      const harness = node ? readAgentSession(node.payload)?.harness : undefined;
+      return harness && harness !== "claude-code" ? { read: () => ({ error: "scope_unsupported_provider" }) } : ownedTemps.access(label);
+    } }), ...(computerUseMcp ? [computerUseMcp] : []), ...(browserMcp ? [browserMcp] : [])],
     onFailure: ctx.recordFailure,
   });
   const observability = createConsoleObservabilityStore({
@@ -259,6 +266,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     plugin: ctx.agentCliPlugin,
     infraServices: deps,
     readAgentCliPaths,
+    bindOwnedTemp: (operationId, provider, resume, env) => ctx.host.operations.get(operationId)?.payload.ownedTemp === true ? ownedTemps.acquire({ operationId, label: operationId, provider, resume, env }) : undefined,
     onRuntimeSessionStart: (session) => {
       pendingRuntimeSessions.set(session.sessionId, session);
     },
@@ -327,6 +335,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const unsubscribePurge = ctx.host.events.subscribe(OPERATION_PURGED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRestoredEvent(payload) || payload.pluginId !== null || payload.type !== AGENT_OPERATION_TYPE) return;
     launchAttachments.releaseSession(payload.operationId);
+    ownedTemps.purge(payload.operationId);
   });
 
   const consoleTerminal = createConsoleTerminalObserver({
@@ -539,7 +548,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.ownedTemp === true && caller.kind === "plugin" ? { ownedTemp: true } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -1075,7 +1084,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly newOperationId?: string; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly ownedTemp?: boolean; readonly disableSubagents?: boolean; readonly disableUserQuestions?: boolean; readonly parentOperationId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly newOperationId?: string; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1118,6 +1127,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
       ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
       ...(launchOptions.dormant ? { dormantBorn: true } : {}),
+      ...(launchOptions.ownedTemp ? { ownedTemp: true } : {}),
       // 멱등 기동 키 — 생성과 같은 영속 저장에 실려야 「없음」이 「만든 적 없음」으로 확정된다. 브라우저 DTO 에서는 빠진다.
       ...(launchOptions.launchKey ? { launchKey: launchOptions.launchKey } : {}),
     };
@@ -2160,6 +2170,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         onTurnSettled: () => deps.onTurnSettled?.(node.id),
         // 채팅 자식의 cwd도 같은 이유로 세션이 직접 알린다 — "지금 어디" 축이 두 얼굴에서 같이 따라간다.
         onCwdChanged: (nextCwd) => workspaceContext.observe(node.id, node.theaterId, nextCwd),
+        bindOwnedTemp: (providerSessionId) => ctx.host.operations.get(node.id)?.payload.ownedTemp === true ? ownedTemps.acquire({ operationId: node.id, label: mcpTokenLabel, provider: "claude", resume: providerSessionId, env: process.env }) : undefined,
         bindWorkspaceHook: (providerSessionId) => workspaceHooks.bind(node.id, providerSessionId,
           () => observability.getTerminalSessionInfo(node.id)?.chatActive === true),
         reportActivity: (working) => {

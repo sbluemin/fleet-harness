@@ -9,6 +9,7 @@ import { commanderMode, MAX_FOLLOWUPS, missionReady, unseenRecords, type Command
 import { ActionBand, type MemberAwaiting } from "./action-band.js";
 import { nearbyObjectives } from "../server/nearby.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
+import { ObjectiveResults, ResultsGlyph, ResultsHeadTools } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
@@ -837,7 +838,7 @@ function OpChip({ state, label, title, onRemove, removeLabel }: { state: string;
   );
 }
 
-type DetailSection = "detail:criteria" | "detail:missions" | "detail:followups" | "detail:members" | "detail:retro";
+type DetailSection = "detail:criteria" | "detail:missions" | "detail:results" | "detail:followups" | "detail:members" | "detail:retro";
 
 interface DetailProps {
   readonly objective: Objective;
@@ -1181,6 +1182,7 @@ function ObjectiveDetail({ objective, board, t, language, launchAvailable, call,
   const missionsCollapsible = objective.missions.length > 0;
   const criteriaOpen = !criteriaCollapsible || sectionOpen("detail:criteria");
   const missionsOpen = !missionsCollapsible || sectionOpen("detail:missions");
+  const resultsOpen = objective.results.length === 0 || sectionOpen("detail:results");
   // 제안이 새로 서면 접힌 기준 섹션을 편다 — 개시가 잠긴 까닭이 보여야 한다. 제안 목록이 바뀔 때 한 번만 펴서
   // 사람이 다시 접을 수 있게 둔다. onOpenSection 은 렌더마다 새로 만들어지므로 ref 로 읽는다(의존성에 넣으면 무한 렌더).
   const proposalKey = proposals.map((proposal) => proposal.id).join(",");
@@ -1461,6 +1463,18 @@ function ObjectiveDetail({ objective, board, t, language, launchAvailable, call,
             </div>
           ) : null}
         </div>
+      </div>
+
+      {/* 결과물 — 달성 기준 바로 아래, 모든 상태에서 같은 자리. 증거가 먼저, PR 이 뒤. 없으면 머리 한 줄(「없음」)만 선다 —
+          붙이라고 권하지 않는다. 붙이고 고치는 것은 지휘관의 도구이고 사람은 읽는다. PR 상태는 서버 관측이 SSE 로 갱신한다. */}
+      <div className="objectives-group objectives-results-group">
+        <SectionHead
+          glyph={<ResultsGlyph />}
+          label={t("objectives.results.title")}
+          tools={<ResultsHeadTools objective={objective} t={t} expanded={resultsOpen} />}
+          {...(objective.results.length > 0 ? { controls: "objectives-sec-results", expanded: resultsOpen, onToggle: () => onToggleSection("detail:results") } : {})}
+        />
+        {objective.results.length > 0 ? <div id="objectives-sec-results" hidden={!resultsOpen}><ObjectiveResults objective={objective} t={t} language={language} /></div> : null}
       </div>
 
       {/* 임무 — 목록과 편성 그래프를 한 섹션에 둔다. 머리 오른쪽은 완료 셈이고, 접혀도 남는다(접힌 임무에 안 읽은 기록이 있으면 셈 앞에 점 하나).

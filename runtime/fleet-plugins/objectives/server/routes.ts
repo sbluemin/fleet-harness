@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
+import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { createObjectiveSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type MissionPatchInput, type ObjectiveEditKind, type Objective } from "./types.js";
 
@@ -30,7 +31,7 @@ const missionRef = z.object({ objectiveId: ids, missionId: ids, language });
 const context = z.string().max(MAX_CONTEXT).optional();
 /** 그룹 — 사이드바 그룹 그 자체. 색은 정체성 톤 키여야 영속 상태에 남는다(목록 밖 색의 그룹은 불러올 때 버려진다). */
 
-export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store)): readonly ObjectiveRoute[] {
+export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService = createLaunchService(ctx, store), prStatus?: PrStatusService): readonly ObjectiveRoute[] {
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>, req: http.IncomingMessage) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -44,7 +45,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     return true;
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
-    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_objective", "unknown_mission", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_proposal", "unknown_group", "unknown_followup"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
+    if (error instanceof ObjectiveStoreError) { ctx.host.http.writeJson(res, ["unknown_objective", "unknown_mission", "unknown_member", "unknown_attachment", "unknown_criterion", "unknown_proposal", "unknown_group", "unknown_followup", "unknown_evidence", "unknown_result"].includes(error.code) ? 404 : 409, { error: error.code }); return; }
     const code = error instanceof Error ? error.message : "objective_failed";
     ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "objective_failed" });
   };
@@ -90,6 +91,21 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       res.writeHead(200, { "Content-Type": attachment.type, "Content-Length": data.length, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "private, max-age=3600", "Content-Security-Policy": "default-src 'none'" });
       res.end(data);
     } catch { ctx.host.http.writeJson(res, 404, { error: "unknown_attachment" }); }
+    return true;
+  };
+
+  const resultFile: RouteHandler = async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const params = query(req);
+    try {
+      const { data, metadata } = await store.evidenceRead(params.get("objectiveId") ?? "", params.get("resultId") ?? "");
+      res.writeHead(200, { "Content-Type": metadata.mediaType === "text/plain" ? "text/plain; charset=utf-8" : metadata.mediaType, "Content-Length": data.length, "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "private, no-store", "Content-Security-Policy": "default-src 'none'" });
+      res.end(data);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") ctx.host.http.writeJson(res, 404, { error: "unknown_evidence" });
+      else fail(res, error);
+    }
     return true;
   };
 
@@ -144,9 +160,9 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
   const only = (patch: Record<string, unknown>, keys: readonly string[]): boolean => Object.keys(patch).every((key) => keys.includes(key));
 
   return [
-    { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() })) },
+    { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => { prStatus?.refresh(); return { objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() }; }) },
     // 따로 만든 Operation 도 목표다 — 화면이 처음 보는 에이전트 Operation 을 목표 모양으로 받아 간다.
-    { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
+    { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표를 만들면 지휘관 Operation 이 dormant 로 함께 태어난다 — 깨우는 것은 「구상」·「시작」이다.
     { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander Operation.", handler: json(createObjectiveSchema, async ({ language, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ theaterId, title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
     { name: "objective/relation", method: "POST", summary: "Link two objectives, remove a link, set them aside, or restore them; only the person's board can change relations.", handler: json(objectiveRef.extend({ otherId: ids, action: z.enum(["link", "unlink", "unrelated", "restore"]) }).strict(), ({ objectiveId, otherId, action }) => objective(store.relation(objectiveId, otherId, action))) },
@@ -220,6 +236,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "criterion/approve-all", method: "POST", summary: "Approve all proposed success criterion changes.", handler: json(objectiveRef, ({ objectiveId }) => objective(store.proposalsApproveAll(objectiveId))) },
     { name: "criterion/reject", method: "POST", summary: "Reject one proposed success criterion change.", handler: json(objectiveRef.extend({ proposalId: ids }), ({ objectiveId, proposalId }) => objective(store.proposalReject(objectiveId, proposalId))) },
     { name: "criterion/annotate", method: "POST", summary: "Annotate a proposed success criterion change (empty text removes the annotation).", handler: json(objectiveRef.extend({ proposalId: ids, annotation: z.string().max(300) }), ({ objectiveId, proposalId, annotation }) => objective(store.proposalAnnotate(objectiveId, proposalId, annotation))) },
+    { name: "result/file", method: "GET", summary: "Read preserved evidence by objectiveId and resultId; images are inline and documents are plain UTF-8 text.", handler: resultFile },
     { name: "attachment/add", method: "POST", summary: "Attach an image to an objective's brief (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per objective).", handler: attachmentAdd },
     { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },
     { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(objectiveRef.extend({ attachmentId: ids }), steerable(() => true, ({ objectiveId, attachmentId }) => edited(["note"], () => store.attachmentRemove(objectiveId, attachmentId)))) },

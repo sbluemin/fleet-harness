@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { readOperationLaunch, type OperationNode } from "@fleet-console/sdk/operations";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
+import { checkedResultInput, patchedResultInput, prTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
+import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import {
   MAX_CRITERIA,
   MAX_CRITERION_TEXT,
@@ -70,7 +72,7 @@ import {
  */
 
 export class ObjectiveStoreError extends Error {
-  constructor(readonly code: string, message?: string) {
+  constructor(readonly code: string, message?: string, readonly details?: Record<string, unknown>) {
     super(message ?? code);
     this.name = "ObjectiveStoreError";
   }
@@ -182,6 +184,14 @@ export interface ObjectiveStore {
   proposalAnnotate(objectiveId: string, proposalId: string, annotation: string): Objective;
   /** 사람의 편집을 쌓는다 · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
   setEdited(objectiveId: string, kinds: readonly ObjectiveEditKind[] | null): Objective;
+  resultAdd(objectiveId: string, input: ResultInput): { readonly objective: Objective; readonly result: ObjectiveResult };
+  resultUpdate(objectiveId: string, resultId: string, patch: ResultPatch): Objective;
+  resultRemove(objectiveId: string, resultId: string): Objective;
+  /** 조회를 시작한 대상이 그대로 있을 때만 사실을 갱신한다. 지휘관 편집 시각·충족 판단은 바꾸지 않는다. */
+  resultObserved(objectiveId: string, resultId: string, url: string, observation: PrObservation): void;
+  evidenceSeal(objectiveId: string, ownerOperationId: string, input: EvidenceBytes): EvidenceMetadata;
+  evidenceRead(objectiveId: string, resultId: string): Promise<{ readonly data: Buffer; readonly metadata: EvidenceMetadata }>;
+  evidenceCollect(): void;
   attachmentAdd(objectiveId: string, input: { readonly name: string; readonly type: ObjectiveAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly objective: Objective; readonly attachment: ObjectiveAttachment };
   attachmentRemove(objectiveId: string, attachmentId: string): Objective;
   /** 첨부 파일의 절대 경로 — 서버 안(파일 서빙·지휘관의 도구 응답)에서만 쓴다. */
@@ -278,7 +288,8 @@ function containedFile(dir: string, name: string): string {
 
 /** 깨진 파일은 덮어쓰지 않고 비켜 둔다 — 그 목표만 빈 목표가 되고 다른 목표는 그대로다. */
 function quarantine(file: string): void {
-  try { fs.renameSync(file, `${file}.broken-${Date.now()}`); } catch { /* 이미 없으면 그만 */ }
+  try { fs.renameSync(file, `${file}.broken-${Date.now()}-${randomUUID()}`); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 }
 
 /** 목표 파일 하나 — 없으면 null, 깨졌거나 디렉터리 이름과 어긋나면 비켜 두고 null. 읽기 자체가 실패하면 전파한다. */
@@ -294,9 +305,19 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     const parsed = JSON.parse(raw) as Partial<StoredObjective>;
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
-      return { ...parsed, operationId: parsed.operationId, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [] };
+      const results = storedResultsSchema.safeParse(parsed.results === undefined ? [] : parsed.results);
+      // 새 필드도 같은 손상 경계다. 아래 quarantine이 원본을 보존하며 다른 목표 읽기는 계속된다.
+      if (!results.success) throw new ObjectiveStoreError("invalid_stored_results");
+      const rawEvidence = parsed.evidence === undefined ? [] : parsed.evidence;
+      if (!Array.isArray(rawEvidence) || rawEvidence.length > RESULT_LIMITS.evidenceCount + RESULT_LIMITS.pendingEvidence) throw new ObjectiveStoreError("invalid_stored_evidence");
+      const evidence = rawEvidence.map((entry) => storedEvidenceSchema.safeParse(entry));
+      if (evidence.some((entry) => !entry.success)) throw new ObjectiveStoreError("invalid_stored_evidence");
+      const manifest = evidence.map((entry) => entry.data!);
+      if (new Set(manifest.map((entry) => entry.evidenceId)).size !== manifest.length || manifest.reduce((sum, entry) => sum + entry.bytes, 0) > RESULT_LIMITS.totalEvidenceBytes) throw new ObjectiveStoreError("invalid_stored_evidence");
+      if (results.data.some((entry) => entry.kind === "evidence" && !manifest.some((file) => file.evidenceId === entry.evidenceId && file.sha256 === entry.sha256 && file.bytes === entry.bytes && file.mediaType === entry.mediaType))) throw new ObjectiveStoreError("invalid_stored_evidence");
+      return { ...parsed, operationId: parsed.operationId, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [], results: results.data, evidence: manifest };
     }
-  } catch { /* 깨진 파일 */ }
+  } catch { /* 깨진 JSON 또는 results/evidence 필드 — 원본을 격리하고 그 목표만 레코드 없음으로 본다. */ }
   quarantine(file);
   return null;
 }
@@ -333,6 +354,8 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.followupBatches?.length) delete out.followupBatches;
   for (const key of ["planning", "criteriaOpen", "today"] as const) if (out[key] !== true) delete out[key];
   if (!(objective.attachments?.length)) delete out.attachments;
+  if (!objective.results?.length) delete out.results;
+  if (!objective.evidence?.length) delete out.evidence;
   if (!(objective.criteria?.length)) delete out.criteria;
   if (!(objective.criteriaProposals?.length)) delete out.criteriaProposals;
   if (!objective.members?.length) delete out.members;
@@ -413,6 +436,19 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const fileOf = (theaterId: string, objectiveId: string, attachment: Pick<ObjectiveAttachment, "id" | "type">) =>
     containedFile(objectiveDir(theaterId, objectiveId), path.join("attachments", `${dirSegment(attachment.id)}.${ATTACHMENT_TYPES[attachment.type]}`));
 
+  const evidenceDir = (theaterId: string, objectiveId: string) => {
+    const dir = objectiveDir(theaterId, objectiveId);
+    if (fs.existsSync(dir) && fs.lstatSync(dir).isSymbolicLink()) throw new ObjectiveStoreError("unsafe_path");
+    const evidence = containedFile(dir, "evidence");
+    if (fs.existsSync(evidence) && (!fs.lstatSync(evidence).isDirectory() || fs.lstatSync(evidence).isSymbolicLink())) throw new ObjectiveStoreError("unsafe_path");
+    return evidence;
+  };
+  const evidenceFile = (theaterId: string, objectiveId: string, file: EvidenceMetadata) => {
+    const candidate = containedFile(evidenceDir(theaterId, objectiveId), `${dirSegment(file.evidenceId)}.${EVIDENCE_EXTENSIONS[file.mediaType]}`);
+    if (fs.existsSync(candidate) && fs.lstatSync(candidate).isSymbolicLink()) throw new ObjectiveStoreError("unsafe_path");
+    return candidate;
+  };
+
   /** 화면 모양 — 저장 레코드와 지휘관 Operation 을 합친다. 담당 세션 이름은 담당 Operation 에서. */
   const project = (stored: StoredObjective, node: OperationNode | null): Objective => {
     const pending = stored.pending;
@@ -434,6 +470,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: launch.model } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started },
       note: stored.note,
       attachments: stored.attachments ?? [],
+      results: stored.results ?? [],
       ...(stored.planRequest ? { planRequest: stored.planRequest } : {}),
       planning: stored.planning === true,
       criteriaOpen: stored.criteriaOpen === true,
@@ -563,6 +600,80 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const next = recorded ? ordered : { ...ordered, rank: virtualRank(node!) };
     return commit(theaterId, next, !recorded) ?? project(next, node);
   };
+
+  const resultChecked = <T>(run: () => T): T => {
+    try { return run(); }
+    catch (error) { if (error instanceof ResultValidationError) throw new ObjectiveStoreError(error.code); throw error; }
+  };
+  const makeResult = (objectiveId: string, input: ResultInput, previous?: ObjectiveResult): ObjectiveResult => {
+    const at = now();
+    const common = { id: previous?.id ?? randomUUID(), createdAt: previous?.createdAt ?? at, updatedAt: at,
+      ...(input.label ? { label: input.label } : {}), ...(input.note ? { note: input.note } : {}), ...(input.sourceMissionId ? { sourceMissionId: input.sourceMissionId } : {}) };
+    switch (input.kind) {
+      case "pr": return { ...common, kind: "pr", ...prTarget(input.url), observation: previous?.kind === "pr" && previous.url === input.url ? previous.observation : { state: "unchecked", checkedAt: null, stale: true } };
+      case "evidence": {
+        // label만 고칠 때는 이미 보존된 bytes를 다시 수입하지 않는다. 새 id는 seal 서비스가 확인한다.
+        const metadata = previous?.kind === "evidence" && previous.evidenceId === input.evidenceId
+          ? { evidenceId: previous.evidenceId, name: previous.name, mediaType: previous.mediaType, bytes: previous.bytes, sha256: previous.sha256, capturedAt: previous.capturedAt, ...(previous.width ? { width: previous.width } : {}), ...(previous.height ? { height: previous.height } : {}) }
+          : (() => {
+            const { theaterId, stored } = locate(objectiveId);
+            const sealed = stored.evidence?.find((entry) => entry.evidenceId === input.evidenceId);
+            if (!sealed) return null;
+            const attached = stored.results?.some((entry) => entry.kind === "evidence" && entry.evidenceId === sealed.evidenceId);
+            if (!attached && now() - sealed.capturedAt > RESULT_LIMITS.pendingEvidenceTtlMs) throw new ObjectiveStoreError("evidence_expired");
+            const file = evidenceFile(theaterId, objectiveId, sealed);
+            if (!fs.existsSync(file)) throw new ObjectiveStoreError("evidence_missing");
+            const stat = fs.lstatSync(file);
+            if (!stat.isFile() || stat.nlink !== 1 || stat.size !== sealed.bytes) throw new ObjectiveStoreError("invalid_evidence");
+            const { ownerOperationId: _owner, ...metadata } = sealed;
+            return metadata;
+          })();
+        if (!metadata) throw new ObjectiveStoreError("unknown_evidence");
+        const parsed = evidenceMetadataSchema.safeParse(metadata);
+        if (!parsed.success || parsed.data.evidenceId !== input.evidenceId) throw new ObjectiveStoreError("invalid_evidence");
+        return { ...common, kind: "evidence", ...parsed.data };
+      }
+    }
+  };
+  const checkedResults = (results: readonly ObjectiveResult[]): readonly ObjectiveResult[] => {
+    if (results.length > RESULT_LIMITS.count) throw new ObjectiveStoreError("too_many_results");
+    const evidence = results.filter((entry) => entry.kind === "evidence");
+    if (evidence.length > RESULT_LIMITS.evidenceCount || evidence.reduce((total, entry) => total + entry.bytes, 0) > RESULT_LIMITS.totalEvidenceBytes) throw new ObjectiveStoreError("evidence_capacity");
+    const parsed = storedResultsSchema.safeParse(results);
+    if (!parsed.success) throw new ObjectiveStoreError("invalid_results");
+    return parsed.data;
+  };
+  const assertResultTarget = (stored: StoredObjective, input: ResultInput | ObjectiveResult, replacing?: ObjectiveResult) => {
+    if (stored.done) throw new ObjectiveStoreError("objective_done");
+    // 기존 기록의 임무가 지워져도 결과물은 남는다. 새로 연결하는 임무만 현재 목표 안에서 확인한다.
+    if (input.sourceMissionId && input.sourceMissionId !== replacing?.sourceMissionId && !stored.missions.some((mission) => mission.id === input.sourceMissionId)) throw new ObjectiveStoreError("unknown_mission");
+    const duplicate = stored.results?.find((entry) => entry.id !== replacing?.id && resultIdentity(entry) === resultIdentity(input));
+    if (duplicate) throw new ObjectiveStoreError("result_exists", undefined, { resultId: duplicate.id });
+  };
+
+  const sweepEvidence = (objectiveId: string) => {
+    let { theaterId, stored } = locate(objectiveId);
+    const recordDir = objectiveDir(theaterId, objectiveId);
+    // 격리된 레코드가 참조하던 bytes는 고아로 단정하지 않는다. 복구 원본을 보존하고 그 목표의 새 seal만 닫는다.
+    if (fs.existsSync(recordDir) && fs.readdirSync(recordDir).some((name) => name.startsWith(`${OBJECTIVE_FILE}.broken-`))) throw new ObjectiveStoreError("evidence_storage_quarantined");
+    const linked = new Set((stored.results ?? []).flatMap((entry) => entry.kind === "evidence" ? [entry.evidenceId] : []));
+    const retained = (stored.evidence ?? []).filter((entry) => linked.has(entry.evidenceId) || now() - entry.capturedAt <= RESULT_LIMITS.pendingEvidenceTtlMs);
+    if (retained.length !== (stored.evidence ?? []).length) {
+      update(objectiveId, (current) => ({ ...current, evidence: retained }));
+      stored = locate(objectiveId).stored;
+    }
+    const dir = evidenceDir(theaterId, objectiveId);
+    if (!fs.existsSync(dir)) return;
+    const wanted = new Set((stored.evidence ?? []).map((entry) => path.basename(evidenceFile(theaterId, objectiveId, entry))));
+    for (const entry of fs.readdirSync(dir)) {
+      // 자체 UUID bytes와 중단된 exclusive-write tmp만 정리한다. 낯선 파일·디렉터리는 건드리지 않는다.
+      if (wanted.has(entry) || !/^[a-f0-9-]{36}\.(?:png|jpg|webp|gif|txt)(?:\.\d+-[a-f0-9-]{36}\.tmp)?$/.test(entry)) continue;
+      const file = path.join(dir, entry);
+      if (fs.lstatSync(file).isDirectory()) throw new ObjectiveStoreError("unsafe_path");
+      fs.unlinkSync(file);
+    }
+  };
+  const cleanEvidence = (objectiveId: string) => { try { sweepEvidence(objectiveId); } catch { console.warn("[objectives] evidence_cleanup_failed"); } };
 
   const missionOf = (stored: StoredObjective, missionId: string): { at: number; mission: StoredMission } => {
     const at = stored.missions.findIndex((mission) => mission.id === missionId);
@@ -956,6 +1067,101 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (annotation.length > 300) throw new ObjectiveStoreError("annotation_too_long");
       return { ...stored, criteriaProposals: stored.criteriaProposals.map((entry) => entry.id === proposalId ? { ...entry, annotation: annotation.trim() || undefined } : entry) };
     }),
+
+    resultAdd(objectiveId, raw) {
+      const input = resultChecked(() => checkedResultInput(raw));
+      let result!: ObjectiveResult;
+      const objective = update(objectiveId, (stored) => {
+        if (stored.done) throw new ObjectiveStoreError("objective_done");
+        result = resultChecked(() => makeResult(objectiveId, input));
+        assertResultTarget(stored, result);
+        return { ...stored, results: checkedResults([...(stored.results ?? []), result]) };
+      });
+      return { objective, result };
+    },
+    resultUpdate(objectiveId, resultId, patch) {
+      const objective = update(objectiveId, (stored) => {
+        if (stored.done) throw new ObjectiveStoreError("objective_done");
+        const previous = stored.results?.find((entry) => entry.id === resultId);
+        if (!previous) throw new ObjectiveStoreError("unknown_result");
+        const input = resultChecked(() => patchedResultInput(previous, patch));
+        const changed = resultChecked(() => makeResult(objectiveId, input, previous));
+        assertResultTarget(stored, changed, previous);
+        const retired = previous.kind === "evidence" && changed.kind === "evidence" && previous.evidenceId !== changed.evidenceId ? previous.evidenceId : null;
+        return { ...stored, ...(retired ? { evidence: stored.evidence?.filter((entry) => entry.evidenceId !== retired) } : {}), results: checkedResults(stored.results!.map((entry) => entry.id === resultId ? changed : entry)) };
+      });
+      cleanEvidence(objectiveId);
+      return objective;
+    },
+    resultRemove(objectiveId, resultId) {
+      const objective = update(objectiveId, (stored) => {
+        if (stored.done) throw new ObjectiveStoreError("objective_done");
+        const previous = stored.results?.find((entry) => entry.id === resultId);
+        if (!previous) throw new ObjectiveStoreError("unknown_result");
+        return { ...stored, ...(previous.kind === "evidence" ? { evidence: stored.evidence?.filter((entry) => entry.evidenceId !== previous.evidenceId) } : {}), results: stored.results!.filter((entry) => entry.id !== resultId) };
+      });
+      cleanEvidence(objectiveId);
+      return objective;
+    },
+
+    resultObserved(objectiveId, resultId, url, raw) {
+      const parsed = prObservationSchema.safeParse(raw);
+      if (!parsed.success) throw new ObjectiveStoreError("invalid_pr_observation");
+      try {
+        update(objectiveId, (stored) => {
+          const previous = stored.results?.find((entry) => entry.id === resultId);
+          if (previous?.kind !== "pr" || previous.url !== url || JSON.stringify(previous.observation) === JSON.stringify(parsed.data)) return stored;
+          return { ...stored, results: stored.results!.map((entry) => entry.id === resultId ? { ...previous, observation: parsed.data } : entry) };
+        });
+      } catch (error) {
+        // 조회 중 사라진 목표를 되살리거나 그 레코드를 새로 만들지 않는다.
+        if (!(error instanceof ObjectiveStoreError && error.code === "unknown_objective")) throw error;
+      }
+    },
+
+    evidenceSeal(objectiveId, ownerOperationId, input) {
+      sweepEvidence(objectiveId);
+      const { theaterId, stored } = locate(objectiveId);
+      if (stored.done) throw new ObjectiveStoreError("objective_done");
+      const manifest = stored.evidence ?? [];
+      const linked = new Set((stored.results ?? []).flatMap((entry) => entry.kind === "evidence" ? [entry.evidenceId] : []));
+      if (manifest.filter((entry) => !linked.has(entry.evidenceId)).length >= RESULT_LIMITS.pendingEvidence || manifest.reduce((sum, entry) => sum + entry.bytes, 0) + input.data.length > RESULT_LIMITS.totalEvidenceBytes) throw new ObjectiveStoreError("evidence_capacity");
+      const { data, ...details } = input;
+      const parsed = storedEvidenceSchema.safeParse({ ...details, evidenceId: randomUUID(), capturedAt: now(), ownerOperationId });
+      if (!parsed.success || parsed.data.bytes !== data.length || parsed.data.sha256 !== createHash("sha256").update(data).digest("hex")) throw new ObjectiveStoreError("invalid_evidence");
+      const evidence = parsed.data;
+      const file = evidenceFile(theaterId, objectiveId, evidence);
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+      writeFileExclusive(evidenceFile(theaterId, objectiveId, evidence), data);
+      try { update(objectiveId, (current) => ({ ...current, evidence: [...(current.evidence ?? []), evidence] })); }
+      catch (error) { try { fs.unlinkSync(file); } catch { /* 다음 GC가 자체 고아 bytes를 정리한다. */ } throw error; }
+      const { ownerOperationId: _owner, ...metadata } = evidence;
+      return metadata;
+    },
+    async evidenceRead(objectiveId, resultId) {
+      const { theaterId, stored } = locate(objectiveId);
+      const result = stored.results?.find((entry) => entry.id === resultId);
+      if (result?.kind !== "evidence") throw new ObjectiveStoreError("unknown_evidence");
+      const metadata = stored.evidence?.find((entry) => entry.evidenceId === result.evidenceId);
+      if (!metadata) throw new ObjectiveStoreError("unknown_evidence");
+      const file = evidenceFile(theaterId, objectiveId, metadata);
+      const handle = await fs.promises.open(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
+      try {
+        const before = await handle.stat({ bigint: true });
+        if (!before.isFile() || before.nlink !== 1n || before.size !== BigInt(metadata.bytes)) throw new ObjectiveStoreError("invalid_evidence");
+        const data = Buffer.alloc(metadata.bytes);
+        let offset = 0;
+        while (offset < data.length) { const { bytesRead } = await handle.read(data, offset, data.length - offset, offset); if (!bytesRead) throw new ObjectiveStoreError("invalid_evidence"); offset += bytesRead; }
+        const after = await handle.stat({ bigint: true });
+        if (after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs || createHash("sha256").update(data).digest("hex") !== metadata.sha256) throw new ObjectiveStoreError("invalid_evidence");
+        // 응답 전에 참조가 바뀌면 옛 bytes를 새 결과물의 파일인 것처럼 보내지 않는다.
+        const current = locate(objectiveId).stored.results?.find((entry) => entry.id === resultId);
+        if (current?.kind !== "evidence" || current.evidenceId !== metadata.evidenceId) throw new ObjectiveStoreError("unknown_evidence");
+        const { ownerOperationId: _owner, ...publicMetadata } = metadata;
+        return { data, metadata: publicMetadata };
+      } finally { await handle.close(); }
+    },
+    evidenceCollect() { for (const objective of store.all()) cleanEvidence(objective.id); },
 
     attachmentAdd(objectiveId, input) {
       const { theaterId, stored } = locate(objectiveId);

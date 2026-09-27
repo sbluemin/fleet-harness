@@ -797,7 +797,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     consoleUse,
     mcpTransport: mcpHttp.transport,
     admiralMcp: {
-      connect: () => pluginMcp.connect(),
+      connect: (options) => pluginMcp.connect(options),
       register: () => { throw new Error("Plugin MCP registration requires a plugin context"); },
     },
     operations: {

@@ -1144,6 +1144,58 @@ button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass); 
 .objectives-retro-table td + td { color: var(--text-secondary); }
 .objectives-retro-table tbody tr + tr td { border-top: 1px solid color-mix(in oklch, var(--hairline) 70%, transparent); }
 .objectives-retro-none { margin: 2px 14px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
+/* 결과물 — 달성 기준 바로 아래. 증거(썸네일·문서)가 먼저, PR 이 뒤. 행은 기준 행과 같은 들여쓰기(아이콘 열 22px + 14px 간격).
+   PR 상태 낱말은 기준의 「충족」과 같은 모노 낱말이고, 점이 상태를 한 번 더 말한다 — 채운 점은 확인된 끝, 고리는 진행, 점선은 모름. */
+.objectives-results { display: flex; flex-direction: column; padding-bottom: 6px; }
+.objectives-results-kind { padding: 8px 20px 2px 54px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.05em; color: var(--text-tertiary); }
+.objectives-result-strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 20px 6px 54px; }
+.objectives-result-thumb { display: flex; flex-direction: column; gap: 3px; width: 82px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: zoom-in; }
+.objectives-result-img { display: block; width: 82px; height: 52px; overflow: hidden; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel-raised); transition: border-color var(--duration-fast); }
+.objectives-result-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.objectives-result-thumb:hover .objectives-result-img, .objectives-result-thumb:focus-visible .objectives-result-img { border-color: var(--brass); }
+.objectives-result-thumb:focus-visible { outline: none; }
+.objectives-result-name { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.objectives-result-row { display: flex; gap: 14px; align-items: flex-start; width: 100%; padding: 7px 20px 7px 22px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; }
+.objectives-result-row:hover { background: var(--control-rest); }
+.objectives-result-row.is-button { cursor: pointer; }
+.objectives-result-row.is-button:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.objectives-result-row > .objectives-row-ic { margin-top: 1px; }
+.objectives-result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.objectives-result-title { color: var(--text-primary); line-height: 1.45; text-decoration: none; overflow-wrap: anywhere; }
+.objectives-result-title.is-mono { font-family: var(--font-mono); font-size: var(--t-xs); }
+a.objectives-result-title:hover, a.objectives-result-title:focus-visible { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
+.objectives-result-num { margin-right: 6px; font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-secondary); }
+.objectives-result-sub { font-size: var(--t-2xs); line-height: 1.5; color: var(--text-tertiary); overflow-wrap: anywhere; }
+.objectives-result-sub .is-mono { font-family: var(--font-mono); }
+.objectives-result-sub.is-error { color: var(--coral); }
+.objectives-result-open { flex: none; margin-top: 2px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-result-row.is-button:hover .objectives-result-open { color: var(--brass-ink); }
+.objectives-result-state { flex: none; display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; white-space: nowrap; color: var(--text-tertiary); }
+.objectives-result-state i { flex: none; width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box; }
+.objectives-result-state.is-merged { color: var(--positive); }
+.objectives-result-state.is-merged i { background: var(--positive); }
+.objectives-result-state.is-open { color: var(--text-primary); }
+.objectives-result-state.is-open i { border: 1.5px solid var(--positive); }
+.objectives-result-state.is-closed i { background: var(--text-tertiary); }
+.objectives-result-state.is-error { color: var(--coral); }
+.objectives-result-state.is-error i { background: var(--coral); }
+.objectives-result-state.is-unchecked i { border: 1.5px dashed var(--text-tertiary); }
+/* 오래됨 — 서버는 재확인을 시작하는 순간에도 stale 을 세운다. 보통 1초 안에 끝나는 정기 재확인이 표시를 깜빡이지 않게
+   1.5초 뒤에 드러낸다(값은 그 사이에도 그대로다). 재확인이 늦어지거나 재시작 뒤 확인 전이면 그대로 남는다. */
+.objectives-result-stale { color: var(--warn); animation: objectives-result-late 0s linear 1.5s both; }
+.objectives-result-state.is-stale { animation: objectives-result-dim 0s linear 1.5s both; }
+.objectives-result-state.is-stale i { animation: objectives-result-dim-dot 0s linear 1.5s both; }
+@keyframes objectives-result-late { from { visibility: hidden; } to { visibility: visible; } }
+@keyframes objectives-result-dim { to { color: var(--text-tertiary); } }
+@keyframes objectives-result-dim-dot { to { background: transparent; border: 1.5px dashed var(--warn); } }
+/* 텍스트 증거 보기 — 첨부 크게 보기와 같은 틀에 Markdown 본문. 로그·JSON 은 코드 블록 원문. */
+.objectives-result-textview { width: min(720px, 100%); justify-items: stretch; }
+/* markdown-body 의 가운데 정렬(margin auto)은 그리드 칸에서 늘어나지 못하게 한다 — 보기 틀 폭을 그대로 쓴다. */
+.objectives-result-markdown.markdown-body { box-sizing: border-box; width: 100%; max-inline-size: none; margin-inline: 0; max-height: calc(100dvh - 140px); overflow: auto; padding: 12px 16px; border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font-size: var(--t-sm); outline: none; }
+.objectives-result-markdown:focus-visible { box-shadow: inset 0 0 0 1px var(--brass); }
+.objectives-result-plain { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--t-xs); line-height: 1.6; color: var(--text-primary); }
+.objectives-result-textstate { padding: 24px 16px; font-size: var(--t-sm); color: var(--text-secondary); text-align: center; }
+.objectives-result-textstate.is-error { color: var(--coral); }
 /* 아주 좁은 상세 — 곁 값을 줄이고 글 읽을 폭을 남긴다. */
 @container objectives-detail (width < 340px) {
   .objectives-followup-row { gap: 8px; padding-left: 6px; padding-right: 6px; }
@@ -1151,6 +1203,8 @@ button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass); 
   .objectives-followup-note { margin-left: 8px; margin-right: 8px; }
   .objectives-retro { padding-left: 8px; padding-right: 8px; }
   .objectives-retro-none { margin-left: 8px; margin-right: 8px; }
+  .objectives-results-kind, .objectives-result-strip { padding-left: 22px; }
+  .objectives-result-row { gap: 10px; padding-right: 12px; }
   .objectives-origin-impact { margin-left: 8px; margin-right: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
