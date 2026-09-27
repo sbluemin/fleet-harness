@@ -693,8 +693,8 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       {/* 덱 칸에 선 패널의 본문은 읽는 자리다 — 승격 면이 포인터를 가로채는 것만으로는 절반이고,
           키보드는 그 면을 지나쳐 살아 있는 body(터미널 textarea·에이전트 컴포저)로 바로 들어간다.
           본문만 inert로 빼면 캡션의 창 컨트롤과 승격 면은 탭 순서에 그대로 남는다. */}
-      {/* 세션 탭과 임무 띠는 같은 줄에 서되, 띠는 tablist 밖의 독립된 버튼이다. 덱 칸에는 조작 줄을 두지 않는다. */}
-      {cluster && !deckTile ? (
+      {/* 세션 탭과 임무 띠는 같은 줄에 서되, 띠는 tablist 밖의 독립된 버튼이다. 덱 카드에서도 같은 줄이 캡션 아래에 선다. */}
+      {cluster ? (
         <div className="canvas-operation-cluster-row" onPointerDown={stopOperationPointer} data-canvas-blocker>
           {cluster.nodes}
           <div className="canvas-operation-cluster-progress">{cluster.strip}</div>

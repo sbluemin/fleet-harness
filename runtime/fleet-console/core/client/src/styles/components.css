@@ -5179,6 +5179,16 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: 0 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px);
 }
 
+/* 카드의 캡션은 흐름 안에 서므로 세션·임무 줄은 둘째 행이다. 줄은 칸의 승격 면(z-index 5) 위에
+   서야 칩 클릭이 무대 승격이 아니라 본문 전환으로 간다 — 캡션과 같은 7로 올린다. */
+.canvas-operation.is-deck-tile:has(> .canvas-operation-cluster-row) {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.canvas-operation.is-deck-tile > .canvas-operation-cluster-row {
+  z-index: 7;
+}
+
 
 .operations-canvas.is-triage .canvas-operation.is-minimized {
   transition: none;
