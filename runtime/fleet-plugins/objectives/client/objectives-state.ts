@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import { OPERATION_PURGED_EVENT } from "@fleet-console/sdk/operations/browser";
+import { OPERATION_PURGED_EVENT, accessOperation, describeOperation } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, ConsoleOperationSummary, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
 import type { Objective, ObjectiveEvent } from "../server/types.js";
@@ -44,6 +44,62 @@ let operationsSnapshot: readonly ConsoleOperationSummary[] = [];
 const inflight = new Map<string, Promise<void>>();
 /** 받으러 간 목표 — 같은 Operation 을 두 번 묻지 않는다. */
 const fetching = new Set<string>();
+
+/**
+ * 보관된 Operation 의 요약 — 완료한 목표의 지휘관·구성원은 Core 보관함으로 옮겨져 일반 목록에 없다. 세션 줄이 이름을
+ * 잃지 않고 지금의 휴면처럼 서도록, 목표가 가리키는데 목록에 없는 id 만 부작용 없는 describe 로 한 번 읽어 둔다.
+ * null 은 삭제·영구 삭제로 더는 없다는 뜻이고, 그 줄은 지금처럼 닫힘으로 선다. 새 문구나 보관 표기는 붙이지 않는다.
+ */
+const described = new Map<string, ConsoleOperationSummary | null>();
+const describing = new Set<string>();
+let combinedSnapshot: readonly ConsoleOperationSummary[] = [];
+let combinedSource: { readonly active: readonly ConsoleOperationSummary[]; readonly revision: number } | null = null;
+let describedRevision = 0;
+
+function referencedOperationIds(): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const state of theaters.values()) {
+    for (const objective of state.objectives) {
+      ids.add(objective.id);
+      for (const member of objective.members) if (member.operationId) ids.add(member.operationId);
+    }
+  }
+  return ids;
+}
+
+/** 목록에 없는데 목표가 가리키는 Operation 을 describe 로 채운다. 목록에 돌아온 id 는 캐시에서 걷는다. */
+function describeMissingOperations(): void {
+  const active = new Set(operationsSnapshot.map((operation) => operation.id));
+  let changed = false;
+  for (const id of [...described.keys()]) {
+    if (active.has(id)) { described.delete(id); changed = true; }
+  }
+  if (changed) { describedRevision += 1; }
+  for (const id of referencedOperationIds()) {
+    if (active.has(id) || described.has(id) || describing.has(id)) continue;
+    describing.add(id);
+    void describeOperation(id)
+      .then((description) => {
+        described.set(id, description === null ? null : {
+          id: description.operation.id,
+          theaterId: description.operation.theaterId,
+          type: description.operation.type,
+          title: description.operation.title,
+          // 보관된 Operation 은 실행이 멈춘 상태다 — 지금의 휴면 줄과 같은 모양으로 선다.
+          activity: "ended",
+          ownActivity: "ended",
+          ...(description.operation.parentOperationId ? { parentOperationId: description.operation.parentOperationId } : {}),
+        });
+      })
+      .catch(() => { /* 읽지 못하면 이번에는 닫힘으로 두고 다음 변화 때 다시 묻는다 */ })
+      .finally(() => {
+        describing.delete(id);
+        describedRevision += 1;
+        notify();
+      });
+  }
+  if (changed) notify();
+}
 
 /** 구성원 Operation — 임무가 아직 없어도 목표가 아니며 명단에서 제외되어야 한다. */
 function memberIds(objectives: readonly Objective[]): ReadonlySet<string> {
@@ -90,6 +146,7 @@ function notify(): void {
 function setTheater(theaterId: string, next: Partial<TheaterState>): void {
   theaters.set(theaterId, { ...(theaters.get(theaterId) ?? EMPTY), ...next });
   notify();
+  describeMissingOperations();
 }
 
 export function installObjectiveState(ctx: PluginInstallContext): () => void {
@@ -123,7 +180,10 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   // 영구 삭제된 Operation 의 목표는 되살아날 수 없다 — 서버도 같은 때 remove 를 보내지만, 받는 순서와 무관하게 거둔다.
   const offPurged = ctx.consoleEvents.subscribe(OPERATION_PURGED_EVENT, (payload) => {
     const operationId = (payload as { operationId?: unknown } | null)?.operationId;
-    if (typeof operationId === "string") removeObjectiveLocally(operationId);
+    if (typeof operationId !== "string") return;
+    described.set(operationId, null);
+    describedRevision += 1;
+    removeObjectiveLocally(operationId);
   });
   const offRemoved = ctx.consoleEvents.subscribe("group:removed", (payload) => {
     const data = payload as { groupId?: string; theaterId?: string } | null;
@@ -144,6 +204,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
     reconcileOperations(ctx.api);
     notify();
+    describeMissingOperations();
   });
   let focusOutTimer: ReturnType<typeof setTimeout> | null = null;
   const onFocusOut = (event: FocusEvent) => {
@@ -243,8 +304,13 @@ export function useObjectiveTheater(theaterId: string | null): TheaterState {
   return useSyncExternalStore(subscribeObjective, () => readTheater(theaterId), () => readTheater(theaterId));
 }
 
+/** 일반 목록의 Operation 과, 목표가 가리키는 보관 Operation 의 describe 요약. 참조는 바뀔 때만 새로 만든다. */
 export function operationSummaries(): readonly ConsoleOperationSummary[] {
-  return operationsSnapshot;
+  if (combinedSource?.active === operationsSnapshot && combinedSource.revision === describedRevision) return combinedSnapshot;
+  const archived = [...described.values()].filter((summary): summary is ConsoleOperationSummary => summary !== null);
+  combinedSnapshot = archived.length === 0 ? operationsSnapshot : [...operationsSnapshot, ...archived];
+  combinedSource = { active: operationsSnapshot, revision: describedRevision };
+  return combinedSnapshot;
 }
 
 export function useOperationSummaries(): readonly ConsoleOperationSummary[] {
@@ -387,11 +453,34 @@ export function handleMapOperationSelected(operationId: string): void {
   notify();
 }
 
+const ACCESS_ARRIVAL_TIMEOUT_MS = 5_000;
+
 export function focusOperation(operationId: string): void {
   // 목표 표면은 닫고 간다 — 확장 표면이 무대를 덮은 채로는 옮겨간 Operation 이 보이지 않는다.
   // 착지는 Snap 전체다 — 스냅할 수 없는 모드·화면에서는 호스트가 같은 일반 이동으로 폴백한다.
-  if (installed?.surfaces.isOpen("objectives")) installed.surfaces.closeSurface("objectives");
-  installed?.operations.focus(operationId, { snap: "full" });
+  const host = installed;
+  if (!host) return;
+  if (host.surfaces.isOpen("objectives")) host.surfaces.closeSurface("objectives");
+  const present = () => host.consoleState.getOperations({ nested: true }).some((operation) => operation.id === operationId);
+  if (present() || described.get(operationId) === null) {
+    host.operations.focus(operationId, { snap: "full" });
+    return;
+  }
+  // 보관된 세션이다 — 여는 것 자체가 다시 쓰겠다는 뜻이므로 Core 가 그 Cluster 를 조용히 휴면으로 되돌린 뒤 연다.
+  // 표시는 없다. 복원된 노드는 사건으로 일반 목록에 도착하므로, 도착을 기다렸다가 옮겨 간다.
+  void accessOperation(operationId, "open")
+    .then(() => new Promise<void>((resolve) => {
+      if (present()) { resolve(); return; }
+      const timer = setTimeout(() => { off(); resolve(); }, ACCESS_ARRIVAL_TIMEOUT_MS);
+      const off = host.consoleState.subscribe(() => {
+        if (!present()) return;
+        clearTimeout(timer);
+        off();
+        resolve();
+      });
+    }))
+    .then(() => { if (present()) host.operations.focus(operationId, { snap: "full" }); })
+    .catch(() => { /* 복원하지 못하면 그 자리에 머문다 — 줄은 그대로 휴면으로 남는다 */ });
 }
 
 const OBJECTIVE_PANEL_ID = "objectives";
