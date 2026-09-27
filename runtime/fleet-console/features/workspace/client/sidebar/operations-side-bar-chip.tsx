@@ -22,6 +22,7 @@ import { OperationDetailCard } from "./operation-detail-card.js";
 import { getLoadedTheaterId, useCompanionOperationId, useSnapHold } from "../canvas/canvas-store.js";
 import { SNAP_FULL_ZONES } from "../canvas/snap-layouts.js";
 import { SnapMark } from "../canvas/snap-mark.js";
+import { DecisionRequestMark } from "../decision-request-mark.js";
 import { scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 
 /** 포인터가 잠깐 지나가는 것과 겨누는 것을 가르는 시간. 목록을 훑는 동안 카드가 따라 뜨면 안 된다. */
@@ -47,7 +48,11 @@ export interface SideBarEntry {
 /**
  * 묶음의 뿌리(지휘관) 행 — 이름 뒤에 단계 띠를 얹는다. 사이드바는 지휘관 한 행이 묶음을 대표하므로 단계 행은 서지 않는다.
  */
-export interface SideBarChipCluster { readonly strip: ReactNode }
+export interface SideBarChipCluster {
+  readonly strip: ReactNode;
+  /** 뿌리에게 결정 요청이 섰다 — 이름 옆에 표식이 선다(비콘·상태 칸은 활동 그대로). */
+  readonly decisionRequest?: boolean;
+}
 
 interface SideBarChipProps {
   readonly entry: SideBarEntry;
@@ -359,6 +364,7 @@ export function OperationsSideBarChip({
             <>
               <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
               {snapZone ? <SnapMark zone={snapZone} /> : null}
+              {cluster?.decisionRequest ? <DecisionRequestMark /> : null}
             </>
           )}
         </span>

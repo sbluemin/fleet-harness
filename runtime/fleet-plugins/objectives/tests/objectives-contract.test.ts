@@ -272,7 +272,7 @@ describe("Objectives contract", () => {
     await launch.muster(objective.id);
     expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
     // 구성원만 사람에게 묻지 않는다 — 지휘관은 질문을 그대로 가진다.
-    expect(launches.map((entry) => entry.disableUserQuestions)).toEqual([undefined, true, true]);
+    expect(launches.map((entry) => entry.disableUserQuestions)).toEqual([true, true, true]);
     // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다 — 미기동 지휘관의 저장된 시작 뷰가 터미널이어도.
     expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["chat", "chat"]);
     const roster = store.find(objective.id)!;
@@ -932,6 +932,67 @@ describe("Objectives contract", () => {
     expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/example/project/pull/999" } }, commander)).structuredContent.error).toBe("too_many_results");
     store.complete(objective.id);
     expect((await call("detach_result", { objectiveId: objective.id, resultId }, commander)).structuredContent.error).toBe("objective_done");
+  });
+
+  it("keeps the person's answers to a decision request as decisions only once delivered, and clears a request the board no longer supports without recording one", async () => {
+    const { store, call, launch, route, sent, activity, hostFault, operationsHost, objectivesDir } = harness();
+    const objective = await launch.create({ theaterId: "t1", title: "Ask", groupId: null, missions: [{ text: "ship" }] });
+    await launch.requestPlan(objective.id);
+    const commander = objective.id;
+    await call("plan", { objectiveId: commander, missions: [{ text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
+    store.setPlanning(commander, false);
+    const member = ((await call("muster", { objectiveId: commander }, commander)).structuredContent.members as { operationId: string }[])[0]!.operationId;
+    const missionId = store.find(commander)!.missions[0]!.id;
+    const questions = [
+      { text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }], missionId, memberId: member },
+      { text: "Anything else?", options: [] },
+    ];
+    // 요청은 지휘관만 올린다. 늦은 revision 은 새 보드를 덮지 못한다.
+    expect((await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, member)).structuredContent.error).toBe("not_commander");
+    const first = await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, commander);
+    expect(first.isError).toBe(false);
+    expect((await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, commander)).structuredContent.error).toBe("decision_request_changed");
+    // 사람의 보드 편집은 옛 보드에 대한 요청을 정리하고, 결정은 남기지 않는다. 지휘관은 다시 읽기 전까지 새 요청을 올리지 못한다.
+    await route("mission/add", { objectiveId: commander, mission: { text: "docs" } });
+    expect(store.find(commander)).toMatchObject({ decisionRequest: null, decisions: [] });
+    const revision = store.find(commander)!.decisionRequestRevision;
+    expect((await call("request_decision", { objectiveId: commander, expectedRevision: revision, questions }, commander)).structuredContent.error).toBe("board_changed");
+    await call("read", { objectiveId: commander }, commander);
+    const placed = (await call("request_decision", { objectiveId: commander, expectedRevision: revision, questions }, commander)).structuredContent.decisionRequest as { id: string; questions: { id: string; options: { id: string }[] }[] };
+    const answers = [{ questionId: placed.questions[0]!.id, selectedOptionIds: [placed.questions[0]!.options[0]!.id], text: "then stop" }, { questionId: placed.questions[1]!.id, selectedOptionIds: [], text: "no" }];
+    // 빈 답·빠진 질문은 받지 않는다. 전달이 실패하면 요청이 남고 결정은 쌓이지 않는다.
+    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [answers[0]] })).value.error).toBe("invalid_answers");
+    hostFault.sendError = "capability_unavailable";
+    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers })).value.error).toBe("decision_delivery_failed");
+    expect(store.find(commander)).toMatchObject({ decisionRequest: { id: placed.id }, decisionDelivery: null, decisions: [] });
+    // 기준 제안이 남아도(스티어링·개시는 거절되는 상태) 답은 휴면 지휘관을 깨워 닿고, 제안은 사람의 판단으로 남는다.
+    store.setCriteriaOpen(commander, true);
+    await call("read", { objectiveId: commander }, commander);
+    // 완료된 임무는 계획이 남긴다 — 질문이 가리키는 임무가 보드에 있는 동안 요청은 그대로다.
+    await call("complete_mission", { objectiveId: commander, missionId, summary: ["committed"] }, commander);
+    await call("plan", { objectiveId: commander, missions: [{ text: "later" }], criteria: [{ text: "documented" }] }, commander);
+    expect(store.find(commander)).toMatchObject({ decisionRequest: { id: placed.id }, criteriaProposals: [{ text: "documented" }] });
+    activity.set(commander, "dormant");
+    const delivered = await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers });
+    expect(delivered.value).toMatchObject({ objective: { id: commander } });
+    expect(sent.at(-1)).toMatchObject({ operationId: commander, text: expect.stringContaining("then stop") });
+    expect(activity.get(commander)).toBe("idle");
+    const answered = store.find(commander)!;
+    expect(answered.decisionRequest).toBeNull();
+    expect(answered.criteriaProposals).toHaveLength(1);
+    expect(answered.decisions).toMatchObject([
+      { requestId: placed.id, question: { text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }] }, answer: { text: "then stop" }, missionId, memberId: member },
+      { requestId: placed.id, answer: { selectedOptionIds: [], text: "no" } },
+    ]);
+    // 같은 답의 재전송은 다시 보내지도 쌓지도 않는다. 다른 답은 남은 결정을 덮지 않는다.
+    const sends = sent.length;
+    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers })).status).toBe(200);
+    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [{ ...answers[0]!, text: "merge" }, answers[1]] })).value.error).toBe("decision_already_submitted");
+    expect(sent.length).toBe(sends);
+    // 구성원은 사람의 답을 보드에서 읽고, 결정은 다시 읽어 들인 저장에도 그대로다.
+    expect((await call("read", { objectiveId: commander }, member)).structuredContent.objective).toMatchObject({ decisions: [{ answer: { text: "then stop" } }, { answer: { text: "no" } }] });
+    const reloaded = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), operations: operationsHost, emit: () => {} });
+    expect(reloaded.find(commander)!.decisions).toHaveLength(2);
   });
 
   it("automatically observes shared PRs, shows failed lookups instead of stale success, and discards late or disposed requests", async () => {

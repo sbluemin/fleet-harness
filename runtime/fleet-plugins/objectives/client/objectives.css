@@ -1207,3 +1207,67 @@ a.objectives-result-title:hover, a.objectives-result-title:focus-visible { outli
   .objectives-followup-spin { animation: none; }
   .objectives-followup-meta svg, .objectives-followup-trace > button svg { transition: none; }
 }
+
+/* 결정 요청 — 하단 띠 위의 칸. 전체 테두리와 옅은 brass 면으로 서고 왼쪽 띠는 쓰지 않는다. 질문이 많으면 칸 안에서 스크롤한다. */
+.objectives-decision-request { display: flex; flex-direction: column; gap: 8px; margin: 4px 10px 8px; padding: 10px 12px 10px; border: 1px solid color-mix(in oklch, var(--brass) 38%, transparent); border-radius: var(--radius-md); background: color-mix(in oklch, var(--brass) 6%, var(--surface-panel)); }
+.objectives-decision-head { display: flex; align-items: center; gap: 6px; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--brass); }
+.objectives-decision-head time, .objectives-decision-n { font-family: var(--font-mono); font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-n { margin-left: auto; }
+.objectives-decision-glyph { display: inline-grid; place-items: center; width: 14px; height: 14px; flex: none; }
+.objectives-decision-glyph svg { width: 14px; height: 14px; }
+.objectives-decision-body { display: flex; flex-direction: column; gap: 10px; max-height: min(52vh, 460px); overflow: auto; }
+.objectives-decision-q { display: flex; flex-direction: column; gap: 6px; }
+.objectives-decision-q + .objectives-decision-q { padding-top: 10px; border-top: 1px solid color-mix(in oklch, var(--brass) 18%, var(--surface-rim)); }
+.objectives-decision-q-top { display: flex; gap: 6px; align-items: baseline; }
+.objectives-decision-q-n { flex: none; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-q-text { margin: 0; font-size: var(--t-sm); line-height: 1.45; color: var(--text-primary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.objectives-decision-refs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding-left: 16px; font-size: var(--t-xs); }
+.objectives-decision-ref { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); text-align: left; }
+button.objectives-decision-ref { cursor: pointer; }
+button.objectives-decision-ref:hover { color: var(--text-primary); }
+button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-decision-ref .objectives-member-mark { width: 16px; height: 16px; }
+.objectives-decision-ref-n { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-ref.is-go { color: var(--text-primary); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--brass) 60%, transparent); text-underline-offset: 3px; }
+.objectives-decision-ref.is-go svg { width: 11px; height: 11px; }
+/* 선택지 — 상자 버튼이 아닌 목록 줄. 고른 줄은 표시기와 글자 무게·옅은 면으로만 말한다. */
+.objectives-decision-opts { display: flex; flex-direction: column; padding-left: 12px; }
+.objectives-decision-opt { display: grid; grid-template-columns: 14px 1fr; gap: 8px; align-items: start; padding: 5px 6px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
+.objectives-decision-opt:hover:not(:disabled) { background: var(--control-rest); color: var(--text-primary); }
+.objectives-decision-opt:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-decision-opt[aria-checked="true"] { color: var(--text-primary); font-weight: var(--weight-bold); background: color-mix(in oklch, var(--brass) 9%, transparent); }
+.objectives-decision-opt small { display: block; font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-ind { display: grid; place-items: center; width: 12px; height: 12px; margin-top: 3px; border: 1.5px solid var(--text-tertiary); border-radius: 50%; }
+.objectives-decision-opt.is-multi .objectives-decision-ind { border-radius: 3px; }
+.objectives-decision-opt[aria-checked="true"] .objectives-decision-ind { border-color: var(--brass); }
+.objectives-decision-opt[aria-checked="true"] .objectives-decision-ind::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); }
+.objectives-decision-opt.is-multi[aria-checked="true"] .objectives-decision-ind::after { border-radius: 1px; }
+.objectives-decision-hint { padding: 2px 0 0 26px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-free { margin-left: 12px; width: calc(100% - 12px); min-height: 32px; max-height: 160px; padding: 6px 9px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.4; resize: vertical; box-sizing: border-box; }
+.objectives-decision-free:focus { outline: none; border-color: color-mix(in oklch, var(--brass) 60%, transparent); }
+.objectives-decision-submit { display: flex; align-items: center; gap: 10px; }
+.objectives-decision-progress { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-send { margin-left: auto; height: 30px; padding: 0 14px; border: 1px solid color-mix(in oklch, var(--brass) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-bold); cursor: pointer; }
+.objectives-decision-send:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 24%, transparent); }
+.objectives-decision-send:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-decision-send:disabled { opacity: 0.5; cursor: default; }
+.objectives-decision-foot { margin: 0; font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-fault { margin: 0; font-size: var(--t-xs); color: var(--coral); }
+.objectives-decision-trace { margin: 0 14px 6px; font-size: var(--t-xs); color: var(--text-tertiary); }
+/* 「결정」 — 질문(옅게)·답(원문)·시각과 관련 임무·구성원. 임무 줄의 결정 표식이 가리키면 잠시 비춘다. */
+.objectives-decisions { display: flex; flex-direction: column; padding: 0 12px 0 36px; }
+.objectives-decision { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; margin-inline: -4px; border-radius: var(--radius-xs); transition: background var(--duration-fast); }
+.objectives-decision + .objectives-decision { border-top: 1px solid var(--surface-rim); }
+.objectives-decision.is-flash { background: color-mix(in oklch, var(--brass) 12%, transparent); }
+.objectives-decision-q-copy { margin: 0; font-size: var(--t-xs); color: var(--text-tertiary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-decision-a { margin: 0; font-size: var(--t-sm); color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-decision-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.objectives-decision-meta .objectives-member-mark { width: 14px; height: 14px; font-size: 9px; }
+.objectives-decisions-fold { align-self: flex-start; padding: 4px 0 0; border: 0; background: none; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.objectives-decisions-fold:hover { color: var(--text-primary); }
+.objectives-decisions-fold:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+/* 목록 카드의 「결정 요청」 — 인계 대기 라벨과 같은 자리. */
+.objectives-objective-request { display: inline-flex; align-items: center; gap: 3px; color: var(--brass); }
+.objectives-objective-request svg { width: 12px; height: 12px; }
+.objectives-objective-request em { font-style: normal; color: var(--text-tertiary); }

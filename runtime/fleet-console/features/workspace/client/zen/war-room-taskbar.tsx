@@ -16,6 +16,8 @@ import { highlightTriageDeckCard } from "../canvas/triage-watch-deck.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
 import type { ZenTaskbarProps } from "./zen-taskbar.js";
+import { useClusterIndex } from "../operation-clusters.js";
+import { DecisionRequestMark, hasDecisionRequest } from "../decision-request-mark.js";
 import "./war-room-taskbar.css";
 
 type Shelf = "minimized" | "ended" | "shelves" | "overflow";
@@ -28,6 +30,7 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
   const arrivals = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   useCanvasState();
   const stagedId = useTriageStage();
+  const clusterIndex = useClusterIndex();
   const minimizedIds = new Set(getTheaterMinimizedIds(theaters.map((theater) => theater.id)));
   const ended = operations.filter((operation) => resolveOperationActivity(operation, operationRuntime) === "ended");
   const minimized = operations.filter((operation) => minimizedIds.has(operation.id) && resolveOperationActivity(operation, operationRuntime) !== "ended");
@@ -152,7 +155,8 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
     const visual = mark(operation);
     const accentKey = getTheaterCanvasSnapshot(operation.theaterId).operationAccent[operation.id] ?? operationAccentFromNode(operation);
     const accent = accentKey ? resolveAccentColor(accentKey) : null;
-    return <button key={operation.id} type="button" className={`zen-taskbar-op war-room-chip is-${visual}${operation.id === stagedId ? " is-active" : ""}${newIds.has(operation.id) ? " is-new" : ""}`}
+    const decision = hasDecisionRequest(clusterIndex, operation.id);
+    return <button key={operation.id} type="button" className={`zen-taskbar-op war-room-chip is-${visual}${decision ? " is-decision" : ""}${operation.id === stagedId ? " is-active" : ""}${newIds.has(operation.id) ? " is-new" : ""}`}
       data-zen-op={operation.id} data-keep-operation-active="" aria-current={operation.id === stagedId ? "true" : undefined}
       title={`${operation.title} · ${theaterLabel(operation)}`} style={accent ? { "--user-accent": accent } as CSSProperties : undefined}
       onMouseEnter={() => highlightTriageDeckCard(operation.id)} onMouseLeave={() => highlightTriageDeckCard(null)}
@@ -161,7 +165,7 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
       onKeyDown={(event) => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); onOpenOperationMenu(operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget); } }}>
       {operation.id === nextId ? <span className="war-room-next">{t("canvas.triage.next")}<span aria-hidden="true">▸</span></span> : null}
       <OperationNameMark operation={operation} status={visual} decorative className="zen-taskbar-op-mark" />
-      <span className="zen-taskbar-op-title">{operation.title}</span><sup>{theaterInitials(theaterLabel(operation))}</sup>
+      <span className="zen-taskbar-op-title">{operation.title}</span>{decision ? <DecisionRequestMark /> : null}<sup>{theaterInitials(theaterLabel(operation))}</sup>
     </button>;
   };
   const menuItems = menu?.kind === "overflow" ? overflow : menu?.kind === "minimized" ? minimized : menu?.kind === "ended" ? ended : [...minimized, ...ended];

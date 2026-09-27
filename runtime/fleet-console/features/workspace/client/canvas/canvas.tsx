@@ -45,7 +45,7 @@ import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operation
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { companionSlotWeightsFor, COMPANION_CRAMPED_SLOT_RATIO, COMPANION_KEYBOARD_STEP_PX, COMPANION_MIN_SLOT_PX, COMPANION_SESSION_SLOT_ID, COMPANION_SLOT_GAP_PX, resetCompanionSlotWeights, resolveCompanionSlotWidths, setCompanionSlotWeights, useCompanionSlotWeights } from "./companion-widths.js";
-import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, publishTriageStage, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, publishTriageStage, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, setTriageDecisionRoots, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 // 함대 지도 퇴장 연출 길이 — CSS fleet-map-out(--duration-base ≈ 220ms)보다 넉넉히.
 const FLEET_MAP_LEAVE_MS = 320;
@@ -183,6 +183,8 @@ export function OperationsCanvas({
   // 구성원을 가리킨 포커스(목표의 「결정 대기」·팔레트·알림)도 스토어가 지휘관으로 돌리며 본문을 그 구성원으로 바꾼다.
   // 묶음 색인은 띠·노드 줄·피커를 그리는 데만 쓴다.
   const clusterIndex = useClusterIndex();
+  // 결정 요청이 선 뿌리는 선별 대기열에 든다 — 큐를 읽는 모든 곳(무대·막대·키보드)이 같은 집합을 보게 모듈에 넣는다.
+  useEffect(() => { setTriageDecisionRoots(new Set(clusterIndex.clusters.filter((cluster) => cluster.decisionRequest === true).map((cluster) => cluster.root))); }, [clusterIndex]);
   // 지휘관의 공개 활동은 코어 스토어가 살아 있는 구성원까지 반영한다 — 구성원의 결정 대기도 지휘관을 대기로 올린다.
   const operationRuntime = state.operationRuntime;
   const [focusFadeTransitionReady, setFocusFadeTransitionReady] = useState(activePluginOperationId !== null);

@@ -46,6 +46,16 @@ export const MAX_RETRO_TEXT = 100;
 export const MAX_FOLLOWUP_DISCARDED = 20;
 /** 보존하는 완료 배치 — 넘치면 가장 오래된 종결 배치를 누계로 접는다. 진행 중 배치는 접지 않는다. */
 export const MAX_FOLLOWUP_BATCHES = 50;
+/**
+ * 결정 요청 — 지휘관이 사람에게 묻는 질문 묶음. 요청당 질문 수, 질문당 선택지 수(0 또는 2 이상), 문구 길이는 저장 제한이다.
+ * 사람의 답은 받는 상한만 두고 자르지 않는다(지휘관에게도 원문 그대로 간다).
+ */
+export const MAX_DECISION_QUESTIONS = 4;
+export const MAX_DECISION_OPTIONS = 4;
+export const MAX_DECISION_QUESTION = 1000;
+export const MAX_DECISION_LABEL = 120;
+export const MAX_DECISION_DESCRIPTION = 300;
+export const MAX_DECISION_ANSWER = 2000;
 
 export type SlotBy = "human" | { readonly operationId: string };
 
@@ -242,6 +252,57 @@ export type StoredHandoff =
   | { readonly by: "commander"; readonly at: number; readonly retrospective: Retrospective }
   | { readonly by: "human"; readonly at: number };
 
+export interface DecisionOption {
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
+}
+
+/** 결정 요청의 질문 하나 — 선택지가 없으면 사람이 직접 쓴다(선택지가 있어도 직접 쓸 수 있다). 임무·구성원은 맥락 가리킴이다. */
+export interface DecisionQuestion {
+  readonly id: string;
+  readonly text: string;
+  readonly options: readonly DecisionOption[];
+  readonly multiSelect: boolean;
+  readonly missionId?: string;
+  readonly memberId?: string;
+}
+
+/** 목표의 현재 결정 요청 — 목표마다 하나. 새 요청은 전체를 대체하고, 답·철회·사람의 보드 편집이 정리한다. */
+export interface DecisionRequest {
+  readonly id: string;
+  readonly questions: readonly DecisionQuestion[];
+  readonly createdAt: number;
+}
+
+export interface DecisionAnswer {
+  readonly questionId: string;
+  readonly selectedOptionIds: readonly string[];
+  readonly text: string;
+}
+
+/**
+ * 결정 — 사람이 보드에서 보낸 답 하나(질문마다 한 건). 질문과 선택지는 답한 순간의 사본이라 요청이 사라져도 읽힌다.
+ * 사람의 제출만 만들고, 지우거나 고치는 길은 없다.
+ */
+export interface Decision {
+  readonly id: string;
+  readonly requestId: string;
+  readonly questionId: string;
+  readonly question: { readonly text: string; readonly options: readonly DecisionOption[]; readonly multiSelect: boolean };
+  readonly answer: { readonly selectedOptionIds: readonly string[]; readonly text: string };
+  readonly at: number;
+  readonly missionId?: string;
+  readonly memberId?: string;
+}
+
+/** 지휘관에게 보내는 중인 답 — 전달이 끝나야 결정이 된다. 기동이 끊겨 남으면 전달 결과를 모르는 상태다. */
+export interface DecisionDelivery {
+  readonly requestId: string;
+  readonly answers: readonly DecisionAnswer[];
+  readonly at: number;
+}
+
 export interface PendingCommander {
   readonly theaterId: string;
   readonly title: string;
@@ -297,6 +358,11 @@ export interface StoredObjective {
   readonly followupBatches?: readonly StoredFollowupBatch[];
   readonly followupHistory?: FollowupHistory;
   readonly origin?: StoredOrigin;
+  readonly decisionRequest?: DecisionRequest;
+  /** 결정 요청이 쓰이거나 정리되거나, 사람이 그 전제를 바꿀 때마다 오른다 — 지휘관의 늦은 요청이 새 보드를 덮지 않게 한다. */
+  readonly decisionRequestRevision?: number;
+  readonly decisionDelivery?: DecisionDelivery;
+  readonly decisions?: readonly Decision[];
   readonly missions: readonly StoredMission[];
 }
 
@@ -389,6 +455,11 @@ export interface Objective {
   readonly followupHistory: FollowupHistory | null;
   /** 이 목표가 후속으로 태어났다면 원본과 후보. 원본이 사라졌으면 title 은 null. */
   readonly origin: { readonly objectiveId: string; readonly title: string | null; readonly candidateId: string; readonly userImpact: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] } | null;
+  readonly decisionRequest: DecisionRequest | null;
+  readonly decisionRequestRevision: number;
+  /** 답을 보내는 중이거나, 보낸 결과를 확인하지 못한 채 남은 시각. */
+  readonly decisionDelivery: { readonly requestId: string; readonly at: number } | null;
+  readonly decisions: readonly Decision[];
   readonly recorded?: boolean;
 }
 
@@ -696,6 +767,33 @@ export type FollowupReviseInput = z.output<typeof followupReviseSchema>;
 export const followupSelectionSchema = z.object({
   batchId: z.string().uuid(),
   followups: z.array(z.object({ id: ids, rev: z.number().int().min(1) }).strict()).min(1).max(MAX_FOLLOWUPS),
+});
+
+/** 지휘관이 올리는 질문 — 선택지는 0개(직접 쓰기만) 또는 2개 이상. 임무·구성원은 같은 목표의 id 다. */
+export const decisionQuestionSchema = z.object({
+  text: z.string().trim().min(1).max(MAX_DECISION_QUESTION),
+  options: z.array(z.object({ label: z.string().trim().min(1).max(MAX_DECISION_LABEL), description: z.string().trim().max(MAX_DECISION_DESCRIPTION).optional() }).strict()).max(MAX_DECISION_OPTIONS).refine((options) => options.length !== 1, { message: "one_option" }),
+  multiSelect: z.boolean().optional(),
+  missionId: ids.optional(),
+  memberId: ids.optional(),
+}).strict();
+export type DecisionQuestionInput = z.output<typeof decisionQuestionSchema>;
+/** 사람이 보드에서 보내는 답 — 요청의 모든 질문에 한 번에. 직접 쓴 말은 다듬지 않고 그대로 싣는다. */
+export const decisionAnswersSchema = z.object({
+  requestId: ids,
+  answers: z.array(z.object({ questionId: ids, selectedOptionIds: z.array(ids).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_DECISION_ANSWER) }).strict()).min(1).max(MAX_DECISION_QUESTIONS),
+}).strict();
+export type DecisionAnswersInput = z.output<typeof decisionAnswersSchema>;
+const storedDecisionOption = z.object({ id: ids, label: z.string().min(1).max(MAX_DECISION_LABEL), description: z.string().max(MAX_DECISION_DESCRIPTION).optional() }).strict();
+const storedDecisionAnswer = z.object({ questionId: ids, selectedOptionIds: z.array(ids).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_DECISION_ANSWER) }).strict();
+/** 저장된 결정 필드 — 모양이 어긋난 파일은 다른 손상과 같이 비켜 둔다. */
+export const storedDecisionFieldsSchema = z.object({
+  decisionRequest: z.object({ id: ids, createdAt: z.number(), questions: z.array(z.object({ id: ids, text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean(), missionId: ids.optional(), memberId: ids.optional() }).strict()).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
+  decisionRequestRevision: z.number().int().min(0).optional(),
+  decisionDelivery: z.object({ requestId: ids, at: z.number(), answers: z.array(storedDecisionAnswer).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
+  decisions: z.array(z.object({ id: ids, requestId: ids, questionId: ids, at: z.number(), missionId: ids.optional(), memberId: ids.optional(),
+    question: z.object({ text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict(),
+    answer: storedDecisionAnswer.omit({ questionId: true }) }).strict()).optional(),
 });
 
 export type CreateObjectiveInput = z.output<typeof createObjectiveSchema>;
