@@ -361,6 +361,27 @@ export function OperationsCanvas({
     y: canvas.viewport.y + arena.y,
     zoom: canvas.viewport.zoom,
   };
+  // 아레나 인셋이 바뀐 커밋(레일 개폐·Zen·사이드바 추종)에서는 패널의 geometry 글라이드를 끊는다.
+  // 정렬된 패널은 인셋에서 곧바로 칸을 다시 잡으므로, 글라이드가 살아 있으면 패널 수만큼의 상자가
+  // left/top/width/height 레이아웃 전환을 360ms 동안 탄다(패널 32개 실측: 레일 왕복 525→223ms).
+  // layout effect는 브라우저가 새 스타일을 계산하기 전에 돌아 전환이 아예 시작되지 않고, 표식은
+  // 새 기하가 스타일에 반영된 뒤(두 프레임) 걷혀 이후의 스냅·최대화 글라이드는 그대로 남는다.
+  const arenaShiftSettledRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const key = `${arenaInsets.left}|${arenaInsets.right}|${arenaInsets.top}|${arenaInsets.bottom}`;
+    const previous = arenaShiftSettledRef.current;
+    arenaShiftSettledRef.current = key;
+    const element = canvasRef.current;
+    if (previous === null || previous === key || !element) return;
+    element.dataset.arenaShifting = "true";
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => { delete element.dataset.arenaShifting; });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      delete element.dataset.arenaShifting;
+    };
+  }, [arenaInsets.left, arenaInsets.right, arenaInsets.top, arenaInsets.bottom]);
   const storedViewportFromScreen = useCallback((viewport: { readonly x: number; readonly y: number; readonly zoom: number }) => ({
     x: viewport.x - arenaInsets.left,
     y: viewport.y - arenaInsets.top,

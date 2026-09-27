@@ -832,6 +832,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         ticketPath={AGENT_TICKET_PATH}
         wsPath={TERMINAL_WS_PATH}
         active={context.active}
+        visible={context.bodyLive !== false}
         keyboardFocusRequestId={context.keyboardFocusRequestId}
         zoom={context.zoom}
         theme={context.theme}

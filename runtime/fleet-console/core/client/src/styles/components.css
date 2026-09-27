@@ -3432,6 +3432,22 @@
   cursor: grab;
 }
 
+/* 아레나 인셋(--arena-*)은 캔버스 인라인 스타일이 싣는 단일 채널이다. 사이드바 접기 동안 매 프레임
+   바뀌므로 상속되는 사용자 정의 속성이면 패널 월드 전체(패널 30개면 요소 4천여 개)가 프레임마다
+   스타일을 다시 계산한다. 소비처(모드 프레임·덱·지도·미니맵·빈 상태·확대 작업면)는 모두 캔버스의
+   직계 자식이라, 상속을 끄고 직계에만 한 단계 물려 월드의 자손은 이 변화에서 빠지게 한다. */
+@property --arena-left { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --arena-right { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --arena-top { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --arena-bottom { syntax: "<length>"; inherits: false; initial-value: 0px; }
+
+.operations-canvas > * {
+  --arena-left: inherit;
+  --arena-right: inherit;
+  --arena-top: inherit;
+  --arena-bottom: inherit;
+}
+
 .operations-canvas:active,
 .operations-canvas.is-panning:active {
   cursor: grabbing;
@@ -5101,6 +5117,13 @@
    플래그는 사이드바의 width 전환 이벤트가 소유한다(side-bar-motion.ts): 드래그는 전환 자체가
    꺼져 있어 이 경로를 타지 않고, reduced-motion은 전환이 없어 플래그가 서지 않는다. */
 body[data-side-bar-animating="true"] .canvas-operation {
+  transition: none;
+}
+
+/* 아레나 인셋이 바뀌는 순간(레일 개폐·Zen)도 같다 — 칸을 다시 잡은 패널 전부가 레이아웃 속성으로
+   글라이드하면 패널 수에 비례해 프레임마다 레이아웃·페인트가 돈다. 표식은 canvas.tsx가 인셋이 바뀐
+   커밋에만 세우고 두 프레임 뒤 걷는다. */
+.operations-canvas[data-arena-shifting="true"] .canvas-operation {
   transition: none;
 }
 
