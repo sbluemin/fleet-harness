@@ -227,6 +227,16 @@ describe("Objectives contract", () => {
     const h = harness();
     h.add("completion-recovery", { payload: { session: { harness: "claude-code", sessionName: "existing-session" } } });
     h.store.adopt("completion-recovery", { note: "retain this record" });
+    // 캡션에서 수동 보관한 미완료 목표도 기존 편집 API가 같은 Operation을 되찾는다.
+    await h.operationsHost.archive("completion-recovery");
+    const preset = await h.route("objective/patch", { objectiveId: "completion-recovery", patch: { launch: { model: "sonnet", viewMode: "chat" } } });
+    expect(preset.status).toBe(200);
+    expect(h.operations.get("completion-recovery")?.payload.session).toMatchObject({ model: "sonnet", sessionName: "existing-session" });
+    await h.operationsHost.archive("completion-recovery");
+    const renamed = await h.route("objective/patch", { objectiveId: "completion-recovery", patch: { title: "Edited after closing", groupId: "g-edit" } });
+    expect(renamed.status).toBe(200);
+    expect(h.operations.get("completion-recovery")).toMatchObject({ title: "Edited after closing", groupId: "g-edit" });
+    expect(h.launches).toEqual([]);
     vi.spyOn(h.operationsHost, "archive").mockRejectedValueOnce(new Error("archive_stop_failed"));
     await expect(h.launch.complete("completion-recovery")).rejects.toThrow("archive_stop_failed");
     expect(h.savedObjective("completion-recovery").operationIntent?.action).toBe("archive");
@@ -236,6 +246,10 @@ describe("Objectives contract", () => {
     expect(h.operations.has("completion-recovery")).toBe(false);
     expect(reloaded.find("completion-recovery")).toMatchObject({ done: expect.any(Object), note: "retain this record", commander: { sessionName: "existing-session" } });
     expect(h.savedObjective("completion-recovery").operationIntent).toBeUndefined();
+    const accesses = h.accessCalls.length;
+    await expect(launch.rename("completion-recovery", "must stay read-only")).rejects.toThrow("objective_done");
+    expect(h.accessCalls).toHaveLength(accesses);
+    expect(h.archivedOperations.has("completion-recovery")).toBe(true);
     launch.remove("completion-recovery");
     expect(h.archivedOperations.has("completion-recovery")).toBe(false);
     expect(fs.existsSync(h.objectiveFile("completion-recovery"))).toBe(true);
@@ -246,7 +260,7 @@ describe("Objectives contract", () => {
 
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
     let routingOrigin: string | null = null;
-    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, userQuestions, savedObjective, operations, surfaces } = harness(() => routingOrigin);
+    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, userQuestions, savedObjective, operations, operationsHost, surfaces } = harness(() => routingOrigin);
     const objective = await launch.create({ theaterId: "t1", title: "Opt in", groupId: null, note: "brief" });
     const allowed = store.memberAdd(objective.id, { role: "build", subagents: true }, "human").members[0]!;
     const blocked = store.memberAdd(objective.id, { role: "research" }, "human").members[1]!;
@@ -262,7 +276,8 @@ describe("Objectives contract", () => {
     const roster = store.find(objective.id)!;
     const blockedOperationId = blocked.id;
     activity.set(blockedOperationId, "dormant");
-    launch.memberPatched(objective.id, blocked.id, { subagents: true });
+    await operationsHost.archive(objective.id);
+    await launch.memberPatched(objective.id, blocked.id, { subagents: true });
     expect(store.find(objective.id)!.members.find((member) => member.id === blocked.id)!.subagents).toBe(true);
     const allowedOperationId = allowed.id;
     expect(subagentSpawns).toEqual([
@@ -277,7 +292,7 @@ describe("Objectives contract", () => {
     expect(resumed).toEqual([blockedOperationId]);
     // 재개 전에 질문 차단을 다시 채운다 — 이 정책 전에 뜬 구성원도 재개로 풀려나지 않는다.
     expect(userQuestions).toContainEqual({ operationId: blockedOperationId, policy: "blocked" });
-    launch.memberPatched(objective.id, allowed.id, { subagents: false });
+    await launch.memberPatched(objective.id, allowed.id, { subagents: false });
     expect(store.find(objective.id)!.members.find((member) => member.id === allowed.id)!.subagents).toBe(false);
     expect(subagentSpawns.at(-1)).toEqual({ operationId: allowed.id, policy: "blocked" });
     const stored = savedObjective(objective.id).members!;
@@ -300,7 +315,7 @@ describe("Objectives contract", () => {
     operations.get(objective.id)!.payload = { ...operations.get(objective.id)!.payload, chatMode: true };
     const pendingMuster = launch.muster(objective.id);
     await routingStarted;
-    launch.memberPatched(objective.id, routed.id, { subagents: false });
+    await launch.memberPatched(objective.id, routed.id, { subagents: false });
     finishRouting(Response.json({ model: "sonnet" }));
     await pendingMuster;
     expect(launches.at(-1)?.disableSubagents).toBe(true);
@@ -330,7 +345,7 @@ describe("Objectives contract", () => {
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
-    const { store, events, launch, call, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault } = harness();
+    const { store, events, launch, call, route, resultFile, operations, operationsHost, archivedOperations, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
     expect(launches).toEqual([]);
     expect(operations.has(objective.id)).toBe(false);
@@ -340,9 +355,9 @@ describe("Objectives contract", () => {
     const head = objective.commander.sessionName!.replace(/-cmdr$/, "");
     const [a, b, c] = objective.missions;
     expect(() => store.missionPatch(objective.id, a!.id, { prerequisites: [c!.id] })).toThrow(ObjectiveStoreError);
-    expect(launch.setPreset(objective.id, { viewMode: "chat" }).commander.viewMode).toBe("chat");
-    expect(launch.setPreset(objective.id, { viewMode: "terminal" }).commander.viewMode).toBe("terminal");
-    launch.rename(objective.id, "Release renamed");
+    expect((await launch.setPreset(objective.id, { viewMode: "chat" })).commander.viewMode).toBe("chat");
+    expect((await launch.setPreset(objective.id, { viewMode: "terminal" })).commander.viewMode).toBe("terminal");
+    await launch.rename(objective.id, "Release renamed");
     expect(store.find(objective.id)!.title).toBe("Release renamed");
     // 구성원 명단 — 임무는 구성원만 가리킨다. 두 임무가 한 구성원을 나눠 쓴다.
     const research = store.memberAdd(objective.id, { role: "research" }, "human").members[0]!.id;
@@ -370,7 +385,7 @@ describe("Objectives contract", () => {
     // 첫 세션이 잡힌 뒤에는 유휴 상태여도 모델·뷰를 바꾸지 못한다.
     const node = operations.get(objective.id)!;
     node.payload.session = { ...(node.payload.session as object), id: "captured-session", capturedAt: "2026-09-25T00:00:00Z", source: "hook" };
-    expect(() => launch.setPreset(objective.id, { viewMode: "chat" })).toThrow("objective_busy");
+    await expect(launch.setPreset(objective.id, { viewMode: "chat" })).rejects.toThrow("objective_busy");
     expect(store.find(objective.id)!.commander.viewMode).toBe("terminal");
     // 위임할 때마다 새 Operation 을 만들지 않는다 — 같은 구성원의 임무는 같은 Operation 이다.
     expect(store.find(objective.id)!.missions.map((mission) => mission.operationId)).toEqual([research, build, build]);
@@ -393,7 +408,7 @@ describe("Objectives contract", () => {
     // 완료는 Core에 지휘관 ID 하나만 요청한다. active 목록에서 빠져도 기록·연결은 계속 보인다.
     activity.set(objective.id, "awaiting");
     expect((await launch.complete(objective.id)).done).toBeTruthy();
-    expect(archiveCalls).toEqual([objective.id]);
+    expect(archiveCalls.filter((id) => id === objective.id)).toEqual([objective.id]);
     expect(operations.has(objective.id)).toBe(false);
     expect(archivedOperations.has(objective.id)).toBe(true);
     expect(store.list("t1").find((item) => item.id === objective.id)?.done).toBeTruthy();
@@ -405,7 +420,7 @@ describe("Objectives contract", () => {
     expect(operations.has(objective.id)).toBe(true);
     await launch.reopen(objective.id);
     await launch.complete(objective.id);
-    expect(archiveCalls).toEqual([objective.id, objective.id]);
+    expect(archiveCalls.filter((id) => id === objective.id)).toEqual([objective.id, objective.id]);
     await launch.reopen(objective.id);
     // 계획은 완료·기록·사람이 담당을 정한 임무를 보존하고 나머지를 바꾼다; 새 임무는 편성 순으로 선다.
     const planned = store.plan(objective.id, { missions: [{ text: "x", prerequisites: [{ n: 2, why: "shares files" }] }, { text: "y", prerequisites: [{ missionId: a!.id, why: "builds on a" }] }] });
@@ -793,10 +808,10 @@ describe("Objectives contract", () => {
     const worker = (await launch.muster(objective.id))[0]!.operationId;
     expect(operations.get(worker)!.groupId).toBeUndefined();
     expect(operations.get(objective.id)!.childSessions?.map((child) => child.id)).toEqual([worker]);
-    launch.regroup(objective.id, "g-done");
+    await launch.regroup(objective.id, "g-done");
     expect([operations.get(objective.id)!.groupId, store.find(objective.id)!.groupId]).toEqual(["g-done", "g-done"]);
     expect(operations.get(worker)!.groupId).toBeUndefined();
-    expect(() => launch.regroup(objective.id, "nope")).toThrow(ObjectiveStoreError);
+    await expect(launch.regroup(objective.id, "nope")).rejects.toThrow(ObjectiveStoreError);
   });
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {

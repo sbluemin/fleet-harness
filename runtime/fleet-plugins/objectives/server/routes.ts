@@ -111,9 +111,12 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
 
   const groupsOf = (theaterId: string) => ctx.host.operations.groups?.list(theaterId) ?? [];
   const objective = (value: Objective) => ({ objective: value });
-  const syncSidebarOrder = (moved: Objective) => {
+  const syncSidebarOrder = async (moved: Objective) => {
     const reorder = ctx.host.operations.reorder;
     if (!reorder) return;
+    // 사람이 옮긴 미완료 목표의 Operation 자리만 명시적으로 되찾는다. 완료 기록의 순서 변경은 깨우지 않는다.
+    if (!moved.done && !store.pending(moved.id)) await ctx.host.operations.access?.(moved.id, "ensure-active");
+    moved = store.find(moved.id) ?? moved;
     const members = ctx.host.operations.list().filter((node) => node.theaterId === moved.theaterId && (node.groupId ?? null) === moved.groupId);
     const memberIds = new Set(members.map((node) => node.id));
     const boardIds = store.list(moved.theaterId).filter((entry) => entry.groupId === moved.groupId && memberIds.has(entry.id)).map((entry) => entry.id);
@@ -165,22 +168,22 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표를 만들면 지휘관 Operation 이 dormant 로 함께 태어난다 — 깨우는 것은 「구상」·「시작」이다.
     { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander Operation.", handler: json(createObjectiveSchema, async ({ language, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ theaterId, title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
-    { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Operation's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), steerable(({ patch }) => only(patch, ["note"]), ({ objectiveId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], () => {
+    { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Operation's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), steerable(({ patch }) => only(patch, ["note"]), ({ objectiveId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], async () => {
       const { title, groupId, launch: preset, ...own } = patch;
-      if (title !== undefined) launch.rename(objectiveId, title);
-      if (groupId !== undefined) launch.regroup(objectiveId, groupId);
-      if (preset) launch.setPreset(objectiveId, preset);
+      if (title !== undefined) await launch.rename(objectiveId, title);
+      if (groupId !== undefined) await launch.regroup(objectiveId, groupId);
+      if (preset) await launch.setPreset(objectiveId, preset);
       if (Object.keys(own).length > 0) return store.patch(objectiveId, own);
       const current = store.find(objectiveId);
       if (!current) throw new ObjectiveStoreError("unknown_objective");
       return current;
     }))) },
     // 순서는 내용이 아니다 — 지휘관이 일하는 동안에도 사람이 목록을 정리할 수 있게 busy 잠금을 지나지 않는다.
-    { name: "objective/move", method: "POST", summary: "Reorder an objective before or after another objective of the same Theater.", handler: json(objectiveRef.extend({ beforeId: ids.optional(), afterId: ids.optional() }).refine((body) => (body.beforeId === undefined) !== (body.afterId === undefined)), ({ objectiveId, beforeId, afterId }) => {
+    { name: "objective/move", method: "POST", summary: "Reorder an objective before or after another objective of the same Theater.", handler: json(objectiveRef.extend({ beforeId: ids.optional(), afterId: ids.optional() }).refine((body) => (body.beforeId === undefined) !== (body.afterId === undefined)), async ({ objectiveId, beforeId, afterId }) => {
       const moved = store.move(objectiveId, beforeId !== undefined ? { beforeId } : { afterId: afterId! });
       // 보드의 저장은 이미 끝났다. 호스트 동기화 실패가 성공한 카드 이동을 실패로 보이게 해서는 안 된다.
-      try { syncSidebarOrder(moved); } catch (error) { console.warn(`[objectives] sidebar reorder failed: ${error instanceof Error ? error.message : String(error)}`); }
-      return objective(moved);
+      try { await syncSidebarOrder(moved); } catch (error) { console.warn(`[objectives] sidebar reorder failed: ${error instanceof Error ? error.message : String(error)}`); }
+      return objective(store.find(moved.id) ?? moved);
     }) },
     // 목표를 지우면 지휘관 Operation 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
     { name: "objective/remove", method: "POST", summary: "Delete an objective by closing its Commander Operation (restorable during the undo window).", handler: json(objectiveRef, unlessBusy(({ objectiveId }) => objective(launch.remove(objectiveId)))) },

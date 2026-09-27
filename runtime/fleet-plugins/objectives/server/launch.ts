@@ -49,10 +49,10 @@ export interface LaunchService {
   reopen(objectiveId: string): Promise<Objective>;
   /** 재시작 때 미완료 Core 요청만 재접수한다. 완료 상태만 보고 다시 보관하지 않는다. */
   resumeOperationIntents(): Promise<void>;
-  rename(objectiveId: string, title: string): Objective;
-  regroup(objectiveId: string, groupId: string | null): Objective;
+  rename(objectiveId: string, title: string): Promise<Objective>;
+  regroup(objectiveId: string, groupId: string | null): Promise<Objective>;
   /** 지휘관의 모델·강도 — 지휘관 Operation 에 쓴다(다음 깨움부터 쓰인다). */
-  setPreset(objectiveId: string, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Objective;
+  setPreset(objectiveId: string, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Promise<Objective>;
   startCommander(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly operationId: string }>;
   requestPlan(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly operationId: string }>;
   missionPatched(objectiveId: string, missionId: string, patch: MissionPatchInput): Objective;
@@ -62,7 +62,7 @@ export interface LaunchService {
   /** 구성원 명단을 대기 기동하거나 휴면 세션째 재개한다. */
   muster(objectiveId: string): Promise<readonly { readonly id: string; readonly role: string; readonly session: string; readonly operationId: string; readonly state: "live" | "launched" | "resumed" | "unknown" }[]>;
   /** 사람 경로의 구성원 수정. 서브에이전트 허용이 바뀌면 다음 기동 정책만 호스트에 알리고, 떠 있는 프로세스는 건드리지 않는다. */
-  memberPatched(objectiveId: string, memberId: string, patch: MemberPatchInput): Objective;
+  memberPatched(objectiveId: string, memberId: string, patch: MemberPatchInput): Promise<Objective>;
   /** 명단에서 빼고 그 Operation 을 닫는다. 삭제 유예 뒤 복원되면 일반 Operation 이므로 질문 정책을 먼저 되돌린다. */
   memberRemoved(objectiveId: string, memberId: string): { readonly objective: Objective; readonly missionIds: readonly string[] };
   /** 지휘관 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. */
@@ -109,6 +109,16 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return found;
   };
   const referenceNode = (id: string) => ctx.host.operations.describe ? ctx.host.operations.describe(id)?.operation ?? null : ctx.host.operations.get(id);
+  // 명시적인 편집·실행만 Core에 사용 의도를 전한다. metadata 조회·통지·삭제에는 쓰지 않는다.
+  const accessOperation = async (id: string): Promise<void> => {
+    if (ctx.host.operations.access) await ctx.host.operations.access(id, "ensure-active").catch(asStoreError);
+    else if (!ctx.host.operations.get(id)) throw new ObjectiveStoreError("unknown_operation");
+  };
+  const editableObjective = (id: string): Objective => {
+    const current = objective(id);
+    if (current.done) throw new ObjectiveStoreError("objective_done");
+    return current;
+  };
   const patchOperation = (operationId: string, patch: { title?: string; groupId?: string | null; payload?: Record<string, unknown> }) => {
     if (!ctx.host.operations.patch(operationId, patch)) throw new ObjectiveStoreError("unknown_objective");
   };
@@ -187,7 +197,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const existing = referenceNode(objectiveId);
     const key = `objectives.commander:${objectiveId}`;
     if (existing) {
-      if (ctx.host.operations.access) await ctx.host.operations.access(objectiveId, "ensure-active").catch(asStoreError);
+      await accessOperation(objectiveId);
       enableScratchpad(objectiveId, objectiveId);
       if (pendingCommander) {
         const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
@@ -297,16 +307,20 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   };
   const muster = (objectiveId: string): ReturnType<LaunchService["muster"]> => claim(`${objectiveId}:muster`, async () => {
     let current = objective(objectiveId);
-    if (!ctx.host.operations.get(objectiveId)) throw new ObjectiveStoreError("unknown_operation");
     if (current.planning) throw new ObjectiveStoreError("planning_only");
     if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
     if (current.done) throw new ObjectiveStoreError("objective_done");
+    await accessOperation(objectiveId);
+    current = editableObjective(objectiveId);
     const members: Array<{ id: string; role: string; session: string; operationId: string; state: "live" | "launched" | "resumed" | "unknown" }> = [];
     for (let index = 0; index < current.members.length; index += 1) {
       const member = current.members[index]!;
       const operationId = member.id;
-      const node = ctx.host.operations.get(operationId);
-      const observation = node ? ctx.host.consoleControl?.observe(operationId) : null;
+      const reference = operationId ? referenceNode(operationId) : null;
+      if (reference && reference.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
+      if (operationId && reference) await accessOperation(operationId);
+      const observation = operationId ? ctx.host.consoleControl?.observe(operationId) : null;
+      const node = operationId ? ctx.host.operations.get(operationId) : null;
       if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
       if (node && operationId) enableScratchpad(operationId, objectiveId);
       if (operationId && node && observation?.lifecycle === "live") {
@@ -458,37 +472,46 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       }
     },
 
-    rename(objectiveId, title) {
+    rename: (objectiveId, title) => orderedOperationRequest(objectiveId, async () => {
+      editableObjective(objectiveId);
       if (store.pending(objectiveId)) return store.patchPending(objectiveId, { title });
+      await accessOperation(objectiveId);
+      editableObjective(objectiveId);
       patchOperation(objectiveId, { title });
       return objective(objectiveId);
-    },
+    }),
 
-    regroup(objectiveId, groupId) {
-      const current = objective(objectiveId);
-      // 없는 그룹이나 다른 Theater 의 그룹으로 옮기지 않는다.
+    regroup: (objectiveId, groupId) => orderedOperationRequest(objectiveId, async () => {
+      const current = editableObjective(objectiveId);
+      // 없는 그룹이나 다른 Theater 의 그룹으로 옮기지 않는다. 잘못된 편집은 복원도 일으키지 않는다.
       if (groupId !== null && ctx.host.operations.groups?.get(groupId)?.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_group");
       if (store.pending(objectiveId)) return store.patchPending(objectiveId, { groupId });
+      await accessOperation(objectiveId);
+      editableObjective(objectiveId);
       patchOperation(objectiveId, { groupId });
       // 담당 이동과 방송은 호스트의 operation:grouped 가 맡는다(operationGrouped).
       return objective(objectiveId);
-    },
+    }),
 
-    setPreset(objectiveId, preset) {
-      const node = ctx.host.operations.get(objectiveId);
+    setPreset: (objectiveId, preset) => orderedOperationRequest(objectiveId, async () => {
+      editableObjective(objectiveId);
+      const node = referenceNode(objectiveId);
       if (!node && store.pending(objectiveId)) {
         if (pending.has(objectiveId)) throw new ObjectiveStoreError("objective_busy");
-        if (objective(objectiveId).done) throw new ObjectiveStoreError("objective_done");
         return store.patchPending(objectiveId, preset);
       }
       if (!node) throw new ObjectiveStoreError("unknown_objective");
-      // 수동 재개는 첫 메시지 전에도 세션을 초기화한다 — 살아 있는 세션의 프리셋을 뒤에서 바꾸지 않는다.
+      // 캡처된 세션의 프리셋 금지는 복원 전에 확인한다. 복원으로 기존 제약을 우회하지 않는다.
       if (readOperationLaunch(node.payload).started || pending.has(objectiveId) || control().observe(objectiveId)?.lifecycle === "live" || service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
-      if (objective(objectiveId).done) throw new ObjectiveStoreError("objective_done");
-      patchOperation(objectiveId, { payload: withOperationLaunchPreset(node.payload, preset) });
+      await accessOperation(objectiveId);
+      editableObjective(objectiveId);
+      const active = ctx.host.operations.get(objectiveId);
+      if (!active) throw new ObjectiveStoreError("unknown_objective");
+      if (readOperationLaunch(active.payload).started || control().observe(objectiveId)?.lifecycle === "live") throw new ObjectiveStoreError("objective_busy");
+      patchOperation(objectiveId, { payload: withOperationLaunchPreset(active.payload, preset) });
       store.refresh(objectiveId);
       return objective(objectiveId);
-    },
+    }),
 
     startCommander: (objectiveId, options) => claim(objectiveId, async () => {
       const language = languageOf(options);
@@ -534,13 +557,18 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     planApplied: (objectiveId, plan) => store.plan(objectiveId, plan),
 
     muster,
-    memberPatched(objectiveId, memberId, patch) {
+    memberPatched: (objectiveId, memberId, patch) => orderedOperationRequest(objectiveId, async () => {
+      const current = editableObjective(objectiveId);
+      const member = current.members.find((member) => member.id === memberId);
+      if (!member) throw new ObjectiveStoreError("unknown_member");
+      if (patch.subagents !== undefined && member.operationId && referenceNode(member.operationId)) await accessOperation(member.operationId);
+      editableObjective(objectiveId);
       const next = store.memberPatch(objectiveId, memberId, patch);
       if (patch.subagents !== undefined) {
         if (ctx.host.operations.get(memberId)) rememberSubagentSpawn(memberId, patch.subagents === true);
       }
       return next;
-    },
+    }),
 
     memberRemoved(objectiveId, memberId) {
       if (ctx.host.operations.get(memberId)) {
@@ -556,8 +584,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     async steer(objectiveId, options) {
       const current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
-      if (!ctx.host.operations.get(objectiveId)) throw new ObjectiveStoreError("unknown_operation");
       if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
+      await accessOperation(objectiveId);
+      editableObjective(objectiveId);
       // 스티어링 턴에서 기준 제안은 불가하다. 전송 전에 닫아 턴 전환 중 계획 쓰기와 경합하지 않는다.
       if (current.criteriaOpen) store.setCriteriaOpen(objectiveId, false);
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
@@ -588,16 +617,22 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     },
 
     async compact(objectiveId) {
-      const current = objective(objectiveId);
-      if (current.done) throw new ObjectiveStoreError("objective_done");
+      editableObjective(objectiveId);
+      if (!store.pending(objectiveId)) await accessOperation(objectiveId);
+      const current = editableObjective(objectiveId);
       // 보낼 곳 — 지휘관과, Operation 이 아직 있는 구성원. operationId 가 없거나 Operation 이 사라진 구성원은 제외로 센다.
-      const memberIds = current.members.filter((candidate) => !!ctx.host.operations.get(candidate.id)).map((candidate) => candidate.id);
-      const live = [...new Set([current.id, ...memberIds])].filter((operationId) => operationId === current.id || !!ctx.host.operations.get(operationId));
+      const memberIds = current.members.filter((candidate) => !!referenceNode(candidate.id)).map((candidate) => candidate.id);
+      const live = [...new Set([current.id, ...memberIds])].filter((operationId) => operationId === current.id || !!referenceNode(operationId));
       const excluded = current.members.length - live.filter((operationId) => operationId !== current.id).length;
       // 상태로 거르지 않는다 — 큐잉·즉시 실행·휴면 깨움·거절은 호스트 전달 경로가 정한다. 깨움은 보내기 전에 휴면이었던 곳만 센다.
       const targets = await Promise.all(live.map(async (operationId): Promise<CompactTarget> => {
-        const dormant = ctx.host.consoleControl?.observe(operationId)?.lifecycle === "dormant";
-        try { await control().request({ kind: "send", operationId, text: "/compact" }); return { operationId, outcome: "requested", woken: dormant }; }
+        try {
+          await accessOperation(operationId);
+          editableObjective(objectiveId);
+          const dormant = ctx.host.consoleControl?.observe(operationId)?.lifecycle === "dormant";
+          await control().request({ kind: "send", operationId, text: "/compact" });
+          return { operationId, outcome: "requested", woken: dormant };
+        }
         catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           console.warn(`[objectives] Could not send /compact to Operation ${operationId} of objective ${objectiveId}: ${reason}`);
@@ -621,7 +656,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (current) store.refresh(event.operationId);
     },
 
-    operationChanged: (operationId) => store.refresh(operationId),
+    operationChanged(operationId) {
+      const current = store.find(operationId) ?? store.findMember(operationId)?.objective;
+      // 복원된 Operation의 그룹만 맞춘다. 사건 처리 중 보관된 다른 Operation을 깨우지는 않는다.
+      if (current && !current.done) followGroup(current);
+      store.refresh(operationId);
+    },
 
     dispose: () => { for (const timer of announceTimers) clearTimeout(timer); announceTimers.clear(); },
   };
