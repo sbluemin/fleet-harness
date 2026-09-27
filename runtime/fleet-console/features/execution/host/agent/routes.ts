@@ -2151,7 +2151,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         onSessionMessageSent: ({ to, text, toolUseId }) => {
           const from = readAgentSession(ctx.host.operations.get(node.id)?.payload)?.sessionName;
           if (!from) return;
-          const matches = ctx.host.operations.list().filter((candidate) => candidate.type === AGENT_OPERATION_TYPE
+          // 받는 쪽은 구성원(부모 안의 자식 세션)일 수 있다 — 부모와 그 자식의 합성 뷰를 함께 본다.
+          const sessions = ctx.host.operations.list().flatMap((parent) => [parent, ...(parent.childSessions ?? []).flatMap((child) => ctx.host.operations.get(child.id) ?? [])]);
+          const matches = sessions.filter((candidate) => candidate.type === AGENT_OPERATION_TYPE
             && readAgentSession(candidate.payload)?.sessionName === to);
           if (matches.length !== 1) return;
           chatRegistry.get(matches[0]!.id)?.noteReceived({ id: `${node.id}:${toolUseId}`, from, text });
