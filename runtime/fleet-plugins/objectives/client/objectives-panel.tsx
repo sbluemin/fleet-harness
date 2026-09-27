@@ -89,6 +89,36 @@ function saveDetailWidth(split: DetailSplit, width: number | null): void {
     else localStorage.setItem(split.key, String(width));
   } catch { /* 저장을 차단한 브라우저에서도 이번 폭은 유지한다. */ }
 }
+/**
+ * 세 칸 폭 — 목표 표면이 목록 기본 300 + 내용 최소 480 + 운영 기본 340 = 1120 이상일 때만 목록 | 내용·계획 | 운영·판단으로 선다.
+ * 기억은 두 칸의 상세 폭 기억(detail-width · rail-detail-width)과 따로 둔다 — 세 칸에서 끈 폭이 두 칸의 상세 폭을 덮지 않는다.
+ */
+const THREE_PANE = { key: "fleet.objectives.three-pane-width", threshold: 1120, contentMin: 480, list: { min: 280, max: 360, fallback: 300 }, ops: { min: 300, max: 440, fallback: 340 } } as const;
+interface ThreeWidths { readonly list: number; readonly ops: number }
+function readThreeWidths(): ThreeWidths {
+  const pick = (value: unknown, range: { readonly min: number; readonly max: number; readonly fallback: number }) => typeof value === "number" && Number.isFinite(value) && value >= range.min && value <= range.max ? value : range.fallback;
+  try {
+    const raw = localStorage.getItem(THREE_PANE.key);
+    const parsed = raw ? JSON.parse(raw) as Partial<Record<keyof ThreeWidths, unknown>> : {};
+    return { list: pick(parsed.list, THREE_PANE.list), ops: pick(parsed.ops, THREE_PANE.ops) };
+  } catch { return { list: THREE_PANE.list.fallback, ops: THREE_PANE.ops.fallback }; }
+}
+function saveThreeWidths(widths: ThreeWidths): void {
+  try { localStorage.setItem(THREE_PANE.key, JSON.stringify(widths)); } catch { /* 저장을 차단한 브라우저에서도 이번 폭은 유지한다. */ }
+}
+/** 보이는 세 칸 폭 — 기억한 폭을 쓰되 내용 칸 480 을 먼저 지킨다(운영 칸부터, 모자라면 목록 칸을 줄인다). 기억은 그대로 둔다. */
+function shownThreeWidths(rootWidth: number, stored: ThreeWidths): ThreeWidths & { readonly listMax: number; readonly opsMax: number } {
+  let list = stored.list;
+  let ops = stored.ops;
+  if (rootWidth - list - ops < THREE_PANE.contentMin) ops = Math.max(THREE_PANE.ops.min, rootWidth - list - THREE_PANE.contentMin);
+  if (rootWidth - list - ops < THREE_PANE.contentMin) list = Math.max(THREE_PANE.list.min, rootWidth - ops - THREE_PANE.contentMin);
+  return {
+    list,
+    ops,
+    listMax: Math.max(THREE_PANE.list.min, Math.min(THREE_PANE.list.max, rootWidth - ops - THREE_PANE.contentMin)),
+    opsMax: Math.max(THREE_PANE.ops.min, Math.min(THREE_PANE.ops.max, rootWidth - list - THREE_PANE.contentMin)),
+  };
+}
 function todayIso(): string { return new Date().toISOString().slice(0, 10); }
 /** 한글 IME 조합 중의 Return 은 확정이지 제출이 아니다 — 조합 확정과 제출로 두 번 오는 keydown 중 앞의 것을 거른다. */
 function submitKey(event: ReactKeyboardEvent<HTMLElement>): boolean { return event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229; }
@@ -189,6 +219,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const [rootWidth, setRootWidth] = useState(0);
   const split = DETAIL_SPLIT[ctx.place];
   const [detailWidth, setDetailWidth] = useState(() => readDetailWidth(split));
+  const [threeWidths, setThreeWidths] = useState<ThreeWidths>(readThreeWidths);
   const [resizing, setResizing] = useState(false);
   useLayoutEffect(() => {
     const node = rootRef.current;
@@ -470,6 +501,11 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const sized = !!current;
   const detailMax = Math.max(split.detailMin, Math.min(split.detailMax, rootWidth - split.mainMin));
   const shownDetail = Math.max(split.detailMin, Math.min(detailWidth ?? split.fallback(rootWidth), detailMax));
+  // 세 칸은 자리(레일·확대)가 아니라 목표 표면의 실제 안쪽 폭으로만 판정한다.
+  const three = sized && rootWidth >= THREE_PANE.threshold;
+  const threeShown = three ? shownThreeWidths(rootWidth, threeWidths) : null;
+  const setThree = (patch: Partial<ThreeWidths>, save: boolean) => setThreeWidths((current) => { const next = { ...current, ...patch }; if (save) saveThreeWidths(next); return next; });
+  const rootStyle = threeShown ? { "--objectives-list-w": `${threeShown.list}px`, "--objectives-detail-w": `${threeShown.ops}px` } as CSSProperties : sized ? { "--objectives-detail-w": `${shownDetail}px` } as CSSProperties : undefined;
   const pickAddGroup = (groupId: string) => { setAddGroupId(groupId); requestAnimationFrame(() => addInputRef.current?.focus()); };
   return (
     // 온보딩 경계(SDK 계약) — 투어 카드가 패널을 가리지 않고 패널 옆, 짚는 구획 높이에 선다(레일이든 넓은 화면이든
@@ -480,8 +516,11 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         highlightTimer.current = null;
         setHighlightMission(null);
       }
-    }}><div ref={rootRef} className={`objectives-root${current ? " has-detail" : ""}${resizing ? " is-resizing" : ""}`} style={sized ? { "--objectives-detail-w": `${shownDetail}px` } as CSSProperties : undefined}>
-      {sized ? <DetailGrip t={t} split={split} width={shownDetail} max={detailMax} rootRef={rootRef} onResize={setDetailWidth} onResizing={setResizing} /> : null}
+    }}><div ref={rootRef} className={`objectives-root${current ? " has-detail" : ""}${three ? " is-three" : ""}${resizing ? " is-resizing" : ""}`} style={rootStyle}>
+      {threeShown ? <>
+        <PaneGrip side="list" label={t("objectives.detail.listWidth")} tip={t("objectives.detail.widthTip")} width={threeShown.list} min={THREE_PANE.list.min} max={threeShown.listMax} fallback={THREE_PANE.list.fallback} rootRef={rootRef} onResize={(list, save) => setThree({ list }, save)} onResizing={setResizing} />
+        <PaneGrip side="ops" label={t("objectives.detail.opsWidth")} tip={t("objectives.detail.widthTip")} width={threeShown.ops} min={THREE_PANE.ops.min} max={threeShown.opsMax} fallback={THREE_PANE.ops.fallback} rootRef={rootRef} onResize={(ops, save) => setThree({ ops }, save)} onResizing={setResizing} />
+      </> : sized ? <DetailGrip t={t} split={split} width={shownDetail} max={detailMax} rootRef={rootRef} onResize={setDetailWidth} onResizing={setResizing} /> : null}
       <section ref={mainRef} className="objectives-main">
         <div className="objectives-title">
           <ScopeWords current={list} onPick={setList} t={t} count={listCount} dropOver={drag?.over ?? null} />
@@ -587,6 +626,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           highlightMission={highlightMission}
           onClose={closeDetail}
           detailRef={detailRef}
+          layout={three ? "three" : "split"}
           placeButton={placeButton("objectives-place-detail")}
           onComplete={() => completeObjective(current)}
           onToggleEdge={(from, to) => toggleEdge(current, from, to)}
@@ -649,6 +689,53 @@ function DetailGrip({ t, split, width, max, rootRef, onResize, onResizing }: { t
   return (
     <div className="objectives-detail-grip" role="separator" aria-orientation="vertical" aria-label={t("objectives.detail.width")} title={t("objectives.detail.widthTip")} aria-valuemin={split.detailMin} aria-valuemax={max} aria-valuenow={width} tabIndex={0}
       onPointerDown={onPointerDown} onDoubleClick={() => commit(split.reset)} onKeyDown={onKeyDown} />
+  );
+}
+
+/**
+ * 세 칸의 폭 손잡이 — 모양과 키는 상세 손잡이와 같다. 목록 칸은 오른쪽 가장자리(끌어 오른쪽이 넓힘, → 가 넓힘),
+ * 운영·판단 칸은 왼쪽 가장자리(끌어 왼쪽이 넓힘, ← 가 넓힘). Home 은 최대, End 는 최소, 두 번 누르면 기본 폭.
+ * 움직이지 않은 누름은 기억하지 않는다. 확대 표면의 transform 배율로 끌기 거리를 나눈다.
+ */
+function PaneGrip({ side, label, tip, width, min, max, fallback, rootRef, onResize, onResizing }: { side: "list" | "ops"; label: string; tip: string; width: number; min: number; max: number; fallback: number; rootRef: RefObject<HTMLDivElement | null>; onResize: (width: number, save: boolean) => void; onResizing: (value: boolean) => void }) {
+  const clamp = (value: number) => Math.round(Math.max(min, Math.min(max, value)));
+  const grow = side === "list" ? 1 : -1;
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const root = rootRef.current;
+    const scale = root && root.offsetWidth ? root.getBoundingClientRect().width / root.offsetWidth : 1;
+    const startX = event.clientX;
+    const startWidth = width;
+    let last = startWidth;
+    onResizing(true);
+    const onMove = (move: PointerEvent) => { const next = clamp(startWidth + grow * (move.clientX - startX) / (scale || 1)); if (next !== last) { last = next; onResize(last, false); } };
+    const onEnd = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
+      onResizing(false);
+      if (last !== startWidth) onResize(last, true);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+  };
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 64 : 16;
+    const wider = side === "list" ? "ArrowRight" : "ArrowLeft";
+    const narrower = side === "list" ? "ArrowLeft" : "ArrowRight";
+    const next = event.key === wider ? width + step : event.key === narrower ? width - step : event.key === "Home" ? max : event.key === "End" ? min : null;
+    if (next === null) return;
+    event.preventDefault();
+    // 이미 한계에 닿아 폭이 그대로면 기억을 덮지 않는다 — 표면이 좁아 줄여 보이던 폭이 기억한 선호를 지우지 않게.
+    if (clamp(next) !== width) onResize(clamp(next), true);
+  };
+  return (
+    <div className={`objectives-detail-grip${side === "list" ? " is-list" : ""}`} role="separator" aria-orientation="vertical" aria-label={label} title={tip} aria-valuemin={min} aria-valuemax={max} aria-valuenow={width} tabIndex={0}
+      onPointerDown={onPointerDown} onDoubleClick={() => onResize(fallback, true)} onKeyDown={onKeyDown} />
   );
 }
 
@@ -889,6 +976,8 @@ interface DetailProps {
   readonly highlightMission: string | null;
   readonly onClose: () => void;
   readonly detailRef: RefObject<HTMLElement | null>;
+  /** 두 칸(목록 | 상세) 또는 세 칸(목록 | 내용·계획 | 운영·판단) — 같은 상세를 어떻게 나눠 그릴지만 정한다. */
+  readonly layout: "split" | "three";
   readonly placeButton: ReactNode;
   readonly onComplete: () => void;
   readonly onToggleEdge: (from: string, to: string) => Promise<void>;
@@ -1139,7 +1228,7 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
 
 const BRIEF_LINES = 3;
 
-function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, onClose, detailRef, placeButton, onComplete, onToggleEdge, onOpenObjective }: DetailProps) {
+function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, onClose, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective }: DetailProps) {
   const [note, setNote] = useState(objective.note);
   const [title, setTitle] = useState(objective.title);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1313,9 +1402,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
 
-  return (
-    <aside ref={detailRef} className={`objectives-detail${busy ? " is-busy" : ""}`} aria-label={objective.title}>
-      <div className="objectives-detail-scroll">
+  const sHead = (<>
       <div className="objectives-group">
         <div className="objectives-detail-head">
           <button type="button" className="objectives-glyph objectives-detail-back" aria-label={t("objectives.detail.backToList")} title={t("objectives.detail.backToList")} onClick={onClose}>‹</button>
@@ -1353,7 +1440,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         </div>
         {busy ? <div className="objectives-busy-line" role="status"><i aria-hidden="true" /><span>{t(objective.planning ? "objectives.planning" : "objectives.busy")}</span></div> : null}
       </div>
-
+  </>);
+  const sFollowupResults = (<>
       {/* 후속 목표 — 완료한 목표 상세의 머리 아래에 영속한다. 배치 요약과 줄 상태, 남긴 후보는 접힌 줄로. */}
       {followupBatches.length > 0 || followupHistory || (objective.done && followupOpenList.length > 0) ? (
       <div className="objectives-group">
@@ -1369,7 +1457,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         />
       </div>
       ) : null}
-
+  </>);
+  const sSchedule = (<>
       <div className="objectives-group">
         <div className={`objectives-row${objective.today ? " is-on" : ""}`}>
           <button type="button" className="objectives-row-main" aria-pressed={objective.today} disabled={!editable} onClick={() => void call("/objective/patch", { objectiveId: objective.id, patch: { today: !objective.today } })}>
@@ -1387,7 +1476,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           {objective.dueDate && editable ? <button type="button" className="objectives-row-x" aria-label={t("objectives.schedule.clearDue")} title={t("objectives.schedule.clearDue")} onClick={() => void call("/objective/patch", { objectiveId: objective.id, patch: { dueDate: null } })}>×</button> : null}
         </div>
       </div>
-
+  </>);
+  const sCrew = (<>
       {/* 지휘관·구성원 — 목표는 곧 지휘관 Operation 이다. 이 행은 모델·강도·보기 설정만 맡고, 이동은 하단 띠의 이동 요소가 맡는다. */}
       <div className="objectives-group" data-objectives-tour="crew">
         <div className={`objectives-row${objective.commander.started ? " is-on" : ""}`}>
@@ -1400,7 +1490,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         <MemberRoster objective={objective} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable}
           expanded={objective.members.length === 0 || sectionOpen("detail:members")} onToggle={() => onToggleSection("detail:members")} />
       </div>
-
+  </>);
+  const sBrief = (<>
       {/* 브리핑 — 사람이 쓴 요구. 붙이는 입구는 머리의 첨부 글리프이고, 첨부 띠는 이미지가 있을 때만 본문 위에 선다.
           메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다 — 끌어오는 동안은 자리를 밀지 않는 겹판이 선다. */}
       <div
@@ -1423,7 +1514,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         {dropping ? <AttachmentDropVeil t={t} /> : null}
         {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
       </div>
-
+  </>);
+  const sOrigin = (<>
       {/* 출처 — 후속으로 태어난 목표의 원본. 한 줄(말줄임 제목 + ↗)로만 두고, 원본이 없으면 비활성 한 줄. */}
       {followupOrigin ? (
       <div className="objectives-group">
@@ -1442,7 +1534,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         {followupOrigin.userImpact ? <p className="objectives-origin-impact"><b>{t("objectives.followup.impact")}</b> {followupOrigin.userImpact}</p> : null}
       </div>
       ) : null}
-
+  </>);
+  const sCriteria = (<>
       {/* 달성 기준 — 사람이 쓰고, 사람이 구상을 청한 턴에 지휘관이 추가·수정·삭제를 제안한다. 제안은 바뀔 기준 바로 그 줄에 서고
           (추가는 끝에 새 줄) 사람이 줄마다 승인·거절하거나 어노테이션을 달아 다시 구상하게 한다. 제안이 남아 있으면 개시·스티어링은 잠긴다.
           마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져 근거와 함께 충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져
@@ -1486,7 +1579,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           ) : null}
         </div>
       </div>
-
+  </>);
+  const sResults = (<>
       {/* 결과물 — 달성 기준 바로 아래, 모든 상태에서 같은 자리. 증거가 먼저, PR 이 뒤. 없으면 머리 한 줄(「없음」)만 선다 —
           붙이라고 권하지 않는다. 붙이고 고치는 것은 지휘관의 도구이고 사람은 읽는다. PR 상태는 서버 관측이 SSE 로 갱신한다. */}
       <div className="objectives-group objectives-results-group">
@@ -1498,7 +1592,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         />
         {objective.results.length > 0 ? <div id="objectives-sec-results" hidden={!resultsOpen}><ObjectiveResults objective={objective} t={t} language={language} /></div> : null}
       </div>
-
+  </>);
+  const sMissions = (<>
       {/* 임무 — 목록과 편성 그래프를 한 섹션에 둔다. 머리 오른쪽은 완료 셈이고, 접혀도 남는다(접힌 임무에 안 읽은 기록이 있으면 셈 앞에 점 하나).
           머리를 접으면 목록과 추가 입력만 접히고, 그래프는 접지 않는다 — 접어도 진행이 한눈에 보인다. 임무가 없으면 그래프는 서지 않는다. */}
       <div className="objectives-group objectives-missions-group" data-objectives-tour="missions">
@@ -1593,7 +1688,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           document.body,
         ) : null}
       </div>
-
+  </>);
+  const sDecisions = (<>
       {/* 결정 — 임무 아래, 후속 후보 위. 사람이 결정 요청에 보낸 답이 질문마다 쌓인다(지휘관·구성원도 보드에서 읽는다). 답이 없으면 서지 않는다. */}
       {objective.decisions.length > 0 ? (
       <div className="objectives-group">
@@ -1610,7 +1706,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         </div>
       </div>
       ) : null}
-
+  </>);
+  const sFollowups = (<>
       {/* 후속 후보 — 임무 아래, 회고 위. 후보가 있을 때만 서고, 체크 없이 같은 줄·상세를 읽는다(폐기는 여기서도 된다).
           검토 대기에서는 띠로 보내 고르고, edited·gated·작업 중에는 읽기·폐기만 한다. */}
       {showFollowupSection ? (
@@ -1650,7 +1747,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         </div>
       </div>
       ) : null}
-
+  </>);
+  const sRetro = (<>
       {/* 회고 — 후속 후보 아래(맨 끝). 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
       {objective.handoff ? (
       <div className="objectives-group">
@@ -1666,8 +1764,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         </div>
       </div>
       ) : null}
-
-      </div>
+  </>);
+  const bottom = (
       <div className="objectives-detail-bottom" data-objectives-tour="action">
         {/* 결정 요청 — 띠와 따로 서서 작업 중에도 가려지지 않는다. 보내고 나면 한 줄 흔적만 잠시 남는다. */}
         {objective.decisionRequest && !objective.done ? (
@@ -1687,6 +1785,18 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           onFocusOperation={focusOperation}
         />
       </div>
+  );
+  // 두 칸과 세 칸은 같은 트리다 — 상세 aside > 스크롤 > 내용·계획 칸 · 운영·판단 칸, 그리고 하단. 폭 경계를 넘어도 요소 종류·부모
+  // 경로가 그대로라 결정 요청 초안·추가 줄·편집 중 문구·하단 띠 같은 자식 상태가 다시 마운트되지 않는다. 배치는 CSS 만 바꾼다
+  // (세 칸: aside·스크롤을 display: contents 로 걷어 두 칸과 하단이 표면 grid 에 선다).
+  const three = layout === "three";
+  return (
+    <aside ref={detailRef} className={`objectives-detail${busy ? " is-busy" : ""}${three ? " is-three" : ""}`} aria-label={objective.title}>
+      <div className="objectives-detail-scroll">
+        <div className="objectives-detail-pane is-content">{sHead}{sFollowupResults}{sSchedule}{sBrief}{sOrigin}{sCriteria}{sMissions}</div>
+        <div className="objectives-detail-pane is-ops" {...(three ? { role: "region", "aria-label": t("objectives.detail.opsPane", { title: objective.title }) } : {})}>{sCrew}{sDecisions}{sResults}{sFollowups}{sRetro}</div>
+      </div>
+      {bottom}
     </aside>
   );
 }
