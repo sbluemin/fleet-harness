@@ -145,20 +145,25 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     reconcileOperations(ctx.api);
     notify();
   });
-  const onFocusOut = () => {
-    if (!pendingSelectionOperationId) return;
-    // focusout 중에는 activeElement가 아직 이동 전일 수 있다. 다음 편집 칸으로 옮긴 경우도 기다린다.
-    queueMicrotask(() => {
+  let focusOutTimer: ReturnType<typeof setTimeout> | null = null;
+  const onFocusOut = (event: FocusEvent) => {
+    if (focusOutTimer !== null) { clearTimeout(focusOutTimer); focusOutTimer = null; }
+    if (!pendingSelectionOperationId || isObjectiveEditing(event.relatedTarget)) return;
+    // 실제 포인터 이동은 focusout과 다음 focus 사이에 microtask를 실행할 수 있다.
+    // 이동 대상을 먼저 확인하고, 전체 포커스 전이가 끝난 다음 task에서 한 번 더 판정한다.
+    focusOutTimer = setTimeout(() => {
+      focusOutTimer = null;
       if (installed !== ctx || isObjectiveEditing()) return;
       const operationId = pendingSelectionOperationId;
       pendingSelectionOperationId = null;
       if (operationId) handleMapOperationSelected(operationId);
-    });
+    }, 0);
   };
   if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
   return () => {
     offItem(); offGroup(); offRemoved(); offConsole();
     if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
+    if (focusOutTimer !== null) clearTimeout(focusOutTimer);
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
   };
 }
@@ -299,10 +304,8 @@ export function useObjectiveView(theaterId: string | null): ObjectiveViewState {
 let latestSelectionToken = 0;
 let pendingSelectionOperationId: string | null = null;
 
-function isObjectiveEditing(): boolean {
-  if (typeof document === "undefined") return false;
-  const element = document.activeElement;
-  return element instanceof HTMLElement
+function isObjectiveEditing(element: EventTarget | null = typeof document === "undefined" ? null : document.activeElement): boolean {
+  return typeof HTMLElement !== "undefined" && element instanceof HTMLElement
     && !!element.closest(".objectives-root")
     && (element.isContentEditable || !!element.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'));
 }
