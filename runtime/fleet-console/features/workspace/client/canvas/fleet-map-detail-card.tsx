@@ -73,8 +73,10 @@ export function FleetMapDetailCard({ id, operation, status, anchor, bounds, obst
       const { width, height } = card.getBoundingClientRect();
       return { width, height };
     };
-    const natural = measure(MAX_WIDTH_PX);
-    setPlaced(resolveFleetMapDetailPlacement({ anchor, area, natural, measure, obstacles }));
+    const placement = resolveFleetMapDetailPlacement({ anchor, area, measure, obstacles });
+    // 후보를 재느라 바꾼 폭을 고른 자리의 폭으로 되돌린다 — 스타일 값이 지난번과 같으면 React가 다시 쓰지 않는다.
+    measure(placement.maxWidth);
+    setPlaced(placement);
   }, [anchor, bounds, obstacles, status, location, branch, model, operation.title]);
 
   return createPortal(
@@ -132,40 +134,52 @@ interface CardSize {
   readonly height: number;
 }
 
+interface Placement {
+  readonly left: number;
+  readonly top: number;
+  readonly maxWidth: number;
+}
+
 /**
- * 오른쪽 → 왼쪽 → 위 → 아래 순서로 자리를 본다. 판 안에 들어가는 자리 가운데 이웃 점을 가리지 않는
- * 첫 자리를 쓰고, 모두 가리면 가장 적게 가리는 자리를 쓴다. 어느 쪽도 판에 들어가지 않는 좁은 판에서만
- * 넓은 쪽으로 붙여 판 안으로 끌어들인다. 트리거 점 자신은 어느 후보도 덮지 않는다(간격 10px 바깥).
+ * 오른쪽 → 왼쪽 → 위 → 아래 순서로 자리를 본다. 옆자리는 그쪽 여유가 카드 최소 폭 이상이면 여유만큼 폭을
+ * 줄여 실제로 다시 재고, 위·아래는 판 폭으로 재서 들어갈 때만 후보가 된다. 판에 온전히 들어가는 후보 가운데
+ * 이웃 점을 가리지 않는 첫 자리를 쓰고, 모두 가리면 가장 적게 가리는 자리를 쓴다. 좁은 판에서 폭을 줄인
+ * 자리도 같은 비교를 거친다 — 넓은 쪽이라는 이유만으로 피할 수 있는 가림을 고르지 않는다.
+ * 트리거 점 자신은 어느 후보도 덮지 않는다(간격 10px 바깥).
  */
-function resolveFleetMapDetailPlacement({ anchor, area, natural, measure, obstacles }: {
+function resolveFleetMapDetailPlacement({ anchor, area, measure, obstacles }: {
   readonly anchor: DOMRect;
   readonly area: PlacementArea;
-  readonly natural: CardSize;
   readonly measure: (maxWidth: number) => CardSize;
   readonly obstacles: readonly DOMRect[];
-}): CSSProperties {
+}): Placement {
   const centerX = anchor.left + anchor.width / 2;
   const centerY = anchor.top + anchor.height / 2;
   const clamp = (value: number, low: number, high: number) => Math.min(Math.max(value, low), Math.max(low, high));
+  const areaWidth = area.right - area.left;
   const areaHeight = area.bottom - area.top;
   const rightRoom = area.right - (anchor.right + GAP_PX);
   const leftRoom = anchor.left - GAP_PX - area.left;
 
-  type Candidate = { readonly left: number; readonly top: number; readonly width: number; readonly height: number };
+  type Candidate = Placement & CardSize & { readonly fits: boolean };
   const candidates: Candidate[] = [];
   const sideTop = (height: number) => clamp(centerY - height / 2, area.top, area.bottom - height);
-  if (natural.height <= areaHeight && rightRoom >= natural.width) {
-    candidates.push({ left: anchor.right + GAP_PX, top: sideTop(natural.height), ...natural });
-  }
-  if (natural.height <= areaHeight && leftRoom >= natural.width) {
-    candidates.push({ left: anchor.left - GAP_PX - natural.width, top: sideTop(natural.height), ...natural });
-  }
-  const stackedLeft = clamp(centerX - natural.width / 2, area.left, area.right - natural.width);
-  if (natural.width <= area.right - area.left && anchor.top - GAP_PX - natural.height >= area.top) {
-    candidates.push({ left: stackedLeft, top: anchor.top - GAP_PX - natural.height, ...natural });
-  }
-  if (natural.width <= area.right - area.left && anchor.bottom + GAP_PX + natural.height <= area.bottom) {
-    candidates.push({ left: stackedLeft, top: anchor.bottom + GAP_PX, ...natural });
+  const addSide = (room: number, leftFor: (size: CardSize) => number) => {
+    if (room < MIN_WIDTH_PX) return;
+    const maxWidth = Math.min(MAX_WIDTH_PX, room);
+    const size = measure(maxWidth);
+    candidates.push({ left: leftFor(size), top: sideTop(size.height), maxWidth, ...size, fits: size.height <= areaHeight });
+  };
+  addSide(rightRoom, () => anchor.right + GAP_PX);
+  addSide(leftRoom, (size) => anchor.left - GAP_PX - size.width);
+  if (areaWidth >= MIN_WIDTH_PX) {
+    const maxWidth = Math.min(MAX_WIDTH_PX, areaWidth);
+    const size = measure(maxWidth);
+    const left = clamp(centerX - size.width / 2, area.left, area.right - size.width);
+    const above = anchor.top - GAP_PX - size.height;
+    if (above >= area.top) candidates.push({ left, top: above, maxWidth, ...size, fits: true });
+    const below = anchor.bottom + GAP_PX;
+    if (below + size.height <= area.bottom) candidates.push({ left, top: below, maxWidth, ...size, fits: true });
   }
 
   const covered = (candidate: Candidate) => obstacles.reduce((sum, rect) => {
@@ -173,31 +187,29 @@ function resolveFleetMapDetailPlacement({ anchor, area, natural, measure, obstac
     const height = Math.min(candidate.top + candidate.height, rect.bottom) - Math.max(candidate.top, rect.top);
     return width > 0 && height > 0 ? sum + width * height : sum;
   }, 0);
-
-  if (candidates.length > 0) {
-    let best = candidates[0]!;
-    let bestCovered = covered(best);
-    for (const candidate of candidates.slice(1)) {
-      if (bestCovered === 0) break;
-      const value = covered(candidate);
-      if (value < bestCovered) {
-        best = candidate;
-        bestCovered = value;
-      }
+  // 판에 온전히 들어가는 자리가 먼저다. 그런 자리가 없을 때만 세로로 넘치는 옆자리끼리 비교한다.
+  const fitting = candidates.filter((candidate) => candidate.fits);
+  const pool = fitting.length > 0 ? fitting : candidates;
+  let best: Candidate | null = null;
+  let bestCovered = Number.POSITIVE_INFINITY;
+  for (const candidate of pool) {
+    const value = covered(candidate);
+    if (value < bestCovered) {
+      best = candidate;
+      bestCovered = value;
+      if (value === 0) break;
     }
-    measure(MAX_WIDTH_PX);
-    return { left: Math.round(best.left), top: Math.round(best.top), maxWidth: MAX_WIDTH_PX };
   }
+  if (best) return { left: Math.round(best.left), top: Math.round(best.top), maxWidth: best.maxWidth };
 
-  // 좁은 판 — 넓은 쪽 여유만큼 폭을 줄여 다시 재고, 세로는 판 안으로 끌어들인다.
+  // 어느 쪽 여유도 최소 폭에 못 미치는 판 — 넓은 쪽에 최소 폭으로 붙이고 판 안으로 끌어들인다.
   const useRight = rightRoom >= leftRoom;
-  const maxWidth = Math.max(MIN_WIDTH_PX, Math.min(MAX_WIDTH_PX, useRight ? rightRoom : leftRoom));
-  const size = measure(maxWidth);
+  const size = measure(MIN_WIDTH_PX);
   const left = useRight ? anchor.right + GAP_PX : anchor.left - GAP_PX - size.width;
   return {
     left: Math.round(clamp(left, area.left, area.right - size.width)),
     top: Math.round(sideTop(size.height)),
-    maxWidth,
+    maxWidth: MIN_WIDTH_PX,
   };
 }
 
