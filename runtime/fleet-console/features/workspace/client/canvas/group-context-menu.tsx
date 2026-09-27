@@ -6,6 +6,7 @@ import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import type { OperationGroup, OperationNode } from "../../../../core/client/src/integration/types.js";
+import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { accentToneLabels, resolveAccentColor } from "./operation-accent.js";
 
 export interface GroupContextMenuChipActions {
@@ -82,17 +83,22 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); onClose(); }
     };
+    // 앵커 자리의 주인은 열린 뒤 한 번만 짚는다 — 오버레이가 덮은 뒤라 오버레이는 건너뛴다.
+    const anchorElement = anchorElementAt(anchor, cardRef.current?.parentElement);
+    const onScroll = (event: Event) => {
+      if (scrollMovesAnchor(event, anchor, anchorElement)) onClose();
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", onClose);
     window.addEventListener("blur", onClose);
-    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onClose);
       window.removeEventListener("blur", onClose);
-      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
-  }, [onClose]);
+  }, [anchor, onClose]);
 
   return createPortal(
     <div className="group-context-menu-overlay" data-native-browser-transparent data-keep-operation-active role="presentation" onPointerDown={onClose}>

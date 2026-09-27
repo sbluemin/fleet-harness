@@ -21,6 +21,7 @@ import { OperationDetailCard } from "./operation-detail-card.js";
 import { getLoadedTheaterId, useCompanionOperationId, useSnapHold } from "../canvas/canvas-store.js";
 import { SNAP_FULL_ZONES } from "../canvas/snap-layouts.js";
 import { SnapMark } from "../canvas/snap-mark.js";
+import { scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 
 /** 포인터가 잠깐 지나가는 것과 겨누는 것을 가르는 시간. 목록을 훑는 동안 카드가 따라 뜨면 안 된다. */
 const DETAIL_HOVER_DELAY_MS = 400;
@@ -240,10 +241,13 @@ export function OperationsSideBarChip({
   useEffect(() => {
     if (!detailAnchor) return;
     const dismiss = () => setDetailAnchor(null);
-    window.addEventListener("scroll", dismiss, true);
+    const onScroll = (event: Event) => {
+      if (scrollMovesAnchor(event, detailAnchor, chipRef.current)) dismiss();
+    };
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", dismiss);
     return () => {
-      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", dismiss);
     };
   }, [detailAnchor]);
