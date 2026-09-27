@@ -44,7 +44,7 @@ export interface PastRole {
   readonly aliases: readonly string[];
   readonly objectives: number;
   readonly members: number;
-  /** 한 목표에서 같은 역할로 함께 둔 구성원 수의 최대. */
+  /** 한 목표에서 같은 역할로 세어진(끝낸 임무나 평가가 있는) 구성원 수의 최대. */
   readonly maxParallel: number;
   readonly missions: { readonly assigned: number; readonly done: number };
   readonly well: number;
@@ -80,11 +80,14 @@ export type RoleCurateInput = z.output<typeof roleCurateSchema>;
 export function parseCuration(raw: unknown): RoleCuration {
   if (!raw || typeof raw !== "object") return EMPTY_CURATION;
   const value = raw as { hidden?: unknown; merged?: unknown };
-  const hidden = Array.isArray(value.hidden) ? [...new Set(value.hidden.filter((entry): entry is string => roleName.safeParse(entry).success))].slice(0, MAX_CURATION) : [];
+  const name = (entry: unknown): string | null => { const parsed = roleName.safeParse(entry); return parsed.success ? parsed.data : null; };
+  const hidden = Array.isArray(value.hidden) ? [...new Set(value.hidden.map(name).filter((entry): entry is string => entry !== null))].slice(0, MAX_CURATION) : [];
   const merged: Record<string, string> = {};
   if (value.merged && typeof value.merged === "object" && !Array.isArray(value.merged)) {
-    for (const [from, into] of Object.entries(value.merged as Record<string, unknown>).slice(0, MAX_CURATION)) {
-      if (roleName.safeParse(from).success && typeof into === "string" && roleName.safeParse(into).success && from !== into) merged[from] = into;
+    for (const [rawFrom, rawInto] of Object.entries(value.merged as Record<string, unknown>).slice(0, MAX_CURATION)) {
+      const from = name(rawFrom);
+      const into = name(rawInto);
+      if (from && into && from !== into) merged[from] = into;
     }
   }
   return { hidden, merged };

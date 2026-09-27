@@ -950,9 +950,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         // 목표 폴더 밖을 가리키는 링크는 따라가지 않는다 — 없는 것으로 본다.
         if (!fs.lstatSync(file).isSymbolicLink()) curation = parseCuration(JSON.parse(fs.readFileSync(file, "utf8")));
       } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        // 없는 파일은 빈 정리다. 깨진 JSON 은 빈 정리로 읽되 다음 쓰기가 덮는다(정리는 사람이 다시 할 수 있는 화면 판단이다).
-        if (code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+        // 없는 파일은 빈 정리다. 읽을 수 없는 정리(깨진 JSON·디렉터리·권한)도 빈 정리로 보고 보드는 연다 — 정리는 사람이
+        // 다시 할 수 있는 화면 판단이고, 목표 목록까지 막을 이유가 아니다. 쓰기는 그 자리를 그대로 만나 실패를 알린다.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.warn(`[objectives] roles_unreadable: ${(error as NodeJS.ErrnoException).code ?? "invalid"}`);
       }
       curations.set(theaterId, curation);
       return curation;
