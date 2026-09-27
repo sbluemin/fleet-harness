@@ -140,7 +140,9 @@ export function FleetMap({
   const armDetail = (operationId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.pointerType !== "mouse" || leaving) return;
     releaseSuppressionFor(operationId);
-    if (detail && detail.operationId !== operationId) setDetail(null);
+    // 포인터가 연 카드는 다른 점에 들어서면 곧바로 물러난다. 키보드로 연 카드는 스치는 포인터에 거두지 않고,
+    // 새 점에서 머묾이 차 그 점의 카드가 열릴 때 비로소 바뀐다 — 카드는 한 번에 하나다.
+    if (detail && detail.operationId !== operationId && detail.via === "pointer") setDetail(null);
     cancelDetailTimer();
     // 이미 이 점의 카드가 떠 있으면(키보드로 연 경우) 다시 걸지 않는다 — 덮어쓰면 카드의 주인이 포인터로 바뀐다.
     if (suppressedDetailRef.current === operationId || detail?.operationId === operationId) return;
