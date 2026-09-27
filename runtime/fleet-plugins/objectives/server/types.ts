@@ -165,7 +165,6 @@ export interface FollowupBody {
   readonly brief: string;
   readonly criteria: readonly string[];
   readonly evidence: readonly FollowupEvidence[];
-  readonly related?: readonly string[];
 }
 
 /**
@@ -198,9 +197,6 @@ export interface StoredFollowupItem {
   readonly operationId?: string;
   readonly error?: string;
   readonly attempts: number;
-  readonly linkTargets?: readonly string[];
-  /** 이미 처리한 대상 — 재시도가 이후 사람의 관계 결정을 뒤집지 않도록 보존한다. */
-  readonly handledLinkTargets?: readonly string[];
   readonly settledAt?: number;
 }
 
@@ -300,9 +296,6 @@ export interface StoredObjective {
   readonly followupBatches?: readonly StoredFollowupBatch[];
   readonly followupHistory?: FollowupHistory;
   readonly origin?: StoredOrigin;
-  readonly related?: readonly string[];
-  readonly links?: readonly { readonly objectiveId: string; readonly at: number }[];
-  readonly unrelated?: readonly string[];
   readonly missions: readonly StoredMission[];
 }
 
@@ -396,9 +389,6 @@ export interface Objective {
   /** 이 목표가 후속으로 태어났다면 원본과 후보. 원본이 사라졌으면 title 은 null. */
   readonly origin: { readonly objectiveId: string; readonly title: string | null; readonly candidateId: string; readonly userImpact: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] } | null;
   readonly recorded?: boolean;
-  readonly related: readonly string[];
-  readonly links: readonly { readonly objectiveId: string; readonly at: number }[];
-  readonly unrelated: readonly string[];
 }
 
 export interface ObjectiveHandoff {
@@ -431,7 +421,6 @@ export interface ObjectiveFollowup {
   readonly updatedAt: number;
   readonly batchId: string | null;
   readonly discarded: { readonly at: number; readonly by: "human" } | null;
-  readonly related: readonly string[];
 }
 
 export interface ObjectiveFollowupBatch {
@@ -440,12 +429,11 @@ export interface ObjectiveFollowupBatch {
   readonly items: readonly {
     readonly candidateId: string;
     readonly rev: number;
-    readonly snapshot: { readonly title: string; readonly summary: string; readonly userImpact: string; readonly fromMission: string; readonly brief: string; readonly criteria: readonly string[]; readonly evidence: readonly ObjectiveFollowupEvidenceView[]; readonly related: readonly string[] };
+    readonly snapshot: { readonly title: string; readonly summary: string; readonly userImpact: string; readonly fromMission: string; readonly brief: string; readonly criteria: readonly string[]; readonly evidence: readonly ObjectiveFollowupEvidenceView[] };
     readonly state: FollowupItemState;
     readonly operationId: string | null;
     readonly error: string | null;
     readonly attempts: number;
-    readonly linkTargets: readonly string[];
     readonly settledAt: number | null;
   }[];
 }
@@ -698,16 +686,15 @@ const followupFields = {
   brief: z.string().trim().min(1).max(MAX_FOLLOWUP_BRIEF),
   criteria: z.array(z.string().trim().min(1).max(MAX_CRITERION_TEXT)).min(1).max(MAX_FOLLOWUP_CRITERIA),
   evidence: z.array(followupEvidenceSchema).min(1).max(MAX_FOLLOWUP_EVIDENCE),
-  related: z.array(ids).max(10).optional(),
 };
 export const followupBodySchema = z.object(followupFields).strict();
-export const followupReviseSchema = z.object({ title: followupFields.title.optional(), summary: followupFields.summary.optional(), userImpact: followupFields.userImpact.optional(), fromMission: followupFields.fromMission.optional(), brief: followupFields.brief.optional(), criteria: followupFields.criteria.optional(), evidence: followupFields.evidence.optional(), related: followupFields.related }).strict();
+export const followupReviseSchema = z.object({ title: followupFields.title.optional(), summary: followupFields.summary.optional(), userImpact: followupFields.userImpact.optional(), fromMission: followupFields.fromMission.optional(), brief: followupFields.brief.optional(), criteria: followupFields.criteria.optional(), evidence: followupFields.evidence.optional() }).strict();
 export type FollowupBodyInput = z.output<typeof followupBodySchema>;
 export type FollowupReviseInput = z.output<typeof followupReviseSchema>;
 /** 완료와 함께 고른 후보 — 화면이 본 rev 와 함께. batchId 는 화면이 만든 멱등 키(UUID). */
 export const followupSelectionSchema = z.object({
   batchId: z.string().uuid(),
-  followups: z.array(z.object({ id: ids, rev: z.number().int().min(1), linkTargets: z.array(ids).max(15).optional() }).strict()).min(1).max(MAX_FOLLOWUPS),
+  followups: z.array(z.object({ id: ids, rev: z.number().int().min(1) }).strict()).min(1).max(MAX_FOLLOWUPS),
 });
 
 export type CreateObjectiveInput = z.output<typeof createObjectiveSchema>;

@@ -38,8 +38,6 @@ type Saved = {
   readonly members?: readonly { readonly role: string; readonly subagents?: boolean }[];
   readonly criteriaProposals?: readonly unknown[];
   readonly followupBatches?: readonly { readonly items: readonly unknown[] }[];
-  readonly links?: readonly { readonly objectiveId: string; readonly at: number }[];
-  readonly unrelated?: readonly string[];
   readonly results?: readonly ObjectiveResult[];
 };
 
@@ -658,7 +656,7 @@ describe("Objectives contract", () => {
       if (!parsed.success) throw new Error("exposed schema rejected representative input");
       return (await consoleTool.execute(parsed.data, { cwd: workspace, caller: { kind: "operation" as const, operationId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
     };
-    const created = await throughGate({ add: { title: "From Console Use", note: "brief", criteria: ["ships", "tested"], related: [caller.id] } });
+    const created = await throughGate({ add: { title: "From Console Use", note: "brief", criteria: ["ships", "tested"] } });
     expect(created.isError).toBe(false);
     const id = (created.structuredContent.objective as { id: string }).id;
     // 브리핑·기준은 기본 요구사항으로, 임무·구성원 없이, 호출 Operation 의 그룹과 만든 표시를 들고 태어난다.
@@ -667,8 +665,6 @@ describe("Objectives contract", () => {
     // 저장 무결성 — 파일에서 다시 읽어도 기준이 기본 요구사항으로 남는다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect(reloaded.find(id)!.criteria).toMatchObject([{ text: "ships", by: "human" }, { text: "tested", by: "human" }]);
-    expect(reloaded.find(id)!.related).toEqual([caller.id]);
-    expect(reloaded.find(id)!.links).toEqual([]);
     // 편성 키도 오타도 add 에 없다 — 선검사에서 막혀 사람의 권한 요청까지 가지 않는다.
     for (const args of [{ add: { title: "Typo", criterai: ["x"] } }, { add: { title: "Missions inline", missions: ["x"] } }, { add: { title: "Top-level missions" }, missions: ["x"] }]) {
       expect(gate.safeParse(args).success).toBe(false);
@@ -683,9 +679,6 @@ describe("Objectives contract", () => {
     expect((refused.structuredContent.hint as string).length).toBeGreaterThan(0);
     expect({ launches: launches.length, operations: operations.size, listed: store.list("t1").length }).toEqual(fenced);
     expect(savedIds()).toEqual([id]);
-    const similar = await throughGate({ add: { title: "From Console Use", note: "brief", criteria: ["ships", "tested"] } });
-    expect(similar.isError).toBe(false);
-    expect((similar.structuredContent.nearby as readonly { objectiveId: string }[]).map((entry) => entry.objectiveId)).toContain(id);
   });
 
   it("shows every agent Operation created elsewhere as an objective, but not member or plugin Operations", async () => {
@@ -989,15 +982,11 @@ describe("Objectives contract", () => {
   it("admits observable follow-ups and creates records once after hand-off without launching their Operations", async () => {
     const { store, route, call, launch, launches, operations, savedObjective } = harness();
     const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
-    const related = await launch.create({ theaterId: "t1", title: "Related", groupId: null });
-    const alsoRelated = await launch.create({ theaterId: "t1", title: "Also related", groupId: null });
-    const removed = await launch.create({ theaterId: "t1", title: "Removed", groupId: null });
-    const completed = await launch.create({ theaterId: "t1", title: "Completed", groupId: null });
     await launch.requestPlan(source.id);
     const missionId = store.find(source.id)!.missions[0]!.id;
     store.missionDone(source.id, missionId, ["fixed"]);
     // 후보는 이 목표의 임무에서 나오고, 근거 하나는 관찰할 수 있어야 하며(줄 있는 파일·명령), 활성 후보는 상한까지다.
-    const body = { title: "Next", summary: "Next step", userImpact: "Users see the next step", fromMission: missionId, brief: "Next brief", criteria: ["Verified"], related: [related.id], evidence: [{ kind: "command", text: "pnpm test" }] };
+    const body = { title: "Next", summary: "Next step", userImpact: "Users see the next step", fromMission: missionId, brief: "Next brief", criteria: ["Verified"], evidence: [{ kind: "command", text: "pnpm test" }] };
     const add = async (value: unknown) => (await call("followup", { objectiveId: source.id, add: value }, source.id)).structuredContent;
     expect((await add({ ...body, fromMission: "elsewhere" })).error).toBe("unknown_mission");
     expect((await add({ ...body, evidence: [{ kind: "file", path: "src/a.ts" }] })).error).toBe("evidence_not_observable");
@@ -1006,60 +995,23 @@ describe("Objectives contract", () => {
     for (const extra of store.find(source.id)!.followups.slice(1)) store.followupWithdraw(source.id, extra.id);
     const candidate = store.find(source.id)!.followups[0]!;
     const batchId = "3f1c8f3e-1111-4a8b-9c0d-000000000001";
-    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev, linkTargets: [related.id, alsoRelated.id, removed.id, completed.id, source.id] }] });
+    const pick = () => route("objective/complete", { objectiveId: source.id, batchId, followups: [{ id: candidate.id, rev: candidate.rev }] });
     // 후보 선택은 검토 대기에서만 — 지휘관이 넘기지 않았으면 사람이 회고 없이 넘긴다.
     expect((await pick()).value.error).toBe("not_in_review");
     expect((await route("objective/hand-off", { objectiveId: source.id })).status).toBe(200);
     expect(store.find(source.id)!.handoff).toMatchObject({ by: "human", retrospective: null });
-    launch.remove(removed.id); // 사라지거나 완료된 연결 대상은 건너뛰되 후속 생성은 계속한다.
-    store.complete(completed.id);
-    const relation = store.relation;
-    const interruptedLink = vi.spyOn(store, "relation").mockImplementation((objectiveId, otherId, action) => {
-      if (otherId === alsoRelated.id && action === "link") throw new Error("record_failed");
-      return relation(objectiveId, otherId, action);
-    });
+    // 생성이 한 번 실패하면 배치 항목은 failed 로 남고, 재시도는 같은 키로 한 번만 만든다.
+    const interrupted = vi.spyOn(launch, "create").mockImplementationOnce(() => Promise.reject(new Error("record_failed")));
     expect((await pick()).status).toBe(200);
     expect((await pick()).status).toBe(200);
-    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("failed"));
-    interruptedLink.mockRestore();
-    const targetId = store.list("t1").find((entry) => entry.origin?.candidateId === candidate.id)!.id;
-    expect(savedObjective(targetId).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([related.id]);
-    // 일부만 연결된 배치의 실패 뒤 사람이 관계 없음을 정하면, 재시도는 그 결정을 뒤집지 않는다.
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "unrelated" })).status).toBe(200);
+    await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!).toMatchObject({ state: "failed", error: "record_failed" }));
+    interrupted.mockRestore();
     expect((await route("followup/retry", { objectiveId: source.id, batchId, candidateId: candidate.id })).status).toBe(200);
     await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("created"));
+    const targetId = store.list("t1").find((entry) => entry.origin?.candidateId === candidate.id)!.id;
     expect(store.find(source.id)!.followupBatches[0]!.items[0]!.operationId).toBe(targetId);
-    expect(savedObjective(targetId).unrelated).toEqual([related.id]);
-    expect(savedObjective(related.id).unrelated).toEqual([targetId]);
-    expect(savedObjective(targetId).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([alsoRelated.id]);
-    expect(savedObjective(alsoRelated.id).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([targetId]);
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: alsoRelated.id, action: "unlink" })).status).toBe(200);
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "restore" })).status).toBe(200);
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "link" })).status).toBe(200);
     expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id, userImpact: "Users see the next step" } });
     expect(savedObjective(targetId)).toHaveProperty("pending.title", "Next");
-    expect(store.find(targetId)!.related).toEqual([related.id]);
-    expect(savedObjective(source.id).links).toBeUndefined();
-    expect(savedObjective(targetId).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([related.id]);
-    expect(savedObjective(related.id).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([targetId]);
-    expect(savedObjective(completed.id).links).toBeUndefined();
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "unlink" })).status).toBe(200);
-    expect(savedObjective(related.id).links).toBeUndefined();
-    expect(savedObjective(targetId).links).toBeUndefined();
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "unrelated" })).status).toBe(200);
-    expect(savedObjective(related.id).unrelated).toEqual([targetId]);
-    expect(savedObjective(targetId).unrelated).toEqual([related.id]);
-    // 오래된 탭에서 누른 '연결 해제'는 새로 정한 '관계 없음'을 지워서는 안 된다.
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "unlink" })).status).toBe(200);
-    expect(savedObjective(targetId).unrelated).toEqual([related.id]);
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "restore" })).status).toBe(200);
-    expect(savedObjective(related.id).unrelated).toBeUndefined();
-    expect(savedObjective(targetId).unrelated).toBeUndefined();
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "link" })).status).toBe(200);
-    // 오래된 탭의 '되돌리기'도 새 연결에는 영향을 주지 않는다.
-    expect((await route("objective/relation", { objectiveId: targetId, otherId: related.id, action: "restore" })).status).toBe(200);
-    expect(savedObjective(targetId).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([related.id]);
-    expect(savedObjective(related.id).links?.map((link: { objectiveId: string }) => link.objectiveId)).toEqual([targetId]);
     expect(operations.has(targetId)).toBe(false);
     expect(launches).toHaveLength(1);
     launch.resumeFollowups(source.id);
