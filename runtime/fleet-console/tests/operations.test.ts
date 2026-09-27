@@ -8,6 +8,7 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { assertOperationNode, fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
+import { CORE_AGENT_SENSITIVE_FIELDS } from "../core/host/bootstrap/execution.js";
 import { createOperationsRouter } from "../features/execution/host/operations/operations-domain.js";
 import { createSanitizedOpDto } from "../features/execution/host/operations/operations-domain.js";
 import { createOperationStore } from "../features/execution/host/operations/operations-domain.js";
@@ -94,6 +95,8 @@ describe("operations platform", () => {
         ticket: "ticket-secret",
         token: "token-secret",
         transcriptPath: "/secret/transcript.jsonl",
+        scratchpad: "/secret/scratchpad",
+        scratchpadOwner: "internal-plugin",
         prompt: "secret prompt",
         persona: "secret persona",
         toolAllowlist: ["secret-tool"],
@@ -102,10 +105,11 @@ describe("operations platform", () => {
       },
     });
 
-    const serialized = JSON.stringify(createSanitizedOpDto(node, { sensitiveFields: ["pluginSecret"] }));
+    const serialized = JSON.stringify(createSanitizedOpDto(node, { sensitiveFields: [...CORE_AGENT_SENSITIVE_FIELDS, "pluginSecret"] }));
 
     expect(serialized).toContain("visible");
     expect(serialized).not.toContain("/secret");
+    expect(serialized).not.toContain("internal-plugin");
     expect(serialized).not.toContain("provider-secret");
     expect(serialized).not.toContain("ticket-secret");
     expect(serialized).not.toContain("token-secret");

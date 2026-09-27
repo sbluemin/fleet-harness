@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { resultInputSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
-import { EvidenceError, readOwnedEvidence } from "./evidence.js";
+import { EvidenceError, readScratchpadEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { criterionProposalSchema, followupBodySchema, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
@@ -67,13 +67,13 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     tool(name, `Commander only. ${description}`, schema, (args, caller) => {
       const objective = find((args as { objectiveId: string }).objectiveId);
       const role = roleIn(objective, caller);
-      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it reads the board and may seal its own evidence, but only the Commander changes the board; the Commander receives reports and decisions to make by SendMessage to its session.", commander: { session: objective.commander.sessionName, ...(objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) } });
+      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it reads the board and may seal evidence, but only the Commander changes the board; the Commander receives reports and decisions to make by SendMessage to its session.", commander: { session: objective.commander.sessionName, ...(objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) } });
       if (!role) return refuse("not_participant");
       return run(args, objective, caller!);
     });
 
   return [
-    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from their own host-owned temporary root, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective.`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's shared scratchpad, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective.`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findMember(caller.operationId);
       if (assigned) {
@@ -94,14 +94,15 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!roleIn(objective, caller)) return refuse("not_participant");
       return text({ objective: readView(objective, caller) });
     }),
-    tool("evidence_root", "This participating session's host-owned temporary-file root, when its execution has one. The path is returned only to this session through MCP, not to the browser. Bash temporary files may be outside this root. Missing or ended scopes return scope_unavailable; unsupported execution providers return scope_unsupported_provider.", z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller, context) => {
-      if (!roleIn(find(objectiveId), caller)) return refuse("not_participant");
-      const scope = context.ownedTemp?.read() ?? { error: "scope_unavailable", reason: "not_issued" };
-      return "error" in scope ? refuse(scope.error, { reason: scope.reason }) : text({ scopeId: scope.id, root: scope.root, note: "Bash temporary files may be outside this root." });
+    tool("scratchpad", "The shared scratchpad for this objective: the Commander and every member use the same directory. Its path is returned only through MCP, not to the browser. Bash temporary files may be outside this directory. The Claude session's system-prompt Scratchpad directory (claude-<uid>/.../scratchpad) is inside this root and its files can be sealed.", z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
+      const objective = find(objectiveId);
+      if (!roleIn(objective, caller)) return refuse("not_participant");
+      return text({ root: store.scratchpadDir(objective.theaterId, objective.id), note: "Bash temporary files may be outside this directory." });
     }),
-    tool("seal_evidence_from_path", `Copy a file from this participating session's host-owned temporary root into this objective's evidence store. PNG, JPEG, WebP and GIF images are limited to ${RESULT_LIMITS.imageBytes / 1024 / 1024} MiB; UTF-8 MD, TXT, LOG and JSON text to ${RESULT_LIMITS.textBytes / 1024 / 1024} MiB. Symlinks, hardlinks, non-regular files, other roots and files changed during reading are refused. The returned evidenceId is an immutable copy; only the Commander attaches it as a result. Unattached copies expire after ${RESULT_LIMITS.pendingEvidenceTtlMs / 3_600_000} hours.`, z.object({ objectiveId: ids, path: z.string().min(1).max(RESULT_LIMITS.sourcePath) }).strict(), async ({ objectiveId, path: source }, caller, context) => {
-      if (!roleIn(find(objectiveId), caller)) return refuse("not_participant");
-      const bytes = await readOwnedEvidence(source, context.ownedTemp, context.signal);
+    tool("seal_evidence_from_path", `Copy a file from this objective's shared scratchpad into this objective's evidence store. PNG, JPEG, WebP and GIF images are limited to ${RESULT_LIMITS.imageBytes / 1024 / 1024} MiB; UTF-8 MD, TXT, LOG and JSON text to ${RESULT_LIMITS.textBytes / 1024 / 1024} MiB. Symlinks, hardlinks, non-regular files, paths outside the scratchpad and files changed during reading are refused. The returned evidenceId is an immutable copy; only the Commander attaches it as a result. Unattached copies expire after ${RESULT_LIMITS.pendingEvidenceTtlMs / 3_600_000} hours.`, z.object({ objectiveId: ids, path: z.string().min(1).max(RESULT_LIMITS.sourcePath) }).strict(), async ({ objectiveId, path: source }, caller, context) => {
+      const objective = find(objectiveId);
+      if (!roleIn(objective, caller)) return refuse("not_participant");
+      const bytes = await readScratchpadEvidence(source, store.scratchpadDir(objective.theaterId, objective.id), context.signal);
       // 읽기를 기다리는 동안 명단이 바뀌었다면 그 목표에 bytes를 남기지 않는다.
       if (!roleIn(find(objectiveId), caller) || caller?.kind !== "operation") return refuse("not_participant");
       const sealed = store.evidenceSeal(objectiveId, caller.operationId, bytes);

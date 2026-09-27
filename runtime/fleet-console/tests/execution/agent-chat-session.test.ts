@@ -8,7 +8,6 @@ import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
 import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
-import { createOwnedFileScopes } from "../../features/execution/host/agent/owned-file-scopes.js";
 import { initialAgentChatLogState, reduceAgentChatLog } from "../../features/execution/client/agent/chat/chat-events.js";
 import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
 
@@ -307,11 +306,13 @@ describe("AgentChatRegistry — chat-born sessions", () => {
   // 자식의 훅이 남의 세션 축에 턴을 보고한다.
   it("keeps the inherited terminal session id out of the sdk child", async () => {
     const home = tempDir("chat-home-");
-    const scopes = createOwnedFileScopes({ dataDir: tempDir("owned-chat-") });
+    const scratchpad = tempDir("chat-scratchpad-");
+    let currentScratchpad: string | undefined = scratchpad;
     const previous = process.env.FLEET_CONSOLE_SESSION_ID;
     process.env.FLEET_CONSOLE_SESSION_ID = "someone-elses-session";
     try {
-      const { factory } = createFakeSdkFactory([
+      const { factory, liveSession } = createFakeSdkFactory([
+        { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
         { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
       ]);
       const locations: string[] = [];
@@ -320,8 +321,10 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       const session = await registry.ensure("op-env", () => ({
         ...freshSeedFor(home),
         bindWorkspaceHook: (id) => workspaceHooks.bind("op-env", id, () => true),
-        bindOwnedTemp: (id) => scopes.acquire({ operationId: "op-env", label: "chat:op-env", provider: "claude", resume: id, env: { XDG_RUNTIME_DIR: "/shared-runtime" } }),
+        scratchpad: () => currentScratchpad,
       }));
+      // 생성 뒤에 붙은 구성원 경로도 SDK 자식을 띄우는 시점에 읽는다.
+      currentScratchpad = tempDir("chat-late-scratchpad-");
       session.send("go");
       await drainTurn(registry, "op-env");
 
@@ -330,18 +333,23 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       }));
       const env = (vi.mocked(factory as (options: { env: NodeJS.ProcessEnv }) => unknown).mock.calls[0]![0]).env;
       expect(env.FLEET_CONSOLE_WORKSPACE_SESSION_ID).toBe("op-env");
-      const scope = scopes.access("chat:op-env");
-      expect(scope.read()).toMatchObject({ root: env.CLAUDE_CODE_TMPDIR, id: env.FLEET_OWNED_TEMP_SCOPE });
-      expect(env.XDG_RUNTIME_DIR).toBe("/shared-runtime");
+      expect(env.CLAUDE_CODE_TMPDIR).toBe(currentScratchpad);
+      expect(env.XDG_RUNTIME_DIR).toBe(process.env.XDG_RUNTIME_DIR || "/tmp");
       const cwd = path.resolve("chat-moved");
       const input = JSON.stringify({ hook_event_name: "CwdChanged", session_id: fakeClaudeSession().sessionId, new_cwd: cwd });
       expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 1)).toBe(true);
       expect(locations).toEqual([cwd]);
+      // 같은 채팅 객체의 자식이 종료된 뒤 재기동하면 경로를 다시 읽는다(삭제·링크 교체 시 미주입).
+      liveSession()?.close();
+      await vi.waitFor(() => { expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 2)).toBe(false); });
+      currentScratchpad = undefined;
+      session.send("again");
+      await drainTurn(registry, "op-env");
+      const nextEnv = (vi.mocked(factory as (options: { env: NodeJS.ProcessEnv }) => unknown).mock.calls[1]![0]).env;
+      expect(nextEnv.CLAUDE_CODE_TMPDIR).toBe(process.env.CLAUDE_CODE_TMPDIR);
       await registry.disposeAll();
       expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 2)).toBe(false);
-      expect(scope.read()).toMatchObject({ error: "scope_unavailable" });
     } finally {
-      scopes.dispose();
       if (previous === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
       else process.env.FLEET_CONSOLE_SESSION_ID = previous;
     }

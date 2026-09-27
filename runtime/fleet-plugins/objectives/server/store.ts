@@ -130,6 +130,7 @@ export interface ObjectiveStore {
   /** 알려진 모든 Theater 의 목표. */
   all(): readonly Objective[];
   find(objectiveId: string): Objective | null;
+  scratchpadDir(theaterId: string, objectiveId: string): string;
   /** 지휘관의 담당 Operation 들 — 지휘관 Operation 이 이미 사라진 뒤에도 레코드에서 찾는다. */
   /** 이 Operation 이 맡은 목표와 구성원. */
   findMember(operationId: string): { readonly objective: Objective; readonly memberId: string; readonly missionId: string | null } | null;
@@ -715,6 +716,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     list: (theaterId) => visible(theaterId).map(({ stored, node }) => project(stored, node)),
     all: () => theaterIds().flatMap((theaterId) => store.list(theaterId)),
     find: (objectiveId) => { try { const { stored, node } = locate(objectiveId); return project(stored, node); } catch { return null; } },
+    scratchpadDir(theaterId, objectiveId) {
+      const dir = containedFile(objectiveDir(theaterId, objectiveId), "scratchpad");
+      try { if (fs.lstatSync(dir).isSymbolicLink()) throw new ObjectiveStoreError("unsafe_path"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      return realOf(dir);
+    },
     findMember(operationId) {
       for (const objective of store.all()) {
         const member = objective.members.find((candidate) => candidate.id === operationId);

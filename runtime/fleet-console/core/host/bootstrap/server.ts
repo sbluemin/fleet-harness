@@ -679,7 +679,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleAgentOwners = new Set<string>();
-  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), launchKeys, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), resolveOperation: operations.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
+  const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), pluginWorkspaceDir: (pluginId, theaterId) => {
+    const theater = theaters.get(theaterId);
+    if (!theater || !/^[a-z0-9][a-z0-9-]*$/.test(pluginId)) return null;
+    return path.join(ensureWorkspaceDirectory(durablePaths.dir, theater.realpath).path, pluginId);
+  }, launchKeys, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), resolveOperation: operations.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
   const computerUseDirectory = path.join(fleetDataDir, "computer-use");
   const computerUseInstaller = new CuaDriverInstaller(computerUseDirectory);
@@ -817,7 +821,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     consoleUse,
     mcpTransport: mcpHttp.transport,
     admiralMcp: {
-      connect: (options) => pluginMcp.connect(options),
+      connect: () => pluginMcp.connect(),
       register: () => { throw new Error("Plugin MCP registration requires a plugin context"); },
     },
     operations: {
@@ -1025,6 +1029,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const endsPendingWork = options?.endPendingWork === true && ((observation.surface === "terminal" && observation.activity === "awaiting") || observation.activity === "background");
         if (observation.activity !== "idle" && !endsPendingWork) return { ok: false, error: "not_idle" };
         return sleepOperation(operationId);
+      },
+      // 플러그인별 Theater 저장 경계에서 확인한 경로만 영속한다. 해제는 자기 플러그인이 기록한 경로에 한한다.
+      setScratchpad: (operationId, candidate) => {
+        const node = operations.get(operationId);
+        if (!node) return;
+        if (candidate === null) {
+          if (node.payload.scratchpadOwner !== pluginId) return;
+          const { scratchpad: _scratchpad, scratchpadOwner: _owner, ...payload } = node.payload;
+          pluginHostCapabilities.operations.patch(operationId, { payload });
+          return;
+        }
+        const resolved = consoleControl.setScratchpad({ kind: "plugin", pluginId }, operationId, candidate);
+        if (node.payload.scratchpad !== resolved || node.payload.scratchpadOwner !== pluginId) pluginHostCapabilities.operations.patch(operationId, { payload: { ...node.payload, scratchpad: resolved, scratchpadOwner: pluginId } });
       },
       // 다음 기동 정책만 남긴다. 세션 스냅샷을 고치거나 떠 있는 프로세스를 중단하지 않는다.
       // 플러그인 operations.patch와 같은 영속 경로를 탄다. 저장소 patch만 호출하면 재시작 뒤 정책이 사라진다.

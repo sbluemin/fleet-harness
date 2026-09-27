@@ -38,7 +38,7 @@ export default definePlugin({
       const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
       if (!theaterPath) return null;
       let dir: string;
-      try { dir = path.join(ctx.host.paths.ensureWorkspaceDirectory(theaterPath).path, "objectives"); }
+      try { dir = path.join(ctx.host.paths.ensureWorkspaceDirectory(theaterPath).path, ctx.pluginId); }
       catch (error) {
         // 폴더가 없을 때 말고도(예: 워크스페이스 식별 충돌) 여기로 온다 — 원인을 가릴 수 있게 Theater 마다 한 번 남긴다.
         if (!unreadable.has(theaterId)) console.warn(`[objectives] theater ${theaterId} unreadable: ${error instanceof Error ? error.message : String(error)}`);

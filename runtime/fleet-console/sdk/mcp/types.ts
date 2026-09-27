@@ -105,13 +105,7 @@ export interface PluginMcpTool {
      * 플러그인 MCP(`fleet-{pluginId}`) 도구는 세션이 묶인 Operation 이다. 풀리지 않으면 비어 있다(fail-closed).
      */
     readonly caller?: ConsoleCaller;
-    readonly ownedTemp?: OwnedTempAccess;
   }): Promise<unknown>;
-}
-
-export interface OwnedTempAccess {
-  /** 서버 내부의 고정된 실행 lease. 원본 root는 MCP 응답 외 브라우저 DTO에 싣지 않는다. */
-  read(): { readonly id: string; readonly root: string } | { readonly error: "scope_unavailable" | "scope_unsupported_provider"; readonly reason?: string };
 }
 
 export interface PluginAdmiralMcpHost {
@@ -122,7 +116,7 @@ export interface PluginAdmiralMcpHost {
    */
   register(tools: readonly PluginMcpTool[]): () => void;
   /** 등록 순서와 무관하게 세션을 만들 때 활성 플러그인의 MCP를 연결한다. */
-  connect(options?: { readonly ownedTemp?: (label: string) => OwnedTempAccess }): AdmiralMcpSession;
+  connect(): AdmiralMcpSession;
 }
 
 export interface ConsoleUseMcpHost {

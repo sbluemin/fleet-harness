@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { TextDecoder } from "node:util";
-import type { OwnedTempAccess } from "@fleet-console/sdk/mcp";
 
 import { attachmentName, imageInfo } from "./attachments.js";
 import { RESULT_LIMITS, type EvidenceMetadata } from "./results.js";
@@ -17,11 +16,6 @@ const inside = (root: string, file: string) => {
   return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 };
 const equalFile = (a: fs.BigIntStats, b: fs.BigIntStats) => a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
-const scopeOf = (access: OwnedTempAccess | undefined) => {
-  const scope = access?.read() ?? { error: "scope_unavailable", reason: "not_issued" };
-  if ("error" in scope) throw new EvidenceError(scope.error, scope.reason);
-  return scope;
-};
 
 /** 확장자·Content-Type을 믿지 않는다. 이미지는 기존 머리 판정, 문서는 허용 확장자+엄격한 UTF-8이다. */
 function metadata(data: Buffer, filePath: string): Omit<EvidenceBytes, "data"> {
@@ -37,20 +31,18 @@ function metadata(data: Buffer, filePath: string): Omit<EvidenceBytes, "data"> {
   return { name, mediaType: "text/plain", bytes: data.length, sha256: createHash("sha256").update(data).digest("hex") };
 }
 
-/** 호출자의 고정 lease root 한 곳에서만 읽는다. 목표 구성원이라는 이유로 다른 구성원 파일에 접근하지 않는다. */
-export async function readOwnedEvidence(filePath: string, access: OwnedTempAccess | undefined, signal?: AbortSignal): Promise<EvidenceBytes> {
+/** 참여 중인 목표의 공유 scratchpad 안에서만 읽는다. */
+export async function readScratchpadEvidence(filePath: string, scratchpad: string, signal?: AbortSignal): Promise<EvidenceBytes> {
   if (!path.isAbsolute(filePath) || /[\u0000-\u001f\u007f]/.test(filePath) || filePath.split(/[\\/]/).some((part) => part === "..")) throw new EvidenceError("unsafe_path");
-  const scope = scopeOf(access);
-  if (!inside(scope.root, filePath)) throw new EvidenceError("evidence_outside_scope");
+  if (!inside(scratchpad, filePath)) throw new EvidenceError("evidence_outside_scratchpad");
   const live = () => {
     if (signal?.aborted) throw new EvidenceError("evidence_cancelled");
-    const current = scopeOf(access);
-    if (current.id !== scope.id || current.root !== scope.root) throw new EvidenceError("evidence_scope_changed");
   };
   const inspect = async (): Promise<fs.BigIntStats> => {
     live();
-    const root = await fs.promises.realpath(scope.root);
-    if (root !== scope.root || !inside(root, filePath)) throw new EvidenceError("evidence_outside_scope");
+    if ((await fs.promises.lstat(scratchpad)).isSymbolicLink()) throw new EvidenceError("evidence_symlink");
+    const root = await fs.promises.realpath(scratchpad);
+    if (root !== scratchpad || !inside(root, filePath)) throw new EvidenceError("evidence_outside_scratchpad");
     let current = root;
     for (const segment of path.relative(root, filePath).split(path.sep)) {
       current = path.join(current, segment);
@@ -58,7 +50,7 @@ export async function readOwnedEvidence(filePath: string, access: OwnedTempAcces
       if (stat.isSymbolicLink()) throw new EvidenceError("evidence_symlink");
     }
     const real = await fs.promises.realpath(filePath);
-    if (!inside(root, real)) throw new EvidenceError("evidence_outside_scope");
+    if (!inside(root, real)) throw new EvidenceError("evidence_outside_scratchpad");
     const stat = await fs.promises.lstat(filePath, { bigint: true });
     if (!stat.isFile()) throw new EvidenceError("evidence_not_regular");
     if (stat.nlink !== 1n) throw new EvidenceError("evidence_hardlink");

@@ -1,6 +1,6 @@
 import type { AgentOptionsService } from "@fleet-console/infra";
 import http from "node:http";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -38,17 +38,28 @@ describe("agent dormant ticket guards", () => {
     const harness = await createHarness();
     const control = harness.control;
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, ownedTemp: true, viewMode: "chat", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).operationId;
+    const id = (await control.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, scratchpad: path.join(harness.dataDir, "workspaces", "theater-1", "objectives", "objective", "scratchpad"), viewMode: "chat", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).operationId;
     expect(harness.attach).not.toHaveBeenCalled();
     expect(control.observe(id)).toMatchObject({ lifecycle: "dormant", surface: "chat", supportedActions: ["send", "resume"] });
     const operation = harness.operations.find((op) => op.id === id)!;
     expect(readOperationLaunch(operation.payload)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "chat", started: false });
-    expect(operation.payload).toMatchObject({ chatBorn: true, chatMode: true, ownedTemp: true });
+    expect(operation.payload).toMatchObject({ chatBorn: true, chatMode: true, scratchpad: realpathSync(path.join(harness.dataDir, "workspaces", "theater-1", "objectives", "objective", "scratchpad")) });
+    const region = path.join(harness.dataDir, "workspaces", "theater-1", "objectives");
+    await expect(control.request(caller, { kind: "launch", theaterId: "theater-1", scratchpad: path.join(harness.dataDir, "workspaces", "theater-2", "objectives", "foreign") })).rejects.toThrow("invalid_scratchpad");
+    symlinkSync(harness.dataDir, path.join(region, "linked"));
+    await expect(control.request(caller, { kind: "launch", theaterId: "theater-1", scratchpad: path.join(region, "linked", "escaped") })).rejects.toThrow("invalid_scratchpad");
+    const saved = operation.payload.scratchpad as string;
+    rmSync(saved, { recursive: true });
+    expect(control.setScratchpad(caller, id, saved)).toBe(saved); // 휴면 뒤 삭제된 경로는 같은 목표 아래 다시 만든다.
+    rmSync(saved, { recursive: true });
+    symlinkSync(harness.dataDir, saved);
+    expect(() => control.setScratchpad(caller, id, saved)).toThrow("invalid_scratchpad");
+    rmSync(saved);
     // 실제 제어 스키마와 실행 어댑터를 지난 opt-in만 저장된다. false도 launch 밖에서는 옵션을 끼울 수 없다.
-    await expect(control.request(caller, { kind: "send", operationId: id, text: "Begin", ownedTemp: false })).rejects.toThrow("invalid_arguments");
+    await expect(control.request(caller, { kind: "send", operationId: id, text: "Begin", scratchpad: "/unused" })).rejects.toThrow("invalid_arguments");
     harness.patch(id, { payload: { ...operation.payload, consoleUse: { enabled: true, language: "ko" } } });
     const operationCaller = { kind: "operation" as const, operationId: id };
-    const ownedLaunch = { kind: "launch" as const, theaterId: "theater-1", dormant: true, ownedTemp: true };
+    const ownedLaunch = { kind: "launch" as const, theaterId: "theater-1", dormant: true, scratchpad: path.join(harness.dataDir, "workspaces", "theater-1", "objectives", "objective", "scratchpad") };
     await expect(control.request(operationCaller, ownedLaunch)).rejects.toThrow("invalid_launch_option");
     expect(() => control.automation(operationCaller, { name: "Unauthorized root", theaterId: "theater-1", trigger: { kind: "interval", minutes: 5 }, action: ownedLaunch, expiresAt: new Date(Date.now() + 3600_000).toISOString(), maxRuns: 1 })).toThrow("invalid_launch_option");
     expect(control.state().automations).toHaveLength(0);
@@ -155,7 +166,7 @@ async function createHarness(options: {
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
   const invalidateCalls: string[] = [];
   let route: RouteHandler | undefined;
-  const control = createConsoleControl({ directory: path.join(fleetDataDir, "console-control"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Theater" }], pluginAvailable: (id) => id === "objectives" });
+  const control = createConsoleControl({ pluginWorkspaceDir: (pluginId, theaterId) => path.join(fleetDataDir, "workspaces", theaterId, pluginId), directory: path.join(fleetDataDir, "console-control"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Theater" }], pluginAvailable: (id) => id === "objectives" });
   let exitCallback: ((operationId: string) => void | Promise<void>) | undefined;
   let ticketsIssued = 0;
   const tickets = createPluginTerminalTicketRegistry({
@@ -397,6 +408,7 @@ async function createHarness(options: {
   }
 
   return {
+    dataDir: fleetDataDir,
     attach,
     control,
     operations,
