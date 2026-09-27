@@ -1012,6 +1012,50 @@ describe("AgentChatRegistry — stopping a turn", () => {
 
     await registry.disposeAll();
   });
+
+  /**
+   * 압축 도중 새로 붙은 화면(구성원 탭 전환·재접속)도 그 줄을 도는 중으로 받아야 한다.
+   * 정비 줄은 `turnOpen`을 세우지 않으므로, 재생 경계 안에 들어가면 클라이언트의 replay-end가
+   * 숫자 없는 「완료」로 닫고, 뒤늦은 경계가 같은 줄을 덮어쓴다.
+   */
+  it("keeps a running compaction live for a view that subscribes mid-compaction", async () => {
+    const transcriptPath = writeTranscript("sess-compact-resub", []);
+    const configDir = tempDir("chat-compact-");
+    let child: ReturnType<typeof fakeSession> | null = null;
+    const openSession = vi.fn(async () => {
+      child = fakeSession([], {});
+      return child;
+    });
+    const factory = vi.fn(async ({ models }: { readonly baseUrl: string; readonly models: readonly string[] }) => ({
+      configDir,
+      models,
+      openSession,
+      dispose: vi.fn(async () => {}),
+    }));
+    const registry = new AgentChatRegistry(factory as never);
+    const session = await registry.ensure("op-compact-1", () => seedFor(transcriptPath));
+    session.subscribe(() => {});
+
+    session.send("/compact");
+    await vi.waitFor(() => { expect(child).not.toBeNull(); });
+    child!.emit({ type: "system", subtype: "status", status: "compacting" });
+
+    const fold = (entries: readonly AgentChatJournalEvent[]) => entries.reduce((log, entry) => reduceAgentChatLog(log, { ...entry.event, receivedAt: entry.at }), initialAgentChatLogState);
+    const late: AgentChatJournalEvent[] = [];
+    await vi.waitFor(() => {
+      late.length = 0;
+      session.subscribe((entry) => late.push(entry))();
+      expect(fold(late).turns.at(-1)).toMatchObject({ state: "working", command: { name: "compact", phase: "compacting" } });
+    });
+
+    const watching: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => watching.push(entry));
+    child!.emit({ type: "system", subtype: "compact_boundary", compact_metadata: { pre_tokens: 342_000, post_tokens: 6_000, duration_ms: 90_000 } });
+    child!.emit({ type: "result", subtype: "success", is_error: false, result: "", num_turns: 0, duration_ms: 1 });
+    await drainTurn(registry, "op-compact-1");
+    expect(fold(watching).turns.at(-1)).toMatchObject({ state: "done", command: { name: "compact", compact: { before: 342_000, after: 6_000 } } });
+    await registry.disposeAll();
+  });
 });
 
 /**
