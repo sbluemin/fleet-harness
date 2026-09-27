@@ -91,11 +91,11 @@ export function App() {
   const [undoClock, setUndoClock] = useState(Date.now());
   // 보관·되돌리기가 거절됐을 때의 짧은 안내 — 조용히 삼키지 않는다.
   const [undoNotice, setUndoNotice] = useState<{ readonly key: CoreMessageKey; readonly nonce: number } | null>(null);
-  const [promptForgottenNotice, setPromptForgottenNotice] = useState(false);
-  useEffect(() => subscribeTheaterSystemPromptForgotten(() => setPromptForgottenNotice(true)), []);
+  const [promptForgottenNotice, setPromptForgottenNotice] = useState<string | null>(null);
+  useEffect(() => subscribeTheaterSystemPromptForgotten(setPromptForgottenNotice), []);
   useEffect(() => {
-    if (!promptForgottenNotice) return;
-    const timer = setTimeout(() => setPromptForgottenNotice(false), THEME_NOTICE_AUTO_DISMISS_MS);
+    if (promptForgottenNotice === null) return;
+    const timer = setTimeout(() => setPromptForgottenNotice(null), THEME_NOTICE_AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [promptForgottenNotice]);
   const pendingUndosRef = useRef(pendingUndos);
@@ -673,7 +673,7 @@ export function App() {
             title={themeNotice === "light" ? t("chrome.toast.themeLight") : t("chrome.toast.themeDark")}
             onDismiss={() => setThemeNotice(null)}
           />
-          <Toast open={promptForgottenNotice} tone="warn" title={t("sidebar.theater.prompt.forgotten")} onDismiss={() => setPromptForgottenNotice(false)} />
+          <Toast open={promptForgottenNotice !== null} tone="warn" title={t("sidebar.theater.prompt.forgotten", { theater: promptForgottenNotice ?? "" })} onDismiss={() => setPromptForgottenNotice(null)} />
           {mobileLayout ? deletionToast : null}
         </ToastHost>
       </div>

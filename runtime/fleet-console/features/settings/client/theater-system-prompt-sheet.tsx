@@ -15,13 +15,14 @@ const OPEN_EVENT = "fleet:theater-system-prompt-open";
 const CHANGED_EVENT = "fleet:theater-system-prompt-changed";
 const FORGOTTEN_EVENT = "fleet:theater-system-prompt-forgotten";
 
-export function subscribeTheaterSystemPromptForgotten(listener: () => void): () => void {
-  window.addEventListener(FORGOTTEN_EVENT, listener);
-  return () => window.removeEventListener(FORGOTTEN_EVENT, listener);
+export function subscribeTheaterSystemPromptForgotten(listener: (theater: string) => void): () => void {
+  const handler = (event: Event) => listener((event as CustomEvent<string>).detail);
+  window.addEventListener(FORGOTTEN_EVENT, handler);
+  return () => window.removeEventListener(FORGOTTEN_EVENT, handler);
 }
 
-function announceForgotten() {
-  window.dispatchEvent(new Event(FORGOTTEN_EVENT));
+function announceForgotten(theater: string) {
+  window.dispatchEvent(new CustomEvent(FORGOTTEN_EVENT, { detail: theater }));
 }
 
 export function openTheaterSystemPrompt(theater: TheaterInfo, returnFocus: HTMLElement | null, anchor?: DOMRect | null): void {
@@ -93,10 +94,11 @@ export function TheaterSystemPromptSheet() {
           if ((error as { status?: number }).status === 404) {
             clearTimeout(timerRef.current ?? undefined);
             const opener = requestRef.current?.returnFocus;
+            const theater = requestRef.current?.theater.label ?? "";
             requestRef.current = null;
             setRequest(null);
             if (opener?.isConnected) opener.focus();
-            announceForgotten();
+            announceForgotten(theater);
           } else { dirtyRef.current = true; setStatus("error"); }
         }
       }
@@ -161,7 +163,7 @@ export function TheaterSystemPromptSheet() {
             requestRef.current = null;
             setRequest(null);
             if (next.returnFocus?.isConnected) next.returnFocus.focus();
-            announceForgotten();
+            announceForgotten(next.theater.label);
           } else { setLoading(false); setLoadFailed(true); }
         }
       });
@@ -186,7 +188,7 @@ export function TheaterSystemPromptSheet() {
     const sheet = dialogRef.current;
     const measure = () => {
       const viewportHeight = window.innerHeight;
-      const height = Math.min(sheet.scrollHeight, viewportHeight - 16);
+      const height = Math.min(sheet.scrollHeight + sheet.offsetHeight - sheet.clientHeight, viewportHeight - 16);
       const top = Math.max(8, Math.min(request.anchor?.top ?? 80, viewportHeight - height - 8));
       setSheetTop((current) => current === top ? current : top);
     };
@@ -204,7 +206,7 @@ export function TheaterSystemPromptSheet() {
     requestRef.current = null;
     setRequest(null);
     if (request.returnFocus?.isConnected) request.returnFocus.focus();
-    announceForgotten();
+    announceForgotten(request.theater.label);
   }, [request, registeredLabel, clearTimer]);
 
   useLayoutEffect(() => {
@@ -310,7 +312,7 @@ export function TheaterSystemPromptSheet() {
         <div className="theater-prompt-field" ref={selectRef}><span id="theater-prompt-mode-label">{t("sidebar.theater.prompt.modeLabel")}</span>
           <Select className="theater-prompt-select" aria-labelledby="theater-prompt-mode-label" value={draft.mode} options={(Object.keys(modeNames) as ClaudeCodeSystemPromptMode[]).map((mode) => ({ value: mode, label: modeNames[mode] }))} onChange={(mode) => changeMode(mode as ClaudeCodeSystemPromptMode)} />
         </div>
-        {draft.mode === "on" && draft.body ? <div className="theater-prompt-kept"><details><summary>{t("sidebar.theater.prompt.kept", { count: draft.body.length })}</summary><pre>{draft.body}</pre></details></div> : null}
+        {draft.mode === "on" && draft.body ? <div className="theater-prompt-kept"><details><summary>{t("sidebar.theater.prompt.kept", { count: draft.body.length })}</summary><pre>{draft.body}</pre></details><p>{t("sidebar.theater.prompt.keptHelp")}</p></div> : null}
         {draft.mode !== "on" ? <label className="theater-prompt-field">{t("sidebar.theater.prompt.bodyLabel")}
           <textarea value={draft.body} onChange={(event) => changeBody(event.target.value)} onBlur={flush} rows={5} aria-invalid={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS} aria-describedby={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? "theater-prompt-length-error" : undefined} />
           <small className={draft.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS ? "is-over" : ""}>{draft.body.length.toLocaleString()} / 16,000</small>
