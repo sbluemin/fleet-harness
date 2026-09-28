@@ -838,6 +838,14 @@ describe("Objectives contract", () => {
     expect(store.find(duplicate.id)).toMatchObject({ removed: null, note: "dup brief" });
     expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [] });
     expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
+    // 받은 목표까지 지운 뒤 원본부터 되돌려도 내용이 겹치지 않고, 받을 수 없는 id 가 낀 되돌리기는 아무것도 바꾸지 않는다.
+    await use({ merge: { into: waiting.id, from: [duplicate.id] } });
+    await use({ remove: { objectiveIds: [waiting.id] } });
+    expect((await use({ restore: [duplicate.id, "missing"] })).structuredContent).toMatchObject({ error: "tidy_refused" });
+    expect(store.find(duplicate.id)!.removed).not.toBeNull();
+    expect((await use({ restore: [duplicate.id, waiting.id] })).isError).toBe(false);
+    expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [], removed: null });
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
 
     // 사람이 지운 기동 전 목표도 같은 자리에 남아 되돌릴 수 있고, 거기서 한 번 더 지우면(비우기) 영구 삭제된다.
     expect((await route("objective/remove", { objectiveId: stale.id })).status).toBe(200);

@@ -931,8 +931,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (sources.includes(targetId)) throw new ObjectiveStoreError("merge_into_self");
       const refusals: { objectiveId: string; reason: string; kinds?: readonly string[] }[] = [targetId, ...sources].flatMap((id) => { const reason = tidyRefusal(id); return reason ? [{ objectiveId: id, reason }] : []; });
       // 원본에만 있고 브리핑·기준으로 옮길 수 없는 것 — 합치면 사람의 보드에서 조용히 사라진다.
+      // 합치기는 한 보드 안에서만 — 다른 Theater 의 목표를 옮기면 원본 보드가 받은 목표를 가리킬 수 없다.
+      const targetTheater = refusals.some((entry) => entry.objectiveId === targetId) ? null : locate(targetId).theaterId;
       for (const id of sources) {
         if (refusals.some((entry) => entry.objectiveId === id)) continue;
+        if (targetTheater && locate(id).theaterId !== targetTheater) { refusals.push({ objectiveId: id, reason: "other_theater" }); continue; }
         const stored = locate(id).stored;
         const kept = ([["missions", stored.missions.length], ["members", stored.members?.length ?? 0], ["attachments", stored.attachments?.length ?? 0], ["results", stored.results?.length ?? 0], ["followups", stored.followups?.length ?? 0], ["merged", stored.merged?.length ?? 0]] as const).filter(([, count]) => count > 0).map(([kind]) => kind);
         if (kept.length) refusals.push({ objectiveId: id, reason: "merge_would_drop", kinds: kept });
@@ -975,7 +978,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         for (const stored of [...load(theaterId).values()]) {
           if (!stored.pending || !stored.removed || now() - stored.removed.at < REMOVED_RETENTION_MS) continue;
           try { store.removePending(stored.operationId); purged.push(stored.operationId); }
-          catch { console.warn("[objectives] removed_purge_failed"); }
+          catch { console.warn("[objectives] removed_purge_failed"); continue; }
+          // 받은 목표의 되돌리기 가능 여부는 원본이 남아 있는지에서 나온다 — 열린 보드가 곧바로 알게 다시 방송한다.
+          for (const target of load(theaterId).values()) if (target.merged?.some((entry) => entry.sourceId === stored.operationId)) announce(theaterId, target);
         }
       }
       return purged;
@@ -984,9 +989,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const { stored } = locate(objectiveId);
       if (!stored.removed) throw new ObjectiveStoreError("not_removed");
       const targetId = stored.removed.mergedInto;
-      // 받은 목표가 아직 기동 전 보드 목표로 남아 있을 때만 덧붙인 구간과 옮긴 기준을 걷어 낸다. 그사이 기동·완료·삭제됐으면 그대로 둔다.
+      // 받은 목표가 아직 기동 전·미완료 보드 목표일 때 덧붙인 구간과 옮긴 기준을 걷어 낸다. 받은 목표도 지워져 있으면 그대로 걷어 두어,
+      // 어느 쪽을 먼저 되돌려도 내용이 겹치지 않는다. 그사이 기동·완료됐으면 그대로 둔다.
       const target = targetId ? (() => { try { return locate(targetId); } catch { return null; } })() : null;
-      if (target && target.stored.pending && !target.stored.done && !target.stored.removed) {
+      if (target && target.stored.pending && !target.stored.done) {
         update(targetId!, (current) => {
           const entry = current.merged?.find((candidate) => candidate.sourceId === objectiveId);
           if (!entry) return current;

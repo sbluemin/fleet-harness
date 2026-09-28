@@ -105,7 +105,11 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
           const actor = (why?: string) => ({ operationId: caller.operationId, title: ctx.host.operations.get(caller.operationId)?.title ?? null, ...(why ? { reason: why } : {}) });
           if (args.remove) return text({ ok: true, removed: store.tidyRemove(args.remove.objectiveIds, actor(args.remove.reason)).map((objective) => objective.id) });
           if (args.merge) { const target = store.tidyMerge(args.merge.into, args.merge.from, actor(args.merge.reason)); return text({ ok: true, objectiveId: target.id, merged: args.merge.from, criteria: target.criteria.length }); }
-          return text({ ok: true, restored: args.restore!.map((id) => store.tidyRestore(id).id) });
+          // 되돌리기도 지우기·합치기처럼 전부 받을 수 있을 때만 바꾼다 — 일부만 되돌린 채 오류로 끝나지 않게.
+          const restoreIds = [...new Set(args.restore!)];
+          const refusals = restoreIds.flatMap((id) => { const found = store.find(id); return !found ? [{ objectiveId: id, reason: "unknown_objective" }] : !found.removed ? [{ objectiveId: id, reason: "not_removed" }] : []; });
+          if (refusals.length) return refuse("tidy_refused", { refusals });
+          return text({ ok: true, restored: restoreIds.map((id) => store.tidyRestore(id).id) });
         }
         if (!args.add) return text(read(args, caller));
         const add = args.add;
