@@ -7,7 +7,7 @@ import { getIdleArrivalIds, useOperationStatusDetails } from "../../../execution
 import { resolveOperationMarkVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../../../execution/client/operation-activity.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationNode, OperationGroup } from "../../../../core/client/src/integration/types.js";
-import { flattenGroupedOrder, operationOrderFromNodes } from "../../../../core/client/src/integration/store.js";
+import { flattenGroupedOrder, operationOrderFromNodes, revealOperationStage } from "../../../../core/client/src/integration/store.js";
 import {
   clampTriageDeckZoom,
   getTriageDeckZoom,
@@ -452,6 +452,7 @@ export function TriageWatchDeck({
     // 카드가 움직이는 중이라 좌표가 흔들리므로 먼저 스냅 종료하고, 그 다음 rect를 출발 전용 채널에 기록한다.
     onBeforePick?.();
     deckDepartureRect = { operationId, rect: element.getBoundingClientRect() };
+    revealOperationStage();
     pickTriageOperation(operationId);
   };
   const openOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLElement> | MouseEvent, host?: HTMLElement) => {

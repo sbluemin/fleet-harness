@@ -11,6 +11,7 @@ import { ArchiveTaskbarEntry } from "../archive/archive-entry.js";
 import { CanvasModeSwitch, WarRoomModeTools } from "../canvas/canvas-mode-switch.js";
 import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized, useCanvasState } from "../canvas/canvas-store.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
+import { revealOperationStage } from "../../../../core/client/src/integration/store.js";
 import { getTriageEnteredAt, getTriageSnapshot, pickTriageOperation, resolveTriageCounts, resolveTriageQueue, subscribeTriage, useTriageStage } from "../canvas/triage-store.js";
 import { highlightTriageDeckCard } from "../canvas/triage-watch-deck.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
@@ -141,7 +142,7 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
 
   const mark = (operation: OperationNode) => resolveOperationMarkVisual({ activity: resolveOperationActivity(operation, operationRuntime), operationId: operation.id, idleArrivalIds: arrivals });
   const theaterLabel = (operation: OperationNode) => theaters.find((theater) => theater.id === operation.theaterId)?.label ?? operation.theaterId;
-  const pick = (operation: OperationNode) => { closeMenu(); pickTriageOperation(operation.id); };
+  const pick = (operation: OperationNode) => { closeMenu(); revealOperationStage(); pickTriageOperation(operation.id); };
   const openMenu = (kind: Shelf, anchor: HTMLButtonElement) => {
     menuReturnFocusRef.current = anchor;
     setMenu((current) => current?.kind === kind ? null : { kind, anchor: anchor.getBoundingClientRect() });
@@ -201,7 +202,7 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
         onClick={() => {
           const kind = menu.kind;
           closeMenu();
-          if (kind === "overflow") pickTriageOperation(operation.id);
+          if (kind === "overflow") { revealOperationStage(); pickTriageOperation(operation.id); }
           else if (resolveOperationActivity(operation, operationRuntime) === "ended") onResume(operation.id);
           else setTheaterOperationMinimized(operation.theaterId, operation.id, false);
           menuReturnFocusRef.current?.focus({ preventScroll: true });

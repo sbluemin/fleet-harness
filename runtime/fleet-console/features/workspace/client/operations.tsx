@@ -37,7 +37,7 @@ import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-s
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { companionDefaultChord, companionShortcutCommandId, isShortcutRecording, matchesChord, matchesShortcutCommand, resolveShortcutChords } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../../../core/client/src/integration/store.js";
+import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, revealOperationStage, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../../../core/client/src/chrome/mobile/operation-body-pool.js";
@@ -1003,6 +1003,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 
 // 모든 사용자 포커스 진입점은 현재 로드된 Theater의 live 표시 상태만으로 같은 순서를 적용한다.
 async function routeOperationFocus(operationId: string, operationKinds: readonly OperationKindDescriptor[], api: ClientApiCapability, requestEpochRef: { current: number }, focusMap: () => void, resumeIfDormant: (operationId: string) => void): Promise<void> {
+  // Alt 순환을 포함한 직접 이동. focusOperation 을 타지 않는 같은 Theater 경로도 여기서 표면을 걷는다.
+  revealOperationStage();
   const requestEpoch = ++requestEpochRef.current;
   const triageOperation = getState().operations.find((candidate) => candidate.id === operationId);
   if (triageOperation && isTriageActive()) {
@@ -1226,11 +1228,15 @@ async function createLaunchedOperation(
   const operationHydrated = getState().operations.some((operation) => operation.id === newOperationId);
   // Analyze는 명시적인 사용자 focus만 따라간다. 새 Operation 생성은 열린 분석 대상을 승계하지 않는다.
   if (isTriageActive()) {
+    // 선별 중 발사는 routeOperationFocus 를 타지 않고 무대로 올린다. 자동 지목이 아니라 사용자가 만든 Operation 이다.
+    revealOperationStage();
     pickTriageOperation(newOperationId);
     return;
   }
   if (getTheaterCompanionOperationId(theaterId) !== null) return;
   if (stillOnLaunchTheater && operationHydrated && getSnapFullOperationId() !== null && snapOperationToFullZone(newOperationId, commitSnappedGeometry)) {
+    // 전체 칸 승계도 새 Operation 을 드러내는 이동이다 — 다른 착지(War Room·focusOperation)와 같은 표면 정리를 탄다.
+    revealOperationStage();
     setActiveOperation(newOperationId);
   } else {
     // Theater가 다르거나 hydrate 누락이면 Theater-aware한 focusOperation으로 처리한다(launch Theater로 복귀·포커스, 부재 시 no-op).
