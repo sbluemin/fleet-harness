@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -34,6 +34,12 @@ const storedDrafts = (objectiveId: string, requestId: string | undefined): Reado
   return {};
 };
 
+/** 직접 쓰기 칸을 글 높이에 맞춘다 — border-box 라 위아래 테두리까지 더해야 마지막 줄이 잘리지 않는다. */
+const fitField = (field: HTMLTextAreaElement) => {
+  field.style.height = "auto";
+  field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
+};
+
 const clock = (at: number, language: "en" | "ko") => new Date(at).toLocaleTimeString(language === "ko" ? "ko-KR" : "en-US", { hour: "2-digit", minute: "2-digit" });
 const stamp = (at: number, language: "en" | "ko") => new Date(at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -56,6 +62,9 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
   const [drafts, setDrafts] = useState(() => storedDrafts(objective.id, request?.id));
   const [sending, setSending] = useState(false);
   const [fault, setFault] = useState<string | null>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  // 되살린 초안은 onChange 를 거치지 않는다 — 그려질 때 칸 높이를 글에 맞춘다.
+  useLayoutEffect(() => { sectionRef.current?.querySelectorAll("textarea").forEach(fitField); }, [objective.id, request?.id]);
   // 새 요청은 새 질문이다 — 앞 요청에 쓰던 답을 옮겨 붙이지 않는다.
   useEffect(() => { setDrafts(storedDrafts(objective.id, request?.id)); setFault(null); }, [objective.id, request?.id]);
   if (!request) return null;
@@ -88,7 +97,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
     } finally { setSending(false); }
   };
   return (
-    <section className="objectives-decision-request" aria-label={t("objectives.decision.request")}>
+    <section ref={sectionRef} className="objectives-decision-request" aria-label={t("objectives.decision.request")}>
       <div className="objectives-decision-head">
         <span className="objectives-decision-glyph"><RequestGlyph /></span>
         <span>{t("objectives.decision.request")}</span>
@@ -137,7 +146,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
                 value={draft.text}
                 aria-label={t("objectives.decision.writeAria", { n })}
                 placeholder={t(question.options.length > 0 ? "objectives.decision.writeMore" : "objectives.decision.write")}
-                onChange={(event) => { edit(question, { ...draft, text: event.target.value }); event.currentTarget.style.height = "auto"; event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`; }}
+                onChange={(event) => { edit(question, { ...draft, text: event.target.value }); fitField(event.currentTarget); }}
                 onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }}
               />
             </div>
