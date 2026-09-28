@@ -207,7 +207,7 @@ export interface ObjectiveStore {
   memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): Objective;
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
-  edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean };
+  edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean; readonly changed: boolean };
   edgesLinear(objectiveId: string): Objective;
   edgesClear(objectiveId: string): Objective;
   plan(objectiveId: string, input: PlanInput): Objective;
@@ -1215,7 +1215,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     edgeToggle(objectiveId, from, to, why, desired) {
-      let linked = false;
+      let linked = false, changed = false;
       const objective = update(objectiveId, (stored) => {
         missionOf(stored, from);
         const { at, mission } = missionOf(stored, to);
@@ -1223,13 +1223,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         linked = desired ?? !exists;
         // 끌기의 잇기와 팝업의 끊기는 명시적 의도다. 오래된 화면·중복 요청도 반대 동작으로 바뀌지 않는다.
         if (linked === exists) return stored;
+        changed = true;
         // 사람이 간선을 직접 이으면 양 끝 모두 자리가 정해진 것으로 본다 — 끊는 것은 자리를 되돌리지 않는다.
         if (!linked) return replaceMission(stored, at, withoutEdge(mission, from));
         const fromAt = stored.missions.findIndex((candidate) => candidate.id === from);
         const withFrom = replaceMission(stored, fromAt, placed(stored.missions[fromAt]!));
         return replaceMission(withFrom, at, { ...placed(mission), prerequisites: [...mission.prerequisites, { id: from, why: why ?? "human" }] });
       });
-      return { objective, linked };
+      return { objective, linked, changed };
     },
 
     edgesLinear: (objectiveId) => update(objectiveId, (stored) => ({
