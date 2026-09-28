@@ -7,7 +7,7 @@ import { objectivesClusterSource } from "./clusters.js";
 import { getT } from "./i18n/index.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
-import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealObjective, objectivesApi, toggleObjectivePlace } from "./objectives-state.js";
+import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, pendingDecisionCount, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePlace } from "./objectives-state.js";
 import "./objectives.css";
 
 export const OBJECTIVE_SURFACE_ID = "objectives";
@@ -46,6 +46,12 @@ export const objectivesEntry: RailEntryDescriptor = {
   panes: [OBJECTIVE_SURFACE_ID],
   surfaceId: OBJECTIVE_SURFACE_ID,
   activate: (ctx) => toggleObjectivePlace(ctx.rail, ctx.surfaces),
+  // 사람의 답을 기다리는 결정 요청 수 — 표면을 닫아 두어도 아이콘 배지로 선다.
+  attention: {
+    subscribe: subscribeObjective,
+    count: pendingDecisionCount,
+    label: (count, locale) => getT(locale)("objectives.requests.badge", { count }),
+  },
   search: async ({ query, theaterId, limit, language }) => {
     const api = objectivesApi();
     if (!api) return [];

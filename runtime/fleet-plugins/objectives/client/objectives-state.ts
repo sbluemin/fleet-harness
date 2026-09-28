@@ -250,6 +250,25 @@ export function removeObjectiveLocally(objectiveId: string): void {
   }
 }
 
+/**
+ * 사람이 방금 만든 목표를 사건보다 먼저 이 화면에 들인다 — removeObjectiveLocally 의 짝. 이미 있으면 교체하고, 없으면 목록 끝에
+ * 둔다(서버가 새 목표에 주는 자리가 Theater 의 맨 끝이라, 뒤이어 오는 사건의 순서가 도착해도 행이 튀지 않는다).
+ * 뒤이은 사건은 같은 id 를 교체한다.
+ */
+export function upsertObjectiveLocally(objective: Objective): void {
+  const current = theaters.get(objective.theaterId) ?? EMPTY;
+  const exists = current.objectives.some((candidate) => candidate.id === objective.id);
+  setTheater(objective.theaterId, { objectives: exists ? current.objectives.map((candidate) => (candidate.id === objective.id ? objective : candidate)) : [...current.objectives, objective] });
+}
+
+/** 사람의 답을 기다리는 결정 요청 — 요청이 섰고 끝나지 않은 목표. 목록 요약·구획·레일 배지가 같은 셈을 쓴다. */
+export const hasDecisionRequest = (objective: Objective): boolean => !!objective.decisionRequest && !objective.done;
+
+/** 레일 아이콘 배지의 수 — 표면이 닫혀 있어도 활성 Theater 는 미리 읽혀 있다(installObjectiveState). */
+export function pendingDecisionCount(theaterId: string | null): number {
+  return readTheater(theaterId).objectives.filter(hasDecisionRequest).length;
+}
+
 export function objectivesApi(): ClientApiCapability | null {
   return installed?.api ?? null;
 }
@@ -398,6 +417,15 @@ function isObjectiveEditing(element: EventTarget | null = typeof document === "u
 }
 
 let selectionTheater: { readonly contextTheaterId: string | null; readonly theaterId: string } | null = null;
+
+/**
+ * 사람이 방금 한 선택이 이긴다 — 입력 중이라 보류해 둔 외부 선택(지도·등단)과, 그 Theater 를 읽는 중이던 선택을 버린다.
+ * 목표 추가처럼 사람의 행동으로 서는 선택은 편집 중 보류 규칙을 타지 않는다.
+ */
+export function discardPendingSelection(): void {
+  pendingSelectionOperationId = null;
+  latestSelectionToken += 1;
+}
 
 function clearSelectionTheater(): void {
   pendingSelectionOperationId = null;

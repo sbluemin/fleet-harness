@@ -522,6 +522,8 @@ const RailPanelBody = memo(function RailPanelBody({ binding, ctx, connection, co
   );
 });
 
+const subscribeNothing = () => () => undefined;
+
 interface RailIconProps {
   readonly entry: RailEntryDescriptor;
   readonly context: RailPanelContext;
@@ -546,6 +548,12 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
   // Console Use — 에이전트가 이 패널(저장소·탐색기)을 읽으면 버튼 상자가 감싸인다. 아이콘 잉크는 그대로다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => getPanelWrap(entry.id), () => null);
   const wrapClassName = consoleUseWrapClassName(wrap);
+  // 사람의 손을 기다리는 수 — 표면이 닫혀 있어도 아이콘 모서리에 선다. 이름 뒤에 붙어 말풍선·스크린 리더도 같은 수를 읽는다.
+  const attention = entry.attention;
+  const attentionTheaterId = entry.scope === "fleet" ? null : context.theaterId;
+  const readAttention = () => (attention ? Math.max(0, Math.floor(attention.count(attentionTheaterId))) : 0);
+  const attentionCount = useSyncExternalStore(attention?.subscribe ?? subscribeNothing, readAttention, readAttention);
+  const named = attention && attentionCount > 0 ? `${title} · ${attention.label(attentionCount, language)}` : title;
 
   return (
     <button
@@ -554,13 +562,14 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
       type="button"
       // 패널 아이콘은 배타 전환 토글이다 — 켜짐은 pressed로 말하고, 최대 하나만 true다.
       aria-pressed={isActive}
-      aria-label={title}
+      aria-label={named}
       disabled={entry.activate !== undefined && context.theaterId === null}
       // 이름은 도구모음 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
-      data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${title} (${shortcut})` : title}
+      data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
       onClick={handleClick}
     >
       {icon}
+      {attentionCount > 0 ? <span className="right-rail-ico-badge" aria-hidden="true">{attentionCount > 99 ? "99+" : attentionCount}</span> : null}
     </button>
   );
 }
