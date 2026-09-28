@@ -1075,10 +1075,25 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   const batchTriggerRef = useRef<HTMLButtonElement | null>(null);
   const batchMenuRef = useRef<HTMLDivElement | null>(null);
   const balloonTimer = useRef<number | null>(null);
-  const noteTimer = useRef<number | null>(null);
+  // 안내는 구성원마다 따로 사라진다 — 한 타이머를 공유하면 앞서 뜬 구성원의 안내가 남는다.
+  const noteTimers = useRef(new Map<string, number>());
+  const dropNote = (id: string) => {
+    const timer = noteTimers.current.get(id);
+    if (timer !== undefined) window.clearTimeout(timer);
+    noteTimers.current.delete(id);
+    setNotes((current) => { if (!current.has(id)) return current; const updated = new Set(current); updated.delete(id); return updated; });
+  };
+  const showNotes = (ids: readonly string[]) => {
+    setNotes((current) => new Set([...current, ...ids]));
+    for (const id of ids) {
+      const timer = noteTimers.current.get(id);
+      if (timer !== undefined) window.clearTimeout(timer);
+      noteTimers.current.set(id, window.setTimeout(() => dropNote(id), 10_000));
+    }
+  };
 
   useEffect(() => () => {
-    if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
+    for (const timer of noteTimers.current.values()) window.clearTimeout(timer);
     if (balloonTimer.current !== null) window.clearTimeout(balloonTimer.current);
   }, []);
 
@@ -1117,13 +1132,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       if (!echoed || memberSubagents(echoed) !== next) { setFault({ id: member.id, code: "not_stored" }); return; }
       setFault((current) => current?.id === member.id ? null : current);
       setAnnounce(`${t(next ? "objectives.members.subagentsSaved" : "objectives.members.subagentsCleared", { role: member.role })}${live ? ` ${t("objectives.members.subagentsLive")}` : ""}`);
-      if (!live) {
-        setNotes((current) => { const updated = new Set(current); updated.delete(member.id); return updated; });
-        return;
-      }
-      setNotes((current) => new Set([...current, member.id]));
-      if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
-      noteTimer.current = window.setTimeout(() => setNotes((current) => { const updated = new Set(current); updated.delete(member.id); return updated; }), 10_000);
+      if (!live) { dropNote(member.id); return; }
+      showNotes([member.id]);
     }, (error: unknown) => {
       saving.current.delete(member.id);
       setFault({ id: member.id, code: error instanceof Error ? error.message : "unknown" });
@@ -1141,6 +1151,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const saved = payload as { objective?: Objective } | null;
       const echoed = saved?.objective?.members;
       if (!echoed) return;
+      // 다시 시도해 성공했다 — 앞선 실패 표시는 더 이상 사실이 아니다.
+      setFault((current) => current?.id === "batch" ? null : current);
 
       const changedMembers = echoed.filter((member) => {
         const old = objective.members.find((entry) => entry.id === member.id);
@@ -1163,17 +1175,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         .filter((member) => MEMBER_LIVE.has(member.sessionName !== null ? operationState(member.id) : "closed"))
         .map((member) => member.id);
 
-      if (changedLiveIds.length > 0) {
-        setNotes((current) => new Set([...current, ...changedLiveIds]));
-        if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
-        noteTimer.current = window.setTimeout(() => {
-          setNotes((current) => {
-            const updated = new Set(current);
-            for (const id of changedLiveIds) updated.delete(id);
-            return updated;
-          });
-        }, 10_000);
-      }
+      if (changedLiveIds.length > 0) showNotes(changedLiveIds);
     }, (error: unknown) => {
       saving.current.delete("batch");
       setFault({ id: "batch", code: error instanceof Error ? error.message : "unknown" });

@@ -204,7 +204,11 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "followup/abandon", method: "POST", summary: "Give up a failed follow-up; the candidate returns to open.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), ({ objectiveId, batchId, candidateId }) => objective(store.followupAbandon(objectiveId, batchId, candidateId))) },
     { name: "member/add", method: "POST", summary: "Add a member to the roster.", handler: json(objectiveRef.extend({ member: memberAddSchema }), steerable(() => true, ({ objectiveId, member }) => edited(["members"], () => store.memberAdd(objectiveId, member, "human")))) },
     { name: "member/patch", method: "POST", summary: "Edit a member's role, brief, launch selection, or subagent opt-in.", handler: json(objectiveRef.extend({ memberId: ids, patch: memberPatchSchema }), steerable(() => true, ({ objectiveId, memberId, patch }) => edited(["members"], () => launch.memberPatched(objectiveId, memberId, patch)))) },
-    { name: "member/batch-launch", method: "POST", summary: "Set all eligible members' launch selection to same or route, preserving custom models.", handler: json(objectiveRef.merge(memberBatchLaunchSchema), steerable(() => true, ({ objectiveId, mode }) => edited(["members"], () => launch.memberBatchLaunch(objectiveId, mode)))) },
+    { name: "member/batch-launch", method: "POST", summary: "Set all eligible members' launch selection to same or route, preserving custom models.", handler: json(objectiveRef.merge(memberBatchLaunchSchema), steerable(() => true, async ({ objectiveId, mode }) => {
+      const result = await launch.memberBatchLaunch(objectiveId, mode);
+      // 아무도 바뀌지 않은 선택은 보드 편집이 아니다 — 편집으로 적으면 지휘관의 결정 요청까지 거둔다.
+      return result.changed > 0 ? edited(["members"], () => result.objective) : objective(result.objective);
+    })) },
     { name: "member/remove", method: "POST", summary: "Remove a member and return its mission ids for undo.", handler: json(objectiveRef.extend({ memberId: ids }), steerable(() => true, async ({ objectiveId, memberId }) => {
       const result = await launch.memberRemoved(objectiveId, memberId);
       // 맡던 임무는 지휘관 직접으로 돌아간다 — 되돌리기는 없다(다시 더하고 배정한다).

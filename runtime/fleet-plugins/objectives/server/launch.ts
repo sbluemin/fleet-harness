@@ -65,7 +65,7 @@ export interface LaunchService {
   /** 사람 경로의 구성원 수정. 서브에이전트 허용이 바뀌면 다음 기동 정책만 호스트에 알리고, 떠 있는 프로세스는 건드리지 않는다. */
   memberPatched(objectiveId: string, memberId: string, patch: MemberPatchInput): Promise<Objective>;
   /** 구성원 일괄 모델 설정 ('지휘관과 같게' 또는 '라우팅'). 개별 지정(model)은 보존. */
-  memberBatchLaunch(objectiveId: string, mode: "same" | "route"): Promise<Objective>;
+  memberBatchLaunch(objectiveId: string, mode: "same" | "route"): Promise<{ readonly objective: Objective; readonly changed: number }>;
   /** 필요하면 부모를 휴면 복원한 뒤 자식 세션을 즉시 삭제하고 명단에서 뺀다. */
   memberRemoved(objectiveId: string, memberId: string): Promise<{ readonly objective: Objective; readonly missionIds: readonly string[] }>;
   /** 지휘관 Operation 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. */
