@@ -8,6 +8,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { Objective, ObjectiveResult, PrObservation } from "../server/types.js";
 import { AttachmentView } from "./attachments.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
+import { LinkText } from "./link-text.js";
 
 /**
  * 결과물 — 달성 기준 바로 아래, 모든 상태에서 같은 자리. 증거(이미지 썸네일·문서)가 먼저 서고 PR 이 뒤따른다.
@@ -119,26 +120,28 @@ export function ObjectiveResults({ objective, t, language }: { readonly objectiv
           {images.map((result) => {
             const title = result.label ?? result.name;
             return (
-              <button key={result.id} ref={openerRef(result.id)} type="button" className="objectives-result-thumb" aria-label={t("objectives.results.zoom", { name: title })} title={`${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)}`} onClick={() => setViewingId(result.id)}>
-                <span className="objectives-result-img"><img src={resultFileUrl(objective.id, result)} alt="" loading="lazy" draggable={false} /></span>
-                <span className="objectives-result-name">{title}</span>
-              </button>
+              <div key={result.id} className="objectives-result-thumb">
+                <button ref={openerRef(result.id)} type="button" className="objectives-result-thumb-hit" aria-label={t("objectives.results.zoom", { name: title })} title={`${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)}`} onClick={() => setViewingId(result.id)}>
+                  <span className="objectives-result-img"><img src={resultFileUrl(objective.id, result)} alt="" loading="lazy" draggable={false} /></span>
+                </button>
+                <span className="objectives-result-name" onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) return; setViewingId(result.id); }}><LinkText text={title} /></span>
+              </div>
             );
           })}
         </div>
       ) : null}
       {texts.map((result) => (
-        <button key={result.id} ref={openerRef(result.id)} type="button" className="objectives-result-row is-button" aria-label={t("objectives.results.openAria", { name: result.label ?? result.name })} onClick={() => setViewingId(result.id)}>
+        <div key={result.id} className="objectives-result-row is-button" onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) return; setViewingId(result.id); }}>
           <span className="objectives-row-ic"><DocGlyph /></span>
           <span className="objectives-result-body">
-            <span className="objectives-result-title is-mono">{result.label ?? result.name}</span>
+            <span className="objectives-result-title is-mono"><LinkText text={result.label ?? result.name} /></span>
             <span className="objectives-result-sub">
               {result.label ? `${result.name} · ` : ""}{t("objectives.results.text", { size: bytesLabel(result.bytes) })} · <time dateTime={new Date(result.capturedAt).toISOString()} title={absolute(result.capturedAt, language)}>{uploaded(result)}</time>{missionTag(result.sourceMissionId)}
             </span>
-            {result.note ? <span className="objectives-result-sub">{result.note}</span> : null}
+            {result.note ? <span className="objectives-result-sub"><LinkText text={result.note} /></span> : null}
           </span>
-          <span className="objectives-result-open" aria-hidden="true">{t("objectives.results.open")}</span>
-        </button>
+          <button ref={openerRef(result.id)} type="button" className="objectives-result-open" aria-label={t("objectives.results.openAria", { name: result.label ?? result.name })} onClick={() => setViewingId(result.id)}>{t("objectives.results.open")}</button>
+        </div>
       ))}
       {prs.length ? <div className="objectives-results-kind">{t("objectives.results.prs")}</div> : null}
       {prs.map((result) => <PrRow key={result.id} result={result} t={t} language={language} now={now} missionTag={missionTag(result.sourceMissionId)} />)}
@@ -186,7 +189,7 @@ function PrRow({ result, t, language, now, missionTag }: { readonly result: PrRe
         {/* 제목 자리에 저장소가 섰으면 보조 줄에서 다시 말하지 않는다. */}
         {title ? <span className="objectives-result-sub"><span className="is-mono">{repository}</span>{missionTag}</span>
           : missionTag ? <span className="objectives-result-sub">{missionTag.replace(/^ · /, "")}</span> : null}
-        {result.note ? <span className="objectives-result-sub">{result.note}</span> : null}
+        {result.note ? <span className="objectives-result-sub"><LinkText text={result.note} /></span> : null}
         {lines}
       </span>
       <span className={`objectives-result-state is-${observation.state}${stale ? " is-stale" : ""}`}><i aria-hidden="true" />{word(observation.state)}</span>

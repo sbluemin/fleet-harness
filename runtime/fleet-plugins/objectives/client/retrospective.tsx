@@ -7,6 +7,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { MemberRating } from "../server/roles.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
+import { LinkText } from "./link-text.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -31,7 +32,7 @@ function RetroTable({ head, asideHead, pairs }: { readonly head: string; readonl
     <table className="objectives-retro-table">
       <thead><tr><th scope="col">{head}</th><th scope="col">{asideHead}</th></tr></thead>
       <tbody>
-        {pairs.map((pair, at) => <tr key={at}><td>{pair.text}</td><td>{pair.aside}</td></tr>)}
+        {pairs.map((pair, at) => <tr key={at}><td><LinkText text={pair.text} /></td><td><LinkText text={pair.aside} /></td></tr>)}
       </tbody>
     </table>
   );
@@ -54,7 +55,7 @@ export function Retrospective({ t, by, good, regret, ratings = [] }: Retrospecti
                   <span className={`objectives-retro-rating is-${rating.rating}`}>{t(rating.rating === "well" ? "objectives.retro.well" : "objectives.retro.short")}</span>
                   {rating.as ? <span className="objectives-retro-filed">{t("objectives.retro.filedAs", { role: rating.as })}</span> : null}
                 </td>
-                <td>{rating.note}</td>
+                <td><LinkText text={rating.note} /></td>
               </tr>
             ))}
           </tbody>

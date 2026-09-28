@@ -9,6 +9,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { FollowupBatch, FollowupCandidate, FollowupEvidence } from "./followups.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
+import { LinkText } from "./link-text.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -40,7 +41,7 @@ function FollowupEvidenceList({ evidence, t }: { readonly evidence: readonly Fol
           <b>{evidenceKindLabel(t, entry)}</b>
           <span>
             <code>{entry.kind === "file" ? `${entry.path ?? ""}${entry.line !== null ? `:${entry.line}` : ""}` : entry.kind === "command" ? (entry.text ?? "") : (entry.path ?? "")}</code>
-            {entry.note ? ` · ${entry.note}` : null}
+            {entry.note ? <> · <LinkText text={entry.note} /></> : null}
           </span>
         </li>
       ))}
@@ -95,6 +96,7 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
   const [briefAll, setBriefAll] = useState(false);
   useEffect(() => { setBriefAll(false); }, [candidate.id, candidate.rev]);
   const detailId = `${idPrefix}-det-${candidate.id}`;
+  const summaryId = `${idPrefix}-sum-${candidate.id}`;
   return (
     <div className={`objectives-followup-item${open ? " is-open" : ""}`}>
       <div className={`objectives-followup-row${selectable ? "" : " is-readonly"}`}>
@@ -108,25 +110,30 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
             onChange={(event) => onToggleCheck(candidate.id, event.target.checked)}
           />
         ) : null}
-        <button type="button" className="objectives-followup-main" aria-expanded={open} aria-controls={detailId} onClick={() => onToggleOpen(candidate.id)}>
-          <span className="objectives-followup-title">{candidate.title}</span>
-          <span className="objectives-followup-summary">{candidate.summary}</span>
-          {candidate.userImpact ? <span className="objectives-followup-impact"><b>{t("objectives.followup.impact")}</b> {candidate.userImpact}</span> : null}
-        </button>
-        <span className="objectives-followup-meta">{t("objectives.followup.evidence", { n: candidate.evidence.length })}<FollowupChevGlyph /></span>
+        <div className="objectives-followup-main" onClick={(event) => {
+          const target = event.target;
+          if (target instanceof Element && target.closest("a")) return;
+          onToggleOpen(candidate.id);
+        }}>
+          <span className="objectives-followup-title"><LinkText text={candidate.title} /></span>
+          <span id={summaryId} className="objectives-followup-summary"><LinkText text={candidate.summary} /></span>
+          {candidate.userImpact ? <span className="objectives-followup-impact"><b>{t("objectives.followup.impact")}</b> <LinkText text={candidate.userImpact} /></span> : null}
+        </div>
+        {/* 펼침 단추는 링크와 떨어져 행 밖에 서므로, 어느 후보인지 이름으로 직접 밝힌다. */}
+        <button type="button" className="objectives-followup-meta" aria-label={`${candidate.title} — ${t("objectives.followup.evidence", { n: candidate.evidence.length })}`} aria-describedby={summaryId} aria-expanded={open} aria-controls={detailId} onClick={() => onToggleOpen(candidate.id)}>{t("objectives.followup.evidence", { n: candidate.evidence.length })}<FollowupChevGlyph /></button>
       </div>
       {open ? (
         <div className="objectives-followup-detail" id={detailId}>
           <div>
             <div className="objectives-followup-lab">{t("objectives.followup.brief")}</div>
-            <p className={`objectives-followup-brief${briefAll ? " is-all" : ""}`}>{candidate.brief}</p>
+            <p className={`objectives-followup-brief${briefAll ? " is-all" : ""}`}><LinkText text={candidate.brief} /></p>
             {candidate.brief.length > 90 ? <button type="button" className="objectives-followup-more" onClick={() => setBriefAll((value) => !value)}>{t(briefAll ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
           </div>
           {candidate.criteria.length ? (
             <div>
               <div className="objectives-followup-lab">{t("objectives.followup.criteria", { n: candidate.criteria.length })}</div>
               <ol className="objectives-followup-crit">
-                {candidate.criteria.map((criterion, at) => <li key={at}>{criterion}</li>)}
+                {candidate.criteria.map((criterion, at) => <li key={at}><LinkText text={criterion} /></li>)}
               </ol>
             </div>
           ) : null}
@@ -190,7 +197,7 @@ export function FollowupDiscardedTrace({ discarded, t }: { readonly discarded: r
       {open ? (
         <ul>
           {discarded.map((candidate) => (
-            <li key={candidate.id}><s>{candidate.title}</s><span> · {t("objectives.followup.discardedMark")}</span></li>
+            <li key={candidate.id}><s><LinkText text={candidate.title} /></s><span> · {t("objectives.followup.discardedMark")}</span></li>
           ))}
         </ul>
       ) : null}
@@ -239,7 +246,7 @@ export function FollowupBatchResults({ batches, leftover, historyTotal, language
                 const why = resultError(t, entry.error);
                 return (
                 <div key={entry.candidateId} className="objectives-followup-rrow">
-                  <span className="objectives-followup-rt">{entry.snapshot.title}</span>
+                  <span className="objectives-followup-rt"><LinkText text={entry.snapshot.title} /></span>
                   {entry.state === "creating" ? <span className="objectives-followup-rstat is-wait"><i className="objectives-followup-spin" aria-hidden="true" />{t("objectives.followup.creating")}</span> : null}
                   {entry.state === "confirming" ? <span className="objectives-followup-rstat is-wait">{t("objectives.followup.confirming")}{why ? ` · ${why}` : ""} · <button type="button" onClick={() => onRetry(batch.id, entry.candidateId)}>{t("objectives.followup.recheck")}</button></span> : null}
                   {entry.state === "created" ? <span className="objectives-followup-rstat is-ok">{t("objectives.followup.created")} · <button type="button" onClick={() => entry.operationId && onOpenObjective(entry.operationId)}>{t("objectives.followup.openTarget")}</button></span> : null}
@@ -261,7 +268,7 @@ export function FollowupBatchResults({ batches, leftover, historyTotal, language
           {leftoverOpen ? (
             <ul>
               {leftover.map((candidate) => (
-                <li key={candidate.id}>{candidate.title}</li>
+                <li key={candidate.id}><LinkText text={candidate.title} /></li>
               ))}
             </ul>
           ) : null}

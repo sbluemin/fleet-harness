@@ -15,6 +15,7 @@ import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttac
 import { CoordinationGraph, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
+import { LinkText } from "./link-text.js";
 import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewPicker, type StartView } from "./launch-control.js";
 import { discardPendingSelection, dockObjective, expandObjective, hasDecisionRequest, removeObjectiveLocally, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater, type ObjectiveGroup } from "./objectives-state.js";
 import {
@@ -159,7 +160,7 @@ function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: st
               <span className={record.kind === "redone" ? "is-redone" : undefined}>{t(record.kind === "redone" ? "objectives.records.redone" : "objectives.records.done")}</span>
               {!seenAtOpen.has(record.id) ? <span className="is-new">· {t("objectives.records.new")}</span> : null}
             </div>
-            {record.lines.map((line, at) => <div key={at} className={at === 0 ? "objectives-record-head" : "objectives-record-line"}>{line}</div>)}
+            {record.lines.map((line, at) => <div key={at} className={at === 0 ? "objectives-record-head" : "objectives-record-line"}><LinkText text={line} /></div>)}
           </div>
         ))}
       </div>
@@ -1264,7 +1265,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
               </span>
               {member.by === "commander" ? <span className="objectives-member-by">{t("objectives.members.proposed")}</span> : null}
             </span>
-            <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} value={member.brief ?? ""} placeholder={touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
+            <WrapText key={`brief:${member.brief ?? ""}`} className="objectives-member-brief" label={t("objectives.members.briefAria", { role: member.role })} editLabel={t("objectives.link.edit")} value={member.brief ?? ""} placeholder={touchable ? t("objectives.members.briefPlaceholder") : t("objectives.members.noBrief")} readOnly={!touchable} maxLength={300}
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
           </div>
           <div className="objectives-member-meta">
@@ -1402,13 +1403,42 @@ function fitHeight(element: HTMLTextAreaElement | null): void {
   element.style.height = `${element.scrollHeight}px`;
 }
 
+/** 누른 자리의 글자 오프셋. 읽기 표시의 편집 단추 글자는 세지 않고, 못 구하면 null. */
+function readCaretOffset(root: HTMLElement, x: number, y: number): number | null {
+  const legacy = document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null };
+  const position = document.caretPositionFromPoint?.(x, y);
+  const hit = position ? null : legacy.caretRangeFromPoint?.(x, y);
+  const node = position?.offsetNode ?? hit?.startContainer ?? null;
+  const offset = position ? position.offset : hit?.startOffset;
+  if (!node || offset === undefined || !root.contains(node)) return null;
+  const host = node instanceof Element ? node : node.parentElement;
+  if (host?.closest("button")) return null;
+  const range = document.createRange();
+  try {
+    range.setStart(root, 0);
+    range.setEnd(node, offset);
+  } catch {
+    return null;
+  }
+  const fragment = range.cloneContents();
+  fragment.querySelectorAll("button").forEach((button) => button.remove());
+  return fragment.textContent?.length ?? null;
+}
+
+function placeCaret(field: HTMLTextAreaElement, offset: number | null): void {
+  const at = offset === null ? field.value.length : Math.min(Math.max(0, offset), field.value.length);
+  field.setSelectionRange(at, at);
+}
+
 /**
  * 임무·달성 기준·구성원 설명의 문구 — 한 줄 입력칸이 아니라 줄바꿈하는 글상자라 길어도 전문이 그 자리에서 보인다(제목·근거 줄과
  * 같은 문법). 편집은 그대로: Enter 는 확정이고(줄바꿈이 아니다) 떠나면 저장한다. Esc 는 되돌리고 칸만 떠난다(상세는 닫지 않는다).
  */
-function WrapText({ className, label, value, readOnly, maxLength, placeholder, onCommit, onEscape }: {
+function WrapText({ className, label, editLabel, value, readOnly, maxLength, placeholder, onCommit, onEscape }: {
   readonly className: string;
   readonly label: string;
+  /** 읽기 표시에서 원문 입력으로 들어가는 단추 이름. */
+  readonly editLabel: string;
   readonly value: string;
   readonly readOnly: boolean;
   readonly maxLength?: number;
@@ -1417,17 +1447,48 @@ function WrapText({ className, label, value, readOnly, maxLength, placeholder, o
   readonly onCommit: (value: string) => boolean;
   readonly onEscape?: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
-  useLayoutEffect(() => { fitHeight(ref.current); }, [value]);
+  const caretRef = useRef<number | null>(null);
+  const placedCaret = useRef(false);
+  useLayoutEffect(() => {
+    if (!editing) { placedCaret.current = false; return; }
+    const field = ref.current;
+    if (!field) return;
+    fitHeight(field);
+    if (placedCaret.current) return;
+    placedCaret.current = true;
+    field.focus();
+    placeCaret(field, caretRef.current);
+  }, [editing, value]);
   // 폴백 엔진에서는 폭이 바뀌면 줄 수도 바뀐다.
   useEffect(() => {
+    if (!editing) return;
     const element = ref.current;
     if (FIELD_SIZING || !element || typeof ResizeObserver === "undefined") return;
     let width = element.clientWidth;
     const observer = new ResizeObserver(() => { if (element.clientWidth !== width) { width = element.clientWidth; fitHeight(element); } });
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [editing]);
+  if (!editing) {
+    const start = (offset: number | null) => { if (!readOnly) { caretRef.current = offset; setEditing(true); } };
+    return (
+      <div
+        className={`${className} is-read`}
+        onClick={(event) => {
+          if (readOnly) return;
+          const target = event.target;
+          if (target instanceof Element && target.closest("a, button")) return;
+          if (window.getSelection()?.toString()) return;
+          start(readCaretOffset(event.currentTarget, event.clientX, event.clientY));
+        }}
+      >
+        {value ? <LinkText text={value} /> : placeholder ? <span className="objectives-read-placeholder">{placeholder}</span> : null}
+        {readOnly ? null : <button type="button" className="objectives-read-edit" aria-label={`${editLabel}: ${label}`} onClick={() => start(null)}>{editLabel}</button>}
+      </div>
+    );
+  }
   return (
     <textarea
       ref={ref}
@@ -1447,6 +1508,7 @@ function WrapText({ className, label, value, readOnly, maxLength, placeholder, o
         const next = oneLine(event.currentTarget.value);
         event.currentTarget.value = onCommit(next) ? next : value;
         fitHeight(event.currentTarget);
+        setEditing(false);
       }}
     />
   );
@@ -1535,13 +1597,13 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
         <span className="objectives-criterion-mark" aria-hidden="true" />
         <div className="objectives-criterion-body">
           <span className="objectives-proposal-kind">{label}</span>
-          {proposal.kind === "revise" && target ? <del className="objectives-proposal-text is-old">{target.text}</del> : null}
+          {proposal.kind === "revise" && target ? <del className="objectives-proposal-text is-old"><LinkText text={target.text} /></del> : null}
           {proposal.kind === "retire"
             ? <>
-              <del className="objectives-proposal-text">{target?.text ?? ""}</del>
-              {proposal.reason ? <span className="objectives-criterion-sub">{t("objectives.proposal.reason", { reason: proposal.reason })}</span> : null}
+              <del className="objectives-proposal-text"><LinkText text={target?.text ?? ""} /></del>
+              {proposal.reason ? <span className="objectives-criterion-sub"><LinkText text={t("objectives.proposal.reason", { reason: proposal.reason })} /></span> : null}
             </>
-            : <span className="objectives-proposal-text">{proposal.text ?? ""}</span>}
+            : <span className="objectives-proposal-text"><LinkText text={proposal.text ?? ""} /></span>}
         </div>
         <span className="objectives-criterion-state is-proposal">{t("objectives.proposal.state")}</span>
       </div>
@@ -1725,14 +1787,24 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
 
   // 브리핑 — 쉴 때 3줄, 넘치면 「더 보기」. 쓰는 동안(초점)은 다 보인다(360px 뒤로는 안에서 스크롤).
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
+  const readRef = useRef<HTMLDivElement | null>(null);
+  const wasEditing = useRef(false);
+  const briefCaret = useRef<number | null>(null);
   const [noteFocus, setNoteFocus] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteOverflow, setNoteOverflow] = useState(false);
+  const [briefEditing, setBriefEditing] = useState(false);
   const noteClamped = !noteOpen && !noteFocus;
   // 빈 브리핑은 「브리핑 추가」 한 줄 — 누르거나 초점이 오면 편집 칸이 아래로 세 줄 펼쳐진다. 끌어오는 동안은 겹판만 서고 자리는 그대로다.
   const [briefActive, setBriefActive] = useState(false);
   const briefBlank = !note.trim() && objective.attachments.length === 0;
   const briefCollapsed = briefBlank && touchable && !briefActive && !attachments.error && attachments.sending === 0;
+  const startBrief = (offset: number | null = null) => {
+    briefCaret.current = offset;
+    setBriefEditing(true);
+    setBriefActive(true);
+    setNoteFocus(true);
+  };
   const fitNote = useCallback(() => {
     const element = noteRef.current;
     if (!element) return;
@@ -1745,15 +1817,42 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     element.style.height = `${Math.ceil(Math.min(full, noteClamped ? clampAt : 360))}px`;
     setNoteOverflow(full > clampAt + 1);
   }, [noteClamped]);
-  useLayoutEffect(() => { fitNote(); }, [note, fitNote]);
+  const fitRead = useCallback(() => {
+    const element = readRef.current;
+    if (!element) return;
+    const style = getComputedStyle(element);
+    const line = parseFloat(style.lineHeight) || 20;
+    const pad = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    const clampAt = line * BRIEF_LINES + pad;
+    const clamped = !noteOpen;
+    element.style.maxHeight = "none";
+    element.style.overflow = "visible";
+    const full = element.scrollHeight;
+    element.style.maxHeight = `${Math.ceil(Math.min(full, clamped ? clampAt : 360))}px`;
+    element.style.overflow = clamped ? "hidden" : "auto";
+    setNoteOverflow(full > clampAt + 1);
+  }, [noteOpen]);
+  useLayoutEffect(() => {
+    if (briefEditing) {
+      const field = noteRef.current;
+      const entering = !wasEditing.current;
+      if (entering) field?.focus();
+      wasEditing.current = true;
+      fitNote();
+      if (entering && field) placeCaret(field, briefCaret.current);
+    } else {
+      wasEditing.current = false;
+      fitRead();
+    }
+  }, [note, briefEditing, fitNote, fitRead]);
   useEffect(() => {
-    const element = noteRef.current;
+    const element = briefEditing ? noteRef.current : readRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
     let width = element.clientWidth;
-    const observer = new ResizeObserver(() => { if (element.clientWidth !== width) { width = element.clientWidth; fitNote(); } });
+    const observer = new ResizeObserver(() => { if (element.clientWidth !== width) { width = element.clientWidth; if (briefEditing) fitNote(); else fitRead(); } });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [fitNote]);
+  }, [briefEditing, fitNote, fitRead]);
 
   const saveNote = (value: string) => {
     setNote(value);
@@ -1868,12 +1967,27 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       >
         <SectionHead glyph={<BriefGlyph />} label={t("objectives.objective.memo")} tools={objective.attachments.length > 0 || touchable ? <>
           {objective.attachments.length > 0 ? <span className="objectives-criteria-count">{t("objectives.brief.images", { count: objective.attachments.length })}</span> : null}
+          {touchable && !briefEditing ? <button type="button" className="objectives-read-edit" onClick={() => startBrief()}>{t("objectives.link.edit")}</button> : null}
           {touchable ? <AttachButton objective={objective} t={t} upload={attachments.upload} sending={attachments.sending} /> : null}
         </> : null} />
         <NoteAttachments objective={objective} t={t} touchable={touchable} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { objectiveId: objective.id, attachmentId: attachment.id })} />
-        <textarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}${briefBlank && !briefCollapsed ? " is-writing" : ""}`} rows={1} aria-label={t("objectives.objective.memo")} placeholder={t("objectives.objective.memoPlaceholder")} value={note} readOnly={!touchable} onChange={(event) => saveNote(event.target.value)}
-          onFocus={() => setNoteFocus(true)} onBlur={() => setNoteFocus(false)}
-          onPaste={(event) => { if (!touchable) return; const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
+        {briefEditing && touchable ? (
+          <textarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}${briefBlank && !briefCollapsed ? " is-writing" : ""}`} rows={1} aria-label={t("objectives.objective.memo")} placeholder={t("objectives.objective.memoPlaceholder")} value={note} onChange={(event) => saveNote(event.target.value)}
+            onFocus={() => setNoteFocus(true)} onBlur={() => { setNoteFocus(false); setBriefEditing(false); }}
+            onPaste={(event) => { const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
+        ) : note.trim() ? (
+          <div ref={readRef} className={`objectives-note is-read${noteClamped ? " is-clamped" : ""}`} onClick={(event) => {
+            if (!touchable) return;
+            const target = event.target;
+            if (target instanceof Element && target.closest("a")) return;
+            if (window.getSelection()?.toString()) return;
+            startBrief(readCaretOffset(event.currentTarget, event.clientX, event.clientY));
+          }}><LinkText text={note} /></div>
+        ) : touchable ? (
+          <button type="button" className="objectives-note is-read is-placeholder" onFocus={() => startBrief()} onClick={() => startBrief()}>{t("objectives.objective.memoPlaceholder")}</button>
+        ) : (
+          <div className="objectives-note is-read is-placeholder">{t("objectives.objective.memoPlaceholder")}</div>
+        )}
         {dropping ? <AttachmentDropVeil t={t} /> : null}
         {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
         <MergedTrail objective={objective} t={t} language={language} call={call} onOpenObjective={onOpenObjective} />
@@ -1895,7 +2009,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             <span className="objectives-row-lab objectives-origin-lab">{t("objectives.origin.label")}<span aria-hidden="true"> · </span><span>{t("objectives.origin.deleted")}</span></span>
           </div>
         )}
-        {followupOrigin.userImpact ? <p className="objectives-origin-impact"><b>{t("objectives.followup.impact")}</b> {followupOrigin.userImpact}</p> : null}
+        {followupOrigin.userImpact ? <p className="objectives-origin-impact"><b>{t("objectives.followup.impact")}</b> <LinkText text={followupOrigin.userImpact} /></p> : null}
       </div>
       ) : null}
   </>);
@@ -1924,7 +2038,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
               <div key={criterion.id} className={`objectives-criterion${evidence ? " is-met" : ""}`}>
                 <span className="objectives-criterion-mark" aria-hidden="true" />
                 <div className="objectives-criterion-body">
-                  <WrapText key={criterion.text} className="objectives-criterion-text" label={t("objectives.criteria.itemAria", { n: index + 1 })} value={criterion.text} readOnly={!touchable} maxLength={300}
+                  <WrapText key={criterion.text} className="objectives-criterion-text" label={t("objectives.criteria.itemAria", { n: index + 1 })} editLabel={t("objectives.link.edit")} value={criterion.text} readOnly={!touchable} maxLength={300}
                     onCommit={(value) => { if (!value) return false; if (value !== criterion.text) void call("/criterion/patch", { objectiveId: objective.id, criterionId: criterion.id, patch: { text: value } }); return true; }} />
                   {evidence ? <span className="objectives-criterion-sub is-evidence">{t("objectives.criteria.evidence", { evidence })}</span>
                     : criterion.by === "commander" ? <span className="objectives-criterion-sub">{t("objectives.criteria.proposed")}</span>
@@ -1970,7 +2084,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     </div>;
     return <>
       <div className="objectives-popup-head"><span>{t("objectives.graph.detail", { n: index })}</span><span className={`objectives-popup-state is-${state}`}><i />{t(`objectives.graph.state.${state}`)}</span><button type="button" className="objectives-glyph" aria-label={t("objectives.detail.close")} onClick={close}><CloseGlyph /></button></div>
-      <WrapText key={`${mission.id}:${mission.text}`} className="objectives-popup-title" label={t("objectives.graph.titleInput", { n: index })} value={mission.text} readOnly={!allowed} maxLength={200} onEscape={close} onCommit={value => { if (!value) return false; if (value !== mission.text) patch({ text: value }); return true; }} />
+      <WrapText key={`${mission.id}:${mission.text}`} className="objectives-popup-title" label={t("objectives.graph.titleInput", { n: index })} editLabel={t("objectives.link.edit")} value={mission.text} readOnly={!allowed} maxLength={200} onEscape={close} onCommit={value => { if (!value) return false; if (value !== mission.text) patch({ text: value }); return true; }} />
       {!allowed ? <p className="objectives-popup-hint">{t("objectives.graph.locked")}</p> : null}
       {!mission.done && state === "blocked" ? <p className="objectives-popup-hint">{t("objectives.missions.prerequisites", { missions: mission.prerequisites.filter(id => !objective.missions.find(m => m.id === id)?.done).map(numberOf).join("·") })}</p> : null}
       <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.owner")}<span>{member?.role ?? t("objectives.graph.commander")} · {stateLabel(operationOwnState(member?.id ?? objective.id))}</span></div>
@@ -1985,7 +2099,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       </div>
       <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.parents")} {mission.prerequisites.length}</div>{mission.prerequisites.map(id => { const parent = objective.missions.find(m => m.id === id); return parent ? edgeRow(parent, parent.id, mission.id) : null; })}{mission.unplaced ? <p className="objectives-popup-hint">{t("objectives.graph.unplacedHint")}</p> : null}</div>
       {children.length ? <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.children")} {children.length}</div>{children.map(child => edgeRow(child, mission.id, child.id))}</div> : null}
-      {mission.records.length ? <div className="objectives-popup-group"><button type="button" className="objectives-popup-text-button" aria-expanded={recordsOpen} onClick={() => toggleRecords(mission)}>{t("objectives.records.count", { index, count: mission.records.length })}{unseen ? ` · ${t("objectives.records.unseen", { count: unseen })}` : ""} {recordsOpen ? "−" : "+"}</button>{recordsOpen ? <MissionRecords id={`graph-records-${mission.id}`} records={mission.records} seenAtOpen={openRecords[mission.id] ?? EMPTY_IDS} open t={t} language={language} /> : <p className="objectives-popup-hint">{mission.records.at(-1)?.lines[0]}</p>}</div> : null}
+      {mission.records.length ? <div className="objectives-popup-group"><button type="button" className="objectives-popup-text-button" aria-expanded={recordsOpen} onClick={() => toggleRecords(mission)}>{t("objectives.records.count", { index, count: mission.records.length })}{unseen ? ` · ${t("objectives.records.unseen", { count: unseen })}` : ""} {recordsOpen ? "−" : "+"}</button>{recordsOpen ? <MissionRecords id={`graph-records-${mission.id}`} records={mission.records} seenAtOpen={openRecords[mission.id] ?? EMPTY_IDS} open t={t} language={language} /> : <p className="objectives-popup-hint">{mission.records.at(-1)?.lines[0] ? <LinkText text={mission.records.at(-1)!.lines[0]!} /> : null}</p>}</div> : null}
       {objective.decisions.filter(d => d.missionId === mission.id).map(d => <button key={d.id} type="button" className="objectives-popup-text-button" onClick={() => { close(); showDecision(d.id); }}>{t("objectives.decisions.missionLink", { index, count: 1 })}</button>)}
       <div className="objectives-popup-actions"><button type="button" className="objectives-popup-text-button" disabled={!editable} onClick={() => patch({ done: !mission.done })}>{t(mission.done ? "objectives.graph.reopen" : "objectives.missions.done")}</button><button type="button" className="objectives-popup-text-button is-danger" disabled={mission.done || !touchable} onClick={() => void call("/mission/remove", { objectiveId: objective.id, missionId: mission.id })}>{t("objectives.missions.remove")}</button></div>
       {!editable ? <p className="objectives-popup-hint">{t(objective.done ? "objectives.graph.locked" : "objectives.graph.doneLocked")}</p> : null}
