@@ -354,6 +354,16 @@ describe("Objectives contract", () => {
     const head = objective.commander.sessionName!.replace(/-cmdr$/, "");
     const [a, b, c] = objective.missions;
     expect(() => store.missionPatch(objective.id, a!.id, { prerequisites: [c!.id] })).toThrow(ObjectiveStoreError);
+    // 공개 편집 경로의 명시적 잇기/끊기는 중복 전달돼도 반대로 토글되지 않는다(간선 보존 계약).
+    const edge = (linked: boolean) => route("edge/toggle", { objectiveId: objective.id, from: a!.id, to: b!.id, linked });
+    expect((await edge(true)).value.linked).toBe(true);
+    expect(store.find(objective.id)!.missions.find(m => m.id === b!.id)!.prerequisites).toEqual([a!.id]);
+    await edge(false);
+    expect((await edge(false)).value.linked).toBe(false);
+    expect(store.find(objective.id)!.missions.find(m => m.id === b!.id)!.prerequisites).toEqual([]);
+    await edge(true);
+    expect((await route("edge/toggle", { objectiveId: objective.id, from: c!.id, to: a!.id, linked: true })).status).toBeGreaterThanOrEqual(400);
+    expect(store.find(objective.id)!.missions.find(m => m.id === a!.id)!.prerequisites).toEqual([]);
     expect((await launch.setPreset(objective.id, { viewMode: "chat" })).commander.viewMode).toBe("chat");
     expect((await launch.setPreset(objective.id, { viewMode: "terminal" })).commander.viewMode).toBe("terminal");
     await launch.rename(objective.id, "Release renamed");
@@ -1050,6 +1060,9 @@ describe("Objectives contract", () => {
     // 사람의 보드 편집은 옛 보드에 대한 요청을 정리하고, 결정은 남기지 않는다. 지휘관은 다시 읽기 전까지 새 요청을 올리지 못한다.
     await route("mission/add", { objectiveId: commander, mission: { text: "docs" } });
     expect(store.find(commander)).toMatchObject({ decisionRequest: null, decisions: [] });
+    const docsId = store.find(commander)!.missions.find(mission => mission.text === "docs")!.id;
+    const link = { objectiveId: commander, from: missionId, to: docsId, linked: true };
+    await route("edge/toggle", link);
     const revision = store.find(commander)!.decisionRequestRevision;
     expect((await call("request_decision", { objectiveId: commander, expectedRevision: revision, questions }, commander)).structuredContent.error).toBe("board_changed");
     await call("read", { objectiveId: commander }, commander);
@@ -1058,6 +1071,9 @@ describe("Objectives contract", () => {
     expect(requested).not.toHaveProperty("objective");
     const placed = store.find(commander)!.decisionRequest!;
     expect(placed.id).toBe(requested.requestId);
+    // 연결 뒤 새 질문이 선 동안 늦게 도착한 중복 잇기는 보드 편집이 아니다. 새 요청을 지우지 않는다.
+    expect((await route("edge/toggle", link)).value.linked).toBe(true);
+    expect(store.find(commander)!.decisionRequest).toEqual(placed);
     const answers = [{ questionId: placed.questions[0]!.id, selectedOptionIds: [placed.questions[0]!.options[0]!.id], text: "then stop" }, { questionId: placed.questions[1]!.id, selectedOptionIds: [], text: "no" }];
     // 빈 답·빠진 질문은 받지 않는다. 전달이 실패하면 요청이 남고 결정은 쌓이지 않는다.
     expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [answers[0]] })).value.error).toBe("invalid_answers");
