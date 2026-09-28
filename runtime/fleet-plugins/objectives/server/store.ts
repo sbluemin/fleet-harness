@@ -210,8 +210,6 @@ export interface ObjectiveStore {
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean; readonly changed: boolean };
-  edgesLinear(objectiveId: string): Objective;
-  edgesClear(objectiveId: string): Objective;
   plan(objectiveId: string, input: PlanInput): Objective;
   setPlanning(objectiveId: string, planning: boolean): Objective;
   /** 사람이 목표로 다룬다 — 구상은 「시작 전」 목표로, 개시는 「진행 중」 목표로 올린다. 되돌리지 않는다. */
@@ -1252,13 +1250,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       });
       return { objective, linked, changed };
     },
-
-    edgesLinear: (objectiveId) => update(objectiveId, (stored) => ({
-      ...stored,
-      missions: stored.missions.map((mission, ix) => ({ ...placed(mission), prerequisites: ix === 0 ? [] : [{ id: stored.missions[ix - 1]!.id, why: "human" }] })),
-    })),
-
-    edgesClear: (objectiveId) => update(objectiveId, (stored) => ({ ...stored, missions: stored.missions.map((mission) => ({ ...placed(mission), prerequisites: [] })) })),
 
     plan: (objectiveId, input) => update(objectiveId, (stored) => {
       if (input.criteria !== undefined && !stored.criteriaOpen) throw new ObjectiveStoreError("criteria_not_planning");

@@ -12,8 +12,9 @@ import { PastRoles } from "./past-roles.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ObjectiveResults, ResultsGlyph, ResultsHeadTools } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
-import { CoordinationGraph, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
+import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
+import { usePointerDrag } from "./pointer-drag.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewPicker, type StartView } from "./launch-control.js";
@@ -100,25 +101,25 @@ function saveDetailWidth(split: DetailSplit, width: number | null): void {
   } catch { /* 저장을 차단한 브라우저에서도 이번 폭은 유지한다. */ }
 }
 /**
- * 세 칸 폭 — 목표 표면이 목록 기본 300 + 내용 최소 480 + 운영 기본 340 = 1120 이상일 때만 목록 | 내용·계획 | 운영·판단으로 선다.
- * 기억은 두 칸의 상세 폭 기억(detail-width · rail-detail-width)과 따로 둔다 — 세 칸에서 끈 폭이 두 칸의 상세 폭을 덮지 않는다.
+ * 세 칸 폭 — 1120 이상에서 목록 | 내용·계획 | 운영·판단으로 선다. 목록·운영은 기존 최대 폭인 360·440 을 기본으로 쓴다.
+ * 기억은 두 칸의 상세 폭과 따로 둔다. 각 칸의 이전 폭 기억은 새 기본값으로 돌린다.
  */
-const THREE_PANE = { key: "fleet.objectives.three-pane-width", threshold: 1120, contentMin: 480, list: { min: 280, max: 360, fallback: 300 }, ops: { min: 300, max: 440, fallback: 340 } } as const;
+const THREE_PANE = { key: "fleet.objectives.three-pane-width", threshold: 1120, contentMin: 480, list: { min: 280, max: 360, fallback: 360 }, ops: { min: 300, max: 640, fallback: 440 } } as const;
 interface ThreeWidths { readonly list: number; readonly ops: number }
 function readThreeWidths(): ThreeWidths {
   const pick = (value: unknown, range: { readonly min: number; readonly max: number; readonly fallback: number }) => typeof value === "number" && Number.isFinite(value) && value >= range.min && value <= range.max ? value : range.fallback;
   try {
     const raw = localStorage.getItem(THREE_PANE.key);
-    const parsed = raw ? JSON.parse(raw) as Partial<Record<keyof ThreeWidths, unknown>> : {};
-    return { list: pick(parsed.list, THREE_PANE.list), ops: pick(parsed.ops, THREE_PANE.ops) };
+    const parsed = raw ? JSON.parse(raw) as Partial<Record<keyof ThreeWidths | "version", unknown>> : {};
+    return { list: pick(parsed.version === 3 || parsed.version === 4 ? parsed.list : undefined, THREE_PANE.list), ops: pick(parsed.version === 4 ? parsed.ops : undefined, THREE_PANE.ops) };
   } catch { return { list: THREE_PANE.list.fallback, ops: THREE_PANE.ops.fallback }; }
 }
 function saveThreeWidths(widths: ThreeWidths): void {
-  try { localStorage.setItem(THREE_PANE.key, JSON.stringify(widths)); } catch { /* 저장을 차단한 브라우저에서도 이번 폭은 유지한다. */ }
+  try { localStorage.setItem(THREE_PANE.key, JSON.stringify({ ...widths, version: 4 })); } catch { /* 저장을 차단한 브라우저에서도 이번 폭은 유지한다. */ }
 }
-/** 보이는 세 칸 폭 — 기억한 폭을 쓰되 내용 칸 480 을 먼저 지킨다(운영 칸부터, 모자라면 목록 칸을 줄인다). 기억은 그대로 둔다. */
+/** 내용 칸 480 을 먼저 지키고, 부족하면 운영 칸부터 줄인다. 목록은 최대 360 을 넘기지 않는다. */
 function shownThreeWidths(rootWidth: number, stored: ThreeWidths): ThreeWidths & { readonly listMax: number; readonly opsMax: number } {
-  let list = stored.list;
+  let list = Math.max(THREE_PANE.list.min, Math.min(stored.list ?? THREE_PANE.list.fallback, THREE_PANE.list.max));
   let ops = stored.ops;
   if (rootWidth - list - ops < THREE_PANE.contentMin) ops = Math.max(THREE_PANE.ops.min, rootWidth - list - THREE_PANE.contentMin);
   if (rootWidth - list - ops < THREE_PANE.contentMin) list = Math.max(THREE_PANE.list.min, rootWidth - ops - THREE_PANE.contentMin);
@@ -270,6 +271,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const [drag, setDrag] = useState<{ objectiveId: string; x: number; y: number; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number; compact: boolean; refused: ObjectiveMessageKey | null; zone: Zone } | null>(null);
   const dragRef = useRef<{ objectiveId: string; section: string; zone: Zone; startX: number; startY: number; live: boolean; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number } | null>(null);
   const suppressClick = useRef(false);
+  const trackItemDrag = usePointerDrag();
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 목표 추가의 대상 그룹 — 구획 머리의 「+ 추가」로 고른다. 그룹을 만들고 이름을 바꾸는 일은 Console 사이드바가 맡는다.
   const [addGroupId, setAddGroupId] = useState<string | null>(null);
@@ -597,37 +599,35 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const busy = isBusy(objective);
     // 잡은 지점을 기억한다 — 유령은 커서 옆이 아니라 손에 잡힌 그 자리에 그대로 붙어 따라온다.
     const rect = event.currentTarget.getBoundingClientRect();
-    dragRef.current = { objectiveId: objective.id, section: sectionKey, zone, startX: event.clientX, startY: event.clientY, live: false, over: null, insert: null, offX: event.clientX - rect.left, offY: event.clientY - rect.top, width: rect.width };
-    const onMove = (move: PointerEvent) => {
-      const state = dragRef.current;
-      if (!state) return;
-      if (!state.live) {
-        if (Math.hypot(move.clientX - state.startX, move.clientY - state.startY) < 6) return;
-        state.live = true;
-        suppressClick.current = true;
-      }
-      state.over = busy ? null : dropTargetAt(move.clientX, move.clientY, state.section, state.zone);
-      state.insert = state.over ? null : insertAt(move.clientX, move.clientY, state.objectiveId, state.section);
-      const refused = !state.over && !state.insert ? refusalAt(move.clientX, move.clientY, state.zone) : null;
-      // 범위 낱말 줄에 들어오면 놓을 자리가 잡히기 전에도 카드가 표로 줄어든다 — 낱말이 카드 아래 가려지지 않게.
-      const compact = !!refused || !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".objectives-scope");
-      setDrag({ objectiveId: state.objectiveId, x: move.clientX, y: move.clientY, over: state.over, insert: state.insert, offX: state.offX, offY: state.offY, width: state.width, compact, refused, zone: state.zone });
-    };
-    // 취소(pointercancel — 시스템 제스처·창 전환)는 놓기가 아니다 — 아무것도 옮기지 않고 끝낸다.
-    const onUp = (end: PointerEvent) => {
-      const state = end.type === "pointercancel" ? null : dragRef.current;
-      dragRef.current = null;
-      setTimeout(() => { suppressClick.current = false; }, 0);
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-      document.removeEventListener("pointercancel", onUp);
-      setDrag(null);
-      if (state?.live && state.over) void moveTo(objective, state.over);
-      else if (state?.live && state.insert) void reorder(objective, state.insert);
-    };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-    document.addEventListener("pointercancel", onUp);
+    trackItemDrag(event, event.currentTarget, {
+      onStart: () => {
+        suppressClick.current = false;
+        dragRef.current = { objectiveId: objective.id, section: sectionKey, zone, startX: event.clientX, startY: event.clientY, live: false, over: null, insert: null, offX: event.clientX - rect.left, offY: event.clientY - rect.top, width: rect.width };
+      },
+      onMove: (move) => {
+        const state = dragRef.current;
+        if (!state) return;
+        if (!state.live) {
+          if (Math.hypot(move.clientX - state.startX, move.clientY - state.startY) < 6) return;
+          state.live = true;
+          suppressClick.current = true;
+        }
+        state.over = busy ? null : dropTargetAt(move.clientX, move.clientY, state.section, state.zone);
+        state.insert = state.over ? null : insertAt(move.clientX, move.clientY, state.objectiveId, state.section);
+        const refused = !state.over && !state.insert ? refusalAt(move.clientX, move.clientY, state.zone) : null;
+        // 범위 낱말 줄에 들어오면 카드가 표로 줄어든다 — 낱말이 카드 아래 가려지지 않게.
+        const compact = !!refused || !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".objectives-scope");
+        setDrag({ objectiveId: state.objectiveId, x: move.clientX, y: move.clientY, over: state.over, insert: state.insert, offX: state.offX, offY: state.offY, width: state.width, compact, refused, zone: state.zone });
+      },
+      onEnd: (end) => {
+        const state = end ? dragRef.current : null;
+        dragRef.current = null; setDrag(null);
+        // 직후 시작한 새 드래그의 클릭 억제를 이전 종료 타이머가 풀지 않는다.
+        setTimeout(() => { if (!dragRef.current) suppressClick.current = false; }, 0);
+        if (state?.live && state.over) void moveTo(objective, state.over);
+        else if (state?.live && state.insert) void reorder(objective, state.insert);
+      },
+    });
   };
   const dragObjective = drag ? state.objectives.find((objective) => objective.id === drag.objectiveId) ?? null : null;
 
@@ -893,30 +893,22 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
  * 확대 표면은 transform 조상이라 화면 거리와 CSS 거리가 다를 수 있어 끌기는 표면의 배율로 나눈다.
  */
 function DetailGrip({ t, split, width, max, rootRef, onResize, onResizing }: { t: T; split: DetailSplit; width: number; max: number; rootRef: RefObject<HTMLDivElement | null>; onResize: (width: number | null) => void; onResizing: (value: boolean) => void }) {
+  const trackDrag = usePointerDrag();
   const clamp = (value: number) => Math.round(Math.max(split.detailMin, Math.min(max, value)));
   const commit = (value: number | null) => { const next = value === null ? null : clamp(value); onResize(next); saveDetailWidth(split, next); };
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    const handle = event.currentTarget;
-    handle.setPointerCapture(event.pointerId);
     const root = rootRef.current;
     const scale = root && root.offsetWidth ? root.getBoundingClientRect().width / root.offsetWidth : 1;
     const startX = event.clientX;
     const startWidth = width;
     let last = startWidth;
-    onResizing(true);
-    const onMove = (move: PointerEvent) => { last = clamp(startWidth - (move.clientX - startX) / (scale || 1)); onResize(last); };
-    const onEnd = () => {
-      handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", onEnd);
-      handle.removeEventListener("pointercancel", onEnd);
-      onResizing(false);
-      if (last !== startWidth) saveDetailWidth(split, last);
-    };
-    handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", onEnd);
-    handle.addEventListener("pointercancel", onEnd);
+    trackDrag(event, event.currentTarget, {
+      onStart: () => onResizing(true),
+      onMove: (move) => { const next = clamp(startWidth - (move.clientX - startX) / (scale || 1)); if (next !== last) { last = next; onResize(last); } },
+      onEnd: (end) => { onResizing(false); if (end && last !== startWidth) saveDetailWidth(split, last); },
+    });
   };
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? 64 : 16;
@@ -937,30 +929,22 @@ function DetailGrip({ t, split, width, max, rootRef, onResize, onResizing }: { t
  * 움직이지 않은 누름은 기억하지 않는다. 확대 표면의 transform 배율로 끌기 거리를 나눈다.
  */
 function PaneGrip({ side, label, tip, width, min, max, fallback, rootRef, onResize, onResizing }: { side: "list" | "ops"; label: string; tip: string; width: number; min: number; max: number; fallback: number; rootRef: RefObject<HTMLDivElement | null>; onResize: (width: number, save: boolean) => void; onResizing: (value: boolean) => void }) {
+  const trackDrag = usePointerDrag();
   const clamp = (value: number) => Math.round(Math.max(min, Math.min(max, value)));
   const grow = side === "list" ? 1 : -1;
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    const handle = event.currentTarget;
-    handle.setPointerCapture(event.pointerId);
     const root = rootRef.current;
     const scale = root && root.offsetWidth ? root.getBoundingClientRect().width / root.offsetWidth : 1;
     const startX = event.clientX;
     const startWidth = width;
     let last = startWidth;
-    onResizing(true);
-    const onMove = (move: PointerEvent) => { const next = clamp(startWidth + grow * (move.clientX - startX) / (scale || 1)); if (next !== last) { last = next; onResize(last, false); } };
-    const onEnd = () => {
-      handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", onEnd);
-      handle.removeEventListener("pointercancel", onEnd);
-      onResizing(false);
-      if (last !== startWidth) onResize(last, true);
-    };
-    handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", onEnd);
-    handle.addEventListener("pointercancel", onEnd);
+    trackDrag(event, event.currentTarget, {
+      onStart: () => onResizing(true),
+      onMove: (move) => { const next = clamp(startWidth + grow * (move.clientX - startX) / (scale || 1)); if (next !== last) { last = next; onResize(last, false); } },
+      onEnd: (end) => { onResizing(false); if (end && last !== startWidth) onResize(last, true); },
+    });
   };
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? 64 : 16;
@@ -1595,6 +1579,7 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
     <div className={`objectives-proposal is-${proposal.kind}`} role="group" aria-label={label}>
       <div className="objectives-criterion">
         <span className="objectives-criterion-mark" aria-hidden="true" />
+        {n > 0 ? <span className="objectives-criterion-number" aria-hidden="true">{n}</span> : null}
         <div className="objectives-criterion-body">
           <span className="objectives-proposal-kind">{label}</span>
           {proposal.kind === "revise" && target ? <del className="objectives-proposal-text is-old"><LinkText text={target.text} /></del> : null}
@@ -2037,6 +2022,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             return (
               <div key={criterion.id} className={`objectives-criterion${evidence ? " is-met" : ""}`}>
                 <span className="objectives-criterion-mark" aria-hidden="true" />
+                <span className="objectives-criterion-number" aria-hidden="true">{index + 1}</span>
                 <div className="objectives-criterion-body">
                   <WrapText key={criterion.text} className="objectives-criterion-text" label={t("objectives.criteria.itemAria", { n: index + 1 })} editLabel={t("objectives.link.edit")} value={criterion.text} readOnly={!touchable} maxLength={300}
                     onCommit={(value) => { if (!value) return false; if (value !== criterion.text) void call("/criterion/patch", { objectiveId: objective.id, criterionId: criterion.id, patch: { text: value } }); return true; }} />
@@ -2078,7 +2064,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     const children = objective.missions.filter(m => m.prerequisites.includes(mission.id));
     const patch = (value: Record<string, unknown>) => void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: value });
     const edgeRow = (other: ObjectiveMission, from: string, to: string) => <div className="objectives-popup-edge-row" key={other.id}>
-      <span>{numberOf(other.id)}</span><button type="button" onClick={() => select(other.id)}>{other.text}</button>
+      <span className="objectives-popup-edge-icon"><MissionNodeIcon state={missionStates.get(other.id)!} number={numberOf(other.id)} /></span><button type="button" aria-label={`${t("objectives.graph.detail", { n: numberOf(other.id) })}. ${other.text}. ${t(`objectives.graph.state.${missionStates.get(other.id)!}`)}`} onClick={() => select(other.id)}>{other.text}</button>
       <button type="button" className="objectives-popup-cut" disabled={!canEditMission(to)} aria-label={t("objectives.graph.edgeAria", { from: numberOf(from), to: numberOf(to) })} title={canEditMission(to) ? t("objectives.graph.cut") : t("objectives.graph.locked")} onClick={() => void onToggleEdge(from, to, false)}>×</button>
       {mission.why[other.id] && mission.why[other.id] !== "human" ? <small>{mission.why[other.id]}</small> : null}
     </div>;
@@ -2119,16 +2105,12 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const missionAdd = touchable ? <div className="objectives-row objectives-mission-add"><span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span><input maxLength={200} aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={event => {
     if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget, value = target.value; void call("/mission/add", { objectiveId: objective.id, mission: { text: value.trim() } }).then(result => { if (result && target.value === value) target.value = ""; }); }
   }} /></div> : null;
-  const graphMenu = objective.missions.length > 1 && editable ? <details className="objectives-graph-menu"><summary aria-label={t("objectives.graph.menu")}>⋯</summary><div><button type="button" onClick={() => void call("/edge/linear", { objectiveId: objective.id })}>{t("objectives.graph.linear")}</button><button type="button" onClick={() => void call("/edge/clear", { objectiveId: objective.id })}>{t("objectives.graph.parallel")}</button></div></details> : null;
-  const graphTools = <>
-    {graphMenu}
-    <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>
-  </>;
+  const graphTools = <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>;
   const sMissions = <div className="objectives-group objectives-missions-group" data-objectives-tour="missions">
     <SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.missions.unseen")} /> : null}{renderCounts()}{objective.missions.length ? graphTools : null}</>} />
     {missionAttention}
     <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} suspended={zoomOpen} /> : null}{missionAdd}</div>
-    {zoomOpen && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}><SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}{graphMenu}</>} />{missionAttention}<CoordinationGraph {...graphProps} zoom />{missionAdd}</LineupZoom>, document.body) : null}
+    {zoomOpen && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}><SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} />{missionAttention}<CoordinationGraph {...graphProps} zoom />{missionAdd}</LineupZoom>, document.body) : null}
   </div>;
   const sDecisions = (<>
       {/* 결정 — 임무 아래, 후속 후보 위. 사람이 결정 요청에 보낸 답이 질문마다 쌓인다(지휘관·구성원도 보드에서 읽는다). 답이 없으면 서지 않는다. */}

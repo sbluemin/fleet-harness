@@ -4,9 +4,13 @@ import { isLoose, missionReady, unseenRecords, wouldCycle, type Objective, type 
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { graphLayout, type Point } from "./graph-layout.js";
 import { GraphPopup } from "./graph-popup.js";
+import { usePointerDrag } from "./pointer-drag.js";
 import "./graph.css";
 
 export type MissionState = "done" | "unplaced" | "ready" | "blocked" | "running" | "awaiting";
+export function MissionNodeIcon({ state, number }: { state: MissionState; number: number }) {
+  return <span className={`objectives-graph-shape is-${state}`} aria-hidden="true"><span className="objectives-graph-number">{number}</span></span>;
+}
 /** 노드·상태 셈·대기 안내가 같은 판정을 공유한다. 준비된 첫 임무만 담당의 활동을 받는다. */
 export function graphMissionStates(objective: Objective, operationState: (id: string) => string): ReadonlyMap<string, MissionState> {
   const states = new Map<string, MissionState>(), activeMembers = new Set<string>();
@@ -59,10 +63,11 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   const onShowingRef = useRef(onShowing); onShowingRef.current = onShowing;
   useEffect(() => { onShowingRef.current(popup && !popup.closing && !suspended ? popup.id : null); }, [popup?.id, popup?.closing, suspended]);
   const [drag, setDrag] = useState<Drag | null>(null), dragRef = useRef(drag); dragRef.current = drag;
+  const trackDrag = usePointerDrag();
   const [link, setLink] = useState<{ from: string; over: string } | null>(null);
   const popupId = useId();
-  const timers = useRef<{ open?: ReturnType<typeof setTimeout>; close?: ReturnType<typeof setTimeout>; exit?: ReturnType<typeof setTimeout>; pending?: string; last?: Point; grace?: boolean }>({});
-  const cancelOpen = () => { clearTimeout(timers.current.open); timers.current.pending = undefined; timers.current.grace = false; };
+  const timers = useRef<{ open?: ReturnType<typeof setTimeout>; close?: ReturnType<typeof setTimeout>; exit?: ReturnType<typeof setTimeout>; pending?: string; last?: Point }>({});
+  const cancelOpen = () => { clearTimeout(timers.current.open); timers.current.pending = undefined; };
   const keep = () => { clearTimeout(timers.current.close); timers.current.close = undefined; };
   const close = (focus = false) => {
     cancelOpen(); keep(); clearTimeout(timers.current.exit);
@@ -116,12 +121,12 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
       keep();
       if (popupRef.current?.id === id && !popupRef.current.closing) cancelOpen();
       else if (popupRef.current && !popupRef.current.closing && safeTriangle(p)) {
-        cancelOpen(); timers.current.pending = id; timers.current.grace = true;
-        timers.current.open = setTimeout(() => show(id), 90);
-      } else if (timers.current.pending !== id || timers.current.grace) {
-        const immediate = popupRef.current && !popupRef.current.closing;
+        // 팝업으로 이동할 때 지나는 노드로 바뀌지 않도록 통로를 보호한다.
+        cancelOpen(); timers.current.open = setTimeout(() => show(id), 90);
+      } else if (popupRef.current && !popupRef.current.closing) show(id);
+      else if (timers.current.pending !== id) {
         cancelOpen(); timers.current.pending = id;
-        if (immediate) show(id); else timers.current.open = setTimeout(() => show(id), 400);
+        timers.current.open = setTimeout(() => show(id), 200);
       }
     } else if (popupRef.current && !popupRef.current.closing && safeTriangle(p)) leave(320);
     else if (!timers.current.close) leave();
@@ -137,29 +142,31 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   };
   const commitLink = (from: string, to: string) => { if (!check(from, to)) onEdge(from, to, true); };
   const start = (id: string, event: ReactPointerEvent) => {
-    if (event.button !== 0) return;
-    cancelOpen(); keep();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const next = { from: id, x0: event.clientX, y0: event.clientY, x: event.clientX, y: event.clientY, over: null, moved: false, pointer: event.pointerId };
-    dragRef.current = next; setDrag(next);
-  };
-  const move = (event: ReactPointerEvent) => {
-    const old = dragRef.current;
-    if (!old) { hover(event); return; }
-    const moved = old.moved || Math.hypot(event.clientX - old.x0, event.clientY - old.y0) > 6;
-    const hit = nodeId(document.elementFromPoint(event.clientX, event.clientY));
-    const next = { ...old, x: event.clientX, y: event.clientY, moved, over: hit && hit !== old.from ? hit : null };
-    dragRef.current = next; setDrag(next);
-  };
-  const finish = (event: ReactPointerEvent, cancelled = false) => {
-    const old = dragRef.current; if (!old) return;
-    dragRef.current = null; setDrag(null);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (cancelled) return;
-    if (old.moved) { const hit = nodeId(document.elementFromPoint(event.clientX, event.clientY)); if (hit) commitLink(old.from, hit); if (!popupRef.current?.pinned) close(); }
-    else if (link) { commitLink(link.from, old.from); setLink(null); }
-    else if (popupRef.current?.id === old.from && popupRef.current.pinned) close();
-    else show(old.from, true, true);
+    if (!box.current || suspended) return;
+    trackDrag(event, box.current, {
+      onStart: () => {
+        cancelOpen(); keep();
+        const next = { from: id, x0: event.clientX, y0: event.clientY, x: event.clientX, y: event.clientY, over: null, moved: false, pointer: event.pointerId };
+        dragRef.current = next; setDrag(next);
+      },
+      onMove: (move) => {
+        const old = dragRef.current; if (!old) return;
+        const moved = old.moved || Math.hypot(move.clientX - old.x0, move.clientY - old.y0) > 6;
+        const hit = nodeId(document.elementFromPoint(move.clientX, move.clientY));
+        const next = { ...old, x: move.clientX, y: move.clientY, moved, over: hit && hit !== old.from ? hit : null };
+        dragRef.current = next; setDrag(next);
+      },
+      onEnd: (end) => {
+        const old = dragRef.current;
+        dragRef.current = null; setDrag(null);
+        if (!old) return;
+        if (!end) { if (!popupRef.current?.pinned) close(); return; }
+        if (old.moved) { const hit = nodeId(document.elementFromPoint(end.clientX, end.clientY)); if (hit) commitLink(old.from, hit); if (!popupRef.current?.pinned) close(); }
+        else if (link) { commitLink(link.from, old.from); setLink(null); }
+        else if (popupRef.current?.id === old.from && popupRef.current.pinned) close();
+        else show(old.from, true, true);
+      },
+    });
   };
   useEffect(() => {
     if (!drag?.moved) return;
@@ -188,11 +195,11 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     n?.focus({ preventScroll: true }); n?.scrollIntoView({ block: "nearest", inline: "nearest" });
     if (link) setLink({ ...link, over: id });
   };
-  const icon = (m: ObjectiveMission) => <><span className="objectives-graph-shape"><span className="objectives-graph-number">{number(m.id)}</span></span><span className={`objectives-member-mark objectives-graph-mark ${m.member ? `is-tone-${Math.max(0, objective.members.findIndex(member => member.id === m.member)) % 8}` : "is-commander"}`} aria-hidden="true">{m.member ? marks.get(m.member) : "★"}</span>{m.records.length ? <span className={`objectives-graph-record${unseenRecords(m) ? " is-new" : ""}`} aria-hidden="true" /> : null}</>;
+  const icon = (m: ObjectiveMission) => <><MissionNodeIcon state={states.get(m.id)!} number={number(m.id)} /><span className={`objectives-member-mark objectives-graph-mark ${m.member ? `is-tone-${Math.max(0, objective.members.findIndex(member => member.id === m.member)) % 8}` : "is-commander"}`} aria-hidden="true">{m.member ? marks.get(m.member) : "★"}</span>{m.records.length ? <span className={`objectives-graph-record${unseenRecords(m) ? " is-new" : ""}`} aria-hidden="true" /> : null}</>;
   const node = (m: ObjectiveMission, style?: CSSProperties) => {
     const active = current?.id === m.id, pre = current?.prerequisites.includes(m.id), post = current && m.prerequisites.includes(current.id);
     const member = objective.members.find(member => member.id === m.member)?.role ?? t("objectives.graph.commander");
-    return <button key={m.id} type="button" data-graph-node={m.id} data-mission-id={m.id} className={`objectives-graph-node is-${states.get(m.id)}${active ? popup?.pinned ? " is-pin" : " is-hov" : ""}${pre ? " is-pre" : ""}${post ? " is-post" : ""}${over === m.id ? reason ? " drop-no" : " drop-ok" : ""}`} style={style} aria-label={`${t("objectives.graph.nodeAria", { index: number(m.id), text: m.text })}. ${member}. ${t(`objectives.graph.state.${states.get(m.id)!}`)}. ${m.records.length ? t("objectives.records.count", { index: number(m.id), count: m.records.length }) : ""}${unseenRecords(m) ? ` · ${t("objectives.records.unseen", { count: unseenRecords(m) })}` : ""}`} aria-expanded={active} aria-controls={active ? popupId : undefined} onPointerDown={e => start(m.id, e)} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)} onLostPointerCapture={() => { if (dragRef.current) { dragRef.current = null; setDrag(null); } }} onClick={e => { if (e.detail === 0) { if (link) { commitLink(link.from, m.id); setLink(null); } else if (active && popup?.pinned) close(true); else show(m.id, true, true); } }} onFocus={e => { if (e.currentTarget.matches(":focus-visible") && !popupRef.current?.pinned && !link) { cancelOpen(); timers.current.open = setTimeout(() => show(m.id), 400); } }} onBlur={e => { if (!document.getElementById(popupId)?.contains(e.relatedTarget as Node)) leave(); }} onKeyDown={e => {
+    return <button key={m.id} type="button" data-graph-node={m.id} data-mission-id={m.id} className={`objectives-graph-node is-${states.get(m.id)}${active ? popup?.pinned ? " is-pin" : " is-hov" : ""}${pre ? " is-pre" : ""}${post ? " is-post" : ""}${over === m.id ? reason ? " drop-no" : " drop-ok" : ""}`} style={style} aria-label={`${t("objectives.graph.nodeAria", { index: number(m.id), text: m.text })}. ${member}. ${t(`objectives.graph.state.${states.get(m.id)!}`)}. ${m.records.length ? t("objectives.records.count", { index: number(m.id), count: m.records.length }) : ""}${unseenRecords(m) ? ` · ${t("objectives.records.unseen", { count: unseenRecords(m) })}` : ""}`} aria-expanded={active} aria-controls={active ? popupId : undefined} onPointerDown={e => start(m.id, e)} onClick={e => { if (e.detail === 0) { if (link) { commitLink(link.from, m.id); setLink(null); } else if (active && popup?.pinned) close(true); else show(m.id, true, true); } }} onFocus={e => { if (e.currentTarget.matches(":focus-visible") && !popupRef.current?.pinned && !link) show(m.id); }} onBlur={e => { if (!document.getElementById(popupId)?.contains(e.relatedTarget as Node)) leave(); }} onKeyDown={e => {
       if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); setLink(null); close(true); }
       else if (e.key.toLowerCase() === "l") { e.preventDefault(); close(); setLink({ from: m.id, over: m.id }); }
       else if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(e.key)) { e.preventDefault(); const index = number(m.id) - 1, next = objective.missions[index + (["ArrowDown", "ArrowRight"].includes(e.key) ? 1 : -1)]; if (next) focusNode(next.id); }
@@ -200,16 +207,15 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     }}>{icon(m)}</button>;
   };
   const shownMission = popup ? objective.missions.find(m => m.id === popup.id) : null;
-  return <div ref={box} className={`objectives-branch-graph${zoom ? " is-zoom" : ""}${wide ? " is-wide" : ""}${drag?.moved ? " is-dragging" : ""}`} style={{ "--graph-r": `${layout.g.r}px`, "--graph-label-line": `${layout.g.llh}px` } as CSSProperties} onPointerMove={move} onPointerLeave={() => { if (!dragRef.current) leave(); }}>
+  return <div ref={box} className={`objectives-branch-graph${zoom ? " is-zoom" : ""}${wide ? " is-wide" : ""}${drag?.moved ? " is-dragging" : ""}`} style={{ "--graph-r": `${layout.g.r}px`, "--graph-label-line": `${layout.g.llh}px` } as CSSProperties} onPointerMove={hover} onPointerLeave={() => { if (!dragRef.current) leave(); }}>
     <div ref={scroll} className="objectives-graph-scroll" onScroll={() => { if (popupRef.current && !popupRef.current.pinned) close(); }}>
       <div className={`objectives-graph-canvas${current ? " is-dim" : ""}`} style={{ width: layout.width, height: layout.height }}>
-        {Array.from({ length: layout.cols }, (_, col) => <div key={col} className={`objectives-graph-band${col % 2 ? " is-odd" : ""}`} style={{ left: Math.max(0, layout.g.x0 + col * layout.colW - layout.colW / 2), width: layout.colW || layout.width - layout.g.x0 }} />)}
         <svg className="objectives-graph-edges" width={layout.width} height={layout.height} aria-hidden="true">{layout.edges.map(e => <path key={`${e.from}-${e.to}`} data-from={e.from ?? undefined} data-to={e.to} className={`objectives-graph-edge${e.from ? "" : " is-root"}${current?.id === e.to ? " is-up" : current?.id === e.from ? " is-down" : ""}`} d={e.d} onClick={() => select(e.to)} />)}</svg>
         <span className="objectives-graph-root" style={{ left: layout.root.x, top: layout.root.y }} /><span className="objectives-graph-label is-root" style={{ left: layout.rootLabel.x, top: layout.rootLabel.y }}>{t("objectives.graph.commander")}</span>
-        {objective.missions.filter(m => !isLoose(m)).map(m => { const p = layout.pos.get(m.id)!, label = layout.labels.get(m.id); return <span key={m.id}>{node(m, { left: p.x, top: p.y })}{label ? <span data-graph-label={m.id} className={`objectives-graph-label is-${states.get(m.id)}${current && (current.id === m.id || current.prerequisites.includes(m.id) || m.prerequisites.includes(current.id)) ? " is-lit" : ""}`} style={{ left: label.x, top: label.y, width: label.w }} onPointerDown={e => start(m.id, e)} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)}>{label.lines.map((line, i) => <span key={i}>{line}</span>)}</span> : null}</span>; })}
+        {objective.missions.filter(m => !isLoose(m)).map(m => { const p = layout.pos.get(m.id)!, label = layout.labels.get(m.id); return <span key={m.id}>{node(m, { left: p.x, top: p.y })}{label ? <span data-graph-label={m.id} className={`objectives-graph-label is-${states.get(m.id)}${current && (current.id === m.id || current.prerequisites.includes(m.id) || m.prerequisites.includes(current.id)) ? " is-lit" : ""}`} style={{ left: label.x, top: label.y, width: label.w }} onPointerDown={e => start(m.id, e)}>{label.lines.map((line, i) => <span key={i}>{line}</span>)}</span> : null}</span>; })}
       </div>
     </div>
-    {loose.length ? <div className="objectives-graph-tray"><span className="objectives-graph-tray-title">{t("objectives.graph.unplaced")}</span>{loose.map(m => <div className="objectives-graph-tray-item" key={m.id}>{node(m)}<span className="objectives-graph-tray-label" data-graph-label={m.id} onPointerDown={e => start(m.id, e)} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)}>{m.text}</span></div>)}</div> : null}
+    {loose.length ? <div className="objectives-graph-tray"><span className="objectives-graph-tray-title">{t("objectives.graph.unplaced")}</span>{loose.map(m => <div className="objectives-graph-tray-item" key={m.id}>{node(m)}<span className="objectives-graph-tray-label" data-graph-label={m.id} onPointerDown={e => start(m.id, e)}>{m.text}</span></div>)}</div> : null}
     {drag?.moved ? <svg className="objectives-graph-dragline" aria-hidden="true"><path className={reason ? "is-no" : undefined} d={`M${drag.x0},${drag.y0} L${drag.x},${drag.y}`} /></svg> : null}
     {from && over && tipRect && boxRect ? <div className={`objectives-graph-drop-tip${reason ? " is-no" : ""}`} role="status" style={{ left: Math.max(4, Math.min(width - 224, tipRect.left - boxRect.left)), top: tipRect.bottom - boxRect.top + 6 }}><b>{reason ?? t("objectives.graph.drop", { from: number(from), to: number(over) })}</b>{reason ? null : <span>{t("objectives.graph.direction", { from: number(from), to: number(over) })}</span>}</div> : null}
     {popup && shownMission && box.current && !suspended ? <GraphPopup id={popupId} missionId={popup.id} layout={layout} boundary={box.current} pinned={popup.pinned} closing={popup.closing} hidden={!!drag?.moved} label={t("objectives.graph.detail", { n: number(shownMission.id) })} onKeep={keep} onMove={hover} onLeave={() => leave()} onPin={() => { if (!popup.pinned) show(popup.id, true); }} onEscape={() => close(true)}>{renderDetail(shownMission, { close: () => close(true), select, state: states.get(shownMission.id)! })}</GraphPopup> : null}

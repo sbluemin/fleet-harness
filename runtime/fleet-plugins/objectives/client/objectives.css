@@ -26,14 +26,14 @@
 .objectives-detail-pane { display: contents; }
 /* 두 칸에서는 두 칸이 한 스크롤로 이어진다 — 운영 칸의 첫 묶음도 앞 묶음과 같은 머리선으로 갈린다(형제 선택자가 칸 경계를 넘지 못해서). */
 .objectives-detail:not(.is-three) .objectives-detail-pane.is-ops > .objectives-group:first-child { border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
-.objectives-root.is-three { grid-template-columns: var(--objectives-list-w, 300px) minmax(0, 1fr) var(--objectives-detail-w, 340px); grid-template-rows: minmax(0, 1fr) auto; }
+.objectives-root.is-three { grid-template-columns: var(--objectives-list-w, 360px) minmax(0, 1fr) var(--objectives-detail-w, 440px); grid-template-rows: minmax(0, 1fr) auto; }
 .objectives-root.is-three > .objectives-main { grid-column: 1; grid-row: 1 / -1; }
 .objectives-detail.is-three, .objectives-detail.is-three > .objectives-detail-scroll { display: contents; }
 .objectives-detail.is-three .objectives-detail-pane { display: block; min-width: 0; min-height: 0; overflow: auto; border-left: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised)); container: objectives-detail / inline-size; }
 .objectives-detail.is-three .objectives-detail-pane.is-content { grid-column: 2; grid-row: 1 / -1; padding: 6px 0 8px; }
 .objectives-detail.is-three .objectives-detail-pane.is-ops { grid-column: 3; grid-row: 1; padding-top: 6px; }
 .objectives-detail.is-three > .objectives-detail-bottom { grid-column: 3; grid-row: 2; min-width: 0; padding-bottom: 8px; border-left: 1px solid var(--surface-rim); container: objectives-detail / inline-size; }
-.objectives-detail-grip.is-list { right: auto; left: calc(var(--objectives-list-w, 300px) - 5px); }
+.objectives-detail-grip.is-list { right: auto; left: calc(var(--objectives-list-w, 360px) - 5px); }
 .objectives-place-button {
   flex: none;
   display: grid;
@@ -1089,6 +1089,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-criterion:hover { background: var(--control-rest); }
 .objectives-criterion-mark { flex: none; width: 12px; height: 12px; margin-top: 9px; border-radius: 50%; border: 1.5px dashed var(--text-tertiary); }
 .objectives-criterion.is-met .objectives-criterion-mark { border: 0; background: var(--positive); }
+.objectives-criterion-number { flex: none; width: 2ch; padding-top: 6px; text-align: right; font: var(--t-sm)/1.5 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 .objectives-criterion-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 6px 0; }
 .objectives-criterion-text { display: block; width: 100%; min-width: 0; resize: none; overflow: hidden; field-sizing: content; overflow-wrap: anywhere; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; padding: 0; }
 .objectives-criterion-text:focus { outline: none; text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
