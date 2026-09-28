@@ -103,13 +103,17 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
           if (caller?.kind !== "operation") return refuse("operation_caller_required");
           if (!spend(tidyBudget, callerKey(caller), MAX_TIDY_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_TIDY_PER_TURN });
           const actor = (why?: string) => ({ operationId: caller.operationId, title: ctx.host.operations.get(caller.operationId)?.title ?? null, ...(why ? { reason: why } : {}) });
-          if (args.remove) return text({ ok: true, removed: store.tidyRemove(args.remove.objectiveIds, actor(args.remove.reason)).map((objective) => objective.id) });
-          if (args.merge) { const target = store.tidyMerge(args.merge.into, args.merge.from, actor(args.merge.reason)); return text({ ok: true, objectiveId: target.id, merged: args.merge.from, criteria: target.criteria.length }); }
+          // 후속으로 태어난 목표면 원본의 배치 표시(생성됨·삭제됨)가 이 목표의 지운 표시에서 나온다 — 바뀐 목표마다 원본을 다시 방송한다.
+          const touched = (ids: readonly string[]) => { for (const id of ids) launch.followupTargetChanged(id); };
+          if (args.remove) { const removed = store.tidyRemove(args.remove.objectiveIds, actor(args.remove.reason)).map((objective) => objective.id); touched(removed); return text({ ok: true, removed }); }
+          if (args.merge) { const target = store.tidyMerge(args.merge.into, args.merge.from, actor(args.merge.reason)); touched(args.merge.from); return text({ ok: true, objectiveId: target.id, merged: args.merge.from, criteria: target.criteria.length }); }
           // 되돌리기도 지우기·합치기처럼 전부 받을 수 있을 때만 바꾼다 — 일부만 되돌린 채 오류로 끝나지 않게.
           const restoreIds = [...new Set(args.restore!)];
           const refusals = restoreIds.flatMap((id) => { const found = store.find(id); return !found ? [{ objectiveId: id, reason: "unknown_objective" }] : !found.removed ? [{ objectiveId: id, reason: "not_removed" }] : []; });
           if (refusals.length) return refuse("tidy_refused", { refusals });
-          return text({ ok: true, restored: restoreIds.map((id) => store.tidyRestore(id).id) });
+          const restored = restoreIds.map((id) => store.tidyRestore(id).id);
+          touched(restored);
+          return text({ ok: true, restored });
         }
         if (!args.add) return text(read(args, caller));
         const add = args.add;
