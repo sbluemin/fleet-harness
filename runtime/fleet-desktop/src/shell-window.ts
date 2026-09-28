@@ -26,6 +26,14 @@ export interface DesktopViewStack {
   /** 종료 인사 — 모든 뷰 위. 떠나는 창에서는 무엇도 그 앞에 서지 않는다. */
   presentVeil(view: WebContentsView): void;
   removeVeil(view: WebContentsView): void;
+  /**
+   * 콘솔 전환 덮개. 창과 함께 붙여 Console 뒤에 세워 둔다 — 새로 붙인 뷰는 첫 합성 프레임까지 1초 가까이
+   * 걸리므로, 전환 순간에 만들면 덮개가 서기도 전에 문서가 바뀐다. 올리면 덮개는 picker 위, 종료 인사 아래에 선다.
+   */
+  mountSwitchVeil(view: WebContentsView): void;
+  raiseSwitchVeil(): void;
+  lowerSwitchVeil(): void;
+  unmountSwitchVeil(): void;
 }
 
 export interface DesktopShellWindow {
@@ -57,12 +65,17 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   const presented = new Set<WebContentsView>();
   let picker: WebContentsView | null = null;
   let veil: WebContentsView | null = null;
+  let switchVeil: WebContentsView | null = null;
+  let switchVeilRaised = false;
 
   /** 이미 붙은 뷰는 remove 없이 addChildView(index) 로만 재정렬한다 — CDP 스냅샷마다 renderer churn 을 막는다. */
   const relayout = (): void => {
     const root = base.contentView;
-    const ordered: WebContentsView[] = [...parked, consoleView, ...presented];
+    const ordered: WebContentsView[] = [];
+    if (switchVeil && !switchVeilRaised) ordered.push(switchVeil);
+    ordered.push(...parked, consoleView, ...presented);
     if (picker) ordered.push(picker);
+    if (switchVeil && switchVeilRaised) ordered.push(switchVeil);
     if (veil) ordered.push(veil);
     for (let index = 0; index < ordered.length; index++) root.addChildView(ordered[index]!, index);
   };
@@ -71,6 +84,8 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     const { width, height } = base.getContentBounds();
     const bounds = { x: 0, y: 0, width: Math.max(1, width), height: Math.max(1, height) };
     consoleView.setBounds(bounds);
+    // 덮개는 Console과 한 치도 어긋나지 않아야 한다 — 스냅샷을 제자리에 겹쳐 그리기 때문이다.
+    switchVeil?.setBounds(bounds);
     return bounds;
   };
 
@@ -117,6 +132,33 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ }
   };
 
+  const mountSwitchVeil = (view: WebContentsView): void => {
+    if (switchVeil === view) return;
+    switchVeil = view;
+    switchVeilRaised = false;
+    layoutConsole();
+    relayout();
+  };
+
+  const raiseSwitchVeil = (): void => {
+    if (!switchVeil || switchVeilRaised) return;
+    switchVeilRaised = true;
+    relayout();
+  };
+
+  const lowerSwitchVeil = (): void => {
+    if (!switchVeil || !switchVeilRaised) return;
+    switchVeilRaised = false;
+    relayout();
+  };
+
+  const unmountSwitchVeil = (): void => {
+    const view = switchVeil;
+    switchVeil = null;
+    switchVeilRaised = false;
+    if (view) try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ }
+  };
+
   layoutConsole();
   base.contentView.addChildView(consoleView);
 
@@ -130,6 +172,10 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     removePicker: removePickerView,
     presentVeil: presentVeilView,
     removeVeil: removeVeilView,
+    mountSwitchVeil,
+    raiseSwitchVeil,
+    lowerSwitchVeil,
+    unmountSwitchVeil,
   };
 }
 

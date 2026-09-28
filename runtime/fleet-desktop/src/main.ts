@@ -16,6 +16,7 @@ import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePubl
 import { createHydratedDesktopEnvironment, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot, type EntryPalette } from "./entry-page.js";
 import { createQuitFarewell, farewellSnapshot } from "./quit-farewell.js";
+import { createSwitchVeil } from "./switch-veil.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopNotifier } from "./desktop-notices.js";
@@ -380,18 +381,36 @@ async function boot(): Promise<void> {
       return "failed";
     }
   };
+  /**
+   * 콘솔을 갈아타는 동안 떠나는 화면의 스냅샷을 덮어 두는 판. 창과 함께 미리 띄워 Console 뒤에 세운다 —
+   * 전환 순간에 만든 뷰는 첫 프레임이 늦어 덮개가 서기 전에 문서가 바뀐다.
+   */
+  const switchVeil = createSwitchVeil({
+    createView: () => {
+      const view = new WebContentsView({
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
+      });
+      // 뒤에 세워 둔 동안에도, 스냅샷이 칠해지기 전에도 아래 화면을 가리지 않는다.
+      view.setBackgroundColor("#00000000");
+      // 종료 인사와 같은 수동적인 판이다. 어디로도 항해하지 않고 창도 열지 않는다.
+      view.webContents.on("will-navigate", (event) => event.preventDefault());
+      view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      return view;
+    },
+    log: (message) => logger.info(message),
+  });
   const bridge: RemoteBridge = createRemoteBridge({
     pins: remotePins,
     policy: () => policy,
     sessionFetch: (input, init) => consoleSession.fetch(input, init),
     localOrigin: () => localConsoleOrigin,
     deviceName: os.hostname().replace(/\.local$/iu, ""),
-    loadConsole: (url) => handOffWindowToConsole({
+    loadConsole: (url) => switchVeil.around(url, () => handOffWindowToConsole({
       publishShellHome: async (origin) => { await publishShellHome(origin); },
       loadUrl: async (target) => { await window?.loadURL(target); },
       synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
-    }, url),
+    }, url)),
     openPicker: (url) => picker.open(url),
     closePicker: () => picker.close(),
     notify: (notice) => notifier.show(notice),
@@ -467,6 +486,7 @@ async function boot(): Promise<void> {
           overlayRefresher?.stop();
           overlayRefresher = null;
           picker.close();
+          switchVeil.unmount();
           // BaseWindow closed does not destroy child WebContentsView renderers — close explicitly.
           try {
             if (!createdWindow.consoleContents.isDestroyed()) createdWindow.consoleContents.close();
@@ -476,6 +496,7 @@ async function boot(): Promise<void> {
           consoleShown = false;
         });
         controls.attachWindow(createdWindow);
+        switchVeil.mount(createdWindow);
         lifecycle.attachWindow(createdWindow);
         policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external));
         installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
