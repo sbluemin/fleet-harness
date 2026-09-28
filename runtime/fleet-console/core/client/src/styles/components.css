@@ -15097,17 +15097,10 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   overflow: hidden;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이
-     (canonical 주석은 components.css의 .whatsnew-card 참조). */
-  background:
-    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
-    linear-gradient(
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
-    ),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  /* 도구 패널의 확대 호스트 — 레일 카드와 같은 한 재질(불투명 --surface-panel)이다. 도구 패널은
+     리퀴드 글래스를 쓰지 않으므로 blur·glass 틴트 없이 테마마다 Objectives와 같은 면에 선다.
+     Shell은 아래 :has(.terminal-shell) 블록이 자기 terminal 재질로 덮는다. */
+  background: var(--surface-panel);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
   transition: border-color var(--duration-fast);
 }
@@ -15117,8 +15110,8 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border-color: color-mix(in oklab, var(--brass) 52%, var(--surface-rim-strong));
 }
 
-/* 확대 Shell도 전용 terminal 재질 한 장을 slot 루트에서 칠한다. Codex 등 다른 확대 표면은 위의
-   강한 팝업 재질을 유지하고, Shell은 terminal tint와 항상 켜지는 전용 blur를 쓴다.
+/* 확대 Shell도 전용 terminal 재질 한 장을 slot 루트에서 칠한다. Codex 등 도구 확대 표면은 위의
+   불투명 패널 면을 쓰고, Shell은 terminal tint와 항상 켜지는 전용 blur를 쓴다.
    terminal-shell을 비워 xterm까지 같은 pane을 공유하며, 게이트가 닫히면 불투명 terminal 토큰과
    무블러로 자동 복원된다. */
 .expanded-surface-pane:has(.terminal-shell) {

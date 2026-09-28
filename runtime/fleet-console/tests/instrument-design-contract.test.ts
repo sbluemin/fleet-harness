@@ -2132,22 +2132,25 @@ describe("Instrument core design contract", () => {
     // 남아 있던 유리 전환 누락(Move E)의 재발 방지.
     expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*\),\s*var\(--glass-underlay\);/);
     expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*backdrop-filter: var\(--glass-backdrop-strong\);/);
-    expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--glass-underlay\);/);
-    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--glass-underlay\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--glass-underlay\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__export-menu \{[^}]*var\(--glass-underlay\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__slash \{[^}]*var\(--glass-underlay\);/);
-    // Quaker aides float over the Map — the same glass token that is opaque on Instrument
-    // is 78~82% alpha on every other theme, so the speech surfaces need the underlay too.
-    for (const selector of [
-      ".scuttlebutt-bird-tag",
-      ".scuttlebutt-bird-say",
-      ".scuttlebutt-notice-bubble",
-      ".scuttlebutt-answer-bubble",
-      ".scuttlebutt-chat-card",
-    ]) {
-      const scoped = selector.replace(/\./g, "\\.");
-      expect(scuttlebuttCss).toMatch(new RegExp(`${scoped} \\{[\\s\\S]*?\\),\\s*var\\(--glass-underlay\\);`));
+    // Tool panels never wear liquid glass — their floating surfaces (Skills dialog and toast,
+    // Quaker aides' speech and chat cards) are one opaque raised panel in every theme and glass
+    // state, so the Map never shows through a tool. A glass channel returning here would escape
+    // the tool-panel material and turn translucent on every theme but Whites.
+    for (const [css, selector] of [
+      [skillsCss, ".skills-overlay-dialog"],
+      [skillsCss, ".skills-toast"],
+      [scuttlebuttCss, ".scuttlebutt-notice-bubble"],
+      [scuttlebuttCss, ".scuttlebutt-chat-card"],
+    ] as const) {
+      const block = css.match(new RegExp(`^${selector.replace(/\./g, "\\.")} \\{[^}]*\\}`, "m"))?.[0] ?? "";
+      expect(block).toMatch(/background: [^;]*var\(--surface-panel-raised\)/);
+      expect(block).not.toMatch(/backdrop-filter|--glass-/);
+    }
+    for (const css of [skillsCss, scuttlebuttCss]) {
+      expect(css).not.toMatch(/var\(--glass-|backdrop-filter:/);
     }
   });
 

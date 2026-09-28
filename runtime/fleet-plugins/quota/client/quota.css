@@ -298,7 +298,7 @@
 /* 접힌 행에 남는 요약. 이 자리가 비면 90%를 넘긴 공급자를 접어둔 사용자는 그 사실을
    어디서도 듣지 못한다 — 쿼터는 이 패널 밖에 신호가 없다. */
 .quota-fold-spine {
-  --meter-accent: var(--text-tertiary);
+  --meter-accent: var(--ink-fog);
   --meter-weight: var(--gauge-weight-quiet);
   display: flex;
   flex: none;
@@ -510,7 +510,7 @@
    그래서 100% 소진된 막대가 22% 막대보다 가볍게 읽혔다. 무게를 같은 채널에 실어 두면
    심각도 역전이 재조율이 아니라 구조로 막힌다. 다크 3종은 전부 100%라 지금 그림 그대로다. */
 .quota-meter {
-  --meter-accent: var(--text-tertiary);
+  --meter-accent: var(--ink-fog);
   --meter-weight: var(--gauge-weight-quiet);
   margin-top: 12px;
 }
