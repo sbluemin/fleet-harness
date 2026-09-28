@@ -113,13 +113,13 @@
 .objectives-section-hd .objectives-swatch { width: 7px; height: 7px; border-radius: 50%; }
 .objectives-section-hd .objectives-count { color: var(--text-tertiary); }
 /* 결정 요청 구획 — 접지 않는 머리. 셰브런 자리에 물음표 말풍선이 서고 글자는 결정 요청 표식과 같은 brass 다. */
-.objectives-section-hd.is-request, .objectives-section-hd.is-request:hover { color: var(--brass); cursor: default; }
-.objectives-section-hd.is-request .objectives-section-chev { color: var(--brass); }
+.objectives-section-hd.is-request, .objectives-section-hd.is-request:hover { color: var(--brass-ink); cursor: default; }
+.objectives-section-hd.is-request .objectives-section-chev { color: var(--brass-ink); }
 /* 결정 요청 요약 — 목록 위 한 줄. 요청 수 · 이 범위 밖 수 · 「다음」. 행 표식과 같은 brass 말풍선 문법이다. */
-.objectives-requests { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; padding: 5px 10px; border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 10%, transparent); color: var(--brass); font-size: var(--t-sm); }
+.objectives-requests { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; padding: 5px 10px; border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 10%, transparent); color: var(--brass-ink); font-size: var(--t-sm); }
 .objectives-requests svg { flex: none; width: 14px; height: 14px; }
 .objectives-requests-outside { color: var(--text-secondary); }
-.objectives-requests-next { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; color: var(--brass); cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.objectives-requests-next { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; color: var(--brass-ink); cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .objectives-requests-next:hover { color: var(--text-primary); }
 .objectives-requests-next:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 .objectives-objectives { display: flex; flex-direction: column; gap: 5px; flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
@@ -249,7 +249,7 @@
 .objectives-add:focus-within { border-color: var(--brass); }
 /* 한 열에서 추가한 뒤 — 상세를 덮어 열지 않고 「추가됨 · 열기」가 입력줄에 선다. */
 .objectives-add-added { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); white-space: nowrap; }
-.objectives-add-open { padding: 0 7px; border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent); border-radius: var(--radius-pill); background: none; font: inherit; color: var(--brass); cursor: pointer; }
+.objectives-add-open { padding: 0 7px; border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent); border-radius: var(--radius-pill); background: none; font: inherit; color: var(--brass-ink); cursor: pointer; }
 .objectives-add-open:hover { border-color: var(--brass); }
 .objectives-add-open:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-view-picker { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: var(--radius-xs); background: var(--control-rest); }
@@ -322,7 +322,7 @@
 .objectives-detail-head { display: flex; gap: 8px; align-items: flex-start; padding: 8px 20px 10px 22px; }
 .objectives-detail-head .objectives-check { margin-top: 3px; width: 18px; height: 18px; }
 /* 「다른 요청 N」 — 한 열에서 상세가 목록을 덮을 때만 선다(아래 컨테이너 규칙). 넓으면 목록 위 요약 줄이 같은 말을 한다. */
-.objectives-detail-requests { display: none; flex: none; align-items: center; gap: 4px; margin-top: 1px; padding: 1px 8px; border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent); border-radius: var(--radius-pill); background: color-mix(in oklch, var(--brass) 10%, transparent); font: inherit; font-size: var(--t-xs); color: var(--brass); white-space: nowrap; cursor: pointer; }
+.objectives-detail-requests { display: none; flex: none; align-items: center; gap: 4px; margin-top: 1px; padding: 1px 8px; border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent); border-radius: var(--radius-pill); background: color-mix(in oklch, var(--brass) 10%, transparent); font: inherit; font-size: var(--t-xs); color: var(--brass-ink); white-space: nowrap; cursor: pointer; }
 .objectives-detail-requests svg { width: 12px; height: 12px; }
 .objectives-detail-requests:hover { border-color: var(--brass); }
 .objectives-detail-requests:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
@@ -1303,7 +1303,7 @@ a.objectives-result-title:hover, a.objectives-result-title:focus-visible { outli
 
 /* 결정 요청 — 하단 띠 위의 칸. 전체 테두리와 옅은 brass 면으로 서고 왼쪽 띠는 쓰지 않는다. 질문이 많으면 칸 안에서 스크롤한다. */
 .objectives-decision-request { display: flex; flex-direction: column; gap: 8px; margin: 4px 10px 8px; padding: 10px 12px 10px; border: 1px solid color-mix(in oklch, var(--brass) 38%, transparent); border-radius: var(--radius-md); background: color-mix(in oklch, var(--brass) 6%, var(--surface-panel)); }
-.objectives-decision-head { display: flex; align-items: center; gap: 6px; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--brass); }
+.objectives-decision-head { display: flex; align-items: center; gap: 6px; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--brass-ink); }
 .objectives-decision-head time, .objectives-decision-n { font-family: var(--font-mono); font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-n { margin-left: auto; }
 .objectives-decision-glyph { display: inline-grid; place-items: center; width: 14px; height: 14px; flex: none; }
@@ -1340,7 +1340,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-free:focus { outline: none; border-color: color-mix(in oklch, var(--brass) 60%, transparent); }
 .objectives-decision-submit { display: flex; align-items: center; gap: 10px; }
 .objectives-decision-progress { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
-.objectives-decision-send { margin-left: auto; height: 30px; padding: 0 14px; border: 1px solid color-mix(in oklch, var(--brass) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-bold); cursor: pointer; }
+.objectives-decision-send { margin-left: auto; height: 30px; padding: 0 14px; border: 1px solid color-mix(in oklch, var(--brass) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-ink); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-bold); cursor: pointer; }
 .objectives-decision-send:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 24%, transparent); }
 .objectives-decision-send:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-decision-send:disabled { opacity: 0.5; cursor: default; }
@@ -1360,7 +1360,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decisions-fold:hover { color: var(--text-primary); }
 .objectives-decisions-fold:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 /* 목록 카드의 「결정 요청」 — 인계 대기 라벨과 같은 자리. */
-.objectives-objective-request { display: inline-flex; align-items: center; gap: 3px; color: var(--brass); }
+.objectives-objective-request { display: inline-flex; align-items: center; gap: 3px; color: var(--brass-ink); }
 .objectives-objective-request svg { width: 12px; height: 12px; }
 .objectives-objective-request em { font-style: normal; color: var(--text-tertiary); }
 /* 결정 요청 구획 행의 원래 그룹 — 구획 머리와 같은 견본 점과 이름. */
