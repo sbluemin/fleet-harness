@@ -67,7 +67,7 @@ type FakeCatalog = {
   readonly failCommandsFor?: number;
 };
 
-function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string, options?: { readonly messageId?: string }) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void; readonly catalog?: FakeCatalog } = {}) {
+function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string, options?: { readonly messageId?: string }) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void; readonly onControl?: (control: string) => Promise<void> | void; readonly catalog?: FakeCatalog } = {}) {
   const queue: Record<string, unknown>[] = [];
   let waiting: (() => void) | null = null;
   let closed = false;
@@ -110,6 +110,10 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
     /** 스킬 이름의 주 출처. 실물은 첫 턴 전에도 답한다 — init을 기다리지 않는다. */
     supportedSkills: async () => hooks.catalog?.skills ?? null,
     reloadSkills: async () => hooks.catalog?.skills ?? null,
+    setModel: async (model: string): Promise<void> => { await hooks.onControl?.(`model:${model}`); },
+    applySessionSettings: async (settings: { readonly effort?: string | null; readonly ultracode?: boolean }): Promise<void> => {
+      await hooks.onControl?.(`settings:${settings.effort ?? "default"}:${settings.ultracode === true ? "ultracode" : "plain"}`);
+    },
     /**
      * 실물은 턴 경계 **양쪽**에서 답한다(실측). 아직 아무것도 보내지 않았으면 다음 턴의 시작
      * 값이고, 한 번이라도 보낸 뒤에는 방금 소비한 턴의 종료 값이다 — 다음 턴의 시작 값 또한
@@ -1012,6 +1016,73 @@ describe("AgentChatRegistry — stopping a turn", () => {
     await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-inject"); });
     expect(kinds(seen).filter((kind) => kind === "turn-start")).toHaveLength(1);
     expect(latestQueue(seen)).toHaveLength(0);
+
+    await registry.disposeAll();
+  });
+
+  /**
+   * 채팅 중 모델·강도 변경은 자식을 살려 둔 채 적용된다. 턴이 도는 동안 고른 값은 그 턴의 경계로
+   * 미뤄진다 — 턴 도중에는 자식이 control 채널을 닫아 둘 수 있고, 한 답이 두 모델에 걸치면 그 답을
+   * 누가 했는지 말할 수 없다. 그리고 적용하는 사이 보낸 말은 적용이 끝난 **뒤에** 자식에게 가야
+   * 한다: 먼저 가면 그 말은 바꾸기 전의 모델로 답해진다. 적용된 좌표는 재개·터미널이 읽는 payload로
+   * 나간다. (턴 **도중** 보낸 말은 이와 다르다 — 도는 턴이 곧바로 집어가므로 그 턴의 모델로 답한다.)
+   */
+  it("defers a mid-turn model change to the turn boundary and applies it before the next message", async () => {
+    const transcriptPath = writeTranscript("sess-coord", []);
+    const configDir = tempDir("chat-coord-");
+    const wire: string[] = [];
+    // 자식이 모델 변경에 답하기까지의 창. 이 창 안에 도착한 말이 경합의 주인공이다.
+    let releaseModel: () => void = () => {};
+    const modelHeld = new Promise<void>((resolve) => { releaseModel = resolve; });
+    let child: ReturnType<typeof fakeSession> | null = null;
+    const openSession = vi.fn(async () => {
+      child = fakeSession([], {
+        onSend: (text) => wire.push(`send:${text}`),
+        onControl: async (control) => {
+          wire.push(control);
+          if (control.startsWith("model:")) await modelHeld;
+        },
+      });
+      return child;
+    });
+    const factory = vi.fn(async ({ models }: { readonly baseUrl: string; readonly models: readonly string[] }) => ({
+      configDir,
+      models,
+      openSession,
+      dispose: vi.fn(async () => {}),
+    }));
+    const applied: { readonly model: string; readonly effort: string | null }[] = [];
+    const registry = new AgentChatRegistry(factory as never);
+    const session = await registry.ensure("op-coord-1", () => ({
+      ...seedFor(transcriptPath),
+      onCoordinatesApplied: (coordinates) => { applied.push(coordinates); },
+    }));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    await vi.waitFor(() => { expect(wire).toEqual(["send:first"]); });
+
+    // 턴이 도는 중이다 — 자식에 손대지 않고 예약만 선다.
+    await expect(session.changeCoordinates("sonnet", "medium")).resolves.toEqual({ ok: true, applied: "scheduled" });
+    expect(wire).toEqual(["send:first"]);
+    expect(applied).toEqual([]);
+
+    // 턴이 닫히는 경계에서 적용이 시작된다. 자식이 답하기 전에 다음 말이 도착한다.
+    child!.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 5 });
+    await vi.waitFor(() => { expect(wire).toContain("model:sonnet"); });
+    session.send("second");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(wire).toEqual(["send:first", "model:sonnet"]);
+
+    releaseModel();
+    await vi.waitFor(() => { expect(wire).toContain("send:second"); });
+    expect(wire).toEqual(["send:first", "model:sonnet", "settings:medium:plain", "send:second"]);
+    expect(applied).toEqual([{ model: "sonnet", effort: "medium" }]);
+    const change = seen.map((entry) => entry.event).find((event) => event.kind === "coordinates");
+    expect(change).toMatchObject({ model: "sonnet", effort: "medium", from: { model: "opus[1m]", effort: "high" } });
+    const pending = seen.map((entry) => entry.event).filter((event) => event.kind === "coordinates-pending");
+    expect(pending.at(-1)).toEqual({ kind: "coordinates-pending", pending: null });
 
     await registry.disposeAll();
   });

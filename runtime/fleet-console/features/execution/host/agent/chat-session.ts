@@ -56,6 +56,7 @@ import {
 import { FLEET_PLUGIN_NAME, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
+import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { chatChildEnv } from "../terminal/launch-env.js";
 import type { CapturedAgentSession } from "./types.js";
 import type { WorkspaceHookBinding } from "./workspace-hooks.js";
@@ -80,6 +81,23 @@ import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 export type AgentChatSessionOrigin =
   | { readonly kind: "resume"; readonly transcriptPath: string }
   | { readonly kind: "fresh" };
+
+/** 이 세션이 도는 모델·강도. `launchEffort`는 payload에 실리는 런치 어휘 그대로다(`ultra` 포함). */
+interface ChatCoordinates {
+  readonly model: string;
+  readonly launchEffort: string | null;
+  readonly effort?: ClaudeGatewayEffort;
+  readonly ultracode: boolean;
+  readonly contextWindow?: number;
+}
+
+/**
+ * 채팅 중 모델·강도 변경의 결말. `scheduled`는 턴이 도는 중이라 그 턴이 닫히는 경계로 미뤘다는 뜻이다.
+ * `context_exceeds_window`는 지금 문맥이 새 모델의 창보다 커서, 바꾸면 다음 턴이 넘친다는 뜻이다.
+ */
+export type AgentChatCoordinatesResult =
+  | { readonly ok: true; readonly applied: "now" | "scheduled" | "unchanged" }
+  | { readonly ok: false; readonly error: "invalid_effort" | "context_exceeds_window" | "coordinates_apply_failed" };
 
 export interface AgentChatSessionSeed {
   /** Console의 CLI 경로 우선순위로 고른 실행기. 새 SDK 인스턴스를 만들 때 다시 해석한다. */
@@ -109,6 +127,16 @@ export interface AgentChatSessionSeed {
    * 같은 자리로 옮긴다. `effort`와 별개다 — SDK는 강도를 `xhigh`로 받고, 오케스트레이션은 이 플래그가 켠다.
    */
   readonly ultracode?: true;
+  /**
+   * 세션 도중 바꾼 모델의 카탈로그 창을 다시 읽는다. `contextWindow`와 같은 규칙이다 — 네이티브
+   * Claude 모델과 카탈로그 밖 id는 `undefined`다.
+   */
+  readonly resolveContextWindow?: (model: string) => number | undefined;
+  /**
+   * 적용된 모델·강도를 Operation payload에 남긴다. 재개·터미널·같은 세션을 보는 다른 탭이 모두
+   * 그 좌표를 읽으므로, 자식에 적용한 순간이 곧 payload를 고치는 순간이어야 한다.
+   */
+  readonly onCoordinatesApplied?: (coordinates: { readonly model: string; readonly effort: string | null }) => void;
   readonly cwd: string;
   /**
    * 자식 세션의 표시 이름(`-n`). 터미널 런치가 CLI에 싣는 것과 같은 Operation의 세션 이름이며,
@@ -718,6 +746,19 @@ class AgentChatSession {
   private liveContextTotal: number | null = null;
   /** 자식이 스냅숏에서 직접 말한 좌표. 도착하기 전에는 모델 id에서 유도한다. */
   private observedClaudeCoordinate: number | null = null;
+  /** 가장 최근에 안 문맥 점유(실제 창 기준). 창이 작은 모델로 내려가는 변경을 막는 근거다. */
+  private lastContextTotal: number | null = null;
+  /**
+   * 이 세션이 지금 도는 모델·강도. 시드에서 시작하고 사용자가 채팅 중에 바꾸면 갈아 끼운다.
+   * 자식에 적용한 뒤에만 바뀐다 — 적용 전에 바꾸면 계기의 창과 payload가 자식보다 앞서 간다.
+   */
+  private coordinates: ChatCoordinates;
+  /** 턴이 도는 동안 고른 좌표. 그 턴이 닫히는 경계에서 적용된다. */
+  private pendingCoordinates: ChatCoordinates | null = null;
+  /** 좌표를 자식에 적용하는 중. 다음 디스패치는 이것이 끝난 뒤에 자식에게 간다. */
+  private coordinateFlight: Promise<boolean> | null = null;
+  /** 지금 자식에 적용 중인 좌표. 이미 자식에게 건넨 예약은 거둘 수 없다. */
+  private applyingCoordinates: ChatCoordinates | null = null;
 
   /**
    * 이 세션에 마지막으로 무슨 일이 일어난 시각. 유휴 자동 휴면의 문턱이 읽는 좌표이므로 PTY
@@ -730,6 +771,13 @@ class AgentChatSession {
     this.operationId = operationId;
     this.seed = seed;
     this.createSdk = createSdk;
+    this.coordinates = {
+      model: seed.model,
+      launchEffort: seed.ultracode ? "ultra" : seed.effort ?? null,
+      ...(seed.effort ? { effort: seed.effort } : {}),
+      ultracode: seed.ultracode === true,
+      ...(seed.contextWindow === undefined ? {} : { contextWindow: seed.contextWindow }),
+    };
     this.reportedCwd = seed.cwd;
     this.latestSessionId = seed.origin.kind === "resume"
       ? path.basename(seed.origin.transcriptPath, ".jsonl")
@@ -1144,6 +1192,144 @@ class AgentChatSession {
    */
   private pushQueue(): void {
     this.pushEphemeral({ kind: "queue", entries: this.queueEntries() });
+  }
+
+  /**
+   * 사용자가 채팅 중에 모델·강도를 바꾼다. 자식은 살아 있고 대화도 그대로 이어진다.
+   *
+   * 턴이 도는 동안에는 바로 적용하지 않고 예약한다 — 턴 도중에는 자식이 control 채널을 닫아 둘 수
+   * 있고, 한 답이 두 모델에 걸치면 그 답을 누가 했는지 말할 수 없다. 예약은 그 턴이 닫히는 경계에서
+   * 적용되고, 다음 말은 적용이 끝난 뒤에 자식에게 간다.
+   *
+   * `launchEffort`는 런치 어휘다 — `null`은 모델 기본, `ultra`는 xhigh에 ultracode를 얹는다.
+   */
+  async changeCoordinates(model: string, launchEffort: string | null): Promise<AgentChatCoordinatesResult> {
+    let target: ChatCoordinates;
+    if (launchEffort === null) {
+      target = this.makeCoordinates(model, null, undefined, false);
+    } else {
+      const resolved = resolveChatLaunchEffort(launchEffort);
+      if (!resolved) return { ok: false, error: "invalid_effort" };
+      target = this.makeCoordinates(model, launchEffort, resolved.effort, resolved.ultracode === true);
+    }
+    // 창이 작은 모델로 내려가면 지금 문맥이 새 창을 넘을 수 있다. 그 변경은 다음 턴을 넘치게 하므로
+    // 받지 않는다 — 먼저 요약해 문맥을 줄이는 것이 사용자의 길이다.
+    const occupied = this.lastContextTotal;
+    if (target.model !== this.coordinates.model && occupied !== null && occupied > modelCapacity(target)) {
+      return { ok: false, error: "context_exceeds_window" };
+    }
+    if (sameCoordinates(target, this.coordinates) && this.coordinateFlight === null) {
+      // 적용된 값으로 되돌리는 것은 예약을 거두는 것과 같다.
+      if (this.pendingCoordinates !== null) this.setPendingCoordinates(null);
+      return { ok: true, applied: "unchanged" };
+    }
+    if (this.turnOpen || this.commandLane !== null || this.settlingStoppedTurn || this.coordinateFlight !== null
+      || (this.session === null && (this.sessionFlight !== null || this.sdkFlight !== null))) {
+      this.setPendingCoordinates(target);
+      return { ok: true, applied: "scheduled" };
+    }
+    this.setPendingCoordinates(target);
+    const applied = await this.applyPendingCoordinates();
+    return applied === false ? { ok: false, error: "coordinates_apply_failed" } : { ok: true, applied: "now" };
+  }
+
+  /** 예약한 좌표를 거둔다. 거둘 것이 없었거나 이미 자식에 적용하는 중이면 false다. */
+  cancelPendingCoordinates(): boolean {
+    if (this.pendingCoordinates === null) return false;
+    // 자식에게 건넨 뒤에는 거둘 수 없다 — 성공으로 답하면 화면은 취소를 말하고 자식은 바뀐 모델로 답한다.
+    if (this.pendingCoordinates === this.applyingCoordinates) return false;
+    this.setPendingCoordinates(null);
+    return true;
+  }
+
+  private makeCoordinates(model: string, launchEffort: string | null, effort: ClaudeGatewayEffort | undefined, ultracode: boolean): ChatCoordinates {
+    // 같은 모델이면 세션을 열 때 받은 창을 그대로 쓴다 — 바꾸지 않은 축을 다시 조회하면 그 사이
+    // 카탈로그가 바뀐 경우 같은 모델의 창이 세션 도중에 흔들린다.
+    const contextWindow = model === this.coordinates?.model
+      ? this.coordinates.contextWindow
+      : this.seed.resolveContextWindow?.(model);
+    return {
+      model,
+      launchEffort,
+      ...(effort ? { effort } : {}),
+      ultracode,
+      ...(contextWindow === undefined ? {} : { contextWindow }),
+    };
+  }
+
+  /**
+   * 예약 표시는 모든 탭이 함께 본다. 저널에는 최신 하나만 남긴다 — 재접속한 탭은 그 하나로
+   * 지금의 예약을 안다.
+   */
+  private setPendingCoordinates(next: ChatCoordinates | null): void {
+    this.pendingCoordinates = next;
+    const at = this.journal.findIndex((held) => held.event.kind === "coordinates-pending");
+    if (at >= 0) this.journal.splice(at, 1);
+    this.push({
+      kind: "coordinates-pending",
+      pending: next === null ? null : { model: next.model, effort: next.launchEffort },
+    });
+  }
+
+  /**
+   * 예약한 좌표를 자식에 적용한다. 자식이 없으면 다음에 태어날 자식이 이 값으로 선다.
+   *
+   * 비행은 동기로 세운다 — 부르는 자리(턴 종료·정비 줄 종료)는 곧바로 줄 선 디스패치를 깨우고,
+   * 깨어난 디스패치는 이 비행을 보고 기다려야 한다. 돌려주는 값은 적용했는가이며, 예약이 없으면
+   * `null`이다.
+   */
+  private applyPendingCoordinates(): Promise<boolean | null> {
+    if (this.coordinateFlight) return this.coordinateFlight;
+    const target = this.pendingCoordinates;
+    if (target === null || this.disposed) return Promise.resolve(null);
+    // 예약한 뒤 그 턴이 문맥을 키웠을 수 있다. 창이 작은 모델로 가는 예약은 적용 직전에 다시 재고,
+    // 이제 넘친다면 적용하지 않는다 — 적용하면 다음 말이 새 모델의 창을 넘는다.
+    const occupied = this.lastContextTotal;
+    if (target.model !== this.coordinates.model && occupied !== null && occupied > modelCapacity(target)) {
+      this.setPendingCoordinates(null);
+      this.push({ kind: "error", code: "chat_coordinates_context_exceeded" });
+      return Promise.resolve(false);
+    }
+    this.applyingCoordinates = target;
+    const flight = (async (): Promise<boolean> => {
+      const previous = this.coordinates;
+      const session = this.session;
+      try {
+        if (session) {
+          if (target.model !== previous.model) await session.setModel(target.model);
+          if (target.effort !== previous.effort || target.ultracode !== previous.ultracode) {
+            await session.applySessionSettings({ effort: target.effort ?? null, ultracode: target.ultracode });
+          }
+        }
+      } catch {
+        // 적용하지 못한 좌표를 적용한 척하지 않는다. 예약을 거두고 화면에 실패를 말한다 — 그 사이
+        // 새로 접수된 예약은 이 실패의 것이 아니므로 남겨, 뒤이은 적용이 가져가게 한다.
+        if (this.pendingCoordinates === target) this.setPendingCoordinates(null);
+        this.push({ kind: "error", code: "chat_coordinates_failed" });
+        return false;
+      }
+      this.coordinates = target;
+      // 자식이 이전 모델에서 말한 좌표는 새 모델의 것이 아니다. 다음 스냅숏까지는 모델 id에서 유도한다.
+      if (target.model !== previous.model) this.observedClaudeCoordinate = null;
+      if (this.pendingCoordinates === target) this.setPendingCoordinates(null);
+      this.seed.onCoordinatesApplied?.({ model: target.model, effort: target.launchEffort });
+      this.push({
+        kind: "coordinates",
+        model: target.model,
+        effort: target.launchEffort,
+        from: { model: previous.model, effort: previous.launchEffort },
+        at: Date.now(),
+      });
+      return true;
+    })();
+    this.coordinateFlight = flight;
+    void flight.finally(() => {
+      if (this.coordinateFlight === flight) this.coordinateFlight = null;
+      if (this.applyingCoordinates === target) this.applyingCoordinates = null;
+      // 적용하는 사이 사용자가 또 골랐다면, 그 값은 지금 자식이 한가할 때 이어서 적용한다.
+      if (this.pendingCoordinates !== null && !this.turnOpen && this.commandLane === null) void this.applyPendingCoordinates();
+    });
+    return flight;
   }
 
   /**
@@ -1897,10 +2083,12 @@ class AgentChatSession {
       name: category.name,
       tokens: window ? window.unproject(category.tokens) : category.tokens,
     }));
+    const total = slices.reduce((sum, slice) => sum + slice.tokens, 0);
+    this.lastContextTotal = total;
     this.push({
       kind: "context",
       asOf,
-      total: slices.reduce((sum, slice) => sum + slice.tokens, 0),
+      total,
       max: window ? window.max : usage.max,
       // 예약분은 되돌리지 않고 **갈아 끼운다**. 자식의 값은 자기 좌표의 여유(max − compactAt)이고
       // 실제 여유는 정책이 정하는 다른 수다 — 같은 비율로 늘리면 있지도 않은 자리를 예약해 둔다.
@@ -1955,6 +2143,7 @@ class AgentChatSession {
     // 도구 하나가 아무것도 더하지 않은 호출에서 그런 일이 실제로 생긴다.
     if (this.liveContextTotal === live) return;
     this.liveContextTotal = live;
+    this.lastContextTotal = live;
     this.pushEphemeral({
       kind: "context-live",
       total: live,
@@ -1971,10 +2160,10 @@ class AgentChatSession {
    */
   private claudeCoordinate(): number {
     if (this.observedClaudeCoordinate !== null) return this.observedClaudeCoordinate;
-    const window = this.seed.contextWindow;
+    const window = this.coordinates.contextWindow;
     const oneMillion = typeof window === "number" && Number.isFinite(window) && window > 0
       ? window >= CLAUDE_COMPAT_CONTEXT_WINDOW
-      : hasClaudeOneMillionMarker(this.seed.model);
+      : hasClaudeOneMillionMarker(this.coordinates.model);
     return oneMillion ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
   }
 
@@ -1990,7 +2179,7 @@ class AgentChatSession {
     readonly compactAt: number;
     readonly unproject: (tokens: number) => number;
   } | null {
-    const max = this.seed.contextWindow;
+    const max = this.coordinates.contextWindow;
     if (typeof max !== "number" || !Number.isFinite(max) || max <= 0) return null;
     // 창만 바꿔 싣고 점유는 자식 좌표에 남겨 두는 것이 이 결함의 가장 나쁜 형태다 — 분모는 500k인데
     // 분자는 200k 자의 값이어서 점유율이 실제의 1/3로 보인다. 되돌릴 수 없는 좌표면 둘 다 놓아둔다.
@@ -2080,13 +2269,14 @@ class AgentChatSession {
       modelPolicy: claudeGatewayModelPolicy,
             ...(executablePath === undefined ? {} : { executablePath }),
             baseUrl: this.seed.baseUrl,
-            models: [this.seed.model],
+            models: [this.coordinates.model],
             // 공유 홈이다 — 이 세션의 트랜스크립트는 터미널이 읽는 그 파일이고, 옮겨 올 사본이 없다.
             home: { kind: "shared", configDir: this.seed.claudeConfigDir },
             // 플러그인 트리·스킬 억제·설정 층은 admiral이 확정해 준 그대로 싣는다. 여기서 다시
             // 조립하면 PTY 런치와 갈리고, 그 차이는 화면 어디에도 드러나지 않는다.
             ...claudeSession.sdk.options,
-            ...(this.seed.ultracode ? { ultracode: true } : {}),
+            // 세션을 연 뒤의 변경은 `applySessionSettings`가 진다. 여기는 자식이 태어날 때의 값이다.
+            ...(this.coordinates.ultracode ? { ultracode: true } : {}),
             // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
             env: {
@@ -2178,8 +2368,8 @@ class AgentChatSession {
         });
         const claudeSession = await this.resolveClaudeSession();
         const session = await sdk.openSession({
-          model: this.seed.model,
-          ...(this.seed.effort ? { effort: this.seed.effort } : {}),
+          model: this.coordinates.model,
+          ...(this.coordinates.effort ? { effort: this.coordinates.effort } : {}),
           ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
           cwd: this.seed.cwd,
           ...(this.seed.sessionName ? { sessionName: this.seed.sessionName } : {}),
@@ -2200,6 +2390,8 @@ class AgentChatSession {
         this.session = session;
         this.readerDone = this.readSession(session);
         this.primeCatalog(session);
+        // 여는 사이 고른 좌표는 첫 말보다 먼저 적용한다. 디스패치는 이 비행을 기다린 뒤 보낸다.
+        this.applyPendingCoordinates();
         return session;
       })().finally(() => {
         this.sessionFlight = null;
@@ -2701,6 +2893,9 @@ class AgentChatSession {
     // 라이브 총량은 이 턴의 것이었다. 다음 턴의 첫 delta가 자기 값을 세울 때까지, 화면은 방금
     // 실린 총량을 그대로 들고 있는다 — 여기서 비우면 턴이 끝나는 순간 미터가 뒤로 간다.
     this.liveContextTotal = null;
+    // 예약한 좌표는 이 경계에서 적용한다. 줄 서 있던 디스패치를 깨우기 **전에** 비행을 세워야
+    // 깨어난 디스패치가 그것을 보고 기다린다.
+    this.applyPendingCoordinates();
     const awaiting = this.awaitingTurn;
     this.awaitingTurn = null;
     awaiting?.();
@@ -2885,6 +3080,14 @@ class AgentChatSession {
       // 문맥 내역은 보내기 **직전**에 묻는다. 턴이 돌기 시작하면 자식이 control 채널을 닫는다.
       // 정비 명령은 이 스냅숏을 건너뛴다 — 그 셋은 문맥을 **바꾸는** 쪽이라 시작 시점의 값이
       // 남을 자리가 없고, 끝난 뒤에 다시 묻는 것이 유일하게 뜻이 있는 측정이다.
+      // 턴 경계에서 적용 중인 모델·강도가 있으면 그것이 끝난 뒤에 보낸다 — 먼저 보내면 이 말이
+      // 바꾸기 전의 모델로 답해진다.
+      if (this.coordinateFlight) await this.coordinateFlight;
+      if (this.session !== session || stopped()) {
+        this.endCommandLane({ ok: false });
+        this.closeTurn(stopped() ? { stopped: true } : { ok: false });
+        return;
+      }
       if (lane === null) this.requestContextSnapshot(session, "start");
       session.send(text);
       // 이제부터 이 턴은 자식의 것이기도 하다 — 중지해도 자식이 결말을 낸다.
@@ -2924,6 +3127,7 @@ class AgentChatSession {
       ...(end.compact === undefined ? {} : { compact: end.compact }),
     });
     this.seed.reportActivity(false);
+    this.applyPendingCoordinates();
     const waiting = this.awaitingTurn;
     this.awaitingTurn = null;
     waiting?.();
@@ -3090,6 +3294,17 @@ export class AgentChatRegistry {
     const operationIds = new Set([...this.sessions.keys(), ...this.ensureFlights.keys()]);
     await Promise.all([...operationIds].map((operationId) => this.dispose(operationId)));
   }
+}
+
+function sameCoordinates(a: ChatCoordinates, b: ChatCoordinates): boolean {
+  return a.model === b.model && a.launchEffort === b.launchEffort;
+}
+
+/** 이 좌표의 모델이 실제로 담을 수 있는 문맥. 카탈로그 창이 없으면 Claude Code의 두 좌표 중 하나다. */
+function modelCapacity(coordinates: ChatCoordinates): number {
+  const window = coordinates.contextWindow;
+  if (typeof window === "number" && Number.isFinite(window) && window > 0) return window;
+  return hasClaudeOneMillionMarker(coordinates.model) ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

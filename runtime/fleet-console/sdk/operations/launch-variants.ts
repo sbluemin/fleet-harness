@@ -36,6 +36,9 @@ function readLaunchVariantRow(value: unknown): OperationLaunchVariantRow | null 
     label: value.label,
     ...(typeof value.starred === "boolean" ? { starred: value.starred } : {}),
     launch,
+    ...(typeof value.contextWindow === "number" && Number.isFinite(value.contextWindow) && value.contextWindow > 0
+      ? { contextWindow: value.contextWindow }
+      : {}),
     ...(chips.length > 0 ? { chips } : {}),
     ...(chips.length > 0 && effortAxis.length > 0 ? {
       effortAxis,

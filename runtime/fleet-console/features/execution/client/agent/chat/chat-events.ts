@@ -209,7 +209,23 @@ export type AgentChatStreamEvent =
   | { readonly kind: "jobs"; readonly ids: readonly string[] }
   /** 아직 시작하지 않은 예약 지시의 전량 — `jobs`와 같은 REPLACE 시맨틱이고 라이브 전용이다. */
   | { readonly kind: "queue"; readonly entries: readonly AgentChatQueueEntry[] }
+  /** 채팅 중 바꾼 모델·강도가 자식에 적용됐다. `effort`는 런치 어휘다(`null`은 모델 기본). */
+  | {
+      readonly kind: "coordinates";
+      readonly model: string;
+      readonly effort: string | null;
+      readonly from: AgentChatCoordinatePair;
+      readonly at?: number;
+    }
+  /** 턴이 닫히면 적용될 예약 — REPLACE 시맨틱이며 `null`은 예약이 없다. */
+  | { readonly kind: "coordinates-pending"; readonly pending: AgentChatCoordinatePair | null }
   | { readonly kind: "error"; readonly code: string };
+
+/** 모델과 강도 한 쌍. 강도는 런치 어휘이고 `null`은 모델 기본이다. */
+export interface AgentChatCoordinatePair {
+  readonly model: string;
+  readonly effort: string | null;
+}
 
 /** 예약된 지시 하나. 취소는 이 좌표로만 닿는다. */
 export interface AgentChatQueueEntry {
@@ -469,12 +485,30 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       }
       return { ...journal, event: { kind: "queue", entries } };
     }
+    case "coordinates": {
+      const to = readCoordinatePair(event);
+      const from = readCoordinatePair(event.from);
+      if (!to || !from) return null;
+      return { ...journal, event: { kind: "coordinates", ...to, from, ...atField(event.at) } };
+    }
+    case "coordinates-pending": {
+      if (event.pending === null) return { ...journal, event: { kind: "coordinates-pending", pending: null } };
+      const pending = readCoordinatePair(event.pending);
+      return pending ? { ...journal, event: { kind: "coordinates-pending", pending } } : null;
+    }
     case "error":
       if (typeof event.code !== "string") return null;
       return { ...journal, event: { kind: "error", code: event.code } };
     default:
       return null;
   }
+}
+
+function readCoordinatePair(value: unknown): AgentChatCoordinatePair | null {
+  if (!value || typeof value !== "object") return null;
+  const pair = value as { readonly model?: unknown; readonly effort?: unknown };
+  if (typeof pair.model !== "string" || pair.model.length === 0) return null;
+  return { model: pair.model, effort: typeof pair.effort === "string" && pair.effort.length > 0 ? pair.effort : null };
 }
 
 function readQuestions(value: unknown): readonly AgentChatQuestion[] {
@@ -698,6 +732,8 @@ export interface AgentChatTurn {
     readonly summary?: string;
     /** 압축이 실제로 되찾은 문맥. */
     readonly compact?: { readonly before: number; readonly after?: number; readonly durationMs?: number };
+    /** 채팅 중 모델·강도를 바꾼 기록. 이 줄은 자식에게 간 명령이 아니라 Console이 적용한 결말이다. */
+    readonly coordinates?: { readonly from: AgentChatCoordinatePair; readonly to: AgentChatCoordinatePair };
   };
 }
 
@@ -823,9 +859,9 @@ function readJobIdentityPayload(value: unknown): AgentChatJobIdentity | null {
  * 값을 좁혀 두는 이유는 화면이 이 값으로 **행동**을 고르기 때문이다 — 서버가 새 좌표를 늘렸는데
  * 화면이 그것을 모르면, 열린 문 없이 이름만 있는 행이 선다. 파서가 아는 값만 통과시킨다.
  */
-export type ChatCommandConsoleTarget = "context" | "clear";
+export type ChatCommandConsoleTarget = "context" | "clear" | "model" | "effort";
 
-const CONSOLE_TARGETS: readonly ChatCommandConsoleTarget[] = ["context", "clear"];
+const CONSOLE_TARGETS: readonly ChatCommandConsoleTarget[] = ["context", "clear", "model", "effort"];
 
 /** 컴포저 덱이 세우는 항목 하나. 서버 `AgentChatCatalogEntry`의 브라우저 사본이다. */
 export interface AgentChatCatalogEntry {
@@ -896,6 +932,8 @@ export interface AgentChatLogState {
   readonly context: AgentChatContext | null;
   /** 서버가 접수했으나 아직 시작하지 않은 지시들. 서버가 권위이고 화면은 그대로 그린다. */
   readonly queue: readonly AgentChatQueueEntry[];
+  /** 지금 도는 턴이 닫히면 적용될 모델·강도. 서버가 권위다. */
+  readonly coordinatesPending: AgentChatCoordinatePair | null;
   /**
    * 자식의 능력 목록이 바뀐 횟수. `/reload-skills`가 끝날 때마다 오른다.
    *
@@ -928,6 +966,7 @@ export const initialAgentChatLogState: AgentChatLogState = {
   jobs: [],
   context: null,
   queue: [],
+  coordinatesPending: null,
   catalogEpoch: 0,
 };
 
@@ -1306,6 +1345,23 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
       // REPLACE 시맨틱: 목록이 곧 예약 전량이다. 서버가 접수·시작·취소마다 다시 보내므로
       // 여기서 세거나 지우지 않는다 — 화면이 자기 셈을 들면 취소가 어긋나는 자리가 생긴다.
       return { ...state, queue: event.entries };
+    case "coordinates-pending":
+      return { ...state, coordinatesPending: event.pending };
+    case "coordinates": {
+      // 정비 줄로 선다 — 말풍선도 턴 노드도 없이 한 줄이 무엇에서 무엇으로 바뀌었는지 말한다.
+      // 앞 턴은 건드리지 않는다: 서버는 턴 경계에서만 적용하므로 닫을 것이 없고, 닫으면 스스로
+      // 깨어난 턴을 끝난 것으로 그릴 수 있다.
+      const to = { model: event.model, effort: event.effort };
+      const turn: AgentChatTurn = {
+        dispatch: { text: event.model !== event.from.model ? "/model" : "/effort", ...(event.at !== undefined ? { at: event.at } : {}) },
+        items: [],
+        state: "done",
+        toolCount: 0,
+        draft: "",
+        command: { name: event.model !== event.from.model ? "model" : "effort", coordinates: { from: event.from, to } },
+      };
+      return { ...state, turns: [...state.turns, turn] };
+    }
     case "error":
       return { ...state, errorCode: event.code };
     default:

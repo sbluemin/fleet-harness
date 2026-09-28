@@ -202,6 +202,8 @@ export interface OperationLaunchVariantRow {
   readonly effortAxis?: readonly string[];
   /** 게이트 뒤로 숨는 apex 티어의 강도 id들(사다리 순). 비어 있거나 생략되면 트랙은 게이트 없이 전체 축을 보인다. */
   readonly gatedEfforts?: readonly string[];
+  /** 이 모델이 담을 수 있는 문맥 토큰 수. 모르면 생략한다. */
+  readonly contextWindow?: number;
 }
 
 export interface OperationLaunchVariantGroup {

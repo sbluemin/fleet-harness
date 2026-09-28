@@ -226,6 +226,37 @@ export async function stopAgentChatTurn(sessionId: string, signal?: AbortSignal)
 }
 
 /**
+ * 채팅 중 모델·강도를 바꾼다. `effort`는 런치 어휘이고 `null`은 모델 기본이다. 돌려주는 값은
+ * `now`(적용됨)·`scheduled`(도는 턴이 닫히면 적용)·`unchanged`다.
+ */
+export async function changeAgentChatCoordinates(
+  sessionId: string,
+  body: { readonly model: string; readonly effort: string | null },
+  signal?: AbortSignal,
+): Promise<"now" | "scheduled" | "unchanged"> {
+  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-coordinates`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model: body.model, ...(body.effort === null ? {} : { effort: body.effort }) }),
+    signal,
+  });
+  const payload = await response.json().catch(() => null) as { readonly error?: unknown; readonly applied?: unknown } | null;
+  if (!response.ok) {
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+  return payload?.applied === "scheduled" || payload?.applied === "unchanged" ? payload.applied : "now";
+}
+
+/** 턴이 닫히면 적용될 모델·강도 예약을 거둔다. */
+export async function cancelAgentChatCoordinates(sessionId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-coordinates`, { method: "DELETE", signal });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+}
+
+/**
  * 백그라운드 작업 하나를 멈춘다.
  *
  * 성공은 "자식이 중단 요청을 받았다"까지다 — 잡 줄이 닫히는 것은 자식이 보내는 결말 알림이

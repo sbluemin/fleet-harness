@@ -1,6 +1,8 @@
 import type { OperationLaunchKind, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 import {
   bareModelName,
+  CLAUDE_COMPAT_CONTEXT_WINDOW,
+  CLAUDE_DEFAULT_CONTEXT_WINDOW,
   exposableEffortLadder,
   GATEWAY_PROVIDER_NAMES,
   GATEWAY_PROVIDERS,
@@ -76,6 +78,8 @@ function buildClaudeLaunchVariants(selection?: AiGatewaySelection): readonly Ope
       id: model,
       label: NATIVE_MODEL_LABELS[model],
       launch: { model },
+      // Claude Code의 두 좌표다 — `[1m]` 표기가 1M 창을 켠다.
+      contextWindow: model.endsWith("[1m]") ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW,
       effortAxis: EFFORT_AXIS,
       gatedEfforts: APEX_EFFORTS,
       // 네이티브 행은 max·ultra를 항상 노출한다 — ultracode는 모델 사다리의 단이 아니라
@@ -133,6 +137,7 @@ function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
     id: model.id,
     label: bareModelName(model),
     launch: { model: model.id },
+    ...(typeof model.contextWindow === "number" && model.contextWindow > 0 ? { contextWindow: model.contextWindow } : {}),
     effortAxis,
     gatedEfforts,
     chips: chips.map((effort) => ({

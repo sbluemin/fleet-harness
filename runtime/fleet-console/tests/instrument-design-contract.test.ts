@@ -55,6 +55,7 @@ const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../features/execution/client/agent/
 const TERMINAL_SURFACE_PATH = new URL("../features/execution/client/terminal/shared/terminal-surface.tsx", import.meta.url);
 const TERMINAL_CHAT_VIEW_PATH = new URL("../features/execution/client/agent/chat/chat-view.tsx", import.meta.url);
 const TERMINAL_CHAT_COMPOSER_PATH = new URL("../features/execution/client/agent/chat/composer.tsx", import.meta.url);
+const TERMINAL_CHAT_COORDINATE_MENU_PATH = new URL("../features/execution/client/agent/chat/coordinate-menu.tsx", import.meta.url);
 const TERMINAL_CHAT_CSS_PATH = new URL("../features/execution/client/agent/chat/chat.css", import.meta.url);
 const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
 const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
@@ -4215,15 +4216,21 @@ describe("Effort track interaction grammar", () => {
     expect(chat).not.toContain(".agent-chat-birth");
     expect(chat).not.toMatch(/@container\s*\([^)]*\)\s*\{[\s\S]*?\.agent-chat-coord\s*(?:,|\{)[\s\S]*?display:\s*none;/);
 
-    // 좌표는 사실이지 컨트롤이 아니다 — 세션이 실행 정책을 소유하므로 여기서 바꿀 수 없고,
-    // 누를 수 있게 그리면 거짓 약속이 된다.
+    // 구성원 바닥 줄의 좌표는 사실이지 컨트롤이 아니다 — 구성원의 모델·강도는 지휘관의 축이라
+    // 누를 수 있게 그리면 거짓 약속이 된다. 컴포저의 좌표는 채팅 중 모델·강도를 바꾸는 문을 겸하지만
+    // 같은 각인 문법을 지킨다: 버튼 틀을 두르지 않고, 누를 수 있다는 사실은 꺾쇠와 brass hover가 말한다.
     expect(view).toMatch(/<span\s+className=\{`agent-chat-coord\$\{/);
     expect(view).not.toMatch(/className="agent-chat-coord"[\s\S]{0,200}onClick/);
+    const control = block(".agent-chat-coord.is-control");
+    for (const surface of ["border:", "background:", "padding:", "box-shadow:"]) {
+      expect(control, surface).not.toContain(surface);
+    }
 
     // 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지 말하지 못한다 — 공급자 글리프가
     // 마크 자리를 잇는다. 색은 정체성 톤이 아니라 배지의 글자 티어를 따른다(좌표는 정체성
     // 채널을 빌리지 않는다).
-    expect(view).toContain("launchProviderGlyph(coordinates.provider)");
+    const menu = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_COORDINATE_MENU_PATH), "utf8");
+    expect(menu).toContain("launchProviderGlyph(coordinates.provider)");
     const glyph = block(".agent-chat-coord-glyph");
     expect(glyph).toContain("color: var(--text-tertiary);");
     for (const channel of ["--id-", "--provider-", "--aurora", "--coral"]) {
