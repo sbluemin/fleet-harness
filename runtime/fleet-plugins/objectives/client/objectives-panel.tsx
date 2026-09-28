@@ -1146,13 +1146,11 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     setBatchOpen(false);
     if (balloonTimer.current !== null) window.clearTimeout(balloonTimer.current);
 
-    void request("/member/batch-launch", { objectiveId: objective.id, mode }).then((payload) => {
+    // 실패는 패널 알림(call)으로 알린다 — 입구는 명단을 접어도 머리에 남으므로, 명단 안 표시는 접힌 동안 보이지 않는다.
+    void call<{ objective?: Objective }>("/member/batch-launch", { objectiveId: objective.id, mode }).then((saved) => {
       saving.current.delete("batch");
-      const saved = payload as { objective?: Objective } | null;
       const echoed = saved?.objective?.members;
       if (!echoed) return;
-      // 다시 시도해 성공했다 — 앞선 실패 표시는 더 이상 사실이 아니다.
-      setFault((current) => current?.id === "batch" ? null : current);
 
       const changedMembers = echoed.filter((member) => {
         const old = objective.members.find((entry) => entry.id === member.id);
@@ -1176,9 +1174,6 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         .map((member) => member.id);
 
       if (changedLiveIds.length > 0) showNotes(changedLiveIds);
-    }, (error: unknown) => {
-      saving.current.delete("batch");
-      setFault({ id: "batch", code: error instanceof Error ? error.message : "unknown" });
     });
   };
 
@@ -1234,7 +1229,6 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     <SectionHead glyph={<CoordGlyph />} label={t("objectives.members.title")} tools={<span>{objective.members.length}</span>} actions={actions}
       {...(objective.members.length > 0 ? { controls: "objectives-sec-members", expanded, onToggle } : {})} />
     <div id="objectives-sec-members" hidden={!expanded}>
-    {fault?.id === "batch" ? <p className="objectives-member-note is-error" role="alert">{t("objectives.toast.failed", { code: fault.code })}</p> : null}
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
     {objective.members.map((member, index) => {
       const count = objective.missions.filter((mission) => mission.member === member.id).length;
