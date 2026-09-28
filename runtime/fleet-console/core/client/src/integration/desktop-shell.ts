@@ -107,3 +107,46 @@ function readHomeOrigin(value: unknown): string | null {
 export function isDesktopShell(): boolean {
   return typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";
 }
+
+/**
+ * 이 화면이 본문을 그렸다는 제목 표식. 콘솔을 건너가는 동안 Desktop은 떠나는 화면의 스냅샷을 덮어 두고,
+ * 새 화면의 제목이 이 문자로 끝나면 덮개를 걷는다(runtime/fleet-desktop/src/switch-veil.ts의 같은 이름).
+ * 문서가 셸에게 말하는 길이 IPC 없이 이것뿐이라 제목을 빌린다 — 보이지 않는 문자라 글자는 늘지 않는다.
+ */
+export const CONSOLE_READY_TITLE_MARK = "\u2063";
+/**
+ * 캔버스 본문(월드). 모드 스위치(`[data-canvas-mode]`)는 본문보다 한 프레임 먼저 서므로 그것을 기준으로 삼으면
+ * 표식 직후 한 프레임이 빈 셸로 칠해진다(실측).
+ */
+const CANVAS_BODY_SELECTOR = ".console-shell .operations-canvas-world";
+
+/**
+ * 데이터가 섰고(`ready`), 캔버스 화면이라면 그 본문이 DOM에 선 뒤 두 프레임을 기다려 표식을 단다.
+ * 데이터만 보고 달면 캔버스가 서기 전에 덮개가 걷혀 빈 셸이 비친다. 한 문서에 한 번이면 된다.
+ */
+export function useConsoleReadyTitleMark(ready: boolean, awaitCanvas: boolean): void {
+  useEffect(() => {
+    if (!ready || !isDesktopShell() || document.title.endsWith(CONSOLE_READY_TITLE_MARK)) return;
+    let frame = 0;
+    let cancelled = false;
+    const mark = (): void => {
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (!cancelled && !document.title.endsWith(CONSOLE_READY_TITLE_MARK)) document.title = `${document.title}${CONSOLE_READY_TITLE_MARK}`;
+        });
+      });
+    };
+    const bodyPresent = (): boolean => !awaitCanvas || document.querySelector(CANVAS_BODY_SELECTOR) !== null;
+    if (bodyPresent()) {
+      mark();
+      return () => { cancelled = true; cancelAnimationFrame(frame); };
+    }
+    const observer = new MutationObserver(() => {
+      if (!bodyPresent()) return;
+      observer.disconnect();
+      mark();
+    });
+    observer.observe(document.body, { subtree: true, childList: true });
+    return () => { cancelled = true; observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [ready, awaitCanvas]);
+}
