@@ -15,7 +15,7 @@ import {
   closeTriageMap,
   getTriageDeckZoom,
   getTriageDeckZoomLive,
-  getTriageMapHeldArrivalIds,
+  getTriageMapHeldQueueIds,
   isTriageActive,
   isTriageMapOpen,
   isTriageOperationDeferred,
@@ -148,11 +148,12 @@ const TRIAGE_DECK_ZOOM_TWEEN_EPSILON = 0.002;
 const TRIAGE_DECK_ZOOM_WHEEL_SPEED = 0.0022;
 // 1× 바닥 아래로 더 당긴 몫 — 덱은 1×에 멈춘 채 물러나고, 누적 배율이 여기 닿으면 지도 층이 선다.
 // 지도 위에서는 반대로 확대 누적이 닫힘 임계에 닿으면 같은 덱으로 돌아온다. 휠이 잠시 멎으면
-// 당김은 제자리로 돌아가고, 층을 여닫은 직후의 관성 휠은 덱 밀도로 새지 않게 버린다.
+// 당김은 제자리로 돌아간다. 층을 여닫은 뒤의 휠은 휠이 멎을 때까지 버린다 — 고정 시간으로 끊으면
+// 트랙패드 관성 꼬리(손을 뗀 뒤 1초 가까이)가 그 뒤로 새어 닫힌 덱의 밀도를 2×까지 올린다.
 const TRIAGE_MAP_PULL_OPEN = 0.72;
 const TRIAGE_MAP_PUSH_CLOSE = 1.35;
 const TRIAGE_MAP_GESTURE_IDLE_MS = 400;
-const TRIAGE_MAP_GESTURE_LATCH_MS = 420;
+const TRIAGE_MAP_GESTURE_QUIET_MS = 180;
 
 export function useTriageDeckZoomControl(): {
   readonly zoom: number;
@@ -312,7 +313,12 @@ export function useTriageDeckZoomControl(): {
         // bare wheel과 Ctrl/Meta+wheel 모두 덱 줌 — 브라우저 페이지 줌 차단도 유지한다.
         event.preventDefault();
         const gesture = gestureRef.current;
-        if (performance.now() < gesture.latchUntil) return;
+        const now = performance.now();
+        // 층 전환 뒤의 휠 — 이벤트마다 기한을 늘려, 휠이 멎은 뒤의 첫 이벤트부터 받는다.
+        if (now < gesture.latchUntil) {
+          gesture.latchUntil = now + TRIAGE_MAP_GESTURE_QUIET_MS;
+          return;
+        }
         const factor = Math.exp(-event.deltaY * deltaScale * TRIAGE_DECK_ZOOM_WHEEL_SPEED);
         // 지도 층 위 — 축소는 더 갈 곳이 없고, 확대 누적만 층을 걷는다(같은 덱, 같은 1×로 돌아온다).
         if (isTriageMapOpen()) {
@@ -321,7 +327,7 @@ export function useTriageDeckZoomControl(): {
           scheduleGestureReset();
           if (gesture.push < TRIAGE_MAP_PUSH_CLOSE) return;
           resetGesture();
-          gesture.latchUntil = performance.now() + TRIAGE_MAP_GESTURE_LATCH_MS;
+          gesture.latchUntil = performance.now() + TRIAGE_MAP_GESTURE_QUIET_MS;
           closeTriageMap();
           return;
         }
@@ -342,7 +348,7 @@ export function useTriageDeckZoomControl(): {
           scheduleGestureReset();
           if (gesture.pull > TRIAGE_MAP_PULL_OPEN) return;
           resetGesture();
-          gesture.latchUntil = performance.now() + TRIAGE_MAP_GESTURE_LATCH_MS;
+          gesture.latchUntil = performance.now() + TRIAGE_MAP_GESTURE_QUIET_MS;
           openTriageMap();
           return;
         }
@@ -502,7 +508,9 @@ export function TriageWatchDeck({
     if (mapLayerOpen) {
       if (mapReturnRef.current) return;
       mapReturnRef.current = { focus: document.activeElement, stageId: stagedOperationId };
-      const target = sectionRef.current?.querySelector<HTMLElement>("[data-fleet-map-dot].is-next, [data-fleet-map-dot].is-staged, [data-fleet-map]");
+      // 「다음」 점이 먼저, 없으면 판이다 — 한 선택자로 묶으면 문서 순서상 조상인 판이 늘 먼저 잡힌다.
+      const section = sectionRef.current;
+      const target = section?.querySelector<HTMLElement>("[data-fleet-map-dot].is-next") ?? section?.querySelector<HTMLElement>("[data-fleet-map]");
       target?.focus({ preventScroll: true });
       return;
     }
@@ -614,6 +622,8 @@ export function TriageWatchDeck({
     }
     const frame = { left: left - origin.left, top: top - origin.top, width, height };
     cell.classList.add("is-quick-look");
+    // 엿보기는 읽기 전용이다 — 포인터만 막으면 캡션 컨트롤이 탭 순서에 남는다. 조작은 틀의 발 줄만 맡는다.
+    mount.inert = true;
     mount.style.setProperty("left", `${frame.left + QUICK_LOOK_PAD_PX}px`);
     mount.style.setProperty("top", `${frame.top + QUICK_LOOK_PAD_PX}px`);
     mount.style.setProperty("width", `${size.width}px`);
@@ -621,9 +631,21 @@ export function TriageWatchDeck({
     setQuickLookPlacement({ operationId: quickLook.operationId, frame });
     return () => {
       cell.classList.remove("is-quick-look");
+      mount.inert = false;
       for (const property of ["left", "top", "width", "height"]) mount.style.removeProperty(property);
     };
   }, [quickLook, mapLayerOpen]);
+  // 열린 엿보기는 초점을 받는다 — 판의 점 뒤로 탭 순서를 한참 돌아야 발 줄에 닿지 않게 한다.
+  const quickLookStageRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (quickLookPlacement) quickLookStageRef.current?.focus({ preventScroll: true });
+  }, [quickLookPlacement?.operationId]);
+  // 엿보기를 닫으면 초점은 그것을 연 점으로 돌아간다 — 닫힌 틀의 버튼과 함께 초점이 사라지지 않게.
+  const closeQuickLook = () => {
+    const operationId = quickLook?.operationId;
+    setQuickLook(null);
+    if (operationId) sectionRef.current?.querySelector<HTMLElement>(`[data-fleet-map-dot="${escapeAttributeValue(operationId)}"]`)?.focus({ preventScroll: true });
+  };
   // 엿보던 Operation이 판에서 내려가면(종료·최소화) Quick-Look도 걷는다.
   useEffect(() => {
     if (quickLook && !operations.some((operation) => operation.id === quickLook.operationId)) setQuickLook(null);
@@ -683,9 +705,14 @@ export function TriageWatchDeck({
     [value.unseen, "canvas.triage.unseenCount"],
     [value.setAside, "canvas.triage.setAsideCount"],
   ] as const).filter(([count]) => count > 0).map(([count, key]) => t(key, { count }));
+  // 「모두 정리됨」은 치워둔 대기까지 없을 때만 말한다 — 치워둔 건이 있으면 정리된 것이 아니다.
   const caption = [
     ...attentionParts(counts),
-    ...(counts.waiting + counts.unseen > 0 ? [] : [t("canvas.triage.deckCaption", counts)]),
+    ...(counts.waiting + counts.unseen > 0
+      ? []
+      : counts.setAside > 0
+        ? [t("canvas.triage.runningCount", { count: counts.running }), t("canvas.triage.idleCount", { count: counts.idle })]
+        : [t("canvas.triage.deckCaption", counts)]),
   ].join(" · ");
 
   // 지도의 대기열 표식 — 막대와 같은 순서다: 무대, 「다음」, 그 뒤 순번, 미룸은 맨 뒤, 치워둠은 따로.
@@ -707,9 +734,8 @@ export function TriageWatchDeck({
       }
     }
   }
-  const heldArrivalIds = mapLayerOpen
-    ? [...getTriageMapHeldArrivalIds()].filter((id) => mapMarks.has(id) && mapMarks.get(id)?.kind !== "set-aside")
-    : [];
+  // 보류 수는 Map 칩과 같은 파생값이다(대기열 순서) — 머리 버튼은 대기열에서 가장 앞선 보류 건을 올린다.
+  const heldArrivalIds = mapLayerOpen ? getTriageMapHeldQueueIds() : [];
   // 대기 점은 무대로 오른다. 그 밖의 점은 무대를 바꾸지 않고 Quick-Look으로 엿본다.
   const activateDot = (operationId: string, element: HTMLElement) => {
     const operation = operations.find((candidate) => candidate.id === operationId);
@@ -733,6 +759,14 @@ export function TriageWatchDeck({
       ref={sectionRef}
       className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""} ${mapLayerOpen ? "is-map-open" : ""}`}
       data-canvas-blocker
+      onKeyDown={(event) => {
+        // 엿보기 닫기는 초점이 지도나 엿보기 틀 안에 있을 때만의 Esc다 — 무대 터미널은 이 섹션 밖이라
+        // 거기서 누른 Esc는 여기 닿지 않고, 터미널이 그대로 받는다.
+        if (event.key !== "Escape" || !quickLook) return;
+        if (!(event.target instanceof Element) || !event.target.closest("[data-fleet-map], .canvas-triage-quick-look")) return;
+        event.preventDefault();
+        closeQuickLook();
+      }}
     >
       <div className="canvas-triage-deck-caption">{caption}</div>
       {mapLayerOpen ? (
@@ -780,18 +814,13 @@ export function TriageWatchDeck({
         >
           <div className="canvas-triage-quick-look-foot">
             <span className="canvas-triage-quick-look-note">{t("canvas.fleetMap.quickLookNote")}</span>
-            <button type="button" className="canvas-fleet-map-action" onClick={() => {
+            <button type="button" className="canvas-fleet-map-action" ref={quickLookStageRef} onClick={() => {
               const operationId = quickLookOperation.id;
               setQuickLook(null);
               revealOperationStage();
               pickTriageOperation(operationId);
             }}>{t("canvas.fleetMap.quickLookStage")}</button>
-            <button type="button" className="canvas-fleet-map-action" onClick={() => {
-              // 닫힌 틀의 버튼과 함께 초점이 사라지지 않게, 엿보기를 연 점으로 돌려준다.
-              const operationId = quickLookOperation.id;
-              setQuickLook(null);
-              sectionRef.current?.querySelector<HTMLElement>(`[data-fleet-map-dot="${escapeAttributeValue(operationId)}"]`)?.focus({ preventScroll: true });
-            }}>{t("canvas.fleetMap.quickLookClose")}</button>
+            <button type="button" className="canvas-fleet-map-action" onClick={closeQuickLook}>{t("canvas.fleetMap.quickLookClose")}</button>
           </div>
         </div>
       ) : null}

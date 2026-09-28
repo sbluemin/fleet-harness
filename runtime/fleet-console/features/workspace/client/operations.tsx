@@ -9,7 +9,7 @@ import type { ClientApiCapability, ClientExecutionProvider, OperationKindDescrip
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../../../core/client/src/integration/active-operation-surface.js";
-import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../../../core/client/src/integration/shortcuts.js";
+import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts, WAR_ROOM_RESERVED_SHORTCUT_CODES } from "../../../core/client/src/integration/shortcuts.js";
 import { archiveOperationFromUi, isArchivingOperation, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace, type ArchiveOutcome } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
@@ -323,7 +323,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         ? availableCompanionPanels(activeKind?.companions ?? [], activeOperation)
         : [];
       const companion = activeOperation
-        ? usableCompanionShortcuts(activeCompanions).find((candidate) => candidate.shortcut !== undefined
+        ? usableCompanionShortcuts(activeCompanions, isTriageActive() ? WAR_ROOM_RESERVED_SHORTCUT_CODES : []).find((candidate) => candidate.shortcut !== undefined
           && resolveShortcutChords(companionShortcutCommandId(activeOperation.pluginId, candidate.id), [companionDefaultChord(candidate.shortcut.code)])
             .some((chord) => matchesChord(event, chord)))
         : undefined;

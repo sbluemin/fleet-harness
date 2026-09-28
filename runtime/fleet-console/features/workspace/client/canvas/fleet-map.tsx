@@ -12,6 +12,18 @@ import { resolveTriageCounts } from "./triage-store.js";
 
 /** 포인터가 점을 스쳐 지나가는 것과 겨누는 것을 가르는 시간 — 사이드바 상세 카드와 같은 값이다. */
 const DETAIL_HOVER_DELAY_MS = 400;
+// 이름표의 폭 — CSS 상한(180px)과 같은 값, 점과 이름표 사이, 같은 줄로 보는 세로 간격, 표식 한 글자가 남는 하한.
+const LABEL_MAX_PX = 180;
+const LABEL_GAP_PX = 6;
+const LABEL_ROW_PX = 14;
+const LABEL_MIN_PX = 28;
+
+interface FleetMapLabelPlacement {
+  /** 이름표를 점 왼쪽으로 펴는가. */
+  readonly start: boolean;
+  /** 이웃 점 앞에서 멈추는 폭 — 넘치면 말줄임이다. */
+  readonly max: number;
+}
 
 interface OpenDetail {
   readonly operationId: string;
@@ -101,19 +113,36 @@ export function FleetMap({
     return () => observer.disconnect();
   }, []);
   const aspect = plate ? Math.max(0.2, plate.width / Math.max(1, plate.height)) : 1.8;
-  // 판 오른쪽 끝의 점은 이름표를 왼쪽으로 편다 — 오른쪽으로 뻗으면 판 밖으로 잘린다. 판정은 점의 자리와
-  // 이름표 폭으로만 내려, 뒤집은 뒤에도 같은 답이 나온다(깜빡이지 않는다).
-  const [labelsToStart, setLabelsToStart] = useState<ReadonlySet<string>>(() => new Set());
+  // 이름표의 자리 — 판 오른쪽 끝의 점은 이름표를 왼쪽으로 펴고(오른쪽으로 뻗으면 판 밖으로 잘린다), 같은
+  // 줄의 이웃 점 앞에서 말줄임으로 멈춘다. 마주 보는 두 이름표는 사이를 반씩 나눈다. 판정은 점의 자리와
+  // 이름표의 본래 폭으로만 내려, 적용한 뒤에도 같은 답이 나온다(깜빡이지 않는다).
+  const [labelLayout, setLabelLayout] = useState<ReadonlyMap<string, FleetMapLabelPlacement>>(() => new Map());
   useLayoutEffect(() => {
     const element = plateRef.current;
     if (!element) return;
-    const right = element.getBoundingClientRect().right - 4;
-    const next = new Set<string>();
-    for (const label of element.querySelectorAll<HTMLElement>(".canvas-fleet-map-dot-label")) {
-      const dot = label.closest<HTMLElement>("[data-fleet-map-dot]");
-      if (dot && dot.getBoundingClientRect().right + 6 + label.offsetWidth > right) next.add(dot.dataset.fleetMapDot ?? "");
+    const bounds = element.getBoundingClientRect();
+    const dots = Array.from(element.querySelectorAll<HTMLElement>("[data-fleet-map-dot]"), (dot) => {
+      const rect = dot.getBoundingClientRect();
+      const label = dot.querySelector<HTMLElement>(".canvas-fleet-map-dot-label");
+      return { id: dot.dataset.fleetMapDot ?? "", left: rect.left, right: rect.right, center: rect.top + rect.height / 2, natural: label ? Math.min(LABEL_MAX_PX, label.scrollWidth) : 0, start: false };
+    });
+    for (const dot of dots) if (dot.natural > 0) dot.start = dot.right + LABEL_GAP_PX + dot.natural > bounds.right - 4;
+    const next = new Map<string, FleetMapLabelPlacement>();
+    for (const dot of dots) {
+      if (dot.natural === 0) continue;
+      let room = dot.start ? dot.left - LABEL_GAP_PX - (bounds.left + 4) : bounds.right - 4 - (dot.right + LABEL_GAP_PX);
+      for (const other of dots) {
+        if (other === dot || Math.abs(other.center - dot.center) > LABEL_ROW_PX) continue;
+        const facing = other.natural > 0 && other.start !== dot.start;
+        if (!dot.start && other.left > dot.right) room = Math.min(room, facing ? (other.left - dot.right) / 2 - LABEL_GAP_PX : other.left - dot.right - LABEL_GAP_PX - 4);
+        if (dot.start && other.right < dot.left) room = Math.min(room, facing ? (dot.left - other.right) / 2 - LABEL_GAP_PX : dot.left - other.right - LABEL_GAP_PX - 4);
+      }
+      next.set(dot.id, { start: dot.start, max: Math.max(LABEL_MIN_PX, Math.floor(Math.min(dot.natural, room))) });
     }
-    setLabelsToStart((current) => current.size === next.size && [...next].every((id) => current.has(id)) ? current : next);
+    setLabelLayout((current) => current.size === next.size && [...next].every(([id, placement]) => {
+      const previous = current.get(id);
+      return previous !== undefined && previous.start === placement.start && Math.abs(previous.max - placement.max) <= 2;
+    }) ? current : next);
   });
   const plateKeepOut: FleetMapKeepOut | null = plate && plate.width > keepOut.width && plate.height > keepOut.height
     ? { left: ((plate.width - keepOut.width) / plate.width) * 100, top: ((plate.height - keepOut.height) / plate.height) * 100 }
@@ -338,7 +367,7 @@ export function FleetMap({
       <button
         key={marker.operationId}
         type="button"
-        className={`canvas-fleet-map-dot is-${visual}${markClass}${mark ? " is-marked" : ""}${peekOperationId === operation.id ? " is-peeked" : ""}${labelsToStart.has(operation.id) ? " is-label-start" : ""}`}
+        className={`canvas-fleet-map-dot is-${visual}${markClass}${mark ? " is-marked" : ""}${peekOperationId === operation.id ? " is-peeked" : ""}${labelLayout.get(operation.id)?.start ? " is-label-start" : ""}`}
         data-fleet-map-dot={marker.operationId}
         // 점은 캔버스 제스처의 대상이 아니다 — 여기서 시작한 포인터는 팬·생성으로 흐르지 않는다.
         data-canvas-blocker
@@ -363,7 +392,7 @@ export function FleetMap({
         }}
       >
         {mark ? (
-          <span className="canvas-fleet-map-dot-label">
+          <span className="canvas-fleet-map-dot-label" style={labelLayout.has(operation.id) ? { maxWidth: `${labelLayout.get(operation.id)!.max}px` } : undefined}>
             <b className="canvas-fleet-map-dot-mark">{markLabel(mark)}</b>{operation.title}
           </span>
         ) : null}

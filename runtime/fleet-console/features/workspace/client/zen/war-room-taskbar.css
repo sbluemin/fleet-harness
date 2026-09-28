@@ -86,11 +86,11 @@
 .war-room-tool svg { width: 13px; height: 13px; flex: none; }
 .war-room-tool.is-off { color: var(--text-tertiary); }
 .war-room-tool.is-off svg { opacity: 0.5; }
-/* 지도 층이 열린 동안의 Map 칩 — 지금 서 있는 판이라 위치 채널(brass)로 눌림을 말한다. 큰 덱에서는
-   층을 저절로 열지 않고 칩만 같은 채널의 테두리로 밝혀 갈 곳을 가리킨다. 보류된 새 대기의 수는 대기
-   신호(aurora)가 진다. */
+/* 지도 층이 열린 동안의 함대 지도 칩 — 지금 서 있는 판이라 위치 채널(brass)로 눌림을 말한다. 큰 덱에서는
+   층을 저절로 열지 않고 칩만 밝히는데, 그 제안은 위치도 상태도 아니라 중립 테두리와 1티어 글자로 말한다.
+   보류된 새 대기의 수는 대기 신호(aurora)가 진다. */
 .war-room-tool[data-war-room-tool="map"][aria-pressed="true"] { background: var(--control-tint-fill); color: var(--control-tint-ink); }
-.war-room-tool.is-suggested { box-shadow: inset 0 0 0 1px var(--control-open-rim); color: var(--text-primary); }
+.war-room-tool.is-suggested { box-shadow: inset 0 0 0 1px var(--hairline-strong); color: var(--text-primary); }
 .war-room-tool-count {
   min-width: 16px;
   padding: 0 4px;

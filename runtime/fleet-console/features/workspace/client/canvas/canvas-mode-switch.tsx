@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { animateViewportTo, fitAllOperations, releaseAlignAll, setAlignAllLayout, setStationKeeping, toggleAlignAll, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "./canvas-store.js";
-import { enterTriage, focusedTriageOperationId, getTriageMapHeldArrivalIds, setTriageActive, setTriageSpotlightEnabled, toggleTriageMap, useTriageActive, useTriageDeckOverflowing, useTriageDeckZoomLive, useTriageMapOpen, useTriageSpotlightEnabled } from "./triage-store.js";
+import { enterTriage, focusedTriageOperationId, getTriageMapHeldQueueIds, setTriageActive, setTriageSpotlightEnabled, toggleTriageMap, useTriageActive, useTriageDeckOverflowing, useTriageDeckZoomLive, useTriageMapOpen, useTriageSpotlightEnabled } from "./triage-store.js";
 import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { cycleTriageDeckZoomPreset } from "./triage-watch-deck.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
@@ -262,7 +262,7 @@ export function WarRoomModeTools({ compact = false }: { readonly compact?: boole
   const mapOpen = useTriageMapOpen();
   // 덱이 한 화면을 넘으면 칩만 밝힌다 — 지도는 사람이 열 때만 선다.
   const suggested = useTriageDeckOverflowing() && !mapOpen;
-  const held = mapOpen ? getTriageMapHeldArrivalIds().size : 0;
+  const held = mapOpen ? getTriageMapHeldQueueIds().length : 0;
   const mapShortcut = shortcutCommandLabel("operations.toggle-war-room-map");
   const mapTitle = [
     t(mapOpen ? "canvas.triage.mapChipClose" : suggested ? "canvas.triage.mapChipSuggest" : "canvas.triage.mapChipOpen"),
@@ -283,7 +283,12 @@ export function WarRoomModeTools({ compact = false }: { readonly compact?: boole
     </button>
     <button type="button" className={`war-room-tool${suggested ? " is-suggested" : ""}`}
       data-war-room-tool="map" aria-pressed={mapOpen} aria-keyshortcuts={mapShortcut || undefined}
-      aria-label={mapTitle} title={mapTitle} onClick={toggleTriageMap}>
+      aria-label={mapTitle} title={mapTitle}
+      // 포인터로 누른 칩은 초점도 활성 Operation도 가져가지 않는다 — 무대의 터미널에 남아 있어야 층을
+      // 닫을 때 그 자리로 돌아간다. 크롬 누름의 활성 해제 가드는 이 표식을 보고 무대를 놓지 않는다.
+      data-keep-operation-active=""
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={toggleTriageMap}>
       <FleetMapIcon />{!compact ? <span>{t("canvas.triage.mapChip")}</span> : null}
       {held > 0 ? <span className="war-room-tool-count">{held}</span> : null}
     </button>

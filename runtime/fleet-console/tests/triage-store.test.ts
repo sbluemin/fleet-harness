@@ -83,7 +83,7 @@ import {
   subscribeTriage,
   visitTriageTheater,
   closeTriageMap,
-  getTriageMapHeldArrivalIds,
+  getTriageMapHeldQueueIds,
   getTriageMapHeldStageId,
   isTriageMapOpen,
   openTriageMap,
@@ -408,17 +408,22 @@ describe("triage store", () => {
     publishTriageStage("staged");
     openTriageMap();
     const after: Readonly<Record<string, OperationRuntimeState>> = { ...before, arriving: { lifecycle: "live", activity: "awaiting" } };
+    setConsoleState({ operationRuntime: after });
     recordTriageActivity(operations, after, 2_000);
     // 새 대기가 대기열 앞줄에 서도 층이 열린 동안 무대는 연 순간의 것이고, 새 대기는 보류로 모인다.
     expect(resolveTriageQueue(operations, after, 2_000)[0]?.operation.id).toBe("arriving");
     expect(getTriageMapHeldStageId()).toBe("staged");
-    expect([...getTriageMapHeldArrivalIds()]).toEqual(["arriving"]);
+    expect(getTriageMapHeldQueueIds()).toEqual(["arriving"]);
 
     // 닫으면 같은 무대와 치워둠으로 돌아온다 — 앞줄에 든 새 대기가 닫는 순간 무대를 가로채지 않는다.
     closeTriageMap();
     expect(isTriageMapOpen()).toBe(false);
     expect(resolveTriageQueue(operations, after, 2_000)[0]?.operation.id).toBe("staged");
     expect(isTriageOperationDismissed("aside")).toBe(true);
+    // 그 복귀는 지목이 아니다 — 미루면 보통의 순서로 돌아가, 미룬 무대가 다시 앞줄을 차지하지 않는다.
+    expect(getTriagePick()).toBeNull();
+    deferTriageOperation("staged", 2_100);
+    expect(resolveTriageQueue(operations, after, 2_100).map((entry) => entry.operation.id)).toEqual(["arriving", "staged"]);
 
     // 층은 진입에 붙는 상태다 — War Room을 끄면 함께 걷힌다.
     openTriageMap();

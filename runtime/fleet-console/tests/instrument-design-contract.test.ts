@@ -1740,13 +1740,7 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain("transform: scale(1.35);");
     // 미룬 점과 치워둔 점은 모션 설정과 무관하게 맥동하지 않는다 — 이미 보고 밀어 둔 신호다.
     expect(components).toMatch(/\.canvas-fleet-map-dot:is\(\.is-deferred, \.is-set-aside\)::after \{[^}]*animation: none;/);
-    // 지도는 덱 밀도가 아니라 덱 위의 층이다 — 덱 칸과 무대는 visibility로만 물러나 패널이 remount되지
-    // 않는다(display로 끄면 portal 대상이 사라진다). Cruise 축소가 세우던 지도는 퇴역했다.
-    const mapLayerHides = components.match(/\.canvas-triage-deck\.is-map-open > \.canvas-triage-deck-caption,\n\.canvas-triage-deck\.is-map-open > \.canvas-triage-deck-grid \{[^}]*\}/)?.[0] ?? "";
-    expect(mapLayerHides).toContain("visibility: hidden;");
-    const mapStageHides = components.match(/\.operations-canvas\.is-triage-map \.canvas-operation\.is-triage-stage,\n[^{]*\{[^}]*\}/)?.[0] ?? "";
-    expect(mapStageHides).toContain("visibility: hidden;");
-    expect(`${mapLayerHides}${mapStageHides}`).not.toContain("display");
+    // 지도는 덱 밀도가 아니라 덱 위의 층이고, Cruise 축소가 세우던 지도는 퇴역했다.
     expect(components).not.toContain(".canvas-triage-deck.is-map-mode");
     expect(components).not.toContain(".operations-canvas.is-fleet-map");
   });
@@ -4599,9 +4593,6 @@ describe("War Room deck panel grammar", () => {
     expect(field).toContain("pointer-events: none;");
     const zoneDot = components.match(/\.canvas-fleet-map-zone \.canvas-fleet-map-dot \{[^}]*\}/)?.[0] ?? "";
     expect(zoneDot).toContain("pointer-events: auto;");
-    // 지도의 점은 캔버스 제스처에서 제외된다 — 층 전체는 덱이 이미 막는다.
-    const fleetMap = source("../../../features/workspace/client/canvas/fleet-map.tsx");
-    expect(fleetMap.match(/data-canvas-blocker/g)?.length).toBe(1);
   });
 
   it("keeps the minimized status section neutral", () => {

@@ -73,6 +73,8 @@ let stagedOperationId: string | null = null;
 
 // 무대 판정은 캔버스 한 곳이 소유한다. 막대는 포커스 보호·600ms 유예를 재계산하지 않고 그 결과를 읽는다.
 export function publishTriageStage(operationId: string | null): void {
+  // 복귀 무대 표식은 그 무대가 서 있는 동안만 산다 — 무대가 다른 건으로 바뀌면 보통의 순서로 돌아간다.
+  if (triageReturnStageId !== null && operationId !== triageReturnStageId) triageReturnStageId = null;
   if (stagedOperationId === operationId) return;
   stagedOperationId = operationId;
   emitTriage();
@@ -86,6 +88,10 @@ export function useTriageStage(): string | null {
 let triageMapOpen = false;
 let triageMapHeldStageId: string | null = null;
 const triageMapHeldArrivals = new Set<string>();
+// 층을 닫을 때 돌아갈 무대 — 지목(pick)이 아니다. 지목은 미룸 뒤에도 남고 스포트라이트 OFF에서도 저절로
+// 서지만, 이 표식은 그 무대가 서 있는 동안만 대기열 앞을 지키고 무대가 떠나거나 사람이 미루기·치우기·
+// 지목하면 지워진다.
+let triageReturnStageId: string | null = null;
 // 덱이 한 화면을 넘는가 — 지도를 저절로 열지 않고 Map 칩만 밝힌다. 덱이 재서 알린다.
 let triageDeckOverflowing = false;
 
@@ -102,8 +108,13 @@ export function getTriageMapHeldStageId(): string | null {
   return triageMapOpen ? triageMapHeldStageId : null;
 }
 
-export function getTriageMapHeldArrivalIds(): ReadonlySet<string> {
-  return triageMapHeldArrivals;
+/** 층이 열린 동안 보류된 새 대기 — 대기열 순서로, 대기열에 아직 선 것만. Map 칩과 판 머리가 같은 값을 읽는다. */
+export function getTriageMapHeldQueueIds(): readonly string[] {
+  if (!isTriageMapOpen() || triageMapHeldArrivals.size === 0) return [];
+  const { operations, operationRuntime } = getState();
+  return resolveTriageQueue(operations, operationRuntime)
+    .map((entry) => entry.operation.id)
+    .filter((operationId) => triageMapHeldArrivals.has(operationId));
 }
 
 export function openTriageMap(): void {
@@ -111,6 +122,7 @@ export function openTriageMap(): void {
   clearTriageSetAsideArm();
   triageMapOpen = true;
   triageMapHeldStageId = stagedOperationId;
+  triageReturnStageId = null;
   triageMapHeldArrivals.clear();
   emitTriage();
 }
@@ -122,13 +134,13 @@ export function closeTriageMap(): void {
   triageMapHeldStageId = null;
   triageMapHeldArrivals.clear();
   // 연 순간의 무대가 아직 대기면 그 무대로 돌아간다 — 층이 열린 동안 앞줄에 든 새 대기가 닫는
-  // 순간 무대를 가로채지 않게 지목으로 고정한다. 무대가 없었으면 보통의 체류 뒤 등단이 이어받는다.
+  // 순간 무대를 가로채지 않게 복귀 무대로 표시한다. 무대가 없었으면 보통의 체류 뒤 등단이 이어받는다.
   if (heldStageId !== null
     && pickedOperationId === null
     && waitingByOperation.get(heldStageId) === true
     && !dismissed.has(heldStageId)
     && !deferredAt.has(heldStageId)) {
-    pickedOperationId = heldStageId;
+    triageReturnStageId = heldStageId;
   }
   emitTriage();
 }
@@ -354,6 +366,7 @@ export function setTriageActive(active: boolean, animate = true): void {
   triageMapOpen = false;
   triageMapHeldStageId = null;
   triageMapHeldArrivals.clear();
+  triageReturnStageId = null;
   triageDeckOverflowing = false;
   rememberWarRoomActive(false);
   pickedOperationId = null;
@@ -516,6 +529,7 @@ export function recordTriageStageTheater(theaterId: string): void {
 
 export function pickTriageOperation(operationId: string): void {
   clearTriageSetAsideArm();
+  triageReturnStageId = null;
   // 지목은 그 Operation을 무대에서 보겠다는 뜻이다 — 지도 층은 걷히고 지목한 무대가 선다.
   if (triageMapOpen) {
     triageMapOpen = false;
@@ -581,6 +595,7 @@ export function releaseInactiveActiveAwaitingClaim(): void {
 
 export function markTriageCleared(operationId: string): void {
   clearTriageSetAsideArm();
+  if (triageReturnStageId === operationId) triageReturnStageId = null;
   deferredAt.delete(operationId);
   lastClearedAt.set(operationId, Date.now());
   if (pickedOperationId === operationId) pickedOperationId = null;
@@ -590,6 +605,7 @@ export function markTriageCleared(operationId: string): void {
 
 export function dismissTriageOperation(operationId: string): void {
   clearTriageSetAsideArm();
+  if (triageReturnStageId === operationId) triageReturnStageId = null;
   deferredAt.delete(operationId);
   dismissed.add(operationId);
   clearIdleArrival(operationId);
@@ -618,6 +634,7 @@ export function forgetTriageOperation(operationId: string): void {
   if (setAsideArmed?.operationId === operationId) clearTriageSetAsideArm();
   triageMapHeldArrivals.delete(operationId);
   if (triageMapHeldStageId === operationId) triageMapHeldStageId = null;
+  if (triageReturnStageId === operationId) triageReturnStageId = null;
   dismissed.delete(operationId);
   lastClearedAt.delete(operationId);
   deferredAt.delete(operationId);
@@ -668,6 +685,7 @@ export function getTriageSetAsideArmedId(): string | null {
 
 export function deferTriageOperation(operationId: string, now = Date.now()): void {
   clearTriageSetAsideArm();
+  if (triageReturnStageId === operationId) triageReturnStageId = null;
   let latestDeferredAt = 0;
   for (const timestamp of deferredAt.values()) {
     latestDeferredAt = Math.max(latestDeferredAt, timestamp);
@@ -807,7 +825,7 @@ export function reconcileTriageStageCompanion(
   return next;
 }
 
-// 전역 큐다 — Theater 필터가 없다. 우선순위(지목=0/복귀=1/awaiting=2/결정 요청=3/도착=4)·미룸 뒤로·
+// 전역 큐다 — Theater 필터가 없다. 우선순위(지목·지도 층을 닫을 때 돌아갈 무대=0/복귀=1/awaiting=2/결정 요청=3/도착=4)·미룸 뒤로·
 // seenAt→createdAt→id 타이브레이크는 기존 per-Theater 큐와 같은 규칙을 전 Theater에 걸쳐 적용한다.
 export function resolveTriageQueue(
   operations: readonly OperationNode[],
@@ -846,7 +864,7 @@ export function resolveTriageQueue(
       picked,
       deferredAt: deferredAt.get(operation.id) ?? null,
       seenAt: seenAt.get(operation.id) ?? now,
-      priority: picked ? 0 : returned ? 1 : activity === "awaiting" ? 2 : decisionRoots.has(operation.id) ? 3 : 4,
+      priority: picked || operation.id === triageReturnStageId ? 0 : returned ? 1 : activity === "awaiting" ? 2 : decisionRoots.has(operation.id) ? 3 : 4,
     });
   }
 
@@ -889,6 +907,7 @@ function clearTheaterTransientOperations(theaterId: string): void {
     if (ownerTheaterId !== theaterId) continue;
     triageMapHeldArrivals.delete(operationId);
     if (triageMapHeldStageId === operationId) triageMapHeldStageId = null;
+    if (triageReturnStageId === operationId) triageReturnStageId = null;
     dismissed.delete(operationId);
     lastClearedAt.delete(operationId);
     deferredAt.delete(operationId);
