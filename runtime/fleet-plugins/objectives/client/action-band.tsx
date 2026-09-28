@@ -33,7 +33,7 @@ type T = Translate<ObjectiveMessageKey>;
  * 달성 기준 제안이 남아 있으면 개시·스티어링은 잠긴 띠로 서고(서버가 criteria_pending 으로 거부한다), 그 아래 「다시 구상」만 열린다.
  */
 
-type IntentKey = "plan" | "replan" | "start" | "resume" | "steer" | "steerIdle" | "complete" | "handOff" | "decide" | "decideMember" | "stop";
+type IntentKey = "plan" | "replan" | "start" | "resume" | "steer" | "steerIdle" | "complete" | "handOff" | "decide" | "decideMember" | "stop" | "message";
 
 interface Intent {
   readonly word: string;
@@ -53,6 +53,15 @@ export interface MemberAwaiting {
   readonly mission: number | null;
 }
 
+/** 메시지를 받을 수 있는 세션 — 지휘관과 세션이 있는 구성원. state 는 그 세션의 활동(idle·running·background·awaiting·ended). */
+export interface MessageRecipient {
+  /** 지휘관은 목표 id, 구성원은 구성원 id(곧 그 Operation id). */
+  readonly id: string;
+  readonly role: string;
+  readonly mark: ReactNode;
+  readonly state: string;
+}
+
 export interface ActionBandProps {
   readonly objective: Objective;
   readonly t: T;
@@ -67,6 +76,10 @@ export interface ActionBandProps {
   /** 지휘관 상태 낱말(유휴·끝남 …) — 「개시」 부제에 쓴다. */
   readonly commanderState: string;
   readonly commanderExists: boolean;
+  /** 「메시지」의 받는 이 — 첫 칸이 지휘관이다. 비어 있으면 「메시지」를 두지 않는다. */
+  readonly recipients: readonly MessageRecipient[];
+  /** 받는 이 상태 낱말 — 명단 줄과 같은 말(쉬는 중·작업 중·허용 대기·휴면). */
+  readonly stateWord: (state: string) => string;
   /** 실패하면 코드를 message 로 던진다. */
   readonly request: (path: string, body: Record<string, unknown>) => Promise<unknown>;
   readonly onFocusOperation: (operationId: string) => void;
@@ -81,6 +94,8 @@ const StopGlyph = () => <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden
 const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
 /** 위아래에서 가운데로 모이는 화살표 — 컨텍스트 압축(/compact). */
 const CompactGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 1.75v4M5.75 3.75 8 6l2.25-2.25M8 14.25v-4M5.75 12.25 8 10l2.25 2.25M3 8h10" /></svg>;
+/** 말풍선 — 받는 이에게 한 마디. */
+const MessageGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H7.5l-3 2.5V11H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z" /></svg>;
 const CheckGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>;
 const DecideDot = () => <i className="objectives-start-dot" aria-hidden="true" />;
 /** 카드 이동(objectives-panel.tsx의 GoGlyph)과 같은 path — 크기는 CSS가 정한다. */
@@ -91,6 +106,15 @@ const COUNT_FROM = 1800;
 const COMPACT_ARM_MS = 4000;
 const COMPACT_DONE_MS = 1600;
 const COMPACT_RESULT_MS = 5000;
+/** 보낸 메시지의 흔적 — 띠 부제에 이만큼 선다. */
+const SENT_NOTE_MS = 5000;
+/** 받는 이 상태 → 보내면 어떻게 닿는지. 큐잉·깨움·거절은 호스트 전달 경로가 정하고, 이 낱말은 그 사실을 옮긴다. */
+const HOW_KEYS: Readonly<Record<string, ObjectiveMessageKey>> = {
+  running: "objectives.band.message.how.working",
+  background: "objectives.band.message.how.working",
+  ended: "objectives.band.message.how.dormant",
+  awaiting: "objectives.band.message.how.awaiting",
+};
 interface CompactResult { readonly requested: number; readonly woken: number; readonly rejected: number; readonly excluded: number }
 /**
  * 초안 — 접어도, 다른 목표를 보다 와도, 레일↔확대로 자리를 옮겨도 남는다(목표 id 별, 이 탭의 메모리). 보내면 비운다.
@@ -129,6 +153,17 @@ const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   not_awaiting_handoff: "objectives.band.reason.notAwaitingHandoff",
 };
 
+/** 메시지의 거절은 지휘관이 아니라 받는 이의 사정이다. */
+const MESSAGE_REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
+  session_awaiting_input: "objectives.band.reason.recipientAwaiting",
+  unknown_member: "objectives.band.reason.recipientGone",
+  unknown_operation: "objectives.band.reason.recipientGone",
+  session_not_found: "objectives.band.reason.recipientGone",
+  // 세션 좌표가 남지 않은 휴면 세션 — 이어 붙일 세션이 없어 깨울 수 없다.
+  capability_unavailable: "objectives.band.reason.recipientUnreachable",
+  resume_unavailable: "objectives.band.reason.recipientUnreachable",
+};
+
 /** 지금 상태의 주행동과, 펼치면 함께 고르는 것. 제안이 남아 잠긴 개시·스티어링은 gated 가 말한다(주행동은 「다시 구상」). */
 function choose(props: ActionBandProps): { readonly primary: IntentKey | null; readonly alts: readonly IntentKey[]; readonly gated?: true } {
   const { objective, working, commanderAwaiting, memberAwaiting } = props;
@@ -149,12 +184,16 @@ function choose(props: ActionBandProps): { readonly primary: IntentKey | null; r
 }
 
 export function ActionBand(props: ActionBandProps) {
-  const { objective, t, request } = props;
-  const { primary, alts, gated } = choose(props);
+  const { objective, t, request, recipients } = props;
+  const { primary, alts: stateAlts, gated } = choose(props);
   // 후속 후보(A안) — 검토 대기 + 후보 1건 이상 + edited 아님이 `complete` 와 겹치면 띠는 바로 완료하지 않고 위로 펼쳐 고른다.
   // 후보가 없으면 기존 완료 띠 그대로다. 선택은 완료를 누르기 전까지 로컬 초안이다.
   const followupCandidates = openFollowups(objective);
   const followupAvailable = primary === "complete" && !gated && isFollowupSelectable(objective) && followupCandidates.length > 0;
+  // 「메시지」 — 깨어난 지휘관이 있으면 어느 상태에서든 펼친 칸에서 고른다. 결정 대기(띠 자체가 이동)·후속 후보·잠긴 띠는 제 할 일이 먼저다.
+  const messageable = !!primary && objective.commander.started && props.commanderExists && recipients.length > 0
+    && primary !== "decide" && primary !== "decideMember" && !gated && !followupAvailable;
+  const alts: readonly IntentKey[] = messageable ? [...stateAlts, "message"] : stateAlts;
   const followupSelection = useFollowupSelection(objective.id);
   const followupOpen = useFollowupOpen(objective.id);
   const [followupOpenId, setFollowupOpenId] = useState<string | null>(null);
@@ -175,6 +214,15 @@ export function ActionBand(props: ActionBandProps) {
   const [pending, setPending] = useState<IntentKey | null>(null);
   const sending = pending !== null;
   const [error, setError] = useState<string | null>(null);
+  // 받는 이 — 목표를 옮기거나 그 세션이 사라지면 지휘관으로 돌아간다.
+  const [recipientId, setRecipientId] = useState(objective.id);
+  useEffect(() => { setRecipientId(objective.id); }, [objective.id]);
+  const recipient = recipients.find((candidate) => candidate.id === recipientId) ?? recipients[0] ?? null;
+  const recipientBlocked = recipient?.state === "awaiting";
+  const [sentNote, setSentNote] = useState<{ readonly role: string; readonly notified: boolean | null } | null>(null);
+  const sentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(sentTimer.current), []);
+  useEffect(() => { clearTimeout(sentTimer.current); setSentNote(null); }, [objective.id]);
   const bandRef = useRef<HTMLButtonElement | null>(null);
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
   const compRef = useRef<HTMLDivElement | null>(null);
@@ -221,6 +269,17 @@ export function ActionBand(props: ActionBandProps) {
       run: async () => { if (props.memberAwaiting) props.onFocusOperation(props.memberAwaiting.operationId); },
     },
     stop: { word: t("objectives.stop"), desc: objective.planning && props.busy ? t("objectives.band.stopPlanning") : t("objectives.stopHint"), talk: false, tone: "stop", glyph: <StopGlyph />, run: () => request("/commander/stop", { objectiveId }) },
+    message: {
+      word: t("objectives.message"), desc: t("objectives.band.message.desc"), talk: true, glyph: <MessageGlyph />,
+      placeholder: t("objectives.band.message.ph", { role: recipient?.role ?? "" }),
+      run: async (text) => {
+        if (!recipient) return;
+        const result = await request("/commander/message", { objectiveId, memberId: recipient.id === objectiveId ? null : recipient.id, text }) as { notified?: boolean | null } | undefined;
+        clearTimeout(sentTimer.current);
+        setSentNote({ role: recipient.role, notified: result?.notified ?? null });
+        sentTimer.current = setTimeout(() => setSentNote(null), SENT_NOTE_MS);
+      },
+    },
   };
 
   // 펼친 사이 상태가 바뀌어 고른 할 일이 사라지면 — 주행동이 말 거는 행동이면 그리로 옮기고, 아니면 접는다(초안은 남는다).
@@ -263,6 +322,8 @@ export function ActionBand(props: ActionBandProps) {
   const run = async (key: IntentKey) => {
     const chosen = intents[key];
     if (sending || unavailable(key)) return;
+    // 메시지는 말이 곧 내용이다 — 빈 칸은 보내지 않고 칸으로 돌아간다. 허용 대기 중인 받는 이는 호스트가 거절하므로 잠근다.
+    if (key === "message" && (!draft.trim() || !recipient || recipientBlocked)) { fieldRef.current?.focus(); return; }
     setPending(key);
     setError(null);
     try {
@@ -272,7 +333,8 @@ export function ActionBand(props: ActionBandProps) {
       requestAnimationFrame(() => bandRef.current?.focus());
     } catch (failure) {
       const code = failure instanceof Error ? failure.message : "unknown";
-      const reason = REASONS[code] ? t(REASONS[code]!) : t("objectives.band.reason.other", { code });
+      const reasonKey = key === "message" ? MESSAGE_REASONS[code] ?? REASONS[code] : REASONS[code];
+      const reason = reasonKey ? t(reasonKey) : t("objectives.band.reason.other", { code });
       setError(t(chosen.talk ? "objectives.band.failed" : "objectives.band.failedAction", { reason }));
     } finally {
       setPending(null);
@@ -330,6 +392,18 @@ export function ActionBand(props: ActionBandProps) {
     const next = choices[(choices.indexOf(key) + mission + choices.length) % choices.length]!;
     pick(next, "radio");
   };
+  const onRecipientKey = (event: ReactKeyboardEvent<HTMLButtonElement>, id: string) => {
+    const step = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const index = recipients.findIndex((candidate) => candidate.id === id);
+    const next = recipients[(index + step + recipients.length) % recipients.length]!;
+    setRecipientId(next.id);
+    setError(null);
+    requestAnimationFrame(() => compRef.current?.querySelector<HTMLElement>(`[data-recipient="${next.id}"]`)?.focus());
+  };
+  /** 받는 이 상태로 본 도착 방식 — 구성원이면 지휘관에게도 알린다는 말이 붙는다. */
+  const messageHow = (target: MessageRecipient): string => `${t(HOW_KEYS[target.state] ?? "objectives.band.message.how.idle")}${target.id !== objectiveId && target.state !== "awaiting" ? t("objectives.band.message.alsoCommander") : ""}`;
   const onCompKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     // Esc 는 칸만 접는다 — 상세를 닫는 창 처리기로 올라가지 않게 막는다. 두 번째 Esc 가 상세를 닫는다.
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); fold(true); }
@@ -401,6 +475,11 @@ export function ActionBand(props: ActionBandProps) {
       </button>
     );
   };
+  /** 방금 보낸 메시지의 흔적 — 접힌 띠 부제에 잠시 선다. 구성원에게 보냈으면 지휘관 통지가 닿았는지도 함께 말한다. */
+  const sentLine: ReactNode = sentNote ? (
+    <span className="objectives-compact-note" role="status"><b>{t("objectives.message.sent", { role: sentNote.role })}</b>{sentNote.notified === true ? t("objectives.message.notified") : sentNote.notified === false ? t("objectives.message.notNotified") : null}</span>
+  ) : null;
+  const bandNote: ReactNode = compactNote ?? sentLine;
   /** 보내는 동안의 부제 — 중단은 「중단하는 중…」, 나머지는 「보내는 중…」. */
   const pendingText = (key: IntentKey) => t(key === "stop" ? "objectives.band.stopping" : "objectives.band.sending");
   const word = (entry: Intent) => <span className="objectives-start-word">{entry.tone ? entry.glyph : null}{entry.word}</span>;
@@ -492,7 +571,7 @@ export function ActionBand(props: ActionBandProps) {
         {word(main)}
         <span className="objectives-start-sub">
           {hasDraft ? <b className="objectives-band-draft">{t("objectives.band.draft")}</b> : null}
-          {!decide && compactNote ? <span className="objectives-start-desc">{compactNote}</span> : <span className="objectives-start-desc">{pending ? pendingText(pending) : followupExpands ? t("objectives.followup.sub", { n: followupCandidates.length }) : main.desc}</span>}
+          {!decide && bandNote ? <span className="objectives-start-desc">{bandNote}</span> : <span className="objectives-start-desc">{pending ? pendingText(pending) : followupExpands ? t("objectives.followup.sub", { n: followupCandidates.length }) : main.desc}</span>}
           {/* 다른 할 일로 가는 길은 말줄임 대상이 아니다 — 좁은 레일에서 설명이 먼저 줄고 「…도 여기서」는 끝까지 남는다. */}
           {others.length ? <span className="objectives-band-also"> · {t("objectives.band.also", { words: others.map((key) => `「${intents[key].word}」`).join("") })}</span> : null}
         </span>
@@ -557,6 +636,22 @@ export function ActionBand(props: ActionBandProps) {
             })}
           </div>
         ) : null}
+        {intent === "message" && recipient ? (
+          <div className="objectives-recips" role="radiogroup" aria-label={t("objectives.band.message.recipients")}>
+            {recipients.map((candidate) => {
+              const selected = candidate.id === recipient.id;
+              return (
+                <button key={candidate.id} type="button" role="radio" aria-checked={selected} tabIndex={selected ? 0 : -1} disabled={sending} data-recipient={candidate.id} className="objectives-recip"
+                  onClick={() => { setRecipientId(candidate.id); setError(null); requestAnimationFrame(() => fieldRef.current?.focus()); }}
+                  onKeyDown={(event) => onRecipientKey(event, candidate.id)}>
+                  {candidate.mark}
+                  <span className="objectives-recip-role">{candidate.role}</span>
+                  <span className={`objectives-recip-state is-${candidate.state}`}>{props.stateWord(candidate.state)}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         {current.talk ? (
           <>
             {(intent === "steer" || intent === "steerIdle") && kinds.length ? (
@@ -570,7 +665,7 @@ export function ActionBand(props: ActionBandProps) {
                 value={draft}
                 disabled={sending}
                 placeholder={current.placeholder}
-                aria-label={t("objectives.band.fieldAria", { word: current.word })}
+                aria-label={intent === "message" ? current.placeholder : t("objectives.band.fieldAria", { word: current.word })}
                 onChange={(event) => { setDraft(event.target.value); setError(null); }}
                 onKeyDown={(event) => { if (sendKey(event)) { event.preventDefault(); void run(intent); } }}
               />
@@ -582,12 +677,12 @@ export function ActionBand(props: ActionBandProps) {
         <button
           type="button"
           className={`objectives-start objectives-comp-send${current.tone ? ` is-${current.tone === "aurora" ? "review" : "stop"}` : ""}`}
-          disabled={sending || unavailable(intent)}
+          disabled={sending || unavailable(intent) || (intent === "message" && recipientBlocked)}
           title={unavailable(intent) ? t("objectives.commander.unavailable") : undefined}
           onClick={() => void run(intent)}
         >
-          {word(current)}
-          <span className="objectives-start-sub">{pending ? pendingText(pending) : current.talk ? t("objectives.band.keys") : current.desc}</span>
+          {intent === "message" && recipient ? <span className="objectives-start-word">{t("objectives.band.message.to", { role: recipient.role })}</span> : word(current)}
+          <span className="objectives-start-sub">{pending ? pendingText(pending) : intent === "message" && recipient ? messageHow(recipient) : current.talk ? t("objectives.band.keys") : current.desc}</span>
           <span className="objectives-start-arrow" aria-hidden="true">→</span>
         </button>
       </div>

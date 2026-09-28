@@ -1147,6 +1147,32 @@ describe("Objectives contract", () => {
     expect(store.find(commander)!.decisions.at(-1)).toMatchObject({ requestId: live.id });
   });
 
+  it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
+    const { store, call, launch, route, sent, hostFault } = harness();
+    const objective = await launch.create({ theaterId: "t1", title: "Talk", groupId: null, missions: [{ text: "ship" }] });
+    await launch.requestPlan(objective.id);
+    const commander = objective.id;
+    await call("plan", { objectiveId: commander, missions: [{ text: "ship", member: "build" }], members: [{ role: "build" }] }, commander);
+    store.setPlanning(commander, false);
+    const member = ((await call("muster", { objectiveId: commander }, commander)).structuredContent.members as { id: string }[])[0]!.id;
+    // 구성원에게는 말 그대로, 지휘관에게는 누구에게 말했는지와 그 말의 인용.
+    const toMember = await route("commander/message", { objectiveId: commander, memberId: member, text: "  use option A  " });
+    expect(toMember).toMatchObject({ status: 200, value: { notified: true } });
+    expect(sent.slice(-2)).toEqual([
+      { operationId: member, text: "use option A" },
+      { operationId: commander, text: expect.stringMatching(/"build"[\s\S]*> use option A$/) },
+    ]);
+    expect((await route("commander/message", { objectiveId: commander, memberId: null, text: "hold on" })).value).toMatchObject({ notified: null });
+    expect(sent.at(-1)).toEqual({ operationId: commander, text: "hold on" });
+    // 받는 이가 거절하면 그 사유가 돌아오고 지휘관에게 알리지도 않는다. 명단에 없는 구성원과 빈 말은 보내지 않는다.
+    const sends = sent.length;
+    hostFault.sendError = "session_awaiting_input";
+    expect((await route("commander/message", { objectiveId: commander, memberId: member, text: "again" })).value).toEqual({ error: "session_awaiting_input" });
+    expect((await route("commander/message", { objectiveId: commander, memberId: "stranger", text: "hi" })).value).toEqual({ error: "unknown_member" });
+    expect((await route("commander/message", { objectiveId: commander, text: "   " })).value).toEqual({ error: "invalid_request" });
+    expect(sent.length).toBe(sends);
+  });
+
   it("automatically observes shared PRs, shows failed lookups instead of stale success, and discards late or disposed requests", async () => {
     const { store, add, events } = harness();
     add("pr-owner"); add("also-owner");
