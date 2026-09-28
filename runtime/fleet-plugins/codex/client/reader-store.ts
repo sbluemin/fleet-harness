@@ -105,7 +105,7 @@ export function expandCodexReader(): void {
 function openSurfaceSlot(): void {
   const surfaces = hostCapabilities.bound()?.surfaces;
   if (surfaces) {
-    surfaces.open({ surfaceId: SURFACE_ID });
+    surfaces.open({ surfaceId: SURFACE_ID, params: expandedReaderParams() });
     return;
   }
   pendingExpand = true;
@@ -117,8 +117,36 @@ onCodexHostBound(() => {
   if (!pendingExpand) return;
   pendingExpand = false;
   // 묶이는 사이에 사용자가 접었을 수 있다 — 지금도 확대 중일 때만 연다.
-  if (expanded && reader !== null) hostCapabilities.bound()?.surfaces.open({ surfaceId: SURFACE_ID });
+  if (expanded && reader !== null) openSurfaceSlot();
 });
+
+/** 본문을 다시 만들 수 있는 주소만 싣는다. draft·스크롤·컨트롤러 상태는 리더가 계속 소유한다. */
+function expandedReaderParams(): Readonly<Record<string, string>> {
+  const params: Record<string, string> = {};
+  if (reader) for (const [key, value] of Object.entries(reader)) {
+    if (typeof value === "string") params[key] = value;
+  }
+  const theaterId = hostCapabilities.bound()?.consoleState.getActiveTheaterId();
+  if (theaterId) params.theaterId = theaterId;
+  return params;
+}
+
+export function readExpandedCodexRequest(params: Readonly<Record<string, string>>): CodexReaderRequest | null {
+  switch (params.kind) {
+    case "entry": return params.entryId ? { kind: "entry", entryId: params.entryId } : null;
+    case "drydock": return { kind: "drydock", ...(params.patchId ? { patchId: params.patchId } : {}) };
+    case "conflicts": return { kind: "conflicts", ...(params.id ? { id: params.id } : {}) };
+    case "schema": return { kind: "schema", ...(params.templateId ? { templateId: params.templateId } : {}) };
+    default: return null;
+  }
+}
+
+/** 이미 복원된 슬롯을 다시 열지 않는다 — 순서·폭·포커스는 호스트의 복원값을 보존한다. */
+export function restoreExpandedCodexReader(request: CodexReaderRequest): void {
+  reader = request;
+  expanded = true;
+  publish();
+}
 
 export function collapseCodexReader(): void {
   pendingExpand = false;
