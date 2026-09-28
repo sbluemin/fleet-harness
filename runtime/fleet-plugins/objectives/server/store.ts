@@ -918,6 +918,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       fs.rmSync(objectiveDir(theaterId, objectiveId), { recursive: true, force: true });
       load(theaterId).delete(objectiveId);
       options.emit({ op: "remove", theaterId, objectiveId });
+      // 받은 목표의 되돌리기 가능 여부는 원본이 남아 있는지에서 나온다 — 비우기·보관 기한 어느 쪽으로 지워도 열린 보드가 곧바로 알게 다시 방송한다.
+      for (const target of load(theaterId).values()) if (target.merged?.some((entry) => entry.sourceId === objectiveId)) announce(theaterId, target);
     },
     tidyRemove(objectiveIds, by) {
       const unique = [...new Set(objectiveIds)];
@@ -978,9 +980,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         for (const stored of [...load(theaterId).values()]) {
           if (!stored.pending || !stored.removed || now() - stored.removed.at < REMOVED_RETENTION_MS) continue;
           try { store.removePending(stored.operationId); purged.push(stored.operationId); }
-          catch { console.warn("[objectives] removed_purge_failed"); continue; }
-          // 받은 목표의 되돌리기 가능 여부는 원본이 남아 있는지에서 나온다 — 열린 보드가 곧바로 알게 다시 방송한다.
-          for (const target of load(theaterId).values()) if (target.merged?.some((entry) => entry.sourceId === stored.operationId)) announce(theaterId, target);
+          catch { console.warn("[objectives] removed_purge_failed"); }
         }
       }
       return purged;
@@ -999,9 +999,20 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           const at = current.note.lastIndexOf(entry.noteBlock);
           const note = at >= 0 ? current.note.slice(0, at) + current.note.slice(at + entry.noteBlock.length) : current.note;
           // 옮긴 기준 가운데 원본과 같은 문장으로 남은 것만 걷는다 — 사람이 고친 기준은 받은 목표의 것이 됐다.
+          // 아직 합쳐져 있는 다른 원본이 같은 문장을 가져왔으면(같은 문장은 한 번만 옮겨진다) 그 기준을 남기고 그 원본의 몫으로 넘긴다 —
+          // 그 원본을 되돌릴 때 함께 걷히게.
           const moved = new Set(entry.criteriaIds);
           const original = new Set((stored.criteria ?? []).map((criterion) => criterion.text));
-          return { ...current, note, criteria: (current.criteria ?? []).filter((criterion) => !(moved.has(criterion.id) && original.has(criterion.text))), merged: current.merged!.filter((candidate) => candidate !== entry) };
+          const sourceTexts = (sourceId: string) => new Set((load(target.theaterId).get(sourceId)?.criteria ?? []).map((criterion) => criterion.text));
+          let remaining = current.merged!.filter((candidate) => candidate !== entry);
+          const criteria = (current.criteria ?? []).filter((criterion) => {
+            if (!moved.has(criterion.id) || !original.has(criterion.text)) return true;
+            const heir = remaining.find((other) => sourceTexts(other.sourceId).has(criterion.text));
+            if (!heir) return false;
+            remaining = remaining.map((other) => (other === heir ? { ...other, criteriaIds: [...other.criteriaIds, criterion.id] } : other));
+            return true;
+          });
+          return { ...current, note, criteria, merged: remaining };
         });
       }
       return update(objectiveId, ({ removed: _removed, ...rest }) => rest);

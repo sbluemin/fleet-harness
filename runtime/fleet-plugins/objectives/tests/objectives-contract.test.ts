@@ -846,6 +846,15 @@ describe("Objectives contract", () => {
     expect((await use({ restore: [duplicate.id, waiting.id] })).isError).toBe(false);
     expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [], removed: null });
     expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
+    // 두 원본이 같은 기준을 가져왔으면 한쪽을 되돌려도 남은 원본의 기준은 받은 목표에 남는다.
+    const left = await launch.create({ theaterId: "t1", title: "Left", groupId: null, criteria: ["shared"] });
+    const right = await launch.create({ theaterId: "t1", title: "Right", groupId: null, criteria: ["shared"] });
+    await use({ merge: { into: waiting.id, from: [left.id, right.id] } });
+    await route("objective/restore", { objectiveId: left.id });
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two", "shared"]);
+    await route("objective/restore", { objectiveId: right.id });
+    expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [] });
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
 
     // 사람이 지운 기동 전 목표도 같은 자리에 남아 되돌릴 수 있고, 거기서 한 번 더 지우면(비우기) 영구 삭제된다.
     expect((await route("objective/remove", { objectiveId: stale.id })).status).toBe(200);
