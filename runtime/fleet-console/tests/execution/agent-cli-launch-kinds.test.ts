@@ -50,6 +50,7 @@ describe("buildAgentCliLaunchKinds", () => {
             id: "codex--gpt-6-sol-fast",
             label: "GPT-6-Sol-Fast",
             launch: { model: "codex--gpt-6-sol-fast" },
+            contextWindow: expect.any(Number),
             effortAxis: EFFORT_AXIS,
             gatedEfforts: APEX_EFFORTS,
             chips: [
@@ -71,6 +72,7 @@ describe("buildAgentCliLaunchKinds", () => {
             id: "opencode--muse-spark-1.3-contributor",
             label: "Muse-Spark-1.3-Contributor",
             launch: { model: "opencode--muse-spark-1.3-contributor" },
+            contextWindow: expect.any(Number),
             effortAxis: MAX_LESS_AXIS,
             gatedEfforts: ["ultra"],
             chips: [
@@ -106,6 +108,8 @@ function builtinRow(model: string, label: string) {
     id: model,
     label,
     launch: { model },
+    // Claude Code의 두 좌표 — 채팅 중 창이 작은 모델로 내려가는 변경을 막는 근거다.
+    contextWindow: model.endsWith("[1m]") ? 1_000_000 : 200_000,
     effortAxis: EFFORT_AXIS,
     gatedEfforts: APEX_EFFORTS,
     // ultracode는 하네스 능력이라 네이티브 행도 ultra 칩을 낸다.

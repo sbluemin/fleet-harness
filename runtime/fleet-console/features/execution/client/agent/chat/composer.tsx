@@ -164,8 +164,8 @@ export function AgentChatComposer({
   queue,
   onStop,
   onCancelQueued,
-  coordinates,
   onOpenContextMeter,
+  onOpenCoordinates,
   catalogEpoch,
 }: {
   readonly context: OperationRenderContext;
@@ -197,13 +197,10 @@ export function AgentChatComposer({
   readonly onStop: () => Promise<boolean>;
   /** 아직 시작하지 않은 예약 하나를 거둔다. 실패는 사유를 갈라 돌려준다(위 타입 참조). */
   readonly onCancelQueued: (queueId: string) => Promise<AgentChatQueueCancelOutcome>;
-  /**
-   * 세션 좌표의 **값**. `coordinate`가 그 표시라면 이쪽은 그것을 말로 되돌려 줄 때 쓰는 원료다 —
-   * `/model`·`/effort`는 자식으로 가지 않고 이 값을 사실대로 되읽어 주는 것으로 답한다.
-   */
-  readonly coordinates: { readonly model: string | null; readonly effort: string | null };
   /** `/context`가 가는 자리 — 같은 수를 이미 그리고 있는 컴포저 바의 문맥 계기를 연다. */
   readonly onOpenContextMeter: () => void;
+  /** `/model`·`/effort`가 가는 자리 — 컴포저 좌표의 모델·강도 메뉴를 연다. */
+  readonly onOpenCoordinates: () => void;
   /** 자식의 능력 목록 판본. 오르면 이 컴포저가 들고 있던 카탈로그 사본이 만료한다. */
   readonly catalogEpoch: number;
 }) {
@@ -364,11 +361,15 @@ export function AgentChatComposer({
       case "context":
         onOpenContextMeter();
         return t("terminal.chat.consoleContextOpened");
+      case "model":
+      case "effort":
+        onOpenCoordinates();
+        return t("terminal.chat.consoleCoordinatesOpened");
       // `clear`는 send()가 확인을 거쳐 자식에게 직접 보낸다.
       default:
         return "";
     }
-  }, [onOpenContextMeter, t]);
+  }, [onOpenContextMeter, onOpenCoordinates, t]);
 
   // `override`는 덱이 확정한 문면이다. 상태 갱신은 배치되므로 방금 고른 항목을 `setDraft` 뒤에
   // 그냥 보내면 이 클로저가 **직전** 초안을 읽는다 — 보낼 문면을 인자로 받아야 그 한 틱이 안전하다.

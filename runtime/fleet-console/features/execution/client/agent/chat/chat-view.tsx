@@ -2,13 +2,12 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { UseRequestCards } from "../use-request-card.js";
 import { createPortal } from "react-dom";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
-import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
 
 import { getT } from "../i18n/index.js";
 import { useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth, useTerminalFontFamily } from "../../terminal/shared/terminal-preferences.js";
 import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
-import { agentChatAttachmentPreviewUrl, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
+import { agentChatAttachmentPreviewUrl, messageAgentSession, readAgentChatJobDetail, sleepAgentChat, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { ToolDetail } from "./tool-detail.js";
 import { AgentGlyph } from "../agent-glyphs.js";
@@ -27,6 +26,7 @@ import {
   type AgentChatChange,
   type AgentChatContext,
   type AgentChatContextSlice,
+  type AgentChatCoordinatePair,
   type AgentChatJob,
   type AgentChatJobDetail,
   type AgentChatJobKind,
@@ -38,6 +38,7 @@ import {
   chatOriginLabel,
 } from "./chat-events.js";
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
+import { CoordinateFace, SessionCoordinateMenu } from "./coordinate-menu.js";
 import { AgentChatComposer, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import "@fleet-console/markdown/styles.css";
@@ -389,6 +390,8 @@ export function AgentChatView({
 
   /** `/context`가 컴포저에서 문맥 계기를 여는 신호. 값이 바뀐 사실만 뜻이 있다. */
   const [meterOpenSignal, setMeterOpenSignal] = React.useState(0);
+  /** `/model`·`/effort`가 좌표 메뉴를 여는 신호. 같은 규율이다. */
+  const [coordinateOpenSignal, setCoordinateOpenSignal] = React.useState(0);
 
   const openJobs = openAgentChatJobs(state);
   // 원장의 도구 줄과 잡을 잇는 축. 잡을 낳은 스텝은 한 줄이 아니라 카드로 선다.
@@ -580,9 +583,23 @@ export function AgentChatView({
     collapseWork();
   }, [workOpen, collapseWork]);
 
-  // 좌표·선반·문맥 계기 — 컴포저와 구성원 바닥 줄이 같은 것을 그린다. 어느 쪽이든 사실 표시에
-  // 불과하므로 같은 노드를 나눠 쓴다.
-  const coordinateNode = <SessionCoordinate coordinates={coordinates} t={t} />;
+  // 좌표·선반·문맥 계기 — 컴포저와 구성원 바닥 줄이 같은 것을 그린다. 좌표만 갈린다: 구성원의
+  // 모델·강도는 지휘관의 축이라 읽기 전용이고, 컴포저의 좌표는 바꾸는 문을 겸한다.
+  const coordinateNode = isMemberChat
+    ? <SessionCoordinate coordinates={coordinates} t={t} />
+    : (
+      <SessionCoordinateMenu
+        operationId={context.operationId}
+        payload={context.operation.payload}
+        pending={state.coordinatesPending}
+        occupied={state.context ? contextOccupied(state.context) : null}
+        working={turnRunning}
+        language={language}
+        openSignal={coordinateOpenSignal}
+        formatTokens={formatTokens}
+        onCompact={() => { void messageAgentSession(context.operationId, "/compact").catch(() => undefined); }}
+      />
+    );
   const ledgeNode = hasJobs ? (compact: boolean) => (
     <WorkLedge
       jobs={state.jobs}
@@ -811,8 +828,8 @@ export function AgentChatView({
             coordinate={coordinateNode}
             ledge={ledgeNode}
             meter={meterNode}
-            coordinates={coordinates}
             onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
+            onOpenCoordinates={() => setCoordinateOpenSignal((signal) => signal + 1)}
             catalogEpoch={state.catalogEpoch}
             tourAnchor={tourAnchors}
             turnRunning={turnRunning}
@@ -844,8 +861,9 @@ export function AgentChatView({
  * 평상시에는 중립이라 대화를 이기지 않고, 신호(상태) 채널도 쓰지 않는다. 색을 얻는 것은 강도뿐이며,
  * 그 어휘는 런치 트랙의 것을 그대로 쓴다.
  *
- * 컨트롤이 아니라 사실이므로 버튼이 아니다. 누를 수 있게 그리면 "여기서 바꿀 수 있다"는
- * 거짓 약속이 된다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이다.
+ * 이 읽기 전용 표식은 구성원 바닥 줄의 것이다 — 구성원의 모델·강도는 지휘관이 정하는 축이라 여기서
+ * 누를 수 있게 그리면 "여기서 바꿀 수 있다"는 거짓 약속이 된다. 컴포저의 좌표는 같은 글자를
+ * `SessionCoordinateMenu`로 세워 바꾸는 문을 겸한다.
  */
 function SessionCoordinate({
   coordinates,
@@ -869,16 +887,7 @@ function SessionCoordinate({
       {/* 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지 말하지 못한다 — 공급자 글리프가
           그 축을 진다(런치 메뉴·분석가 칩과 같은 표식). 공급자를 읽지 못한 세션은 중립 마름모로
           돌아가고, ultracode는 그 자리에 자기 별을 세운다. */}
-      {coordinates.provider !== null && !coordinates.ultracode ? (
-        <span className="agent-chat-coord-glyph" aria-hidden="true" data-provider={coordinates.provider}>
-          {launchProviderGlyph(coordinates.provider)}
-        </span>
-      ) : (
-        <span className="agent-chat-coord-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
-      )}
-      <span className="agent-chat-coord-model">{model}</span>
-      <span className="agent-chat-coord-sep" aria-hidden="true">·</span>
-      <span className="agent-chat-coord-effort" data-effort-level={coordinates.effortLevel}>{effort}</span>
+      <CoordinateFace coordinates={coordinates} model={model} effort={effort} />
     </span>
   );
 }
@@ -1095,6 +1104,12 @@ function ChatAttachmentViewer({
   );
 }
 
+/** 기록 줄에 서는 좌표 한 쌍. 좌표 표식과 같은 어휘로 읽힌다. */
+function describeCoordinatePair(pair: AgentChatCoordinatePair, t: ReturnType<typeof getT>): string {
+  const coordinates = readAgentChatSessionCoordinates({ session: pair });
+  return `${coordinates.model ?? t("terminal.chat.coordDefaultModel")} · ${coordinates.effort ?? t("terminal.chat.coordAutoEffort")}`;
+}
+
 function ChatCommandRow({
   command,
   state,
@@ -1114,7 +1129,10 @@ function ChatCommandRow({
     ? null
     : Math.max(0, Math.min(100, Math.round(((compact.before - compact.after) / Math.max(1, compact.before)) * 100)));
   const gauge = running || reclaimed !== null;
-  const detail = running
+  const coordinateChange = command.coordinates;
+  const detail = coordinateChange
+    ? `${describeCoordinatePair(coordinateChange.from, t)} → ${describeCoordinatePair(coordinateChange.to, t)}`
+    : running
     ? command.phase === "compacting"
       ? t("terminal.chat.commandCompacting")
       : t("terminal.chat.commandRunning")

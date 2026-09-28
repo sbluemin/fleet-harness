@@ -151,6 +151,8 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/chat-answer", summary: "Answer a pending Agent chat question.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-stop", summary: "Stop the in-flight Agent chat turn.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-sleep", summary: "Put an Agent chat session dormant.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/chat-coordinates", summary: "Change an Agent chat session's model and effort.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "DELETE", path: "/sessions/:sessionId/chat-coordinates", summary: "Cancel a scheduled Agent chat model and effort change.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/links", summary: "Confirm which links in displayed terminal text appear in an Agent session's transcript.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -1015,6 +1017,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (action === "chat-answer") return handleChatAnswer(req, res, sessionId);
     if (action === "chat-stop") return handleChatStop(req, res, sessionId);
     if (action === "chat-sleep") return handleChatSleep(req, res, sessionId);
+    if (action === "chat-coordinates") return handleChatCoordinates(req, res, sessionId);
     if (action === "chat-job") return handleChatJob(req, res, sessionId);
     if (action === "chat-catalog") return handleChatCatalog(req, res, sessionId);
     if (action === "links") return handleLinks(req, res, sessionId);
@@ -1859,6 +1862,58 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   /**
+   * 채팅 중 모델·강도를 바꾼다. 후보는 런치 메뉴가 세우는 그 행과 칩이다 — 같은 세션을 두 표면이
+   * 다른 목록으로 다루면, 런치에서 끈 모델을 채팅에서 고를 수 있게 된다.
+   *
+   * 200의 `applied`가 결말을 말한다: `now`는 자식에 적용됐고 payload도 고쳐졌다, `scheduled`는
+   * 도는 턴이 닫히면 적용된다. DELETE는 예약을 거둔다.
+   */
+  async function handleChatCoordinates(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST" && req.method !== "DELETE") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    const chat = chatRegistry.get(sessionId);
+    if (!chat) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    if (req.method === "DELETE") {
+      if (!chat.cancelPendingCoordinates()) {
+        ctx.host.http.writeJson(res, 409, { error: "coordinates_not_pending" });
+        return true;
+      }
+      ctx.host.http.writeJson(res, 200, { ok: true });
+      return true;
+    }
+    const body = await ctx.host.http.readJsonBody<{ readonly model?: unknown; readonly effort?: unknown }>(req);
+    const model = typeof body?.model === "string" ? body.model : "";
+    const effort = typeof body?.effort === "string" && body.effort.length > 0 ? body.effort : null;
+    const row = (await buildLaunchKinds())
+      .find((kind) => kind.id === "claude")
+      ?.variants?.flatMap((group) => group.rows)
+      .find((candidate) => candidate.launch.model === model);
+    if (!row) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_model" });
+      return true;
+    }
+    if (effort !== null && !(row.chips ?? []).some((chip) => chip.launch.effort === effort)) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_effort" });
+      return true;
+    }
+    const result = await chat.changeCoordinates(model, effort);
+    if (!result.ok) {
+      ctx.host.http.writeJson(res, result.error === "coordinates_apply_failed" ? 502 : 409, { error: result.error });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { ok: true, applied: result.applied });
+    return true;
+  }
+
+  /**
    * 백그라운드 작업 하나를 사용자가 멈춘다 — 터미널에서 그 셸을 kill하는 것과 같은 자리다.
    *
    * 200은 "자식이 중단 요청을 받았다"까지다. 실제 결말은 자식이 내는 `stopped` 알림이 말하며,
@@ -2075,15 +2130,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     // 카탈로그가 이 좌표의 실제 창을 아는 유일한 자리다. 게이트웨이가 usage를 투영할 때 읽는
     // 것과 같은 조회이므로 두 쪽이 같은 수를 쓴다.
-    const gatewayModel = findGatewayModel(model);
-    const gatewayContextWindow = typeof gatewayModel?.contextWindow === "number"
-      && Number.isFinite(gatewayModel.contextWindow)
-      && gatewayModel.contextWindow > 0
-      ? gatewayModel.contextWindow
-      : undefined;
-    const gatewayCompactCeiling = gatewayContextWindow === undefined
-      ? undefined
-      : (deps.readAiGatewaySettings?.().compactCeiling ?? null);
+    const gatewayContextWindow = catalogContextWindow(model);
+    // 채팅 중 게이트웨이 모델로 바꿀 수 있으므로 압축 정책은 네이티브로 연 세션에도 함께 싣는다.
+    // 창이 없는 좌표에서는 쓰이지 않는다(되돌릴 창이 없으면 정책도 읽지 않는다).
+    const gatewayCompactCeiling = deps.readAiGatewaySettings ? (deps.readAiGatewaySettings().compactCeiling ?? null) : undefined;
     // 터미널 런치와 같은 설정을 읽는다. 이 값이 두 표면에서 어떤 인자·옵션이 되는지는
     // admiral이 정한다 — CLI는 기본 프롬프트를 쓸 때 플래그를 싣지 않고 SDK는 그때 preset을
     // 싣는, 서로 뒤집힌 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
@@ -2113,6 +2163,18 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(gatewayContextWindow === undefined ? {} : { contextWindow: gatewayContextWindow }),
         ...(gatewayCompactCeiling === undefined ? {} : { compactCeiling: gatewayCompactCeiling }),
         ...(launchEffort ? { effort: launchEffort.effort } : {}),
+        resolveContextWindow: catalogContextWindow,
+        // 채팅 중 바꾼 좌표는 재개·터미널이 읽는 그 자리에 남는다. 세션 이름·태생 좌표는 그대로 둔다.
+        onCoordinatesApplied: ({ model: nextModel, effort: nextEffort }) => {
+          const current = ctx.host.operations.get(node.id);
+          const session = readAgentSession(current?.payload);
+          if (!current || !session) return;
+          const raw = current.payload?.session as Record<string, unknown>;
+          const { effort: _previousEffort, ...rest } = raw;
+          ctx.host.operations.patch(node.id, {
+            payload: { ...current.payload, session: { ...rest, model: nextModel, ...(nextEffort ? { effort: nextEffort } : {}) } },
+          });
+        },
         cwd,
         ...(sessionName ? { sessionName } : {}),
         claudeConfigDir,
@@ -2764,6 +2826,15 @@ function readProviderTitle(value: Record<string, unknown> | undefined): AgentPro
 // create와 resume는 같은 launch-option 오류 계약을 공유한다.
 function gatewayLaunchOptionErrorStatus(error: GatewayLaunchOptionError): 400 | 409 {
   return error.code === "gateway_model_not_enabled" ? 409 : 400;
+}
+
+/**
+ * 카탈로그가 아는 이 모델의 실제 창. 게이트웨이가 usage를 투영할 때 읽는 것과 같은 조회이므로 두 쪽이
+ * 같은 수를 쓴다. 네이티브 Claude 모델과 카탈로그 밖 id는 `undefined`다.
+ */
+function catalogContextWindow(model: string): number | undefined {
+  const window = findGatewayModel(model)?.contextWindow;
+  return typeof window === "number" && Number.isFinite(window) && window > 0 ? window : undefined;
 }
 
 function readPayloadString(payload: Record<string, unknown>, key: string): string {

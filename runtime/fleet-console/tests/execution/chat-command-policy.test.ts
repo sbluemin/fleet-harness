@@ -54,7 +54,7 @@ describe("chat command policy", () => {
       .filter(([, rule]) => rule.disposition === "console")
       .map(([name, rule]) => [name, rule.target] as const)
       .sort(([a], [b]) => a.localeCompare(b));
-    expect(routed).toEqual([["clear", "clear"], ["context", "context"]]);
+    expect(routed).toEqual([["clear", "clear"], ["context", "context"], ["effort", "effort"], ["model", "model"]]);
   });
 
   it("puts a ledger lane on exactly the commands that reach the child", () => {

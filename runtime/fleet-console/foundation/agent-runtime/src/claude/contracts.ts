@@ -514,6 +514,22 @@ export interface ClaudeGatewaySession extends AsyncIterable<ClaudeGatewayMessage
    * 이름이 말하는 대로 디스크에서 다시 읽는다 — 세션을 여는 시점에는 사실상 첫 읽기다.
    */
   reloadSkills(): Promise<readonly ClaudeGatewayCommand[] | null>;
+  /**
+   * 자식을 살려 둔 채 이후 응답의 모델을 바꾼다(vendor `setModel`). 모델 id는 `openSession`과 같은
+   * 모델 정책으로 해석하며, 해석되지 않으면 던진다.
+   *
+   * 턴이 도는 동안 자식은 control 채널을 닫아 둘 수 있다 — 호출자는 턴 경계에서 부르고, 실패하면
+   * 바뀌지 않은 것으로 다룬다.
+   */
+  setModel(model: string): Promise<void>;
+  /**
+   * 세션 범위의 강도와 ultracode를 바꾼다(vendor `applyFlagSettings`). `effort: null`은 모델 기본
+   * 강도로, `ultracode: false`는 오케스트레이션을 끄고 현재 강도를 유지한다. 생략한 키는 건드리지 않는다.
+   */
+  applySessionSettings(settings: {
+    readonly effort?: ClaudeGatewayEffort | null;
+    readonly ultracode?: boolean;
+  }): Promise<void>;
   /** 세션을 접고 자식 프로세스를 끝낸다. 살아 있던 백그라운드 작업도 함께 거둬진다. */
   close(): void;
 }

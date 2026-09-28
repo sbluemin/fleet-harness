@@ -2665,6 +2665,196 @@
   height: 100%;
 }
 
+/* 컴포저의 좌표는 바꾸는 문을 겸한다. 글자와 리듬은 읽기 전용 표식 그대로 두고, 누를 수 있다는
+   사실은 꺾쇠 하나와 hover의 brass가 말한다 — 버튼 틀을 두르면 좌표가 컴포저를 상자로 쪼갠다. */
+.agent-chat-coord-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.agent-chat-coord.is-control {
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.agent-chat-coord.is-control:hover .agent-chat-coord-model,
+.agent-chat-coord.is-control[aria-expanded="true"] .agent-chat-coord-model {
+  color: var(--text-primary);
+}
+
+.agent-chat-coord.is-control:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.agent-chat-coord-caret {
+  flex: none;
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  transition: transform var(--duration-fast);
+}
+
+.agent-chat-coord.is-control:hover .agent-chat-coord-caret { color: var(--brass-ink); }
+.agent-chat-coord.is-control[aria-expanded="true"] .agent-chat-coord-caret { transform: rotate(180deg); }
+
+/* 예약 — 다음 턴에 도는 것. 지금 도는 좌표와 섞이지 않게 화살표로 떨어져 서고, brass는 "지금
+   가리키는 자리"라는 위치 채널로만 쓴다. 상태 신호색을 빌리지 않는다: 예약은 경고가 아니다. */
+.agent-chat-coord-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  color: var(--brass-ink);
+  white-space: nowrap;
+}
+
+.agent-chat-coord-pending-when {
+  color: var(--text-tertiary);
+}
+
+.agent-chat-coord-pending-cancel {
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.agent-chat-coord-pending-cancel:hover { color: var(--text-primary); }
+
+/* 메뉴는 좌표가 앉은 컴포저 행에서 위로 열린다 — 문맥 계기 팝오버와 같은 층·같은 표면이다. */
+.agent-chat-coord-pop {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 0;
+  z-index: 6;
+  width: 340px;
+  max-width: calc(100cqw - var(--space-6));
+  max-height: min(460px, 70vh);
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--shadow-floating);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-coord-pop-group {
+  margin: var(--space-2) var(--space-3) var(--space-1);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  letter-spacing: 0.04em;
+}
+
+.agent-chat-coord-row {
+  display: grid;
+  grid-template-columns: 12px 14px 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px var(--space-3);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.agent-chat-coord-row:hover:not([aria-disabled="true"]),
+.agent-chat-coord-row:focus-visible {
+  background: var(--brass-glow);
+  outline: none;
+}
+
+.agent-chat-coord-row[aria-checked="true"] .agent-chat-coord-row-label { font-weight: var(--weight-medium); }
+.agent-chat-coord-row[aria-checked="true"] { cursor: default; }
+
+.agent-chat-coord-row-check {
+  font-size: var(--t-xs);
+  color: var(--brass-ink);
+}
+
+.agent-chat-coord-row-glyph {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
+
+.agent-chat-coord-row-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+
+.agent-chat-coord-row-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat-coord-row-window {
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
+
+.agent-chat-coord-row-wrap.is-blocked .agent-chat-coord-row {
+  cursor: default;
+}
+
+.agent-chat-coord-row-wrap.is-blocked .agent-chat-coord-row-label {
+  color: var(--text-tertiary);
+}
+
+/* 막힌 이유와 풀 길이 같은 줄에 선다. 창 초과는 곧 다음 턴의 실패이므로 warn 채널이 진다. */
+.agent-chat-coord-row-why {
+  margin: 0 var(--space-3) var(--space-1) calc(var(--space-3) + 12px + 14px + var(--space-2) * 2);
+  font-size: var(--t-xs);
+  color: var(--warn-ink);
+}
+
+.agent-chat-coord-row-compact {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.agent-chat-coord-pop-effort {
+  margin-top: var(--space-1);
+  padding: 0 var(--space-3);
+}
+
+.agent-chat-coord-pop-effort .agent-chat-coord-pop-group {
+  margin-inline: 0;
+}
+
+.agent-chat-coord-pop-note {
+  margin: var(--space-2) var(--space-3) 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+}
+
+.agent-chat-coord-pop-note.is-failed { color: var(--coral-ink); }
+
 /* 남는 폭은 모델명이 줄임표로 접는다. 좌표는 태생 기록 퇴역 뒤 유일한 실행 좌표이므로 좁은
    패널에서도 물러나지 않는다. 가르는 것은 뷰포트가 아니라 이 패널의 폭이다 — 넓은 창 안에서도
    패널은 얼마든지 좁아진다. */

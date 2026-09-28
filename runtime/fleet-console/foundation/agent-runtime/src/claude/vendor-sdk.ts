@@ -392,10 +392,33 @@ export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySessio
     supportedCommands?: () => Promise<unknown>;
     supportedAgents?: () => Promise<unknown>;
     reloadSkills?: () => Promise<unknown>;
+    setModel?: (model?: string) => Promise<void>;
+    applyFlagSettings?: (settings: Record<string, unknown>) => Promise<void>;
   };
 
   let closed = false;
   return {
+    async setModel(model: string): Promise<void> {
+      if (closed) throw new Error("This Claude session is closed.");
+      if (typeof run.setModel !== "function") {
+        throw new TypeError("This Claude Agent SDK build has no setModel control request.");
+      }
+      await run.setModel(model);
+    },
+    async applySessionSettings(settings): Promise<void> {
+      if (closed) throw new Error("This Claude session is closed.");
+      if (typeof run.applyFlagSettings !== "function") {
+        throw new TypeError("This Claude Agent SDK build has no apply_flag_settings control request.");
+      }
+      const flags: Record<string, unknown> = {};
+      // null은 vendor 계약상 "flag 층에서 지운다"이며, effortLevel은 모델 기본 강도로, ultracode는
+      // 꺼짐(현재 강도 유지)으로 돌아간다. false를 싣지 않는 이유는 ultracode 플래그를 시작 옵션으로
+      // 옮길 때와 같다 — flag 층에 false를 남기면 사용자 설정의 켠 값까지 덮는다.
+      if (settings.effort !== undefined) flags.effortLevel = settings.effort;
+      if (settings.ultracode !== undefined) flags.ultracode = settings.ultracode ? true : null;
+      if (Object.keys(flags).length === 0) return;
+      await run.applyFlagSettings(flags);
+    },
     send(text: string, options?: ClaudeGatewaySendOptions): void {
       if (closed) return;
       queue.push(vendorUserMessage(text, options?.messageId));

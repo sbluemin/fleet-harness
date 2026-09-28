@@ -217,6 +217,15 @@ export async function createClaudeGatewaySdk(
           supportedCommands: () => session.supportedCommands(),
           supportedAgents: () => session.supportedAgents(),
           reloadSkills: () => session.reloadSkills(),
+          // 시작 모델과 같은 판정을 거친다. 격리 홈은 이 인스턴스의 모델만 discovery 캐시에 실으므로
+          // 그 밖의 게이트웨이 별칭은 자식이 알지 못한다 — 공유 홈은 호스트가 캐시를 소유한다.
+          setModel: async (model) => {
+            const next = options.home?.kind === "shared"
+              ? options.modelPolicy.resolve(model).id
+              : resolveTurnModel(model, accepted, options.modelPolicy.resolve);
+            await session.setModel(next);
+          },
+          applySessionSettings: (settings) => session.applySessionSettings(settings),
           [Symbol.asyncIterator]: () => session[Symbol.asyncIterator](),
           close(): void {
             try {

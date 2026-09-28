@@ -319,6 +319,19 @@ export type AgentChatStreamEvent =
    * 것으로 읽는다.
    */
   | { readonly kind: "queue"; readonly entries: readonly AgentChatQueueEntry[] }
+  /**
+   * 채팅 중 모델·강도를 바꿔 자식에 적용했다. 원장의 기록 줄이 되며, `effort`는 런치 어휘다
+   * (`null`은 모델 기본, `ultra`는 ultracode).
+   */
+  | {
+      readonly kind: "coordinates";
+      readonly model: string;
+      readonly effort: string | null;
+      readonly from: { readonly model: string; readonly effort: string | null };
+      readonly at?: number;
+    }
+  /** 턴이 닫히면 적용될 예약. REPLACE 시맨틱이며 `null`은 예약이 없다는 뜻이다. */
+  | { readonly kind: "coordinates-pending"; readonly pending: { readonly model: string; readonly effort: string | null } | null }
   | { readonly kind: "error"; readonly code: string };
 
 /** 예약된 지시 하나 — 좌표와 사용자가 쓴 문면. 취소는 이 좌표로만 닿는다. */

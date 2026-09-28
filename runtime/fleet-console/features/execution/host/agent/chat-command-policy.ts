@@ -33,7 +33,10 @@ export type ChatCommandConsoleTarget =
   /** 컴포저 바의 문맥 계기. 같은 `getContextUsage()` 값을 이미 그리고 있다. */
   | "context"
   /** 문맥 초기화. 자식과 화면 기록을 **함께** 끊어야 하므로 Console이 중개한다. */
-  | "clear";
+  | "clear"
+  /** 컴포저 바의 좌표 메뉴. 모델·강도는 Console이 쥔 축이라 자식의 피커가 아니라 이 메뉴가 바꾼다. */
+  | "model"
+  | "effort";
 
 export interface ChatCommandRule {
   readonly disposition: ChatCommandDisposition;
@@ -51,7 +54,7 @@ export interface ChatCommandRule {
 }
 
 /**
- * 내장 명령 24개의 처분. 지원하는 것은 넷뿐이다.
+ * 내장 명령 24개의 처분. 지원하는 것은 여섯뿐이다.
  *
  * 지원 목록이 **선별**이므로 표에 없는 이름은 세우지 않는다(`classifyChatCommand`의 기본값이
  * `hidden`이다). 그것이 카탈로그의 fail-open과 모순되지 않는 이유: 카탈로그는 표에 없는 이름을
@@ -60,8 +63,8 @@ export interface ChatCommandRule {
  */
 export const CHAT_COMMAND_POLICY: Readonly<Record<string, ChatCommandRule>> = Object.freeze({
   // ── 지원 ──────────────────────────────────────────────────────────────────
-  // 이 넷만 Console 채팅의 어휘다. 고른 기준은 "여기서 뜻이 있고, 여기서 끝까지 책임질 수 있는가"다 —
-  // 셋은 이 세션의 상태(문맥·기록·능력 목록)를 다루고, 그 상태는 Console도 함께 그리고 있다.
+  // 이 여섯만 Console 채팅의 어휘다. 고른 기준은 "여기서 뜻이 있고, 여기서 끝까지 책임질 수 있는가"다 —
+  // 모두 이 세션의 상태(문맥·기록·능력 목록·모델·강도)를 다루고, 그 상태는 Console도 함께 그리고 있다.
   /** 문맥을 비운다. 자식의 기억과 화면의 기록을 **함께** 끊어야 하므로 Console이 중개한다. */
   clear: { disposition: "console", target: "clear", lane: true },
   /** 대화를 요약해 문맥을 되찾는다. 자식이 수행하고, 그 진행을 Console이 원장에 그린다. */
@@ -70,11 +73,16 @@ export const CHAT_COMMAND_POLICY: Readonly<Record<string, ChatCommandRule>> = Ob
   context: { disposition: "console", target: "context" },
   /** 디스크의 스킬을 다시 읽는다. 함께 오는 `commands_changed`가 덱의 카탈로그를 무효화한다. */
   "reload-skills": { disposition: "passthrough", lane: true },
+  /**
+   * 모델·강도. 자식에게 보내지 않는다 — 자식의 후보에는 게이트웨이 모델이 없고, 자식이 바꾸면
+   * Console이 쥔 payload 좌표가 뒤에서 어긋난다. 같은 이름이 컴포저의 좌표 메뉴를 연다.
+   */
+  model: { disposition: "console", target: "model" },
+  effort: { disposition: "console", target: "effort" },
 
   // ── 그 외 전부 ────────────────────────────────────────────────────────────
   // 나머지는 세우지 않는다. 하나씩 나쁜 이유가 있어서가 아니라, 이 표면이 그것들을 끝까지
-  // 책임지지 못하기 때문이다: Console이 겹쳐 쥔 축을 뒤에서 바꾸거나(model·effort), 여기 없는
-  // 것을 조작하거나(color·fast), 계정·브라우저로 나가거나(usage-credits·design*), 자식의
+  // 책임지지 못하기 때문이다: 여기 없는 것을 조작하거나(color·fast), 계정·브라우저로 나가거나(usage-credits·design*), 자식의
   // 진단 도구이거나(heapdump·doctor류), 답하려고만 존재한다(agents·extra-usage).
   // 각 줄의 주석은 2026-08-29 실측에서 자식이 실제로 한 말이다.
 
@@ -92,10 +100,6 @@ export const CHAT_COMMAND_POLICY: Readonly<Record<string, ChatCommandRule>> = Ob
   config: { disposition: "hidden" },
   /** 자식의 JS 힙을 ~/Desktop에 쓴다. 진단 도구이지 채팅 동작이 아니다. */
   heapdump: { disposition: "hidden" },
-  /** 후보에 게이트웨이 모델이 없고, Console의 모델 라벨은 payload에서 읽는 읽기 전용이다. */
-  model: { disposition: "hidden" },
-  /** "Set effort level to high (this session only)" — 강도 라벨도 같은 payload에서 읽는다. */
-  effort: { disposition: "hidden" },
   /** 실행은 되지만 채팅 Operation 제목으로 갈 길이 없다. Console에는 이름 바꾸기가 이미 세 곳 있다. */
   rename: { disposition: "hidden" },
   /** 쿼터 보고. 우현 레일의 Quota 패널이 같은 것을 상시로 그린다. */
