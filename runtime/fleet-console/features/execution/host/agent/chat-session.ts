@@ -757,6 +757,8 @@ class AgentChatSession {
   private pendingCoordinates: ChatCoordinates | null = null;
   /** 좌표를 자식에 적용하는 중. 다음 디스패치는 이것이 끝난 뒤에 자식에게 간다. */
   private coordinateFlight: Promise<boolean> | null = null;
+  /** 지금 자식에 적용 중인 좌표. 이미 자식에게 건넨 예약은 거둘 수 없다. */
+  private applyingCoordinates: ChatCoordinates | null = null;
 
   /**
    * 이 세션에 마지막으로 무슨 일이 일어난 시각. 유휴 자동 휴면의 문턱이 읽는 좌표이므로 PTY
@@ -1231,9 +1233,11 @@ class AgentChatSession {
     return applied === false ? { ok: false, error: "coordinates_apply_failed" } : { ok: true, applied: "now" };
   }
 
-  /** 예약한 좌표를 거둔다. 거둘 것이 없었으면 false다. */
+  /** 예약한 좌표를 거둔다. 거둘 것이 없었거나 이미 자식에 적용하는 중이면 false다. */
   cancelPendingCoordinates(): boolean {
     if (this.pendingCoordinates === null) return false;
+    // 자식에게 건넨 뒤에는 거둘 수 없다 — 성공으로 답하면 화면은 취소를 말하고 자식은 바뀐 모델로 답한다.
+    if (this.pendingCoordinates === this.applyingCoordinates) return false;
     this.setPendingCoordinates(null);
     return true;
   }
@@ -1278,6 +1282,15 @@ class AgentChatSession {
     if (this.coordinateFlight) return this.coordinateFlight;
     const target = this.pendingCoordinates;
     if (target === null || this.disposed) return Promise.resolve(null);
+    // 예약한 뒤 그 턴이 문맥을 키웠을 수 있다. 창이 작은 모델로 가는 예약은 적용 직전에 다시 재고,
+    // 이제 넘친다면 적용하지 않는다 — 적용하면 다음 말이 새 모델의 창을 넘는다.
+    const occupied = this.lastContextTotal;
+    if (target.model !== this.coordinates.model && occupied !== null && occupied > modelCapacity(target)) {
+      this.setPendingCoordinates(null);
+      this.push({ kind: "error", code: "chat_coordinates_context_exceeded" });
+      return Promise.resolve(false);
+    }
+    this.applyingCoordinates = target;
     const flight = (async (): Promise<boolean> => {
       const previous = this.coordinates;
       const session = this.session;
@@ -1311,6 +1324,7 @@ class AgentChatSession {
     this.coordinateFlight = flight;
     void flight.finally(() => {
       if (this.coordinateFlight === flight) this.coordinateFlight = null;
+      if (this.applyingCoordinates === target) this.applyingCoordinates = null;
       // 적용하는 사이 사용자가 또 골랐다면, 그 값은 지금 자식이 한가할 때 이어서 적용한다.
       if (this.pendingCoordinates !== null && !this.turnOpen && this.commandLane === null) void this.applyPendingCoordinates();
     });
