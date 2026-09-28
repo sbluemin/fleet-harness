@@ -50,6 +50,8 @@ interface OperationFrameProps {
   readonly theaterLabel?: string | null;
   /** 지휘관 패널의 묶음 장치 — 이름 뒤의 단계 띠(strip)와 본문 오른쪽 위의 노드 줄(nodes). */
   readonly cluster?: { readonly strip: ReactNode; readonly nodes: ReactNode } | null;
+  /** 사람의 답을 기다리는 결정 요청이 섰는가 — 캡션을 포함한 창 전체를 brass 궤도가 돈다. 요청이 사라지면 궤도도 걷힌다. */
+  readonly decisionRequest?: boolean;
   /**
    * 지휘관 패널이 구성원의 본문을 보이는 동안의 주인 — 제목 뒤 「› 이름」으로 서고, 캡션 선반이 누구의 도구인지 말한다.
    * 이름 바꾸기·창 컨트롤·메뉴는 여전히 이 프레임(지휘관)의 것이다. 정체성 톤은 제목 잉크로만 쓴다.
@@ -130,7 +132,7 @@ const FOCUS_ARRIVAL_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, snapFull = false, snapHeld = false, resizeDisabled = false, alignHeld = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapZone = null, interactionDisabled = false, triageStage = false, triagePicked = false, triageNext = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onToggleSnapFull, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, snapFull = false, snapHeld = false, resizeDisabled = false, alignHeld = false, renderHidden = false, focusLayerTarget = false, topEdge = false, snapZone = null, interactionDisabled = false, triageStage = false, triagePicked = false, triageNext = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, cluster = null, decisionRequest = false, subject = null, children, captionActions = null, menuOpen = false, onActivate, onClose, onMinimize, onToggleSnapFull, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus, onDragPointer, onDragRelease, onOpenSnapMenu }: OperationFrameProps) {
   const t = useT();
   // 말풍선의 되돌리기 단축키가 사용자 재지정을 따라가도록 구독한다. 단축키를 풀어 두었으면 「보관」만 말한다.
   useShortcutOverrides();
@@ -700,6 +702,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           <div className="canvas-operation-cluster-progress">{cluster.strip}</div>
         </div>
       ) : null}
+      {decisionRequest ? <span className="canvas-operation-decision-orbit" aria-hidden="true" /> : null}
       <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker inert={deckTile ? true : undefined}>
         {children}
       </div>

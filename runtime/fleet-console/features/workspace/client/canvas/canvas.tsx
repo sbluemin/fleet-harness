@@ -1690,6 +1690,7 @@ export function OperationsCanvas({
               title: bodyMember?.name ?? bodyNode.title,
               tone: bodyMember?.tone ?? canvas.operationAccent[bodyNode.id] ?? operationAccentFromNode(bodyNode),
             } : null,
+            decisionRequest: clusterRoot?.cluster.decisionRequest === true,
             cluster: clusterRoot && !snapAssistTile
               ? {
                 strip: (
@@ -2220,6 +2221,8 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly status?: OperationActivityVisual;
   /** 지휘관 패널의 묶음 장치 — 캡션의 진척도 띠와 본문 오른쪽 위의 세션 전환 노드 줄. */
   readonly cluster: { readonly strip: ReactNode; readonly nodes: ReactNode } | null;
+  /** 이 Operation 이 뿌리인 묶음에 사람의 답을 기다리는 결정 요청이 섰는가 — 프레임이 캡션까지 궤도로 두른다. */
+  readonly decisionRequest: boolean;
   /** 이 프레임이 보일 본문의 주인 — 없으면 자기 자신. 묶음의 조율자 패널이 숨은 단계를 보일 때 쓴다. */
   readonly bodyOperation: { readonly operation: OperationNode; readonly runtimeState: OperationRuntimeState | null } | null;
   readonly subject: { readonly name: string; readonly title: string; readonly tone: string | null } | null;
@@ -2323,6 +2326,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         groupColor={options.groupColor}
         theaterLabel={options.theaterLabel}
         cluster={options.cluster}
+        decisionRequest={options.decisionRequest}
         subject={bodyOwner === operation ? null : options.subject}
         onActivate={options.onActivate}
         onClose={options.onClose}
