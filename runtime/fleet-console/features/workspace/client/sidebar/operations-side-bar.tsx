@@ -850,11 +850,12 @@ export function OperationsSideBar({
     openTheaterLaunchMenuAt(event.currentTarget.getBoundingClientRect(), theaterId);
   };
 
-  // 커맨드 밴드 "Add Theater…" 요청 소비 — 접힘을 풀고 Theater 브라우저를 연다.
+  // "Theater 추가" 요청 소비(팔레트·Zen 작업 표시줄) — 접힘을 풀고 Theater 브라우저를 연다.
+  // Zen에서는 사이드바를 숨긴 채 상자만 연다 — Cruise의 접힘 선호는 Zen 밖의 것이다.
   useEffect(() => {
     if (!pendingSideBarAddTheater) return;
     consumeSideBarAddTheater();
-    if (collapsed) setSideBarCollapsed(false);
+    if (collapsed && !zenMode) setSideBarCollapsed(false);
     openTheaterBrowser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSideBarAddTheater]);

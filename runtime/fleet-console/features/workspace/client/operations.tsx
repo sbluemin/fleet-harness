@@ -952,6 +952,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onMinimize={handleMinimize}
           onResume={handleResume}
           onSelectTheater={setActiveTheater}
+          addingTheater={state.addingTheater}
           onOpenOperationMenu={openZenTaskbarOperationMenu}
           openMenuOperationId={operationMenu?.operationId ?? null}
           onSetGroupId={handleSetGroupId}

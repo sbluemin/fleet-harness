@@ -5,7 +5,7 @@ import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../../../../core/client/src/integration/types.js";
-import { operationOrderFromNodes, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
+import { operationOrderFromNodes, requestSideBarAddTheater, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { useCanvasState } from "../canvas/canvas-store.js";
 import { insertIntoSegment, reorderWithinSegment } from "../sidebar/operations-side-bar-hit-test.js";
@@ -63,6 +63,8 @@ export interface ZenTaskbarProps {
   readonly onMinimize: (operationId: string) => void;
   readonly onResume: (operationId: string) => void;
   readonly onSelectTheater: (theaterId: string) => void;
+  /** Theater 등록이 진행 중이면 추가 입구를 잠근다 — 사이드바의 「새 Theater」 줄과 같은 규칙. */
+  readonly addingTheater: boolean;
   /** 사이드바·캡션·War Room 카드와 같은 Operation 메뉴를 연다(페이지 소유). */
   readonly onOpenOperationMenu: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   /** 그 메뉴가 지금 열려 있는 Operation — 항목이 열린 메뉴의 주인임을 표시한다. */
@@ -158,6 +160,7 @@ function CruiseTaskbar({
   onMinimize,
   onResume,
   onSelectTheater,
+  addingTheater,
   onOpenOperationMenu,
   openMenuOperationId,
   onSetGroupId,
@@ -539,6 +542,17 @@ function CruiseTaskbar({
             <span className="zen-taskbar-axis"><CanvasModeSwitch /><ArchiveTaskbarEntry /><SideBarStatusViewToggle active={statusAxis} /></span>
             <span className="zen-taskbar-sep" aria-hidden="true" />
           </>
+        ) : theaters.length === 0 ? (
+          // Theater가 하나도 없으면 고를 것이 없다 — 고르는 단추 자리에 첫 Theater를 여는 입구가 선다.
+          <button
+            type="button"
+            className="zen-taskbar-theater is-add"
+            onClick={requestSideBarAddTheater}
+            disabled={addingTheater}
+          >
+            <span className="zen-taskbar-theater-anchor is-add" aria-hidden="true"><PlusGlyph /></span>
+            <span className="zen-taskbar-theater-name">{t("zen.taskbar.addTheater")}</span>
+          </button>
         ) : null}
         <div className="zen-taskbar-list" ref={listRef}>
           {theater !== null && taskbarGroups.length === 0
@@ -558,7 +572,7 @@ function CruiseTaskbar({
           style={menuPlacement(menu.anchor)}
         >
           {menu.kind === "theaters"
-            ? theaters.map((candidate) => {
+            ? [...theaters.map((candidate) => {
               const awaiting = awaitingCountOf(candidate.id);
               const current = candidate.id === activeTheaterId;
               return (
@@ -580,7 +594,24 @@ function CruiseTaskbar({
                   <span className="zen-taskbar-menu-count">{operations.filter((operation) => operation.theaterId === candidate.id).length}</span>
                 </button>
               );
-            })
+            }),
+            // 목록 끝의 추가 입구 — 사이드바 Theater 목록 끝 「새 Theater」 줄과 같은 자리다. 상자는 숨은 사이드바가 연다.
+            <span key="add-sep" className="zen-taskbar-menu-sep" role="separator" />,
+            <button
+              key="add"
+              type="button"
+              role="menuitem"
+              className="zen-taskbar-menu-item is-add"
+              disabled={addingTheater}
+              onClick={() => {
+                setMenu(null);
+                menuReturnFocusRef.current?.focus();
+                requestSideBarAddTheater();
+              }}
+            >
+              <span className="zen-taskbar-theater-anchor is-add" aria-hidden="true"><PlusGlyph /></span>
+              <span className="zen-taskbar-menu-title">{t("zen.taskbar.addTheater")}</span>
+            </button>]
             : openGroup?.entries.map((entry) => (
               <button
                 key={entry.operation.id}
@@ -617,6 +648,14 @@ function CruiseTaskbar({
         document.body,
       ) : null}
     </nav>
+  );
+}
+
+function PlusGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
+    </svg>
   );
 }
 
