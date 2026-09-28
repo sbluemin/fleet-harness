@@ -205,6 +205,8 @@ export interface ObjectiveStore {
   missionRemove(objectiveId: string, missionId: string): Objective;
   memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: "human" | "commander"): Objective;
   memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): Objective;
+  /** 직접 고른 모델(model)과 이미 그 선택인 구성원은 그대로 둔다. changed 는 실제로 바뀐 구성원 수다. */
+  memberBatchLaunch(objectiveId: string, mode: "same" | "route"): { readonly objective: Objective; readonly changed: number };
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean; readonly changed: boolean };
@@ -1205,6 +1207,24 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(patch.subagents !== undefined ? { subagents: patch.subagents ? true as const : undefined } : {}),
       } : member) };
     }),
+    memberBatchLaunch(objectiveId, mode) {
+      let changed = 0;
+      const objective = update(objectiveId, (stored) => {
+        const members = (stored.members ?? []).map((member) => {
+          if (member.launch?.mode === "model") return member;
+          if ((member.launch?.mode ?? "route") === mode) return member;
+          changed += 1;
+          if (mode === "route") {
+            const { launch: _discarded, ...rest } = member;
+            return rest;
+          }
+          return { ...member, launch: { mode: "same" as const } };
+        });
+        // 바뀐 구성원이 없으면 보드도 그대로다 — 저장도, 편집 기록도 남기지 않는다.
+        return changed > 0 ? { ...stored, members } : stored;
+      });
+      return { objective, changed };
+    },
     memberRemove(objectiveId, memberId) {
       const found = locate(objectiveId).stored;
       const removed = (found.members ?? []).find((member) => member.id === memberId);

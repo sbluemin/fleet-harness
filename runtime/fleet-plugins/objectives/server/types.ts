@@ -760,6 +760,8 @@ export const memberLaunchSchema = z.discriminatedUnion("mode", [
 ]);
 export const memberAddSchema = z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional(), launch: memberLaunchSchema.optional(), subagents: z.boolean().optional() }).strict();
 export const memberPatchSchema = z.object({ role: memberAddSchema.shape.role.optional(), brief: z.string().max(300).nullable().optional(), launch: memberLaunchSchema.nullable().optional(), subagents: z.boolean().optional() }).strict();
+export const memberBatchLaunchSchema = z.object({ mode: z.enum(["same", "route"]) }).strict();
+export type MemberBatchLaunchInput = z.infer<typeof memberBatchLaunchSchema>;
 const criterionText = z.string().trim().min(1).max(MAX_CRITERION_TEXT);
 export const criterionAddSchema = z.object({ text: criterionText }).strict();
 export const criterionPatchSchema = z.object({ text: criterionText }).strict();
