@@ -200,7 +200,7 @@ export function AgentChatComposer({
   /** `/context`가 가는 자리 — 같은 수를 이미 그리고 있는 컴포저 바의 문맥 계기를 연다. */
   readonly onOpenContextMeter: () => void;
   /** `/model`·`/effort`가 가는 자리 — 컴포저 좌표의 모델·강도 메뉴를 연다. */
-  readonly onOpenCoordinates: () => void;
+  readonly onOpenCoordinates: (stage: "models" | "effort") => void;
   /** 자식의 능력 목록 판본. 오르면 이 컴포저가 들고 있던 카탈로그 사본이 만료한다. */
   readonly catalogEpoch: number;
 }) {
@@ -364,8 +364,10 @@ export function AgentChatComposer({
       // 메뉴가 열리는 것 자체가 답이다. 알림은 좌표 자리를 빌려 서므로, 여기서 말하면 방금 연
       // 메뉴의 닻인 좌표를 알림이 가려 메뉴가 서지 못한다.
       case "model":
+        onOpenCoordinates("models");
+        return "";
       case "effort":
-        onOpenCoordinates();
+        onOpenCoordinates("effort");
         return "";
       // `clear`는 send()가 확인을 거쳐 자식에게 직접 보낸다.
       default:

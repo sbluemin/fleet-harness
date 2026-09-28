@@ -38,7 +38,7 @@ import {
   chatOriginLabel,
 } from "./chat-events.js";
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
-import { CoordinateFace, SessionCoordinateMenu } from "./coordinate-menu.js";
+import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
 import { AgentChatComposer, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import "@fleet-console/markdown/styles.css";
@@ -391,7 +391,7 @@ export function AgentChatView({
   /** `/context`가 컴포저에서 문맥 계기를 여는 신호. 값이 바뀐 사실만 뜻이 있다. */
   const [meterOpenSignal, setMeterOpenSignal] = React.useState(0);
   /** `/model`·`/effort`가 좌표 메뉴를 여는 신호. 같은 규율이다. */
-  const [coordinateOpenSignal, setCoordinateOpenSignal] = React.useState(0);
+  const [coordinateOpenRequest, setCoordinateOpenRequest] = React.useState<CoordinateMenuOpenRequest | null>(null);
 
   const openJobs = openAgentChatJobs(state);
   // 원장의 도구 줄과 잡을 잇는 축. 잡을 낳은 스텝은 한 줄이 아니라 카드로 선다.
@@ -595,7 +595,7 @@ export function AgentChatView({
         occupied={state.context ? contextOccupied(state.context) : null}
         working={turnRunning}
         language={language}
-        openSignal={coordinateOpenSignal}
+        openRequest={coordinateOpenRequest}
         formatTokens={formatTokens}
         onCompact={() => { void messageAgentSession(context.operationId, "/compact").catch(() => undefined); }}
       />
@@ -829,7 +829,7 @@ export function AgentChatView({
             ledge={ledgeNode}
             meter={meterNode}
             onOpenContextMeter={() => setMeterOpenSignal((signal) => signal + 1)}
-            onOpenCoordinates={() => setCoordinateOpenSignal((signal) => signal + 1)}
+            onOpenCoordinates={(stage: CoordinateMenuStage) => setCoordinateOpenRequest((previous) => ({ seq: (previous?.seq ?? 0) + 1, stage }))}
             catalogEpoch={state.catalogEpoch}
             tourAnchor={tourAnchors}
             turnRunning={turnRunning}

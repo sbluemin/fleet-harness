@@ -2667,8 +2667,9 @@
   height: 100%;
 }
 
-/* 컴포저의 좌표는 바꾸는 문을 겸한다. 글자와 리듬은 읽기 전용 표식 그대로 두고, 누를 수 있다는
-   사실은 꺾쇠 하나와 hover의 brass가 말한다 — 버튼 틀을 두르면 좌표가 컴포저를 상자로 쪼갠다. */
+/* 컴포저의 좌표는 바꾸는 문을 겸한다 — Objectives 지휘관·구성원의 모델·강도 줄과 같은 문법이다. 글자와 리듬은
+   읽기 전용 표식 그대로 두고, 누를 수 있다는 사실은 hover·열림의 brass 바탕이 말한다(위치 채널). 테두리는
+   두르지 않는다 — 두르면 좌표가 컴포저를 상자로 쪼갠다. */
 .agent-chat-coord-menu {
   position: relative;
   display: inline-flex;
@@ -2678,8 +2679,15 @@
 }
 
 .agent-chat-coord.is-control {
-  cursor: pointer;
+  padding: 3px 8px 3px 6px;
+  margin-left: -6px;
   border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.agent-chat-coord.is-control:hover,
+.agent-chat-coord.is-control[aria-expanded="true"] {
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
 }
 
 .agent-chat-coord.is-control:hover .agent-chat-coord-model,
@@ -2689,18 +2697,8 @@
 
 .agent-chat-coord.is-control:focus-visible {
   outline: 1px solid var(--brass);
-  outline-offset: 2px;
+  outline-offset: 1px;
 }
-
-.agent-chat-coord-caret {
-  flex: none;
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-  transition: transform var(--duration-fast);
-}
-
-.agent-chat-coord.is-control:hover .agent-chat-coord-caret { color: var(--brass-ink); }
-.agent-chat-coord.is-control[aria-expanded="true"] .agent-chat-coord-caret { transform: rotate(180deg); }
 
 /* 예약 — 다음 턴에 도는 것. 지금 도는 좌표와 섞이지 않게 화살표로 떨어져 서고, brass는 "지금
    가리키는 자리"라는 위치 채널로만 쓴다. 상태 신호색을 빌리지 않는다: 예약은 경고가 아니다. */
@@ -2730,104 +2728,172 @@
 
 .agent-chat-coord-pending-cancel:hover { color: var(--text-primary); }
 
-/* 메뉴는 좌표가 앉은 컴포저 행에서 위로 열린다 — 문맥 계기 팝오버와 같은 층·같은 표면이다. */
+/* 메뉴 — Objectives 모델·강도 메뉴와 같은 표면·같은 두 단계. body 포털의 고정 위치라 패널의 transform·
+   overflow에 갇히지 않는다. */
 .agent-chat-coord-pop {
-  position: absolute;
-  bottom: calc(100% + var(--space-2));
-  left: 0;
-  z-index: 6;
-  width: 340px;
-  max-width: calc(100cqw - var(--space-6));
-  max-height: min(460px, 70vh);
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  max-height: min(520px, calc(100vh - 24px));
   overflow-y: auto;
-  padding: var(--space-2) 0;
-  border: 1px solid var(--hairline-strong);
+  scrollbar-width: none;
+  padding: var(--space-1);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  background: var(--surface-panel-raised);
+  background:
+    linear-gradient(color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)), color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
-  font-family: var(--font-body);
   font-variant-numeric: tabular-nums;
 }
 
-.agent-chat-coord-pop-group {
-  margin: var(--space-2) var(--space-3) var(--space-1);
+.agent-chat-coord-pop::-webkit-scrollbar { display: none; }
+
+.agent-chat-coord-pop-group { display: flex; flex-direction: column; }
+
+.agent-chat-coord-pop-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 6px var(--space-2) 4px;
+  font-family: var(--font-mono);
   font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.agent-chat-coord-row {
-  display: grid;
-  grid-template-columns: 12px 14px 1fr auto;
+.agent-chat-coord-pop-item {
+  display: flex;
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: 6px var(--space-3);
+  padding: 7px var(--space-2);
   border: 0;
+  border-radius: var(--radius-xs);
   background: transparent;
-  font: inherit;
-  font-size: var(--t-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  letter-spacing: 0.04em;
   text-align: left;
-  color: var(--text-primary);
   cursor: pointer;
+  transition: color var(--duration-fast), background var(--duration-fast);
 }
 
-.agent-chat-coord-row:hover:not([aria-disabled="true"]),
-.agent-chat-coord-row:focus-visible {
-  background: var(--brass-glow);
+.agent-chat-coord-pop-item:hover,
+.agent-chat-coord-pop-item:focus-visible {
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
   outline: none;
 }
 
-.agent-chat-coord-row[aria-checked="true"] .agent-chat-coord-row-label { font-weight: var(--weight-medium); }
-.agent-chat-coord-row[aria-checked="true"] { cursor: default; }
-
-.agent-chat-coord-row-check {
-  font-size: var(--t-xs);
-  color: var(--brass-ink);
+.agent-chat-coord-pop-item.is-active {
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
 }
 
-.agent-chat-coord-row-glyph {
-  display: grid;
-  place-items: center;
-  width: 12px;
-  height: 12px;
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-}
-
-.agent-chat-coord-row-glyph svg {
-  width: 100%;
-  height: 100%;
-}
-
-.agent-chat-coord-row-label {
+.agent-chat-coord-pop-label {
+  flex: 1;
   min-width: 0;
+  padding-left: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.agent-chat-coord-row-window {
+.agent-chat-coord-pop-window {
   font-size: var(--t-2xs);
   color: var(--text-tertiary);
 }
 
-.agent-chat-coord-row-wrap.is-blocked .agent-chat-coord-row {
-  cursor: default;
-}
-
-.agent-chat-coord-row-wrap.is-blocked .agent-chat-coord-row-label {
+.agent-chat-coord-pop-chev {
+  display: inline-grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
   color: var(--text-tertiary);
 }
 
-/* 막힌 이유와 풀 길이 같은 줄에 선다. 창 초과는 곧 다음 턴의 실패이므로 warn 채널이 진다. */
-.agent-chat-coord-row-why {
-  margin: 0 var(--space-3) var(--space-1) calc(var(--space-3) + 12px + 14px + var(--space-2) * 2);
+.agent-chat-coord-pop-chev svg { width: 10px; height: 10px; }
+
+/* 2단계 머리줄 — 모델 이름 오른쪽에 강도 낱말. 한 줄이 「무엇을 · 얼마나」를 다 말하고, 누르면 목록으로 돌아간다. */
+.agent-chat-coord-pop-back {
+  position: relative;
+  justify-content: center;
+  gap: 8px;
+  padding-left: 30px;
+  padding-right: 30px;
+  color: var(--text-primary);
+}
+
+.agent-chat-coord-pop-back .agent-chat-coord-pop-chev {
+  position: absolute;
+  left: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.agent-chat-coord-pop-back .agent-chat-coord-pop-label { flex: none; padding-left: 0; }
+
+.agent-chat-coord-pop-provider { margin-left: 2px; }
+.agent-chat-coord-pop-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
+.agent-chat-coord-pop-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
+.agent-chat-coord-pop-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
+.agent-chat-coord-pop-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.agent-chat-coord-pop-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+.agent-chat-coord-pop-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
+
+.agent-chat-coord-pop-effort-word {
+  flex: none;
+  font-family: var(--font-mono);
   font-size: var(--t-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass-ink);
+}
+
+.agent-chat-coord-pop-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--space-2) 10px;
+}
+
+.agent-chat-coord-pop-track .effort-track-value { display: none; }
+
+.agent-chat-coord-pop-divider {
+  height: 1px;
+  margin: var(--space-1);
+  background: var(--surface-rim);
+}
+
+.agent-chat-coord-pop-empty {
+  margin: 0;
+  padding: 6px var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+/* 막힌 행 — 지금 대화가 그 모델의 창을 넘는다. 이유와 풀 길이 같은 행 아래 한 줄에 서고, 넘치면 다음 턴이
+   실패하므로 warn 채널이 진다. */
+.agent-chat-coord-pop-row.is-blocked .agent-chat-coord-pop-item { cursor: default; }
+.agent-chat-coord-pop-row.is-blocked .agent-chat-coord-pop-item:hover { background: transparent; }
+.agent-chat-coord-pop-row.is-blocked .agent-chat-coord-pop-label { color: var(--text-tertiary); }
+
+.agent-chat-coord-pop-why {
+  margin: 0 var(--space-2) var(--space-1) calc(var(--space-2) + 4px);
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
   color: var(--warn-ink);
 }
 
-.agent-chat-coord-row-compact {
+.agent-chat-coord-pop-compact {
   padding: 0;
   border: 0;
   background: transparent;
@@ -2838,20 +2904,12 @@
   cursor: pointer;
 }
 
-.agent-chat-coord-pop-effort {
-  margin-top: var(--space-1);
-  padding: 0 var(--space-3);
-}
-
-.agent-chat-coord-pop-effort .agent-chat-coord-pop-group {
-  margin-inline: 0;
-}
-
 .agent-chat-coord-pop-note {
-  margin: var(--space-2) var(--space-3) 0;
+  margin: var(--space-1) var(--space-2) 2px;
   padding-top: var(--space-2);
-  border-top: 1px solid var(--hairline);
-  font-size: var(--t-xs);
+  border-top: 1px solid var(--surface-rim);
+  font-family: var(--font-body);
+  font-size: var(--t-2xs);
   color: var(--text-secondary);
 }
 

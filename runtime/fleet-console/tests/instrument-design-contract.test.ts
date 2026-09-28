@@ -4219,12 +4219,13 @@ describe("Effort track interaction grammar", () => {
     expect(chat).not.toMatch(/@container\s*\([^)]*\)\s*\{[\s\S]*?\.agent-chat-coord\s*(?:,|\{)[\s\S]*?display:\s*none;/);
 
     // 구성원 바닥 줄의 좌표는 사실이지 컨트롤이 아니다 — 구성원의 모델·강도는 지휘관의 축이라
-    // 누를 수 있게 그리면 거짓 약속이 된다. 컴포저의 좌표는 채팅 중 모델·강도를 바꾸는 문을 겸하지만
-    // 같은 각인 문법을 지킨다: 버튼 틀을 두르지 않고, 누를 수 있다는 사실은 꺾쇠와 brass hover가 말한다.
+    // 누를 수 있게 그리면 거짓 약속이 된다. 컴포저의 좌표는 채팅 중 모델·강도를 바꾸는 문을 겸하며
+    // Objectives 모델·강도 줄과 같은 문법을 쓴다: 테두리·그림자로 틀을 두르지 않고, 누를 수 있다는 사실은
+    // hover·열림의 brass 바탕(위치 채널)이 말한다.
     expect(view).toMatch(/<span\s+className=\{`agent-chat-coord\$\{/);
     expect(view).not.toMatch(/className="agent-chat-coord"[\s\S]{0,200}onClick/);
     const control = block(".agent-chat-coord.is-control");
-    for (const surface of ["border:", "background:", "padding:", "box-shadow:"]) {
+    for (const surface of ["border:", "box-shadow:"]) {
       expect(control, surface).not.toContain(surface);
     }
 
