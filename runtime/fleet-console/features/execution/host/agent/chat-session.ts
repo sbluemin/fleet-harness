@@ -1302,8 +1302,9 @@ class AgentChatSession {
           }
         }
       } catch {
-        // 적용하지 못한 좌표를 적용한 척하지 않는다. 예약을 거두고 화면에 실패를 말한다.
-        this.setPendingCoordinates(null);
+        // 적용하지 못한 좌표를 적용한 척하지 않는다. 예약을 거두고 화면에 실패를 말한다 — 그 사이
+        // 새로 접수된 예약은 이 실패의 것이 아니므로 남겨, 뒤이은 적용이 가져가게 한다.
+        if (this.pendingCoordinates === target) this.setPendingCoordinates(null);
         this.push({ kind: "error", code: "chat_coordinates_failed" });
         return false;
       }
