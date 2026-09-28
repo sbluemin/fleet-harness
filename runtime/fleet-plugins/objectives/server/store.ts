@@ -185,6 +185,8 @@ export interface ObjectiveStore {
   edgesClear(objectiveId: string): Objective;
   plan(objectiveId: string, input: PlanInput): Objective;
   setPlanning(objectiveId: string, planning: boolean): Objective;
+  /** 사람이 목표로 다룬다 — 구상은 「시작 전」 목표로, 개시는 「진행 중」 목표로 올린다. 되돌리지 않는다. */
+  enlist(objectiveId: string, stage: "planned" | "commenced"): Objective;
   setCriteriaOpen(objectiveId: string, open: boolean): Objective;
   /** 새 작업(스티어링)이 생겼다 — 앞선 충족 판단을 모두 거둔다. */
   clearMet(objectiveId: string): Objective;
@@ -267,8 +269,12 @@ const idFraction = (id: string): number => {
 const virtualRank = (node: Pick<OperationNode, "id" | "ts">): number => -(node.ts.createdAt + idFraction(node.id));
 
 /** 따로 만든 Operation 처럼 아직 목표 고유값이 없는 목표 — 저장하지 않고, 첫 편집 때 지금 자리를 그대로 받아 레코드가 된다. */
-const bareRecord = (operationId: string): StoredObjective => ({ operationId, rank: 0, note: "", missions: [] });
+// 레코드 없는 목표(따로 만든 세션)의 빈 모양 — 순서 이동·재배치처럼 update 를 거치지 않고 이것으로 파일을 세우는 길도 「목표 밖」으로 남긴다.
+const bareRecord = (operationId: string): StoredObjective => ({ operationId, rank: 0, note: "", enlisted: false, missions: [] });
 /** 목표가 되는 Operation — Console 이 띄우는 에이전트 세션(플러그인 소유 Operation 은 아니다). */
+/** 보드가 지은 지휘관 세션 이름(`launch.ts` 의 commanderSession) — 옛 레코드의 「보드에서 만든 목표」 판정에만 쓴다. */
+const BOARD_COMMANDER_SESSION = /^objective-[0-9a-f]{6}-cmdr$/;
+
 export const isObjectiveOperation = (node: Pick<OperationNode, "type" | "pluginId">): boolean => node.type === "agent" && node.pluginId === null;
 
 /** 파일 이름 한 칸 — `safeSegment` 는 `.`·`..` 를 그대로 두므로 이것만으로 담김이 보장되지 않는다. 여기서 먼저 막는다. */
@@ -374,7 +380,8 @@ function compact(objective: StoredObjective): StoredObjective {
   for (const key of ["note", "planRequest", "dueDate", "addedBy", "followupHistory", "origin"] as const) if (!out[key]) delete out[key];
   if (!objective.followups?.length) delete out.followups;
   if (!objective.followupBatches?.length) delete out.followupBatches;
-  for (const key of ["planning", "criteriaOpen", "today"] as const) if (out[key] !== true) delete out[key];
+  for (const key of ["planning", "criteriaOpen", "today", "commenced"] as const) if (out[key] !== true) delete out[key];
+  if (typeof objective.enlisted !== "boolean") delete out.enlisted;
   if (!(objective.attachments?.length)) delete out.attachments;
   if (!objective.results?.length) delete out.results;
   if (!objective.evidence?.length) delete out.evidence;
@@ -518,6 +525,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: preset.model } : {}), ...(preset?.effort ? { effort: preset.effort } : {}) };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
+    const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);
+    // 이 필드가 생기기 전의 레코드 — 보드가 지은 지휘관 이름이나 목표의 흔적(구상·임무·기준·구성원·인계)이 있으면 목표로 본다.
+    const legacy = recorded && !pending && typeof stored.enlisted !== "boolean";
+    const enlisted = !!pending || stored.enlisted === true || (legacy && (BOARD_COMMANDER_SESSION.test(launch.sessionName ?? "") || stored.planning === true
+      || stored.missions.length > 0 || !!stored.criteria?.length || !!stored.criteriaProposals?.length || !!stored.members?.length || !!stored.handoff));
     return {
       id: stored.operationId,
       theaterId: node?.theaterId ?? pending!.theaterId,
@@ -563,7 +575,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       decisionRequestRevision: stored.decisionRequestRevision ?? 0,
       decisionDelivery: stored.decisionDelivery ? { requestId: stored.decisionDelivery.requestId, at: stored.decisionDelivery.at } : null,
       decisions: stored.decisions ?? [],
-      recorded: load(node?.theaterId ?? pending!.theaterId).has(stored.operationId),
+      recorded,
+      enlisted,
+      commenced: enlisted && (stored.commenced === true || (legacy && launch.started && stored.planning !== true)),
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
         return {
@@ -659,10 +673,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     if (hasCycle(graphOf(mutated.missions))) throw new ObjectiveStoreError("dependency_cycle");
     // 선행이 바뀌면 임무도 편성 순으로 다시 선다 — 목록·번호·지휘관 도구의 n 이 편성과 같은 순서를 말한다.
     const missions = lineupOrder(mutated.missions);
-    const ordered = missions === mutated.missions ? mutated : { ...mutated, missions: [...missions] };
+    const sorted = missions === mutated.missions ? mutated : { ...mutated, missions: [...missions] };
+    // 옛 레코드에서 구상 표시는 「개시 전」의 유일한 흔적이다 — 그것을 지우는 편집(개시·중지·완료)이 목표로 올림을 먼저 굳힌다.
+    // 그러지 않으면 중지나 실패한 개시 뒤에 옛 판정(started && !planning)이 개시한 목표로 읽는다.
+    const ordered = typeof stored.enlisted !== "boolean" && typeof sorted.enlisted !== "boolean" && stored.planning === true && sorted.planning !== true ? { ...sorted, enlisted: true } : sorted;
     // 따로 만든 Operation 의 첫 편집 — 여기서 레코드가 된다. 지금 서 있는 가상 자리를 그대로 굳혀 자리가 흔들리지 않게
     // 하고, 그래도 화면이 서버와 어긋나지 않도록 보드 줄을 함께 방송한다.
-    const next = recorded ? ordered : { ...ordered, rank: virtualRank(node!) };
+    // 순서·오늘·브리핑 같은 편집은 세션을 목표로 올리지 않는다 — 명시적으로 「목표 밖」으로 남긴다(구상·개시만 올린다).
+    const next = recorded ? ordered : { ...ordered, rank: virtualRank(node!), enlisted: ordered.enlisted ?? false };
     return commit(theaterId, next, !recorded) ?? project(next, node);
   };
 
@@ -830,6 +848,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(init.addedBy ? { addedBy: init.addedBy } : {}),
         ...(init.origin ? { origin: init.origin } : {}),
         ...(criteriaTexts.length ? { criteria: criteriaTexts.map((text) => ({ id: randomUUID(), text, by: "human" as const })) } : {}),
+        // 보드(사람·Console Use·후속)에서 만든 목표는 처음부터 목표다.
+        enlisted: true,
         missions: [...lineupOrder(missions)],
       };
       return commit(theaterId, stored, true) ?? project(stored, node);
@@ -1107,6 +1127,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     }),
 
     setPlanning: (objectiveId, planning) => update(objectiveId, (stored) => (!!stored.planning === planning ? stored : { ...stored, planning: planning ? true as const : undefined })),
+    enlist: (objectiveId, stage) => update(objectiveId, (stored) => {
+      const commenced = stage === "commenced" || stored.commenced === true;
+      return stored.enlisted === true && commenced === (stored.commenced === true) ? stored : { ...stored, enlisted: true, ...(commenced ? { commenced: true as const } : {}) };
+    }),
     setCriteriaOpen: (objectiveId, open) => update(objectiveId, (stored) => (!!stored.criteriaOpen === open ? stored : { ...stored, criteriaOpen: open ? true as const : undefined })),
     clearMet: (objectiveId) => update(objectiveId, (stored) => withoutMet(stored)),
 

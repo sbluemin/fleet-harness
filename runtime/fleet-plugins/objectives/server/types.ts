@@ -364,6 +364,13 @@ export interface StoredObjective {
   readonly decisionRequestRevision?: number;
   readonly decisionDelivery?: DecisionDelivery;
   readonly decisions?: readonly Decision[];
+  /**
+   * 사람이 이것을 목표로 다룬다 — 보드에서 만들었거나 구상·개시했다. 따로 만든 에이전트 Operation 이 첫 편집(순서·오늘·브리핑 등)으로
+   * 레코드가 될 때는 false 로 남아 「목표 밖」에 선다. 이 필드가 없는 옛 레코드는 목표의 흔적으로 판정한다(`enlistedOf`).
+   */
+  readonly enlisted?: boolean;
+  /** 개시했다 — 구상만 한 목표는 아직 시작 전이다. */
+  readonly commenced?: true;
   readonly missions: readonly StoredMission[];
 }
 
@@ -462,7 +469,14 @@ export interface Objective {
   readonly decisionDelivery: { readonly requestId: string; readonly at: number } | null;
   readonly decisions: readonly Decision[];
   readonly recorded?: boolean;
+  /** 목표로 다룬다 — false 면 사람이 아직 목표로 다루지 않은 세션이라 「목표 밖」에 선다. */
+  readonly enlisted: boolean;
+  /** 개시했다 — 목록의 「진행 중」 구역. 구상만 했거나 보드에서 막 만든 목표는 「시작 전」이다. */
+  readonly commenced: boolean;
 }
+
+/** 보드에서 만든 목표의 지휘관 기본 설정 — 목록은 이와 다를 때만 시작 전 목표의 예정 설정을 보인다. */
+export const COMMANDER_PRESET = { model: "opus[1m]", effort: "high" } as const;
 
 export interface ObjectiveHandoff {
   readonly by: StoredHandoff["by"];

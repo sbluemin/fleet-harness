@@ -428,7 +428,7 @@ describe("Objectives contract", () => {
     // 저장 — 목표마다 자기 디렉터리의 objective.json 하나, Operation 이 가진 값은 싣지 않는다.
     expect(savedIds()).toEqual([objective.id]);
     const saved = savedObjective(objective.id);
-    expect(Object.keys(saved).sort()).toEqual(["members", "missions", "note", "operationId", "rank"]);
+    expect(Object.keys(saved).sort()).toEqual(["commenced", "enlisted", "members", "missions", "note", "operationId", "rank"]);
     expect(saved.operationId).toBe(objective.id);
     for (const key of ["title", "theaterId", "groupId", "slot", "createdAt", "updatedAt", "history", "author", "review"]) expect(JSON.stringify(saved)).not.toContain(`"${key}"`);
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.
@@ -624,6 +624,9 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual(["one"]);
     expect(events.at(-1)).toMatchObject({ op: "upsert", objectiveId: "one", order: ["three", "one", "two"] });
     expect(order(reload())).toEqual(["three", "one", "two"]);
+    // 순서 이동은 사람이 목표로 다룬다는 뜻이 아니다 — 레코드가 된 뒤 임무가 붙어도 「목표 밖」에 남는다(구상·개시만 올린다).
+    store.missionAdd("one", { text: "x" }, { by: "human" });
+    expect(reload().find("one")).toMatchObject({ enlisted: false });
 
     // 첫 편집도 지금 자리를 그대로 받는다(레코드가 되면서 튀지 않는다) — 바뀐 줄은 방송에 실린다.
     store.patch("two", { note: "b" });
@@ -786,10 +789,18 @@ describe("Objectives contract", () => {
     expect(store.list("t1").map((objective) => objective.id).sort()).toEqual([made.id, "sidebar"].sort());
     expect(store.find("sidebar")).toMatchObject({ title: "Made in the sidebar", groupId: "g-a", note: "", missions: [], awaitingReview: false });
     expect(store.find(madeMember.id)).toBeNull();
-    // 첫 편집이 레코드를 만든다.
+    // 첫 편집이 레코드를 만든다 — 그래도 목표로 올리지는 않는다. 보드에서 만든 목표만 처음부터 목표다.
     expect(savedIds()).not.toContain("sidebar");
     store.patch("sidebar", { note: "now it has a brief" });
     expect(savedIds()).toContain("sidebar");
+    expect(store.find("sidebar")).toMatchObject({ enlisted: false, commenced: false });
+    expect(store.find(made.id)).toMatchObject({ enlisted: true, commenced: false });
+    // 구상하면 시작 전 목표가 되고, 개시가 닿으면 진행 중이 된다 — 다시 읽어도 그대로다.
+    await launch.requestPlan("sidebar");
+    expect(store.find("sidebar")).toMatchObject({ enlisted: true, commenced: false });
+    store.setPlanning("sidebar", false);
+    await launch.startCommander("sidebar");
+    expect(store.find("sidebar")).toMatchObject({ enlisted: true, commenced: true });
     // 따로 만든 지휘관에게는 고정 이름이 없다 — 구성원은 그래도 사람에게 묻지 않고, 주소를 지어내지 않고 null 로 받는다.
     const helper = store.memberAdd("sidebar", { role: "helper" }, "human").members.at(-1)!;
     await launch.muster("sidebar");

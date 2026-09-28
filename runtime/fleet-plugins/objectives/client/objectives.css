@@ -58,6 +58,8 @@
   min-height: 0;
   padding: 12px 14px 10px;
   position: relative;
+  /* 목록 열의 폭 — 줄 문법(좁은 레일 · 기본 · 넓은 열)은 표면이 아니라 이 열의 폭을 따른다(세 칸의 300px 목록 칸 포함). */
+  container: objectives-list / inline-size;
 }
 .objectives-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .objectives-title .objectives-place-button { margin-left: auto; }
@@ -66,7 +68,15 @@
 .objectives-glyph.objectives-detail-back { font-size: var(--t-xl); }
 .objectives-title .objectives-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
 /* 범위 낱말 — 상자·채움 없이 글자 무게·색과 얇은 밑줄로만 고른 범위를 말한다. 늘 같은 자리에 선다. */
-.objectives-scope { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; min-width: 0; }
+/* 폭이 모자라면 낱말이 둘째 줄로 꺾인다. 낱말 사이 간격은 각 낱말의 왼쪽 여백이고 목록은 그만큼 왼쪽으로 당겨 잘라 둔다 —
+   줄 머리에 선 낱말의 여백과 「목표 밖」 앞 세로 선은 잘린 자리로 들어가 보이지 않는다. */
+.objectives-scope-clip { flex: 1; min-width: 0; overflow: hidden; }
+.objectives-scope { --scope-gap: 18px; display: flex; align-items: baseline; flex-wrap: wrap; row-gap: 2px; min-width: 0; margin-left: calc(-1 * var(--scope-gap)); }
+.objectives-scope > .objectives-scope-word { flex: none; margin-left: var(--scope-gap); }
+/* 「목표 밖」은 목표가 아닌 세션의 자리 — 가는 세로 선 하나로 앞 낱말들과 떼어 둔다(상자·채움 없음). */
+.objectives-scope-word.is-sep::before { content: ""; position: absolute; left: calc(var(--scope-gap) / -2 - 0.5px); top: 50%; width: 1px; height: 11px; margin-top: -7px; background: var(--hairline-strong); }
+/* 세션이 구상·개시로 목표가 되면 「모두」가 잠깐 밝아져 그 줄이 간 곳을 가리킨다. */
+.objectives-scope-word.is-flash { color: var(--brass); }
 .objectives-scope-word { position: relative; display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 0 6px; border: 0; background: none; font: inherit; font-size: var(--t-md); color: var(--text-tertiary); cursor: pointer; white-space: nowrap; transition: color var(--duration-fast); }
 .objectives-scope-word::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1.5px; border-radius: 1px; background: currentColor; transform: scaleX(0); transform-origin: left; transition: transform var(--duration-fast); }
 .objectives-scope-word:hover { color: var(--text-secondary); }
@@ -99,22 +109,8 @@
 .objectives-section + .objectives-section { margin-top: 10px; }
 /* 구획 머리는 접이식 낱말 — 상자·채움 없이 셰브런이 펼침을 말하고, 「완료됨」은 맨 아래 접힌 채 선다.
    초점은 범위 낱말처럼 황동 글자와 이름 밑줄로 자리를 말한다. */
-.objectives-section-hd { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; margin: 2px 0 1px; padding: 4px 2px 4px 0; border: 0; background: none; font: inherit; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-secondary); cursor: pointer; transition: color var(--duration-fast); }
-.objectives-section-hd:hover { color: var(--text-primary); }
-.objectives-section-hd:hover .objectives-section-chev { color: var(--text-secondary); }
-.objectives-section-hd:focus-visible { outline: none; color: var(--brass); }
-.objectives-section-hd:focus-visible .objectives-section-name { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .objectives-section-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-fast), color var(--duration-fast); }
 .objectives-section-chev svg { width: 11px; height: 11px; }
-.objectives-section-hd[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
-.objectives-section.is-done { margin-top: 14px; }
-.objectives-section.is-done .objectives-section-hd { color: var(--text-tertiary); }
-.objectives-section.is-done .objectives-section-hd:hover { color: var(--text-secondary); }
-.objectives-section-hd .objectives-swatch { width: 7px; height: 7px; border-radius: 50%; }
-.objectives-section-hd .objectives-count { color: var(--text-tertiary); }
-/* 결정 요청 구획 — 접지 않는 머리. 셰브런 자리에 물음표 말풍선이 서고 글자는 결정 요청 표식과 같은 brass 다. */
-.objectives-section-hd.is-request, .objectives-section-hd.is-request:hover { color: var(--brass-ink); cursor: default; }
-.objectives-section-hd.is-request .objectives-section-chev { color: var(--brass-ink); }
 /* 결정 요청 요약 — 목록 위 한 줄. 요청 수 · 이 범위 밖 수 · 「다음」. 행 표식과 같은 brass 말풍선 문법이다. */
 .objectives-requests { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; padding: 5px 10px; border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 10%, transparent); color: var(--brass-ink); font-size: var(--t-sm); }
 .objectives-requests svg { flex: none; width: 14px; height: 14px; }
@@ -122,15 +118,39 @@
 .objectives-requests-next { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; color: var(--brass-ink); cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .objectives-requests-next:hover { color: var(--text-primary); }
 .objectives-requests-next:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
+/* 구역 머리 — 상태가 정한 구역(검토 대기 · 진행 중 · 시작 전 · 목표 밖 · 완료됨). 글자와 가는 선만, 상자·띠는 없다. */
+.objectives-zone { display: flex; flex-direction: column; gap: 5px; }
+.objectives-zone + .objectives-zone { margin-top: 12px; }
+.objectives-zone-hd { display: flex; align-items: center; gap: 7px; margin: 2px 0 1px; padding: 4px 0; border: 0; background: none; font: inherit; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-secondary); cursor: pointer; text-align: left; transition: color var(--duration-fast); }
+.objectives-zone-hd::after { content: ""; flex: 1; height: 1px; margin-left: 4px; background: var(--hairline); }
+.objectives-zone-hd:hover { color: var(--text-primary); }
+.objectives-zone-hd:hover .objectives-section-chev { color: var(--text-secondary); }
+.objectives-zone-hd:focus-visible { outline: none; color: var(--brass); }
+.objectives-zone-hd:focus-visible .objectives-section-name { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.objectives-zone-hd[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
+.objectives-zone-hd .objectives-count { color: var(--text-tertiary); }
+.objectives-zone.is-review .objectives-zone-hd { color: color-mix(in oklch, var(--aurora) 75%, var(--text-secondary)); }
+.objectives-zone.is-done .objectives-zone-hd { color: var(--text-tertiary); }
+.objectives-zone.is-done .objectives-zone-hd:hover { color: var(--text-secondary); }
+/* 그룹 소제목 — 구역 안에서 그룹이 하나라도 설 때만. 색 점 · 이름 · 개수. */
+.objectives-group-hd { display: inline-flex; align-items: center; gap: 7px; min-width: 0; margin: 4px 0 0 2px; font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-group-hd .objectives-swatch { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.objectives-outside-hint { margin: 2px 0 4px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); }
+/* 결정 요청 구역 — 접지 않는 머리. 셰브런 자리에 물음표 말풍선이 서고 글자는 결정 요청 표식과 같은 brass 다. */
+.objectives-zone-hd.is-request, .objectives-zone-hd.is-request:hover { color: var(--brass-ink); cursor: default; }
+.objectives-zone-hd.is-request .objectives-section-chev { color: var(--brass-ink); }
 .objectives-objectives { display: flex; flex-direction: column; gap: 5px; flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
 .objectives-empty { color: var(--text-tertiary); font-size: var(--t-sm); padding: 24px 8px; text-align: center; }
+/*
+ * 목록 한 줄 — 동그라미 · 제목/메타 · 오른쪽 열(기한 · 모델) · Operation 이동 자리(늘 비워 두어 오른쪽 끝선이 줄마다 같다).
+ * 좁은 목록(300 미만)은 오른쪽 열을 메타 줄로 내리고, 넓은 목록(720 이상)은 출처·기한·모델이 같은 x 에 서는 열이 된다.
+ */
 .objectives-objective {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 10px;
-  row-gap: 6px;
-  align-items: center;
-  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto auto 26px;
+  grid-template-areas: "ring title due launch go" "ring meta due launch go";
+  align-items: start;
+  padding: 8px 8px 8px 10px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   background: var(--surface-panel-raised);
@@ -138,21 +158,40 @@
   position: relative;
   transition: border-color var(--duration-fast);
 }
-/* 좁은 카드에서 제목이 한 글자 세로줄로 무너지지 않게 — 가운데 칸이 0까지 눌리면
-   오른쪽 묶음이 제목 아래 줄로 내려간다(고정 px 분기 없이 내용 폭에 따라 접힘).
-   넓은 폭에서는 이전과 같은 한 줄 배치가 유지된다. */
-.objectives-objective > .objectives-check { flex: none; margin-inline: 3px; }
-.objectives-objective > .objectives-check-tip { flex: none; width: 22px; }
-.objectives-objective-body { flex: 1 1 160px; min-width: 0; }
-.objectives-objective-side { min-width: 0; max-width: 100%; margin-left: auto; }
-.objectives-objective-side > .objectives-goto { flex: none; }
+.objectives-objective-ring { grid-area: ring; display: grid; place-items: center; width: 16px; height: 18px; }
+.objectives-objective-col { align-self: center; display: flex; justify-content: flex-end; min-width: 0; }
+.objectives-objective-col:not(:empty) { padding-left: 12px; }
+.objectives-objective-col.is-src { grid-area: src; display: none; }
+.objectives-objective-col.is-due { grid-area: due; }
+.objectives-objective-col.is-launch { grid-area: launch; }
+.objectives-objective-go { grid-area: go; align-self: center; justify-self: end; display: grid; place-items: center; }
+.objectives-objective-go .objectives-glyph { width: 22px; height: 22px; }
+/* 같은 값의 두 자리 — 폭과 줄의 상태에 따라 한쪽만 보인다. 개시한 줄은 오른쪽 열을 모델이 차지하고 기한은 메타로 간다. */
+.objectives-m-due, .objectives-m-launch { display: none; }
+.objectives-m-src { display: inline-flex; min-width: 0; max-width: 100%; }
+.objectives-objective.is-started .objectives-c-due { display: none; }
+.objectives-objective.is-started .objectives-m-due { display: inline-flex; }
+@container objectives-list (width < 300px) {
+  .objectives-objective { grid-template-columns: 24px minmax(0, 1fr) auto; grid-template-areas: "ring title go" ". meta meta"; padding: 8px 6px 8px 8px; }
+  .objectives-objective-col.is-due, .objectives-objective-col.is-launch { display: none; }
+  .objectives-m-due, .objectives-m-launch { display: inline-flex; min-width: 0; max-width: 100%; }
+  .objectives-objective-go:empty { display: none; }
+}
+@container objectives-list (width >= 720px) {
+  .objectives-objective { grid-template-columns: 26px minmax(0, 1fr) minmax(0, 30ch) 13ch 15ch 26px; grid-template-areas: "ring title src due launch go" "ring meta src due launch go"; }
+  .objectives-objective-col.is-src { display: flex; justify-content: flex-start; }
+  .objectives-objective-col.is-due { justify-content: flex-start; }
+  .objectives-m-src { display: none; }
+  .objectives-objective.is-started .objectives-c-due { display: inline-flex; }
+  .objectives-objective.is-started .objectives-m-due { display: none; }
+}
+@container objectives-list (width < 420px) { .objectives-scope-glyph { display: none; } }
 .objectives-objective:hover { border-color: var(--hairline-strong); }
 .objectives-objective:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-objective[aria-selected="true"] { border-color: var(--brass); }
 /* 방금 추가한 행 — 임무 강조(.objectives-mission.is-highlight)와 같은 고리·맥박. */
 .objectives-objective.is-highlight { box-shadow: inset 0 0 0 2px var(--brass); animation: objectives-pulse 1.2s ease-out 2; }
 .objectives-objective.is-done .objectives-objective-title { text-decoration: line-through; color: var(--text-tertiary); }
-.objectives-objective-side { display: inline-flex; align-items: center; gap: 10px; }
 /* 작업 중 — 편집 대신 중단 하나. 왼쪽 점검 원은 숨을 죽이고 오른쪽 점은 숨 쉰다. */
 .objectives-objective.is-busy { cursor: default; }
 .objectives-objective.is-busy .objectives-check { opacity: 0.35; cursor: default; }
@@ -167,7 +206,7 @@
 .objectives-detail.is-busy .objectives-detail-title, .objectives-detail.is-busy .objectives-mission-text:read-only, .objectives-detail.is-busy .objectives-note:read-only { cursor: default; color: var(--text-secondary); }
 .objectives-detail.is-busy .objectives-row-main:disabled { cursor: default; opacity: 0.6; }
 .objectives-detail.is-busy .objectives-check { opacity: 0.35; cursor: default; }
-.objectives-objective-launch.is-running i, .objectives-mission-sub.is-running i { animation: objectives-breathe 1.6s ease-in-out infinite; }
+.objectives-mission-sub.is-running i { animation: objectives-breathe 1.6s ease-in-out infinite; }
 .objectives-check {
   width: 16px;
   height: 16px;
@@ -185,8 +224,23 @@
 .objectives-check.is-on { background: var(--brass); border-color: var(--brass); }
 .objectives-check.is-on svg { opacity: 1; }
 .objectives-check:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
-.objectives-objective-title { font-size: var(--t-md); line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
-.objectives-objective-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: var(--t-xs); color: var(--text-tertiary); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.objectives-objective-title { grid-area: title; font-size: var(--t-md); line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
+.objectives-objective-meta { grid-area: meta; display: flex; gap: 3px 10px; align-items: center; flex-wrap: wrap; min-width: 0; font-size: var(--t-xs); color: var(--text-tertiary); margin-top: 3px; font-variant-numeric: tabular-nums; }
+/* 상태 낱말 — 동그라미가 말하는 것을 글자로 한 번 더. 색은 상태 신호만. */
+.objectives-objective-state { display: inline-flex; align-items: center; white-space: nowrap; color: var(--text-tertiary); }
+.objectives-objective-state.is-running, .objectives-objective-state.is-planning { color: var(--warn); }
+.objectives-objective-state.is-background { color: color-mix(in oklch, var(--warn) 70%, var(--text-tertiary)); }
+.objectives-objective-state.is-awaiting { color: var(--aurora); }
+.objectives-objective-state.is-planned { color: var(--text-secondary); }
+.objectives-objective-progress { white-space: nowrap; color: var(--text-secondary); }
+/* 목표 밖 세션의 점 — 목표의 완료 동그라미와 모양부터 다르다. 대화 전은 빈 점. */
+.objectives-dot { display: grid; place-items: center; width: 16px; height: 16px; }
+.objectives-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--text-tertiary); }
+.objectives-dot.is-fresh::before { background: transparent; box-shadow: inset 0 0 0 1.3px var(--text-tertiary); }
+.objectives-dot.is-running::before { background: var(--warn); animation: objectives-breathe 1.6s ease-in-out infinite; }
+.objectives-dot.is-background::before { background: color-mix(in oklch, var(--warn) 70%, var(--text-tertiary)); }
+.objectives-dot.is-awaiting::before { background: var(--aurora); }
+@media (prefers-reduced-motion: reduce) { .objectives-dot::before { animation: none; } }
 .objectives-op {
   display: inline-flex;
   align-items: center;
@@ -206,29 +260,11 @@
 .objectives-op.is-awaiting i { background: var(--warn); }
 .objectives-op.is-idle i, .objectives-op.is-ended i, .objectives-op.is-closed i, .objectives-op.is-unknown i { background: var(--text-tertiary); }
 .objectives-op.is-background i { background: var(--aurora); }
-/* 에이전트가 올린 목표 — 테두리 없이 채널 색을 아주 옅게 깐 알약. 글꼴은 본문 산세리프, 이름은 한 줄로 줄인다. */
-.objectives-by {
-  --by-tone: var(--console-use-badge);
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  max-width: min(100%, 40ch);
-  height: 18px;
-  padding: 0 8px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklab, var(--by-tone) 9%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--by-tone) 14%, transparent);
-  color: color-mix(in oklab, var(--by-tone) 40%, var(--text-secondary));
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.01em;
-  line-height: 1;
-  white-space: nowrap;
-  transition: background var(--duration-fast), color var(--duration-fast);
-}
+/* 출처 — 이 목표를 남긴 목표·Operation. 채움·테두리·색 없이 보조 글씨로, 상태보다 한 단 약하다. 이름은 한 줄로 줄인다. */
+.objectives-by { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; color: var(--text-tertiary); white-space: nowrap; }
+.objectives-by svg { width: 11px; height: 11px; flex: none; opacity: 0.8; }
 .objectives-by-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .objectives-by-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.objectives-objective:hover .objectives-by { background: color-mix(in oklab, var(--by-tone) 13%, transparent); color: color-mix(in oklab, var(--by-tone) 40%, var(--text-primary)); }
 .objectives-add {
   display: flex;
   gap: 8px;
@@ -260,8 +296,6 @@
 .objectives-view-picker svg, .objectives-launch-view svg { width: 12px; height: 12px; flex: none; }
 .objectives-launch-view { display: inline-flex; align-items: center; gap: 4px; color: var(--text-tertiary); white-space: nowrap; }
 .objectives-launch-separator { height: 11px; width: 1px; background: var(--hairline-strong); margin: 0 2px; }
-.objectives-objective-view { display: inline-flex; }
-.objectives-objective-view svg { width: 11px; height: 11px; }
 
 /* ── 버튼 ── */
 .objectives-btn {
@@ -738,12 +772,11 @@ span.objectives-row-main { cursor: default; }
 .objectives-objective-launch { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); white-space: nowrap; }
 /* 긴 모델명은 줄임표로 접는다 — 글리프·강도는 자리를 지킨다. 풀네임은 title. */
 .objectives-objective-launch > .objectives-objective-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-objective-launch > b, .objectives-objective-launch > .objectives-objective-view { flex: none; }
+.objectives-objective-launch > b, .objectives-objective-launch > .objectives-objective-planned { flex: none; }
 .objectives-objective-launch b { font-weight: var(--weight-medium); color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary)); text-transform: uppercase; }
-.objectives-objective-launch i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); }
-.objectives-objective-launch.is-awaiting i { background: var(--warn); }
-.objectives-objective-launch.is-idle i, .objectives-objective-launch.is-ended i, .objectives-objective-launch.is-closed i, .objectives-objective-launch.is-unknown i { background: var(--text-tertiary); }
-.objectives-objective-launch.is-background i { background: var(--aurora); }
+/* 시작 전 목표의 예정 설정 — 기본과 다를 때만, 「예정」 낱말과 함께 흐리게. */
+.objectives-objective-launch.is-planned { gap: 4px; font-family: var(--font-body); font-size: var(--t-xs); letter-spacing: 0; }
+.objectives-objective-launch.is-planned > .objectives-objective-model, .objectives-objective-launch.is-planned b { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; font-weight: var(--weight-regular); color: var(--text-tertiary); }
 
 /* 끌기 — 원래 카드는 빈 홈으로 남고, 유령이 커서를 따르며, 목록 행은 놓을 수 있을 때 브라스 테두리로 응답한다 */
 .objectives-objective.is-lifted { opacity: 0.35; border-style: dashed; }
@@ -763,6 +796,9 @@ span.objectives-row-main { cursor: default; }
 .objectives-drag-ghost.is-compact .objectives-check svg { width: 8px; height: 8px; }
 .objectives-drag-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-drag-hint { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--brass); letter-spacing: 0.06em; }
+/* 다른 구역 위 — 놓아도 옮기지 않는다. 유령이 까닭을 둘째 줄로 말한다. */
+.objectives-drag-ghost.is-refused { grid-template-columns: 16px minmax(0, 1fr); row-gap: 3px; border-color: color-mix(in oklch, var(--coral) 55%, transparent); border-radius: var(--radius-xs); }
+.objectives-drag-ghost.is-refused .objectives-drag-hint { grid-column: 1 / -1; font-family: var(--font-body); letter-spacing: 0; line-height: 1.4; color: var(--coral); }
 .objectives-objective { user-select: none; }
 
 /* 편성 상자 — 그래프와 그 아래 안내 문구가 한 상자 안에 선다. 문구는 상자 바닥 가운데. */
@@ -881,7 +917,7 @@ span.objectives-row-main { cursor: default; }
   /* 좁은 폭은 한 열이다 — 상세가 목록을 대신하고 손잡이는 거둔다. 기억한 폭은 지우지 않아 다시 넓히면 돌아온다. */
   .objectives-root, .objectives-root.has-detail { grid-template-columns: minmax(0, 1fr); }
   .objectives-detail-grip { display: none; }
-  .objectives-scope { gap: 14px; }
+  .objectives-scope { --scope-gap: 14px; }
   .objectives-root.has-detail .objectives-main { display: none; }
   .objectives-detail { border-left: 0; }
   .objectives-glyph.objectives-detail-back { display: inline-grid; margin-right: -6px; font-size: var(--t-xl); }
@@ -943,8 +979,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-check.is-linked.is-background { border-style: dashed; border-color: var(--warn); }
 .objectives-check.is-linked.is-awaiting { border-color: var(--aurora); animation: objectives-breathe 1.6s ease-in-out infinite; }
 .objectives-check.is-linked.is-awaiting i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--aurora); }
-.objectives-check.is-linked.is-ended, .objectives-check.is-linked.is-unknown { border-color: var(--hairline); }
-.objectives-check.is-linked.is-ended i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 1px; background: var(--text-tertiary); }
+.objectives-check.is-linked.is-ended, .objectives-check.is-linked.is-unknown, .objectives-check.is-linked.is-closed { border-color: var(--hairline); }
+.objectives-check.is-linked.is-ended i::after, .objectives-check.is-linked.is-closed i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 1px; background: var(--text-tertiary); }
 @keyframes objectives-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .objectives-check.is-linked i, .objectives-check.is-linked { animation: none; } }
 .objectives-check-bubble { position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%) translateX(-2px); padding: 4px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-spring), transform var(--duration-fast) var(--ease-spring); z-index: 3; }

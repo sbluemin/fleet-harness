@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
-import { commanderMode, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
+import { COMMANDER_PRESET, commanderMode, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting } from "./action-band.js";
 import { DecisionGlyph, DecisionList, DecisionRequestBlock, RequestGlyph } from "./decisions.js";
 import { PastRoles } from "./past-roles.js";
@@ -15,7 +15,7 @@ import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttac
 import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewGlyph, StartViewPicker, startViewLabel, type StartView } from "./launch-control.js";
+import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewPicker, type StartView } from "./launch-control.js";
 import { discardPendingSelection, dockObjective, expandObjective, hasDecisionRequest, removeObjectiveLocally, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater, type ObjectiveGroup } from "./objectives-state.js";
 import {
   discardedFollowups,
@@ -38,9 +38,15 @@ export interface ObjectiveContext {
   readonly place: "rail" | "expanded";
 }
 
-/** 중앙 pane 제목 줄의 범위 낱말 — 그룹은 목록이 아니라 카드 패널의 구획이다. */
-type ListId = "today" | "due" | "all" | "agent";
-const LISTS: readonly ListId[] = ["today", "due", "all", "agent"];
+/** 중앙 pane 제목 줄의 범위 낱말 — 그룹은 목록이 아니라 구역 안의 소제목이다. 「목표 밖」은 목표로 다루기 전의 세션이다. */
+type ListId = "today" | "due" | "all" | "agent" | "outside";
+const LISTS: readonly ListId[] = ["today", "due", "all", "agent", "outside"];
+/** 목록의 구역 — 상태가 정한다. 구역 안의 순서는 사람이 정한 보드 순서 그대로다. */
+type Zone = "request" | "review" | "run" | "wait" | "outside" | "done";
+// 목표 밖 판정이 결정 요청·검토 대기보다 먼저다 — 따로 만든 세션도 제 보드 도구로 인계까지 갈 수 있고, 그래도 「목표 밖」에서 보여야 한다.
+const zoneOf = (objective: Objective): Zone => objective.done ? "done" : !objective.enlisted ? "outside" : hasDecisionRequest(objective) ? "request" : objective.awaitingReview ? "review" : objective.commenced ? "run" : "wait";
+// 검토 대기·완료됨은 예전 구획의 접힘 기억을 그대로 잇는다. 결정 요청 구역은 접지 않는다.
+const zoneKey = (zone: Zone) => (zone === "review" || zone === "done" || zone === "request" ? zone : `zone:${zone}`);
 /** 끌어 놓을 자리 — 범위 낱말(오늘·기한) 또는 다른 그룹 구획. */
 type DropTarget = "today" | "due" | "ungrouped" | `group:${string}`;
 type DueFilter = "all" | "overdue" | "today" | "week" | "later";
@@ -163,6 +169,8 @@ function dueLabel(iso: string, language: "en" | "ko"): string {
   return new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", weekday: "short" }).format(date);
 }
 const SunGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3" /></svg>;
+/** 출처 — 다른 목표·Operation 에서 갈라져 나왔다. */
+const SourceGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 2.5v6a1.5 1.5 0 0 0 1.5 1.5H12.5M10 7.5l2.5 2.5-2.5 2.5" /></svg>;
 const CalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></svg>;
 const CoordGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="4" r="2" /><circle cx="4" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><path d="M7 5.7L5 10.3M9 5.7l2 4.6" /></svg>;
 /** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
@@ -182,8 +190,9 @@ function dueBucket(due: string | null): DueFilter | null {
 function inScope(objective: Objective, list: ListId, dueFilter: DueFilter): boolean {
   if (list === "today") return objective.today;
   if (list === "due") return !!objective.dueDate && (dueFilter === "all" || dueBucket(objective.dueDate) === dueFilter);
-  if (list === "agent") return !!objective.addedBy;
-  return true;
+  if (list === "agent") return !!objective.addedBy && objective.enlisted;
+  if (list === "outside") return !objective.enlisted;
+  return objective.enlisted;
 }
 /** 결정 요청 구획의 key — 접지 않는 구획이라 접힘 기억에 들지 않는다. */
 const REQUEST_SECTION = "request";
@@ -224,12 +233,29 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const [addedId, setAddedId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ text: string; undo?: () => Promise<void> } | null>(null);
   const launchRows = useLaunchRows();
+  // 세션이 구상·개시로 목표가 되면 「모두」 낱말이 잠깐 밝아진다 — 목표 밖에서 사라진 줄이 어디로 갔는지 말한다.
+  const enlistedSeen = useRef(new Map<string, boolean>());
+  const [flash, setFlash] = useState<ListId | null>(null);
+  useEffect(() => {
+    let promoted = false;
+    for (const objective of state.objectives) {
+      if (enlistedSeen.current.get(objective.id) === false && objective.enlisted) promoted = true;
+      enlistedSeen.current.set(objective.id, objective.enlisted);
+    }
+    if (promoted) setFlash("all");
+  }, [state.objectives]);
+  // 끄기는 켜짐에만 묶는다 — 구상 요청은 여러 번 방송되므로 목록 effect 에 두면 다음 방송이 타이머를 지운다.
+  useEffect(() => {
+    if (!flash) return;
+    const timer = setTimeout(() => setFlash(null), 1400);
+    return () => clearTimeout(timer);
+  }, [flash]);
   const [nextView, setNextView] = useState<StartView>(() => { try { return localStorage.getItem("fleet.objectives.start-view") === "chat" ? "chat" : "terminal"; } catch { return "terminal"; } });
   const chooseNextView = (value: StartView) => { setNextView(value); try { localStorage.setItem("fleet.objectives.start-view", value); } catch { /* 저장을 차단한 브라우저에서도 선택은 유지한다. */ } };
   // 끌기 — 카드를 범위 낱말(오늘·기한)이나 다른 그룹 구획에 놓으면 그리로 옮기고, 같은 구획의 카드 사이에 놓으면 순서를 바꾼다.
   // 원래 자리는 빈 홈으로 남고 카드 유령이 커서를 따르며, 순서를 바꿀 자리에는 삽입선이 선다.
-  const [drag, setDrag] = useState<{ objectiveId: string; x: number; y: number; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number; compact: boolean } | null>(null);
-  const dragRef = useRef<{ objectiveId: string; section: string; startX: number; startY: number; live: boolean; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number } | null>(null);
+  const [drag, setDrag] = useState<{ objectiveId: string; x: number; y: number; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number; compact: boolean; refused: ObjectiveMessageKey | null; zone: Zone } | null>(null);
+  const dragRef = useRef<{ objectiveId: string; section: string; zone: Zone; startX: number; startY: number; live: boolean; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number } | null>(null);
   const suppressClick = useRef(false);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 목표 추가의 대상 그룹 — 구획 머리의 「+ 추가」로 고른다. 그룹을 만들고 이름을 바꾸는 일은 Console 사이드바가 맡는다.
@@ -267,7 +293,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     if (!objective) return;
     takeReveal();
     setSelected(objective.id);
-    setList("all");
+    setList(objective.enlisted ? "all" : "outside");
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     setHighlightMission(reveal.missionId ?? null);
     if (reveal.missionId) highlightTimer.current = setTimeout(() => { setHighlightMission(null); highlightTimer.current = null; }, 2400);
@@ -308,30 +334,40 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const visible = useMemo(() => state.objectives.filter((objective) => inList(objective)), [state.objectives, inList]);
   const open = useMemo(() => visible.filter((objective) => !objective.done), [visible]);
   const finished = useMemo(() => visible.filter((objective) => objective.done), [visible]);
-  // 카드 패널은 그룹별 구획으로 선다 — 사이드바 그룹 순서, 미분류는 마지막. 「모두」는 목표가 없는 그룹도 빈 구획으로 보여서
-  // 끌어 놓을 자리와 「+ 추가」 입구가 된다. 다른 범위는 해당 목표가 있는 그룹만 선다.
-  const sections = useMemo(() => {
-    type Section = { key: string; label: string | null; swatch: string | null; objectives: Objective[]; done?: boolean; request?: boolean };
-    const out: Section[] = [];
-    // 결정 요청 — 사람의 답을 기다리는 항목은 맨 위 한 구획으로 모인다(검토 대기·그룹 구획에서 빠진다). 요청이 선 차례로 서고, 저장된
-    // 순서와 그룹은 그대로라 요청이 풀리면 원래 자리로 돌아간다. 구획 접힘과 무관하게 보여야 하므로 접지 않는다.
-    const requesting = open.filter(hasDecisionRequest).sort(byRequestTime);
-    if (requesting.length) out.push({ key: REQUEST_SECTION, label: t("objectives.requests.section"), swatch: null, objectives: requesting, request: true });
-    // 검토 대기 — 모든 임무와 달성 기준이 끝나 사람의 완료만 남은 항목은 결정 요청 다음 한 구획으로 모인다(그룹 구획에서 빠진다). 펼침이 기본.
-    const reviewing = open.filter((objective) => objective.awaitingReview && !hasDecisionRequest(objective));
-    if (reviewing.length) out.push({ key: "review", label: t("objectives.objectives.review"), swatch: null, objectives: reviewing });
-    const working = open.filter((objective) => !objective.awaitingReview && !hasDecisionRequest(objective));
-    for (const group of state.groups) {
-      const objectives = working.filter((objective) => objective.groupId === group.id);
-      if (objectives.length || list === "all") out.push({ key: group.id, label: group.name, swatch: group.color, objectives });
+  /**
+   * 목록은 상태 구역으로 선다 — 검토 대기 · 진행 중(개시함) · 시작 전 · (오늘·기한에서만) 목표 밖 · 완료됨. 구역 안은 보드 순서
+   * 그대로이고, 그룹은 진행 중·시작 전 구역 안의 소제목이다. 「모두」의 시작 전 구역은 빈 그룹과 미분류도 세워 끌어 놓을 자리와
+   * 「+ 추가」 입구가 된다(새 목표는 늘 시작 전이다).
+   */
+  const zones = useMemo(() => {
+    type Block = { key: string; group: ObjectiveGroup | null; ungrouped: boolean; objectives: Objective[] };
+    type ZoneView = { zone: Zone; head: boolean; objectives: Objective[]; blocks: Block[] };
+    const order: readonly Zone[] = list === "outside" ? ["outside", "done"] : ["request", "review", "run", "wait", "outside", "done"];
+    const byZone = new Map<Zone, Objective[]>(order.map((zone) => [zone, []]));
+    for (const objective of visible) byZone.get(zoneOf(objective))?.push(objective);
+    // 결정 요청은 요청이 선 차례로 선다 — 저장된 순서와 그룹은 그대로라 요청이 풀리면 원래 자리로 돌아간다.
+    byZone.get("request")?.sort(byRequestTime);
+    // 다른 범위는 두 구역 이상에 목표가 있을 때만 구역 머리를 세운다 — 오늘 한 건에 머리 두 줄이 붙지 않게.
+    const live = (["run", "wait", "outside"] as const).filter((zone) => (byZone.get(zone)?.length ?? 0) > 0).length;
+    const out: ZoneView[] = [];
+    for (const zone of order) {
+      const objectives = byZone.get(zone) ?? [];
+      const slots = zone === "wait" && list === "all" && state.groups.length > 0;
+      if (!objectives.length && !slots) continue;
+      const head = list === "outside" ? zone === "done" : zone === "request" || zone === "review" || zone === "done" || list === "all" || live > 1;
+      const blocks: Block[] = [];
+      if (state.groups.length > 0 && (zone === "run" || zone === "wait")) {
+        for (const group of state.groups) {
+          const items = objectives.filter((objective) => objective.groupId === group.id);
+          if (items.length || slots) blocks.push({ key: `${zone}:${group.id}`, group, ungrouped: false, objectives: items });
+        }
+        const rest = objectives.filter((objective) => !groupOf(objective.groupId));
+        if (rest.length || slots) blocks.push({ key: `${zone}:ungrouped`, group: null, ungrouped: true, objectives: rest });
+      } else blocks.push({ key: zone, group: null, ungrouped: false, objectives });
+      out.push({ zone, head, objectives, blocks });
     }
-    const rest = working.filter((objective) => !groupOf(objective.groupId));
-    // 미분류도 「모두」에서는 비어 있어도 선다 — 카드를 그룹에서 빼는 놓을 자리가 늘 있어야 한다.
-    if (rest.length || list === "all") out.push({ key: "ungrouped", label: t("objectives.list.ungrouped"), swatch: null, objectives: rest });
-    // 완료된 항목은 목록 맨 아래 「완료됨」 한 구획 — 펼쳐야 보인다.
-    if (finished.length) out.push({ key: "done", label: t("objectives.objectives.done"), swatch: null, objectives: finished, done: true });
     return out;
-  }, [list, open, finished, state.groups, t]);
+  }, [list, visible, state.groups]);
   const openCount = (predicate: (objective: Objective) => boolean) => state.objectives.filter((objective) => !objective.done && predicate(objective)).length;
   const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? null : null;
   const detailRef = useRef<HTMLElement | null>(null);
@@ -340,8 +376,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 결정 요청은 범위와 무관하게 전부 센다 — 요약 줄·「다음」·상세 머리의 「다른 요청」이 같은 줄을 돈다.
   const requests = useMemo(() => state.objectives.filter(hasDecisionRequest).sort(byRequestTime), [state.objectives]);
   const requestsOutside = requests.filter((objective) => !inList(objective)).length;
-  /** 이 목표가 서는 구획 — 목록의 구획 규칙(sections)과 같은 순서로 판정한다. */
-  const sectionKeyOf = (objective: Objective): string => objective.done ? "done" : hasDecisionRequest(objective) ? REQUEST_SECTION : objective.awaitingReview ? "review" : groupOf(objective.groupId) ? objective.groupId! : "ungrouped";
+  /** 이 목표가 서는 구역의 접힘 key — 목록의 구역 규칙(zoneOf)과 같다. */
+  const sectionKeyOf = (objective: Objective): string => zoneKey(zoneOf(objective));
   const unfold = (collapsedNow: Readonly<Record<string, boolean>>, key: string) => (collapsedNow[key] ? { ...collapsedNow, [key]: false } : collapsedNow);
   /**
    * 목록 칸 안에서만 가장 가까운 끝으로 굴린다(scrollIntoView 의 block: "nearest" 와 같은 셈) — scrollIntoView 는 레일 카드·확대 표면·
@@ -369,7 +405,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const at = requests.findIndex((objective) => objective.id === selected);
     const target = requests[(at + 1) % requests.length]!;
     patchObjectiveView(theaterId, (view) => ({
-      ...(inScope(target, (LISTS as readonly string[]).includes(view.list) ? view.list as ListId : "all", view.dueFilter as DueFilter) ? {} : { list: "all" }),
+      ...(inScope(target, (LISTS as readonly string[]).includes(view.list) ? view.list as ListId : "all", view.dueFilter as DueFilter) ? {} : { list: target.enlisted ? "all" : "outside" }),
       collapsed: unfold(view.collapsed, sectionKeyOf(target)),
       selected: target.id,
       externalSelectionId: null,
@@ -394,7 +430,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   };
 
   const listTitle = t(`objectives.list.${list}`);
-  const listCount = (id: ListId) => openCount((objective) => id === "today" ? objective.today : id === "due" ? !!objective.dueDate : id === "agent" ? !!objective.addedBy : true);
+  const listCount = (id: ListId) => openCount((objective) => id === "today" ? objective.today : id === "due" ? !!objective.dueDate : id === "agent" ? !!objective.addedBy && objective.enlisted : id === "outside" ? !objective.enlisted : objective.enlisted);
 
   // ── 행동 ──
   const completeObjective = async (objective: Objective) => {
@@ -501,11 +537,22 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const reorder = async (objective: Objective, insert: Insert) => {
     await call("/objective/move", { objectiveId: objective.id, ...(insert.place === "before" ? { beforeId: insert.anchorId } : { afterId: insert.anchorId }) });
   };
-  /** 놓을 자리 — 범위 낱말이나 다른 그룹 구획. 잡은 카드의 구획 위는 자리가 아니다(그 안에서는 순서를 바꾼다). */
-  const dropTargetAt = (x: number, y: number, fromSection: string): DropTarget | null => {
+  /** 놓을 자리 — 범위 낱말이나 같은 구역의 다른 그룹. 잡은 카드의 구획 위는 자리가 아니다(그 안에서는 순서를 바꾼다). 구역은 상태가 정하므로 넘지 않는다. */
+  const dropTargetAt = (x: number, y: number, fromSection: string, fromZone: Zone): DropTarget | null => {
     const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop-list]");
     if (!hit || hit.dataset.section === fromSection) return null;
+    if (hit.dataset.zone && hit.dataset.zone !== fromZone) return null;
     return (hit.dataset.dropList as DropTarget | undefined) ?? null;
+  };
+  /** 커서가 다른 구역 위에 있다 — 놓아도 옮기지 않고, 유령이 그 까닭을 말한다. */
+  const refusalAt = (x: number, y: number, fromZone: Zone): ObjectiveMessageKey | null => {
+    const zone = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-zone]")?.dataset.zone as Zone | undefined;
+    if (!zone || zone === fromZone) return null;
+    if (fromZone === "outside") return "objectives.drag.fromOutside";
+    if (zone === "outside") return "objectives.drag.toOutside";
+    if (zone === "run") return "objectives.drag.toRun";
+    if (fromZone === "run" && zone === "wait") return "objectives.drag.runToWait";
+    return "objectives.drag.zone";
   };
   const moveTo = async (objective: Objective, target: DropTarget) => {
     const patch: Record<string, unknown> = target === "today" ? { today: true }
@@ -518,13 +565,13 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const name = target === "today" ? t("objectives.list.today") : target === "due" ? t("objectives.list.due") : target === "ungrouped" ? t("objectives.list.ungrouped") : groupOf(target.slice(6))?.name ?? "";
     toast(t("objectives.toast.moved", { list: name }));
   };
-  const onItemPointerDown = (event: ReactPointerEvent<HTMLDivElement>, objective: Objective, sectionKey: string) => {
+  const onItemPointerDown = (event: ReactPointerEvent<HTMLDivElement>, objective: Objective, sectionKey: string, zone: Zone) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest("button, input, textarea, a")) return;
     // 지휘관이 일하는 동안에도 순서는 바꿀 수 있다(내용이 아니다). 목록 옮기기는 편집이라 그때는 잠긴다.
     const busy = isBusy(objective);
     // 잡은 지점을 기억한다 — 유령은 커서 옆이 아니라 손에 잡힌 그 자리에 그대로 붙어 따라온다.
     const rect = event.currentTarget.getBoundingClientRect();
-    dragRef.current = { objectiveId: objective.id, section: sectionKey, startX: event.clientX, startY: event.clientY, live: false, over: null, insert: null, offX: event.clientX - rect.left, offY: event.clientY - rect.top, width: rect.width };
+    dragRef.current = { objectiveId: objective.id, section: sectionKey, zone, startX: event.clientX, startY: event.clientY, live: false, over: null, insert: null, offX: event.clientX - rect.left, offY: event.clientY - rect.top, width: rect.width };
     const onMove = (move: PointerEvent) => {
       const state = dragRef.current;
       if (!state) return;
@@ -533,11 +580,12 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         state.live = true;
         suppressClick.current = true;
       }
-      state.over = busy ? null : dropTargetAt(move.clientX, move.clientY, state.section);
+      state.over = busy ? null : dropTargetAt(move.clientX, move.clientY, state.section, state.zone);
       state.insert = state.over ? null : insertAt(move.clientX, move.clientY, state.objectiveId, state.section);
+      const refused = !state.over && !state.insert ? refusalAt(move.clientX, move.clientY, state.zone) : null;
       // 범위 낱말 줄에 들어오면 놓을 자리가 잡히기 전에도 카드가 표로 줄어든다 — 낱말이 카드 아래 가려지지 않게.
-      const compact = !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".objectives-scope");
-      setDrag({ objectiveId: state.objectiveId, x: move.clientX, y: move.clientY, over: state.over, insert: state.insert, offX: state.offX, offY: state.offY, width: state.width, compact });
+      const compact = !!refused || !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".objectives-scope");
+      setDrag({ objectiveId: state.objectiveId, x: move.clientX, y: move.clientY, over: state.over, insert: state.insert, offX: state.offX, offY: state.offY, width: state.width, compact, refused, zone: state.zone });
     };
     // 취소(pointercancel — 시스템 제스처·창 전환)는 놓기가 아니다 — 아무것도 옮기지 않고 끝낸다.
     const onUp = (end: PointerEvent) => {
@@ -594,6 +642,96 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const setThree = (patch: Partial<ThreeWidths>, save: boolean) => setThreeWidths((current) => { const next = { ...current, ...patch }; if (save) saveThreeWidths(next); return next; });
   const rootStyle = threeShown ? { "--objectives-list-w": `${threeShown.list}px`, "--objectives-detail-w": `${threeShown.ops}px` } as CSSProperties : sized ? { "--objectives-detail-w": `${shownDetail}px` } as CSSProperties : undefined;
   const pickAddGroup = (groupId: string) => { setAddGroupId(groupId); requestAnimationFrame(() => addInputRef.current?.focus()); };
+  const zoneLabel = (zone: Zone) => t(zone === "request" ? "objectives.requests.section" : zone === "review" ? "objectives.objectives.review" : zone === "run" ? "objectives.zone.run" : zone === "wait" ? "objectives.zone.wait" : zone === "outside" ? "objectives.list.outside" : "objectives.objectives.done");
+  /** 줄의 상태 낱말 — 동그라미가 말하는 것을 글자로 한 번 더. 시작 전 목표는 말하지 않는다(빈 원이 곧 그 뜻이다). */
+  const stateWord = (objective: Objective): { text: string; tone: string } | null => {
+    if (objective.done || objective.awaitingReview) return null;
+    const own = operationState(objective.id);
+    if (!objective.enlisted) return objective.commander.started ? { text: stateLabel(own), tone: own } : { text: t("objectives.state.fresh"), tone: "fresh" };
+    if (!objective.commander.started) return null;
+    const activity = own === "closed" ? "closed" : objectiveActivity(objective);
+    if (objective.commenced) return { text: stateLabel(activity), tone: activity };
+    // 구상만 한 목표 — 지휘관이 짜는 동안은 「구상 중」, 끝나면 개시를 기다린다.
+    if (objective.planning && WORKING.has(activity)) return { text: t("objectives.state.planning"), tone: "planning" };
+    if (activity === "awaiting") return { text: stateLabel(activity), tone: activity };
+    return { text: t("objectives.state.planned"), tone: "planned" };
+  };
+  /** 모델·강도 — 실행 중·검토 대기·목표 밖 줄은 실제 값, 시작 전 목표는 기본 설정과 다를 때만 「예정」으로. */
+  const launchOf = (objective: Objective, zone: Zone): ReactNode => {
+    const common = { objective, rows: launchRows, autoLabel: t("objectives.commander.effortAuto"), defaultLabel: t("objectives.launch.default") };
+    if (zone === "run" || zone === "review" || zone === "outside" || ((zone === "done" || zone === "request") && objective.commenced)) return <LaunchWords {...common} />;
+    if ((zone !== "wait" && zone !== "request") || (objective.commander.model === COMMANDER_PRESET.model && objective.commander.effort === COMMANDER_PRESET.effort)) return null;
+    return <LaunchWords {...common} planned={{ label: t("objectives.launch.planned"), tip: t("objectives.launch.plannedTip") }} />;
+  };
+  const ringOf = (objective: Objective, busy: boolean): ReactNode => {
+    // 목표 밖 세션 — 완료 버튼이 아닌 작은 점. 목표 동그라미와 모양부터 다르다.
+    if (!objective.enlisted && !objective.done) {
+      const word = stateWord(objective)?.text;
+      return <span className={`objectives-dot is-${objective.commander.started ? operationState(objective.id) : "fresh"}`} role="img" aria-label={word} title={word} />;
+    }
+    // 검토 대기 — 모든 임무와 기준이 끝난 상태. 고리는 사람의 완료 버튼이 된다.
+    if (objective.awaitingReview && !objective.done) {
+      const followups = openCandidateCount(objective); const tip = followups > 0 ? followupTip(objective, followups) : t("objectives.review.tip");
+      return <span className="objectives-check-tip"><button type="button" className="objectives-check is-linked is-review" aria-label={tip} onClick={(event) => { event.stopPropagation(); if (followups > 0) openFollowupPicker(objective); else void completeObjective(objective); }}><i aria-hidden="true" /></button><span className="objectives-check-bubble" aria-hidden="true">{tip}</span></span>;
+    }
+    // 인계 대기 — 아직 지휘관의 차례다. 활동 고리는 그대로 보이고, 누르면 완료 대신 상세를 연다(서버도 완료를 거절한다).
+    if (objective.awaitingHandoff && !objective.done) {
+      const state = objectiveActivity(objective); const tip = t("objectives.handoff.tip");
+      return <span className="objectives-check-tip"><button type="button" className={`objectives-check is-linked is-${state} is-handoff`} aria-label={tip} onClick={(event) => { event.stopPropagation(); setSelected(objective.id); }}><i aria-hidden="true" /></button><span className="objectives-check-bubble" aria-hidden="true">{tip}</span></span>;
+    }
+    // 지휘관이 연결돼 있으면 묶음에서 가장 급한 활동을 고리로 보이고, 일하는 동안은 누르지 못한다. 개시했던 목표의 지휘관이
+    // 닫혔으면 끝남 모양으로 선다 — 빈 원은 「시작 전」 한 뜻만 가진다. 완료는 늘 사람의 몫이다.
+    const closed = operationState(objective.id) === "closed";
+    if (!objective.done && objective.commander.started && (!closed || objective.commenced)) {
+      const state = closed ? "closed" : objectiveActivity(objective); const followups = openCandidateCount(objective);
+      const tip = followups > 0 && !busy ? followupTip(objective, followups) : t(busy ? "objectives.objective.linkedBusyTip" : "objectives.objective.linkedTip", { state: stateLabel(state) });
+      return (
+        <span className="objectives-check-tip">
+          <button type="button" className={`objectives-check is-linked is-${state}`} aria-label={tip} disabled={busy} onClick={(event) => { event.stopPropagation(); if (followups > 0) openFollowupPicker(objective); else void completeObjective(objective); }}><i aria-hidden="true" /></button>
+          <span className="objectives-check-bubble" aria-hidden="true">{tip}</span>
+        </span>
+      );
+    }
+    const followups = openCandidateCount(objective); const label = objective.done ? t("objectives.objective.reopen") : followups > 0 && !busy ? followupTip(objective, followups) : t("objectives.objective.complete");
+    return <button type="button" className={`objectives-check${objective.done ? " is-on" : ""}`} aria-label={label} disabled={busy} onClick={(event) => { event.stopPropagation(); if (followups > 0 && !objective.done) openFollowupPicker(objective); else void completeObjective(objective); }}><CheckGlyph /></button>;
+  };
+  /**
+   * 목록 한 줄 — 동그라미 · 제목 · 메타(상태 낱말·진행·요청·기한·출처) · 오른쪽 열(기한 · 모델 · Operation 이동). 넓은 목록은 출처·기한·모델이
+   * 같은 x 에 서는 열이 되고, 좁은 목록은 오른쪽 열을 메타 줄로 내린다(같은 값을 두 자리에 두고 폭에 따라 한쪽만 보인다).
+   * Operation 이동 자리는 늘 비워 두어 오른쪽 글자의 끝선이 줄마다 같다.
+   */
+  const renderRow = (objective: Objective, index: number, blockKey: string, zone: Zone) => {
+    const busy = isBusy(objective);
+    const word = stateWord(objective);
+    const due = objective.dueDate ? <span className={`objectives-objective-due${objective.dueDate < todayIso() && !objective.done ? " is-overdue" : ""}`}><CalGlyph />{dueLabel(objective.dueDate, language)}</span> : null;
+    const source = objective.addedBy ? (() => { const name = objective.addedBy.title ?? "—"; const label = t("objectives.objective.addedBy", { name }); return <span className="objectives-by" title={label}><SourceGlyph /><span className="objectives-by-name" aria-hidden="true">{name}</span><span className="objectives-by-sr">{label}</span></span>; })() : null;
+    const launch = launchOf(objective, zone);
+    const started = zone === "run" || zone === "review" || zone === "outside" || (zone === "done" && objective.commenced) || (zone === "request" && objective.commenced);
+    // 결정 요청 구역의 줄은 원래 그룹을 말한다 — 요청이 풀리면 그 구역·그룹으로 돌아간다.
+    const showGroup = zone === "request" ? groupOf(objective.groupId) : null;
+    return (
+      <div key={objective.id} data-objective-id={objective.id} className={`objectives-objective${objective.done ? " is-done" : ""}${busy ? " is-busy" : ""}${started ? " is-started" : ""}${highlightObjective === objective.id ? " is-highlight" : ""}${drag?.objectiveId === objective.id ? " is-lifted" : ""}${drag?.insert?.anchorId === objective.id ? ` is-insert-${drag.insert.place}` : ""}`} role="option" aria-selected={selected === objective.id} tabIndex={0}
+        onPointerDown={(event) => onItemPointerDown(event, objective, blockKey, zone)}
+        onClick={() => { if (suppressClick.current) return; setSelected((value) => (value === objective.id ? null : objective.id)); }} onKeyDown={(event) => onItemKey(event, objective, index, blockKey)}>
+        <span className="objectives-objective-ring">{ringOf(objective, busy)}</span>
+        <div className="objectives-objective-title">{objective.title}</div>
+        <div className="objectives-objective-meta">
+          {word ? <span className={`objectives-objective-state is-${word.tone}`}>{word.text}</span> : null}
+          {objective.missions.length ? <span className="objectives-objective-progress">✓ {objective.missions.filter((mission) => mission.done).length}/{objective.missions.length}</span> : null}
+          {objective.awaitingHandoff && !objective.done ? <span className="objectives-objective-handoff">{t("objectives.handoff.label")}</span> : null}
+          {objective.decisionRequest && !objective.done ? <span className="objectives-objective-request"><RequestGlyph />{t("objectives.decision.label")}{objective.decisionRequest.questions.length > 1 ? <em>{t("objectives.decision.labelMany", { count: objective.decisionRequest.questions.length })}</em> : null}</span> : null}
+          {showGroup ? <span className="objectives-objective-group"><span className="objectives-swatch" style={{ background: `var(--id-${showGroup.color}, var(--text-tertiary))` }} aria-hidden="true" />{showGroup.name}</span> : null}
+          {due ? <span className="objectives-m-due">{due}</span> : null}
+          {source ? <span className="objectives-m-src">{source}</span> : null}
+          {launch ? <span className="objectives-m-launch">{launch}</span> : null}
+        </div>
+        <div className="objectives-objective-col is-src">{source}</div>
+        <div className="objectives-objective-col is-due">{due ? <span className="objectives-c-due">{due}</span> : null}</div>
+        <div className="objectives-objective-col is-launch">{launch}</div>
+        <span className="objectives-objective-go">{operationOf(objective.id) ? <button type="button" className="objectives-glyph objectives-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={(event) => { event.stopPropagation(); focusOperation(objective.id); }}><GoGlyph /></button> : null}</span>
+      </div>
+    );
+  };
   return (
     // 온보딩 경계(SDK 계약) — 투어 카드가 패널을 가리지 않고 패널 옆, 짚는 구획 높이에 선다(레일이든 넓은 화면이든
     // 자리가 없으면 앵커 기준 배치로 돌아간다).
@@ -610,7 +748,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       </> : sized ? <DetailGrip t={t} split={split} width={shownDetail} max={detailMax} rootRef={rootRef} onResize={setDetailWidth} onResizing={setResizing} /> : null}
       <section ref={mainRef} className="objectives-main">
         <div className="objectives-title">
-          <ScopeWords current={list} onPick={setList} t={t} count={listCount} dropOver={drag?.over ?? null} />
+          <ScopeWords current={list} onPick={setList} t={t} count={listCount} dropOver={drag?.over ?? null} flash={flash} />
           {placeButton("objectives-place-main")}
         </div>
         {list === "due" ? (
@@ -630,63 +768,33 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           </div>
         ) : null}
         <div ref={objectivesRef} className="objectives-objectives" role="listbox" aria-label={listTitle} data-objectives-tour="list">
-          {open.length === 0 && finished.length === 0 ? <div className="objectives-empty">{t("objectives.objectives.empty")}</div> : null}
-          {sections.map((section) => { const expanded = section.request || isOpen(section.key, !section.done); const group = groupOf(section.key); const dropKey: DropTarget | null = group ? `group:${group.id}` : section.key === "ungrouped" ? "ungrouped" : null; return (<div key={section.key} data-section={section.key} {...(dropKey ? { "data-drop-list": dropKey } : {})} className={`objectives-section${section.done ? " is-done" : ""}${section.request ? " is-request" : ""}${expanded ? "" : " is-collapsed"}${dropKey && drag?.over === dropKey ? " is-drop" : ""}`}>
-          {section.label && section.request ? <div className="objectives-section-row"><span className="objectives-section-hd is-request"><span className="objectives-section-chev" aria-hidden="true"><RequestGlyph /></span><span className="objectives-section-name">{section.label}</span><span className="objectives-count">{section.objectives.length}</span></span></div>
-          : section.label ? <div className="objectives-section-row"><button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span className="objectives-section-name">{section.label}</span><span className="objectives-count">{section.objectives.length}</span></button>
-            {group ? <button type="button" className="objectives-section-add" aria-label={t("objectives.section.addTo", { name: group.name })} title={t("objectives.section.addTo", { name: group.name })} onClick={() => pickAddGroup(group.id)}>+ {t("objectives.section.add")}</button> : null}</div> : null}
-          {expanded && dropKey && section.objectives.length === 0 ? <div className="objectives-section-empty">{t(group ? "objectives.section.empty" : "objectives.section.emptyUngrouped")}</div> : null}
-          {expanded ? section.objectives.map((objective) => {
-            // 방향키 이웃은 같은 구획의 카드 행 기준 — 검토 대기가 빠져나가면 visible 순서와 구획 안 순서가 어긋난다.
-            const index = section.objectives.indexOf(objective);
-            const mode = commanderMode(objective.missions);
-            // 결정 요청 구획의 행은 원래 그룹을 칩으로 말한다 — 요청이 풀리면 그 구획으로 돌아간다.
-            const showGroup = section.request ? groupOf(objective.groupId) : null;
-            const busy = isBusy(objective);
+          {list === "outside" ? <p className="objectives-outside-hint">{t("objectives.outside.hint")}</p> : null}
+          {open.length === 0 && finished.length === 0 ? <div className="objectives-empty">{t(list === "outside" ? "objectives.outside.empty" : "objectives.objectives.empty")}</div> : null}
+          {zones.map(({ zone, head, objectives, blocks }) => {
+            const key = zoneKey(zone);
+            const expanded = !head || zone === "request" || isOpen(key, zone !== "done");
+            // 그룹 소제목은 그 구역에 그룹이 하나라도 설 때만 — 그룹이 없으면 「미분류」 머리도 없다.
+            const subheads = blocks.some((block) => block.group);
             return (
-              <div key={objective.id} data-objective-id={objective.id} className={`objectives-objective${objective.done ? " is-done" : ""}${busy ? " is-busy" : ""}${highlightObjective === objective.id ? " is-highlight" : ""}${drag?.objectiveId === objective.id ? " is-lifted" : ""}${drag?.insert?.anchorId === objective.id ? ` is-insert-${drag.insert.place}` : ""}`} role="option" aria-selected={selected === objective.id} tabIndex={0}
-                onPointerDown={(event) => onItemPointerDown(event, objective, section.key)}
-                onClick={() => { if (suppressClick.current) return; setSelected((value) => (value === objective.id ? null : objective.id)); }} onKeyDown={(event) => onItemKey(event, objective, index, section.key)}>
-                {/* 동그라미 = 완료 버튼이자 상태. 지휘관이 연결돼 있으면 묶음에서 가장 급한 활동을 고리로 보이고, 일하는 동안은 누르지 못한다. 완료는 늘 사람의 몫이다. */}
-                {/* 검토 대기 — 모든 임무와 기준이 끝난 상태. 고리는 사람의 완료 버튼이 된다. */}
-                {objective.awaitingReview && !objective.done
-                  ? (() => { const followups = openCandidateCount(objective); const tip = followups > 0 ? followupTip(objective, followups) : t("objectives.review.tip"); return (
-                    <span className="objectives-check-tip"><button type="button" className="objectives-check is-linked is-review" aria-label={tip} onClick={(event) => { event.stopPropagation(); if (followups > 0) openFollowupPicker(objective); else void completeObjective(objective); }}><i aria-hidden="true" /></button><span className="objectives-check-bubble" aria-hidden="true">{tip}</span></span>
-                  ); })()
-                  // 인계 대기 — 아직 지휘관의 차례다. 활동 고리는 그대로 보이고, 누르면 완료 대신 상세를 연다(서버도 완료를 거절한다).
-                  : objective.awaitingHandoff && !objective.done
-                  ? (() => { const state = objectiveActivity(objective); const tip = t("objectives.handoff.tip"); return (
-                    <span className="objectives-check-tip"><button type="button" className={`objectives-check is-linked is-${state} is-handoff`} aria-label={tip} onClick={(event) => { event.stopPropagation(); setSelected(objective.id); }}><i aria-hidden="true" /></button><span className="objectives-check-bubble" aria-hidden="true">{tip}</span></span>
-                  ); })()
-                  : !objective.done && objective.commander.started && operationState(objective.id) !== "closed"
-                  ? (() => { const state = objectiveActivity(objective); const followups = openCandidateCount(objective); const tip = followups > 0 && !busy ? followupTip(objective, followups) : t(busy ? "objectives.objective.linkedBusyTip" : "objectives.objective.linkedTip", { state: stateLabel(state) }); return (
-                    <span className="objectives-check-tip">
-                      <button type="button" className={`objectives-check is-linked is-${state}`} aria-label={tip} disabled={busy} onClick={(event) => { event.stopPropagation(); if (followups > 0) openFollowupPicker(objective); else void completeObjective(objective); }}><i aria-hidden="true" /></button>
-                      <span className="objectives-check-bubble" aria-hidden="true">{tip}</span>
-                    </span>
-                  ); })()
-                  : (() => { const followups = openCandidateCount(objective); const label = objective.done ? t("objectives.objective.reopen") : followups > 0 && !busy ? followupTip(objective, followups) : t("objectives.objective.complete"); return (
-                    <button type="button" className={`objectives-check${objective.done ? " is-on" : ""}`} aria-label={label} disabled={busy} onClick={(event) => { event.stopPropagation(); if (followups > 0 && !objective.done) openFollowupPicker(objective); else void completeObjective(objective); }}><CheckGlyph /></button>
-                  ); })()}
-                <div className="objectives-objective-body">
-                  <div className="objectives-objective-title">{objective.title}</div>
-                  <div className="objectives-objective-meta">
-                    {objective.missions.length ? <span>✓ {objective.missions.filter((mission) => mission.done).length}/{objective.missions.length}</span> : null}
-                    {objective.awaitingHandoff && !objective.done ? <span className="objectives-objective-handoff">{t("objectives.handoff.label")}</span> : null}
-                    {objective.decisionRequest && !objective.done ? <span className="objectives-objective-request"><RequestGlyph />{t("objectives.decision.label")}{objective.decisionRequest.questions.length > 1 ? <em>{t("objectives.decision.labelMany", { count: objective.decisionRequest.questions.length })}</em> : null}</span> : null}
-                    {objective.dueDate ? <span className={`objectives-objective-due${objective.dueDate < todayIso() && !objective.done ? " is-overdue" : ""}`}><CalGlyph />{dueLabel(objective.dueDate, language)}</span> : null}
-                    {showGroup ? <span className="objectives-objective-group"><span className="objectives-swatch" style={{ background: `var(--id-${showGroup.color}, var(--text-tertiary))` }} aria-hidden="true" />{showGroup.name}</span> : null}
-                    {objective.addedBy ? (() => { const name = objective.addedBy.title ?? "—"; const label = t("objectives.objective.addedBy", { name }); return <span className="objectives-by" title={label}><span className="objectives-by-name" aria-hidden="true">{name}</span><span className="objectives-by-sr">{label}</span></span>; })() : null}
-                  </div>
-                </div>
-                <div className="objectives-objective-side">
-                  <LaunchWords objective={objective} t={t} rows={launchRows} autoLabel={t("objectives.commander.effortAuto")} defaultLabel={t("objectives.launch.default")} state={objective.commander.started ? operationState(objective.id) : null} />
-                  {!!operationOf(objective.id) ? <button type="button" className="objectives-glyph objectives-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={(event) => { event.stopPropagation(); focusOperation(objective.id); }}><GoGlyph /></button> : null}
-                </div>
+              <div key={zone} data-zone={zone} className={`objectives-zone is-${zone}${expanded ? "" : " is-collapsed"}`}>
+                {head && zone === "request" ? <span className="objectives-zone-hd is-request"><span className="objectives-section-chev" aria-hidden="true"><RequestGlyph /></span><span className="objectives-section-name">{zoneLabel(zone)}</span><span className="objectives-count">{objectives.length}</span></span>
+                : head ? <button type="button" className="objectives-zone-hd" aria-expanded={expanded} onClick={() => toggleSection(key, zone !== "done")}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span><span className="objectives-section-name">{zoneLabel(zone)}</span><span className="objectives-count">{objectives.length}</span></button> : null}
+                {expanded ? blocks.map((block) => {
+                  const dropKey: DropTarget | null = zone === "run" || zone === "wait" ? (block.group ? `group:${block.group.id}` : block.ungrouped ? "ungrouped" : null) : null;
+                  return (
+                    <div key={block.key} data-section={block.key} data-zone={zone} {...(dropKey ? { "data-drop-list": dropKey } : {})} className={`objectives-section${dropKey && drag?.over === dropKey && drag.zone === zone ? " is-drop" : ""}`}>
+                      {subheads ? <div className="objectives-section-row">
+                        <span className="objectives-group-hd">{block.group ? <span className="objectives-swatch" style={{ background: `var(--id-${block.group.color}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span className="objectives-section-name">{block.group ? block.group.name : t("objectives.list.ungrouped")}</span><span className="objectives-count">{block.objectives.length}</span></span>
+                        {block.group && zone === "wait" ? <button type="button" className="objectives-section-add" aria-label={t("objectives.section.addTo", { name: block.group.name })} title={t("objectives.section.addTo", { name: block.group.name })} onClick={() => pickAddGroup(block.group!.id)}>+ {t("objectives.section.add")}</button> : null}
+                      </div> : null}
+                      {dropKey && block.objectives.length === 0 ? <div className="objectives-section-empty">{t(block.group ? "objectives.section.empty" : "objectives.section.emptyUngrouped")}</div> : null}
+                      {block.objectives.map((objective, index) => renderRow(objective, index, block.key, zone))}
+                    </div>
+                  );
+                }) : null}
               </div>
             );
-          }) : null}
-          </div>); })}
+          })}
         </div>
         <div className="objectives-add" data-objectives-tour="add">
           <span className="objectives-plus" aria-hidden="true">+</span>
@@ -737,10 +845,10 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       {/* 유령은 body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에서 어긋난다. */}
       {drag && dragObjective ? createPortal(
         // 놓을 자리(범위 낱말·다른 그룹 구획·카드 사이)가 잡히면 유령은 표로 줄어 커서 오른쪽 아래로 비킨다 — 카드 크기로 커서에 붙어 있으면 그 자리를 덮는다.
-        <div className={`objectives-drag-ghost${drag.over || drag.insert ? " is-over" : ""}${drag.compact || drag.over || drag.insert ? " is-compact" : ""}`} style={drag.compact || drag.over || drag.insert ? { left: drag.x + 14, top: drag.y + 12, width: 224 } : { left: drag.x - drag.offX, top: drag.y - drag.offY, width: drag.width }} aria-hidden="true">
+        <div className={`objectives-drag-ghost${drag.over || drag.insert ? " is-over" : ""}${drag.compact || drag.over || drag.insert ? " is-compact" : ""}${drag.refused ? " is-refused" : ""}`} style={drag.compact || drag.over || drag.insert ? { left: drag.x + 14, top: drag.y + 12, width: 224 } : { left: drag.x - drag.offX, top: drag.y - drag.offY, width: drag.width }} aria-hidden="true">
           <span className={`objectives-check${dragObjective.done ? " is-on" : ""}`}><CheckGlyph /></span>
           <span className="objectives-drag-title">{dragObjective.title}</span>
-          <span className="objectives-drag-hint">{drag.over ? "↓" : drag.insert ? "↕" : t("objectives.drag.hint")}</span>
+          <span className="objectives-drag-hint">{drag.over ? "↓" : drag.insert ? "↕" : drag.refused ? t(drag.refused) : t("objectives.drag.hint")}</span>
         </div>,
         document.body,
       ) : null}
@@ -840,12 +948,12 @@ function PaneGrip({ side, label, tip, width, min, max, fallback, rootRef, onResi
   );
 }
 
-const SCOPE_GLYPH: Record<ListId, string> = { today: "☀", due: "", all: "∞", agent: "◌" };
+const SCOPE_GLYPH: Record<ListId, string> = { today: "☀", due: "", all: "∞", agent: "◌", outside: "" };
 /**
  * 범위 낱말 — 오늘·기한·모두·에이전트가 남김이 제목 줄에 늘 같은 자리로 선다. 상자도 채움도 없이 고른 낱말만 진해지고 얇은 밑줄이
  * 깔린다(탭 목록: ←/→·Home/End 로 옮기면 바로 고른다). 오늘·기한은 카드를 끌어 놓을 자리이기도 하다.
  */
-function ScopeWords({ current, onPick, t, count, dropOver }: { current: ListId; onPick: (id: ListId) => void; t: T; count: (id: ListId) => number; dropOver: DropTarget | null }) {
+function ScopeWords({ current, onPick, t, count, dropOver, flash }: { current: ListId; onPick: (id: ListId) => void; t: T; count: (id: ListId) => number; dropOver: DropTarget | null; flash: ListId | null }) {
   const refs = useRef<Partial<Record<ListId, HTMLButtonElement | null>>>({});
   const onKey = (event: ReactKeyboardEvent<HTMLButtonElement>, id: ListId) => {
     const at = LISTS.indexOf(id);
@@ -855,28 +963,29 @@ function ScopeWords({ current, onPick, t, count, dropOver }: { current: ListId; 
     onPick(next);
     refs.current[next]?.focus();
   };
+  // 줄이 꺾이면 낱말마다 왼쪽 여백만큼 목록을 당겨 잘라 둔다 — 줄 머리에 선 낱말의 여백과 「목표 밖」 앞 세로 선은 잘린 곳에 들어간다.
   return (
-    <div className="objectives-scope" role="tablist" aria-label={t("objectives.scope.label")} data-objectives-tour="scope">
+    <div className="objectives-scope-clip"><div className="objectives-scope" role="tablist" aria-label={t("objectives.scope.label")} data-objectives-tour="scope">
       {LISTS.map((id) => (
-        <button key={id} ref={(node) => { refs.current[id] = node; }} type="button" role="tab" className={`objectives-scope-word${dropOver === id ? " is-drop" : ""}`} aria-selected={current === id} tabIndex={current === id ? 0 : -1} title={t(`objectives.sub.${id}`)} onClick={() => onPick(id)} onKeyDown={(event) => onKey(event, id)} {...(id === "today" || id === "due" ? { "data-drop-list": id } : {})}>
+        <button key={id} ref={(node) => { refs.current[id] = node; }} type="button" role="tab" className={`objectives-scope-word${id === "outside" ? " is-sep" : ""}${dropOver === id ? " is-drop" : ""}${flash === id ? " is-flash" : ""}`} aria-selected={current === id} tabIndex={current === id ? 0 : -1} title={t(`objectives.sub.${id}`)} onClick={() => onPick(id)} onKeyDown={(event) => onKey(event, id)} {...(id === "today" || id === "due" ? { "data-drop-list": id } : {})}>
           {SCOPE_GLYPH[id] ? <span className="objectives-scope-glyph" aria-hidden="true">{SCOPE_GLYPH[id]}</span> : null}
           <span>{t(`objectives.list.${id}`)}</span>
           <span className="objectives-count">{count(id)}</span>
         </button>
       ))}
-    </div>
+    </div></div>
   );
 }
 
-/** 카드 오른쪽의 지휘관 모델·강도 — 지휘관 Operation 의 값. 살아 있으면 점이 켜진다. */
-function LaunchWords({ objective, t, rows, autoLabel, defaultLabel, state }: { objective: Objective; t: T; rows: ReturnType<typeof useLaunchRows>; autoLabel: string; defaultLabel: string; state: string | null }) {
+/** 줄 오른쪽의 지휘관 모델·강도 — 지휘관 Operation 의 값. 시작 전 목표는 「예정」을 붙여 개시할 때 쓸 설정임을 밝힌다. */
+function LaunchWords({ objective, rows, autoLabel, defaultLabel, planned }: { objective: Objective; rows: ReturnType<typeof useLaunchRows>; autoLabel: string; defaultLabel: string; planned?: { readonly label: string; readonly tip: string } }) {
   // 모델이 비어 있으면 Console 기본값으로 뜨는 Operation 이다(사이드바에서 따로 만든 것).
   const words = !objective.commander.model
     ? { model: defaultLabel, effort: objective.commander.effort?.toUpperCase() ?? autoLabel }
     : launchWords(rows, objective.commander.model, objective.commander.effort, autoLabel);
   return (
-    <span className={`objectives-objective-launch${state ? ` is-${state}` : ""}`} title={`${words.model} · ${words.effort}`}>
-      {objective.commander.viewMode === "chat" ? <span className="objectives-objective-view" role="img" aria-label={startViewLabel(t, "chat")} title={startViewLabel(t, "chat")}><StartViewGlyph view="chat" /></span> : null}
+    <span className={`objectives-objective-launch${planned ? " is-planned" : ""}`} title={planned ? `${planned.tip} · ${words.model} · ${words.effort}` : `${words.model} · ${words.effort}`}>
+      {planned ? <span className="objectives-objective-planned">{planned.label}</span> : null}
       <span className="objectives-objective-model">{words.model}</span>
       <b>{words.effort}</b>
     </span>

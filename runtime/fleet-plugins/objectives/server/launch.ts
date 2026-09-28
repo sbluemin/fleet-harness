@@ -7,7 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { decisionTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import type { DecisionAnswer, DecisionAnswersInput, MemberPatchInput, Objective, ObjectiveMember, PlanInput, SlotBy, MissionAddInput, MissionPatchInput } from "./types.js";
+import { COMMANDER_PRESET, type DecisionAnswer, type DecisionAnswersInput, type MemberPatchInput, type Objective, type ObjectiveMember, type PlanInput, type SlotBy, type MissionAddInput, type MissionPatchInput } from "./types.js";
 
 /**
  * 목표는 레코드로 태어난다. 첫 「개시」·「구상」에서만 같은 id 의 dormant 지휘관 Operation 을 세우고 깨운다.
@@ -103,7 +103,6 @@ export interface LaunchOptions {
 
 const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.language === "ko" ? "ko" : "en");
 /** 지휘관 기본값 — Opus · high. 카탈로그가 다르면 깨울 때 호스트가 거절한다. */
-const COMMANDER_PRESET = { model: "opus[1m]", effort: "high" } as const;
 /** 세션 이름 — 다른 세션이 이 세션을 부르는 주소. 담당 이름은 지휘관 이름의 머리를 잇는다. */
 const commanderSession = () => `objective-${randomUUID().slice(0, 6)}-cmdr`;
 /** 지휘관 이름이 없으면(따로 만든 Operation 이 지휘관) 목표 id 로 머리를 고정한다 — 한 목표의 구성원이 같은 머리를 잇는다. */
@@ -572,6 +571,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const delivered = await send(objectiveId, startTurn(current, language, options?.context), true);
       if (!delivered) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
+      // 개시가 닿은 목표는 목록의 「진행 중」에 선다 — 따로 만든 세션도 여기서 「목표 밖」을 떠난다.
+      store.enlist(objectiveId, "commenced");
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
       return { objective: store.setEdited(objectiveId, null), operationId: objectiveId };
     }, "start"),
@@ -582,6 +583,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (current.done) throw new ObjectiveStoreError("objective_done");
       await ensureCommander(objectiveId);
       rememberLanguage(objectiveId, language);
+      // 구상은 사람이 이것을 목표로 다룬다는 뜻이다 — 따로 만든 세션도 「목표 밖」을 떠나 시작 전 목표가 된다.
+      store.enlist(objectiveId, "planned");
       // 구상은 계획과 메모만이다 — 임무 수행도, 담당 기동도 「시작」이 한다.
       if (!current.planning) current = store.setPlanning(objectiveId, true);
       current = store.setCriteriaOpen(objectiveId, true);
