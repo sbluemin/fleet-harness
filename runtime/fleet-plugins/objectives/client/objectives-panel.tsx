@@ -1403,6 +1403,33 @@ function fitHeight(element: HTMLTextAreaElement | null): void {
   element.style.height = `${element.scrollHeight}px`;
 }
 
+/** 누른 자리의 글자 오프셋. 읽기 표시의 편집 단추 글자는 세지 않고, 못 구하면 null. */
+function readCaretOffset(root: HTMLElement, x: number, y: number): number | null {
+  const legacy = document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null };
+  const position = document.caretPositionFromPoint?.(x, y);
+  const hit = position ? null : legacy.caretRangeFromPoint?.(x, y);
+  const node = position?.offsetNode ?? hit?.startContainer ?? null;
+  const offset = position ? position.offset : hit?.startOffset;
+  if (!node || offset === undefined || !root.contains(node)) return null;
+  const host = node instanceof Element ? node : node.parentElement;
+  if (host?.closest("button")) return null;
+  const range = document.createRange();
+  try {
+    range.setStart(root, 0);
+    range.setEnd(node, offset);
+  } catch {
+    return null;
+  }
+  const fragment = range.cloneContents();
+  fragment.querySelectorAll("button").forEach((button) => button.remove());
+  return fragment.textContent?.length ?? null;
+}
+
+function placeCaret(field: HTMLTextAreaElement, offset: number | null): void {
+  const at = offset === null ? field.value.length : Math.min(Math.max(0, offset), field.value.length);
+  field.setSelectionRange(at, at);
+}
+
 /**
  * 임무·달성 기준·구성원 설명의 문구 — 한 줄 입력칸이 아니라 줄바꿈하는 글상자라 길어도 전문이 그 자리에서 보인다(제목·근거 줄과
  * 같은 문법). 편집은 그대로: Enter 는 확정이고(줄바꿈이 아니다) 떠나면 저장한다. Esc 는 되돌리고 칸만 떠난다(상세는 닫지 않는다).
@@ -1422,10 +1449,17 @@ function WrapText({ className, label, editLabel, value, readOnly, maxLength, pla
 }) {
   const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const caretRef = useRef<number | null>(null);
+  const placedCaret = useRef(false);
   useLayoutEffect(() => {
-    if (!editing) return;
-    fitHeight(ref.current);
-    ref.current?.focus();
+    if (!editing) { placedCaret.current = false; return; }
+    const field = ref.current;
+    if (!field) return;
+    fitHeight(field);
+    if (placedCaret.current) return;
+    placedCaret.current = true;
+    field.focus();
+    placeCaret(field, caretRef.current);
   }, [editing, value]);
   // 폴백 엔진에서는 폭이 바뀌면 줄 수도 바뀐다.
   useEffect(() => {
@@ -1438,7 +1472,7 @@ function WrapText({ className, label, editLabel, value, readOnly, maxLength, pla
     return () => observer.disconnect();
   }, [editing]);
   if (!editing) {
-    const start = () => { if (!readOnly) setEditing(true); };
+    const start = (offset: number | null) => { if (!readOnly) { caretRef.current = offset; setEditing(true); } };
     return (
       <div
         className={`${className} is-read`}
@@ -1447,11 +1481,11 @@ function WrapText({ className, label, editLabel, value, readOnly, maxLength, pla
           const target = event.target;
           if (target instanceof Element && target.closest("a, button")) return;
           if (window.getSelection()?.toString()) return;
-          start();
+          start(readCaretOffset(event.currentTarget, event.clientX, event.clientY));
         }}
       >
         {value ? <LinkText text={value} /> : placeholder ? <span className="objectives-read-placeholder">{placeholder}</span> : null}
-        {readOnly ? null : <button type="button" className="objectives-read-edit" aria-label={`${editLabel}: ${label}`} onClick={start}>{editLabel}</button>}
+        {readOnly ? null : <button type="button" className="objectives-read-edit" aria-label={`${editLabel}: ${label}`} onClick={() => start(null)}>{editLabel}</button>}
       </div>
     );
   }
@@ -1755,6 +1789,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
   const readRef = useRef<HTMLDivElement | null>(null);
   const wasEditing = useRef(false);
+  const briefCaret = useRef<number | null>(null);
   const [noteFocus, setNoteFocus] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteOverflow, setNoteOverflow] = useState(false);
@@ -1764,7 +1799,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const [briefActive, setBriefActive] = useState(false);
   const briefBlank = !note.trim() && objective.attachments.length === 0;
   const briefCollapsed = briefBlank && touchable && !briefActive && !attachments.error && attachments.sending === 0;
-  const startBrief = () => {
+  const startBrief = (offset: number | null = null) => {
+    briefCaret.current = offset;
     setBriefEditing(true);
     setBriefActive(true);
     setNoteFocus(true);
@@ -1798,9 +1834,12 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   }, [noteOpen]);
   useLayoutEffect(() => {
     if (briefEditing) {
-      if (!wasEditing.current) noteRef.current?.focus();
+      const field = noteRef.current;
+      const entering = !wasEditing.current;
+      if (entering) field?.focus();
       wasEditing.current = true;
       fitNote();
+      if (entering && field) placeCaret(field, briefCaret.current);
     } else {
       wasEditing.current = false;
       fitRead();
@@ -1928,7 +1967,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       >
         <SectionHead glyph={<BriefGlyph />} label={t("objectives.objective.memo")} tools={objective.attachments.length > 0 || touchable ? <>
           {objective.attachments.length > 0 ? <span className="objectives-criteria-count">{t("objectives.brief.images", { count: objective.attachments.length })}</span> : null}
-          {touchable && !briefEditing ? <button type="button" className="objectives-read-edit" onClick={startBrief}>{t("objectives.link.edit")}</button> : null}
+          {touchable && !briefEditing ? <button type="button" className="objectives-read-edit" onClick={() => startBrief()}>{t("objectives.link.edit")}</button> : null}
           {touchable ? <AttachButton objective={objective} t={t} upload={attachments.upload} sending={attachments.sending} /> : null}
         </> : null} />
         <NoteAttachments objective={objective} t={t} touchable={touchable} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { objectiveId: objective.id, attachmentId: attachment.id })} />
@@ -1942,10 +1981,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             const target = event.target;
             if (target instanceof Element && target.closest("a")) return;
             if (window.getSelection()?.toString()) return;
-            startBrief();
+            startBrief(readCaretOffset(event.currentTarget, event.clientX, event.clientY));
           }}><LinkText text={note} /></div>
         ) : touchable ? (
-          <button type="button" className="objectives-note is-read is-placeholder" onFocus={startBrief} onClick={startBrief}>{t("objectives.objective.memoPlaceholder")}</button>
+          <button type="button" className="objectives-note is-read is-placeholder" onFocus={() => startBrief()} onClick={() => startBrief()}>{t("objectives.objective.memoPlaceholder")}</button>
         ) : (
           <div className="objectives-note is-read is-placeholder">{t("objectives.objective.memoPlaceholder")}</div>
         )}
