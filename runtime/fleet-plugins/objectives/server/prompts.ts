@@ -52,6 +52,17 @@ export function steerTurn(objective: Objective, language: PromptLanguage, contex
 }
 
 /**
+ * 사람이 구성원에게 직접 한 말 — 구성원에게는 말 그대로 가고, 지휘관에게는 누구에게 말했는지 한 줄과 그 말의 인용이 간다.
+ * 무엇을 할지는 지휘관이 정한다.
+ */
+export function memberMessageTurn(objective: Objective, role: string, text: string, language: PromptLanguage): string {
+  const word = language === "ko"
+    ? `사람이 목표 \`${objective.id}\` 의 구성원 「${role}」 에게 직접 말했습니다.`
+    : `The person spoke directly to member "${role}" of objective \`${objective.id}\`.`;
+  return `${word}${quoted(text)}`;
+}
+
+/**
  * 개시 — 한 줄: 목표 id 와 「임무를 개시하세요」. 무엇을 어떻게 할지는 지휘관이 정한다.
  * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것이 있으면 무엇이 바뀌었는지만 짧게 붙이고 다시 읽게 한다 — 바뀐 내용 자체는 보드가 말한다.
  */

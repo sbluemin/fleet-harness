@@ -597,6 +597,17 @@ span.objectives-row-main { cursor: default; }
 .objectives-intent-word { font-weight: var(--weight-bold); white-space: nowrap; }
 .objectives-intent.is-stop .objectives-intent-word { color: var(--coral); }
 .objectives-intent-desc { min-width: 0; font-size: var(--t-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 「메시지」 받는 이 — 의도 라디오 아래 한 줄. 표식은 명단의 것을 줄여 쓰고, 고른 칸은 의도와 같은 워시에 브라스 테두리(위치 채널)만 더한다. */
+.objectives-recips { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 14px 0; }
+.objectives-recip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 8px 3px 4px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; transition: background-color var(--duration-fast), border-color var(--duration-fast); }
+.objectives-recip:hover:not(:disabled) { background: var(--control-rest); }
+.objectives-recip[aria-checked="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: var(--control-wash); color: var(--text-primary); }
+.objectives-recip:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-recip .objectives-member-mark { width: 16px; height: 16px; font-size: var(--t-2xs); }
+.objectives-recip .objectives-member-mark.is-commander svg { width: 8px; height: 8px; }
+.objectives-recip-role { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+.objectives-recip-state { flex: none; color: var(--text-tertiary); }
+.objectives-recip-state.is-awaiting { color: var(--aurora); }
 .objectives-comp-edits { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 8px 14px 0; font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-comp-chip { padding: 1px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); }
 .objectives-comp-field { display: flex; gap: 8px; padding: 6px 14px 8px; }

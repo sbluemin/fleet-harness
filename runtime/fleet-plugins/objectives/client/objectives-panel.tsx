@@ -6,7 +6,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
 import { commanderMode, MAX_FOLLOWUPS, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
-import { ActionBand, type MemberAwaiting } from "./action-band.js";
+import { ActionBand, type MemberAwaiting, type MessageRecipient } from "./action-band.js";
 import { DecisionGlyph, DecisionList, DecisionRequestBlock, RequestGlyph } from "./decisions.js";
 import { PastRoles } from "./past-roles.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
@@ -2154,6 +2154,12 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       </div>
       ) : null}
   </>);
+  // 「메시지」의 받는 이 — 지휘관(자기 활동)과 세션이 떠 있는 구성원. 상태 낱말은 명단 줄과 같은 말을 쓴다.
+  const memberStateWord = (state: string) => state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
+  const recipients: MessageRecipient[] = [
+    { id: objective.id, role: t("objectives.graph.commander"), mark: <CommanderMark />, state: operationOwnState(objective.id) },
+    ...objective.members.filter((member) => member.sessionName !== null).map((member) => ({ id: member.id, role: member.role, mark: <MemberMark role={member.role} tone={memberTone(objective, member.id)} />, state: operationState(member.id) })),
+  ].filter((recipient) => recipient.state !== "closed");
   const bottom = (
       <div className="objectives-detail-bottom" data-objectives-tour="action">
         {/* 결정 요청 — 띠와 따로 서서 작업 중에도 가려지지 않는다. 보내고 나면 한 줄 흔적만 잠시 남는다. */}
@@ -2170,6 +2176,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           launchAvailable={launchAvailable}
           commanderState={stateLabel(operationState(objective.id))}
           commanderExists={operationState(objective.id) !== "closed"}
+          recipients={recipients}
+          stateWord={memberStateWord}
           request={request}
           onFocusOperation={focusOperation}
         />

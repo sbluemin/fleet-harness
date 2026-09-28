@@ -4,7 +4,7 @@ import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { decisionTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { decisionTurn, memberMessageTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { COMMANDER_PRESET, type DecisionAnswer, type DecisionAnswersInput, type MemberPatchInput, type Objective, type ObjectiveMember, type PlanInput, type SlotBy, type MissionAddInput, type MissionPatchInput } from "./types.js";
@@ -82,6 +82,11 @@ export interface LaunchService {
   awaitDecision(objectiveId: string, requestId: string, waitMs: number, signal?: AbortSignal): Promise<readonly DecisionAnswer[] | "cleared" | null>;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
   steer(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
+  /**
+   * 사람의 말 — 지휘관이나 세션이 있는 구성원 하나에게 그대로 보낸다(작업 중이면 큐잉, 휴면이면 깨움, 허용 대기면 거절은 호스트가 정한다).
+   * 구성원에게 갔으면 지휘관에게도 한 줄로 알린다 — 그 통지가 닿았는지는 notified 로 따로 말한다(구성원 전달은 이미 끝났다).
+   */
+  message(objectiveId: string, memberId: string | null, text: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly notified: boolean | null }>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
   stop(objectiveId: string): Promise<{ readonly objective: Objective; readonly interrupted: number; readonly targets: readonly StopTarget[] }>;
   /** 전체 압축 — 지휘관과 operationId 가 있는 모든 구성원에게 "/compact" 를 보낸다. 큐잉·깨움·거절은 호스트 전달 경로가 정한다. */
@@ -707,6 +712,23 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       store.setEdited(objectiveId, null);
       return store.clearMet(objectiveId);
     },
+
+    message: (objectiveId, memberId, text, options) => orderedOperationRequest(objectiveId, async () => {
+      // 개시·구상이 지휘관을 띄우거나 구성원을 모으는 중이다 — 그 사이의 말은 어느 세션에 닿을지 정해지지 않았다.
+      if (pending.has(objectiveId) || pending.has(`${objectiveId}:muster`)) throw new ObjectiveStoreError("objective_busy");
+      const current = editableObjective(objectiveId);
+      const member = memberId === null ? null : current.members.find((candidate) => candidate.id === memberId);
+      if (member === undefined) throw new ObjectiveStoreError("unknown_member");
+      const target = member ? member.id : current.id;
+      if (!referenceNode(target)) throw new ObjectiveStoreError("unknown_operation");
+      await accessOperation(target);
+      editableObjective(objectiveId);
+      // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
+      await control().request({ kind: "send", operationId: target, text }).catch(asStoreError);
+      if (!member) return { objective: objective(objectiveId), notified: null };
+      const notified = await accessOperation(current.id).then(() => send(current.id, memberMessageTurn(current, member.role, text, languageOf(options))), () => false);
+      return { objective: objective(objectiveId), notified };
+    }),
 
     async stop(objectiveId) {
       let current = objective(objectiveId);
