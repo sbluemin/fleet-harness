@@ -136,14 +136,14 @@
 .objectives-objectives { display: flex; flex-direction: column; gap: 5px; flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
 .objectives-empty { color: var(--text-tertiary); font-size: var(--t-sm); padding: 24px 8px; text-align: center; }
 /*
- * 목록 한 줄 — 동그라미 · 제목/메타 · 오른쪽 열(기한 · 모델) · Operation 이동 자리(늘 비워 두어 오른쪽 끝선이 줄마다 같다).
- * 좁은 목록(300 미만)은 오른쪽 열을 메타 줄로 내리고, 넓은 목록(720 이상)은 출처·기한·모델이 같은 x 에 서는 열이 된다.
+ * 목록 한 줄 — 동그라미 · 제목/메타 · 오른쪽 열(기한) · Operation 이동 자리(늘 비워 두어 오른쪽 끝선이 줄마다 같다).
+ * 좁은 목록(300 미만)은 기한을 메타 줄로 내리고, 넓은 목록(720 이상)은 출처·기한이 같은 x 에 서는 열이 된다.
+ * 지휘관 모델·강도는 줄에 두지 않는다 — 그 폭은 제목 칸이 쓴다.
  */
 .objectives-objective {
   display: grid;
-  /* 모델 열은 넓은 목록의 모델 열과 같은 15ch 까지만 — 긴 모델명이 auto 열을 넓혀 제목 칸을 한 글자 폭으로 짓누르지 않게. 넘치는 이름은 줄임표. */
-  grid-template-columns: 26px minmax(0, 1fr) auto fit-content(15ch) 26px;
-  grid-template-areas: "ring title due launch go" "ring meta due launch go";
+  grid-template-columns: 26px minmax(0, 1fr) auto 26px;
+  grid-template-areas: "ring title due go" "ring meta due go";
   align-items: start;
   padding: 8px 8px 8px 10px;
   border: 1px solid var(--surface-rim);
@@ -158,27 +158,22 @@
 .objectives-objective-col:not(:empty) { padding-left: 12px; }
 .objectives-objective-col.is-src { grid-area: src; display: none; }
 .objectives-objective-col.is-due { grid-area: due; }
-.objectives-objective-col.is-launch { grid-area: launch; }
 .objectives-objective-go { grid-area: go; align-self: center; justify-self: end; display: grid; place-items: center; }
 .objectives-objective-go .objectives-glyph { width: 22px; height: 22px; }
-/* 같은 값의 두 자리 — 폭과 줄의 상태에 따라 한쪽만 보인다. 개시한 줄은 오른쪽 열을 모델이 차지하고 기한은 메타로 간다. */
-.objectives-m-due, .objectives-m-launch { display: none; }
+/* 같은 값의 두 자리 — 폭에 따라 한쪽만 보인다. */
+.objectives-m-due { display: none; }
 .objectives-m-src { display: inline-flex; min-width: 0; max-width: 100%; }
-.objectives-objective.is-started .objectives-c-due { display: none; }
-.objectives-objective.is-started .objectives-m-due { display: inline-flex; }
 @container objectives-list (width < 300px) {
   .objectives-objective { grid-template-columns: 24px minmax(0, 1fr) auto; grid-template-areas: "ring title go" ". meta meta"; padding: 8px 6px 8px 8px; }
-  .objectives-objective-col.is-due, .objectives-objective-col.is-launch { display: none; }
-  .objectives-m-due, .objectives-m-launch { display: inline-flex; min-width: 0; max-width: 100%; }
+  .objectives-objective-col.is-due { display: none; }
+  .objectives-m-due { display: inline-flex; min-width: 0; max-width: 100%; }
   .objectives-objective-go:empty { display: none; }
 }
 @container objectives-list (width >= 720px) {
-  .objectives-objective { grid-template-columns: 26px minmax(0, 1fr) minmax(0, 30ch) 13ch 15ch 26px; grid-template-areas: "ring title src due launch go" "ring meta src due launch go"; }
+  .objectives-objective { grid-template-columns: 26px minmax(0, 1fr) minmax(0, 30ch) 13ch 26px; grid-template-areas: "ring title src due go" "ring meta src due go"; }
   .objectives-objective-col.is-src { display: flex; justify-content: flex-start; }
   .objectives-objective-col.is-due { justify-content: flex-start; }
   .objectives-m-src { display: none; }
-  .objectives-objective.is-started .objectives-c-due { display: inline-flex; }
-  .objectives-objective.is-started .objectives-m-due { display: none; }
 }
 @container objectives-list (width < 420px) { .objectives-scope-glyph { display: none; } }
 .objectives-objective:hover { border-color: var(--hairline-strong); }
@@ -793,16 +788,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-assign-create { color: var(--brass-ink); }
 .objectives-assign-new { display: grid; gap: 5px; padding: 5px; }
 .objectives-assign-new span { color: var(--text-tertiary); font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); }
-
-/* 카드 오른쪽의 모델·강도 */
-.objectives-objective-launch { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); white-space: nowrap; }
-/* 긴 모델명은 줄임표로 접는다 — 글리프·강도는 자리를 지킨다. 풀네임은 title. */
-.objectives-objective-launch > .objectives-objective-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-objective-launch > b, .objectives-objective-launch > .objectives-objective-planned { flex: none; }
-.objectives-objective-launch b { font-weight: var(--weight-medium); color: color-mix(in oklch, var(--brass-ink) 80%, var(--text-secondary)); text-transform: uppercase; }
-/* 시작 전 목표의 예정 설정 — 기본과 다를 때만, 「예정」 낱말과 함께 흐리게. */
-.objectives-objective-launch.is-planned { gap: 4px; font-family: var(--font-body); font-size: var(--t-xs); letter-spacing: 0; }
-.objectives-objective-launch.is-planned > .objectives-objective-model, .objectives-objective-launch.is-planned b { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; font-weight: var(--weight-regular); color: var(--text-tertiary); }
 
 /* 끌기 — 원래 카드는 빈 홈으로 남고, 유령이 커서를 따르며, 목록 행은 놓을 수 있을 때 브라스 테두리로 응답한다 */
 .objectives-objective.is-lifted { opacity: 0.35; border-style: dashed; }
