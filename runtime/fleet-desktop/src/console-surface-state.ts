@@ -42,9 +42,9 @@ export interface ConsoleSurfaceDeps {
   readonly presentData: (origin: string) => void;
   /**
    * 로컬 뷰를 앞에 세우고 데이터 뷰를 비운 뒤, 관리 중인 콘솔과 로컬 문서가 지금도 맞는지 확인한다. 확인하지
-   * 못하면 던진다. 이 시도가 옛것이 되면 결과는 버려진다.
+   * 못하면 던진다. 이 시도가 옛것이 되면 결과는 버려진다. `url`이 오면 로컬 콘솔 안의 그 화면을 연다.
    */
-  readonly presentLocal: (attempt: SwitchAttempt) => Promise<void>;
+  readonly presentLocal: (attempt: SwitchAttempt, url?: string) => Promise<void>;
   /** 로컬이 권한을 되찾았다 — 동기화기를 로컬로 옮긴다. 확인이 성공한 뒤에만 불린다. */
   readonly adoptLocal: () => void;
   /** 최종 떠남에서만 — 그 원격의 자기 세션을 끝내 달라고 한 번 청한다. 페어링은 남는다. */
@@ -63,8 +63,8 @@ export interface ConsoleSurface {
   remoteOrigin(): string | null;
   /** 신뢰할 수 있는 입력(검증된 피커, 활성 로컬 main frame, 네이티브 메뉴·링크)에서만 부른다. */
   select(selection: SurfaceSelection): Promise<void>;
-  /** 신뢰할 수 있는 입력에서만 부른다. */
-  returnLocal(): Promise<void>;
+  /** 신뢰할 수 있는 입력에서만 부른다. `url`은 돌아가서 열 로컬 콘솔 안의 화면이다. */
+  returnLocal(url?: string): Promise<void>;
   /** 데이터 뷰가 오류 문서에 착지했거나 렌더러를 잃었다. */
   disconnect(reason: DisconnectReason): Promise<void>;
   /** 창이 닫혔다. 서 있던 원격은 최종 떠남이고, 다음 창은 로컬에서 시작한다. */
@@ -89,12 +89,12 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
   };
 
   /** 로컬 화면을 되돌리고, 확인이 성공했을 때만 권한을 되돌린다. 권한을 되찾았으면 true. */
-  async function restoreLocal(attempt: SwitchAttempt, reason: string): Promise<boolean> {
+  async function restoreLocal(attempt: SwitchAttempt, reason: string, url?: string): Promise<boolean> {
     remote = null;
     deps.suspendOwners();
     transition("committing-local", reason);
     try {
-      await deps.presentLocal(attempt);
+      await deps.presentLocal(attempt, url);
     } catch (error) {
       if (!attempt.isCurrent()) return false;
       // 확인하지 못한 로컬에는 권한을 돌려주지 않는다. 화면은 로컬이지만 캡처·창 명령·브라우저는 닫혀 있다.
@@ -112,7 +112,7 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
 
   async function select(selection: SurfaceSelection): Promise<void> {
     const home = deps.localOrigin();
-    if (home !== null && selection.origin === home) return returnLocal();
+    if (home !== null && selection.origin === home) return returnLocal(selection.url);
     if (state === "remote-ready" && selection.origin === remote) return;
     const attempt = begin();
     // 보여 주던 원격은 다른 원격을 준비하는 동안에도 세션을 쥐고 있다. 상태가 아니라 그 원격을 기준으로 끝낸다.
@@ -142,12 +142,12 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
     }
   }
 
-  async function returnLocal(): Promise<void> {
+  async function returnLocal(url?: string): Promise<void> {
     if (state === "local-ready") return;
     // 준비 중에 돌아와도, 그전에 보여 주던 원격의 세션은 여기서 끝난다.
     const leaving = remote;
     const attempt = begin();
-    await restoreLocal(attempt, "return");
+    await restoreLocal(attempt, "return", url);
     if (leaving !== null) deps.endRemoteSession(leaving);
   }
 

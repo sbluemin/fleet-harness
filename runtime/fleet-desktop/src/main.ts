@@ -462,7 +462,7 @@ async function boot(): Promise<void> {
    * 답하고 로컬 뷰가 그 콘솔의 살아 있는 문서를 그리고 있음을 확인한 뒤에만 돌아간다. 확인하지 못하면 던진다 —
    * 상태 머신이 권한 없는 끊김으로 남긴다. 뒤에서 멈춰 버린 옛 화면을 지금의 사실처럼 믿지 않는다.
    */
-  const presentLocal = async (attempt: { isCurrent(): boolean }): Promise<void> => {
+  const presentLocal = async (attempt: { isCurrent(): boolean }, url?: string): Promise<void> => {
     switchVeil.dismiss("return");
     const current = window;
     const home = localConsoleOrigin;
@@ -480,6 +480,12 @@ async function boot(): Promise<void> {
     if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) {
       logger.info("local console view reloaded on return");
       await withinMs(local.loadURL(`${home}/console/`), LOCAL_RELOAD_TIMEOUT_MS, "local_console_reload_timeout");
+      if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) throw new Error("local_console_document_unavailable");
+    }
+    // 덮개의 "호스트 관리"처럼 로컬 콘솔 안의 화면을 정해 돌아온 경우, 확인된 로컬 문서를 그 화면으로 옮긴 뒤에 권한을 돌려준다.
+    if (url !== undefined && url !== local.getURL() && isAllowedConsoleUrl(url, home)) {
+      if (!attempt.isCurrent()) return;
+      await withinMs(local.loadURL(url), LOCAL_RELOAD_TIMEOUT_MS, "local_console_reload_timeout");
       if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) throw new Error("local_console_document_unavailable");
     }
   };
