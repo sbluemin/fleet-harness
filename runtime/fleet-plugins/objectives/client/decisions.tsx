@@ -129,13 +129,15 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
                 <div className="objectives-decision-opts" role={question.multiSelect ? "group" : "radiogroup"} aria-label={t("objectives.decision.optionsAria", { n })}>
                   {question.options.map((option) => {
                     const on = draft.picked.includes(option.id);
+                    // 설명은 링크 때문에 버튼 밖에 서지만, 보조 기술에는 그 선택지의 설명으로 이어 둔다.
+                    const descId = `objectives-decision-desc-${question.id}-${option.id}`;
                     return (
                       <div key={option.id} className={`objectives-decision-opt${question.multiSelect ? " is-multi" : ""}`}>
-                        <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} disabled={sending} className="objectives-decision-opt-pick" onClick={() => pick(question, option.id)}>
+                        <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} disabled={sending} className="objectives-decision-opt-pick" aria-describedby={option.description ? descId : undefined} onClick={() => pick(question, option.id)}>
                           <span className="objectives-decision-ind" aria-hidden="true" />
                           <span>{option.label}</span>
                         </button>
-                        {option.description ? <small onClick={(event) => {
+                        {option.description ? <small id={descId} onClick={(event) => {
                           if (sending) return;
                           const target = event.target;
                           if (target instanceof Element && target.closest("a")) return;

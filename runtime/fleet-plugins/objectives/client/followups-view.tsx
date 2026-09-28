@@ -96,6 +96,7 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
   const [briefAll, setBriefAll] = useState(false);
   useEffect(() => { setBriefAll(false); }, [candidate.id, candidate.rev]);
   const detailId = `${idPrefix}-det-${candidate.id}`;
+  const summaryId = `${idPrefix}-sum-${candidate.id}`;
   return (
     <div className={`objectives-followup-item${open ? " is-open" : ""}`}>
       <div className={`objectives-followup-row${selectable ? "" : " is-readonly"}`}>
@@ -115,10 +116,11 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
           onToggleOpen(candidate.id);
         }}>
           <span className="objectives-followup-title"><LinkText text={candidate.title} /></span>
-          <span className="objectives-followup-summary"><LinkText text={candidate.summary} /></span>
+          <span id={summaryId} className="objectives-followup-summary"><LinkText text={candidate.summary} /></span>
           {candidate.userImpact ? <span className="objectives-followup-impact"><b>{t("objectives.followup.impact")}</b> <LinkText text={candidate.userImpact} /></span> : null}
         </div>
-        <button type="button" className="objectives-followup-meta" aria-expanded={open} aria-controls={detailId} onClick={() => onToggleOpen(candidate.id)}>{t("objectives.followup.evidence", { n: candidate.evidence.length })}<FollowupChevGlyph /></button>
+        {/* 펼침 단추는 링크와 떨어져 행 밖에 서므로, 어느 후보인지 이름으로 직접 밝힌다. */}
+        <button type="button" className="objectives-followup-meta" aria-label={`${candidate.title} — ${t("objectives.followup.evidence", { n: candidate.evidence.length })}`} aria-describedby={summaryId} aria-expanded={open} aria-controls={detailId} onClick={() => onToggleOpen(candidate.id)}>{t("objectives.followup.evidence", { n: candidate.evidence.length })}<FollowupChevGlyph /></button>
       </div>
       {open ? (
         <div className="objectives-followup-detail" id={detailId}>
