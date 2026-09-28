@@ -70,6 +70,13 @@ const JOIN_PATH = "/api/v1/join";
  * (Console 내부를 import하지 않는다). 이 항해는 절대 기계를 떠나지 않는다: 아래 리스너가
  * 요청이 나가기 전에 가로채고, 값을 실어 나르는 것도 아니라 어느 표면을 뜻하는지만 말한다.
  */
+/**
+ * 떠나는 화면이 실어 보내는 표현 상태(툴바 접힘, 도구 패널, 폭, 캔버스 모드). Console의
+ * features/remote-access/client/presentation-carry.ts가 같은 접두와 한도로 싸고 풀며, 여기서는 모양과
+ * 길이만 보고 그대로 옮긴다 — 풀어 보지 않는다. fragment라 서버에 전송되지 않는다.
+ */
+const PRESENTATION_CARRY_PREFIX = "#fleet-carry=";
+const PRESENTATION_CARRY_MAX_LENGTH = 2_048;
 const PICKER_SURFACE_PARAM = "desktop-surface";
 const PICKER_SURFACE_OPEN = "host-picker";
 const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
@@ -100,9 +107,9 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   }
 
   /**
-   * `url`은 루프백 콘솔로 갈 때만 그대로 쓰인다 — 그 콘솔 안의 어느 화면을 열지까지 정해져 온 경우다
-   * (덮개의 "호스트 관리"가 그렇다). 원격은 핸드오프가 돌려준 origin의 `/console/`로만 가고,
-   * 전환 직전 화면 모드(`fleet-zen=1`)만 옮겨 싣는다.
+   * `url`은 루프백 콘솔로 갈 때만 목적지 화면으로 쓰인다 — 그 콘솔 안의 어느 화면을 열지까지 정해져 온
+   * 경우다(덮개의 "호스트 관리"가 그렇다). 원격은 핸드오프가 돌려준 origin의 `/console/`로만 가고,
+   * `url`에서는 전환 직전 화면 모드(`fleet-zen=1`)와 표현 상태 fragment만 옮겨 싣는다.
    */
   async function open(origin: string, url?: string): Promise<void> {
     // 집으로 돌아가는 길에는 핀도 자격도 필요 없다 — 루프백은 언제나 허용된 origin이다.
@@ -138,7 +145,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
        */
       await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
       await verifyConsoleReachable(handoff.origin);
-      await deps.loadConsole(remoteConsoleEntry(handoff.origin, url));
+      await deps.loadConsole(`${remoteConsoleEntry(handoff.origin, url)}${presentationCarryOf(url)}`);
       if (attempt === opening) policy.commitConsoleOrigin();
     } catch (error) {
       if (attempt === opening) policy.cancelPendingConsoleOrigin();
@@ -333,6 +340,19 @@ export function pickerSurfaceOf(url: string, localOrigin: string | null): "open"
     return surface === PICKER_SURFACE_DISMISS ? "dismiss" : null;
   } catch {
     return null;
+  }
+}
+
+/** 모양과 길이가 맞는 표현 상태 fragment만 넘긴다. 그 밖의 fragment는 원격 주소에 싣지 않는다. */
+export function presentationCarryOf(url: string | undefined): string {
+  if (url === undefined) return "";
+  try {
+    const { hash } = new URL(url);
+    if (!hash.startsWith(PRESENTATION_CARRY_PREFIX)) return "";
+    const payload = hash.slice(PRESENTATION_CARRY_PREFIX.length);
+    return payload.length > 0 && payload.length <= PRESENTATION_CARRY_MAX_LENGTH && /^[A-Za-z0-9_-]+$/u.test(payload) ? hash : "";
+  } catch {
+    return "";
   }
 }
 

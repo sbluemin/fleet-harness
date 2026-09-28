@@ -1,5 +1,7 @@
 import type { PaneDescriptor, PaneWidthClass } from "@fleet-console/sdk/pane";
 
+import { RAIL_PANEL_WIDTHS_STORAGE_KEY } from "../../integration/presentation-keys.js";
+
 /**
  * 레일 카드 폭의 단일 출처 — 등급표, 기본값 해석, 그리고 도구별 기억.
  *
@@ -66,7 +68,7 @@ export function resolvePaneDefaultWidth(pane: Pick<PaneDescriptor, "defaultWidth
 /** 도구 id → 사용자가 조절한 폭(px). 조절하지 않은 도구는 여기 없다. */
 export type StoredPanelWidths = Readonly<Record<string, number>>;
 
-const PREFS_PANEL_WIDTHS = "fleet-console.rail.panelWidths";
+const PREFS_PANEL_WIDTHS = RAIL_PANEL_WIDTHS_STORAGE_KEY;
 /** #963~#968의 카드 단일 폭. 마지막 활성 도구에게 상속시키고 걷는다. */
 const LEGACY_PREFS_CARD_WIDTH = "fleet-console.rail.cardWidth";
 /** #373 이전의 단일 폭. 같은 방식으로 상속시킨다. */
