@@ -176,6 +176,12 @@ const SunGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor
 const SourceGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 2.5v6a1.5 1.5 0 0 0 1.5 1.5H12.5M10 7.5l2.5 2.5-2.5 2.5" /></svg>;
 const CalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></svg>;
 const CoordGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="4" r="2" /><circle cx="4" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><path d="M7 5.7L5 10.3M9 5.7l2 4.6" /></svg>;
+/** 명단 일괄 모델 설정 입구 트리거 — 3개 노드와 정렬 제어 화살표. */
+const BatchTunerGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3.8" cy="4.5" r="1.4" /><circle cx="3.8" cy="8" r="1.4" /><circle cx="3.8" cy="11.5" r="1.4" /><path d="M7.5 4.5h5M7.5 8h3.5M7.5 11.5h5" /><path d="M11 3l2 1.5-2 1.5M9.5 6.5l2 1.5-2 1.5M11 10l2 1.5-2 1.5" /></svg>;
+/** 지휘관과 같게 — 4각 스파크 별에서 우하단 수신 궤도로 꺾여 내려오는 동기화선. */
+const StarSparkGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 2.5L4.8 4.2L6.5 5L4.8 5.8L4 7.5L3.2 5.8L1.5 5L3.2 4.2Z" fill="currentColor" stroke="none" /><path d="M6.5 5h3.5a2 2 0 0 1 2 2v4.8M9.8 9.8l2 2 2-2" /><circle cx="4" cy="12.2" r="1.4" /></svg>;
+/** 라우팅 — 좌측 단일 요청 노드에서 3갈래 지능 게이트웨이로 모델이 배정되는 분기망. */
+const TridentRouteGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><path d="M4.4 8h2.6c1.6 0 2.2-3.8 4.2-3.8h2.2M4.4 8h7M7 8c0 3.8.6 3.8 2.2 3.8h2.2" /><circle cx="13.2" cy="4.2" r="1.1" fill="currentColor" /><circle cx="13.2" cy="8" r="1.1" fill="currentColor" /><circle cx="13.2" cy="11.8" r="1.1" fill="currentColor" /></svg>;
 /** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const GraphGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.6" /><circle cx="12.5" cy="4" r="1.6" /><circle cx="12.5" cy="12" r="1.6" /><path d="M5 7.3l6-2.6M5 8.7l6 2.6" /></svg>;
@@ -1062,10 +1068,44 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   const remove = (member: ObjectiveMember) => void call("/member/remove", { objectiveId: objective.id, memberId: member.id });
   const saving = useRef(new Set<string>());
   const [fault, setFault] = useState<{ id: string; code: string } | null>(null);
-  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [notes, setNotes] = useState<ReadonlySet<string>>(new Set());
   const [announce, setAnnounce] = useState("");
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [balloon, setBalloon] = useState<{ changed: number; preserved: number; mode: "same" | "route" } | null>(null);
+  const batchTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const batchMenuRef = useRef<HTMLDivElement | null>(null);
+  const balloonTimer = useRef<number | null>(null);
   const noteTimer = useRef<number | null>(null);
-  useEffect(() => () => { if (noteTimer.current !== null) window.clearTimeout(noteTimer.current); }, []);
+
+  useEffect(() => () => {
+    if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
+    if (balloonTimer.current !== null) window.clearTimeout(balloonTimer.current);
+  }, []);
+
+  useEffect(() => {
+    if (!batchOpen) return;
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!batchMenuRef.current?.contains(target) && !batchTriggerRef.current?.contains(target)) {
+        setBatchOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setBatchOpen(false);
+        batchTriggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [batchOpen]);
+
   const toggleSubagents = (member: ObjectiveMember, live: boolean) => {
     if (saving.current.has(member.id)) return;
     const next = !memberSubagents(member);
@@ -1077,24 +1117,122 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       if (!echoed || memberSubagents(echoed) !== next) { setFault({ id: member.id, code: "not_stored" }); return; }
       setFault((current) => current?.id === member.id ? null : current);
       setAnnounce(`${t(next ? "objectives.members.subagentsSaved" : "objectives.members.subagentsCleared", { role: member.role })}${live ? ` ${t("objectives.members.subagentsLive")}` : ""}`);
-      if (!live) { setNoteFor((current) => current === member.id ? null : current); return; }
-      setNoteFor(member.id);
+      if (!live) {
+        setNotes((current) => { const updated = new Set(current); updated.delete(member.id); return updated; });
+        return;
+      }
+      setNotes((current) => new Set([...current, member.id]));
       if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
-      noteTimer.current = window.setTimeout(() => setNoteFor((current) => current === member.id ? null : current), 10_000);
+      noteTimer.current = window.setTimeout(() => setNotes((current) => { const updated = new Set(current); updated.delete(member.id); return updated; }), 10_000);
     }, (error: unknown) => {
       saving.current.delete(member.id);
       setFault({ id: member.id, code: error instanceof Error ? error.message : "unknown" });
     });
   };
+
+  const applyBatch = (mode: "same" | "route") => {
+    if (saving.current.has("batch") || !touchable) return;
+    saving.current.add("batch");
+    setBatchOpen(false);
+    if (balloonTimer.current !== null) window.clearTimeout(balloonTimer.current);
+
+    void request("/member/batch-launch", { objectiveId: objective.id, mode }).then((payload) => {
+      saving.current.delete("batch");
+      const saved = payload as { objective?: Objective } | null;
+      const echoed = saved?.objective?.members;
+      if (!echoed) return;
+
+      const changedMembers = echoed.filter((member) => {
+        const old = objective.members.find((entry) => entry.id === member.id);
+        return old && old.launch.mode !== member.launch.mode;
+      });
+      const preservedCount = echoed.filter((member) => member.launch.mode === "model").length;
+      const changedCount = changedMembers.length;
+
+      setBalloon({ changed: changedCount, preserved: preservedCount, mode });
+      balloonTimer.current = window.setTimeout(() => setBalloon(null), 3800);
+
+      if (changedCount > 0) {
+        setAnnounce(t("objectives.members.batchAnnounce", { count: changedCount, preserved: preservedCount }));
+      } else {
+        setAnnounce(t("objectives.members.batchAnnounceNoop"));
+      }
+
+      // 실제로 값이 바뀐 구성원 중 실행 중인 세션에게만 안내 노출
+      const changedLiveIds = changedMembers
+        .filter((member) => MEMBER_LIVE.has(member.sessionName !== null ? operationState(member.id) : "closed"))
+        .map((member) => member.id);
+
+      if (changedLiveIds.length > 0) {
+        setNotes((current) => new Set([...current, ...changedLiveIds]));
+        if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
+        noteTimer.current = window.setTimeout(() => {
+          setNotes((current) => {
+            const updated = new Set(current);
+            for (const id of changedLiveIds) updated.delete(id);
+            return updated;
+          });
+        }, 10_000);
+      }
+    }, (error: unknown) => {
+      saving.current.delete("batch");
+      setFault({ id: "batch", code: error instanceof Error ? error.message : "unknown" });
+    });
+  };
+
   // 달성 기준·임무 줄과 같은 문법 — 글자 자체가 입력칸이고, 떠나면 저장한다. Enter 는 확정, Escape 는 되돌린다.
   const inlineKeys = (original: string) => (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (submitKey(event)) event.currentTarget.blur();
     else if (event.key === "Escape") { event.currentTarget.value = original; event.currentTarget.blur(); }
   };
+
+  const actions = objective.members.length > 0 && touchable ? (
+    <div className="objectives-batch-actions">
+      <button
+        ref={batchTriggerRef}
+        type="button"
+        className={`objectives-glyph objectives-batch-trigger${batchOpen ? " is-active" : ""}`}
+        title={t("objectives.members.batchTitle")}
+        aria-label={t("objectives.members.batchAria")}
+        aria-haspopup="menu"
+        aria-expanded={batchOpen}
+        onClick={() => setBatchOpen((open) => !open)}
+      >
+        <BatchTunerGlyph />
+      </button>
+      {balloon ? (
+        <span className="objectives-batch-balloon" aria-hidden="true">
+          <span className={`objectives-batch-balloon-dot is-${balloon.mode}`} />
+          <span>{balloon.changed > 0 ? t("objectives.members.batchChanged", { count: balloon.changed }) : t("objectives.members.batchNoop")}</span>
+          {balloon.preserved > 0 ? <span className="objectives-batch-balloon-preserved">{t("objectives.members.batchPreserved", { count: balloon.preserved })}</span> : null}
+        </span>
+      ) : null}
+      {batchOpen ? (
+        <div ref={batchMenuRef} className="objectives-menu objectives-batch-menu" role="menu" aria-label={t("objectives.members.batchTitle")}>
+          <button type="button" role="menuitem" className="objectives-menu-item" onClick={() => applyBatch("same")}>
+            <span className="objectives-batch-menu-glyph is-same"><StarSparkGlyph /></span>
+            <span className="objectives-menu-label">
+              <span className="objectives-batch-menu-title">{t("objectives.members.batchInherit")}</span>
+              <span className="objectives-batch-menu-hint">{t("objectives.members.batchInheritHint")}</span>
+            </span>
+          </button>
+          <button type="button" role="menuitem" className="objectives-menu-item" onClick={() => applyBatch("route")}>
+            <span className="objectives-batch-menu-glyph is-route"><TridentRouteGlyph /></span>
+            <span className="objectives-menu-label">
+              <span className="objectives-batch-menu-title">{t("objectives.members.batchRoute")}</span>
+              <span className="objectives-batch-menu-hint">{t("objectives.members.batchRouteHint")}</span>
+            </span>
+          </button>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+
   return <div className="objectives-members">
-    <SectionHead glyph={<CoordGlyph />} label={t("objectives.members.title")} tools={<span>{objective.members.length}</span>}
+    <SectionHead glyph={<CoordGlyph />} label={t("objectives.members.title")} tools={<span>{objective.members.length}</span>} actions={actions}
       {...(objective.members.length > 0 ? { controls: "objectives-sec-members", expanded, onToggle } : {})} />
     <div id="objectives-sec-members" hidden={!expanded}>
+    {fault?.id === "batch" ? <p className="objectives-member-note is-error" role="alert">{t("objectives.toast.failed", { code: fault.code })}</p> : null}
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
     {objective.members.map((member, index) => {
       const count = objective.missions.filter((mission) => mission.member === member.id).length;
@@ -1129,7 +1267,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           </div>
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
         </div>
-        {noteFor === member.id ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
+        {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
         {fault?.id === member.id ? <p className="objectives-member-note is-error" role="alert">{t("objectives.toast.failed", { code: fault.code })}</p> : null}
         </div>
       );
@@ -1308,10 +1446,11 @@ function WrapText({ className, label, value, readOnly, maxLength, placeholder, o
  * 섹션 머리 — 글리프 열·라벨·오른쪽 셈과 도구. 접히는 섹션은 행 전체가 버튼이고 셰브런이 맨 끝에 선다(접힘 0°, 펼침 90°).
  * 항목이 없으면 접지 않는다 — 추가 행이 늘 보이게 셰브런 없는 정적 머리로 둔다.
  */
-function SectionHead({ glyph, label, tools, controls, expanded, onToggle }: {
+function SectionHead({ glyph, label, tools, actions, controls, expanded, onToggle }: {
   readonly glyph: ReactNode;
   readonly label: string;
   readonly tools?: ReactNode;
+  readonly actions?: ReactNode;
   /** 접히는 본문의 id — 없으면 정적 머리. */
   readonly controls?: string;
   readonly expanded?: boolean;
@@ -1322,12 +1461,18 @@ function SectionHead({ glyph, label, tools, controls, expanded, onToggle }: {
     <span className="objectives-row-lab">{label}</span>
     {tools ? <span className="objectives-row-tools">{tools}</span> : null}
   </>;
-  if (!controls) return <div className="objectives-row is-static">{inner}</div>;
-  return (
+  const head = !controls ? <div className="objectives-row is-static">{inner}</div> : (
     <button type="button" className="objectives-row objectives-acc-hd" aria-expanded={expanded} aria-controls={controls} onClick={onToggle}>
       {inner}
       <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
     </button>
+  );
+  if (!actions) return head;
+  return (
+    <div className="objectives-section-head-bar">
+      {head}
+      <div className="objectives-section-head-actions">{actions}</div>
+    </div>
   );
 }
 

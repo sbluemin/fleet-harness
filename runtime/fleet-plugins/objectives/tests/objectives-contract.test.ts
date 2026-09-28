@@ -343,6 +343,31 @@ describe("Objectives contract", () => {
     expect(store.find(blockedOperationId)).toBeNull();
   });
 
+  it("batch-updates member launch mode to same or route while preserving custom models", async () => {
+    const { store, launch, route } = harness();
+    const objective = await launch.create({ theaterId: "t1", title: "Batch Launch Test", groupId: null, note: "brief" });
+    const m1 = store.memberAdd(objective.id, { role: "architect" }, "human").members[0]!;
+    const m2 = store.memberAdd(objective.id, { role: "backend", launch: { mode: "same" } }, "human").members[1]!;
+    const m3 = store.memberAdd(objective.id, { role: "frontend", launch: { mode: "model", model: "sonnet[1m]", effort: "high" } }, "human").members[2]!;
+
+    // 1. 일괄 "same" 적용: m1(route) -> same, m2(same) -> same, m3(model) -> preserved
+    const resSame = await route("member/batch-launch", { objectiveId: objective.id, mode: "same" });
+    expect(resSame.status).toBe(200);
+    const updated1 = store.find(objective.id)!;
+    expect(updated1.members.find((m) => m.id === m1.id)!.launch).toEqual({ mode: "same" });
+    expect(updated1.members.find((m) => m.id === m2.id)!.launch).toEqual({ mode: "same" });
+    expect(updated1.members.find((m) => m.id === m3.id)!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "high" });
+    expect(updated1.edited?.kinds).toContain("members");
+
+    // 2. 일괄 "route" 적용: m1, m2 -> route, m3(model) -> preserved
+    const resRoute = await route("member/batch-launch", { objectiveId: objective.id, mode: "route" });
+    expect(resRoute.status).toBe(200);
+    const updated2 = store.find(objective.id)!;
+    expect(updated2.members.find((m) => m.id === m1.id)!.launch).toEqual({ mode: "route" });
+    expect(updated2.members.find((m) => m.id === m2.id)!.launch).toEqual({ mode: "route" });
+    expect(updated2.members.find((m) => m.id === m3.id)!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "high" });
+  });
+
   it("creates a pending objective and launches its Commander once on demand", async () => {
     const { store, events, launch, call, route, resultFile, operations, operationsHost, archivedOperations, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });

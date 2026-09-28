@@ -690,6 +690,30 @@ span.objectives-row-main { cursor: default; }
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
 .objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
 .objectives-members-empty { margin: 0; padding: 5px 20px 9px 22px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
+/* 구성원 일괄 모델 설정 — 섹션 헤더 액션 바, 전용 글리프 버튼과 은은한 말풍선 안내 */
+.objectives-section-head-bar { display: flex; align-items: center; position: relative; }
+.objectives-section-head-bar > .objectives-row { flex: 1; min-width: 0; padding-right: 6px; }
+.objectives-section-head-actions { flex: none; display: inline-flex; align-items: center; padding-right: 14px; position: relative; }
+.objectives-batch-actions { position: relative; display: inline-flex; align-items: center; }
+.objectives-batch-trigger { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast), border-color var(--duration-fast); }
+.objectives-batch-trigger:hover, .objectives-batch-trigger.is-active { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); border-color: color-mix(in oklch, var(--brass) 24%, transparent); }
+.objectives-batch-trigger:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-batch-trigger:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.objectives-batch-trigger svg { width: 14px; height: 14px; }
+.objectives-batch-menu { position: absolute; top: calc(100% + 4px); right: 0; width: 224px; z-index: 60; }
+.objectives-batch-menu-glyph { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; }
+.objectives-batch-menu-glyph.is-same { color: var(--brass); }
+.objectives-batch-menu-glyph.is-route { color: var(--aurora); }
+.objectives-batch-menu-title { display: block; font-weight: var(--weight-medium); }
+.objectives-batch-menu-hint { display: block; font-size: var(--t-2xs); color: var(--text-tertiary); white-space: normal; line-height: 1.35; }
+/* 일괄 설정 결과 말풍선 — 글리프에 은은하게 붙어 잠시 나타났다 사라진다. */
+.objectives-batch-balloon { position: absolute; top: calc(100% + 5px); right: 0; z-index: 60; pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); border-radius: var(--radius-pill); background: var(--surface-panel-raised); box-shadow: 0 4px 14px color-mix(in oklch, var(--ink-deep) 40%, transparent); color: var(--text-primary); font: var(--weight-medium) var(--t-2xs)/1 var(--font-mono); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
+.objectives-batch-balloon::before { content: ""; position: absolute; top: -4px; right: 8px; width: 6px; height: 6px; background: var(--surface-panel-raised); border-left: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); border-top: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); transform: rotate(45deg); }
+@keyframes objectives-balloon-in { from { opacity: 0; transform: translateY(-3px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.objectives-batch-balloon-dot { width: 5px; height: 5px; border-radius: 50%; flex: none; }
+.objectives-batch-balloon-dot.is-same { background: var(--brass); }
+.objectives-batch-balloon-dot.is-route { background: var(--aurora); }
+.objectives-batch-balloon-preserved { color: var(--text-tertiary); }
 /* 윗줄은 역할 · 모델·상태 · 삭제, 설명은 아랫줄에서 역할 칸부터 오른쪽 끝까지 — 모델명 길이가 설명 폭을 깎지 않는다. */
 .objectives-member { display: grid; grid-template-columns: 20px minmax(0, 1fr) fit-content(55%); grid-template-areas: "mark name meta" ". brief brief"; align-items: center; gap: 2px 10px; min-height: 50px; padding: 6px 14px 6px 22px; }
 .objectives-member:has(> .objectives-member-remove) { grid-template-columns: 20px minmax(0, 1fr) fit-content(55%) auto; grid-template-areas: "mark name meta remove" ". brief brief brief"; }

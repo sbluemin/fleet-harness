@@ -205,6 +205,7 @@ export interface ObjectiveStore {
   missionRemove(objectiveId: string, missionId: string): Objective;
   memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: "human" | "commander"): Objective;
   memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): Objective;
+  memberBatchLaunch(objectiveId: string, mode: "same" | "route"): Objective;
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean; readonly changed: boolean };
@@ -1204,6 +1205,20 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(patch.launch !== undefined ? { launch: patch.launch ?? undefined } : {}),
         ...(patch.subagents !== undefined ? { subagents: patch.subagents ? true as const : undefined } : {}),
       } : member) };
+    }),
+    memberBatchLaunch: (objectiveId, mode) => update(objectiveId, (stored) => {
+      const members = stored.members ?? [];
+      return {
+        ...stored,
+        members: members.map((member) => {
+          if (member.launch?.mode === "model") return member;
+          if (mode === "route") {
+            const { launch: _discarded, ...rest } = member;
+            return rest;
+          }
+          return { ...member, launch: { mode: "same" } };
+        }),
+      };
     }),
     memberRemove(objectiveId, memberId) {
       const found = locate(objectiveId).stored;
