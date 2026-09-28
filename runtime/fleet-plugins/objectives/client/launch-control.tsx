@@ -255,21 +255,23 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
   const chosenProvider = groups.find((group) => group.rows.some((row) => row.launch.model === currentModel))?.provider ?? launchProviderFromModelId(currentModel);
   const text = (
     <>
-      {viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} />{startViewLabel(t, viewMode)}</span><span className="objectives-launch-separator" aria-hidden="true" /></> : null}
+      {viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} /><span className="objectives-launch-view-word">{startViewLabel(t, viewMode)}</span></span><span className="objectives-launch-separator" aria-hidden="true" /></> : null}
       {chosenProvider ? <span className={`operation-launch-provider-glyph objectives-launch-provider is-${chosenProvider}`} aria-hidden="true">{launchProviderGlyph(chosenProvider)}</span> : null}
       <span className="objectives-launch-model">{words.model}</span>
       <span className="objectives-launch-dot" aria-hidden="true">·</span>
       <span className="objectives-launch-effort">{words.effort}</span>
     </>
   );
-  if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={triggerTitle ? `${triggerTitle}\n${t("objectives.commander.locked")}` : t("objectives.commander.locked")}>{triggerText ?? text}</span>;
+  // 좁은 칸에서 줄임표로 접힌 모델 이름의 풀네임 — 호출부가 따로 주지 않으면 이 컨트롤이 그리는 낱말에서 만든다.
+  const title = triggerTitle ?? (triggerText ? undefined : `${modelFullName(rows, currentModel) || words.model} · ${words.effort}`);
+  if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={title ? `${title}\n${t("objectives.commander.locked")}` : t("objectives.commander.locked")}>{triggerText ?? text}</span>;
 
   const chosenRow = rows.find((row) => row.launch.model === currentModel) ?? null;
   const providerOf = (row: OperationLaunchVariantRow) => groups.find((group) => group.rows.includes(row))?.provider ?? null;
 
   return (
     <>
-      <button ref={triggerRef} type="button" className={`objectives-launch${trigger ? " is-glyph objectives-glyph" : ""}`} aria-haspopup="menu" aria-expanded={open} aria-label={triggerLabel ?? t("objectives.launch.menuAria")} title={trigger ? triggerLabel : triggerTitle} onKeyDown={subagents ? (event) => {
+      <button ref={triggerRef} type="button" className={`objectives-launch${trigger ? " is-glyph objectives-glyph" : ""}`} aria-haspopup="menu" aria-expanded={open} aria-label={triggerLabel ?? t("objectives.launch.menuAria")} title={trigger ? triggerLabel : title} onKeyDown={subagents ? (event) => {
         if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
         event.preventDefault();
         focusIntent.current = event.key === "ArrowUp" ? "last" : "first";
