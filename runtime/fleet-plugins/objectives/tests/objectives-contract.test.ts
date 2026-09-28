@@ -776,6 +776,94 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual([id]);
   });
 
+  it("lets Console Use tell objectives without an Operation apart and merge or remove only those, keeping briefs and criteria, and lets the person restore them", async () => {
+    const { store, launch, add, workspace, consoleTool, operations, route, savedIds } = harness();
+    const caller = add("tidy-caller", { title: "Tidy caller" });
+    const use = async (args: Record<string, unknown>) => (await consoleTool.execute(args, { cwd: workspace, caller: { kind: "operation" as const, operationId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
+    const waiting = await launch.create({ theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
+    const started = await launch.create({ theaterId: "t1", title: "Started", groupId: null });
+    await launch.requestPlan(started.id);
+    type Row = { id: string; kind: string; operation: boolean; done: boolean; self?: boolean; brief?: string; briefTruncated?: boolean; criteria?: string[] };
+    const rows = async (filter?: string) => ((await use({ view: "objectives", ...(filter ? { filter } : {}) })).structuredContent.objectives as Row[]);
+    const byId = (list: Row[]) => new Map(list.map((row) => [row.id, row]));
+    // 한 번 읽은 목록만으로 Operation 유무·보드 목표와 대화 세션·자기 세션·브리핑과 기준을 가른다.
+    const open = byId(await rows());
+    expect(open.get(waiting.id)).toMatchObject({ kind: "objective", operation: false, briefTruncated: true, criteria: ["one", "two"] });
+    expect(open.get(waiting.id)!.brief!.length).toBeLessThan(waiting.note.length);
+    expect(open.get(started.id)).toMatchObject({ kind: "objective", operation: true });
+    expect(open.get(caller.id)).toMatchObject({ kind: "session", operation: true, self: true });
+    // 시작 전 목표의 지휘관은 닫힘이 아니다.
+    const detail = (await use({ view: "objective", objectiveId: waiting.id })).structuredContent as { objective: { graph: { commander: { state: string } } } };
+    expect(detail.objective.graph.commander.state).toBe("not_started");
+    // 완료한 목표는 기본 목록에서 빠지지만 all 에서는 비교 대상으로 남는다.
+    await launch.complete(started.id);
+    expect(byId(await rows()).has(started.id)).toBe(false);
+    expect(byId(await rows("all")).get(started.id)).toMatchObject({ done: true });
+
+    const duplicate = await launch.create({ theaterId: "t1", title: "Duplicate", groupId: null, note: "dup brief", criteria: ["two", "three"] });
+    const planned = await launch.create({ theaterId: "t1", title: "Planned by hand", groupId: null, missions: [{ text: "keep me" }] });
+    const stale = await launch.create({ theaterId: "t1", title: "Stale", groupId: null });
+    const before = store.find(waiting.id)!;
+    // Operation 이 있는 목표·대화 세션·옮길 수 없는 것을 가진 원본이 하나라도 끼면 아무것도 바꾸지 않고 이유를 하나씩 댄다.
+    const refused = await use({ merge: { into: waiting.id, from: [duplicate.id, started.id, caller.id, planned.id] } });
+    expect(refused.isError).toBe(true);
+    expect(refused.structuredContent).toMatchObject({ error: "tidy_refused", refusals: expect.arrayContaining([
+      expect.objectContaining({ objectiveId: started.id, reason: "has_operation" }),
+      expect.objectContaining({ objectiveId: caller.id, reason: "conversation_session" }),
+      expect.objectContaining({ objectiveId: planned.id, reason: "merge_would_drop", kinds: ["missions"] }),
+    ]) });
+    expect(store.find(waiting.id)).toMatchObject({ note: before.note, removed: null });
+    expect(store.find(duplicate.id)!.removed).toBeNull();
+    expect((await use({ remove: { objectiveIds: [caller.id] } })).structuredContent).toMatchObject({ error: "tidy_refused" });
+    expect(operations.has(caller.id)).toBe(true);
+
+    // 합치면 원본의 브리핑과 기준이 받는 목표로 옮겨 가고(같은 문장은 한 번), 원본은 지운 표시로 남아 기동되지 않는다.
+    expect((await use({ merge: { into: waiting.id, from: [duplicate.id], reason: "same ask" } })).isError).toBe(false);
+    expect(store.find(waiting.id)!.note).toContain("dup brief");
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two", "three"]);
+    expect(store.find(duplicate.id)!.removed).toMatchObject({ by: { operationId: caller.id }, reason: "same ask", mergedInto: { id: waiting.id } });
+    expect(byId(await rows()).has(duplicate.id)).toBe(false);
+    expect(byId(await rows("all")).get(duplicate.id)).toMatchObject({ removed: true, mergedInto: waiting.id });
+    await expect(launch.requestPlan(duplicate.id)).rejects.toMatchObject({ code: "objective_removed" });
+    expect((await use({ remove: { objectiveIds: [stale.id] } })).isError).toBe(false);
+    // 저장 무결성 — 다시 읽어도 지운 표시와 합친 기록이 그대로다.
+    const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
+    expect(reloaded.find(stale.id)!.removed).not.toBeNull();
+    expect(reloaded.find(waiting.id)!.merged.map((entry) => entry.sourceId)).toEqual([duplicate.id]);
+
+    // 사람이 보드에서 되돌린다 — 합친 원본을 되돌리면 받은 목표에서 덧붙인 구간과 옮긴 기준이 걷힌다.
+    expect((await route("objective/restore", { objectiveId: stale.id })).status).toBe(200);
+    expect(store.find(stale.id)!.removed).toBeNull();
+    expect((await route("objective/restore", { objectiveId: duplicate.id })).status).toBe(200);
+    expect(store.find(duplicate.id)).toMatchObject({ removed: null, note: "dup brief" });
+    expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [] });
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
+    // 받은 목표까지 지운 뒤 원본부터 되돌려도 내용이 겹치지 않고, 받을 수 없는 id 가 낀 되돌리기는 아무것도 바꾸지 않는다.
+    await use({ merge: { into: waiting.id, from: [duplicate.id] } });
+    await use({ remove: { objectiveIds: [waiting.id] } });
+    expect((await use({ restore: [duplicate.id, "missing"] })).structuredContent).toMatchObject({ error: "tidy_refused" });
+    expect(store.find(duplicate.id)!.removed).not.toBeNull();
+    expect((await use({ restore: [duplicate.id, waiting.id] })).isError).toBe(false);
+    expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [], removed: null });
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
+    // 두 원본이 같은 기준을 가져왔으면 한쪽을 되돌려도 남은 원본의 기준은 받은 목표에 남는다.
+    const left = await launch.create({ theaterId: "t1", title: "Left", groupId: null, criteria: ["shared"] });
+    const right = await launch.create({ theaterId: "t1", title: "Right", groupId: null, criteria: ["shared"] });
+    await use({ merge: { into: waiting.id, from: [left.id, right.id] } });
+    await route("objective/restore", { objectiveId: left.id });
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two", "shared"]);
+    await route("objective/restore", { objectiveId: right.id });
+    expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [] });
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
+
+    // 사람이 지운 기동 전 목표도 같은 자리에 남아 되돌릴 수 있고, 거기서 한 번 더 지우면(비우기) 영구 삭제된다.
+    expect((await route("objective/remove", { objectiveId: stale.id })).status).toBe(200);
+    expect(store.find(stale.id)!.removed).toMatchObject({ by: null });
+    expect((await route("objective/remove", { objectiveId: stale.id })).status).toBe(200);
+    expect(store.find(stale.id)).toBeNull();
+    expect(savedIds()).not.toContain(stale.id);
+  });
+
   it("shows every agent Operation created elsewhere as an objective, but not member or plugin Operations", async () => {
     const { store, launch, add, savedIds, launches, call } = harness();
     add("sidebar", { title: "Made in the sidebar", groupId: "g-a" });

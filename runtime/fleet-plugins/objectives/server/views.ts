@@ -6,6 +6,9 @@ import type { ObjectiveResult } from "./results.js";
 import type { ObjectiveStore } from "./store.js";
 import { commanderMode, latestRecord, missionReady, type Objective } from "./types.js";
 
+/** 목록 한 줄에 싣는 브리핑의 앞부분 길이 — 목표 여럿을 한 번에 견주는 데 쓰고, 전문은 목표 하나를 읽는다. */
+const ROW_BRIEF = 600;
+
 /** 모델이 읽는 보드에서 비어 있는 값(null·빈 문자열·빈 배열·false)은 싣지 않는다 — 없음은 비어 있음이다. */
 const withoutEmpty = <T extends Record<string, unknown>>(value: T): Partial<T> =>
   Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== null && entry !== undefined && entry !== "" && entry !== false && !(Array.isArray(entry) && entry.length === 0))) as Partial<T>;
@@ -55,7 +58,8 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     const nOf = (missionId: string) => objective.missions.findIndex((candidate) => candidate.id === missionId) + 1;
     return {
       // 지휘관 Operation 은 목표와 같은 id·제목이다 — 상태와 세션 이름만.
-      commander: { state: observe(objective.id).state, session: objective.commander.sessionName },
+      // 기동 전 목표에는 지휘관 Operation 이 아직 없다 — 닫힘(closed)이 아니라 시작 전이다.
+      commander: { state: store.pending(objective.id) ? "not_started" as const : observe(objective.id).state, session: objective.commander.sessionName },
       ...(objective.planning ? { planning: true } : {}),
       // n 은 1부터 세는 임무 번호(편성 순서), missionId 는 변하지 않는 가리킴.
       missions: objective.missions.map((mission, index) => {
@@ -96,6 +100,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
       handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
       addedBy: objective.addedBy,
+      removed: objective.removed, merged: objective.merged,
     }),
     graph: graph(objective),
     ...withoutEmpty({
@@ -120,7 +125,26 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       }),
       at: new Date(decision.at).toISOString() })) }),
   });
-  const rowView = (objective: Objective) => ({ id: objective.id, groupId: objective.groupId, title: objective.title, done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null });
+  /**
+   * 목록 한 줄 — 상세를 열지 않고도 목표끼리 견줄 수 있게 한다. kind 는 사람이 목표로 다루는지(objective)와 아직 목표 밖의
+   * 대화 세션인지(session), operation 은 지휘관·세션 Operation 이 있는지다(보드에서 만들고 아직 기동하지 않은 목표만 false).
+   * 브리핑은 앞부분만 싣고, 잘렸으면 briefTruncated 로 알린다. 전문은 목표 하나를 읽는다.
+   */
+  const rowView = (objective: Objective) => ({
+    id: objective.id, groupId: objective.groupId, title: objective.title,
+    kind: objective.enlisted ? "objective" as const : "session" as const,
+    operation: !store.pending(objective.id),
+    done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null,
+    ...withoutEmpty({
+      commenced: objective.commenced,
+      // 에이전트가 지웠거나 합친 목표 — 목록에는 filter all 에서만 선다.
+      removed: !!objective.removed,
+      mergedInto: objective.removed?.mergedInto?.id ?? null,
+      brief: objective.note.length > ROW_BRIEF ? `${objective.note.slice(0, ROW_BRIEF)}…` : objective.note,
+      briefTruncated: objective.note.length > ROW_BRIEF,
+      criteria: objective.criteria.map((criterion) => criterion.text),
+    }),
+  });
   /** 알림 문구의 언어 — 목표가 띄운 세션에 objectiveLanguage 로 남아 있다. */
   const languageOf = (caller: ConsoleCaller | undefined): PromptLanguage => {
     if (caller?.kind !== "operation") return "en";

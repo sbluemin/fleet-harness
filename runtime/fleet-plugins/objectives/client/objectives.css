@@ -1410,3 +1410,44 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 /* 결정 요청 구획 행의 원래 그룹 — 구획 머리와 같은 견본 점과 이름. */
 .objectives-objective-group { display: inline-flex; align-items: center; gap: 4px; }
 .objectives-objective-group .objectives-swatch { width: 6px; height: 6px; border-radius: 50%; }
+
+/*
+ * 「정리됨」 — 지우거나 합친 목표가 보관 기간 동안 서는 범위. 입구는 범위 낱말 하나이고, 에이전트의 새 정리가 있으면 낱말이 황동
+ * 글자와 점으로 알린다. 줄은 전체 점선 테두리와 옅은 글자로 보통 목표와 가른다(왼쪽 띠·취소선 없음 — 취소선은 완료의 뜻).
+ */
+.objectives-scope-word.is-unseen { color: var(--brass-ink); }
+.objectives-scope-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); align-self: center; }
+.objectives-tidied-group + .objectives-tidied-group { margin-top: 10px; }
+.objectives-tidied-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 2px 0 0 2px; font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-tidied-actor { color: var(--text-secondary); }
+.objectives-tidied-link { border: 0; background: none; padding: 0; font: inherit; font-size: var(--t-xs); color: var(--text-secondary); cursor: pointer; white-space: nowrap; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; transition: color var(--duration-fast); }
+.objectives-tidied-link:hover { color: var(--text-primary); }
+.objectives-tidied-link:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
+.objectives-tidied-link.is-undo { color: var(--brass-ink); }
+.objectives-tidied-link.is-armed { color: var(--coral); }
+.objectives-objective.is-tidied { grid-template-columns: 26px minmax(0, 1fr) auto; grid-template-areas: "ring title go" "ring meta go"; background: transparent; border-style: dashed; border-color: var(--hairline-strong); }
+.objectives-objective.is-tidied .objectives-objective-title { color: var(--text-tertiary); }
+.objectives-objective.is-tidied[aria-selected="true"] { border-style: solid; border-color: var(--brass); }
+.objectives-objective.is-tidied .objectives-objective-go { padding-left: 10px; }
+.objectives-tidied-glyph { color: var(--text-tertiary); }
+.objectives-tidied-glyph svg { width: 16px; height: 16px; display: block; }
+.objectives-tidied-kind { color: var(--text-secondary); }
+.objectives-tidied-reason { flex-basis: 100%; overflow-wrap: anywhere; }
+.objectives-objective-merged { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); }
+.objectives-objective-merged svg { width: 11px; height: 11px; }
+.objectives-detail-title.is-tidied { color: var(--text-tertiary); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.objectives-tidied-notice { gap: 4px; font-size: var(--t-sm); color: var(--text-secondary); }
+.objectives-tidied-notice strong { color: var(--text-primary); font-weight: var(--weight-medium); }
+.objectives-tidied-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 6px; }
+.objectives-tidied-label { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-tertiary); }
+.objectives-tidied-brief { margin: 6px 0 0; font-size: var(--t-md); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-tidied-criteria { margin: 6px 0 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 4px; font-size: var(--t-sm); color: var(--text-secondary); }
+.objectives-merged-trail { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.objectives-merged-entry { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-top: 6px; border-top: 1px dashed var(--hairline-strong); font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-merged-src { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); }
+.objectives-merged-src svg { width: 11px; height: 11px; flex: none; }
+/* 정리된 목표의 상세와 받은 목표의 합쳐 온 목록 — 상세의 다른 줄과 같은 안쪽 선(22px, 한 열에서는 14px)에 선다. */
+.objectives-detail.is-tidied .objectives-group:not(:first-child), .objectives-merged-trail { padding-left: 22px; padding-right: 20px; }
+@container objectives-panel (width < 600px) {
+  .objectives-detail.is-tidied .objectives-group:not(:first-child), .objectives-merged-trail { padding-left: 14px; padding-right: 12px; }
+}

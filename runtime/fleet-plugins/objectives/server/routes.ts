@@ -187,6 +187,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       return objective(store.find(moved.id) ?? moved);
     }) },
     // 목표를 지우면 지휘관 Operation 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
+    { name: "objective/restore", method: "POST", summary: "Restore an objective an agent removed or merged through Console Use; a merged one also leaves the objective it joined.", handler: json(objectiveRef, ({ objectiveId }) => { const restored = store.tidyRestore(objectiveId); launch.followupTargetChanged(objectiveId); return objective(restored); }) },
     { name: "objective/remove", method: "POST", summary: "Delete an objective by closing its Commander Operation (restorable during the undo window).", handler: json(objectiveRef, unlessBusy(({ objectiveId }) => objective(launch.remove(objectiveId)))) },
     // 후속 후보를 고른 완료는 새 경계다 — 검토 대기·스티어링 우선·제안 대기를 서버가 원자적으로 다시 따진다. 고른 것이 없으면 지금 완료 그대로.
     { name: "objective/complete", method: "POST", summary: "Complete an objective using the Core Operation lifecycle, or reopen it with undone. With followups (and a batchId), the chosen follow-up candidates become dormant objectives.", handler: json(objectiveRef.extend({ undone: z.boolean().optional(), batchId: followupSelectionSchema.shape.batchId.optional(), followups: followupSelectionSchema.shape.followups.optional() }), unlessBusy(async ({ objectiveId, undone, batchId, followups, language }) => {
@@ -231,7 +232,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "roles/curate", method: "POST", summary: "Hide, show, merge or unmerge a past role of a Theater; the curation shapes the past roles later Commanders read.", handler: json(z.object({ theaterId: ids, language, action: roleCurateSchema }), ({ theaterId, action }) => ({ roles: store.roleCurate(theaterId, action) })) },
     { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();
-      const hits = store.list(theaterId).filter((candidate) => !candidate.done && candidate.title.toLowerCase().includes(needle)).slice(0, limit ?? 20);
+      const hits = store.list(theaterId).filter((candidate) => !candidate.done && !candidate.removed && candidate.title.toLowerCase().includes(needle)).slice(0, limit ?? 20);
       return { objectives: hits.map((candidate) => ({ id: candidate.id, title: candidate.title, groupId: candidate.groupId })) };
     }) },
     // 달성 기준 — 브리핑처럼 지휘관이 일하는 동안에도 받고, 지휘관이 있으면 「달성 기준」 편집으로 쌓여 스티어링이 알린다.

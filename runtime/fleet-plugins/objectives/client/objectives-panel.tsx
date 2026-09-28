@@ -30,6 +30,7 @@ import {
   unseenFollowupCount,
 } from "./followups.js";
 import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace, FollowupForkGlyph } from "./followups-view.js";
+import { criterionSources, MergedTrail, MergeGlyph, TidiedDetail, TidiedList } from "./tidied.js";
 
 export interface ObjectiveContext {
   readonly theaterId: string | null;
@@ -39,8 +40,10 @@ export interface ObjectiveContext {
 }
 
 /** 중앙 pane 제목 줄의 범위 낱말 — 그룹은 목록이 아니라 구역 안의 소제목이다. 「목표 밖」은 목표로 다루기 전의 세션이다. */
-type ListId = "today" | "due" | "all" | "agent" | "outside";
+type ListId = "today" | "due" | "all" | "agent" | "outside" | "tidied";
 const LISTS: readonly ListId[] = ["today", "due", "all", "agent", "outside"];
+/** 옛 보기 상태나 모르는 값은 「모두」로 읽는다. 「정리됨」은 지운 목표가 있을 때만 서는 범위다. */
+const listOf = (value: string): ListId => ((LISTS as readonly string[]).includes(value) || value === "tidied" ? value as ListId : "all");
 /** 목록의 구역 — 상태가 정한다. 구역 안의 순서는 사람이 정한 보드 순서 그대로다. */
 type Zone = "request" | "review" | "run" | "wait" | "outside" | "done";
 // 목표 밖 판정이 결정 요청·검토 대기보다 먼저다 — 따로 만든 세션도 제 보드 도구로 인계까지 갈 수 있고, 그래도 「목표 밖」에서 보여야 한다.
@@ -188,6 +191,9 @@ function dueBucket(due: string | null): DueFilter | null {
 }
 /** 범위 낱말과 기한 세부가 이 목표를 보이는가. */
 function inScope(objective: Objective, list: ListId, dueFilter: DueFilter): boolean {
+  // 지우거나 합친 목표는 「정리됨」에만 선다.
+  if (list === "tidied") return !!objective.removed;
+  if (objective.removed) return false;
   if (list === "today") return objective.today;
   if (list === "due") return !!objective.dueDate && (dueFilter === "all" || dueBucket(objective.dueDate) === dueFilter);
   if (list === "agent") return !!objective.addedBy && objective.enlisted;
@@ -213,7 +219,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 보기 상태(목록 · 펼친 항목 · 구획 접힘 · 기한 필터)는 Theater 별 모듈 스토어에 산다 — 표면을 닫았다 열어도 보던 자리 그대로.
   const view = useObjectiveView(theaterId);
   // 옛 보기 상태가 그룹·미분류 목록을 가리키면 「모두」로 읽는다 — 그 그룹은 「모두」의 구획으로 보인다.
-  const list: ListId = (LISTS as readonly string[]).includes(view.list) ? view.list as ListId : "all";
+  const list: ListId = listOf(view.list);
   const selected = view.selected;
   const collapsed = view.collapsed;
   const dueFilter = view.dueFilter as DueFilter;
@@ -332,6 +338,19 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const groupOf = (groupId: string | null): ObjectiveGroup | null => (groupId ? state.groups.find((group) => group.id === groupId) ?? null : null);
   const inList = useCallback((objective: Objective): boolean => inScope(objective, list, dueFilter), [list, dueFilter]);
   const visible = useMemo(() => state.objectives.filter((objective) => inList(objective)), [state.objectives, inList]);
+  // 「정리됨」 — 지우거나 합친 목표. 에이전트의 정리가 이 화면에서 아직 보지 않은 것이면 범위 낱말에 황동 점이 선다(보는 사람마다의 기억).
+  const tidied = useMemo(() => state.objectives.filter((objective) => !!objective.removed), [state.objectives]);
+  const latestAgentTidy = tidied.reduce((latest, objective) => (objective.removed!.by && objective.removed!.at > latest ? objective.removed!.at : latest), 0);
+  const tidySeenKey = `fleet.objectives.tidied-seen:${theaterId ?? ""}`;
+  const readTidySeen = () => { try { return Number(localStorage.getItem(tidySeenKey)) || 0; } catch { return 0; } };
+  const [tidySeen, setTidySeen] = useState(readTidySeen);
+  useEffect(() => { setTidySeen(readTidySeen()); }, [tidySeenKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (list !== "tidied" || latestAgentTidy <= tidySeen) return;
+    setTidySeen(latestAgentTidy);
+    try { localStorage.setItem(tidySeenKey, String(latestAgentTidy)); } catch { /* 저장을 막은 브라우저에서도 이번 화면에서는 본 것으로 둔다. */ }
+  }, [list, latestAgentTidy, tidySeen, tidySeenKey]);
+  const tidyUnseen = list !== "tidied" && latestAgentTidy > tidySeen;
   const open = useMemo(() => visible.filter((objective) => !objective.done), [visible]);
   const finished = useMemo(() => visible.filter((objective) => objective.done), [visible]);
   /**
@@ -342,7 +361,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const zones = useMemo(() => {
     type Block = { key: string; group: ObjectiveGroup | null; ungrouped: boolean; objectives: Objective[] };
     type ZoneView = { zone: Zone; head: boolean; objectives: Objective[]; blocks: Block[] };
-    const order: readonly Zone[] = list === "outside" ? ["outside", "done"] : ["request", "review", "run", "wait", "outside", "done"];
+    const order: readonly Zone[] = list === "tidied" ? [] : list === "outside" ? ["outside", "done"] : ["request", "review", "run", "wait", "outside", "done"];
     const byZone = new Map<Zone, Objective[]>(order.map((zone) => [zone, []]));
     for (const objective of visible) byZone.get(zoneOf(objective))?.push(objective);
     // 결정 요청은 요청이 선 차례로 선다 — 저장된 순서와 그룹은 그대로라 요청이 풀리면 원래 자리로 돌아간다.
@@ -368,7 +387,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     }
     return out;
   }, [list, visible, state.groups]);
-  const openCount = (predicate: (objective: Objective) => boolean) => state.objectives.filter((objective) => !objective.done && predicate(objective)).length;
+  const openCount = (predicate: (objective: Objective) => boolean) => state.objectives.filter((objective) => !objective.done && !objective.removed && predicate(objective)).length;
   const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? null : null;
   const detailRef = useRef<HTMLElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
@@ -405,7 +424,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const at = requests.findIndex((objective) => objective.id === selected);
     const target = requests[(at + 1) % requests.length]!;
     patchObjectiveView(theaterId, (view) => ({
-      ...(inScope(target, (LISTS as readonly string[]).includes(view.list) ? view.list as ListId : "all", view.dueFilter as DueFilter) ? {} : { list: target.enlisted ? "all" : "outside" }),
+      ...(inScope(target, listOf(view.list), view.dueFilter as DueFilter) ? {} : { list: target.removed ? "tidied" : target.enlisted ? "all" : "outside" }),
       collapsed: unfold(view.collapsed, sectionKeyOf(target)),
       selected: target.id,
       externalSelectionId: null,
@@ -430,7 +449,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   };
 
   const listTitle = t(`objectives.list.${list}`);
-  const listCount = (id: ListId) => openCount((objective) => id === "today" ? objective.today : id === "due" ? !!objective.dueDate : id === "agent" ? !!objective.addedBy && objective.enlisted : id === "outside" ? !objective.enlisted : objective.enlisted);
+  const listCount = (id: ListId) => id === "tidied" ? tidied.length : openCount((objective) => id === "today" ? objective.today : id === "due" ? !!objective.dueDate : id === "agent" ? !!objective.addedBy && objective.enlisted : id === "outside" ? !objective.enlisted : objective.enlisted);
 
   // ── 행동 ──
   const completeObjective = async (objective: Objective) => {
@@ -498,7 +517,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     discardPendingSelection();
     const wide = (rootRef.current?.clientWidth ?? rootWidth) >= ONE_COLUMN_BELOW;
     patchObjectiveView(theaterId, (view) => {
-      let nextList: ListId = (LISTS as readonly string[]).includes(view.list) ? view.list as ListId : "all";
+      let nextList: ListId = listOf(view.list);
       let nextDue = view.dueFilter as DueFilter;
       if (!inScope(created, nextList, nextDue)) {
         if (nextList === "due" && created.dueDate) nextDue = "all";
@@ -719,6 +738,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           {word ? <span className={`objectives-objective-state is-${word.tone}`}>{word.text}</span> : null}
           {objective.missions.length ? <span className="objectives-objective-progress">✓ {objective.missions.filter((mission) => mission.done).length}/{objective.missions.length}</span> : null}
           {objective.awaitingHandoff && !objective.done ? <span className="objectives-objective-handoff">{t("objectives.handoff.label")}</span> : null}
+          {objective.merged.length ? <span className="objectives-objective-merged"><MergeGlyph />{t("objectives.tidied.mergedIn", { count: objective.merged.length })}</span> : null}
           {objective.decisionRequest && !objective.done ? <span className="objectives-objective-request"><RequestGlyph />{t("objectives.decision.label")}{objective.decisionRequest.questions.length > 1 ? <em>{t("objectives.decision.labelMany", { count: objective.decisionRequest.questions.length })}</em> : null}</span> : null}
           {showGroup ? <span className="objectives-objective-group"><span className="objectives-swatch" style={{ background: `var(--id-${showGroup.color}, var(--text-tertiary))` }} aria-hidden="true" />{showGroup.name}</span> : null}
           {due ? <span className="objectives-m-due">{due}</span> : null}
@@ -748,7 +768,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       </> : sized ? <DetailGrip t={t} split={split} width={shownDetail} max={detailMax} rootRef={rootRef} onResize={setDetailWidth} onResizing={setResizing} /> : null}
       <section ref={mainRef} className="objectives-main">
         <div className="objectives-title">
-          <ScopeWords current={list} onPick={setList} t={t} count={listCount} dropOver={drag?.over ?? null} flash={flash} />
+          <ScopeWords current={list} onPick={setList} t={t} count={listCount} dropOver={drag?.over ?? null} flash={flash} tidied={tidied.length > 0 || list === "tidied"} tidyUnseen={tidyUnseen} />
           {placeButton("objectives-place-main")}
         </div>
         {list === "due" ? (
@@ -769,7 +789,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         ) : null}
         <div ref={objectivesRef} className="objectives-objectives" role="listbox" aria-label={listTitle} data-objectives-tour="list">
           {list === "outside" ? <p className="objectives-outside-hint">{t("objectives.outside.hint")}</p> : null}
-          {open.length === 0 && finished.length === 0 ? <div className="objectives-empty">{t(list === "outside" ? "objectives.outside.empty" : "objectives.objectives.empty")}</div> : null}
+          {list === "tidied" ? <TidiedList objectives={visible} t={t} language={language} selected={selected} onSelect={(id) => setSelected((value) => (value === id ? null : id))} call={call} /> : null}
+          {list !== "tidied" && open.length === 0 && finished.length === 0 ? <div className="objectives-empty">{t(list === "outside" ? "objectives.outside.empty" : "objectives.objectives.empty")}</div> : null}
           {zones.map(({ zone, head, objectives, blocks }) => {
             const key = zoneKey(zone);
             const expanded = !head || zone === "request" || isOpen(key, zone !== "done");
@@ -811,7 +832,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         ) : null}
       </section>
 
-      {current ? (
+      {current?.removed ? (
+        <TidiedDetail key={current.id} objective={current} t={t} language={language} call={call} onClose={closeDetail} onOpenObjective={openObjectiveDetail} detailRef={detailRef} three={three} head={placeButton("objectives-place-detail")} />
+      ) : current ? (
         <ObjectiveDetail
           key={current.id}
           objective={current}
@@ -948,16 +971,18 @@ function PaneGrip({ side, label, tip, width, min, max, fallback, rootRef, onResi
   );
 }
 
-const SCOPE_GLYPH: Record<ListId, string> = { today: "☀", due: "", all: "∞", agent: "◌", outside: "" };
+const SCOPE_GLYPH: Record<ListId, string> = { today: "☀", due: "", all: "∞", agent: "◌", outside: "", tidied: "" };
 /**
  * 범위 낱말 — 오늘·기한·모두·에이전트가 남김이 제목 줄에 늘 같은 자리로 선다. 상자도 채움도 없이 고른 낱말만 진해지고 얇은 밑줄이
  * 깔린다(탭 목록: ←/→·Home/End 로 옮기면 바로 고른다). 오늘·기한은 카드를 끌어 놓을 자리이기도 하다.
  */
-function ScopeWords({ current, onPick, t, count, dropOver, flash }: { current: ListId; onPick: (id: ListId) => void; t: T; count: (id: ListId) => number; dropOver: DropTarget | null; flash: ListId | null }) {
+function ScopeWords({ current, onPick, t, count, dropOver, flash, tidied, tidyUnseen }: { current: ListId; onPick: (id: ListId) => void; t: T; count: (id: ListId) => number; dropOver: DropTarget | null; flash: ListId | null; tidied: boolean; tidyUnseen: boolean }) {
   const refs = useRef<Partial<Record<ListId, HTMLButtonElement | null>>>({});
+  // 「정리됨」은 지우거나 합친 목표가 있을 때만 「목표 밖」 뒤에 선다.
+  const words: readonly ListId[] = tidied ? [...LISTS, "tidied"] : LISTS;
   const onKey = (event: ReactKeyboardEvent<HTMLButtonElement>, id: ListId) => {
-    const at = LISTS.indexOf(id);
-    const next = event.key === "ArrowRight" ? LISTS[(at + 1) % LISTS.length] : event.key === "ArrowLeft" ? LISTS[(at - 1 + LISTS.length) % LISTS.length] : event.key === "Home" ? LISTS[0] : event.key === "End" ? LISTS[LISTS.length - 1] : null;
+    const at = words.indexOf(id);
+    const next = event.key === "ArrowRight" ? words[(at + 1) % words.length] : event.key === "ArrowLeft" ? words[(at - 1 + words.length) % words.length] : event.key === "Home" ? words[0] : event.key === "End" ? words[words.length - 1] : null;
     if (!next) return;
     event.preventDefault();
     onPick(next);
@@ -966,13 +991,18 @@ function ScopeWords({ current, onPick, t, count, dropOver, flash }: { current: L
   // 줄이 꺾이면 낱말마다 왼쪽 여백만큼 목록을 당겨 잘라 둔다 — 줄 머리에 선 낱말의 여백과 「목표 밖」 앞 세로 선은 잘린 곳에 들어간다.
   return (
     <div className="objectives-scope-clip"><div className="objectives-scope" role="tablist" aria-label={t("objectives.scope.label")} data-objectives-tour="scope">
-      {LISTS.map((id) => (
-        <button key={id} ref={(node) => { refs.current[id] = node; }} type="button" role="tab" className={`objectives-scope-word${id === "outside" ? " is-sep" : ""}${dropOver === id ? " is-drop" : ""}${flash === id ? " is-flash" : ""}`} aria-selected={current === id} tabIndex={current === id ? 0 : -1} title={t(`objectives.sub.${id}`)} onClick={() => onPick(id)} onKeyDown={(event) => onKey(event, id)} {...(id === "today" || id === "due" ? { "data-drop-list": id } : {})}>
+      {words.map((id) => {
+        const unseen = id === "tidied" && tidyUnseen;
+        return (
+        <button key={id} ref={(node) => { refs.current[id] = node; }} type="button" role="tab" className={`objectives-scope-word${id === "outside" || id === "tidied" ? " is-sep" : ""}${dropOver === id ? " is-drop" : ""}${flash === id ? " is-flash" : ""}${unseen ? " is-unseen" : ""}`} aria-selected={current === id} tabIndex={current === id ? 0 : -1} title={t(`objectives.sub.${id}`)} onClick={() => onPick(id)} onKeyDown={(event) => onKey(event, id)} {...(id === "today" || id === "due" ? { "data-drop-list": id } : {})}
+          {...(unseen ? { "aria-label": t("objectives.tidied.newAria", { count: count(id) }) } : {})}>
           {SCOPE_GLYPH[id] ? <span className="objectives-scope-glyph" aria-hidden="true">{SCOPE_GLYPH[id]}</span> : null}
           <span>{t(`objectives.list.${id}`)}</span>
           <span className="objectives-count">{count(id)}</span>
+          {unseen ? <span className="objectives-scope-dot" aria-hidden="true" /> : null}
         </button>
-      ))}
+        );
+      })}
     </div></div>
   );
 }
@@ -1449,6 +1479,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   useEffect(() => { setNote(objective.note); }, [objective.note]);
   useEffect(() => { setTitle(objective.title); }, [objective.title]);
   const mode = commanderMode(objective.missions);
+  const mergedFrom = criterionSources(objective);
   // 수동 재개로 초기화된 유휴 세션도 잠근다. 구성원의 활동이 아니라 지휘관 자신의 상태로 판단한다.
   const locked = objective.commander.started || ["idle", "running", "background", "awaiting"].includes(operationOwnState(objective.id));
   const editable = !objective.done && !busy;
@@ -1650,7 +1681,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             );
           })()}
           <textarea className="objectives-detail-title" aria-label={t("objectives.objective.titleAria")} value={title} rows={1} readOnly={!editable} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); } }} onBlur={() => { if (title.trim() && title !== objective.title) void call("/objective/patch", { objectiveId: objective.id, patch: { title: title.trim() } }); }} />
-          {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.objective.delete")} title={t("objectives.objective.delete")} onClick={async () => { const removed = await call<{ objective: Objective }>("/objective/remove", { objectiveId: objective.id }); if (removed) { removeObjectiveLocally(objective.id); toast(t("objectives.toast.deleted")); } }}><TrashGlyph /></button> : null}
+          {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.objective.delete")} title={t("objectives.objective.delete")} onClick={async () => { const removed = await call<{ objective: Objective }>("/objective/remove", { objectiveId: objective.id }); if (removed && !removed.objective.removed) { removeObjectiveLocally(objective.id); toast(t("objectives.toast.deleted")); } }}><TrashGlyph /></button> : null}
           {placeButton}
         </div>
         {busy ? <div className="objectives-busy-line" role="status"><i aria-hidden="true" /><span>{t(objective.planning ? "objectives.planning" : "objectives.busy")}</span></div> : null}
@@ -1728,6 +1759,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           onPaste={(event) => { if (!touchable) return; const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
         {dropping ? <AttachmentDropVeil t={t} /> : null}
         {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
+        <MergedTrail objective={objective} t={t} language={language} call={call} onOpenObjective={onOpenObjective} />
       </div>
   </>);
   const sOrigin = (<>
@@ -1778,7 +1810,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
                   <WrapText key={criterion.text} className="objectives-criterion-text" label={t("objectives.criteria.itemAria", { n: index + 1 })} value={criterion.text} readOnly={!touchable} maxLength={300}
                     onCommit={(value) => { if (!value) return false; if (value !== criterion.text) void call("/criterion/patch", { objectiveId: objective.id, criterionId: criterion.id, patch: { text: value } }); return true; }} />
                   {evidence ? <span className="objectives-criterion-sub is-evidence">{t("objectives.criteria.evidence", { evidence })}</span>
-                    : criterion.by === "commander" ? <span className="objectives-criterion-sub">{t("objectives.criteria.proposed")}</span> : null}
+                    : criterion.by === "commander" ? <span className="objectives-criterion-sub">{t("objectives.criteria.proposed")}</span>
+                    : mergedFrom.get(criterion.id) ? <span className="objectives-criterion-sub">{t("objectives.tidied.fromCriterion", { title: mergedFrom.get(criterion.id)! })}</span> : null}
                 </div>
                 <span className={`objectives-criterion-state${evidence ? " is-met" : ""}`}>{t(evidence ? "objectives.criteria.met" : "objectives.criteria.unchecked")}</span>
                 {touchable ? <button type="button" className="objectives-glyph objectives-criterion-remove" title={t("objectives.criteria.remove")} aria-label={t("objectives.criteria.remove")} onClick={() => void call("/criterion/remove", { objectiveId: objective.id, criterionId: criterion.id })}><TrashGlyph /></button> : null}
