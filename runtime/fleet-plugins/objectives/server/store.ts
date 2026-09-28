@@ -672,7 +672,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     if (hasCycle(graphOf(mutated.missions))) throw new ObjectiveStoreError("dependency_cycle");
     // 선행이 바뀌면 임무도 편성 순으로 다시 선다 — 목록·번호·지휘관 도구의 n 이 편성과 같은 순서를 말한다.
     const missions = lineupOrder(mutated.missions);
-    const ordered = missions === mutated.missions ? mutated : { ...mutated, missions: [...missions] };
+    const sorted = missions === mutated.missions ? mutated : { ...mutated, missions: [...missions] };
+    // 옛 레코드에서 구상 표시는 「개시 전」의 유일한 흔적이다 — 그것을 지우는 편집(개시·중지·완료)이 목표로 올림을 먼저 굳힌다.
+    // 그러지 않으면 중지나 실패한 개시 뒤에 옛 판정(started && !planning)이 개시한 목표로 읽는다.
+    const ordered = typeof stored.enlisted !== "boolean" && typeof sorted.enlisted !== "boolean" && stored.planning === true && sorted.planning !== true ? { ...sorted, enlisted: true } : sorted;
     // 따로 만든 Operation 의 첫 편집 — 여기서 레코드가 된다. 지금 서 있는 가상 자리를 그대로 굳혀 자리가 흔들리지 않게
     // 하고, 그래도 화면이 서버와 어긋나지 않도록 보드 줄을 함께 방송한다.
     // 순서·오늘·브리핑 같은 편집은 세션을 목표로 올리지 않는다 — 명시적으로 「목표 밖」으로 남긴다(구상·개시만 올린다).
