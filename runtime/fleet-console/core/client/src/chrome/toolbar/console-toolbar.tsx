@@ -5,7 +5,6 @@ import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
 import { useT } from "../../i18n/index.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
-import { TOOLBAR_FOLDED_STORAGE_KEY } from "../../integration/presentation-keys.js";
 import { toggleOperationSearch } from "../../integration/store.js";
 import { setToolbarToolsSlot, useToolbarHost } from "../../integration/toolbar-slots.js";
 import { requestZenMode } from "../../integration/zen-mode.js";
@@ -28,7 +27,7 @@ import { ToolbarTipLayer } from "./toolbar-tip.js";
  * 칸의 이름은 한 장의 말풍선이 말한다(toolbar-tip.tsx) — 칸은 네이티브 title 대신 data-tip을 든다.
  */
 
-const FOLD_STORAGE_KEY = TOOLBAR_FOLDED_STORAGE_KEY;
+const FOLD_STORAGE_KEY = "fleet-console.toolbar.folded";
 /** 1차 Zen 트레이의 접힘 기억 — 한 번 읽어 옮기고 걷는다. */
 const LEGACY_FOLD_STORAGE_KEY = "fleet-console.zen.tools-folded";
 /** 서랍 전이(layout.css .console-toolbar-drawer의 360ms)보다 조금 길게 — 전이가 끝난 뒤에 자름을 푼다. */

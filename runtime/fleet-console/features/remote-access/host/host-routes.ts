@@ -1,5 +1,4 @@
 import type * as http from "node:http";
-import { normalizeFingerprint } from "@fleet-console/protocol/remote";
 import { parseAccessLink } from "./access-link.js";
 import { probeRemoteIdentity } from "./remote-discovery.js";
 import type { createRemoteHostStore, RemoteHostRecord } from "./remote-hosts.js";
@@ -52,10 +51,6 @@ export function createRemoteHostsRoutes(deps: RemoteHostsRouteDeps) {
     }
     if (action === "probes" && req.method === "POST") {
       writeJson(res, 200, await describeReachability(host));
-      return true;
-    }
-    if (action === "cookie-binding" && req.method === "POST") {
-      await bindCookies(req, res, host);
       return true;
     }
     if (action !== undefined) {
@@ -134,25 +129,6 @@ export function createRemoteHostsRoutes(deps: RemoteHostsRouteDeps) {
     writeJson(res, 201, { host: remoteHostStore.remember(link) });
   }
 
-  /**
-   * Desktop이 이 호스트에 조인한 뒤 알려 주는 사실: 방금 받은 쿠키는 이 신원에 묶였다. 보고가 가리키는 신원이
-   * 지금 기록과 다르면(그 사이 새 링크가 지문을 바꿨다면) 받지 않는다 — 늦은 보고가 새 신원을 덮으면 다음 전환에서
-   * 옛 쿠키가 새 인증서로 간다.
-   */
-  async function bindCookies(req: http.IncomingMessage, res: http.ServerResponse, host: RemoteHostRecord): Promise<void> {
-    const body = await readJsonBody<{ readonly fingerprint?: unknown; readonly pinGeneration?: unknown }>(req);
-    if (!isPlainObject(body) || typeof body.fingerprint !== "string" || typeof body.pinGeneration !== "number" || !Number.isSafeInteger(body.pinGeneration)) {
-      writeJson(res, 400, { error: "remote_host_binding_invalid" });
-      return;
-    }
-    const bound = remoteHostStore.bindCookies(host.id, { fingerprint: normalizeFingerprint(body.fingerprint), pinGeneration: body.pinGeneration });
-    if (!bound) {
-      writeJson(res, 409, { error: "remote_host_binding_stale" });
-      return;
-    }
-    writeNoContent(res);
-  }
-
   async function describeReachability(host: RemoteHostRecord): Promise<{ readonly reachable: boolean; readonly trusted: boolean }> {
     const probe = await probeRemoteIdentity(host.hostname, host.port, host.fingerprint);
     return { reachable: probe.state !== "unreachable", trusted: probe.state === "match" };
@@ -179,14 +155,10 @@ export function createRemoteHostsRoutes(deps: RemoteHostsRouteDeps) {
       return true;
     }
     writeJson(res, 200, {
-      id: handoff.host.id,
       origin: handoff.host.origin,
       hostname: handoff.host.hostname,
       port: handoff.host.port,
       fingerprint: handoff.host.fingerprint,
-      pinGeneration: handoff.host.pinGeneration,
-      // 쿠키가 묶인 신원. 지금 지문과 다르거나 null이면 Desktop은 옛 쿠키를 지우고 새 자격으로만 조인한다.
-      cookieBoundFingerprint: handoff.host.cookieBinding?.fingerprint ?? null,
       token: handoff.token,
     });
     return true;

@@ -1,7 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-import { RAIL_ACTIVE_PANEL_STORAGE_KEY } from "../../integration/presentation-keys.js";
-
 /* 레일은 다중 고정(pin) 스택에서 단일 독점 슬롯으로 회귀했다 — 카드에는 패널이 하나만 상주한다.
    - activePanelId: 카드에 상주하는 유일한 패널. localStorage에 영속.
    - 아이콘 클릭은 배타 전환이다: 켜진 패널을 다시 누르면 닫히고, 다른 패널을 누르면 교체된다.
@@ -27,7 +25,7 @@ export const RAIL_OVERLAY_ALPHA_MAX = 100;
 export const RAIL_OVERLAY_ALPHA_DEFAULT = 100;
 
 type Listener = () => void;
-const PREFS_ACTIVE_PANEL = RAIL_ACTIVE_PANEL_STORAGE_KEY;
+const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
 const LEGACY_PREFS_PINNED_PANELS = "fleet-console.rail.pinnedPanels";
 // 옛 아이콘 열의 접힘 선호 — 열이 도구모음으로 옮겨 가며 퇴역했다. 남은 값은 첫 로드에 걷는다.
 const LEGACY_PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";

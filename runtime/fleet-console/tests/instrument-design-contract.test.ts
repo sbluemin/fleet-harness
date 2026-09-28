@@ -2028,9 +2028,7 @@ describe("Instrument core design contract", () => {
     expect(settingsPane).not.toContain("toggleRailPanelBehavior");
     // 독점 상주 계약: 카드에는 패널 하나만 상주한다 — 단일 activeId가 고정 목록을 대체하고
     // 섹션 접기는 퇴역했다(안 볼 패널은 접는 게 아니라 닫거나 교체한다).
-    // 활성 패널 키는 콘솔 간 표현 상태 이월과 함께 쓰는 잎 모듈에 산다 — 스토어는 그 이름 하나를 읽고 쓴다.
-    expect(railStore).toContain("RAIL_ACTIVE_PANEL_STORAGE_KEY");
-    expect(source("integration/presentation-keys.ts")).toContain("fleet-console.rail.activePanelId");
+    expect(railStore).toContain("fleet-console.rail.activePanelId");
     expect(railStore).not.toContain("panelBehavior");
     expect(rightRail).not.toContain("toggleRailSectionCollapsed");
     expect(rail).not.toContain(".right-rail-section-toggle");

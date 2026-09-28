@@ -9,7 +9,6 @@ import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../f
 import { isDesktopShell, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
-import { buildPresentationCarryFragment } from "../../../../../features/remote-access/client/presentation-carry.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
@@ -418,13 +417,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   };
   const go = (origin: string) => {
     setOpen(false);
-    // 보던 모양(툴바·도구 패널·폭·캔버스 모드)을 함께 싣는다. 집이 펼친 목록은 이 화면이 아니라 떠나는
-    // 콘솔의 모양을 모르므로 싣지 않는다 — 집의 기억을 남의 화면에 입히게 된다.
-    const carry = inPicker ? "" : buildPresentationCarryFragment();
-    if (origin === currentOrigin) return;
-    const target = carryZenMode(new URL("/console/", `${origin}/`), picker?.zen ?? isZenMode());
-    target.hash = carry;
-    location.assign(target.toString());
+    if (origin !== currentOrigin) location.assign(carryZenMode(new URL("/console/", `${origin}/`), picker?.zen ?? isZenMode()).toString());
   };
 
   return (

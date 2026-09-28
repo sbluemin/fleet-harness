@@ -60,7 +60,6 @@ import { resolveReleaseNotesLocale } from "../../../../features/updates/client/w
 import { syncExperimentModelOptionPlugins } from "../integration/experiment-model-options.js";
 import { isZenMode, setZenMode, toggleZenMode, useZenModeState, useZenTransitionActive } from "../integration/zen-mode.js";
 import { useZenDesktopFullscreen } from "../integration/desktop-fullscreen.js";
-import { useConsoleReadyTitleMark } from "../integration/desktop-shell.js";
 import { ZenBar } from "../chrome/zen/zen-bar.js";
 import { ZenTransition } from "../chrome/zen/zen-transition.js";
 import { toggleZenSideBar } from "../integration/zen-chrome-toggles.js";
@@ -146,10 +145,6 @@ export function App() {
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
   const isTransitionalRoute = pathname === "/";
-  // 콘솔을 건너온 Desktop 창은 이 표식을 받을 때까지 떠나온 화면의 스냅샷을 덮어 둔다. 설정 말고는 모든 길이
-  // 캔버스로 이어진다 — 건너온 창은 `/console/`(루트)에 먼저 서고 곧 `/operations`로 옮겨 가므로, 지금 경로가
-  // 캔버스가 아니라는 이유로 기다리지 않으면 캔버스가 서기 전에 덮개가 걷힌다.
-  useConsoleReadyTitleMark(state.bootstrapped, !pathname.startsWith("/settings"));
   const mobileLayout = useViewMode().effective === "mobile";
   const mobileSessionOpen = useMobileSessionOpen();
   const zenState = useZenModeState();

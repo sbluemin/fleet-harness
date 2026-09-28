@@ -56,7 +56,7 @@ function tryServeStaticConsole(
     // 분석가 아티팩트 문서는 응답 헤더 sandbox로 opaque origin에서 렌더되고, @font-face
     // fetch는 CORS 모드라 Origin: null로 도착한다 — 공개 정적 서체 자산에만 ACAO를 연다.
     const fontCors = contentType === MIME_TYPES[".woff2"] ? { "Access-Control-Allow-Origin": "*" } : {};
-    res.writeHead(200, withSecurityHeaders({ "Content-Type": contentType, ...fontCors, ...cachePolicyFor(relativePath) }));
+    res.writeHead(200, withSecurityHeaders({ "Content-Type": contentType, ...fontCors }));
     if (req.method === "HEAD") {
       res.end();
       return true;
@@ -123,15 +123,4 @@ function resolveConsolePath(pathname: string): string | null {
   if (withoutPrefix.includes("\0")) return null;
   if (!path.extname(withoutPrefix)) return "index.html";
   return withoutPrefix;
-}
-
-/**
- * 빌드가 이름에 내용 해시를 박은 자산은 그 이름이 곧 내용이다 — 한 번 받으면 다시 물을 이유가 없다.
- * 원격 콘솔로 건너갈 때마다 번들 전체(수 MB)를 다시 받던 비용이 두 번째 전환부터 사라진다.
- * 새 빌드는 새 이름을 싣고, 그 이름을 가리키는 index.html은 언제나 no-store라 낡은 번들에 묶이지 않는다.
- */
-const CONTENT_HASHED_ASSET = /^assets\/[^/]+-[A-Za-z0-9_-]{8}\.[a-z0-9]+$/u;
-
-function cachePolicyFor(relativePath: string): { readonly "Cache-Control"?: string } {
-  return CONTENT_HASHED_ASSET.test(relativePath) ? { "Cache-Control": "public, max-age=31536000, immutable" } : {};
 }

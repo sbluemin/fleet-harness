@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createConsoleOwners } from "../src/console-owners.js";
-import { createConsoleSurface } from "../src/console-surface-state.js";
-import { confinePickerNavigation, createSecureShellWindow, createWindowPolicy, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, installPermissionDispatcher, isAllowedConsoleUrl, type SurfaceAuthority } from "../src/window-policy.js";
+import { applyWindowPolicy, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, isAllowedConsoleUrl } from "../src/window-policy.js";
 
 const HOME = "http://127.0.0.1:4310";
-const REMOTE = "https://100.84.12.7:6768";
 
 function createPickerContents() {
   const listeners = new Map<string, (...args: never[]) => unknown>();
@@ -76,189 +73,67 @@ describe("secure window policy", () => {
     expect(isAllowedConsoleUrl("http://127.0.0.1:4310/api/v1/status", "http://127.0.0.1:4310")).toBe(false);
   });
 
-  it("locks the local view until the main process activates one exact Console origin", () => {
+  it("locks the entry renderer until the main process activates one exact Console origin", () => {
     const listeners = new Map<string, (...args: never[]) => unknown>();
-    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn() };
-    const policy = createWindowPolicy(async () => undefined);
-    policy.confineLocalView(contents as never);
-    const navigate = (url: string) => {
-      const preventDefault = vi.fn();
-      (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault }, url);
-      return preventDefault;
-    };
-    expect(navigate(`${HOME}/console/`)).toHaveBeenCalledOnce();
-    policy.activateConsoleOrigin(HOME);
-    expect(policy.localConsoleOrigin()).toBe(HOME);
-    expect(navigate(`${HOME}/console/`)).not.toHaveBeenCalled();
-    expect(navigate("http://localhost:4310/console/")).toHaveBeenCalledOnce();
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn() } };
+    const policy = applyWindowPolicy(contents as never, async () => undefined);
+    const before = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: before }, "http://127.0.0.1:4310/console/");
+    expect(before).toHaveBeenCalledOnce();
+    policy.activateConsoleOrigin("http://127.0.0.1:4310");
+    expect(policy.currentConsoleOrigin()).toBe("http://127.0.0.1:4310");
+    const allowed = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: allowed }, "http://127.0.0.1:4310/console/");
+    expect(allowed).not.toHaveBeenCalled();
+    const rejected = vi.fn();
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault: rejected }, "http://localhost:4310/console/");
+    expect(rejected).toHaveBeenCalledOnce();
     expect(() => policy.activateConsoleOrigin("https://fleet.example")).toThrow("window_policy_console_origin_not_admitted");
-    // 지문을 대조해 들이지 않은 원격은 데이터 뷰에도 예약되지 않는다.
-    expect(() => policy.stageDataOrigin("https://fleet.example")).toThrow("window_policy_console_origin_not_admitted");
   });
 
-  /**
-   * 세 뷰가 한 세션을 나눈다. 권한은 지금 권한을 가진 뷰 하나의 main frame만 받고, 화면 캡처는 로컬 뷰가
-   * 권한을 가진 동안에만 된다 — 원격 콘솔을 보는 동안, 전환 중에, 뒤에 세워 둔 로컬 뷰에서는 되지 않는다.
-   */
-  it("grants permissions only to the view that holds the surface", () => {
-    const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() };
-    const local = { id: "local" };
-    const data = { id: "data" };
-    let holder: SurfaceAuthority | null = null;
-    installPermissionDispatcher(session as never, () => holder);
-    const check = session.setPermissionCheckHandler.mock.calls[0]![0] as (requestingContents: unknown, permission: string, requestingOrigin: string, details: { requestingUrl?: string; isMainFrame?: boolean }) => boolean;
-    const request = session.setPermissionRequestHandler.mock.calls[0]![0] as (contents: unknown, permission: string, callback: (allowed: boolean) => void, details: { requestingUrl: string; isMainFrame: boolean; mediaTypes?: string[] }) => void;
-    const requested = (contents: unknown, permission: string, url: string, extra: { isMainFrame?: boolean; mediaTypes?: string[] } = {}) => {
-      const callback = vi.fn();
-      request(contents, permission, callback, { requestingUrl: url, isMainFrame: extra.isMainFrame ?? true, ...(extra.mediaTypes ? { mediaTypes: extra.mediaTypes } : {}) });
-      return callback.mock.calls[0]![0] as boolean;
-    };
+  it("allows clipboard writes only after activating the exact Console origin", () => {
+    const listeners = new Map<string, (...args: never[]) => unknown>();
+    const session = { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn() };
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session };
+    const policy = applyWindowPolicy(contents as never, async () => undefined);
+    const check = session.setPermissionCheckHandler.mock.calls[0]![0] as (requestingContents: unknown, permission: string, requestingOrigin: string, details: { requestingUrl?: string }) => boolean;
+    const request = session.setPermissionRequestHandler.mock.calls[0]![0] as (_contents: unknown, permission: string, callback: (allowed: boolean) => void, details: { requestingUrl: string }) => void;
 
-    // 전환 중에는 누구도 받지 않는다.
-    expect(check(local, "clipboard-sanitized-write", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
-    expect(check(local, "display-capture", HOME, { requestingUrl: `${HOME}/console/` })).toBe(false);
-
-    holder = { contents: local as never, origin: HOME, surface: "local" };
-    // Windows의 clipboard check는 origin 대신 빈 문자열을 넘길 수 있으므로 마지막 frame URL로 판정한다.
-    expect(check(local, "clipboard-sanitized-write", "", { requestingUrl: `${HOME}/console/settings` })).toBe(true);
-    expect(check(null, "clipboard-sanitized-write", "", { requestingUrl: `${HOME}/console/settings` })).toBe(true);
-    expect(check(local, "clipboard-read", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
-    expect(check(local, "display-capture", HOME, { requestingUrl: `${HOME}/console/`, isMainFrame: true })).toBe(true);
-    expect(requested(local, "media", `${HOME}/console/`, { mediaTypes: [] })).toBe(true);
-    expect(requested(local, "media", `${HOME}/console/`, { mediaTypes: [], isMainFrame: false })).toBe(false);
-    expect(check(null, "display-capture", HOME, { requestingUrl: `${HOME}/console/` })).toBe(false);
-    expect(check(data, "clipboard-sanitized-write", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
-
-    holder = { contents: data as never, origin: REMOTE, surface: "data" };
-    // 원격 콘솔의 클립보드 쓰기는 그 콘솔의 기존 기능이다. 화면 캡처는 아니다.
-    expect(requested(data, "clipboard-sanitized-write", `${REMOTE}/console/`)).toBe(true);
-    expect(requested(data, "clipboard-sanitized-write", `${REMOTE}/console/`, { isMainFrame: false })).toBe(false);
-    expect(check(data, "display-capture", REMOTE, { requestingUrl: `${REMOTE}/console/` })).toBe(false);
-    expect(requested(data, "media", `${REMOTE}/console/`, { mediaTypes: [] })).toBe(false);
-    // 뒤에 세워 둔 로컬 뷰는 아무것도 물려받지 않는다.
-    expect(check(local, "display-capture", HOME, { requestingUrl: `${HOME}/console/` })).toBe(false);
-    expect(requested(local, "clipboard-sanitized-write", `${HOME}/console/settings`)).toBe(false);
-  });
-
-  it("brokers HTTP links from the local view only; a data view opens nothing", async () => {
-    const openExternal = vi.fn(async () => undefined);
-    const policy = createWindowPolicy(openExternal);
+    expect(check(contents, "clipboard-sanitized-write", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
     policy.activateConsoleOrigin(HOME);
-    const localContents = { on: vi.fn(), setWindowOpenHandler: vi.fn() };
-    const dataListeners = new Map<string, (...args: never[]) => unknown>();
-    const dataContents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => dataListeners.set(name, listener)), setWindowOpenHandler: vi.fn() };
-    policy.confineLocalView(localContents as never);
-    policy.confineDataView(dataContents as never);
-    const localHandler = localContents.setWindowOpenHandler.mock.calls[0]![0] as ({ url }: { url: string }) => { action: string };
-    const dataHandler = dataContents.setWindowOpenHandler.mock.calls[0]![0] as ({ url }: { url: string }) => { action: string };
+    // Windows의 clipboard check는 origin 대신 빈 문자열을 넘길 수 있으므로 마지막 frame URL로 판정한다.
+    expect(check(contents, "clipboard-sanitized-write", "", { requestingUrl: `${HOME}/console/settings` })).toBe(true);
+    expect(check(null, "clipboard-sanitized-write", "", { requestingUrl: `${HOME}/console/settings` })).toBe(true);
+    expect(check(contents, "clipboard-read", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
+    expect(check(contents, "display-capture", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(true);
+    expect(check(null, "display-capture", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
+    expect(check(contents, "display-capture", "https://fleet.example", { requestingUrl: "https://fleet.example/console/settings" })).toBe(false);
+    expect(check(contents, "media", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
+    expect(check(contents, "clipboard-sanitized-write", "", { requestingUrl: "http://localhost:4310/console/settings" })).toBe(false);
+    expect(check({}, "clipboard-sanitized-write", HOME, { requestingUrl: `${HOME}/console/settings` })).toBe(false);
 
-    expect(localHandler({ url: "https://fleet.example/docs" })).toEqual({ action: "deny" });
-    expect(localHandler({ url: "file:///tmp/secret" })).toEqual({ action: "deny" });
-    expect(localHandler({ url: "javascript:alert('unsafe')" })).toEqual({ action: "deny" });
-    expect(dataHandler({ url: "https://evil.example/" })).toEqual({ action: "deny" });
-    await vi.waitFor(() => expect(openExternal).toHaveBeenCalledTimes(1));
-    expect(openExternal).toHaveBeenCalledWith("https://fleet.example/docs");
+    const callback = vi.fn();
+    request(null, "clipboard-sanitized-write", callback, { requestingUrl: `${HOME}/console/settings` });
+    expect(callback).toHaveBeenCalledWith(true);
+    request(null, "clipboard-sanitized-write", callback, { requestingUrl: "https://fleet.example/console/settings" });
+    expect(callback).toHaveBeenLastCalledWith(false);
+  });
 
-    // 데이터 뷰는 확정된 콘솔 origin의 /console/ 안에서만 움직인다.
+  it("blocks popups and navigation while brokering HTTP links only", async () => {
+    const listeners = new Map<string, (...args: never[]) => unknown>();
+    const openExternal = vi.fn(async () => undefined);
+    const contents = { on: vi.fn((name: string, listener: (...args: never[]) => unknown) => listeners.set(name, listener)), setWindowOpenHandler: vi.fn(), session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), setDisplayMediaRequestHandler: vi.fn() } };
+    applyWindowPolicy(contents as never, "http://127.0.0.1:4310", openExternal);
+    const handler = contents.setWindowOpenHandler.mock.calls[0]![0] as ({ url }: { url: string }) => { action: string };
+    expect(handler({ url: "https://fleet.example/docs" })).toEqual({ action: "deny" });
+    expect(handler({ url: "http://127.0.0.1:4173/preview" })).toEqual({ action: "deny" });
+    expect(handler({ url: "file:///tmp/secret" })).toEqual({ action: "deny" });
+    expect(handler({ url: "javascript:alert('unsafe')" })).toEqual({ action: "deny" });
+    await vi.waitFor(() => expect(openExternal).toHaveBeenCalledTimes(2));
+    expect(openExternal).toHaveBeenNthCalledWith(1, "https://fleet.example/docs");
+    expect(openExternal).toHaveBeenNthCalledWith(2, "http://127.0.0.1:4173/preview");
     const preventDefault = vi.fn();
-    (dataListeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault }, `${HOME}/console/`);
+    (listeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault }, "https://evil.example/");
     expect(preventDefault).toHaveBeenCalledOnce();
-  });
-});
-
-/**
- * 화면이 보여 주는 콘솔과 native 권한(창 명령·브라우저 제어·캡처)의 주인은 늘 같아야 한다. 늦게 끝난 옛 전환이 주인을
- * 되찾거나, 확인하지 못한 로컬이 권한을 되찾으면 그 둘이 갈라진다.
- */
-describe("surface authority lifecycle", () => {
-  it("never hands native control back to a console the window has already left", async () => {
-    let owner: string | null = REMOTE;
-    let releaseRemoteTheme: () => void = () => undefined;
-    const started = { commands: [] as string[], browser: [] as string[] };
-    const owners = createConsoleOwners({
-      currentOwner: () => owner,
-      theme: (origin) => (origin === REMOTE ? new Promise<void>((resolve) => { releaseRemoteTheme = resolve; }) : Promise.resolve()),
-      supervisedUpdates: async () => undefined,
-      shellUpdates: async () => undefined,
-      windowCommands: { start: async (origin) => { started.commands.push(origin); }, stop: () => undefined },
-      browserViews: { start: async (origin) => { started.browser.push(origin); }, stop: () => undefined },
-      fullscreen: () => undefined,
-    });
-
-    // 원격이 주인이 되는 도중(테마 응답이 늦다) 사람이 로컬로 돌아온다.
-    const remoteChain = owners.follow(REMOTE);
-    owners.suspend();
-    owner = HOME;
-    await owners.follow(HOME);
-    releaseRemoteTheme();
-    await remoteChain;
-
-    expect(started).toEqual({ commands: [HOME], browser: [HOME] });
-    expect(owners.mayCommand(REMOTE)).toBe(false);
-    expect(owners.holdsCommands()).toBe(true);
-    // 주인이 바뀌는 순간, 이미 붙어 있던 창 명령도 적용되지 않는다.
-    owner = null;
-    expect(owners.holdsCommands()).toBe(false);
-  });
-
-  it("keeps local authority closed until the managed console is confirmed", async () => {
-    let confirm: () => Promise<void> = async () => { throw new Error("local_console_unhealthy"); };
-    const adoptLocal = vi.fn();
-    const notify = vi.fn();
-    const surface = createConsoleSurface({
-      localOrigin: () => HOME,
-      quiesceLocal: async () => undefined,
-      prepareData: async () => undefined,
-      suspendOwners: () => undefined,
-      presentData: () => undefined,
-      presentLocal: () => confirm(),
-      adoptLocal,
-      endRemoteSession: () => undefined,
-      report: () => undefined,
-      notify,
-      log: () => undefined,
-    });
-    await surface.select({ origin: REMOTE });
-    expect(surface.state()).toBe("remote-ready");
-
-    await surface.returnLocal();
-    expect(surface.state()).toBe("disconnected");
-    expect(adoptLocal).not.toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith("local_unavailable");
-
-    // 다시 확인되면 그때 권한이 돌아온다.
-    confirm = async () => undefined;
-    await surface.returnLocal();
-    expect(surface.state()).toBe("local-ready");
-    expect(adoptLocal).toHaveBeenCalledOnce();
-  });
-
-  it("still ends the remote session it was showing when a pending switch is abandoned", async () => {
-    const OTHER = "https://100.84.12.8:6768";
-    let releaseOther: () => void = () => undefined;
-    const ended: string[] = [];
-    const surface = createConsoleSurface({
-      localOrigin: () => HOME,
-      quiesceLocal: async () => undefined,
-      prepareData: ({ origin }) => (origin === OTHER ? new Promise<void>((resolve) => { releaseOther = resolve; }) : Promise.resolve()),
-      suspendOwners: () => undefined,
-      presentData: () => undefined,
-      presentLocal: async () => undefined,
-      adoptLocal: () => undefined,
-      endRemoteSession: (origin) => { ended.push(origin); },
-      report: () => undefined,
-      notify: () => undefined,
-      log: () => undefined,
-    });
-    await surface.select({ origin: REMOTE });
-
-    // 다른 원격을 준비하는 도중 사람이 로컬로 돌아온다 — 보여 주던 원격의 세션은 여기서 끝나야 한다.
-    const pending = surface.select({ origin: OTHER });
-    await surface.returnLocal();
-    releaseOther();
-    await pending;
-
-    expect(surface.state()).toBe("local-ready");
-    expect(ended).toEqual([REMOTE]);
   });
 });

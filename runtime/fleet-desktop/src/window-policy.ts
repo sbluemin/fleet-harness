@@ -1,4 +1,4 @@
-import type { BaseWindow, BaseWindowConstructorOptions, Session, WebContents, WebContentsView } from "electron";
+import type { BaseWindow, BaseWindowConstructorOptions, WebContents, WebContentsView } from "electron";
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
@@ -12,26 +12,17 @@ export interface SecureWindowOptions {
 }
 
 export interface WindowPolicy {
-  /** 이 셸이 띄운 콘솔 — 로컬 뷰가 머무는 origin. */
   activateConsoleOrigin(origin: string): void;
-  localConsoleOrigin(): string | null;
-  /** 데이터 뷰가 싣고 있는 콘솔. 확정 전까지는 옛 값 그대로다. */
-  dataConsoleOrigin(): string | null;
-  stageDataOrigin(origin: string): void;
-  commitDataOrigin(): void;
-  cancelPendingDataOrigin(): void;
-  /** 로컬로 돌아오면 데이터 뷰는 어떤 콘솔로도 항해하지 못한다. */
-  clearDataOrigin(): void;
+  currentConsoleOrigin(): string | null;
+  stageConsoleOrigin(origin: string): void;
+  commitConsoleOrigin(): void;
+  cancelPendingConsoleOrigin(): void;
   /**
    * 인증서 지문 대조를 통과한 원격 origin만 항해 대상 집합에 들어온다. 링크 문자열을
    * 손에 넣은 것만으로는 열리지 않는다 — 붙여넣기는 이 함수를 호출할 자격이 아니다.
    */
   admitRemoteConsoleOrigin(origin: string): void;
   withdrawRemoteConsoleOrigin(origin: string): void;
-  /** 로컬 뷰의 항해 울타리와 창 열기. 바깥 http 링크는 OS 브라우저로 넘긴다. */
-  confineLocalView(contents: Pick<WebContents, "on" | "setWindowOpenHandler">): void;
-  /** 데이터 뷰의 항해 울타리. 남의 콘솔이 서빙한 화면이므로 어떤 창도, 어떤 OS 핸들러도 열지 않는다. */
-  confineDataView(contents: Pick<WebContents, "on" | "setWindowOpenHandler">): void;
 }
 
 const DESKTOP_WINDOW_TITLE = "Fleet Console";
@@ -106,111 +97,73 @@ export function createSecureShellWindow(
   return createDesktopShellWindow(base, consoleView, stack);
 }
 
-export function createWindowPolicy(openExternal: (url: string) => Promise<void>): WindowPolicy {
-  let localOrigin: string | undefined;
-  let dataOrigin: string | undefined;
-  let pendingDataOrigin: string | undefined;
+export function applyWindowPolicy(contents: WebContents, openExternal: (url: string) => Promise<void>): WindowPolicy;
+export function applyWindowPolicy(contents: WebContents, origin: string, openExternal: (url: string) => Promise<void>): WindowPolicy;
+export function applyWindowPolicy(contents: WebContents, originOrOpenExternal: string | ((url: string) => Promise<void>), legacyOpenExternal?: (url: string) => Promise<void>): WindowPolicy {
+  let consoleOrigin: string | undefined = typeof originOrOpenExternal === "string" ? originOrOpenExternal : undefined;
+  let pendingConsoleOrigin: string | undefined;
+  const openExternal = typeof originOrOpenExternal === "function" ? originOrOpenExternal : legacyOpenExternal;
+  if (!openExternal) throw new Error("window_policy_open_external_required");
+  contents.on("will-navigate", (event, url) => {
+    if (!consoleOrigin || (!isAllowedConsoleUrl(url, consoleOrigin) && (!pendingConsoleOrigin || !isAllowedConsoleUrl(url, pendingConsoleOrigin)))) event.preventDefault();
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    if (consoleOrigin && isHttpUrl(url)) void openExternal(url);
+    return { action: "deny" };
+  });
+  const permitsClipboardWrite = (permission: string, requestingUrl: string): boolean =>
+    Boolean(consoleOrigin) && permission === "clipboard-sanitized-write" && hasExactOrigin(requestingUrl, consoleOrigin ?? "");
+  const permitsDisplayCapture = (permission: string, requestingUrl: string): boolean =>
+    permission === "display-capture" && Boolean(consoleOrigin && isLoopbackConsoleOrigin(consoleOrigin))
+    && isAllowedConsoleUrl(requestingUrl, consoleOrigin ?? "");
+  // Chromium은 플랫폼별로 check에서 곧장 끝내기도, 거부된 check 뒤 request로 이어 가기도 한다.
+  // 둘을 같은 exact-origin 판정에 묶어 Windows에서도 쓰기를 허용하되 권한 범위는 넓히지 않는다.
+  contents.session.setPermissionCheckHandler((requestingContents, permission, requestingOrigin, details) =>
+    (requestingContents === null || requestingContents === contents)
+    && (permitsClipboardWrite(permission, details.requestingUrl ?? requestingOrigin)
+      || (requestingContents === contents && permitsDisplayCapture(permission, details.requestingUrl ?? requestingOrigin))));
+  contents.session.setPermissionRequestHandler((wc, permission, callback, details) => callback(permitsClipboardWrite(permission, details.requestingUrl)
+    || (wc === contents && details.isMainFrame && permission === "media" && "mediaTypes" in details && details.mediaTypes?.length === 0
+      && permitsDisplayCapture("display-capture", details.requestingUrl))));
   const admittedRemoteOrigins = new Set<string>();
   const validateOrigin = (origin: string): void => {
     // 루프백은 언제나, 원격은 지문을 대조해 들인 뒤에만.
     if (!isLoopbackConsoleOrigin(origin) && !admittedRemoteOrigins.has(origin)) throw new Error("window_policy_console_origin_not_admitted");
   };
   return {
-    activateConsoleOrigin(origin: string): void {
-      if (!isLoopbackConsoleOrigin(origin)) throw new Error("window_policy_console_origin_not_admitted");
-      localOrigin = origin;
+    activateConsoleOrigin(origin: string): void { validateOrigin(origin); consoleOrigin = origin; pendingConsoleOrigin = undefined; },
+    currentConsoleOrigin(): string | null { return consoleOrigin ?? null; },
+    stageConsoleOrigin(origin: string): void { validateOrigin(origin); pendingConsoleOrigin = origin; },
+    commitConsoleOrigin(): void {
+      if (!pendingConsoleOrigin) throw new Error("window_policy_pending_console_origin_required");
+      consoleOrigin = pendingConsoleOrigin;
+      pendingConsoleOrigin = undefined;
     },
-    localConsoleOrigin: () => localOrigin ?? null,
-    dataConsoleOrigin: () => dataOrigin ?? null,
-    stageDataOrigin(origin: string): void { validateOrigin(origin); pendingDataOrigin = origin; },
-    commitDataOrigin(): void {
-      if (!pendingDataOrigin) throw new Error("window_policy_pending_console_origin_required");
-      dataOrigin = pendingDataOrigin;
-      pendingDataOrigin = undefined;
-    },
-    cancelPendingDataOrigin(): void { pendingDataOrigin = undefined; },
-    clearDataOrigin(): void { dataOrigin = undefined; pendingDataOrigin = undefined; },
+    cancelPendingConsoleOrigin(): void { pendingConsoleOrigin = undefined; },
     admitRemoteConsoleOrigin(origin: string): void {
       if (!isRemoteConsoleOrigin(origin)) throw new Error("window_policy_remote_origin_invalid");
       admittedRemoteOrigins.add(origin);
     },
     withdrawRemoteConsoleOrigin(origin: string): void {
       admittedRemoteOrigins.delete(origin);
-      // 철회된 origin이 아직 활성이면 데이터 뷰는 그 origin 안에서 계속 움직일 수 있다. 활성에서도 걷어낸다.
-      if (dataOrigin === origin) dataOrigin = undefined;
-      if (pendingDataOrigin === origin) pendingDataOrigin = undefined;
-    },
-    confineLocalView(contents): void {
-      contents.on("will-navigate", (event, url) => {
-        if (!localOrigin || !isAllowedConsoleUrl(url, localOrigin)) event.preventDefault();
-      });
-      contents.setWindowOpenHandler(({ url }) => {
-        if (localOrigin && isHttpUrl(url)) void openExternal(url);
-        return { action: "deny" };
-      });
-    },
-    confineDataView(contents): void {
-      contents.on("will-navigate", (event, url) => {
-        const allowed = (dataOrigin !== undefined && isAllowedConsoleUrl(url, dataOrigin))
-          || (pendingDataOrigin !== undefined && isAllowedConsoleUrl(url, pendingDataOrigin));
-        if (!allowed) event.preventDefault();
-      });
-      contents.setWindowOpenHandler(() => ({ action: "deny" }));
+      // 철회된 origin이 아직 활성이면 창은 어디로도 항해할 수 없는 상태로 남는다. 그대로
+      // 두면 다음 will-navigate가 통과하므로 활성 origin에서도 함께 걷어낸다.
+      if (consoleOrigin === origin) consoleOrigin = undefined;
+      if (pendingConsoleOrigin === origin) pendingConsoleOrigin = undefined;
     },
   };
-}
-
-/** 지금 권한을 가진 콘솔 뷰 하나. 전환 중에는 누구도 갖지 않는다. */
-export interface SurfaceAuthority {
-  readonly contents: WebContents;
-  readonly origin: string;
-  readonly surface: "local" | "data";
-}
-
-/**
- * 세션 단위 권한 판정은 여기 하나뿐이다. 로컬 뷰·데이터 뷰·덮개가 모두 defaultSession을 나누므로, 뷰마다
- * 핸들러를 갈아 끼우면 마지막에 설치한 뷰의 판정이 다른 뷰에도 적용된다. 판정은 요청한 contents·frame과
- * 지금 권한을 가진 뷰 하나(`authority`)로 한다 — 뒤에 세워 둔 뷰는 아무것도 물려받지 않는다.
- *
- * - 클립보드 쓰기: 권한을 가진 뷰의 main frame, 그 콘솔의 정확한 origin에서만. 원격 콘솔의 기존 기능이라 원격 뷰도 받는다.
- * - 화면 캡처: 로컬 뷰가 권한을 가진 동안, 그 main frame의 로컬 `/console/`에서만.
- */
-export function installPermissionDispatcher(
-  session: Pick<Session, "setPermissionCheckHandler" | "setPermissionRequestHandler">,
-  authority: () => SurfaceAuthority | null,
-): void {
-  const permitsClipboardWrite = (requester: WebContents | null, requestingUrl: string, isMainFrame: boolean | undefined): boolean => {
-    const holder = authority();
-    return holder !== null && isMainFrame !== false && (requester === null || requester === holder.contents) && hasExactOrigin(requestingUrl, holder.origin);
-  };
-  const permitsDisplayCapture = (requester: WebContents | null, requestingUrl: string, isMainFrame: boolean | undefined): boolean => {
-    const holder = authority();
-    return holder !== null && holder.surface === "local" && requester === holder.contents && isMainFrame !== false
-      && isLoopbackConsoleOrigin(holder.origin) && isAllowedConsoleUrl(requestingUrl, holder.origin);
-  };
-  // Chromium은 플랫폼별로 check에서 곧장 끝내기도, 거부된 check 뒤 request로 이어 가기도 한다.
-  // 둘을 같은 판정에 묶어 Windows에서도 쓰기를 허용하되 권한 범위는 넓히지 않는다.
-  session.setPermissionCheckHandler((requestingContents, permission, requestingOrigin, details) => {
-    const url = details.requestingUrl ?? requestingOrigin;
-    if (permission === "clipboard-sanitized-write") return permitsClipboardWrite(requestingContents, url, details.isMainFrame);
-    // Electron의 타입 목록에는 없지만 Chromium은 화면 캡처 check를 이 이름으로 묻는다.
-    return (permission as string) === "display-capture" && permitsDisplayCapture(requestingContents, url, details.isMainFrame);
-  });
-  session.setPermissionRequestHandler((requester, permission, callback, details) => {
-    if (permission === "clipboard-sanitized-write") { callback(permitsClipboardWrite(requester, details.requestingUrl, details.isMainFrame)); return; }
-    callback(permission === "media" && "mediaTypes" in details && details.mediaTypes?.length === 0
-      && permitsDisplayCapture(requester, details.requestingUrl, details.isMainFrame));
-  });
 }
 
 /**
  * 집의 목록을 그리는 덮개 렌더러의 항해 울타리.
  *
- * 이 뷰는 콘솔 뷰들과 같은 defaultSession에 살지만 세션에는 손대지 않는다 — 권한 판정은
- * `installPermissionDispatcher` 하나가 맡고, 덮개는 권한을 가진 뷰가 아니므로 무엇도 받지 않는다.
+ * `applyWindowPolicy`를 그대로 쓸 수는 없다. 그쪽은 세션 단위인 permission check/request handler를
+ * 갈아 끼우는데, 이 뷰는 메인 창과 같은 defaultSession에 산다 — 덮개를 한 번 얹는 것만으로
+ * 메인 창(원격 origin)의 클립보드 권한 판정이 집 origin 기준으로 바뀌고, 덮개를 걷어도
+ * 그대로 남는다. 그래서 여기서는 세션에 손대지 않고 이 contents의 항해만 가둔다.
  *
  * 콘솔을 갈아타는 항해는 여기서 막지 않는다 — remote bridge가 같은 이벤트에서 가로채
- * 신뢰할 수 있는 선택인지 확인한 뒤 전환으로 넘기는 것이 그 동선의 전부이기 때문이다.
+ * 메인 창으로 보내는 것이 그 동선의 전부이기 때문이다.
  */
 export function confinePickerNavigation(
   contents: Pick<WebContents, "on" | "setWindowOpenHandler">,

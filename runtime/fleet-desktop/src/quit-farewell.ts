@@ -90,7 +90,7 @@ export function createQuitFarewell(deps: QuitFarewellDependencies): QuitFarewell
         await contents.loadFile(deps.entryPagePath);
         if (gone()) return null;
         // Console과 같은 배율로 그려야 상단 브랜드 자리가 정확히 겹친다.
-        try { contents.setZoomFactor(shell.activeContents().getZoomFactor()); } catch { /* 배율은 부가 정보다. */ }
+        try { contents.setZoomFactor(shell.consoleContents.getZoomFactor()); } catch { /* 배율은 부가 정보다. */ }
         let reduced = false;
         try { reduced = await contents.executeJavaScript("matchMedia('(prefers-reduced-motion: reduce)').matches") === true; } catch { /* 모르면 전환이 도는 쪽 */ }
         await deps.pushEntry(contents, deps.snapshot("veiled"));

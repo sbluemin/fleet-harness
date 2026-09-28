@@ -54,11 +54,6 @@ export interface DesktopBrowserViewsDeps {
    * Chromium 의 캡처 에뮬레이션 없이 수행한다 — 없으면 명령을 그대로 보낸다.
    */
   readonly composeCapture?: (png: Buffer, plan: CapturePlan) => string;
-  /**
-   * 이 콘솔이 지금 창의 브라우저 제어를 가져도 되는가. 스냅샷을 적용하고 명령을 실행하기 직전마다 묻는다 — 떠난
-   * 콘솔의 늦은 스트림이 보이지 않는 창에서 이 기계의 Chromium을 움직이지 못하게.
-   */
-  readonly mayControl?: (origin: string) => boolean;
 }
 
 export interface CaptureRect { x: number; y: number; width: number; height: number }
@@ -329,7 +324,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     else shell.stack.parkBrowser(entry.view);
     // Parked behind Console but still holding focus leaves keyboard input on an invisible page.
     if (reclaimConsoleFocus) {
-      try { shell.activeContents().focus(); } catch { /* window gone */ }
+      try { shell.consoleContents.focus(); } catch { /* window gone */ }
     }
   };
 
@@ -458,10 +453,6 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   };
 
   const apply = (snapshot: DesktopBrowserSnapshot): void => {
-    if (origin === null || (deps.mayControl && !deps.mayControl(origin))) {
-      deps.log?.("browser snapshot ignored: its console does not hold this window");
-      return;
-    }
     if (snapshot.generation < generation) return;
     generation = snapshot.generation;
     const wanted = new Set(snapshot.views.map((view) => view.id));
@@ -490,12 +481,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     async start(target: string): Promise<void> {
       stop();
       session += 1;
-      const mine = session;
       origin = normalizeAnyConsoleOrigin(target, "desktop_browser_origin_invalid");
       // 누구인지 먼저 알린다 — 콘솔이 UA 를 이 Chromium 의 것으로 맞춘다.
       await send(origin, { hello: { product: deps.product(), userAgent: deps.userAgent() } });
-      // 인사하는 사이 멈췄거나 다른 콘솔로 옮겨 갔다면 이 콘솔의 스트림은 열지 않는다.
-      if (session !== mine) return;
       await stream.start(origin);
     },
     stop,

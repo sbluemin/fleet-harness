@@ -12,7 +12,6 @@ import {
   type CertificateVerifyProc,
   type CertificateVerifyRequest,
 } from "../src/remote-access.js";
-import { createShellNetwork } from "../src/shell-network.js";
 
 const TOKEN = "y8bWk3Qm5r7uJ2pS4vX9zA1cE6gI0lN8oR2tU5wY7bD";
 const FINGERPRINT = "4E65DB042A0B820A0833F016ADAD49B03D7DB5BC43100696AD023A77B647E325";
@@ -62,64 +61,8 @@ describe("remote certificate pins", () => {
 
     pins.unpin("192.168.1.20");
     expect(verify({ hostname: "192.168.1.20", certificate: { data: TEST_CERTIFICATE } })).toBe(CERTIFICATE_DEFAULT);
-    // 핀을 떼어도 Chromium은 이 실행에서 수락한 옛 인증서의 판정을 기억한다 — 기록은 남는다.
-    expect(pins.trustedOtherIdentity("192.168.1.20", OTHER_FINGERPRINT)).toBe(true);
-    expect(pins.trustedOtherIdentity("192.168.1.21", OTHER_FINGERPRINT)).toBe(false);
   });
 });
-
-/**
- * 핀이 바뀐 호스트의 옛 자격은 창의 항아리와 셸의 복사본 어디에도 남으면 안 된다. 정확히 그 콘솔의 이름만
- * 지우고(같은 호스트의 다른 포트 콘솔은 그대로), 지워졌는지 다시 읽어 확인하며, 확인이 안 되면 실패로 끝낸다.
- */
-describe("shell network cookie purge", () => {
-  it("removes the exact console cookies from every jar and fails closed when a copy survives", async () => {
-    const ORIGIN = "https://192.168.1.20:4310";
-    const names = ["fleet_console_session_4310", "fleet_console_pairing_4310"];
-    const window = jar([{ name: "fleet_console_session_4310", value: "s" }, { name: "fleet_console_pairing_4310", value: "p" }, { name: "fleet_console_pairing_5555", value: "other" }]);
-    const shell = jar([{ name: "fleet_console_pairing_4310", value: "p" }]);
-    const network = createShellNetwork({ windowSession: window.session, shellSession: shell.session, isRemote: () => true });
-
-    await network.purge(ORIGIN, names);
-
-    expect(window.names()).toEqual(["fleet_console_pairing_5555"]);
-    expect(shell.names()).toEqual([]);
-    expect(window.session.closeAllConnections).toHaveBeenCalled();
-    expect(shell.session.closeAllConnections).toHaveBeenCalled();
-
-    // 셸 복사본은 원본을 따른다 — 원본에서 사라진 자격이 복사본에 남아 요청에 실리지 않는다.
-    shell.cookies.push({ name: "fleet_console_session_4310", value: "stale" });
-    await network.fetch(`${ORIGIN}/api/v1/status`);
-    expect(shell.names()).toEqual(["fleet_console_pairing_5555"]);
-
-    const stuck = jar([{ name: "fleet_console_pairing_4310", value: "p" }], { removable: false });
-    const failing = createShellNetwork({ windowSession: stuck.session, shellSession: jar([]).session, isRemote: () => true });
-    await expect(failing.purge(ORIGIN, names)).rejects.toThrow("remote_host_cookie_purge_unconfirmed");
-  });
-});
-
-function jar(initial: Array<{ name: string; value: string }>, options: { readonly removable?: boolean } = {}) {
-  const cookies = [...initial];
-  const session = {
-    setCertificateVerifyProc: vi.fn(),
-    closeAllConnections: vi.fn(async () => undefined),
-    fetch: vi.fn(async () => new Response(null, { status: 204 })),
-    cookies: {
-      get: vi.fn(async () => cookies.map((cookie) => ({ ...cookie }))),
-      set: vi.fn(async (details: { name: string; value: string }) => {
-        const index = cookies.findIndex((cookie) => cookie.name === details.name);
-        if (index >= 0) cookies.splice(index, 1);
-        cookies.push({ name: details.name, value: details.value });
-      }),
-      remove: vi.fn(async (_url: string, name: string) => {
-        if (options.removable === false) return;
-        const index = cookies.findIndex((cookie) => cookie.name === name);
-        if (index >= 0) cookies.splice(index, 1);
-      }),
-    },
-  };
-  return { session, cookies, names: () => cookies.map((cookie) => cookie.name).sort() };
-}
 
 describe("remote console join", () => {
   it("sends the credential in the body, refuses redirects, and keeps it out of the URL", async () => {

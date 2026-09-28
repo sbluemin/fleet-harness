@@ -10,7 +10,6 @@ import { carryZenMode } from "../../../core/client/src/integration/zen-mode.js";
 import { AddHostDialog } from "../../remote-access/client/add-host-dialog.js";
 import { REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, buildRemoteEndpointPresentation, generateRemoteAutoPort, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type RemoteAccessLink, type RemoteAccessPort, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule } from "../../remote-access/client/contracts.js";
 import { PairDeviceDialog } from "../../remote-access/client/pair-device-dialog.js";
-import { buildPresentationCarryFragment } from "../../remote-access/client/presentation-carry.js";
 import { forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../../remote-access/client/remote-hosts.js";
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../../settings/client/global-settings-api.js";
 import { setGlobalSettingsField } from "../../settings/client/global-settings-store.js";
@@ -266,11 +265,7 @@ function RemoteHostRow({ host, reach }: { readonly host: RemoteHost; readonly re
         className="remote-host-open"
         title={canOpen ? undefined : t("settings.remote.hosts.desktopOnly")}
         disabled={busy || !answered || !canOpen}
-        onClick={() => {
-          const target = carryZenMode(new URL("/console/", `${host.origin}/`));
-          target.hash = buildPresentationCarryFragment();
-          location.assign(target.toString());
-        }}
+        onClick={() => location.assign(carryZenMode(new URL("/console/", `${host.origin}/`)).toString())}
       >
         {t("settings.remote.hosts.open")}
       </button>
