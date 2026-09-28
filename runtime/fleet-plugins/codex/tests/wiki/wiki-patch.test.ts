@@ -5,9 +5,9 @@ import path from "node:path";
 
 import { listConflicts, readConflict } from "../../server/wiki/conflicts.js";
 import { buildPatchSetId, writePatchSet } from "../../server/wiki/patch.js";
-import { approvePatch, approvePatchSet, enqueuePatch, listQueue, parsePatch, rejectPatch, resolveQueueSelection, showQueue, validatePatch } from "../../server/wiki/patch.js";
+import { approvePatch, approvePatchSet, enqueuePatch, listQueue, parsePatch, rejectPatch, resolveQueueSelection, showQueue, stageWikiDeletions, validatePatch } from "../../server/wiki/patch.js";
 import { resolveMemoryPaths } from "../../server/wiki/paths.js";
-import { computeContentHash, pathExists, readJsonFile, readPatchFile, writeWikiEntry } from "../../server/wiki/store.js";
+import { computeContentHash, pathExists, readJsonFile, readPatchFile, rebuildIndex, writeWikiEntry } from "../../server/wiki/store.js";
 import { buildPatchQueueToolConfig } from "../../server/wiki/tools/patch-queue.js";
 import type { PatchMeta } from "../../server/wiki/types.js";
 
@@ -39,6 +39,68 @@ describe("wiki patch queue", () => {
     expect(stored).toContain('rawSourceRef: "raw/2026-04-26-legacy-source.md"');
     expect(stored).not.toContain("raw_source_ref:");
     expect(stored).toContain("human readable body");
+  });
+
+  it("stages deletion without mutation, rejects stale bases, and retains shared raw on approval", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await mkdir(paths.rawDir, { recursive: true });
+    const ref = "raw/shared.md";
+    await writeFile(path.join(paths.rawDir, "shared.md"), "shared evidence");
+    const timestamp = "2026-04-26T00:00:00.000Z";
+    const entry = (id: string, body: string) => ({ id, title: id, tags: [], created: timestamp, updated: timestamp, version: 1, body, rawSourceRef: ref });
+    await writeWikiEntry(entry("alpha", "first"), paths);
+    await writeWikiEntry(entry("beta", "[[wiki:alpha]]"), paths);
+    await rebuildIndex(paths);
+    const { patchIds: [patchId] } = await stageWikiDeletions(["alpha"], "obsolete", paths);
+    expect(await pathExists(path.join(paths.wikiDir, "alpha.md"))).toBe(true);
+    expect(await readPatchFile(path.join(paths.root, "wiki/index.md"))).toContain("alpha");
+    const queued = await showQueue(patchId!, paths);
+    expect(queued.meta.warnings?.join(" ")).toContain("beta");
+    await writeWikiEntry(entry("alpha", "changed"), paths);
+    await expect(approvePatch(patchId!, paths)).rejects.toThrow(/stale base_hash/);
+    expect(await pathExists(path.join(paths.wikiDir, "alpha.md"))).toBe(true);
+    await writeFile(path.join(paths.wikiDir, "alpha.md"), JSON.parse(queued.patch.body).snapshot);
+    await approvePatch(patchId!, paths);
+    expect(await pathExists(path.join(paths.wikiDir, "alpha.md"))).toBe(false);
+    expect(await pathExists(path.join(paths.rawDir, "shared.md"))).toBe(true);
+    expect(JSON.parse(await readPatchFile(paths.indexFile))).not.toHaveProperty("alpha");
+    expect(await readPatchFile(path.join(paths.root, "wiki/index.md"))).not.toContain("### alpha");
+    expect(await pathExists(path.join(paths.archiveDir, patchId!, "patch.md"))).toBe(true);
+
+    await writeFile(path.join(paths.rawDir, "exclusive.md"), "exclusive evidence");
+    await writeWikiEntry({ ...entry("gamma", "last"), rawSourceRef: "raw/exclusive.md" }, paths);
+    await mkdir(path.join(paths.wikiDir, ".claims"), { recursive: true });
+    await writeFile(path.join(paths.wikiDir, ".claims", "gamma.json"), '{"entryId":"gamma","claims":[]}');
+    const { patchIds: [gammaPatch] } = await stageWikiDeletions(["gamma"], "obsolete", paths);
+    expect(await pathExists(path.join(paths.rawDir, "exclusive.md"))).toBe(true);
+    const gammaClaimsFile = path.join(paths.wikiDir, ".claims", "gamma.json");
+    await writeFile(gammaClaimsFile, '{"entryId":"gamma","claims":[],"updated":"after staging"}');
+    await expect(approvePatch(gammaPatch!, paths)).rejects.toThrow(/stale base_hash.*claims sidecar changed/);
+    expect(await pathExists(path.join(paths.wikiDir, "gamma.md"))).toBe(true);
+    await writeFile(gammaClaimsFile, '{"entryId":"gamma","claims":[]}');
+    await approvePatch(gammaPatch!, paths);
+    expect(await pathExists(path.join(paths.rawDir, "exclusive.md"))).toBe(false);
+    expect(await pathExists(path.join(paths.wikiDir, ".claims", "gamma.json"))).toBe(false);
+
+    await writeFile(path.join(paths.rawDir, "pending.md"), "pending evidence");
+    await writeWikiEntry({ ...entry("zeta", "held"), rawSourceRef: "raw/pending.md" }, paths);
+    await enqueuePatch({
+      frontmatter: { op: "create_wiki", target: "wiki/eta.md", summary: "eta", proposer: "test", created: timestamp },
+      body: JSON.stringify({ ...entry("eta", "cites pending"), rawSourceRef: "raw/pending.md" }),
+    }, paths);
+    const { patchIds: [zetaPatch] } = await stageWikiDeletions(["zeta"], "obsolete", paths);
+    await approvePatch(zetaPatch!, paths);
+    expect(await pathExists(path.join(paths.rawDir, "pending.md"))).toBe(true);
+
+    await writeWikiEntry(entry("delta", "[[wiki:epsilon]]"), paths);
+    await writeWikiEntry(entry("epsilon", "batch member"), paths);
+    const batch = await stageWikiDeletions(["delta", "epsilon"], "obsolete", paths);
+    expect(batch.patchSetId).toBeDefined();
+    expect(batch.patchIds).toHaveLength(2);
+    expect((await approvePatchSet(batch.patchSetId!, paths)).status).toBe("accepted");
+    expect(await pathExists(path.join(paths.wikiDir, "delta.md"))).toBe(false);
+    expect(await pathExists(path.join(paths.wikiDir, "epsilon.md"))).toBe(false);
   });
 
   it("reports partial patch set approval when members are missing", async () => {

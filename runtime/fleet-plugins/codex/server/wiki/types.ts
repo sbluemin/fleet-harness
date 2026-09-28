@@ -88,13 +88,14 @@ export interface ClaimSet {
   claims: Claim[];
 }
 
-export type PatchOp = "create_wiki" | "update_wiki";
+export type PatchOp = "create_wiki" | "update_wiki" | "delete_wiki";
 export type PatchStatus = "pending" | "accepted" | "rejected";
 export type WikiIngestMode = "auto" | "create" | "update";
 export type DuplicatePolicy = "reject" | "queue_conflict" | "append_evidence";
 export type ConflictReason =
   | "create_target_exists"
   | "update_target_missing"
+  | "delete_target_missing"
   | "base_version_mismatch"
   | "base_hash_mismatch"
   | "raw_source_contradiction"

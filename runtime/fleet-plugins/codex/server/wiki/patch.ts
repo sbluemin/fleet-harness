@@ -3,6 +3,7 @@ import { lstatSync, realpathSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import { getClaimsFile, listClaims } from "./claims.js";
 import { createConflict } from "./conflicts.js";
 import { appendLog } from "./log.js";
 import { ensureMemoryRoot } from "./paths.js";
@@ -10,19 +11,23 @@ import { ensureWorkspaceSchema, inferTemplateIdFromTarget, scanTemplates, valida
 import {
   assertSafeEntryId,
   computeContentHash,
+  buildBacklinksIndex,
+  listWiki,
+  resolveWikiEntryPath,
   listDirectoryNames,
   movePath,
   pathExists,
   readJsonFile,
   readPatchFile,
   readWikiEntry,
+  parseWikiEntry,
   rebuildIndex,
   removePath,
   writeJsonFile,
   writePatchFile,
   writeWikiEntryAtTarget,
 } from "./store.js";
-import type { ConflictReason, MemoryPaths, Patch, PatchMeta, PatchSet, WikiEntry } from "./types.js";
+import type { ClaimSet, ConflictReason, MemoryPaths, Patch, PatchMeta, PatchSet, WikiEntry } from "./types.js";
 
 export interface QueueSelection {
   id: string;
@@ -69,7 +74,7 @@ export async function parsePatch(markdown: string): Promise<Patch> {
 
 export async function validatePatch(patch: Patch, paths: MemoryPaths): Promise<void> {
   const { op, target, summary, proposer, created } = patch.frontmatter;
-  if (!["create_wiki", "update_wiki"].includes(op)) throw new Error("invalid patch op");
+  if (!["create_wiki", "update_wiki", "delete_wiki"].includes(op)) throw new Error("invalid patch op");
   if (!target || !summary || !proposer || !created) throw new Error("patch frontmatter is incomplete");
   if (summary.length > 120) throw new Error("patch summary exceeds 120 chars");
   assertCanonicalPatchTarget(target);
@@ -87,17 +92,192 @@ export async function validatePatch(patch: Patch, paths: MemoryPaths): Promise<v
     );
   }
   if (op === "update_wiki" && !(await pathExists(absoluteTarget))) throw new Error("update_wiki target does not exist");
+  if (op === "delete_wiki") {
+    if (!(await pathExists(absoluteTarget))) throw new Error("delete_wiki target does not exist");
+    const snapshot = parseDeletionSnapshot(patch.body);
+    if (snapshot.id !== path.basename(target, ".md") || parseWikiEntry(snapshot.snapshot).id !== snapshot.id) {
+      throw new Error("wiki patch body id must match target filename");
+    }
+    const claimRefs = snapshot.claims ? claimRawRefs(JSON.parse(snapshot.claims) as ClaimSet) : [];
+    const allowedRefs = new Set([...entryRawRefs(parseWikiEntry(snapshot.snapshot)), ...claimRefs]);
+    if (snapshot.rawSources.some(({ ref }) => !allowedRefs.has(ref))) {
+      throw new Error("delete_wiki raw source not referenced by target");
+    }
+  }
 }
 
 async function applyPatch(patch: Patch, paths: MemoryPaths): Promise<string> {
   await validatePatch(patch, paths);
-  await validatePatchBase(patch, undefined, paths);
+  if (patch.frontmatter.op !== "delete_wiki") await validatePatchBase(patch, undefined, paths);
   await ensureWorkspaceSchema(paths);
 
+  if (patch.frontmatter.op === "delete_wiki") {
+    const snapshot = parseDeletionSnapshot(patch.body);
+    const referenced = await referencedRawRefs(paths, [snapshot.id]);
+    const orphanPaths: string[] = [];
+    for (const { ref, content } of snapshot.rawSources) {
+      if (referenced.has(ref)) continue;
+      const rawPath = safeRawPath(ref, paths);
+      if (await readPatchFile(rawPath) === content) orphanPaths.push(rawPath);
+    }
+    await removePath(path.join(paths.root, patch.frontmatter.target));
+    await removePath(getClaimsFile(paths, snapshot.id));
+    for (const rawPath of orphanPaths) await removePath(rawPath);
+    await rebuildIndex(paths);
+    return patch.frontmatter.target;
+  }
   const entry = await normalizeWikiEntryPatch(JSON.parse(patch.body) as WikiEntry, patch.frontmatter.target, paths);
   const relativePath = await writeWikiEntryAtTarget(entry, patch.frontmatter.target, paths);
   await rebuildIndex(paths);
   return relativePath;
+}
+
+export interface DeletionSnapshot {
+  id: string;
+  reason?: string;
+  snapshot: string;
+  claims?: string;
+  rawSources: Array<{ ref: string; content: string }>;
+  sharedRawSources: string[];
+}
+
+function parseDeletionSnapshot(body: string): DeletionSnapshot {
+  const value = JSON.parse(body) as Partial<DeletionSnapshot>;
+  if (!value || typeof value.id !== "string" || typeof value.snapshot !== "string"
+    || !Array.isArray(value.rawSources) || !Array.isArray(value.sharedRawSources)
+    || value.rawSources.some(item => typeof item?.ref !== "string" || typeof item.content !== "string")) {
+    throw new Error("invalid delete_wiki snapshot");
+  }
+  assertSafeEntryId(value.id);
+  return value as DeletionSnapshot;
+}
+
+function entryRawRefs(entry: WikiEntry): string[] {
+  return [...new Set([entry.rawSourceRef, ...(entry.rawSourceRefs?.map(item => item.ref) ?? [])].filter((ref): ref is string => !!ref))];
+}
+
+function claimRawRefs(claimSet: ClaimSet): string[] {
+  return claimSet.claims.flatMap(claim => claim.sourceRefs.map(source => source.ref));
+}
+
+async function referencedRawRefs(paths: MemoryPaths, excluding: readonly string[] = []): Promise<Set<string>> {
+  const [entries, claims, pending] = await Promise.all([listWiki(paths), listClaims(paths), pendingPatchRawRefs(paths)]);
+  return new Set([
+    ...entries.filter(entry => !excluding.includes(entry.id)).flatMap(entryRawRefs),
+    ...claims.filter(set => !excluding.includes(set.entryId)).flatMap(claimRawRefs),
+    ...pending,
+  ]);
+}
+
+// 승인 대기 중인 생성·수정 패치가 가리키는 raw도 살아 있는 근거로 본다 — 삭제 승인이 먼저 raw를 지우면 뒤이은 승인이 없는 근거를 참조하게 된다.
+async function pendingPatchRawRefs(paths: MemoryPaths): Promise<string[]> {
+  const refs: string[] = [];
+  for (const { id, meta } of await listQueue(paths)) {
+    if (meta.status !== "pending") continue;
+    if (meta.rawSourceRef) refs.push(meta.rawSourceRef);
+    try {
+      const patch = await parsePatch(await readPatchFile(path.join(paths.queueDir, id, PATCH_FILENAME)));
+      if (patch.frontmatter.op === "delete_wiki") continue;
+      const entry = JSON.parse(patch.body) as WikiEntry;
+      refs.push(...entryRawRefs(entry));
+      const inline = typeof entry.body === "string" ? extractInlineRawSourceRef(entry.body) : null;
+      if (inline) refs.push(inline.rawSourceRef);
+    } catch {
+      // 손상된 큐 항목은 wiki_drydock이 malformed_queue로 보고한다.
+    }
+  }
+  return refs;
+}
+
+// raw/ 아래 중첩 경로도 지원한다 — 경로 성분마다 심볼릭 링크를 거부해 raw/ 밖으로 벗어나지 못하게 한다.
+function safeRawPath(ref: string, paths: MemoryPaths): string {
+  if (!ref.startsWith("raw/") || !ref.endsWith(".md") || path.posix.normalize(ref) !== ref) {
+    throw new Error("invalid raw source ref");
+  }
+  const parts = ref.split("/").slice(1);
+  if (parts.some(part => !/^[A-Za-z0-9._-]+$/.test(part) || part === "." || part === "..")) {
+    throw new Error("invalid raw source ref");
+  }
+  let current = realpathSync(paths.rawDir);
+  for (const part of parts) {
+    current = path.join(current, part);
+    if (lstatSync(current).isSymbolicLink()) throw new Error("raw source must not be a symlink");
+  }
+  return current;
+}
+
+export async function deletionImpact(id: string, paths: MemoryPaths, deleting: readonly string[] = []): Promise<{
+  backlinks: Array<{ id: string; title: string; alsoDeleting: boolean }>;
+  rawSources: string[];
+  sharedRawSources: string[];
+}> {
+  const entries = await listWiki(paths);
+  const target = entries.find(entry => entry.id === id);
+  if (!target) throw new Error(`delete_wiki target does not exist: ${id}`);
+  const backlinks = buildBacklinksIndex(entries).get(id) ?? new Set<string>();
+  const claims = await listClaims(paths);
+  const refs = [...new Set([...entryRawRefs(target), ...claims.filter(set => set.entryId === id).flatMap(claimRawRefs)])];
+  const shared = await referencedRawRefs(paths, [id, ...deleting]);
+  return {
+    backlinks: [...backlinks].map(linkId => ({ id: linkId, title: entries.find(entry => entry.id === linkId)?.title ?? linkId, alsoDeleting: deleting.includes(linkId) })).sort((a, b) => a.id.localeCompare(b.id)),
+    rawSources: refs.filter(ref => !shared.has(ref)),
+    sharedRawSources: refs.filter(ref => shared.has(ref)),
+  };
+}
+
+export async function currentDeletionImpact(patchBody: string, paths: MemoryPaths, patchSetId?: string): Promise<Awaited<ReturnType<typeof deletionImpact>> | null> {
+  const snapshot = parseDeletionSnapshot(patchBody);
+  const id = snapshot.id;
+  if (!(await resolveWikiEntryPath(id, paths))) return null;
+  let deleting: string[] = [];
+  if (patchSetId) {
+    const set = await readPatchSet(paths, patchSetId);
+    for (const patchId of set.patchIds) {
+      const file = path.join(paths.queueDir, patchId, PATCH_FILENAME);
+      if (!(await pathExists(file))) continue;
+      const member = await parsePatch(await readPatchFile(file));
+      if (member.frontmatter.op === "delete_wiki") deleting.push(path.basename(member.frontmatter.target, ".md"));
+    }
+  }
+  const impact = await deletionImpact(id, paths, deleting);
+  // 승인은 스테이징 때 스냅샷한 raw만 지운다 — 그 뒤 고아가 된 raw는 제거 목록이 아니라 보존 목록에 보여 준다.
+  const staged = new Set(snapshot.rawSources.map(item => item.ref));
+  return {
+    ...impact,
+    rawSources: impact.rawSources.filter(ref => staged.has(ref)),
+    sharedRawSources: [...impact.sharedRawSources, ...impact.rawSources.filter(ref => !staged.has(ref))],
+  };
+}
+
+export async function stageWikiDeletions(ids: string[], reason: string, paths: MemoryPaths, proposer = "Codex"): Promise<{ patchIds: string[]; patchSetId?: string }> {
+  const unique = [...new Set(ids)];
+  if (!unique.length || unique.length !== ids.length) throw new Error("entry_ids must be non-empty and unique");
+  const now = new Date().toISOString();
+  const prepared = await Promise.all(unique.map(async id => {
+    assertSafeEntryId(id);
+    const target = await resolveWikiEntryPath(id, paths);
+    if (!target) throw new Error(`delete_wiki target does not exist: ${id}`);
+    const patchTarget = path.join(paths.root, target);
+    assertNoSymlinkPathComponents(target, paths);
+    const snapshot = await readPatchFile(patchTarget);
+    const claimsFile = getClaimsFile(paths, id);
+    const claims = await pathExists(claimsFile) ? await readPatchFile(claimsFile) : undefined;
+    const impact = await deletionImpact(id, paths, unique);
+    const rawSources = await Promise.all(impact.rawSources.map(async ref => ({ ref, content: await readPatchFile(safeRawPath(ref, paths)) })));
+    const body = JSON.stringify({ id, reason: reason || undefined, snapshot, claims, rawSources, sharedRawSources: impact.sharedRawSources } satisfies DeletionSnapshot, null, 2);
+    const patch: Patch = { frontmatter: { op: "delete_wiki", target, summary: `Delete ${id}`.slice(0, 120), proposer, created: now }, body };
+    await validatePatch(patch, paths);
+    return { patch, baseHash: computeContentHash(snapshot), warnings: impact.backlinks.map(link => `[[wiki:${id}]] referenced by ${link.id}${link.alsoDeleting ? " (also in deletion set)" : ""}`) };
+  }));
+  const patchSetId = unique.length > 1
+    ? `${now.replace(/[:.]/g, "-")}-${createHash("sha256").update(unique.join("\u0000")).digest("hex").slice(0, 8)}`
+    : undefined;
+  const patchIds: string[] = [];
+  for (const { patch, baseHash, warnings } of prepared) {
+    patchIds.push(await enqueuePatch(patch, paths, { baseHash, warnings, ...(patchSetId ? { patch_set_id: patchSetId } : {}) }));
+  }
+  if (patchSetId) await writePatchSet(paths, { id: patchSetId, sourceRef: `delete:${unique.join(",")}`, createdAt: now, patchIds });
+  return { patchIds, ...(patchSetId ? { patchSetId } : {}) };
 }
 
 export async function enqueuePatch(patch: Patch, paths: MemoryPaths, metaOverrides?: Partial<PatchMeta>): Promise<string> {
@@ -377,7 +557,9 @@ function buildPatchId(createdAt: string, summary: string, target: string, body: 
 }
 
 async function validatePatchBase(patch: Patch, meta: PatchMeta | undefined, paths: MemoryPaths): Promise<void> {
-  if (patch.frontmatter.op !== "update_wiki" || (!meta?.baseVersion && !meta?.baseHash)) return;
+  if (patch.frontmatter.op !== "update_wiki" && patch.frontmatter.op !== "delete_wiki") return;
+  if (patch.frontmatter.op === "delete_wiki" && !meta?.baseHash) throw new Error("delete_wiki requires base_hash");
+  if (!meta?.baseVersion && !meta?.baseHash) return;
 
   const wikiId = path.basename(patch.frontmatter.target, ".md");
   const currentEntry = await readWikiEntry(wikiId, paths);
@@ -392,6 +574,13 @@ async function validatePatchBase(patch: Patch, meta: PatchMeta | undefined, path
     throw new Error(
       `[fleet-wiki] approve stale base_hash for ${wikiId}: expected ${meta.baseHash}, got ${currentMarkdown ? computeContentHash(currentMarkdown) : "missing"}`,
     );
+  }
+  if (patch.frontmatter.op === "delete_wiki") {
+    const claimsFile = getClaimsFile(paths, wikiId);
+    const currentClaims = await pathExists(claimsFile) ? await readPatchFile(claimsFile) : undefined;
+    if (currentClaims !== parseDeletionSnapshot(patch.body).claims) {
+      throw new Error(`[fleet-wiki] approve stale base_hash for ${wikiId}: claims sidecar changed`);
+    }
   }
 }
 
@@ -495,6 +684,7 @@ function classifyPatchConflict(error: unknown): ConflictReason | null {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("create_wiki target already exists")) return "create_target_exists";
   if (message.includes("update_wiki target does not exist")) return "update_target_missing";
+  if (message.includes("delete_wiki target does not exist")) return "delete_target_missing";
   if (message.includes("wiki patch body id must match target filename")) return "patch_body_target_mismatch";
   if (message.includes("conflicting raw source provenance in wiki patch")) return "source_provenance_conflict";
   if (message.includes("approve stale base_version")) return "base_version_mismatch";
@@ -512,7 +702,7 @@ async function recordPatchConflict(
   const targetPath = path.join(paths.root, patch.frontmatter.target);
   const current = await pathExists(targetPath) ? await readPatchFile(targetPath) : undefined;
   const currentEntry = current ? parseStoredWikiEntry(current) : undefined;
-  const proposedEntry = parsePatchBodyEntry(patch.body);
+  const proposedEntry = patch.frontmatter.op === "delete_wiki" ? undefined : parsePatchBodyEntry(patch.body);
   const record = await createConflict({
     reason,
     target: patch.frontmatter.target,

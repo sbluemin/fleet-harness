@@ -373,7 +373,7 @@ function serializeWikiEntry(entry: WikiEntry): string {
   return serializeMarkdown(frontmatter, stripLeadingFrontmatter(entry.body));
 }
 
-function parseWikiEntry(content: string): WikiEntry {
+export function parseWikiEntry(content: string): WikiEntry {
   const parsed = parseMarkdown(content);
   assertRequiredKeys(parsed.frontmatter, REQUIRED_WIKI_FRONTMATTER_KEYS);
   return {

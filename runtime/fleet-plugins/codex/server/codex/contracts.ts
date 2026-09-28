@@ -125,7 +125,7 @@ export interface DrydockListItem {
   meta: DrydockMeta;
   source: "queue" | "archive";
   summary?: string;
-  op?: "create_wiki" | "update_wiki";
+  op?: "create_wiki" | "update_wiki" | "delete_wiki";
   target?: string;
   proposer?: string;
   /** pending(queue) 항목에만 계산된다 — 결정된 패치의 diff는 현재 문서와 무의미하다. */
@@ -139,7 +139,7 @@ export interface DrydockListResponse {
 }
 
 export interface DrydockPatchFrontmatter {
-  op: "create_wiki" | "update_wiki";
+  op: "create_wiki" | "update_wiki" | "delete_wiki";
   target: string;
   summary: string;
   proposer: string;
@@ -172,6 +172,14 @@ export interface DrydockDetailResponse {
   wikiEntry: DrydockWikiEntry;
   targetExists: boolean;
   patchSet: DrydockPatchSetResponse | null;
+  deletion?: {
+    snapshot: string;
+    claims?: string;
+    targetMissing?: boolean;
+    backlinks: Array<{ id: string; title: string; alsoDeleting: boolean }>;
+    rawSources: string[];
+    sharedRawSources: string[];
+  };
 }
 
 export interface SchemaCatalogResponse {

@@ -89,7 +89,7 @@ export const WIKI_DRYDOCK_GUIDELINES = [
   WIKI_SCHEMA_PROMPT_NOTE,
 ];
 
-export const WIKI_PATCH_QUEUE_DESCRIPTION = "List/show/approve/reject/approve_set Fleet Wiki patch queue items.";
+export const WIKI_PATCH_QUEUE_DESCRIPTION = "Stage entry deletions or list, inspect, approve, and reject Wiki patches.";
 export const WIKI_PATCH_QUEUE_PROMPT_SNIPPET = `Review queue items and enforce the human approval gate. ${WIKI_SCHEMA_PROMPT_NOTE}`;
 export const WIKI_PATCH_QUEUE_GUIDELINES = [
   "approve updates the wiki and moves the patch to the archive.",
@@ -249,10 +249,12 @@ export function buildWikiPatchQueueSchema() {
       Type.Literal("approve"),
       Type.Literal("reject"),
       Type.Literal("approve_set"),
+      Type.Literal("stage_delete"),
     ], { description: "Queue action" }),
     patch_id: Type.Optional(Type.String({ description: "Target patch ID" })),
     patch_set_id: Type.Optional(Type.String({ description: "Target patch set ID" })),
-    reason: Type.Optional(Type.String({ description: "Reject reason" })),
+    entry_ids: Type.Optional(Type.Array(Type.String(), { description: "Entry IDs to stage for deletion" })),
+    reason: Type.Optional(Type.String({ description: "Reject or deletion reason" })),
   });
 }
 

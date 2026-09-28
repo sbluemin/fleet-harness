@@ -15,6 +15,7 @@ import {
   fetchDrydockDetail,
   fetchEntry,
   fetchSchemaDocument,
+  stageEntryDeletion,
 } from "./api.js";
 import type {
   ConflictDetailResponse,
@@ -98,11 +99,12 @@ export interface MountReadingOptions {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const OP_BADGE_GLYPHS: Record<string, string> = { create_wiki: "+", update_wiki: "↻" };
+const OP_BADGE_GLYPHS: Record<string, string> = { create_wiki: "+", update_wiki: "↻", delete_wiki: "−" };
 
 function opLabel(op: string, t: T): string {
   if (op === "create_wiki") return t("codex.reading.opCreate");
   if (op === "update_wiki") return t("codex.reading.opUpdate");
+  if (op === "delete_wiki") return t("codex.reading.opDelete");
   return t("codex.reading.opPatch");
 }
 
@@ -176,6 +178,21 @@ export function mountReadingInto(
       event.preventDefault();
       const entryId = decodeURIComponent(wikiLink.pathname.slice("/entry/".length));
       if (entryId) liveOpts.onRelatedClick(entryId);
+      return;
+    }
+
+    const deleteButton = target.closest<HTMLButtonElement>("[data-entry-stage-delete]");
+    if (deleteButton && currentEntryId) {
+      event.preventDefault();
+      const errorLabel = readContainer.querySelector<HTMLElement>("[data-entry-delete-error]");
+      if (errorLabel) errorLabel.textContent = "";
+      deleteButton.disabled = true;
+      void stageEntryDeletion(liveOpts.theaterId, currentEntryId).then(({ patchId }) => {
+        liveOpts.onPatchOpen?.(patchId);
+      }).catch((error: unknown) => {
+        deleteButton.disabled = false;
+        if (errorLabel) errorLabel.textContent = error instanceof Error ? error.message : String(error);
+      });
       return;
     }
 
@@ -583,6 +600,8 @@ export function mountReadingInto(
             ${renderSheetBreadcrumb(entry.frontmatter.title)}
             <h1>${escapeHtml(entry.frontmatter.title)}</h1>
             ${renderMetaChips(entry.frontmatter, { interactiveTags: true })}
+            <button type="button" class="queue-back-btn" data-entry-stage-delete>${escapeHtml(t("codex.reading.proposeDelete"))}</button>
+            <span data-entry-delete-error role="alert"></span>
           </header>
           <div class="markdown-body" id="codex-reader-body">
             ${markdownHtml}
@@ -1008,7 +1027,7 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string, 
   const op = patch.frontmatter.op;
   const glyph = OP_BADGE_GLYPHS[op] ?? "?";
   const label = opLabel(op, t);
-  const targetLabel = targetExists ? t("codex.reading.replaceExisting") : t("codex.reading.createNew");
+  const targetLabel = op === "delete_wiki" ? t("codex.reading.opDelete") : targetExists ? t("codex.reading.replaceExisting") : t("codex.reading.createNew");
   const isPending = meta.status === "pending";
   const versionLabel = options.currentVersion !== null
     ? `v${options.currentVersion} \u2192 v${wikiEntry.version}`
@@ -1030,6 +1049,16 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string, 
       <div class="markdown-body" id="codex-reader-body">
         ${markdownHtml}
       </div>`;
+
+  const deletionSummary = detail.deletion ? `<section class="queue-deletion-impact" role="note">
+    <h2>${escapeHtml(t("codex.reading.proposeDelete"))}</h2>
+    ${detail.deletion.targetMissing ? `<p>${escapeHtml(t("codex.reading.deleteMissing"))}</p>` : ""}
+    <p>${escapeHtml(t("codex.reading.deleteImpact", { links: detail.deletion.backlinks.length, raw: detail.deletion.rawSources.length }))}</p>
+    ${detail.source === "archive" ? (meta.warnings ?? []).map(warning => `<p>${escapeHtml(warning)}</p>`).join("") : ""}
+    ${detail.deletion.backlinks.map(link => `<p>[[wiki:${escapeHtml(wikiEntry.id)}]] ← ${escapeHtml(link.title)} (${escapeHtml(link.id)})${link.alsoDeleting ? ` · ${escapeHtml(t("codex.reading.deleteAlso"))}` : ""}</p>`).join("")}
+    ${detail.deletion.rawSources.map(ref => `<p>${escapeHtml(t("codex.reading.deleteRawRemove"))}: ${escapeHtml(ref)}</p>`).join("")}
+    ${detail.deletion.sharedRawSources.map(ref => `<p>${escapeHtml(t("codex.reading.deleteRawRetain"))}: ${escapeHtml(ref)}</p>`).join("")}
+  </section>` : "";
 
   // 결정 독은 문서 위 스티키 — 근거(diff)와 결정 수단이 같은 화면에 머문다.
   return `
@@ -1054,6 +1083,7 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string, 
         <button type="button" class="queue-back-btn" data-drydock-action="back">${escapeHtml(t("codex.reading.backQueue"))}</button>
         ${renderPatchMetaChips(patch.frontmatter.proposer, wikiEntry.tags)}
       </header>
+      ${deletionSummary}
       ${body}
     </article>
   `;

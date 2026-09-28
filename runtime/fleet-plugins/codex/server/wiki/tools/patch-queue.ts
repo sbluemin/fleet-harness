@@ -1,5 +1,5 @@
 import { listConflicts } from "../conflicts.js";
-import { approvePatch, approvePatchSet, listQueue, rejectPatch, resolveQueueSelection, showQueue } from "../patch.js";
+import { approvePatch, approvePatchSet, currentDeletionImpact, listQueue, rejectPatch, resolveQueueSelection, showQueue, stageWikiDeletions } from "../patch.js";
 import { resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_PATCH_QUEUE_DESCRIPTION,
@@ -38,6 +38,11 @@ export function buildPatchQueueToolConfig() {
           next_action: items.length > 0 ? `Use patch_id from: ${items.map((item) => item.id).join(", ")}` : "Queue is empty.",
         });
       }
+      if (action === "stage_delete") {
+        const ids = params.entry_ids;
+        if (!Array.isArray(ids) || ids.some(id => typeof id !== "string")) throw new Error("entry_ids must be an array of entry IDs");
+        return textResult({ ok: true, action, ...await stageWikiDeletions(ids, String(params.reason ?? ""), paths) });
+      }
       if (action === "show") {
         const selection = await resolveQueueSelection(String(params.patch_id ?? ""), paths);
         const item = await showQueue(selection.id, paths);
@@ -50,7 +55,8 @@ export function buildPatchQueueToolConfig() {
         return textResult({
           ok: true,
           action,
-          item,
+          item: item.patch.frontmatter.op === "delete_wiki" ? redactDeletionRawContent(item) : item,
+          ...(item.patch.frontmatter.op === "delete_wiki" ? { deletion_impact: await currentDeletionImpact(item.patch.body, paths, item.meta.patch_set_id) } : {}),
           related_conflicts: relatedConflicts,
           auto_selected: selection.autoSelected,
         });
@@ -102,6 +108,17 @@ function buildMissingPatchIdError(action: "approve" | "reject", items: Array<{ i
     return `wiki_patch_queue ${action} requires patch_id. Queue is empty.`;
   }
   return `wiki_patch_queue ${action} requires patch_id. Available patch IDs: ${items.map((item) => item.id).join(", ")}`;
+}
+
+// raw 원문은 trust="untrusted" 경계 밖으로 내보내지 않는다 — 복원용 전체 스냅샷은 디스크의 패치에만 남긴다.
+function redactDeletionRawContent<T extends { patch: { body: string } }>(item: T): T {
+  try {
+    const body = JSON.parse(item.patch.body) as { rawSources?: Array<{ ref: string; content: string }> };
+    const rawSources = (body.rawSources ?? []).map(({ ref, content }) => ({ ref, bytes: Buffer.byteLength(content) }));
+    return { ...item, patch: { ...item.patch, body: JSON.stringify({ ...body, rawSources }, null, 2) } };
+  } catch {
+    return item;
+  }
 }
 
 function extractPatchWikiId(body: string): string | null {

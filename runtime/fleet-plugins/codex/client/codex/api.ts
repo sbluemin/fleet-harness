@@ -105,6 +105,10 @@ export async function fetchSchemaDocument(theaterId: string | null, templateId?:
   return fetchJson<SchemaDocumentResponse>(apiPath(theaterId, path));
 }
 
+export async function stageEntryDeletion(theaterId: string | null, id: string): Promise<{ ok: true; patchId: string }> {
+  return postJson<{ ok: true; patchId: string }>(apiPath(theaterId, `/entry/${encodeURIComponent(id)}/stage-delete`), {});
+}
+
 export async function decideDrydock(
   theaterId: string | null,
   patchId: string,
