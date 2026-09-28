@@ -144,7 +144,7 @@ export function App() {
 
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
-  const isTransitionalRoute = pathname === "/" || pathname === "";
+  const isTransitionalRoute = pathname === "/";
   const mobileLayout = useViewMode().effective === "mobile";
   const mobileSessionOpen = useMobileSessionOpen();
   const zenState = useZenModeState();

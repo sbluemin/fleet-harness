@@ -73,6 +73,9 @@ const JOIN_PATH = "/api/v1/join";
 const PICKER_SURFACE_PARAM = "desktop-surface";
 const PICKER_SURFACE_OPEN = "host-picker";
 const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
+/** 전환 직전 화면 모드. Console이 새 문서에서 읽고 지운다(zen-mode.ts). */
+const MODE_PARAM = "mode";
+const MODE_ZEN = "zen";
 
 export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   const localFetch = deps.localFetch ?? globalThis.fetch;
@@ -97,8 +100,9 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   }
 
   /**
-   * `url`은 루프백 콘솔로 갈 때만 쓰인다 — 그 콘솔 안의 어느 화면을 열지까지 정해져 온 경우다
-   * (덮개의 "호스트 관리"가 그렇다). 원격은 핸드오프가 돌려준 origin의 `/console/`로만 간다.
+   * `url`은 루프백 콘솔로 갈 때만 그대로 쓰인다 — 그 콘솔 안의 어느 화면을 열지까지 정해져 온 경우다
+   * (덮개의 "호스트 관리"가 그렇다). 원격은 핸드오프가 돌려준 origin의 `/console/`로만 가고,
+   * 전환 직전 화면 모드(`mode=zen`)만 옮겨 싣는다.
    */
   async function open(origin: string, url?: string): Promise<void> {
     // 집으로 돌아가는 길에는 핀도 자격도 필요 없다 — 루프백은 언제나 허용된 origin이다.
@@ -134,7 +138,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
        */
       await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
       await verifyConsoleReachable(handoff.origin);
-      await deps.loadConsole(targetConsoleUrl(handoff.origin, url));
+      await deps.loadConsole(remoteConsoleEntry(handoff.origin, url));
       if (attempt === opening) policy.commitConsoleOrigin();
     } catch (error) {
       if (attempt === opening) policy.cancelPendingConsoleOrigin();
@@ -189,7 +193,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     const policy = deps.policy();
     if (!policy) throw new Error("remote_bridge_no_window");
     // 정해져 온 화면이 있어도 그 콘솔의 `/console/` 안이어야 한다 — 아니면 기본 화면으로 연다.
-    const target = targetConsoleUrl(origin, url);
+    const target = url !== undefined && consoleTarget(url, origin) === origin ? url : `${origin}${CONSOLE_PATH}`;
     /**
      * 창이 실제로 도착한 뒤에 활성 origin을 옮긴다. 먼저 옮겨 두면 적재가 실패했을 때 정책은
      * 새 콘솔을, 창은 옛 콘솔을 가리킨 채 갈라지고, 그 창은 자기가 보고 있는 화면 안에서조차
@@ -347,26 +351,15 @@ export function consoleTarget(url: string, localOrigin: string | null): string |
   }
 }
 
-/**
- * 콘솔 전환 시 이동할 안전한 대상 URL.
- * 원격 또는 로컬 콘솔의 경로(/console/)를 보장하고, 전환 전 화면의 상태(Zen 모드, 설정 섹션 등)를
- * 신뢰할 수 있는 쿼리 파라미터만 골라 전달한다.
- */
-export function targetConsoleUrl(origin: string, requestedUrl?: string): string {
-  const base = `${origin}${CONSOLE_PATH}`;
-  if (!requestedUrl) return base;
+/** 원격 콘솔의 입구. 요청 URL에서는 화면 모드만 읽는다 — 경로와 다른 쿼리는 원격 페이지가 정하게 두지 않는다. */
+export function remoteConsoleEntry(origin: string, requestedUrl?: string): string {
+  const entry = new URL(CONSOLE_PATH, `${origin}/`);
   try {
-    const parsed = new URL(requestedUrl);
-    if (!parsed.pathname.startsWith(CONSOLE_PATH)) return base;
-    const target = new URL(parsed.pathname, `${origin}/`);
-    const mode = parsed.searchParams.get("mode");
-    if (mode === "zen") target.searchParams.set("mode", "zen");
-    const section = parsed.searchParams.get("section");
-    if (section && /^[a-z0-9_-]+$/i.test(section)) target.searchParams.set("section", section);
-    return target.toString();
+    if (requestedUrl !== undefined && new URL(requestedUrl).searchParams.get(MODE_PARAM) === MODE_ZEN) entry.searchParams.set(MODE_PARAM, MODE_ZEN);
   } catch {
-    return base;
+    // 읽을 수 없는 URL은 기본 입구로 연다.
   }
+  return entry.toString();
 }
 
 async function readErrorCode(response: Response): Promise<string> {

@@ -219,12 +219,11 @@ describe("host picker surface", () => {
     expect(harness.trace).not.toContain(`load:${LOCAL}/console/`);
   });
 
-  it("preserves safe mode parameter across remote host switch while stripping untrusted parameters", async () => {
+  it("carries only the Zen mode into a remote console, not the requesting page's path or query", async () => {
     const harness = createHarness();
 
-    await harness.bridge.open(REMOTE, `${REMOTE}/console/?mode=zen&evil=attack`);
+    await harness.bridge.open(REMOTE, `${REMOTE}/console/settings?mode=zen&section=remote-access`);
 
     expect(harness.trace).toContain(`load:${REMOTE}/console/?mode=zen`);
-    expect(harness.trace.some((entry) => entry.includes("evil"))).toBe(false);
   });
 });
