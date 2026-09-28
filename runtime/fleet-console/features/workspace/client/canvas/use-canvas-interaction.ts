@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 
 import { screenToCanvas, type CanvasPoint, type CanvasRect, type CanvasViewport } from "./coordinates.js";
+import { isProxyDataSurface } from "../../../remote-access/client/proxy-data-surface.js";
 
 interface CanvasInteractionOptions {
   readonly viewport: CanvasViewport;
@@ -92,7 +93,8 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
     const screen = eventScreenPoint(event);
     // 기본 드래그는 맵 이동(pan). Shift+좌클릭 드래그만 새 Operation 생성(create).
     // 중간 버튼(button 1)과 Space 길게 누름은 보조 pan 경로로 유지한다.
-    const mode: DragMode = event.shiftKey && event.button === 0 && !spaceActive ? "create" : "pan";
+    // 읽기 전용 원격 표면에서는 Shift-드래그도 이동일 뿐이다 — 무엇을 만들지 않는다.
+    const mode: DragMode = event.shiftKey && event.button === 0 && !spaceActive && !isProxyDataSurface() ? "create" : "pan";
     dragRef.current = {
       pointerId: event.pointerId,
       mode,

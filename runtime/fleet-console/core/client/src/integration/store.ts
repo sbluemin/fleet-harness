@@ -15,6 +15,7 @@ import { noteOperationFocused } from "./palette-recent.js";
 import { closeAllExpandedSurfaces, closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { uiFontFamily } from "../../../../features/settings/client/ui-font.js";
 import { observeConsoleVersion } from "./console-version.js";
+import { isProxyDataSurface } from "../../../../features/remote-access/client/proxy-data-surface.js";
 import type {
   CodexReaderRequest,
   ConnectionState,
@@ -829,6 +830,7 @@ export function consumeOperationFocus(): void {
 // 커맨드 밴드 → 사이드바 단방향 요청 신호 — 사이드바가 effect로 소비(consume)한다.
 // pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약.
 export function requestSideBarAddTheater(): void {
+  if (isProxyDataSurface()) return;
   setState({ pendingSideBarAddTheater: true });
 }
 
@@ -838,6 +840,7 @@ export function consumeSideBarAddTheater(): void {
 }
 
 export function requestSideBarTheaterLaunch(theaterId: string): void {
+  if (isProxyDataSurface()) return;
   setState({ pendingSideBarTheaterLaunch: theaterId });
 }
 
@@ -857,6 +860,7 @@ export function requestOperationKeyboardFocus(operationId: string): void {
 
 // 팔레트 "New Operation" 커맨드가 사이드바의 ＋New launch 오버레이를 열도록 요청한다(keyboardFocusRequest 패턴 미러).
 export function requestOperationLaunchMenu(): void {
+  if (isProxyDataSurface()) return;
   setState({ launchMenuRequest: { requestId: (state.launchMenuRequest?.requestId ?? 0) + 1 } });
 }
 
@@ -995,7 +999,9 @@ export function setOperationSearchMode(mode: ConsoleState["operationSearchMode"]
   setState({ operationSearchMode: mode });
 }
 
+// 읽기 전용 원격 표면에서는 무엇을 만들고 지시하는 흐름이 열리지 않는다(proxy-data-surface.ts).
 export function openQuickLaunch(): void {
+  if (isProxyDataSurface()) return;
   // 고정된 컴포저는 이미 떠 있다 — 여는 대신 펼쳐 포커스한다. 열림 플래그를 참으로 올려 두면
   // 눈에 보이는 변화 없이 값만 남아, 도킹을 접어 둔 화면에서 모달로 되살아나고 열림을 보고 자기를
   // 억제하는 What's New가 영영 뜨지 않는다(setQuickLaunchPinned가 막는 것과 같은 경로).
@@ -1017,6 +1023,7 @@ export function openQuickLaunch(): void {
  * 순간 버리고 행선지만 심는다. 시드와 열림은 한 번의 전이다.
  */
 export function openQuickLaunchForOperation(operationId: string, draft: string | null = null): void {
+  if (isProxyDataSurface()) return;
   // 시드와 열림을 한 번에 올린다. 두 번 emit하면 시드만 있는 중간 렌더가 생기고, 이미 열린
   // 컴포저에서는 열림 전이가 없어 시드가 소비되지 않은 채 남을 수 있다.
   if (isQuickLaunchDocked()) {
@@ -1044,6 +1051,7 @@ export function openQuickLaunchForOperation(operationId: string, draft: string |
  * 고정 컴포저는 초안 도착 효과가 싣고, 모달은 열림 전이의 복원 경로가 싣는다.
  */
 export function openQuickLaunchWithDraft(draft: string): void {
+  if (isProxyDataSurface()) return;
   if (isQuickLaunchDocked()) {
     setState({
       quickLaunchDraft: draft,

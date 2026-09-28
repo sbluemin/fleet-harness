@@ -46,7 +46,7 @@ import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugi
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredSideBarGlass } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { consumeInitialZenModeParam } from "../integration/zen-mode.js";
-import { isProxyDataDocument, loadProxyDataSurface } from "../../../../features/remote-access/client/proxy-data.js";
+import { isProxyDataDocument, loadProxyDataSurface } from "../../../../features/remote-access/client/proxy-data-surface.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -93,6 +93,11 @@ installModalOpenMarker();
 
 // 원격 데이터를 읽기 전용으로 보여 주는 epoch 표면이면, 그 사실을 첫 렌더 전에 안다 — 쓰기 표면이 잠깐이라도 서지 않게.
 const proxyData = isProxyDataDocument() ? await loadProxyDataSurface() : null;
+if (proxyData !== null) {
+  // 우클릭 동작 메뉴는 거의 모두 쓰기다(이름 바꾸기·그룹·보관·닫기·새로 만들기). 메뉴마다 가르지 않고 React의 루트
+  // 위임보다 먼저 삼켜, 읽기 전용 표면에서는 어느 메뉴도 열리지 않게 한다.
+  window.addEventListener("contextmenu", (event) => { event.preventDefault(); event.stopPropagation(); }, true);
+}
 
 try {
   const settings = await fetchGlobalSettingsState();

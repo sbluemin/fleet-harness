@@ -10,7 +10,7 @@ import { isDesktopShell, useDesktopHomeOrigin } from "../../integration/desktop-
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
 import { buildPresentationCarryFragment } from "../../../../../features/remote-access/client/presentation-carry.js";
-import { useProxyDataSurface } from "../../../../../features/remote-access/client/proxy-data.js";
+import { useProxyDataSurface } from "../../../../../features/remote-access/client/proxy-data-surface.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";

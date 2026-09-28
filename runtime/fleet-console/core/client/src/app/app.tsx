@@ -10,7 +10,8 @@ import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, res
 import { CommandBand } from "../chrome/components/command-band.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
-import { ProxyDataBanner, useProxyDataSurface } from "../../../../features/remote-access/client/proxy-data.js";
+import { ProxyDataBanner } from "../../../../features/remote-access/client/proxy-data.js";
+import { useProxyDataSurface } from "../../../../features/remote-access/client/proxy-data-surface.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "../chrome/components/operation-search.js";
 import { QuickLaunch } from "../../../../features/execution/client/components/quick-launch.js";
@@ -627,7 +628,8 @@ export function App() {
                 {/* Theater is a phone-only destination: the desktop switches Theater from the band
                     and lists every Theater in its sidebar, so this route has nothing to add there. */}
                 <Route path="/theaters" element={mobileLayout ? <MobileTheaterPage state={state} /> : <Navigate to="/operations" replace />} />
-                <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
+                {/* 설정은 이 기계의 것이고, 읽기 전용 원격 표면의 epoch에는 설정을 바꿀 길이 없다 — 캔버스로 돌려보낸다. */}
+                <Route path="/settings" element={proxyData !== null ? <Navigate to="/operations" replace /> : mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>
             </main>
