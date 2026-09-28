@@ -1446,3 +1446,8 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-merged-entry { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-top: 6px; border-top: 1px dashed var(--hairline-strong); font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-merged-src { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); }
 .objectives-merged-src svg { width: 11px; height: 11px; flex: none; }
+/* 정리된 목표의 상세와 받은 목표의 합쳐 온 목록 — 상세의 다른 줄과 같은 안쪽 선(22px, 한 열에서는 14px)에 선다. */
+.objectives-detail.is-tidied .objectives-group:not(:first-child), .objectives-merged-trail { padding-left: 22px; padding-right: 20px; }
+@container objectives-panel (width < 600px) {
+  .objectives-detail.is-tidied .objectives-group:not(:first-child), .objectives-merged-trail { padding-left: 14px; padding-right: 12px; }
+}

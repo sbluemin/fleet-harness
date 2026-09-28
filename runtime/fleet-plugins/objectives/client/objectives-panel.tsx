@@ -1758,8 +1758,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           onFocus={() => setNoteFocus(true)} onBlur={() => setNoteFocus(false)}
           onPaste={(event) => { if (!touchable) return; const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
         {dropping ? <AttachmentDropVeil t={t} /> : null}
-        <MergedTrail objective={objective} t={t} language={language} call={call} onOpenObjective={onOpenObjective} />
         {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
+        <MergedTrail objective={objective} t={t} language={language} call={call} onOpenObjective={onOpenObjective} />
       </div>
   </>);
   const sOrigin = (<>
