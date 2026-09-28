@@ -61,7 +61,7 @@ function createHarness(options: {
     pins,
     policy: () => policy as never,
     sessionFetch,
-    remoteFetch: (async () => new Response(null, { status: 204 })) as never,
+    remoteFetch: (async (url: string) => { trace.push(`remote:${url}`); return new Response(null, { status: 204 }); }) as never,
     localFetch: (async (url: string, init: RequestInit) => {
       requests.push({ url, init });
       const path = new URL(url).pathname;
@@ -145,8 +145,11 @@ describe("remote bridge", () => {
 
     expect(harness.trace).toContain("cancel");
     expect(harness.trace).toContain(`withdraw:${REMOTE}`);
-    expect(harness.trace).toContain("unpin:100.84.12.7");
     expect(harness.trace).not.toContain("commit");
+    // 조인이 만든 세션은 보여 주지 못했어도 끝낸다 — 상대 화면에 커튼이 남지 않게. 핀은 그 요청이 닿은 뒤에 푼다.
+    await vi.waitFor(() => expect(harness.trace).toContain("unpin:100.84.12.7"));
+    expect(harness.trace.indexOf(`remote:${REMOTE}/api/v1/access/self/leave`)).toBeGreaterThan(-1);
+    expect(harness.trace.indexOf(`remote:${REMOTE}/api/v1/access/self/leave`)).toBeLessThan(harness.trace.indexOf("unpin:100.84.12.7"));
   });
 
   it("never loads a console that answers with an error document, and never joins again for it", async () => {

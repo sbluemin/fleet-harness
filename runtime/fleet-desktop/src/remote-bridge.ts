@@ -129,6 +129,9 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   const confirmIdentity = deps.confirmIdentity ?? confirmRemoteIdentity;
   const now = deps.now ?? Date.now;
   let dataPickerAt = Number.NEGATIVE_INFINITY;
+  /** 호스트마다 가장 최근에 핀을 건 시도, 콘솔마다 가장 최근에 조인한 시도. 옛 시도가 새 시도의 핀·세션을 거두지 않게 한다. */
+  const pinOwners = new Map<string, number>();
+  const joinOwners = new Map<string, number>();
   const attached: Array<{ readonly contents: Pick<WebContents, "on" | "removeListener">; readonly listener: (...args: never[]) => void; readonly event: "will-navigate" | "did-navigate" }> = [];
 
   async function askLocalConsole(path: string, body: unknown): Promise<Response> {
@@ -195,21 +198,36 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     const policy = deps.policy();
     if (!policy) throw new Error("remote_bridge_no_window");
     deps.pins.pin(handoff.hostname, fingerprint);
+    pinOwners.set(handoff.hostname, attempt.generation);
     policy.admitRemoteConsoleOrigin(handoff.origin);
+    let joined = false;
     try {
       /**
        * 링크의 1회용 자격은 처음 한 번만 실려 온다. 그 뒤로는 token이 비어 오지만 조인을
        * 건너뛰지는 않는다 — 그 요청이 페어링 쿠키를 세션으로 바꾸는 유일한 자리이고,
        * 제어권을 회수당했거나 접속이 만료된 뒤 돌아오는 길이 바로 이것이다.
        */
+      joinOwners.set(handoff.origin, attempt.generation);
       await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
+      joined = true;
       void reportCookieBinding(handoff, fingerprint);
       await navigateJoined(handoff.origin, `${remoteConsoleEntry(handoff.origin, url)}${presentationCarryOf(url)}`, attempt);
     } catch (error) {
       // 열지 못한 원격은 허용 목록에서 뺀다. 지금 데이터 뷰가 그 콘솔에 서 있다면(같은 콘솔로 다시 온 경우) 남긴다.
       if (policy.dataConsoleOrigin() !== handoff.origin) {
         policy.withdrawRemoteConsoleOrigin(handoff.origin);
-        deps.pins.unpin(handoff.hostname);
+        /**
+         * 조인은 됐지만 이 창이 그 콘솔을 보여 주지 못하게 됐다(실패, 또는 복귀·다른 선택에 밀림). 세션을 쥔 채 두면
+         * 상대 화면에 제어 커튼이 남는다. 같은 콘솔을 더 새 시도가 조인했다면 그 세션은 건드리지 않는다.
+         * 떠남 요청도 핀이 있어야 닿으므로, 핀은 그 요청이 끝난 뒤에 — 그사이 더 새 시도가 핀을 걸지 않았을 때만 — 푼다.
+         */
+        if (joined && joinOwners.get(handoff.origin) === attempt.generation) {
+          void leaveSession(handoff.origin).finally(() => {
+            if (pinOwners.get(handoff.hostname) === attempt.generation && policy.dataConsoleOrigin() !== handoff.origin) deps.pins.unpin(handoff.hostname);
+          });
+        } else {
+          deps.pins.unpin(handoff.hostname);
+        }
       }
       throw error;
     }
@@ -278,8 +296,12 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   }
 
   function endSession(origin: string): void {
-    if (!isRemoteConsoleOrigin(origin)) return;
-    void deps.remoteFetch(`${origin}${LEAVE_PATH}`, { method: "POST", headers: { Origin: origin }, redirect: "error", signal: AbortSignal.timeout(LEAVE_TIMEOUT_MS) })
+    void leaveSession(origin);
+  }
+
+  function leaveSession(origin: string): Promise<void> {
+    if (!isRemoteConsoleOrigin(origin)) return Promise.resolve();
+    return deps.remoteFetch(`${origin}${LEAVE_PATH}`, { method: "POST", headers: { Origin: origin }, redirect: "error", signal: AbortSignal.timeout(LEAVE_TIMEOUT_MS) })
       .then((response) => { if (response.status !== 204 && response.status !== 401 && response.status !== 404) deps.log?.(`remote leave refused status=${response.status}`); })
       .catch((error: unknown) => deps.log?.(`remote leave failed: ${error instanceof Error ? error.message : String(error)}`));
   }
