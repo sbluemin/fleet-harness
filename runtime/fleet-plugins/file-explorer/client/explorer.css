@@ -39,13 +39,8 @@
   padding: 6px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 믹스 아래 불투명 ink 언더레이. */
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep)),
-      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep))
-    ),
-    var(--ink-deep);
+  /* 떠 있는 표면은 글래스 없이 불투명 raised 면 — 도구 패널 한 문법. */
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-anchor);
 }
 
@@ -65,7 +60,7 @@
 }
 
 .fexp-context-menu-item:hover {
-  border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
+  border-color: var(--surface-rim-strong);
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
 }
 
@@ -91,12 +86,12 @@
   transform: translateX(-50%);
   border: 1px solid color-mix(in oklab, var(--brass) 36%, var(--surface-rim));
   border-radius: var(--radius-md);
+  /* 떠 있는 토스트는 글래스 없이 불투명 raised 면 — brass 틴트는 유지. */
   background:
     linear-gradient(
-      color-mix(in oklab, var(--brass) 12%, var(--surface-glass-strong)),
-      color-mix(in oklab, var(--brass) 12%, var(--surface-glass-strong))
-    ),
-    var(--ink-deep);
+      color-mix(in oklab, var(--brass) 12%, var(--surface-panel-raised)),
+      color-mix(in oklab, var(--brass) 12%, var(--surface-panel-raised))
+    );
   box-shadow: var(--shadow-anchor);
   color: var(--text-secondary);
   font-size: var(--t-sm);
@@ -385,7 +380,8 @@
   margin-top: 4px;
   padding: 5px 7px;
   border-left: 1px solid var(--aurora);
-  background: color-mix(in oklch, var(--ink-abyss) 46%, transparent);
+  /* 검색 미리보기 우물은 쉬는 컨트롤 면 — 중립 재질에 오로라 옆줄만. */
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
@@ -459,7 +455,7 @@
 
 .fexp-tree-row.is-cur {
   color: var(--brass-ink);
-  background: var(--surface-glass-strong);
+  background: color-mix(in oklch, var(--text-primary) 8%, transparent);
 }
 
 .fexp-tree-icon {
@@ -610,7 +606,7 @@
   align-items: center;
   min-height: 24px;
   padding: 3px 8px;
-  border: 1px dashed color-mix(in oklch, var(--ink-fog) 48%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--text-tertiary) 48%, transparent);
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -636,7 +632,7 @@
   align-items: center;
   justify-content: center;
   background: repeating-conic-gradient(
-    color-mix(in oklch, var(--ink-fog) 15%, transparent) 0% 25%,
+    color-mix(in oklch, var(--text-tertiary) 15%, transparent) 0% 25%,
     transparent 0% 50%
   ) 0 0 / 16px 16px;
   border-radius: var(--radius-xs);
@@ -689,8 +685,9 @@
 }
 
 .fexp-img-zoom button[aria-pressed="true"] {
-  background: var(--surface-glass-strong);
+  background: var(--surface-panel);
   color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
 }
 
 /* 이미지 메타는 본문 하단에 선다 — 코드 뷰어의 메타 바와 같은 표면 문법. */
@@ -778,7 +775,7 @@
 
 .fexp-refresh-btn:hover {
   color: var(--text-secondary);
-  background: var(--surface-glass-strong);
+  background: var(--control-rest-hover);
 }
 
 /* ═══ Quiet Explorer (2026-09-03) ════════════════════════════════════════════
@@ -910,7 +907,7 @@
 
 .fexp-more-btn:hover,
 .fexp-more-btn[aria-expanded="true"] {
-  background: var(--surface-glass-strong);
+  background: var(--control-rest-hover);
   color: var(--text-secondary);
 }
 
@@ -984,12 +981,12 @@
 
 .fexp-tree-viewport::before {
   top: 0;
-  background: linear-gradient(var(--glass-tint-panel), transparent);
+  background: linear-gradient(var(--surface-panel), transparent);
 }
 
 .fexp-tree-viewport::after {
   bottom: 0;
-  background: linear-gradient(transparent, var(--glass-tint-panel));
+  background: linear-gradient(transparent, var(--surface-panel));
 }
 
 .fexp-tree-viewport.is-scrolled:not(.has-sticky)::before,
@@ -1012,11 +1009,11 @@
 
 .fexp-tree-row.is-sticky {
   position: relative;
-  background: var(--glass-tint-panel);
+  background: var(--surface-panel);
 }
 
 .fexp-tree-row.is-sticky:hover {
-  background: var(--surface-glass-strong);
+  background: var(--control-rest-hover);
 }
 
 /* ── 행 ── */
@@ -1044,7 +1041,7 @@
 }
 
 .fexp-tree-row:hover {
-  background: var(--surface-glass);
+  background: var(--control-rest-hover);
 }
 
 /* 잉크 틴트 — 상태는 글자 배지가 아니라 이름의 색조로 읽는다. */
@@ -1116,8 +1113,7 @@
   height: 100%;
   padding-left: 18px;
   background:
-    linear-gradient(to right, transparent, var(--surface-glass) 18px),
-    linear-gradient(to right, transparent, var(--glass-tint-panel) 18px);
+    linear-gradient(to right, transparent, var(--surface-panel) 18px);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--duration-fast) var(--ease-glide);
@@ -1273,11 +1269,12 @@
 .fexp-skeleton-icon,
 .fexp-skeleton-bar {
   display: block;
+  /* 대기 골격은 쉬는 컨트롤 면에 텍스트 채널 물결 — 반투명 테마에서도 균일한 재질. */
   background: linear-gradient(
     90deg,
-    var(--surface-glass-strong) 0%,
-    color-mix(in oklch, var(--surface-glass-strong) 62%, var(--ink-fog)) 40%,
-    var(--surface-glass-strong) 80%
+    var(--control-rest) 0%,
+    color-mix(in oklch, var(--control-rest) 62%, var(--text-tertiary)) 40%,
+    var(--control-rest) 80%
   );
   background-size: 240% 100%;
   animation: fexp-shimmer 1.4s linear infinite;
@@ -1403,13 +1400,8 @@
   padding: 10px 12px 8px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 믹스 아래 불투명 ink 언더레이. */
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--surface-glass-strong) 90%, var(--ink-deep)),
-      color-mix(in oklch, var(--surface-glass-strong) 90%, var(--ink-deep))
-    ),
-    var(--ink-deep);
+  /* 떠 있는 훑어보기는 글래스 없이 불투명 raised 면 — 도구 패널 한 문법. */
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-anchor), 0 18px 40px -18px rgb(0 0 0 / 0.6);
   transform-origin: top left;
   animation: fexp-peek-in var(--duration-fast) var(--ease-spring);
@@ -1494,7 +1486,7 @@
   justify-content: center;
   padding: 6px 0;
   background: repeating-conic-gradient(
-    color-mix(in oklch, var(--ink-fog) 15%, transparent) 0% 25%,
+    color-mix(in oklch, var(--text-tertiary) 15%, transparent) 0% 25%,
     transparent 0% 50%
   ) 0 0 / 16px 16px;
   border-radius: var(--radius-xs);
@@ -1579,13 +1571,13 @@
 .fexp-tabs.is-overflowing::after {
   right: 0;
   margin-left: -28px;
-  background: linear-gradient(to right, transparent, var(--glass-tint-panel));
+  background: linear-gradient(to right, transparent, var(--surface-panel));
 }
 
 .fexp-tabs.is-scrolled::before {
   left: 0;
   margin-right: -28px;
-  background: linear-gradient(to right, var(--glass-tint-panel), transparent);
+  background: linear-gradient(to right, var(--surface-panel), transparent);
 }
 
 .fexp-tab {
@@ -1802,7 +1794,7 @@
   min-height: 32px;
   padding: 0 12px;
   border-bottom: 1px solid var(--surface-rim);
-  background: var(--surface-glass);
+  background: transparent;
 }
 
 .fexp-crumb-seg {
@@ -1904,7 +1896,7 @@
 
 .fexp-code-wrap::before {
   top: 0;
-  background: linear-gradient(var(--glass-tint-panel), transparent);
+  background: linear-gradient(var(--surface-panel), transparent);
 }
 
 /* 잘린 파일 배지가 위에 서면 페이드는 그 배지 아래에서 시작한다. */
@@ -1914,7 +1906,7 @@
 
 .fexp-code-wrap::after {
   bottom: 0;
-  background: linear-gradient(transparent, var(--glass-tint-panel));
+  background: linear-gradient(transparent, var(--surface-panel));
 }
 
 .fexp-code-wrap.is-scrolled::before,

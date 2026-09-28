@@ -74,7 +74,7 @@
 .repository-seam-pill {
   position: absolute;
   border-radius: 2px;
-  background: color-mix(in oklch, var(--ink-fog) 55%, transparent);
+  background: color-mix(in oklch, var(--text-tertiary) 55%, transparent);
   transition: background var(--duration-fast) var(--ease-glide), width var(--duration-fast) var(--ease-glide), height var(--duration-fast) var(--ease-glide);
   pointer-events: none;
 }
@@ -125,7 +125,7 @@
   min-width: 0;
   padding: 5px 8px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
+  background: transparent;
 }
 
 .repository-filter,
@@ -166,7 +166,7 @@
   gap: 6px;
   padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
+  background: transparent;
 }
 
 /* 메타 라벨은 계기판 어휘(mono·uppercase·광폭 자간)를 걷고 본문 서체의 낮은 목소리로 선다 —
@@ -300,7 +300,7 @@
 }
 
 .repository-section-head:hover {
-  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+  background: var(--control-rest-hover);
 }
 
 .repository-section-chevron {
@@ -335,7 +335,7 @@
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   color: var(--text-tertiary);
-  background: color-mix(in oklch, var(--ink-fog) 16%, transparent);
+  background: var(--control-rest);
   border-radius: var(--radius-pill);
   padding: 1px 8px;
   min-width: 20px;
@@ -372,13 +372,14 @@
 }
 
 .repository-file-row:hover {
-  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+  background: var(--control-rest-hover);
 }
 
-/* 선택은 중립 잉크 워시 + brass 스파인으로 되돌린다(2026-09-01 사용자 재가 — brass 필 선택은
-   행 전체가 위치색으로 물들어 과하다는 실기 판정). 라운드 행 기하는 유지한다. */
+/* 선택은 중립 워시 + brass 스파인으로 되돌린다(2026-09-01 사용자 재가 — brass 필 선택은
+   행 전체가 위치색으로 물들어 과하다는 실기 판정). 워시 성분만 --ink-fog → text-primary 8%로 치환.
+   라운드 행 기하는 유지한다. */
 .repository-file-row.is-cur {
-  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
+  background: color-mix(in oklch, var(--text-primary) 8%, transparent);
   box-shadow: inset 0 0 0 1px var(--surface-rim-strong);
 }
 
@@ -470,7 +471,7 @@
 }
 
 .repository-folder-row:hover {
-  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+  background: var(--control-rest-hover);
 }
 
 .repository-folder-chevron {
@@ -538,10 +539,8 @@
   padding: 0 10px;
   border-bottom: 1px solid var(--surface-rim);
   min-height: 46px;
-  /* 스티키 헤더는 스크롤 내용을 가려야 한다 — 스테이징 헤더와 같은 패널 채널을 소비한다(밴드 정합). */
-  background: var(--glass-tint-panel);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
+  /* 스티키 헤더는 스크롤 내용을 가려야 한다 — 호스트가 칠한 패널 면과 같은 채널을 소비한다. */
+  background: var(--surface-panel);
 }
 
 .repository-hunk-filename {
@@ -703,7 +702,7 @@
 
 /* ── @@ 요약 라벨 행 ── */
 .repository-line-hunk-label {
-  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
+  background: transparent;
 }
 
 .repository-line-label {
@@ -715,7 +714,7 @@
 
 /* ── 다중 파일 패치 파일 경계 행 ── */
 .repository-line-file-label {
-  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
+  background: transparent;
   border-top: 1px solid var(--surface-rim);
   border-bottom: 1px solid var(--surface-rim);
 }
@@ -808,11 +807,11 @@
 }
 
 .history-commit-row:hover {
-  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+  background: var(--control-rest-hover);
 }
 
 .history-commit-row.is-selected {
-  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
+  background: color-mix(in oklch, var(--text-primary) 8%, transparent);
   box-shadow: inset 0 0 0 1px var(--surface-rim-strong);
 }
 
@@ -854,7 +853,7 @@
    선다 — 2026-09-01 소프트 그래파이트 재가로 고알파 사각(82%/22%/bold)에서 저알파 캡슐
    (45%/14%/medium)로 낮췄다: 뱃지가 커밋 제목보다 큰 목소리를 내지 않게 하는 감쇠다. */
 .history-badge {
-  --badge-tone: var(--ink-fog);
+  --badge-tone: var(--text-tertiary);
   display: inline-flex;
   align-items: stretch;
   flex: none;
@@ -942,7 +941,7 @@
   flex: none;
   place-items: center;
   border-radius: 50%;
-  background: color-mix(in oklch, var(--ink-fog) 24%, var(--ink-veil));
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 8px;
@@ -1022,7 +1021,7 @@
   align-items: flex-start;
   gap: 8px;
   border-top: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
+  background: transparent;
 }
 
 .history-pagination-error {
@@ -1113,7 +1112,7 @@
 .history-author > span:nth-child(2) { display: grid; gap: 1px; }
 .history-author b { font-weight: var(--weight-medium); }.history-author small, .history-author time { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
 .history-author time { margin-left: auto; }
-.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: color-mix(in oklch, var(--ink-fog) 24%, var(--ink-veil)); color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
+.history-avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--control-rest); color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
 .history-inspector-ids, .history-ref-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 .history-sha-copy, .history-parent { border-radius: var(--radius-xs); background: var(--control-rest); cursor: pointer; font-family: var(--font-mono); font-size: var(--t-xs); padding: 3px 8px; }
 .history-sha-copy { border: 1px solid var(--surface-rim); color: var(--text-secondary); }.history-sha-copy span { color: var(--text-tertiary); margin-left: 7px; }.history-sha-copy.is-copied { border-color: var(--positive); color: var(--positive-ink); }
@@ -1245,12 +1244,8 @@
   padding: 6px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep)),
-      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep))
-    ),
-    var(--ink-deep);
+  /* 떠 있는 표면은 글래스 없이 불투명 raised 면 — 도구 패널 한 문법. */
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-anchor);
 }
 
@@ -1270,7 +1265,7 @@
 }
 
 .repository-context-menu-item:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
+  border-color: var(--surface-rim-strong);
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
 }
 
@@ -1430,7 +1425,7 @@
   padding: 0;
   border: 1px solid color-mix(in oklch, var(--aurora) 42%, transparent);
   border-radius: var(--radius-xs);
-  background: var(--ink-mid);
+  background: var(--control-rest);
   color: var(--aurora);
   cursor: pointer;
   font-family: var(--font-mono);
@@ -1444,7 +1439,7 @@
 .history-commit-row:hover .history-commit-time,
 .history-commit-row:focus-within .history-commit-time { visibility: hidden; }
 .history-row-compare:hover,
-.history-row-compare:focus-visible { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--ink-mid)); color: var(--text-primary); outline: none; }
+.history-row-compare:focus-visible { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--control-rest)); color: var(--text-primary); outline: none; }
 .history-commit-row.is-picked { background: color-mix(in oklch, var(--aurora) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--aurora) 55%, transparent); }
 .history-commit-row.is-picked .history-commit-sha { color: var(--aurora); }
 .repository-pin-chip { flex: none; border: 1px solid color-mix(in oklch, var(--aurora) 42%, transparent); border-radius: var(--radius-xs); color: var(--aurora); cursor: pointer; }
@@ -1485,12 +1480,12 @@
 }
 .repository-sync-toast.is-error {
   border-color: color-mix(in oklch, var(--coral) 45%, transparent);
-  background: color-mix(in oklch, var(--coral) 8%, var(--ink-deep));
+  background: color-mix(in oklch, var(--coral) 8%, transparent);
   color: var(--text-secondary);
 }
 .repository-sync-toast.is-success {
   border-color: color-mix(in oklch, var(--positive) 40%, transparent);
-  background: color-mix(in oklch, var(--positive) 7%, var(--ink-deep));
+  background: color-mix(in oklch, var(--positive) 7%, transparent);
   color: var(--text-secondary);
 }
 .repository-sync-toast button {
@@ -1511,7 +1506,8 @@
   transform: rotate(45deg);
   border-top: 1px solid var(--hairline-strong);
   border-left: 1px solid var(--hairline-strong);
-  background: var(--ink-veil);
+  /* 떠 있는 말풍선 본체와 같은 raised 면 — 꼬리가 따로 읽히지 않게 한다. */
+  background: var(--surface-panel-raised);
 }
 /* 동사 실패 문면은 한 마디가 아니라 조치를 담은 문장이라 한 뼘 넓게 서고, 테두리는 신호 채널을 쓴다 —
    같은 부품이지만 성공(중립)과 실패(coral)가 색으로 갈린다. */
@@ -1586,9 +1582,8 @@
   border-bottom: 1px solid var(--hairline);
   position: sticky;
   top: 0;
-  background: var(--glass-tint-panel);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
+  /* 스티키 섹션 머리는 스크롤 내용을 가려야 한다 — 호스트가 칠한 패널 면과 같은 채널. */
+  background: var(--surface-panel);
   z-index: 1;
 }
 .repository-staging-head i { font-style: normal; color: var(--text-tertiary); }
@@ -1609,7 +1604,7 @@
 /* 스테이징 행은 .repository-file-row와 같은 요소에 서므로(staging-view.tsx), 선택(.is-cur)을
    제외하지 않으면 같은 특이도의 후순위 hover가 brass 선택 필을 잉크로 덮는다 — 행 액션을
    쓰는 순간 선택 표시가 사라지는 회귀(Codex P2 재현 확인). */
-.repository-staging-row:hover:not(.is-cur) { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); }
+.repository-staging-row:hover:not(.is-cur) { background: var(--control-rest-hover); }
 .repository-staging-row-main {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) auto;
@@ -1653,7 +1648,8 @@
   flex: none;
   padding: 8px 10px 10px;
   border-top: 1px solid var(--hairline-strong);
-  background: var(--glass-tint-panel);
+  /* 커밋 상자는 목록과 구분되는 둘째 면 — 패널 88% + raised. */
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -1684,7 +1680,8 @@
   margin: 0;
   border: 1px solid var(--surface-rim-strong);
   border-radius: calc(var(--radius-xs) - 2px);
-  background: color-mix(in oklab, var(--ink-deep) 82%, transparent);
+  /* 체크 해제 칸은 쉬는 컨트롤 — 잉크 deep 필 대신 control-rest. */
+  background: var(--control-rest);
   transition:
     border-color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring),
@@ -1757,7 +1754,7 @@
   height: 32px;
   padding: 0 6px 0 0;
   border-top: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 4%, transparent);
+  background: transparent;
 }
 .repository-ws-peek-main {
   position: relative;
@@ -1775,7 +1772,7 @@
   text-align: left;
 }
 .repository-ws-peek-main > .repository-seam-pill { left: 50%; top: -1px; width: 36px; height: 3px; transform: translateX(-50%); }
-.repository-ws-peek-main:hover { color: var(--text-primary); background: color-mix(in oklch, var(--ink-fog) 8%, transparent); }
+.repository-ws-peek-main:hover { color: var(--text-primary); background: var(--control-rest-hover); }
 .repository-ws-peek-main:hover > .repository-seam-pill { background: var(--brass); }
 .repository-ws-peek-kind {
   flex: none;
@@ -1821,7 +1818,7 @@
   min-width: 0;
   padding: 0 6px 0 8px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 4%, transparent);
+  background: transparent;
   overflow: hidden;
 }
 .repository-dock-head:not(.is-collapsed) { height: 64px; flex-wrap: wrap; align-content: center; }
@@ -1885,13 +1882,13 @@
 .repository-dock-arm-hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .repository-dock-arm > .repository-dock-btn { margin-left: auto; }
 /* 무장 중 행 호버 — 클릭 한 번이 비교를 완성함을 ⇆ 단서로 미리 말한다. */
-.history-list.is-arming .history-commit-row:hover .history-row-compare { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--ink-mid)); }
+.history-list.is-arming .history-commit-row:hover .history-row-compare { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, var(--control-rest)); }
 /* 부모/자식 버튼 호버 미리보기 — 도착 행에 외곽선. 목록이 선택보다 먼저 목적지를 보여 준다. */
 .history-commit-row.is-previewed { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 65%, transparent); }
 .history-commit-row.is-selected.is-previewed { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 65%, transparent); }
 /* 독이 열릴 때 선택 행이 한 번 맥동한다 — "이 행이다". */
 .history-commit-row.is-arrived { animation: history-row-arrive 700ms var(--ease-glide); }
-@keyframes history-row-arrive { from { background: color-mix(in oklch, var(--brass) 26%, transparent); } to { background: color-mix(in oklch, var(--ink-fog) 12%, transparent); } }
+@keyframes history-row-arrive { from { background: color-mix(in oklch, var(--brass) 26%, transparent); } to { background: color-mix(in oklch, var(--text-primary) 8%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .history-commit-row.is-arrived { animation: none; } }
 @container (width < 700px) { .repository-dock-subject { display: none; } }
 @container (width < 560px) { .repository-dock-nav { display: none; } }
@@ -1952,7 +1949,8 @@
   padding: 10px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  /* 떠 있는 표면은 글래스 없이 불투명 raised 면 — 도구 패널 한 문법. */
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
 }
 .repository-stash-popover-label {
@@ -2054,7 +2052,7 @@
   transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
 }
 .repository-segmented button:hover:not([aria-selected="true"]) { color: var(--text-primary); }
-.repository-segmented button[aria-selected="true"] { background: var(--ink-veil); color: var(--text-primary); font-weight: var(--weight-medium); box-shadow: 0 1px 0 oklch(0% 0 0 / 25%); }
+.repository-segmented button[aria-selected="true"] { background: var(--surface-panel); color: var(--text-primary); font-weight: var(--weight-medium); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
 .repository-segmented button:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 .repository-source-count {
   display: inline-flex;
@@ -2064,7 +2062,7 @@
   height: 16px;
   padding: 0 5px;
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--ink-fog) 22%, transparent);
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -2085,7 +2083,7 @@
      않게 그만큼 비운다. 레일에서는 변수가 없어 0이다. */
   padding: 0 calc(8px + var(--expanded-surface-float-inset, 0px)) 0 8px;
   border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 5%, transparent);
+  background: transparent;
   flex: none;
 }
 .repository-source-tabs { flex: none; }
@@ -2183,7 +2181,8 @@
   right: 5px;
   bottom: 3px;
   height: 1px;
-  background: var(--ink-fog);
+  /* 진행 밑줄은 상태가 아니라 무채 텍스트 채널 — 신호 채널은 착지 ✓의 positive 하나다. */
+  background: var(--text-tertiary);
   opacity: .75;
 }
 
@@ -2273,7 +2272,8 @@
   padding: 4px 7px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xs);
-  background: var(--ink-veil);
+  /* 떠 있는 표면은 글래스 없이 불투명 raised 면 — 도구 패널 한 문법. */
+  background: var(--surface-panel-raised);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: var(--t-sm);
@@ -2323,7 +2323,8 @@
   padding: 4px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  background: linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)), var(--ink-deep);
+  /* 떠 있는 메뉴는 글래스 없이 불투명 raised 면 — 도구 패널 한 문법. */
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
 }
 .repository-verb-menu-item {
@@ -2365,7 +2366,7 @@
     padding: 0 4px;
     border-radius: 7px;
     background: var(--brass);
-    color: var(--ink-deep);
+    color: var(--text-on-brass);
     font-size: var(--t-2xs);
     font-weight: var(--weight-bold);
   }
@@ -2407,7 +2408,7 @@
   text-align: left;
   transition: background var(--duration-fast) var(--ease-glide);
 }
-.repository-context-trigger:hover:not(:disabled) { background: color-mix(in oklch, var(--ink-fog) 9%, transparent); }
+.repository-context-trigger:hover:not(:disabled) { background: var(--control-rest-hover); }
 .repository-context-trigger:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 .repository-context-trigger:disabled { cursor: default; }
 .repository-context-glyph { color: var(--text-secondary); }
@@ -2442,8 +2443,8 @@
   flex-direction: column;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  /* 반투명 테마 재질 아래 불투명 바탕을 깔아 뒤쪽 브랜치·커밋 텍스트를 차폐한다. */
-  background: linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)), var(--ink-deep);
+  /* 떠 있는 팝오버는 글래스 없이 불투명 raised 면 — 뒤쪽 브랜치·커밋 텍스트를 차폐한다. */
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
   overflow: hidden;
 }
@@ -2470,7 +2471,7 @@
   text-align: left;
   transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
 }
-.repository-ref-row:hover { background: color-mix(in oklch, var(--ink-fog) 10%, transparent); color: var(--text-primary); }
+.repository-ref-row:hover { background: var(--control-rest-hover); color: var(--text-primary); }
 .repository-ref-row:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 .repository-ref-row > .repository-icon { color: var(--text-tertiary); }
 .repository-ref-name { min-width: 0; overflow: hidden; color: var(--text-primary); font-weight: var(--weight-medium); text-overflow: ellipsis; white-space: nowrap; }
@@ -2490,7 +2491,7 @@
   height: 28px;
   padding: 0 6px 0 12px;
   border-top: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 4%, transparent);
+  background: transparent;
   color: var(--text-tertiary);
   font-size: var(--t-xs);
 }
@@ -2551,7 +2552,7 @@
 }
 .repository-ws-tree-row:hover:not(:disabled),
 .repository-ws-tree-row.is-branch:focus-within,
-.repository-ws-tree-row.is-tag:focus-within { background: color-mix(in oklch, var(--ink-fog) 10%, transparent); color: var(--text-primary); }
+.repository-ws-tree-row.is-tag:focus-within { background: var(--control-rest-hover); color: var(--text-primary); }
 .repository-ws-tree-row-main {
   display: flex;
   align-items: center;
@@ -2573,7 +2574,7 @@
 .repository-ws-tree-row > span,
 .repository-ws-tree-row-main > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 현재 체크아웃 = check + bold + 채움. 위치 채널(brass)은 글리프에만 칠한다. */
-.repository-ws-tree-row.is-current { background: color-mix(in oklch, var(--ink-fog) 14%, transparent); color: var(--text-primary); }
+.repository-ws-tree-row.is-current { background: color-mix(in oklch, var(--text-primary) 10%, transparent); color: var(--text-primary); }
 .repository-ws-tree-row.is-current > .repository-icon,
 .repository-ws-tree-row.is-current .repository-ws-tree-row-main > .repository-icon { color: var(--brass-ink); }
 .repository-ws-tree-row.is-current .repository-ws-tree-row-main > span,
@@ -2669,9 +2670,9 @@
   text-align: left;
   transition: background var(--duration-fast) var(--ease-glide);
 }
-.repository-ftree-row:hover { background: var(--surface-glass); }
+.repository-ftree-row:hover { background: var(--control-rest-hover); }
 .repository-ftree-row:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
-.repository-ftree-row.is-cur { color: var(--brass-ink); background: var(--surface-glass-strong); }
+.repository-ftree-row.is-cur { color: var(--brass-ink); background: color-mix(in oklch, var(--text-primary) 8%, transparent); }
 .repository-ftree-row.is-cur::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 0 2px 2px 0; background: var(--brass); }
 .repository-ftree-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid color-mix(in oklch, var(--hairline) 72%, transparent); pointer-events: none; }
 .repository-ftree-row:hover .repository-ftree-guide,
@@ -2687,7 +2688,7 @@
 .repository-ftree-row.is-added .repository-ftree-name { color: color-mix(in oklch, var(--positive-ink) 78%, var(--text-secondary)); }
 .repository-ftree-row.is-deleted .repository-ftree-name { color: color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary)); text-decoration: line-through; }
 .repository-ftree-row .repository-status-glyph { flex: none; width: 15px; height: 15px; font-size: var(--t-2xs); }
-.repository-ftree-count { flex: none; min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink-fog) 22%, transparent); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); display: inline-flex; align-items: center; justify-content: center; }
+.repository-ftree-count { flex: none; min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--control-rest); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); display: inline-flex; align-items: center; justify-content: center; }
 .repository-ftree-note { height: 28px; display: flex; align-items: center; color: var(--text-tertiary); font-size: var(--t-sm); }
 .repository-ftree-note.is-error { color: var(--coral-ink); }
 /* 커밋 시점 파일 내용 — diff 표와 같은 기하에 줄 번호 한 열만 둔다. */
@@ -2707,7 +2708,8 @@
   padding: 6px 6px 6px 12px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xs);
-  background: var(--ink-veil);
+  /* 떠 있는 표면은 글래스 없이 불투명 raised 면 — 도구 패널 한 문법. */
+  background: var(--surface-panel-raised);
   color: var(--text-primary);
   box-shadow: var(--shadow-floating);
   font-size: var(--t-sm);
@@ -2765,7 +2767,7 @@
 .repository-unified .repository-filter-input, .repository-unified .history-filter-input { border-radius: 3px; font-size: var(--t-xs); }
 .repository-unified .repository-staging-row.is-cur, .repository-unified .repository-file-row.is-cur { background: var(--repository-selection); box-shadow: inset 0 0 0 1px var(--surface-rim-strong); border-radius: var(--radius-xs); }
 .repository-unified .repository-stage-action { border-radius: var(--radius-xs); padding: 4px 6px; }
-.repository-unified .repository-staging-head { color: var(--text-secondary); font-weight: var(--weight-medium); background: var(--surface-panel); backdrop-filter: none; }
+.repository-unified .repository-staging-head { color: var(--text-secondary); font-weight: var(--weight-medium); background: var(--surface-panel); }
 .repository-unified .repository-staging-section { flex: 1 0 auto; min-height: 120px; }
 .repository-unified .repository-staging-viewbar { flex: none; }
 .repository-unified .repository-dock-head { background: transparent; }
