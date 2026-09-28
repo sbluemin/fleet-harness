@@ -750,8 +750,8 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-note { margin: 0 14px 6px 52px; padding: 6px 10px; border: 1px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--aurora) 8%, transparent); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; }
 .objectives-member-note.is-error { border-color: color-mix(in oklch, var(--coral) 35%, transparent); background: color-mix(in oklch, var(--coral) 8%, transparent); }
 .objectives-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-.objectives-member-status.is-running { color: var(--warn); }
-.objectives-member-status.is-background { color: color-mix(in oklch, var(--warn) 70%, var(--text-tertiary)); }
+.objectives-member-status.is-running { color: var(--warn-ink); }
+.objectives-member-status.is-background { color: color-mix(in oklch, var(--warn-ink) 70%, var(--text-tertiary)); }
 .objectives-member-status.is-idle { color: var(--positive); }
 .objectives-member-status.is-awaiting { color: var(--aurora); }
 /* 지난 역할 — 명단 아래. 이 Theater 의 다른 목표에서 쓰인 역할과 그 사실. 구성원 줄보다 한 단계 낮은 무게로, 표식은 정체성 톤 대신 무채색. */
