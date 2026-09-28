@@ -322,9 +322,7 @@
   pointer-events: none;
 }
 .zen-sidebar-chrome { display: contents; }
-/* Map은 Zen에서도 접힌 버튼으로 남는다(펼침은 Zen 한 회짜리 — canvas-minimap.tsx). 코너 독이 작업 표시줄을 비켜 선다.
-   함대 지도 판이 서 있는 동안에는 판이 곧 지도라 버튼도 걷는다 — 판이 버튼을 덮어 눌리지 않는 버튼만 남는다. */
-.console-shell.is-zen .operations-canvas.is-fleet-map .canvas-minimap-fab,
+/* Map은 Zen에서도 접힌 버튼으로 남는다(펼침은 Zen 한 회짜리 — canvas-minimap.tsx). 코너 독이 작업 표시줄을 비켜 선다. */
 .console-shell.is-zen .canvas-shortcuts { display: none; }
 /* Zen의 도구 패널 카드와 좌측 사이드바는 작업 표시줄을 덮지 않는다. */
 .console-shell.is-zen .right-rail,
