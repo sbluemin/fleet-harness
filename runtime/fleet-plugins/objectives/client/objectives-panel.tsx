@@ -202,6 +202,8 @@ function inScope(objective: Objective, list: ListId, dueFilter: DueFilter): bool
   // 지우거나 합친 목표는 「정리됨」에만 선다.
   if (list === "tidied") return !!objective.removed;
   if (objective.removed) return false;
+  // 결정 요청은 범위와 무관하게 맨 위 「결정 요청」 구획에 선다 — 사람의 답을 기다리는 목표가 범위 낱말 때문에 목록에서 사라지지 않게.
+  if (list !== "outside" && objective.enlisted && hasDecisionRequest(objective)) return true;
   if (list === "today") return objective.today;
   if (list === "due") return !!objective.dueDate && (dueFilter === "all" || dueBucket(objective.dueDate) === dueFilter);
   if (list === "agent") return !!objective.addedBy && objective.enlisted;
