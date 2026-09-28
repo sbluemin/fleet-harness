@@ -2068,7 +2068,7 @@
   gap: 7px;
   margin: 0;
   padding: var(--space-2) var(--space-2) 4px;
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
@@ -2133,7 +2133,7 @@
 }
 
 .agent-chat-deck-row.is-active .agent-chat-deck-name {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .agent-chat-deck-glyph {
@@ -2142,7 +2142,7 @@
   place-items: center;
   width: 18px;
   height: 18px;
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-body);
   font-size: var(--t-sm);
   line-height: 1;
@@ -2263,7 +2263,7 @@
   border-radius: 3px;
   background: color-mix(in oklch, var(--brass) 15%, transparent);
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 26%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .agent-chat-composer-ultracode-token {
@@ -3442,7 +3442,7 @@
 }
 
 .agent-chat-detail-back:hover {
-  color: var(--brass);
+  color: var(--brass-ink);
   /* 위 덱 힌트와 같은 결함이었다: brass×중립을 oklch로 섞으면 색상 호가 정해지지 않아
      carbon에서 보라(hue 320)로 풀린다(실측). 같은 자리에 같은 규율을 둔다. */
   border-color: color-mix(in oklab, var(--brass) 40%, var(--hairline));

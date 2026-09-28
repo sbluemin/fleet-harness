@@ -154,6 +154,8 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".agent-chat-fold-chev",
 ] as const;
 const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
+// color 값 안의 정확한 base brass. --brass-ink·--brass-glow·--brass-bright는 닫는 괄호가 바로 오지 않아 빠진다.
+const TEXT_BASE_BRASS = /var\(\s*--brass\s*\)/;
 const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   // Canvas injects each frame's identity accent through TSX inline styles.
@@ -1142,6 +1144,23 @@ describe("Instrument core design contract", () => {
         // Mode instrument chrome has host-approved literal brass/fog blends; adjacent CSS doctrine
         // comments distinguish these decorative labels from semantic body-copy color.
         if (selector.includes(".canvas-mode-title-kicker")) continue;
+        const line = lineAt(css, declaration.index);
+        violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // 글자 color의 brass는 ink 티어다. base --brass는 배경·테두리·도트·비콘 전용이고, 다크 3종은
+  // 별칭이라 같아 보이지만 Whites만 L 45%로 갈라진다. color 선언(color-mix 포함)에 base를 쓰면
+  // 라이트 대비가 그 자리에서 무너지는데, 다크 화면과 기존 원료 잉크 스캔은 이것을 못 본다.
+  it("keeps brass text color on the ink tier", () => {
+    const violations: string[] = [];
+    for (const file of listProductCssFiles()) {
+      const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const masked = maskCssCommentsAndStrings(css);
+      for (const declaration of cssDeclarations(masked, "color")) {
+        if (!TEXT_BASE_BRASS.test(declaration.value)) continue;
         const line = lineAt(css, declaration.index);
         violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
       }
@@ -4283,7 +4302,7 @@ describe("Effort track interaction grammar", () => {
     expect(components).toMatch(
       /\.quick-launch-command-row\[data-effort-level\]:not\(\.is-active\) \.quick-launch-mention-name \{\s*color: var\(--effort-tone\);/,
     );
-    expect(components).toMatch(/\.quick-launch-mention-row\.is-active \.quick-launch-mention-name \{\s*color: var\(--brass\);/);
+    expect(components).toMatch(/\.quick-launch-mention-row\.is-active \.quick-launch-mention-name \{\s*color: var\(--brass-ink\);/);
 
     // 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다 — 트랙의 파선 어휘를 공유한다.
     expect(components).toMatch(

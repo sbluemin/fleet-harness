@@ -112,7 +112,7 @@
 }
 .repository-seam--horizontal > .repository-seam-readout { right: 12px; top: -30px; }
 .repository-seam--vertical > .repository-seam-readout { left: 10px; top: 8px; }
-.repository-seam-readout em { font-style: normal; color: var(--brass); margin-left: 6px; }
+.repository-seam-readout em { font-style: normal; color: var(--brass-ink); margin-left: 6px; }
 .repository-seam-readout.is-limit { color: var(--coral-ink); }
 @media (prefers-reduced-motion: reduce) { .repository-seam, .repository-seam-pill { transition-duration: .01ms; } }
 
@@ -2621,7 +2621,7 @@
 /* ── 독 헤더 — 세그먼트 + 조용한 버튼만 ── */
 .repository-dock-tabs { align-self: center; }
 .repository-dock-tabs .repository-source-count { margin-left: -2px; }
-.repository-dock-mark { flex: none; color: var(--brass); }
+.repository-dock-mark { flex: none; color: var(--brass-ink); }
 .repository-dock-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--brass); }
 .repository-dock-btn {
   display: inline-flex;

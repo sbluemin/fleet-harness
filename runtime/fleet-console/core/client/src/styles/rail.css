@@ -460,7 +460,7 @@
 .pane-caption-control:hover,
 .pane-caption-control:focus-visible {
   background: var(--control-hover-fill);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .pane-caption-control:focus-visible {

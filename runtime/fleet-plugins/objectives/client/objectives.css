@@ -47,8 +47,8 @@
   color: var(--text-tertiary);
   cursor: pointer;
 }
-.objectives-place-button:hover { color: var(--brass); }
-.objectives-place-button:focus-visible { color: var(--brass); outline: 1px solid var(--brass); outline-offset: 1px; }
+.objectives-place-button:hover { color: var(--brass-ink); }
+.objectives-place-button:focus-visible { color: var(--brass-ink); outline: 1px solid var(--brass); outline-offset: 1px; }
 
 /* ── 항목 열 ── */
 .objectives-main {
@@ -76,16 +76,16 @@
 /* 「목표 밖」은 목표가 아닌 세션의 자리 — 가는 세로 선 하나로 앞 낱말들과 떼어 둔다(상자·채움 없음). */
 .objectives-scope-word.is-sep::before { content: ""; position: absolute; left: calc(var(--scope-gap) / -2 - 0.5px); top: 50%; width: 1px; height: 11px; margin-top: -7px; background: var(--hairline-strong); }
 /* 세션이 구상·개시로 목표가 되면 「모두」가 잠깐 밝아져 그 줄이 간 곳을 가리킨다. */
-.objectives-scope-word.is-flash { color: var(--brass); }
+.objectives-scope-word.is-flash { color: var(--brass-ink); }
 .objectives-scope-word { position: relative; display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 0 6px; border: 0; background: none; font: inherit; font-size: var(--t-md); color: var(--text-tertiary); cursor: pointer; white-space: nowrap; transition: color var(--duration-fast); }
 .objectives-scope-word::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1.5px; border-radius: 1px; background: currentColor; transform: scaleX(0); transform-origin: left; transition: transform var(--duration-fast); }
 .objectives-scope-word:hover { color: var(--text-secondary); }
 .objectives-scope-word[aria-selected="true"] { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-scope-word[aria-selected="true"]::after { transform: scaleX(1); }
 /* 키보드 초점도 상자 없이 — 황동 글자와 밑줄로 자리를 말한다. */
-.objectives-scope-word:focus-visible { outline: none; color: var(--brass); }
+.objectives-scope-word:focus-visible { outline: none; color: var(--brass-ink); }
 .objectives-scope-word:focus-visible::after { transform: scaleX(1); background: var(--brass); }
-.objectives-scope-word.is-drop { color: var(--brass); }
+.objectives-scope-word.is-drop { color: var(--brass-ink); }
 .objectives-scope-word.is-drop::after { transform: scaleX(1); background: var(--brass); }
 .objectives-scope-glyph { font-size: var(--t-xs); opacity: 0.75; }
 .objectives-scope-word .objectives-count { font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: normal; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
@@ -95,7 +95,7 @@
 .objectives-chip { border: 0; padding: 0 0 2px; font: inherit; font-size: var(--t-xs); color: var(--text-tertiary); background: none; cursor: pointer; transition: color var(--duration-fast); }
 .objectives-chip:hover { color: var(--text-secondary); }
 .objectives-chip[aria-pressed="true"] { color: var(--text-primary); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
-.objectives-chip:focus-visible { outline: none; color: var(--brass); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.objectives-chip:focus-visible { outline: none; color: var(--brass-ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
 .objectives-section { display: flex; flex-direction: column; gap: 5px; border-radius: var(--radius-xs); transition: background-color var(--duration-fast), box-shadow var(--duration-fast); }
 /* 다른 그룹 구획 위로 카드를 끌면 그 구획이 놓을 자리가 된다(끄는 동안만 보이는 되먹임). */
 .objectives-section.is-drop { background: color-mix(in oklch, var(--brass) 8%, transparent); box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 45%, transparent); }
@@ -103,8 +103,8 @@
 /* 구획 머리의 「+ 추가」 — 올리거나 초점이 들어올 때만 글자로 선다. 누르면 아래 입력줄의 대상이 그 그룹이 된다. */
 .objectives-section-add { border: 0; background: none; padding: 2px 4px; font: inherit; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); cursor: pointer; opacity: 0; transition: opacity var(--duration-fast), color var(--duration-fast); }
 .objectives-section-row:hover .objectives-section-add, .objectives-section-add:focus-visible { opacity: 1; }
-.objectives-section-add:hover { color: var(--brass); }
-.objectives-section-add:focus-visible { outline: none; color: var(--brass); text-decoration: underline; text-underline-offset: 3px; }
+.objectives-section-add:hover { color: var(--brass-ink); }
+.objectives-section-add:focus-visible { outline: none; color: var(--brass-ink); text-decoration: underline; text-underline-offset: 3px; }
 .objectives-section-empty { padding: 2px 10px 4px 26px; font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-section + .objectives-section { margin-top: 10px; }
 /* 구획 머리는 접이식 낱말 — 상자·채움 없이 셰브런이 펼침을 말하고, 「완료됨」은 맨 아래 접힌 채 선다.
@@ -125,7 +125,7 @@
 .objectives-zone-hd::after { content: ""; flex: 1; height: 1px; margin-left: 4px; background: var(--hairline); }
 .objectives-zone-hd:hover { color: var(--text-primary); }
 .objectives-zone-hd:hover .objectives-section-chev { color: var(--text-secondary); }
-.objectives-zone-hd:focus-visible { outline: none; color: var(--brass); }
+.objectives-zone-hd:focus-visible { outline: none; color: var(--brass-ink); }
 .objectives-zone-hd:focus-visible .objectives-section-name { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .objectives-zone-hd[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
 .objectives-zone-hd .objectives-count { color: var(--text-tertiary); }
@@ -277,12 +277,12 @@
   padding: 6px 10px;
 }
 .objectives-add input { flex: 1; background: transparent; border: 0; color: var(--text-primary); font: inherit; outline: none; min-width: 0; }
-.objectives-add .objectives-plus { color: var(--brass); font-size: var(--t-lg); line-height: 1; }
+.objectives-add .objectives-plus { color: var(--brass-ink); font-size: var(--t-lg); line-height: 1; }
 .objectives-add-target { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); white-space: nowrap; }
 .objectives-add-target .objectives-swatch { width: 7px; height: 7px; border-radius: 50%; }
 .objectives-add-target-clear { border: 0; background: none; padding: 0 2px; font: inherit; color: var(--text-tertiary); cursor: pointer; }
 .objectives-add-target-clear:hover { color: var(--text-primary); }
-.objectives-add-target-clear:focus-visible { outline: none; color: var(--brass); }
+.objectives-add-target-clear:focus-visible { outline: none; color: var(--brass-ink); }
 .objectives-add:focus-within { border-color: var(--brass); }
 /* 한 열에서 추가한 뒤 — 상세를 덮어 열지 않고 「추가됨 · 열기」가 입력줄에 선다. */
 .objectives-add-added { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); white-space: nowrap; }
@@ -292,7 +292,7 @@
 .objectives-view-picker { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: var(--radius-xs); background: var(--control-rest); }
 .objectives-view-picker button { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; }
 .objectives-view-picker button[aria-checked="true"] { background: var(--surface-panel); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
-.objectives-view-picker button[aria-checked="true"] svg { color: var(--brass); }
+.objectives-view-picker button[aria-checked="true"] svg { color: var(--brass-ink); }
 .objectives-view-picker button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-view-picker svg, .objectives-launch-view svg { width: 12px; height: 12px; flex: none; }
 .objectives-launch-view { display: inline-flex; align-items: center; gap: 4px; color: var(--text-tertiary); white-space: nowrap; }
@@ -332,7 +332,7 @@
   padding: 0;
   flex: none;
 }
-.objectives-glyph:hover { color: var(--brass); border-color: var(--hairline-strong); }
+.objectives-glyph:hover { color: var(--brass-ink); border-color: var(--hairline-strong); }
 .objectives-glyph:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-glyph svg { width: 14px; height: 14px; }
 
@@ -393,12 +393,12 @@ button.objectives-row:hover, .objectives-row:has(> button.objectives-row-main:ho
 button.objectives-row:focus-visible, .objectives-row-main:focus-visible, .objectives-row-x:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row.is-on { color: var(--text-primary); }
-.objectives-row.is-on .objectives-row-ic { color: var(--brass); }
+.objectives-row.is-on .objectives-row-ic { color: var(--brass-ink); }
 .objectives-row.is-overdue .objectives-row-lab { color: var(--coral); }
 .objectives-row-main { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; min-height: 44px; margin: 0 -20px 0 -22px; padding: 0 20px 0 22px; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .objectives-row-ic { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; color: var(--text-tertiary); }
 .objectives-row-ic svg { width: 17px; height: 17px; }
-.objectives-row-ic.objectives-plus { color: var(--brass); font-size: var(--t-xl); line-height: 1; }
+.objectives-row-ic.objectives-plus { color: var(--brass-ink); font-size: var(--t-xl); line-height: 1; }
 .objectives-row-lab { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
 .objectives-row-sub { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; }
@@ -417,7 +417,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-row-x:hover { color: var(--coral); background: var(--control-rest); }
 .objectives-row.is-static { cursor: default; }
 .objectives-row.is-static .objectives-row-lab .objectives-op { max-width: 200px; }
-.objectives-mode { font-size: var(--t-xs); color: var(--brass); font-weight: var(--weight-medium); }
+.objectives-mode { font-size: var(--t-xs); color: var(--brass-ink); font-weight: var(--weight-medium); }
 .objectives-date-hidden-unused { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
 
 /* 임무 — 36px 행, 도구는 오른쪽에 낮게 상주하고 올리면 밝아진다(MS 의 「…」 자리) */
@@ -439,13 +439,13 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-mission-sub.is-awaiting i { background: var(--warn); }
 .objectives-mission-sub.is-idle i, .objectives-mission-sub.is-ended i, .objectives-mission-sub.is-closed i, .objectives-mission-sub.is-unknown i { background: var(--text-tertiary); }
 .objectives-mission-sub.is-background i { background: var(--aurora); }
-.objectives-mission-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary)); }
+.objectives-mission-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklch, var(--brass-ink) 80%, var(--text-secondary)); }
 /* 임무 기록 — 상자·배경 없이 임무 글자 선(22 + 확인 16 + 간격 12 = 50px)에서 펼쳐진다. */
 .objectives-records-count { flex: none; margin-top: 6px; min-height: 18px; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
 .objectives-records-count svg { width: 12px; height: 12px; }
 .objectives-records-count i { width: 5px; height: 5px; border-radius: 50%; background: var(--brass); }
 .objectives-records-count:hover { background: var(--control-rest); color: var(--text-secondary); }
-.objectives-records-count.is-unseen { color: var(--brass); border-color: color-mix(in oklch, var(--brass) 45%, transparent); }
+.objectives-records-count.is-unseen { color: var(--brass-ink); border-color: color-mix(in oklch, var(--brass) 45%, transparent); }
 .objectives-records-count[aria-expanded="true"] { background: transparent; color: var(--text-primary); }
 .objectives-records-count:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-mission.is-expanded .objectives-mission-text { color: var(--text-secondary); }
@@ -455,7 +455,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-record { font-size: var(--t-sm); line-height: 1.5; overflow-wrap: anywhere; }
 .objectives-record-meta { display: flex; gap: 6px; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); }
 .objectives-record-meta .is-redone { color: var(--aurora); }
-.objectives-record-meta .is-new { color: var(--brass); }
+.objectives-record-meta .is-new { color: var(--brass-ink); }
 .objectives-record-head { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-record-line { color: var(--text-secondary); }
 .objectives-mission-sub b::before { content: "·"; margin-right: 6px; color: var(--text-tertiary); font-weight: normal; }
@@ -479,7 +479,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-row.objectives-mission-add { min-height: 40px; }
 .objectives-row.objectives-mission-add::before { display: none; }
 .objectives-mission-add input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 0; outline: none; }
-.objectives-mission-add input::placeholder { color: var(--brass); opacity: 0.9; }
+.objectives-mission-add input::placeholder { color: var(--brass-ink); opacity: 0.9; }
 .objectives-mission-add:focus-within input::placeholder { color: var(--text-tertiary); }
 
 /* 지휘관 컨트롤 — 행 아래의 보조 줄 */
@@ -502,11 +502,11 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-start:hover:not(:disabled) { border-color: var(--brass); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 24%, transparent), color-mix(in oklch, var(--brass) 10%, transparent)); }
 .objectives-start:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-start:disabled { opacity: 0.5; cursor: default; }
-.objectives-start-word { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--weight-bold); font-size: var(--t-base); color: var(--brass); letter-spacing: -0.01em; }
+.objectives-start-word { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--weight-bold); font-size: var(--t-base); color: var(--brass-ink); letter-spacing: -0.01em; }
 .objectives-start-word svg { width: 12px; height: 12px; }
 .objectives-start-sub { display: flex; align-items: baseline; min-width: 0; font-size: var(--t-xs); color: var(--text-secondary); overflow: hidden; white-space: nowrap; }
 .objectives-start-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.objectives-start-arrow { color: var(--brass); font-size: var(--t-base); }
+.objectives-start-arrow { color: var(--brass-ink); font-size: var(--t-base); }
 .objectives-start.is-stop { border-color: color-mix(in oklch, var(--coral) 40%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--coral) 12%, transparent), color-mix(in oklch, var(--coral) 4%, transparent)); }
 .objectives-start.is-stop:hover { border-color: var(--coral); }
 .objectives-start.is-stop .objectives-start-word { color: var(--coral); }
@@ -536,7 +536,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-split.is-review .objectives-start:hover:not(:disabled) { background: color-mix(in oklch, var(--aurora) 8%, transparent); }
 .objectives-split-goto { display: grid; place-items: center; border: 0; border-left: 1px solid color-mix(in oklch, var(--brass) 26%, transparent); background: transparent; color: var(--text-tertiary); cursor: pointer; padding: 0; }
 .objectives-split-goto svg { width: 14px; height: 14px; }
-.objectives-split-goto:hover { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); }
+.objectives-split-goto:hover { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .objectives-split-goto:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 .objectives-split.is-stop .objectives-split-goto { border-left-color: color-mix(in oklch, var(--coral) 26%, transparent); }
 .objectives-split.is-stop .objectives-split-goto:hover { color: var(--coral); background: color-mix(in oklch, var(--coral) 12%, transparent); }
@@ -551,7 +551,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-split-tools > .objectives-split-goto + .objectives-split-goto { box-shadow: inset 1px 0 0 color-mix(in oklch, var(--brass) 10%, transparent); }
 .objectives-split.is-stop .objectives-split-tools > .objectives-split-goto + .objectives-split-goto { box-shadow: inset 1px 0 0 color-mix(in oklch, var(--coral) 10%, transparent); }
 .objectives-split.is-review .objectives-split-tools > .objectives-split-goto + .objectives-split-goto { box-shadow: inset 1px 0 0 color-mix(in oklch, var(--aurora) 10%, transparent); }
-.objectives-split-compact.is-armed, .objectives-split-compact.is-done { color: var(--brass); }
+.objectives-split-compact.is-armed, .objectives-split-compact.is-done { color: var(--brass-ink); }
 .objectives-split-compact.is-armed { background: color-mix(in oklch, var(--brass) 16%, transparent); }
 .objectives-split.is-stop .objectives-split-compact.is-armed, .objectives-split.is-stop .objectives-split-compact.is-done { color: var(--coral); }
 .objectives-split.is-stop .objectives-split-compact.is-armed { background: color-mix(in oklch, var(--coral) 16%, transparent); }
@@ -561,7 +561,7 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-split .objectives-split-compact.is-locked:hover { color: var(--text-tertiary); background: transparent; }
 .objectives-comp-compact { border-color: transparent; }
 .objectives-comp-compact svg { width: 14px; height: 14px; }
-.objectives-comp-compact.is-armed, .objectives-comp-compact.is-done { color: var(--brass); }
+.objectives-comp-compact.is-armed, .objectives-comp-compact.is-done { color: var(--brass-ink); }
 .objectives-comp-compact.is-armed { background: color-mix(in oklch, var(--brass) 16%, transparent); }
 .objectives-comp.is-stop .objectives-comp-compact.is-armed, .objectives-comp.is-stop .objectives-comp-compact.is-done { color: var(--coral); }
 .objectives-comp.is-stop .objectives-comp-compact.is-armed { background: color-mix(in oklch, var(--coral) 16%, transparent); }
@@ -634,7 +634,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-launch-provider svg { width: 14px; height: 14px; }
 .objectives-launch-model { color: var(--text-primary); }
 .objectives-launch-dot { color: var(--text-tertiary); }
-.objectives-launch-effort { color: var(--brass); text-transform: uppercase; }
+.objectives-launch-effort { color: var(--brass-ink); text-transform: uppercase; }
 .objectives-launch-caret { color: var(--text-tertiary); line-height: 1; margin-top: -3px; }
 .objectives-menu {
   position: fixed;
@@ -658,14 +658,14 @@ span.objectives-row-main { cursor: default; }
 .objectives-menu-item:hover, .objectives-menu-item:focus-visible { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 12%, transparent); outline: none; }
 .objectives-menu-item.is-active { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 8%, transparent); }
 .objectives-menu-surface { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--text-tertiary); border-radius: var(--radius-xs); }
-.objectives-menu-surface:hover { color: var(--brass); background: color-mix(in oklch, var(--brass) 14%, transparent); }
+.objectives-menu-surface:hover { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 14%, transparent); }
 .objectives-menu-surface svg { width: 13px; height: 13px; }
 .objectives-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-menu-gauge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 3px 2px 5px; border: 1px solid transparent; border-radius: var(--radius-pill); color: var(--text-tertiary); }
 .objectives-menu-item.is-active .objectives-menu-gauge { border-color: color-mix(in oklch, var(--brass) 30%, transparent); }
 .objectives-menu-gauge svg { width: 14px; height: 10px; }
 .objectives-menu-effort { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
-.objectives-menu-item.is-active .objectives-menu-effort, .objectives-menu-back .objectives-menu-effort { color: var(--brass); }
+.objectives-menu-item.is-active .objectives-menu-effort, .objectives-menu-back .objectives-menu-effort { color: var(--brass-ink); }
 .objectives-menu-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); }
 .objectives-menu-chev svg { width: 10px; height: 10px; }
 /* 2단계 머리 — ‹ 는 왼쪽에 두고, 글리프와 모델명은 가운데로 모은다. 강도 낱말은 아래 트랙이 말하므로 여기 두지 않는다. */
@@ -683,7 +683,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-menu-provider.is-antigravity, .objectives-launch-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .objectives-menu-track { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px var(--space-2) 10px; }
 .objectives-menu-track .effort-track-value { display: none; }
-.objectives-menu-effort-word { font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass); }
+.objectives-menu-effort-word { font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--brass-ink); }
 .objectives-menu-divider { height: 1px; margin: var(--space-1) var(--space-1); background: var(--surface-rim); }
 .objectives-menu-empty { padding: 6px var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
 
@@ -759,18 +759,18 @@ span.objectives-row-main { cursor: default; }
 .objectives-past-row:hover .objectives-past-actions, .objectives-past-row:focus-within .objectives-past-actions { opacity: 1; }
 .objectives-past-foot { display: flex; gap: 14px; padding: 4px 14px 2px 52px; }
 .objectives-past-link { padding: 0; border: 0; background: transparent; color: var(--text-tertiary); font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); cursor: pointer; }
-.objectives-past-link:hover, .objectives-past-link:focus-visible { color: var(--brass); outline: none; }
+.objectives-past-link:hover, .objectives-past-link:focus-visible { color: var(--brass-ink); outline: none; }
 .objectives-assign-new input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-body); }
 .objectives-assign-new input:focus { outline: none; border-color: var(--brass); }
 .objectives-mission-sub .objectives-member-mark, .objectives-assign-menu .objectives-member-mark { width: 16px; height: 16px; font-size: var(--t-2xs); }
 .objectives-mission-member-name { color: var(--text-secondary); font-family: var(--font-body); font-weight: var(--weight-medium); }
 /* 지휘관 표식 — 구성원이 쓰지 않는 brass 는 지휘관 행 아이콘·그래프 뿌리 노드와 같은 지휘관의 색이다. 둥근 원이 각진 구성원 칸과 모양으로도 가른다. */
-.objectives-member-mark.is-commander { --member-tone: var(--brass); border-radius: 50%; }
+.objectives-member-mark.is-commander { --member-tone: var(--brass); border-radius: 50%; color: var(--brass-ink); }
 .objectives-member-mark.is-commander svg { width: 10px; height: 10px; }
-.objectives-mission-member-name.is-commander, .objectives-menu-label.is-commander { color: color-mix(in oklch, var(--brass) 85%, var(--text-primary)); }
+.objectives-mission-member-name.is-commander, .objectives-menu-label.is-commander { color: color-mix(in oklch, var(--brass-ink) 85%, var(--text-primary)); }
 .objectives-assign-caption { color: var(--text-tertiary); }
 .objectives-assign-model { flex: none; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
-.objectives-assign-create { color: var(--brass); }
+.objectives-assign-create { color: var(--brass-ink); }
 .objectives-assign-new { display: grid; gap: 5px; padding: 5px; }
 .objectives-assign-new span { color: var(--text-tertiary); font: var(--weight-regular) var(--t-2xs)/1.4 var(--font-mono); }
 
@@ -779,7 +779,7 @@ span.objectives-row-main { cursor: default; }
 /* 긴 모델명은 줄임표로 접는다 — 글리프·강도는 자리를 지킨다. 풀네임은 title. */
 .objectives-objective-launch > .objectives-objective-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-objective-launch > b, .objectives-objective-launch > .objectives-objective-planned { flex: none; }
-.objectives-objective-launch b { font-weight: var(--weight-medium); color: color-mix(in oklch, var(--brass) 80%, var(--text-secondary)); text-transform: uppercase; }
+.objectives-objective-launch b { font-weight: var(--weight-medium); color: color-mix(in oklch, var(--brass-ink) 80%, var(--text-secondary)); text-transform: uppercase; }
 /* 시작 전 목표의 예정 설정 — 기본과 다를 때만, 「예정」 낱말과 함께 흐리게. */
 .objectives-objective-launch.is-planned { gap: 4px; font-family: var(--font-body); font-size: var(--t-xs); letter-spacing: 0; }
 .objectives-objective-launch.is-planned > .objectives-objective-model, .objectives-objective-launch.is-planned b { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.04em; font-weight: var(--weight-regular); color: var(--text-tertiary); }
@@ -801,7 +801,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-drag-ghost.is-compact .objectives-check { width: 14px; height: 14px; }
 .objectives-drag-ghost.is-compact .objectives-check svg { width: 8px; height: 8px; }
 .objectives-drag-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-drag-hint { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--brass); letter-spacing: 0.06em; }
+.objectives-drag-hint { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--brass-ink); letter-spacing: 0.06em; }
 /* 다른 구역 위 — 놓아도 옮기지 않는다. 유령이 까닭을 둘째 줄로 말한다. */
 .objectives-drag-ghost.is-refused { grid-template-columns: 16px minmax(0, 1fr); row-gap: 3px; border-color: color-mix(in oklch, var(--coral) 55%, transparent); border-radius: var(--radius-xs); }
 .objectives-drag-ghost.is-refused .objectives-drag-hint { grid-column: 1 / -1; font-family: var(--font-body); letter-spacing: 0; line-height: 1.4; color: var(--coral); }
@@ -994,14 +994,14 @@ span.objectives-row-main { cursor: default; }
 .objectives-check-bubble { position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%) translateX(-2px); padding: 4px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-spring), transform var(--duration-fast) var(--ease-spring); z-index: 3; }
 .objectives-check-tip:hover .objectives-check-bubble, .objectives-check-tip:focus-within .objectives-check-bubble { opacity: 1; transform: translateY(-50%) translateX(0); }
 .objectives-goto { color: var(--text-tertiary); border-color: transparent; }
-.objectives-goto:hover { color: var(--brass); }
+.objectives-goto:hover { color: var(--brass-ink); }
 
 .objectives-mission-sub .objectives-launch-provider { width: 12px; height: 12px; }
 .objectives-mission-sub .objectives-launch-provider svg { width: 12px; height: 12px; }
 
 /* 임무 배정 — 글리프 트리거와 메뉴의 특별 항목. 배정 낱말은 담당 줄과 같은 자리, 조금 더 dim. */
 .objectives-launch.is-glyph { padding: 0; margin: 0; width: 22px; height: 22px; display: inline-grid; place-items: center; color: var(--text-tertiary); border-color: transparent; }
-.objectives-launch.is-glyph:hover, .objectives-launch.is-glyph[aria-expanded="true"] { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); }
+.objectives-launch.is-glyph:hover, .objectives-launch.is-glyph[aria-expanded="true"] { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .objectives-mission-add .objectives-launch.is-glyph { margin-left: auto; }
 .objectives-menu-extra .objectives-menu-label { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
 .objectives-menu-hint { font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0; text-transform: none; font-family: var(--font-ui, inherit); }
@@ -1125,7 +1125,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-criteria-head { display: flex; align-items: center; }
 .objectives-criteria-head > .objectives-row { flex: 1; min-width: 0; }
 .objectives-approve-all { flex: none; margin-right: 14px; }
-.objectives-criteria-count.is-pending { color: var(--brass); }
+.objectives-criteria-count.is-pending { color: var(--brass-ink); }
 /* 좁은 패널에서 「제안 N건 · 승인 대기」와 「모두 승인」이 라벨 폭을 빼앗지 않게 — 라벨은 줄지 않고, 셈이 먼저 감긴다. */
 .objectives-criteria-head .objectives-row-lab { flex: 0 0 auto; white-space: nowrap; }
 .objectives-criteria-head .objectives-row-tools { min-width: 0; }
@@ -1134,20 +1134,20 @@ span.objectives-row-main { cursor: default; }
 .objectives-proposal .objectives-criterion { padding: 0; }
 .objectives-proposal .objectives-criterion:hover { background: transparent; }
 .objectives-proposal .objectives-criterion-mark { border-color: var(--brass); }
-.objectives-proposal-kind { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--brass); }
+.objectives-proposal-kind { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--brass-ink); }
 .objectives-proposal-text { display: block; color: var(--text-primary); font-size: var(--t-sm); line-height: 1.5; overflow-wrap: anywhere; text-decoration: none; }
 del.objectives-proposal-text { text-decoration: line-through; color: var(--text-secondary); }
 del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
 .objectives-proposal-acts { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 24px; margin-top: 2px; }
 .objectives-proposal-acts .objectives-btn.is-approve { color: var(--positive); }
 .objectives-proposal-acts .objectives-btn.is-reject:hover { border-color: var(--coral); color: var(--coral); }
-.objectives-proposal-acts .objectives-btn.is-note[aria-expanded="true"] { border-color: var(--brass); color: var(--brass); }
+.objectives-proposal-acts .objectives-btn.is-note[aria-expanded="true"] { border-color: var(--brass); color: var(--brass-ink); }
 .objectives-proposal-note { margin: 6px 0 0 24px; display: flex; flex-direction: column; gap: 4px; }
 .objectives-proposal-note textarea { width: 100%; min-height: 44px; resize: vertical; font: inherit; font-size: var(--t-sm); line-height: 1.5; padding: 6px 8px; border-radius: var(--radius-xs); border: 1px solid var(--hairline-strong); background: var(--control-field); color: var(--text-primary); }
 .objectives-proposal-note textarea:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-proposal-hint { font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-proposal-chip { margin: 4px 0 0 24px; display: flex; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); overflow-wrap: anywhere; }
-.objectives-proposal-chip b { flex: none; margin-top: 1px; font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--brass); }
+.objectives-proposal-chip b { flex: none; margin-top: 1px; font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--brass-ink); }
 
 /* 제안이 남아 잠긴 개시·스티어링 — 누를 수 없는 점선 한 줄. 그 아래 「다시 구상」이 한 단 낮은 띠로 열려 있다. */
 .objectives-start-group.is-gated { gap: 6px; }
@@ -1204,14 +1204,14 @@ del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
 .objectives-followup-lab { font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 3px; }
 .objectives-followup-brief { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .objectives-followup-brief.is-all { display: block; }
-.objectives-followup-more { align-self: flex-start; border: 0; background: transparent; color: var(--brass); padding: 0; cursor: pointer; font: inherit; font-size: var(--t-xs); }
+.objectives-followup-more { align-self: flex-start; border: 0; background: transparent; color: var(--brass-ink); padding: 0; cursor: pointer; font: inherit; font-size: var(--t-xs); }
 .objectives-followup-more:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-followup-crit { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; counter-reset: objectives-followup-crit; }
 .objectives-followup-crit li { display: flex; gap: 8px; font-size: var(--t-sm); color: var(--text-primary); line-height: 1.45; overflow-wrap: anywhere; }
-.objectives-followup-crit li::before { counter-increment: objectives-followup-crit; content: counter(objectives-followup-crit); flex: none; width: 16px; height: 16px; border: 1.5px dashed var(--brass); border-radius: 50%; font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 13px; text-align: center; color: var(--brass); margin-top: 1px; }
+.objectives-followup-crit li::before { counter-increment: objectives-followup-crit; content: counter(objectives-followup-crit); flex: none; width: 16px; height: 16px; border: 1.5px dashed var(--brass); border-radius: 50%; font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 13px; text-align: center; color: var(--brass-ink); margin-top: 1px; }
 .objectives-followup-ev { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
 .objectives-followup-ev li { display: flex; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); overflow-wrap: anywhere; }
-.objectives-followup-ev li b { flex: none; font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 1.8; color: var(--brass); }
+.objectives-followup-ev li b { flex: none; font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 1.8; color: var(--brass-ink); }
 .objectives-followup-ev code { font-family: var(--font-mono); font-size: var(--t-xs); }
 .objectives-followup-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .objectives-followup-hint { font-size: var(--t-2xs); color: var(--text-tertiary); flex: 1; min-width: 140px; }
@@ -1254,7 +1254,7 @@ del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
 .objectives-origin-impact { margin: 0 14px 4px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-secondary); overflow-wrap: anywhere; }
 .objectives-origin-goto { display: inline-grid; place-items: center; flex: none; margin-left: auto; color: var(--text-tertiary); }
 .objectives-origin-goto svg { width: 12px; height: 12px; }
-button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass); }
+button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass-ink); }
 /* 띠 위 탭과 펼친 comp 의 aurora 톤 — 「같은 상태의 다른 선택은 띠가 위로 펼쳐져 고른다」는 기존 문법. */
 .objectives-band.has-alt.is-review::before { border-color: color-mix(in oklch, var(--aurora) 30%, transparent); background: color-mix(in oklch, var(--aurora) 6%, var(--surface-panel)); }
 .objectives-comp.is-review { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(180deg, color-mix(in oklch, var(--aurora) 4%, var(--surface-panel)), color-mix(in oklch, var(--aurora) 10%, var(--surface-panel))); }

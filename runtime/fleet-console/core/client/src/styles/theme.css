@@ -320,7 +320,7 @@
   --glass-on-sheen: linear-gradient(118deg, oklch(96% 0.01 90 / 10%) 0%, transparent 30%, transparent 74%, oklch(96% 0.01 90 / 5%) 100%);
 
   --identity-file-code: var(--aurora);
-  --identity-file-markup: var(--brass);
+  --identity-file-markup: var(--brass-ink);
   --identity-file-data: var(--positive);
   --identity-file-config: var(--warn);
   --identity-file-error: var(--coral);

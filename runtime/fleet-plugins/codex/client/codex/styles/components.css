@@ -367,7 +367,7 @@ button.chip:focus-visible {
 .breadcrumb li + li::before {
   content: "/";
   margin-right: var(--space-2);
-  color: color-mix(in oklch, var(--brass) 55%, transparent);
+  color: color-mix(in oklch, var(--brass-ink) 55%, transparent);
 }
 
 .breadcrumb a,
@@ -2929,7 +2929,7 @@ button.chip:focus-visible {
   animation: cowork-pop var(--duration-fast) var(--ease-spring) both;
   white-space: nowrap;
 }
-.cowork-pill span { color: var(--brass); }
+.cowork-pill span { color: var(--brass-ink); }
 .cowork-pill:hover { border-color: var(--brass); }
 
 /* 코멘트 컴포저 — 선택 인용 + 한 줄 댓글. */
@@ -3184,7 +3184,7 @@ button.chip:focus-visible {
 .cowork-sys.is-warn { border-color: color-mix(in oklab, var(--warn) 35%, var(--hairline)); background: color-mix(in oklab, var(--warn) 8%, var(--surface-panel-raised)); color: var(--warn-ink); }
 .cowork-sys.is-applied { border-color: color-mix(in oklab, var(--positive) 35%, var(--hairline)); background: color-mix(in oklab, var(--positive) 8%, var(--surface-panel-raised)); color: var(--text-primary); }
 .cowork-sys-text { flex: 1; min-width: 0; }
-.cowork-sys-action { border: 0; background: transparent; color: var(--brass); cursor: pointer; font-family: var(--font-body); font-size: var(--t-sm); font-weight: var(--weight-medium); padding: 0 var(--space-1); }
+.cowork-sys-action { border: 0; background: transparent; color: var(--brass-ink); cursor: pointer; font-family: var(--font-body); font-size: var(--t-sm); font-weight: var(--weight-medium); padding: 0 var(--space-1); }
 .cowork-sys-action:hover { text-decoration: underline; }
 .cowork-sys-dismiss { border: 0; background: transparent; color: inherit; opacity: 0.7; cursor: pointer; font-size: var(--t-base); line-height: 1; padding: 0 var(--space-1); }
 .cowork-sys-dismiss:hover { opacity: 1; }
@@ -3291,9 +3291,9 @@ button.chip:focus-visible {
   padding: 4px 10px;
   transition: border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
-.cowork-chip span { color: var(--brass); }
+.cowork-chip span { color: var(--brass-ink); }
 .cowork-chip:hover { border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
-.cowork-chip.is-active { border-color: var(--brass); background: var(--brass-glow); color: var(--brass); }
+.cowork-chip.is-active { border-color: var(--brass); background: var(--brass-glow); color: var(--brass-ink); }
 
 /* 전송·중단 — 원형 brass(전송), 중단은 진행 신호라 위치 채널을 빌리지 않는다. */
 .cowork-send {
