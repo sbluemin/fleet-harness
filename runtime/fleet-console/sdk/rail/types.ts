@@ -134,4 +134,21 @@ export interface RailEntryDescriptor {
    * 여는 엔트리도 찾을 것을 갖는다. 그 경우 착지는 `surfaceId`가 말하므로, 검색만 여기 붙는다.
    */
   readonly search?: PaneSearchProvider;
+  /**
+   * 이 도구가 사람의 손을 기다리는 일의 수 — 호스트가 아이콘 모서리에 수 배지로 세운다. 표면이 닫혀 있어도 선다.
+   * 무엇을 세는지는 플러그인이 정하되, 사람이 답해야 할 것(결정 요청처럼)만 센다. 진행 중이거나 읽지 않은 것은 배지가 아니다.
+   */
+  readonly attention?: RailEntryAttention;
+}
+
+/**
+ * 레일 아이콘 배지의 공급원. 호스트는 `useSyncExternalStore`로 읽으므로 `count`는 부작용 없이 같은 상태에 같은 수를 돌려준다.
+ * Theater는 호스트가 건넨다 — 엔트리 범위가 `theater`면 활성 Theater, 없으면 null이다.
+ */
+export interface RailEntryAttention {
+  readonly subscribe: (listener: () => void) => () => void;
+  /** 지금 기다리는 수. 0 이하면 배지를 거둔다. */
+  readonly count: (theaterId: string | null) => number;
+  /** 배지의 이름 — 아이콘 이름 뒤에 붙어 말풍선과 스크린 리더가 읽는다(예: "결정 요청 2"). */
+  readonly label: (count: number, locale: ConsoleLocale) => string;
 }

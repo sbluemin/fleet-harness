@@ -182,6 +182,27 @@
   background: var(--brass);
 }
 
+/* 사람의 손을 기다리는 수(엔트리의 attention) — 아이콘 오른쪽 위 모서리에 걸친 작은 수 배지. 결정 요청 표식과 같은
+   brass 잉크이되 채우지 않고 테두리로만 말해, 아래 켜짐 선과 겹쳐도 켜짐으로 읽히지 않는다. */
+.right-rail-ico-badge {
+  position: absolute;
+  top: -4px;
+  right: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border: 1px solid var(--brass);
+  border-radius: var(--radius-pill);
+  background: var(--ink-abyss);
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+
 /* ── 설정 톱니 ──────────────────────────────────────────────────
    톱니는 설정 표면의 문이다. 옛 컨텍스트 메뉴(플로팅·불투명도·폭·닫기)는 해체됐다 —
    카드 취향은 설정 > 겉모습으로, 폭 초기화는 분할선 더블클릭으로 갔다. 톱니는 도구 줄의

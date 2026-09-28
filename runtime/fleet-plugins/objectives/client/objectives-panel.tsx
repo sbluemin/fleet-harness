@@ -16,7 +16,7 @@ import { CoordinationGraph } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewGlyph, StartViewPicker, startViewLabel, type StartView } from "./launch-control.js";
-import { dockObjective, expandObjective, removeObjectiveLocally, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater, type ObjectiveGroup } from "./objectives-state.js";
+import { discardPendingSelection, dockObjective, expandObjective, hasDecisionRequest, removeObjectiveLocally, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater, type ObjectiveGroup } from "./objectives-state.js";
 import {
   discardedFollowups,
   followupGate,
@@ -178,6 +178,21 @@ function dueBucket(due: string | null): DueFilter | null {
   const week = new Date(); week.setDate(week.getDate() + 7);
   return due <= week.toISOString().slice(0, 10) ? "week" : "later";
 }
+/** 범위 낱말과 기한 세부가 이 목표를 보이는가. */
+function inScope(objective: Objective, list: ListId, dueFilter: DueFilter): boolean {
+  if (list === "today") return objective.today;
+  if (list === "due") return !!objective.dueDate && (dueFilter === "all" || dueBucket(objective.dueDate) === dueFilter);
+  if (list === "agent") return !!objective.addedBy;
+  return true;
+}
+/** 결정 요청 구획의 key — 접지 않는 구획이라 접힘 기억에 들지 않는다. */
+const REQUEST_SECTION = "request";
+/** 요청이 선 차례 — 먼저 청한 것이 먼저 선다. 같은 때면 저장된 순서 그대로다. */
+const byRequestTime = (a: Objective, b: Objective): number => (a.decisionRequest?.createdAt ?? 0) - (b.decisionRequest?.createdAt ?? 0);
+/** 표면이 한 열이 되는 폭 — objectives.css 의 `@container objectives-panel (width < 600px)` 와 같은 값이다. 그 아래에서는 상세가 목록을 덮는다. */
+const ONE_COLUMN_BELOW = 600;
+/** 방금 추가한 목표 행의 강조 — 임무 강조(highlightMission)와 같은 시간이다. */
+const ADDED_HIGHLIGHT_MS = 2400;
 
 export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const t = getT(ctx.language);
@@ -202,6 +217,11 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const [highlightMission, setHighlightMission] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); }, []);
+  // 방금 추가한 목표 — 목록 칸 안에서 짚고 잠깐 강조한다. 한 열에서는 상세를 열지 않고 입력줄의 「열기」가 이 목표를 가리킨다.
+  const [highlightObjective, setHighlightObjective] = useState<string | null>(null);
+  const objectiveHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (objectiveHighlightTimer.current) clearTimeout(objectiveHighlightTimer.current); }, []);
+  const [addedId, setAddedId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ text: string; undo?: () => Promise<void> } | null>(null);
   const launchRows = useLaunchRows();
   const [nextView, setNextView] = useState<StartView>(() => { try { return localStorage.getItem("fleet.objectives.start-view") === "chat" ? "chat" : "terminal"; } catch { return "terminal"; } });
@@ -284,24 +304,23 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const stateLabel = (state: string) => t((["running", "awaiting", "idle", "background", "ended", "closed"].includes(state) ? `objectives.state.${state}` : "objectives.state.unknown") as Parameters<typeof t>[0]);
 
   const groupOf = (groupId: string | null): ObjectiveGroup | null => (groupId ? state.groups.find((group) => group.id === groupId) ?? null : null);
-  const inList = useCallback((objective: Objective): boolean => {
-    if (list === "today") return objective.today;
-    if (list === "due") return !!objective.dueDate && (dueFilter === "all" || dueBucket(objective.dueDate) === dueFilter);
-    if (list === "agent") return !!objective.addedBy;
-    return true;
-  }, [list, dueFilter]);
+  const inList = useCallback((objective: Objective): boolean => inScope(objective, list, dueFilter), [list, dueFilter]);
   const visible = useMemo(() => state.objectives.filter((objective) => inList(objective)), [state.objectives, inList]);
   const open = useMemo(() => visible.filter((objective) => !objective.done), [visible]);
   const finished = useMemo(() => visible.filter((objective) => objective.done), [visible]);
   // 카드 패널은 그룹별 구획으로 선다 — 사이드바 그룹 순서, 미분류는 마지막. 「모두」는 목표가 없는 그룹도 빈 구획으로 보여서
   // 끌어 놓을 자리와 「+ 추가」 입구가 된다. 다른 범위는 해당 목표가 있는 그룹만 선다.
   const sections = useMemo(() => {
-    type Section = { key: string; label: string | null; swatch: string | null; objectives: Objective[]; done?: boolean };
+    type Section = { key: string; label: string | null; swatch: string | null; objectives: Objective[]; done?: boolean; request?: boolean };
     const out: Section[] = [];
-    // 검토 대기 — 모든 임무와 달성 기준이 끝나 사람의 완료만 남은 항목은 맨 위 한 구획으로 모인다(그룹 구획에서 빠진다). 펼침이 기본.
-    const reviewing = open.filter((objective) => objective.awaitingReview);
+    // 결정 요청 — 사람의 답을 기다리는 항목은 맨 위 한 구획으로 모인다(검토 대기·그룹 구획에서 빠진다). 요청이 선 차례로 서고, 저장된
+    // 순서와 그룹은 그대로라 요청이 풀리면 원래 자리로 돌아간다. 구획 접힘과 무관하게 보여야 하므로 접지 않는다.
+    const requesting = open.filter(hasDecisionRequest).sort(byRequestTime);
+    if (requesting.length) out.push({ key: REQUEST_SECTION, label: t("objectives.requests.section"), swatch: null, objectives: requesting, request: true });
+    // 검토 대기 — 모든 임무와 달성 기준이 끝나 사람의 완료만 남은 항목은 결정 요청 다음 한 구획으로 모인다(그룹 구획에서 빠진다). 펼침이 기본.
+    const reviewing = open.filter((objective) => objective.awaitingReview && !hasDecisionRequest(objective));
     if (reviewing.length) out.push({ key: "review", label: t("objectives.objectives.review"), swatch: null, objectives: reviewing });
-    const working = open.filter((objective) => !objective.awaitingReview);
+    const working = open.filter((objective) => !objective.awaitingReview && !hasDecisionRequest(objective));
     for (const group of state.groups) {
       const objectives = working.filter((objective) => objective.groupId === group.id);
       if (objectives.length || list === "all") out.push({ key: group.id, label: group.name, swatch: group.color, objectives });
@@ -318,6 +337,48 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const detailRef = useRef<HTMLElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
   const objectivesRef = useRef<HTMLDivElement | null>(null);
+  // 결정 요청은 범위와 무관하게 전부 센다 — 요약 줄·「다음」·상세 머리의 「다른 요청」이 같은 줄을 돈다.
+  const requests = useMemo(() => state.objectives.filter(hasDecisionRequest).sort(byRequestTime), [state.objectives]);
+  const requestsOutside = requests.filter((objective) => !inList(objective)).length;
+  /** 이 목표가 서는 구획 — 목록의 구획 규칙(sections)과 같은 순서로 판정한다. */
+  const sectionKeyOf = (objective: Objective): string => objective.done ? "done" : hasDecisionRequest(objective) ? REQUEST_SECTION : objective.awaitingReview ? "review" : groupOf(objective.groupId) ? objective.groupId! : "ungrouped";
+  const unfold = (collapsedNow: Readonly<Record<string, boolean>>, key: string) => (collapsedNow[key] ? { ...collapsedNow, [key]: false } : collapsedNow);
+  /**
+   * 목록 칸 안에서만 가장 가까운 끝으로 굴린다(scrollIntoView 의 block: "nearest" 와 같은 셈) — scrollIntoView 는 레일 카드·확대 표면·
+   * 페이지처럼 넘침을 숨긴 조상까지 굴릴 수 있다. 확대 표면은 transform 조상이라 화면 거리를 표면 배율로 나눈다.
+   */
+  const scrollRowIntoList = (objectiveId: string) => {
+    const listNode = objectivesRef.current;
+    const row = listNode?.querySelector<HTMLElement>(`.objectives-objective[data-objective-id="${CSS.escape(objectiveId)}"]`);
+    if (!listNode || !row) return;
+    const box = listNode.getBoundingClientRect();
+    const scale = listNode.offsetHeight ? box.height / listNode.offsetHeight : 1;
+    const rect = row.getBoundingClientRect();
+    const top = (rect.top - box.top) / (scale || 1) - listNode.clientTop;
+    const bottom = (rect.bottom - box.top) / (scale || 1) - listNode.clientTop;
+    if (top < 0) listNode.scrollTop += top - 6;
+    else if (bottom > listNode.clientHeight) listNode.scrollTop += bottom - listNode.clientHeight + 6;
+  };
+  const scrollRowSoon = (objectiveId: string) => requestAnimationFrame(() => requestAnimationFrame(() => scrollRowIntoList(objectiveId)));
+  /**
+   * 「다음」·「다른 요청」 — 요청이 선 차례대로 다음 목표를 고른다(고른 목표가 요청이 아니면 첫 요청). 대상이 지금 범위 밖이면 「모두」로
+   * 바꾸고, 대상이 든 구획이 접혀 있으면 펼친 뒤 목록 칸 안에서 짚는다. 누를 때마다 다음 요청으로 돌고, 끝에서 처음으로 돌아간다.
+   */
+  const openNextRequest = () => {
+    if (requests.length === 0) return;
+    const at = requests.findIndex((objective) => objective.id === selected);
+    const target = requests[(at + 1) % requests.length]!;
+    patchObjectiveView(theaterId, (view) => ({
+      ...(inScope(target, (LISTS as readonly string[]).includes(view.list) ? view.list as ListId : "all", view.dueFilter as DueFilter) ? {} : { list: "all" }),
+      collapsed: unfold(view.collapsed, sectionKeyOf(target)),
+      selected: target.id,
+      externalSelectionId: null,
+    }));
+    scrollRowSoon(target.id);
+  };
+  // 입력줄의 「열기」는 그 목표가 남아 있고 아직 아무것도 고르지 않은 동안만 선다.
+  useEffect(() => { if (selected) setAddedId(null); }, [selected]);
+  const added = addedId ? state.objectives.find((objective) => objective.id === addedId) ?? null : null;
   useEffect(() => {
     if (!selected) return;
     if (view.externalSelectionId === selected) return;
@@ -384,11 +445,36 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const openObjectiveDetail = (operationId: string) => {
     if (state.objectives.some((entry) => entry.id === operationId)) setSelected(operationId);
   };
+  /**
+   * 목표 추가 — 응답의 목표를 로컬 스토어에 먼저 들인 뒤 고른다(선택이 먼저면 「사라진 선택 정리」가 되돌린다). 새 목표를 숨기는
+   * 범위는 푼다: 「에이전트가 남김」은 「모두」로, 기한 세부 칩은 칩만 「모두」로. 든 구획이 접혀 있으면 펼친다. 넓은 표면에서는 새
+   * 목표의 상세를 바로 열고, 한 열에서는 상세가 입력줄을 덮지 않게 행 강조와 「열기」만 보인다. 초점은 입력칸에 남는다.
+   * 추가는 사람의 행동이라 편집 중 보류를 타지 않고, 보류해 둔 외부 선택은 버린다.
+   */
   const addObjective = async (raw: string) => {
     const title = raw.trim();
     if (!title || !theaterId) return;
     const groupId = addGroupId && groupOf(addGroupId) ? addGroupId : null;
-    await call("/objective/create", { theaterId, groupId, title, viewMode: nextView, today: list === "today", dueDate: list === "due" ? todayIso() : null });
+    const result = await call<{ objective: Objective }>("/objective/create", { theaterId, groupId, title, viewMode: nextView, today: list === "today", dueDate: list === "due" ? todayIso() : null });
+    const created = result?.objective;
+    if (!created || created.theaterId !== theaterId) return;
+    upsertObjectiveLocally(created);
+    discardPendingSelection();
+    const wide = (rootRef.current?.clientWidth ?? rootWidth) >= ONE_COLUMN_BELOW;
+    patchObjectiveView(theaterId, (view) => {
+      let nextList: ListId = (LISTS as readonly string[]).includes(view.list) ? view.list as ListId : "all";
+      let nextDue = view.dueFilter as DueFilter;
+      if (!inScope(created, nextList, nextDue)) {
+        if (nextList === "due" && created.dueDate) nextDue = "all";
+        else nextList = "all";
+      }
+      return { list: nextList, dueFilter: nextDue, collapsed: unfold(view.collapsed, sectionKeyOf(created)), ...(wide ? { selected: created.id, externalSelectionId: null } : {}) };
+    });
+    setAddedId(wide ? null : created.id);
+    if (objectiveHighlightTimer.current) clearTimeout(objectiveHighlightTimer.current);
+    setHighlightObjective(created.id);
+    objectiveHighlightTimer.current = setTimeout(() => { setHighlightObjective(null); objectiveHighlightTimer.current = null; }, ADDED_HIGHLIGHT_MS);
+    scrollRowSoon(created.id);
   };
   const toggleEdge = async (objective: Objective, from: string, to: string) => {
     const result = await call<{ objective: Objective; linked: boolean }>("/edge/toggle", { objectiveId: objective.id, from, to });
@@ -399,7 +485,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
   /** 같은 구획 안에서 커서 높이에 맞는 삽입 자리 — 카드의 가운데보다 위면 그 앞, 끝을 지나면 마지막 카드 뒤. 제자리면 없다. */
   const insertAt = (x: number, y: number, objectiveId: string, sectionKey: string): Insert | null => {
-    if (sectionKey === "done") return null;
+    // 완료됨과 결정 요청은 정해진 순서(완료·요청 차례)로 선다 — 그 안의 끌기는 순서를 바꾸지 않는다.
+    if (sectionKey === "done" || sectionKey === REQUEST_SECTION) return null;
     const section = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-section]");
     if (!section || section.dataset.section !== sectionKey) return null;
     const ids = [...section.querySelectorAll<HTMLElement>("[data-objective-id]")].map((card) => ({ id: card.dataset.objectiveId!, rect: card.getBoundingClientRect() }));
@@ -476,7 +563,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     // 같은 구획의 이웃 카드와 자리를 바꾸고 초점은 옮긴 카드에 남는다.
     if (event.altKey && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault();
-      if (sectionKey === "done") return;
+      if (sectionKey === "done" || sectionKey === REQUEST_SECTION) return;
       const at = rows.indexOf(event.currentTarget);
       const neighbor = rows[event.key === "ArrowUp" ? at - 1 : at + 1]?.dataset.objectiveId;
       if (neighbor) void reorder(objective, { anchorId: neighbor, place: event.key === "ArrowUp" ? "before" : "after" });
@@ -533,20 +620,31 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
             ))}
           </div>
         ) : null}
+        {/* 결정 요청 요약 — 범위·스크롤·구획 접힘과 무관하게 목록 위에 늘 선다. 요청이 없으면 줄도 없다. */}
+        {requests.length ? (
+          <div className="objectives-requests">
+            <RequestGlyph />
+            <span>{t("objectives.requests.summary", { count: requests.length })}</span>
+            {requestsOutside ? <span className="objectives-requests-outside">{t("objectives.requests.outside", { count: requestsOutside })}</span> : null}
+            <button type="button" className="objectives-requests-next" title={t("objectives.requests.nextTip")} onClick={openNextRequest}>{t("objectives.requests.next")}</button>
+          </div>
+        ) : null}
         <div ref={objectivesRef} className="objectives-objectives" role="listbox" aria-label={listTitle} data-objectives-tour="list">
           {open.length === 0 && finished.length === 0 ? <div className="objectives-empty">{t("objectives.objectives.empty")}</div> : null}
-          {sections.map((section) => { const expanded = isOpen(section.key, !section.done); const group = groupOf(section.key); const dropKey: DropTarget | null = group ? `group:${group.id}` : section.key === "ungrouped" ? "ungrouped" : null; return (<div key={section.key} data-section={section.key} {...(dropKey ? { "data-drop-list": dropKey } : {})} className={`objectives-section${section.done ? " is-done" : ""}${expanded ? "" : " is-collapsed"}${dropKey && drag?.over === dropKey ? " is-drop" : ""}`}>
-          {section.label ? <div className="objectives-section-row"><button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span className="objectives-section-name">{section.label}</span><span className="objectives-count">{section.objectives.length}</span></button>
+          {sections.map((section) => { const expanded = section.request || isOpen(section.key, !section.done); const group = groupOf(section.key); const dropKey: DropTarget | null = group ? `group:${group.id}` : section.key === "ungrouped" ? "ungrouped" : null; return (<div key={section.key} data-section={section.key} {...(dropKey ? { "data-drop-list": dropKey } : {})} className={`objectives-section${section.done ? " is-done" : ""}${section.request ? " is-request" : ""}${expanded ? "" : " is-collapsed"}${dropKey && drag?.over === dropKey ? " is-drop" : ""}`}>
+          {section.label && section.request ? <div className="objectives-section-row"><span className="objectives-section-hd is-request"><span className="objectives-section-chev" aria-hidden="true"><RequestGlyph /></span><span className="objectives-section-name">{section.label}</span><span className="objectives-count">{section.objectives.length}</span></span></div>
+          : section.label ? <div className="objectives-section-row"><button type="button" className="objectives-section-hd" aria-expanded={expanded} onClick={() => toggleSection(section.key, !section.done)}><span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>{section.swatch ? <span className="objectives-swatch" style={{ background: `var(--id-${section.swatch}, var(--text-tertiary))` }} aria-hidden="true" /> : null}<span className="objectives-section-name">{section.label}</span><span className="objectives-count">{section.objectives.length}</span></button>
             {group ? <button type="button" className="objectives-section-add" aria-label={t("objectives.section.addTo", { name: group.name })} title={t("objectives.section.addTo", { name: group.name })} onClick={() => pickAddGroup(group.id)}>+ {t("objectives.section.add")}</button> : null}</div> : null}
           {expanded && dropKey && section.objectives.length === 0 ? <div className="objectives-section-empty">{t(group ? "objectives.section.empty" : "objectives.section.emptyUngrouped")}</div> : null}
           {expanded ? section.objectives.map((objective) => {
             // 방향키 이웃은 같은 구획의 카드 행 기준 — 검토 대기가 빠져나가면 visible 순서와 구획 안 순서가 어긋난다.
             const index = section.objectives.indexOf(objective);
             const mode = commanderMode(objective.missions);
-            const showGroup = false as false | ObjectiveGroup | null;
+            // 결정 요청 구획의 행은 원래 그룹을 칩으로 말한다 — 요청이 풀리면 그 구획으로 돌아간다.
+            const showGroup = section.request ? groupOf(objective.groupId) : null;
             const busy = isBusy(objective);
             return (
-              <div key={objective.id} data-objective-id={objective.id} className={`objectives-objective${objective.done ? " is-done" : ""}${busy ? " is-busy" : ""}${drag?.objectiveId === objective.id ? " is-lifted" : ""}${drag?.insert?.anchorId === objective.id ? ` is-insert-${drag.insert.place}` : ""}`} role="option" aria-selected={selected === objective.id} tabIndex={0}
+              <div key={objective.id} data-objective-id={objective.id} className={`objectives-objective${objective.done ? " is-done" : ""}${busy ? " is-busy" : ""}${highlightObjective === objective.id ? " is-highlight" : ""}${drag?.objectiveId === objective.id ? " is-lifted" : ""}${drag?.insert?.anchorId === objective.id ? ` is-insert-${drag.insert.place}` : ""}`} role="option" aria-selected={selected === objective.id} tabIndex={0}
                 onPointerDown={(event) => onItemPointerDown(event, objective, section.key)}
                 onClick={() => { if (suppressClick.current) return; setSelected((value) => (value === objective.id ? null : objective.id)); }} onKeyDown={(event) => onItemKey(event, objective, index, section.key)}>
                 {/* 동그라미 = 완료 버튼이자 상태. 지휘관이 연결돼 있으면 묶음에서 가장 급한 활동을 고리로 보이고, 일하는 동안은 누르지 못한다. 완료는 늘 사람의 몫이다. */}
@@ -577,7 +675,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
                     {objective.awaitingHandoff && !objective.done ? <span className="objectives-objective-handoff">{t("objectives.handoff.label")}</span> : null}
                     {objective.decisionRequest && !objective.done ? <span className="objectives-objective-request"><RequestGlyph />{t("objectives.decision.label")}{objective.decisionRequest.questions.length > 1 ? <em>{t("objectives.decision.labelMany", { count: objective.decisionRequest.questions.length })}</em> : null}</span> : null}
                     {objective.dueDate ? <span className={`objectives-objective-due${objective.dueDate < todayIso() && !objective.done ? " is-overdue" : ""}`}><CalGlyph />{dueLabel(objective.dueDate, language)}</span> : null}
-                    {showGroup ? <span>{showGroup.name}</span> : null}
+                    {showGroup ? <span className="objectives-objective-group"><span className="objectives-swatch" style={{ background: `var(--id-${showGroup.color}, var(--text-tertiary))` }} aria-hidden="true" />{showGroup.name}</span> : null}
                     {objective.addedBy ? (() => { const name = objective.addedBy.title ?? "—"; const label = t("objectives.objective.addedBy", { name }); return <span className="objectives-by" title={label}><span className="objectives-by-name" aria-hidden="true">{name}</span><span className="objectives-by-sr">{label}</span></span>; })() : null}
                   </div>
                 </div>
@@ -593,6 +691,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         <div className="objectives-add" data-objectives-tour="add">
           <span className="objectives-plus" aria-hidden="true">+</span>
           <input ref={addInputRef} aria-label={addGroup ? t("objectives.add.into", { name: addGroup.name }) : t("objectives.objectives.add")} placeholder={t("objectives.objectives.add")} onKeyDown={(event) => { if (submitKey(event)) { const target = event.currentTarget; void addObjective(target.value).then(() => { target.value = ""; }); } else if (event.key === "Escape" && addGroup) { event.preventDefault(); setAddGroupId(null); } }} />
+          {added && !current ? <span className="objectives-add-added" role="status"><span>{t("objectives.add.added")}</span><button type="button" className="objectives-add-open" aria-label={t("objectives.add.openTip", { title: added.title })} title={t("objectives.add.openTip", { title: added.title })} onClick={() => setSelected(added.id)}>{t("objectives.add.open")}</button></span> : null}
           {addGroup ? <span className="objectives-add-target"><span className="objectives-swatch" style={{ background: `var(--id-${addGroup.color}, var(--text-tertiary))` }} aria-hidden="true" /><span>{t("objectives.add.into", { name: addGroup.name })}</span><button type="button" className="objectives-add-target-clear" aria-label={t("objectives.add.clear")} title={t("objectives.add.clear")} onClick={() => { setAddGroupId(null); addInputRef.current?.focus(); }}>×</button></span> : null}
           <StartViewPicker t={t} value={nextView} onChange={chooseNextView} />
         </div>
@@ -631,6 +730,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           onComplete={() => completeObjective(current)}
           onToggleEdge={(from, to) => toggleEdge(current, from, to)}
           onOpenObjective={openObjectiveDetail}
+          otherRequests={requests.filter((objective) => objective.id !== current.id).length}
+          onNextRequest={openNextRequest}
         />
       ) : null}
       {/* 유령은 body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에서 어긋난다. */}
@@ -983,6 +1084,9 @@ interface DetailProps {
   readonly onToggleEdge: (from: string, to: string) => Promise<void>;
   /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 있는 항목만 연다. */
   readonly onOpenObjective: (operationId: string) => void;
+  /** 이 목표를 뺀 결정 요청 수 — 한 열에서 상세가 목록을 덮는 동안 머리에서 다른 요청으로 가는 길이 된다. */
+  readonly otherRequests: number;
+  readonly onNextRequest: () => void;
 }
 
 /**
@@ -1228,7 +1332,7 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
 
 const BRIEF_LINES = 3;
 
-function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, onClose, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective }: DetailProps) {
+function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, onClose, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
   const [note, setNote] = useState(objective.note);
   const [title, setTitle] = useState(objective.title);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1406,6 +1510,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       <div className="objectives-group">
         <div className="objectives-detail-head">
           <button type="button" className="objectives-glyph objectives-detail-back" aria-label={t("objectives.detail.backToList")} title={t("objectives.detail.backToList")} onClick={onClose}>‹</button>
+          {/* 한 열에서만 선다(CSS) — 넓은 표면에서는 목록 위 요약 줄이 같은 말을 한다. */}
+          {otherRequests > 0 ? <button type="button" className="objectives-detail-requests" title={t("objectives.requests.othersTip")} onClick={onNextRequest}><RequestGlyph />{t("objectives.requests.others", { count: otherRequests })}</button> : null}
           {(() => {
             const n = objective.done || busy ? 0 : followupOpenList.length;
             const selectable = n > 0 && followupSelectableBody;
