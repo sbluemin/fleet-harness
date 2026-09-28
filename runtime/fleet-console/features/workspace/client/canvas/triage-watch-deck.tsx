@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 
@@ -70,13 +70,12 @@ interface TriageWatchDeckProps {
 // 권한 요청 독의 자리 — 오른쪽 아래 코너 독의 카드 폭(336px)과 한두 장이 쌓이는 높이. 지도 층은
 // 이 자리에 구역·점·Quick-Look을 두지 않는다. 독은 덱보다 위 층이라, 겹치면 신호를 가리는 쪽은 독이다.
 const TRIAGE_MAP_DOCK_KEEP_OUT = { width: 352, height: 216 };
-// Quick-Look 발 줄 높이와 칸을 둘러싼 여백.
-const QUICK_LOOK_FOOT_PX = 40;
+// Quick-Look 틀이 칸을 둘러싼 여백.
 const QUICK_LOOK_PAD_PX = 8;
 
 interface QuickLookPlacement {
   readonly operationId: string;
-  /** 발 줄까지 포함한 Quick-Look 틀 — 지도 판 기준 좌표(px). */
+  /** 여백까지 포함한 Quick-Look 틀 — 지도 판 기준 좌표(px). */
   readonly frame: { readonly left: number; readonly top: number; readonly width: number; readonly height: number };
 }
 
@@ -608,7 +607,7 @@ export function TriageWatchDeck({
     const bounds = plate.getBoundingClientRect();
     const origin = root.getBoundingClientRect();
     const width = size.width + QUICK_LOOK_PAD_PX * 2;
-    const height = size.height + QUICK_LOOK_PAD_PX + QUICK_LOOK_FOOT_PX;
+    const height = size.height + QUICK_LOOK_PAD_PX * 2;
     const anchor = quickLook.anchor;
     const keepOut = { left: bounds.right - TRIAGE_MAP_DOCK_KEEP_OUT.width, top: bounds.bottom - TRIAGE_MAP_DOCK_KEEP_OUT.height };
     const clamp = (value: number, low: number, high: number) => Math.min(Math.max(value, low), Math.max(low, high));
@@ -623,7 +622,7 @@ export function TriageWatchDeck({
     }
     const frame = { left: left - origin.left, top: top - origin.top, width, height };
     cell.classList.add("is-quick-look");
-    // 엿보기는 읽기 전용이다 — 포인터만 막으면 캡션 컨트롤이 탭 순서에 남는다. 조작은 틀의 발 줄만 맡는다.
+    // 엿보기는 읽기 전용이다 — 포인터만 막으면 캡션 컨트롤이 탭 순서에 남는다. 닫기는 지도의 빈 곳·Esc가 맡는다.
     mount.inert = true;
     mount.style.setProperty("left", `${frame.left + QUICK_LOOK_PAD_PX}px`);
     mount.style.setProperty("top", `${frame.top + QUICK_LOOK_PAD_PX}px`);
@@ -636,12 +635,7 @@ export function TriageWatchDeck({
       for (const property of ["left", "top", "width", "height"]) mount.style.removeProperty(property);
     };
   }, [quickLook, mapLayerOpen]);
-  // 열린 엿보기는 초점을 받는다 — 판의 점 뒤로 탭 순서를 한참 돌아야 발 줄에 닿지 않게 한다.
-  const quickLookStageRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    if (quickLookPlacement) quickLookStageRef.current?.focus({ preventScroll: true });
-  }, [quickLookPlacement?.operationId]);
-  // 엿보기를 닫으면 초점은 그것을 연 점으로 돌아간다 — 닫힌 틀의 버튼과 함께 초점이 사라지지 않게.
+  // 엿보기를 닫으면 초점은 그것을 연 점으로 돌아간다 — 빈 곳을 눌러 닫아도 초점이 판으로 흩어지지 않게.
   const closeQuickLook = () => {
     const operationId = quickLook?.operationId;
     setQuickLook(null);
@@ -749,7 +743,12 @@ export function TriageWatchDeck({
       pickTriageOperation(operationId);
       return;
     }
-    setQuickLook((current) => current?.operationId === operationId ? null : { operationId, anchor: element.getBoundingClientRect() });
+    // 엿보기는 점과 이름표를 함께 비켜 선다 — 점만 비키면 틀이 그 점의 이름을 덮는다.
+    const dot = element.getBoundingClientRect();
+    const label = element.querySelector(".canvas-fleet-map-dot-label")?.getBoundingClientRect() ?? dot;
+    const left = Math.min(dot.left, label.left);
+    const right = Math.max(dot.right, label.right);
+    setQuickLook((current) => current?.operationId === operationId ? null : { operationId, anchor: new DOMRect(left, dot.top, right - left, dot.height) });
   };
   const quickLookOperation = quickLookPlacement
     ? operations.find((operation) => operation.id === quickLookPlacement.operationId) ?? null
@@ -766,6 +765,12 @@ export function TriageWatchDeck({
         if (event.key !== "Escape" || !quickLook) return;
         if (!(event.target instanceof Element) || !event.target.closest("[data-fleet-map], .canvas-triage-quick-look")) return;
         event.preventDefault();
+        closeQuickLook();
+      }}
+      onClick={(event) => {
+        // 엿보는 동안 지도의 빈 곳을 누르면 엿보기가 걷힌다 — 점(다른 점 엿보기·무대)과 머리의 버튼은 제 일을 한다.
+        if (!quickLook || !(event.target instanceof Element)) return;
+        if (!event.target.closest("[data-fleet-map]") || event.target.closest("[data-fleet-map-dot], button")) return;
         closeQuickLook();
       }}
     >
@@ -803,27 +808,15 @@ export function TriageWatchDeck({
       {quickLookPlacement && quickLookOperation ? (
         <div
           className="canvas-triage-quick-look"
-          role="dialog"
+          role="region"
           aria-label={t("canvas.fleetMap.quickLookAria", { title: quickLookOperation.title })}
           style={{
             left: `${quickLookPlacement.frame.left}px`,
             top: `${quickLookPlacement.frame.top}px`,
             width: `${quickLookPlacement.frame.width}px`,
             height: `${quickLookPlacement.frame.height}px`,
-            "--quick-look-foot": `${QUICK_LOOK_FOOT_PX}px`,
-          } as CSSProperties}
-        >
-          <div className="canvas-triage-quick-look-foot">
-            <span className="canvas-triage-quick-look-note">{t("canvas.fleetMap.quickLookNote")}</span>
-            <button type="button" className="canvas-fleet-map-action" ref={quickLookStageRef} onClick={() => {
-              const operationId = quickLookOperation.id;
-              setQuickLook(null);
-              revealOperationStage();
-              pickTriageOperation(operationId);
-            }}>{t("canvas.fleetMap.quickLookStage")}</button>
-            <button type="button" className="canvas-fleet-map-action" onClick={closeQuickLook}>{t("canvas.fleetMap.quickLookClose")}</button>
-          </div>
-        </div>
+          }}
+        />
       ) : null}
       <div className="canvas-triage-deck-grid" ref={gridRef}>
         {bands.map((band) => {

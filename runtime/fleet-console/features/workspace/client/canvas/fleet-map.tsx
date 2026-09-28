@@ -77,8 +77,8 @@ const FLEET_ZONE_TONES: readonly string[] = ["teal", "amber", "plum", "moss", "c
 
 /** 함대 지도 — War Room 덱을 1× 아래로 당기거나 Map 칩·Alt+M·팔레트로 여는, 덱과 무대 위의 층.
  *  지구본 위 작전구역처럼 각 Theater가 원형 구역으로 떠 있고 그 안에 소속 Operation이 점으로 모인다.
- *  점은 대기열의 자리(무대·「다음」·순번·미룸·치워둠)를 이름표로 말하고, 대기 밖의 점은 이름 없이
- *  상태 색으로만 선다 — 겨누면 상태 카드가, 누르면 Quick-Look이 그 자리를 말한다. 판은 Theater를
+ *  모든 점이 이름표를 달고, 대기열의 점은 그 자리(무대·「다음」·순번·미룸·치워둠)를 이름 앞에 붙인다 —
+ *  겨누면 상태 카드가, 누르면 Quick-Look이 그 자리를 말한다. 판은 Theater를
  *  전환하지 않는다: War Room은 전 Theater를 한 판에 얹는 모드다. */
 export function FleetMap({
   theaters,
@@ -391,11 +391,9 @@ export function FleetMap({
           onActivate(operation.id, event.currentTarget);
         }}
       >
-        {mark ? (
-          <span className="canvas-fleet-map-dot-label" style={labelLayout.has(operation.id) ? { maxWidth: `${labelLayout.get(operation.id)!.max}px` } : undefined}>
-            <b className="canvas-fleet-map-dot-mark">{markLabel(mark)}</b>{operation.title}
-          </span>
-        ) : null}
+        <span className="canvas-fleet-map-dot-label" style={labelLayout.has(operation.id) ? { maxWidth: `${labelLayout.get(operation.id)!.max}px` } : undefined}>
+          {mark ? <b className="canvas-fleet-map-dot-mark">{markLabel(mark)}</b> : null}{operation.title}
+        </span>
       </button>
     );
   });
