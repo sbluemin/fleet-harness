@@ -33,6 +33,13 @@ export interface DesktopViewStack {
   mountDataView(view: WebContentsView): void;
   unmountDataView(): void;
   dataView(): WebContentsView | null;
+  /**
+   * 격리된 데이터 뷰(A′) 자리. epoch마다 새 partition의 새 뷰라 미리 만들 수 없다 — 전환 덮개 아래에서 붙이고,
+   * 끝나면 떼어 낸다. 앞에 서 있지 않을 때는 다른 콘솔 뷰처럼 활성 뷰 뒤에 선다.
+   */
+  mountProxyView(view: WebContentsView): void;
+  unmountProxyView(view: WebContentsView): void;
+  proxyView(): WebContentsView | null;
   /** 어느 콘솔 뷰를 앞에 세울지. 비활성 뷰는 주차된 브라우저 뷰보다도 뒤에 선다. */
   activateSurface(surface: DesktopSurfaceKind): void;
   activeSurface(): DesktopSurfaceKind;
@@ -49,7 +56,7 @@ export interface DesktopViewStack {
   unmountSwitchVeil(): void;
 }
 
-export type DesktopSurfaceKind = "local" | "data";
+export type DesktopSurfaceKind = "local" | "data" | "proxy";
 
 export interface DesktopShellWindow {
   readonly base: BaseWindow;
@@ -85,16 +92,18 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   let switchVeil: WebContentsView | null = null;
   let switchVeilRaised = false;
   let data: WebContentsView | null = null;
+  let proxy: WebContentsView | null = null;
   let active: DesktopSurfaceKind = "local";
+
+  const surfaceView = (surface: DesktopSurfaceKind): WebContentsView | null => (surface === "local" ? consoleView : surface === "data" ? data : proxy);
 
   /** 이미 붙은 뷰는 remove 없이 addChildView(index) 로만 재정렬한다 — CDP 스냅샷마다 renderer churn 을 막는다. */
   const relayout = (): void => {
     const root = base.contentView;
     const ordered: WebContentsView[] = [];
     if (switchVeil && !switchVeilRaised) ordered.push(switchVeil);
-    const front = active === "data" && data ? data : consoleView;
-    const back = front === consoleView ? data : consoleView;
-    if (back) ordered.push(back);
+    const front = surfaceView(active) ?? consoleView;
+    for (const view of [consoleView, data, proxy]) if (view && view !== front) ordered.push(view);
     ordered.push(...parked, front, ...presented);
     if (picker) ordered.push(picker);
     if (switchVeil && switchVeilRaised) ordered.push(switchVeil);
@@ -107,6 +116,7 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     const bounds = { x: 0, y: 0, width: Math.max(1, width), height: Math.max(1, height) };
     consoleView.setBounds(bounds);
     data?.setBounds(bounds);
+    proxy?.setBounds(bounds);
     // 덮개는 Console과 한 치도 어긋나지 않아야 한다 — 스냅샷을 제자리에 겹쳐 그리기 때문이다.
     switchVeil?.setBounds(bounds);
     return bounds;
@@ -170,8 +180,26 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     relayout();
   };
 
+  const mountProxyView = (view: WebContentsView): void => {
+    if (proxy === view) return;
+    const previous = proxy;
+    proxy = view;
+    if (previous) try { base.contentView.removeChildView(previous); } catch { /* 이미 떨어졌다. */ }
+    layoutConsole();
+    relayout();
+  };
+
+  const unmountProxyView = (view: WebContentsView): void => {
+    if (proxy === view) {
+      proxy = null;
+      if (active === "proxy") active = "local";
+    }
+    try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ }
+    relayout();
+  };
+
   const activateSurface = (surface: DesktopSurfaceKind): void => {
-    const next = surface === "data" && data ? "data" : "local";
+    const next = surfaceView(surface) ? surface : "local";
     if (active === next) return;
     active = next;
     relayout();
@@ -220,6 +248,9 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     mountDataView,
     unmountDataView,
     dataView: () => data,
+    mountProxyView,
+    unmountProxyView,
+    proxyView: () => proxy,
     activateSurface,
     activeSurface: () => active,
     mountSwitchVeil,
@@ -235,7 +266,11 @@ export function createDesktopShellWindow(base: BaseWindow, consoleView: WebConte
     base,
     consoleView,
     consoleContents,
-    activeContents: () => (stack.activeSurface() === "data" ? stack.dataView()?.webContents : undefined) ?? consoleContents,
+    activeContents: () => {
+      const surface = stack.activeSurface();
+      const view = surface === "data" ? stack.dataView() : surface === "proxy" ? stack.proxyView() : null;
+      return view?.webContents ?? consoleContents;
+    },
     stack,
     get webContents() { return consoleContents; },
     isDestroyed: () => base.isDestroyed(),

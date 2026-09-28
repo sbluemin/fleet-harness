@@ -90,7 +90,7 @@ export function createDataView(deps: DataViewDeps): DataView {
   };
 }
 
-function awaitReady(contents: WebContents, targetOrigin: string): { readonly promise: Promise<void>; cancel(): void } {
+export function awaitReady(contents: WebContents, targetOrigin: string): { readonly promise: Promise<void>; cancel(): void } {
   let arrived = false;
   let fallback: ReturnType<typeof setTimeout> | null = null;
   let finish: (error?: Error) => void = () => undefined;

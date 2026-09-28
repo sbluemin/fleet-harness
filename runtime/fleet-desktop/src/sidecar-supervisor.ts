@@ -102,6 +102,10 @@ export class SidecarSupervisor {
     // health 재검사 대신 pid 생존 기반의 소유 종료 절차로 SIGKILL 승격까지 보장한다.
     await this.terminateOwnedProcess(current.stored.lock.pid);
   }
+  /** 감독 중인 콘솔의 lock token. broker 내부 계약에만 쓰고 로그·렌더러에 싣지 않는다. */
+  lockToken(): string | null {
+    try { return this.readLock()?.lock.token ?? null; } catch { return null; }
+  }
   /** 지금 이 셸이 감독하는 콘솔이 lock의 자격으로 답하는가, 그리고 그 주소는 어디인가. */
   async health(): Promise<{ readonly healthy: boolean; readonly origin: string | null }> {
     const probe = await this.probe();

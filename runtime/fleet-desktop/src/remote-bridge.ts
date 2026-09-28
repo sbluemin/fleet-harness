@@ -4,6 +4,7 @@ import { remotePairingCookieName, remoteSessionCookieName } from "@fleet-console
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import type { SurfaceSelection, SwitchAttempt } from "./console-surface-state.js";
+import type { ProxyTarget } from "./proxy-presentation.js";
 import type { DesktopNotice } from "./desktop-notices.js";
 import { confirmRemoteIdentity, joinRemoteConsole, normalizeFingerprint, type RemoteCertificatePins, type SessionFetch } from "./remote-access.js";
 import type { WindowPolicy } from "./window-policy.js";
@@ -45,6 +46,13 @@ export interface RemoteBridgeDeps {
   /** 데이터 뷰가 오류 문서에 착지했다. */
   readonly disconnect: (reason: "expired" | "unavailable") => void;
   /**
+   * 조인한 세션을 읽기 전용 격리 뷰(A′)로 보여 줄 수 있으면 싣고 true. 대상이 아니면 false이고, 그때는 같은
+   * 세션으로 직결한다 — 다시 조인하지 않는다.
+   */
+  readonly presentProxy?: (target: ProxyTarget, attempt: SwitchAttempt) => Promise<boolean>;
+  /** 지금 창이 보여 주는 원격 콘솔. 격리 뷰가 연 덮개의 "현재" 표시에 쓴다. */
+  readonly activeRemoteOrigin?: () => string | null;
+  /**
    * 집의 목록을 그 자리에서 펼친다. 원격 콘솔이 서빙한 화면은 남의 기계 주소를 알 수 없고
    * 알아서도 안 되므로, 목록은 이 URL을 적재하는 홈 origin의 렌더러가 직접 그린다.
    */
@@ -63,6 +71,11 @@ export interface RemoteBridge {
   attachLocal(contents: AttachableContents): void;
   /** 데이터 뷰 — 덮개를 열어 달라는 청만 받는다. 오류 문서에 착지하면 끊김을 알린다. */
   attachData(contents: AttachableContents): void;
+  /**
+   * 격리 뷰 — 그 문서는 집 주소를 모르므로 자기 epoch origin의 센티널로 덮개를 청한다. 셸이 집의 덮개로 바꿔
+   * 연다. 그 밖의 항해는 뷰의 울타리가 막는다.
+   */
+  attachProxy(contents: AttachableContents, epochOrigin: string): void;
   /**
    * 집의 목록을 그리는 렌더러. 여기서 고른 콘솔은 전환으로 넘기고, 피커는 닫힌다 —
    * 성공이든 실패든 닫는다. 실패한 채 덮개만 남으면 사용자는 돌아갈 화면을 잃는다.
@@ -204,7 +217,20 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
        */
       await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
       void reportCookieBinding(handoff, fingerprint);
-      await navigateJoined(handoff.origin, `${remoteConsoleEntry(handoff.origin, url)}${presentationCarryOf(url)}`, attempt);
+      const carry = presentationCarryOf(url);
+      // 같은 조인으로 갈라진다: 읽기 전용 격리 뷰가 되면 거기서 끝나고, 아니면 직결한다.
+      if (deps.presentProxy && typeof handoff.id === "string" && typeof handoff.pinGeneration === "number") {
+        const presented = await deps.presentProxy({
+          origin: handoff.origin,
+          hostId: handoff.id,
+          pinGeneration: handoff.pinGeneration,
+          port: handoff.port,
+          sessionCookieName: remoteSessionCookieName(handoff.port),
+          carry,
+        }, attempt);
+        if (presented) return;
+      }
+      await navigateJoined(handoff.origin, `${remoteConsoleEntry(handoff.origin, url)}${carry}`, attempt);
     } catch (error) {
       // 열지 못한 원격은 허용 목록에서 뺀다. 지금 데이터 뷰가 그 콘솔에 서 있다면(같은 콘솔로 다시 온 경우) 남긴다.
       if (policy.dataConsoleOrigin() !== handoff.origin) {
@@ -378,6 +404,26 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
         try { arrived = new URL(url).origin; } catch { return; }
         if (dataOrigin === null || arrived !== dataOrigin) return;
         deps.disconnect(httpResponseCode === 401 ? "expired" : "unavailable");
+      }) as never);
+    },
+
+    attachProxy(contents, epochOrigin) {
+      listen(contents, "will-navigate", ((event: { preventDefault: () => void }, url: string, _redirect?: unknown, isMainFrame?: boolean): void => {
+        if (isMainFrame === false) return;
+        const surface = pickerSurfaceOf(url, epochOrigin);
+        if (surface === null) return;
+        event.preventDefault();
+        if (surface === "dismiss") { closePicker(); return; }
+        const home = deps.localOrigin();
+        if (home === null) return;
+        if (now() - dataPickerAt < DATA_PICKER_INTERVAL_MS) { deps.log?.("host picker request from the data view throttled"); return; }
+        dataPickerAt = now();
+        // 이 문서가 보낸 값은 아무것도 싣지 않는다. 덮개의 주소는 셸이 집과 지금 보는 원격으로 짓는다.
+        const picker = new URL(CONSOLE_PATH, `${home}/`);
+        picker.searchParams.set(PICKER_SURFACE_PARAM, PICKER_SURFACE_OPEN);
+        const at = deps.activeRemoteOrigin?.() ?? null;
+        if (at !== null) picker.searchParams.set("at", at);
+        void openPicker(picker.toString()).catch(report);
       }) as never);
     },
 

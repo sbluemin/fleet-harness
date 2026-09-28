@@ -39,12 +39,16 @@ export interface ConsoleSurfaceDeps {
   readonly presentLocal: () => Promise<void>;
   /** 최종 떠남에서만 — 그 원격의 자기 세션을 끝내 달라고 한 번 청한다. 페어링은 남는다. */
   readonly endRemoteSession: (origin: string) => void;
+  /** 끊긴 원격을 거둔다(세션을 끝내 달라고 청하지 않는다). 격리 뷰라면 그 뷰와 partition을 정리한다. */
+  readonly abandonRemote?: (reason: DisconnectReason) => void;
+  /** 전환 세대가 올랐다 — 그보다 옛 세대로 진행 중인 위임을 broker가 거절하도록 알린다. */
+  readonly announceGeneration?: (generation: number) => void;
   readonly report: (error: unknown) => void;
   readonly notify: (reason: DisconnectReason) => void;
   readonly log: (message: string) => void;
 }
 
-export type DisconnectReason = "expired" | "unavailable" | "crashed";
+export type DisconnectReason = "expired" | "unavailable" | "crashed" | "reclaimed" | "superseded" | "ended";
 
 export interface ConsoleSurface {
   state(): ConsoleSurfaceState;
@@ -75,6 +79,7 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
 
   const begin = (): SwitchAttempt => {
     const mine = ++generation;
+    deps.announceGeneration?.(mine);
     return { generation: mine, isCurrent: () => generation === mine };
   };
 
@@ -136,6 +141,7 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
     transition("disconnected", reason);
     // 세션이 이미 끝났으므로 끝내 달라고 청할 것이 없다. 오류 문서에는 돌아갈 길이 없으므로 로컬로 되돌린다.
     await restoreLocal(attempt, `disconnected_${reason}`);
+    deps.abandonRemote?.(reason);
     deps.notify(reason);
   }
 
