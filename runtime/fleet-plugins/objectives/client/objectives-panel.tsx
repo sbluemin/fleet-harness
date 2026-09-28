@@ -1071,7 +1071,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   const [notes, setNotes] = useState<ReadonlySet<string>>(new Set());
   const [announce, setAnnounce] = useState("");
   const [batchOpen, setBatchOpen] = useState(false);
-  const [balloon, setBalloon] = useState<{ changed: number; preserved: number; mode: "same" | "route" } | null>(null);
+  const [balloon, setBalloon] = useState<{ kind: "done"; changed: number; preserved: number; mode: "same" | "route" } | { kind: "failed" } | null>(null);
   const batchTriggerRef = useRef<HTMLButtonElement | null>(null);
   const batchMenuRef = useRef<HTMLDivElement | null>(null);
   const balloonTimer = useRef<number | null>(null);
@@ -1144,13 +1144,19 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     if (saving.current.has("batch") || !touchable) return;
     saving.current.add("batch");
     setBatchOpen(false);
+    // 앞선 결과 말풍선은 이번 선택의 결과가 아니다 — 먼저 거둔다.
     if (balloonTimer.current !== null) window.clearTimeout(balloonTimer.current);
+    setBalloon(null);
+    const settle = (next: NonNullable<typeof balloon>) => {
+      setBalloon(next);
+      balloonTimer.current = window.setTimeout(() => setBalloon(null), 3800);
+    };
 
-    // 실패는 패널 알림(call)으로 알린다 — 입구는 명단을 접어도 머리에 남으므로, 명단 안 표시는 접힌 동안 보이지 않는다.
-    void call<{ objective?: Objective }>("/member/batch-launch", { objectiveId: objective.id, mode }).then((saved) => {
+    // 성공도 실패도 입구 글리프의 말풍선으로 알린다 — 패널에는 따로 띄우는 알림이 없고, 명단은 접혀 있을 수 있다.
+    void request("/member/batch-launch", { objectiveId: objective.id, mode }).then((payload) => {
       saving.current.delete("batch");
-      const echoed = saved?.objective?.members;
-      if (!echoed) return;
+      const echoed = (payload as { objective?: Objective } | null)?.objective?.members;
+      if (!echoed) { settle({ kind: "failed" }); setAnnounce(t("objectives.members.batchFailed")); return; }
 
       const changedMembers = echoed.filter((member) => {
         const old = objective.members.find((entry) => entry.id === member.id);
@@ -1159,8 +1165,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const preservedCount = echoed.filter((member) => member.launch.mode === "model").length;
       const changedCount = changedMembers.length;
 
-      setBalloon({ changed: changedCount, preserved: preservedCount, mode });
-      balloonTimer.current = window.setTimeout(() => setBalloon(null), 3800);
+      settle({ kind: "done", changed: changedCount, preserved: preservedCount, mode });
 
       if (changedCount > 0) {
         setAnnounce(t("objectives.members.batchAnnounce", { count: changedCount, preserved: preservedCount }));
@@ -1174,6 +1179,10 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         .map((member) => member.id);
 
       if (changedLiveIds.length > 0) showNotes(changedLiveIds);
+    }, () => {
+      saving.current.delete("batch");
+      settle({ kind: "failed" });
+      setAnnounce(t("objectives.members.batchFailed"));
     });
   };
 
@@ -1197,7 +1206,12 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       >
         <BatchTunerGlyph />
       </button>
-      {balloon ? (
+      {balloon?.kind === "failed" ? (
+        <span className="objectives-batch-balloon" aria-hidden="true">
+          <span className="objectives-batch-balloon-dot is-failed" />
+          <span>{t("objectives.members.batchFailed")}</span>
+        </span>
+      ) : balloon ? (
         <span className="objectives-batch-balloon" aria-hidden="true">
           <span className={`objectives-batch-balloon-dot is-${balloon.mode}`} />
           <span>{balloon.changed > 0 ? t("objectives.members.batchChanged", { count: balloon.changed }) : t("objectives.members.batchNoop")}</span>
