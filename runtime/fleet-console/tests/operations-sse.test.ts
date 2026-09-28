@@ -25,6 +25,7 @@ vi.mock("../core/client/src/integration/api.js", () => ({
   fetchGroups: vi.fn(async () => null),
   fetchObserverStatus: mocks.fetchObserverStatus,
   fetchOperations: mocks.fetchOperations,
+  fetchTheaters: vi.fn(async () => null),
   resumeConsoleSession: mocks.resumeConsoleSession,
 }));
 

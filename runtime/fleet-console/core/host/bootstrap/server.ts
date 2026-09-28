@@ -590,6 +590,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function publishTheaterLifecycle(event: "registered" | "forgotten" | "restored", theaterId: string): void {
     publishPluginEvent(`theater:${event}`, { theaterId });
   }
+  // 브라우저도 같은 순간을 들어야 한다 — 다른 창·API·Console Use가 잊거나 되돌린 Theater는 이 스트림이
+  // 아니면 다음 재수화까지 사이드바에 남는다. 싣는 것은 theaterId뿐이라 그대로 내보낸다.
+  for (const channel of ["theater:registered", "theater:forgotten", "theater:restored"]) pluginSseChannels.add(channel);
 
   function publishPluginEvent(channel: string, payload: unknown, isolateListeners = false): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) {

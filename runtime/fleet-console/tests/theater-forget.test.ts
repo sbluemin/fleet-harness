@@ -49,7 +49,7 @@ beforeEach(() => {
   mocks.fetchGroups.mockResolvedValue([]);
   mocks.forgetTheater.mockResolvedValue({ ok: true, deletion: RECEIPT });
   mocks.isTriageActive.mockReturnValue(false);
-  mocks.getState.mockReturnValue({ activeTheaterId: null });
+  mocks.getState.mockReturnValue({ activeTheaterId: null, theaters: [{ id: "theater-a" }] });
 });
 
 describe("forgetTheaterCompletely", () => {

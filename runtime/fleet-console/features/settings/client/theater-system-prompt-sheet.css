@@ -42,6 +42,14 @@
 .theater-prompt-save.is-saving i { background: var(--warn); }
 .theater-prompt-save.is-saved i { background: var(--positive); }
 .theater-prompt-save.is-over, .theater-prompt-save.is-error { color: var(--coral-ink); }
+.theater-prompt-forgotten { display: grid; gap: 9px; padding: 10px 11px; color: var(--warn-ink); background: var(--warn-glow); border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: 6px; }
+.theater-prompt-forgotten p { margin: 0; line-height: 1.55; }
+.theater-prompt-forgotten strong { font-weight: var(--weight-medium); }
+.theater-prompt-forgotten textarea { width: 100%; min-height: 96px; padding: 9px 11px; resize: vertical; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font: var(--t-md) var(--font-mono); line-height: 1.6; }
+.theater-prompt-forgotten-actions { display: flex; gap: 10px; align-items: center; }
+.theater-prompt-forgotten-actions button { padding: 5px 10px; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font-size: var(--t-sm); }
+.theater-prompt-forgotten-actions span { color: var(--text-secondary); font: var(--t-xs) var(--font-mono); }
+.theater-prompt-forgotten small { color: var(--text-secondary); font-size: var(--t-sm); }
 .theater-prompt-kept { padding: 8px 10px; border: 1px dashed var(--hairline-strong); border-radius: 6px; color: var(--text-secondary); }
 .theater-prompt-kept summary { cursor: pointer; }
 .theater-prompt-kept p { margin: 5px 0 0; color: var(--text-tertiary); font-size: var(--t-xs); }

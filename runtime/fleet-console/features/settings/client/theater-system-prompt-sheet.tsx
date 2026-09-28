@@ -56,11 +56,20 @@ export function TheaterSystemPromptSheet() {
   const [sheetTop, setSheetTop] = useState(8);
   const [tipVisible, setTipVisible] = useState(false);
   const [tipPosition, setTipPosition] = useState({ top: 0, left: 0 });
+  // 시트를 연 채로 Theater가 잊히면(다른 창·API·Console Use) 닫지 않고 이 상태로 머문다 — 입력한 글이 조용히
+  // 사라지지 않게 보여 주고, 그사이 Theater가 되돌아오면 이어서 저장한다.
+  const [forgotten, setForgotten] = useState(false);
+  const [copied, setCopied] = useState(false);
   const dialogRef = useRef<HTMLElement>(null);
   const selectRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLButtonElement>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
   const undoRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const copyRef = useRef<HTMLButtonElement>(null);
+  const forgottenTextRef = useRef<HTMLTextAreaElement>(null);
+  const forgottenRef = useRef(false);
+  const loadedRef = useRef(false);
   const focusAfterResetRef = useRef<"undo" | "select" | null>(null);
   const requestRef = useRef(request);
   const draftRef = useRef(draft);
@@ -73,7 +82,27 @@ export function TheaterSystemPromptSheet() {
   const revisionRef = useRef(0);
   const dirtyRef = useRef(false);
 
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  // 잊힌 Theater에는 더 저장하지 않는다. 대기 중인 저장·불러오기를 멈추고, 입력은 draft에 그대로 둔다.
+  const markForgotten = useCallback(() => {
+    if (!requestRef.current || forgottenRef.current) return;
+    forgottenRef.current = true;
+    clearTimer();
+    ++openIdRef.current;
+    fetchControllerRef.current?.abort();
+    setLoading(false);
+    setTipVisible(false);
+    setUndo(null);
+    setCopied(false);
+    setForgotten(true);
+  }, [clearTimer]);
+
   const persist = useCallback((theaterId: string, next: TheaterSystemPrompt) => {
+    if (forgottenRef.current) return;
     if (next.body.length > CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS) { setStatus("over"); return; }
     const value = next.mode === "on" && !next.body.trim() ? null : next;
     dirtyRef.current = false;
@@ -90,26 +119,13 @@ export function TheaterSystemPromptSheet() {
         }
       } catch (error) {
         if (requestRef.current?.theater.id === theaterId && revision === revisionRef.current) {
-          if ((error as { status?: number }).status === 404) {
-            clearTimeout(timerRef.current ?? undefined);
-            const opener = requestRef.current?.returnFocus;
-            const theater = requestRef.current?.theater.label ?? "";
-            ++openIdRef.current;
-            fetchControllerRef.current?.abort();
-            requestRef.current = null;
-            setRequest(null);
-            if (opener?.isConnected) opener.focus();
-            announceForgotten(theater);
-          } else { dirtyRef.current = true; setStatus("error"); }
+          // 방송을 놓친 경우(끊긴 스트림)에도 저장이 404로 알려 준다 — 같은 잊힘 상태로 보인다.
+          if ((error as { status?: number }).status === 404) { dirtyRef.current = true; markForgotten(); }
+          else { dirtyRef.current = true; setStatus("error"); }
         }
       }
     });
-  }, []);
-
-  const clearTimer = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = null;
-  }, []);
+  }, [markForgotten]);
 
   const flush = useCallback(() => {
     clearTimer();
@@ -123,8 +139,10 @@ export function TheaterSystemPromptSheet() {
     flush();
     const opener = requestRef.current?.returnFocus;
     requestRef.current = null;
+    forgottenRef.current = false;
     focusAfterResetRef.current = null;
     setRequest(null);
+    setForgotten(false);
     setTipVisible(false);
     setUndo(null);
     if (opener?.isConnected) window.requestAnimationFrame(() => opener.focus());
@@ -139,6 +157,8 @@ export function TheaterSystemPromptSheet() {
       const openId = ++openIdRef.current;
       revisionRef.current++;
       dirtyRef.current = false;
+      forgottenRef.current = false;
+      loadedRef.current = false;
       requestRef.current = next;
       focusAfterResetRef.current = null;
       storedRef.current = null;
@@ -148,6 +168,8 @@ export function TheaterSystemPromptSheet() {
       setStored(null);
       setDraft(draftRef.current);
       setUndo(null);
+      setForgotten(false);
+      setCopied(false);
       setStatus("untouched");
       setLoadFailed(false);
       setLoading(true);
@@ -160,6 +182,7 @@ export function TheaterSystemPromptSheet() {
         if (openIdRef.current !== openId) return;
         if (!result || controller.signal.aborted) { setLoading(false); setLoadFailed(true); return; }
         const { prompt } = result;
+        loadedRef.current = true;
         storedRef.current = prompt;
         draftRef.current = prompt ?? { mode: "on", body: "" };
         setStored(prompt);
@@ -208,15 +231,24 @@ export function TheaterSystemPromptSheet() {
   }, [request, mobile, loading]);
 
   useEffect(() => {
-    if (!request || requestRef.current !== request || registeredLabel !== null) return;
-    ++openIdRef.current;
-    fetchControllerRef.current?.abort();
-    clearTimer();
-    requestRef.current = null;
-    setRequest(null);
-    if (request.returnFocus?.isConnected) request.returnFocus.focus();
-    announceForgotten(request.theater.label);
-  }, [request, registeredLabel, clearTimer]);
+    if (!request || requestRef.current !== request) return;
+    if (registeredLabel === null) { markForgotten(); return; }
+    if (!forgottenRef.current) return;
+    // 잊힘 유예 안에 되돌아왔다 — 저장된 값은 서버가 함께 되살렸고, 저장하지 못한 입력만 이어서 저장한다.
+    forgottenRef.current = false;
+    setForgotten(false);
+    if (!loadedRef.current) { setLoadFailed(true); return; }
+    const saved = storedRef.current ?? { mode: "on", body: "" };
+    const draftNow = draftRef.current;
+    if (dirtyRef.current || draftNow.mode !== saved.mode || draftNow.body !== saved.body) persist(request.theater.id, draftNow);
+  }, [request, registeredLabel, markForgotten, persist]);
+
+  // 편집 칸이 사라지면서 포커스가 문서로 떨어지지 않게, 남은 글을 복사하는 버튼(없으면 닫기)으로 옮긴다.
+  useLayoutEffect(() => {
+    if (!forgotten) return;
+    const target = copyRef.current ?? closeRef.current;
+    if (dialogRef.current?.contains(document.activeElement) || document.activeElement === document.body) target?.focus();
+  }, [forgotten]);
 
   useLayoutEffect(() => {
     if (!request || !tipVisible) return;
@@ -295,6 +327,15 @@ export function TheaterSystemPromptSheet() {
     focusAfterResetRef.current = "select";
     setUndo(null);
   };
+  const saved = stored ?? { mode: "on" as const, body: "" };
+  const unsaved = forgotten && (draft.mode !== saved.mode || draft.body !== saved.body);
+  const copyDraft = () => {
+    const text = draftRef.current.body;
+    void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => {
+      // 클립보드 권한이 없으면 글을 선택해 두어 직접 복사할 수 있게 한다.
+      forgottenTextRef.current?.select();
+    });
+  };
   const trapTab = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Tab") return;
     const nodes = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]') ?? []);
@@ -308,16 +349,27 @@ export function TheaterSystemPromptSheet() {
       <header className="theater-prompt-header">
         <span className="theater-prompt-mark" aria-hidden="true">{theaterInitials(theater.label)}</span>
         <span className="theater-prompt-heading"><strong>{theater.label}</strong><small>{t("sidebar.theater.prompt.title")}</small></span>
-        <button type="button" className="theater-prompt-close" onClick={close} aria-label={t("sidebar.theater.prompt.close")}>×</button>
+        <button ref={closeRef} type="button" className="theater-prompt-close" onClick={close} aria-label={t("sidebar.theater.prompt.close")}>×</button>
       </header>
       <p className="theater-prompt-scope">{t("sidebar.theater.prompt.scope")}
         <span className="theater-prompt-tip-wrap"><button ref={tipRef} type="button" className="theater-prompt-tip" aria-label={t("sidebar.theater.prompt.tipAria")} aria-describedby="theater-prompt-tip-description" onMouseEnter={() => setTipVisible(true)} onMouseLeave={() => setTipVisible(false)} onFocus={() => setTipVisible(true)} onBlur={() => setTipVisible(false)}>?</button></span>
       </p>
-      {!loading && !loadFailed ? <div className="theater-prompt-state"><span><i className={stored ? "is-own" : ""} />{stored ? t("sidebar.theater.prompt.own") : t("sidebar.theater.prompt.unset")}</span><small>{stored ? t("sidebar.theater.prompt.ownDetail") : t("sidebar.theater.prompt.unsetDetail")}</small>
+      {forgotten ? <div className="theater-prompt-forgotten" role="alert">
+        <p><strong>{t("sidebar.theater.prompt.forgottenTitle")}</strong> {unsaved ? t(draft.body ? "sidebar.theater.prompt.forgottenUnsavedCopy" : "sidebar.theater.prompt.forgottenUnsaved") : null}</p>
+        {unsaved && draft.body ? <>
+          <textarea ref={forgottenTextRef} readOnly value={draft.body} rows={5} aria-label={t("sidebar.theater.prompt.bodyLabel")} />
+          <div className="theater-prompt-forgotten-actions">
+            <button ref={copyRef} type="button" onClick={copyDraft}>{t("sidebar.theater.prompt.copy")}</button>
+            {copied ? <span role="status">{t("sidebar.theater.prompt.copied")}</span> : null}
+          </div>
+        </> : null}
+        <small>{t("sidebar.theater.prompt.forgottenRestore")}</small>
+      </div> : null}
+      {forgotten ? null : !loading && !loadFailed ? <div className="theater-prompt-state"><span><i className={stored ? "is-own" : ""} />{stored ? t("sidebar.theater.prompt.own") : t("sidebar.theater.prompt.unset")}</span><small>{stored ? t("sidebar.theater.prompt.ownDetail") : t("sidebar.theater.prompt.unsetDetail")}</small>
         {stored ? <button type="button" onClick={reset}>{t("sidebar.theater.prompt.reset")}</button> : null}
         {undo ? <p role="status">{t("sidebar.theater.prompt.resetDone")} <button ref={undoRef} type="button" onClick={restore}>{t("sidebar.theater.prompt.undo")}</button></p> : null}
       </div> : null}
-      {loading ? <p role="status">{t("sidebar.theater.prompt.loading")}</p> : loadFailed ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.prompt.loadFailed")}</p> : <>
+      {forgotten ? null : loading ? <p role="status">{t("sidebar.theater.prompt.loading")}</p> : loadFailed ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.prompt.loadFailed")}</p> : <>
         <div className="theater-prompt-field" ref={selectRef}><span id="theater-prompt-mode-label">{t("sidebar.theater.prompt.modeLabel")}</span>
           <Select className="theater-prompt-select" aria-labelledby="theater-prompt-mode-label" value={draft.mode} options={(Object.keys(modeNames) as ClaudeCodeSystemPromptMode[]).map((mode) => ({ value: mode, label: modeNames[mode] }))} onChange={(mode) => changeMode(mode as ClaudeCodeSystemPromptMode)} />
         </div>
