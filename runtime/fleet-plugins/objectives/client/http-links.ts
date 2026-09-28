@@ -1,8 +1,9 @@
 /**
  * 본문 속 http(s) 주소만 링크로 가른다.
  *
- * javascript: 같은 다른 스킴과 깨진 주소는 평문으로 남긴다. 문장 끝의 구두점과,
- * 주소 안에서 짝이 맞지 않는 닫는 괄호는 링크 밖에 둔다.
+ * javascript: 같은 다른 스킴과 깨진 주소는 평문으로 남긴다. 후보는 ASCII URL 문자만
+ * 먹어서, 뒤에 공백 없이 붙은 한글은 주소 밖에 남는다. 그때 남는 닫는 괄호와
+ * 문장 끝의 구두점은 trim이 걷어 낸다.
  */
 
 export interface LinkPart {
@@ -11,7 +12,8 @@ export interface LinkPart {
   readonly href?: string;
 }
 
-const CANDIDATE = /https?:\/\/[^\s<>"']+/gi;
+/** RFC 3986의 ASCII 문자. 따옴표는 문장 경계라 빼 둔다. */
+const CANDIDATE = /https?:\/\/[A-Za-z0-9\-._~:/?#\[\]@!$&()*+,;=%]+/gi;
 const TRAILING_PUNCTUATION = /[.,;:!?。、，！？]+$/u;
 
 const closerOpen = (char: string): "(" | "[" | "{" | null =>

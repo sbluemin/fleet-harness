@@ -135,7 +135,12 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
                           <span className="objectives-decision-ind" aria-hidden="true" />
                           <span>{option.label}</span>
                         </button>
-                        {option.description ? <small><LinkText text={option.description} /></small> : null}
+                        {option.description ? <small onClick={(event) => {
+                          if (sending) return;
+                          const target = event.target;
+                          if (target instanceof Element && target.closest("a")) return;
+                          pick(question, option.id);
+                        }}><LinkText text={option.description} /></small> : null}
                       </div>
                     );
                   })}

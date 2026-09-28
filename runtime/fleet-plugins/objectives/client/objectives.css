@@ -1356,7 +1356,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-opt-pick:hover:not(:disabled) { background: var(--control-rest); color: var(--text-primary); }
 .objectives-decision-opt-pick:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-decision-opt-pick[aria-checked="true"] { color: var(--text-primary); font-weight: var(--weight-bold); background: color-mix(in oklch, var(--brass) 9%, transparent); }
-.objectives-decision-opt small { grid-column: 2; display: block; margin: 0 6px 4px 0; font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-opt small { grid-column: 2; display: block; margin: 0 6px 4px 0; font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); cursor: pointer; }
 .objectives-decision-ind { display: grid; place-items: center; width: 12px; height: 12px; margin-top: 3px; border: 1.5px solid var(--text-tertiary); border-radius: 50%; }
 .objectives-decision-opt.is-multi .objectives-decision-ind { border-radius: 3px; }
 .objectives-decision-opt-pick[aria-checked="true"] .objectives-decision-ind { border-color: var(--brass); }

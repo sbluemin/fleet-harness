@@ -13,6 +13,13 @@ describe("objective http links", () => {
       { kind: "link", text: "https://en.wikipedia.org/wiki/URL_(disambiguation)", href: "https://en.wikipedia.org/wiki/URL_(disambiguation)" },
       { kind: "text", text: "." },
     ]);
+    expect(linkParts("https://x.com/a에서 (https://x.com/b)를")).toEqual([
+      { kind: "link", text: "https://x.com/a", href: "https://x.com/a" },
+      { kind: "text", text: "에서 (" },
+      { kind: "link", text: "https://x.com/b", href: "https://x.com/b" },
+      { kind: "text", text: ")" },
+      { kind: "text", text: "를" },
+    ]);
   });
 
   it("does not link other schemes or a broken http address", () => {
