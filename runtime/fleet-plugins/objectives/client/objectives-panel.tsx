@@ -43,6 +43,7 @@ type ListId = "today" | "due" | "all" | "agent" | "outside";
 const LISTS: readonly ListId[] = ["today", "due", "all", "agent", "outside"];
 /** 목록의 구역 — 상태가 정한다. 구역 안의 순서는 사람이 정한 보드 순서 그대로다. */
 type Zone = "request" | "review" | "run" | "wait" | "outside" | "done";
+// 목표 밖 판정이 결정 요청·검토 대기보다 먼저다 — 따로 만든 세션도 제 보드 도구로 인계까지 갈 수 있고, 그래도 「목표 밖」에서 보여야 한다.
 const zoneOf = (objective: Objective): Zone => objective.done ? "done" : !objective.enlisted ? "outside" : hasDecisionRequest(objective) ? "request" : objective.awaitingReview ? "review" : objective.commenced ? "run" : "wait";
 // 검토 대기·완료됨은 예전 구획의 접힘 기억을 그대로 잇는다. 결정 요청 구역은 접지 않는다.
 const zoneKey = (zone: Zone) => (zone === "review" || zone === "done" || zone === "request" ? zone : `zone:${zone}`);
