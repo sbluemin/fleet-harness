@@ -4053,8 +4053,10 @@
   pointer-events: none;
 }
 
-/* 판이 서 있는 동안 미니맵은 중복이다 — 판 자체가 함대의 지도다. */
-.operations-canvas.is-fleet-map .canvas-minimap {
+/* 판이 서 있는 동안 미니맵은 중복이다 — 판 자체가 함대의 지도다. 접힌 Map 버튼도 함께 걷는다 — 남기면
+   판(z-index 20)이 미니맵 층(14)의 버튼을 덮어 보이기만 하고 눌리지 않는 버튼이 된다. */
+.operations-canvas.is-fleet-map .canvas-minimap,
+.operations-canvas.is-fleet-map .canvas-minimap-fab {
   display: none;
 }
 
