@@ -68,9 +68,52 @@ export function useDesktopHomeOrigin(reloadToken = 0): DesktopShellHome {
 
 /** 스트림으로 도착한 게시. 빈 게시는 "모른다"이지 "집이 없다"가 아니므로 이미 아는 집을 지우지 않는다. */
 export function applyDesktopShellSnapshot(value: unknown): void {
+  const leaving = readLeavingGeneration(value);
+  if (leaving !== null) void leave(leaving);
   const origin = readHomeOrigin(value);
   if (origin === null) return;
   publish({ origin, pending: false, desktopVersion: readDesktopVersion(value) ?? snapshot.desktopVersion });
+}
+
+/** 떠나기 전에 멈춰야 하는 일 하나. 멈춘 뒤에 끝나는 약속을 돌려준다. */
+type LeavingParticipant = () => Promise<void>;
+const leavingParticipants = new Set<LeavingParticipant>();
+/** 이미 답한 가장 최근 세대. 스트림이 다시 붙으며 옛 알림을 되풀이해도 같은 전환에 두 번 멈추지 않는다. */
+let answeredLeaving = 0;
+
+/**
+ * 셸이 이 화면을 떠나기 전에 멈춰야 하는 일을 등록한다. 알림은 스트림으로만 온다 — 처음 읽는 게시에 남은
+ * 알림은 이미 끝난 전환의 것이다. 등록한 쪽이 없어도 답은 간다: 멈출 것이 없다는 것도 답이다.
+ */
+export function onDesktopLeaving(participant: LeavingParticipant): () => void {
+  leavingParticipants.add(participant);
+  return () => { leavingParticipants.delete(participant); };
+}
+
+/**
+ * 떠나도 된다는 답. 셸은 이 창의 렌더러에서 제목을 직접 읽으므로(runtime/fleet-desktop/src/surface-quiesce.ts의
+ * 같은 이름), 같은 콘솔을 연 다른 탭이나 다른 창이 대신 답할 수 없다. 옛 답은 지우고 새 답 하나만 둔다.
+ */
+export const DESKTOP_LEAVING_ACK_MARK = "\u2064";
+const LEAVING_ACK = new RegExp(`${DESKTOP_LEAVING_ACK_MARK}\\d+${DESKTOP_LEAVING_ACK_MARK}`, "gu");
+
+async function leave(generation: number): Promise<void> {
+  if (!isDesktopShell() || generation <= answeredLeaving) return;
+  answeredLeaving = generation;
+  const outcomes = await Promise.allSettled([...leavingParticipants].map((participant) => participant()));
+  // 하나라도 멈췄는지 모르면 답하지 않는다 — 셸은 답이 없으면 떠나지 않는다.
+  if (outcomes.some((outcome) => outcome.status === "rejected") || generation !== answeredLeaving) return;
+  document.title = `${document.title.replace(LEAVING_ACK, "")}${DESKTOP_LEAVING_ACK_MARK}${generation}${DESKTOP_LEAVING_ACK_MARK}`;
+}
+
+function readLeavingGeneration(value: unknown): number | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const surface = (value as Record<string, unknown>).surface;
+  if (!surface || typeof surface !== "object" || Array.isArray(surface)) return null;
+  const entry = surface as Record<string, unknown>;
+  return entry.phase === "leaving" && typeof entry.generation === "number" && Number.isSafeInteger(entry.generation) && entry.generation > 0
+    ? entry.generation
+    : null;
 }
 
 async function fetchDesktopShell(signal?: AbortSignal): Promise<Pick<DesktopShellHome, "origin" | "desktopVersion">> {
@@ -126,13 +169,13 @@ const CANVAS_BODY_SELECTOR = ".console-shell .operations-canvas-world";
  */
 export function useConsoleReadyTitleMark(ready: boolean, awaitCanvas: boolean): void {
   useEffect(() => {
-    if (!ready || !isDesktopShell() || document.title.endsWith(CONSOLE_READY_TITLE_MARK)) return;
+    if (!ready || !isDesktopShell() || document.title.includes(CONSOLE_READY_TITLE_MARK)) return;
     let frame = 0;
     let cancelled = false;
     const mark = (): void => {
       frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(() => {
-          if (!cancelled && !document.title.endsWith(CONSOLE_READY_TITLE_MARK)) document.title = `${document.title}${CONSOLE_READY_TITLE_MARK}`;
+          if (!cancelled && !document.title.includes(CONSOLE_READY_TITLE_MARK)) document.title = `${document.title}${CONSOLE_READY_TITLE_MARK}`;
         });
       });
     };
