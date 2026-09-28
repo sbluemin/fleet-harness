@@ -2,7 +2,7 @@
 branch: zen-remote-mode-preserve
 ---
 
-### fleet-console
+### fleet-desktop
 #### Fixed
-- Preserve Zen or normal mode when switching between local and remote consoles.
-  ko: 로컬과 원격 콘솔 간에 전환할 때 Zen 또는 일반 모드 상태를 그대로 유지합니다.
+- Switching to another machine's Console no longer drops you out of Zen mode; the window keeps the mode you were in.
+  ko: 다른 기기의 Console로 전환해도 Zen mode가 풀리지 않고, 창이 전환 전 모드를 그대로 유지합니다.
