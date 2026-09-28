@@ -1212,7 +1212,6 @@
   flex-direction: column;
   width: max-content;
   min-width: 16.5rem;
-  max-width: min(26rem, calc(100vw - 16px));
   padding: var(--space-1);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
