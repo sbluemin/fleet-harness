@@ -31,7 +31,7 @@
   padding: 11px var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-deep) 75%, transparent);
+  background: var(--control-rest);
   color: var(--text-tertiary);
   font-size: var(--font-size-lg);
   cursor: pointer;
@@ -43,7 +43,7 @@
 
 .command-entry:hover {
   border-color: color-mix(in oklch, var(--brass) 45%, transparent);
-  background: var(--ink-veil);
+  background: var(--control-rest-hover);
   color: var(--text-primary);
   transform: translateY(-1px);
 }
@@ -66,7 +66,7 @@ kbd {
   gap: var(--space-hair);
   padding: var(--space-1) var(--space-2);
   border-radius: 8px;
-  background: var(--ink-abyss);
+  background: var(--control-rest);
   border: 1px solid var(--surface-rim);
   color: var(--text-secondary);
   font-family: var(--font-mono);
@@ -82,7 +82,7 @@ kbd {
   gap: var(--space-1);
   padding: var(--space-1) 10px;
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   border: 1px solid var(--surface-rim);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -150,7 +150,7 @@ button.chip:focus-visible {
   gap: var(--space-1);
   padding: var(--space-1);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   border: 1px solid var(--surface-rim);
 }
 
@@ -173,7 +173,7 @@ button.chip:focus-visible {
 
 .nav-tab:hover {
   color: var(--text-primary);
-  background: color-mix(in oklch, var(--ink-veil) 35%, transparent);
+  background: var(--control-rest-hover);
 }
 
 .nav-tab.active {
@@ -235,7 +235,7 @@ button.chip:focus-visible {
 }
 
 .tag-group-button:hover {
-  background: color-mix(in oklch, var(--ink-veil) 50%, transparent);
+  background: var(--control-rest-hover);
 }
 
 .tag-group-button .caret {
@@ -256,7 +256,7 @@ button.chip:focus-visible {
   font-weight: var(--weight-medium);
   letter-spacing: 0.06em;
   color: var(--text-tertiary);
-  background: color-mix(in oklch, var(--ink-mid) 70%, transparent);
+  background: var(--control-rest);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-pill);
   padding: 2px 7px;
@@ -313,7 +313,7 @@ button.chip:focus-visible {
 }
 
 .nav-entry:hover {
-  background: color-mix(in oklch, var(--ink-veil) 40%, transparent);
+  background: var(--control-rest-hover);
   color: var(--text-primary);
   transform: translateX(2px);
 }
@@ -471,7 +471,7 @@ button.chip:focus-visible {
   padding: 6px 12px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-deep) 60%, transparent);
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
@@ -489,7 +489,7 @@ button.chip:focus-visible {
   border: 1px solid color-mix(in oklch, var(--brass) 50%, transparent);
   background:
     linear-gradient(180deg, color-mix(in oklch, var(--brass) 18%, transparent), color-mix(in oklch, var(--brass) 8%, transparent)),
-    var(--surface-glass);
+    var(--surface-panel);
   color: var(--brass-bright);
   font-family: var(--font-body);
   font-size: var(--font-size-lg);
@@ -612,7 +612,7 @@ button.chip:focus-visible {
   padding: var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
-  background: var(--ink-veil);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   transition:
     transform var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
@@ -622,7 +622,7 @@ button.chip:focus-visible {
 .related-card:hover {
   transform: translateY(-2px);
   border-color: color-mix(in oklch, var(--aurora) 40%, transparent);
-  background: color-mix(in oklch, var(--ink-mid) 80%, transparent);
+  background: var(--surface-panel-raised);
 }
 
 .related-card strong {
@@ -651,7 +651,7 @@ button.chip:focus-visible {
 .toc-panel {
   padding: var(--space-6);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
 }
@@ -724,7 +724,7 @@ button.chip:focus-visible {
   margin-top: 2px;
   border-radius: var(--radius-pill);
   border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
-  background: color-mix(in oklch, var(--ink-deep) 64%, transparent);
+  background: var(--control-rest);
 }
 
 .manifest-summary-indicator::before,
@@ -768,7 +768,7 @@ button.chip:focus-visible {
   border-radius: 10px;
   background:
     radial-gradient(circle at 30% 25%, color-mix(in oklch, var(--brass-bright) 32%, transparent), transparent 70%),
-    color-mix(in oklch, var(--ink-mid) 70%, transparent);
+    var(--control-rest);
   border: 1px solid color-mix(in oklch, var(--brass) 32%, transparent);
   color: var(--brass-bright);
   flex-shrink: 0;
@@ -807,7 +807,7 @@ button.chip:focus-visible {
   gap: var(--space-3);
   padding: 12px 14px;
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   border: 1px solid var(--surface-rim);
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -888,7 +888,7 @@ button.chip:focus-visible {
   z-index: 80;
   display: grid;
   place-items: start center;
-  background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
+  background: color-mix(in oklch, var(--ink-deep) 55%, transparent);
   padding: 14vh var(--space-5) var(--space-5);
   animation: codex-pop 280ms var(--ease-spring) both;
 }
@@ -898,7 +898,7 @@ button.chip:focus-visible {
   padding: var(--space-3);
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim-strong);
-  background: var(--surface-pillar);
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
 }
 
@@ -914,7 +914,7 @@ button.chip:focus-visible {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-abyss) 80%, transparent);
+  background: var(--control-field);
 }
 
 .command-search svg {
@@ -1008,7 +1008,7 @@ button.chip:focus-visible {
 }
 
 .command-result:hover {
-  background: color-mix(in oklch, var(--ink-veil) 50%, transparent);
+  background: var(--control-rest-hover);
 }
 
 .command-result.active {
@@ -1112,7 +1112,7 @@ button.chip:focus-visible {
   padding: 8px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
@@ -1148,7 +1148,7 @@ button.chip:focus-visible {
   border-radius: 10px;
   background:
     radial-gradient(circle at 30% 25%, color-mix(in oklch, var(--brass-bright) 32%, transparent), transparent 70%),
-    color-mix(in oklch, var(--ink-mid) 70%, transparent);
+    var(--control-rest);
   border: 1px solid color-mix(in oklch, var(--brass) 32%, transparent);
   color: var(--brass-bright);
 }
@@ -1181,7 +1181,7 @@ button.chip:focus-visible {
   position: relative;
   padding: clamp(28px, 4vw, 48px);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
   overflow-x: auto;
@@ -1209,7 +1209,7 @@ button.chip:focus-visible {
   opacity: 0;
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
-  background: var(--surface-pillar);
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   padding: 11px 16px;
@@ -1234,7 +1234,7 @@ button.chip:focus-visible {
   height: 32px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   color: var(--text-tertiary);
   cursor: pointer;
   transition:
@@ -1279,7 +1279,7 @@ button.chip:focus-visible {
 }
 
 .nav-drydock-link:hover {
-  background: color-mix(in oklch, var(--ink-veil) 40%, transparent);
+  background: var(--control-rest-hover);
   color: var(--text-primary);
   transform: translateX(2px);
 }
@@ -1412,7 +1412,7 @@ button.chip:focus-visible {
   gap: 4px;
   padding: 4px;
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   border: 1px solid var(--surface-rim);
   width: fit-content;
 }
@@ -1436,7 +1436,7 @@ button.chip:focus-visible {
 
 .queue-tab:hover {
   color: var(--text-primary);
-  background: color-mix(in oklch, var(--ink-veil) 35%, transparent);
+  background: var(--control-rest-hover);
 }
 
 .queue-tab.active {
@@ -1463,7 +1463,7 @@ button.chip:focus-visible {
 }
 
 .queue-badge--muted {
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   border-color: var(--surface-rim);
   color: var(--text-tertiary);
 }
@@ -1481,7 +1481,7 @@ button.chip:focus-visible {
   padding: 2px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   width: fit-content;
 }
 
@@ -1501,7 +1501,7 @@ button.chip:focus-visible {
 }
 
 .queue-segments button[aria-pressed="true"] {
-  background: var(--surface-pillar);
+  background: var(--surface-panel-raised);
   color: var(--text-primary);
 }
 
@@ -1563,7 +1563,7 @@ button.chip:focus-visible {
   margin: calc(var(--space-5) * -1) calc(var(--codex-reader-gutter-x, var(--space-6)) * -1) var(--space-5);
   padding: var(--space-3) var(--codex-reader-gutter-x, var(--space-6));
   border-bottom: 1px solid var(--surface-rim-strong);
-  background: var(--ink-deep);
+  background: var(--surface-panel);
 }
 
 .queue-decision-dock-copy {
@@ -1604,7 +1604,7 @@ button.chip:focus-visible {
   padding: 2px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   margin-bottom: var(--space-4);
 }
 
@@ -1624,7 +1624,7 @@ button.chip:focus-visible {
 }
 
 .queue-diff-controls button[aria-pressed="true"] {
-  background: var(--surface-pillar);
+  background: var(--surface-panel-raised);
   color: var(--text-primary);
 }
 
@@ -1751,7 +1751,7 @@ button.chip:focus-visible {
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   border: 1px solid transparent;
   box-shadow: var(--shadow-soft);
   text-decoration: none;
@@ -1917,7 +1917,7 @@ button.chip:focus-visible {
   gap: var(--space-4);
   padding: var(--space-5);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
 }
@@ -2007,7 +2007,7 @@ button.chip:focus-visible {
   gap: var(--space-2);
   padding: 8px 12px;
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   border: 1px solid var(--surface-rim);
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -2068,7 +2068,7 @@ button.chip:focus-visible {
 .queue-back-btn:hover {
   color: var(--text-primary);
   border-color: var(--surface-rim);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
 }
 
 /* 패치 상세 결정 바 */
@@ -2179,7 +2179,7 @@ button.chip:focus-visible {
 }
 
 .queue-action-btn--cancel:not(:disabled):hover {
-  background: color-mix(in oklch, var(--ink-veil) 20%, transparent);
+  background: var(--control-rest-hover);
   color: var(--text-primary);
 }
 
@@ -2194,7 +2194,7 @@ button.chip:focus-visible {
   width: 100%;
   min-height: 80px;
   padding: var(--space-3) var(--space-4);
-  background: var(--surface-glass);
+  background: var(--control-field);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   color: var(--text-primary);
@@ -2354,7 +2354,7 @@ button.chip:focus-visible {
   margin-top: var(--space-5);
   padding: var(--space-5);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
 }
@@ -2381,7 +2381,7 @@ button.chip:focus-visible {
   padding: 12px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--surface-glass) 80%, transparent);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   color: inherit;
   text-decoration: none;
 }
@@ -2458,7 +2458,7 @@ button.chip:focus-visible {
   gap: var(--space-1);
   white-space: nowrap;
   padding: var(--space-1) var(--space-2);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
@@ -2469,7 +2469,7 @@ button.chip:focus-visible {
 }
 
 .codex-nav-quick:hover {
-  background: color-mix(in oklab, var(--brass) 8%, var(--surface-glass));
+  background: color-mix(in oklch, var(--brass) 8%, var(--surface-panel));
   color: var(--text-primary);
 }
 
@@ -2529,7 +2529,7 @@ button.chip:focus-visible {
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -2542,7 +2542,7 @@ button.chip:focus-visible {
 .codex-nav-health-chip:focus-visible,
 .codex-nav-health-chip[aria-expanded="true"] {
   color: var(--text-secondary);
-  background: color-mix(in oklab, var(--brass) 8%, var(--surface-glass));
+  background: color-mix(in oklch, var(--brass) 8%, var(--surface-panel));
 }
 
 .codex-nav-health-chip:focus-visible {
@@ -2588,16 +2588,7 @@ button.chip:focus-visible {
   padding: var(--space-3);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 틴트 아래 불투명 fallback 언더레이를 유지하고,
-     유리 게이트가 열릴 때만 body 뒤의 화면을 흐린다. */
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
-    ),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-soft);
   color: var(--text-secondary);
 }
@@ -2655,7 +2646,7 @@ button.chip:focus-visible {
   padding: 2px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
 }
 
 .codex-nav-sort button,
@@ -2895,7 +2886,7 @@ button.chip:focus-visible {
 .cowork-ghost:hover { border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); }
 .cowork-solid { background: var(--brass); color: var(--text-on-brass); }
 .cowork-solid:hover { background: var(--brass-bright); }
-.cowork-solid--danger { background: color-mix(in oklch, var(--coral) 80%, var(--ink-deep)); color: var(--text-primary); }
+.cowork-solid--danger { background: color-mix(in oklch, var(--coral) 80%, var(--surface-panel-raised)); color: var(--text-primary); }
 .cowork-solid--danger:hover { background: var(--coral); }
 .cowork-x { border: 0; background: transparent; color: var(--text-tertiary); cursor: pointer; font-size: var(--t-base); line-height: 1; padding: 0 var(--space-1); }
 .cowork-x:hover { color: var(--text-primary); }
@@ -2918,14 +2909,14 @@ button.chip:focus-visible {
   gap: var(--space-1);
   border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--surface-rim));
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--ink-veil) 96%, var(--brass));
+  background: color-mix(in oklch, var(--brass) 10%, var(--surface-panel-raised));
   color: var(--text-primary);
   cursor: pointer;
   font-family: var(--font-body);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   padding: var(--space-1) var(--space-3);
-  box-shadow: 0 2px 6px color-mix(in oklch, var(--ink-abyss) 40%, transparent), 0 12px 32px -8px color-mix(in oklch, var(--ink-abyss) 80%, transparent);
+  box-shadow: var(--shadow-floating);
   animation: cowork-pop var(--duration-fast) var(--ease-spring) both;
   white-space: nowrap;
 }
@@ -2941,8 +2932,8 @@ button.chip:focus-visible {
   gap: var(--space-2);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
-  box-shadow: 0 2px 8px color-mix(in oklch, var(--ink-abyss) 50%, transparent), 0 20px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--shadow-floating);
   padding: var(--space-3);
   animation: cowork-rise var(--duration-base) var(--ease-spring) both;
 }
@@ -2963,7 +2954,7 @@ button.chip:focus-visible {
   resize: vertical;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
+  background: var(--control-field);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: var(--t-md);
@@ -2983,8 +2974,8 @@ button.chip:focus-visible {
   max-width: 280px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
-  box-shadow: 0 12px 32px -10px color-mix(in oklch, var(--ink-abyss) 80%, transparent);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--shadow-soft);
   color: var(--text-primary);
   font-size: var(--t-xs);
   line-height: 1.5;
@@ -3041,7 +3032,7 @@ button.chip:focus-visible {
   font-size: var(--t-sm);
   text-align: left;
 }
-.cowork-thread-bar:hover { background: var(--ink-veil); color: var(--text-primary); }
+.cowork-thread-bar:hover { background: var(--control-rest-hover); color: var(--text-primary); }
 .cowork-thread-bar:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 .cowork-thread-bar__title { flex: 1; min-width: 0; font-weight: var(--weight-medium); }
 .cowork-thread-bar__action { color: var(--text-tertiary); font-size: var(--t-xs); }
@@ -3215,10 +3206,10 @@ button.chip:focus-visible {
 .cowork-review-text b { color: var(--text-primary); font-weight: var(--weight-medium); }
 .cowork-review-sep { color: var(--hairline-strong); margin: 0 6px; }
 .cowork-review.is-confirm { border-color: var(--brass); }
-.cowork-segments { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-glass); }
+.cowork-segments { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel-raised); }
 .cowork-segments button { border: 0; border-radius: var(--radius-xs); padding: 3px var(--space-2); background: transparent; color: var(--text-tertiary); font-family: var(--font-body); font-size: var(--t-xs); cursor: pointer; }
 .cowork-segments button:hover { color: var(--text-secondary); }
-.cowork-segments button[aria-pressed="true"] { background: var(--surface-pillar); color: var(--text-primary); }
+.cowork-segments button[aria-pressed="true"] { background: var(--surface-panel-raised); color: var(--text-primary); }
 
 /* ── 컴포저 — SDK 블록 위에 agent-chat-composer-frame 문법. ── */
 .cowork-composer-frame {
@@ -3305,7 +3296,7 @@ button.chip:focus-visible {
   place-items: center;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--surface-pillar) 40%, transparent);
+  background: var(--control-rest);
   color: var(--text-tertiary);
   cursor: default;
   transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring), transform var(--duration-fast) var(--ease-spring);
@@ -3313,7 +3304,7 @@ button.chip:focus-visible {
 .cowork-send svg { width: 15px; height: 15px; }
 .cowork-send.is-armed { border-color: var(--brass); background: var(--brass); color: var(--text-on-brass); cursor: pointer; }
 .cowork-send.is-armed:hover { background: var(--brass-bright); transform: translateY(-1px); }
-.cowork-stop { border-color: var(--hairline-strong); background: var(--surface-pillar); color: var(--text-primary); cursor: pointer; }
+.cowork-stop { border-color: var(--hairline-strong); background: var(--surface-panel-raised); color: var(--text-primary); cursor: pointer; }
 .cowork-stop span { width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
 
 @keyframes cowork-pop { from { opacity: 0; transform: translateX(-50%) scale(0.92); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
@@ -3385,7 +3376,7 @@ button.chip:focus-visible {
   padding: var(--space-3);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  background: var(--ink-deep);
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-soft);
   pointer-events: none;
 }
