@@ -1892,7 +1892,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const body = await ctx.host.http.readJsonBody<{ readonly model?: unknown; readonly effort?: unknown }>(req);
     const model = typeof body?.model === "string" ? body.model : "";
     const effort = typeof body?.effort === "string" && body.effort.length > 0 ? body.effort : null;
-    const row = (await buildLaunchKinds())
+    // 런치 메뉴와 같은 행을 세우되 CLI 설치 탐지는 건너뛴다 — 채팅이 이미 돌고 있으니 CLI는 있고,
+    // 탐지는 바꿀 때마다 자식 프로세스를 띄워 응답을 초 단위로 늦춘다.
+    const selection = deps.readAiGatewaySettings ? resolveAiGatewaySelection(deps.readAiGatewaySettings()) : undefined;
+    const row = buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], AGENT_OPERATION_TYPE, selection)
       .find((kind) => kind.id === "claude")
       ?.variants?.flatMap((group) => group.rows)
       .find((candidate) => candidate.launch.model === model);

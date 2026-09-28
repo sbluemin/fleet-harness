@@ -361,10 +361,12 @@ export function AgentChatComposer({
       case "context":
         onOpenContextMeter();
         return t("terminal.chat.consoleContextOpened");
+      // 메뉴가 열리는 것 자체가 답이다. 알림은 좌표 자리를 빌려 서므로, 여기서 말하면 방금 연
+      // 메뉴의 닻인 좌표를 알림이 가려 메뉴가 서지 못한다.
       case "model":
       case "effort":
         onOpenCoordinates();
-        return t("terminal.chat.consoleCoordinatesOpened");
+        return "";
       // `clear`는 send()가 확인을 거쳐 자식에게 직접 보낸다.
       default:
         return "";
@@ -381,7 +383,8 @@ export function AgentChatComposer({
     const routed = readConsoleCommand(text, catalog);
     if (routed && routed.target !== "clear") {
       setFailed(false);
-      setConsoleNotice(runConsoleCommand(routed));
+      const said = runConsoleCommand(routed);
+      setConsoleNotice(said.length > 0 ? said : null);
       setDraft("");
       inputRef.current?.focus();
       return;
