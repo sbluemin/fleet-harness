@@ -486,6 +486,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     remove(objectiveId) {
       const current = objective(objectiveId);
       // 레코드는 Operation 이 복원 불가로 사라질 때(operation:purged) 거둔다 — 유예 동안 복원하면 목표도 돌아온다.
+      // 기동 전 목표는 먼저 「정리됨」에 남아 되돌릴 수 있다. 이미 그 자리에 있으면(비우기) 영구 삭제한다.
+      if (store.pending(objectiveId) && !current.removed) { const trashed = store.trash(objectiveId); service.followupTargetChanged(objectiveId); return trashed; }
       if (store.pending(objectiveId)) { store.removePending(objectiveId); service.followupTargetChanged(objectiveId); return current; }
       if (!ctx.host.operations.delete(objectiveId)) throw new ObjectiveStoreError("unknown_objective");
       return current;

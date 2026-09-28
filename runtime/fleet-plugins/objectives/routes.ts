@@ -60,7 +60,10 @@ export default definePlugin({
     ctx.host.lifecycle.registerCleanup(() => prStatus!.dispose());
     const collectEvidence = () => { try { store.evidenceCollect(); } catch { console.warn("[objectives] evidence_cleanup_failed"); } };
     collectEvidence();
-    const evidenceGc = setInterval(collectEvidence, RESULT_LIMITS.evidenceGcMs);
+    // 보관 기간이 지난 지운 목표 — 증거 정리와 같은 주기로 영구 삭제한다.
+    const purgeRemoved = () => { try { store.purgeRemoved(); } catch { console.warn("[objectives] removed_purge_failed"); } };
+    purgeRemoved();
+    const evidenceGc = setInterval(() => { collectEvidence(); purgeRemoved(); }, RESULT_LIMITS.evidenceGcMs);
     evidenceGc.unref?.();
     ctx.host.lifecycle.registerCleanup(() => clearInterval(evidenceGc));
 

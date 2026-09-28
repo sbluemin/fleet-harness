@@ -383,16 +383,25 @@ export interface StoredObjective {
 
 export interface StoredRemoval {
   readonly at: number;
-  /** 지운 에이전트 Operation. */
-  readonly by: string;
+  /** 지운 에이전트 Operation — 없으면 사람이 보드에서 지웠다. */
+  readonly by?: string;
+  /** 지운 때의 그 Operation 제목 — Operation 이 사라져도 보드가 누가 지웠는지 말한다. */
+  readonly byTitle?: string;
+  /** 에이전트가 댄 이유 한 줄. */
+  readonly reason?: string;
   readonly mergedInto?: string;
 }
+
+/** 지우거나 합친 목표를 보드에 남겨 두는 기간 — 지나면 영구 삭제된다. */
+export const REMOVED_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+export const MAX_REMOVAL_REASON = 300;
 
 export interface StoredMerge {
   readonly sourceId: string;
   readonly title: string;
   readonly at: number;
   readonly by: string;
+  readonly byTitle?: string;
   /** 받은 목표의 브리핑 끝에 덧붙인 구간 그대로 — 되돌릴 때 이 구간을 찾아 걷어 낸다. */
   readonly noteBlock: string;
   /** 옮겨 온 기준의 id — 받은 목표에 이미 같은 문장이 있던 기준은 옮기지 않아 여기 없다. */
@@ -499,9 +508,17 @@ export interface Objective {
   /** 개시했다 — 목록의 「진행 중」 구역. 구상만 했거나 보드에서 막 만든 목표는 「시작 전」이다. */
   readonly commenced: boolean;
   /** 에이전트가 지웠거나 다른 목표로 합쳤다 — 보드의 보통 구역에서 빠지고, 사람이 되돌릴 수 있다. */
-  readonly removed: { readonly at: number; readonly by: { readonly operationId: string; readonly title: string | null }; readonly mergedInto: { readonly id: string; readonly title: string | null } | null } | null;
-  /** 이 목표로 합쳐 온 목표. */
-  readonly merged: readonly { readonly sourceId: string; readonly title: string; readonly at: number; readonly by: { readonly operationId: string; readonly title: string | null } }[];
+  readonly removed: {
+    readonly at: number;
+    /** 영구 삭제되는 때. */
+    readonly expiresAt: number;
+    /** 지운 에이전트 — null 이면 사람이 지웠다. */
+    readonly by: { readonly operationId: string; readonly title: string | null } | null;
+    readonly reason: string | null;
+    readonly mergedInto: { readonly id: string; readonly title: string | null } | null;
+  } | null;
+  /** 이 목표로 합쳐 온 목표 — criteriaIds 는 옮겨 온 기준이다. 원본이 영구 삭제됐으면 restorable 이 false. */
+  readonly merged: readonly { readonly sourceId: string; readonly title: string; readonly at: number; readonly by: { readonly operationId: string; readonly title: string | null }; readonly criteriaIds: readonly string[]; readonly restorable: boolean }[];
 }
 
 /** 보드에서 만든 목표의 지휘관 기본 설정 — 목록은 이와 다를 때만 시작 전 목표의 예정 설정을 보인다. */

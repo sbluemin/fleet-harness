@@ -17,6 +17,8 @@ import {
   MAX_RECORDS,
   MAX_MISSIONS,
   MAX_NOTE,
+  MAX_REMOVAL_REASON,
+  REMOVED_RETENTION_MS,
   awaitingHandoff,
   awaitingReview,
   evidenceView,
@@ -38,6 +40,7 @@ import {
   type MemberLaunch,
   type StoredMember,
   type StoredMerge,
+  type StoredRemoval,
   type PlanInput,
   type MissionAddInput,
   type MissionPatchInput,
@@ -130,6 +133,13 @@ export interface FollowupSelection {
   readonly launch: StoredFollowupBatch["launch"];
 }
 
+/** 정리한 에이전트 Operation 과 그때의 제목, 에이전트가 댄 이유. */
+export interface TidyActor {
+  readonly operationId: string;
+  readonly title: string | null;
+  readonly reason?: string;
+}
+
 export interface ObjectivePatch {
   readonly note?: string;
   readonly planRequest?: string;
@@ -157,10 +167,17 @@ export interface ObjectiveStore {
    * 에이전트의 정리 — 기동 전(Operation 없는) 보드 목표만 받는다. 지우기는 레코드를 남긴 채 표시만 하고, 합치기는 원본의 브리핑과
    * 기준을 받는 목표에 덧붙인 뒤 원본을 합친 표시로 둔다. 하나라도 받을 수 없으면 아무것도 바꾸지 않고 이유와 함께 거절한다.
    */
-  tidyRemove(objectiveIds: readonly string[], by: string): readonly Objective[];
-  tidyMerge(targetId: string, sourceIds: readonly string[], by: string): Objective;
-  /** 지우거나 합친 표시를 거둔다 — 합쳤던 원본이면 받은 목표에 덧붙인 구간과 옮긴 기준도 걷어 낸다. */
+  tidyRemove(objectiveIds: readonly string[], by: TidyActor): readonly Objective[];
+  tidyMerge(targetId: string, sourceIds: readonly string[], by: TidyActor): Objective;
+  /** 사람이 보드에서 지운 기동 전 목표 — 에이전트의 정리와 같은 자리에 남아 되돌릴 수 있다. */
+  trash(objectiveId: string): Objective;
+  /**
+   * 지우거나 합친 표시를 거둔다 — 합쳤던 원본이면 받은 목표에 덧붙인 구간과 옮긴 기준도 걷어 낸다. 그사이 사람이 고친 구간과
+   * 기준은 받은 목표에 남긴다.
+   */
   tidyRestore(objectiveId: string): Objective;
+  /** 보관 기간이 지난 지운 목표를 영구 삭제하고 그 id 를 돌려준다. */
+  purgeRemoved(): readonly string[];
   patch(objectiveId: string, input: ObjectivePatch): Objective;
   /** Operation 쪽 값(제목·그룹·모델)이 바뀌었다 — 저장은 그대로, 합친 화면 모양만 다시 방송한다. */
   refresh(operationId: string): void;
@@ -588,9 +605,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       decisions: stored.decisions ?? [],
       recorded,
       enlisted,
-      removed: stored.removed ? { at: stored.removed.at, by: { operationId: stored.removed.by, title: operationNode(stored.removed.by)?.title ?? null },
+      removed: stored.removed ? { at: stored.removed.at, expiresAt: stored.removed.at + REMOVED_RETENTION_MS,
+        by: stored.removed.by ? { operationId: stored.removed.by, title: operationNode(stored.removed.by)?.title ?? stored.removed.byTitle ?? null } : null,
+        reason: stored.removed.reason ?? null,
         mergedInto: stored.removed.mergedInto ? { id: stored.removed.mergedInto, title: operationNode(stored.removed.mergedInto)?.title ?? load(node?.theaterId ?? pending!.theaterId).get(stored.removed.mergedInto)?.pending?.title ?? null } : null } : null,
-      merged: (stored.merged ?? []).map((entry) => ({ sourceId: entry.sourceId, title: entry.title, at: entry.at, by: { operationId: entry.by, title: operationNode(entry.by)?.title ?? null } })),
+      merged: (stored.merged ?? []).map((entry) => ({ sourceId: entry.sourceId, title: entry.title, at: entry.at, by: { operationId: entry.by, title: operationNode(entry.by)?.title ?? entry.byTitle ?? null }, criteriaIds: [...entry.criteriaIds],
+        restorable: load(node?.theaterId ?? pending!.theaterId).get(entry.sourceId)?.removed?.mergedInto === stored.operationId })),
       commenced: enlisted && (stored.commenced === true || (legacy && launch.started && stored.planning !== true)),
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
@@ -625,6 +645,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     if (found.stored.removed) return "objective_removed";
     return null;
   };
+  const removal = (at: number, by: TidyActor): StoredRemoval => ({ at, by: by.operationId, ...(by.title ? { byTitle: by.title } : {}), ...(by.reason ? { reason: by.reason.slice(0, MAX_REMOVAL_REASON) } : {}) });
   /** 담당 Operation — 목표가 아니라 목표의 임무를 맡은 세션이다. */
   const memberIds = (objectives: Iterable<StoredObjective>): ReadonlySet<string> => new Set([...objectives].flatMap((entry) => (entry.members ?? []).map((member) => member.id)));
   /** 목표가 되는 Operation 인가 — 이 Theater 의 에이전트 Operation 이고 다른 목표의 담당이 아니다. */
@@ -903,7 +924,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const refusals = unique.flatMap((id) => { const reason = tidyRefusal(id); return reason ? [{ objectiveId: id, reason }] : []; });
       if (refusals.length) throw new ObjectiveStoreError("tidy_refused", undefined, { refusals });
       const at = now();
-      return unique.map((id) => update(id, (stored) => ({ ...stored, removed: { at, by } })));
+      return unique.map((id) => update(id, (stored) => ({ ...stored, removed: removal(at, by) })));
     },
     tidyMerge(targetId, sourceIds, by) {
       const sources = [...new Set(sourceIds)];
@@ -935,13 +956,29 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           criteria.push(moved);
           criteriaIds.push(moved.id);
         }
-        merged.push({ sourceId: id, title, at, by, noteBlock, criteriaIds });
+        merged.push({ sourceId: id, title, at, by: by.operationId, ...(by.title ? { byTitle: by.title } : {}), noteBlock, criteriaIds });
       }
       if (note.length > MAX_NOTE) throw new ObjectiveStoreError("note_too_long", undefined, { limit: MAX_NOTE });
       if (criteria.length > MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria", undefined, { limit: MAX_CRITERIA });
       const result = update(targetId, (stored) => ({ ...stored, note, criteria, merged: [...(stored.merged ?? []), ...merged] }));
-      for (const id of sources) update(id, (stored) => ({ ...stored, removed: { at, by, mergedInto: targetId } }));
+      for (const id of sources) update(id, (stored) => ({ ...stored, removed: { ...removal(at, by), mergedInto: targetId } }));
       return result;
+    },
+    trash(objectiveId) {
+      const { stored } = locate(objectiveId);
+      if (!stored.pending || stored.removed) throw new ObjectiveStoreError("unknown_objective");
+      return update(objectiveId, (current) => ({ ...current, removed: { at: now() } }));
+    },
+    purgeRemoved() {
+      const purged: string[] = [];
+      for (const theaterId of theaterIds()) {
+        for (const stored of [...load(theaterId).values()]) {
+          if (!stored.pending || !stored.removed || now() - stored.removed.at < REMOVED_RETENTION_MS) continue;
+          try { store.removePending(stored.operationId); purged.push(stored.operationId); }
+          catch { console.warn("[objectives] removed_purge_failed"); }
+        }
+      }
+      return purged;
     },
     tidyRestore(objectiveId) {
       const { stored } = locate(objectiveId);
@@ -955,8 +992,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           if (!entry) return current;
           const at = current.note.lastIndexOf(entry.noteBlock);
           const note = at >= 0 ? current.note.slice(0, at) + current.note.slice(at + entry.noteBlock.length) : current.note;
+          // 옮긴 기준 가운데 원본과 같은 문장으로 남은 것만 걷는다 — 사람이 고친 기준은 받은 목표의 것이 됐다.
           const moved = new Set(entry.criteriaIds);
-          return { ...current, note, criteria: (current.criteria ?? []).filter((criterion) => !moved.has(criterion.id)), merged: current.merged!.filter((candidate) => candidate !== entry) };
+          const original = new Set((stored.criteria ?? []).map((criterion) => criterion.text));
+          return { ...current, note, criteria: (current.criteria ?? []).filter((criterion) => !(moved.has(criterion.id) && original.has(criterion.text))), merged: current.merged!.filter((candidate) => candidate !== entry) };
         });
       }
       return update(objectiveId, ({ removed: _removed, ...rest }) => rest);

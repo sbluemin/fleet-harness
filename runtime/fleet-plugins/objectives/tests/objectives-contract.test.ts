@@ -777,7 +777,7 @@ describe("Objectives contract", () => {
   });
 
   it("lets Console Use tell objectives without an Operation apart and merge or remove only those, keeping briefs and criteria, and lets the person restore them", async () => {
-    const { store, launch, add, workspace, consoleTool, operations, route } = harness();
+    const { store, launch, add, workspace, consoleTool, operations, route, savedIds } = harness();
     const caller = add("tidy-caller", { title: "Tidy caller" });
     const use = async (args: Record<string, unknown>) => (await consoleTool.execute(args, { cwd: workspace, caller: { kind: "operation" as const, operationId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
     const waiting = await launch.create({ theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
@@ -814,18 +814,18 @@ describe("Objectives contract", () => {
     ]) });
     expect(store.find(waiting.id)).toMatchObject({ note: before.note, removed: null });
     expect(store.find(duplicate.id)!.removed).toBeNull();
-    expect((await use({ remove: [caller.id] })).structuredContent).toMatchObject({ error: "tidy_refused" });
+    expect((await use({ remove: { objectiveIds: [caller.id] } })).structuredContent).toMatchObject({ error: "tidy_refused" });
     expect(operations.has(caller.id)).toBe(true);
 
     // 합치면 원본의 브리핑과 기준이 받는 목표로 옮겨 가고(같은 문장은 한 번), 원본은 지운 표시로 남아 기동되지 않는다.
-    expect((await use({ merge: { into: waiting.id, from: [duplicate.id] } })).isError).toBe(false);
+    expect((await use({ merge: { into: waiting.id, from: [duplicate.id], reason: "same ask" } })).isError).toBe(false);
     expect(store.find(waiting.id)!.note).toContain("dup brief");
     expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two", "three"]);
-    expect(store.find(duplicate.id)!.removed).toMatchObject({ by: { operationId: caller.id }, mergedInto: { id: waiting.id } });
+    expect(store.find(duplicate.id)!.removed).toMatchObject({ by: { operationId: caller.id }, reason: "same ask", mergedInto: { id: waiting.id } });
     expect(byId(await rows()).has(duplicate.id)).toBe(false);
     expect(byId(await rows("all")).get(duplicate.id)).toMatchObject({ removed: true, mergedInto: waiting.id });
     await expect(launch.requestPlan(duplicate.id)).rejects.toMatchObject({ code: "objective_removed" });
-    expect((await use({ remove: [stale.id] })).isError).toBe(false);
+    expect((await use({ remove: { objectiveIds: [stale.id] } })).isError).toBe(false);
     // 저장 무결성 — 다시 읽어도 지운 표시와 합친 기록이 그대로다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect(reloaded.find(stale.id)!.removed).not.toBeNull();
@@ -838,6 +838,13 @@ describe("Objectives contract", () => {
     expect(store.find(duplicate.id)).toMatchObject({ removed: null, note: "dup brief" });
     expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [] });
     expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
+
+    // 사람이 지운 기동 전 목표도 같은 자리에 남아 되돌릴 수 있고, 거기서 한 번 더 지우면(비우기) 영구 삭제된다.
+    expect((await route("objective/remove", { objectiveId: stale.id })).status).toBe(200);
+    expect(store.find(stale.id)!.removed).toMatchObject({ by: null });
+    expect((await route("objective/remove", { objectiveId: stale.id })).status).toBe(200);
+    expect(store.find(stale.id)).toBeNull();
+    expect(savedIds()).not.toContain(stale.id);
   });
 
   it("shows every agent Operation created elsewhere as an objective, but not member or plugin Operations", async () => {
