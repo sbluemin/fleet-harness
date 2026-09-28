@@ -18666,25 +18666,71 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-1) var(--space-3) var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  container-type: inline-size;
 }
 
-.archive-sheet-section {
+/* 보관한 날 하나 — 왼쪽 여백열에 날짜, 오른쪽에 그날 항목. 날짜는 그날 항목이 끝날 때까지 여백열 위에 남는다. */
+.archive-sheet-day {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  column-gap: var(--space-2);
+}
+
+.archive-sheet-day + .archive-sheet-day {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--surface-rim);
+}
+
+.archive-sheet-day-date {
+  position: sticky;
+  top: 0;
+  align-self: start;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 1px;
+  margin: 0;
+  padding: 6px 0 0 var(--space-1);
+  font-weight: var(--weight-regular);
 }
 
-.archive-sheet-bucket {
-  margin: var(--space-2) 0 0 var(--space-1);
+.archive-sheet-day-main {
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+.archive-sheet-day-sub {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.archive-sheet-day-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* 좁은 시트에서는 여백열이 항목 제목을 너무 깎는다 — 날짜를 그날 항목 위 한 줄로 올린다. */
+@container (max-width: 480px) {
+  .archive-sheet-day {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--space-1);
+  }
+
+  .archive-sheet-day-date {
+    position: static;
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding-top: 0;
+  }
 }
 
 .archive-sheet-empty {

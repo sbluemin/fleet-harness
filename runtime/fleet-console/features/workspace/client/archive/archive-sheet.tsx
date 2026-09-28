@@ -10,9 +10,10 @@ import {
   type OperationDescription,
   type OperationPurgeConfirmation,
 } from "@fleet-console/sdk/operations/browser";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/archive-glyph.js";
-import { formatRelativeTime, useConsoleLocale, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
+import { useConsoleLocale, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { closeArchiveSheet, refreshOperationArchive, useOperationArchive } from "../../../../core/client/src/integration/operation-archive.js";
 import { fetchOperations } from "../../../../core/client/src/integration/api.js";
 import { getState, hydrateOperations, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
@@ -23,11 +24,12 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
  * 보관함 글리프, ⌘P 명령 모드의 「보관함 열기」, 보관 토스트의 「보관함」이 모두 이 시트를 연다.
  *
  * 항목은 Cluster 하나다: 상위 Operation 아래 하위 Operation을 들여 쓰고, Theater·그룹·보관 시각을 밝힌다.
+ * 항목은 보관한 날(사용자 기기의 달력 날짜)마다 묶는다. 날짜는 왼쪽 여백열에 한 번 서고 그날 항목이 끝날 때까지
+ * 따라오며, 날짜가 여백열에 있으니 항목 메타에는 그날 안의 보관 시각만 적는다.
  * 복원은 늘 Cluster 전체를 휴면으로 돌리고 세션을 자동 실행하지 않는다. 영구 삭제는 여기서만 한다.
  * 이 화면에는 어떤 플러그인의 개념도 나오지 않는다 — Core가 아는 부모·하위 관계만 쓴다.
  */
 
-const DAY_MS = 86_400_000;
 const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 interface ArchiveCluster {
@@ -47,12 +49,47 @@ function clustersOf(entries: readonly OperationDescription[]): readonly ArchiveC
     .sort((a, b) => b.archivedAt - a.archivedAt);
 }
 
-type Bucket = "today" | "week" | "earlier";
-function bucketOf(archivedAt: number, now: number): Bucket {
-  const age = now - archivedAt;
-  return age < DAY_MS ? "today" : age < 7 * DAY_MS ? "week" : "earlier";
+interface ArchiveDay {
+  readonly key: string;
+  readonly at: number;
+  readonly clusters: readonly { readonly cluster: ArchiveCluster; readonly index: number }[];
 }
-const BUCKET_KEY: Readonly<Record<Bucket, CoreMessageKey>> = { today: "archive.bucket.today", week: "archive.bucket.week", earlier: "archive.bucket.earlier" };
+
+// 기기 시간대의 달력 날짜 — 경과 시간으로 묶으면 어젯밤 보관한 항목이 「오늘」에 섞인다.
+function dayKeyOf(at: number): string {
+  const date = new Date(at);
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+function daysOf(clusters: readonly ArchiveCluster[]): readonly ArchiveDay[] {
+  const days: { key: string; at: number; clusters: { cluster: ArchiveCluster; index: number }[] }[] = [];
+  clusters.forEach((cluster, index) => {
+    const key = dayKeyOf(cluster.archivedAt);
+    const last = days[days.length - 1];
+    if (last?.key === key) last.clusters.push({ cluster, index });
+    else days.push({ key, at: cluster.archivedAt, clusters: [{ cluster, index }] });
+  });
+  return days;
+}
+
+const LOCALE_TAG: Readonly<Record<ConsoleLocale, string>> = { en: "en-US", ko: "ko-KR" };
+
+/** 여백열의 날짜 — 윗줄은 「오늘·어제·9월 26일」, 아랫줄은 요일(오늘·어제는 날짜와 요일, 다른 해면 연도까지). */
+function dayLabelOf(at: number, now: number, locale: ConsoleLocale, t: ReturnType<typeof useT>): { readonly main: string; readonly sub: string } {
+  const tag = LOCALE_TAG[locale];
+  const date = new Date(at);
+  const monthDay = new Intl.DateTimeFormat(tag, { month: "short", day: "numeric" }).format(date);
+  const weekday = new Intl.DateTimeFormat(tag, { weekday: "short" }).format(date);
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const key = dayKeyOf(at);
+  const relative = key === dayKeyOf(now) ? t("archive.day.today") : key === dayKeyOf(yesterday.getTime()) ? t("archive.day.yesterday") : null;
+  const year = date.getFullYear() === new Date(now).getFullYear() ? null : String(date.getFullYear());
+  return {
+    main: relative ?? monthDay,
+    sub: [relative ? `${monthDay} ${weekday}` : weekday, year].filter(Boolean).join(" · "),
+  };
+}
 
 export function ArchiveSheet() {
   const archive = useOperationArchive();
@@ -62,6 +99,7 @@ export function ArchiveSheet() {
 
 function ArchiveSheetDialog() {
   const t = useT();
+  const locale = useConsoleLocale();
   const archive = useOperationArchive();
   const dialogRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -146,7 +184,6 @@ function ArchiveSheetDialog() {
     }
   };
 
-  let lastBucket: Bucket | null = null;
   return createPortal(
     <div className="archive-sheet-scrim" onMouseDown={closeArchiveSheet}>
       <div
@@ -169,29 +206,34 @@ function ArchiveSheetDialog() {
         <div className="archive-sheet-body">
           {clusters.length === 0 ? (
             <p className="archive-sheet-empty">{archive.loading && archive.snapshot === null ? t("archive.loading") : archive.error && archive.snapshot === null ? t("archive.loadFailed") : t("archive.empty")}</p>
-          ) : clusters.map((cluster, index) => {
-            const bucket = bucketOf(cluster.archivedAt, now);
-            const head = bucket !== lastBucket ? <h3 className="archive-sheet-bucket">{t(BUCKET_KEY[bucket])}</h3> : null;
-            lastBucket = bucket;
+          ) : daysOf(clusters).map((day) => {
+            const label = dayLabelOf(day.at, now, locale, t);
             return (
-              <div key={cluster.rootId} className="archive-sheet-section">
-                {head}
-                <ArchiveClusterItem
-                  cluster={cluster}
-                  now={now}
-                  restoring={restoring === cluster.rootId}
-                  currentRevision={archive.revision}
-                  onRestore={() => restore(cluster)}
-                  onPurgeStart={() => setNotice(null)}
-                  onPurgeRefused={setNotice}
-                  onPurged={() => {
-                    // 목록이 갱신될 때까지 포커스를 시트에 둔다 — 사라질 항목으로 돌려보내지 않는다.
-                    setPurged({ rootId: cluster.rootId, index });
-                    dialogRef.current?.focus();
-                    void refreshOperationArchive();
-                  }}
-                />
-              </div>
+              <section key={day.key} className="archive-sheet-day" aria-labelledby={`archive-sheet-day-${day.key}`}>
+                <h3 id={`archive-sheet-day-${day.key}`} className="archive-sheet-day-date">
+                  <span className="archive-sheet-day-main">{label.main}</span>
+                  <span className="archive-sheet-day-sub">{label.sub}</span>
+                </h3>
+                <div className="archive-sheet-day-items">
+                  {day.clusters.map(({ cluster, index }) => (
+                    <ArchiveClusterItem
+                      key={cluster.rootId}
+                      cluster={cluster}
+                      restoring={restoring === cluster.rootId}
+                      currentRevision={archive.revision}
+                      onRestore={() => restore(cluster)}
+                      onPurgeStart={() => setNotice(null)}
+                      onPurgeRefused={setNotice}
+                      onPurged={() => {
+                        // 목록이 갱신될 때까지 포커스를 시트에 둔다 — 사라질 항목으로 돌려보내지 않는다.
+                        setPurged({ rootId: cluster.rootId, index });
+                        dialogRef.current?.focus();
+                        void refreshOperationArchive();
+                      }}
+                    />
+                  ))}
+                </div>
+              </section>
             );
           })}
         </div>
@@ -201,9 +243,8 @@ function ArchiveSheetDialog() {
   );
 }
 
-function ArchiveClusterItem({ cluster, now, restoring, currentRevision, onRestore, onPurgeStart, onPurgeRefused, onPurged }: {
+function ArchiveClusterItem({ cluster, restoring, currentRevision, onRestore, onPurgeStart, onPurgeRefused, onPurged }: {
   readonly cluster: ArchiveCluster;
-  readonly now: number;
   readonly restoring: boolean;
   readonly currentRevision: number;
   readonly onRestore: () => void;
@@ -225,7 +266,7 @@ function ArchiveClusterItem({ cluster, now, restoring, currentRevision, onRestor
   const meta = [
     theaterLabel,
     group ? group.name : t("archive.meta.ungrouped"),
-    t("archive.meta.archivedAt", { when: formatRelativeTime(cluster.archivedAt, locale, now) }),
+    t("archive.meta.archivedAt", { when: new Intl.DateTimeFormat(LOCALE_TAG[locale], { hour: "numeric", minute: "2-digit" }).format(cluster.archivedAt) }),
     kids > 0 ? t("archive.meta.children", { count: kids }) : null,
   ].filter((part): part is string => !!part).join(" · ");
 
