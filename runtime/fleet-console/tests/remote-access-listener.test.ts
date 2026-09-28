@@ -175,6 +175,51 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   });
 
   /** 저장된 것은 해시뿐이다 — 이 파일이 새어도 그것으로 붙을 수 없다. */
+  /**
+   * 보기 전용은 "세션 없음"과 다른 거절이어야 하고, 자기 접속을 끝내는 일만은 보기 전용에게도 열려 있다.
+   * 둘이 섞이면 클라이언트는 읽기 거절을 세션 만료로 읽어 재조인하고, 떠난 게스트의 커튼은 한 시간을 남는다.
+   */
+  it("refuses monitoring writes as read-only, and lets a session end only itself while its pairing stays", async () => {
+    const fixture = await startFixture({ remote: true });
+    const remoteOrigin = `https://${BIND_HOST}:${fixture.remotePort}`;
+    const loopback = await openLoopbackEvents(fixture);
+
+    // full 게스트가 스스로 떠나면 이 기계의 커튼이 걷힌다. 페어링은 남아 링크 없이 돌아온다.
+    const guest = await joinAs(fixture, "full", "guest");
+    await loopback.waitFor("control:changed", (data) => data.holder !== null);
+    const guestSession = guest.split("; ").filter((cookie) => cookie.startsWith("fleet_console_session_")).join("; ");
+    const self = await remoteRequest(fixture, "GET", "/api/v1/access/self", undefined, guestSession);
+    expect(self.status).toBe(200);
+    const described = JSON.parse(self.body) as Record<string, unknown>;
+    expect(Object.keys(described).sort()).toEqual(["absoluteExpiresAt", "access", "idleExpiresAt", "paired"]);
+    expect(described).toMatchObject({ access: "full", paired: true });
+    expect(await remoteRequest(fixture, "POST", "/api/v1/access/self/leave", undefined, guestSession, { origin: "https://elsewhere.example" })).toMatchObject({ status: 403 });
+    expect(await remoteRequest(fixture, "POST", "/api/v1/access/self/leave", JSON.stringify({ handle: "someone-else" }), guestSession, { origin: remoteOrigin })).toMatchObject({ status: 400 });
+    expect(await remoteRequest(fixture, "POST", "/api/v1/access/self/leave", undefined, guestSession, { origin: remoteOrigin })).toMatchObject({ status: 204 });
+    await loopback.waitFor("control:changed", (data) => data.holder === null);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/access/self", undefined, guestSession)).resolves.toMatchObject({ status: 401 });
+    const pairingOnly = guest.split("; ").filter((cookie) => cookie.startsWith("fleet_console_pairing_")).join("; ");
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), pairingOnly)).resolves.toMatchObject({ status: 204 });
+
+    // monitoring은 읽고, 쓰면 403 access_read_only — 세션이 없을 때만 401이다. 업그레이드도 같은 코드로 닫힌다.
+    const watcher = (await joinAs(fixture, "monitoring", "watcher")).split("; ").filter((cookie) => cookie.startsWith("fleet_console_session_")).join("; ");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, watcher)).resolves.toMatchObject({ status: 200 });
+    const write = await remoteRequest(fixture, "POST", "/api/v1/theaters/folder-grants", JSON.stringify({ path: fixture.dir }), watcher, { origin: remoteOrigin });
+    expect(write.status).toBe(403);
+    expect(JSON.parse(write.body)).toEqual({ error: "access_read_only" });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/theaters/folder-grants", JSON.stringify({ path: fixture.dir }), undefined, { origin: remoteOrigin })).resolves.toMatchObject({ status: 401 });
+    await expect(remoteUpgradeStatus(fixture, watcher)).resolves.toBe(403);
+    await expect(remoteUpgradeStatus(fixture)).resolves.toBe(401);
+    // 떠나기만이 예외다 — 쿼리를 단 변형은 그 예외에 들지 않는다.
+    await expect(remoteRequest(fixture, "POST", "/api/v1/access/self/leave?session=other", undefined, watcher, { origin: remoteOrigin })).resolves.toMatchObject({ status: 403 });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/access/self/leave", undefined, watcher, { origin: remoteOrigin })).resolves.toMatchObject({ status: 204 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, watcher)).resolves.toMatchObject({ status: 401 });
+
+    // 루프백에는 세션이 없으므로 자기 설명도 없다.
+    await expect(fetch(`${fixture.loopbackEndpoint}api/v1/access/self`)).resolves.toMatchObject({ status: 404 });
+    loopback.close();
+  });
+
   it("writes no pairing secret to disk", async () => {
     const fixture = await startFixture({ remote: true });
     const cookies = await joinAs(fixture, "full", "MacBook Pro");
@@ -410,6 +455,33 @@ function remoteRequest(
     });
     request.on("error", reject);
     if (body) request.write(body);
+    request.end();
+  });
+}
+
+/** 터미널 업그레이드를 시도하고 거절 상태 줄을 읽는다. 승인되지 않은 업그레이드는 HTTP 응답으로 끝나야 한다. */
+function remoteUpgradeStatus(fixture: Fixture, cookie?: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      host: BIND_HOST,
+      port: fixture.remotePort,
+      path: "/api/v1/terminal/ws?ticket=unused",
+      method: "GET",
+      rejectUnauthorized: false,
+      checkServerIdentity: () => undefined,
+      headers: {
+        host: `${BIND_HOST}:${fixture.remotePort}`,
+        origin: `https://${BIND_HOST}:${fixture.remotePort}`,
+        connection: "Upgrade",
+        upgrade: "websocket",
+        "sec-websocket-version": "13",
+        "sec-websocket-key": crypto.randomBytes(16).toString("base64"),
+        ...(cookie ? { cookie } : {}),
+      },
+    });
+    request.on("response", (response) => { response.resume(); resolve(response.statusCode ?? 0); });
+    request.on("upgrade", (_response, socket) => { socket.destroy(); resolve(101); });
+    request.on("error", reject);
     request.end();
   });
 }
