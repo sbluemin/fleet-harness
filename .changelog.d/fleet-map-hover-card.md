@@ -4,8 +4,8 @@ branch: fleet-map-hover-card
 
 ### fleet-console
 #### Added
-- See every Operation on a fleet map in War Room: zoom the deck out past 1.0x, or use the Fleet map button, Alt+M, or the command palette, even while a request is on stage. Pick a waiting Operation to bring it to the stage; point at any other one to read its full title, status, location with branch, model, and last output line, or take a quick look without changing the stage.
-  ko: War Room에서 덱을 1.0× 아래로 줄이거나 함대 지도 버튼·Alt+M·명령 팔레트를 쓰면, 무대에 요청이 올라 있어도 모든 Operation을 함대 지도로 볼 수 있습니다. 대기 중인 Operation을 고르면 무대에 오르고, 그 밖의 Operation은 가리켜 전체 제목·상태·브랜치를 포함한 위치·모델·마지막 출력 줄을 읽거나, 무대를 바꾸지 않고 빠른 보기로 살펴볼 수 있습니다.
+- See every Operation on a fleet map in War Room: zoom the deck out past 1.0x, or use the Fleet map button, Alt+M, or the command palette, even while a request is on stage. Every Operation shows its name on the map, shortened when long. Pick a waiting Operation to bring it to the stage; point at any other one to read its full title, status, location with branch, model, and last output line, or take a quick look without changing the stage and click anywhere on the map to close it.
+  ko: War Room에서 덱을 1.0× 아래로 줄이거나 함대 지도 버튼·Alt+M·명령 팔레트를 쓰면, 무대에 요청이 올라 있어도 모든 Operation을 함대 지도로 볼 수 있습니다. 지도의 모든 Operation에 이름이 표시되고, 긴 이름은 줄여서 보여 줍니다. 대기 중인 Operation을 고르면 무대에 오르고, 그 밖의 Operation은 가리켜 전체 제목·상태·브랜치를 포함한 위치·모델·마지막 출력 줄을 읽거나, 무대를 바꾸지 않고 빠른 보기로 살펴본 뒤 지도의 아무 곳이나 눌러 닫을 수 있습니다.
 
 #### Changed
 - Zooming the Cruise canvas out no longer turns it into a fleet map; the fleet map now opens in War Room.

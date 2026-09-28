@@ -4380,9 +4380,9 @@
   color: var(--text-tertiary);
 }
 
-/* 이름표는 대기열의 점에만 선다 — 무대·「다음」·순번·미룸·치워둠이 이름 앞에 붙는다. 대기 밖의 점은
-   이름 없이 상태 색으로 서고, 겨누면 상태 카드가 이름과 마지막 출력을 말한다. 30개가 넘는 판에서
-   모든 점에 이름을 달면 이름이 이름을 덮어, 정작 대기의 이름이 읽히지 않는다. */
+/* 모든 점이 이름표를 단다 — 대기열의 점은 무대·「다음」·순번·미룸·치워둠이 이름 앞에 붙는다. 긴 이름은
+   말줄임으로 접고, 같은 줄의 이웃 점 앞에서 멈춘다(폭은 JS가 잰다). 대기열의 이름표는 받침을 깔고
+   이웃 위에 서서, 붐비는 판에서도 대기의 이름이 먼저 읽힌다. */
 .canvas-fleet-map-dot-label {
   position: absolute;
   top: 50%;
@@ -4440,7 +4440,7 @@
 /* ── Quick-Look ─────────────────────────────────────────────────────────────
    숨은 덱 칸의 실제 패널을 그 크기 그대로 지도 위로 들어 올린다. 칸은 격자에 남아 자리를 지키고
    마운트만 고정 배치로 뜬다 — 크기가 같아 PTY는 리사이즈되지 않고, portal 대상이 그대로라 패널은
-   remount되지 않는다. 엿보기는 읽기 전용이다: 패널은 포인터를 받지 않고, 틀의 발 줄이 동작을 진다.
+   remount되지 않는다. 엿보기는 읽기 전용이다: 패널은 포인터를 받지 않고, 지도의 빈 곳·Esc가 틀을 걷는다.
    좌표는 캔버스(contain: paint) 기준이라 격자의 스크롤 포트가 자르지 않는다. */
 .canvas-triage-quick-look {
   position: fixed;
@@ -4449,27 +4449,6 @@
   border-radius: calc(var(--radius-md) + 4px);
   background: var(--glass-tint-panel);
   box-shadow: var(--shadow-floating);
-}
-
-.canvas-triage-quick-look-foot {
-  position: absolute;
-  left: 10px;
-  right: 8px;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: var(--quick-look-foot, 40px);
-}
-
-.canvas-triage-quick-look-note {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--t-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .canvas-triage-deck-cell.is-quick-look {
