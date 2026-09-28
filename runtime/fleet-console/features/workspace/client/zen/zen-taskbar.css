@@ -77,6 +77,27 @@
   background: color-mix(in oklch, var(--brass) 16%, transparent);
   color: var(--brass-bright);
 }
+/* 추가 입구의 표식 — 사이드바 「새 Theater」 줄과 같은 점선 빈 칸이 가리킬 때 brass로 찬다. */
+.zen-taskbar-theater-anchor.is-add {
+  border: 1px dashed var(--ink-rim);
+  background: transparent;
+  color: var(--text-tertiary);
+}
+.zen-taskbar-theater-anchor.is-add svg { width: 12px; height: 12px; }
+.zen-taskbar-theater.is-add { color: var(--text-tertiary); }
+.zen-taskbar-theater.is-add:hover:not(:disabled),
+.zen-taskbar-theater.is-add:focus-visible { color: var(--text-secondary); }
+.zen-taskbar-theater.is-add:hover:not(:disabled) .zen-taskbar-theater-anchor.is-add,
+.zen-taskbar-theater.is-add:focus-visible .zen-taskbar-theater-anchor.is-add,
+.zen-taskbar-menu-item.is-add:hover:not(:disabled) .zen-taskbar-theater-anchor.is-add,
+.zen-taskbar-menu-item.is-add:focus-visible .zen-taskbar-theater-anchor.is-add {
+  border-style: solid;
+  border-color: var(--brass);
+  background: var(--brass-glow);
+  color: var(--brass-ink);
+}
+.zen-taskbar-theater.is-add:disabled,
+.zen-taskbar-menu-item.is-add:disabled { cursor: wait; opacity: 0.55; }
 .zen-taskbar-theater-badge {
   position: absolute;
   top: -3px;
@@ -284,6 +305,7 @@
 .zen-taskbar-menu-item:focus-visible { background: var(--control-hover-fill); color: var(--text-primary); }
 .zen-taskbar-menu-item[aria-checked="true"],
 .zen-taskbar-menu-item.is-active { background: var(--control-wash); color: var(--text-primary); }
+.zen-taskbar-menu-sep { height: 1px; margin: 3px var(--space-1); background: var(--surface-rim); }
 .zen-taskbar-menu-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zen-taskbar-menu-count { color: var(--text-tertiary); font: var(--t-2xs) var(--font-mono); }
 .zen-taskbar-menu-awaiting { color: var(--aurora-ink); font: var(--t-2xs) var(--font-mono); }

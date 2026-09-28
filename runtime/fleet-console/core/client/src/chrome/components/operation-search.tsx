@@ -316,13 +316,13 @@ export function OperationSearch({
         break;
       }
       case "new-theater": {
-        setZenMode(false);
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // 생성 요청의 소비자(Map 사이드바)는 선별 중 언마운트다 — 먼저 선별을 끝내야
         // 요청이 폐기되지 않고 즉시 소비된다(종료의 대기 요청 폐기보다 뒤에 요청).
+        // Zen은 유지한다 — War Room Zen이면 Zen Cruise로 돌아와 숨은 사이드바가 상자만 연다.
         if (isTriageActive()) setTriageActive(false);
-        if (getSideBarState().collapsed) setSideBarCollapsed(false);
+        if (!isZenMode() && getSideBarState().collapsed) setSideBarCollapsed(false);
         requestSideBarAddTheater();
         break;
       }
