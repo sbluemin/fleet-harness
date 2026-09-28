@@ -241,16 +241,19 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       if (enlistedSeen.current.get(objective.id) === false && objective.enlisted) promoted = true;
       enlistedSeen.current.set(objective.id, objective.enlisted);
     }
-    if (!promoted) return;
-    setFlash("all");
+    if (promoted) setFlash("all");
+  }, [state.objectives]);
+  // 끄기는 켜짐에만 묶는다 — 구상 요청은 여러 번 방송되므로 목록 effect 에 두면 다음 방송이 타이머를 지운다.
+  useEffect(() => {
+    if (!flash) return;
     const timer = setTimeout(() => setFlash(null), 1400);
     return () => clearTimeout(timer);
-  }, [state.objectives]);
+  }, [flash]);
   const [nextView, setNextView] = useState<StartView>(() => { try { return localStorage.getItem("fleet.objectives.start-view") === "chat" ? "chat" : "terminal"; } catch { return "terminal"; } });
   const chooseNextView = (value: StartView) => { setNextView(value); try { localStorage.setItem("fleet.objectives.start-view", value); } catch { /* 저장을 차단한 브라우저에서도 선택은 유지한다. */ } };
   // 끌기 — 카드를 범위 낱말(오늘·기한)이나 다른 그룹 구획에 놓으면 그리로 옮기고, 같은 구획의 카드 사이에 놓으면 순서를 바꾼다.
   // 원래 자리는 빈 홈으로 남고 카드 유령이 커서를 따르며, 순서를 바꿀 자리에는 삽입선이 선다.
-  const [drag, setDrag] = useState<{ objectiveId: string; x: number; y: number; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number; compact: boolean; refused: boolean; zone: Zone } | null>(null);
+  const [drag, setDrag] = useState<{ objectiveId: string; x: number; y: number; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number; compact: boolean; refused: ObjectiveMessageKey | null; zone: Zone } | null>(null);
   const dragRef = useRef<{ objectiveId: string; section: string; zone: Zone; startX: number; startY: number; live: boolean; over: DropTarget | null; insert: Insert | null; offX: number; offY: number; width: number } | null>(null);
   const suppressClick = useRef(false);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -541,9 +544,14 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     return (hit.dataset.dropList as DropTarget | undefined) ?? null;
   };
   /** 커서가 다른 구역 위에 있다 — 놓아도 옮기지 않고, 유령이 그 까닭을 말한다. */
-  const acrossZone = (x: number, y: number, fromZone: Zone): boolean => {
-    const zone = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-zone]")?.dataset.zone;
-    return !!zone && zone !== fromZone;
+  const refusalAt = (x: number, y: number, fromZone: Zone): ObjectiveMessageKey | null => {
+    const zone = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-zone]")?.dataset.zone as Zone | undefined;
+    if (!zone || zone === fromZone) return null;
+    if (fromZone === "outside") return "objectives.drag.fromOutside";
+    if (zone === "outside") return "objectives.drag.toOutside";
+    if (zone === "run") return "objectives.drag.toRun";
+    if (fromZone === "run" && zone === "wait") return "objectives.drag.runToWait";
+    return "objectives.drag.zone";
   };
   const moveTo = async (objective: Objective, target: DropTarget) => {
     const patch: Record<string, unknown> = target === "today" ? { today: true }
@@ -573,9 +581,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       }
       state.over = busy ? null : dropTargetAt(move.clientX, move.clientY, state.section, state.zone);
       state.insert = state.over ? null : insertAt(move.clientX, move.clientY, state.objectiveId, state.section);
-      const refused = !state.over && !state.insert && acrossZone(move.clientX, move.clientY, state.zone);
+      const refused = !state.over && !state.insert ? refusalAt(move.clientX, move.clientY, state.zone) : null;
       // 범위 낱말 줄에 들어오면 놓을 자리가 잡히기 전에도 카드가 표로 줄어든다 — 낱말이 카드 아래 가려지지 않게.
-      const compact = refused || !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".objectives-scope");
+      const compact = !!refused || !!document.elementFromPoint(move.clientX, move.clientY)?.closest(".objectives-scope");
       setDrag({ objectiveId: state.objectiveId, x: move.clientX, y: move.clientY, over: state.over, insert: state.insert, offX: state.offX, offY: state.offY, width: state.width, compact, refused, zone: state.zone });
     };
     // 취소(pointercancel — 시스템 제스처·창 전환)는 놓기가 아니다 — 아무것도 옮기지 않고 끝낸다.
@@ -839,7 +847,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         <div className={`objectives-drag-ghost${drag.over || drag.insert ? " is-over" : ""}${drag.compact || drag.over || drag.insert ? " is-compact" : ""}${drag.refused ? " is-refused" : ""}`} style={drag.compact || drag.over || drag.insert ? { left: drag.x + 14, top: drag.y + 12, width: 224 } : { left: drag.x - drag.offX, top: drag.y - drag.offY, width: drag.width }} aria-hidden="true">
           <span className={`objectives-check${dragObjective.done ? " is-on" : ""}`}><CheckGlyph /></span>
           <span className="objectives-drag-title">{dragObjective.title}</span>
-          <span className="objectives-drag-hint">{drag.over ? "↓" : drag.insert ? "↕" : drag.refused ? t("objectives.drag.zone") : t("objectives.drag.hint")}</span>
+          <span className="objectives-drag-hint">{drag.over ? "↓" : drag.insert ? "↕" : drag.refused ? t(drag.refused) : t("objectives.drag.hint")}</span>
         </div>,
         document.body,
       ) : null}
