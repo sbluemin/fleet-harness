@@ -81,7 +81,7 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
     const observer = new ResizeObserver(reset);
     observer.observe(row);
     return () => observer.disconnect();
-  }, [signature, counts.running, counts.idle, minimized.length, ended.length, t]);
+  }, [signature, counts.running, counts.idle, counts.setAside, minimized.length, ended.length, t]);
   useLayoutEffect(() => {
     const row = rowRef.current;
     if (!row || row.scrollWidth <= row.clientWidth + 1) return;
@@ -180,7 +180,9 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
       <span className="war-room-tools"><WarRoomModeTools compact={fit.step >= 2} /></span>
       <span className="zen-taskbar-sep" aria-hidden="true" />
       <div ref={queueRef} className={`war-room-queue${attentionClasses}`}>
-        {entries.length ? shown.map(chip) : <span className="zen-taskbar-empty">{t("canvas.triage.queueEmpty")}</span>}
+        {entries.length ? shown.map(chip) : <span className="zen-taskbar-empty">
+          {[t("canvas.triage.queueEmpty"), ...(counts.setAside > 0 ? [t("canvas.triage.setAsideCount", { count: counts.setAside })] : [])].join(" · ")}
+        </span>}
         {overflow.length > 0 ? menuButton("overflow", `+${overflow.length}`, overflow) : null}
       </div>
       <span className="war-room-summary" title={summary} aria-label={summary}>

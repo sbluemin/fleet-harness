@@ -31,12 +31,15 @@ export interface TriageQueueEntry {
   readonly picked: boolean;
 }
 
+// 치워둔 대기는 대기 수에 넣지 않고 따로 센다 — 큐·막대는 치워둔 건을 세우지 않으므로, 대기 수에
+// 섞으면 덱이 「대기 N」이라 말하는 동안 막대는 「기다리는 작업 없음」이라 말한다.
 export function resolveTriageCounts(operations: readonly OperationNode[], runtime: Readonly<Record<string, OperationRuntimeState>>) {
-  const counts = { waiting: 0, unseen: 0, running: 0, idle: 0 };
+  const counts = { waiting: 0, unseen: 0, setAside: 0, running: 0, idle: 0 };
   const arrivals = getIdleArrivalIds();
   for (const operation of operations) {
     const activity = resolveOperationActivity(operation, runtime);
-    if (activity === "awaiting") counts.waiting += 1;
+    if (dismissed.has(operation.id) && isTriageWaitingOperation(operation, runtime)) counts.setAside += 1;
+    else if (activity === "awaiting") counts.waiting += 1;
     else if (activity === "running" || activity === "background") counts.running += 1;
     else if (activity === "idle") {
       if (arrivals.has(operation.id)) counts.unseen += 1;
@@ -77,6 +80,74 @@ export function publishTriageStage(operationId: string | null): void {
 export function useTriageStage(): string | null {
   return useSyncExternalStore(subscribeTriage, () => stagedOperationId, () => null);
 }
+// War Room 지도 층 — 덱을 1× 아래로 당기거나 Map 칩·Alt+M·팔레트로 여는, 덱과 무대 위의 판.
+// 진입에 붙는 transient 상태다. 열린 동안 무대는 연 순간의 것으로 멈추고, 그사이 새로 대기에 든
+// Operation은 보류로 모았다가 층이 닫히면 보통의 등단 흐름으로 넘긴다.
+let triageMapOpen = false;
+let triageMapHeldStageId: string | null = null;
+const triageMapHeldArrivals = new Set<string>();
+// 덱이 한 화면을 넘는가 — 지도를 저절로 열지 않고 Map 칩만 밝힌다. 덱이 재서 알린다.
+let triageDeckOverflowing = false;
+
+export function isTriageMapOpen(): boolean {
+  return triageActive && triageMapOpen;
+}
+
+export function useTriageMapOpen(): boolean {
+  return useSyncExternalStore(subscribeTriage, isTriageMapOpen, isTriageMapOpen);
+}
+
+/** 층이 열린 동안 무대로 남는 Operation — 연 순간의 무대다. */
+export function getTriageMapHeldStageId(): string | null {
+  return triageMapOpen ? triageMapHeldStageId : null;
+}
+
+export function getTriageMapHeldArrivalIds(): ReadonlySet<string> {
+  return triageMapHeldArrivals;
+}
+
+export function openTriageMap(): void {
+  if (!triageActive || triageMapOpen) return;
+  clearTriageSetAsideArm();
+  triageMapOpen = true;
+  triageMapHeldStageId = stagedOperationId;
+  triageMapHeldArrivals.clear();
+  emitTriage();
+}
+
+export function closeTriageMap(): void {
+  if (!triageMapOpen) return;
+  triageMapOpen = false;
+  const heldStageId = triageMapHeldStageId;
+  triageMapHeldStageId = null;
+  triageMapHeldArrivals.clear();
+  // 연 순간의 무대가 아직 대기면 그 무대로 돌아간다 — 층이 열린 동안 앞줄에 든 새 대기가 닫는
+  // 순간 무대를 가로채지 않게 지목으로 고정한다. 무대가 없었으면 보통의 체류 뒤 등단이 이어받는다.
+  if (heldStageId !== null
+    && pickedOperationId === null
+    && waitingByOperation.get(heldStageId) === true
+    && !dismissed.has(heldStageId)
+    && !deferredAt.has(heldStageId)) {
+    pickedOperationId = heldStageId;
+  }
+  emitTriage();
+}
+
+export function toggleTriageMap(): void {
+  if (isTriageMapOpen()) closeTriageMap();
+  else openTriageMap();
+}
+
+export function setTriageDeckOverflowing(overflowing: boolean): void {
+  if (triageDeckOverflowing === overflowing) return;
+  triageDeckOverflowing = overflowing;
+  emitTriage();
+}
+
+export function useTriageDeckOverflowing(): boolean {
+  return useSyncExternalStore(subscribeTriage, () => triageActive && triageDeckOverflowing, () => false);
+}
+
 const lastClearedAt = new Map<string, number>();
 const deferredAt = new Map<string, number>();
 const dismissed = new Set<string>();
@@ -147,10 +218,10 @@ const focusLayerBeforeTriage = new Map<string, FocusLayerState | null>();
 const listeners = new Set<Listener>();
 let revision = 0;
 
-// 덱 줌은 전역 선별 처리와 같은 단일 영속 값이다. 카드 크기는 deck의 inline CSS 변수가 소유하고,
-// map 판정(작전지도 LOD)은 카드 최소폭 140px 미만으로 낙찰하는 순간으로 고정한다.
-// 덱 밀도는 1×~2×다 — 1× 아래는 카드가 읽히지 않는 구간이라 덱은 거기로 내려가지 않는다.
-// 함대 전체를 점으로 보는 판은 Cruise 캔버스가 축소 임계에서 스스로 세운다(fleet-map).
+// 덱 줌은 전역 선별 처리와 같은 단일 영속 값이다. 카드 크기는 deck의 inline CSS 변수가 소유한다.
+// 덱 밀도는 1×~2×다 — 1× 아래는 카드가 읽히지 않는 구간이라 덱은 거기로 내려가지 않는다. 그 아래로
+// 더 당기는 제스처는 밀도가 아니라 지도 층을 연다(triage-watch-deck의 당김). 층은 덱 위에 따로 서므로
+// 저장 배율은 1× 아래를 모른다.
 const TRIAGE_DECK_ZOOM_MIN = 1.0;
 const TRIAGE_DECK_ZOOM_MAX = 2.0;
 export const TRIAGE_DECK_ZOOM_DEFAULT = 1.0;
@@ -280,6 +351,10 @@ export function setTriageActive(active: boolean, animate = true): void {
   }
   triageActive = false;
   stagedOperationId = null;
+  triageMapOpen = false;
+  triageMapHeldStageId = null;
+  triageMapHeldArrivals.clear();
+  triageDeckOverflowing = false;
   rememberWarRoomActive(false);
   pickedOperationId = null;
   activeAwaitingClaimId = null;
@@ -441,6 +516,12 @@ export function recordTriageStageTheater(theaterId: string): void {
 
 export function pickTriageOperation(operationId: string): void {
   clearTriageSetAsideArm();
+  // 지목은 그 Operation을 무대에서 보겠다는 뜻이다 — 지도 층은 걷히고 지목한 무대가 선다.
+  if (triageMapOpen) {
+    triageMapOpen = false;
+    triageMapHeldStageId = null;
+    triageMapHeldArrivals.clear();
+  }
   const operation = getState().operations.find((candidate) => candidate.id === operationId) ?? null;
   // 전 Theater가 마운트되므로 지목은 Theater를 전환하지 않는다 — 무대가 소속 무관하게 선다.
   if (operation) {
@@ -535,6 +616,8 @@ export function resetTriageTheater(theaterId: string): void {
 
 export function forgetTriageOperation(operationId: string): void {
   if (setAsideArmed?.operationId === operationId) clearTriageSetAsideArm();
+  triageMapHeldArrivals.delete(operationId);
+  if (triageMapHeldStageId === operationId) triageMapHeldStageId = null;
   dismissed.delete(operationId);
   lastClearedAt.delete(operationId);
   deferredAt.delete(operationId);
@@ -639,6 +722,11 @@ export function recordTriageActivity(
       activeAwaitingClaimId = operation.id;
     } else if (activeAwaitingClaimId === operation.id && !waiting) {
       activeAwaitingClaimId = null;
+    }
+    if (triageActive && triageMapOpen && previousWaiting === false && waiting && !dismissed.has(operation.id)) {
+      triageMapHeldArrivals.add(operation.id);
+    } else if (!waiting) {
+      triageMapHeldArrivals.delete(operation.id);
     }
     waitingByOperation.set(operation.id, waiting);
     if (activityByOperation.get(operation.id) !== activity) {
@@ -799,6 +887,8 @@ function captureFocusLayerBeforeTriage(theaterId: string): void {
 function clearTheaterTransientOperations(theaterId: string): void {
   for (const [operationId, ownerTheaterId] of operationTheater) {
     if (ownerTheaterId !== theaterId) continue;
+    triageMapHeldArrivals.delete(operationId);
+    if (triageMapHeldStageId === operationId) triageMapHeldStageId = null;
     dismissed.delete(operationId);
     lastClearedAt.delete(operationId);
     deferredAt.delete(operationId);

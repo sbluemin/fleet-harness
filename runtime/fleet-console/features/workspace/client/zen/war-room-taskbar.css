@@ -86,6 +86,20 @@
 .war-room-tool svg { width: 13px; height: 13px; flex: none; }
 .war-room-tool.is-off { color: var(--text-tertiary); }
 .war-room-tool.is-off svg { opacity: 0.5; }
+/* 지도 층이 열린 동안의 Map 칩 — 지금 서 있는 판이라 위치 채널(brass)로 눌림을 말한다. 큰 덱에서는
+   층을 저절로 열지 않고 칩만 같은 채널의 테두리로 밝혀 갈 곳을 가리킨다. 보류된 새 대기의 수는 대기
+   신호(aurora)가 진다. */
+.war-room-tool[data-war-room-tool="map"][aria-pressed="true"] { background: var(--control-tint-fill); color: var(--control-tint-ink); }
+.war-room-tool.is-suggested { box-shadow: inset 0 0 0 1px var(--control-open-rim); color: var(--text-primary); }
+.war-room-tool-count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--aurora) 18%, transparent);
+  color: var(--aurora-ink);
+  font: var(--weight-bold) var(--t-2xs) var(--font-mono);
+  text-align: center;
+}
 .war-room-queue { position: relative; display: flex; align-items: center; flex: none; gap: 2px; height: 100%; --wr-attention: var(--aurora); }
 .war-room-queue.is-positive { --wr-attention: var(--positive); }
 .war-room-queue.has-attention::before {

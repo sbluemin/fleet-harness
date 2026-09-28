@@ -95,8 +95,8 @@ export const workspaceOnboarding: OnboardingContribution = {
       spotlight: null,
       deferAfterAnotherTour: true,
       walkthrough: [
-        { anchor: ".operations-canvas:not(.is-triage):not(.is-panel-snap-full):not(.is-companion-layout):not(.is-fleet-map) .canvas-operation:not(.is-align-held):not(.is-deck-tile):not(.is-minimized) .canvas-operation-titlebar", title: T("cruiseSnap.step1Title"), body: T("cruiseSnap.step1Body") },
-        { anchor: '.operations-canvas:not(.is-triage):not(.is-panel-snap-full):not(.is-companion-layout):not(.is-fleet-map) .canvas-operation:not(.is-align-held):not(.is-deck-tile):not(.is-minimized) [data-snap-tour="menu"]', title: T("cruiseSnap.step2Title"), body: T("cruiseSnap.step2Body") },
+        { anchor: ".operations-canvas:not(.is-triage):not(.is-panel-snap-full):not(.is-companion-layout) .canvas-operation:not(.is-align-held):not(.is-deck-tile):not(.is-minimized) .canvas-operation-titlebar", title: T("cruiseSnap.step1Title"), body: T("cruiseSnap.step1Body") },
+        { anchor: '.operations-canvas:not(.is-triage):not(.is-panel-snap-full):not(.is-companion-layout) .canvas-operation:not(.is-align-held):not(.is-deck-tile):not(.is-minimized) [data-snap-tour="menu"]', title: T("cruiseSnap.step2Title"), body: T("cruiseSnap.step2Body") },
       ],
     },
   ],

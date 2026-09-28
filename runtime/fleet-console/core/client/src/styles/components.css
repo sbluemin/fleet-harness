@@ -4049,58 +4049,123 @@
   overflow: visible;
 }
 
-/* ── 함대 지도 ───────────────────────────────────────────────────────────────
-   Cruise 캔버스가 판독 한계(줌 0.2) 아래로 축소되면 패널 대신 이 판이 선다. 월드는 mount를 유지한
-   채 사라지고(패널 body·PTY는 그대로), 판은 그 위에 같은 아레나 인셋으로 앉는다. 바다는 입력을
-   가로채지 않는다 — 휠·팬은 캔버스로 흘러 확대하면 판이 걷히고 패널이 돌아온다. */
-.operations-canvas-world {
+/* 덱을 1× 아래로 더 당기는 동안 — 저장 배율은 1×에 둔 채 격자만 물러나며 옅어진다. 당김이 임계에
+   닿으면 지도 층이 서고, 놓으면 제자리로 돌아온다. transform은 당기는 동안만 선다: 칸의 크기(PTY)는
+   그대로고, 지도 층의 고정 배치(Quick-Look)가 격자 transform에 갇히는 일도 없다. */
+.canvas-triage-deck-grid {
+  transform-origin: 50% 35%;
   transition:
-    opacity var(--duration-base) var(--ease-glide),
-    visibility var(--duration-base) var(--ease-glide);
+    transform var(--duration-fast) var(--ease-glide),
+    opacity var(--duration-fast) var(--ease-glide);
 }
 
-.operations-canvas.is-fleet-map .operations-canvas-world {
-  opacity: 0;
+.canvas-triage-deck.is-pulling .canvas-triage-deck-grid {
+  transform: scale(var(--triage-deck-pull, 1));
+  opacity: calc(0.25 + (var(--triage-deck-pull, 1) - 0.72) / 0.28 * 0.75);
+}
+
+/* ── 함대 지도 층 ─────────────────────────────────────────────────────────────
+   War Room 덱을 1× 아래로 당기거나 Map 칩·Alt+M·팔레트로 여는 판. 층은 덱의 자리에 서고, 덱 칸과
+   무대는 visibility로만 물러난다 — mount와 portal 대상이 그대로라 패널은 remount되지 않고 터미널
+   연결과 출력이 이어진다(display를 끄면 그 계약이 깨진다). 무대가 떠 있어도 층은 보인다. */
+.canvas-triage-deck.is-map-open {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.canvas-triage-deck.is-map-open > .canvas-triage-deck-caption,
+.canvas-triage-deck.is-map-open > .canvas-triage-deck-grid {
   visibility: hidden;
   pointer-events: none;
 }
 
-/* 판이 서 있는 동안 미니맵은 중복이다 — 판 자체가 함대의 지도다. 접힌 Map 버튼도 함께 걷는다 — 남기면
-   판(z-index 20)이 미니맵 층(14)의 버튼을 덮어 보이기만 하고 눌리지 않는 버튼이 된다. */
-.operations-canvas.is-fleet-map .canvas-minimap,
-.operations-canvas.is-fleet-map .canvas-minimap-fab {
-  display: none;
+.operations-canvas.is-triage-map .canvas-operation.is-triage-stage,
+.operations-canvas.is-triage-map .canvas-companion-frame {
+  visibility: hidden;
 }
 
 .canvas-fleet-map {
   position: absolute;
-  /* Cruise 지도는 위·아래 26px을 유지한다. 가로는 부유 카드에 12px 가산으로 다가선다. */
-  inset: calc(var(--arena-top, 0px) + 26px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 26px) max(26px, var(--arena-left, 0px) + 12px);
-  /* Console 전역 실행 메뉴 아래, 월드(무 z-index)와 미니맵(14)보다는 위. */
+  /* 덱의 자리를 그대로 덮는다 — 덱 섹션이 이미 아레나 인셋에 서 있다. */
+  inset: 0;
+  /* 덱 층(80) 안에서 숨은 격자보다 위, Quick-Look(25·30)보다 아래. */
   z-index: 20;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
   min-height: 0;
+  outline: none;
   animation: fleet-map-in var(--duration-base) var(--ease-glide) both;
 }
 
-/* 퇴장은 진입의 역재생이다 — 확대 방향으로 살짝 커지며 옅어져, 줌인이 판을 뚫고 패널로
-   내려가는 연속 동작으로 읽힌다. 입력은 캔버스가 이미 거둔 뒤다. */
-.canvas-fleet-map.is-leaving {
-  animation: fleet-map-out var(--duration-base) var(--ease-glide) both;
-  pointer-events: none;
+.canvas-fleet-map-caption {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 24px;
 }
 
-.canvas-fleet-map-caption {
-  min-width: 0;
+.canvas-fleet-map-title {
+  flex: none;
   color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.canvas-fleet-map-counts {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 층의 동작 — 보류 해제와 닫기. 오른쪽 끝에 모이고, 캡슐이 아니라 조용한 텍스트 버튼이다. */
+.canvas-fleet-map-action {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: var(--control-rest);
+  color: var(--text-primary);
+  font: var(--weight-medium) var(--t-xs) var(--font-body);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.canvas-fleet-map-counts + .canvas-fleet-map-action {
+  margin-left: auto;
+}
+
+.canvas-fleet-map-action:hover {
+  background: var(--control-hover-fill);
+}
+
+.canvas-fleet-map-action:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: 1px;
+}
+
+/* 보류된 새 대기 — 대기 신호(aurora)가 이 버튼의 테두리를 진다. */
+.canvas-fleet-map-action.is-held {
+  border-color: color-mix(in oklch, var(--aurora) 55%, var(--hairline-strong));
+  color: var(--aurora-ink);
+}
+
+.canvas-fleet-map-action kbd {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
 }
 
 /* 판은 하나의 연속된 격자다 — 지구본 위의 작전구역들처럼 모든 Operation이 같은 좌표계 위에 있고,
@@ -4135,11 +4200,6 @@
   );
 }
 
-/* 활성 Theater의 구역은 "지금 있는 곳"이다 — 위치 채널인 brass 실선 하나로만 말한다. */
-.canvas-fleet-map-zone.is-active {
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 28%, transparent);
-}
-
 .canvas-fleet-map-zone-chip {
   display: inline-grid;
   place-items: center;
@@ -4158,28 +4218,20 @@
   inset: 6% 4%;
 }
 
-/* 이름표는 구역 한가운데의 표석이다 — 점들 아래에 깔려 판의 지명처럼 읽히고, 점이 그 위를
-   지나가도 신호(dot)가 항상 이긴다. 헤더 자신은 포인터를 통과시키고, 안의 표석 버튼만 받는다. */
+/* 이름표는 구역 한가운데의 지명이다 — 점들 아래에 깔려 판의 지명처럼 읽히고, 점이 그 위를
+   지나가도 신호(dot)가 항상 이긴다. War Room은 전 Theater를 한 판에 얹으므로 이름표는 문이 아니다
+   (누름 없음). 포인터는 통과시킨다 — 빈 자리의 우클릭은 구역이 받는다. */
 .canvas-fleet-map-zone-head {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 0;
-  max-width: 84%;
-  pointer-events: none;
-}
-
-/* 표석은 그 Theater로 가는 문이다 — 겨누면 위치 채널(brass)로 밝아지고, 활성 Theater는 이미
-   그 자리라 링 없이 brass 잉크만 진하다. 포커스 링은 hover와 같은 마크다. */
-.canvas-fleet-map-zone-pick {
   display: grid;
   justify-items: center;
   gap: 5px;
+  max-width: 84%;
   padding: 6px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: none;
   white-space: nowrap;
   color: var(--brass-ink);
   font-family: var(--font-mono);
@@ -4188,29 +4240,7 @@
   letter-spacing: 0.12em;
   text-align: center;
   text-transform: uppercase;
-  cursor: pointer;
-  pointer-events: auto;
-  transition:
-    border-color var(--duration-fast) var(--ease-glide),
-    background-color var(--duration-fast) var(--ease-glide),
-    color var(--duration-fast) var(--ease-glide);
-}
-
-.canvas-fleet-map-zone-pick:hover,
-.canvas-fleet-map-zone-pick:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  color: var(--brass-bright);
-  outline: none;
-}
-
-.canvas-fleet-map-zone-pick:hover .canvas-fleet-map-zone-label,
-.canvas-fleet-map-zone-pick:focus-visible .canvas-fleet-map-zone-label {
-  color: var(--brass-bright);
-}
-
-.canvas-fleet-map-zone-pick[aria-pressed="true"] {
-  color: var(--brass-bright);
+  pointer-events: none;
 }
 
 .canvas-fleet-map-zone-title {
@@ -4325,8 +4355,34 @@
   animation-play-state: paused;
 }
 
-/* 지도의 이름표는 상시 노출이다 — 점만으로는 어떤 Operation인지 알 수 없어 지도가 익명이 된다.
-   위계는 가시성이 아니라 텍스트 티어로 만든다: 유휴는 3티어, 대기·실행은 2티어. */
+/* 대기열의 점 — 무대에 선 점은 "지금 여기"라 위치 채널(brass) 링을 상시 두른다. 미룬 점과 치워둔 점은
+   사람이 이미 보고 밀어 둔 신호라 대기 링이 맥동하지 않고 멈춘다(치워둔 점은 한 단 더 옅다). 엿보는
+   점은 Quick-Look의 출처라 겨눔과 같은 brass 테두리를 남긴다. */
+.canvas-fleet-map-dot.is-staged,
+.canvas-fleet-map-dot.is-peeked {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-glow);
+}
+
+.canvas-fleet-map-dot:is(.is-deferred, .is-set-aside)::after {
+  animation: none;
+  transform: scale(1.35);
+  opacity: 0.45;
+}
+
+/* 치워둔 점은 색만 옅어진다 — 점 전체를 옅게 하면 이름표의 받침까지 비쳐 옆 점이 글자 위로 드러난다. */
+.canvas-fleet-map-dot.is-set-aside {
+  background: color-mix(in oklch, var(--activity-color) 45%, transparent);
+  box-shadow: none;
+}
+
+.canvas-fleet-map-dot.is-set-aside .canvas-fleet-map-dot-label {
+  color: var(--text-tertiary);
+}
+
+/* 이름표는 대기열의 점에만 선다 — 무대·「다음」·순번·미룸·치워둠이 이름 앞에 붙는다. 대기 밖의 점은
+   이름 없이 상태 색으로 서고, 겨누면 상태 카드가 이름과 마지막 출력을 말한다. 30개가 넘는 판에서
+   모든 점에 이름을 달면 이름이 이름을 덮어, 정작 대기의 이름이 읽히지 않는다. */
 .canvas-fleet-map-dot-label {
   position: absolute;
   top: 50%;
@@ -4350,14 +4406,85 @@
   color: var(--text-secondary);
 }
 
+/* 대기열의 점은 이웃 점 위에 선다 — 이름표가 옆 점에 덮이면 대기의 이름이 읽히지 않는다. 이름표는
+   바다색 받침을 깔아 뒤로 지나가는 점과 격자를 누른다. 판 오른쪽 끝의 점은 이름표를 왼쪽으로 편다. */
+.canvas-fleet-map-dot.is-marked {
+  z-index: 1;
+}
+
+.canvas-fleet-map-dot.is-marked .canvas-fleet-map-dot-label {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--canvas-abyss) 92%, transparent);
+}
+
+.canvas-fleet-map-dot.is-label-start .canvas-fleet-map-dot-label {
+  left: auto;
+  right: 130%;
+}
+
+.canvas-fleet-map-dot-mark {
+  margin-right: 6px;
+  color: var(--text-tertiary);
+  font-weight: var(--weight-bold);
+}
+
+.canvas-fleet-map-dot.is-next .canvas-fleet-map-dot-mark {
+  color: var(--activity-color);
+}
+
+.canvas-fleet-map-dot.is-staged .canvas-fleet-map-dot-mark {
+  color: var(--brass-bright);
+}
+
+/* ── Quick-Look ─────────────────────────────────────────────────────────────
+   숨은 덱 칸의 실제 패널을 그 크기 그대로 지도 위로 들어 올린다. 칸은 격자에 남아 자리를 지키고
+   마운트만 고정 배치로 뜬다 — 크기가 같아 PTY는 리사이즈되지 않고, portal 대상이 그대로라 패널은
+   remount되지 않는다. 엿보기는 읽기 전용이다: 패널은 포인터를 받지 않고, 틀의 발 줄이 동작을 진다.
+   좌표는 캔버스(contain: paint) 기준이라 격자의 스크롤 포트가 자르지 않는다. */
+.canvas-triage-quick-look {
+  position: fixed;
+  z-index: 25;
+  border: 1px solid var(--surface-rim);
+  border-radius: calc(var(--radius-md) + 4px);
+  background: var(--glass-tint-panel);
+  box-shadow: var(--shadow-floating);
+}
+
+.canvas-triage-quick-look-foot {
+  position: absolute;
+  left: 10px;
+  right: 8px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--quick-look-foot, 40px);
+}
+
+.canvas-triage-quick-look-note {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-triage-deck-cell.is-quick-look {
+  z-index: 30;
+}
+
+.canvas-triage-deck-cell.is-quick-look > .canvas-triage-deck-mount {
+  position: fixed;
+  visibility: visible;
+  pointer-events: none;
+}
+
 @keyframes fleet-map-in {
   from { opacity: 0; transform: scale(1.03); }
   to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes fleet-map-out {
-  from { opacity: 1; transform: scale(1); }
-  to { opacity: 0; transform: scale(1.03); }
 }
 
 @keyframes fleet-map-awaiting-ring {
@@ -4633,7 +4760,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-fleet-map,
-  .canvas-fleet-map.is-leaving,
   .canvas-fleet-map-dot,
   .canvas-fleet-map-dot.is-awaiting::after,
   .canvas-triage-deck-cell.is-landed > .canvas-triage-deck-mount > .canvas-operation,
@@ -4667,12 +4793,11 @@
     transition: none;
   }
 
-  /* 덱 줌 전환은 JS 쪽에서 즉시 스냅하고, 함대 지도의 월드 cross-fade와 마커 강조 전환은
-     여기서 끊는다 — 판은 서거나 없거나 둘 중 하나로 즉시 떨어진다. */
-  .operations-canvas-world,
+  /* 덱 줌 전환은 JS 쪽에서 즉시 스냅하고, 당김의 되돌림과 지도 마커 강조 전환은 여기서 끊는다 —
+     층은 서거나 없거나 둘 중 하나로 즉시 떨어진다. */
+  .canvas-triage-deck-grid,
   .canvas-fleet-map-dot,
-  .canvas-fleet-map-dot-label,
-  .canvas-fleet-map-zone-pick {
+  .canvas-fleet-map-dot-label {
     transition: none;
   }
 }
@@ -6695,6 +6820,24 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .fleet-map-detail-branch > span { color: var(--text-secondary); }
+
+/* 마지막 출력 — 터미널이 낸 의미 있는 마지막 한 줄(최대 120자). 두 글자 키 열에 들지 않는 이름이라 키를 값
+   위에 쌓고, 출력 그대로라 고정폭으로 읽으며 두 줄까지만 싣는다. */
+.operation-detail-row.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+.fleet-map-detail-output {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 
 .side-bar-chip-rename-input {
   flex: none;

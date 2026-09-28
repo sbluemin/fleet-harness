@@ -46,7 +46,7 @@ import {
 import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from "../../integration/shortcuts.js";
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { getLoadedTheaterId, ensureDefaultGeometry, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping, toggleAlignAll } from "../../../../../features/workspace/client/canvas/canvas-store.js";
-import { enterTriage, focusedTriageOperationId, isTriageActive, setTriageActive, useTriageActive, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
+import { enterTriage, focusedTriageOperationId, isTriageActive, setTriageActive, toggleTriageMap, useTriageActive, useTriageMapOpen, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
@@ -99,6 +99,7 @@ export function OperationSearch({
   const t = useT();
   const zenMode = useZenMode();
   const triageActive = useTriageActive();
+  const triageMapOpen = useTriageMapOpen();
   const warRoomAvailable = useViewMode().effective !== "mobile";
   const sessions = useAgentState().sessions;
   const railBindings = useRailEntries();
@@ -131,8 +132,8 @@ export function OperationSearch({
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
   const undoKind = useMemo(() => lastUndoKind?.() ?? null, [state.operationSearchOpen, lastUndoKind]);
   const commands = useMemo(
-    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, undoKind, warRoomAvailable, triageActive }),
-    [state, railPanels, t, undoAvailable, zenMode, warRoomAvailable, triageActive, undoKind],
+    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, undoKind, warRoomAvailable, triageActive, triageMapOpen }),
+    [state, railPanels, t, undoAvailable, zenMode, warRoomAvailable, triageActive, triageMapOpen, undoKind],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
@@ -388,6 +389,16 @@ export function OperationSearch({
           previousFocusRef.current = null;
           enterTriage(focusedOperationId, returnFocus);
         }
+        break;
+      }
+      case "toggle-war-room-map": {
+        if (!isTriageActive()) break;
+        // 팔레트가 닫히며 되돌릴 초점(무대의 터미널)을 먼저 돌려 둔다 — 층은 그 자리를 복귀점으로
+        // 잡고 초점을 판으로 옮긴다. 순서가 바뀌면 팔레트 복원이 층 아래 숨은 무대로 초점을 가져간다.
+        const returnFocus = previousFocusRef.current;
+        previousFocusRef.current = null;
+        if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+        toggleTriageMap();
         break;
       }
       case "toggle-formation": {

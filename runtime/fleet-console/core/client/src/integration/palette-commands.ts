@@ -38,7 +38,7 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
 export type PaletteGlyphId =
   | "theater-monogram" | "theater-add" | "operation-new"
   | "operation-open" | "operation-resume" | "operation-archive" | "operation-rename" | "operation-group" | "operation-accent" | "operation-minimize"
-  | "view-minimize-all" | "view-fit" | "view-war-room" | "view-align-all" | "view-station-keeping" | "view-status-axis"
+  | "view-minimize-all" | "view-fit" | "view-war-room" | "view-fleet-map" | "view-align-all" | "view-station-keeping" | "view-status-axis"
   | "rail-entry" | "console-sidebar" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
 
 export type PaletteCommandAction =
@@ -52,6 +52,7 @@ export type PaletteCommandAction =
   | { readonly kind: "minimize-all-operations" }
   | { readonly kind: "fit-all-panels" }
   | { readonly kind: "toggle-triage-mode" }
+  | { readonly kind: "toggle-war-room-map" }
   | { readonly kind: "toggle-formation" }
   | { readonly kind: "toggle-station-keeping" }
   | { readonly kind: "toggle-status-axis" }
@@ -130,7 +131,7 @@ export function buildPaletteCommands(
   current: ConsoleState,
   railPanels: readonly PaletteRailPanelInfo[],
   t: T,
-  options?: { readonly canUndoLastClose?: boolean; readonly undoKind?: "archive" | "deletion" | null; readonly warRoomAvailable?: boolean; readonly triageActive?: boolean },
+  options?: { readonly canUndoLastClose?: boolean; readonly undoKind?: "archive" | "deletion" | null; readonly warRoomAvailable?: boolean; readonly triageActive?: boolean; readonly triageMapOpen?: boolean },
 ): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
   const language = resolveActiveLocale();
@@ -183,6 +184,12 @@ export function buildPaletteCommands(
     push({ commandId: "toggle-formation", label: t("palette.toggleFormation"), aliasLabel: alias("palette.toggleFormation"), extraAliases: ["tactical"], action: { kind: "toggle-formation" }, group: "view", glyph: "view-align-all", shortcut: "operations.toggle-formation" });
     push({ commandId: "toggle-station-keeping", label: t("palette.toggleStationKeeping"), aliasLabel: alias("palette.toggleStationKeeping"), action: { kind: "toggle-station-keeping" }, group: "view", glyph: "view-station-keeping" });
     push({ commandId: "toggle-status-axis", label: t("palette.toggleStatusAxis"), aliasLabel: alias("palette.toggleStatusAxis"), action: { kind: "toggle-status-axis" }, group: "view", glyph: "view-status-axis", shortcut: "operations.sort-by-status" });
+  }
+  // 지도 층은 War Room 안의 판이다 — War Room은 전 Theater를 한 판에 얹으므로 활성 Theater와 무관하게 싣고,
+  // War Room 밖에서는 싣지 않는다(비활성 행 문법이 없다).
+  if (options?.triageActive) {
+    const mapKey = options.triageMapOpen ? "palette.closeWarRoomMap" : "palette.openWarRoomMap";
+    push({ commandId: "toggle-war-room-map", label: t(mapKey), aliasLabel: alias(mapKey), extraAliases: ["map", "fleet map", "지도"], action: { kind: "toggle-war-room-map" }, group: "view", glyph: "view-fleet-map", shortcut: "operations.toggle-war-room-map" });
   }
   for (const panel of railPanels) {
     // 설정은 아래에서 자기 이름의 일급 명령(open-settings)으로 선다 — 같은 표면을 여는
