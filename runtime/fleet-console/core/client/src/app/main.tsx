@@ -43,6 +43,7 @@ import { installConsoleUseGestures } from "../../../../features/console-use/clie
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredSideBarGlass } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
+import { consumeInitialZenModeParam } from "../integration/zen-mode.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -122,6 +123,7 @@ if (app && hostPicker) {
   // 보관함의 수와 목록 — 보관된 Operation은 일반 목록에 없으므로 자기 사건으로 따라간다.
   installOperationArchive(subscribeConsoleChannel);
   connectOperationsSse();
+  consumeInitialZenModeParam();
   createRoot(app).render(
     <StrictMode>
       <BrowserRouter basename="/console">

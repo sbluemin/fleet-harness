@@ -144,6 +144,7 @@ export function App() {
 
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
+  const isTransitionalRoute = pathname === "/";
   const mobileLayout = useViewMode().effective === "mobile";
   const mobileSessionOpen = useMobileSessionOpen();
   const zenState = useZenModeState();
@@ -153,11 +154,11 @@ export function App() {
   const workFocusRef = useRef<HTMLElement | null>(null);
   // Zen은 /operations 데스크톱 화면에만 선다. Theater를 바꿔도 Zen은 유지한다 — 작업 표시줄의
   // Theater 메뉴와 다른 Theater의 Operation이 바로 그 전환을 Zen 안에서 하는 길이다.
-  // Zen이 켜질 때도 다시 잰다 — 전환 장면은 커튼이 내려온 뒤에 Zen을 켜므로, 그 사이 화면을 떠났거나 모바일이
-  // 되었으면 늦게 켜진 Zen을 여기서 거둔다.
+  // 부팅·호스트 전환 직후 루트('/')에서 '/operations'로 리다이렉트되는 과도기에는 성급히 끄지 않고,
+  // 모바일이거나 다른 경로(/settings 등)로 완전히 이탈했을 때만 Zen을 거둔다.
   useLayoutEffect(() => {
-    if (zenMode && (!operationsViewVisible || mobileLayout)) setZenMode(false);
-  }, [zenMode, operationsViewVisible, mobileLayout]);
+    if (zenMode && (mobileLayout || (!operationsViewVisible && !isTransitionalRoute))) setZenMode(false);
+  }, [zenMode, operationsViewVisible, mobileLayout, isTransitionalRoute]);
   useZenDesktopFullscreen(zenActive);
   useEffect(() => {
     const remember = (event: FocusEvent) => {

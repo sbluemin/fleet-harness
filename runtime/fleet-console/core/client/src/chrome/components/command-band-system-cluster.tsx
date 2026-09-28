@@ -19,6 +19,7 @@ import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integratio
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
 import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
 import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/workspace/client/canvas/canvas-context-menu.js";
+import { carriesZenMode, carryZenMode, isZenMode } from "../../integration/zen-mode.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 
@@ -78,6 +79,8 @@ export interface HostPickerContext {
   readonly at: string | null;
   /** 판을 매달 칩의 자리. 없거나 말이 안 되면 null이고, 판은 창 모서리에 선다. */
   readonly anchor: HostPickerAnchor | null;
+  /** 이 목록을 부른 콘솔이 Zen이었는지 — 고른 콘솔로 그 모드를 이어 보낸다. */
+  readonly zen: boolean;
 }
 
 /**
@@ -92,6 +95,7 @@ export function readHostPickerSurface(search: string): HostPickerContext | null 
   return {
     at: at !== null && isConsoleOriginShape(at) ? at : null,
     anchor: parsePickerAnchor(params.get(PICKER_ANCHOR_PARAM)),
+    zen: carriesZenMode(search),
   };
 }
 
@@ -128,7 +132,7 @@ function pickerUrl(homeOrigin: string, surface: string, at?: string, anchor?: st
   url.searchParams.set(PICKER_SURFACE_PARAM, surface);
   if (at !== undefined) url.searchParams.set(PICKER_AT_PARAM, at);
   if (anchor !== undefined) url.searchParams.set(PICKER_ANCHOR_PARAM, anchor);
-  return url.toString();
+  return carryZenMode(url).toString();
 }
 
 /** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, Zen 트레이에서는 위로 열린다(CSS가 자리로 판단). */
@@ -413,7 +417,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   };
   const go = (origin: string) => {
     setOpen(false);
-    if (origin !== currentOrigin) location.assign(new URL("/console/", `${origin}/`).toString());
+    if (origin !== currentOrigin) location.assign(carryZenMode(new URL("/console/", `${origin}/`), picker?.zen ?? isZenMode()).toString());
   };
 
   return (

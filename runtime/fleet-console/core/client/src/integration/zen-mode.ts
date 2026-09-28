@@ -9,7 +9,33 @@ export interface ZenModeState {
   readonly sideBarRevealed: boolean;
 }
 
-let state: ZenModeState = { active: false, sideBarRevealed: false };
+/**
+ * 호스트 전환은 다른 origin으로의 문서 이동이라 이 모듈의 상태가 따라가지 못한다. 떠나는 화면이 모드를
+ * 쿼리로 실어 보내고, 새 문서는 첫 렌더 전에 읽어 Zen으로 시작한 뒤 주소에서 지운다. 값은 화면 모드뿐이다.
+ */
+// 쿼리 문자열은 플러그인 몫(ClientNavigationCapability)이라 흔한 키를 차지하지 않는다 — Fleet 접두 키만 쓴다.
+const ZEN_MODE_PARAM = "fleet-zen";
+const ZEN_MODE_VALUE = "1";
+
+/** 전환 목적지 URL에 지금 모드를 싣는다. 일반 모드면 아무것도 싣지 않는다. */
+export function carryZenMode(url: URL, zen: boolean = state.active): URL {
+  if (zen) url.searchParams.set(ZEN_MODE_PARAM, ZEN_MODE_VALUE);
+  return url;
+}
+
+export function carriesZenMode(search: string): boolean {
+  return new URLSearchParams(search).get(ZEN_MODE_PARAM) === ZEN_MODE_VALUE;
+}
+
+/** 새 문서가 실려 온 모드를 주소에서 지운다 — 새로 고침이 모드를 다시 켜지 않게. */
+export function consumeInitialZenModeParam(): void {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(ZEN_MODE_PARAM)) return;
+  url.searchParams.delete(ZEN_MODE_PARAM);
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+let state: ZenModeState = { active: typeof window !== "undefined" && carriesZenMode(window.location.search), sideBarRevealed: false };
 const listeners = new Set<() => void>();
 let transitionActive = false;
 
