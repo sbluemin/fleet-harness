@@ -159,6 +159,9 @@ const MESSAGE_REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   unknown_member: "objectives.band.reason.recipientGone",
   unknown_operation: "objectives.band.reason.recipientGone",
   session_not_found: "objectives.band.reason.recipientGone",
+  // 세션 좌표가 남지 않은 휴면 세션 — 이어 붙일 세션이 없어 깨울 수 없다.
+  capability_unavailable: "objectives.band.reason.recipientUnreachable",
+  resume_unavailable: "objectives.band.reason.recipientUnreachable",
 };
 
 /** 지금 상태의 주행동과, 펼치면 함께 고르는 것. 제안이 남아 잠긴 개시·스티어링은 gated 가 말한다(주행동은 「다시 구상」). */
@@ -662,7 +665,7 @@ export function ActionBand(props: ActionBandProps) {
                 value={draft}
                 disabled={sending}
                 placeholder={current.placeholder}
-                aria-label={t("objectives.band.fieldAria", { word: current.word })}
+                aria-label={intent === "message" ? current.placeholder : t("objectives.band.fieldAria", { word: current.word })}
                 onChange={(event) => { setDraft(event.target.value); setError(null); }}
                 onKeyDown={(event) => { if (sendKey(event)) { event.preventDefault(); void run(intent); } }}
               />
