@@ -11,6 +11,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { pastRoles, resolveRole, type PastRole, type RoleCurateInput } from "../server/roles.js";
 import type { Objective } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
+import { LinkText } from "./link-text.js";
 import { useObjectiveTheater } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
@@ -85,7 +86,7 @@ function PastRoleRow({ role, t, touchable, merged, targets, onAdd, onCurate }: {
           <RoleMenu role={role} t={t} merged={merged} targets={targets} onCurate={onCurate} />
         </span>
       ) : null}
-      {latest ? <span className={`objectives-past-note is-${latest.rating}`} title={notes}>{latest.note}</span> : null}
+      {latest ? <span className={`objectives-past-note is-${latest.rating}`} title={notes}><LinkText text={latest.note} /></span> : null}
     </div>
   );
 }

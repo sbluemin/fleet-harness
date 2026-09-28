@@ -4,6 +4,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { Decision, DecisionQuestion, Objective } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
+import { LinkText } from "./link-text.js";
 
 /**
  * 결정 요청과 결정 — 지휘관이 보드에 올린 질문 묶음에 사람이 한 번에 답하고, 보낸 답은 「결정」에 질문마다 남는다.
@@ -114,7 +115,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
             <div key={question.id} className="objectives-decision-q">
               <div className="objectives-decision-q-top">
                 {many ? <span className="objectives-decision-q-n">{n}</span> : null}
-                <p className="objectives-decision-q-text">{question.text}</p>
+                <p className="objectives-decision-q-text"><LinkText text={question.text} /></p>
               </div>
               {missionN > 0 || member ? (
                 <div className="objectives-decision-refs">
@@ -129,10 +130,13 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
                   {question.options.map((option) => {
                     const on = draft.picked.includes(option.id);
                     return (
-                      <button key={option.id} type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} disabled={sending} className={`objectives-decision-opt${question.multiSelect ? " is-multi" : ""}`} onClick={() => pick(question, option.id)}>
-                        <span className="objectives-decision-ind" aria-hidden="true" />
-                        <span>{option.label}{option.description ? <small>{option.description}</small> : null}</span>
-                      </button>
+                      <div key={option.id} className={`objectives-decision-opt${question.multiSelect ? " is-multi" : ""}`}>
+                        <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} disabled={sending} className="objectives-decision-opt-pick" onClick={() => pick(question, option.id)}>
+                          <span className="objectives-decision-ind" aria-hidden="true" />
+                          <span>{option.label}</span>
+                        </button>
+                        {option.description ? <small><LinkText text={option.description} /></small> : null}
+                      </div>
                     );
                   })}
                   {question.multiSelect ? <span className="objectives-decision-hint">{t("objectives.decision.multiHint")}</span> : null}
@@ -197,8 +201,8 @@ export function DecisionList({ objective, t, language, flash, memberMark }: {
         const member = decision.memberId ? memberMark(decision.memberId) : null;
         return (
           <div key={decision.id} data-decision-id={decision.id} className={`objectives-decision${flash === decision.id ? " is-flash" : ""}`}>
-            <p className="objectives-decision-q-copy">{decision.question.text}</p>
-            <p className="objectives-decision-a">{answerText(decision)}</p>
+            <p className="objectives-decision-q-copy"><LinkText text={decision.question.text} /></p>
+            <p className="objectives-decision-a"><LinkText text={answerText(decision)} /></p>
             <p className="objectives-decision-meta">
               <span>{stamp(decision.at, language)}</span>
               {missionN > 0 ? <span>{t("objectives.decisions.mission", { n: missionN })}</span> : null}

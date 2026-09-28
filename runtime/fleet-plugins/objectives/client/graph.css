@@ -78,6 +78,7 @@
 .objectives-popup-state.is-unplaced i { border-style: dashed; }
 .objectives-popup-title { display: block; box-sizing: border-box; width: 100%; resize: none; border: 0; border-radius: var(--radius-xs); background: none; padding: 0 0 3px; margin: 0 0 5px; font: inherit; font-size: var(--t-sm); line-height: 1.45; color: var(--text-primary); field-sizing: content; overflow-wrap: anywhere; min-height: 1.45em; }
 /* 제목 밑줄을 띠로 강조하지 않는다. 키보드 초점은 입력 면의 옅은 변화로만 구별한다. */
+.objectives-popup-title.is-read { cursor: text; white-space: pre-wrap; }
 .objectives-popup-title:focus { outline: none; }
 .objectives-popup-title:focus-visible { background: color-mix(in oklch, var(--brass) 5%, transparent); }
 .objectives-popup-group { margin-top: 7px; padding-top: 6px; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent); }

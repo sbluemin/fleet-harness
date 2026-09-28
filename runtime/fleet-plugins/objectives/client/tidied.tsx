@@ -4,6 +4,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { Objective } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
+import { LinkText } from "./link-text.js";
 
 /**
  * 「정리됨」 — 에이전트가 Console Use 로 지우거나 합친 목표와 사람이 지운 기동 전 목표가 보관 기간 동안 서는 자리. 범위 낱말 하나가
@@ -148,12 +149,12 @@ export function TidiedDetail({ objective, t, language, call, onClose, onOpenObje
           </div>
           <div className="objectives-group">
             <span className="objectives-tidied-label">{t("objectives.objective.memo")}</span>
-            <p className="objectives-tidied-brief">{objective.note || "—"}</p>
+            <p className="objectives-tidied-brief">{objective.note ? <LinkText text={objective.note} /> : "—"}</p>
           </div>
           <div className="objectives-group">
             <span className="objectives-tidied-label">{t("objectives.criteria.title")}</span>
             {moved ? <p className="objectives-criterion-sub">{t("objectives.tidied.movedCriteria", { count: moved })}</p>
-              : objective.criteria.length ? <ul className="objectives-tidied-criteria">{objective.criteria.map((criterion) => <li key={criterion.id}>{criterion.text}</li>)}</ul>
+              : objective.criteria.length ? <ul className="objectives-tidied-criteria">{objective.criteria.map((criterion) => <li key={criterion.id}><LinkText text={criterion.text} /></li>)}</ul>
               : <p className="objectives-criterion-sub">—</p>}
           </div>
         </div>
