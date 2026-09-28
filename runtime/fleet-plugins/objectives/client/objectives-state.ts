@@ -498,11 +498,11 @@ export function handleMapOperationSelected(operationId: string): void {
 const ACCESS_ARRIVAL_TIMEOUT_MS = 5_000;
 
 export function focusOperation(operationId: string): void {
-  // 목표 표면은 닫고 간다 — 확장 표면이 무대를 덮은 채로는 옮겨간 Operation 이 보이지 않는다.
   // 착지는 Snap 전체다 — 스냅할 수 없는 모드·화면에서는 호스트가 같은 일반 이동으로 폴백한다.
+  // 확장 표면은 코어 이동이 그때 정리한다. 여기서 자기 표면만 닫으면 옆 페인이 무대를 덮은 채 남는다.
+  // 보관 세션은 복원이 끝난 뒤의 focus 가 그 정리를 하므로, 기다리는 동안 표면이 열려 있는 것은 그대로 둔다.
   const host = installed;
   if (!host) return;
-  if (host.surfaces.isOpen("objectives")) host.surfaces.closeSurface("objectives");
   const present = () => host.consoleState.getOperations({ nested: true }).some((operation) => operation.id === operationId);
   if (present() || described.get(operationId) === null) {
     host.operations.focus(operationId, { snap: "full" });

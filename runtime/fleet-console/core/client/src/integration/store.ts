@@ -12,7 +12,7 @@ import { readQuickLaunchSelection, writeQuickLaunchPinned } from "../../../../fe
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../../../../features/settings/client/global-settings-store.js";
 import { acknowledgeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
 import { noteOperationFocused } from "./palette-recent.js";
-import { closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
+import { closeAllExpandedSurfaces, closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { uiFontFamily } from "../../../../features/settings/client/ui-font.js";
 import { observeConsoleVersion } from "./console-version.js";
 import type {
@@ -786,6 +786,15 @@ export function registerFocusTheaterSwitchSuppression(guard: () => boolean): voi
 }
 
 /**
+ * Operation 을 무대에 드러내는 이동의 표면 정리. 확장 표면은 캔버스를 덮으므로 인스턴스를 전부 닫는다.
+ * 레일·사이드바·snap 전체·companion·모두 정렬·War Room 무대 지목 자체는 건드리지 않는다.
+ * 플러그인은 이동 전에 자기 표면을 따로 닫지 않는다 — 닫기 통보는 이 한 경로가 배달한다.
+ */
+export function revealOperationStage(): void {
+  closeAllExpandedSurfaces();
+}
+
+/**
  * 이동 — 팔레트·알림·목표 표면·플러그인의 「이 Operation 으로」. 본문이 이동을 따른다: 구성원을 가리키면 부모 패널이 그 구성원의
  * 본문을, 부모를 가리키면 부모 자신의 본문을 보인다(보던 구성원 본문에 가려 부모의 질문이 안 보이던 자리). Alt 순환처럼
  * 패널 사이를 걷는 이동은 `keepBody` 로 보던 본문을 그대로 둔다.
@@ -795,6 +804,7 @@ export function focusOperation(requestedOperationId: string, options?: { readonl
   const operationId = nested ? nested.parentOperationId! : requestedOperationId;
   const operation = state.operations.find((item) => item.id === operationId);
   if (!operation) return;
+  revealOperationStage();
   noteOperationFocused(operationId);
   const suppressSwitch = focusTheaterSwitchSuppressed() && operation.theaterId !== state.activeTheaterId;
   if (!suppressSwitch) writeStoredActiveTheaterId(operation.theaterId);
