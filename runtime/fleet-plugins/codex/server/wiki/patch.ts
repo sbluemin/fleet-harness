@@ -161,19 +161,49 @@ function claimRawRefs(claimSet: ClaimSet): string[] {
 }
 
 async function referencedRawRefs(paths: MemoryPaths, excluding: readonly string[] = []): Promise<Set<string>> {
-  const [entries, claims] = await Promise.all([listWiki(paths), listClaims(paths)]);
+  const [entries, claims, pending] = await Promise.all([listWiki(paths), listClaims(paths), pendingPatchRawRefs(paths)]);
   return new Set([
     ...entries.filter(entry => !excluding.includes(entry.id)).flatMap(entryRawRefs),
     ...claims.filter(set => !excluding.includes(set.entryId)).flatMap(claimRawRefs),
+    ...pending,
   ]);
 }
 
+// 승인 대기 중인 생성·수정 패치가 가리키는 raw도 살아 있는 근거로 본다 — 삭제 승인이 먼저 raw를 지우면 뒤이은 승인이 없는 근거를 참조하게 된다.
+async function pendingPatchRawRefs(paths: MemoryPaths): Promise<string[]> {
+  const refs: string[] = [];
+  for (const { id, meta } of await listQueue(paths)) {
+    if (meta.status !== "pending") continue;
+    if (meta.rawSourceRef) refs.push(meta.rawSourceRef);
+    try {
+      const patch = await parsePatch(await readPatchFile(path.join(paths.queueDir, id, PATCH_FILENAME)));
+      if (patch.frontmatter.op === "delete_wiki") continue;
+      const entry = JSON.parse(patch.body) as WikiEntry;
+      refs.push(...entryRawRefs(entry));
+      const inline = typeof entry.body === "string" ? extractInlineRawSourceRef(entry.body) : null;
+      if (inline) refs.push(inline.rawSourceRef);
+    } catch {
+      // 손상된 큐 항목은 wiki_drydock이 malformed_queue로 보고한다.
+    }
+  }
+  return refs;
+}
+
+// raw/ 아래 중첩 경로도 지원한다 — 경로 성분마다 심볼릭 링크를 거부해 raw/ 밖으로 벗어나지 못하게 한다.
 function safeRawPath(ref: string, paths: MemoryPaths): string {
-  if (!/^raw\/[A-Za-z0-9._-]+\.md$/.test(ref)) throw new Error("invalid raw source ref");
-  const rawRoot = realpathSync(paths.rawDir);
-  const target = path.join(rawRoot, path.basename(ref));
-  if (lstatSync(target).isSymbolicLink()) throw new Error("raw source must not be a symlink");
-  return target;
+  if (!ref.startsWith("raw/") || !ref.endsWith(".md") || path.posix.normalize(ref) !== ref) {
+    throw new Error("invalid raw source ref");
+  }
+  const parts = ref.split("/").slice(1);
+  if (parts.some(part => !/^[A-Za-z0-9._-]+$/.test(part) || part === "." || part === "..")) {
+    throw new Error("invalid raw source ref");
+  }
+  let current = realpathSync(paths.rawDir);
+  for (const part of parts) {
+    current = path.join(current, part);
+    if (lstatSync(current).isSymbolicLink()) throw new Error("raw source must not be a symlink");
+  }
+  return current;
 }
 
 export async function deletionImpact(id: string, paths: MemoryPaths, deleting: readonly string[] = []): Promise<{

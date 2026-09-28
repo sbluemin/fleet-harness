@@ -83,6 +83,16 @@ describe("wiki patch queue", () => {
     expect(await pathExists(path.join(paths.rawDir, "exclusive.md"))).toBe(false);
     expect(await pathExists(path.join(paths.wikiDir, ".claims", "gamma.json"))).toBe(false);
 
+    await writeFile(path.join(paths.rawDir, "pending.md"), "pending evidence");
+    await writeWikiEntry({ ...entry("zeta", "held"), rawSourceRef: "raw/pending.md" }, paths);
+    await enqueuePatch({
+      frontmatter: { op: "create_wiki", target: "wiki/eta.md", summary: "eta", proposer: "test", created: timestamp },
+      body: JSON.stringify({ ...entry("eta", "cites pending"), rawSourceRef: "raw/pending.md" }),
+    }, paths);
+    const { patchIds: [zetaPatch] } = await stageWikiDeletions(["zeta"], "obsolete", paths);
+    await approvePatch(zetaPatch!, paths);
+    expect(await pathExists(path.join(paths.rawDir, "pending.md"))).toBe(true);
+
     await writeWikiEntry(entry("delta", "[[wiki:epsilon]]"), paths);
     await writeWikiEntry(entry("epsilon", "batch member"), paths);
     const batch = await stageWikiDeletions(["delta", "epsilon"], "obsolete", paths);
