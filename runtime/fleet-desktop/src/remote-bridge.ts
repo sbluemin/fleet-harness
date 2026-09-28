@@ -315,8 +315,9 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
  * 집의 목록을 펼치라는(또는 걷으라는) 신호인가.
  *
  * 신호는 홈 origin의 `/console/`로만 온다 — 원격 콘솔이 서빙한 화면이 남의 주소로 이 신호를
- * 흉내 내도 여기서 걸린다. 실을 수 있는 것은 어느 표면이냐는 사실 하나뿐이고, 그래서 이 URL이
- * 새어도 알려지는 것이 없다.
+ * 흉내 내도 여기서 걸린다. 그 밖에 실리는 것은 부른 콘솔의 origin과 누른 칩의 자리(정수 좌표)뿐이라
+ * 이 URL이 새어도 알려지는 것이 없다. 셸은 둘 다 해석하지 않고 집의 화면에 넘기며, 모양은 그
+ * 화면(readHostPickerSurface)이 본다.
  */
 export function pickerSurfaceOf(url: string, localOrigin: string | null): "open" | "dismiss" | null {
   if (localOrigin === null) return null;

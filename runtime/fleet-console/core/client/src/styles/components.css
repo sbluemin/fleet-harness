@@ -1355,6 +1355,18 @@
   overflow-y: auto;
 }
 
+/* 칩의 자리를 받았으면 판은 그 칩에 매달린다(host-picker-surface.tsx가 자리를 잰다). 자리를 받지
+   못한 호출만 위의 모서리 배치로 남는다. */
+.host-picker-surface[data-anchored="true"] .host-switcher-panel {
+  position: fixed;
+  top: var(--picker-top, auto);
+  right: auto;
+  bottom: var(--picker-bottom, auto);
+  left: var(--picker-left, auto);
+  max-width: calc(100vw - 2 * var(--space-3));
+  max-height: var(--picker-max-height, 100%);
+}
+
 /* ── 콘솔 추가 팝업 ───────────────────────────────────────────────────
    스위처와 설정의 "콘솔 추가..." 버튼이 함께 여는 한 장. 오버레이 지오메트리는
    .directory-browser-*의 계약을 승계한다 — 둘 다 배타적인 모달이라 같은 층에 산다. */

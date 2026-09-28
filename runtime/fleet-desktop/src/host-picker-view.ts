@@ -19,6 +19,11 @@ export interface HostPickerViewDeps {
   readonly confine: (contents: WebContents) => void;
   /** 여기서 고른 콘솔을 메인 창으로 보내는 다리. */
   readonly attachBridge: (contents: WebContents) => void;
+  /**
+   * 아래에 깔린 콘솔의 줌. 덮개는 같은 배율로 그린다 — 부른 칩의 자리는 그 콘솔의 CSS px로 오므로
+   * 배율이 다르면 판이 칩에서 떨어지고, 판 자체도 도구모음 판과 다른 크기로 읽힌다.
+   */
+  readonly zoomFactor?: () => number;
   readonly log?: (message: string) => void;
   readonly now?: () => number;
 }
@@ -107,6 +112,10 @@ export function createHostPickerView(deps: HostPickerViewDeps): HostPickerView {
       });
       contents.once("did-finish-load", () => {
         if (current !== open) return;
+        const zoom = deps.zoomFactor?.();
+        if (zoom !== undefined && Number.isFinite(zoom) && zoom > 0) {
+          try { contents.setZoomFactor(zoom); } catch { /* 배율은 부가 동작이다 — 판은 모서리 배치로도 쓸 수 있다. */ }
+        }
         view.setVisible(true);
         try { contents.focus(); } catch { /* 포커스는 부가 동작이다. */ }
       });

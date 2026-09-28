@@ -54,24 +54,64 @@ const GITHUB_LATEST_RELEASE_URL = "https://github.com/sbluemin/fleet-harness/rel
 const PICKER_SURFACE_PARAM = "desktop-surface";
 const PICKER_SURFACE_OPEN = "host-picker";
 const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
-/** 목록을 펼칠 때 실려 가는 유일한 값: 지금 사용자가 서 있는 콘솔. 남의 기계는 실리지 않는다. */
+/** 목록을 펼칠 때 실려 가는 값: 지금 사용자가 서 있는 콘솔과, 누른 칩의 자리. 남의 기계는 실리지 않는다. */
 const PICKER_AT_PARAM = "at";
+const PICKER_ANCHOR_PARAM = "anchor";
+/** 창 좌표로 말이 되는 상한. 이보다 큰 값은 칩의 자리가 아니다. */
+const PICKER_ANCHOR_LIMIT = 100_000;
+
+/**
+ * 목록을 부른 칩의 자리 — 부른 콘솔의 뷰포트 CSS px. 덮개는 창 전체를 덮으므로 같은 좌표계다
+ * (셸이 덮개의 줌을 아래 콘솔에 맞춘다).
+ */
+export interface HostPickerAnchor {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+}
 
 export interface HostPickerContext {
   /** 이 목록을 부른 콘솔. 현재 줄을 표시하는 데만 쓴다. */
   readonly at: string | null;
+  /** 판을 매달 칩의 자리. 없거나 말이 안 되면 null이고, 판은 창 모서리에 선다. */
+  readonly anchor: HostPickerAnchor | null;
 }
 
 /**
  * 이 화면이 "집의 목록만 펼치는 표면"으로 서빙됐는가.
  *
- * 부른 쪽이 실어 보낸 origin은 그대로 믿지 않는다 — 화면에 그릴 값이므로 모양을 먼저 본다.
+ * 부른 쪽이 실어 보낸 값은 그대로 믿지 않는다 — 화면에 그릴 값이므로 모양을 먼저 본다.
  */
 export function readHostPickerSurface(search: string): HostPickerContext | null {
   const params = new URLSearchParams(search);
   if (params.get(PICKER_SURFACE_PARAM) !== PICKER_SURFACE_OPEN) return null;
   const at = params.get(PICKER_AT_PARAM);
-  return { at: at !== null && isConsoleOriginShape(at) ? at : null };
+  return {
+    at: at !== null && isConsoleOriginShape(at) ? at : null,
+    anchor: parsePickerAnchor(params.get(PICKER_ANCHOR_PARAM)),
+  };
+}
+
+/** 정수 여섯 개(left,top,right,bottom,뷰포트 폭,높이)만 받는다. 칩이 뷰포트 안에 서지 않으면 버린다. */
+function parsePickerAnchor(value: string | null): HostPickerAnchor | null {
+  if (value === null || !/^\d{1,6}(,\d{1,6}){5}$/.test(value)) return null;
+  const [left, top, right, bottom, viewportWidth, viewportHeight] = value.split(",").map(Number) as [number, number, number, number, number, number];
+  if (viewportWidth === 0 || viewportHeight === 0 || viewportWidth > PICKER_ANCHOR_LIMIT || viewportHeight > PICKER_ANCHOR_LIMIT) return null;
+  if (left > right || top > bottom || right > viewportWidth || bottom > viewportHeight) return null;
+  return { left, top, right, bottom, viewportWidth, viewportHeight };
+}
+
+/** 칩의 자리를 신호에 실을 모양으로. 뷰포트 밖으로 삐져나온 부분은 잘라 낸다. */
+function pickerAnchorOf(trigger: HTMLElement | null): string | undefined {
+  if (trigger === null) return undefined;
+  const width = Math.round(window.innerWidth);
+  const height = Math.round(window.innerHeight);
+  const rect = trigger.getBoundingClientRect();
+  const clamp = (value: number, max: number) => Math.min(max, Math.max(0, Math.round(value)));
+  return [clamp(rect.left, width), clamp(rect.top, height), clamp(rect.right, width), clamp(rect.bottom, height), width, height].join(",");
 }
 
 function isConsoleOriginShape(origin: string): boolean {
@@ -83,10 +123,11 @@ function isConsoleOriginShape(origin: string): boolean {
   }
 }
 
-function pickerUrl(homeOrigin: string, surface: string, at?: string): string {
+function pickerUrl(homeOrigin: string, surface: string, at?: string, anchor?: string): string {
   const url = new URL("/console/", `${homeOrigin}/`);
   url.searchParams.set(PICKER_SURFACE_PARAM, surface);
   if (at !== undefined) url.searchParams.set(PICKER_AT_PARAM, at);
+  if (anchor !== undefined) url.searchParams.set(PICKER_ANCHOR_PARAM, anchor);
   return url.toString();
 }
 
@@ -347,7 +388,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   useEffect(() => {
     if (pickerHome === null || !open) return;
     setOpen(false);
-    location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin));
+    location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current)));
   }, [pickerHome, open, currentOrigin]);
 
   // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
@@ -391,7 +432,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
           aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
           data-tip={chipLabel}
           onClick={() => {
-            if (pickerHome !== null) { location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin)); return; }
+            if (pickerHome !== null) { location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current))); return; }
             setOpen((previous) => !previous);
           }}
         >

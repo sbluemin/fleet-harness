@@ -413,6 +413,7 @@ async function boot(): Promise<void> {
     shell: () => window,
     confine: (contents) => confinePickerNavigation(contents, localConsoleOrigin ?? "", (url) => consoleTarget(url, localConsoleOrigin) !== null),
     attachBridge: (contents) => bridge.attachPicker(contents),
+    zoomFactor: () => window?.consoleContents.getZoomFactor() ?? 1,
     log: (message) => logger.error(message),
   });
   const entryLanguage = app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en";
