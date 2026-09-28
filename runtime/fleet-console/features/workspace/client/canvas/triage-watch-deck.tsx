@@ -499,8 +499,9 @@ export function TriageWatchDeck({
   }, [operations, visible]);
   useEffect(() => () => setTriageDeckOverflowing(false), []);
 
-  // 층이 열리면 초점은 판으로 옮기고, 같은 무대로 닫히면 떠나기 전 자리(무대의 터미널)로 돌려준다.
-  // 지목으로 닫혀 무대가 바뀌면 캔버스의 등단 초점이 새 무대를 맡는다.
+  // 층이 열리면 초점은 판으로 옮기고, 같은 무대로 닫히면(무대가 없던 채로 닫혀도) 떠나기 전 자리로 돌려준다 —
+  // 판은 걷히며 사라지므로 돌려주지 않으면 초점이 문서로 떨어진다. 지목으로 닫혀 무대가 바뀌면 캔버스의 등단
+  // 초점이 새 무대를 맡는다.
   const mapReturnRef = useRef<{ readonly focus: Element | null; readonly stageId: string | null } | null>(null);
   const [quickLook, setQuickLook] = useState<{ readonly operationId: string; readonly anchor: DOMRect } | null>(null);
   const [quickLookPlacement, setQuickLookPlacement] = useState<QuickLookPlacement | null>(null);
@@ -517,7 +518,7 @@ export function TriageWatchDeck({
     setQuickLook(null);
     const saved = mapReturnRef.current;
     mapReturnRef.current = null;
-    if (!saved || saved.stageId === null || saved.stageId !== stagedOperationId) return;
+    if (!saved || saved.stageId !== stagedOperationId) return;
     const focus = saved.focus;
     if (focus instanceof HTMLElement && focus.isConnected) {
       window.requestAnimationFrame(() => focus.focus({ preventScroll: true }));

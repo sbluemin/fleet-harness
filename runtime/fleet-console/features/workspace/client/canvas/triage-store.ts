@@ -788,6 +788,13 @@ export function isTriageClearedTransition(
 let decisionRoots: ReadonlySet<string> = new Set();
 export function setTriageDecisionRoots(ids: ReadonlySet<string>): void {
   if (ids.size === decisionRoots.size && [...ids].every((id) => decisionRoots.has(id))) return;
+  // 결정 요청은 활동 변화 없이 뿌리를 대기로 세운다 — 활동 기록을 거치지 않으므로, 층이 열린 동안 새로 선
+  // 뿌리는 여기서 새 대기로 보류한다. 이미 활동으로 대기이던 것과 치워둔 것은 새 도착이 아니다.
+  if (triageActive && triageMapOpen) {
+    for (const id of ids) {
+      if (!decisionRoots.has(id) && waitingByOperation.get(id) !== true && !dismissed.has(id)) triageMapHeldArrivals.add(id);
+    }
+  }
   decisionRoots = ids;
   emitTriage();
 }

@@ -89,6 +89,7 @@ import {
   openTriageMap,
   publishTriageStage,
   resolveTriageCounts,
+  setTriageDecisionRoots,
 } from "../features/workspace/client/canvas/triage-store.js";
 import type { OperationNode } from "../core/client/src/integration/types.js";
 import { TriageClearPlate } from "../features/workspace/client/canvas/canvas-overlays.js";
@@ -420,6 +421,14 @@ describe("triage store", () => {
     setConsoleState({ operations: [...operations, late], operationRuntime: afterLate });
     recordTriageActivity([...operations, late], afterLate, 2_050);
     expect(getTriageMapHeldQueueIds()).toEqual(["arriving", "late"]);
+    // 결정 요청으로 대기가 된 뿌리도 새 대기다 — 활동 변화 없이 묶음 서술자만으로 대기열에 든다.
+    const decider = operation("decider", 5, "theater-b");
+    const afterDecider: Readonly<Record<string, OperationRuntimeState>> = { ...afterLate, decider: { lifecycle: "live", activity: "idle" } };
+    setConsoleState({ operations: [...operations, late, decider], operationRuntime: afterDecider });
+    recordTriageActivity([...operations, late, decider], afterDecider, 2_060);
+    setTriageDecisionRoots(new Set(["decider"]));
+    expect(getTriageMapHeldQueueIds()).toContain("decider");
+    setTriageDecisionRoots(new Set());
 
     // 닫으면 같은 무대와 치워둠으로 돌아온다 — 앞줄에 든 새 대기가 닫는 순간 무대를 가로채지 않는다.
     closeTriageMap();
