@@ -203,7 +203,7 @@
   padding: var(--space-2);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   box-shadow: var(--shadow-soft);
 }
 
@@ -219,7 +219,7 @@
   padding: 0 var(--space-3);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
-  background: color-mix(in oklab, var(--ink-deep) 48%, transparent);
+  background: var(--control-field);
   color: var(--text-tertiary);
   transition: border-color var(--duration-fast) var(--ease-spring);
 }
@@ -349,8 +349,8 @@
 
 .settings-chip:hover:not([aria-pressed="true"]) {
   color: var(--text-primary);
-  background: var(--control-hover-fill);
-  border-color: var(--control-hover-rim);
+  background: var(--control-rest-hover);
+  border-color: var(--surface-rim-strong);
 }
 
 .settings-chip:focus-visible {
@@ -387,8 +387,8 @@
 }
 
 .settings-pane-result:hover {
-  background: var(--control-hover-fill);
-  border-color: var(--control-hover-rim);
+  background: var(--control-rest-hover);
+  border-color: var(--surface-rim-strong);
 }
 
 .settings-pane-result:focus-visible {
@@ -490,8 +490,8 @@
 }
 
 .global-settings-nav-item:hover:not([aria-pressed="true"]) {
-  border-color: var(--control-hover-rim);
-  background: var(--control-hover-fill);
+  border-color: var(--surface-rim-strong);
+  background: var(--control-rest-hover);
 }
 
 /* 현재 섹션은 선택이 아니라 위치다 — 면은 극저대비 워시로 물러나고,
@@ -499,7 +499,7 @@
 .global-settings-nav-item.is-active,
 .global-settings-nav-item[aria-pressed="true"] {
   border-color: transparent;
-  background: var(--control-wash);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
   box-shadow: inset 2px 0 0 var(--brass);
 }
 
@@ -553,7 +553,7 @@
   padding: var(--space-5);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-soft);
 }
 
@@ -663,7 +663,7 @@
    brass 테두리와 glow가 hover 면에 묻혀 녹음이 문구로만 드러난다. */
 .global-settings-shortcut-chord:hover:not(:disabled):not(.is-recording) {
   border-color: transparent;
-  background: var(--control-hover-fill);
+  background: var(--control-rest-hover);
 }
 
 .global-settings-shortcut-chord:focus-visible {
@@ -705,7 +705,7 @@
 /* 설정 설명의 단일 공개 문법 — 제목 옆 '?'가 hover 미리보기·클릭 고정 말풍선을 연다.
    글리프는 공유 컨트롤 문법을 소비한다(hover=control-hover, 열림=control-open/tint,
    포커스=control-focus-ring). 이 버튼은 상태가 아니라 위치이므로 신호 토큰을 쓰지 않고,
-   말풍선은 fc-select 팝업과 같은 부유면 문법(ink-deep 유리·hairline·shadow-floating)을 쓴다. */
+   말풍선은 불투명한 부유면 문법(surface-panel-raised·rim·shadow-floating)을 쓴다. */
 .settings-help-tip {
   position: relative;
   display: inline-flex;
@@ -733,7 +733,7 @@
 
 .settings-help-tip__glyph:hover:not([aria-expanded="true"]) {
   color: var(--text-secondary);
-  background: var(--control-hover-fill);
+  background: var(--control-rest-hover);
   border-color: transparent;
 }
 
@@ -757,9 +757,9 @@
   gap: var(--space-2);
   width: min(340px, calc(100vw - 32px));
   padding: var(--space-3) 14px;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 94%, transparent);
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
   color: var(--text-secondary);
   font-family: var(--font-mono);
@@ -975,7 +975,7 @@
   padding: 8px var(--space-3);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-deep) 86%, transparent);
+  background: var(--control-field);
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--t-base);
@@ -1023,7 +1023,7 @@
   padding: var(--space-3);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 84%, transparent);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
 }
 
 .console-port-effective-dot {
@@ -1126,7 +1126,7 @@
   padding: 0 var(--space-4);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
+  background: var(--control-rest);
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--t-sm);
@@ -1161,7 +1161,7 @@
   padding: 0 var(--space-3);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-deep) 78%, transparent);
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
