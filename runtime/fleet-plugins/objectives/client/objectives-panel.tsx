@@ -265,7 +265,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const timer = setTimeout(() => setFlash(null), 1400);
     return () => clearTimeout(timer);
   }, [flash]);
-  const [nextView, setNextView] = useState<StartView>(() => { try { return localStorage.getItem("fleet.objectives.start-view") === "chat" ? "chat" : "terminal"; } catch { return "terminal"; } });
+  const [nextView, setNextView] = useState<StartView>(() => { try { return localStorage.getItem("fleet.objectives.start-view") === "terminal" ? "terminal" : "chat"; } catch { return "chat"; } });
   const chooseNextView = (value: StartView) => { setNextView(value); try { localStorage.setItem("fleet.objectives.start-view", value); } catch { /* 저장을 차단한 브라우저에서도 선택은 유지한다. */ } };
   // 끌기 — 카드를 범위 낱말(오늘·기한)이나 다른 그룹 구획에 놓으면 그리로 옮기고, 같은 구획의 카드 사이에 놓으면 순서를 바꾼다.
   // 원래 자리는 빈 홈으로 남고 카드 유령이 커서를 따르며, 순서를 바꿀 자리에는 삽입선이 선다.
