@@ -7,9 +7,24 @@ import { GraphPopup } from "./graph-popup.js";
 import "./graph.css";
 
 export type MissionState = "done" | "unplaced" | "ready" | "blocked" | "running" | "awaiting";
+/** 노드·상태 셈·대기 안내가 같은 판정을 공유한다. 준비된 첫 임무만 담당의 활동을 받는다. */
+export function graphMissionStates(objective: Objective, operationState: (id: string) => string): ReadonlyMap<string, MissionState> {
+  const states = new Map<string, MissionState>(), activeMembers = new Set<string>();
+  for (const mission of objective.missions) {
+    const owner = mission.member ?? objective.id, activity = operationState(owner);
+    let state: MissionState = mission.done ? "done" : isLoose(mission) ? "unplaced" : missionReady(objective.missions, mission) ? "ready" : "blocked";
+    if (state === "ready" && !activeMembers.has(owner) && ["running", "background", "awaiting"].includes(activity)) {
+      state = activity === "awaiting" ? "awaiting" : "running";
+      activeMembers.add(owner);
+    }
+    states.set(mission.id, state);
+  }
+  return states;
+}
+
 export interface MissionDetailActions { close: () => void; select: (id: string) => void; state: MissionState }
 interface GraphProps {
-  objective: Objective; t: Translate<ObjectiveMessageKey>; operationState: (id: string) => string;
+  objective: Objective; t: Translate<ObjectiveMessageKey>; states: ReadonlyMap<string, MissionState>;
   onEdge: (from: string, to: string, linked: boolean) => void; canEdit: (id: string) => boolean;
   onShowing: (id: string | null) => void;
   renderDetail: (mission: ObjectiveMission, actions: MissionDetailActions) => ReactNode;
@@ -19,7 +34,7 @@ interface Drag { from: string; x0: number; y0: number; x: number; y: number; ove
 interface Popup { id: string; pinned: boolean; closing: boolean }
 const nodeId = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>("[data-graph-node], [data-graph-label]")?.dataset.graphNode ?? target.closest<HTMLElement>("[data-graph-label]")?.dataset.graphLabel ?? null : null;
 
-export function CoordinationGraph({ objective, t, operationState, onEdge, canEdit, renderDetail, onShowing, reveal, zoom = false, suspended = false }: GraphProps) {
+export function CoordinationGraph({ objective, t, states, onEdge, canEdit, renderDetail, onShowing, reveal, zoom = false, suspended = false }: GraphProps) {
   const box = useRef<HTMLDivElement>(null), scroll = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320), [font, setFont] = useState("11px sans-serif");
   const wide = width >= 700;
@@ -38,15 +53,6 @@ export function CoordinationGraph({ objective, t, operationState, onEdge, canEdi
     const measure = (s: string) => context?.measureText(s).width ?? [...s].length * (wide ? 12 : 11);
     return graphLayout(objective.missions.filter(m => !isLoose(m)), width, wide, measure, t("objectives.graph.commander"));
   }, [objective.missions, width, wide, font, fontEpoch, t]);
-  const states = new Map<string, MissionState>(), activeMembers = new Set<string>();
-  for (const m of objective.missions) {
-    const ready = missionReady(objective.missions, m), owner = m.member ?? objective.id;
-    const activity = operationState(owner);
-    let state: MissionState = m.done ? "done" : isLoose(m) ? "unplaced" : ready ? "ready" : "blocked";
-    // 세션 상태를 모든 배정 임무에 복제하지 않는다. 준비된 첫 임무만 담당의 실행 상태를 받는다.
-    if (state === "ready" && !activeMembers.has(owner) && ["running", "background", "awaiting"].includes(activity)) { state = activity === "awaiting" ? "awaiting" : "running"; activeMembers.add(owner); }
-    states.set(m.id, state);
-  }
   const marks = new Map<string, string>(), used = new Set<string>();
   for (const member of objective.members) { const mark = [...member.role.replace(/\s/g, "")].find(c => !used.has(c)) ?? String(marks.size + 1); marks.set(member.id, mark); used.add(mark); }
   const [popup, setPopup] = useState<Popup | null>(null), popupRef = useRef(popup); popupRef.current = popup;

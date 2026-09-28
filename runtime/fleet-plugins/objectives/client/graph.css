@@ -72,7 +72,7 @@
 .objectives-popup-state.is-ready { color: var(--aurora-ink); }
 .objectives-popup-state.is-ready i { border: 2px solid var(--aurora); }
 .objectives-popup-state.is-running { color: var(--positive-ink); }
-.objectives-popup-state.is-running i { border-color: var(--positive); }
+.objectives-popup-state.is-running i { border-color: var(--positive); box-shadow: 0 0 0 1.5px var(--surface-panel), 0 0 0 2.5px color-mix(in oklch, var(--positive) 55%, transparent); }
 .objectives-popup-state.is-awaiting { color: var(--warn-ink); }
 .objectives-popup-state.is-awaiting i { background: var(--warn); border-color: var(--warn); border-radius: 2px; transform: rotate(45deg); }
 .objectives-popup-state.is-unplaced i { border-style: dashed; }
@@ -121,3 +121,15 @@
 .objectives-graph-dragline path.is-no { stroke: var(--coral); }
 
 .objectives-branch-graph.is-wide .objectives-graph-label { font-size: var(--t-sm); }
+
+/* 시안의 상태 셈과 권한 대기 줄은 그래프 밖 머리에만 둔다. */
+.objectives-graph-counts { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--text-primary); font: var(--t-2xs)/1 var(--font-mono); }
+.objectives-graph-counts > .objectives-popup-state { gap: 4px; }
+.objectives-graph-counts b { font: var(--weight-medium) var(--t-2xs)/1 var(--font-mono); color: var(--text-primary); }
+.objectives-graph-count-label { display: none; }
+.objectives-graph-counts.is-wide { gap: 12px; font-family: var(--font-body); font-size: var(--t-xs); }
+.objectives-graph-counts.is-wide .objectives-graph-count-label { display: inline; }
+.objectives-graph-attention { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 28px; margin: 2px 10px 3px; padding: 2px 10px; border: 1px solid color-mix(in oklch, var(--warn) 55%, transparent); background: color-mix(in oklch, var(--warn) 9%, transparent); border-radius: var(--radius-xs); font-size: var(--t-xs); color: var(--text-secondary); }
+.objectives-graph-attention-owner { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-weight: var(--weight-medium); }
+.objectives-graph-attention button { flex: none; border: 0; background: none; padding: 0; min-height: 24px; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklch, var(--warn) 60%, transparent); cursor: pointer; }
+.objectives-graph-attention .objectives-graph-attention-session { margin-left: auto; color: var(--warn-ink); font-weight: var(--weight-medium); white-space: nowrap; }

@@ -12,7 +12,7 @@ import { PastRoles } from "./past-roles.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ObjectiveResults, ResultsGlyph, ResultsHeadTools } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
-import { CoordinationGraph, type MissionDetailActions } from "./graph.js";
+import { CoordinationGraph, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewPicker, type StartView } from "./launch-control.js";
@@ -1498,7 +1498,6 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const showMission = (missionId: string) => {
     onOpenSection("detail:missions");
     setMissionReveal({ id: missionId, at: Date.now() });
-    requestAnimationFrame(() => detailRef.current?.querySelector(`[data-mission-id="${CSS.escape(missionId)}"]`)?.scrollIntoView({ block: "nearest" }));
   };
   const sendDecision = async (requestId: string, answers: readonly { questionId: string; selectedOptionIds: readonly string[]; text: string }[]) => {
     await request("/decision/answer", { objectiveId: objective.id, requestId, answers });
@@ -1837,18 +1836,30 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       {!editable ? <p className="objectives-popup-hint">{t(objective.done ? "objectives.graph.locked" : "objectives.graph.doneLocked")}</p> : null}
     </>;
   };
-  const graphProps = { objective, t, operationState: operationOwnState, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: (id: string | null) => setOpenRecords(current => { const keys = Object.keys(current); return keys.some(key => key !== id) ? (id && current[id] ? { [id]: current[id] } : {}) : current; }), onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal };
+  const missionStates = graphMissionStates(objective, operationOwnState);
+  const countOrder: readonly MissionState[] = ["awaiting", "running", "ready", "blocked", "unplaced", "done"];
+  const statusCounts = countOrder.map(state => ({ state, count: [...missionStates.values()].filter(value => value === state).length })).filter(entry => entry.count > 0);
+  const renderCounts = (wide = false) => <span className={`objectives-graph-counts${wide ? " is-wide" : ""}`} role="img" aria-label={statusCounts.map(({ state, count }) => `${t(`objectives.graph.state.${state}`)} ${count}`).join(", ")}>{statusCounts.map(({ state, count }) => <span className={`objectives-popup-state is-${state}`} key={state} title={`${t(`objectives.graph.state.${state}`)} ${count}`}><i aria-hidden="true" /><span className="objectives-graph-count-label">{t(`objectives.graph.state.${state}`)}</span><b>{count}</b></span>)}</span>;
+  const awaitingMissions = objective.done ? [] : objective.missions.filter(mission => missionStates.get(mission.id) === "awaiting");
+  const missionAttention = awaitingMissions.map(mission => {
+    const owner = objective.members.find(member => member.id === mission.member);
+    const ownerName = owner?.role ?? t("objectives.graph.commander");
+    return <div key={mission.id} className="objectives-graph-attention" role="status"><span className="objectives-popup-state is-awaiting" aria-hidden="true"><i /></span><span className="objectives-graph-attention-owner">{t("objectives.graph.ownerAwaiting", { owner: ownerName })}</span><button type="button" onClick={() => showMission(mission.id)}>{t("objectives.graph.detail", { n: numberOf(mission.id) })}</button><button type="button" className="objectives-graph-attention-session" onClick={() => focusOperation(owner?.id ?? objective.id)}>{t("objectives.graph.openSession")}</button></div>;
+  });
+  const graphProps = { objective, t, states: missionStates, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: (id: string | null) => setOpenRecords(current => { const keys = Object.keys(current); return keys.some(key => key !== id) ? (id && current[id] ? { [id]: current[id] } : {}) : current; }), onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal };
   const missionAdd = touchable ? <div className="objectives-row objectives-mission-add"><span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span><input maxLength={200} aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={event => {
     if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget, value = target.value; void call("/mission/add", { objectiveId: objective.id, mission: { text: value.trim() } }).then(result => { if (result && target.value === value) target.value = ""; }); }
   }} /></div> : null;
+  const graphMenu = objective.missions.length > 1 && editable ? <details className="objectives-graph-menu"><summary aria-label={t("objectives.graph.menu")}>⋯</summary><div><button type="button" onClick={() => void call("/edge/linear", { objectiveId: objective.id })}>{t("objectives.graph.linear")}</button><button type="button" onClick={() => void call("/edge/clear", { objectiveId: objective.id })}>{t("objectives.graph.parallel")}</button></div></details> : null;
   const graphTools = <>
-    {objective.missions.length > 1 && editable ? <details className="objectives-graph-menu"><summary aria-label={t("objectives.graph.menu")}>⋯</summary><div><button type="button" onClick={() => void call("/edge/linear", { objectiveId: objective.id })}>{t("objectives.graph.linear")}</button><button type="button" onClick={() => void call("/edge/clear", { objectiveId: objective.id })}>{t("objectives.graph.parallel")}</button></div></details> : null}
+    {graphMenu}
     <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>
   </>;
   const sMissions = <div className="objectives-group objectives-missions-group" data-objectives-tour="missions">
-    <SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.missions.unseen")} /> : null}<span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{objective.missions.length ? graphTools : null}</>} />
+    <SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.missions.unseen")} /> : null}{renderCounts()}{objective.missions.length ? graphTools : null}</>} />
+    {missionAttention}
     <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} suspended={zoomOpen} /> : null}{missionAdd}</div>
-    {zoomOpen && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}><CoordinationGraph {...graphProps} zoom />{missionAdd}</LineupZoom>, document.body) : null}
+    {zoomOpen && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}><SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}{graphMenu}</>} />{missionAttention}<CoordinationGraph {...graphProps} zoom />{missionAdd}</LineupZoom>, document.body) : null}
   </div>;
   const sDecisions = (<>
       {/* 결정 — 임무 아래, 후속 후보 위. 사람이 결정 요청에 보낸 답이 질문마다 쌓인다(지휘관·구성원도 보드에서 읽는다). 답이 없으면 서지 않는다. */}
