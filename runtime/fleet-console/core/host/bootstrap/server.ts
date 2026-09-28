@@ -59,7 +59,7 @@ import { createRemoteHostStore, type RemoteHostRecord } from "../../../features/
 import { createRemoteIdentityStore, fingerprintsMatch } from "../../../features/remote-access/host/remote-identity.js";
 import { createRemoteJoinGuard } from "../../../features/remote-access/host/remote-join-guard.js";
 import { createAgentOptionsService, createTheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
-import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createPluginSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
+import { UNFOCUSED_PANEL_FADE_DEFAULT, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createPluginSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "../../../features/updates/host/release-notes/release-notes.js";
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "../../../features/updates/host/update-check.js";
@@ -77,7 +77,8 @@ import { buildApiCatalog, type ApiCatalogEntry } from "../transport/api-catalog.
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterInfo } from "../transport/console-contract-types.js";
 import { CONSOLE_SECURITY_HEADERS, encodeSseData, isLoopbackRemoteAddress, startSseKeepaliveLifecycle, withSecurityHeaders } from "../transport/http-infra.js";
 import { RouteRegistry, UpgradeRegistry } from "../transport/route-registry/registry.js";
-import { createStaticConsoleHandler } from "../transport/static-console.js";
+import { createEpochConsoleAssets, createStaticConsoleHandler } from "../transport/static-console.js";
+import { createProxyBroker } from "../../../features/remote-access/host/proxy/broker.js";
 import type { DesktopShellUpdateCommandKind, DesktopShellUpdateCommandSnapshot, DesktopShellUpdateSnapshot } from "../shell/desktop-contract.js";
 import { listLocalConsoles } from "./local-consoles.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
@@ -420,6 +421,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
     transport: "http",
   },
+  { method: "POST", path: "/api/v1/proxy/owners", summary: "Open an owner lease for the attached Desktop's read-only remote data views; only an explicit heartbeat renews it.", category: "Desktop", gate: "lock-token", transport: "http" },
+  { method: "POST", path: "/api/v1/proxy/owners/:ownerLeaseId/heartbeat", summary: "Renew an owner lease.", category: "Desktop", gate: "lock-token", transport: "http" },
+  { method: "POST", path: "/api/v1/proxy/owners/:ownerLeaseId/switch", summary: "Advance the owner's switch generation so an older pending delegation is refused.", category: "Desktop", gate: "lock-token", transport: "http" },
+  { method: "DELETE", path: "/api/v1/proxy/owners/:ownerLeaseId", summary: "Release an owner lease and end every epoch it holds.", category: "Desktop", gate: "lock-token", transport: "http" },
+  { method: "POST", path: "/api/v1/proxy/epochs", summary: "Delegate one verified monitoring session to open a read-only remote data epoch on its own loopback listener.", category: "Desktop", gate: "lock-token", transport: "http" },
+  { method: "DELETE", path: "/api/v1/proxy/epochs/:epochId", summary: "End an epoch; a final end asks the remote to end that same session once, a transfer does not.", category: "Desktop", gate: "lock-token", transport: "http" },
+  { method: "GET", path: "/api/v1/proxy/events", summary: "Stream an owner's epoch state changes; the stream does not renew the lease.", category: "Desktop", gate: "lock-token", transport: "sse" },
   { method: "GET", path: "/api/v1/computer-use", summary: "Read local Computer Use status.", category: "Settings", gate: "loopback", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/install", summary: "Install a Fleet-managed Cua Driver after local request.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
@@ -550,6 +558,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
   const remoteHostStore = createRemoteHostStore(durablePaths.dir);
   const pairedDeviceStore = createPairedDeviceStore(durablePaths.dir);
+  // 읽기 전용 원격 데이터 epoch. 네이티브 셸이 lock token으로만 부르고, 데이터 뷰는 epoch마다 따로 연
+  // 루프백 리스너로만 닿는다 — 이 리스너의 라우트 테이블은 그쪽에 없다.
+  const proxyBroker = createProxyBroker({
+    remoteHostStore,
+    isLockAuthorized: (req) => isLockAuthorized(req),
+    localVersion: () => version,
+    presentation: () => {
+      const general = consoleSettingsStore.load().general ?? {};
+      return {
+        theme: general.theme ?? "instrument",
+        liquidGlass: general.liquidGlass ?? true,
+        unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
+        uiFont: general.uiFont ?? { source: "builtin", id: "manrope", size: 14 },
+        language: general.language ?? "auto",
+      };
+    },
+    readAsset: createEpochConsoleAssets(release.packageRoot),
+    log: (entry) => { console.info(`[fleet-console] proxy ${JSON.stringify(entry)}`); },
+  });
   const remoteEndpointStore = createRemoteEndpointStore(durablePaths.dir);
   const pluginOperationTypes = new Set<string>(["agent"]);
   const executionApiCatalog: ApiCatalogEntry[] = [];
@@ -1514,6 +1541,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       else handleAccessSelfLeave(req, res, listener, remoteSession);
       return;
     }
+    if (pathname.startsWith("/api/v1/proxy/")) {
+      // 네이티브 전용 broker 문. 원격 리스너에는 없고, 루프백에서도 Host·lock token·Origin 부재를 broker가 다시 본다.
+      if (listener?.audience === "local" && proxyBroker.handle(req, res, pathname, listener.port)) return;
+      writeJson(res, 404, { error: "not_found" });
+      return;
+    }
     if (archiveStorage.blocked() && (pathname.startsWith("/api/") || pathname.startsWith("/mcp/")) && pathname !== "/api/v1/health") {
       writeJson(res, 503, { error: "archive_recovery_required" });
       return;
@@ -2331,6 +2364,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     activeLockFile = null;
     activeEndpoint = null;
     deletionCoordinator.dispose();
+    proxyBroker.shutdown();
     // 입력 제어는 HTTP·플러그인 정리에 막히기 전에 회수하고 신규 호출도 닫는다.
     const stoppingComputerUse = computerUseMcp.dispose();
     const stoppingBrowser = browserMcp.dispose();
