@@ -1,5 +1,5 @@
 /**
- * 해석된 Codex workspace — 카탈로그 열이 알아내고, 문서 열과 읽기 시트가 함께 읽는다.
+ * 해석된 Codex workspace — 카탈로그 열과 복원된 확대 표면이 알아내고, 문서 열도 함께 읽는다.
  *
  * 열이 갈라지기 전에는 카탈로그 컴포넌트가 이 값을 소유해도 됐다. 이제 소비자가 셋이라
  * 어느 한 컴포넌트의 파일에 두면 그 파일이 다른 둘의 의존이 되고, 페인 id를 되돌려받는
@@ -59,4 +59,23 @@ export function lastCodexScope(): string | null {
 
 export function rememberCodexScope(contextKey: string): void {
   lastCodexContextKey = contextKey;
+}
+
+/** 카탈로그를 열지 않고 복귀한 확대 표면도 같은 workspace 해석을 쓴다. */
+export async function resolveCodexWorkspace(theaterId: string): Promise<Omit<CodexWorkspaceState, "contextKey">> {
+  const response = await fetch("/api/v1/plugins/codex/workspace", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theaterId }),
+  });
+  if (!response.ok) throw new Error("codex_workspace_unavailable");
+  const value: unknown = await response.json();
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_codex_workspace");
+  const payload = value as Record<string, unknown>;
+  if (Object.keys(payload).length !== 2 || typeof payload.hasWiki !== "boolean") throw new Error("invalid_codex_workspace");
+  if (payload.hasWiki && typeof payload.id === "string" && /^[0-9a-f]{12}$/.test(payload.id)) {
+    return { hasWiki: true, id: payload.id };
+  }
+  if (!payload.hasWiki && payload.id === null) return { hasWiki: false, id: null };
+  throw new Error("invalid_codex_workspace");
 }

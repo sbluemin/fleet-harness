@@ -22,6 +22,7 @@ import {
   lastResolvedCodexWorkspace,
   publishResolvedWorkspace,
   rememberCodexScope,
+  resolveCodexWorkspace,
   type CodexWorkspaceState,
 } from "./workspace-store.js";
 import { closeCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
@@ -234,29 +235,6 @@ function CodexEmpty({
       <p>{t("rail.codex.wikiUnavailable")}</p>
     </section>
   );
-}
-
-async function resolveCodexWorkspace(theaterId: string): Promise<Omit<CodexWorkspaceState, "contextKey">> {
-  // 플러그인 라우트는 자기 이름공간에 산다 — `/api/v1/theaters/...`는 코어가 소유한 경로라
-  // 플러그인이 그 밑에 끼어들 수 없다. Theater는 경로가 아니라 본문이 싣는다(workspace-routes).
-  const response = await fetch("/api/v1/plugins/codex/workspace", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId }),
-  });
-  if (!response.ok) throw new Error("codex_workspace_unavailable");
-  return assertCodexWorkspace(await response.json());
-}
-
-function assertCodexWorkspace(value: unknown): Omit<CodexWorkspaceState, "contextKey"> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_codex_workspace");
-  const payload = value as Record<string, unknown>;
-  if (Object.keys(payload).length !== 2 || typeof payload.hasWiki !== "boolean") throw new Error("invalid_codex_workspace");
-  if (payload.hasWiki && typeof payload.id === "string" && /^[0-9a-f]{12}$/.test(payload.id)) {
-    return { hasWiki: true, id: payload.id };
-  }
-  if (!payload.hasWiki && payload.id === null) return { hasWiki: false, id: null };
-  throw new Error("invalid_codex_workspace");
 }
 
 function CodexIcon() {

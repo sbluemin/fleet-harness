@@ -5,9 +5,9 @@ import type { ExpandedSurfaceCloseContext, ExpandedSurfaceOpenRequest } from "@f
 /**
  * 확대 표면 스토어 — 열린 페인의 순서 있는 목록과 폭 가중치를 소유한다.
  *
- * 캔버스 focus layer(canvas-store의 focusLayersByTheater)와 같은 급의 상태다:
- * 모듈 메모리에만 살고 durable state에 들어가지 않는다. 새로고침 뒤의 복원은
- * 영속이 아니라 URL 주소화가 책임진다 — 주소를 가진 표면만 돌아온다.
+ * 같은 탭에서 콘솔을 오가도 열어 둔 자리를 잃지 않도록 sessionStorage에 보관한다.
+ * 탭과 origin이 저장 경계이며 durable state나 앱 재시작 복원을 구현하지 않는다.
+ * 표면 본문이 소유하는 draft·스크롤 등은 저장하지 않는다.
  *
  * 페인 개수에 상한이 없다. 좁아지는 것은 분할선 드래그의 최소폭 클램프가 막고,
  * 그 클램프는 픽셀을 아는 레이어가 적용한다(스토어는 가중치만 안다).
@@ -29,9 +29,48 @@ type Listener = () => void;
 
 const EMPTY: ExpandedSurfaceState = { instances: [], focusedInstanceId: null };
 
+const SESSION_KEY = "fleet.console.expanded-surfaces.v1";
 const listeners = new Set<Listener>();
-let state: ExpandedSurfaceState = EMPTY;
+let state: ExpandedSurfaceState = readSession();
 let instanceSeq = 0;
+
+function readSession(): ExpandedSurfaceState {
+  if (typeof window === "undefined") return EMPTY;
+  try {
+    const raw: unknown = JSON.parse(window.sessionStorage.getItem(SESSION_KEY) ?? "null");
+    if (!isRecord(raw) || !Array.isArray(raw.instances)) return EMPTY;
+    const instances: ExpandedSurfaceInstance[] = [];
+    const ids = new Set<string>();
+    for (const entry of raw.instances) {
+      if (!isRecord(entry) || typeof entry.instanceId !== "string" || !entry.instanceId
+        || ids.has(entry.instanceId) || typeof entry.surfaceId !== "string" || !entry.surfaceId
+        || !isRecord(entry.params) || !Object.values(entry.params).every((value) => typeof value === "string")
+        || typeof entry.weight !== "number" || !Number.isFinite(entry.weight) || entry.weight <= 0) return EMPTY;
+      ids.add(entry.instanceId);
+      instances.push({ instanceId: entry.instanceId, surfaceId: entry.surfaceId, params: entry.params as Record<string, string>, weight: entry.weight });
+    }
+    const focusedInstanceId = typeof raw.focusedInstanceId === "string" && ids.has(raw.focusedInstanceId)
+      ? raw.focusedInstanceId : null;
+    return { instances, focusedInstanceId };
+  } catch {
+    // 저장이 막혔거나 이전 탭 데이터가 손상되어도 표면을 여는 기능은 메모리로 계속 동작한다.
+    return EMPTY;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function writeSession(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (state.instances.length === 0) window.sessionStorage.removeItem(SESSION_KEY);
+    else window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
+  } catch {
+    // 탭 저장소를 사용할 수 없는 환경에서도 현재 페이지의 상태는 유지한다.
+  }
+}
 
 /**
  * 닫힘 통보를 배달할 곳. 스토어는 서술자를 모르므로(레이어가 레지스트리에서 조회한다)
@@ -71,12 +110,17 @@ export function getExpandedSurfaceState(): ExpandedSurfaceState {
 function setState(next: ExpandedSurfaceState): void {
   if (next === state) return;
   state = next;
+  writeSession();
   for (const listener of listeners) listener();
 }
 
 function nextInstanceId(surfaceId: string): string {
-  instanceSeq += 1;
-  return `${surfaceId}#${instanceSeq}`;
+  let id: string;
+  do {
+    instanceSeq += 1;
+    id = `${surfaceId}#${instanceSeq}`;
+  } while (state.instances.some((instance) => instance.instanceId === id));
+  return id;
 }
 
 function sameParams(
