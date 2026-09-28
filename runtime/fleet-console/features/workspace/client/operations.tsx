@@ -933,7 +933,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         />
       </div>
       <div className="operations-toast-region" style={{ left: canvasArenaInsets.left, right: canvasArenaInsets.right, bottom: canvasArenaInsets.bottom }}>
-        <div className="app-toast-host">{deletionToast}{alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}</div>
+        <div className="app-toast-host">
+          {deletionToast}
+          {alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}
+          {/* Theater 등록 오류는 사이드바가 그린다 — Zen은 사이드바를 숨기므로 같은 오류를 여기서 알린다. */}
+          {zenMode && state.theaterError ? <Toast open tone="error" title={t("zen.taskbar.addTheaterFailed")} message={state.theaterError} onDismiss={cancelAddTheater} /> : null}
+        </div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
       {toolbarToolsSlot !== null ? createPortal(<RailToolIcons context={toolsContext} />, toolbarToolsSlot) : null}
