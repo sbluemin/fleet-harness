@@ -234,13 +234,14 @@ export function TheaterSystemPromptSheet() {
     if (!request || requestRef.current !== request) return;
     if (registeredLabel === null) { markForgotten(); return; }
     if (!forgottenRef.current) return;
-    // 잊힘 유예 안에 되돌아왔다 — 저장된 값은 서버가 함께 되살렸고, 저장하지 못한 입력만 이어서 저장한다.
+    // Theater가 되돌아왔다. 저장하지 못한 입력이 있으면 그것을 이어서 저장하고, 없으면 서버 값을 다시 읽는다 —
+    // 유예 안의 되돌리기는 값도 함께 되살리지만, 만료 뒤 다시 등록된 Theater에는 옛 값이 없다.
     forgottenRef.current = false;
     setForgotten(false);
-    if (!loadedRef.current) { setLoadFailed(true); return; }
     const saved = storedRef.current ?? { mode: "on", body: "" };
     const draftNow = draftRef.current;
-    if (dirtyRef.current || draftNow.mode !== saved.mode || draftNow.body !== saved.body) persist(request.theater.id, draftNow);
+    if (loadedRef.current && (dirtyRef.current || draftNow.mode !== saved.mode || draftNow.body !== saved.body)) persist(request.theater.id, draftNow);
+    else window.dispatchEvent(new CustomEvent<OpenRequest>(OPEN_EVENT, { detail: request }));
   }, [request, registeredLabel, markForgotten, persist]);
 
   // 편집 칸이 사라지면서 포커스가 문서로 떨어지지 않게, 남은 글을 복사하는 버튼(없으면 닫기)으로 옮긴다.
@@ -363,7 +364,7 @@ export function TheaterSystemPromptSheet() {
             {copied ? <span role="status">{t("sidebar.theater.prompt.copied")}</span> : null}
           </div>
         </> : null}
-        <small>{t("sidebar.theater.prompt.forgottenRestore")}</small>
+        <small>{t(unsaved ? "sidebar.theater.prompt.forgottenRestoreUnsaved" : "sidebar.theater.prompt.forgottenRestore")}</small>
       </div> : null}
       {forgotten ? null : !loading && !loadFailed ? <div className="theater-prompt-state"><span><i className={stored ? "is-own" : ""} />{stored ? t("sidebar.theater.prompt.own") : t("sidebar.theater.prompt.unset")}</span><small>{stored ? t("sidebar.theater.prompt.ownDetail") : t("sidebar.theater.prompt.unsetDetail")}</small>
         {stored ? <button type="button" onClick={reset}>{t("sidebar.theater.prompt.reset")}</button> : null}
