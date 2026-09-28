@@ -776,6 +776,31 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual([id]);
   });
 
+  it("lets Console Use tell objectives without an Operation from launched ones and conversation sessions, including completed ones", async () => {
+    const { launch, add, workspace, consoleTool } = harness();
+    const caller = add("tidy-caller", { title: "Tidy caller" });
+    const use = async (args: Record<string, unknown>) => (await consoleTool.execute(args, { cwd: workspace, caller: { kind: "operation" as const, operationId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
+    const waiting = await launch.create({ theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
+    const started = await launch.create({ theaterId: "t1", title: "Started", groupId: null });
+    await launch.requestPlan(started.id);
+    type Row = { id: string; kind: string; operation: boolean; done: boolean; self?: boolean; brief?: string; briefTruncated?: boolean; criteria?: string[] };
+    const rows = async (filter?: string) => ((await use({ view: "objectives", ...(filter ? { filter } : {}) })).structuredContent.objectives as Row[]);
+    const byId = (list: Row[]) => new Map(list.map((row) => [row.id, row]));
+    // 한 번 읽은 목록만으로 Operation 유무·보드 목표와 대화 세션·자기 세션·브리핑과 기준을 가른다.
+    const open = byId(await rows());
+    expect(open.get(waiting.id)).toMatchObject({ kind: "objective", operation: false, briefTruncated: true, criteria: ["one", "two"] });
+    expect(open.get(waiting.id)!.brief!.length).toBeLessThan(waiting.note.length);
+    expect(open.get(started.id)).toMatchObject({ kind: "objective", operation: true });
+    expect(open.get(caller.id)).toMatchObject({ kind: "session", operation: true, self: true });
+    // 시작 전 목표의 지휘관은 닫힘이 아니다.
+    const detail = (await use({ view: "objective", objectiveId: waiting.id })).structuredContent as { objective: { graph: { commander: { state: string } } } };
+    expect(detail.objective.graph.commander.state).toBe("not_started");
+    // 완료한 목표는 기본 목록에서 빠지지만 all 에서는 비교 대상으로 남는다.
+    await launch.complete(started.id);
+    expect(byId(await rows()).has(started.id)).toBe(false);
+    expect(byId(await rows("all")).get(started.id)).toMatchObject({ done: true });
+  });
+
   it("shows every agent Operation created elsewhere as an objective, but not member or plugin Operations", async () => {
     const { store, launch, add, savedIds, launches, call } = harness();
     add("sidebar", { title: "Made in the sidebar", groupId: "g-a" });

@@ -41,7 +41,7 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
 
   const tool: PluginMcpTool = {
     name: "console_objectives",
-    description: "The Objectives board of a Theater, as the person sees it. Every agent Operation of the Theater is a virtual objective, while board-created objectives get a Commander Operation on first execution. Read with view groups | objectives (filter today|due|all|agent) | objective (brief, attachments, missions, criteria = success criteria, members). Write with add: title; optional note (the brief), criteria (success-criterion sentences); at most 10 adds per caller per 10 minutes. The new objective carries no missions and follows the calling Operation's group; importance, due dates and grouping stay the person's acts on the screen. The new objective does not create an Operation until the person presses Plan or Commence. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools, not here. Completing an objective and editing its brief after creation are the person's acts on the screen.",
+    description: "The Objectives board of a Theater, as the person sees it. Every agent Operation of the Theater is a virtual objective, while board-created objectives get a Commander Operation on first execution. Read with view groups | objectives | objective. objectives lists open objectives, or with filter today|due|agent|all (all includes completed ones); each row says kind (objective = the person treats it as an objective; session = an agent conversation not yet taken up as one), operation (whether a Commander or session Operation exists; false only for a board objective never launched), the brief's opening and the success-criterion texts. objective gives one in full (brief, attachments, missions, criteria = success criteria, members). Write with add: title; optional note (the brief), criteria (success-criterion sentences); at most 10 adds per caller per 10 minutes. The new objective carries no missions and follows the calling Operation's group; importance, due dates and grouping stay the person's acts on the screen. The new objective does not create an Operation until the person presses Plan or Commence. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools, not here. Completing an objective and editing its brief after creation are the person's acts on the screen.",
     // 모르는 키는 호스트 선검사에서 그대로 막는다 — 실행할 수 없는 호출에 사람의 권한 요청을 띄우지 않는다.
     inputSchema: z.toJSONSchema(argsSchema),
     surface: {
@@ -110,9 +110,13 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
       if (args.filter === "today") return objective.today && !objective.done;
       if (args.filter === "due") return !!objective.dueDate && !objective.done;
       if (args.filter === "agent") return !!objective.addedBy;
+      // 모두 — 완료한 목표까지. 필터가 없으면 끝나지 않은 목표만이다.
+      if (args.filter === "all") return true;
       return !objective.done;
     });
-    return { theaterId, today, objectives: objectives.map(rowView) };
+    // 부른 세션이 목록에 대화 세션으로 서 있으면 그 줄을 self 로 가리킨다.
+    const self = caller?.kind === "operation" ? caller.operationId : null;
+    return { theaterId, today, objectives: objectives.map((objective) => (objective.id === self ? { ...rowView(objective), self: true } : rowView(objective))) };
   }
 
   return [tool];
