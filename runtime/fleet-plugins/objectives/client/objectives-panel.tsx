@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
-import { COMMANDER_PRESET, commanderMode, MAX_FOLLOWUPS, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
+import { commanderMode, MAX_FOLLOWUPS, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting } from "./action-band.js";
 import { DecisionGlyph, DecisionList, DecisionRequestBlock, RequestGlyph } from "./decisions.js";
 import { PastRoles } from "./past-roles.js";
@@ -17,7 +17,7 @@ import { DatePicker } from "./date-picker.js";
 import { usePointerDrag } from "./pointer-drag.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewPicker, type StartView } from "./launch-control.js";
+import { LaunchControl, LaunchedText, launchedWords, useLaunchRows, StartViewPicker, type StartView } from "./launch-control.js";
 import { discardPendingSelection, dockObjective, expandObjective, hasDecisionRequest, removeObjectiveLocally, focusOperation, loadTheater, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater, type ObjectiveGroup } from "./objectives-state.js";
 import {
   discardedFollowups,
@@ -248,7 +248,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   useEffect(() => () => { if (objectiveHighlightTimer.current) clearTimeout(objectiveHighlightTimer.current); }, []);
   const [addedId, setAddedId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ text: string; undo?: () => Promise<void> } | null>(null);
-  const launchRows = useLaunchRows();
   // 세션이 구상·개시로 목표가 되면 「모두」 낱말이 잠깐 밝아진다 — 목표 밖에서 사라진 줄이 어디로 갔는지 말한다.
   const enlistedSeen = useRef(new Map<string, boolean>());
   const [flash, setFlash] = useState<ListId | null>(null);
@@ -683,13 +682,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     if (activity === "awaiting") return { text: stateLabel(activity), tone: activity };
     return { text: t("objectives.state.planned"), tone: "planned" };
   };
-  /** 모델·강도 — 실행 중·검토 대기·목표 밖 줄은 실제 값, 시작 전 목표는 기본 설정과 다를 때만 「예정」으로. */
-  const launchOf = (objective: Objective, zone: Zone): ReactNode => {
-    const common = { objective, rows: launchRows, autoLabel: t("objectives.commander.effortAuto"), defaultLabel: t("objectives.launch.default") };
-    if (zone === "run" || zone === "review" || zone === "outside" || ((zone === "done" || zone === "request") && objective.commenced)) return <LaunchWords {...common} />;
-    if ((zone !== "wait" && zone !== "request") || (objective.commander.model === COMMANDER_PRESET.model && objective.commander.effort === COMMANDER_PRESET.effort)) return null;
-    return <LaunchWords {...common} planned={{ label: t("objectives.launch.planned"), tip: t("objectives.launch.plannedTip") }} />;
-  };
   const ringOf = (objective: Objective, busy: boolean): ReactNode => {
     // 목표 밖 세션 — 완료 버튼이 아닌 작은 점. 목표 동그라미와 모양부터 다르다.
     if (!objective.enlisted && !objective.done) {
@@ -723,8 +715,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     return <button type="button" className={`objectives-check${objective.done ? " is-on" : ""}`} aria-label={label} disabled={busy} onClick={(event) => { event.stopPropagation(); if (followups > 0 && !objective.done) openFollowupPicker(objective); else void completeObjective(objective); }}><CheckGlyph /></button>;
   };
   /**
-   * 목록 한 줄 — 동그라미 · 제목 · 메타(상태 낱말·진행·요청·기한·출처) · 오른쪽 열(기한 · 모델 · Operation 이동). 넓은 목록은 출처·기한·모델이
-   * 같은 x 에 서는 열이 되고, 좁은 목록은 오른쪽 열을 메타 줄로 내린다(같은 값을 두 자리에 두고 폭에 따라 한쪽만 보인다).
+   * 목록 한 줄 — 동그라미 · 제목 · 메타(상태 낱말·진행·요청·기한·출처) · 오른쪽 열(기한 · Operation 이동). 넓은 목록은 출처·기한이
+   * 같은 x 에 서는 열이 되고, 좁은 목록은 기한을 메타 줄로 내린다(같은 값을 두 자리에 두고 폭에 따라 한쪽만 보인다).
+   * 지휘관 모델·강도는 줄에 두지 않는다 — 제목이 그 폭을 쓴다. 값은 상세의 지휘관 칸에 있다.
    * Operation 이동 자리는 늘 비워 두어 오른쪽 글자의 끝선이 줄마다 같다.
    */
   const renderRow = (objective: Objective, index: number, blockKey: string, zone: Zone) => {
@@ -732,12 +725,10 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const word = stateWord(objective);
     const due = objective.dueDate ? <span className={`objectives-objective-due${objective.dueDate < todayIso() && !objective.done ? " is-overdue" : ""}`}><CalGlyph />{dueLabel(objective.dueDate, language)}</span> : null;
     const source = objective.addedBy ? (() => { const name = objective.addedBy.title ?? "—"; const label = t("objectives.objective.addedBy", { name }); return <span className="objectives-by" title={label}><SourceGlyph /><span className="objectives-by-name" aria-hidden="true">{name}</span><span className="objectives-by-sr">{label}</span></span>; })() : null;
-    const launch = launchOf(objective, zone);
-    const started = zone === "run" || zone === "review" || zone === "outside" || (zone === "done" && objective.commenced) || (zone === "request" && objective.commenced);
     // 결정 요청 구역의 줄은 원래 그룹을 말한다 — 요청이 풀리면 그 구역·그룹으로 돌아간다.
     const showGroup = zone === "request" ? groupOf(objective.groupId) : null;
     return (
-      <div key={objective.id} data-objective-id={objective.id} className={`objectives-objective${objective.done ? " is-done" : ""}${busy ? " is-busy" : ""}${started ? " is-started" : ""}${highlightObjective === objective.id ? " is-highlight" : ""}${drag?.objectiveId === objective.id ? " is-lifted" : ""}${drag?.insert?.anchorId === objective.id ? ` is-insert-${drag.insert.place}` : ""}`} role="option" aria-selected={selected === objective.id} tabIndex={0}
+      <div key={objective.id} data-objective-id={objective.id} className={`objectives-objective${objective.done ? " is-done" : ""}${busy ? " is-busy" : ""}${highlightObjective === objective.id ? " is-highlight" : ""}${drag?.objectiveId === objective.id ? " is-lifted" : ""}${drag?.insert?.anchorId === objective.id ? ` is-insert-${drag.insert.place}` : ""}`} role="option" aria-selected={selected === objective.id} tabIndex={0}
         onPointerDown={(event) => onItemPointerDown(event, objective, blockKey, zone)}
         onClick={() => { if (suppressClick.current) return; setSelected((value) => (value === objective.id ? null : objective.id)); }} onKeyDown={(event) => onItemKey(event, objective, index, blockKey)}>
         <span className="objectives-objective-ring">{ringOf(objective, busy)}</span>
@@ -751,11 +742,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           {showGroup ? <span className="objectives-objective-group"><span className="objectives-swatch" style={{ background: `var(--id-${showGroup.color}, var(--text-tertiary))` }} aria-hidden="true" />{showGroup.name}</span> : null}
           {due ? <span className="objectives-m-due">{due}</span> : null}
           {source ? <span className="objectives-m-src">{source}</span> : null}
-          {launch ? <span className="objectives-m-launch">{launch}</span> : null}
         </div>
         <div className="objectives-objective-col is-src">{source}</div>
-        <div className="objectives-objective-col is-due">{due ? <span className="objectives-c-due">{due}</span> : null}</div>
-        <div className="objectives-objective-col is-launch">{launch}</div>
+        <div className="objectives-objective-col is-due">{due}</div>
         <span className="objectives-objective-go">{operationOf(objective.id) ? <button type="button" className="objectives-glyph objectives-goto" aria-label={t("objectives.objective.goToOperation")} title={t("objectives.objective.goToOperation")} onClick={(event) => { event.stopPropagation(); focusOperation(objective.id); }}><GoGlyph /></button> : null}</span>
       </div>
     );
@@ -987,21 +976,6 @@ function ScopeWords({ current, onPick, t, count, dropOver, flash, tidied, tidyUn
         );
       })}
     </div></div>
-  );
-}
-
-/** 줄 오른쪽의 지휘관 모델·강도 — 지휘관 Operation 의 값. 시작 전 목표는 「예정」을 붙여 개시할 때 쓸 설정임을 밝힌다. */
-function LaunchWords({ objective, rows, autoLabel, defaultLabel, planned }: { objective: Objective; rows: ReturnType<typeof useLaunchRows>; autoLabel: string; defaultLabel: string; planned?: { readonly label: string; readonly tip: string } }) {
-  // 모델이 비어 있으면 Console 기본값으로 뜨는 Operation 이다(사이드바에서 따로 만든 것).
-  const words = !objective.commander.model
-    ? { model: defaultLabel, effort: objective.commander.effort?.toUpperCase() ?? autoLabel }
-    : launchWords(rows, objective.commander.model, objective.commander.effort, autoLabel);
-  return (
-    <span className={`objectives-objective-launch${planned ? " is-planned" : ""}`} title={planned ? `${planned.tip} · ${words.model} · ${words.effort}` : `${words.model} · ${words.effort}`}>
-      {planned ? <span className="objectives-objective-planned">{planned.label}</span> : null}
-      <span className="objectives-objective-model">{words.model}</span>
-      <b>{words.effort}</b>
-    </span>
   );
 }
 
