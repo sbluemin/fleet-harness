@@ -10,7 +10,6 @@ import { isDesktopShell, useDesktopHomeOrigin } from "../../integration/desktop-
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
 import { buildPresentationCarryFragment } from "../../../../../features/remote-access/client/presentation-carry.js";
-import { useProxyDataSurface } from "../../../../../features/remote-access/client/proxy-data-surface.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
@@ -166,7 +165,6 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   const t = useT();
   const state = useConsoleState();
   const hosts = useRemoteHosts();
-  const proxy = useProxyDataSurface();
   const shellHome = useDesktopHomeOrigin();
   const homeOrigin = shellHome.origin;
   // 원격으로 건너가는 일은 셸의 인증서 배관을 거쳐야 한다. 브라우저 단독에서는 내주지 않는다.
@@ -197,7 +195,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
    * 것과 묻지 않는다는 것은 다르다 — 남의 기계에 내 목록을 묻는 요청 자체가 남지 않아야 한다.
    * 집이 펼친 목록(피커)은 집이 서빙하므로 이 판정이 참이고, 평소대로 묻는다.
    */
-  const servedFromLoopback = isLoopbackOrigin(location.origin) && proxy === null;
+  const servedFromLoopback = isLoopbackOrigin(location.origin);
 
   useEffect(() => {
     if (!servedFromLoopback) return;
@@ -398,28 +396,6 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
     location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current)));
   }, [pickerHome, open, currentOrigin]);
 
-  /**
-   * 원격 데이터를 읽기 전용으로 비추는 표면. 이 문서는 루프백 주소에 서 있지만 집이 아니고, 목록도 셸의
-   * 집 주소도 모른다 — 같은 origin의 신호 하나를 셸이 가로채 집의 목록을 이 위에 펼친다. 칩은 늘 서 있다.
-   */
-  if (proxy !== null && !inPicker) {
-    const label = proxy.hostLabel || t("chrome.proxy.unnamed");
-    return (
-      <div className="host-switcher">
-        <button
-          ref={triggerRef}
-          type="button"
-          className="command-band-button host-switcher-chip is-away"
-          aria-haspopup="menu"
-          aria-label={`${t("chrome.hosts.aria")}: ${label}`}
-          data-tip={label}
-          onClick={() => location.assign(pickerUrl(location.origin, PICKER_SURFACE_OPEN, undefined, pickerAnchorOf(triggerRef.current)))}
-        >
-          <RemoteAwayGlyph />
-        </button>
-      </div>
-    );
-  }
   // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
   if (!inPicker && pickerHome === null && nearby.length === 0 && hosts.length === 0) return null;
   const openSettings = () => {

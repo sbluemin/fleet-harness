@@ -8,7 +8,6 @@ import { isZenMode } from "./zen-mode.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
 import { getT, type CoreMessageKey } from "../i18n/index.js";
 import { fuzzyMatchPaletteLabel, searchTokens, type PaletteCommandMatch } from "./palette-match.js";
-import { isProxyDataSurface } from "../../../../features/remote-access/client/proxy-data-surface.js";
 
 export { fuzzyMatchPaletteLabel, type PaletteCommandMatch } from "./palette-match.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
@@ -128,20 +127,6 @@ export function commandModeQuery(value: string): string {
   return value.slice(1);
 }
 
-/** 읽기 전용 원격 표면에서 쓸 수 있는 명령 — 어느 것도 원격이나 이 기계의 상태를 바꾸지 않는다. */
-const READ_ONLY_PALETTE_ACTIONS: ReadonlySet<PaletteCommandAction["kind"]> = new Set([
-  "switch-theater",
-  "minimize-all-operations",
-  "minimize-operation",
-  "fit-all-panels",
-  "toggle-triage-mode",
-  "toggle-station-keeping",
-  "toggle-status-axis",
-  "toggle-sidebar",
-  "toggle-zen",
-  "open-keyboard-shortcuts",
-]);
-
 export function buildPaletteCommands(
   current: ConsoleState,
   railPanels: readonly PaletteRailPanelInfo[],
@@ -239,8 +224,7 @@ export function buildPaletteCommands(
   if (current.releaseNotes.length > 0) {
     push({ commandId: "whats-new", label: t("palette.whatsNew"), aliasLabel: alias("palette.whatsNew"), action: { kind: "whats-new" }, group: "console", glyph: "console-whats-new" });
   }
-  // 읽기 전용 원격 표면에는 보고 옮겨 다니는 명령만 남긴다. 허용목록이라 새 명령은 기본적으로 빠진다.
-  return isProxyDataSurface() ? commands.filter((command) => READ_ONLY_PALETTE_ACTIONS.has(command.action.kind)) : commands;
+  return commands;
 }
 
 /**

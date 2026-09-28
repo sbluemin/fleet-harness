@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from "react";
 
 import { RAIL_ACTIVE_PANEL_STORAGE_KEY } from "../../integration/presentation-keys.js";
-import { isProxyDataSurface } from "../../../../../features/remote-access/client/proxy-data-surface.js";
 
 /* 레일은 다중 고정(pin) 스택에서 단일 독점 슬롯으로 회귀했다 — 카드에는 패널이 하나만 상주한다.
    - activePanelId: 카드에 상주하는 유일한 패널. localStorage에 영속.
@@ -140,8 +139,6 @@ export function useRailOccupiedPx(): number {
 
 function activateRailPanel(id: string): void {
   if (store.activePanelId === id) return;
-  // 레일 패널은 이 기계의 도구다(Shell·파일·저장소·설정…). 원격을 비추는 읽기 전용 표면에서는 열지 않는다.
-  if (isProxyDataSurface()) return;
   // 교체는 이전 패널의 확장 폭 요구도 함께 내린다 — 화면에 없는 요구가 아레나를 점유하면 안 된다.
   setStore({ ...store, activePanelId: id, panelExtraWidth: 0, panelSoloWidth: null, panelSoloMaxWidth: null });
   saveStoredActivePanelId(id);

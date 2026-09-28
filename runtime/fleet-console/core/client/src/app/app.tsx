@@ -10,8 +10,6 @@ import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, res
 import { CommandBand } from "../chrome/components/command-band.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
-import { ProxyDataBanner } from "../../../../features/remote-access/client/proxy-data.js";
-import { useProxyDataSurface } from "../../../../features/remote-access/client/proxy-data-surface.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "../chrome/components/operation-search.js";
 import { QuickLaunch } from "../../../../features/execution/client/components/quick-launch.js";
@@ -82,7 +80,6 @@ const ONBOARDING_PORTS = {
 
 export function App() {
   const state = useConsoleState();
-  const proxyData = useProxyDataSurface();
   const updateProgress = useUpdateProgress();
   const bootOperationIdsRef = useRef<readonly string[] | null>(null);
   const location = useLocation();
@@ -617,7 +614,6 @@ export function App() {
             </div>
           ) : null}
           <ControlBar />
-          <ProxyDataBanner />
         </div>
         {(() => {
           const routeContent = (
@@ -628,8 +624,7 @@ export function App() {
                 {/* Theater is a phone-only destination: the desktop switches Theater from the band
                     and lists every Theater in its sidebar, so this route has nothing to add there. */}
                 <Route path="/theaters" element={mobileLayout ? <MobileTheaterPage state={state} /> : <Navigate to="/operations" replace />} />
-                {/* 설정은 이 기계의 것이고, 읽기 전용 원격 표면의 epoch에는 설정을 바꿀 길이 없다 — 캔버스로 돌려보낸다. */}
-                <Route path="/settings" element={proxyData !== null ? <Navigate to="/operations" replace /> : mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
+                <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>
             </main>
@@ -652,8 +647,6 @@ export function App() {
         <QuickLaunch />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <ArchiveSheet />
-        {/* 원격을 비추는 읽기 전용 표면에는 이 기계의 첫 실행·새 소식·투어가 설 자리가 없다 — 모두 쓰기로 끝난다. */}
-        {proxyData !== null ? null : <>
         <TheaterSystemPromptSheet />
         <WhatsNewModal state={state} />
         <CommissioningOverlay state={state} />
@@ -666,7 +659,6 @@ export function App() {
           firstRun={state.bootstrapped && state.theaters.length === 0 && globalSettings.state !== null && !globalSettings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)}
           ports={ONBOARDING_PORTS}
         />
-        </>}
         <ZenTransition local={state.channel === "local"} />
         <ControlCurtain />
         <ControlReclaimedNotice />

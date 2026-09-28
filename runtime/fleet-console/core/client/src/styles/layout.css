@@ -56,43 +56,6 @@
   font-weight: var(--weight-medium);
 }
 
-/* 읽기 전용 원격 표면 안내. 고장이 아니라 이 화면의 상태라 aurora(상태 신호)로 말한다. */
-.console-proxy-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  min-height: 30px;
-  padding: var(--space-1) var(--space-4);
-  border-bottom: 1px solid color-mix(in oklch, var(--aurora) 45%, var(--surface-rim));
-  background: var(--aurora-glow);
-  color: var(--aurora-ink);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
-}
-
-/* 읽기 전용 원격 표면에서는 만들고 바꾸는 입구를 그리지 않는다. 흐름 자체는 proxy-data-surface.ts의 판정으로
-   막혀 있고, 여기서는 눌러 봐야 안 되는 버튼이 배너와 어긋나지 않게 숨길 뿐이다. 도구 모음(레일 패널·설정)은
-   이 기계의 도구라 통째로 빠진다. 보기·배치·검색·호스트 칩·Zen은 남는다. */
-:root[data-surface="proxy-data"] :is(
-  .console-toolbar-fold,
-  .console-toolbar-tools,
-  .console-toolbar-tools + .console-toolbar-sep,
-  .side-bar-theater-split-plus,
-  .side-bar-theater-split-caret,
-  .side-bar-ghost-theater-row,
-  .side-bar-archive-button,
-  .operations-canvas-empty-new,
-  .operations-canvas-empty-guide,
-  .operations-canvas-blueprint-caption--guide,
-  .zen-taskbar-theater.is-add,
-  .zen-taskbar-archive,
-  .mobile-new-operation,
-  .mobile-theater-add
-) {
-  display: none;
-}
-
 .console-link-banner button,
 .right-rail-stale-veil button {
   padding: 4px 8px;

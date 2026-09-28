@@ -11,7 +11,6 @@ import { playMinimizeFlight } from "../../../../features/workspace/client/canvas
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { clearIdleArrival } from "../../../../features/execution/client/operation-marks.js";
 import { getState, hydrateOperations, setActiveOperation } from "./store.js";
-import { isProxyDataSurface } from "../../../../features/remote-access/client/proxy-data-surface.js";
 
 // ─── minimize ──────────────────────────────────────────────────────────────────
 
@@ -79,8 +78,6 @@ export function resumeOperationInPlace(
   focusFallback: (operationId: string) => void,
 ): void {
   if (getState().operationRuntimeHydration === "pending") return;
-  // 읽기 전용 원격 표면은 남의 기계에서 프로세스를 되살리지 않는다 — 보여 주기만 한다.
-  if (isProxyDataSurface()) { focusFallback(operationId); return; }
   const operation = operations.find((candidate) => candidate.id === operationId);
   const plugin = operation ? plugins.find((candidate) => candidate.id === operation.pluginId) : undefined;
   if (plugin?.resumeOperation) {

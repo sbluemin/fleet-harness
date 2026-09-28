@@ -1,5 +1,5 @@
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
-import { ACCESS_SELF_LEAVE_PATH, ACCESS_SELF_PATH, createAccessSelfRoutes, isOwnSessionLeaveRequest } from "../../../features/remote-access/host/self-routes.js";
+import { ACCESS_SELF_LEAVE_PATH, createAccessSelfRoutes, isOwnSessionLeaveRequest } from "../../../features/remote-access/host/self-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
 import { createOperationArchiveStorage, archiveEvent, archiveSessionNodes, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
 import { createOperationArchiveCoordinator } from "../../../features/workspace/host/operation-archive.js";
@@ -59,7 +59,7 @@ import { createRemoteHostStore, type RemoteHostRecord } from "../../../features/
 import { createRemoteIdentityStore, fingerprintsMatch } from "../../../features/remote-access/host/remote-identity.js";
 import { createRemoteJoinGuard } from "../../../features/remote-access/host/remote-join-guard.js";
 import { createAgentOptionsService, createTheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
-import { UNFOCUSED_PANEL_FADE_DEFAULT, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createPluginSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
+import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createPluginSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "../../../features/updates/host/release-notes/release-notes.js";
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "../../../features/updates/host/update-check.js";
@@ -77,8 +77,7 @@ import { buildApiCatalog, type ApiCatalogEntry } from "../transport/api-catalog.
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterInfo } from "../transport/console-contract-types.js";
 import { CONSOLE_SECURITY_HEADERS, encodeSseData, isLoopbackRemoteAddress, startSseKeepaliveLifecycle, withSecurityHeaders } from "../transport/http-infra.js";
 import { RouteRegistry, UpgradeRegistry } from "../transport/route-registry/registry.js";
-import { createEpochConsoleAssets, createStaticConsoleHandler } from "../transport/static-console.js";
-import { createProxyBroker } from "../../../features/remote-access/host/proxy/broker.js";
+import { createStaticConsoleHandler } from "../transport/static-console.js";
 import type { DesktopShellUpdateCommandKind, DesktopShellUpdateCommandSnapshot, DesktopShellUpdateSnapshot } from "../shell/desktop-contract.js";
 import { listLocalConsoles } from "./local-consoles.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
@@ -349,14 +348,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     transport: "http",
   },
   {
-    method: "GET",
-    path: "/api/v1/access/self",
-    summary: "Describe the calling remote session: its access class, expiry, and whether a pairing stands behind it. Remote listener only.",
-    category: "Access",
-    gate: "loopback",
-    transport: "http",
-  },
-  {
     method: "POST",
     path: "/api/v1/access/self/leave",
     summary: "End the calling remote session while keeping its pairing; the one write a monitoring session may make. Remote listener only.",
@@ -421,13 +412,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
     transport: "http",
   },
-  { method: "POST", path: "/api/v1/proxy/owners", summary: "Open an owner lease for the attached Desktop's read-only remote data views; only an explicit heartbeat renews it.", category: "Desktop", gate: "lock-token", transport: "http" },
-  { method: "POST", path: "/api/v1/proxy/owners/:ownerLeaseId/heartbeat", summary: "Renew an owner lease.", category: "Desktop", gate: "lock-token", transport: "http" },
-  { method: "POST", path: "/api/v1/proxy/owners/:ownerLeaseId/switch", summary: "Advance the owner's switch generation so an older pending delegation is refused.", category: "Desktop", gate: "lock-token", transport: "http" },
-  { method: "DELETE", path: "/api/v1/proxy/owners/:ownerLeaseId", summary: "Release an owner lease and end every epoch it holds.", category: "Desktop", gate: "lock-token", transport: "http" },
-  { method: "POST", path: "/api/v1/proxy/epochs", summary: "Delegate one verified monitoring session to open a read-only remote data epoch on its own loopback listener.", category: "Desktop", gate: "lock-token", transport: "http" },
-  { method: "DELETE", path: "/api/v1/proxy/epochs/:epochId", summary: "End an epoch; a final end asks the remote to end that same session once, a transfer does not.", category: "Desktop", gate: "lock-token", transport: "http" },
-  { method: "GET", path: "/api/v1/proxy/events", summary: "Stream an owner's epoch state changes; the stream does not renew the lease.", category: "Desktop", gate: "lock-token", transport: "sse" },
   { method: "GET", path: "/api/v1/computer-use", summary: "Read local Computer Use status.", category: "Settings", gate: "loopback", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/install", summary: "Install a Fleet-managed Cua Driver after local request.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
@@ -558,25 +542,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
   const remoteHostStore = createRemoteHostStore(durablePaths.dir);
   const pairedDeviceStore = createPairedDeviceStore(durablePaths.dir);
-  // 읽기 전용 원격 데이터 epoch. 네이티브 셸이 lock token으로만 부르고, 데이터 뷰는 epoch마다 따로 연
-  // 루프백 리스너로만 닿는다 — 이 리스너의 라우트 테이블은 그쪽에 없다.
-  const proxyBroker = createProxyBroker({
-    remoteHostStore,
-    isLockAuthorized: (req) => isLockAuthorized(req),
-    localVersion: () => version,
-    presentation: () => {
-      const general = consoleSettingsStore.load().general ?? {};
-      return {
-        theme: general.theme ?? "instrument",
-        liquidGlass: general.liquidGlass ?? true,
-        unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
-        uiFont: general.uiFont ?? { source: "builtin", id: "manrope", size: 14 },
-        language: general.language ?? "auto",
-      };
-    },
-    readAsset: createEpochConsoleAssets(release.packageRoot),
-    log: (entry) => { console.info(`[fleet-console] proxy ${JSON.stringify(entry)}`); },
-  });
   const remoteEndpointStore = createRemoteEndpointStore(durablePaths.dir);
   const pluginOperationTypes = new Set<string>(["agent"]);
   const executionApiCatalog: ApiCatalogEntry[] = [];
@@ -1533,18 +1498,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 403, { error: "host_mismatch" });
       return;
     }
-    if (pathname === ACCESS_SELF_PATH || pathname === ACCESS_SELF_LEAVE_PATH) {
-      // 원격 세션이 자기 자신에 대해 묻고 떠나는 문. 루프백에는 세션이 없으므로 이 경로도 없다.
+    if (pathname === ACCESS_SELF_LEAVE_PATH) {
+      // 원격 세션이 스스로 떠나는 문. 루프백에는 세션이 없으므로 이 경로도 없다.
       // 판정은 위 admission의 스냅샷으로만 한다 — 쿠키를 다시 풀어 다른 세션을 찾지 않는다.
       if (listener === null || listener.audience === "local" || remoteSession === null) { writeJson(res, 404, { error: "not_found" }); return; }
-      if (pathname === ACCESS_SELF_PATH) handleAccessSelf(req, res, remoteSession);
-      else handleAccessSelfLeave(req, res, listener, remoteSession);
-      return;
-    }
-    if (pathname.startsWith("/api/v1/proxy/")) {
-      // 네이티브 전용 broker 문. 원격 리스너에는 없고, 루프백에서도 Host·lock token·Origin 부재를 broker가 다시 본다.
-      if (listener?.audience === "local" && proxyBroker.handle(req, res, pathname, listener.port)) return;
-      writeJson(res, 404, { error: "not_found" });
+      handleAccessSelfLeave(req, res, listener, remoteSession);
       return;
     }
     if (archiveStorage.blocked() && (pathname.startsWith("/api/") || pathname.startsWith("/mcp/")) && pathname !== "/api/v1/health") {
@@ -2364,7 +2322,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     activeLockFile = null;
     activeEndpoint = null;
     deletionCoordinator.dispose();
-    proxyBroker.shutdown();
     // 입력 제어는 HTTP·플러그인 정리에 막히기 전에 회수하고 신규 호출도 닫는다.
     const stoppingComputerUse = computerUseMcp.dispose();
     const stoppingBrowser = browserMcp.dispose();
@@ -2384,7 +2341,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   const { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply } = createUpdatesRoutes({ releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime: () => ({ lockHandle, activeEndpoint, activeLockFile }), publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply });
 
-  const { handleAccessSelf, handleAccessSelfLeave } = createAccessSelfRoutes({ access, writeJson, withSecurityHeaders, forgetShell: forgetShellOwner, endSessionStreams, broadcastControlChanged });
+  const { handleAccessSelfLeave } = createAccessSelfRoutes({ access, writeJson, withSecurityHeaders, forgetShell: forgetShellOwner, endSessionStreams, broadcastControlChanged });
   const { handleAccessJoin } = createPairingRoutes({ access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged, forgetShell: forgetShellOwner, endSessionStreams });
 
   const { handleRemoteAccessStatus, handleAccessLinkRevoke, handleAccessSessionRevoke, handlePairedDeviceRevoke, handleRemoteIdentityRotation, handleAccessLinkIssue } = createRemoteAdminRoutes({ access, pairedDeviceStore, remoteJoinGuard, remoteIdentityStore, remoteEndpointStore, consoleSettingsStore, readListenerState: () => ({ listeners, remoteFingerprint, remoteLastError }), isLoopbackListener, isAccessAdminAuthorized, writeJson, withSecurityHeaders, broadcastControlChanged, forgetShell: forgetShellOwner, endSessionStreams, reconcileRemoteIdentity, consoleLabel });

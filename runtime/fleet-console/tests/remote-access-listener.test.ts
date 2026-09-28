@@ -188,16 +188,11 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const guest = await joinAs(fixture, "full", "guest");
     await loopback.waitFor("control:changed", (data) => data.holder !== null);
     const guestSession = guest.split("; ").filter((cookie) => cookie.startsWith("fleet_console_session_")).join("; ");
-    const self = await remoteRequest(fixture, "GET", "/api/v1/access/self", undefined, guestSession);
-    expect(self.status).toBe(200);
-    const described = JSON.parse(self.body) as Record<string, unknown>;
-    expect(Object.keys(described).sort()).toEqual(["absoluteExpiresAt", "access", "idleExpiresAt", "paired"]);
-    expect(described).toMatchObject({ access: "full", paired: true });
     expect(await remoteRequest(fixture, "POST", "/api/v1/access/self/leave", undefined, guestSession, { origin: "https://elsewhere.example" })).toMatchObject({ status: 403 });
     expect(await remoteRequest(fixture, "POST", "/api/v1/access/self/leave", JSON.stringify({ handle: "someone-else" }), guestSession, { origin: remoteOrigin })).toMatchObject({ status: 400 });
     expect(await remoteRequest(fixture, "POST", "/api/v1/access/self/leave", undefined, guestSession, { origin: remoteOrigin })).toMatchObject({ status: 204 });
     await loopback.waitFor("control:changed", (data) => data.holder === null);
-    await expect(remoteRequest(fixture, "GET", "/api/v1/access/self", undefined, guestSession)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, guestSession)).resolves.toMatchObject({ status: 401 });
     const pairingOnly = guest.split("; ").filter((cookie) => cookie.startsWith("fleet_console_pairing_")).join("; ");
     await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), pairingOnly)).resolves.toMatchObject({ status: 204 });
 
@@ -215,8 +210,8 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "POST", "/api/v1/access/self/leave", undefined, watcher, { origin: remoteOrigin })).resolves.toMatchObject({ status: 204 });
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, watcher)).resolves.toMatchObject({ status: 401 });
 
-    // 루프백에는 세션이 없으므로 자기 설명도 없다.
-    await expect(fetch(`${fixture.loopbackEndpoint}api/v1/access/self`)).resolves.toMatchObject({ status: 404 });
+    // 루프백에는 세션이 없으므로 떠나는 문도 없다.
+    await expect(fetch(`${fixture.loopbackEndpoint}api/v1/access/self/leave`, { method: "POST" })).resolves.toMatchObject({ status: 404 });
     loopback.close();
   });
 

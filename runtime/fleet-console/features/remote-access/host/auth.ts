@@ -52,8 +52,6 @@ export interface AccessSession {
    */
   readonly pairingId: string | null;
   readonly expiresAt: number;
-  /** 이 조회가 유휴 만료를 민 뒤의 값. 공개해도 되는 수명 정보라 자기 세션 설명에 그대로 싣는다. */
-  readonly idleExpiresAt: number;
 }
 
 export interface AccessSessionSummary {
@@ -195,7 +193,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     const current = now();
     const absoluteExpiresAt = current + sessionTtlMs;
     sessions.set(id, { handle, device, audience, access, pairingId, openedAt: current, absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs, lastSeenAt: current });
-    return { id, handle, audience, access, pairingId, expiresAt: absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs };
+    return { id, handle, audience, access, pairingId, expiresAt: absoluteExpiresAt };
   }
 
   function resolveSession(id: string | null, audience: AccessAudience): AccessSession | null {
@@ -207,7 +205,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     // 유휴 만료는 접근할 때마다 밀리되 절대 만료를 넘기지 못한다.
     stored.idleExpiresAt = Math.min(current + sessionIdleTtlMs, stored.absoluteExpiresAt);
     stored.lastSeenAt = current;
-    return { id, handle: stored.handle, audience: stored.audience, access: stored.access, pairingId: stored.pairingId, expiresAt: stored.absoluteExpiresAt, idleExpiresAt: stored.idleExpiresAt };
+    return { id, handle: stored.handle, audience: stored.audience, access: stored.access, pairingId: stored.pairingId, expiresAt: stored.absoluteExpiresAt };
   }
 
   function listGrants(audience: AccessAudience): readonly AccessGrantSummary[] {
