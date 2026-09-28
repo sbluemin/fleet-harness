@@ -386,7 +386,7 @@
 .session-watch-bubble.is-alert::before { border-color: color-mix(in oklch, var(--warn) 55%, transparent); }
 .session-watch-bubble.is-failed { border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
 .session-watch-bubble__toggle { margin-inline-start: auto; padding: 0 var(--space-2); border: 1px solid transparent; border-radius: var(--radius-pill); background: var(--control-rest); color: var(--text-secondary); font: inherit; cursor: pointer; }
-.session-watch-bubble__toggle:hover { color: var(--brass); border-color: transparent; background: var(--control-hover-fill); }
+.session-watch-bubble__toggle:hover { color: var(--brass-ink); border-color: transparent; background: var(--control-hover-fill); }
 .session-watch-bubble__toggle:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .session-watch-bubble__body { flex-basis: 100%; margin: 0; font-family: var(--font-body); font-size: var(--t-sm); letter-spacing: 0; color: var(--text-primary); white-space: pre-wrap; }
 

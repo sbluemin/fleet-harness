@@ -1609,7 +1609,7 @@
   line-height: 1.55;
 }
 
-.pair-step-index { color: var(--brass); font-family: var(--font-mono); font-size: var(--t-xs); }
+.pair-step-index { color: var(--brass-ink); font-family: var(--font-mono); font-size: var(--t-xs); }
 
 .pair-expiry { display: flex; flex-direction: column; gap: var(--space-2); }
 .pair-expiry-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
@@ -1623,7 +1623,7 @@
 }
 
 .pair-expiry-time {
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: var(--t-md);
   font-variant-numeric: tabular-nums;
@@ -3621,9 +3621,9 @@
     0 0 28px var(--canvas-abyss);
 }
 
-/* Doctrine exception: the mode title kicker is literal instrument chrome and intentionally blends brass with fog. */
+/* Doctrine exception: the mode title kicker is literal instrument chrome and intentionally blends brass-ink with fog. */
 .canvas-mode-title-kicker {
-  color: color-mix(in oklch, var(--brass) 72%, var(--ink-fog));
+  color: color-mix(in oklch, var(--brass-ink) 72%, var(--ink-fog));
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
@@ -4225,7 +4225,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
-  color: color-mix(in oklch, var(--zone-tint, var(--brass)) 72%, var(--text-primary));
+  color: color-mix(in oklch, var(--zone-tint, var(--brass-ink)) 72%, var(--text-primary));
   font-size: var(--t-sm);
   letter-spacing: 0.14em;
 }
@@ -4742,7 +4742,7 @@
 
 /* brass는 위치/hover 채널 — 스트립 hover 강조는 그 문법 그대로다. */
 .canvas-context-menu-edge.is-on:hover .canvas-context-menu-edge-fill {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .canvas-context-menu-edge-fill svg {
@@ -6441,7 +6441,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .side-bar-chip--active .side-bar-chip-name {
-  color: color-mix(in oklch, var(--brass) 88%, var(--text-secondary));
+  color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary));
 }
 
 /* minimized: 이름은 판독 가능한 --ink-muted 티어로 유지하고 "치워둠" 신호는 아이콘 감쇠로만
@@ -6542,7 +6542,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* 결정 요청 표식 — 묶음 뿌리에 사람의 답을 청한 결정 요청이 섰다. 이름 옆(생략 부호 밖)에 서고, 비콘·상태 칸은 활동 그대로다.
    사이드바 행·Zen 칩·War Room 칩이 같은 부품을 쓴다. */
-.operation-decision-mark { flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px; color: var(--brass); }
+.operation-decision-mark { flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px; color: var(--brass-ink); }
 .operation-decision-mark svg { width: 13px; height: 13px; }
 
 /* 옵트인 실험 「Operation 위치 표시」의 한 줄 — 사이드바 칩과 ⌘K 팔레트가 공유한다. 브랜치는 늘,
@@ -9928,7 +9928,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .operation-launch-menu-item:disabled .theater-menu-check {
-  color: color-mix(in oklch, var(--brass) 40%, transparent);
+  color: color-mix(in oklch, var(--brass-ink) 40%, transparent);
 }
 
 /* 비활성 사유(미설치/미로그인)를 항목 우측에 작은 보조 라벨로 표시한다. */
@@ -10044,7 +10044,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   gap: 6px;
   margin: 0;
   padding: var(--space-1) var(--space-2);
-  color: color-mix(in oklch, var(--brass) 72%, var(--text-tertiary));
+  color: color-mix(in oklch, var(--brass-ink) 72%, var(--text-tertiary));
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
@@ -10074,7 +10074,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* Etc는 공급자가 아니므로 캐리어 색을 빌리지 않고 머리글 잉크를 그대로 쓴다. */
 .operation-launch-provider-glyph--etc {
-  --launch-provider-tone: color-mix(in oklch, var(--brass) 72%, var(--text-tertiary));
+  --launch-provider-tone: color-mix(in oklch, var(--brass-ink) 72%, var(--text-tertiary));
 }
 
 .operation-launch-provider-glyph {
@@ -10219,7 +10219,7 @@ body[data-companion-resizing="true"] .canvas-operation {
    표면마다 다른 기호로 읽힌다. */
 .operation-launch-variant-star,
 .quick-launch-variant-star {
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-body);
   font-size: var(--t-2xs);
   line-height: 1;
@@ -15735,7 +15735,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   background: color-mix(in oklch, var(--surface-pillar) 40%, transparent);
   box-shadow: none;
 }
-.fc-model-picker__trigger[aria-expanded="true"] { color: var(--brass); background: var(--brass-glow); }
+.fc-model-picker__trigger[aria-expanded="true"] { color: var(--brass-ink); background: var(--brass-glow); }
 .fc-model-picker.has-effort .fc-model-picker__trigger { border-start-end-radius: 0; border-end-end-radius: 0; }
 /* 트리거의 마크는 칩의 종류 글리프처럼 상자 없이 공급자 톤만 입고, 밴드의 마크는 런치 메뉴의 배지 그대로다. */
 .fc-model-picker__glyph--mark {
@@ -16170,7 +16170,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   align-items: center;
   flex: none;
   gap: var(--space-1);
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   letter-spacing: 0.08em;
@@ -16228,7 +16228,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-pin[aria-pressed="true"],
 .quick-launch-mention-focus[aria-pressed="true"] {
   border-color: color-mix(in oklch, var(--brass) 55%, transparent);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* 도킹된 바에서 팝오버는 위로 열린다 — 아래로 열면 바가 이미 화면 바닥이라 설 자리가 없다
@@ -16493,7 +16493,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-attach:hover {
-  color: var(--brass);
+  color: var(--brass-ink);
   background: var(--control-hover-fill);
   border-color: var(--control-hover-rim);
 }
@@ -16529,7 +16529,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   gap: 7px;
   flex: none;
   max-width: 45%;
-  color: var(--brass);
+  color: var(--brass-ink);
   font-size: var(--t-lg);
   font-weight: var(--weight-medium);
   line-height: 1.55;
@@ -16568,7 +16568,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   gap: 7px;
   margin: 0;
   padding: var(--space-2) var(--space-2) 4px;
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   letter-spacing: 0.12em;
@@ -16607,7 +16607,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-mention-row.is-active .quick-launch-mention-name {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* AWAITING은 dim + 선택 불가 + 방향키 스킵(제품 결정) — CLI가 응답 입력을 기다리는 중이라
@@ -16706,7 +16706,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-suggest-trigger:hover:not(:disabled) {
-  color: var(--brass);
+  color: var(--brass-ink);
   background: var(--control-hover-fill);
   border-color: var(--control-hover-rim);
 }
@@ -16747,7 +16747,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-suggest-trigger.is-busy {
-  color: var(--brass);
+  color: var(--brass-ink);
   cursor: progress;
   animation: quick-launch-suggest-pulse 1.4s ease-in-out infinite;
 }
@@ -16849,7 +16849,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   font-weight: var(--weight-bold);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .quick-launch-suggest-item {
@@ -16985,7 +16985,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-command-row.is-active .quick-launch-command-icon {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .quick-launch-command-value {
@@ -17006,7 +17006,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-command-row.is-active .quick-launch-command-token {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* 프로바이더 밴드는 이 덱에서만 스크롤을 따라 붙는다. 덱은 340px에서 스크롤을 시작하는데
@@ -17056,7 +17056,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .quick-launch-command-row.is-gate.is-active .quick-launch-mention-name,
 .quick-launch-command-row.is-gate.is-active .quick-launch-command-gate-glyph {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* 강도 행은 트랙과 같은 톤 사다리를 입는다 — 같은 축을 한 표면은 색으로, 다른 표면은 흑백으로
@@ -17199,7 +17199,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   /* 한 줄 계약의 짝: nowrap 바에서 유일하게 늘어나는 글자 덩어리라, 긴 Theater 이름은 태그 안에서
      말줄임되어야 한다. 그렇지 않으면 태그가 카드 밖으로 넘친다(96자 폴더명으로 실측). */
   min-width: 0;
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
   letter-spacing: 0.1em;
@@ -17306,7 +17306,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .quick-launch-chip[aria-expanded="true"] {
   border-color: var(--brass);
   background: var(--brass-glow);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* 마크·캐럿은 고정 슬롯이고, 줄어드는 쪽은 이름뿐이다 — 잘릴 때는 말줄임으로 잘렸음을 말한다. */
@@ -17451,7 +17451,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .quick-launch-pop-check {
-  color: var(--brass);
+  color: var(--brass-ink);
   font-size: var(--t-xs);
 }
 

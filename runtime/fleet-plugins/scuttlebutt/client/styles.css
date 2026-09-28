@@ -469,7 +469,7 @@
 }
 
 .scuttlebutt-notice-bubble.is-intro {
-  --scuttlebutt-notice-ink: var(--brass);
+  --scuttlebutt-notice-ink: var(--brass-ink);
   font-weight: var(--weight-regular);
 }
 
@@ -566,7 +566,7 @@
   border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--brass);
+  color: var(--brass-ink);
   cursor: pointer;
   font: inherit;
   font-size: var(--t-xs);
@@ -650,7 +650,7 @@
   align-items: baseline;
   gap: var(--space-2);
   padding-right: 28px;
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.1em;
@@ -704,7 +704,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--brass);
+  color: var(--brass-ink);
   cursor: pointer;
   font: inherit;
   font-size: var(--t-xs);
@@ -842,7 +842,7 @@
 .scuttlebutt-head-action.is-on {
   border-color: color-mix(in oklch, var(--brass) 45%, transparent);
   background: var(--brass-glow);
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .scuttlebutt-head-tip {
@@ -1437,7 +1437,7 @@
   padding: 0 var(--space-2);
   border: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent);
   border-radius: var(--radius-xs);
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-body);
   font-size: var(--t-2xs);
   letter-spacing: 0.06em;
@@ -1718,7 +1718,7 @@
   width: 12px;
   height: 12px;
   flex: none;
-  color: var(--brass);
+  color: var(--brass-ink);
   opacity: 0;
 }
 

@@ -49,7 +49,7 @@
 
 .quota-legend__toggle:hover,
 .quota-legend__toggle:focus-visible {
-  color: var(--brass);
+  color: var(--brass-ink);
   border-color: var(--brass);
 }
 
@@ -192,7 +192,7 @@
 
 .quota-grip:hover,
 .quota-grip:focus-visible {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .quota-grip:focus-visible {
@@ -277,7 +277,7 @@
 
 .quota-fold:hover,
 .quota-fold:focus-visible {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .quota-fold:focus-visible {
@@ -500,7 +500,7 @@
 
 .quota-disconnect:hover,
 .quota-disconnect:focus-visible {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 /* 심각도는 이 채널 하나로만 흐른다 — 채움과 예측 빗금이 각자 색을 집으면
@@ -712,7 +712,7 @@
 .quota-button:focus-visible,
 .quota-refresh:hover,
 .quota-refresh:focus-visible {
-  color: var(--brass);
+  color: var(--brass-ink);
 }
 
 .quota-strip {
