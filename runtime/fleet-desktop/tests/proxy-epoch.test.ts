@@ -135,7 +135,7 @@ describe("read-only proxy epoch", () => {
     const views = createProxyDataViews({ sessionFor: () => partition.session as never, createView: () => view as never, attach: () => undefined });
 
     const surface = await views.open(EPOCH);
-    expect(partition.session.setProxy).toHaveBeenCalledWith({ mode: "fixed_servers", proxyRules: "http://127.0.0.1:51234", proxyBypassRules: "127.0.0.1:51234;<-loopback>" });
+    expect(partition.session.setProxy).toHaveBeenCalledWith({ mode: "fixed_servers", proxyRules: "http://127.0.0.1:51234", proxyBypassRules: "<-loopback>;127.0.0.1:51234" });
     expect(partition.cookies).toEqual([expect.objectContaining({ name: EPOCH.cookieName, httpOnly: true })]);
     expect(contents.setWebRTCIPHandlingPolicy).toHaveBeenCalledWith("disable_non_proxied_udp");
     expect(partition.request(`${EPOCH_ORIGIN}/api/v1/operations`)).toBe(false);

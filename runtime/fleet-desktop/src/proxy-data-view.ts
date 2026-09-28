@@ -81,7 +81,8 @@ export function createProxyDataViews(deps: ProxyDataViewDeps): ProxyDataViews {
       session.setDisplayMediaRequestHandler((_request, callback) => { try { callback({}); } catch { /* 거절은 빈 답으로 끝난다. */ } });
       session.on("will-download", (event) => event.preventDefault());
       session.setSpellCheckerEnabled(false);
-      await session.setProxy({ mode: "fixed_servers", proxyRules: `http://${authority}`, proxyBypassRules: `${authority};<-loopback>` });
+      // `<-loopback>`은 앞에 둔다 — 뒤에 두면 Chromium이 앞선 우회 규칙까지 지워 epoch origin도 proxy로 간다(실측).
+      await session.setProxy({ mode: "fixed_servers", proxyRules: `http://${authority}`, proxyBypassRules: `<-loopback>;${authority}` });
 
       const teardownSession = async (): Promise<void> => {
         sealed = true;
@@ -93,7 +94,7 @@ export function createProxyDataViews(deps: ProxyDataViewDeps): ProxyDataViews {
       };
 
       try {
-        await verifyIsolation(session, epochOrigin, authority);
+        await verifyIsolation(session, epochOrigin, authority, deps.log);
         await setCapability(session, epoch, deps.log);
       } catch (error) {
         await teardownSession().catch(() => { poisoned = true; });
@@ -156,14 +157,23 @@ export function createProxyDataViews(deps: ProxyDataViewDeps): ProxyDataViews {
  * proxy가 계약대로 섰는지 본다: 바깥 주소와 다른 루프백 포트는 epoch 리스너로, epoch origin만 직접. 셋 중 하나라도
  * 어긋나면 이 뷰는 격리를 약속할 수 없다.
  */
-async function verifyIsolation(session: Session, epochOrigin: string, authority: string): Promise<void> {
-  const [external, loopback, own] = await Promise.all([
+async function verifyIsolation(session: Session, epochOrigin: string, authority: string, log?: (message: string) => void): Promise<void> {
+  const port = Number(new URL(epochOrigin).port);
+  const neighbour = port < 65_535 ? port + 1 : port - 1;
+  // 같은 포트라도 다른 이름(localhost, IPv6)과 이웃 포트는 우회되지 않아야 한다 — Chromium의 암묵 루프백 우회가 여기서 드러난다.
+  const [external, loopback, own, ...aliases] = await Promise.all([
     session.resolveProxy("https://example.com/"),
-    session.resolveProxy("http://127.0.0.1:1/"),
+    session.resolveProxy(`http://127.0.0.1:${neighbour}/`),
     session.resolveProxy(`${epochOrigin}/console/`),
+    session.resolveProxy(`http://localhost:${port}/`),
+    session.resolveProxy(`http://[::1]:${port}/`),
   ]);
   const proxied = (value: string): boolean => value.trim() === `PROXY ${authority}`;
-  if (!proxied(external) || !proxied(loopback) || own.trim() !== "DIRECT") throw new Error("proxy_isolation_unverified");
+  if (!proxied(external) || !proxied(loopback) || own.trim() !== "DIRECT" || !aliases.every(proxied)) {
+    // 판정 값에는 비밀이 없다 — proxy 규칙과 루프백 주소뿐이다. 어느 경로가 어긋났는지 남긴다.
+    log?.(`proxy isolation unverified external=${external.slice(0, 64)} loopback=${loopback.slice(0, 64)} own=${own.slice(0, 64)}`);
+    throw new Error("proxy_isolation_unverified");
+  }
 }
 
 /**
