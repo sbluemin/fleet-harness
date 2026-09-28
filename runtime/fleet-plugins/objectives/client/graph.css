@@ -9,14 +9,15 @@
 .objectives-graph-root { position: absolute; width: 12px; height: 12px; margin: -6px; border: 1.5px solid var(--text-tertiary); border-radius: 50%; background: var(--surface-panel); }
 .objectives-graph-label { position: absolute; z-index: 2; font-size: var(--t-xs); line-height: var(--graph-label-line); color: var(--text-secondary); white-space: nowrap; cursor: pointer; touch-action: none; }
 .objectives-graph-label > span { display: block; }
-.objectives-graph-label.is-done, .objectives-graph-label.is-root { color: var(--text-tertiary); }
+.objectives-graph-label.is-root { color: var(--text-tertiary); }
+.objectives-graph-label.is-done { color: var(--brass-ink); }
 .objectives-graph-label.is-root { font-size: var(--t-2xs); cursor: default; }
 .objectives-graph-label.is-awaiting, .objectives-graph-label.is-running, .objectives-graph-label.is-ready, .objectives-graph-label.is-lit { color: var(--text-primary); }
 .objectives-graph-node { position: absolute; z-index: 3; width: 30px; height: 30px; margin: -15px; padding: 0; border: 0; background: none; display: grid; place-items: center; cursor: pointer; touch-action: none; }
 .objectives-graph-shape { position: relative; display: grid; place-items: center; width: calc(var(--graph-r) * 2); height: calc(var(--graph-r) * 2); border-radius: 50%; border: 1.5px solid var(--text-tertiary); background: var(--surface-panel); }
 .objectives-graph-number { font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-primary); font-variant-numeric: tabular-nums; line-height: 1; }
-.objectives-graph-shape.is-done { background: var(--text-tertiary); border-color: var(--text-tertiary); }
-.objectives-graph-shape.is-done .objectives-graph-number { color: var(--surface-panel); }
+.objectives-graph-shape.is-done { background: var(--brass); border-color: var(--brass); }
+.objectives-graph-shape.is-done .objectives-graph-number { color: var(--text-on-brass); }
 .objectives-graph-shape.is-ready { border: 2.5px solid var(--aurora); }
 .objectives-graph-shape.is-running { border-color: var(--positive); }
 .objectives-graph-shape.is-running::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1.5px solid transparent; border-top-color: var(--positive); border-right-color: var(--positive); animation: objectives-graph-spin 1.2s linear infinite; }
@@ -64,7 +65,8 @@
 .objectives-popup-head .objectives-glyph { margin-left: auto; }
 .objectives-popup-state { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-body); }
 .objectives-popup-state i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--text-tertiary); }
-.objectives-popup-state.is-done i { background: var(--text-tertiary); }
+.objectives-popup-state.is-done { color: var(--brass-ink); }
+.objectives-popup-state.is-done i { background: var(--brass); border-color: var(--brass); }
 .objectives-popup-state.is-ready { color: var(--aurora-ink); }
 .objectives-popup-state.is-ready i { border: 2px solid var(--aurora); }
 .objectives-popup-state.is-running { color: var(--positive-ink); }
