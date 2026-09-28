@@ -57,7 +57,7 @@ import { createRemoteEndpointStore } from "../../../features/remote-access/host/
 import { createRemoteHostStore, type RemoteHostRecord } from "../../../features/remote-access/host/remote-hosts.js";
 import { createRemoteIdentityStore, fingerprintsMatch } from "../../../features/remote-access/host/remote-identity.js";
 import { createRemoteJoinGuard } from "../../../features/remote-access/host/remote-join-guard.js";
-import { createAgentOptionsService } from "../../../features/settings/host/agent-options.js";
+import { createAgentOptionsService, createTheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
 import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createPluginSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "../../../features/updates/host/release-notes/release-notes.js";
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
@@ -489,6 +489,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // Agent 실행 옵션은 Console 설정 파일의 한 섹션이다. 옛 자리(Fleet 루트의 settings.json)는
   // 인스턴스를 가리지 않는 한 벌이었으므로 이 슬롯으로 한 번 승계한다.
   const agentOptions = createAgentOptionsService({ store: consoleSettingsStore, legacyDirs: [fleetDataDir] });
+  const theaterSystemPrompts = createTheaterSystemPromptService(agentOptions, (id) => theaters.get(id) !== null);
   // 워크스페이스 지식과 하네스 트리는 파일이 아니라 디렉터리라 승계 판정기가 다루지 않는다.
   // 전자는 옮기고(내용이 사용자 자산이다), 후자는 렌더 산출물이라 걷기만 한다 — 이 슬롯의
   // 공유 트리도 포함한다. 플러그인은 이제 루프백 zip으로 나가고 디스크 트리는 아무도 읽지 않는다.
@@ -589,6 +590,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function publishTheaterLifecycle(event: "registered" | "forgotten" | "restored", theaterId: string): void {
     publishPluginEvent(`theater:${event}`, { theaterId });
   }
+  // 브라우저도 같은 순간을 들어야 한다 — 다른 창·API·Console Use가 잊거나 되돌린 Theater는 이 스트림이
+  // 아니면 다음 재수화까지 사이드바에 남는다. 싣는 것은 theaterId뿐이라 그대로 내보낸다.
+  for (const channel of ["theater:registered", "theater:forgotten", "theater:restored"]) pluginSseChannels.add(channel);
 
   function publishPluginEvent(channel: string, payload: unknown, isolateListeners = false): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) {
@@ -614,10 +618,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     save: saveDurableState,
     archives: () => archiveStorage.entries(),
     assertMutable: (id) => operationArchive.assertMutable(id),
-    beforePurge: (purged) => {
+    beforePurge: (purged, tombstone) => {
       if (!purgeCoreOperation) throw new OperationArchiveError(503, "archive_recovery_required");
       launchKeys.recordPurged(purged);
       for (const operation of purged.flatMap(archiveSessionNodes)) purgeCoreOperation(operation);
+      if (tombstone.kind === "theater") theaterSystemPrompts.purge(tombstone.targetId);
     },
     // 삭제·복원은 화면 사건이기도 하다. 누른 창은 스스로 다시 조회하지만 다른 창과 에이전트가 닫은
     // 경우는 이 스트림이 유일한 길이다 — 안 흘리면 그 Operation 은 다음 재수화까지 화면에 남는다.
@@ -2337,7 +2342,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           agentOptions,
           agentCliPlugin,
           routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
-        }), consoleActions, pluginHostCapabilities.storage);
+        }), consoleActions, pluginHostCapabilities.storage, theaterSystemPrompts);
         coreLaunchKinds = execution.launchKinds;
         sleepOperation = execution.actions.sleep;
         resumeArchivedOperation = execution.actions.resume;

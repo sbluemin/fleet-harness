@@ -12,4 +12,5 @@ export type {
   AgentOptionsService,
   AgentOptionsValidationResult,
   ClaudeCodeSystemPromptMode,
+  ClaudeCodeTheaterSystemPrompt,
 } from "./agent-options/schema.js";

@@ -9,12 +9,13 @@ interface ExecutionSettingsContext {
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
 import type http from "node:http";
+import type { TheaterSystemPromptService } from "./agent-options.js";
 
 import {
   MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS,
   sanitizeClaudeCodeCustomSystemPrompt,
   sanitizeClaudeCodeDisabledAgents,
-  type ClaudeCodeSystemPromptMode,
+  type ClaudeCodeTheaterSystemPrompt,
   type AgentOptionsData,
   type AgentOptionsService,
 } from "@fleet-console/infra";
@@ -38,6 +39,7 @@ import {
 
 interface TerminalSettingsRouteDeps {
   readonly agentOptionsService: AgentOptionsService;
+  readonly theaterSystemPrompts: TheaterSystemPromptService;
   readonly aiGatewayStore: AiGatewaySettingsStore;
   /** Resolves Claude alias entries to the installed CLI's versions before the catalog is shown. */
   readonly ensureClaudeNativeModels?: () => Promise<void>;
@@ -49,8 +51,6 @@ interface TerminalSettingsRouteDeps {
 
 interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
-  readonly claudeCodeSystemPrompt?: unknown;
-  readonly claudeCodeCustomSystemPrompt?: unknown;
   readonly claudeCodeDisabledAgents?: unknown;
   readonly aiGateway?: unknown;
   readonly wireLogEnabled?: unknown;
@@ -63,8 +63,6 @@ interface TerminalSettingsBody {
 
 type TerminalSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
-  | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
-  | { readonly claudeCodeCustomSystemPrompt: string | undefined }
   | { readonly claudeCodeDisabledAgents: readonly string[] | undefined }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly wireLogEnabled: boolean }
@@ -78,8 +76,6 @@ const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
 export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
-  readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
-  readonly claudeCodeCustomSystemPrompt: string;
   /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
   readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewayUpdateValue | null;
@@ -201,12 +197,6 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
           const { claudeCodeDisabledAgents: _cleared, ...rest } = current;
           return rest;
         }
-        // 빈 본문은 키 자체를 지운다. `undefined`를 남기면 저장 파일에 죽은 키가 앉고,
-        // "지침 없음"과 "지침이 빈 문자열"이 서로 다른 상태처럼 굳는다.
-        if ("claudeCodeCustomSystemPrompt" in update && update.claudeCodeCustomSystemPrompt === undefined) {
-          const { claudeCodeCustomSystemPrompt: _cleared, ...rest } = current;
-          return rest;
-        }
         return { ...current, ...update };
       });
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
@@ -220,6 +210,58 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
     { method: "GET", path: "", summary: "Read Terminal plugin settings.", category: "Console Execution", gate: "loopback", transport: "http" },
     { method: "PUT", path: "", summary: "Save Terminal plugin settings.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
+
+  ctx.registerRouter("agent/theater-system-prompt", async ({ req, res }) => {
+    if (req.method !== "GET" && req.method !== "PUT") {
+      ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    if (req.method === "PUT" && !ctx.host.security.isTerminalAuthorized(req)) {
+      ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const theaterId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("theaterId");
+    if (!theaterId || !deps.theaterSystemPrompts.exists(theaterId)) {
+      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+      return true;
+    }
+    if (req.method === "GET") {
+      ctx.host.http.writeJson(res, 200, { theaterId, prompt: deps.theaterSystemPrompts.read(theaterId) });
+      return true;
+    }
+    if (!isJsonRequest(req)) {
+      ctx.host.http.writeJson(res, 415, { error: "unsupported_media_type" });
+      return true;
+    }
+    const body = await ctx.host.http.readJsonBody<unknown>(req);
+    const prompt = parseTheaterSystemPromptUpdate(body);
+    if (prompt === undefined) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_theater_system_prompt" });
+      return true;
+    }
+    // readJsonBody yields: the Theater may have been forgotten while the body was arriving.
+    if (!deps.theaterSystemPrompts.exists(theaterId)) {
+      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+      return true;
+    }
+    const saved = deps.theaterSystemPrompts.save(theaterId, prompt);
+    ctx.host.http.writeJson(res, 200, { theaterId, prompt: saved });
+    return true;
+  }, [
+    { method: "GET", path: "", summary: "Read a registered Theater's Claude Code system prompt.", category: "Console Execution", gate: "loopback", transport: "http" },
+    { method: "PUT", path: "", summary: "Save or clear a registered Theater's Claude Code system prompt.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  ]);
+}
+
+function parseTheaterSystemPromptUpdate(body: unknown): ClaudeCodeTheaterSystemPrompt | null | undefined {
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length !== 1 || !("prompt" in body)) return undefined;
+  const prompt = body.prompt;
+  if (prompt === null) return null;
+  if (!prompt || typeof prompt !== "object" || Array.isArray(prompt) || Object.keys(prompt).length !== 2) return undefined;
+  if (!("mode" in prompt) || !("body" in prompt)) return undefined;
+  if (prompt.mode !== "on" && prompt.mode !== "append" && prompt.mode !== "off") return undefined;
+  if (typeof prompt.body !== "string" || prompt.body.length > MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS) return undefined;
+  return { mode: prompt.mode, body: sanitizeClaudeCodeCustomSystemPrompt(prompt.body) ?? "" };
 }
 
 function toTerminalSettingsState(
@@ -233,8 +275,6 @@ function toTerminalSettingsState(
     agentIdleDormantMinutes: data.agentIdleDormantMinutes === undefined
       ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
       : data.agentIdleDormantMinutes,
-    claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(data),
-    claudeCodeCustomSystemPrompt: resolveClaudeCodeCustomSystemPrompt(data),
     claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(data),
     aiGateway: configured
       ? {
@@ -250,19 +290,6 @@ function toTerminalSettingsState(
     compactCeiling: aiGateway.compactCeiling ?? null,
     xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
   };
-}
-
-/** 키가 없으면 켜진 것으로 읽는다 — 플래그 없는 런치가 이미 하는 일이다. */
-export function resolveClaudeCodeSystemPrompt(data: AgentOptionsData): ClaudeCodeSystemPromptMode {
-  return data.claudeCodeSystemPrompt ?? "on";
-}
-
-/**
- * 키가 없으면 빈 문자열 — 사용자가 쓴 지침이 없다는 뜻이고, 그때 `append`는 기본 프롬프트만
- * 싣고 `off`는 시스템 프롬프트 없이 연다.
- */
-export function resolveClaudeCodeCustomSystemPrompt(data: AgentOptionsData): string {
-  return data.claudeCodeCustomSystemPrompt ?? "";
 }
 
 /** 키가 없으면 빈 목록 — 규칙 없는 런치가 이미 하는 일이다. */
@@ -292,21 +319,6 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
     if (!Array.isArray(body.claudeCodeDisabledAgents)) return null;
     if (!body.claudeCodeDisabledAgents.every((entry) => typeof entry === "string")) return null;
     return { claudeCodeDisabledAgents: sanitizeClaudeCodeDisabledAgents(body.claudeCodeDisabledAgents) };
-  }
-  if (keys[0] === "claudeCodeSystemPrompt") {
-    return body.claudeCodeSystemPrompt === "on"
-      || body.claudeCodeSystemPrompt === "append"
-      || body.claudeCodeSystemPrompt === "off"
-      ? { claudeCodeSystemPrompt: body.claudeCodeSystemPrompt }
-      : null;
-  }
-  if (keys[0] === "claudeCodeCustomSystemPrompt") {
-    if (typeof body.claudeCodeCustomSystemPrompt !== "string") return null;
-    // 상한은 정화기보다 먼저 판정한다. 정화기는 넘친 본문의 키를 조용히 지우는데, 그러면
-    // 저장에 실패한 글이 성공으로 보고되어 사용자가 지운 줄 모르고 세션을 연다.
-    if (body.claudeCodeCustomSystemPrompt.length > MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS) return null;
-    // 빈 본문은 키를 지워 "지침 없음"으로 돌아간다 — 목록 설정이 이미 쓰는 규칙과 같다.
-    return { claudeCodeCustomSystemPrompt: sanitizeClaudeCodeCustomSystemPrompt(body.claudeCodeCustomSystemPrompt) };
   }
   if (keys[0] === "aiGateway") {
     const parsed = parseAiGatewayUpdate(body.aiGateway);

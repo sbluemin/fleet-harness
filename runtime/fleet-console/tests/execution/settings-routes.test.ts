@@ -1,11 +1,12 @@
 import type http from "node:http";
 
-import type { AgentOptionsData } from "@fleet-console/infra";
+import { sanitizeAgentOptionsData, type AgentOptionsData } from "@fleet-console/infra";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import { describe, expect, it } from "vitest";
 
 import { normalizeAiGatewaySettings, type AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import { registerTerminalSettingsRoutes } from "../../features/settings/host/execution-settings-routes.js";
+import { createTheaterSystemPromptService } from "../../features/settings/host/agent-options.js";
 
 interface WriteJsonCall {
   readonly status: number;
@@ -31,8 +32,6 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({
       agentIdleDormantMinutes: 60,
-      // 키가 없는 설정 파일은 플래그 없는 런치와 같은 뜻이다 — Claude Code 프롬프트가 켜진 세션.
-      claudeCodeSystemPrompt: "on",
       aiGateway: null,
       wireLogEnabled: false,
       delegationRoutingEnabled: false,
@@ -40,6 +39,42 @@ describe("terminal settings routes", () => {
       compactCeiling: null,
     });
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
+  });
+
+  it("keeps Theater prompts scoped, validates writes, and clears the pair together", async () => {
+    const theaterUrl = "/api/v1/agent/theater-system-prompt?theaterId=theater-1";
+    const harness = createRouteHarness({ body: { prompt: { mode: "append", body: "  My rules\r\n" } }, data: { claudeCodeDisabledAgents: ["Explore"] } });
+    await harness.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
+    expect(harness.writes.pop()).toEqual({ status: 200, body: { theaterId: "theater-1", prompt: { mode: "append", body: "  My rules\n" } } });
+    expect(harness.currentData()).toEqual({ claudeCodeDisabledAgents: ["Explore"], claudeCodeTheaterSystemPrompts: { "theater-1": { mode: "append", body: "  My rules\n" } } });
+    await harness.handleTheaterPrompt({ req: req("GET", undefined, theaterUrl), res: res(), pathname: theaterUrl });
+    expect(harness.writes.pop()?.body).toMatchObject({ prompt: { mode: "append" } });
+    const cleared = createRouteHarness({ body: { prompt: null }, data: harness.currentData() });
+    await cleared.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
+    expect(cleared.writes.pop()?.body).toEqual({ theaterId: "theater-1", prompt: null });
+    expect(cleared.currentData()).toEqual({ claudeCodeDisabledAgents: ["Explore"] });
+    expect(cleared.theaterSystemPrompts.save("theater-1", { mode: "on", body: "" })).toBeNull();
+    expect(cleared.theaterSystemPrompts.save("theater-1", { mode: "on", body: "saved for later" })).toEqual({ mode: "on", body: "saved for later" });
+    harness.theaterSystemPrompts.purge("theater-1");
+    expect(harness.currentData()).toEqual({ claudeCodeDisabledAgents: ["Explore"] });
+
+    const unknown = createRouteHarness({ body: { prompt: { mode: "off", body: "secret" } } });
+    await unknown.handleTheaterPrompt({ req: req("PUT", "application/json", "/api/v1/agent/theater-system-prompt?theaterId=unknown"), res: res(), pathname: "" });
+    expect(unknown.writes.pop()?.status).toBe(404);
+    const denied = createRouteHarness({ terminalAuthorized: false, body: { prompt: null } });
+    await denied.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
+    expect(denied.writes.pop()?.status).toBe(401);
+    const invalid = createRouteHarness({ body: { prompt: { mode: "off", body: "x".repeat(16_001) } } });
+    await invalid.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
+    expect(invalid.writes.pop()?.status).toBe(400);
+    expect(invalid.updateCalls).toBe(0);
+  });
+
+  it("drops legacy global prompt keys without migrating them into Theater settings", () => {
+    expect(sanitizeAgentOptionsData({
+      claudeCodeSystemPrompt: "off", claudeCodeCustomSystemPrompt: "old instructions",
+      agentIdleDormantMinutes: 30, claudeCodeDisabledAgents: ["Explore"],
+    }).data).toEqual({ agentIdleDormantMinutes: 30, claudeCodeDisabledAgents: ["Explore"] });
   });
 
   it("GET /api/v1/agent/settings resolves stored Jev routing mode", async () => {
@@ -144,11 +179,15 @@ function createRouteHarness(options: HarnessOptions = {}) {
       },
     },
   } as unknown as ConsoleRuntimeContext;
+  const agentOptionsService = {
+    load: () => data,
+    update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => { updateCalls += 1; data = mutate(data); return data; },
+  };
+  const isRegisteredTheater = (id: string) => id === "theater-1";
+  const theaterSystemPrompts = createTheaterSystemPromptService(agentOptionsService, isRegisteredTheater);
   registerTerminalSettingsRoutes(ctx, {
-    agentOptionsService: {
-      load: () => data,
-      update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => { updateCalls += 1; data = mutate(data); return data; },
-    },
+    agentOptionsService,
+    theaterSystemPrompts,
     aiGatewayStore: {
       path: "/test/ai-gateway.json",
       read: () => aiGateway,
@@ -251,6 +290,8 @@ function createRouteHarness(options: HarnessOptions = {}) {
   if (!handle) throw new Error("settings router was not registered");
   return {
     handle,
+    handleTheaterPrompt: routers.get("agent/theater-system-prompt")!,
+    theaterSystemPrompts,
     writes,
     currentData: () => data,
     currentAiGateway: () => aiGateway,
@@ -259,8 +300,8 @@ function createRouteHarness(options: HarnessOptions = {}) {
   };
 }
 
-function req(method: string, contentType?: string): http.IncomingMessage {
-  return { method, headers: contentType ? { "content-type": contentType } : {} } as unknown as http.IncomingMessage;
+function req(method: string, contentType?: string, url?: string): http.IncomingMessage {
+  return { method, url, headers: contentType ? { "content-type": contentType } : {} } as unknown as http.IncomingMessage;
 }
 
 function jsonReq(method: string): http.IncomingMessage {

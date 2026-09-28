@@ -28,20 +28,13 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
     let profile = await resolveAgentCliProfile(options.env, options.cwd, { cliId: "claude" });
     profile = { ...profile, args: [...profile.args, ...options.passthroughArgs] };
     const selection = resolveAiGatewaySelection(options.runtime.aiGatewayStore.read());
-    // Console 설정과 같은 전역 옵션을 읽는다 — 두 런치 표면이 한 스위치를 공유해야
-    // 사용자가 고른 값이 터미널을 바꿔도 따라온다. 키가 없으면 주입 기본값(on)이다.
-    const globalOptions = options.runtime.infraServices.agentOptionsService.load();
-    const claudeCodeSystemPrompt = globalOptions.claudeCodeSystemPrompt;
+    // 독립 fleet CLI에는 Theater 좌표가 없다. 기본 Claude Code 프롬프트를 그대로 쓴다.
+    // 내장 서브에이전트 옵트아웃만 Console 슬롯의 공통 설정을 따른다.
+    const agentOptions = options.runtime.infraServices.agentOptionsService.load();
     const injected = await injectAgentCliProfile(profile, {
       plugin: options.runtime.agentCliPlugin,
-      ...(claudeCodeSystemPrompt ? { claudeCodeSystemPrompt } : {}),
-      // 사용자가 쓴 시스템 프롬프트도 같은 전역 옵션이다 — 키 부재는 지침 없음이다.
-      ...(globalOptions.claudeCodeCustomSystemPrompt
-        ? { claudeCodeCustomSystemPrompt: globalOptions.claudeCodeCustomSystemPrompt }
-        : {}),
-      // 내장 서브에이전트 옵트아웃도 같은 전역 옵션이다 — 키 부재는 전부 켜짐이다.
-      ...(globalOptions.claudeCodeDisabledAgents?.length
-        ? { claudeCodeDisabledAgents: globalOptions.claudeCodeDisabledAgents }
+      ...(agentOptions.claudeCodeDisabledAgents?.length
+        ? { claudeCodeDisabledAgents: agentOptions.claudeCodeDisabledAgents }
         : {}),
       dedicatedMcpSession: options.runtime.dedicatedMcpSession,
       // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.

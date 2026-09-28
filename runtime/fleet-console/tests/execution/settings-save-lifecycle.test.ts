@@ -4,8 +4,6 @@ import type { SystemPromptSettingsState } from "../../features/settings/client/e
 
 const BASE: SystemPromptSettingsState = {
   agentIdleDormantMinutes: 60,
-  claudeCodeSystemPrompt: "on",
-  claudeCodeCustomSystemPrompt: "",
   claudeCodeDisabledAgents: [],
   aiGateway: null,
   aiGatewayCatalog: { providers: [] },
@@ -38,7 +36,7 @@ describe("terminal settings save lifecycle", () => {
     await store.loadSystemPromptSettings();
 
     const agents = store.setSystemPromptSettingsField("claudeCodeDisabledAgents", ["Plan"]);
-    const prompt = store.setSystemPromptSettingsField("claudeCodeSystemPrompt", "off");
+    const idle = store.setSystemPromptSettingsField("agentIdleDormantMinutes", 30);
     await expect(store.setSystemPromptSettingsField("claudeCodeDisabledAgents", ["Plan", "Explore"])).resolves.toBe(true);
     await expect(store.setSystemPromptSettingsField("claudeCodeDisabledAgents", ["Explore"])).resolves.toBe(true);
     // 화면은 기다리지 않는다 — 마지막으로 누른 것이 즉시 선다.
@@ -54,14 +52,14 @@ describe("terminal settings save lifecycle", () => {
     agentWrites()[1]!.resolve(response({ ...BASE, claudeCodeDisabledAgents: ["Explore"] }));
     await expect(agents).resolves.toBe(true);
 
-    writes.find((write) => write.field === "claudeCodeSystemPrompt")!.resolve(
-      new Response(JSON.stringify({ error: "prompt write refused" }), { status: 500 }),
+    writes.find((write) => write.field === "agentIdleDormantMinutes")!.resolve(
+      new Response(JSON.stringify({ error: "idle write refused" }), { status: 500 }),
     );
-    await expect(prompt).resolves.toBe(false);
+    await expect(idle).resolves.toBe(false);
     expect(store.getSystemPromptSettingsStoreState()).toMatchObject({
       // 실패한 필드만 되감고, 합쳐진 목록 저장은 그대로 남는다.
-      state: { claudeCodeSystemPrompt: "on", claudeCodeDisabledAgents: ["Explore"] },
-      error: "prompt write refused",
+      state: { agentIdleDormantMinutes: 60, claudeCodeDisabledAgents: ["Explore"] },
+      error: "idle write refused",
     });
     expect(store.getSystemPromptSettingsStoreState().savingFields.size).toBe(0);
   });

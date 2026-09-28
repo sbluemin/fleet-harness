@@ -72,13 +72,14 @@ export function useContextMenuKeyboard({
         const onSwatch = document.activeElement instanceof HTMLElement && document.activeElement.hasAttribute(ACCENT_OPTION_ATTRIBUTE);
         const horizontal = onSwatch && (event.key === "ArrowRight" || event.key === "ArrowLeft");
         const vertical = event.key === "ArrowDown" || event.key === "ArrowUp";
-        if (!horizontal && !vertical) return;
+        const edge = event.key === "Home" || event.key === "End";
+        if (!horizontal && !vertical && !edge) return;
         event.preventDefault();
         event.stopPropagation();
         const ring = horizontal ? currentItems.filter((item) => item.hasAttribute(ACCENT_OPTION_ATTRIBUTE)) : currentItems;
         const forward = event.key === "ArrowDown" || event.key === "ArrowRight";
         const ringIndex = ring.findIndex((item) => item === document.activeElement);
-        const nextInRing = forward
+        const nextInRing = event.key === "Home" ? 0 : event.key === "End" ? ring.length - 1 : forward
           ? (ringIndex + 1) % ring.length
           : ringIndex <= 0 ? ring.length - 1 : ringIndex - 1;
         setCurrent(currentItems.indexOf(ring[nextInRing]!), true);

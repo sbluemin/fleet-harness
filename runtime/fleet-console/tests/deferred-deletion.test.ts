@@ -8,6 +8,8 @@ import { createConsoleControl } from "../features/console-use/host/console-contr
 import { createLaunchKeyLedger } from "../features/console-use/host/launch-keys.js";
 
 import { createDeferredDeletionCoordinator, DeferredDeletionError } from "../features/workspace/host/deferred-deletion.js";
+import { createTheaterSystemPromptService } from "../features/settings/host/agent-options.js";
+import type { AgentOptionsData } from "@fleet-console/infra";
 import { STATE_VERSION, type DurableConsoleState, type DurableDeletionTombstone } from "../features/workspace/host/durable-state.js";
 import { createDurableJsonStore, type DurableJsonStore } from "@fleet-console/infra";
 import { createOperationArchiveStorage, type ArchivedOperation } from "../features/workspace/host/operation-archive-storage.js";
@@ -53,6 +55,23 @@ describe("deferred deletion coordinator", () => {
     expect(harness.operations.listByTheater(THEATER.id).map((operation) => operation.id)).toEqual(["op-a", "op-b"]);
     expect(harness.operations.listGroups(THEATER.id).map((group) => group.id)).toEqual(["group-a"]);
     expect(harness.events.filter((event) => event.channel === "operation:restored")).toHaveLength(2);
+  });
+
+  it("hides a forgotten Theater prompt, restores it during grace, and purges it after expiry", async () => {
+    const harness = createHarness();
+    let data: AgentOptionsData = { claudeCodeDisabledAgents: ["Explore"] };
+    const options = { load: () => data, update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => (data = mutate(data)) };
+    const prompts = createTheaterSystemPromptService(options, (id) => harness.theaters.get(id) !== null);
+    prompts.save(THEATER.id, { mode: "off", body: "private instructions" });
+    harness.beforePurge.value = (_nodes, tombstone) => { if (tombstone.kind === "theater") prompts.purge(tombstone.targetId); };
+    const deletion = harness.coordinator.deleteTheater(THEATER.id)!;
+    expect(prompts.read(THEATER.id)).toBeNull();
+    await harness.coordinator.restore(deletion.deletionId);
+    expect(prompts.read(THEATER.id)).toEqual({ mode: "off", body: "private instructions" });
+    const again = harness.coordinator.deleteTheater(THEATER.id)!;
+    harness.clock.value = again.expiresAt;
+    harness.coordinator.sweepExpired();
+    expect(data).toEqual({ claudeCodeDisabledAgents: ["Explore"] });
   });
 
   it("rolls memory back when the durable save fails", () => {
@@ -293,7 +312,7 @@ describe("idempotent launch keys", () => {
       harness.clock.value += 60_000;
       // 원장 선기록이 실패하면 그 tombstone 만 남아 미뤄진다 — 다른 정리와 무관한 생성·삭제는 막히지 않는다.
       const record = harness.beforePurge.value!;
-      harness.beforePurge.value = (purged) => { if (purged.some((node) => node.id === objectiveId)) throw new Error("storage_unavailable"); record(purged); };
+      harness.beforePurge.value = (purged, tombstone) => { if (purged.some((node) => node.id === objectiveId)) throw new Error("storage_unavailable"); record(purged, tombstone); };
       expect(harness.coordinator.hasPendingOperation("brand-new")).toBe(false);
       expect(harness.coordinator.hasPendingOperation("unrelated")).toBe(false);
       harness.operations.create(makeOperation("brand-new"));
@@ -327,7 +346,7 @@ describe("idempotent launch keys", () => {
 function createHarness() {
   const clock = { value: 1_000 };
   const failSave = { value: false };
-  const beforePurge: { value: ((operations: readonly OperationNode[]) => void) | null } = { value: null };
+  const beforePurge: { value: ((operations: readonly OperationNode[], tombstone: DurableDeletionTombstone) => void) | null } = { value: null };
   const operations = createOperationStore({ now: () => clock.value });
   const theaters = new TheaterRegistry();
   theaters.restore([THEATER]);
@@ -340,7 +359,7 @@ function createHarness() {
     save: () => {
       if (failSave.value) throw new Error("save_failed");
     },
-    beforePurge: (purged) => beforePurge.value?.(purged),
+    beforePurge: (purged, tombstone) => beforePurge.value?.(purged, tombstone),
     publish: (channel, payload) => events.push({ channel, payload }),
     unregisterTheaterWorkspaces: vi.fn(),
     validateTheaterRestore: async () => {},

@@ -17,8 +17,7 @@
  * - `off` — no base prompt. The user's instructions become the whole system prompt, and
  *   when there are none the session runs without one.
  *
- * `on` and `off` predate `append` and keep their stored meaning, so a settings file written
- * by an older Console needs no migration.
+ * The mode and user-authored body form one Theater-scoped setting.
  */
 export type ClaudeCodeSystemPromptMode = "on" | "append" | "off";
 
@@ -29,23 +28,16 @@ export type ClaudeCodeSystemPromptMode = "on" | "append" | "off";
  */
 export const MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS = 16_000;
 
+export interface ClaudeCodeTheaterSystemPrompt {
+  readonly mode: ClaudeCodeSystemPromptMode;
+  readonly body: string;
+}
+
 export interface AgentOptionsData {
   /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
   readonly agentIdleDormantMinutes?: number | null;
-  /**
-   * Claude Code's own base system prompt for new gateway sessions. Key absent means `on`,
-   * which is what a launch without any prompt flag already does.
-   */
-  readonly claudeCodeSystemPrompt?: ClaudeCodeSystemPromptMode;
-  /**
-   * The user's own system prompt, carried verbatim to both surfaces. Fleet writes nothing
-   * into it — this is the user's text, and the only reason it lives here is that the user
-   * asked for it to reach every new session.
-   *
-   * Key absent means there is none, so `append` falls back to the base prompt alone and
-   * `off` runs without a system prompt.
-   */
-  readonly claudeCodeCustomSystemPrompt?: string;
+  /** Registered Theater IDs are validated by the Console host, not this storage schema. */
+  readonly claudeCodeTheaterSystemPrompts?: Readonly<Record<string, ClaudeCodeTheaterSystemPrompt>>;
   /**
    * Claude Code built-in subagents the user opted out of, by agent name (`Explore`, `Plan`,
    * ...). Key absent or empty means every built-in stays available, which is what a launch
@@ -73,25 +65,21 @@ export function sanitizeAgentOptionsData(value: unknown): AgentOptionsValidation
   if (!isRecord(value)) return { data: {}, changed: true };
 
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
-  const claudeCodeSystemPrompt = sanitizeClaudeCodeSystemPrompt(value.claudeCodeSystemPrompt);
-  const claudeCodeCustomSystemPrompt = sanitizeClaudeCodeCustomSystemPrompt(value.claudeCodeCustomSystemPrompt);
+  const claudeCodeTheaterSystemPrompts = sanitizeTheaterSystemPrompts(value.claudeCodeTheaterSystemPrompts);
   const claudeCodeDisabledAgents = sanitizeClaudeCodeDisabledAgents(value.claudeCodeDisabledAgents);
   const data: AgentOptionsData = {
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
-    ...(claudeCodeSystemPrompt !== undefined ? { claudeCodeSystemPrompt } : {}),
-    ...(claudeCodeCustomSystemPrompt !== undefined ? { claudeCodeCustomSystemPrompt } : {}),
+    ...(claudeCodeTheaterSystemPrompts !== undefined ? { claudeCodeTheaterSystemPrompts } : {}),
     ...(claudeCodeDisabledAgents !== undefined ? { claudeCodeDisabledAgents } : {}),
   };
   const allowedKeys = new Set([
     "agentIdleDormantMinutes",
-    "claudeCodeSystemPrompt",
-    "claudeCodeCustomSystemPrompt",
+    "claudeCodeTheaterSystemPrompts",
     "claudeCodeDisabledAgents",
   ]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
-    ("claudeCodeSystemPrompt" in value && claudeCodeSystemPrompt === undefined) ||
-    ("claudeCodeCustomSystemPrompt" in value && claudeCodeCustomSystemPrompt !== value.claudeCodeCustomSystemPrompt) ||
+    ("claudeCodeTheaterSystemPrompts" in value && JSON.stringify(value.claudeCodeTheaterSystemPrompts) !== JSON.stringify(claudeCodeTheaterSystemPrompts)) ||
     ("claudeCodeDisabledAgents" in value && !sameStringList(value.claudeCodeDisabledAgents, claudeCodeDisabledAgents));
 
   return { data, changed };
@@ -105,6 +93,20 @@ function sanitizeAgentIdleDormantMinutes(value: unknown): number | null | undefi
 
 function sanitizeClaudeCodeSystemPrompt(value: unknown): ClaudeCodeSystemPromptMode | undefined {
   return value === "on" || value === "append" || value === "off" ? value : undefined;
+}
+
+function sanitizeTheaterSystemPrompts(value: unknown): Readonly<Record<string, ClaudeCodeTheaterSystemPrompt>> | undefined {
+  if (!isRecord(value)) return undefined;
+  const entries: Array<[string, ClaudeCodeTheaterSystemPrompt]> = [];
+  for (const [id, raw] of Object.entries(value)) {
+    if (!id || id.length > 128 || !isRecord(raw)) continue;
+    const mode = sanitizeClaudeCodeSystemPrompt(raw.mode);
+    if (!mode || typeof raw.body !== "string" || raw.body.length > MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS) continue;
+    const body = sanitizeClaudeCodeCustomSystemPrompt(raw.body) ?? "";
+    if (mode === "on" && !body) continue;
+    entries.push([id, { mode, body }]);
+  }
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 /**

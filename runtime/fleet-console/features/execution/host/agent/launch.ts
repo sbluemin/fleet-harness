@@ -12,11 +12,8 @@ import { ALL_SUBAGENTS, createSessionCaptureHookExec, injectAgentCliProfile, pre
 import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
 import type { AgentOptionsService } from "@fleet-console/infra";
 
-import {
-  resolveClaudeCodeCustomSystemPrompt,
-  resolveClaudeCodeDisabledAgents,
-  resolveClaudeCodeSystemPrompt,
-} from "../../../settings/host/execution-settings-routes.js";
+import { resolveClaudeCodeDisabledAgents } from "../../../settings/host/execution-settings-routes.js";
+import type { TheaterSystemPromptService } from "../../../settings/host/agent-options.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
 import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 import { buildConsoleCaptureHookCommand, buildConsoleHookEntry, buildConsoleTurnHookCommand, buildConsoleWorkspaceHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
@@ -51,6 +48,7 @@ export interface TerminalLaunchResolverDeps {
   /** 기동에 한 번 렌더해 둔 플러그인 트리. 런치는 이것을 쓰기만 한다. */
   readonly plugin: AgentCliPlugin;
   readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
+  readonly theaterSystemPrompts?: TheaterSystemPromptService;
   readonly agentRuntime?: FleetGatewayAgentRuntimeLifecycle;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly injectProfile?: typeof injectAgentCliProfile;
@@ -202,6 +200,8 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       hookEntry,
       plugin: deps.plugin,
       infraServices,
+      ...(deps.theaterSystemPrompts ? { theaterSystemPrompts: deps.theaterSystemPrompts } : {}),
+      theaterId: context?.theaterId,
       createSessionCaptureHookExec,
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
@@ -233,12 +233,14 @@ async function createAgentCliLaunchSpec(options: {
   readonly createSessionCaptureHookExec: typeof createSessionCaptureHookExec;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
   readonly cwd: string;
+  readonly theaterId?: string;
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
   readonly prompt?: string;
   readonly hookEntry: ConsoleHookCommandEntry;
   readonly plugin: AgentCliPlugin;
   readonly infraServices: { readonly agentOptionsService: AgentOptionsService };
+  readonly theaterSystemPrompts?: TheaterSystemPromptService;
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly bindWorkspaceHook?: (operationId: string, providerSessionId: string) => WorkspaceHookBinding;
@@ -295,14 +297,14 @@ async function createAgentCliLaunchSpec(options: {
       prompt: options.prompt,
       sessionName: options.sessionName,
     });
+    const theaterPrompt = options.theaterSystemPrompts?.read(options.theaterId);
     const injectedProfile = await options.injectProfile(profile, {
       plugin: options.plugin,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       workspaceHookExec: buildConsoleWorkspaceHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
-      // 사용자가 고른 값이며 새 세션에만 적용된다 — 실행 중인 세션은 자기 런치 구성을 유지한다.
-      claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.agentOptionsService.load()),
-      claudeCodeCustomSystemPrompt: resolveClaudeCodeCustomSystemPrompt(options.infraServices.agentOptionsService.load()),
+      // Theater 설정은 새 세션에만 적용된다 — 값이 없으면 Claude Code 기본값으로 연다.
+      ...(theaterPrompt ? { claudeCodeSystemPrompt: theaterPrompt.mode, claudeCodeCustomSystemPrompt: theaterPrompt.body } : {}),
       claudeCodeDisabledAgents: options.disableSubagents ? [ALL_SUBAGENTS] : resolveClaudeCodeDisabledAgents(options.infraServices.agentOptionsService.load()),
       ...(options.disableUserQuestions ? { claudeCodeDisabledTools: [USER_QUESTION_TOOL] } : {}),
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.

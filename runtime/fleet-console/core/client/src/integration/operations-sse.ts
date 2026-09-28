@@ -1,4 +1,4 @@
-import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
+import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, fetchTheaters, resumeConsoleSession } from "./api.js";
 import { refreshOperationArchive } from "./operation-archive.js";
 import { OPERATION_CLUSTER_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
@@ -6,7 +6,8 @@ import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
 import { applyDesktopShellUpdateSnapshot } from "./desktop-shell-update.js";
 import { forgetTriageOperation } from "../../../../features/workspace/client/canvas/triage-store.js";
-import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationRemoved, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, setConnectionState } from "./store.js";
+import { applyTheaterLifecycle } from "../../../../features/workspace/client/theater.js";
+import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationRemoved, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, hydrateTheaters, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -166,6 +167,20 @@ export function connectOperationsSse(): void {
     }
   });
 
+  // 다른 창·API·Console Use가 Theater를 등록·잊기·되돌린 순간. 누른 창은 스스로 다시 조회하지만 나머지 창은
+  // 이 프레임이 아니면 다음 재수화까지 옛 목록을 보인다.
+  for (const event of ["registered", "forgotten", "restored"] as const) {
+    source.addEventListener(`theater:${event}`, (e) => {
+      if (!isCurrentSource()) return;
+      try {
+        const data = JSON.parse((e as MessageEvent<string>).data) as { readonly theaterId?: unknown };
+        if (typeof data.theaterId === "string") applyTheaterLifecycle(event, data.theaterId);
+      } catch {
+        // ignore malformed SSE event
+      }
+    });
+  }
+
   source.addEventListener("update:available", () => {
     if (!isCurrentSource()) return;
     refreshObserverStatus();
@@ -268,11 +283,12 @@ export function connectOperationsSse(): void {
       if (retryGeneration !== connectionGeneration) return;
       setConnectionState("connecting");
       reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
-      // 그룹은 사건으로만 흐르므로 끊긴 사이의 변경은 재조회로 메운다 — 두 스냅숏이 다 온 뒤에야 스트림을 다시
+      // 그룹·Theater는 사건으로만 흐르므로 끊긴 사이의 변경은 재조회로 메운다 — 스냅숏이 모두 온 뒤에야 스트림을 다시
       // 연다(그룹 조회가 늦게 끝나면 새 스트림의 사건을 옛 스냅숏이 덮는다). 그룹 조회 실패는 목록만 유지한다.
-      void Promise.all([fetchOperations(), fetchGroups(null).catch(() => null)])
-        .then(([operations, groups]) => {
+      void Promise.all([fetchOperations(), fetchGroups(null).catch(() => null), fetchTheaters(null).catch(() => null)])
+        .then(([operations, groups, theaters]) => {
           if (retryGeneration !== connectionGeneration) return;
+          if (theaters) hydrateTheaters(theaters);
           if (groups) hydrateGroups(groups);
           hydrateOperations(operations);
         })
@@ -307,9 +323,10 @@ export function reconnectOperationsSseNow(): void {
   activeSource?.close();
   activeSource = null;
   const reconnectGeneration = ++connectionGeneration;
-  void Promise.all([fetchOperations(), fetchGroups(null).catch(() => null)])
-    .then(([operations, groups]) => {
+  void Promise.all([fetchOperations(), fetchGroups(null).catch(() => null), fetchTheaters(null).catch(() => null)])
+    .then(([operations, groups, theaters]) => {
       if (reconnectGeneration !== connectionGeneration) return;
+      if (theaters) hydrateTheaters(theaters);
       if (groups) hydrateGroups(groups);
       hydrateOperations(operations);
     })

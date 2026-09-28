@@ -15,11 +15,12 @@ import { createTerminalRuntime } from "../../../features/execution/host/terminal
 import { registerShellRoutes } from "../../../features/execution/host/terminal/shell.js";
 import { isClaudePathTrusted } from "../../../features/workspace/host/theaters/claude-trust.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
+import type { TheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
 
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist", "launchKey"] as const;
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
-export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("@fleet-console/sdk/plugin").FleetPluginHostCapabilities["storage"]) {
+export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize: Pick<import("../../../features/console-use/host/console-use.js").ConsoleUseActions, "rename" | "group">, quotaStorage: import("@fleet-console/sdk/plugin").FleetPluginHostCapabilities["storage"], theaterSystemPrompts: TheaterSystemPromptService) {
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir, ctx.legacyDataDir);
   const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels } = startAiGateway({
     ...ctx,
@@ -32,6 +33,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   });
   registerTerminalSettingsRoutes(ctx, {
     agentOptionsService: ctx.agentOptions,
+    theaterSystemPrompts,
     aiGatewayStore,
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     wireLogRuntime: wireLog,
@@ -68,6 +70,7 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   const agent = await registerAgentRoutes(ctx, runtime, {
     organize,
     agentOptionsService: ctx.agentOptions,
+    theaterSystemPrompts,
     isClaudePathTrusted,
     readAiGatewaySettings: aiGatewayStore.read,
     aiGateway: {

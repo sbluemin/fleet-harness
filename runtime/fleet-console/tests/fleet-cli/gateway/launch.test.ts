@@ -84,8 +84,10 @@ describe("launchClaudeGateway", () => {
     const [bin, args, options] = mockedSpawn.mock.calls[0]!;
     expect(bin).toBe(process.execPath);
     expect(args.slice(0, passthroughArgs.length)).toEqual(passthroughArgs);
-    // 이 런처도 Console과 같은 전역 옵션을 읽는다 — 설정 Off가 여기서도 프롬프트를 비운다.
-    expect(args[args.indexOf("--system-prompt") + 1]).toBe("");
+    // 독립 fleet CLI는 Theater 설정도 폐기된 전역 설정도 주입하지 않는다.
+    expect(args).not.toContain("--system-prompt");
+    expect(args).not.toContain("--append-system-prompt-file");
+    expect(args).not.toContain("--system-prompt-file");
     expect(args.indexOf("--plugin-url")).toBeGreaterThan(args.indexOf("hello"));
     expect(args.indexOf("--mcp-config")).toBeGreaterThan(args.indexOf("hello"));
     expect(options).toMatchObject({ cwd: process.cwd(), stdio: "inherit" });

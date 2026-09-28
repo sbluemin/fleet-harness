@@ -7,9 +7,11 @@ import { strFromU8, unzipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@fleet-console/agent-runtime/fleet";
+import type { AgentOptionsData } from "@fleet-console/infra";
 
 import { renderConsoleAgentCliPlugin } from "../features/execution/host/agent/host-hooks.js";
 import { createDefaultTerminalLaunchResolver as createDefaultTerminalLaunchResolverImpl } from "../features/execution/host/agent/launch.js";
+import { createTheaterSystemPromptService } from "../features/settings/host/agent-options.js";
 import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../features/execution/host/terminal/pty.js";
 import type { TerminalLaunchSpec } from "../features/execution/host/terminal/terminal-types.js";
 
@@ -51,19 +53,14 @@ function createDefaultTerminalLaunchResolver(
   return createDefaultTerminalLaunchResolverImpl({ aiGateway: DEFAULT_AI_GATEWAY, ...options });
 }
 
-// 전역 옵션을 고정 반환하는 InfraServices 스텁 —
-// launch resolver가 실제 ~/.fleet/settings.json을 읽지 않도록 테스트를 격리한다.
-function createFakeInfraServices(globalOptions: {
-  readonly agentIdleDormantMinutes?: number | null;
-  readonly claudeCodeSystemPrompt?: "on" | "off";
-} = {}) {
-  const data = { version: 1 as const, ...globalOptions };
+// Agent 옵션 스텁 — 런치가 실제 Console settings.json을 읽지 않도록 격리한다.
+function createFakeInfraServices(initial: AgentOptionsData = {}) {
+  let data = initial;
   return {
     authService: {},
     agentOptionsService: {
       load: () => data,
-      save: () => data,
-      update: () => data,
+      update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => (data = mutate(data)),
     },
   };
 }
@@ -89,18 +86,22 @@ describe("createDefaultTerminalLaunchResolver", () => {
       expect(options.plugin).toBe(launchPluginStub);
       return { ...profile, args: [...profile.args, "--fleet"] };
     });
+    const agentOptions = createFakeInfraServices();
+    const theaterSystemPrompts = createTheaterSystemPromptService(agentOptions.agentOptionsService, (id) => id === "theater-a");
+    theaterSystemPrompts.save("theater-a", { mode: "append", body: "Theater rules" });
     const resolve = createDefaultTerminalLaunchResolver({
       dataDir: launchDataDir,
+      theaterSystemPrompts,
       plugin: launchPluginStub,
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: runtime as never,
-      infraServices: createFakeInfraServices() as never,
+      infraServices: agentOptions as never,
       injectProfile: injectProfile as never,
       resolveProfile: resolveProfile as never,
     });
 
-    const spec = await resolve("/work/project", { sessionId: "session-a" });
+    const spec = await resolve("/work/project", { sessionId: "session-a", theaterId: "theater-a" });
 
     expect(spec).toMatchObject<TerminalLaunchSpec>({
       bin: "/bin/claude",
@@ -117,7 +118,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
       terminalName: "xterm-256color",
     });
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
-    expect(injectProfile).toHaveBeenCalledTimes(1);
+    expect(injectProfile).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ claudeCodeSystemPrompt: "append", claudeCodeCustomSystemPrompt: "Theater rules" }));
+    await resolve("/work/project", { sessionId: "session-b" });
+    expect(injectProfile.mock.calls[1]?.[1]).not.toHaveProperty("claudeCodeSystemPrompt");
     expect(events).toEqual([]);
   });
 
