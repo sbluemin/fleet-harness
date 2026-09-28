@@ -9,7 +9,31 @@ export interface ZenModeState {
   readonly sideBarRevealed: boolean;
 }
 
-let state: ZenModeState = { active: false, sideBarRevealed: false };
+export function readInitialZenMode(): boolean {
+  if (typeof window === "undefined" || !window.location) return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode") === "zen";
+  } catch {
+    return false;
+  }
+}
+
+export function consumeInitialZenModeParam(): void {
+  if (typeof window === "undefined" || !window.location || !window.history) return;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("mode")) {
+      url.searchParams.delete("mode");
+      const clean = url.pathname + (url.search ? url.search : "") + url.hash;
+      window.history.replaceState(window.history.state, "", clean);
+    }
+  } catch {
+    // URL 조작 실패 시 무시
+  }
+}
+
+let state: ZenModeState = { active: readInitialZenMode(), sideBarRevealed: false };
 const listeners = new Set<() => void>();
 let transitionActive = false;
 

@@ -218,4 +218,13 @@ describe("host picker surface", () => {
     expect(harness.trace).toEqual([`picker:open:${PICKER_OPEN_URL}`]);
     expect(harness.trace).not.toContain(`load:${LOCAL}/console/`);
   });
+
+  it("preserves safe mode parameter across remote host switch while stripping untrusted parameters", async () => {
+    const harness = createHarness();
+
+    await harness.bridge.open(REMOTE, `${REMOTE}/console/?mode=zen&evil=attack`);
+
+    expect(harness.trace).toContain(`load:${REMOTE}/console/?mode=zen`);
+    expect(harness.trace.some((entry) => entry.includes("evil"))).toBe(false);
+  });
 });

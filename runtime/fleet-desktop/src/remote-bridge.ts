@@ -134,7 +134,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
        */
       await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
       await verifyConsoleReachable(handoff.origin);
-      await deps.loadConsole(`${handoff.origin}${CONSOLE_PATH}`);
+      await deps.loadConsole(targetConsoleUrl(handoff.origin, url));
       if (attempt === opening) policy.commitConsoleOrigin();
     } catch (error) {
       if (attempt === opening) policy.cancelPendingConsoleOrigin();
@@ -189,7 +189,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     const policy = deps.policy();
     if (!policy) throw new Error("remote_bridge_no_window");
     // 정해져 온 화면이 있어도 그 콘솔의 `/console/` 안이어야 한다 — 아니면 기본 화면으로 연다.
-    const target = url !== undefined && consoleTarget(url, origin) === origin ? url : `${origin}${CONSOLE_PATH}`;
+    const target = targetConsoleUrl(origin, url);
     /**
      * 창이 실제로 도착한 뒤에 활성 origin을 옮긴다. 먼저 옮겨 두면 적재가 실패했을 때 정책은
      * 새 콘솔을, 창은 옛 콘솔을 가리킨 채 갈라지고, 그 창은 자기가 보고 있는 화면 안에서조차
@@ -252,7 +252,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
         // 이미 활성인 콘솔 안에서의 이동은 window policy의 몫이다.
         if (target === null || target === deps.policy()?.currentConsoleOrigin()) return;
         event.preventDefault();
-        void open(target).catch(report);
+        void open(target, url).catch(report);
       };
       contents.on("will-navigate", listener as never);
       attached.push({ contents, listener: listener as never });
@@ -344,6 +344,28 @@ export function consoleTarget(url: string, localOrigin: string | null): string |
     return localOrigin === null ? null : parsed.origin;
   } catch {
     return null;
+  }
+}
+
+/**
+ * 콘솔 전환 시 이동할 안전한 대상 URL.
+ * 원격 또는 로컬 콘솔의 경로(/console/)를 보장하고, 전환 전 화면의 상태(Zen 모드, 설정 섹션 등)를
+ * 신뢰할 수 있는 쿼리 파라미터만 골라 전달한다.
+ */
+export function targetConsoleUrl(origin: string, requestedUrl?: string): string {
+  const base = `${origin}${CONSOLE_PATH}`;
+  if (!requestedUrl) return base;
+  try {
+    const parsed = new URL(requestedUrl);
+    if (!parsed.pathname.startsWith(CONSOLE_PATH)) return base;
+    const target = new URL(parsed.pathname, `${origin}/`);
+    const mode = parsed.searchParams.get("mode");
+    if (mode === "zen") target.searchParams.set("mode", "zen");
+    const section = parsed.searchParams.get("section");
+    if (section && /^[a-z0-9_-]+$/i.test(section)) target.searchParams.set("section", section);
+    return target.toString();
+  } catch {
+    return base;
   }
 }
 

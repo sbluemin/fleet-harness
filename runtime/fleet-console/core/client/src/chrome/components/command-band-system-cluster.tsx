@@ -19,6 +19,7 @@ import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integratio
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
 import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
 import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/workspace/client/canvas/canvas-context-menu.js";
+import { isZenMode } from "../../integration/zen-mode.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 
@@ -78,6 +79,8 @@ export interface HostPickerContext {
   readonly at: string | null;
   /** 판을 매달 칩의 자리. 없거나 말이 안 되면 null이고, 판은 창 모서리에 선다. */
   readonly anchor: HostPickerAnchor | null;
+  /** 이 목록을 부른 콘솔의 전환 직전 모드. */
+  readonly mode: "zen" | null;
 }
 
 /**
@@ -92,6 +95,7 @@ export function readHostPickerSurface(search: string): HostPickerContext | null 
   return {
     at: at !== null && isConsoleOriginShape(at) ? at : null,
     anchor: parsePickerAnchor(params.get(PICKER_ANCHOR_PARAM)),
+    mode: params.get("mode") === "zen" ? "zen" : null,
   };
 }
 
@@ -123,11 +127,12 @@ function isConsoleOriginShape(origin: string): boolean {
   }
 }
 
-function pickerUrl(homeOrigin: string, surface: string, at?: string, anchor?: string): string {
+function pickerUrl(homeOrigin: string, surface: string, at?: string, anchor?: string, mode?: string): string {
   const url = new URL("/console/", `${homeOrigin}/`);
   url.searchParams.set(PICKER_SURFACE_PARAM, surface);
   if (at !== undefined) url.searchParams.set(PICKER_AT_PARAM, at);
   if (anchor !== undefined) url.searchParams.set(PICKER_ANCHOR_PARAM, anchor);
+  if (mode === "zen") url.searchParams.set("mode", "zen");
   return url.toString();
 }
 
@@ -167,6 +172,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   const navigate = useNavigate();
   /** 집이 펼친 목록으로 서빙된 화면. 칩은 없고, 판은 처음부터 열려 있다. */
   const inPicker = picker !== undefined;
+  const currentMode = picker?.mode ?? (isZenMode() ? "zen" : null);
   const [open, setOpen] = useState(inPicker);
   const [addOpen, setAddOpen] = useState(false);
   const [local, setLocal] = useState<readonly LocalConsole[]>([]);
@@ -388,7 +394,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   useEffect(() => {
     if (pickerHome === null || !open) return;
     setOpen(false);
-    location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current)));
+    location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current), isZenMode() ? "zen" : undefined));
   }, [pickerHome, open, currentOrigin]);
 
   // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
@@ -413,7 +419,11 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   };
   const go = (origin: string) => {
     setOpen(false);
-    if (origin !== currentOrigin) location.assign(new URL("/console/", `${origin}/`).toString());
+    if (origin !== currentOrigin) {
+      const url = new URL("/console/", `${origin}/`);
+      if (currentMode === "zen") url.searchParams.set("mode", "zen");
+      location.assign(url.toString());
+    }
   };
 
   return (
@@ -432,7 +442,10 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
           aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
           data-tip={chipLabel}
           onClick={() => {
-            if (pickerHome !== null) { location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current))); return; }
+            if (pickerHome !== null) {
+              location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current), isZenMode() ? "zen" : undefined));
+              return;
+            }
             setOpen((previous) => !previous);
           }}
         >

@@ -130,9 +130,11 @@ export function useZenDesktopFullscreen(zenActive: boolean): void {
   // 전환 장면의 창 단계 — 셸에게 시키고 완료 알림(또는 한도)까지 기다린다.
   useEffect(() => {
     if (!isDesktopShell()) return;
-    // 새로 뜬 화면은 Zen이 꺼진 채 시작한다. Zen 도중 새로 고쳤다면 셸에는 Zen 몫의 전체화면이 남아 있으므로
-    // 한 번 풀어 달라고 한다 — 셸은 자기 몫만 풀고, 사용자가 켠 전체화면은 건드리지 않는다.
-    void requestDesktopWindowCommand("leave-fullscreen");
+    // 새로 뜬 화면이 Zen 모드가 아닐 때만 셸에 남아 있을 수 있는 전체화면을 풀어 달라고 한다.
+    // 호스트 전환 등으로 Zen 모드를 유지하며 시작한 화면은 전체화면을 풀지 않는다.
+    if (!getZenModeState().active) {
+      void requestDesktopWindowCommand("leave-fullscreen");
+    }
     let cancelWait: (() => void) | null = null;
     const waitForWindow = (target: boolean) => new Promise<void>((resolve) => {
       let done = false;
