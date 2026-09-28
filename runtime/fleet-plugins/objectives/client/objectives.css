@@ -112,12 +112,6 @@
 .objectives-section-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-fast), color var(--duration-fast); }
 .objectives-section-chev svg { width: 11px; height: 11px; }
 /* 결정 요청 요약 — 목록 위 한 줄. 요청 수 · 이 범위 밖 수 · 「다음」. 행 표식과 같은 brass 말풍선 문법이다. */
-.objectives-requests { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; padding: 5px 10px; border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 10%, transparent); color: var(--brass-ink); font-size: var(--t-sm); }
-.objectives-requests svg { flex: none; width: 14px; height: 14px; }
-.objectives-requests-outside { color: var(--text-secondary); }
-.objectives-requests-next { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; color: var(--brass-ink); cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-.objectives-requests-next:hover { color: var(--text-primary); }
-.objectives-requests-next:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 /* 구역 머리 — 상태가 정한 구역(검토 대기 · 진행 중 · 시작 전 · 목표 밖 · 완료됨). 글자와 가는 선만, 상자·띠는 없다. */
 .objectives-zone { display: flex; flex-direction: column; gap: 5px; }
 .objectives-zone + .objectives-zone { margin-top: 12px; }
@@ -1329,7 +1323,34 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 }
 
 /* 결정 요청 — 하단 띠 위의 칸. 전체 테두리와 옅은 brass 면으로 서고 왼쪽 띠는 쓰지 않는다. 질문이 많으면 칸 안에서 스크롤한다. */
-.objectives-decision-request { display: flex; flex-direction: column; gap: 8px; margin: 4px 10px 8px; padding: 10px 12px 10px; border: 1px solid color-mix(in oklch, var(--brass) 38%, transparent); border-radius: var(--radius-md); background: color-mix(in oklch, var(--brass) 6%, var(--surface-panel)); }
+.objectives-decision-request { position: relative; display: flex; flex-direction: column; gap: 8px; margin: 4px 10px 8px; padding: 10px 12px 10px; border: 1px solid color-mix(in oklch, var(--brass) 38%, transparent); border-radius: var(--radius-md); background: color-mix(in oklch, var(--brass) 6%, var(--surface-panel)); }
+/* 결정 요청 궤도 — 요청 구획의 카드와 상세의 요청 칸 윤곽을 brass 호 하나가 3.2s 에 한 바퀴 돈다. 캔버스의 지휘관 패널 궤도와 같은
+   움직임이라 "사람의 결정을 기다린다"가 어느 표면에서나 한 모양으로 읽힌다(펄스는 Console Use, 맥동은 입력 대기, 흐름은 작업 중).
+   무한 모션은 진행 중 신호에만 허용된다 — 요청은 답·철회로 사라지고, 그 순간 카드가 구획을 떠나거나 칸이 내려가 테도 함께 걷힌다.
+   카드의 ::before 는 끌기 삽입 표시가 먼저 쓴다. */
+@property --objectives-orbit-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.objectives-zone.is-request .objectives-objective:not(.is-insert-before, .is-lifted)::before,
+.objectives-decision-request::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(from var(--objectives-orbit-angle), transparent 0 62%, color-mix(in oklch, var(--brass) 30%, transparent) 74%, var(--brass) 86%, transparent 90%);
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  mask-composite: exclude;
+  animation: objectives-orbit 3.2s linear infinite, objectives-orbit-in 420ms ease-out both;
+}
+@keyframes objectives-orbit { to { --objectives-orbit-angle: 360deg; } }
+@keyframes objectives-orbit-in { from { opacity: 0; } }
+/* 감속 모션 — 호가 멈춘 자리 대신 정지한 brass 테 한 줄로 선다. 무엇이 요청인지는 남는다. */
+@media (prefers-reduced-motion: reduce) {
+  .objectives-zone.is-request .objectives-objective:not(.is-insert-before, .is-lifted)::before,
+  .objectives-decision-request::before { animation: none; background: var(--brass); }
+}
 .objectives-decision-head { display: flex; align-items: center; gap: 6px; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--brass-ink); }
 .objectives-decision-head time, .objectives-decision-n { font-family: var(--font-mono); font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-n { margin-left: auto; }

@@ -202,6 +202,8 @@ function inScope(objective: Objective, list: ListId, dueFilter: DueFilter): bool
   // 지우거나 합친 목표는 「정리됨」에만 선다.
   if (list === "tidied") return !!objective.removed;
   if (objective.removed) return false;
+  // 결정 요청은 범위와 무관하게 맨 위 「결정 요청」 구획에 선다 — 사람의 답을 기다리는 목표가 범위 낱말 때문에 목록에서 사라지지 않게.
+  if (list !== "outside" && objective.enlisted && hasDecisionRequest(objective)) return true;
   if (list === "today") return objective.today;
   if (list === "due") return !!objective.dueDate && (dueFilter === "all" || dueBucket(objective.dueDate) === dueFilter);
   if (list === "agent") return !!objective.addedBy && objective.enlisted;
@@ -401,9 +403,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const detailRef = useRef<HTMLElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
   const objectivesRef = useRef<HTMLDivElement | null>(null);
-  // 결정 요청은 범위와 무관하게 전부 센다 — 요약 줄·「다음」·상세 머리의 「다른 요청」이 같은 줄을 돈다.
+  // 결정 요청은 범위와 무관하게 전부 센다 — 상세 머리의 「다른 요청」이 이 줄을 돈다.
   const requests = useMemo(() => state.objectives.filter(hasDecisionRequest).sort(byRequestTime), [state.objectives]);
-  const requestsOutside = requests.filter((objective) => !inList(objective)).length;
   /** 이 목표가 서는 구역의 접힘 key — 목록의 구역 규칙(zoneOf)과 같다. */
   const sectionKeyOf = (objective: Objective): string => zoneKey(zoneOf(objective));
   const unfold = (collapsedNow: Readonly<Record<string, boolean>>, key: string) => (collapsedNow[key] ? { ...collapsedNow, [key]: false } : collapsedNow);
@@ -425,7 +426,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   };
   const scrollRowSoon = (objectiveId: string) => requestAnimationFrame(() => requestAnimationFrame(() => scrollRowIntoList(objectiveId)));
   /**
-   * 「다음」·「다른 요청」 — 요청이 선 차례대로 다음 목표를 고른다(고른 목표가 요청이 아니면 첫 요청). 대상이 지금 범위 밖이면 「모두」로
+   * 「다른 요청」 — 요청이 선 차례대로 다음 목표를 고른다(고른 목표가 요청이 아니면 첫 요청). 대상이 지금 범위 밖이면 「모두」로
    * 바꾸고, 대상이 든 구획이 접혀 있으면 펼친 뒤 목록 칸 안에서 짚는다. 누를 때마다 다음 요청으로 돌고, 끝에서 처음으로 돌아간다.
    */
   const openNextRequest = () => {
@@ -783,15 +784,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
             {(["all", "overdue", "today", "week", "later"] as const).map((bucket) => (
               <button key={bucket} type="button" className="objectives-chip" aria-pressed={dueFilter === bucket} onClick={() => setDueFilter(bucket)}>{t(bucket === "all" ? "objectives.due.all" : bucket === "overdue" ? "objectives.due.overdue" : bucket === "today" ? "objectives.due.today" : bucket === "week" ? "objectives.due.week" : "objectives.due.later")}</button>
             ))}
-          </div>
-        ) : null}
-        {/* 결정 요청 요약 — 범위·스크롤·구획 접힘과 무관하게 목록 위에 늘 선다. 요청이 없으면 줄도 없다. */}
-        {requests.length ? (
-          <div className="objectives-requests">
-            <RequestGlyph />
-            <span>{t("objectives.requests.summary", { count: requests.length })}</span>
-            {requestsOutside ? <span className="objectives-requests-outside">{t("objectives.requests.outside", { count: requestsOutside })}</span> : null}
-            <button type="button" className="objectives-requests-next" title={t("objectives.requests.nextTip")} onClick={openNextRequest}>{t("objectives.requests.next")}</button>
           </div>
         ) : null}
         <div ref={objectivesRef} className="objectives-objectives" role="listbox" aria-label={listTitle} data-objectives-tour="list">

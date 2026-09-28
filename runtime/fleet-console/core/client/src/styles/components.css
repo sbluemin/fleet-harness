@@ -5641,8 +5641,65 @@ body[data-companion-resizing="true"] .canvas-operation {
   animation: panel-focus-arrive var(--duration-slow) var(--ease-spring) 1;
 }
 
-.canvas-operation.is-top-edge {
+/* 흐름 안 캡션 — 창 꼭대기가 루트의 top 이다. 덱 타일은 포커스 링을 받지 않지만, 같은 꼭대기를 쓰는 결정 요청 궤도·Console Use 링이
+   카드 캡션을 넘어 허공에 서지 않게 함께 둔다. */
+.canvas-operation.is-top-edge,
+.canvas-operation.is-deck-tile {
   --focus-ring-top: -1px;
+}
+
+/* 결정 요청 궤도 — 이 Operation 이 뿌리인 묶음(지휘관)에 사람의 답을 기다리는 결정 요청이 선 동안, 캡션을 포함한 창 전체를
+   brass 호 하나가 4s 에 한 바퀴 돈다. 옅은 테가 늘 깔려 호가 지나가지 않는 변도 요청을 말한다. Objectives 표면의 요청 카드
+   궤도와 같은 움직임이라 "사람의 결정을 기다린다"가 한 모양으로 읽힌다 — 펄스(Console Use)·맥동(입력 대기)·흐름(작업 중)과
+   겹치지 않는다. 링의 꼭대기는 포커스 도착 링과 같은 --focus-ring-top 이다(떠 있는 캡션은 루트 박스 밖 -32px).
+   프레임의 ::before(Console Use)·::after(포커스 도착)는 이미 주인이 있어 요소 하나를 따로 둔다. z 는 캡션(7) 위다.
+   무한 모션은 진행 중 신호에만 허용된다 — 답·철회·대체로 요청이 사라지면 요소가 내려가 궤도도 걷힌다. */
+@property --canvas-decision-orbit-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.canvas-operation-decision-orbit {
+  position: absolute;
+  top: calc(var(--focus-ring-top, -33px) - 1px);
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  z-index: 8;
+  border-radius: calc(var(--radius-md) + 1px);
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--canvas-decision-orbit-angle),
+    color-mix(in oklch, var(--brass) 22%, transparent) 0deg,
+    color-mix(in oklch, var(--brass) 22%, transparent) 250deg,
+    color-mix(in oklch, var(--brass) 45%, transparent) 290deg,
+    var(--brass) 318deg,
+    color-mix(in oklch, var(--brass) 22%, transparent) 326deg
+  );
+  /* 테두리만 남기는 mask 합성 — ultracode 무장 외곽과 같다. black 은 칠이 아니라 스텐실이다. */
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  mask-composite: exclude;
+  animation: canvas-decision-orbit 4s linear infinite, canvas-decision-orbit-in 420ms ease-out both;
+}
+
+@keyframes canvas-decision-orbit {
+  to { --canvas-decision-orbit-angle: 360deg; }
+}
+
+@keyframes canvas-decision-orbit-in {
+  from { opacity: 0; }
+}
+
+/* 감속 모션 — 호 대신 정지한 brass 테가 창을 두른다. */
+@media (prefers-reduced-motion: reduce) {
+  .canvas-operation-decision-orbit {
+    animation: none;
+    background: color-mix(in oklch, var(--brass) 70%, transparent);
+  }
 }
 
 /* 에이전트가 Console Use·Computer Use·Browser 로 이 Operation 을 쓰는 동안 — 캡션 레일이 그 채널 색으로 켜져 turn 과 같은
@@ -18393,11 +18450,12 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 /* 패널 — 프레임은 자기 animation(트리아지 대기·도착·착지)과 겹겹의 유리 배경을 갖고 있어 그 위에 얹을 수 없다.
    링은 의사요소가 두른다: 1px 선이 자리잡으며(바깥 8px → 2px) 함께 호흡하고, 큰 요소라 링은 10px 까지 퍼진다.
+   떠 있는 캡션은 루트 박스 밖(-32px)에 서므로 링의 윗변은 포커스 도착 링과 같은 --focus-ring-top 을 따라 캡션까지 두른다.
    안은 비어 있어 내용 위에 아무것도 칠하지 않는다. */
 .canvas-operation.is-console-use-wrapped::before {
   content: "";
   position: absolute;
-  inset: -2px;
+  inset: calc(var(--focus-ring-top, -33px) - 1px) -2px -2px;
   border-radius: inherit;
   border: 1px solid var(--console-use-wrap);
   pointer-events: none;
@@ -18412,8 +18470,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   100% { box-shadow: 0 0 0 10px color-mix(in oklch, var(--console-use-wrap) 0%, transparent); }
 }
 @keyframes console-use-panel-settle {
-  from { inset: -8px; border-color: color-mix(in oklch, var(--console-use-wrap) 25%, transparent); }
-  to { inset: -2px; }
+  from { inset: calc(var(--focus-ring-top, -33px) - 7px) -8px -8px; border-color: color-mix(in oklch, var(--console-use-wrap) 25%, transparent); }
+  to { inset: calc(var(--focus-ring-top, -33px) - 1px) -2px -2px; }
 }
 @keyframes console-use-panel-breathe {
   0%, 100% { border-color: color-mix(in oklch, var(--console-use-wrap) 85%, transparent); }
