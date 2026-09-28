@@ -184,12 +184,14 @@ export function mountReadingInto(
     const deleteButton = target.closest<HTMLButtonElement>("[data-entry-stage-delete]");
     if (deleteButton && currentEntryId) {
       event.preventDefault();
+      const errorLabel = readContainer.querySelector<HTMLElement>("[data-entry-delete-error]");
+      if (errorLabel) errorLabel.textContent = "";
       deleteButton.disabled = true;
       void stageEntryDeletion(liveOpts.theaterId, currentEntryId).then(({ patchId }) => {
         liveOpts.onPatchOpen?.(patchId);
       }).catch((error: unknown) => {
         deleteButton.disabled = false;
-        deleteButton.insertAdjacentText("afterend", ` ${error instanceof Error ? error.message : String(error)}`);
+        if (errorLabel) errorLabel.textContent = error instanceof Error ? error.message : String(error);
       });
       return;
     }
@@ -599,6 +601,7 @@ export function mountReadingInto(
             <h1>${escapeHtml(entry.frontmatter.title)}</h1>
             ${renderMetaChips(entry.frontmatter, { interactiveTags: true })}
             <button type="button" class="queue-back-btn" data-entry-stage-delete>${escapeHtml(t("codex.reading.proposeDelete"))}</button>
+            <span data-entry-delete-error role="alert"></span>
           </header>
           <div class="markdown-body" id="codex-reader-body">
             ${markdownHtml}

@@ -536,6 +536,13 @@ async function validatePatchBase(patch: Patch, meta: PatchMeta | undefined, path
       `[fleet-wiki] approve stale base_hash for ${wikiId}: expected ${meta.baseHash}, got ${currentMarkdown ? computeContentHash(currentMarkdown) : "missing"}`,
     );
   }
+  if (patch.frontmatter.op === "delete_wiki") {
+    const claimsFile = getClaimsFile(paths, wikiId);
+    const currentClaims = await pathExists(claimsFile) ? await readPatchFile(claimsFile) : undefined;
+    if (currentClaims !== parseDeletionSnapshot(patch.body).claims) {
+      throw new Error(`[fleet-wiki] approve stale base_hash for ${wikiId}: claims sidecar changed`);
+    }
+  }
 }
 
 async function withApprovalLock<T>(paths: MemoryPaths, patch: Patch, action: () => Promise<T>): Promise<T> {

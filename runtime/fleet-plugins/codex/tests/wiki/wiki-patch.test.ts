@@ -74,6 +74,11 @@ describe("wiki patch queue", () => {
     await writeFile(path.join(paths.wikiDir, ".claims", "gamma.json"), '{"entryId":"gamma","claims":[]}');
     const { patchIds: [gammaPatch] } = await stageWikiDeletions(["gamma"], "obsolete", paths);
     expect(await pathExists(path.join(paths.rawDir, "exclusive.md"))).toBe(true);
+    const gammaClaimsFile = path.join(paths.wikiDir, ".claims", "gamma.json");
+    await writeFile(gammaClaimsFile, '{"entryId":"gamma","claims":[],"updated":"after staging"}');
+    await expect(approvePatch(gammaPatch!, paths)).rejects.toThrow(/stale base_hash.*claims sidecar changed/);
+    expect(await pathExists(path.join(paths.wikiDir, "gamma.md"))).toBe(true);
+    await writeFile(gammaClaimsFile, '{"entryId":"gamma","claims":[]}');
     await approvePatch(gammaPatch!, paths);
     expect(await pathExists(path.join(paths.rawDir, "exclusive.md"))).toBe(false);
     expect(await pathExists(path.join(paths.wikiDir, ".claims", "gamma.json"))).toBe(false);
