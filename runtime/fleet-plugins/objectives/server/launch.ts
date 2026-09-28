@@ -202,6 +202,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
   // 최초 기동은 호스트의 영속 launchKey 와 같은 UUID 에 묶는다. 실패 후 재시도는 기존 Operation 을 되찾는다.
   const ensureCommander = async (objectiveId: string): Promise<void> => {
+    // 에이전트가 지운 목표는 사람이 되돌리기 전에는 기동하지 않는다.
+    if (store.find(objectiveId)?.removed) throw new ObjectiveStoreError("objective_removed");
     const pendingCommander = store.pending(objectiveId);
     const existing = referenceNode(objectiveId);
     const key = `objectives.commander:${objectiveId}`;

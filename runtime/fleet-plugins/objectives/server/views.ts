@@ -100,6 +100,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
       handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
       addedBy: objective.addedBy,
+      removed: objective.removed, merged: objective.merged,
     }),
     graph: graph(objective),
     ...withoutEmpty({
@@ -136,6 +137,9 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null,
     ...withoutEmpty({
       commenced: objective.commenced,
+      // 에이전트가 지웠거나 합친 목표 — 목록에는 filter all 에서만 선다.
+      removed: !!objective.removed,
+      mergedInto: objective.removed?.mergedInto?.id ?? null,
       brief: objective.note.length > ROW_BRIEF ? `${objective.note.slice(0, ROW_BRIEF)}…` : objective.note,
       briefTruncated: objective.note.length > ROW_BRIEF,
       criteria: objective.criteria.map((criterion) => criterion.text),

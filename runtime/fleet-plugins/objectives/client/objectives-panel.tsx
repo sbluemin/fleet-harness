@@ -188,6 +188,8 @@ function dueBucket(due: string | null): DueFilter | null {
 }
 /** 범위 낱말과 기한 세부가 이 목표를 보이는가. */
 function inScope(objective: Objective, list: ListId, dueFilter: DueFilter): boolean {
+  // 에이전트가 지우거나 합친 목표는 보통 범위에 서지 않는다.
+  if (objective.removed) return false;
   if (list === "today") return objective.today;
   if (list === "due") return !!objective.dueDate && (dueFilter === "all" || dueBucket(objective.dueDate) === dueFilter);
   if (list === "agent") return !!objective.addedBy && objective.enlisted;
@@ -368,7 +370,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     }
     return out;
   }, [list, visible, state.groups]);
-  const openCount = (predicate: (objective: Objective) => boolean) => state.objectives.filter((objective) => !objective.done && predicate(objective)).length;
+  const openCount = (predicate: (objective: Objective) => boolean) => state.objectives.filter((objective) => !objective.done && !objective.removed && predicate(objective)).length;
   const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? null : null;
   const detailRef = useRef<HTMLElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);

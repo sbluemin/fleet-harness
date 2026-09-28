@@ -371,7 +371,32 @@ export interface StoredObjective {
   readonly enlisted?: boolean;
   /** 개시했다 — 구상만 한 목표는 아직 시작 전이다. */
   readonly commenced?: true;
+  /**
+   * 에이전트가 Console Use 로 지웠다(합쳤으면 mergedInto 가 받은 목표). 기동 전 목표에만 붙고 레코드는 그대로 남아, 사람이 보드에서
+   * 되돌리면 이 표시만 없어진다. 사람이 지우면 지금처럼 곧바로 사라진다.
+   */
+  readonly removed?: StoredRemoval;
+  /** 이 목표로 합쳐 온 목표 — 되돌리면 덧붙인 브리핑 구간과 옮긴 기준을 걷어 낸다. */
+  readonly merged?: readonly StoredMerge[];
   readonly missions: readonly StoredMission[];
+}
+
+export interface StoredRemoval {
+  readonly at: number;
+  /** 지운 에이전트 Operation. */
+  readonly by: string;
+  readonly mergedInto?: string;
+}
+
+export interface StoredMerge {
+  readonly sourceId: string;
+  readonly title: string;
+  readonly at: number;
+  readonly by: string;
+  /** 받은 목표의 브리핑 끝에 덧붙인 구간 그대로 — 되돌릴 때 이 구간을 찾아 걷어 낸다. */
+  readonly noteBlock: string;
+  /** 옮겨 온 기준의 id — 받은 목표에 이미 같은 문장이 있던 기준은 옮기지 않아 여기 없다. */
+  readonly criteriaIds: readonly string[];
 }
 
 /**
@@ -473,6 +498,10 @@ export interface Objective {
   readonly enlisted: boolean;
   /** 개시했다 — 목록의 「진행 중」 구역. 구상만 했거나 보드에서 막 만든 목표는 「시작 전」이다. */
   readonly commenced: boolean;
+  /** 에이전트가 지웠거나 다른 목표로 합쳤다 — 보드의 보통 구역에서 빠지고, 사람이 되돌릴 수 있다. */
+  readonly removed: { readonly at: number; readonly by: { readonly operationId: string; readonly title: string | null }; readonly mergedInto: { readonly id: string; readonly title: string | null } | null } | null;
+  /** 이 목표로 합쳐 온 목표. */
+  readonly merged: readonly { readonly sourceId: string; readonly title: string; readonly at: number; readonly by: { readonly operationId: string; readonly title: string | null } }[];
 }
 
 /** 보드에서 만든 목표의 지휘관 기본 설정 — 목록은 이와 다를 때만 시작 전 목표의 예정 설정을 보인다. */

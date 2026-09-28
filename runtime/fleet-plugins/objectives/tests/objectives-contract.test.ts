@@ -776,8 +776,8 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual([id]);
   });
 
-  it("lets Console Use tell objectives without an Operation from launched ones and conversation sessions, including completed ones", async () => {
-    const { launch, add, workspace, consoleTool } = harness();
+  it("lets Console Use tell objectives without an Operation apart and merge or remove only those, keeping briefs and criteria, and lets the person restore them", async () => {
+    const { store, launch, add, workspace, consoleTool, operations, route } = harness();
     const caller = add("tidy-caller", { title: "Tidy caller" });
     const use = async (args: Record<string, unknown>) => (await consoleTool.execute(args, { cwd: workspace, caller: { kind: "operation" as const, operationId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
     const waiting = await launch.create({ theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
@@ -799,6 +799,45 @@ describe("Objectives contract", () => {
     await launch.complete(started.id);
     expect(byId(await rows()).has(started.id)).toBe(false);
     expect(byId(await rows("all")).get(started.id)).toMatchObject({ done: true });
+
+    const duplicate = await launch.create({ theaterId: "t1", title: "Duplicate", groupId: null, note: "dup brief", criteria: ["two", "three"] });
+    const planned = await launch.create({ theaterId: "t1", title: "Planned by hand", groupId: null, missions: [{ text: "keep me" }] });
+    const stale = await launch.create({ theaterId: "t1", title: "Stale", groupId: null });
+    const before = store.find(waiting.id)!;
+    // Operation 이 있는 목표·대화 세션·옮길 수 없는 것을 가진 원본이 하나라도 끼면 아무것도 바꾸지 않고 이유를 하나씩 댄다.
+    const refused = await use({ merge: { into: waiting.id, from: [duplicate.id, started.id, caller.id, planned.id] } });
+    expect(refused.isError).toBe(true);
+    expect(refused.structuredContent).toMatchObject({ error: "tidy_refused", refusals: expect.arrayContaining([
+      expect.objectContaining({ objectiveId: started.id, reason: "has_operation" }),
+      expect.objectContaining({ objectiveId: caller.id, reason: "conversation_session" }),
+      expect.objectContaining({ objectiveId: planned.id, reason: "merge_would_drop", kinds: ["missions"] }),
+    ]) });
+    expect(store.find(waiting.id)).toMatchObject({ note: before.note, removed: null });
+    expect(store.find(duplicate.id)!.removed).toBeNull();
+    expect((await use({ remove: [caller.id] })).structuredContent).toMatchObject({ error: "tidy_refused" });
+    expect(operations.has(caller.id)).toBe(true);
+
+    // 합치면 원본의 브리핑과 기준이 받는 목표로 옮겨 가고(같은 문장은 한 번), 원본은 지운 표시로 남아 기동되지 않는다.
+    expect((await use({ merge: { into: waiting.id, from: [duplicate.id] } })).isError).toBe(false);
+    expect(store.find(waiting.id)!.note).toContain("dup brief");
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two", "three"]);
+    expect(store.find(duplicate.id)!.removed).toMatchObject({ by: { operationId: caller.id }, mergedInto: { id: waiting.id } });
+    expect(byId(await rows()).has(duplicate.id)).toBe(false);
+    expect(byId(await rows("all")).get(duplicate.id)).toMatchObject({ removed: true, mergedInto: waiting.id });
+    await expect(launch.requestPlan(duplicate.id)).rejects.toMatchObject({ code: "objective_removed" });
+    expect((await use({ remove: [stale.id] })).isError).toBe(false);
+    // 저장 무결성 — 다시 읽어도 지운 표시와 합친 기록이 그대로다.
+    const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
+    expect(reloaded.find(stale.id)!.removed).not.toBeNull();
+    expect(reloaded.find(waiting.id)!.merged.map((entry) => entry.sourceId)).toEqual([duplicate.id]);
+
+    // 사람이 보드에서 되돌린다 — 합친 원본을 되돌리면 받은 목표에서 덧붙인 구간과 옮긴 기준이 걷힌다.
+    expect((await route("objective/restore", { objectiveId: stale.id })).status).toBe(200);
+    expect(store.find(stale.id)!.removed).toBeNull();
+    expect((await route("objective/restore", { objectiveId: duplicate.id })).status).toBe(200);
+    expect(store.find(duplicate.id)).toMatchObject({ removed: null, note: "dup brief" });
+    expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [] });
+    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
   });
 
   it("shows every agent Operation created elsewhere as an objective, but not member or plugin Operations", async () => {
