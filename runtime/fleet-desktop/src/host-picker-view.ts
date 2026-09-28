@@ -24,9 +24,15 @@ export interface HostPickerViewDeps {
 }
 
 export interface HostPickerView {
-  open(url: string): Promise<void>;
+  /** `generation`은 여는 순간의 전환 세대다. 그 뒤 전환이 시작되면 이 덮개의 선택은 받지 않는다. */
+  open(url: string, generation: number): Promise<void>;
   close(): void;
   isOpen(): boolean;
+  /**
+   * 이 contents가 지금 떠 있는 바로 그 덮개이고, 연 뒤로 전환이 없었는가. 덮개는 열 때마다 새 뷰라
+   * contents가 곧 인스턴스다 — 닫힌 덮개나 다른 뷰가 같은 URL로 항해해도 선택이 되지 않는다.
+   */
+  isCurrent(contents: unknown, generation: number): boolean;
 }
 
 /**
@@ -38,6 +44,7 @@ const REOPEN_COOLDOWN_MS = 400;
 interface OpenPicker {
   readonly view: WebContentsView;
   readonly onResize: () => void;
+  readonly generation: number;
 }
 
 export function createHostPickerView(deps: HostPickerViewDeps): HostPickerView {
@@ -56,15 +63,17 @@ export function createHostPickerView(deps: HostPickerViewDeps): HostPickerView {
     try { if (shell && !shell.isDestroyed()) shell.stack.removePicker(open.view); } catch { /* 창이 먼저 닫힌 경우. */ }
     try { open.view.webContents.close(); } catch { /* 이미 죽은 렌더러. */ }
     // 덮개가 걷히면 손은 원래 보던 콘솔로 돌아가야 한다.
-    try { if (shell && !shell.isDestroyed()) shell.consoleContents.focus(); } catch { /* 창이 없으면 돌려줄 포커스도 없다. */ }
+    try { if (shell && !shell.isDestroyed()) shell.activeContents().focus(); } catch { /* 창이 없으면 돌려줄 포커스도 없다. */ }
   }
 
   return {
     isOpen: () => current !== null,
 
+    isCurrent: (contents, generation) => current !== null && current.view.webContents === contents && current.generation === generation,
+
     close,
 
-    async open(url: string): Promise<void> {
+    async open(url: string, generation: number): Promise<void> {
       const shell = deps.shell();
       if (!shell || shell.isDestroyed()) throw new Error("remote_bridge_no_picker");
       if (current) {
@@ -85,7 +94,7 @@ export function createHostPickerView(deps: HostPickerViewDeps): HostPickerView {
         view.setBounds(target.stack.layoutConsole());
       };
       const onResize = (): void => applyBounds();
-      const open: OpenPicker = { view, onResize };
+      const open: OpenPicker = { view, onResize, generation };
       current = open;
 
       shell.stack.presentPicker(view);

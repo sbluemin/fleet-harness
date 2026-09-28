@@ -10,10 +10,14 @@
  *
  * 모두 정렬은 Theater별 CanvasState(스냅 유지)에 살아 세션 표식이 필요 없다. 옛 formationTheaters
  * 필드가 저장값에 남아 있어도 읽을 때 무시한다.
+ *
+ * Desktop 창 안에서 다른 콘솔로 건너갈 때는 떠나는 화면이 이 값을 표현 상태로 실어 보낸다
+ * (remote-access presentation-carry). 도착한 콘솔은 자기 기억 대신 방금 보던 모드로 선다.
  */
+import { CANVAS_MODE_STORAGE_KEY } from "../../../../core/client/src/integration/presentation-keys.js";
 
 /** 테스트가 탭 세션의 생존을 직접 다룰 수 있도록 열어 둔다 — 키 문자열을 양쪽에 베끼지 않기 위해서다. */
-export const CANVAS_MODE_STORAGE_KEY = "fleet.console.canvas-mode";
+export { CANVAS_MODE_STORAGE_KEY };
 
 export interface CanvasModeSession {
   /** War Room(선별 처리) 활성 여부 — Theater와 무관한 전역 모드다. */

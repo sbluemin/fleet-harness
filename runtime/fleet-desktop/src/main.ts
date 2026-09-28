@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
+import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session, type WebContents } from "electron";
 
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
 
@@ -16,6 +16,11 @@ import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePubl
 import { createHydratedDesktopEnvironment, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot, type EntryPalette } from "./entry-page.js";
 import { createQuitFarewell, farewellSnapshot } from "./quit-farewell.js";
+import { createSwitchVeil } from "./switch-veil.js";
+import { createConsoleSurface, type DisconnectReason } from "./console-surface-state.js";
+import { createConsoleOwners } from "./console-owners.js";
+import { createDataView } from "./data-view.js";
+import { createSurfaceQuiesce } from "./surface-quiesce.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopNotifier } from "./desktop-notices.js";
@@ -43,7 +48,7 @@ import { installComputerCapture } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import { desktopFullscreenHost, type DesktopShellWindow } from "./shell-window.js";
-import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
+import { CANVAS_FAR_BACKGROUND_COLOR, confinePickerNavigation, createSecureShellWindow, createWindowPolicy, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, installPermissionDispatcher, isAllowedConsoleUrl, trafficLightPosition, type SurfaceAuthority, type WindowPolicy } from "./window-policy.js";
 import { createThemeMemory } from "./theme-memory.js";
 import { createZoomState } from "./zoom-state.js";
 
@@ -147,7 +152,7 @@ async function boot(): Promise<void> {
     log: logger,
   });
   let window: DesktopShellWindow | null = null;
-  let policy: ReturnType<typeof applyWindowPolicy> | null = null;
+  let policy: WindowPolicy | null = null;
   let localConsoleOrigin: string | null = null;
   // 창이 지금 보고 있는 콘솔. 셸 갱신 상태는 이 주소에 게시하고 명령도 이 주소에서 듣는다 —
   // 원격 콘솔을 보고 있어도 이 앱은 이 기계의 앱이므로, 그 화면에서도 같은 줄이 서야 한다.
@@ -173,7 +178,7 @@ async function boot(): Promise<void> {
   const refreshNativeChrome = (): void => {
     overlayRefresher?.refresh();
     if (process.platform !== "darwin" || !window || window.isDestroyed()) return;
-    window.setWindowButtonPosition(trafficLightPosition(window.consoleContents.getZoomFactor()));
+    window.setWindowButtonPosition(trafficLightPosition(window.activeContents().getZoomFactor()));
   };
   /**
    * 사용자 테마는 Windows 제목 표시줄만의 일이 아니다 — 진입 화면·종료 인사·창 바탕도 따른다. 그래서
@@ -193,6 +198,7 @@ async function boot(): Promise<void> {
       const canvas = snapshot.entry?.canvas ?? CANVAS_FAR_BACKGROUND_COLOR;
       window.base.setBackgroundColor(canvas);
       window.consoleView.setBackgroundColor(canvas);
+      window.stack.dataView()?.setBackgroundColor(canvas);
       // 리프레셔가 현재 모니터 배율 보정을 소유한다 — 창이 아직 없으면 적용할 곳도 없다.
       overlayRefresher?.applyOverlay(snapshot.titleBarOverlay);
     },
@@ -236,6 +242,8 @@ async function boot(): Promise<void> {
   const shellUpdateCommands = createShellUpdateCommandSynchronizer({
     fetch: consoleFetch,
     perform: (command) => {
+      // 명령을 보낸 콘솔이 지금도 창의 주인일 때만 — 떠난 콘솔이 이 앱을 재시작시키지 못하게.
+      if (servingConsoleOrigin === null || servingConsoleOrigin !== ownerOrigin()) { logger.info("shell update command ignored: its console does not hold this window"); return; }
       if (command === "check") void shellUpdater?.check();
       else if (command === "download") void shellUpdater?.download();
       else shellUpdater?.restart();
@@ -261,6 +269,8 @@ async function boot(): Promise<void> {
   const windowCommands = createDesktopWindowCommandSynchronizer({
     fetch: consoleFetch,
     perform: (command) => {
+      // 떠난 콘솔의 늦은 명령이 지금 보이는 창을 움직이지 않는다 — 적용하는 순간 주인을 다시 확인한다.
+      if (!owners.holdsCommands()) { logger.info("window command ignored: its console does not hold this window"); return; }
       consoleInZen = command === "enter-fullscreen";
       zenFullscreen?.perform(command);
     },
@@ -282,11 +292,11 @@ async function boot(): Promise<void> {
         focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
       },
     }),
-    zoomFactor: () => window?.consoleContents.getZoomFactor() ?? 1,
+    zoomFactor: () => window?.activeContents().getZoomFactor() ?? 1,
     scaleFactor: () => { try { return window ? screen.getDisplayMatching(window.getBounds()).scaleFactor : 1; } catch { return 1; } },
     product: () => `Chrome/${process.versions.chrome}`,
     // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다.
-    userAgent: () => (window?.consoleContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
+    userAgent: () => (window?.activeContents().getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
     fetch: consoleFetch,
     log: (message) => logger.info(message),
     /**
@@ -318,6 +328,7 @@ async function boot(): Promise<void> {
     },
     // 크기 한도는 browser-views 가 디코드 전에 검사했다. 여기서는 필요한 사본만 만든다 — 전체면 자르지 않고, 같은 크기면
     // 늘이지 않고, 표면 밖이 없으면 캔버스를 만들지 않는다. 표면 밖 여백은 불투명 흰색이다.
+    mayControl: (origin) => owners.mayCommand(origin),
     composeCapture: (png, { crop, place, size, format, quality }) => {
       let image = nativeImage.createFromBuffer(png);
       if (image.isEmpty()) throw new Error("browser_capture_invalid_image");
@@ -346,7 +357,10 @@ async function boot(): Promise<void> {
    * 다른 콘솔로 건너가는 화면은 Console 안에 있다. Desktop이 남기는 것은 인증서 한 겹뿐이라,
    * 이 다리는 메뉴에도 트레이에도 나타나지 않는다.
    */
-  const notifier = createDesktopNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) });
+  const notifier = !isPackaged && process.env.FLEET_DESKTOP_DEV_NOTICES === "log"
+    // 개발 검증에서 실패 경로를 밟으면 앱 모달이 사람의 화면을 막는다. 개발 실행에서만 로그로 돌린다.
+    ? { show: (notice: { readonly type: string; readonly title: string; readonly body: string }) => logger.info(`notice ${notice.type}: ${notice.title} — ${notice.body}`) }
+    : createDesktopNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) });
   /**
    * 창이 어느 콘솔에 있든 "이 셸이 띄운 콘솔이 어디인가"는 알려 준다. 집이 아닌 콘솔이 서빙한
    * 화면은 자기가 떠나온 곳을 알 수 없으므로 — 원격이든 이 기계의 다른 콘솔이든 — 이것이 없으면
@@ -380,19 +394,232 @@ async function boot(): Promise<void> {
       return "failed";
     }
   };
+  /**
+   * 콘솔을 갈아타는 동안 떠나는 화면의 스냅샷을 덮어 두는 판. 창과 함께 미리 띄워 Console 뒤에 세운다 —
+   * 전환 순간에 만든 뷰는 첫 프레임이 늦어 덮개가 서기 전에 문서가 바뀐다.
+   */
+  const switchVeil = createSwitchVeil({
+    createView: () => {
+      const view = new WebContentsView({
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
+      });
+      // 뒤에 세워 둔 동안에도, 스냅샷이 칠해지기 전에도 아래 화면을 가리지 않는다.
+      view.setBackgroundColor("#00000000");
+      // 종료 인사와 같은 수동적인 판이다. 어디로도 항해하지 않고 창도 열지 않는다.
+      view.webContents.on("will-navigate", (event) => event.preventDefault());
+      view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      return view;
+    },
+    log: (message) => logger.info(message),
+  });
+  /**
+   * 창이 지금 보여 주는 콘솔 뷰와 그 권한. 전환 중에는 누구도 권한을 갖지 않는다. 세션 단위 판정(권한·화면 캡처)은
+   * 모두 이것 하나를 본다 — 뒤에 세워 둔 뷰는 아무것도 물려받지 않는다.
+   */
+  const surfaceAuthority = (): SurfaceAuthority | null => {
+    if (!window || window.isDestroyed()) return null;
+    const state = surface.state();
+    if (state === "local-ready") {
+      const origin = policy?.localConsoleOrigin() ?? null;
+      return origin === null ? null : { contents: window.consoleContents, origin, surface: "local" };
+    }
+    if (state !== "remote-ready") return null;
+    const contents = dataView.contents();
+    const origin = policy?.dataConsoleOrigin() ?? null;
+    return contents === null || origin === null ? null : { contents, origin, surface: "data" };
+  };
+  installPermissionDispatcher(consoleSession, surfaceAuthority);
+  const capture = installComputerCapture(consoleSession, () => {
+    const holder = surfaceAuthority();
+    return holder?.surface === "local" ? { contents: holder.contents, origin: holder.origin, generation: surface.generation() } : null;
+  }, (message) => logger.info(message));
+  /**
+   * 지금 native 권한을 가진 콘솔 — 안정 상태의 활성 surface 하나뿐이다. 전환 중, 확인 전의 로컬, 끊긴 화면은
+   * 창 명령·브라우저 제어·갱신의 주인이 아니다.
+   */
+  const ownerOrigin = (): string | null => {
+    const state = surface.state();
+    if (state === "local-ready") return policy?.localConsoleOrigin() ?? null;
+    if (state === "remote-ready") return policy?.dataConsoleOrigin() ?? null;
+    return null;
+  };
+  /** 그 콘솔이 지금 창의 주인이다 — 테마·갱신·창 명령·브라우저 뷰·전체화면이 그 콘솔을 따른다. */
+  const owners = createConsoleOwners({
+    currentOwner: ownerOrigin,
+    theme: synchronizeThemeAt,
+    supervisedUpdates: subscribeSupervisedConsoleUpdates,
+    shellUpdates: subscribeShellUpdates,
+    windowCommands,
+    browserViews: { start: synchronizeBrowserViews, stop: () => browserViews.stop() },
+    fullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
+    log: (message) => logger.info(message),
+  });
+  const followConsole = (origin: string): void => {
+    void owners.follow(origin).catch((error: unknown) => logger.error(`console owners failed: ${describeError(error)}`));
+  };
+  /**
+   * 로컬로 돌아온다. 화면은 곧바로 로컬을 앞에 세우지만, 권한은 관리 중인 콘솔이 지금도 그 주소에서 lock의 자격으로
+   * 답하고 로컬 뷰가 그 콘솔의 살아 있는 문서를 그리고 있음을 확인한 뒤에만 돌아간다. 확인하지 못하면 던진다 —
+   * 상태 머신이 권한 없는 끊김으로 남긴다. 뒤에서 멈춰 버린 옛 화면을 지금의 사실처럼 믿지 않는다.
+   */
+  const presentLocal = async (attempt: { isCurrent(): boolean }, url?: string): Promise<void> => {
+    switchVeil.dismiss("return");
+    const current = window;
+    const home = localConsoleOrigin;
+    if (!current || current.isDestroyed()) throw new Error("local_console_unavailable");
+    const local = current.consoleContents;
+    current.stack.activateSurface("local");
+    try { local.focus(); } catch { /* 포커스는 부가 동작이다. */ }
+    policy?.clearDataOrigin();
+    void dataView.release();
+    refreshNativeUpdateActions?.();
+    if (home === null) throw new Error("local_console_unavailable");
+    const { healthy, origin } = await withinMs(supervisor.health(), LOCAL_CONFIRM_TIMEOUT_MS, "local_console_unresponsive");
+    if (!healthy || origin !== home) throw new Error(healthy ? "local_console_moved" : "local_console_unhealthy");
+    if (!attempt.isCurrent()) return;
+    if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) {
+      logger.info("local console view reloaded on return");
+      await withinMs(local.loadURL(`${home}/console/`), LOCAL_RELOAD_TIMEOUT_MS, "local_console_reload_timeout");
+      if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) throw new Error("local_console_document_unavailable");
+    }
+    /**
+     * 덮개의 "호스트 관리"처럼 로컬 콘솔 안의 화면을 정해 돌아온 경우, 확인된 로컬 문서를 그 화면으로 옮긴 뒤에 권한을 돌려준다.
+     * 덮개의 로컬 줄은 콘솔 입구(`/console/`)만 실어 오므로 옮기지 않는다 — 뒤에 둔 화면이 다시 적재되지 않고 그대로 이어진다.
+     */
+    if (url !== undefined && url !== local.getURL() && isAllowedConsoleUrl(url, home) && !isConsoleEntryUrl(url)) {
+      if (!attempt.isCurrent()) return;
+      await withinMs(local.loadURL(url), LOCAL_RELOAD_TIMEOUT_MS, "local_console_reload_timeout");
+      if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) throw new Error("local_console_document_unavailable");
+    }
+  };
+  /** 확인이 끝난 로컬이 권한을 되찾았다. */
+  const adoptLocal = (): void => {
+    const home = localConsoleOrigin;
+    refreshNativeUpdateActions?.();
+    if (home === null) return;
+    // 떠남 알림을 걷어 둔다 — 다시 붙는 화면이 끝난 전환의 알림을 받아 공유를 멈추지 않게.
+    void publishShellHome(home);
+    followConsole(home);
+  };
+  const surface = createConsoleSurface({
+    localOrigin: () => localConsoleOrigin,
+    quiesceLocal: createSurfaceQuiesce({
+      localContents: () => (window && !window.isDestroyed() ? window.consoleContents : null),
+      announce: async (generation) => {
+        const home = localConsoleOrigin;
+        if (!home) return false;
+        try {
+          const response = await consoleFetch(`${home}${DESKTOP_SHELL_PATH}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Origin: home },
+            body: JSON.stringify({ homeOrigin: home, version: app.getVersion(), surface: { phase: "leaving", generation } }),
+          });
+          if (!response.ok) logger.error(`surface leave announce rejected status=${response.status}`);
+          return response.ok;
+        } catch (error) {
+          logger.error(`surface leave announce failed: ${describeError(error)}`);
+          return false;
+        }
+      },
+      abortPendingCapture: (reason) => capture.abortPending(reason),
+      log: (message) => logger.info(message),
+    }),
+    prepareData: (selection, attempt) => bridge.prepare(selection, attempt),
+    suspendOwners: () => owners.suspend(),
+    presentData: (origin) => {
+      const current = window;
+      const contents = dataView.contents();
+      if (!current || current.isDestroyed() || !contents) return;
+      current.stack.activateSurface("data");
+      try { contents.focus(); } catch { /* 포커스는 부가 동작이다. */ }
+      try { contents.setZoomLevel(zoomState.load()); } catch { /* 줌은 부가 동작이다. */ }
+      refreshNativeUpdateActions?.();
+      followConsole(origin);
+    },
+    presentLocal,
+    adoptLocal,
+    endRemoteSession: (origin) => bridge.endSession(origin),
+    report: (error) => bridge.report(error),
+    notify: (reason) => notifier.show(reason === "local_unavailable"
+      ? { type: "error", title: "This computer's console is not responding", body: describeDisconnect(reason) }
+      : { type: "info", title: "Back on this computer", body: describeDisconnect(reason) }),
+    log: (message) => logger.info(message),
+  });
+  /** 이 앱이 띄우지 않은 콘솔을 그리는 뷰. 창과 함께 만들어 로컬 뷰 뒤에 빈 문서로 세워 둔다. */
+  const dataView = createDataView({
+    createView: () => {
+      const view = new WebContentsView({
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
+      });
+      view.setBackgroundColor(entryPalette?.canvas ?? CANVAS_FAR_BACKGROUND_COLOR);
+      return view;
+    },
+    confine: (contents) => {
+      if (!policy) throw new Error("data_view_without_policy");
+      policy.confineDataView(contents);
+    },
+    attach: (contents) => {
+      bridge.attachData(contents);
+      // 덮개가 떠 있는 동안 아래 화면은 손을 받지 않는다 — 남의 콘솔이 목록 위의 입력을 가로채지 못하게.
+      contents.on("before-input-event", (event) => { if (picker.isOpen()) event.preventDefault(); });
+      contents.on("render-process-gone", () => { void surface.disconnect("crashed"); });
+      contents.on("zoom-changed", (_event, zoomDirection) => {
+        controls.zoomChanged(contents, zoomDirection);
+        refreshNativeChrome();
+        browserViews.refresh();
+      });
+      contents.on("did-finish-load", () => refreshNativeChrome());
+      republishOnArrival(contents, () => policy?.dataConsoleOrigin() ?? null);
+    },
+    log: (message) => logger.info(message),
+  });
+  /**
+   * 셸이 넘긴 항해는 도착 전에 게시했다. 그 밖의 도착 — 새로고침, 재기동한 콘솔로 화면이 스스로 되돌아온 경우 —
+   * 는 여기서 게시한다. 재기동한 콘솔은 앞선 게시를 잊었기 때문이다.
+   */
+  function republishOnArrival(contents: WebContents, expected: () => string | null): void {
+    contents.on("did-navigate", (_event, url) => {
+      // 창이 어디로 옮겨 가든 덮개는 따라가지 않는다 — 새 콘솔 위에 남은 옛 목록은 거짓말이다.
+      picker.close();
+      let origin: string;
+      try { origin = new URL(url).origin; } catch { return; }
+      if (!isConsoleOrigin(origin) || expected() !== origin) return;
+      void republishShellHomeOnArrival({
+        publish: publishShellHome,
+        stillAt: (at) => !contents.isDestroyed() && expected() === at,
+      }, origin).then((outcome) => {
+        if (outcome !== "accepted") logger.error(`shell home republish after arrival ended outcome=${outcome} origin=${origin}`);
+      });
+    });
+  }
   const bridge: RemoteBridge = createRemoteBridge({
     pins: remotePins,
     policy: () => policy,
     sessionFetch: (input, init) => consoleSession.fetch(input, init),
+    remoteFetch: consoleFetch,
     localOrigin: () => localConsoleOrigin,
     deviceName: os.hostname().replace(/\.local$/iu, ""),
-    loadConsole: (url) => handOffWindowToConsole({
-      publishShellHome: async (origin) => { await publishShellHome(origin); },
-      loadUrl: async (target) => { await window?.loadURL(target); },
-      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
-      synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
-    }, url),
-    openPicker: (url) => picker.open(url),
+    purgeCookies: (origin, names) => shellNetwork.purge(origin, names),
+    loadData: async (url) => {
+      const current = window;
+      const contents = dataView.contents();
+      if (!current || current.isDestroyed() || !contents) throw new Error("remote_bridge_no_window");
+      await switchVeil.around(url, { from: current.activeContents(), to: contents }, async () => {
+        // 덮개 아래에서 데이터 뷰를 앞으로 세운다. 권한은 아직 누구의 것도 아니다 — 준비가 확인된 뒤에 넘어간다.
+        current.stack.activateSurface("data");
+        await handOffWindowToConsole({
+          publishShellHome: async (origin) => { await publishShellHome(origin); },
+          loadUrl: (target) => dataView.load(target),
+          synchronizeTheme: async () => undefined,
+          synchronizeFullscreen: () => undefined,
+        }, url);
+      });
+    },
+    select: (selection) => surface.select(selection),
+    acceptsLocalSelection: (contents) => window !== null && !window.isDestroyed() && window.consoleContents === contents && surface.state() === "local-ready",
+    isCurrentPicker: (contents) => picker.isCurrent(contents, surface.generation()),
+    disconnect: (reason) => { void surface.disconnect(reason); },
+    openPicker: (url) => picker.open(url, surface.generation()),
     closePicker: () => picker.close(),
     notify: (notice) => notifier.show(notice),
     log: (message) => logger.error(message),
@@ -446,13 +673,16 @@ async function boot(): Promise<void> {
           ...(rememberedTheme ? { titleBarOverlay: rememberedTheme.titleBarOverlay } : {}),
         });
         window = createdWindow;
-        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(desktopFullscreenHost(createdWindow), { fetch: consoleFetch });
+        policy = createWindowPolicy(async (external) => shell.openExternal(external));
+        policy.confineLocalView(createdWindow.consoleContents);
+        dataView.mount(createdWindow);
+        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(desktopFullscreenHost(createdWindow, dataView.contents() ?? createdWindow.consoleContents), { fetch: consoleFetch });
         zenFullscreen = createZenFullscreenController(createdWindow.base);
         overlayRefresher = process.platform === "win32"
           ? createTitleBarOverlayRefresher(createdWindow.base, {
             screen,
             initialOverlay: rememberedTheme?.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY,
-            getZoomFactor: () => createdWindow.consoleContents.getZoomFactor(),
+            getZoomFactor: () => createdWindow.activeContents().getZoomFactor(),
           })
           : null;
         createdWindow.base.once("closed", () => {
@@ -467,6 +697,9 @@ async function boot(): Promise<void> {
           overlayRefresher?.stop();
           overlayRefresher = null;
           picker.close();
+          switchVeil.unmount();
+          surface.reset();
+          dataView.unmount();
           // BaseWindow closed does not destroy child WebContentsView renderers — close explicitly.
           try {
             if (!createdWindow.consoleContents.isDestroyed()) createdWindow.consoleContents.close();
@@ -475,26 +708,12 @@ async function boot(): Promise<void> {
           policy = null;
           consoleShown = false;
         });
-        controls.attachWindow(createdWindow);
+        // 줌·새로 고침은 지금 앞에 선 콘솔을 따른다.
+        controls.attachWindow({ isDestroyed: () => createdWindow.isDestroyed(), get webContents() { return createdWindow.activeContents(); } });
+        switchVeil.mount(createdWindow);
         lifecycle.attachWindow(createdWindow);
-        policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external));
-        installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
-        bridge.attach(createdWindow.consoleContents);
-        createdWindow.consoleContents.on("did-navigate", (_event, url) => {
-          // 창이 어디로 옮겨 가든 덮개는 따라가지 않는다 — 새 콘솔 위에 남은 옛 목록은 거짓말이다.
-          picker.close();
-          // 셸이 넘긴 항해는 도착 전에 게시했다. 그 밖의 도착 — 새로고침, 재기동한 콘솔로 화면이 스스로
-          // 되돌아온 경우 — 는 여기서 게시한다. 재기동한 콘솔은 앞선 게시를 잊었기 때문이다.
-          let origin: string;
-          try { origin = new URL(url).origin; } catch { return; }
-          if (!isConsoleOrigin(origin) || policy?.currentConsoleOrigin() !== origin) return;
-          void republishShellHomeOnArrival({
-            publish: publishShellHome,
-            stillAt: (at) => !createdWindow.isDestroyed() && policy?.currentConsoleOrigin() === at,
-          }, origin).then((outcome) => {
-            if (outcome !== "accepted") logger.error(`shell home republish after arrival ended outcome=${outcome} origin=${origin}`);
-          });
-        });
+        bridge.attachLocal(createdWindow.consoleContents);
+        republishOnArrival(createdWindow.consoleContents, () => policy?.localConsoleOrigin() ?? null);
         createdWindow.consoleContents.on("zoom-changed", (_event, zoomDirection) => {
           controls.zoomChanged(createdWindow.consoleContents, zoomDirection);
           refreshNativeChrome();
@@ -524,10 +743,12 @@ async function boot(): Promise<void> {
       handoffOrigin: (origin) => {
         localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);
+        // 로컬을 확인하지 못해 권한 없이 서 있던 창은, 관리 중인 콘솔이 다시 넘겨진 지금 다시 확인한다.
+        if (surface.state() === "disconnected") void surface.returnLocal();
         controls.handoffStarted();
         void publishShellHome(origin);
       },
-      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
+      synchronizeTheme: (origin) => owners.follow(origin),
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
       onConsoleLoaded: () => { consoleShown = true; controls.onConsoleLoaded(); },
       onFirstRunFailure: async () => showFirstRunFailure(),
@@ -578,6 +799,17 @@ async function boot(): Promise<void> {
     actualSize: () => { picker.close(); controls.actualSize(); refreshNativeChrome(); },
     reloadConsole: () => controls.reloadConsole(),
     consoleReady: () => controls.consoleReady(),
+    switchConsole: () => {
+      const home = localConsoleOrigin;
+      if (!home) return;
+      // 집의 목록을 지금 서 있는 콘솔 위에 편다. 메뉴는 목록을 여는 손잡이일 뿐이다.
+      const url = new URL("/console/", `${home}/`);
+      url.searchParams.set("desktop-surface", "host-picker");
+      url.searchParams.set("at", surface.remoteOrigin() ?? home);
+      void picker.open(url.toString(), surface.generation()).catch((error: unknown) => bridge.report(error));
+    },
+    returnToLocal: () => { void surface.returnLocal(); },
+    viewingOtherConsole: () => surface.state() !== "local-ready",
     updates,
   };
   trayHolder.current = createDesktopTray(process.platform, Tray, desktopResources, actions);
@@ -674,6 +906,36 @@ function writeDevelopmentUpdateConfig(userDataDirectory: string, feedUrl: string
     logger.error(`development update config unavailable: ${describeError(error)}`);
     return undefined;
   }
+}
+
+/** 로컬 콘솔이 지금도 맞는지 묻는 시간. 루프백 한 번 왕복에 넉넉하다. */
+const LOCAL_CONFIRM_TIMEOUT_MS = 2_000;
+/** 로컬 문서를 다시 적재하는 데 기다리는 시간. */
+const LOCAL_RELOAD_TIMEOUT_MS = 10_000;
+
+function withinMs<T>(work: Promise<T>, ms: number, code: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(code)), ms);
+    work.then((value) => { clearTimeout(timer); resolve(value); }, (error: unknown) => { clearTimeout(timer); reject(error); });
+  });
+}
+
+/** 콘솔 입구 주소인가 — 특정 화면을 가리키지 않는다(화면 모드 쿼리나 표현 상태 fragment는 실을 수 있다). */
+function isConsoleEntryUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname === "/console/" || parsed.pathname === "/console";
+  } catch {
+    return false;
+  }
+}
+
+/** 원격이 끝나 로컬로 돌아왔을 때의 한 줄. 회수와 만료는 셸이 가를 수 없으므로 끝났다는 사실만 말한다. */
+function describeDisconnect(reason: DisconnectReason): string {
+  if (reason === "local_unavailable") return "Screen capture, window commands, and browser control stay off until this computer's console answers again. Choose Return to This Computer to try again.";
+  if (reason === "crashed") return "The other console's page stopped responding, so this window returned to this computer's console.";
+  if (reason === "expired") return "That console ended this session, so this window returned to this computer's console. Open it again from the host list to resume.";
+  return "That console became unavailable, so this window returned to this computer's console.";
 }
 
 function readBootLogDirectory(): string | null {

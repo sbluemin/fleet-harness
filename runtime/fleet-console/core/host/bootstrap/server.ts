@@ -1,4 +1,5 @@
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
+import { ACCESS_SELF_LEAVE_PATH, createAccessSelfRoutes, isOwnSessionLeaveRequest } from "../../../features/remote-access/host/self-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
 import { createOperationArchiveStorage, archiveEvent, archiveSessionNodes, OperationArchiveError } from "../../../features/workspace/host/operation-archive-storage.js";
 import { createOperationArchiveCoordinator } from "../../../features/workspace/host/operation-archive.js";
@@ -50,7 +51,7 @@ import { createOperationStore, createOperationsRouter, createSanitizedOpDto } fr
 import { stripConsoleInternalEnv } from "../../../features/execution/host/terminal/launch-env.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot, type ControlReclaimedReason } from "../../../features/remote-access/host/access-control-contract.js";
 import { parseAccessLink, sanitizeAccessLabel } from "../../../features/remote-access/host/access-link.js";
-import { createAccessRegistry, createLoopbackListenerIdentity, listenerAuthority, listenerOrigin, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type ListenerIdentity } from "../../../features/remote-access/host/auth.js";
+import { type AccessSession, createAccessRegistry, createLoopbackListenerIdentity, listenerAuthority, listenerOrigin, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type ListenerIdentity } from "../../../features/remote-access/host/auth.js";
 import { createPairedDeviceStore } from "../../../features/remote-access/host/paired-devices.js";
 import { probeRemoteIdentity } from "../../../features/remote-access/host/remote-discovery.js";
 import { createRemoteEndpointStore } from "../../../features/remote-access/host/remote-endpoint.js";
@@ -347,6 +348,14 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     transport: "http",
   },
   {
+    method: "POST",
+    path: "/api/v1/access/self/leave",
+    summary: "End the calling remote session while keeping its pairing; the one write a monitoring session may make. Remote listener only.",
+    category: "Access",
+    gate: "origin-strict",
+    transport: "http",
+  },
+  {
     method: "GET",
     path: "/api/v1/remote-hosts",
     summary: "List the other consoles this one can jump to.",
@@ -386,6 +395,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
     transport: "http",
   },
+  { method: "POST", path: "/api/v1/remote-hosts/:hostId/cookie-binding", summary: "Record that the attached Desktop's cookies for this console were issued under its current certificate; stale reports are refused.", category: "Access", gate: "origin-write", transport: "http" },
   {
     method: "GET",
     path: "/api/v1/local-consoles",
@@ -1445,14 +1455,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 나머지는 모두 이 리스너에서 발급된 세션을 요구한다. 라우트마다 흩어진 게이트에 원격을
    * 맡기면 하나만 빠져도 통째로 열리므로, 판정을 라우팅 이전 한 곳에서 끝낸다.
    */
-  function isRemoteRequestAdmitted(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): boolean {
+  function admitRemoteRequest(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): RemoteAdmission {
     // 세션 없이 지나는 경로는 이 하나뿐이다. 페어링은 전용 앱으로만 이루어지고 브라우저는
     // 자기서명 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
-    if (pathname === "/api/v1/join") return true;
+    if (pathname === "/api/v1/join") return { kind: "admitted", session: null };
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
-    if (session === null) return false;
+    if (session === null) return { kind: "unauthenticated" };
     // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
-    return session.access !== "monitoring" || isReadOnlyRequest(req);
+    // 예외는 자기 접속을 끝내는 요청 하나뿐이다 — 떠나는 것은 권한 상승이 아니다.
+    if (session.access === "monitoring" && !isReadOnlyRequest(req) && !isOwnSessionLeaveRequest(req)) return { kind: "read_only" };
+    return { kind: "admitted", session };
   }
 
   /** 읽기로 볼 수 있는 것만. 터미널 업그레이드는 method가 GET이어도 쓰기다. */
@@ -1470,15 +1482,27 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
      * 구조를 두지 않으려면 판정이 라우팅 앞에 있어야 한다.
      */
     const listener = listenerForRequest(req);
-    if (listener && listener.audience !== "local" && !isRemoteRequestAdmitted(listener, req, pathname)) {
-      writeJson(res, 401, { error: "unauthorized" });
-      return;
+    let remoteSession: AccessSession | null = null;
+    if (listener && listener.audience !== "local") {
+      const admission = admitRemoteRequest(listener, req, pathname);
+      // 세션이 없으면 401, 세션은 있지만 보기 전용이면 403 — 둘을 섞으면 클라이언트가 읽기 전용 거절을
+      // 세션 만료로 읽고 재조인을 시도한다.
+      if (admission.kind === "unauthenticated") { writeJson(res, 401, { error: "unauthorized" }); return; }
+      if (admission.kind === "read_only") { writeJson(res, 403, { error: "access_read_only" }); return; }
+      remoteSession = admission.session;
     }
     // Host 게이트는 순서를 바꾸지 않는다 — Codex는 wildcard 바인드에서 더 넓은 host 집합을 쓰므로
     // 자기 게이트를 그대로 유지한다. 대신 같은 리스너 판정을 주입받아, 원격 리스너의 Host·Origin도
     // 그 게이트가 알고 있다.
     if (!isRequestHostAllowed(req)) {
       writeJson(res, 403, { error: "host_mismatch" });
+      return;
+    }
+    if (pathname === ACCESS_SELF_LEAVE_PATH) {
+      // 원격 세션이 스스로 떠나는 문. 루프백에는 세션이 없으므로 이 경로도 없다.
+      // 판정은 위 admission의 스냅샷으로만 한다 — 쿠키를 다시 풀어 다른 세션을 찾지 않는다.
+      if (listener === null || listener.audience === "local" || remoteSession === null) { writeJson(res, 404, { error: "not_found" }); return; }
+      handleAccessSelfLeave(req, res, listener, remoteSession);
       return;
     }
     if (archiveStorage.blocked() && (pathname.startsWith("/api/") || pathname.startsWith("/mcp/")) && pathname !== "/api/v1/health") {
@@ -2317,6 +2341,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   const { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply } = createUpdatesRoutes({ releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime: () => ({ lockHandle, activeEndpoint, activeLockFile }), publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply });
 
+  const { handleAccessSelfLeave } = createAccessSelfRoutes({ access, writeJson, withSecurityHeaders, forgetShell: forgetShellOwner, endSessionStreams, broadcastControlChanged });
   const { handleAccessJoin } = createPairingRoutes({ access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged, forgetShell: forgetShellOwner, endSessionStreams });
 
   const { handleRemoteAccessStatus, handleAccessLinkRevoke, handleAccessSessionRevoke, handlePairedDeviceRevoke, handleRemoteIdentityRotation, handleAccessLinkIssue } = createRemoteAdminRoutes({ access, pairedDeviceStore, remoteJoinGuard, remoteIdentityStore, remoteEndpointStore, consoleSettingsStore, readListenerState: () => ({ listeners, remoteFingerprint, remoteLastError }), isLoopbackListener, isAccessAdminAuthorized, writeJson, withSecurityHeaders, broadcastControlChanged, forgetShell: forgetShellOwner, endSessionStreams, reconcileRemoteIdentity, consoleLabel });
@@ -2631,7 +2656,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   async function startConfiguredRemoteListener(configured: ConsoleRemoteAccessSettings, identity: { readonly certificatePem: string; readonly privateKeyPem: string }, published: boolean): Promise<{ readonly server: https.Server; readonly address: string; readonly port: number }> {
     if (configured.listenPort.mode === "custom") {
       try {
-        return await startRemoteListener({ identity, bindHost: configured.listenAddress, port: configured.listenPort.value, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, isAdmitted: remoteAdmission });
+        return await startRemoteListener({ identity, bindHost: configured.listenAddress, port: configured.listenPort.value, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, admission: remoteAdmission });
       } catch (error) {
         if (errorCodeOf(error) === "EADDRINUSE") throw codedRemoteError("FLEET_CUSTOM_PORT_UNAVAILABLE", error);
         throw error;
@@ -2642,7 +2667,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const candidate = attempted.size === 0 ? configured.listenPort.value : nextRemoteAutoPort(attempted);
       attempted.add(candidate);
       try {
-        const started = await startRemoteListener({ identity, bindHost: configured.listenAddress, port: candidate, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, isAdmitted: remoteAdmission });
+        const started = await startRemoteListener({ identity, bindHost: configured.listenAddress, port: candidate, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, admission: remoteAdmission });
         if (candidate === configured.listenPort.value) return started;
         if (published) {
           // 여기까지 왔다면 공표한 포트가 막혀 다른 후보가 열린 것이다. 그 주소를 취하면
@@ -2678,9 +2703,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return listenerOrigin(hostname, port, true);
   }
 
-  function remoteAdmission(req: http.IncomingMessage): boolean {
+  function remoteAdmission(req: http.IncomingMessage): RemoteAdmission["kind"] {
     const resolved = listenerForRequest(req);
-    return resolved === null || resolved.audience === "local" || isRemoteRequestAdmitted(resolved, req, getPathname(req));
+    if (resolved === null || resolved.audience === "local") return "admitted";
+    return admitRemoteRequest(resolved, req, getPathname(req)).kind;
   }
 
   function nextRemoteAutoPort(attempted: ReadonlySet<number>): number {
@@ -2801,17 +2827,36 @@ function resolveBuiltInPluginDiscoveryRoots(packageRoot: string): { readonly bui
  * 거절을 바이트 없이 소켓 파기로만 표현하므로, 거절 사유를 밖에서 구분할 수 없다.
  * 순서(호스트 판정 → 레지스트리 위임)를 계약으로 고정하려고 접합부를 분리해 둔다.
  */
+/**
+ * 원격 요청의 인가 판정. 세션 스냅샷을 판정과 함께 넘긴다 — 뒤의 라우트가 쿠키를 다시 풀어
+ * 다른 세션을 보는 일이 없게 한다.
+ */
+type RemoteAdmission =
+  | { readonly kind: "admitted"; readonly session: AccessSession | null }
+  | { readonly kind: "unauthenticated" }
+  | { readonly kind: "read_only" };
+
+/** 승인하지 않은 업그레이드를 HTTP 응답으로 닫는다. 상태 줄과 빈 본문으로 틀을 갖춘 뒤 소켓을 끝낸다. */
+function refuseUpgrade(socket: Duplex, status: 401 | 403, reason: string): void {
+  socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+}
+
 export function createUpgradeListener(deps: {
   readonly isHostAllowed: (req: http.IncomingMessage) => boolean;
   readonly upgradeRegistry: Pick<UpgradeRegistry, "handle">;
   /** 업그레이드도 요청과 같은 인가를 거친다 — 원격에서는 세션 없이 소켓을 붙일 수 없다. */
-  readonly isAdmitted?: (req: http.IncomingMessage) => boolean;
+  readonly admission?: (req: http.IncomingMessage) => RemoteAdmission["kind"];
 }): (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void {
   return (req, socket, head) => {
-    if (!deps.isHostAllowed(req) || deps.isAdmitted?.(req) === false) {
+    if (!deps.isHostAllowed(req)) {
       socket.destroy();
       return;
     }
+    const admission = deps.admission?.(req) ?? "admitted";
+    // 아직 업그레이드를 승인하지 않았으므로 WebSocket close frame은 보낼 수 없다 — HTTP 응답 한 줄로 끝낸다.
+    // 세션 없음과 보기 전용을 요청 경로와 같은 코드로 가른다.
+    if (admission === "unauthenticated") { refuseUpgrade(socket, 401, "Unauthorized"); return; }
+    if (admission === "read_only") { refuseUpgrade(socket, 403, "Forbidden"); return; }
     const pathname = getPathname(req);
     if (deps.upgradeRegistry.handle({ req, socket, head, pathname })) return;
     socket.destroy();
@@ -2829,13 +2874,13 @@ async function startRemoteListener(input: {
   readonly handler: http.RequestListener;
   readonly upgradeRegistry: UpgradeRegistry;
   readonly isHostAllowed: (req: http.IncomingMessage) => boolean;
-  readonly isAdmitted: (req: http.IncomingMessage) => boolean;
+  readonly admission: (req: http.IncomingMessage) => RemoteAdmission["kind"];
 }): Promise<{ readonly server: https.Server; readonly address: string; readonly port: number }> {
   const srv = https.createServer({ cert: input.identity.certificatePem, key: input.identity.privateKeyPem }, input.handler);
   srv.timeout = SERVER_TIMEOUT_MS;
   srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
   srv.headersTimeout = SERVER_TIMEOUT_MS + 1000;
-  srv.on("upgrade", createUpgradeListener({ isHostAllowed: input.isHostAllowed, upgradeRegistry: input.upgradeRegistry, isAdmitted: input.isAdmitted }));
+  srv.on("upgrade", createUpgradeListener({ isHostAllowed: input.isHostAllowed, upgradeRegistry: input.upgradeRegistry, admission: input.admission }));
   await new Promise<void>((resolve, reject) => {
     const onError = (error: Error): void => reject(error);
     srv.once("error", onError);

@@ -33,6 +33,12 @@ export interface RemoteCertificatePins {
   pin(hostname: string, fingerprint: string): void;
   unpin(hostname: string): void;
   clear(): void;
+  /**
+   * 이 실행에서 이 호스트명에 다른 지문을 핀한 적이 있는가. Chromium은 (인증서, 호스트) 검증 판정을 캐시하고
+   * 그 캐시는 핀 교체·연결 종료로 지워지지 않으므로(아래 confirmRemoteIdentity), 옛 인증서를 한 번 수락했던
+   * 실행에서는 옛 인증서가 다시 나타나도 새 핀이 막는다고 보장할 수 없다.
+   */
+  trustedOtherIdentity(hostname: string, fingerprint: string): boolean;
 }
 
 /**
@@ -45,6 +51,8 @@ export interface RemoteCertificatePins {
  */
 export function installRemoteCertificatePins(session: PinnableSession, log?: (message: string) => void): RemoteCertificatePins {
   const pins = new Map<string, string>();
+  /** 이 실행에서 한 번이라도 핀한 지문. 핀을 떼어도 Chromium의 판정 캐시는 남으므로 기록도 남긴다. */
+  const everPinned = new Map<string, Set<string>>();
   session.setCertificateVerifyProc((request, callback) => {
     const hostname = request.hostname?.toLowerCase() ?? "";
     const expected = pins.get(hostname);
@@ -61,9 +69,18 @@ export function installRemoteCertificatePins(session: PinnableSession, log?: (me
     callback(CERTIFICATE_REJECTED);
   });
   return {
-    pin(hostname, fingerprint): void { pins.set(pinHostname(hostname), normalizeFingerprint(fingerprint)); },
+    pin(hostname, fingerprint): void {
+      const host = pinHostname(hostname);
+      const normalized = normalizeFingerprint(fingerprint);
+      pins.set(host, normalized);
+      everPinned.set(host, (everPinned.get(host) ?? new Set<string>()).add(normalized));
+    },
     unpin(hostname): void { pins.delete(pinHostname(hostname)); },
     clear(): void { pins.clear(); },
+    trustedOtherIdentity(hostname, fingerprint): boolean {
+      const normalized = normalizeFingerprint(fingerprint);
+      return [...(everPinned.get(pinHostname(hostname)) ?? [])].some((entry) => entry !== normalized);
+    },
   };
 }
 

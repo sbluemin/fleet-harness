@@ -31,6 +31,34 @@ let statusRefreshPending = false;
 let sessionResumeRefused = false;
 
 /**
+ * 회수·다른 기기의 인계로 끝난 접속은 reload 뒤에도 끝난 채로 남아야 한다.
+ *
+ * 모듈 변수(`sessionResumeRefused`)는 reload와 함께 사라지므로, 새 문서가 401을 받으면 페어링으로 조용히 다시
+ * 합류해 주인의 Take back을 뒤집는다. 그래서 끝난 사실을 탭 세션에 적어 두고, 새 문서는
+ * 그 표식이 있는 동안 스스로 재개하지 않는다. 표식은 시간이 지나도 풀리지 않는다 — 사람이 다시 열어(셸의 새 조인)
+ * 세션이 살아 있는 채로 스트림이 열릴 때에만 지운다.
+ */
+const SESSION_ENDED_STORAGE_KEY = "fleet-console.session-ended";
+let sessionEndedNoticeShown = false;
+
+function rememberSessionEnded(reason: SessionEndedReason): void {
+  try { sessionStorage.setItem(SESSION_ENDED_STORAGE_KEY, reason); } catch { /* 저장소가 없으면 이 문서의 규율만 남는다. */ }
+}
+
+function readSessionEnded(): SessionEndedReason | null {
+  try {
+    const stored = sessionStorage.getItem(SESSION_ENDED_STORAGE_KEY);
+    return stored === "reclaimed" || stored === "superseded" ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function forgetSessionEnded(): void {
+  try { sessionStorage.removeItem(SESSION_ENDED_STORAGE_KEY); } catch { /* 지울 것이 없다. */ }
+}
+
+/**
  * 플러그인 채널 다리.
  *
  * 서버는 플러그인이 명시적으로 올린 채널만 이 스트림으로 흘려보낸다(server의
@@ -252,6 +280,8 @@ export function connectOperationsSse(): void {
         clearTimeout(reconnectHandle);
         reconnectHandle = null;
       }
+      // reload 전에 끝난 사실을 남긴다 — 새 문서가 이것을 보고 스스로 재합류하지 않는다.
+      rememberSessionEnded(data.reason);
       // 사유를 실어 보낸다 — 안내 문구는 "주인이 되찾았다"와 "다른 기기가 이어받았다"로 갈린다.
       window.dispatchEvent(new CustomEvent<SessionEndedDetail>(CONTROL_RECLAIMED_EVENT, { detail: { reason: data.reason } }));
       window.setTimeout(() => location.reload(), CONTROL_RECLAIM_NAVIGATION_DELAY_MS);
@@ -264,6 +294,8 @@ export function connectOperationsSse(): void {
     if (!isCurrentSource()) return;
     reconnectDelayMs = 1_000;
     sessionResumeRefused = false;
+    // 세션이 살아 있는 채로 스트림이 열렸다 — 사람이 다시 열어 새로 합류한 것이다. 끝난 표식은 더 이상 사실이 아니다.
+    forgetSessionEnded();
     setConnectionState("live");
     refreshObserverStatus();
     // 단절 중 놓친 보관·복원·삭제 사건은 서버가 재전송하지 않는다.
@@ -296,8 +328,19 @@ export function connectOperationsSse(): void {
         // 쓰지 않으면 원격 화면은 401을 영원히 반복하며, 사람에게는 "새 액세스 링크를
         // 받으라"는 잘못된 결론만 남는다. 여기서 한 번, 조용히 다시 합류한다.
         .catch(async (error: unknown) => {
+          // 401만 세션을 잃었다는 뜻이다. 403(access_read_only)은 보기 전용 거절이지 재합류할 이유가 아니다.
           if (!(error instanceof ApiError) || error.status !== 401) return;
           if (sessionResumeRefused) return;
+          const ended = readSessionEnded();
+          if (ended !== null) {
+            // 회수·인계로 끝난 접속이다. 다시 여는 것은 사람의 몫이므로 여기서는 그 사실만 다시 보인다.
+            sessionResumeRefused = true;
+            if (!sessionEndedNoticeShown) {
+              sessionEndedNoticeShown = true;
+              window.dispatchEvent(new CustomEvent<SessionEndedDetail>(CONTROL_RECLAIMED_EVENT, { detail: { reason: ended } }));
+            }
+            return;
+          }
           await resumeConsoleSession().catch((joinError: unknown) => {
             // 401은 페어링이 정말 사라졌다는 답이다 — 더 두드려도 거절 카운터만 올린다.
             // 그 밖의 실패는 아직 답이 아니므로 다음 재시도에서 한 번 더 묻는다.

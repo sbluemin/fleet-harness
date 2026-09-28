@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { setOperationUseRequestIds } from "../../../core/client/src/integration/store.js";
-import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
+import { isDesktopShell, onDesktopLeaving } from "../../../core/client/src/integration/desktop-shell.js";
 import "../../execution/client/agent/computer-screen-share.css";
 
 type CaptureTarget = { id: string; operationId: string; title: string };
@@ -86,16 +86,21 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     let disposed = false;
     let currentId: string | null = null;
     let stream: MediaStream | null = null;
-    let acquiring = false;
+    let acquiring: Promise<void> | null = null;
+    /**
+     * 셸이 이 화면을 떠나며 멈춰 둔 상태. 돌아와도 스스로 다시 잡지 않는다 — 화면을 다시 공유하는 것은
+     * 사람이 "다시 시도"를 누를 때뿐이다.
+     */
+    let paused = false;
     let timer: ReturnType<typeof setTimeout>;
     const controller = new AbortController();
     const stop = () => { stream?.getTracks().forEach((track) => track.stop()); stream = null; };
-    const retry = () => { if (!disposed && !acquiring) { attemptedId = null; setCapture(null); } };
+    const retry = () => { if (!disposed && !acquiring) { paused = false; attemptedId = null; setCapture(null); } };
     const acquire = async (target: CaptureTarget) => {
-      acquiring = true;
       try {
         const next = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 } }, audio: false });
-        if (disposed || currentId !== target.id) { next.getTracks().forEach((track) => track.stop()); return; }
+        // 받는 사이 셸이 떠나기로 했으면 방금 받은 트랙도 곧바로 멈춘다 — 떠난 뒤에 공유가 살아나지 않게.
+        if (disposed || paused || currentId !== target.id) { next.getTracks().forEach((track) => track.stop()); return; }
         stream = next;
         next.getVideoTracks()[0]?.addEventListener("ended", () => {
           if (stream !== next) return;
@@ -104,12 +109,25 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
         }, { once: true });
         setCapture({ target, stream: next, failed: false });
       } catch (error) {
-        if (!disposed && currentId === target.id) {
+        if (!disposed && !paused && currentId === target.id) {
           console.warn("Computer capture unavailable", error instanceof Error ? error.name : "unknown");
           setCapture({ target, stream: null, failed: true, retry });
         }
-      } finally { acquiring = false; }
+      }
     };
+    const begin = (target: CaptureTarget) => {
+      const attempt = acquire(target).finally(() => { if (acquiring === attempt) acquiring = null; });
+      acquiring = attempt;
+    };
+    /** 떠나기 전에 트랙과, 아직 받는 중인 요청까지 끝낸다. 요청이 끝나야 그 결과를 멈췄다고 말할 수 있다. */
+    const stopOnLeave = onDesktopLeaving(async () => {
+      paused = true;
+      stop();
+      if (acquiring) await acquiring;
+      stop();
+      // 보이던 미리보기는 "다시 시도"가 달린 멈춘 카드로 남긴다 — 돌아온 사람이 공유가 멈췄다는 것을 본다.
+      if (!disposed) setCapture((previous) => previous?.stream ? { target: previous.target, stream: null, failed: true, retry } : previous);
+    });
     const poll = async () => {
       try {
         const response = await fetch("/api/v1/desktop/computer-capture", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) });
@@ -130,9 +148,13 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
           attemptedId = null;
           setCapture(null);
         }
-        if (target && !stream && !acquiring && currentId === target.id) {
+        // 멈춰 둔 동안 새 대상이 와도 스스로 잡지 않는다. 다시 공유할 문만 보인다.
+        if (target && paused && currentId === target.id) {
+          setCapture((previous) => previous?.target.id === target.id && previous.failed ? previous : { target, stream: null, failed: true, retry });
+        }
+        if (target && !stream && !acquiring && !paused && currentId === target.id) {
           // 같은 실패 대상을 자동으로 재시도하지 않는다. 새 관찰의 id가 재개를 결정한다.
-          if (attemptedId !== target.id) { attemptedId = target.id; void acquire(target); }
+          if (attemptedId !== target.id) { attemptedId = target.id; begin(target); }
         }
       } catch {
         stop();
@@ -143,7 +165,7 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     };
     let attemptedId: string | null = null;
     void poll();
-    return () => { disposed = true; controller.abort(); clearTimeout(timer); stop(); };
+    return () => { disposed = true; stopOnLeave(); controller.abort(); clearTimeout(timer); stop(); };
   }, []);
   return <OperationUseContext.Provider value={activity}><CaptureContext.Provider value={capture}>{children}</CaptureContext.Provider></OperationUseContext.Provider>;
 }

@@ -148,6 +148,19 @@ export function pinHostname(hostname: string): string {
 }
 
 /**
+ * 원격 콘솔이 기기에 심는 두 쿠키의 이름. 쿠키는 포트로 구분되지 않으므로 이름에 포트를 새긴다
+ * (발급은 features/remote-access/host/auth.ts). 인증서가 바뀌면 셸은 정확히 이 두 이름만 지운다 —
+ * 같은 호스트명의 다른 포트 콘솔 자격까지 지우면 멀쩡한 페어링을 잃는다.
+ */
+export function remoteSessionCookieName(port: number): string {
+  return `fleet_console_session_${port}`;
+}
+
+export function remotePairingCookieName(port: number): string {
+  return `fleet_console_pairing_${port}`;
+}
+
+/**
  * 링크와 UI가 같은 표기를 쓰도록 지문 비교는 항상 정규화한 뒤 수행한다. 콘솔은 구분자 없이
  * 발급하지만 손으로 옮긴 콜론·공백 표기도 같은 값으로 본다.
  *

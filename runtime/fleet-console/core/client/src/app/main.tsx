@@ -1,3 +1,5 @@
+// 첫 import여야 한다 — 건너온 표현 상태를 스토어가 저장소를 읽기 전에 적는다.
+import "./boot-presentation-carry.js";
 import { subscribeConsoleChannel } from "../integration/operations-sse.js";
 import * as reactNs from "react";
 import * as reactJsxRuntime from "react/jsx-runtime";

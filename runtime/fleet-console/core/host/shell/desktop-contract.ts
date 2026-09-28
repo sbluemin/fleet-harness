@@ -155,6 +155,17 @@ export interface DesktopShellSnapshot {
   readonly homeOrigin: string | null;
   /** 창을 든 Desktop 앱의 버전. 도움말 메뉴가 "어느 Desktop이 이 창을 들고 있는가"를 적는 데 쓴다. 옛 Desktop은 보내지 않는다. */
   readonly version?: string;
+  /**
+   * 셸이 이 콘솔의 화면을 떠나려 한다는 알림. 화면은 화면 공유와 미리보기 트랙(받는 중인 것까지)을 멈춘 뒤
+   * 그 사실을 자기 문서 제목으로 셸에 답한다 — 답은 셸이 그 창의 렌더러에서 직접 읽으므로, 같은 콘솔을 연
+   * 다른 탭이 대신 답할 수 없다. 세대는 셸이 전환마다 올리는 번호이고, 옛 세대의 답은 셸이 버린다.
+   */
+  readonly surface?: DesktopShellSurface;
+}
+
+export interface DesktopShellSurface {
+  readonly phase: "leaving";
+  readonly generation: number;
 }
 
 export const emptyDesktopShell = (): DesktopShellSnapshot => ({ homeOrigin: null });
@@ -165,9 +176,17 @@ function isDesktopShellSnapshot(value: unknown): value is DesktopShellSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
   const keys = Object.keys(entry);
-  if (!keys.includes("homeOrigin") || keys.some((key) => key !== "homeOrigin" && key !== "version")) return false;
+  if (!keys.includes("homeOrigin") || keys.some((key) => key !== "homeOrigin" && key !== "version" && key !== "surface")) return false;
   if ("version" in entry && (typeof entry.version !== "string" || !DESKTOP_VERSION_SHAPE.test(entry.version))) return false;
+  if ("surface" in entry && !isDesktopShellSurface(entry.surface)) return false;
   return entry.homeOrigin === null || (typeof entry.homeOrigin === "string" && isConsoleOriginShape(entry.homeOrigin));
+}
+
+function isDesktopShellSurface(value: unknown): value is DesktopShellSurface {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return Object.keys(entry).length === 2 && entry.phase === "leaving"
+    && typeof entry.generation === "number" && Number.isSafeInteger(entry.generation) && entry.generation > 0;
 }
 
 /** 돌아갈 곳도 origin이어야 한다 — 경로가 섞이면 셸이 아무 데나 항해한다. */
@@ -202,7 +221,7 @@ export const DESKTOP_SHELL_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "PUT",
     path: DESKTOP_SHELL_PATH,
-    summary: "Publish the console the attached Desktop launched, so this window can go back to it.",
+    summary: "Publish the console the attached Desktop launched, so this window can go back to it, and tell this window before the shell leaves it.",
     category: "Desktop",
     gate: "origin-strict",
     transport: "http",

@@ -157,6 +157,50 @@ describe("operations SSE update availability", () => {
     expect(TestEventSource.instances).toHaveLength(1);
   });
 
+  /**
+   * 회수·인계는 사람이 다시 열 때까지 끝난 채로 남는다. 모듈 변수는 reload와 함께 사라지므로, 새 문서가
+   * 401에서 페어링으로 조용히 재합류하면 주인의 Take back이 몇 초 만에 뒤집힌다. 시간이 지나도 풀리지 않고,
+   * 새 조인으로 세션이 살아 있는 채 스트림이 열려야만 풀린다.
+   */
+  it("keeps a reclaimed session ended across reload until a stream opens on a new session", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
+    const storage = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value); },
+      removeItem: (key: string) => { storage.delete(key); },
+    });
+    const notices: unknown[] = [];
+    vi.stubGlobal("window", { dispatchEvent: (event: CustomEvent<{ reason: string }>) => { notices.push(event.detail.reason); return true; }, setTimeout: vi.fn() });
+    vi.stubGlobal("location", { reload: vi.fn() });
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    mocks.fetchObserverStatus.mockResolvedValue({ version: "1.0.0" });
+    mocks.resumeConsoleSession.mockResolvedValue(undefined);
+    const { ApiError } = await import("../core/client/src/integration/api.js");
+    connectOperationsSse();
+    TestEventSource.instances.at(-1)!.emit("control:reclaimed", JSON.stringify({ reason: "reclaimed" }));
+    expect(notices).toEqual(["reclaimed"]);
+
+    // reload한 새 문서의 연결: 판단은 모듈 상태가 아니라 탭 세션에 적힌 표식으로 한다. 401을 받아도 스스로
+    // 재합류하지 않고 끝난 사실만 다시 보인다 — 한참 지나도 같다.
+    mocks.fetchOperations.mockRejectedValue(new ApiError(401, "unauthorized"));
+    connectOperationsSse();
+    TestEventSource.instances.at(-1)!.onerror?.();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(mocks.resumeConsoleSession).not.toHaveBeenCalled();
+    expect(notices).toEqual(["reclaimed", "reclaimed"]);
+
+    // 사람이 다시 열어 새로 합류한 문서: 스트림이 열리면 표식이 풀리고, 이후의 단절에서는 평소처럼 한 번 재합류한다.
+    reconnectOperationsSseNow();
+    await vi.advanceTimersByTimeAsync(0);
+    TestEventSource.instances.at(-1)!.open();
+    TestEventSource.instances.at(-1)!.onerror?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(1);
+  });
+
   it("strictly replaces control holder snapshots and preserves them across SSE loss", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", TestEventSource);

@@ -22,6 +22,18 @@ export interface RemoteHostRecord {
   readonly fingerprint: string;
   readonly addedAt: number;
   readonly lastOpenedAt: number | null;
+  /** 지문이 바뀔 때마다 오른다. 오래된 조인 보고가 새 신원의 기록을 덮지 못하게 하는 기준이다. */
+  readonly pinGeneration: number;
+  /**
+   * 이 기기의 Desktop이 마지막으로 조인에 성공했을 때의 인증서. 그때 받은 쿠키가 어느 신원에 묶였는지를
+   * 말할 뿐 자격이 아니다. 지금 지문과 다르거나 모르면(null) Desktop은 옛 쿠키를 새 신원에 보내지 않는다.
+   */
+  readonly cookieBinding: RemoteHostCookieBinding | null;
+}
+
+export interface RemoteHostCookieBinding {
+  readonly fingerprint: string;
+  readonly pinGeneration: number;
 }
 
 /** 방금 붙여넣은 링크의 1회용 자격. 디스크에 닿지 않고, 한 번 꺼내면 사라진다. */
@@ -40,6 +52,11 @@ export interface RemoteHostStore {
   forget(id: string): boolean;
   /** 넘겨줄 것을 한 번에 꺼낸다 — 토큰은 이 호출로 소진된다. */
   takeHandoff(origin: string): RemoteHostHandoff | null;
+  /**
+   * 조인 성공 보고. 보고가 가리키는 신원이 지금 기록과 같을 때만 받는다 — 그 사이 새 링크가 지문을 바꿨다면
+   * 늦게 도착한 옛 보고는 버린다.
+   */
+  bindCookies(id: string, binding: RemoteHostCookieBinding): RemoteHostRecord | null;
 }
 
 export interface RemoteHostStoreDeps extends RemoteStorageDeps {
@@ -72,7 +89,7 @@ export function createRemoteHostStore(consoleDir: string, deps: RemoteHostStoreD
     try {
       const parsed = JSON.parse(readFile(storage.path(HOSTS_FILE))) as StoredFile;
       if (parsed?.version !== STORE_VERSION || !Array.isArray(parsed.hosts)) return [];
-      return parsed.hosts.filter(isRecord).slice(0, MAX_HOSTS);
+      return parsed.hosts.filter(isRecord).map(withBindingDefaults).slice(0, MAX_HOSTS);
     } catch {
       return [];
     }
@@ -90,6 +107,7 @@ export function createRemoteHostStore(consoleDir: string, deps: RemoteHostStoreD
 
     remember(link) {
       const existing = hosts.find((entry) => entry.origin === link.origin);
+      const pinGeneration = existing === undefined ? 1 : existing.fingerprint === link.fingerprint ? existing.pinGeneration : existing.pinGeneration + 1;
       const record: RemoteHostRecord = {
         id: existing?.id ?? randomId(),
         // 이름은 사용자가 고쳐 부를 수 있으므로, 이미 고쳐 부른 이름을 링크가 덮어쓰지 않는다.
@@ -101,6 +119,9 @@ export function createRemoteHostStore(consoleDir: string, deps: RemoteHostStoreD
         fingerprint: link.fingerprint,
         addedAt: existing?.addedAt ?? now(),
         lastOpenedAt: existing?.lastOpenedAt ?? null,
+        pinGeneration,
+        // 쿠키가 묶인 신원은 링크가 바꾸지 않는다 — 새 신원으로 조인에 성공했다는 보고만 이것을 옮긴다.
+        cookieBinding: existing?.cookieBinding ?? null,
       };
       hosts = [record, ...hosts.filter((entry) => entry.origin !== link.origin)].slice(0, MAX_HOSTS);
       pending.set(record.origin, { token: link.token, expiresAt: now() + HANDOFF_TTL_MS });
@@ -138,7 +159,33 @@ export function createRemoteHostStore(consoleDir: string, deps: RemoteHostStoreD
       write();
       return { host: opened, token: fresh };
     },
+
+    bindCookies(id, binding) {
+      const target = hosts.find((entry) => entry.id === id);
+      if (!target || target.fingerprint !== binding.fingerprint || target.pinGeneration !== binding.pinGeneration) return null;
+      const bound: RemoteHostRecord = { ...target, cookieBinding: { fingerprint: binding.fingerprint, pinGeneration: binding.pinGeneration } };
+      hosts = hosts.map((entry) => (entry.id === id ? bound : entry));
+      write();
+      return bound;
+    },
   };
+}
+
+/** 이 필드가 생기기 전의 기록은 첫 신원에 묶여 있고, 쿠키가 어느 신원의 것인지는 모른다. */
+function withBindingDefaults(record: RemoteHostRecord): RemoteHostRecord {
+  const entry = record as RemoteHostRecord & { readonly pinGeneration?: unknown; readonly cookieBinding?: unknown };
+  return {
+    ...record,
+    pinGeneration: typeof entry.pinGeneration === "number" && Number.isSafeInteger(entry.pinGeneration) && entry.pinGeneration > 0 ? entry.pinGeneration : 1,
+    cookieBinding: isCookieBinding(entry.cookieBinding) ? entry.cookieBinding : null,
+  };
+}
+
+function isCookieBinding(value: unknown): value is RemoteHostCookieBinding {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.fingerprint === "string" && /^[0-9A-F]{64}$/u.test(entry.fingerprint)
+    && typeof entry.pinGeneration === "number" && Number.isSafeInteger(entry.pinGeneration) && entry.pinGeneration > 0;
 }
 
 function isRecord(value: unknown): value is RemoteHostRecord {

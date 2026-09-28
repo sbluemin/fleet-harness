@@ -11,6 +11,13 @@ export interface ApplicationMenuActions {
   readonly actualSize: () => void;
   readonly reloadConsole: () => void;
   readonly consoleReady: () => boolean;
+  /**
+   * 다른 콘솔로 건너가는 네이티브 입구. 목록은 여전히 이 앱이 띄운 콘솔이 그린다 — 메뉴는 그 목록을 여는
+   * 신뢰할 수 있는 손잡이일 뿐, 스스로 호스트를 세거나 고르지 않는다.
+   */
+  readonly switchConsole: () => void;
+  readonly returnToLocal: () => void;
+  readonly viewingOtherConsole: () => boolean;
   readonly updates: NativeUpdateActions;
 }
 
@@ -53,7 +60,7 @@ export function installApplicationMenu(MenuCtor: typeof Menu, actions: Applicati
  * 재시작을 내준다 — 둘을 한 항목으로 합치면 누르는 사람이 무엇이 일어날지 모른 채 누른다.
  * 확인·내려받기는 창을 가리는 대화를 띄우지 않는다. 결과는 언제나 콘솔 화면이 말한다.
  */
-export function buildUpdateMenuItems(actions: ApplicationMenuActions): MenuItemConstructorOptions[] {
+export function buildUpdateMenuItems(actions: Pick<ApplicationMenuActions, "updates">): MenuItemConstructorOptions[] {
   if (!actions.updates.enabled()) return [];
   const version = actions.updates.version();
   const stage = actions.updates.stage();
@@ -66,6 +73,8 @@ export function buildUpdateMenuItems(actions: ApplicationMenuActions): MenuItemC
 function darwinConsoleActions(actions: ApplicationMenuActions): MenuItemConstructorOptions[] {
   return [
     consoleAction("Reload Console", "Command+R", actions.reloadConsole, actions),
+    { type: "separator" },
+    ...switchActions("Command+Shift+O", actions),
     { type: "separator" },
     consoleAction("Zoom In", "Command+Plus", actions.zoomIn, actions),
     consoleAction("Zoom In", "Command+=", actions.zoomIn, actions, true),
@@ -81,12 +90,21 @@ function nonDarwinConsoleActions(actions: ApplicationMenuActions): MenuItemConst
     consoleAction("Reload Console", "Ctrl+R", actions.reloadConsole, actions),
     consoleAction("Reload Console", "F5", actions.reloadConsole, actions),
     { type: "separator" },
+    ...switchActions("Ctrl+Shift+O", actions),
+    { type: "separator" },
     consoleAction("Zoom In", "Ctrl+=", actions.zoomIn, actions),
     consoleAction("Zoom In", "Ctrl+Shift+=", actions.zoomIn, actions),
     consoleAction("Zoom In", "Ctrl+numadd", actions.zoomIn, actions),
     consoleAction("Zoom Out", "Ctrl+-", actions.zoomOut, actions),
     consoleAction("Zoom Out", "Ctrl+numsub", actions.zoomOut, actions),
     consoleAction("Actual Size", "Ctrl+0", actions.actualSize, actions),
+  ];
+}
+
+function switchActions(accelerator: string, actions: ApplicationMenuActions): MenuItemConstructorOptions[] {
+  return [
+    consoleAction("Switch Console…", accelerator, actions.switchConsole, actions),
+    { label: "Return to This Computer", enabled: actions.consoleReady() && actions.viewingOtherConsole(), click: () => { if (actions.viewingOtherConsole()) actions.returnToLocal(); } },
   ];
 }
 
