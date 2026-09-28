@@ -147,7 +147,8 @@
  */
 .objectives-objective {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) auto auto 26px;
+  /* 모델 열은 넓은 목록의 모델 열과 같은 15ch 까지만 — 긴 모델명이 auto 열을 넓혀 제목 칸을 한 글자 폭으로 짓누르지 않게. 넘치는 이름은 줄임표. */
+  grid-template-columns: 26px minmax(0, 1fr) auto fit-content(15ch) 26px;
   grid-template-areas: "ring title due launch go" "ring meta due launch go";
   align-items: start;
   padding: 8px 8px 8px 10px;
@@ -485,6 +486,11 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 /* 지휘관 행 — 모델·강도 컨트롤은 오른쪽 끝. 행을 누르면 연결 목록이 아래로 펼쳐진다. */
 /* 지휘관 행의 모델·강도는 행 가운데 — 라벨과 × 사이 남은 폭의 한가운데. */
 .objectives-row .objectives-launch { margin: 0 auto; flex: none; }
+/* 긴 모델명은 구성원 줄처럼 이름만 줄임표로 접는다 — 보기·글리프·강도는 자리를 지키고, 라벨도 제 폭을 지킨다. 풀네임은 title. */
+.objectives-row:has(> .objectives-launch) > .objectives-row-main { min-width: max-content; }
+.objectives-row > .objectives-launch:not(.is-glyph) { flex: 0 1 auto; min-width: 0; }
+.objectives-row > .objectives-launch > * { flex: none; }
+.objectives-row > .objectives-launch > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-row.is-expanded .objectives-row-main { color: var(--text-primary); }
 /* 시작 — 세부 창의 마지막 행동. brass 워시 한 장, 낱말은 굵게, 부제는 dim, 오른쪽 끝에 화살. 일하는 동안 같은 자리가 「중단」. */
 /* 시작 버튼은 스크롤 영역 아래에 놓되 별도 배경 띠 없이 세부 표면과 이어진다. */
@@ -830,6 +836,8 @@ span.objectives-row-main { cursor: default; }
   .objectives-row:has(> .objectives-launch) { flex-wrap: wrap; row-gap: 0; padding-bottom: 6px; }
   .objectives-row:has(> .objectives-launch) > .objectives-row-main { flex: 1 0 100%; min-height: 36px; }
   .objectives-row > .objectives-launch { margin: 0 0 0 20px; }
+  /* 보기 낱말은 글리프만 남겨 모델 이름이 읽힐 폭을 돌려준다 — 보기는 글리프로도 갈린다. */
+  .objectives-row > .objectives-launch .objectives-launch-view-word { display: none; }
   .objectives-row-lab { overflow-wrap: normal; }
 }
 .objectives-dag-hint { text-align: center; padding: 0 10px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
