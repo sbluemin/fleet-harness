@@ -102,6 +102,14 @@ export class SidecarSupervisor {
     // health 재검사 대신 pid 생존 기반의 소유 종료 절차로 SIGKILL 승격까지 보장한다.
     await this.terminateOwnedProcess(current.stored.lock.pid);
   }
+  /** 지금 이 셸이 감독하는 콘솔이 lock의 자격으로 답하는가, 그리고 그 주소는 어디인가. */
+  async health(): Promise<{ readonly healthy: boolean; readonly origin: string | null }> {
+    const probe = await this.probe();
+    if (probe.kind === "missing") return { healthy: false, origin: null };
+    let origin: string | null = null;
+    try { origin = new URL(probe.stored.lock.endpoint).origin; } catch { /* 모양이 틀린 lock은 주소가 없다. */ }
+    return { healthy: probe.kind === "healthy", origin };
+  }
   private async probe(): Promise<LockProbe> {
     const stored = this.readLock();
     if (!stored) return { kind: "missing" };

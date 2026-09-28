@@ -324,7 +324,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     else shell.stack.parkBrowser(entry.view);
     // Parked behind Console but still holding focus leaves keyboard input on an invisible page.
     if (reclaimConsoleFocus) {
-      try { shell.consoleContents.focus(); } catch { /* window gone */ }
+      try { shell.activeContents().focus(); } catch { /* window gone */ }
     }
   };
 

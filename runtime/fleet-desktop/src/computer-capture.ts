@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { desktopCapturer, systemPreferences, type WebContents } from "electron";
+import { desktopCapturer, systemPreferences, type Session, type WebContents } from "electron";
 import { DESKTOP_COMPUTER_CAPTURE_PATH, isDesktopComputerCaptureTarget, type DesktopComputerCaptureTarget } from "@fleet-console/protocol/desktop";
 
 const VERIFY_WINDOW = `
@@ -18,14 +18,44 @@ async function verifyWindow(target: DesktopComputerCaptureTarget): Promise<boole
   });
 }
 
-/** Console가 관찰 시 확보한 창 ID와 프로세스 수명을 검증한다. 제목으로 다른 창을 찾지 않는다. */
-export function installComputerCapture(contents: WebContents, localOrigin: () => string | null, log: (message: string) => void): void {
-  contents.session.setDisplayMediaRequestHandler((request, callback) => {
+/** 화면 캡처를 받을 수 있는 뷰 하나 — 로컬 뷰가 권한을 가진 동안의 그 뷰와 전환 세대. */
+export interface CaptureAuthority {
+  readonly contents: WebContents;
+  readonly origin: string;
+  readonly generation: number;
+}
+
+export interface ComputerCapture {
+  /** 떠나기 전에, 아직 답하지 않은 요청을 모두 거절로 끝낸다. 늦게 끝난 요청이 떠난 뒤에 트랙을 만들지 않게. */
+  abortPending(reason: string): void;
+}
+
+/**
+ * Console가 관찰 시 확보한 창 ID와 프로세스 수명을 검증한다. 제목으로 다른 창을 찾지 않는다.
+ *
+ * 핸들러는 세션에 하나다 — 두 콘솔 뷰와 덮개가 같은 세션을 쓰므로, 누가 받을 수 있는지는 `authority`가
+ * 요청을 시작할 때와 답하기 직전에 한 번씩 정한다. 그 사이 전환이 시작됐다면(세대가 바뀌었다면) 거절한다.
+ */
+export function installComputerCapture(session: Pick<Session, "setDisplayMediaRequestHandler">, authority: () => CaptureAuthority | null, log: (message: string) => void): ComputerCapture {
+  const pending = new Set<(reason: string) => void>();
+  session.setDisplayMediaRequestHandler((request, callback) => {
     let answered = false;
-    const respond: typeof callback = (streams) => { answered = true; callback(streams); };
+    const respond: typeof callback = (streams) => {
+      if (answered) return;
+      answered = true;
+      pending.delete(abort);
+      callback(streams);
+    };
+    const abort = (reason: string): void => { if (!answered) { log(`computer capture rejected: ${reason}`); respond({}); } };
+    pending.add(abort);
     void (async () => {
-      const origin = localOrigin();
-      if (!origin || request.frame !== contents.mainFrame || !request.videoRequested || request.audioRequested) { log("computer capture rejected: request scope"); respond({}); return; }
+      const holder = authority();
+      if (!holder || request.frame !== holder.contents.mainFrame || !request.videoRequested || request.audioRequested) { log("computer capture rejected: request scope"); respond({}); return; }
+      const origin = holder.origin;
+      const stillHolds = (): boolean => {
+        const current = authority();
+        return current !== null && current.contents === holder.contents && current.origin === origin && current.generation === holder.generation;
+      };
       const readTarget = async () => {
         const response = await fetch(`${origin}${DESKTOP_COMPUTER_CAPTURE_PATH}`, { signal: AbortSignal.timeout(3000) });
         if (!response.ok) return null;
@@ -40,9 +70,15 @@ export function installComputerCapture(contents: WebContents, localOrigin: () =>
       if (process.platform !== "darwin" && !source) { log("computer capture rejected: exact window source unavailable"); respond({}); return; }
       if (process.platform === "darwin" && !await verifyWindow(target)) { log("computer capture rejected: window owner changed or closed"); respond({}); return; }
       const current = await readTarget();
-      if (current?.id !== target.id || localOrigin() !== origin || (process.platform === "darwin" && !await verifyWindow(target))) { log("computer capture rejected: selection changed"); respond({}); return; }
+      if (current?.id !== target.id || (process.platform === "darwin" && !await verifyWindow(target))) { log("computer capture rejected: selection changed"); respond({}); return; }
+      if (!stillHolds()) { log("computer capture rejected: surface changed"); respond({}); return; }
       log(`computer capture source selected window=${target.windowId}`);
       respond({ video: { id: `window:${target.windowId}:0`, name: target.title } });
-    })().catch((error: unknown) => { log(`computer capture failed: ${error instanceof Error ? error.message : typeof error === "string" ? error : "unknown"}, screen permission=${systemPreferences.getMediaAccessStatus("screen")}`); if (!answered) respond({}); });
+    })().catch((error: unknown) => { log(`computer capture failed: ${error instanceof Error ? error.message : typeof error === "string" ? error : "unknown"}, screen permission=${systemPreferences.getMediaAccessStatus("screen")}`); respond({}); });
   }, { useSystemPicker: false });
+  return {
+    abortPending(reason) {
+      for (const abort of [...pending]) abort(reason);
+    },
+  };
 }

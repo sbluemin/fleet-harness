@@ -33,7 +33,9 @@ export interface ShellNetworkSession extends PinnableSession {
   readonly cookies: {
     get(filter: { url: string }): Promise<readonly ShellCookie[]>;
     set(details: ShellCookie & { url: string }): Promise<void>;
+    remove(url: string, name: string): Promise<void>;
   };
+  closeAllConnections(): Promise<void>;
 }
 
 export interface ShellNetworkDeps {
@@ -50,6 +52,12 @@ export interface ShellNetwork {
   readonly fetch: typeof fetch;
   /** 핀은 두 세션에 함께 걸린다 — 창이 열 수 있는 호스트는 셸도 열 수 있어야 한다. */
   readonly pins: RemoteCertificatePins;
+  /**
+   * 한 콘솔이 발급한 쿠키를 창과 셸의 모든 항아리에서 이름으로 정확히 지운다. 인증서가 바뀐 호스트의 옛 자격이
+   * 새 신원으로 가지 않게 하는 자리라, 지우는 동안 그 origin으로 가는 셸 요청은 막히고, 세션의 연결을 모두
+   * 끊으며, 지워졌는지 다시 읽어 확인한다. 확인이 안 되면 던진다 — 부른 쪽은 자격을 보내지 않고 멈춘다.
+   */
+  purge(origin: string, cookieNames: readonly string[]): Promise<void>;
 }
 
 export function createShellNetwork(deps: ShellNetworkDeps): ShellNetwork {
@@ -57,14 +65,26 @@ export function createShellNetwork(deps: ShellNetworkDeps): ShellNetwork {
   const shellPins = installRemoteCertificatePins(deps.shellSession, deps.log);
   /** origin 별로 마지막에 베껴 온 쿠키의 모양. 같은 값이면 다시 쓰지 않는다. */
   const adopted = new Map<string, string>();
+  /** 지우는 중인 origin과 그 세대. 지우기 전에 시작한 베끼기가 지운 뒤에 옛 값을 되살리지 못하게 한다. */
+  const purging = new Set<string>();
+  let purgeGeneration = 0;
 
+  /** 창의 항아리가 원본이다. 원본에서 사라진 쿠키는 복사본에서도 지운다 — 복사본만 남은 자격이 요청에 실리지 않게. */
   const adopt = async (origin: string): Promise<void> => {
+    const startedAt = purgeGeneration;
     const cookies = await deps.windowSession.cookies.get({ url: origin }).catch(() => []);
     const signature = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("\n");
     if (adopted.get(origin) === signature) return;
+    const copies = await deps.shellSession.cookies.get({ url: origin }).catch(() => []);
+    if (startedAt !== purgeGeneration || purging.has(origin)) throw new Error("shell_network_purging");
+    const names = new Set(cookies.map((cookie) => cookie.name));
+    for (const copy of copies) {
+      if (!names.has(copy.name)) await deps.shellSession.cookies.remove(origin, copy.name).catch(() => undefined);
+    }
     for (const cookie of cookies) {
       await deps.shellSession.cookies.set({ ...cookie, url: origin }).catch(() => undefined);
     }
+    if (startedAt !== purgeGeneration || purging.has(origin)) throw new Error("shell_network_purging");
     adopted.set(origin, signature);
   };
 
@@ -74,6 +94,7 @@ export function createShellNetwork(deps: ShellNetworkDeps): ShellNetwork {
     const url = typeof input === "string" ? input : input.href;
     const origin = new URL(url).origin;
     if (!deps.isRemote(origin)) return globalThis.fetch(url, init);
+    if (purging.has(origin)) return Promise.reject(new Error("shell_network_purging"));
     return adopt(origin)
       .then(() => deps.shellSession.fetch(url, init))
       .then((response) => {
@@ -83,12 +104,36 @@ export function createShellNetwork(deps: ShellNetworkDeps): ShellNetwork {
       });
   };
 
+  const purge = async (origin: string, cookieNames: readonly string[]): Promise<void> => {
+    purging.add(origin);
+    purgeGeneration += 1;
+    adopted.delete(origin);
+    try {
+      for (const jar of [deps.windowSession, deps.shellSession]) {
+        for (const name of cookieNames) await jar.cookies.remove(origin, name);
+      }
+      // 연결 풀에 쿠키가 남는 것은 아니지만, 그 자격을 실어 이미 열린 연결은 여기서 끝낸다.
+      await Promise.all([deps.windowSession.closeAllConnections(), deps.shellSession.closeAllConnections()]);
+      for (const jar of [deps.windowSession, deps.shellSession]) {
+        const remaining = await jar.cookies.get({ url: origin });
+        if (remaining.some((cookie) => cookieNames.includes(cookie.name))) throw new Error("remote_host_cookie_purge_unconfirmed");
+      }
+    } catch (error) {
+      deps.log?.(`cookie purge failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw error instanceof Error && error.message === "remote_host_cookie_purge_unconfirmed" ? error : new Error("remote_host_cookie_purge_unconfirmed", { cause: error });
+    } finally {
+      purging.delete(origin);
+    }
+  };
+
   return {
     fetch: consoleFetch,
+    purge,
     pins: {
       pin(hostname, fingerprint): void { windowPins.pin(hostname, fingerprint); shellPins.pin(hostname, fingerprint); },
       unpin(hostname): void { windowPins.unpin(hostname); shellPins.unpin(hostname); },
       clear(): void { windowPins.clear(); shellPins.clear(); adopted.clear(); },
+      trustedOtherIdentity: (hostname, fingerprint) => windowPins.trustedOtherIdentity(hostname, fingerprint) || shellPins.trustedOtherIdentity(hostname, fingerprint),
     },
   };
 }

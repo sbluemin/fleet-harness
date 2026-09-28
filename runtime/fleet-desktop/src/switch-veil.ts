@@ -50,10 +50,12 @@ export interface SwitchVeil {
   /** 창이 생길 때 한 번 — 덮개 렌더러를 미리 띄워 Console 뒤에 세워 둔다. */
   mount(shell: DesktopShellWindow): void;
   /**
-   * 콘솔 전환 한 번을 덮는다. `load`가 끝나도 덮개는 새 화면의 준비 표식(또는 상한)까지 남고,
-   * `load`가 실패하면 곧바로 걷힌다 — 오류 화면을 스냅샷 뒤에 숨기지 않는다.
+   * 콘솔 전환 한 번을 덮는다. `from`의 화면을 찍어 덮고, `to`가 목적지에 도착해 준비 표식을 달면(또는 상한에)
+   * 걷는다. `load`가 실패하면 곧바로 걷힌다 — 오류 화면을 스냅샷 뒤에 숨기지 않는다.
    */
-  around(url: string, load: () => Promise<void>): Promise<void>;
+  around(url: string, views: { readonly from: WebContents; readonly to: WebContents }, load: () => Promise<void>): Promise<void>;
+  /** 전환이 취소됐다 — 기다리지 않고 걷는다. */
+  dismiss(reason: string): void;
   unmount(): void;
 }
 
@@ -73,13 +75,13 @@ export function createSwitchVeil(deps: SwitchVeilDependencies): SwitchVeil {
     return contents && !contents.isDestroyed() ? contents : null;
   }
 
-  async function cover(current: DesktopShellWindow): Promise<boolean> {
+  async function cover(current: DesktopShellWindow, from: WebContents): Promise<boolean> {
     // 이미 덮여 있으면(연달아 전환, 실패 뒤 집으로 복귀) 다시 찍지 않는다 — 지금 Console은 반쯤 바뀐 화면일 수 있다.
     if (phase === "covering") return true;
     const veilContents = contentsOf(view);
     if (!veilContents || !(await pageReady)) return false;
     try {
-      const image = await withinBudget(current.consoleContents.capturePage());
+      const image = await withinBudget(from.capturePage());
       if (image.isEmpty()) return false;
       const source = `data:image/jpeg;base64,${image.toJPEG(92).toString("base64")}`;
       // 뒤에 세워 둔 채로 칠하고, 칠해진 뒤에 올린다 — 올린 순간 보이는 것은 언제나 스냅샷이다.
@@ -126,7 +128,7 @@ export function createSwitchVeil(deps: SwitchVeilDependencies): SwitchVeil {
       if (originOf(url) === targetOrigin) arrived = true;
     };
     const onTitle = (_event: unknown, title: string): void => {
-      if (!arrived || !title.endsWith(CONSOLE_READY_TITLE_MARK) || settle !== null) return;
+      if (!arrived || !title.includes(CONSOLE_READY_TITLE_MARK) || settle !== null) return;
       settle = setTimeout(() => void lower("ready", epoch), READY_SETTLE_MS);
     };
     const onFinish = (): void => {
@@ -172,7 +174,7 @@ export function createSwitchVeil(deps: SwitchVeilDependencies): SwitchVeil {
       });
     },
 
-    async around(url, load) {
+    async around(url, views, load) {
       const current = shell;
       const targetOrigin = originOf(url);
       if (!current || current.isDestroyed() || targetOrigin === null) return load();
@@ -181,14 +183,18 @@ export function createSwitchVeil(deps: SwitchVeilDependencies): SwitchVeil {
       stopWatching?.();
       stopWatching = null;
       if (phase === "fading") phase = "idle";
-      if (!(await cover(current))) return load();
-      stopWatching = watch(current.consoleContents, targetOrigin, epoch);
+      if (!(await cover(current, views.from))) return load();
+      stopWatching = watch(views.to, targetOrigin, epoch);
       try {
         await load();
       } catch (error) {
         await lower("load_failed", epoch);
         throw error;
       }
+    },
+
+    dismiss(reason) {
+      void lower(reason, sequence);
     },
 
     unmount() {
