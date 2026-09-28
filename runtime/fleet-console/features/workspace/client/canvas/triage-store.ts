@@ -6,6 +6,7 @@ import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import { clearIdleArrival, clearOperationStatusDetail, getIdleArrivalIds, recordOperationActivityTransition, setIdleArrivalAcknowledgementSuspended } from "../../../execution/client/operation-marks.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity } from "../../../execution/client/operation-activity.js";
 import { getState, clearPendingSideBarSignals, registerFocusTheaterSwitchSuppression, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
+import { claimTheaterBootMinimization } from "../../../../core/client/src/integration/boot-minimization-session.js";
 import { clearSideBarOperationAction } from "../sidebar/interaction.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import { readCanvasModeSession, rememberWarRoomActive } from "./canvas-mode-session.js";
@@ -320,9 +321,16 @@ export function setTriageActive(active: boolean, animate = true): void {
   if (returnTheaterId !== null
     && getState().activeTheaterId !== returnTheaterId
     && getState().theaters.some((theater) => theater.id === returnTheaterId)) {
-    setActiveTheater(returnTheaterId);
+    setActiveTheaterShownByWarRoom(returnTheaterId);
   }
   emitTriage();
+}
+
+// War Room의 덱은 전 Theater의 패널을 이미 세워 보였다. War Room이 활성 Theater를 바꿀 때는 표석 선택처럼
+// 그 Theater의 부팅 최소화 한 번을 소비한다 — 처음 여는 Theater여도 사람이 접지 않은 패널이 덱과 지도에서 빠지지 않는다.
+function setActiveTheaterShownByWarRoom(theaterId: string): void {
+  claimTheaterBootMinimization(theaterId);
+  setActiveTheater(theaterId);
 }
 
 // 탭 세션에 War Room이 적혀 있으면 부팅 시 그 모드로 되돌린다 — 콘솔을 오갔을 때 사용자가 서 있던
@@ -423,7 +431,7 @@ export function useTriageActive(): boolean {
 export function visitTriageTheater(theaterId: string): void {
   captureFocusLayerBeforeTriage(theaterId);
   setTheaterFocusLayerSnapshot(theaterId, null);
-  if (getState().activeTheaterId !== theaterId) setActiveTheater(theaterId);
+  if (getState().activeTheaterId !== theaterId) setActiveTheaterShownByWarRoom(theaterId);
 }
 
 // 종료 시 복귀할 "마지막으로 무대에 올랐던 Theater" 이력 — canvas가 무대가 설 때 기록한다.

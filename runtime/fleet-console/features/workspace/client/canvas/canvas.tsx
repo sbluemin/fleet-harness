@@ -1953,6 +1953,10 @@ export function OperationsCanvas({
           // 점을 고르면 그 Operation으로 내려간다 — 페이지의 포커스 경로가 Theater 전환과 줌 복귀를
           // 함께 지고, 포커스 줌 하한(0.25)이 지도 이탈 임계 위라 판은 그 자리에서 걷힌다.
           onPick={(operationId) => {
+            // 점도 판이 보여 준 Theater로 내려가는 길이다 — 표석과 같이 그 Theater의 부팅 최소화 한 번을
+            // 먼저 소비해, 처음 여는 Theater여도 고른 점 하나만 남기고 나머지 패널을 접지 않는다.
+            const theaterId = fleetMapOperations.find((operation) => operation.id === operationId)?.theaterId;
+            if (theaterId) claimTheaterBootMinimization(theaterId);
             onFocus(operationId);
             notifyMapOperationSelected(operationId);
           }}
