@@ -487,7 +487,7 @@ export function handleMapOperationSelected(operationId: string): void {
       (objective) => objective.id === operationId || objective.members.some((member) => member.id === operationId && member.sessionName !== null),
     );
     if (!matchingObjective) return;
-    patchObjectiveView(theaterId, () => ({ selected: matchingObjective.id, list: "all", externalSelectionId: matchingObjective.id }));
+    patchObjectiveView(theaterId, () => ({ selected: matchingObjective.id, list: matchingObjective.enlisted ? "all" : "outside", externalSelectionId: matchingObjective.id }));
   };
   if (theaters.get(theaterId)?.loaded) select();
   else void loadTheater(installed.api, theaterId).then(select);
