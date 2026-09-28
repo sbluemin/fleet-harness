@@ -115,7 +115,8 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
     if (home !== null && selection.origin === home) return returnLocal();
     if (state === "remote-ready" && selection.origin === remote) return;
     const attempt = begin();
-    const leaving = state === "remote-ready" ? remote : null;
+    // 보여 주던 원격은 다른 원격을 준비하는 동안에도 세션을 쥐고 있다. 상태가 아니라 그 원격을 기준으로 끝낸다.
+    const leaving = remote;
     try {
       if (!localQuiesced) {
         transition("quiescing");
@@ -143,7 +144,8 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
 
   async function returnLocal(): Promise<void> {
     if (state === "local-ready") return;
-    const leaving = state === "remote-ready" ? remote : null;
+    // 준비 중에 돌아와도, 그전에 보여 주던 원격의 세션은 여기서 끝난다.
+    const leaving = remote;
     const attempt = begin();
     await restoreLocal(attempt, "return");
     if (leaving !== null) deps.endRemoteSession(leaving);
@@ -168,7 +170,7 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
     returnLocal,
     disconnect,
     reset() {
-      const leaving = state === "remote-ready" ? remote : null;
+      const leaving = remote;
       begin();
       remote = null;
       localQuiesced = false;

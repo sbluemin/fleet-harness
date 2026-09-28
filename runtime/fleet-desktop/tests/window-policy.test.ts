@@ -232,4 +232,33 @@ describe("surface authority lifecycle", () => {
     expect(surface.state()).toBe("local-ready");
     expect(adoptLocal).toHaveBeenCalledOnce();
   });
+
+  it("still ends the remote session it was showing when a pending switch is abandoned", async () => {
+    const OTHER = "https://100.84.12.8:6768";
+    let releaseOther: () => void = () => undefined;
+    const ended: string[] = [];
+    const surface = createConsoleSurface({
+      localOrigin: () => HOME,
+      quiesceLocal: async () => undefined,
+      prepareData: ({ origin }) => (origin === OTHER ? new Promise<void>((resolve) => { releaseOther = resolve; }) : Promise.resolve()),
+      suspendOwners: () => undefined,
+      presentData: () => undefined,
+      presentLocal: async () => undefined,
+      adoptLocal: () => undefined,
+      endRemoteSession: (origin) => { ended.push(origin); },
+      report: () => undefined,
+      notify: () => undefined,
+      log: () => undefined,
+    });
+    await surface.select({ origin: REMOTE });
+
+    // 다른 원격을 준비하는 도중 사람이 로컬로 돌아온다 — 보여 주던 원격의 세션은 여기서 끝나야 한다.
+    const pending = surface.select({ origin: OTHER });
+    await surface.returnLocal();
+    releaseOther();
+    await pending;
+
+    expect(surface.state()).toBe("local-ready");
+    expect(ended).toEqual([REMOTE]);
+  });
 });
