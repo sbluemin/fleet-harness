@@ -452,12 +452,10 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
               {nearby.map(({ entry, home }) => (
                 <HostRow
                   key={entry.origin}
-                  live
                   name={nearbyName(home, entry.origin === currentOrigin, currentLabel, t)}
                   detail={nearbyDetail(entry, home)}
-                  badge={home || entry.origin === currentOrigin ? undefined : t("chrome.hosts.discovered")}
+                  status={home || entry.origin === currentOrigin ? undefined : { label: t("chrome.hosts.discovered") }}
                   current={entry.origin === currentOrigin}
-                  compact={home}
                   onOpen={() => go(entry.origin)}
                 />
               ))}
@@ -475,9 +473,9 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
               {hosts.map((host) => (
                 <HostRow
                   key={host.id}
-                  live={Boolean(reach[host.id]?.trusted)}
                   name={host.label}
-                  detail={canOpenRemote ? hostDetail(host, reach[host.id], t) : `${host.hostname}:${host.port} · ${t("chrome.hosts.desktopOnly")}`}
+                  detail={hostDetail(host, canOpenRemote ? reach[host.id] : undefined, t)}
+                  status={canOpenRemote ? hostStatus(reach[host.id], t) : { label: t("chrome.hosts.desktopOnly") }}
                   current={host.origin === currentOrigin}
                   disabled={!canOpenRemote || reach[host.id]?.reachable === false}
                   onOpen={() => go(host.origin)}
@@ -489,17 +487,17 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
           {!nearbyCurrent && savedCurrent === null ? (
             <>
               <div className="host-switcher-divider" role="separator" />
-              <HostRow live name={currentLabel || t("chrome.hosts.console")} detail={`${currentHost(currentOrigin)} · ${t("chrome.hosts.notSaved")}`} current />
+              <HostRow name={currentLabel || t("chrome.hosts.console")} detail={currentHost(currentOrigin)} status={{ label: t("chrome.hosts.notSaved") }} current />
             </>
           ) : null}
           <div className="host-switcher-divider" role="separator" />
           {/* 콘솔을 더하는 일은 목록을 고르는 자리에서 시작된다 — 링크 한 줄 때문에 설정으로
               건너가지 않도록 여기서 팝업을 연다. 관리(설정)는 그 아래에 남는다. */}
           <button type="button" role="menuitem" className="host-switcher-link" onClick={openAdd}>
-            {t("chrome.hosts.add")}
+            <PlusGlyph /><span>{t("chrome.hosts.add")}</span>
           </button>
           <button type="button" role="menuitem" className="host-switcher-link" onClick={openSettings}>
-            {t("chrome.hosts.manage")}
+            <SlidersGlyph /><span>{t("chrome.hosts.manage")}</span>
           </button>
         </div>
       ) : null}
@@ -508,24 +506,29 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   );
 }
 
+/** 줄 오른쪽 한 자리에 서는 상태 낱말. 닿지 않거나 믿을 수 없는 호스트만 신호 잉크를 입는다. */
+interface HostStatus {
+  readonly label: string;
+  readonly tone?: "coral" | "warn";
+}
+
+/**
+ * 모든 호스트 줄은 같은 모양이다 — 이름 / 주소 두 줄, 오른쪽 한 자리에 상태 낱말과 현재 체크.
+ * 집 콘솔도 따로 접거나 칠하지 않는다: 어디에 서 있는지는 체크가, 어떤 상태인지는 낱말이 말한다.
+ */
 function HostRow({
-  live,
   name,
   detail,
-  badge,
+  status,
   current,
   disabled,
-  compact,
   onOpen,
 }: {
-  readonly live: boolean;
   readonly name: string;
   readonly detail: string;
-  readonly badge?: string;
+  readonly status?: HostStatus;
   readonly current: boolean;
   readonly disabled?: boolean;
-  /** 이 앱이 띄운 콘솔은 한 줄로 접어 강조한다 — 목록에서 유일하게 언제나 거기 있는 기준점이다. */
-  readonly compact?: boolean;
   readonly onOpen?: () => void;
 }) {
   return (
@@ -533,18 +536,19 @@ function HostRow({
       type="button"
       role="menuitemradio"
       aria-checked={current}
-      className={`${current ? "is-current" : ""} ${compact ? "is-home" : ""}`.trim()}
+      className={`host-switcher-row${current ? " is-current" : ""}`}
       disabled={!current && (disabled === true || onOpen === undefined)}
       aria-disabled={current || disabled === true || onOpen === undefined}
       onClick={current || disabled === true ? undefined : onOpen}
     >
-      <span className={`host-switcher-dot ${live ? "is-live" : ""}`} aria-hidden="true" />
-      <span className="host-switcher-entry">
-        <span className="host-switcher-name">{name}</span>
-        <small>{detail}</small>
-      </span>
-      {badge ? <span className="host-switcher-badge">{badge}</span> : null}
-      {current ? <CheckGlyph /> : null}
+      <span className="host-switcher-name">{name}</span>
+      <small className="host-switcher-detail">{detail}</small>
+      {status || current ? (
+        <span className="host-switcher-trail">
+          {status ? <span className={status.tone ? `is-${status.tone}` : undefined}>{status.label}</span> : null}
+          {current ? <CheckGlyph /> : null}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -592,15 +596,17 @@ function nearbyName(home: boolean, current: boolean, currentName: string, t: Ret
 }
 
 
+/** 주소 줄에는 어디인지만 둔다. 닿지 않는 호스트에는 마지막으로 연 때를 곁들인다. */
 function hostDetail(host: RemoteHost, state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): string {
   const address = `${host.hostname}:${host.port}`;
-  if (state === undefined) return address;
-  if (!state.reachable) {
-    return host.lastOpenedAt === null
-      ? `${address} · ${t("chrome.hosts.unreachable")}`
-      : `${address} · ${t("chrome.hosts.unreachable")} · ${t("chrome.hosts.seen")} ${formatSeen(host.lastOpenedAt)}`;
-  }
-  return state.trusted ? address : `${address} · ${t("chrome.hosts.untrusted")}`;
+  if (state === undefined || state.reachable || host.lastOpenedAt === null) return address;
+  return `${address} · ${t("chrome.hosts.seen")} ${formatSeen(host.lastOpenedAt)}`;
+}
+
+function hostStatus(state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): HostStatus | undefined {
+  if (state === undefined) return undefined;
+  if (!state.reachable) return { label: t("chrome.hosts.unreachable"), tone: "coral" };
+  return state.trusted ? undefined : { label: t("chrome.hosts.untrusted"), tone: "warn" };
 }
 
 function formatSeen(epochMs: number): string {
@@ -622,6 +628,16 @@ function RemoteAwayGlyph() {
 
 function CheckGlyph() {
   return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 6.3 4.8 8.6 9.5 3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+// 콘솔 추가 — 더하기. 도움말 메뉴 글리프와 같은 1.2px 선.
+function PlusGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
+}
+
+// 호스트 관리 — 두 개의 조절 막대. 목록을 고르는 곳이 아니라 손보는 곳으로 간다.
+function SlidersGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><circle cx="10" cy="5" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /><circle cx="6" cy="11" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
 // "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다. 엔진이 마운트한 모든 기여의

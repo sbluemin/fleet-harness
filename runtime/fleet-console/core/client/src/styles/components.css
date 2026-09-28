@@ -1200,10 +1200,9 @@
   border-width: 1px;
 }
 
-.host-switcher-dot.is-live { border-color: var(--aurora); background: var(--aurora); }
 .host-switcher-dot.is-shared { border-color: var(--warn); background: var(--warn); box-shadow: 0 0 10px var(--warn-glow); }
-.host-switcher-name { color: var(--text-primary); }
 
+/* 판 외피는 옆 도움말 메뉴(.command-band-system-menu)와 같다 — 도구모음의 두 메뉴는 같은 물건으로 읽혀야 한다. */
 .host-switcher-panel {
   position: absolute;
   z-index: 40;
@@ -1212,94 +1211,103 @@
   display: flex;
   flex-direction: column;
   width: max-content;
-  min-width: 17rem;
-  padding: var(--space-2);
+  min-width: 16.5rem;
+  max-width: min(26rem, calc(100vw - 16px));
+  padding: var(--space-1);
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: abyss 틴트 + glass 언더레이 채널(canonical 주석: whatsnew-card). */
+  border-radius: var(--radius-xs);
+  /* 팝업 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
     var(--glass-sheen),
-    linear-gradient(var(--glass-tint-abyss), var(--glass-tint-abyss)),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), 0 14px 34px rgb(0 0 0 / 48%);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
 }
 
+/* 구역 제목은 한국어로도 읽히는 문장체다 — 자간을 벌린 대문자는 "이 컴퓨터"를 낱자로 흩뜨린다. */
 .host-switcher-heading {
-  margin: 0;
-  padding: var(--space-2) var(--space-3) var(--space-1);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.host-switcher-panel > button {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: var(--space-2) 10px var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.01em;
+}
+
+/* 호스트 줄은 하나의 모양뿐이다 — 이름 / 주소 두 줄, 오른쪽 한 자리에 상태 낱말과 현재 체크.
+   현재 줄은 fc-select의 선택 문법(워시 + 브라스 체크)으로만 말하고, 왼쪽 띠나 줄머리 점은 두지 않는다. */
+.host-switcher-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name trail" "detail trail";
+  align-items: center;
+  column-gap: 10px;
+  padding: 7px 10px;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: none;
   color: var(--text-secondary);
   font: inherit;
   text-align: left;
+  transition: background-color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
 }
 
-.host-switcher-panel > button:hover:not(:disabled):not(.is-current),
-.host-switcher-panel > button:focus-visible:not(.is-current) {
+.host-switcher-row:hover:not(:disabled):not(.is-current),
+.host-switcher-row:focus-visible:not(.is-current) {
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
-  color: var(--text-primary);
 }
 
-.host-switcher-panel > button.is-current {
-  border-color: transparent;
+.host-switcher-row.is-current {
   background: var(--control-wash);
-  color: var(--text-primary);
   cursor: default;
 }
 
-.host-switcher-panel > button.is-current::before {
-  position: absolute;
-  top: var(--space-2);
-  bottom: var(--space-2);
-  left: 0;
-  width: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  content: "";
-}
+.host-switcher-row.is-current:focus-visible { border-color: var(--control-hover-rim); }
+.host-switcher-row:disabled { cursor: not-allowed; }
+/* 닿지 않는 줄은 이름과 주소만 물러선다 — 왜 고를 수 없는지 말하는 상태 낱말은 그대로 읽혀야 한다. */
+.host-switcher-row:disabled > :not(.host-switcher-trail) { opacity: var(--control-disabled-opacity); }
 
-.host-switcher-panel > button.is-current svg { margin-left: auto; color: var(--brass-bright); }
-.host-switcher-panel > button:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
-
-/* 이 앱이 띄운 콘솔은 한 줄로 접고 강조한다 — 목록에서 유일하게 언제나 거기 있는 기준점이다. */
-.host-switcher-panel > button.is-home { padding-block: 6px; }
-.host-switcher-panel > button.is-home .host-switcher-entry { flex-direction: row; align-items: baseline; gap: var(--space-2); }
-.host-switcher-panel > button.is-home .host-switcher-name { color: var(--brass-bright); }
-.host-switcher-panel > button.is-home small { color: var(--text-tertiary); }
-
-/* 발견된 콘솔은 저장하거나 고른 적 없이 목록에 든 것이라, 그 사실을 한 눈에 구분해 준다. */
-.host-switcher-badge {
-  margin-left: auto;
-  padding: 1px 8px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-pill);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.06em;
+.host-switcher-name {
+  grid-area: name;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 배지가 auto 여백을 가져가면 체크는 배지 뒤에 붙는다. */
-.host-switcher-panel > button.is-current .host-switcher-badge + svg { margin-left: var(--space-2); }
+.host-switcher-detail {
+  grid-area: detail;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.host-switcher-trail {
+  grid-area: trail;
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+.host-switcher-trail svg { color: var(--brass-bright); }
+.host-switcher-trail .is-coral { color: var(--coral-ink); }
+.host-switcher-trail .is-warn { color: var(--warn-ink); }
 
 /* ── 성숙도 표식 ───────────────────────────────────────────────────────
    "아직 바뀔 수 있다"는 상태이므로 warn 채널을 쓴다. brass는 위치·포커스 전용이라 여기 오지
@@ -1321,12 +1329,26 @@
   vertical-align: middle;
 }
 
-.host-switcher-entry { display: flex; min-width: 0; flex-direction: column; }
-.host-switcher-entry small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
-.host-switcher-divider { height: 1px; margin: var(--space-2) var(--space-3); background: var(--surface-rim); }
-.host-switcher-link { color: var(--text-secondary); font-size: var(--t-md); }
-.host-switcher-link:hover:not(:disabled),
-.host-switcher-link:focus-visible { color: var(--brass-ink); }
+.host-switcher-divider { height: 1px; margin: var(--space-1) 6px; background: var(--surface-rim); }
+
+/* 동작 줄은 도움말 메뉴 항목과 같은 글리프 + 모노 문법이다. */
+.host-switcher-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 10px;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  text-align: left;
+}
+
+.host-switcher-link svg { width: 13px; height: 13px; }
+.host-switcher-link:hover,
+.host-switcher-link:focus-visible { background: var(--surface-pillar); color: var(--text-primary); }
 
 /* ── 집이 펼친 호스트 목록 표면 ────────────────────────────────────────
    원격 콘솔을 보고 있을 때 목록은 집이 그려 이 위에 얹힌다. 판 자체는 위와 같은 문법을 쓰고,
@@ -2774,7 +2796,7 @@
   .fc-select__option[aria-selected="true"],
   .global-settings-nav-item.is-active,
   .global-settings-nav-item[aria-pressed="true"],
-  .host-switcher-panel > button.is-current,
+  .host-switcher-row.is-current,
   .remote-interface-preset.is-selected,
   .theme-card.is-active,
   .fc-settings-toggle__input:checked + .settings-switch {
