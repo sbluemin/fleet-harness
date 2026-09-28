@@ -252,9 +252,9 @@
   white-space: nowrap;
 }
 .objectives-op i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; }
-.objectives-op.is-awaiting i { background: var(--warn); }
+.objectives-op.is-awaiting i { background: var(--aurora); }
 .objectives-op.is-idle i, .objectives-op.is-ended i, .objectives-op.is-closed i, .objectives-op.is-unknown i { background: var(--text-tertiary); }
-.objectives-op.is-background i { background: var(--aurora); }
+.objectives-op.is-background i { background: color-mix(in oklch, var(--warn) 70%, var(--text-tertiary)); }
 /* 출처 — 이 목표를 남긴 목표·Operation. 채움·테두리·색 없이 보조 글씨로, 상태보다 한 단 약하다. 이름은 한 줄로 줄인다. */
 .objectives-by { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; color: var(--text-tertiary); white-space: nowrap; }
 .objectives-by svg { width: 11px; height: 11px; flex: none; opacity: 0.8; }
@@ -397,9 +397,9 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-row-sub { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; }
 .objectives-dot.is-running { animation: objectives-breathe 1.6s ease-in-out infinite; }
-.objectives-dot.is-awaiting { background: var(--warn); }
+.objectives-dot.is-awaiting { background: var(--aurora); }
 .objectives-dot.is-idle, .objectives-dot.is-ended, .objectives-dot.is-closed, .objectives-dot.is-unknown { background: var(--text-tertiary); }
-.objectives-dot.is-background { background: var(--aurora); }
+.objectives-dot.is-background { background: color-mix(in oklch, var(--warn) 70%, var(--text-tertiary)); }
 .objectives-row-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
 /* 접히는 섹션 머리(달성 기준·임무) — 행 전체가 버튼. 셰브런은 목록 구획 머리와 같은 뜻: 접힘 0°, 펼침 90°. 높이 모션은 없다. */
 button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
@@ -430,9 +430,9 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 /* 임무 아래 dim 한 줄 — 담당·예약의 모델 풀네임과 강도 */
 .objectives-mission-sub { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.03em; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .objectives-mission-sub i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; font-style: normal; }
-.objectives-mission-sub.is-awaiting i { background: var(--warn); }
+.objectives-mission-sub.is-awaiting i { background: var(--aurora); }
 .objectives-mission-sub.is-idle i, .objectives-mission-sub.is-ended i, .objectives-mission-sub.is-closed i, .objectives-mission-sub.is-unknown i { background: var(--text-tertiary); }
-.objectives-mission-sub.is-background i { background: var(--aurora); }
+.objectives-mission-sub.is-background i { background: color-mix(in oklch, var(--warn) 70%, var(--text-tertiary)); }
 .objectives-mission-sub b { font-weight: var(--weight-medium); text-transform: uppercase; color: color-mix(in oklch, var(--brass-ink) 80%, var(--text-secondary)); }
 /* 임무 기록 — 상자·배경 없이 임무 글자 선(22 + 확인 16 + 간격 12 = 50px)에서 펼쳐진다. */
 .objectives-records-count { flex: none; margin-top: 6px; min-height: 18px; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
@@ -750,9 +750,10 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-note { margin: 0 14px 6px 52px; padding: 6px 10px; border: 1px solid color-mix(in oklch, var(--aurora) 35%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--aurora) 8%, transparent); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; }
 .objectives-member-note.is-error { border-color: color-mix(in oklch, var(--coral) 35%, transparent); background: color-mix(in oklch, var(--coral) 8%, transparent); }
 .objectives-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-.objectives-member-status.is-running, .objectives-member-status.is-background { color: var(--aurora); }
+.objectives-member-status.is-running { color: var(--warn-ink); }
+.objectives-member-status.is-background { color: color-mix(in oklch, var(--warn-ink) 70%, var(--text-tertiary)); }
 .objectives-member-status.is-idle { color: var(--positive); }
-.objectives-member-status.is-awaiting { color: var(--warn); }
+.objectives-member-status.is-awaiting { color: var(--aurora); }
 /* 지난 역할 — 명단 아래. 이 Theater 의 다른 목표에서 쓰인 역할과 그 사실. 구성원 줄보다 한 단계 낮은 무게로, 표식은 정체성 톤 대신 무채색. */
 .objectives-past { margin-top: 4px; padding-top: 2px; border-top: 1px dashed var(--hairline); }
 .objectives-past-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 14px 6px 22px; border: 0; background: transparent; color: var(--text-tertiary); font: var(--weight-medium) var(--t-2xs)/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; text-align: left; cursor: pointer; }
