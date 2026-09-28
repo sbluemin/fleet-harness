@@ -6,7 +6,6 @@
 // 칸 사이 8px, 캡션 32px는 칸 위 띠를 캡션이 채운다는 전제로 본문에서 뺀다.
 
 import { OPERATION_WINDOW_CAPTION_HEIGHT, SNAP_FULL_PRESET_ID } from "./canvas-store.js";
-import { FLEET_MAP_EXIT_ZOOM } from "./fleet-map-layout.js";
 
 export interface SnapRect {
   readonly x: number;
@@ -57,9 +56,9 @@ export const SNAP_TOP_BAND_HYSTERESIS = 12;
 export const SNAP_TOP_FULL_EDGE = 8;
 // 좌우 가장자리·모서리 핫존 폭 — 바 없이 반쪽/사분면으로 바로 간다.
 export const SNAP_EDGE = 28;
-// Fleet Map에서는 패널이 지도 점이라 스냅 대상이 아니다. 지도는 0.2에서 들어와 0.24를 넘어야 걷히므로
-// (히스테리시스) 이탈 문턱을 하한으로 삼는다 — 그 사이 구간에서 키보드 스냅이 지도 아래 패널을 옮기지 않게.
-export const SNAP_MIN_ZOOM = FLEET_MAP_EXIT_ZOOM;
+// 스냅 하한 — 이 아래로 축소된 판에서는 800px 패널도 200px 남짓이라 캡션과 칸 안내가 읽히지 않고,
+// 끌어 놓을 자리를 겨누기 어렵다. 포커스 줌 하한(0.25) 바로 아래라, 포커스로 온 패널은 늘 스냅된다.
+export const SNAP_MIN_ZOOM = 0.24;
 
 const EPSILON = 0.001;
 

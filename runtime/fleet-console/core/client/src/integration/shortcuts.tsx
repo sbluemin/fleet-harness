@@ -101,6 +101,10 @@ export const RESERVED_SHORTCUT_CODES: readonly string[] = [
   "KeyF", "KeyS", "KeyT", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape",
 ];
 
+// War Room이 켜진 동안에만 core가 먼저 받는 키 — 함대 지도 층(기본 Alt+M). Cruise에서는 가로채지 않으므로
+// 플러그인 companion이 같은 키를 써도 그곳에서는 살아 있다.
+export const WAR_ROOM_RESERVED_SHORTCUT_CODES: readonly string[] = ["KeyM"];
+
 export interface CompanionVisibilityChange {
   readonly id: string;
   readonly visible: boolean;
@@ -121,11 +125,12 @@ export function availableCompanionPanels(
 
 export function usableCompanionShortcuts(
   companions: readonly CompanionPanelDescriptor[],
+  extraReservedCodes: readonly string[] = [],
 ): readonly CompanionPanelDescriptor[] {
   const seenCodes = new Set<string>();
   return companions.filter((companion) => {
     const code = companion.shortcut?.code;
-    if (!code || RESERVED_SHORTCUT_CODES.includes(code) || seenCodes.has(code)) return false;
+    if (!code || RESERVED_SHORTCUT_CODES.includes(code) || extraReservedCodes.includes(code) || seenCodes.has(code)) return false;
     seenCodes.add(code);
     return true;
   });

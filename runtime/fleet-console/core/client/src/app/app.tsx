@@ -4,7 +4,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { SDK_API_VERSION } from "@fleet-console/sdk/version";
 
-import { ActiveCompanionShortcutsProvider, availableCompanionPanels, type CompanionShortcutEntry, takeKeyboardShortcutsReturnFocus, usableCompanionShortcuts } from "../integration/shortcuts.js";
+import { ActiveCompanionShortcutsProvider, availableCompanionPanels, type CompanionShortcutEntry, takeKeyboardShortcutsReturnFocus, usableCompanionShortcuts, WAR_ROOM_RESERVED_SHORTCUT_CODES } from "../integration/shortcuts.js";
 import { companionDefaultChord, companionShortcutCommandId, shortcutCommandLabel } from "../integration/shortcut-bindings.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
 import { CommandBand } from "../chrome/components/command-band.js";
@@ -47,7 +47,7 @@ import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
-import { isTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
+import { isTriageActive, useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { subscribeDormantAutoMinimize } from "../../../../features/workspace/client/canvas/dormant-auto-minimize.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
 import { useMobileSessionOpen } from "../chrome/mobile/mobile-store.js";
@@ -247,6 +247,7 @@ export function App() {
       }),
     [railBindings],
   );
+  const triageActive = useTriageActive();
   const companionShortcuts = useMemo((): readonly CompanionShortcutEntry[] => {
     const activeOperation = state.operations.find((operation) => operation.id === state.activeOperationId);
     if (!activeOperation) return [];
@@ -255,14 +256,14 @@ export function App() {
     // 도움말은 실제 디스패치와 같은 목록을 읽어야 한다 — 이 작전에서 사용 불가한 패널이 남으면
     // 누를 수 없는 단축키가 단축키 대화상자에 계속 실린다.
     const activeCompanions = availableCompanionPanels(activeKind?.companions ?? [], activeOperation);
-    return usableCompanionShortcuts(activeCompanions).flatMap((companion) => companion.shortcut
+    return usableCompanionShortcuts(activeCompanions, triageActive ? WAR_ROOM_RESERVED_SHORTCUT_CODES : []).flatMap((companion) => companion.shortcut
       ? [{
           commandId: companionShortcutCommandId(activeOperation.pluginId, companion.id),
           defaultChord: companionDefaultChord(companion.shortcut.code),
           title: resolveLocalizedText(companion.title, consoleLocale),
         }]
       : []) ?? [];
-  }, [consoleLocale, registry.operationKinds, state.activeOperationId, state.operations]);
+  }, [consoleLocale, registry.operationKinds, state.activeOperationId, state.operations, triageActive]);
 
   // 브라우저 세션 중 각 Theater를 처음 여는 시점에 한 번, 그 Theater의 "부팅 시점에 이미 존재하던" 패널 집합을 최소화 대상으로 반환한다.
   // App boot의 활성 Theater뿐 아니라 이후 선택·전환으로 처음 진입하는 Theater도 깨끗하게 열려, 선택한 패널만 하나씩 표면화된다.

@@ -30,6 +30,7 @@ const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-monogram" | 
   "view-minimize-all": <Glyph><path d="M3 4h10M3 8h10M3 12h6" /><path d="M13 10.5v3M11.5 12h3" /></Glyph>,
   "view-fit": <Glyph><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" /><rect x="5.5" y="5.5" width="5" height="5" rx="1" /></Glyph>,
   "view-war-room": <Glyph><rect x="2.5" y="8.5" width="11" height="5" rx="1.5" /><path d="M4.5 6h7M6 3.5h4" /></Glyph>,
+  "view-fleet-map": <Glyph><circle cx="5.6" cy="6" r="3.2" /><circle cx="11" cy="10.6" r="2.6" /><path d="M5.6 6h.01M11 10.6h.01" /></Glyph>,
   "view-align-all": <Glyph><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" /><rect x="9" y="2.5" width="4.5" height="4.5" rx="1" /><rect x="2.5" y="9" width="4.5" height="4.5" rx="1" /><rect x="9" y="9" width="4.5" height="4.5" rx="1" /></Glyph>,
   "view-station-keeping": <Glyph><path d="M4 2.5v6a4 4 0 0 0 8 0v-6" /><path d="M4 2.5h2.6v6a1.4 1.4 0 0 0 2.8 0v-6H12" /><path d="M4 5.5h2.6M9.4 5.5H12" /></Glyph>,
   "view-status-axis": <Glyph><rect x="2.5" y="2.5" width="11" height="3.2" rx="1" /><rect x="2.5" y="6.4" width="11" height="3.2" rx="1" /><rect x="2.5" y="10.3" width="11" height="3.2" rx="1" /></Glyph>,

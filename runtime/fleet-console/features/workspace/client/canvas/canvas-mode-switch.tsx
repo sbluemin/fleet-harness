@@ -3,7 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
 import { animateViewportTo, fitAllOperations, releaseAlignAll, setAlignAllLayout, setStationKeeping, toggleAlignAll, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "./canvas-store.js";
-import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled } from "./triage-store.js";
+import { enterTriage, focusedTriageOperationId, getTriageMapHeldQueueIds, setTriageActive, setTriageSpotlightEnabled, toggleTriageMap, useTriageActive, useTriageDeckOverflowing, useTriageDeckZoomLive, useTriageMapOpen, useTriageSpotlightEnabled } from "./triage-store.js";
+import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { cycleTriageDeckZoomPreset } from "./triage-watch-deck.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -255,8 +256,18 @@ export function CanvasModeSwitch() {
 
 export function WarRoomModeTools({ compact = false }: { readonly compact?: boolean }) {
   const t = useT();
+  useShortcutOverrides();
   const triageSpotlightEnabled = useTriageSpotlightEnabled();
   const triageDeckZoomLive = useTriageDeckZoomLive();
+  const mapOpen = useTriageMapOpen();
+  // 덱이 한 화면을 넘으면 칩만 밝힌다 — 지도는 사람이 열 때만 선다.
+  const suggested = useTriageDeckOverflowing() && !mapOpen;
+  const held = mapOpen ? getTriageMapHeldQueueIds().length : 0;
+  const mapShortcut = shortcutCommandLabel("operations.toggle-war-room-map");
+  const mapTitle = [
+    t(mapOpen ? "canvas.triage.mapChipClose" : suggested ? "canvas.triage.mapChipSuggest" : "canvas.triage.mapChipOpen"),
+    ...(held > 0 ? [t("canvas.triage.mapChipHeld", { count: held })] : []),
+  ].join(" · ") + (mapShortcut ? ` (${mapShortcut})` : "");
   return <>
     <button type="button" className={`war-room-tool${triageSpotlightEnabled ? "" : " is-off"}`}
       data-war-room-tool="spotlight" aria-pressed={triageSpotlightEnabled}
@@ -269,6 +280,17 @@ export function WarRoomModeTools({ compact = false }: { readonly compact?: boole
       data-war-room-tool="density" aria-pressed={triageDeckZoomLive !== 1.0}
       aria-label={t("canvas.triage.densityChipTitle")} title={t("canvas.triage.densityChipTitle")} onClick={cycleTriageDeckZoomPreset}>
       <DensityIcon />{!compact ? <span>{triageDeckZoomLive.toFixed(1)}×</span> : null}
+    </button>
+    <button type="button" className={`war-room-tool${suggested ? " is-suggested" : ""}`}
+      data-war-room-tool="map" aria-pressed={mapOpen} aria-keyshortcuts={mapShortcut || undefined}
+      aria-label={mapTitle} title={mapTitle}
+      // 포인터로 누른 칩은 초점도 활성 Operation도 가져가지 않는다 — 무대의 터미널에 남아 있어야 층을
+      // 닫을 때 그 자리로 돌아간다. 크롬 누름의 활성 해제 가드는 이 표식을 보고 무대를 놓지 않는다.
+      data-keep-operation-active=""
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={toggleTriageMap}>
+      <FleetMapIcon />{!compact ? <span>{t("canvas.triage.mapChip")}</span> : null}
+      {held > 0 ? <span className="war-room-tool-count">{held}</span> : null}
     </button>
   </>;
 }
@@ -287,6 +309,11 @@ function WarRoomModeIcon() {
 // War Room 도착 스포트라이트 — 무대를 비추는 광원.
 function SpotlightIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="1.25" /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" /></svg>;
+}
+
+// 함대 지도 — 두 작전구역과 그 안의 점.
+function FleetMapIcon() {
+  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" aria-hidden="true"><circle cx="5.6" cy="6" r="3.2" /><circle cx="11" cy="10.6" r="2.6" /><path d="M5.6 6h.01M11 10.6h.01" strokeWidth="2" /></svg>;
 }
 
 // 덱 밀도 — 간격이 다른 줄로 성김/빽빽함을 나타낸다.

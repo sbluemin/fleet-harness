@@ -1,16 +1,29 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationMarkVisual, resolveOperationActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
-import { getIdleArrivalIds } from "../../../execution/client/operation-marks.js";
+import { getIdleArrivalIds, getOperationStatusDetailSnapshot } from "../../../execution/client/operation-marks.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { resolveFleetMapDriftStyle, resolveFleetMapMarkerLayout, resolveFleetMapZoneLayout } from "./fleet-map-layout.js";
+import { resolveFleetMapDriftStyle, resolveFleetMapMarkerLayout, resolveFleetMapZoneLayout, type FleetMapKeepOut } from "./fleet-map-layout.js";
 import { FleetMapDetailCard, type FleetMapDetailStatus } from "./fleet-map-detail-card.js";
+import { resolveTriageCounts } from "./triage-store.js";
 
 /** 포인터가 점을 스쳐 지나가는 것과 겨누는 것을 가르는 시간 — 사이드바 상세 카드와 같은 값이다. */
 const DETAIL_HOVER_DELAY_MS = 400;
+// 이름표의 폭 — CSS 상한(180px)과 같은 값, 점과 이름표 사이, 같은 줄로 보는 세로 간격, 표식 한 글자가 남는 하한.
+const LABEL_MAX_PX = 180;
+const LABEL_GAP_PX = 6;
+const LABEL_ROW_PX = 14;
+const LABEL_MIN_PX = 28;
+
+interface FleetMapLabelPlacement {
+  /** 이름표를 점 왼쪽으로 펴는가. */
+  readonly start: boolean;
+  /** 이웃 점 앞에서 멈추는 폭 — 넘치면 말줄임이다. */
+  readonly max: number;
+}
 
 interface OpenDetail {
   readonly operationId: string;
@@ -26,26 +39,34 @@ export interface FleetMapTheater {
   readonly label: string;
 }
 
+/** 점이 대기열에서 서는 자리 — 막대의 순서와 같은 말이다. 표식이 없는 점은 대기열 밖이다. */
+export type FleetMapDotMark =
+  | { readonly kind: "stage" }
+  | { readonly kind: "next" }
+  | { readonly kind: "order"; readonly order: number }
+  | { readonly kind: "deferred" }
+  | { readonly kind: "set-aside" };
+
 interface FleetMapProps {
   /** 전 Theater — 지도는 활성 Theater만이 아니라 함대 전체를 한 판에 얹는다. */
   readonly theaters: readonly FleetMapTheater[];
-  /** 최소화되지 않은 전 Theater의 Operation. 휴면도 싣는다 — Cruise는 휴면 패널을 그리는 모드다. */
+  /** War Room 덱에 선 Operation — 휴면·최소화는 덱처럼 싣지 않는다. */
   readonly operations: readonly OperationNode[];
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   /** 런타임 맵을 믿을 수 있는가 — 준비되지 않았거나 끊겼으면 겨눈 카드는 상태를 "확인 불가"로 말한다. */
   readonly operationRuntimeHydration: OperationRuntimeHydration;
-  readonly activeTheaterId: string | null;
-  /** 판의 가로/세로 비 — 구역 원 배치가 픽셀 겹침을 피하는 데 쓴다. */
-  readonly aspect: number;
-  /** 줌이 이탈 임계를 넘은 뒤 퇴장 연출 동안만 true — 판은 사라지는 중이고 입력을 받지 않는다. */
-  readonly leaving: boolean;
   /** 마커용 유효 geometry — durable DTO보다 라이브 캔버스 배치가 정본이다(자동 배치 op는 DTO가 null).
       canvas가 자기 스토어로 해석해 넘긴다. */
   readonly geometryFor: (operation: OperationNode) => OperationGeometry | null;
-  /** 점을 고르면 그 Operation으로 내려간다 — 포커스 경로가 Theater 전환과 줌 복귀를 함께 진다. */
-  readonly onPick: (operationId: string) => void;
-  /** 구역 표석을 고르면 그 Theater를 올린다(활성 Theater 전환). */
-  readonly onSelectTheater?: (theaterId: string) => void;
+  readonly marks: ReadonlyMap<string, FleetMapDotMark>;
+  /** Quick-Look으로 엿보는 중인 점. */
+  readonly peekOperationId: string | null;
+  /** 판 오른쪽 아래에서 비워 둘 자리(px) — 권한 요청 독이 뜨는 곳이다. */
+  readonly keepOut: { readonly width: number; readonly height: number };
+  /** 판 머리 — 수치와 층 동작은 덱이 짓는다. */
+  readonly header: ReactNode;
+  /** 점을 고르면 — 대기 점은 무대로, 그 밖은 엿보기로. 의미는 덱이 정한다. */
+  readonly onActivate: (operationId: string, element: HTMLElement) => void;
   readonly onOperationContextMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   readonly onTheaterContextMenu?: (theaterId: string, anchor: { readonly x: number; readonly y: number }) => void;
 }
@@ -54,25 +75,78 @@ interface FleetMapProps {
 // Theater가 같은 색을 유지한다. 구역은 정체성이므로 --id-* 채널이 맞고, 점(상태)은 신호 토큰이다.
 const FLEET_ZONE_TONES: readonly string[] = ["teal", "amber", "plum", "moss", "cerulean", "rose", "crimson", "indigo"];
 
-/** 함대 지도 — Cruise 캔버스가 판독 한계 아래로 축소되면 패널 자리에 서는 판. 지구본 위 작전구역처럼
- *  각 Theater가 원형 구역으로 떠 있고 그 안에 소속 Operation이 점으로 모인다. 판은 캔버스 위의 층이라
- *  바다에서의 휠·팬은 그대로 캔버스로 흐른다 — 확대하면 판이 걷히고 패널이 돌아온다. */
+/** 함대 지도 — War Room 덱을 1× 아래로 당기거나 Map 칩·Alt+M·팔레트로 여는, 덱과 무대 위의 층.
+ *  지구본 위 작전구역처럼 각 Theater가 원형 구역으로 떠 있고 그 안에 소속 Operation이 점으로 모인다.
+ *  점은 대기열의 자리(무대·「다음」·순번·미룸·치워둠)를 이름표로 말하고, 대기 밖의 점은 이름 없이
+ *  상태 색으로만 선다 — 겨누면 상태 카드가, 누르면 Quick-Look이 그 자리를 말한다. 판은 Theater를
+ *  전환하지 않는다: War Room은 전 Theater를 한 판에 얹는 모드다. */
 export function FleetMap({
   theaters,
   operations,
   operationRuntime,
   operationRuntimeHydration,
-  activeTheaterId,
-  aspect,
-  leaving,
   geometryFor,
-  onPick,
-  onSelectTheater,
+  marks,
+  peekOperationId,
+  keepOut,
+  header,
+  onActivate,
   onOperationContextMenu,
   onTheaterContextMenu,
 }: FleetMapProps) {
   const t = useT();
   const idleArrivalIds = getIdleArrivalIds();
+  // 판의 크기 — 구역 원 배치가 픽셀 겹침과 독 자리를 피하는 데 쓴다. 첫 프레임은 잰 뒤에 앉힌다.
+  const plateRef = useRef<HTMLDivElement | null>(null);
+  const [plate, setPlate] = useState<{ readonly width: number; readonly height: number } | null>(null);
+  useLayoutEffect(() => {
+    const element = plateRef.current;
+    if (!element) return;
+    const measure = () => {
+      const { width, height } = element.getBoundingClientRect();
+      setPlate((current) => current && Math.abs(current.width - width) < 0.5 && Math.abs(current.height - height) < 0.5 ? current : { width, height });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const aspect = plate ? Math.max(0.2, plate.width / Math.max(1, plate.height)) : 1.8;
+  // 이름표의 자리 — 판 오른쪽 끝의 점은 이름표를 왼쪽으로 펴고(오른쪽으로 뻗으면 판 밖으로 잘린다), 같은
+  // 줄의 이웃 점 앞에서 말줄임으로 멈춘다. 마주 보는 두 이름표는 사이를 반씩 나눈다. 판정은 점의 자리와
+  // 이름표의 본래 폭으로만 내려, 적용한 뒤에도 같은 답이 나온다(깜빡이지 않는다).
+  const [labelLayout, setLabelLayout] = useState<ReadonlyMap<string, FleetMapLabelPlacement>>(() => new Map());
+  useLayoutEffect(() => {
+    const element = plateRef.current;
+    if (!element) return;
+    const bounds = element.getBoundingClientRect();
+    const dots = Array.from(element.querySelectorAll<HTMLElement>("[data-fleet-map-dot]"), (dot) => {
+      const rect = dot.getBoundingClientRect();
+      const label = dot.querySelector<HTMLElement>(".canvas-fleet-map-dot-label");
+      return { id: dot.dataset.fleetMapDot ?? "", left: rect.left, right: rect.right, center: rect.top + rect.height / 2, natural: label ? Math.min(LABEL_MAX_PX, label.scrollWidth) : 0, start: false };
+    });
+    for (const dot of dots) if (dot.natural > 0) dot.start = dot.right + LABEL_GAP_PX + dot.natural > bounds.right - 4;
+    const next = new Map<string, FleetMapLabelPlacement>();
+    for (const dot of dots) {
+      if (dot.natural === 0) continue;
+      let room = dot.start ? dot.left - LABEL_GAP_PX - (bounds.left + 4) : bounds.right - 4 - (dot.right + LABEL_GAP_PX);
+      for (const other of dots) {
+        if (other === dot || Math.abs(other.center - dot.center) > LABEL_ROW_PX) continue;
+        const facing = other.natural > 0 && other.start !== dot.start;
+        if (!dot.start && other.left > dot.right) room = Math.min(room, facing ? (other.left - dot.right) / 2 - LABEL_GAP_PX : other.left - dot.right - LABEL_GAP_PX - 4);
+        if (dot.start && other.right < dot.left) room = Math.min(room, facing ? (dot.left - other.right) / 2 - LABEL_GAP_PX : dot.left - other.right - LABEL_GAP_PX - 4);
+      }
+      next.set(dot.id, { start: dot.start, max: Math.max(LABEL_MIN_PX, Math.floor(Math.min(dot.natural, room))) });
+    }
+    setLabelLayout((current) => current.size === next.size && [...next].every(([id, placement]) => {
+      const previous = current.get(id);
+      return previous !== undefined && previous.start === placement.start && Math.abs(previous.max - placement.max) <= 2;
+    }) ? current : next);
+  });
+  const plateKeepOut: FleetMapKeepOut | null = plate && plate.width > keepOut.width && plate.height > keepOut.height
+    ? { left: ((plate.width - keepOut.width) / plate.width) * 100, top: ((plate.height - keepOut.height) / plate.height) * 100 }
+    : null;
   const bands = theaters
     .map((theater, theaterIndex) => ({
       theater,
@@ -82,22 +156,28 @@ export function FleetMap({
     .filter((band) => band.operations.length > 0);
   // 마커 배치는 구역이 몇 개로 갈리는지 안 뒤에 정한다 — 중앙 표석은 구역이 둘 이상일 때만
   // 서므로, 그때만 마커가 비켜설 띠를 잡는다(단일 함대는 판 전체가 열린 바다다).
+  // 평면은 제품의 등록 Theater 자체가 하나일 때만이다. 다중 Theater 환경에서 최소화로 외부
+  // Theater 하나만 남은 것은 단일 함대가 아니다 — 표석을 없애면 소속이 함께 사라진다. 그 경우
+  // 구역 하나를 유지한다.
+  const plane = theaters.length === 1 && bands.length === 1;
+  // 평면의 점 필드는 판 안쪽 4%·6% 인셋이다 — 독 자리를 그 필드 좌표로 옮겨 점이 비켜서게 한다.
+  const fieldKeepOut: FleetMapKeepOut | null = plane && plateKeepOut
+    ? { left: ((plateKeepOut.left - 4) / 92) * 100, top: ((plateKeepOut.top - 6) / 88) * 100 }
+    : null;
   const markersByTheater = new Map(bands.map((band) => [
     band.theater.id,
     resolveFleetMapMarkerLayout(
       band.operations.map((operation) => ({ id: operation.id, geometry: geometryFor(operation) })),
       bands.length > 1,
+      fieldKeepOut,
     ),
   ]));
-  // 평면은 제품의 등록 Theater 자체가 하나일 때만이다. 다중 Theater 환경에서 최소화로 외부
-  // Theater 하나만 남은 것은 단일 함대가 아니다 — 표석을 없애면 소속과 Theater 마운트 문이 함께
-  // 사라진다. 그 경우 구역 하나를 유지한다.
-  const plane = theaters.length === 1 && bands.length === 1;
   const zones = plane
     ? []
     : resolveFleetMapZoneLayout(
         bands.map((band) => ({ theaterId: band.theater.id, count: band.operations.length, slotIndex: band.theaterIndex })),
         aspect,
+        plateKeepOut,
       );
 
   // ── 겨눈 점의 상세 카드 ──────────────────────────────────────────────────
@@ -108,8 +188,6 @@ export function FleetMap({
   const detailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Escape·누름·메뉴로 닫은 점 — 그 점에 새로 들어오거나 새로 포커스하기 전에는 저절로 다시 열지 않는다.
   const suppressedDetailRef = useRef<string | null>(null);
-  const leavingRef = useRef(leaving);
-  leavingRef.current = leaving;
   const detailId = useId();
   const cancelDetailTimer = () => {
     if (detailTimerRef.current) {
@@ -123,7 +201,7 @@ export function FleetMap({
   };
   const openDetail = (operationId: string, element: HTMLElement, via: OpenDetail["via"]) => {
     const map = mapRef.current;
-    if (!map || leavingRef.current || !element.isConnected) return;
+    if (!map || !element.isConnected) return;
     // 이웃 점은 열 때 한 번 잰다. 점은 유영하지만 진폭이 작고, 겨눈 점은 멈춰 있다.
     const obstacles = Array.from(map.querySelectorAll<HTMLElement>("[data-fleet-map-dot]"))
       .filter((dot) => dot !== element)
@@ -138,7 +216,7 @@ export function FleetMap({
     closeDetail();
   };
   const armDetail = (operationId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (event.pointerType !== "mouse" || leaving) return;
+    if (event.pointerType !== "mouse") return;
     releaseSuppressionFor(operationId);
     // 포인터가 연 카드는 다른 점에 들어서면 곧바로 물러난다. 키보드로 연 카드는 스치는 포인터에 거두지 않고,
     // 새 점에서 머묾이 차 그 점의 카드가 열릴 때 비로소 바뀐다 — 카드는 한 번에 하나다.
@@ -164,7 +242,7 @@ export function FleetMap({
   };
   const focusDetail = (operationId: string, event: ReactFocusEvent<HTMLButtonElement>) => {
     releaseSuppressionFor(operationId);
-    if (suppressedDetailRef.current === operationId || leaving) return;
+    if (suppressedDetailRef.current === operationId) return;
     if (!matchesFocusVisible(event.currentTarget)) return;
     cancelDetailTimer();
     openDetail(operationId, event.currentTarget, "keyboard");
@@ -183,7 +261,7 @@ export function FleetMap({
     if (!detail) return;
     const map = mapRef.current;
     const dot = map?.querySelector<HTMLElement>(`[data-fleet-map-dot="${CSS.escape(detail.operationId)}"]`);
-    if (leaving || !map || !dot) {
+    if (!map || !dot) {
       closeDetail();
       return;
     }
@@ -191,7 +269,7 @@ export function FleetMap({
   });
   useEffect(() => {
     closeDetail();
-  }, [activeTheaterId, aspect]);
+  }, [aspect]);
   useEffect(() => {
     if (!detail) return;
     const openId = detail.operationId;
@@ -228,6 +306,14 @@ export function FleetMap({
     return operationMarkVisual(resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }));
   };
 
+  const markLabel = (mark: FleetMapDotMark): string => {
+    if (mark.kind === "stage") return t("canvas.fleetMap.markStage");
+    if (mark.kind === "next") return `${t("canvas.triage.next")} ▸`;
+    if (mark.kind === "deferred") return t("canvas.fleetMap.markDeferred");
+    if (mark.kind === "set-aside") return t("canvas.fleetMap.markSetAside");
+    return String(mark.order);
+  };
+
   const openOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -256,6 +342,16 @@ export function FleetMap({
     onTheaterContextMenu?.(theaterId, { x: event.clientX, y: event.clientY });
   };
 
+  // 구역의 대기 수 — 덱의 밴드 머리와 같은 셈·같은 말이다. 무대에 선 건도 대기이고, 치워둔 대기는 따로 말한다.
+  const zoneAttention = (zoneOperations: readonly OperationNode[]): string[] => {
+    const counts = resolveTriageCounts(zoneOperations, operationRuntime);
+    return ([
+      [counts.waiting, "canvas.triage.waitingCount"],
+      [counts.unseen, "canvas.triage.unseenCount"],
+      [counts.setAside, "canvas.triage.setAsideCount"],
+    ] as const).filter(([count]) => count > 0).map(([count, key]) => t(key, { count }));
+  };
+
   const renderDots = (band: (typeof bands)[number]) => markersByTheater.get(band.theater.id)?.map((marker) => {
     const operation = band.operations.find((candidate) => candidate.id === marker.operationId);
     if (!operation) return null;
@@ -265,20 +361,24 @@ export function FleetMap({
       operationId: operation.id,
       idleArrivalIds,
     }));
+    const mark = marks.get(operation.id) ?? null;
+    const markClass = mark === null ? "" : mark.kind === "stage" ? " is-staged" : mark.kind === "next" ? " is-next" : mark.kind === "deferred" ? " is-deferred" : mark.kind === "set-aside" ? " is-set-aside" : "";
     return (
       <button
         key={marker.operationId}
         type="button"
-        className={`canvas-fleet-map-dot is-${visual}`}
+        className={`canvas-fleet-map-dot is-${visual}${markClass}${mark ? " is-marked" : ""}${peekOperationId === operation.id ? " is-peeked" : ""}${labelLayout.get(operation.id)?.start ? " is-label-start" : ""}`}
         data-fleet-map-dot={marker.operationId}
         // 점은 캔버스 제스처의 대상이 아니다 — 여기서 시작한 포인터는 팬·생성으로 흐르지 않는다.
         data-canvas-blocker
         // 모든 점이 제자리에서 유영한다 — 살아 있는 함대의 판에서 정지한 점은 죽은 표시로 읽힌다.
         style={{ left: `${marker.x}%`, top: `${marker.y}%`, ...resolveFleetMapDriftStyle(operation.id, visual === "running") }}
-        aria-label={t("canvas.fleetMap.dotAria", { title: operation.title })}
+        // 대기열의 점은 무대로 오르고, 그 밖의 점은 무대를 바꾸지 않고 엿본다.
+        aria-label={t(mark ? "canvas.fleetMap.dotStageAria" : "canvas.fleetMap.dotPeekAria", { title: operation.title })}
+        aria-pressed={mark ? undefined : peekOperationId === operation.id}
         aria-haspopup="menu"
         aria-describedby={detail?.operationId === operation.id ? detailId : undefined}
-        tabIndex={leaving ? -1 : 0}
+        tabIndex={0}
         onPointerEnter={(event) => armDetail(operation.id, event)}
         onPointerLeave={(event) => disarmDetail(operation.id, event)}
         onPointerDown={() => suppressDetail(operation.id)}
@@ -286,12 +386,16 @@ export function FleetMap({
         onBlur={(event) => blurDetail(operation.id, event)}
         onContextMenu={(event) => openOperationMenu(operation.id, event)}
         onKeyDown={(event) => openOperationMenuFromKeyboard(operation.id, event)}
-        onClick={() => {
+        onClick={(event) => {
           closeDetail();
-          onPick(operation.id);
+          onActivate(operation.id, event.currentTarget);
         }}
       >
-        <span className="canvas-fleet-map-dot-label">{operation.title}</span>
+        {mark ? (
+          <span className="canvas-fleet-map-dot-label" style={labelLayout.has(operation.id) ? { maxWidth: `${labelLayout.get(operation.id)!.max}px` } : undefined}>
+            <b className="canvas-fleet-map-dot-mark">{markLabel(mark)}</b>{operation.title}
+          </span>
+        ) : null}
       </button>
     );
   });
@@ -299,16 +403,15 @@ export function FleetMap({
   return (
     <div
       ref={mapRef}
-      className={`canvas-fleet-map ${leaving ? "is-leaving" : ""}`}
+      className="canvas-fleet-map"
       data-fleet-map
-      aria-hidden={leaving || undefined}
+      // 층이 열리면 초점이 판에 먼저 앉는다 — 판 자신은 탭 순서에 들지 않는다.
+      tabIndex={-1}
       role="group"
       aria-label={t("canvas.fleetMap.caption", { operations: operations.length, theaters: bands.length })}
     >
-      <div className="canvas-fleet-map-caption">
-        {t("canvas.fleetMap.caption", { operations: operations.length, theaters: bands.length })}
-      </div>
-      <div className="canvas-fleet-map-plate">
+      <div className="canvas-fleet-map-caption">{header}</div>
+      <div className="canvas-fleet-map-plate" ref={plateRef}>
         {plane ? (
           // 등록 Theater 자체가 하나뿐이면 구역을 나눌 이유가 없다 — 원 없이 판 전체가 그 함대의 바다다.
           <div
@@ -321,7 +424,7 @@ export function FleetMap({
           const zone = zones[bandIndex]!;
           return (
             <section
-              className={`canvas-fleet-map-zone ${band.theater.id === activeTheaterId ? "is-active" : ""}`}
+              className="canvas-fleet-map-zone"
               key={band.theater.id}
               data-fleet-map-zone={band.theater.id}
               onContextMenu={(event) => openTheaterMenu(band.theater.id, event)}
@@ -333,28 +436,16 @@ export function FleetMap({
               } as CSSProperties}
             >
               {/* 구역의 이름표는 원주 대신 구역 중앙에 선다 — 점선 원주를 걷어낸 판에서
-                  "여기가 어느 Theater인가"를 말하는 것은 그 자리에 놓인 문구 자체다.
-                  표석은 그 Theater로 가는 문이기도 하다 — 겨누면 brass로 밝아지고 누르면 그
-                  Theater가 올라온다. 점처럼 캔버스 제스처에서 제외한다. */}
+                  "여기가 어느 Theater인가"를 말하는 것은 그 자리에 놓인 문구 자체다. War Room은
+                  전 Theater를 한 판에 얹으므로 이름표는 문이 아니라 지명이다(누름 없음). */}
               <header className="canvas-fleet-map-zone-head">
-                <button
-                  type="button"
-                  className="canvas-fleet-map-zone-pick"
-                  data-fleet-map-zone-pick={band.theater.id}
-                  data-canvas-blocker
-                  aria-pressed={band.theater.id === activeTheaterId}
-                  aria-label={t("canvas.fleetMap.zoneAria", { label: band.theater.label })}
-                  tabIndex={leaving ? -1 : 0}
-                  onClick={() => onSelectTheater?.(band.theater.id)}
-                >
-                  <span className="canvas-fleet-map-zone-title">
-                    <span className="canvas-fleet-map-zone-chip" aria-hidden="true">{theaterInitials(band.theater.label)}</span>
-                    <span className="canvas-fleet-map-zone-label">{band.theater.label}</span>
-                  </span>
-                  <span className="canvas-fleet-map-zone-counts">
-                    {t("canvas.fleetMap.zoneCount", { count: band.operations.length })}
-                  </span>
-                </button>
+                <span className="canvas-fleet-map-zone-title">
+                  <span className="canvas-fleet-map-zone-chip" aria-hidden="true">{theaterInitials(band.theater.label)}</span>
+                  <span className="canvas-fleet-map-zone-label">{band.theater.label}</span>
+                </span>
+                <span className="canvas-fleet-map-zone-counts">
+                  {[t("canvas.fleetMap.zoneCount", { count: band.operations.length }), ...zoneAttention(band.operations)].join(" · ")}
+                </span>
               </header>
               <div className="canvas-fleet-map-field">
                 {renderDots(band)}
@@ -363,11 +454,12 @@ export function FleetMap({
           );
         })}
       </div>
-      {detail && detailOperation && !leaving ? (
+      {detail && detailOperation ? (
         <FleetMapDetailCard
           id={detailId}
           operation={detailOperation}
           status={detailStatus(detailOperation)}
+          lastOutput={getOperationStatusDetailSnapshot(detailOperation.id).detail}
           anchor={detail.anchor}
           bounds={detail.bounds}
           obstacles={detail.obstacles}

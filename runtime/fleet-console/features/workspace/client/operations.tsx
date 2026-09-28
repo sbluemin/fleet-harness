@@ -9,7 +9,7 @@ import type { ClientApiCapability, ClientExecutionProvider, OperationKindDescrip
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../../../core/client/src/integration/active-operation-surface.js";
-import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../../../core/client/src/integration/shortcuts.js";
+import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts, WAR_ROOM_RESERVED_SHORTCUT_CODES } from "../../../core/client/src/integration/shortcuts.js";
 import { archiveOperationFromUi, isArchivingOperation, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace, type ArchiveOutcome } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
@@ -21,7 +21,7 @@ import { playRestoreFlight } from "./canvas/panel-motion.js";
 import { OperationsCanvas } from "./canvas/canvas.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./canvas/group-context-menu.js";
 import { operationAccentFromNode } from "./canvas/operation-accent.js";
-import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "./canvas/triage-store.js";
+import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, isTriageMapOpen, pickTriageOperation, recordTriageActivity, toggleTriageMap, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "./canvas/triage-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
 import { SideBarEdgeDock } from "../../../core/client/src/chrome/components/panel-edge-docks.js";
@@ -305,6 +305,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         }
         return;
       }
+      // 지도 층은 War Room의 것이다 — War Room 밖에서는 가로채지 않아 같은 조합이 터미널에 그대로 닿는다.
+      if (isTriageActive() && matchesShortcutCommand(event, "operations.toggle-war-room-map")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!event.repeat) toggleTriageMap();
+        return;
+      }
       const snapshot = stateRef.current;
       const activeOperation = snapshot.operations.find((operation) => operation.id === snapshot.activeOperationId);
       const activeKind = activeOperation
@@ -316,7 +323,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         ? availableCompanionPanels(activeKind?.companions ?? [], activeOperation)
         : [];
       const companion = activeOperation
-        ? usableCompanionShortcuts(activeCompanions).find((candidate) => candidate.shortcut !== undefined
+        ? usableCompanionShortcuts(activeCompanions, isTriageActive() ? WAR_ROOM_RESERVED_SHORTCUT_CODES : []).find((candidate) => candidate.shortcut !== undefined
           && resolveShortcutChords(companionShortcutCommandId(activeOperation.pluginId, candidate.id), [companionDefaultChord(candidate.shortcut.code)])
             .some((chord) => matchesChord(event, chord)))
         : undefined;
@@ -357,7 +364,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         return;
       }
       if (triageActive) {
-        if (arrowAction === "triage-noop") return;
+        // 지도 층이 무대를 가린 동안에는 보이지 않는 무대를 미루거나 치우지 않는다 — 층의 점과 메뉴가 그 일을 맡는다.
+        if (arrowAction === "triage-noop" || isTriageMapOpen()) return;
         const stageId = document.querySelector<HTMLElement>(".canvas-operation.is-triage-stage[data-operation-id]")?.dataset.operationId;
         if (!stageId) return;
         const queue = resolveTriageQueue(snapshot.operations, snapshot.operationRuntime);

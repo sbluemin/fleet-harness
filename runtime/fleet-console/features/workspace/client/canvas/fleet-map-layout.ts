@@ -2,104 +2,16 @@ import type { CSSProperties } from "react";
 
 import type { OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 
-// 함대 지도 — Cruise 캔버스가 판독 한계 아래로 축소되면 패널 대신 서는 판. 이 모듈은 그 판의
-// 순수 배치만 안다: 언제 서는지(줌 히스테리시스), Theater 구역이 어디에 놓이는지, 구역 안에서
-// 점이 어디에 서는지. 그리는 것은 fleet-map.tsx, 켜고 끄는 것은 canvas.tsx다.
-//
-// 임계는 War Room 덱이 지도로 낙찰하던 그 판독 경계를 잇는다 — 덱은 260px 카드가 140px 아래로
-// 내려가면 지도였다. Cruise에서 흔한 800px 패널은 줌 0.2에서 160px, 최소 폭 320px 패널은 64px라
-// 이 아래에서는 캡션도 본문도 읽히지 않는다. 두 값 모두 focusOperation의 줌 하한(0.25)보다
-// 낮게 둔다 — 어떤 포커스 점프도 지도를 벗어난다는 계약이 그 한 줄로 선다.
-export const FLEET_MAP_ENTER_ZOOM = 0.2;
-export const FLEET_MAP_EXIT_ZOOM = 0.24;
+// 함대 지도 — War Room 덱을 1× 아래로 당기거나 Map 칩·Alt+M·팔레트로 여는, 덱과 무대 위의 층.
+// 이 모듈은 그 판의 순수 배치만 안다: Theater 구역이 어디에 놓이는지, 구역 안에서 점이 어디에
+// 서는지, 그리고 권한 요청 독이 쓰는 오른쪽 아래 자리를 비우는 것. 그리는 것은 fleet-map.tsx,
+// 켜고 끄는 것은 triage-store(층 상태)와 triage-watch-deck(당김 제스처)이다.
 
-// 축소의 바닥 — 판이 반드시 서 있는 첫 배율이다(진입 임계 바로 아래). 함대가 점으로 잦아든
-// 뒤의 추가 축소는 아무 정보도 더 주지 못한다: 판은 화면 고정 층이라 그대로고, 바다만 계속
-// 옅어진다. 그 구간을 열어 두면 "끝까지 축소했다"는 감각이 사라지고, 되돌아오는 데 휠 노치만
-// 늘어난다. 그래서 휠 축소는 이 층에서 멈춘다.
-export const FLEET_MAP_FLOOR_ZOOM = 0.19;
-
-/** 휠 축소가 내려갈 수 있는 하한. 상수 하나로 고정하지 않는 이유는 fit-all(FIT_ALL_MIN_ZOOM
- *  0.02)이 판보다 깊은 배율로 뷰포트를 데려갈 수 있기 때문이다 — 그 자리에서 하한을 0.19로
- *  들이대면 축소 휠이 하한으로 튀어 올라 방향이 뒤집힌다. 이미 바닥보다 깊은 뷰포트에서는
- *  그 자리를 바닥으로 삼아, 축소는 정지하고 확대만 열어 둔다. */
-export function resolveWheelZoomFloor(currentZoom: number): number {
-  if (!Number.isFinite(currentZoom) || currentZoom <= 0) return FLEET_MAP_FLOOR_ZOOM;
-  return Math.min(FLEET_MAP_FLOOR_ZOOM, currentZoom);
-}
-
-/** 줌 히스테리시스 — 진입은 0.2 미만, 이탈은 0.24 초과. 경계 위에서 휠 한 노치가 판을 두 번
- *  뒤집지 않게 한다. previous는 직전 판정(캔버스가 ref로 든다). */
-export function resolveFleetMapActive(previous: boolean, zoom: number): boolean {
-  if (!Number.isFinite(zoom)) return false;
-  return previous ? zoom <= FLEET_MAP_EXIT_ZOOM : zoom < FLEET_MAP_ENTER_ZOOM;
-}
-
-/** 판이 서 있는 동안 보이는 패널들의 월드 중심 — 지도 위의 줌은 커서가 아니라 이 점을 앵커로
- *  잡는다. 판 위의 커서는 월드와 아무 관계가 없어, 커서 앵커로 확대하면 함대가 화면 밖으로
- *  흘러간 채 패널이 돌아온다(핸드오프 1차 피드백). 최소화된 패널은 화면에 없으니 제외한다. */
-export function resolveFleetContentCenter(
-  operations: Readonly<Record<string, OperationGeometry>>,
-  minimized: readonly string[],
-): { readonly x: number; readonly y: number } | null {
-  const hidden = new Set(minimized);
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const [operationId, geometry] of Object.entries(operations)) {
-    if (hidden.has(operationId)) continue;
-    minX = Math.min(minX, geometry.x);
-    minY = Math.min(minY, geometry.y);
-    maxX = Math.max(maxX, geometry.x + geometry.width);
-    maxY = Math.max(maxY, geometry.y + geometry.height);
-  }
-  if (!Number.isFinite(minX)) return null;
-  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-}
-
-/** 월드의 한 점을 아레나의 한 화면 점(아레나-상대) 아래에 놓는 저장 viewport. 화면 점을 주지
- *  않으면 아레나 중앙이다. */
-export function anchorViewportToPoint(
-  point: { readonly x: number; readonly y: number },
-  zoom: number,
-  arena: { readonly width: number; readonly height: number },
-  screen?: { readonly x: number; readonly y: number },
-): { readonly x: number; readonly y: number; readonly zoom: number } {
-  const at = screen ?? { x: arena.width / 2, y: arena.height / 2 };
-  return {
-    x: at.x - point.x * zoom,
-    y: at.y - point.y * zoom,
-    zoom,
-  };
-}
-
-export interface FleetMapZoomCandidate {
-  readonly operationId: string;
-  /** 판 위 점의 화면 좌표(캔버스-local). */
-  readonly screen: { readonly x: number; readonly y: number };
-  /** 그 Operation의 월드 중심. */
-  readonly center: { readonly x: number; readonly y: number };
-}
-
-/** 판 위에서 확대할 때의 앵커 — 커서에 가장 가까운 점의 Operation. 판은 함대의 축소판이라
- *  커서가 겨눈 점이 곧 "여기로 내려가겠다"는 뜻이고, 그 Operation을 커서 아래 두고 키우면
- *  판이 걷힌 뒤에도 커서 주위로 계속 자란다. 후보가 없으면(활성 Theater가 비었으면) null —
- *  호출부는 함대 중심을 아레나 중앙에 둔다. */
-export function resolveFleetMapZoomAnchor(
-  candidates: readonly FleetMapZoomCandidate[],
-  cursor: { readonly x: number; readonly y: number },
-): FleetMapZoomCandidate | null {
-  let nearest: FleetMapZoomCandidate | null = null;
-  let best = Number.POSITIVE_INFINITY;
-  for (const candidate of candidates) {
-    const distance = Math.hypot(candidate.screen.x - cursor.x, candidate.screen.y - cursor.y);
-    if (distance < best) {
-      best = distance;
-      nearest = candidate;
-    }
-  }
-  return nearest;
+/** 판 위에서 비워 두는 오른쪽 아래 자리 — 판 가로·세로에 대한 백분율로 그 자리의 왼쪽 위 모서리다.
+ *  권한 요청 독이 그 자리에 떠서, 구역이나 점이 깔리면 독이 신호를 가린다. */
+export interface FleetMapKeepOut {
+  readonly left: number;
+  readonly top: number;
 }
 
 // 마커 배치 — 충분한 2D canvas geometry는 필드 [8,92]%×[10,86]%로 투영하고, geometry가 부족하거나
@@ -136,11 +48,12 @@ export interface FleetMapZoneLayout {
 // 자리는 결정적 슬롯에서 시작해(렌더마다 흔들리면 지도가 아니라 애니메이션이다) 겹친 쌍을
 // 중심선을 따라 밀어내는 분리 반복으로 서로 겹치지 않게 정착시키고, 판이 좁아 다 안 들어가면
 // 전체 반지름을 한 단계씩 줄여 다시 정착시킨다. 크기는 함대 규모의 sqrt 비례.
+// 네 번째 자리는 오른쪽 가운데다 — 오른쪽 아래는 권한 요청 독이 뜨는 자리라 처음부터 비운다.
 const FLEET_ZONE_SLOTS: readonly { readonly x: number; readonly y: number }[] = [
   { x: 30, y: 38 },
   { x: 70, y: 32 },
   { x: 50, y: 72 },
-  { x: 84, y: 68 },
+  { x: 86, y: 42 },
   { x: 14, y: 70 },
   { x: 58, y: 14 },
   { x: 12, y: 20 },
@@ -152,6 +65,7 @@ const FLEET_ZONE_LABEL_HEADROOM = 8;
 export function resolveFleetMapZoneLayout(
   zones: ReadonlyArray<{ readonly theaterId: string; readonly count: number; readonly slotIndex?: number }>,
   aspect = 1.8,
+  keepOut: FleetMapKeepOut | null = null,
 ): readonly FleetMapZoneLayout[] {
   if (zones.length === 0) return [];
   const safeAspect = Number.isFinite(aspect) && aspect > 0.2 ? Math.min(aspect, 6) : 1.8;
@@ -194,6 +108,16 @@ export function resolveFleetMapZoneLayout(
           moved = true;
         }
       }
+      // 비운 자리도 이웃 구역처럼 밀어낸다 — 원이 그 사각형에서 간격만큼 떨어질 때까지.
+      if (keepOut) {
+        for (const circle of circles) {
+          const push = keepOutPush(circle, keepOut, width);
+          if (!push) continue;
+          circle.x += push.x;
+          circle.y += push.y;
+          moved = true;
+        }
+      }
       for (const circle of circles) {
         circle.x = Math.min(width - circle.r - 1, Math.max(circle.r + 1, circle.x));
         circle.y = Math.min(100 - circle.r - 1, Math.max(circle.r + FLEET_ZONE_LABEL_HEADROOM, circle.y));
@@ -201,7 +125,8 @@ export function resolveFleetMapZoneLayout(
       if (!moved) break;
     }
     const overlapped = circles.some((a, i) => circles.some((b, j) => j > i
-      && Math.hypot(b.x - a.x, b.y - a.y) < a.r + b.r + FLEET_ZONE_GAP - 0.5));
+      && Math.hypot(b.x - a.x, b.y - a.y) < a.r + b.r + FLEET_ZONE_GAP - 0.5))
+      || (keepOut !== null && circles.some((circle) => keepOutPush(circle, keepOut, width, 0.5) !== null));
     if (!overlapped) break;
     for (const circle of circles) circle.r *= 0.88;
   }
@@ -213,10 +138,35 @@ export function resolveFleetMapZoneLayout(
   }));
 }
 
+// 원이 비운 자리를 침범하면 밀어낼 벡터, 아니면 null. 좌표는 판 높이 100 기준이고 가로는 width까지다.
+function keepOutPush(
+  circle: { readonly x: number; readonly y: number; readonly r: number },
+  keepOut: FleetMapKeepOut,
+  width: number,
+  tolerance = 0,
+): { x: number; y: number } | null {
+  const left = (keepOut.left / 100) * width;
+  const top = keepOut.top;
+  const need = circle.r + FLEET_ZONE_GAP - tolerance;
+  const nearestX = Math.min(width, Math.max(left, circle.x));
+  const nearestY = Math.min(100, Math.max(top, circle.y));
+  const dx = circle.x - nearestX;
+  const dy = circle.y - nearestY;
+  const distance = Math.hypot(dx, dy);
+  if (distance >= need) return null;
+  if (distance > 0.001) return { x: (dx / distance) * (need - distance), y: (dy / distance) * (need - distance) };
+  // 중심이 자리 안에 들어간 퇴화 케이스 — 더 가까운 변(왼쪽 또는 위) 밖으로 결정적으로 낸다.
+  const outLeft = circle.x - left + need;
+  const outTop = circle.y - top + need;
+  return outLeft < outTop ? { x: -outLeft, y: 0 } : { x: 0, y: -outTop };
+}
+
 export function resolveFleetMapMarkerLayout(
   operations: ReadonlyArray<Pick<OperationNode, "id"> & { readonly geometry: OperationGeometry | null }>,
   /** 구역 중앙에 Theater 표석이 서는 배치인지 — 표석이 없는 단일 함대(판 전체)는 비워 둘 띠가 없다. */
   reserveLabelBand = false,
+  /** 점 필드 좌표로 옮긴 비운 자리 — 구역 없이 판 전체가 필드인 단일 함대만 쓴다. */
+  keepOut: FleetMapKeepOut | null = null,
 ): readonly FleetMapMarkerLayout[] {
   const { minX, maxX, minY, maxY, degenerate } = resolveFleetMapBounds(operations);
   const points = new Map<string, { x: number; y: number }>();
@@ -238,7 +188,7 @@ export function resolveFleetMapMarkerLayout(
     });
   }
 
-  relaxFleetMapMarkers(points, reserveLabelBand);
+  relaxFleetMapMarkers(points, reserveLabelBand, keepOut);
   return operations.map((operation) => ({
     operationId: operation.id,
     x: points.get(operation.id)!.x,
@@ -309,9 +259,12 @@ function placeFleetMapPoint(
   x: number,
   y: number,
   reserveLabelBand: boolean,
+  keepOut: FleetMapKeepOut | null = null,
 ): void {
   point.x = clampPercent(x);
   point.y = clampPercent(y);
+  // 비운 자리에 떨어진 점은 그 위로 올린다 — 가로로 밀면 판 오른쪽 가장자리에 몰린다.
+  if (keepOut && point.x >= keepOut.left && point.y >= keepOut.top) point.y = clampPercent(keepOut.top - 1);
   if (!reserveLabelBand) return;
   if (point.y <= MAP_LABEL_BAND_TOP || point.y >= MAP_LABEL_BAND_BOTTOM) return;
   if (point.x <= MAP_LABEL_BAND_LEFT || point.x >= MAP_LABEL_BAND_RIGHT) return;
@@ -324,12 +277,13 @@ function placeFleetMapPoint(
 function relaxFleetMapMarkers(
   points: Map<string, { x: number; y: number }>,
   reserveLabelBand = false,
+  keepOut: FleetMapKeepOut | null = null,
 ): void {
   const entries = [...points.values()]
     .sort((left, right) => left.x - right.x || left.y - right.y);
   if (entries.length === 0) return;
   // 초기 배치가 이미 띠를 밟고 있을 수 있다 — 이완 전에 제자리에서 한 번 투영해 둔다.
-  for (const point of entries) placeFleetMapPoint(point, point.x, point.y, reserveLabelBand);
+  for (const point of entries) placeFleetMapPoint(point, point.x, point.y, reserveLabelBand, keepOut);
   if (entries.length < 2) return;
   for (let pass = 0; pass < MAP_RELAXATION_PASSES; pass += 1) {
     let moved = false;
@@ -346,12 +300,12 @@ function relaxFleetMapMarkers(
             const push = (MAP_MIN_DISTANCE_PCT - distance) / 2;
             const ux = dx / distance;
             const uy = dy / distance;
-            placeFleetMapPoint(a, a.x - ux * push, a.y - uy * push, reserveLabelBand);
-            placeFleetMapPoint(b, b.x + ux * push, b.y + uy * push, reserveLabelBand);
+            placeFleetMapPoint(a, a.x - ux * push, a.y - uy * push, reserveLabelBand, keepOut);
+            placeFleetMapPoint(b, b.x + ux * push, b.y + uy * push, reserveLabelBand, keepOut);
           } else {
             // 완전 일치는 결정적 방향으로만 분리한다 — 무작위 방향이면 렌더마다 흔들린다.
-            placeFleetMapPoint(a, a.x - MAP_MIN_DISTANCE_PCT / 2, a.y, reserveLabelBand);
-            placeFleetMapPoint(b, b.x + MAP_MIN_DISTANCE_PCT / 2, b.y, reserveLabelBand);
+            placeFleetMapPoint(a, a.x - MAP_MIN_DISTANCE_PCT / 2, a.y, reserveLabelBand, keepOut);
+            placeFleetMapPoint(b, b.x + MAP_MIN_DISTANCE_PCT / 2, b.y, reserveLabelBand, keepOut);
           }
           continue;
         }
@@ -366,13 +320,13 @@ function relaxFleetMapMarkers(
         const rowPush = (MAP_LABEL_ROW_PCT - Math.abs(dy)) / 2 + 0.35;
         const direction = dy >= 0 ? 1 : -1;
         const beforeGap = Math.abs(dy);
-        placeFleetMapPoint(a, a.x, a.y - direction * rowPush, reserveLabelBand);
-        placeFleetMapPoint(b, b.x, b.y + direction * rowPush, reserveLabelBand);
+        placeFleetMapPoint(a, a.x, a.y - direction * rowPush, reserveLabelBand, keepOut);
+        placeFleetMapPoint(b, b.x, b.y + direction * rowPush, reserveLabelBand, keepOut);
         if (Math.abs(b.y - a.y) > beforeGap + 1e-6) continue;
         const columnPush = (MAP_LABEL_MIN_DX_PCT - Math.abs(dx)) / 2;
         const columnDirection = dx >= 0 ? 1 : -1;
-        placeFleetMapPoint(a, a.x - columnDirection * columnPush, a.y, reserveLabelBand);
-        placeFleetMapPoint(b, b.x + columnDirection * columnPush, b.y, reserveLabelBand);
+        placeFleetMapPoint(a, a.x - columnDirection * columnPush, a.y, reserveLabelBand, keepOut);
+        placeFleetMapPoint(b, b.x + columnDirection * columnPush, b.y, reserveLabelBand, keepOut);
       }
     }
     if (!moved) return;

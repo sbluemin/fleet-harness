@@ -29,15 +29,18 @@ interface FleetMapDetailCardProps {
   readonly bounds: DOMRect;
   /** 가리지 않으려는 이웃 점들의 자리. */
   readonly obstacles: readonly DOMRect[];
+  /** 터미널이 마지막으로 낸 의미 있는 한 줄 — 없으면 줄 자체를 내린다. */
+  readonly lastOutput?: string | null;
 }
 
 /**
  * 함대 지도의 점을 겨눴을 때 뜨는 읽기 전용 카드 — 지도 이름표가 줄인 제목 전체와, 점이 색으로만 말하던
- * 상태, 세션이 도는 자리(Theater·폴더·브랜치)와 모델을 말한다. 사이드바 상세 카드와 같은 재료·문법이지만
- * 두 가지가 다르다: 지도의 이름표는 잘리므로 제목을 다시 싣고, 입력 대기와 미확인 완료를 접지 않는다.
- * 시간·출력 조각·조작은 싣지 않는다. 포인터를 받지 않고 초점을 가져가지 않는다.
+ * 상태, 세션이 도는 자리(Theater·폴더·브랜치)와 모델, 그리고 터미널의 마지막 출력 한 줄을 말한다. 대기 밖의
+ * 점은 이름표가 없어, 무대를 바꾸지 않고 "지금 무엇을 하는가"를 읽는 자리가 이 카드다. 사이드바 상세 카드와
+ * 같은 재료·문법이지만 입력 대기와 미확인 완료를 접지 않는다. 시간·조작은 싣지 않는다. 포인터를 받지 않고
+ * 초점을 가져가지 않는다.
  */
-export function FleetMapDetailCard({ id, operation, status, anchor, bounds, obstacles }: FleetMapDetailCardProps) {
+export function FleetMapDetailCard({ id, operation, status, anchor, bounds, obstacles, lastOutput = null }: FleetMapDetailCardProps) {
   const t = useT();
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [placed, setPlaced] = useState<CSSProperties | null>(null);
@@ -77,7 +80,7 @@ export function FleetMapDetailCard({ id, operation, status, anchor, bounds, obst
     // 후보를 재느라 바꾼 폭을 고른 자리의 폭으로 되돌린다 — 스타일 값이 지난번과 같으면 React가 다시 쓰지 않는다.
     measure(placement.maxWidth);
     setPlaced(placement);
-  }, [anchor, bounds, obstacles, status, location, branch, model, operation.title]);
+  }, [anchor, bounds, obstacles, status, location, branch, model, lastOutput, operation.title]);
 
   return createPortal(
     <div
@@ -115,6 +118,12 @@ export function FleetMapDetailCard({ id, operation, status, anchor, bounds, obst
         <div className="operation-detail-row">
           <span className="operation-detail-key">{t("canvas.fleetMap.detail.model")}</span>
           <span className="operation-detail-value">{model}</span>
+        </div>
+      ) : null}
+      {lastOutput ? (
+        <div className="operation-detail-row is-stacked">
+          <span className="operation-detail-key">{t("canvas.fleetMap.detail.lastOutput")}</span>
+          <span className="operation-detail-value fleet-map-detail-output">{lastOutput}</span>
         </div>
       ) : null}
     </div>,

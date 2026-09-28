@@ -1730,19 +1730,19 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation,");
     // 스포트라이트 OFF의 지속 맥동은 움직임을 빼고도 정지한 aurora 링으로 읽혀야 한다.
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation,");
-    // 함대 지도의 등장·퇴장과 월드 cross-fade, 마커 강조 전환도 같은 봉인 안에서 즉시 상태로 떨어진다.
+    // 함대 지도 층의 등장, 덱 당김의 되돌림, 마커 강조 전환도 같은 봉인 안에서 즉시 상태로 떨어진다.
     expect(reducedMotionBlock).toContain(".canvas-fleet-map,");
-    expect(reducedMotionBlock).toContain(".canvas-fleet-map.is-leaving,");
     expect(reducedMotionBlock).toContain(".canvas-fleet-map-dot,");
-    expect(reducedMotionBlock).toContain(".operations-canvas-world,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-grid,");
     expect(reducedMotionBlock).toContain(".canvas-fleet-map-dot-label {");
     // 지도 점의 대기 링 맥동도 같은 봉인에 들어가고, 대기 신호는 정지 링 폴백으로 남는다.
     expect(reducedMotionBlock).toContain(".canvas-fleet-map-dot.is-awaiting::after,");
     expect(reducedMotionBlock).toContain("transform: scale(1.35);");
-    // War Room 덱의 지도 밀도는 퇴역했다 — 덱은 1×~2× 카드뿐이고 지도는 Cruise 축소가 세운다.
+    // 미룬 점과 치워둔 점은 모션 설정과 무관하게 맥동하지 않는다 — 이미 보고 밀어 둔 신호다.
+    expect(components).toMatch(/\.canvas-fleet-map-dot:is\(\.is-deferred, \.is-set-aside\)::after \{[^}]*animation: none;/);
+    // 지도는 덱 밀도가 아니라 덱 위의 층이고, Cruise 축소가 세우던 지도는 퇴역했다.
     expect(components).not.toContain(".canvas-triage-deck.is-map-mode");
-    expect(components).not.toContain("canvas-triage-map");
-    expect(components).not.toContain("is-map-quicklook");
+    expect(components).not.toContain(".operations-canvas.is-fleet-map");
   });
 
   it("pins the dormant resume feedback grammar — pending pulse, error card, and reduced-motion fallback", () => {
@@ -4577,26 +4577,22 @@ describe("War Room deck panel grammar", () => {
     expect(deck).toContain('className="canvas-triage-deck-pick"');
   });
 
-  it("keeps the fleet map under the canvas launch menu and marks its nameplates on the brass channel", () => {
-    // 판(20)은 Console 전역 실행 메뉴 아래, 월드(무 z-index)와 미니맵(14) 위에 선다.
+  it("keeps the fleet map under the canvas launch menu and marks its stage on the brass channel", () => {
+    // 판(20)은 덱 층 안에서 숨은 격자 위에 서고, Console 전역 실행 메뉴는 그 위다.
     const plate = components.match(/\.canvas-fleet-map \{[^}]*\}/)?.[0] ?? "";
     expect(plate).toContain("z-index: 20;");
     const launch = components.match(/\.operation-launch-control--canvas \{[^}]*\}/)?.[0] ?? "";
     expect(launch).toContain("position: fixed;");
     expect(launch).toContain("z-index: var(--z-overlay);");
-    // 표석의 hover/focus는 위치 채널(brass)만 쓴다 — 신호 토큰이 끼면 상태로 읽힌다.
-    const nameplate = components.match(/\.canvas-fleet-map-zone-pick:hover,\n\.canvas-fleet-map-zone-pick:focus-visible \{[^}]*\}/)?.[0] ?? "";
-    expect(nameplate).toContain("var(--brass)");
-    expect(nameplate).not.toMatch(/--(?:aurora|warn|coral|positive)\b/);
-    // 구역의 점 필드는 표석을 상자로 덮는다 — 포인터를 통과시켜야 표석이 겨눠지고, 점만 되받는다.
+    // 무대에 선 점은 "지금 여기"다 — 위치 채널(brass)만 쓴다. 신호 토큰이 끼면 상태로 읽힌다.
+    const staged = components.match(/\.canvas-fleet-map-dot\.is-staged,\n\.canvas-fleet-map-dot\.is-peeked \{[^}]*\}/)?.[0] ?? "";
+    expect(staged).toContain("var(--brass)");
+    expect(staged).not.toMatch(/--(?:aurora|warn|coral|positive)\b/);
+    // 구역의 점 필드는 지명을 상자로 덮는다 — 포인터를 통과시켜 빈 자리의 우클릭이 구역에 닿고, 점만 되받는다.
     const field = components.match(/\.canvas-fleet-map-zone \.canvas-fleet-map-field \{[^}]*\}/)?.[0] ?? "";
     expect(field).toContain("pointer-events: none;");
     const zoneDot = components.match(/\.canvas-fleet-map-zone \.canvas-fleet-map-dot \{[^}]*\}/)?.[0] ?? "";
     expect(zoneDot).toContain("pointer-events: auto;");
-    // 지도의 점과 표석은 캔버스 제스처에서 제외된다 — 바다만 팬·휠을 통과시킨다.
-    const fleetMap = source("../../../features/workspace/client/canvas/fleet-map.tsx");
-    expect(fleetMap.match(/data-canvas-blocker/g)?.length).toBe(2);
-    expect(fleetMap).not.toContain('<div\n      className={`canvas-fleet-map ${leaving ? "is-leaving" : ""}`}\n      data-canvas-blocker');
   });
 
   it("keeps the minimized status section neutral", () => {

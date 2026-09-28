@@ -82,6 +82,14 @@ import {
   setTriageSpotlightEnabled,
   subscribeTriage,
   visitTriageTheater,
+  closeTriageMap,
+  getTriageMapHeldQueueIds,
+  getTriageMapHeldStageId,
+  isTriageMapOpen,
+  openTriageMap,
+  publishTriageStage,
+  resolveTriageCounts,
+  setTriageDecisionRoots,
 } from "../features/workspace/client/canvas/triage-store.js";
 import type { OperationNode } from "../core/client/src/integration/types.js";
 import { TriageClearPlate } from "../features/workspace/client/canvas/canvas-overlays.js";
@@ -378,6 +386,64 @@ describe("triage store", () => {
     expect(getTriagePick()).toBeNull();
     expect(resolveTriageQueue(operations, status, 1_000)[0]?.operation.id).toBe("alpha");
     expect(isTriageActive()).toBe(true);
+  });
+
+  it("freezes the stage under the fleet map, holds new waiting until it closes, and counts set-aside apart", () => {
+    const staged = operation("staged", 1);
+    const arriving = operation("arriving", 2, "theater-b");
+    const aside = operation("aside", 3);
+    const operations = [staged, arriving, aside];
+    const before: Readonly<Record<string, OperationRuntimeState>> = {
+      staged: { lifecycle: "live", activity: "idle" },
+      arriving: { lifecycle: "live", activity: "running" },
+      aside: { lifecycle: "live", activity: "awaiting" },
+    };
+    markIdleArrival("staged");
+    setConsoleState({ operations, activeTheaterId: THEATER_ID, operationRuntime: before });
+    recordTriageActivity(operations, before, 1_000);
+    setTriageActive(true);
+    dismissTriageOperation("aside");
+    // 치워둔 대기는 대기로 세지 않는다 — 막대가 「기다리는 작업 없음」이라 말하는 동안 덱이 「대기 1」이라 말하면 모순이다.
+    expect(resolveTriageCounts(operations, before)).toMatchObject({ waiting: 0, unseen: 1, setAside: 1 });
+
+    publishTriageStage("staged");
+    openTriageMap();
+    const after: Readonly<Record<string, OperationRuntimeState>> = { ...before, arriving: { lifecycle: "live", activity: "awaiting" } };
+    setConsoleState({ operationRuntime: after });
+    recordTriageActivity(operations, after, 2_000);
+    // 새 대기가 대기열 앞줄에 서도 층이 열린 동안 무대는 연 순간의 것이고, 새 대기는 보류로 모인다.
+    expect(resolveTriageQueue(operations, after, 2_000)[0]?.operation.id).toBe("arriving");
+    expect(getTriageMapHeldStageId()).toBe("staged");
+    expect(getTriageMapHeldQueueIds()).toEqual(["arriving"]);
+    // 층이 열린 뒤 처음 보인 Operation이 이미 대기여도(재연결 수화처럼) 보류에 든다 — 층을 열기 전부터 있던 것만 뺀다.
+    const late = operation("late", 4, "theater-b");
+    const afterLate: Readonly<Record<string, OperationRuntimeState>> = { ...after, late: { lifecycle: "live", activity: "awaiting" } };
+    setConsoleState({ operations: [...operations, late], operationRuntime: afterLate });
+    recordTriageActivity([...operations, late], afterLate, 2_050);
+    expect(getTriageMapHeldQueueIds()).toEqual(["arriving", "late"]);
+    // 결정 요청으로 대기가 된 뿌리도 새 대기다 — 활동 변화 없이 묶음 서술자만으로 대기열에 든다.
+    const decider = operation("decider", 5, "theater-b");
+    const afterDecider: Readonly<Record<string, OperationRuntimeState>> = { ...afterLate, decider: { lifecycle: "live", activity: "idle" } };
+    setConsoleState({ operations: [...operations, late, decider], operationRuntime: afterDecider });
+    recordTriageActivity([...operations, late, decider], afterDecider, 2_060);
+    setTriageDecisionRoots(new Set(["decider"]));
+    expect(getTriageMapHeldQueueIds()).toContain("decider");
+    setTriageDecisionRoots(new Set());
+
+    // 닫으면 같은 무대와 치워둠으로 돌아온다 — 앞줄에 든 새 대기가 닫는 순간 무대를 가로채지 않는다.
+    closeTriageMap();
+    expect(isTriageMapOpen()).toBe(false);
+    expect(resolveTriageQueue(operations, after, 2_000)[0]?.operation.id).toBe("staged");
+    expect(isTriageOperationDismissed("aside")).toBe(true);
+    // 그 복귀는 지목이 아니다 — 미루면 보통의 순서로 돌아가, 미룬 무대가 다시 앞줄을 차지하지 않는다.
+    expect(getTriagePick()).toBeNull();
+    deferTriageOperation("staged", 2_100);
+    expect(resolveTriageQueue(operations, after, 2_100).map((entry) => entry.operation.id)).toEqual(["arriving", "staged"]);
+
+    // 층은 진입에 붙는 상태다 — War Room을 끄면 함께 걷힌다.
+    openTriageMap();
+    setTriageActive(false);
+    expect(isTriageMapOpen()).toBe(false);
   });
 
 });
