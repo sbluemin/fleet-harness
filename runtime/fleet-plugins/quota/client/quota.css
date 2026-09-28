@@ -66,9 +66,9 @@
   max-width: 268px;
   margin-left: auto;
   padding: 11px 13px;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
-  background: var(--ink-mid);
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
   opacity: 0;
   visibility: hidden;
@@ -119,7 +119,7 @@
   overflow: hidden;
   border: 1px solid var(--gauge-rim);
   border-radius: var(--radius-pill);
-  background: var(--ink-veil);
+  background: var(--control-rest);
 }
 
 .quota-legend__swatch i {
@@ -154,7 +154,7 @@
 .quota-provider {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   padding: 14px;
 }
 
@@ -298,7 +298,7 @@
 /* 접힌 행에 남는 요약. 이 자리가 비면 90%를 넘긴 공급자를 접어둔 사용자는 그 사실을
    어디서도 듣지 못한다 — 쿼터는 이 패널 밖에 신호가 없다. */
 .quota-fold-spine {
-  --meter-accent: var(--ink-fog);
+  --meter-accent: var(--text-tertiary);
   --meter-weight: var(--gauge-weight-quiet);
   display: flex;
   flex: none;
@@ -340,7 +340,7 @@
   height: 4px;
   overflow: hidden;
   border-radius: var(--radius-pill);
-  background: var(--ink-veil);
+  background: var(--control-rest);
 }
 
 .quota-fold-spine__fill {
@@ -510,7 +510,7 @@
    그래서 100% 소진된 막대가 22% 막대보다 가볍게 읽혔다. 무게를 같은 채널에 실어 두면
    심각도 역전이 재조율이 아니라 구조로 막힌다. 다크 3종은 전부 100%라 지금 그림 그대로다. */
 .quota-meter {
-  --meter-accent: var(--ink-fog);
+  --meter-accent: var(--text-tertiary);
   --meter-weight: var(--gauge-weight-quiet);
   margin-top: 12px;
 }
@@ -559,7 +559,7 @@
   overflow: hidden;
   border: 1px solid var(--gauge-rim);
   border-radius: var(--radius-pill);
-  background: var(--ink-veil);
+  background: var(--control-rest);
 }
 
 .quota-meter__fill {
@@ -676,7 +676,7 @@
   padding: 18px 16px;
   border: 1px dashed var(--hairline-strong);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
 }
 
 .quota-connect-card p {
@@ -697,7 +697,7 @@
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-xs);
   color: var(--text-primary);
-  background: var(--ink-veil);
+  background: var(--control-rest);
   font: inherit;
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
@@ -755,7 +755,7 @@
   flex: none;
   border-top: 1px solid var(--hairline);
   padding: 9px 16px 10px;
-  background: var(--surface-glass);
+  background: var(--surface-panel);
 }
 
 .quota-footer__row {

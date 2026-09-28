@@ -19,7 +19,7 @@
   padding: 2px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  background: var(--control-rest);
 }
 
 .ledger-segment button,
@@ -58,7 +58,7 @@
   padding: var(--space-5) var(--space-4) var(--space-4);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
 }
 
 .ledger-hero-cost {
@@ -210,7 +210,7 @@
   padding: 0;
   border: 0;
   border-radius: var(--radius-xs) var(--radius-xs) 0 0;
-  background: var(--ink-fog);
+  background: var(--text-tertiary);
   font: inherit;
   cursor: pointer;
   transition: background 120ms ease, filter 120ms ease;
@@ -231,7 +231,7 @@
 }
 
 .ledger-trend-bar.ledger-trend-bar--inert:hover {
-  background: var(--ink-fog);
+  background: var(--text-tertiary);
 }
 
 /* 날짜 없는 잔여분 — 출처 불완전이라는 상태이므로 warn 채널을 빌리고, 무늬로 "어느 날도 아님"을 말한다.
@@ -255,9 +255,10 @@
   visibility: hidden;
   padding: 3px var(--space-1);
   transform: translateX(calc(var(--ledger-bar-pos) * -100%));
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
-  background: var(--ink-veil);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -349,7 +350,7 @@
   overflow: hidden;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
 }
 
 .ledger-client-mark {
@@ -473,7 +474,7 @@
   padding: 0;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  background: var(--surface-panel-raised);
   color: inherit;
   font: inherit;
   text-align: left;

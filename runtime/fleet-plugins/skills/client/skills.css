@@ -69,7 +69,7 @@
 
 .skills-scope-toggle {
   display: flex;
-  background: color-mix(in srgb, var(--surface-glass) 60%, transparent);
+  background: var(--control-rest);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   padding: 2px;
@@ -95,7 +95,7 @@
 .skills-scope-btn:hover:not(:disabled) { color: var(--text-secondary); }
 
 .skills-scope-btn.is-active {
-  background: color-mix(in srgb, var(--brass) 20%, transparent);
+  background: color-mix(in oklch, var(--brass) 20%, transparent);
   color: var(--brass-ink);
 }
 
@@ -111,7 +111,7 @@
 /* ─── filter / search input ─────────────────────────────────────────────────── */
 
 .skills-filter-input {
-  background: color-mix(in srgb, var(--surface-glass) 40%, transparent);
+  background: var(--control-field);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -174,7 +174,7 @@
   min-width: 0;
 }
 
-.skills-card-row:hover { background: color-mix(in srgb, var(--brass) 6%, transparent); }
+.skills-card-row:hover { background: color-mix(in oklch, var(--brass) 6%, transparent); }
 
 .skills-card-name {
   color: var(--text-primary);
@@ -319,7 +319,7 @@
 }
 
 .skills-btn--ghost:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--surface-glass) 60%, transparent);
+  background: var(--control-rest-hover);
   color: var(--text-secondary);
 }
 
@@ -329,13 +329,13 @@
 }
 
 .skills-btn--primary {
-  background: color-mix(in srgb, var(--brass) 20%, transparent);
-  border-color: color-mix(in srgb, var(--brass) 40%, transparent);
+  background: color-mix(in oklch, var(--brass) 20%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
   color: var(--brass-ink);
 }
 
 .skills-btn--primary:hover {
-  background: color-mix(in srgb, var(--brass) 30%, transparent);
+  background: color-mix(in oklch, var(--brass) 30%, transparent);
 }
 
 .skills-btn--remove {
@@ -347,12 +347,12 @@
 
 .skills-btn--remove:hover {
   color: var(--coral-ink);
-  border-color: color-mix(in srgb, var(--coral) 40%, transparent);
+  border-color: color-mix(in oklch, var(--coral) 40%, transparent);
 }
 
 .skills-btn--remove.is-armed {
-  background: color-mix(in srgb, var(--coral) 15%, transparent);
-  border-color: color-mix(in srgb, var(--coral) 40%, transparent);
+  background: color-mix(in oklch, var(--coral) 15%, transparent);
+  border-color: color-mix(in oklch, var(--coral) 40%, transparent);
   color: var(--coral-ink);
 }
 
@@ -365,7 +365,7 @@
 .skills-dock {
   flex-shrink: 0;
   border-top: 1px solid var(--surface-rim);
-  background: color-mix(in srgb, var(--surface-glass) 80%, transparent);
+  background: var(--surface-panel);
   display: flex;
   flex-direction: column;
 }
@@ -421,7 +421,7 @@
 }
 
 .skills-dock-dot {
-  background: var(--ink-fog);
+  background: var(--text-tertiary);
   border-radius: 50%;
   flex-shrink: 0;
   height: 8px;
@@ -439,11 +439,11 @@
 
 @keyframes skills-dock-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--aurora) 22%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--aurora) 22%, transparent);
     opacity: 0.7;
   }
   50% {
-    box-shadow: 0 0 10px 2px color-mix(in srgb, var(--aurora) 22%, transparent);
+    box-shadow: 0 0 10px 2px color-mix(in oklch, var(--aurora) 22%, transparent);
     opacity: 1;
   }
 }
@@ -487,8 +487,8 @@
 }
 
 .skills-dock-retry {
-  background: color-mix(in srgb, var(--coral) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--coral) 40%, transparent);
+  background: color-mix(in oklch, var(--coral) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--coral) 40%, transparent);
   border-radius: var(--radius-md);
   color: var(--coral-ink);
   cursor: pointer;
@@ -536,7 +536,7 @@
 
 .skills-overlay-backdrop {
   align-items: center;
-  background: color-mix(in srgb, var(--ink-abyss) 55%, transparent);
+  background: color-mix(in oklch, var(--ink-deep) 55%, transparent);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -546,16 +546,11 @@
 }
 
 .skills-overlay-dialog {
-  /* 팝업 판독성 계약: maritime/carbon의 --surface-glass는 60~62% 알파라 glass 층만으로는
-     backdrop 뒤가 비친다. 불투명 --ink-deep 언더레이를 최하단에 깔아 불투명을 보장한다. */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-soft), var(--glass-tint-soft)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  border: 1px solid var(--surface-rim);
+  /* 떠 있는 표면: 불투명 raised 면 + 강한 테두리 + 부유 그림자. */
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
   display: flex;
   flex-direction: column;
   /* 확정 높이가 필수 — content-driven 높이에서는 body의 flex-grow가 분배할 공간이
@@ -657,7 +652,7 @@
 .skills-install-flow legend { color: var(--text-secondary); font-size: var(--t-sm); padding: 0; margin-bottom: var(--space-2); }
 .skills-install-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .skills-install-choice { display: flex; align-items: center; gap: var(--space-2); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); padding: var(--space-2) var(--space-3); color: var(--text-secondary); font-size: var(--t-sm); cursor: pointer; }
-.skills-install-choice:has(input:checked) { border-color: color-mix(in srgb, var(--brass) 40%, var(--surface-rim)); background: color-mix(in srgb, var(--brass) 6%, transparent); }
+.skills-install-choice:has(input:checked) { border-color: color-mix(in oklch, var(--brass) 40%, var(--surface-rim)); background: color-mix(in oklch, var(--brass) 6%, transparent); }
 .skills-install-choice:has(input:disabled) { opacity: 0.45; cursor: default; }
 .skills-install-choice input { accent-color: var(--brass); }
 .skills-install-choice small { display: block; color: var(--text-tertiary); font-size: var(--t-xs); }
@@ -670,17 +665,11 @@
 .skills-root { position: relative; }
 
 .skills-toast {
-  /* 팝업 판독성 계약: glass 믹스 + 불투명 --ink-deep 언더레이 */
-  background:
-    linear-gradient(
-      color-mix(in srgb, var(--aurora) 15%, var(--glass-tint-soft)),
-      color-mix(in srgb, var(--aurora) 15%, var(--glass-tint-soft))
-    ),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  border: 1px solid color-mix(in srgb, var(--aurora) 35%, transparent);
+  /* 떠 있는 표면: 불투명 raised 면 + 강한 테두리 + 부유 그림자. */
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
   bottom: var(--space-3);
   color: var(--aurora-ink);
   font-size: var(--t-md);

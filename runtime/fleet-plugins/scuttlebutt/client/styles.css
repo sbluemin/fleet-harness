@@ -71,15 +71,11 @@
   left: 50%;
   top: calc(100% - 8px);
   transform: translateX(-50%);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  border: 1px solid var(--hairline);
+  /* 떠 있는 표면: 불투명 raised 면 + 강한 테두리 + 작은 그림자. */
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-soft);
   color: var(--text-secondary);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
@@ -101,15 +97,11 @@
   left: 50%;
   bottom: 96%;
   transform: translate(-50%, -4px);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  /* 떠 있는 표면: 불투명 raised 면 + 부유 그림자. brass 테두리는 "새가 말하고 있다"는 어휘라 유지. */
+  background: var(--surface-panel-raised);
   border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
@@ -432,12 +424,8 @@
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: 신호 wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
-  background:
-    linear-gradient(var(--scuttlebutt-notice-wash, var(--glass-tint-strong)), var(--scuttlebutt-notice-wash, var(--glass-tint-strong))),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  /* 떠 있는 표면: 신호 wash를 raised 면에 얹은 불투명 단일 층. */
+  background: var(--scuttlebutt-notice-wash, var(--surface-panel-raised));
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-sm);
@@ -448,7 +436,7 @@
 }
 
 .scuttlebutt-notice-bubble.is-arrival {
-  --scuttlebutt-notice-wash: color-mix(in oklch, var(--positive) 12%, var(--glass-tint-strong));
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--positive) 12%, var(--surface-panel-raised));
   --scuttlebutt-notice-ink: var(--positive);
   border-color: color-mix(in oklch, var(--positive) 50%, var(--hairline));
 }
@@ -457,14 +445,14 @@
    alpha 조절로 hue 80~90(amber)을 유지한다(awaiting 비콘의 color-mix(aurora, transparent)와 동형). */
 .scuttlebutt-notice-bubble.is-departure,
 .scuttlebutt-notice-bubble.is-awaiting {
-  --scuttlebutt-notice-wash: color-mix(in oklch, var(--warn) 12%, var(--glass-tint-strong));
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--warn) 12%, var(--surface-panel-raised));
   --scuttlebutt-notice-ink: var(--warn-ink);
   border-color: color-mix(in oklch, var(--warn) 55%, transparent);
 }
 
 .scuttlebutt-notice-bubble.is-awaiting {
   border-color: color-mix(in oklch, var(--aurora) 55%, transparent);
-  --scuttlebutt-notice-wash: color-mix(in oklch, var(--aurora) 12%, var(--glass-tint-strong));
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--aurora) 12%, var(--surface-panel-raised));
   --scuttlebutt-notice-ink: color-mix(in oklch, var(--aurora) 80%, var(--text-primary));
 }
 
@@ -495,7 +483,7 @@
 }
 
 .scuttlebutt-notice-open:hover {
-  background: var(--ink-veil);
+  background: var(--control-rest-hover);
 }
 
 .scuttlebutt-notice-dismiss {
@@ -516,7 +504,7 @@
 }
 
 .scuttlebutt-notice-dismiss:hover {
-  background: var(--ink-veil);
+  background: var(--control-rest-hover);
   color: var(--text-primary);
 }
 
@@ -574,7 +562,7 @@
 }
 
 .scuttlebutt-intro-ok:hover {
-  background: var(--ink-veil);
+  background: var(--control-rest-hover);
 }
 
 /* ── Quick Launch 답변 말풍선 ────────────────────────────────────────────────
@@ -600,13 +588,8 @@
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  /* 떠 있는 표면: 불투명 raised 면. brass 테두리는 "새가 말하고 있다"는 어휘라 유지. */
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-md);
@@ -736,7 +719,7 @@
 }
 
 .scuttlebutt-answer-dismiss:hover {
-  background: var(--ink-veil);
+  background: var(--control-rest-hover);
   color: var(--text-primary);
 }
 
@@ -752,13 +735,8 @@
   overflow: hidden;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  /* 떠 있는 표면: 불투명 raised 면. */
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
   animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
 }
@@ -825,7 +803,7 @@
 }
 
 .scuttlebutt-head-action:hover:not(:disabled) {
-  background: var(--ink-veil);
+  background: var(--control-rest-hover);
   color: var(--text-primary);
 }
 
@@ -856,15 +834,11 @@
   width: max-content;
   max-width: min(260px, calc(100vw - 32px));
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating);
+  /* 떠 있는 표면: 불투명 raised 면 + 작은 그림자. */
+  background: var(--surface-panel-raised);
+  box-shadow: var(--shadow-soft);
   color: var(--text-secondary);
   font-family: var(--font-body);
   font-size: var(--t-xs);
@@ -905,7 +879,7 @@
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: var(--ink-veil);
+  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
   color: var(--text-primary);
   font-weight: var(--weight-regular);
 }
@@ -1010,7 +984,7 @@
   padding: 0;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
-  background: var(--ink-mid);
+  background: var(--control-rest);
   color: var(--text-tertiary);
   cursor: default;
   transition: background var(--duration-fast), color var(--duration-fast), transform var(--duration-fast);
@@ -1039,7 +1013,7 @@
 
 .scuttlebutt-stop {
   border-color: var(--hairline-strong);
-  background: var(--ink-mid);
+  background: var(--control-rest);
   color: var(--text-primary);
   cursor: pointer;
 }
@@ -1090,7 +1064,7 @@
   padding: 1px var(--space-2);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
-  background: var(--ink-veil);
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -1130,7 +1104,7 @@
 
 .scuttlebutt-answer-action:hover {
   border-color: var(--brass);
-  background: var(--ink-veil);
+  background: var(--control-rest-hover);
   color: var(--text-primary);
 }
 
@@ -1586,7 +1560,7 @@
   padding: 1px var(--space-2) 1px 6px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
-  background: var(--ink-veil);
+  background: var(--control-rest);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
@@ -1624,7 +1598,7 @@
   padding: 1px 4px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
-  background: var(--ink-mid);
+  background: var(--control-rest);
   color: var(--text-tertiary);
   vertical-align: middle;
 }
@@ -1650,12 +1624,8 @@
   padding: 6px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
+  /* 떠 있는 표면: 불투명 raised 면. */
+  background: var(--surface-panel-raised);
   box-shadow: var(--shadow-floating);
 }
 
@@ -1686,7 +1656,7 @@
 }
 
 .scuttlebutt-menu-row:hover {
-  background: var(--ink-veil);
+  background: var(--control-rest-hover);
   color: var(--text-primary);
 }
 
