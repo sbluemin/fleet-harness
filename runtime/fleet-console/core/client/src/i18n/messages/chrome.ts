@@ -38,6 +38,8 @@ export const chromeEn = {
   "chrome.link.reconnecting": "Reconnecting…",
   "chrome.link.bannerDetail": "Values on screen are from {time}.",
   "chrome.link.reconnect": "Reconnect",
+  "chrome.proxy.readOnly": "Viewing {name} read-only. This device joined with a monitoring link, so nothing can be changed here.",
+  "chrome.proxy.unnamed": "a remote console",
   "chrome.link.staleHeadline": "Updates stopped here",
   "chrome.link.staleDetail": "Last updated {time}",
 
@@ -483,6 +485,8 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.runtime.degraded": "Operation 활동 상태를 지금 확인할 수 없습니다 — 화면의 표시가 최신이 아닐 수 있습니다.",
   "chrome.link.reconnecting": "다시 연결하는 중…",
   "chrome.link.bannerDetail": "화면의 값은 {time} 기준입니다.",
+  "chrome.proxy.readOnly": "읽기 전용으로 보는 중: {name}. monitoring 링크로 연결되어 여기서는 아무것도 바꿀 수 없습니다.",
+  "chrome.proxy.unnamed": "원격 콘솔",
   "chrome.link.reconnect": "다시 연결",
   "chrome.link.staleHeadline": "이 값은 갱신이 멈췄습니다",
   "chrome.link.staleDetail": "마지막 갱신 {time}",

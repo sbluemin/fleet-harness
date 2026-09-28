@@ -56,6 +56,21 @@
   font-weight: var(--weight-medium);
 }
 
+/* 읽기 전용 원격 표면 안내. 고장이 아니라 이 화면의 상태라 aurora(상태 신호)로 말한다. */
+.console-proxy-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-height: 30px;
+  padding: var(--space-1) var(--space-4);
+  border-bottom: 1px solid color-mix(in oklch, var(--aurora) 45%, var(--surface-rim));
+  background: var(--aurora-glow);
+  color: var(--aurora-ink);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
 .console-link-banner button,
 .right-rail-stale-veil button {
   padding: 4px 8px;

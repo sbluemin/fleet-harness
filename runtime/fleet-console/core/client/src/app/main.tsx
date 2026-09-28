@@ -46,6 +46,7 @@ import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugi
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredSideBarGlass } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { consumeInitialZenModeParam } from "../integration/zen-mode.js";
+import { isProxyDataDocument, loadProxyDataSurface } from "../../../../features/remote-access/client/proxy-data.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -90,6 +91,9 @@ applyStoredSideBarGlass();
 // 모달 표시는 CSS :has()가 아니라 루트 속성으로 흐른다 — 문서 전체 스타일 재계산을 막는다(modal-open-marker.ts).
 installModalOpenMarker();
 
+// 원격 데이터를 읽기 전용으로 보여 주는 epoch 표면이면, 그 사실을 첫 렌더 전에 안다 — 쓰기 표면이 잠깐이라도 서지 않게.
+const proxyData = isProxyDataDocument() ? await loadProxyDataSurface() : null;
+
 try {
   const settings = await fetchGlobalSettingsState();
   setActiveTheme(settings.theme);
@@ -97,7 +101,7 @@ try {
   setUnfocusedPanelFade(settings.unfocusedPanelFade);
   setActiveUiFont(settings.uiFont);
   hydrateGlobalSettings(settings);
-  await migrateStoredCommissioningSeen();
+  if (proxyData === null) await migrateStoredCommissioningSeen();
 } catch (error) {
   failGlobalSettingsLoad(error);
   // 서버 미응답 시 기본 Theme 및 Manrope UI font를 유지한다.
@@ -123,7 +127,8 @@ if (app && hostPicker) {
   // 제스처는 id 로 대상·호출자를 찾는다 — 구성원이 부른 Console Use 도 제 이름으로 선다.
   installConsoleUseGestures({ operations: () => operationsIncludingNested(), subscribeConsoleChannel });
   // 보관함의 수와 목록 — 보관된 Operation은 일반 목록에 없으므로 자기 사건으로 따라간다.
-  installOperationArchive(subscribeConsoleChannel);
+  // 보관함은 이 기계의 기록이다 — 원격을 비추는 표면에는 싣지 않는다.
+  if (proxyData === null) installOperationArchive(subscribeConsoleChannel);
   connectOperationsSse();
   consumeInitialZenModeParam();
   createRoot(app).render(

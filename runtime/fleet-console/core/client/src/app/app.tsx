@@ -10,6 +10,7 @@ import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, res
 import { CommandBand } from "../chrome/components/command-band.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
+import { ProxyDataBanner, useProxyDataSurface } from "../../../../features/remote-access/client/proxy-data.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "../chrome/components/operation-search.js";
 import { QuickLaunch } from "../../../../features/execution/client/components/quick-launch.js";
@@ -80,6 +81,7 @@ const ONBOARDING_PORTS = {
 
 export function App() {
   const state = useConsoleState();
+  const proxyData = useProxyDataSurface();
   const updateProgress = useUpdateProgress();
   const bootOperationIdsRef = useRef<readonly string[] | null>(null);
   const location = useLocation();
@@ -614,6 +616,7 @@ export function App() {
             </div>
           ) : null}
           <ControlBar />
+          <ProxyDataBanner />
         </div>
         {(() => {
           const routeContent = (
@@ -647,6 +650,8 @@ export function App() {
         <QuickLaunch />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <ArchiveSheet />
+        {/* 원격을 비추는 읽기 전용 표면에는 이 기계의 첫 실행·새 소식·투어가 설 자리가 없다 — 모두 쓰기로 끝난다. */}
+        {proxyData !== null ? null : <>
         <TheaterSystemPromptSheet />
         <WhatsNewModal state={state} />
         <CommissioningOverlay state={state} />
@@ -659,6 +664,7 @@ export function App() {
           firstRun={state.bootstrapped && state.theaters.length === 0 && globalSettings.state !== null && !globalSettings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)}
           ports={ONBOARDING_PORTS}
         />
+        </>}
         <ZenTransition local={state.channel === "local"} />
         <ControlCurtain />
         <ControlReclaimedNotice />
