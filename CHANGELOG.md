@@ -5,6 +5,61 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.201.0] - 2026-09-28
+
+### fleet-console
+
+#### Added
+- Change a chat session's model and effort mid-conversation from the model label under the input box, or with `/model` and `/effort`. While a reply is in progress, the change waits and applies from the next turn.
+- Propose Wiki entry deletions in Codex and review affected links before approving them.
+- See every Operation on a fleet map in War Room: zoom the deck out past 1.0x, or use the Fleet map button, Alt+M, or the command palette, even while a request is on stage. Every Operation shows its name on the map, shortened when long. Pick a waiting Operation to bring it to the stage; point at any other one to read its full title, status, location with branch, model, and last output line, or take a quick look without changing the stage and click anywhere on the map to close it.
+- Set every Objectives member to Same as the Commander or Routing at once from the roster header; members with a model you picked yourself keep it.
+- Agents can now tidy the Objectives board through Console Use: merge duplicate objectives that have not started yet into one, keeping their briefs and success criteria, or remove ones no longer needed. Removed and merged objectives, including ones you delete before they start, wait under a new Tidied tab for 14 days where you can restore them.
+- Open http(s) addresses in an objective's brief, missions, criteria, decisions, follow-ups, results, and retrospective in your browser. Click the text to edit those fields; saving and canceling stay the same.
+- Send a message straight to an objective's Commander or any member from the objective's action band; a member's message is also passed on to the Commander.
+- Objectives now remember the roles your members filled: a Commander can rate each member when handing off, and the next Commander in the same Theater proposes members from those past roles and ratings. The member list shows them too, so you can add a past role in one click, hide it, or merge roles that mean the same work.
+- Update a single skill from its detail view, and see which skills changed after any skill update.
+- Add a Theater without leaving Zen mode, from the end of the Zen taskbar's Theater menu or from Add Theater in the command palette.
+
+#### Changed
+- The archive now groups Operations by the day you archived them, with each date shown beside that day's items.
+- New launches from the canvas menu and Objectives now start in chat, so you can describe the work first. A terminal you picked before stays terminal.
+- Zooming the Cruise canvas out no longer turns it into a fleet map; the fleet map now opens in War Room.
+- Objectives members set to routing now get their models from what they were actually assigned: each member's open missions and the objective's success criteria are considered, and members started together are decided at once and spread across providers when they fit equally well. If routing is unavailable, they start with the Commander's model and effort.
+- Objectives now shows how many decision requests are waiting on its toolbar icon, even while it is closed, and gathers them at the top of the list.
+- A light circles waiting decision requests on their Objectives cards and around the whole Commander panel, caption included, so a pending decision stands out at a glance.
+- When an agent uses Console on a panel, its highlight now wraps the panel's caption too.
+- A newly added objective is highlighted in the list and, on wide screens, opens in the detail right away.
+- The Objectives list now separates objectives in progress from ones not started yet, and moves sessions you have not treated as objectives into a new Outside tab until you plan or commence them.
+- On wide screens, Objectives shows the list, the brief and mission plan, and the crew with decisions side by side, so you can plan and answer requests without scrolling one long detail. Narrower detail views follow the same order, with the crew, decisions, and results after the missions.
+- View and edit missions directly in a horizontal graph: hover for details, click to keep them open, and drag to link prerequisites without accidentally removing existing links.
+- When a Desktop that was using your console leaves it, the "controlled by another device" screen lifts right away.
+- Skill cards now show whether Fleet sessions load each skill, and installing asks whether the skill is for Claude Code or for the folder other coding CLIs share.
+- Installing or updating skills from Console no longer sends usage telemetry to the skills registry.
+- Zen mode now keeps the Map button, so you can open the minimap without leaving Zen. It starts folded each time and does not change your usual Map setting.
+
+#### Fixed
+- War Room counts set-aside requests separately, so the deck no longer reports waiting work while the queue says nothing is waiting.
+- An answer you started on an Objectives decision request is no longer lost when you look at another objective and come back; it clears once you send it or the request is replaced or withdrawn.
+- Project skills installed for Claude Code together with other CLIs now reach Fleet sessions even when the project had no `.claude` folder.
+- Global Claude Code skills kept in a custom `CLAUDE_CONFIG_DIR` outside your home folder now show their descriptions and open in the detail view.
+- Skill descriptions written as multi-line YAML blocks now appear instead of a blank line.
+- Forgetting, restoring, or adding a Theater now updates the Theater list in every open Console window right away instead of after a reload.
+- Brass-highlighted links, labels, and status text in the Whites theme, including Objectives and built-in plugin panels, now read clearly against the light background.
+
+#### Breaking Changes
+- Set Claude Code system prompts separately for each Theater from its menu; the former Console-wide prompt is no longer applied or migrated, so re-enter any instructions you still need in each Theater. Console-external `fleet` CLI launches use Claude Code defaults.
+
+### fleet-desktop
+
+#### Changed
+- Switching to another console in the Desktop app no longer flashes a blank screen, and your toolbar, open tool panel and its width, and canvas mode stay as they were.
+- The Desktop app keeps this computer's console open behind the other console you switch to, so coming back is instant and nothing on screen is lost; screen sharing pauses before you leave.
+- After this update, each paired remote console asks for a fresh access link once, and a console whose certificate changes can only be reopened with a new link.
+
+#### Fixed
+- Switching to another machine's Console no longer drops you out of Zen mode; the window keeps the mode you were in.
+
 ## [1.200.0] - 2026-09-27
 
 ### fleet-cli
