@@ -94,12 +94,6 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     if (switchVeil && !switchVeilRaised) ordered.push(switchVeil);
     const front = active === "data" && data ? data : consoleView;
     const back = front === consoleView ? data : consoleView;
-    /**
-     * 데이터 뷰가 앞에 선 동안 로컬 뷰는 보이지 않게 둔다. 같은 자리에 보이는 채로 두면 그 문서의 창 드래그
-     * 영역(명령 띠)이 앞 화면 위에서도 살아, 도구모음 배치가 다른 앞 콘솔의 버튼 hover·클릭을 가로챈다.
-     * 문서는 그대로 살아 있으므로 돌아오면 곧바로 이어진다. 데이터 뷰는 숨기지 않는다 — 다음 전환의 첫 그림이 늦어진다.
-     */
-    consoleView.setVisible(front === consoleView);
     if (back) ordered.push(back);
     ordered.push(...parked, front, ...presented);
     if (picker) ordered.push(picker);
