@@ -192,8 +192,6 @@ export function CoordinationGraph({ objective, t, operationState, onEdge, canEdi
       else if (e.key === "Tab" && !e.shiftKey && active) { e.preventDefault(); show(m.id, true, true); }
     }}>{icon(m)}</button>;
   };
-  const anchorNode = popup ? box.current?.querySelector<HTMLElement>(`[data-graph-node="${CSS.escape(popup.id)}"]`) : null;
-  const anchorLabel = popup ? box.current?.querySelector<HTMLElement>(`[data-graph-label="${CSS.escape(popup.id)}"]`) : null;
   const shownMission = popup ? objective.missions.find(m => m.id === popup.id) : null;
   return <div ref={box} className={`objectives-branch-graph${zoom ? " is-zoom" : ""}${wide ? " is-wide" : ""}${drag?.moved ? " is-dragging" : ""}`} style={{ "--graph-r": `${layout.g.r}px`, "--graph-label-line": `${layout.g.llh}px` } as CSSProperties} onPointerMove={move} onPointerLeave={() => { if (!dragRef.current) leave(); }}>
     <div ref={scroll} className="objectives-graph-scroll" onScroll={() => { if (popupRef.current && !popupRef.current.pinned) close(); }}>
@@ -207,6 +205,6 @@ export function CoordinationGraph({ objective, t, operationState, onEdge, canEdi
     {loose.length ? <div className="objectives-graph-tray"><span className="objectives-graph-tray-title">{t("objectives.graph.unplaced")}</span>{loose.map(m => <div className="objectives-graph-tray-item" key={m.id}>{node(m)}<span className="objectives-graph-tray-label" data-graph-label={m.id} onPointerDown={e => start(m.id, e)} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)}>{m.text}</span></div>)}</div> : null}
     {drag?.moved ? <svg className="objectives-graph-dragline" aria-hidden="true"><path className={reason ? "is-no" : undefined} d={`M${drag.x0},${drag.y0} L${drag.x},${drag.y}`} /></svg> : null}
     {from && over && tipRect && boxRect ? <div className={`objectives-graph-drop-tip${reason ? " is-no" : ""}`} role="status" style={{ left: Math.max(4, Math.min(width - 224, tipRect.left - boxRect.left)), top: tipRect.bottom - boxRect.top + 6 }}><b>{reason ?? t("objectives.graph.drop", { from: number(from), to: number(over) })}</b>{reason ? null : <span>{t("objectives.graph.direction", { from: number(from), to: number(over) })}</span>}</div> : null}
-    {popup && shownMission && anchorNode && box.current && !suspended ? <GraphPopup id={popupId} anchor={{ node: anchorNode, label: anchorLabel }} boundary={box.current} pinned={popup.pinned} closing={popup.closing} hidden={!!drag?.moved} label={t("objectives.graph.detail", { n: number(shownMission.id) })} onKeep={keep} onMove={hover} onLeave={() => leave()} onPin={() => { if (!popup.pinned) show(popup.id, true); }} onEscape={() => close(true)}>{renderDetail(shownMission, { close: () => close(true), select, state: states.get(shownMission.id)! })}</GraphPopup> : null}
+    {popup && shownMission && box.current && !suspended ? <GraphPopup id={popupId} missionId={popup.id} layout={layout} boundary={box.current} pinned={popup.pinned} closing={popup.closing} hidden={!!drag?.moved} label={t("objectives.graph.detail", { n: number(shownMission.id) })} onKeep={keep} onMove={hover} onLeave={() => leave()} onPin={() => { if (!popup.pinned) show(popup.id, true); }} onEscape={() => close(true)}>{renderDetail(shownMission, { close: () => close(true), select, state: states.get(shownMission.id)! })}</GraphPopup> : null}
   </div>;
 }
