@@ -920,7 +920,6 @@ function withinMs<T>(work: Promise<T>, ms: number, code: string): Promise<T> {
   });
 }
 
-/** 원격이 끝나 로컬로 돌아왔을 때의 한 줄. 회수와 만료는 셸이 가를 수 없으므로 끝났다는 사실만 말한다. */
 /** 콘솔 입구 주소인가 — 특정 화면을 가리키지 않는다(화면 모드 쿼리나 표현 상태 fragment는 실을 수 있다). */
 function isConsoleEntryUrl(url: string): boolean {
   try {
@@ -931,6 +930,7 @@ function isConsoleEntryUrl(url: string): boolean {
   }
 }
 
+/** 원격이 끝나 로컬로 돌아왔을 때의 한 줄. 회수와 만료는 셸이 가를 수 없으므로 끝났다는 사실만 말한다. */
 function describeDisconnect(reason: DisconnectReason): string {
   if (reason === "local_unavailable") return "Screen capture, window commands, and browser control stay off until this computer's console answers again. Choose Return to This Computer to try again.";
   if (reason === "crashed") return "The other console's page stopped responding, so this window returned to this computer's console.";
