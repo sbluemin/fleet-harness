@@ -35,6 +35,14 @@ export class SystemOneError extends Error {
   }
 }
 
+/** 공급자가 입력 토큰 상한 초과로 요청을 거절했다(HTTP 400, error_type max_tokens_exceeded). */
+export function isSystemOneTokenLimitError(error: unknown): boolean {
+  if (!(error instanceof SystemOneError) || error.status !== 400) return false;
+  const detail = error.detail;
+  return typeof detail === "object" && detail !== null
+    && (detail as { error_type?: unknown }).error_type === "max_tokens_exceeded";
+}
+
 export interface SystemOneClientDeps {
   /** 저장된 키를 읽어 온다. 없으면 로그인되지 않은 것이므로 호출자가 강등한다. */
   readonly readApiKey: () => Promise<string | undefined>;
