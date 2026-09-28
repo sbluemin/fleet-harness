@@ -88,6 +88,9 @@ export function useTriageStage(): string | null {
 let triageMapOpen = false;
 let triageMapHeldStageId: string | null = null;
 const triageMapHeldArrivals = new Set<string>();
+// 층을 연 순간 이미 대기열에 있던 것 — 활동 캐시는 결정 요청만으로 선 대기를 모를 수 있어, 새 대기 판정은
+// 캐시가 아니라 이 스냅샷으로 "열기 전부터 대기"를 거른다.
+const triageMapWaitingAtOpen = new Set<string>();
 // 층을 닫을 때 돌아갈 무대 — 지목(pick)이 아니다. 지목은 미룸 뒤에도 남고 스포트라이트 OFF에서도 저절로
 // 서지만, 이 표식은 그 무대가 서 있는 동안만 대기열 앞을 지키고 무대가 떠나거나 사람이 미루기·치우기·
 // 지목하면 지워진다.
@@ -124,6 +127,9 @@ export function openTriageMap(): void {
   triageMapHeldStageId = stagedOperationId;
   triageReturnStageId = null;
   triageMapHeldArrivals.clear();
+  triageMapWaitingAtOpen.clear();
+  const { operations, operationRuntime } = getState();
+  for (const entry of resolveTriageQueue(operations, operationRuntime)) triageMapWaitingAtOpen.add(entry.operation.id);
   emitTriage();
 }
 
@@ -133,14 +139,18 @@ export function closeTriageMap(): void {
   const heldStageId = triageMapHeldStageId;
   triageMapHeldStageId = null;
   triageMapHeldArrivals.clear();
+  triageMapWaitingAtOpen.clear();
   // 연 순간의 무대가 아직 대기면 그 무대로 돌아간다 — 층이 열린 동안 앞줄에 든 새 대기가 닫는
   // 순간 무대를 가로채지 않게 복귀 무대로 표시한다. 무대가 없었으면 보통의 체류 뒤 등단이 이어받는다.
-  if (heldStageId !== null
+  // 대기 여부는 활동 캐시가 아니라 지금 상태로 본다 — 결정 요청만으로 선 무대는 캐시가 모를 수 있다.
+  const { operations, operationRuntime } = getState();
+  const heldStage = heldStageId === null ? null : operations.find((operation) => operation.id === heldStageId) ?? null;
+  if (heldStage !== null
     && pickedOperationId === null
-    && waitingByOperation.get(heldStageId) === true
-    && !dismissed.has(heldStageId)
-    && !deferredAt.has(heldStageId)) {
-    triageReturnStageId = heldStageId;
+    && isTriageWaitingOperation(heldStage, operationRuntime)
+    && !dismissed.has(heldStage.id)
+    && !deferredAt.has(heldStage.id)) {
+    triageReturnStageId = heldStage.id;
   }
   emitTriage();
 }
@@ -366,6 +376,7 @@ export function setTriageActive(active: boolean, animate = true): void {
   triageMapOpen = false;
   triageMapHeldStageId = null;
   triageMapHeldArrivals.clear();
+  triageMapWaitingAtOpen.clear();
   triageReturnStageId = null;
   triageDeckOverflowing = false;
   rememberWarRoomActive(false);
@@ -535,6 +546,7 @@ export function pickTriageOperation(operationId: string): void {
     triageMapOpen = false;
     triageMapHeldStageId = null;
     triageMapHeldArrivals.clear();
+    triageMapWaitingAtOpen.clear();
   }
   const operation = getState().operations.find((candidate) => candidate.id === operationId) ?? null;
   // 전 Theater가 마운트되므로 지목은 Theater를 전환하지 않는다 — 무대가 소속 무관하게 선다.
@@ -743,7 +755,7 @@ export function recordTriageActivity(
     }
     // 층을 열기 전부터 있던 Operation은 모두 기준값이 있다 — 기준값이 없는 것은 층이 열린 뒤 처음 보인 것이라
     // (재연결 수화처럼) 처음부터 대기여도 새 대기로 보류한다.
-    if (triageActive && triageMapOpen && previousWaiting !== true && waiting && !dismissed.has(operation.id)) {
+    if (triageActive && triageMapOpen && previousWaiting !== true && waiting && !dismissed.has(operation.id) && !triageMapWaitingAtOpen.has(operation.id)) {
       triageMapHeldArrivals.add(operation.id);
     } else if (!waiting) {
       triageMapHeldArrivals.delete(operation.id);
@@ -792,7 +804,7 @@ export function setTriageDecisionRoots(ids: ReadonlySet<string>): void {
   // 뿌리는 여기서 새 대기로 보류한다. 이미 활동으로 대기이던 것과 치워둔 것은 새 도착이 아니다.
   if (triageActive && triageMapOpen) {
     for (const id of ids) {
-      if (!decisionRoots.has(id) && waitingByOperation.get(id) !== true && !dismissed.has(id)) triageMapHeldArrivals.add(id);
+      if (!decisionRoots.has(id) && waitingByOperation.get(id) !== true && !dismissed.has(id) && !triageMapWaitingAtOpen.has(id)) triageMapHeldArrivals.add(id);
     }
   }
   decisionRoots = ids;
