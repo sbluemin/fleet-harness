@@ -56,7 +56,7 @@ export function buildPatchQueueToolConfig() {
           ok: true,
           action,
           item,
-          ...(item.patch.frontmatter.op === "delete_wiki" ? { deletion_impact: await currentDeletionImpact(JSON.parse(item.patch.body).id as string, paths, item.meta.patch_set_id) } : {}),
+          ...(item.patch.frontmatter.op === "delete_wiki" ? { deletion_impact: await currentDeletionImpact(item.patch.body, paths, item.meta.patch_set_id) } : {}),
           related_conflicts: relatedConflicts,
           auto_selected: selection.autoSelected,
         });

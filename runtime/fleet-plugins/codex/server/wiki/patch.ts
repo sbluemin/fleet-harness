@@ -225,7 +225,9 @@ export async function deletionImpact(id: string, paths: MemoryPaths, deleting: r
   };
 }
 
-export async function currentDeletionImpact(id: string, paths: MemoryPaths, patchSetId?: string): Promise<Awaited<ReturnType<typeof deletionImpact>> | null> {
+export async function currentDeletionImpact(patchBody: string, paths: MemoryPaths, patchSetId?: string): Promise<Awaited<ReturnType<typeof deletionImpact>> | null> {
+  const snapshot = parseDeletionSnapshot(patchBody);
+  const id = snapshot.id;
   if (!(await resolveWikiEntryPath(id, paths))) return null;
   let deleting: string[] = [];
   if (patchSetId) {
@@ -237,7 +239,14 @@ export async function currentDeletionImpact(id: string, paths: MemoryPaths, patc
       if (member.frontmatter.op === "delete_wiki") deleting.push(path.basename(member.frontmatter.target, ".md"));
     }
   }
-  return deletionImpact(id, paths, deleting);
+  const impact = await deletionImpact(id, paths, deleting);
+  // 승인은 스테이징 때 스냅샷한 raw만 지운다 — 그 뒤 고아가 된 raw는 제거 목록이 아니라 보존 목록에 보여 준다.
+  const staged = new Set(snapshot.rawSources.map(item => item.ref));
+  return {
+    ...impact,
+    rawSources: impact.rawSources.filter(ref => staged.has(ref)),
+    sharedRawSources: [...impact.sharedRawSources, ...impact.rawSources.filter(ref => !staged.has(ref))],
+  };
 }
 
 export async function stageWikiDeletions(ids: string[], reason: string, paths: MemoryPaths, proposer = "Codex"): Promise<{ patchIds: string[]; patchSetId?: string }> {

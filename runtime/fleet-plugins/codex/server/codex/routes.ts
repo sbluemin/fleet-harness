@@ -578,7 +578,7 @@ async function handleDrydockDetail(rawSegment: string, response: ServerResponse,
     const targetExists = await fileExists(targetPath);
     const patchSet = meta.patch_set_id ? await readPatchSetResponse(meta.patch_set_id, context.paths) : null;
     const impact = deletionSnapshot && source === "queue"
-      ? await currentDeletionImpact(deletionSnapshot.id, context.paths, meta.patch_set_id)
+      ? await currentDeletionImpact(patch.body, context.paths, meta.patch_set_id)
       : null;
     sendJson(response, 200, {
       source,
