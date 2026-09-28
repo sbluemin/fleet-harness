@@ -253,3 +253,90 @@ export function isDesktopWindowCommand(value: unknown): value is DesktopWindowCo
 export function isDesktopWindowCommandSnapshot(value: unknown): value is DesktopWindowCommandSnapshot {
   return isRecord(value) && Object.keys(value).length === 1 && (value.command === null || isDesktopWindowCommand(value.command));
 }
+
+/**
+ * 읽기 전용 원격 데이터 epoch의 broker 계약(Desktop main ↔ 로컬 Console 메인 루프백 리스너).
+ *
+ * 모든 요청은 메인 루프백 리스너의 exact Host와 lock-token Bearer를 요구한다. broker는 조인하지 않고
+ * pairing을 받지 않는다 — Desktop이 조인해 얻은 **그 포트의 세션 쿠키 하나**만 위임받아 메모리에 둔다.
+ * epoch는 자기 리스너(127.0.0.1:0)와 256-bit capability로만 열리고, 포트는 인증이 아니다.
+ */
+export const DESKTOP_PROXY_OWNERS_PATH = "/api/v1/proxy/owners";
+export const DESKTOP_PROXY_EPOCHS_PATH = "/api/v1/proxy/epochs";
+export const DESKTOP_PROXY_EVENTS_PATH = "/api/v1/proxy/events";
+export const DESKTOP_PROXY_EPOCH_STATE_EVENT = "epoch:state";
+/** 데이터 뷰 문서에서 보이는 epoch 상태(합성). 표시용일 뿐 셸의 권위 상태를 바꾸는 입력이 아니다. */
+export const DESKTOP_PROXY_STATE_PATH = "/api/v1/proxy/state";
+export const DESKTOP_PROXY_HEARTBEAT_MS = 10_000;
+export const DESKTOP_PROXY_LEASE_MS = 30_000;
+export const DESKTOP_PROXY_BODY_LIMIT_BYTES = 4 * 1024;
+
+export const DESKTOP_PROXY_TERMINAL_REASONS = [
+  "reclaimed", "superseded", "expired", "disconnected", "protocol_error",
+  "pin_changed", "host_removed", "version_drift", "owner_expired", "owner_released", "released",
+] as const;
+export type DesktopProxyTerminalReason = (typeof DESKTOP_PROXY_TERMINAL_REASONS)[number];
+export type DesktopProxyEpochState = "preparing" | "ready" | "terminal";
+
+export interface DesktopProxyOwnerLease {
+  readonly ownerLeaseId: string;
+  readonly heartbeatMs: number;
+  readonly expiresInMs: number;
+  readonly leaseExpiresAt: number;
+}
+
+export interface DesktopProxyDelegation {
+  readonly requestId: string;
+  readonly ownerLeaseId: string;
+  readonly switchGeneration: number;
+  readonly hostId: string;
+  readonly pinGeneration: number;
+  readonly session: { readonly name: string; readonly value: string };
+}
+
+/** 201 응답. capability는 이 응답에만 한 번 실린다. */
+export interface DesktopProxyEpochIssued {
+  readonly epochId: string;
+  readonly generation: number;
+  readonly origin: string;
+  readonly cookieName: string;
+  readonly capability: string;
+  readonly leaseExpiresAt: number;
+}
+
+export interface DesktopProxyEpochStateEvent {
+  readonly epochId: string;
+  readonly generation: number;
+  readonly state: DesktopProxyEpochState;
+  readonly reason?: DesktopProxyTerminalReason;
+}
+
+/** 위임을 되돌릴 때 B1(직결)로 가야 하는 거절. 그 밖의 4xx·5xx는 전환 실패다. */
+export const DESKTOP_PROXY_DIRECT_FALLBACK_ERRORS = ["access_not_monitoring", "version_mismatch"] as const;
+
+const PROXY_ID = /^[A-Za-z0-9_-]{8,64}$/u;
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+export function isDesktopProxyId(value: unknown): value is string {
+  return typeof value === "string" && PROXY_ID.test(value);
+}
+
+export function isDesktopProxyDelegation(value: unknown): value is DesktopProxyDelegation {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value).sort().join(",");
+  if (keys !== "hostId,ownerLeaseId,pinGeneration,requestId,session,switchGeneration") return false;
+  const session = value.session;
+  return typeof value.requestId === "string" && UUID_V4.test(value.requestId)
+    && isDesktopProxyId(value.ownerLeaseId)
+    && Number.isSafeInteger(value.switchGeneration) && (value.switchGeneration as number) >= 0
+    && typeof value.hostId === "string" && value.hostId.length > 0 && value.hostId.length <= 128
+    && Number.isSafeInteger(value.pinGeneration) && (value.pinGeneration as number) >= 1
+    && isRecord(session) && Object.keys(session).sort().join(",") === "name,value"
+    && typeof session.name === "string" && typeof session.value === "string";
+}
+
+export function isDesktopProxyEpochStateEvent(value: unknown): value is DesktopProxyEpochStateEvent {
+  if (!isRecord(value) || !isDesktopProxyId(value.epochId) || !Number.isSafeInteger(value.generation)) return false;
+  if (value.state !== "preparing" && value.state !== "ready" && value.state !== "terminal") return false;
+  return value.reason === undefined || (DESKTOP_PROXY_TERMINAL_REASONS as readonly unknown[]).includes(value.reason);
+}
