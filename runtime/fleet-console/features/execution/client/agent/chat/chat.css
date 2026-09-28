@@ -2227,10 +2227,12 @@
   overflow: hidden;
   pointer-events: none;
   margin: 0;
-  padding: 0;
+  /* 입력(.agent-chat-composer-input)과 같은 메트릭 — 글자 크기·줄높이·세로 패딩이 하나라도 다르면
+     칩과 뒤따르는 글자가 textarea의 캐럿·IME 조합 글자보다 위로 떠 보인다(실측: 13px·패딩 0에서 5.75px). */
+  padding: 5px 0;
   border: 0;
   font-family: inherit;
-  font-size: var(--t-md);
+  font-size: var(--font-body-size);
   line-height: 1.5;
   letter-spacing: normal;
   word-spacing: normal;
@@ -3921,7 +3923,8 @@
   .agent-chat-ctx-chip,
   .agent-chat-composer-stop { padding: 12px; }
   .agent-chat-composer-send { width: 40px; height: 40px; }
-  .agent-chat-composer-input { padding-block: calc((40px - 1.5em) / 2); }
+  .agent-chat-composer-input,
+  .agent-chat-composer-highlight { padding-block: calc((40px - 1.5em) / 2); }
 }
 
 .agent-chat-ctx-arc {
