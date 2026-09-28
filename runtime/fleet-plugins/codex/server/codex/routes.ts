@@ -7,12 +7,15 @@ import { diffDraftBlocks } from "@fleet-console/markdown/diff";
 
 import {
   approvePatch,
+  currentDeletionImpact,
+  stageWikiDeletions,
   briefingQuery,
   extractWikiLinks,
   listQueue,
   listWiki,
   parseLog,
   parsePatch,
+  parseWikiEntry,
   readSchemaCatalog,
   readSchemaDocument,
   readPatchSet,
@@ -99,6 +102,8 @@ const PATCH_ERROR_MAP: ReadonlyArray<[string | ((m: string) => boolean), number,
   ["patch target escapes wiki root", 400, "invalid_patch"],
   ["wiki patch must target wiki/", 400, "invalid_patch"],
   ["update_wiki target does not exist", 409, "update_target_missing"],
+  [(m) => m.includes("delete_wiki target does not exist"), 409, "delete_target_missing"],
+  [(m) => m.includes("approve stale base_hash"), 409, "stale_base"],
   [(m) => m.includes("create_wiki target already exists"), 409, "create_target_exists"],
   ["wiki patch body id must match target filename", 400, "invalid_patch"],
   ["conflicting raw source provenance in wiki patch", 400, "invalid_patch"],
@@ -222,17 +227,17 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
 }
 
 async function routePost(url: URL, request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
+  const stageMatch = url.pathname.match(/^\/api\/entry\/([^/]+)\/stage-delete$/);
   const decisionMatch = url.pathname.match(/^\/api\/drydock\/([^/]+)\/decision$/);
-  if (!decisionMatch) {
+  if (!decisionMatch && !stageMatch) {
     response.writeHead(405, withSecurityHeaders({ ...JSON_HEADERS, allow: "GET, HEAD" }));
     response.end(JSON.stringify({ error: "method_not_allowed" }));
     return;
   }
 
-  const rawSegment = decisionMatch[1] ?? "";
-  const patchId = decodePathSegment(rawSegment);
-  if (!SAFE_PATCH_ID.test(patchId)) {
-    sendJson(response, 400, { error: "invalid_patch_id" });
+  const id = decodePathSegment((decisionMatch ?? stageMatch)![1] ?? "");
+  if (!(stageMatch ? isSafeEntryId(id) : SAFE_PATCH_ID.test(id))) {
+    sendJson(response, 400, { error: stageMatch ? "invalid_entry_id" : "invalid_patch_id" });
     return;
   }
 
@@ -253,6 +258,30 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     return;
   }
 
+  if (stageMatch) {
+    const body = await readRequestBody(request);
+    if (body === BODY_TOO_LARGE) return sendJson(response, 413, { error: "payload_too_large" });
+    let reason = "";
+    try {
+      const parsed = JSON.parse(body ?? "") as { reason?: unknown };
+      if (parsed.reason !== undefined && typeof parsed.reason !== "string") throw new Error("invalid reason");
+      reason = (parsed.reason ?? "") as string;
+    } catch {
+      return sendJson(response, 400, { error: "invalid_body" });
+    }
+    if (reason.length > MAX_REASON_LENGTH) return sendJson(response, 400, { error: "reason_too_long" });
+    try {
+      const result = await stageWikiDeletions([id], reason, context.paths, "Codex reader");
+      return sendJson(response, 200, { ok: true, patchId: result.patchIds[0] });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("target does not exist")) return sendJson(response, 404, { error: "entry_not_found" });
+      process.stderr.write(`[fleet-console-codex] delete staging error: ${message}\n`);
+      return sendJson(response, 500, { error: "internal_error" });
+    }
+  }
+
+  const patchId = id;
   const lockKey = `${context.workspaceId}:${patchId}`;
   if (patchActionLocks.has(lockKey)) {
     sendJson(response, 409, { error: "patch_busy" });
@@ -408,9 +437,9 @@ async function computeDrydockDiffStat(
   paths: MemoryPaths,
 ): Promise<DrydockDiffStat | undefined> {
   try {
-    const proposed = parsePatchWikiEntry(patch).body;
+    const proposed = patch.frontmatter.op === "delete_wiki" ? "" : parsePatchWikiEntry(patch).body;
     const targetId = derivePatchTargetId(patch.frontmatter.target);
-    const current = patch.frontmatter.op === "update_wiki"
+    const current = patch.frontmatter.op === "update_wiki" || patch.frontmatter.op === "delete_wiki"
       ? (await readWikiEntry(targetId, paths))?.body ?? ""
       : "";
     let added = 0;
@@ -493,7 +522,7 @@ async function handleDrydockList(url: URL, response: ServerResponse, context: Ro
         ...item,
         meta: item.meta as DrydockMeta,
         summary: patch.frontmatter.summary,
-        op: patch.frontmatter.op as "create_wiki" | "update_wiki",
+        op: patch.frontmatter.op,
         target: patch.frontmatter.target,
         proposer: patch.frontmatter.proposer,
         ...(diffstat ? { diffstat } : {}),
@@ -539,10 +568,18 @@ async function handleDrydockDetail(rawSegment: string, response: ServerResponse,
       patch = await parsePatch(await readFile(join(entryDir, PATCH_FILENAME), "utf8"));
       meta = JSON.parse(await readFile(join(entryDir, PATCH_META_FILENAME), "utf8")) as PatchMeta;
     }
-    const wikiEntry = parsePatchWikiEntry(patch);
+    const deletionSnapshot = patch.frontmatter.op === "delete_wiki"
+      ? JSON.parse(patch.body) as { id: string; snapshot: string; claims?: string; rawSources: Array<{ ref: string }>; sharedRawSources: string[] }
+      : null;
+    const wikiEntry = deletionSnapshot
+      ? (() => { const entry = parseWikiEntry(deletionSnapshot.snapshot); return { ...entry, rawSourceRefs: entry.rawSourceRefs?.map(item => item.ref) }; })()
+      : parsePatchWikiEntry(patch);
     const targetPath = resolvePatchTargetPath(patch.frontmatter.target, context.paths);
     const targetExists = await fileExists(targetPath);
     const patchSet = meta.patch_set_id ? await readPatchSetResponse(meta.patch_set_id, context.paths) : null;
+    const impact = deletionSnapshot && source === "queue"
+      ? await currentDeletionImpact(deletionSnapshot.id, context.paths, meta.patch_set_id)
+      : null;
     sendJson(response, 200, {
       source,
       patch: patch as DrydockPatch,
@@ -550,6 +587,14 @@ async function handleDrydockDetail(rawSegment: string, response: ServerResponse,
       wikiEntry,
       targetExists,
       patchSet,
+      ...(deletionSnapshot ? { deletion: {
+        snapshot: deletionSnapshot.snapshot,
+        claims: deletionSnapshot.claims,
+        ...(source === "queue" && !impact ? { targetMissing: true } : {}),
+        backlinks: impact?.backlinks ?? [],
+        rawSources: impact?.rawSources ?? deletionSnapshot.rawSources.map(item => item.ref),
+        sharedRawSources: impact?.sharedRawSources ?? deletionSnapshot.sharedRawSources,
+      } } : {}),
     } satisfies DrydockDetailResponse);
   } catch {
     sendJson(response, 400, { error: "malformed_patch" });

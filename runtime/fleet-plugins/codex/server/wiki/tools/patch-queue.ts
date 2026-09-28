@@ -1,5 +1,5 @@
 import { listConflicts } from "../conflicts.js";
-import { approvePatch, approvePatchSet, listQueue, rejectPatch, resolveQueueSelection, showQueue } from "../patch.js";
+import { approvePatch, approvePatchSet, currentDeletionImpact, listQueue, rejectPatch, resolveQueueSelection, showQueue, stageWikiDeletions } from "../patch.js";
 import { resolveToolMemoryPaths } from "../paths.js";
 import {
   WIKI_PATCH_QUEUE_DESCRIPTION,
@@ -38,6 +38,11 @@ export function buildPatchQueueToolConfig() {
           next_action: items.length > 0 ? `Use patch_id from: ${items.map((item) => item.id).join(", ")}` : "Queue is empty.",
         });
       }
+      if (action === "stage_delete") {
+        const ids = params.entry_ids;
+        if (!Array.isArray(ids) || ids.some(id => typeof id !== "string")) throw new Error("entry_ids must be an array of entry IDs");
+        return textResult({ ok: true, action, ...await stageWikiDeletions(ids, String(params.reason ?? ""), paths) });
+      }
       if (action === "show") {
         const selection = await resolveQueueSelection(String(params.patch_id ?? ""), paths);
         const item = await showQueue(selection.id, paths);
@@ -51,6 +56,7 @@ export function buildPatchQueueToolConfig() {
           ok: true,
           action,
           item,
+          ...(item.patch.frontmatter.op === "delete_wiki" ? { deletion_impact: await currentDeletionImpact(JSON.parse(item.patch.body).id as string, paths, item.meta.patch_set_id) } : {}),
           related_conflicts: relatedConflicts,
           auto_selected: selection.autoSelected,
         });

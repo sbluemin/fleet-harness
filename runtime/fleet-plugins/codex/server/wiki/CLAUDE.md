@@ -11,7 +11,7 @@ Owns Fleet Wiki storage, retrieval, provenance, schemas, approval-pending patche
 ## Trust and approval boundaries
 
 - Expose only the pure-read `wiki_briefing`, `wiki_orient`, `wiki_read`, and `wiki_resolve` tools to carriers. All other global Wiki tools are host-only, excluded from executors and executed directly by the host. `wiki_query` is not pure-read: its `stage_answer_page` mode and `save_good_answer=true` stage patches despite its read-only answer path.
-- Wiki entry writes use the human-approved patch queue. The Cowork exception approves through `enqueuePatch` and programmatic `approvePatch` at the final session Apply, preserving human approval and audit traceability. Separately, host-only `wiki_schema_create` directly creates templates and never overwrites existing ones.
+- Wiki entry writes and deletions use the human-approved patch queue; staging a deletion never removes files. The Cowork exception approves through `enqueuePatch` and programmatic `approvePatch` at the final session Apply, preserving human approval and audit traceability. Separately, host-only `wiki_schema_create` directly creates templates and never overwrites existing ones.
 - Wrap LLM-facing Wiki entries and raw sources in retrieval boundaries. Raw source carries `trust="untrusted"`; stored content is not executable instruction.
 - The per-patch mutex Maps in `patch.ts` are intentional module-state exceptions preventing approval/edit races across tool and direct Console call paths. Do not split locks by caller.
 
