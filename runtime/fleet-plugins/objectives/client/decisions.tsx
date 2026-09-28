@@ -22,6 +22,17 @@ const GoGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
 interface Draft { readonly picked: readonly string[]; readonly text: string }
 const EMPTY_DRAFT: Draft = { picked: [], text: "" };
 const answered = (draft: Draft) => draft.picked.length > 0 || draft.text.trim().length > 0;
+/**
+ * 답변 초안 — 다른 목표를 보다 와도 남는다(목표 id 별, 이 탭의 메모리). 요청 id 가 다르면 교체·철회된 앞 요청의 초안이라
+ * 버린다. 보내면 비운다. 플러그인 번들 안에서만 쓰는 보기 상태라 호스트와 나누지 않는다.
+ */
+const draftStore = new Map<string, { readonly requestId: string; readonly drafts: Readonly<Record<string, Draft>> }>();
+const storedDrafts = (objectiveId: string, requestId: string | undefined): Readonly<Record<string, Draft>> => {
+  const stored = draftStore.get(objectiveId);
+  if (stored && stored.requestId === requestId) return stored.drafts;
+  draftStore.delete(objectiveId);
+  return {};
+};
 
 const clock = (at: number, language: "en" | "ko") => new Date(at).toLocaleTimeString(language === "ko" ? "ko-KR" : "en-US", { hour: "2-digit", minute: "2-digit" });
 const stamp = (at: number, language: "en" | "ko") => new Date(at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -42,17 +53,21 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
   readonly onShowMission: (missionId: string) => void;
 }) {
   const request = objective.decisionRequest;
-  const [drafts, setDrafts] = useState<Readonly<Record<string, Draft>>>({});
+  const [drafts, setDrafts] = useState(() => storedDrafts(objective.id, request?.id));
   const [sending, setSending] = useState(false);
   const [fault, setFault] = useState<string | null>(null);
   // 새 요청은 새 질문이다 — 앞 요청에 쓰던 답을 옮겨 붙이지 않는다.
-  useEffect(() => { setDrafts({}); setFault(null); }, [request?.id]);
+  useEffect(() => { setDrafts(storedDrafts(objective.id, request?.id)); setFault(null); }, [objective.id, request?.id]);
   if (!request) return null;
   const total = request.questions.length;
   const many = total > 1;
   const draftOf = (question: DecisionQuestion) => drafts[question.id] ?? EMPTY_DRAFT;
   const done = request.questions.filter((question) => answered(draftOf(question))).length;
-  const edit = (question: DecisionQuestion, next: Draft) => setDrafts((current) => ({ ...current, [question.id]: next }));
+  const edit = (question: DecisionQuestion, next: Draft) => {
+    const nextDrafts = { ...drafts, [question.id]: next };
+    draftStore.set(objective.id, { requestId: request.id, drafts: nextDrafts });
+    setDrafts(nextDrafts);
+  };
   const pick = (question: DecisionQuestion, optionId: string) => {
     const draft = draftOf(question);
     const on = draft.picked.includes(optionId);
@@ -66,6 +81,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
     setFault(null);
     try {
       await send(request.id, request.questions.map((question) => ({ questionId: question.id, selectedOptionIds: draftOf(question).picked, text: draftOf(question).text })));
+      draftStore.delete(objective.id);
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
       setFault(code === "decision_request_changed" ? t("objectives.decision.changed") : code === "decision_delivering" ? t("objectives.decision.delivering") : t("objectives.decision.failed"));
