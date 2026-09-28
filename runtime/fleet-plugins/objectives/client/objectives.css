@@ -112,12 +112,6 @@
 .objectives-section-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-fast), color var(--duration-fast); }
 .objectives-section-chev svg { width: 11px; height: 11px; }
 /* 결정 요청 요약 — 목록 위 한 줄. 요청 수 · 이 범위 밖 수 · 「다음」. 행 표식과 같은 brass 말풍선 문법이다. */
-.objectives-requests { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; padding: 5px 10px; border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 10%, transparent); color: var(--brass-ink); font-size: var(--t-sm); }
-.objectives-requests svg { flex: none; width: 14px; height: 14px; }
-.objectives-requests-outside { color: var(--text-secondary); }
-.objectives-requests-next { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; color: var(--brass-ink); cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-.objectives-requests-next:hover { color: var(--text-primary); }
-.objectives-requests-next:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 /* 구역 머리 — 상태가 정한 구역(검토 대기 · 진행 중 · 시작 전 · 목표 밖 · 완료됨). 글자와 가는 선만, 상자·띠는 없다. */
 .objectives-zone { display: flex; flex-direction: column; gap: 5px; }
 .objectives-zone + .objectives-zone { margin-top: 12px; }
