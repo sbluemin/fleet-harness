@@ -322,8 +322,7 @@
   pointer-events: none;
 }
 .zen-sidebar-chrome { display: contents; }
-.console-shell.is-zen .canvas-minimap,
-.console-shell.is-zen .canvas-minimap-fab,
+/* Map은 Zen에서도 접힌 버튼으로 남는다(펼침은 Zen 한 회짜리 — canvas-minimap.tsx). 코너 독이 작업 표시줄을 비켜 선다. */
 .console-shell.is-zen .canvas-shortcuts { display: none; }
 /* Zen의 도구 패널 카드와 좌측 사이드바는 작업 표시줄을 덮지 않는다. */
 .console-shell.is-zen .right-rail,

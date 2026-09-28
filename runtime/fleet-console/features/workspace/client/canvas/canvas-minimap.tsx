@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
+import { useZenMode } from "../../../../core/client/src/integration/zen-mode.js";
 import { useAlignAll, type CanvasViewport, type OperationGeometry } from "./canvas-store.js";
 import type { CanvasPoint } from "./coordinates.js";
 
@@ -42,6 +43,13 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
   const collapsedBeforeAlignRef = useRef<boolean | null>(null);
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const alignOn = useAlignAll() !== null;
+  // Zen은 크롬 없이 시작한다 — Map 버튼만 서고, 펼침은 그 Zen 한 회에 묶인 비영속 상태라 평소 접힘 선호를
+  // 읽지도 쓰지도 않는다. Zen 진입·종료와 정렬 시작·끝에 걷혀 다시 접힌 버튼으로 돌아간다.
+  const zen = useZenMode();
+  const [zenExpanded, setZenExpanded] = useState(false);
+  useEffect(() => {
+    setZenExpanded(false);
+  }, [zen, alignOn]);
 
   // 정렬 중에는 지도만 숨기고 접기 컨트롤은 남긴다 — 칸을 가리지 않으면서 길잡이는 살아 있다.
   // 임시 접힘은 저장하지 않고, 정렬이 끝나면 진입 전 펼침으로 복원한다.
@@ -68,6 +76,10 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
   if (rects.length === 0) return null;
 
   const toggle = () => {
+    if (zen) {
+      setZenExpanded((value) => !value);
+      return;
+    }
     setCollapsed((value) => {
       const next = !value;
       // 정렬 중 접힘 전환은 임시 표시라 선호를 저장하지 않는다 — 끄면 원래 펼침으로 돌아온다.
@@ -77,7 +89,7 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
   };
 
   // 접힘: 우하단에 Map 아이콘 버튼 하나만 노출한다.
-  if (collapsed) {
+  if (zen ? !zenExpanded : collapsed) {
     return (
       <button
         type="button"

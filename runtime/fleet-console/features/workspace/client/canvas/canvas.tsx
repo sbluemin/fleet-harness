@@ -2089,7 +2089,7 @@ export function OperationsCanvas({
         document.body,
       ) : null}
       {/* 우하단 계기 자리 — 허용 요청 더미가 MAP(접히면 Map 버튼) 위에 붙어 선다. 둘은 이 열에서 쌓일 뿐 서로를
-          밀거나 덮지 않고, MAP 이 숨는 모드(Zen·War Room·전체 칸)에서는 더미가 아레나 우하단으로 내려앉는다.
+          밀거나 덮지 않고, MAP 이 숨는 모드(War Room·전체 칸)에서는 더미가 아레나 우하단으로 내려앉는다.
           열 자체는 쌓임 맥락을 만들지 않아 각자의 z-index 가 캔버스 층에서 그대로 겨룬다. */}
       <div className="canvas-corner-dock">
         <UseRequestCorner language={language} compact={arena.width < USE_REQUEST_CORNER_MIN_ARENA_WIDTH} describeSource={describeUseRequestSource} />
