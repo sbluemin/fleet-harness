@@ -181,7 +181,7 @@ export function CoordinationGraph({ objective, t, operationState, onEdge, canEdi
     n?.focus({ preventScroll: true }); n?.scrollIntoView({ block: "nearest", inline: "nearest" });
     if (link) setLink({ ...link, over: id });
   };
-  const icon = (m: ObjectiveMission) => <><span className="objectives-graph-shape"><span className="objectives-graph-number">{number(m.id)}</span></span><span className={`objectives-graph-mark${m.member ? "" : " is-commander"}`} aria-hidden="true">{m.member ? marks.get(m.member) : "★"}</span>{m.records.length ? <span className={`objectives-graph-record${unseenRecords(m) ? " is-new" : ""}`} aria-hidden="true" /> : null}</>;
+  const icon = (m: ObjectiveMission) => <><span className="objectives-graph-shape"><span className="objectives-graph-number">{number(m.id)}</span></span><span className={`objectives-member-mark objectives-graph-mark ${m.member ? `is-tone-${Math.max(0, objective.members.findIndex(member => member.id === m.member)) % 8}` : "is-commander"}`} aria-hidden="true">{m.member ? marks.get(m.member) : "★"}</span>{m.records.length ? <span className={`objectives-graph-record${unseenRecords(m) ? " is-new" : ""}`} aria-hidden="true" /> : null}</>;
   const node = (m: ObjectiveMission, style?: CSSProperties) => {
     const active = current?.id === m.id, pre = current?.prerequisites.includes(m.id), post = current && m.prerequisites.includes(current.id);
     const member = objective.members.find(member => member.id === m.member)?.role ?? t("objectives.graph.commander");

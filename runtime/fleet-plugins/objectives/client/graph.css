@@ -28,9 +28,10 @@
 .objectives-graph-node.is-awaiting .objectives-graph-number { transform: rotate(-45deg) scale(1.39); color: var(--text-on-brass); }
 .objectives-graph-node.is-unplaced .objectives-graph-shape { border: 1.5px dashed var(--text-secondary); }
 @keyframes objectives-graph-spin { to { transform: rotate(360deg); } }
-/* 담당 식별은 모양·글자로 한다. 신호 면에 identity 색을 칠하지 않으며 라이트에서도 본문 대비를 지킨다. */
-.objectives-graph-mark { position: absolute; left: calc(50% + 1px); top: calc(50% + var(--graph-r) - 3px); display: inline-grid; place-items: center; width: 12px; height: 12px; border: 1px solid var(--text-secondary); border-radius: 3px; font: var(--weight-bold) calc(var(--t-2xs) * .9)/1 var(--font-body); background: var(--surface-panel); color: var(--text-primary); box-shadow: 0 0 0 1.5px var(--surface-panel); }
-.objectives-graph-mark.is-commander { border-radius: 50%; }
+/* 승인 v3의 작은 담당 표식만 기존 명단의 identity 윤곽/채움을 재사용한다. 상태 노드 면에는 번지지 않는 국소 예외다.
+   글자와 모양도 담당을 식별하며, 라이트 테마의 작은 글자는 primary ink를 섞어 대비를 보강한다. */
+.objectives-graph-node .objectives-graph-mark { position: absolute; left: calc(50% + 1px); top: calc(50% + var(--graph-r) - 3px); display: inline-grid; place-items: center; width: 12px; height: 12px; border: 1px solid color-mix(in oklch, var(--member-tone) 85%, var(--text-secondary)); border-radius: 3px; font: var(--weight-bold) calc(var(--t-2xs) * .9)/1 var(--font-body); background: color-mix(in oklch, var(--member-tone) 12%, var(--surface-panel)); color: color-mix(in oklch, var(--member-tone) 70%, var(--text-primary)); box-shadow: 0 0 0 1.5px var(--surface-panel); }
+.objectives-graph-node .objectives-graph-mark.is-commander { --member-tone: var(--text-secondary); border-radius: 50%; background: var(--surface-panel); }
 .objectives-graph-record { position: absolute; left: calc(50% + 2px); top: calc(50% - var(--graph-r) - 6px); width: 7px; height: 9px; border: 1.25px solid var(--text-secondary); border-radius: 1.5px; background: var(--surface-panel); box-shadow: 0 0 0 1.5px var(--surface-panel); }
 .objectives-graph-record.is-new { background: var(--text-primary); border-color: var(--text-primary); }
 .objectives-graph-node:hover .objectives-graph-shape, .objectives-graph-node.is-hov .objectives-graph-shape { box-shadow: 0 0 0 3px var(--control-rest-hover); }
@@ -75,8 +76,10 @@
 .objectives-popup-state.is-awaiting { color: var(--warn-ink); }
 .objectives-popup-state.is-awaiting i { background: var(--warn); border-color: var(--warn); border-radius: 2px; transform: rotate(45deg); }
 .objectives-popup-state.is-unplaced i { border-style: dashed; }
-.objectives-popup-title { display: block; box-sizing: border-box; width: 100%; resize: none; border: 0; border-bottom: 1px solid transparent; background: none; padding: 0 0 2px; margin: 0 0 5px; font: inherit; font-size: var(--t-sm); line-height: 1.45; color: var(--text-primary); field-sizing: content; overflow-wrap: anywhere; min-height: 1.45em; }
-.objectives-popup-title:focus { outline: none; border-bottom-color: var(--brass); }
+.objectives-popup-title { display: block; box-sizing: border-box; width: 100%; resize: none; border: 0; border-radius: var(--radius-xs); background: none; padding: 0 0 3px; margin: 0 0 5px; font: inherit; font-size: var(--t-sm); line-height: 1.45; color: var(--text-primary); field-sizing: content; overflow-wrap: anywhere; min-height: 1.45em; }
+/* 제목 밑줄을 띠로 강조하지 않는다. 키보드 초점은 입력 면의 옅은 변화로만 구별한다. */
+.objectives-popup-title:focus { outline: none; }
+.objectives-popup-title:focus-visible { background: color-mix(in oklch, var(--brass) 5%, transparent); }
 .objectives-popup-group { margin-top: 7px; padding-top: 6px; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent); }
 .objectives-popup-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 2px; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-popup-group-head span { color: var(--text-secondary); }
