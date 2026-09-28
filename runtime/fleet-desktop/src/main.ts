@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -22,9 +21,6 @@ import { createConsoleSurface, type DisconnectReason } from "./console-surface-s
 import { createConsoleOwners } from "./console-owners.js";
 import { createDataView } from "./data-view.js";
 import { createSurfaceQuiesce } from "./surface-quiesce.js";
-import { createProxyBroker, type EpochTerminalReason } from "./proxy-broker-client.js";
-import { createProxyDataViews } from "./proxy-data-view.js";
-import { createProxyPresentation } from "./proxy-presentation.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopNotifier } from "./desktop-notices.js";
@@ -428,8 +424,6 @@ async function boot(): Promise<void> {
       return origin === null ? null : { contents: window.consoleContents, origin, surface: "local" };
     }
     if (state !== "remote-ready") return null;
-    // 읽기 전용 격리 뷰는 어떤 권한도 받지 않는다. 그 뷰의 세션에는 따로 전부 거절하는 판정이 서 있다.
-    if (proxy.active() !== null) return null;
     const contents = dataView.contents();
     const origin = policy?.dataConsoleOrigin() ?? null;
     return contents === null || origin === null ? null : { contents, origin, surface: "data" };
@@ -440,13 +434,13 @@ async function boot(): Promise<void> {
     return holder?.surface === "local" ? { contents: holder.contents, origin: holder.origin, generation: surface.generation() } : null;
   }, (message) => logger.info(message));
   /**
-   * 지금 native 권한을 가진 콘솔 — 안정 상태의 활성 surface 하나뿐이다. 전환 중, 확인 전의 로컬, 끊긴 화면,
-   * 읽기 전용 격리 뷰는 창 명령·브라우저 제어·갱신의 주인이 아니다.
+   * 지금 native 권한을 가진 콘솔 — 안정 상태의 활성 surface 하나뿐이다. 전환 중, 확인 전의 로컬, 끊긴 화면은
+   * 창 명령·브라우저 제어·갱신의 주인이 아니다.
    */
   const ownerOrigin = (): string | null => {
     const state = surface.state();
     if (state === "local-ready") return policy?.localConsoleOrigin() ?? null;
-    if (state === "remote-ready" && proxy.active() === null) return policy?.dataConsoleOrigin() ?? null;
+    if (state === "remote-ready") return policy?.dataConsoleOrigin() ?? null;
     return null;
   };
   /** 그 콘솔이 지금 창의 주인이다 — 테마·갱신·창 명령·브라우저 뷰·전체화면이 그 콘솔을 따른다. */
@@ -525,15 +519,6 @@ async function boot(): Promise<void> {
     suspendOwners: () => owners.suspend(),
     presentData: (origin) => {
       const current = window;
-      const isolated = proxy.active();
-      if (isolated !== null && isolated.remoteOrigin === origin) {
-        // 격리 뷰는 창 명령·브라우저 뷰·갱신의 주인이 되지 않는다. 테마와 전체화면은 로컬의 것 그대로 둔다.
-        current?.stack.activateSurface("proxy");
-        try { isolated.contents.focus(); } catch { /* 포커스는 부가 동작이다. */ }
-        try { isolated.contents.setZoomLevel(zoomState.load()); } catch { /* 줌은 부가 동작이다. */ }
-        refreshNativeUpdateActions?.();
-        return;
-      }
       const contents = dataView.contents();
       if (!current || current.isDestroyed() || !contents) return;
       current.stack.activateSurface("data");
@@ -544,97 +529,11 @@ async function boot(): Promise<void> {
     },
     presentLocal,
     adoptLocal,
-    endRemoteSession: (origin) => {
-      if (proxy.active()?.remoteOrigin === origin) void proxy.end("final");
-      else bridge.endSession(origin);
-    },
-    abandonRemote: (reason) => {
-      if (proxy.active() !== null) void proxy.end(reason === "crashed" ? "local_failure" : "terminal");
-    },
-    announceGeneration: (generation) => { void proxyBroker.announceSwitch(generation); },
+    endRemoteSession: (origin) => bridge.endSession(origin),
     report: (error) => bridge.report(error),
     notify: (reason) => notifier.show(reason === "local_unavailable"
       ? { type: "error", title: "This computer's console is not responding", body: describeDisconnect(reason) }
       : { type: "info", title: "Back on this computer", body: describeDisconnect(reason) }),
-    log: (message) => logger.info(message),
-  });
-  /**
-   * 읽기 전용 원격 화면(A′). 실험 단계라 개발 실행에서 명시적으로 켰을 때만 시도한다 — 격리와 출구 차단이
-   * 실측으로 입증되기 전에는 출시하지 않는다. 꺼져 있으면 모든 원격은 직결(B1)로 열린다.
-   */
-  const proxyBroker = createProxyBroker({
-    localOrigin: () => localConsoleOrigin,
-    lockToken: () => supervisor.lockToken(),
-    randomId: () => crypto.randomUUID(),
-    onTerminal: (epochId, generation, reason) => {
-      if (!proxy.isActive(epochId, generation) || reason === "released" || reason === "owner_released") return;
-      logger.info(`proxy epoch ended by broker reason=${reason}`);
-      void surface.disconnect(disconnectReasonOf(reason));
-    },
-    onOwnerLost: () => {
-      // 무엇이 끝났는지 모르게 됐다. 보이는 격리 뷰는 곧바로 거둔다.
-      if (proxy.active() !== null) void surface.disconnect("ended");
-    },
-    log: (message) => logger.info(message),
-  });
-  const proxyViews = createProxyDataViews({
-    sessionFor: (partition) => session.fromPartition(partition),
-    createView: (partition) => {
-      const view = new WebContentsView({
-        webPreferences: {
-          partition, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true,
-          webviewTag: false, spellcheck: false, navigateOnDragDrop: false, backgroundThrottling: false,
-        },
-      });
-      view.setBackgroundColor(entryPalette?.canvas ?? CANVAS_FAR_BACKGROUND_COLOR);
-      return view;
-    },
-    attach: (contents, epochOrigin) => {
-      bridge.attachProxy(contents, epochOrigin);
-      contents.on("before-input-event", (event) => { if (picker.isOpen()) event.preventDefault(); });
-      contents.on("render-process-gone", () => { if (proxy.active()?.contents === contents) void surface.disconnect("crashed"); });
-      contents.on("zoom-changed", (_event, zoomDirection) => {
-        controls.zoomChanged(contents, zoomDirection);
-        refreshNativeChrome();
-      });
-    },
-    log: (message) => logger.info(message),
-  });
-  const proxy = createProxyPresentation({
-    enabled: () => !isPackaged && process.env.FLEET_DESKTOP_EXPERIMENTAL_PROXY === "1",
-    broker: proxyBroker,
-    views: proxyViews,
-    shell: () => window,
-    readSessionCookie: async (origin, name) => {
-      const cookies = await consoleSession.cookies.get({ url: origin, name });
-      return cookies.length === 1 ? cookies[0]!.value : null;
-    },
-    probeRemote: async (origin) => {
-      const read = async (path: string, field: string): Promise<string | null> => {
-        try {
-          const response = await consoleSession.fetch(`${origin}${path}`, { redirect: "error", signal: AbortSignal.timeout(5_000) });
-          if (!response.ok) return null;
-          const value = (await response.json() as Record<string, unknown>)[field];
-          return typeof value === "string" && value.length <= 64 ? value : null;
-        } catch {
-          return null;
-        }
-      };
-      const [access, version] = await Promise.all([read("/api/v1/access/self", "access"), read("/api/v1/status", "version")]);
-      return { access, version };
-    },
-    localVersion: async () => {
-      const home = localConsoleOrigin;
-      if (!home) return null;
-      try {
-        const body = await (await fetch(`${home}/api/v1/status`, { signal: AbortSignal.timeout(2_000) })).json() as { version?: unknown };
-        return typeof body.version === "string" ? body.version : null;
-      } catch {
-        return null;
-      }
-    },
-    cover: (url, views, load) => switchVeil.around(url, views, load),
-    onCleanupFailed: () => notifier.show({ type: "error", title: "Read-only view could not be fully closed", body: "Read-only views of other consoles stay off until Fleet Desktop restarts." }),
     log: (message) => logger.info(message),
   });
   /** 이 앱이 띄우지 않은 콘솔을 그리는 뷰. 창과 함께 만들어 로컬 뷰 뒤에 빈 문서로 세워 둔다. */
@@ -711,8 +610,6 @@ async function boot(): Promise<void> {
     acceptsLocalSelection: (contents) => window !== null && !window.isDestroyed() && window.consoleContents === contents && surface.state() === "local-ready",
     isCurrentPicker: (contents) => picker.isCurrent(contents, surface.generation()),
     disconnect: (reason) => { void surface.disconnect(reason); },
-    presentProxy: (target, attempt) => proxy.tryPresent(target, attempt),
-    activeRemoteOrigin: () => surface.remoteOrigin(),
     openPicker: (url) => picker.open(url, surface.generation()),
     closePicker: () => picker.close(),
     notify: (notice) => notifier.show(notice),
@@ -851,7 +748,7 @@ async function boot(): Promise<void> {
       startOrAdopt: () => supervisor.startOrAdopt(),
     });
     return launch.start() as Promise<DesktopShellWindow>;
-  }, () => farewell.run(async () => { bridge.dispose(); await proxy.end("final").catch(() => undefined); await supervisor.stop(); }));
+  }, () => farewell.run(async () => { bridge.dispose(); await supervisor.stop(); }));
   const consoleRelaunch = isPackaged
     ? createConsoleRelaunchController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",
@@ -1014,18 +911,9 @@ function withinMs<T>(work: Promise<T>, ms: number, code: string): Promise<T> {
   });
 }
 
-/** broker가 알린 끝을 사람에게 말할 이유로 좁힌다. 셸이 스스로 끝낸 것은 여기 오지 않는다. */
-function disconnectReasonOf(reason: EpochTerminalReason): DisconnectReason {
-  if (reason === "reclaimed" || reason === "superseded" || reason === "expired") return reason;
-  return "ended";
-}
-
-/** 원격이 끝나 로컬로 돌아왔을 때의 한 줄. 직결에서는 회수와 만료를 셸이 가를 수 없으므로 끝났다는 사실만 말한다. */
+/** 원격이 끝나 로컬로 돌아왔을 때의 한 줄. 회수와 만료는 셸이 가를 수 없으므로 끝났다는 사실만 말한다. */
 function describeDisconnect(reason: DisconnectReason): string {
   if (reason === "local_unavailable") return "Screen capture, window commands, and browser control stay off until this computer's console answers again. Choose Return to This Computer to try again.";
-  if (reason === "reclaimed") return "The owner of that console took control back, so this window returned to this computer's console.";
-  if (reason === "superseded") return "Another device opened that console, so this window returned to this computer's console.";
-  if (reason === "ended") return "The read-only view of that console ended, so this window returned to this computer's console.";
   if (reason === "crashed") return "The other console's page stopped responding, so this window returned to this computer's console.";
   if (reason === "expired") return "That console ended this session, so this window returned to this computer's console. Open it again from the host list to resume.";
   return "That console became unavailable, so this window returned to this computer's console.";
