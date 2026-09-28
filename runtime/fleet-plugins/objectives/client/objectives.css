@@ -696,13 +696,13 @@ span.objectives-row-main { cursor: default; }
 .objectives-section-head-actions { flex: none; display: inline-flex; align-items: center; padding-right: 14px; position: relative; }
 .objectives-batch-actions { position: relative; display: inline-flex; align-items: center; }
 .objectives-batch-trigger { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast), border-color var(--duration-fast); }
-.objectives-batch-trigger:hover, .objectives-batch-trigger.is-active { color: var(--brass); background: color-mix(in oklch, var(--brass) 12%, transparent); border-color: color-mix(in oklch, var(--brass) 24%, transparent); }
+.objectives-batch-trigger:hover, .objectives-batch-trigger.is-active { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); border-color: color-mix(in oklch, var(--brass) 24%, transparent); }
 .objectives-batch-trigger:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-batch-trigger:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 .objectives-batch-trigger svg { width: 14px; height: 14px; }
 .objectives-batch-menu { position: absolute; top: calc(100% + 4px); right: 0; width: 224px; z-index: 60; }
 .objectives-batch-menu-glyph { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; }
-.objectives-batch-menu-glyph.is-same { color: var(--brass); }
+.objectives-batch-menu-glyph.is-same { color: var(--brass-ink); }
 .objectives-batch-menu-glyph.is-route { color: var(--aurora); }
 .objectives-batch-menu-title { display: block; font-weight: var(--weight-medium); }
 .objectives-batch-menu-hint { display: block; font-size: var(--t-2xs); color: var(--text-tertiary); white-space: normal; line-height: 1.35; }
