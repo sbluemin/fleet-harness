@@ -1,0 +1,120 @@
+.objectives-branch-graph { --graph-r: 11px; --graph-label-line: 14px; position: relative; min-width: 0; padding: 6px 0; font-family: var(--font-body); }
+.objectives-graph-scroll { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.objectives-graph-canvas { position: relative; user-select: none; }
+.objectives-graph-band { position: absolute; inset-block: 0; pointer-events: none; }
+.objectives-graph-band.is-odd { background: color-mix(in oklch, var(--control-rest) 70%, transparent); }
+/* 깊이 열의 경계선이며 선택 강조 띠가 아니다. */
+.objectives-graph-band + .objectives-graph-band { border-inline-start: 1px dashed color-mix(in oklch, var(--surface-rim) 70%, transparent); }
+.objectives-graph-edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.objectives-graph-edge { fill: none; stroke: color-mix(in oklch, var(--text-tertiary) 82%, var(--surface-panel)); stroke-width: 1.5; stroke-linecap: round; pointer-events: stroke; cursor: pointer; }
+.objectives-graph-edge.is-root { stroke-dasharray: 2 3; }
+.objectives-graph-edge.is-up, .objectives-graph-edge.is-down { stroke: var(--brass); stroke-width: 2; }
+.objectives-graph-edge.is-down { stroke-dasharray: 4 3; }
+.objectives-graph-root { position: absolute; width: 12px; height: 12px; margin: -6px; border: 1.5px solid var(--text-tertiary); border-radius: 50%; background: var(--surface-panel); }
+.objectives-graph-label { position: absolute; z-index: 2; font-size: var(--t-xs); line-height: var(--graph-label-line); color: var(--text-secondary); white-space: nowrap; cursor: pointer; touch-action: none; }
+.objectives-graph-label > span { display: block; }
+.objectives-graph-label.is-done, .objectives-graph-label.is-root { color: var(--text-tertiary); }
+.objectives-graph-label.is-root { font-size: var(--t-2xs); cursor: default; }
+.objectives-graph-label.is-awaiting, .objectives-graph-label.is-running, .objectives-graph-label.is-ready, .objectives-graph-label.is-lit { color: var(--text-primary); }
+.objectives-graph-node { position: absolute; z-index: 3; width: 30px; height: 30px; margin: -15px; padding: 0; border: 0; background: none; display: grid; place-items: center; cursor: pointer; touch-action: none; }
+.objectives-graph-shape { position: relative; display: grid; place-items: center; width: calc(var(--graph-r) * 2); height: calc(var(--graph-r) * 2); border-radius: 50%; border: 1.5px solid var(--text-tertiary); background: var(--surface-panel); }
+.objectives-graph-number { font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-primary); font-variant-numeric: tabular-nums; line-height: 1; }
+.objectives-graph-node.is-done .objectives-graph-shape { background: var(--text-tertiary); border-color: var(--text-tertiary); }
+.objectives-graph-node.is-done .objectives-graph-number { color: var(--surface-panel); }
+.objectives-graph-node.is-ready .objectives-graph-shape { border: 2.5px solid var(--aurora); }
+.objectives-graph-node.is-running .objectives-graph-shape { border-color: var(--positive); }
+.objectives-graph-node.is-running .objectives-graph-shape::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1.5px solid transparent; border-top-color: var(--positive); border-right-color: var(--positive); animation: objectives-graph-spin 1.2s linear infinite; }
+.objectives-graph-node.is-awaiting .objectives-graph-shape { border-radius: 4px; transform: rotate(45deg) scale(.72); background: var(--warn); border-color: var(--warn); }
+.objectives-graph-node.is-awaiting .objectives-graph-number { transform: rotate(-45deg) scale(1.39); color: var(--text-on-brass); }
+.objectives-graph-node.is-unplaced .objectives-graph-shape { border: 1.5px dashed var(--text-secondary); }
+@keyframes objectives-graph-spin { to { transform: rotate(360deg); } }
+/* 담당 식별은 모양·글자로 한다. 신호 면에 identity 색을 칠하지 않으며 라이트에서도 본문 대비를 지킨다. */
+.objectives-graph-mark { position: absolute; left: calc(50% + 1px); top: calc(50% + var(--graph-r) - 3px); display: inline-grid; place-items: center; width: 12px; height: 12px; border: 1px solid var(--text-secondary); border-radius: 3px; font: var(--weight-bold) calc(var(--t-2xs) * .9)/1 var(--font-body); background: var(--surface-panel); color: var(--text-primary); box-shadow: 0 0 0 1.5px var(--surface-panel); }
+.objectives-graph-mark.is-commander { border-radius: 50%; }
+.objectives-graph-record { position: absolute; left: calc(50% + 2px); top: calc(50% - var(--graph-r) - 6px); width: 7px; height: 9px; border: 1.25px solid var(--text-secondary); border-radius: 1.5px; background: var(--surface-panel); box-shadow: 0 0 0 1.5px var(--surface-panel); }
+.objectives-graph-record.is-new { background: var(--text-primary); border-color: var(--text-primary); }
+.objectives-graph-node:hover .objectives-graph-shape, .objectives-graph-node.is-hov .objectives-graph-shape { box-shadow: 0 0 0 3px var(--control-rest-hover); }
+.objectives-graph-node:focus-visible { outline: none; }
+.objectives-graph-node:focus-visible .objectives-graph-shape, .objectives-graph-node.is-pin .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 3.5px var(--brass); }
+.objectives-graph-node.is-pre .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 3.5px color-mix(in oklch, var(--brass) 70%, var(--surface-panel)); }
+.objectives-graph-node.is-post .objectives-graph-shape { outline: 1.5px dashed var(--brass); outline-offset: 2px; }
+.objectives-graph-node.drop-ok .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 4px var(--brass); }
+.objectives-graph-node.drop-no .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 4px var(--coral); }
+.objectives-graph-canvas.is-dim .objectives-graph-node:not(.is-pin):not(.is-hov):not(.is-pre):not(.is-post) .objectives-graph-shape, .objectives-graph-canvas.is-dim .objectives-graph-label:not(.is-lit):not(.is-root) { opacity: .4; }
+.objectives-graph-canvas.is-dim .objectives-graph-edge:not(.is-up):not(.is-down) { opacity: .25; }
+.objectives-branch-graph.is-dragging, .objectives-branch-graph.is-dragging * { cursor: grabbing; }
+.objectives-graph-tray { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 8px 8px 0; padding: 2px 8px; border: 1px dashed color-mix(in oklch, var(--text-tertiary) 55%, transparent); border-radius: var(--radius-xs); }
+.objectives-graph-tray-title { font-size: var(--t-xs); color: var(--text-secondary); font-weight: var(--weight-medium); }
+.objectives-graph-tray-item { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.objectives-graph-tray .objectives-graph-node { position: relative; margin: 0; flex: none; }
+.objectives-graph-tray-label { font-size: var(--t-xs); color: var(--text-secondary); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; cursor: pointer; touch-action: none; }
+.objectives-graph-drop-tip { position: absolute; z-index: 40; width: max-content; max-width: min(220px, 100%); padding: 5px 8px; border-radius: var(--radius-xs); background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); box-shadow: var(--shadow-soft); font-size: var(--t-2xs); line-height: 1.45; color: var(--text-secondary); pointer-events: none; }
+.objectives-graph-drop-tip b, .objectives-graph-drop-tip span { display: block; }
+.objectives-graph-drop-tip b { color: var(--brass-ink); font-weight: var(--weight-medium); }
+.objectives-graph-drop-tip.is-no { border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim)); }
+.objectives-graph-drop-tip.is-no b { color: var(--coral-ink); }
+.objectives-graph-popup { position: fixed; z-index: 65; box-sizing: border-box; background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-md); box-shadow: var(--shadow-soft), 0 6px 18px -8px oklch(0% 0 0 / 35%); font-family: var(--font-body); font-size: var(--t-xs); color: var(--text-secondary); padding: 9px 12px 11px; overflow: visible; overscroll-behavior: contain; animation: objectives-popup-in 180ms cubic-bezier(.2,.7,.2,1); }
+.objectives-graph-popup.is-pinned { border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim)); }
+.objectives-graph-popup.is-closing { opacity: 0; pointer-events: none; animation: objectives-popup-out 120ms ease; }
+@keyframes objectives-popup-in { from { opacity: 0; transform: translateY(3px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes objectives-popup-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(2px) scale(.99); } }
+.objectives-popup-tail { position: absolute; width: 9px; height: 9px; background: inherit; border: 1px solid; border-color: inherit; pointer-events: none; transform: rotate(45deg); }
+.objectives-popup-tail.is-below { top: -5px; border-right: 0; border-bottom: 0; }
+.objectives-popup-tail.is-above { bottom: -5px; border-left: 0; border-top: 0; }
+.objectives-popup-tail.is-right { left: -5px; border-right: 0; border-top: 0; }
+.objectives-popup-tail.is-left { right: -5px; border-left: 0; border-bottom: 0; }
+.objectives-popup-head { display: flex; align-items: center; gap: 6px; min-height: 20px; margin-bottom: 3px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-popup-head .objectives-glyph { margin-left: auto; }
+.objectives-popup-state { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-body); }
+.objectives-popup-state i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--text-tertiary); }
+.objectives-popup-state.is-done i { background: var(--text-tertiary); }
+.objectives-popup-state.is-ready { color: var(--aurora-ink); }
+.objectives-popup-state.is-ready i { border: 2px solid var(--aurora); }
+.objectives-popup-state.is-running { color: var(--positive-ink); }
+.objectives-popup-state.is-running i { border-color: var(--positive); }
+.objectives-popup-state.is-awaiting { color: var(--warn-ink); }
+.objectives-popup-state.is-awaiting i { background: var(--warn); border-color: var(--warn); border-radius: 2px; transform: rotate(45deg); }
+.objectives-popup-state.is-unplaced i { border-style: dashed; }
+.objectives-popup-title { display: block; box-sizing: border-box; width: 100%; resize: none; border: 0; border-bottom: 1px solid transparent; background: none; padding: 0 0 2px; margin: 0 0 5px; font: inherit; font-size: var(--t-sm); line-height: 1.45; color: var(--text-primary); field-sizing: content; overflow-wrap: anywhere; min-height: 1.45em; }
+.objectives-popup-title:focus { outline: none; border-bottom-color: var(--brass); }
+.objectives-popup-group { margin-top: 7px; padding-top: 6px; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent); }
+.objectives-popup-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 2px; font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-popup-group-head span { color: var(--text-secondary); }
+.objectives-popup-members { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 2px 0 0 -4px; }
+.objectives-popup-members button { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 6px 0 4px; border: 1px solid transparent; border-radius: var(--radius-xs); background: none; font: inherit; font-size: var(--t-xs); color: var(--text-secondary); cursor: pointer; }
+.objectives-popup-members button:hover:not(:disabled) { background: var(--control-rest-hover); color: var(--text-primary); }
+.objectives-popup-members button[aria-checked="true"] { border-color: color-mix(in oklch, var(--brass) 70%, transparent); background: color-mix(in oklch, var(--brass) 9%, transparent); color: var(--text-primary); }
+.objectives-popup-members button:disabled { cursor: not-allowed; opacity: .5; }
+.objectives-popup-members .objectives-member-mark { width: 16px; height: 16px; font-size: calc(var(--t-2xs) * .9); }
+.objectives-popup-edge-row { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 0 6px; min-height: 26px; }
+.objectives-popup-edge-row > span { font-family: var(--font-mono); font-size: var(--t-2xs); text-align: right; color: var(--text-tertiary); }
+.objectives-popup-edge-row button { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; background: none; padding: 0; text-align: left; color: var(--text-primary); font: inherit; min-height: 24px; cursor: pointer; }
+.objectives-popup-edge-row .objectives-popup-cut { width: 24px; height: 24px; text-align: center; color: var(--text-tertiary); }
+.objectives-popup-cut:hover:not(:disabled) { color: var(--coral-ink); }
+.objectives-popup-cut:disabled { opacity: .35; cursor: not-allowed; }
+.objectives-popup-edge-row small { grid-column: 2 / 4; font-size: var(--t-2xs); color: var(--text-tertiary); overflow-wrap: anywhere; }
+.objectives-popup-hint { margin: 4px 0 0; font-size: var(--t-2xs); color: var(--text-tertiary); line-height: 1.5; overflow-wrap: anywhere; }
+.objectives-popup-text-button { border: 0; background: none; padding: 0 2px; min-height: 24px; font: inherit; font-size: var(--t-xs); color: var(--text-secondary); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--text-tertiary) 55%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.objectives-popup-text-button.is-danger { color: var(--coral-ink); }
+.objectives-popup-text-button:disabled { color: var(--text-tertiary); text-decoration: none; cursor: not-allowed; }
+.objectives-popup-actions { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 8px; padding-top: 6px; border-top: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent); }
+.objectives-graph-popup .objectives-records-inner { margin: 0; padding: 4px 0; }
+.objectives-graph-popup .objectives-record { overflow-wrap: anywhere; }
+.objectives-graph-menu { position: relative; font-size: var(--t-xs); }
+.objectives-graph-menu summary { list-style: none; cursor: pointer; padding: 0 6px; min-height: 24px; line-height: 24px; }
+.objectives-graph-menu summary::-webkit-details-marker { display: none; }
+.objectives-graph-menu > div { position: absolute; top: 100%; right: 0; z-index: 10; min-width: 130px; padding: 4px; background: var(--surface-panel-raised); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); box-shadow: var(--shadow-soft); }
+.objectives-graph-menu button { display: block; width: 100%; border: 0; background: none; padding: 6px 10px; text-align: left; font: inherit; color: var(--text-secondary); cursor: pointer; }
+.objectives-graph-menu button:hover { background: var(--control-rest-hover); }
+@media (prefers-reduced-motion: reduce) { .objectives-graph-node.is-running .objectives-graph-shape::after, .objectives-graph-popup, .objectives-graph-popup.is-closing { animation: none; } }
+
+.objectives-popup-body { overflow: auto; overscroll-behavior: contain; }
+.objectives-popup-links { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 66; pointer-events: none; }
+.objectives-popup-links path { fill: none; stroke: var(--brass); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.objectives-popup-links path.is-down { stroke-dasharray: 4 3; }
+
+.objectives-graph-dragline { position: fixed; inset: 0; z-index: 39; width: 100%; height: 100%; pointer-events: none; }
+.objectives-graph-dragline path { fill: none; stroke: var(--brass); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.objectives-graph-dragline path.is-no { stroke: var(--coral); }
+
+.objectives-branch-graph.is-wide .objectives-graph-label { font-size: var(--t-sm); }

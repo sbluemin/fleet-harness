@@ -1,18 +1,18 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 
-import { COMMANDER_PRESET, commanderMode, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
+import { COMMANDER_PRESET, commanderMode, MAX_FOLLOWUPS, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting } from "./action-band.js";
 import { DecisionGlyph, DecisionList, DecisionRequestBlock, RequestGlyph } from "./decisions.js";
 import { PastRoles } from "./past-roles.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ObjectiveResults, ResultsGlyph, ResultsHeadTools } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
-import { CoordinationGraph } from "./graph.js";
+import { CoordinationGraph, type MissionDetailActions } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchWords, launchedWords, useLaunchRows, StartViewPicker, type StartView } from "./launch-control.js";
@@ -531,8 +531,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     objectiveHighlightTimer.current = setTimeout(() => { setHighlightObjective(null); objectiveHighlightTimer.current = null; }, ADDED_HIGHLIGHT_MS);
     scrollRowSoon(created.id);
   };
-  const toggleEdge = async (objective: Objective, from: string, to: string) => {
-    const result = await call<{ objective: Objective; linked: boolean }>("/edge/toggle", { objectiveId: objective.id, from, to });
+  const toggleEdge = async (objective: Objective, from: string, to: string, linked?: boolean) => {
+    const result = await call<{ objective: Objective; linked: boolean }>("/edge/toggle", { objectiveId: objective.id, from, to, linked });
     if (!result) return;
     const index = (id: string) => objective.missions.findIndex((mission) => mission.id === id) + 1;
     toast(t(result.linked ? "objectives.toast.linkedEdge" : "objectives.toast.cutEdge", { from: index(from), to: index(to) }));
@@ -859,7 +859,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           layout={three ? "three" : "split"}
           placeButton={placeButton("objectives-place-detail")}
           onComplete={() => completeObjective(current)}
-          onToggleEdge={(from, to) => toggleEdge(current, from, to)}
+          onToggleEdge={(from, to, linked) => toggleEdge(current, from, to, linked)}
           onOpenObjective={openObjectiveDetail}
           otherRequests={requests.filter((objective) => objective.id !== current.id).length}
           onNextRequest={openNextRequest}
@@ -1146,42 +1146,6 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   </div>;
 }
 
-function AssignControl({ t, objective, mission, onAssign, onCreate, label, rows, operationState }: { t: T; objective: Objective; mission: ObjectiveMission; onAssign: (member: string | null) => void; onCreate: (role: string) => Promise<boolean>; label: string; rows: ReturnType<typeof useLaunchRows>; operationState: DetailProps["operationState"] }) {
-  const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [role, setRole] = useState("");
-  const creatingRef = useRef(false);
-  const [pos, setPos] = useState<{ left: number; top: number }>({ left: -1000, top: -1000 });
-  const trigger = useRef<HTMLButtonElement | null>(null);
-  const menu = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (event: PointerEvent) => { if (!menu.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) setOpen(false); };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); } };
-    document.addEventListener("pointerdown", down, true); document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("pointerdown", down, true); document.removeEventListener("keydown", key); };
-  }, [open]);
-  useLayoutEffect(() => {
-    if (!open || !trigger.current) return;
-    const rect = trigger.current.getBoundingClientRect();
-    const height = menu.current?.offsetHeight ?? 250;
-    setPos({ left: Math.max(12, Math.min(rect.left, window.innerWidth - 228)), top: rect.bottom + height > window.innerHeight - 12 ? Math.max(12, rect.top - height - 6) : rect.bottom + 6 });
-  }, [open, creating, objective.members.length]);
-  const pick = (id: string | null) => { onAssign(id); setOpen(false); };
-  return <>
-    <button ref={trigger} type="button" className="objectives-launch is-glyph objectives-glyph" aria-haspopup="menu" aria-expanded={open} aria-label={label} title={label} onClick={() => { setCreating(false); setOpen((value) => !value); }}><AssignGlyph /></button>
-    {open ? createPortal(<div ref={menu} className="objectives-menu objectives-assign-menu" role="menu" aria-label={label} style={{ ...pos, width: 216 }}>
-      <button type="button" role="menuitemradio" aria-checked={!mission.member} className={`objectives-menu-item${!mission.member ? " is-active" : ""}`} onClick={() => pick(null)}><CommanderMark /><span className="objectives-menu-label is-commander">{t("objectives.memberSelection.self")}</span></button>
-      <div className="objectives-menu-divider" role="separator" />
-      <p className="objectives-menu-caption objectives-assign-caption">{t("objectives.members.title")}</p>
-      {objective.members.map((member) => <button key={member.id} type="button" role="menuitemradio" aria-checked={mission.member === member.id} className={`objectives-menu-item${mission.member === member.id ? " is-active" : ""}`} onClick={() => pick(member.id)}><MemberMark role={member.role} tone={memberTone(objective, member.id)} /><span className="objectives-menu-label">{member.role}</span>{((display) => <span className="objectives-assign-model" title={display.title}>{display.label}</span>)(memberLaunchDisplay(member, memberLaunched(member, operationState), t, rows))}</button>)}
-      <div className="objectives-menu-divider" role="separator" />
-      {creating ? <div className="objectives-assign-new"><input autoFocus maxLength={40} aria-label={t("objectives.members.new")} placeholder={t("objectives.members.rolePlaceholder")} value={role} onChange={(event) => setRole(event.target.value)} onKeyDown={(event) => { if (submitKey(event) && role.trim() && !creatingRef.current) { creatingRef.current = true; void onCreate(role.trim()).then((created) => { if (created) { setOpen(false); setRole(""); } }).finally(() => { creatingRef.current = false; }); } }} /><span>{t("objectives.members.newHint")}</span></div>
-        : <button type="button" role="menuitem" className="objectives-menu-item objectives-assign-create" onClick={() => setCreating(true)}>{t("objectives.members.new")}</button>}
-    </div>, document.body) : null}
-  </>;
-}
-
 function OpChip({ state, label, title, onRemove, removeLabel }: { state: string; label: string; title?: string; onRemove?: () => void; removeLabel?: string }) {
   return (
     <span className={`objectives-op is-${state}`} title={title ?? label}>
@@ -1220,7 +1184,7 @@ interface DetailProps {
   readonly layout: "split" | "three";
   readonly placeButton: ReactNode;
   readonly onComplete: () => void;
-  readonly onToggleEdge: (from: string, to: string) => Promise<void>;
+  readonly onToggleEdge: (from: string, to: string, linked?: boolean) => Promise<void>;
   /** 배치 결과·출처에서 목표 상세를 연다 — 목록에 있는 항목만 연다. */
   readonly onOpenObjective: (operationId: string) => void;
   /** 이 목표를 뺀 결정 요청 수 — 한 열에서 상세가 목록을 덮는 동안 머리에서 다른 요청으로 가는 길이 된다. */
@@ -1247,10 +1211,10 @@ function LineupZoom({ t, title, onClose, children }: { readonly t: Translate<Obj
     // 캡처 단계에서 삼킨다 — 같은 Esc 가 창의 처리기까지 올라가 상세를 함께 닫지 않도록.
     // Tab 은 카드 안에서만 돈다(aria-modal): 뒤의 패널로 초점이 새면 열린 채로 숨은 조작이 가능해진다.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); return; }
+      if (event.key === "Escape") { if (document.querySelector("[data-graph-popup]:not(.is-closing)")) return; event.preventDefault(); event.stopPropagation(); onClose(); return; }
       if (event.key !== "Tab" || !cardRef.current) return;
       const card = cardRef.current;
-      const stops = [...card.querySelectorAll<HTMLElement | SVGElement>("button, [tabindex]:not([tabindex='-1'])")].filter((el) => !(el as HTMLButtonElement).disabled);
+      const stops = [...card.querySelectorAll<HTMLElement | SVGElement>("button, input, textarea, [tabindex]:not([tabindex='-1'])")].filter((el) => !(el as HTMLButtonElement).disabled);
       const active = document.activeElement;
       const inside = active instanceof Node && card.contains(active);
       const first = stops[0];
@@ -1279,7 +1243,6 @@ function LineupZoom({ t, title, onClose, children }: { readonly t: Translate<Obj
 
 const GoGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5H3.5v9h9V10M9.5 3.5h3v3M12.5 3.5 7.5 8.5" /></svg>;
 
-const AssignGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="5" cy="5" r="2.2" /><circle cx="11" cy="11" r="2.2" /><path d="M7 5h3.5a1.5 1.5 0 0 1 1.5 1.5V8.8M9 11H5.5A1.5 1.5 0 0 1 4 9.5V7.2" /></svg>;
 
 /** 한 줄로 저장하는 문구 — 붙여넣은 줄바꿈은 저장 때 공백이 된다. */
 const oneLine = (text: string): string => text.replace(/\s*[\r\n]+\s*/g, " ").trim();
@@ -1295,7 +1258,7 @@ function fitHeight(element: HTMLTextAreaElement | null): void {
  * 임무·달성 기준·구성원 설명의 문구 — 한 줄 입력칸이 아니라 줄바꿈하는 글상자라 길어도 전문이 그 자리에서 보인다(제목·근거 줄과
  * 같은 문법). 편집은 그대로: Enter 는 확정이고(줄바꿈이 아니다) 떠나면 저장한다. Esc 는 되돌리고 칸만 떠난다(상세는 닫지 않는다).
  */
-function WrapText({ className, label, value, readOnly, maxLength, placeholder, onCommit }: {
+function WrapText({ className, label, value, readOnly, maxLength, placeholder, onCommit, onEscape }: {
   readonly className: string;
   readonly label: string;
   readonly value: string;
@@ -1304,6 +1267,7 @@ function WrapText({ className, label, value, readOnly, maxLength, placeholder, o
   readonly placeholder?: string;
   /** 줄바꿈을 공백으로 바꾼 값. 저장하지 않을 값이면 false 를 돌려 칸을 원래 글로 되돌린다. */
   readonly onCommit: (value: string) => boolean;
+  readonly onEscape?: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useLayoutEffect(() => { fitHeight(ref.current); }, [value]);
@@ -1329,7 +1293,7 @@ function WrapText({ className, label, value, readOnly, maxLength, placeholder, o
       onInput={(event) => fitHeight(event.currentTarget)}
       onKeyDown={(event) => {
         if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); }
-        else if (event.key === "Escape") { event.preventDefault(); event.currentTarget.value = value; fitHeight(event.currentTarget); event.currentTarget.blur(); }
+        else if (event.key === "Escape") { event.preventDefault(); event.currentTarget.value = value; fitHeight(event.currentTarget); event.currentTarget.blur(); if (onEscape) { event.stopPropagation(); onEscape(); } }
       }}
       onBlur={(event) => {
         const next = oneLine(event.currentTarget.value);
@@ -1511,9 +1475,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     if (mission.id in current) { const { [mission.id]: _closed, ...rest } = current; return rest; }
     return { ...current, [mission.id]: new Set(mission.records.slice(0, Math.min(mission.seen, mission.records.length)).map((record) => record.id)) };
   });
-  // 짚은 임무 — 목록 행과 편성 노드가 서로를 켠다(그 임무의 선행도 함께).
-  const [focusMission, setFocusMission] = useState<string | null>(null);
-  const focused = focusMission ? objective.missions.find((mission) => mission.id === focusMission) ?? null : null;
+  const [missionReveal, setMissionReveal] = useState<{ id: string; at: number } | null>(null);
   const numberOf = (missionId: string) => objective.missions.findIndex((mission) => mission.id === missionId) + 1;
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -1535,7 +1497,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const showDecision = (decisionId: string) => { onOpenSection("detail:decisions"); setDecisionFlash(decisionId); };
   const showMission = (missionId: string) => {
     onOpenSection("detail:missions");
-    setFocusMission(missionId);
+    setMissionReveal({ id: missionId, at: Date.now() });
     requestAnimationFrame(() => detailRef.current?.querySelector(`[data-mission-id="${CSS.escape(missionId)}"]`)?.scrollIntoView({ block: "nearest" }));
   };
   const sendDecision = async (requestId: string, answers: readonly { questionId: string; selectedOptionIds: readonly string[]; text: string }[]) => {
@@ -1578,6 +1540,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   useEffect(() => { if (highlightMission && !missionsOpen) onOpenSection("detail:missions"); }, [highlightMission, missionsOpen, onOpenSection]);
   useEffect(() => {
     if (!highlightMission || !missionsOpen) return;
+    setMissionReveal({ id: highlightMission, at: Date.now() });
     const frame = requestAnimationFrame(() => detailRef.current?.querySelector(`[data-mission-id="${CSS.escape(highlightMission)}"]`)?.scrollIntoView({ block: "nearest" }));
     return () => cancelAnimationFrame(frame);
   }, [highlightMission, missionsOpen, detailRef]);
@@ -1841,102 +1804,52 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         {objective.results.length > 0 ? <div id="objectives-sec-results" hidden={!resultsOpen}><ObjectiveResults objective={objective} t={t} language={language} /></div> : null}
       </div>
   </>);
-  const sMissions = (<>
-      {/* 임무 — 목록과 편성 그래프를 한 섹션에 둔다. 머리 오른쪽은 완료 셈이고, 접혀도 남는다(접힌 임무에 안 읽은 기록이 있으면 셈 앞에 점 하나).
-          머리를 접으면 목록과 추가 입력만 접히고, 그래프는 접지 않는다 — 접어도 진행이 한눈에 보인다. 임무가 없으면 그래프는 서지 않는다. */}
-      <div className="objectives-group objectives-missions-group" data-objectives-tour="missions">
-        <SectionHead
-          glyph={<GraphGlyph />}
-          label={t("objectives.missions.title")}
-          tools={missionsCollapsible ? <>
-            {!missionsOpen && unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.missions.unseen")} /> : null}
-            <span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>
-          </> : null}
-          {...(missionsCollapsible ? { controls: "objectives-sec-missions", expanded: missionsOpen, onToggle: () => onToggleSection("detail:missions") } : {})}
-        />
-        <div id="objectives-sec-missions" hidden={!missionsOpen}>
-          <div className="objectives-missions">
-            {objective.missions.map((mission, index) => {
-              const ready = missionReady(objective.missions, mission);
-              const member = objective.members.find((candidate) => candidate.id === mission.member);
-              const records = mission.records;
-              const recordsOpen = mission.id in openRecords;
-              const unseen = unseenRecords(mission);
-              const recordsId = `objectives-records-${mission.id}`;
-              return (
-                <Fragment key={mission.id}>
-                <div
-                  data-mission-id={mission.id}
-                  className={`objectives-mission${mission.done ? " is-done" : ""}${!mission.done && ready ? " is-ready" : ""}${recordsOpen ? " is-expanded" : ""}${highlightMission === mission.id ? " is-highlight" : ""}${focused?.id === mission.id ? " is-focus" : focused?.prerequisites.includes(mission.id) ? " is-pre" : ""}`}
-                  onPointerEnter={() => setFocusMission(mission.id)}
-                  onPointerLeave={() => setFocusMission(null)}
-                  onFocus={() => setFocusMission(mission.id)}
-                  onBlur={() => setFocusMission(null)}
-                >
-                  <button type="button" className={`objectives-check${mission.done ? " is-on" : ""}`} aria-label={t("objectives.missions.done")} disabled={!editable} onClick={() => void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { done: !mission.done } })}><CheckGlyph /></button>
-                  {/* 번호는 편성 순서 — 그래프 노드와 같은 번호다. */}
-                  <span className="objectives-mission-num" aria-hidden="true">{index + 1}</span>
-                  <div className="objectives-mission-body">
-                    <WrapText key={mission.text} className="objectives-mission-text" label={`${index + 1}`} value={mission.text} readOnly={!(editable || (touchable && notStarted(mission)))} maxLength={200}
-                      onCommit={(value) => { if (!value) return false; if (value !== mission.text) void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { text: value } }); return true; }} />
-                    <span className={`objectives-mission-sub${mission.operationId ? ` is-${operationState(mission.operationId)}` : " is-assign"}`} title={mission.operationId ? operationTitle(mission.operationId) : undefined}>{member ? <><MemberMark role={member.role} tone={memberTone(objective, member.id)} /><span className="objectives-mission-member-name">{member.role}</span></> : <><CommanderMark /><span className="objectives-mission-member-name is-commander">{t("objectives.memberSelection.self")}</span></>}</span>
-                    {mission.unplaced && !mission.done ? <span className="objectives-mission-sub is-unplaced">{t("objectives.missions.unplaced")}</span> : null}
-                  </div>
-                  {records.length > 0 ? (
-                    <button type="button" className={`objectives-records-count${unseen > 0 ? " is-unseen" : ""}`} aria-expanded={recordsOpen} aria-controls={recordsId} aria-label={`${t("objectives.records.count", { index: index + 1, count: records.length })}${unseen > 0 ? ` · ${t("objectives.records.unseen", { count: unseen })}` : ""}`} onClick={() => toggleRecords(mission)}>
-                      {unseen > 0 ? <i aria-hidden="true" /> : <ThreadGlyph />}{records.length}
-                    </button>
-                  ) : null}
-                  {((decisions) => decisions.length > 0 ? (
-                    <button type="button" className="objectives-records-count objectives-decision-link" aria-label={t("objectives.decisions.missionLink", { index: index + 1, count: decisions.length })} title={t("objectives.decisions.missionLink", { index: index + 1, count: decisions.length })} onClick={() => showDecision(decisions.at(-1)!.id)}>
-                      <DecisionGlyph />{decisions.length}
-                    </button>
-                  ) : null)(objective.decisions.filter((decision) => decision.missionId === mission.id))}
-                  {/* 무엇을 기다리는지 번호로 말한다 — 끝나지 않은 선행만. 구성원 상태는 담당 줄이 말한다. */}
-                  {!mission.done && !mission.unplaced ? (ready
-                    ? <span className="objectives-wait is-ready">{t("objectives.missions.ready")}</span>
-                    : <span className="objectives-wait" title={t("objectives.missions.waiting")}>{t("objectives.missions.prerequisites", { missions: mission.prerequisites.filter((id) => !objective.missions.find((candidate) => candidate.id === id)?.done).map(numberOf).filter((n) => n > 0).join("·") })}</span>) : null}
-                  <span className="objectives-mission-tools">
-                    {!mission.done && touchable ? <AssignControl t={t} objective={objective} mission={mission} rows={launchRows} operationState={operationState} onAssign={(member) => void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { member } })} onCreate={async (role) => { const result = await call<{ objective: Objective }>("/member/add", { objectiveId: objective.id, member: { role } }); const member = result?.objective.members.at(-1); return member ? !!(await call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { member: member.id } })) : false; }} label={t("objectives.missions.setMember")} /> : null}
-                    {notStarted(mission) && touchable ? <button type="button" className="objectives-glyph" title={t("objectives.missions.remove")} aria-label={t("objectives.missions.remove")} onClick={() => void call("/mission/remove", { objectiveId: objective.id, missionId: mission.id })}><TrashGlyph /></button> : null}
-                  </span>
-                </div>
-                {records.length > 0 ? <MissionRecords id={recordsId} records={records} seenAtOpen={openRecords[mission.id] ?? EMPTY_IDS} open={recordsOpen} t={t} language={language} /> : null}
-                </Fragment>
-              );
-            })}
-          </div>
-          {touchable ? (
-            <div className="objectives-row objectives-mission-add">
-              <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
-              <input aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; void call("/mission/add", { objectiveId: objective.id, mission: { text: target.value.trim() } }).then(() => { target.value = ""; }); } }} />
-            </div>
-          ) : null}
+  const renderMissionDetail = (mission: ObjectiveMission, { close, select, state }: MissionDetailActions) => {
+    const index = numberOf(mission.id), member = objective.members.find(m => m.id === mission.member);
+    const allowed = canEditMission(mission.id), recordsOpen = mission.id in openRecords, unseen = unseenRecords(mission);
+    const children = objective.missions.filter(m => m.prerequisites.includes(mission.id));
+    const patch = (value: Record<string, unknown>) => void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: value });
+    const edgeRow = (other: ObjectiveMission, from: string, to: string) => <div className="objectives-popup-edge-row" key={other.id}>
+      <span>{numberOf(other.id)}</span><button type="button" onClick={() => select(other.id)}>{other.text}</button>
+      <button type="button" className="objectives-popup-cut" disabled={!canEditMission(to)} aria-label={t("objectives.graph.edgeAria", { from: numberOf(from), to: numberOf(to) })} title={canEditMission(to) ? t("objectives.graph.cut") : t("objectives.graph.locked")} onClick={() => void onToggleEdge(from, to, false)}>×</button>
+      {mission.why[other.id] && mission.why[other.id] !== "human" ? <small>{mission.why[other.id]}</small> : null}
+    </div>;
+    return <>
+      <div className="objectives-popup-head"><span>{t("objectives.graph.detail", { n: index })}</span><span className={`objectives-popup-state is-${state}`}><i />{t(`objectives.graph.state.${state}`)}</span><button type="button" className="objectives-glyph" aria-label={t("objectives.detail.close")} onClick={close}><CloseGlyph /></button></div>
+      <WrapText key={`${mission.id}:${mission.text}`} className="objectives-popup-title" label={t("objectives.graph.titleInput", { n: index })} value={mission.text} readOnly={!allowed} maxLength={200} onEscape={close} onCommit={value => { if (!value) return false; if (value !== mission.text) patch({ text: value }); return true; }} />
+      {!allowed ? <p className="objectives-popup-hint">{t("objectives.graph.locked")}</p> : null}
+      {!mission.done && state === "blocked" ? <p className="objectives-popup-hint">{t("objectives.missions.prerequisites", { missions: mission.prerequisites.filter(id => !objective.missions.find(m => m.id === id)?.done).map(numberOf).join("·") })}</p> : null}
+      <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.owner")}<span>{member?.role ?? t("objectives.graph.commander")} · {stateLabel(operationOwnState(member?.id ?? objective.id))}</span></div>
+        <div className="objectives-popup-members" role="radiogroup" aria-label={t("objectives.missions.setMember")} onKeyDown={event => {
+          if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+          const options = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")], at = options.indexOf(document.activeElement as HTMLButtonElement);
+          if (!options.length) return;
+          event.preventDefault(); const next = options[(at + (["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1) + options.length) % options.length]!; next.focus(); next.click();
+        }}>
+          {[...objective.members, null].map(option => <button key={option?.id ?? "commander"} type="button" role="radio" aria-checked={mission.member === (option?.id ?? null)} tabIndex={mission.member === (option?.id ?? null) ? 0 : -1} disabled={!allowed} onClick={() => patch({ member: option?.id ?? null })}>{option ? <MemberMark role={option.role} tone={memberTone(objective, option.id)} /> : <CommanderMark />}{option?.role ?? t("objectives.graph.commander")}</button>)}
         </div>
-        {objective.missions.length > 0 ? (
-          <div className="objectives-graph-wrap">
-            {/* 그래프 도구는 그래프 상자 안 오른쪽 위 — 확대가 맨 끝, 일렬·병렬은 그 왼쪽. */}
-            <div className="objectives-graph-frame">
-              <div className="objectives-graph-tools">
-                {objective.missions.length > 1 && editable ? <>
-                  <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/linear", { objectiveId: objective.id })) toast(t("objectives.toast.linear")); }}>{t("objectives.graph.linear")}</button>
-                  <button type="button" className="objectives-btn is-small" onClick={async () => { if (await call("/edge/clear", { objectiveId: objective.id })) toast(t("objectives.toast.parallel")); }}>{t("objectives.graph.parallel")}</button>
-                </> : null}
-                <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>
-              </div>
-              <div className="objectives-graph-horizontal"><CoordinationGraph objective={objective} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditMission} focusMissionId={focusMission} onFocusMission={setFocusMission} /></div>
-              <div className="objectives-graph-vertical"><CoordinationGraph vertical objective={objective} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} onZoom={() => setZoomOpen(true)} canEdit={canEditMission} focusMissionId={focusMission} onFocusMission={setFocusMission} /></div>
-            </div>
-          </div>
-        ) : null}
-        {zoomOpen && objective.missions.length > 0 ? createPortal(
-          <LineupZoom t={t} title={objective.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}>
-            <CoordinationGraph zoom objective={objective} t={t} modeLabel={modeLabel(mode)} onToggleEdge={(from, to) => void onToggleEdge(from, to)} onCycle={() => toast(t("objectives.graph.cycle"))} operationTitle={operationTitle} canEdit={canEditMission} focusMissionId={focusMission} onFocusMission={setFocusMission} />
-          </LineupZoom>,
-          document.body,
-        ) : null}
       </div>
-  </>);
+      <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.parents")} {mission.prerequisites.length}</div>{mission.prerequisites.map(id => { const parent = objective.missions.find(m => m.id === id); return parent ? edgeRow(parent, parent.id, mission.id) : null; })}{mission.unplaced ? <p className="objectives-popup-hint">{t("objectives.graph.unplacedHint")}</p> : null}</div>
+      {children.length ? <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.children")} {children.length}</div>{children.map(child => edgeRow(child, mission.id, child.id))}</div> : null}
+      {mission.records.length ? <div className="objectives-popup-group"><button type="button" className="objectives-popup-text-button" aria-expanded={recordsOpen} onClick={() => toggleRecords(mission)}>{t("objectives.records.count", { index, count: mission.records.length })}{unseen ? ` · ${t("objectives.records.unseen", { count: unseen })}` : ""} {recordsOpen ? "−" : "+"}</button>{recordsOpen ? <MissionRecords id={`graph-records-${mission.id}`} records={mission.records} seenAtOpen={openRecords[mission.id] ?? EMPTY_IDS} open t={t} language={language} /> : <p className="objectives-popup-hint">{mission.records.at(-1)?.lines[0]}</p>}</div> : null}
+      {objective.decisions.filter(d => d.missionId === mission.id).map(d => <button key={d.id} type="button" className="objectives-popup-text-button" onClick={() => { close(); showDecision(d.id); }}>{t("objectives.decisions.missionLink", { index, count: 1 })}</button>)}
+      <div className="objectives-popup-actions"><button type="button" className="objectives-popup-text-button" disabled={!editable} onClick={() => patch({ done: !mission.done })}>{t(mission.done ? "objectives.graph.reopen" : "objectives.missions.done")}</button><button type="button" className="objectives-popup-text-button is-danger" disabled={mission.done || !touchable} onClick={() => void call("/mission/remove", { objectiveId: objective.id, missionId: mission.id })}>{t("objectives.missions.remove")}</button></div>
+      {!editable ? <p className="objectives-popup-hint">{t(objective.done ? "objectives.graph.locked" : "objectives.graph.doneLocked")}</p> : null}
+    </>;
+  };
+  const graphProps = { objective, t, operationState: operationOwnState, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: (id: string | null) => setOpenRecords(current => { const keys = Object.keys(current); return keys.some(key => key !== id) ? (id && current[id] ? { [id]: current[id] } : {}) : current; }), onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal };
+  const missionAdd = touchable ? <div className="objectives-row objectives-mission-add"><span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span><input maxLength={200} aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={event => {
+    if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget, value = target.value; void call("/mission/add", { objectiveId: objective.id, mission: { text: value.trim() } }).then(result => { if (result && target.value === value) target.value = ""; }); }
+  }} /></div> : null;
+  const graphTools = <>
+    {objective.missions.length > 1 && editable ? <details className="objectives-graph-menu"><summary aria-label={t("objectives.graph.menu")}>⋯</summary><div><button type="button" onClick={() => void call("/edge/linear", { objectiveId: objective.id })}>{t("objectives.graph.linear")}</button><button type="button" onClick={() => void call("/edge/clear", { objectiveId: objective.id })}>{t("objectives.graph.parallel")}</button></div></details> : null}
+    <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>
+  </>;
+  const sMissions = <div className="objectives-group objectives-missions-group" data-objectives-tour="missions">
+    <SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.missions.unseen")} /> : null}<span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{objective.missions.length ? graphTools : null}</>} />
+    <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} suspended={zoomOpen} /> : null}{missionAdd}</div>
+    {zoomOpen && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} onClose={() => { setZoomOpen(false); zoomTriggerRef.current?.focus(); }}><CoordinationGraph {...graphProps} zoom />{missionAdd}</LineupZoom>, document.body) : null}
+  </div>;
   const sDecisions = (<>
       {/* 결정 — 임무 아래, 후속 후보 위. 사람이 결정 요청에 보낸 답이 질문마다 쌓인다(지휘관·구성원도 보드에서 읽는다). 답이 없으면 서지 않는다. */}
       {objective.decisions.length > 0 ? (

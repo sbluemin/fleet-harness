@@ -354,6 +354,16 @@ describe("Objectives contract", () => {
     const head = objective.commander.sessionName!.replace(/-cmdr$/, "");
     const [a, b, c] = objective.missions;
     expect(() => store.missionPatch(objective.id, a!.id, { prerequisites: [c!.id] })).toThrow(ObjectiveStoreError);
+    // 공개 편집 경로의 명시적 잇기/끊기는 중복 전달돼도 반대로 토글되지 않는다(간선 보존 계약).
+    const edge = (linked: boolean) => route("edge/toggle", { objectiveId: objective.id, from: a!.id, to: b!.id, linked });
+    expect((await edge(true)).value.linked).toBe(true);
+    expect(store.find(objective.id)!.missions.find(m => m.id === b!.id)!.prerequisites).toEqual([a!.id]);
+    await edge(false);
+    expect((await edge(false)).value.linked).toBe(false);
+    expect(store.find(objective.id)!.missions.find(m => m.id === b!.id)!.prerequisites).toEqual([]);
+    await edge(true);
+    expect((await route("edge/toggle", { objectiveId: objective.id, from: c!.id, to: a!.id, linked: true })).status).toBeGreaterThanOrEqual(400);
+    expect(store.find(objective.id)!.missions.find(m => m.id === a!.id)!.prerequisites).toEqual([]);
     expect((await launch.setPreset(objective.id, { viewMode: "chat" })).commander.viewMode).toBe("chat");
     expect((await launch.setPreset(objective.id, { viewMode: "terminal" })).commander.viewMode).toBe("terminal");
     await launch.rename(objective.id, "Release renamed");
