@@ -148,4 +148,27 @@ describe("read-only proxy epoch", () => {
     expect(views.unusable()).toBe(true);
     await expect(views.open({ ...EPOCH, epochId: "epoch_0002abcd", cookieName: "fleet_epoch_epoch_0002abcd" })).rejects.toThrow("proxy_view_unavailable");
   });
+
+  /** 렌더러가 닫혔음을 확인하지 못했다면, 저장소를 비웠어도 정리는 성공이 아니다 — 살아 있는 문서가 다시 쓸 수 있다. */
+  it("does not report cleanup while the renderer has not been confirmed closed", async () => {
+    vi.useFakeTimers();
+    try {
+      const partition = partitionSession();
+      const { view, contents } = fakeView();
+      contents.close.mockImplementation(() => undefined);
+      const log = vi.fn();
+      const views = createProxyDataViews({ sessionFor: () => partition.session as never, createView: () => view as never, attach: () => undefined, log });
+
+      const surface = await views.open(EPOCH);
+      const teardown = expect(surface.teardown()).rejects.toThrow("proxy_cleanup_unconfirmed");
+      await vi.advanceTimersByTimeAsync(5_000);
+      await teardown;
+
+      expect(partition.session.clearStorageData).toHaveBeenCalled();
+      expect(views.unusable()).toBe(true);
+      expect(log.mock.calls.some(([message]) => String(message).includes("cleaned"))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

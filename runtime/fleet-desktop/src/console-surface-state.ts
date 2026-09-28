@@ -7,12 +7,17 @@
  *
  *   local-ready ──신뢰 선택──▶ quiescing ──떠남 답──▶ preparing ──준비 표식──▶ remote-ready
  *        ▲                        │답 없음                │실패                      │세션 끝남
- *        └──────────── 로컬 확인 ◀┴──────────────────────┴───── disconnected ◀──────┘
+ *        └─ 확인 성공 ◀ committing-local ◀─┴──────────────────────┴───── disconnected ◀──────┘
+ *                            │확인 실패
+ *                            └──▶ disconnected(local_unavailable) — 로컬 화면은 보이지만 권한은 없다
+ *
+ * 로컬로 돌아오는 일은 둘로 나뉜다. 로컬 화면을 앞에 세우는 것은 곧바로 하고, 권한(캡처·창 명령·브라우저)을
+ * 돌려주는 것은 관리 중인 콘솔과 그 문서가 지금도 맞는지 확인한 뒤에만 한다.
  *
  * 전환은 번호(세대)를 갖는다. 새 선택이나 복귀가 오면 세대가 오르고, 앞선 시도는 늦게 끝나도 상태를 건드리지 않는다.
  */
 
-export type ConsoleSurfaceState = "local-ready" | "quiescing" | "preparing" | "remote-ready" | "disconnected";
+export type ConsoleSurfaceState = "local-ready" | "quiescing" | "preparing" | "remote-ready" | "committing-local" | "disconnected";
 
 export interface SurfaceSelection {
   readonly origin: string;
@@ -35,8 +40,13 @@ export interface ConsoleSurfaceDeps {
   readonly suspendOwners: () => void;
   /** 데이터 뷰를 앞에 세우고 동기화기를 그 콘솔로 옮긴다. */
   readonly presentData: (origin: string) => void;
-  /** 로컬 뷰를 확인해 앞에 세우고, 데이터 뷰를 비우고, 동기화기를 로컬로 옮긴다. */
-  readonly presentLocal: () => Promise<void>;
+  /**
+   * 로컬 뷰를 앞에 세우고 데이터 뷰를 비운 뒤, 관리 중인 콘솔과 로컬 문서가 지금도 맞는지 확인한다. 확인하지
+   * 못하면 던진다. 이 시도가 옛것이 되면 결과는 버려진다.
+   */
+  readonly presentLocal: (attempt: SwitchAttempt) => Promise<void>;
+  /** 로컬이 권한을 되찾았다 — 동기화기를 로컬로 옮긴다. 확인이 성공한 뒤에만 불린다. */
+  readonly adoptLocal: () => void;
   /** 최종 떠남에서만 — 그 원격의 자기 세션을 끝내 달라고 한 번 청한다. 페어링은 남는다. */
   readonly endRemoteSession: (origin: string) => void;
   /** 끊긴 원격을 거둔다(세션을 끝내 달라고 청하지 않는다). 격리 뷰라면 그 뷰와 partition을 정리한다. */
@@ -48,7 +58,7 @@ export interface ConsoleSurfaceDeps {
   readonly log: (message: string) => void;
 }
 
-export type DisconnectReason = "expired" | "unavailable" | "crashed" | "reclaimed" | "superseded" | "ended";
+export type DisconnectReason = "expired" | "unavailable" | "crashed" | "reclaimed" | "superseded" | "ended" | "local_unavailable";
 
 export interface ConsoleSurface {
   state(): ConsoleSurfaceState;
@@ -83,16 +93,26 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
     return { generation: mine, isCurrent: () => generation === mine };
   };
 
-  async function restoreLocal(attempt: SwitchAttempt, reason: string): Promise<void> {
+  /** 로컬 화면을 되돌리고, 확인이 성공했을 때만 권한을 되돌린다. 권한을 되찾았으면 true. */
+  async function restoreLocal(attempt: SwitchAttempt, reason: string): Promise<boolean> {
     remote = null;
+    deps.suspendOwners();
+    transition("committing-local", reason);
     try {
-      await deps.presentLocal();
-    } finally {
-      if (attempt.isCurrent()) {
-        localQuiesced = false;
-        transition("local-ready", reason);
-      }
+      await deps.presentLocal(attempt);
+    } catch (error) {
+      if (!attempt.isCurrent()) return false;
+      // 확인하지 못한 로컬에는 권한을 돌려주지 않는다. 화면은 로컬이지만 캡처·창 명령·브라우저는 닫혀 있다.
+      transition("disconnected", "local_unavailable");
+      deps.log(`local console not confirmed: ${error instanceof Error ? error.message.slice(0, 64) : "unknown"}`);
+      deps.notify("local_unavailable");
+      return false;
     }
+    if (!attempt.isCurrent()) return false;
+    localQuiesced = false;
+    transition("local-ready", reason);
+    deps.adoptLocal();
+    return true;
   }
 
   async function select(selection: SurfaceSelection): Promise<void> {
@@ -121,7 +141,7 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
       if (!attempt.isCurrent()) return;
       deps.report(error);
       const reason = state === "quiescing" ? "quiesce_failed" : "prepare_failed";
-      await restoreLocal(attempt, reason).catch(deps.report);
+      await restoreLocal(attempt, reason);
       if (leaving !== null && leaving !== selection.origin) deps.endRemoteSession(leaving);
     }
   }
@@ -140,9 +160,10 @@ export function createConsoleSurface(deps: ConsoleSurfaceDeps): ConsoleSurface {
     const attempt = begin();
     transition("disconnected", reason);
     // 세션이 이미 끝났으므로 끝내 달라고 청할 것이 없다. 오류 문서에는 돌아갈 길이 없으므로 로컬로 되돌린다.
-    await restoreLocal(attempt, `disconnected_${reason}`);
+    const restored = await restoreLocal(attempt, `disconnected_${reason}`);
     deps.abandonRemote?.(reason);
-    deps.notify(reason);
+    // 로컬도 확인하지 못했다면 그 알림이 이미 나갔다 — 두 번 말하지 않는다.
+    if (restored) deps.notify(reason);
   }
 
   return {

@@ -19,6 +19,7 @@ import { pushEntrySnapshot, type EntryPalette } from "./entry-page.js";
 import { createQuitFarewell, farewellSnapshot } from "./quit-farewell.js";
 import { createSwitchVeil } from "./switch-veil.js";
 import { createConsoleSurface, type DisconnectReason } from "./console-surface-state.js";
+import { createConsoleOwners } from "./console-owners.js";
 import { createDataView } from "./data-view.js";
 import { createSurfaceQuiesce } from "./surface-quiesce.js";
 import { createProxyBroker, type EpochTerminalReason } from "./proxy-broker-client.js";
@@ -245,6 +246,8 @@ async function boot(): Promise<void> {
   const shellUpdateCommands = createShellUpdateCommandSynchronizer({
     fetch: consoleFetch,
     perform: (command) => {
+      // 명령을 보낸 콘솔이 지금도 창의 주인일 때만 — 떠난 콘솔이 이 앱을 재시작시키지 못하게.
+      if (servingConsoleOrigin === null || servingConsoleOrigin !== ownerOrigin()) { logger.info("shell update command ignored: its console does not hold this window"); return; }
       if (command === "check") void shellUpdater?.check();
       else if (command === "download") void shellUpdater?.download();
       else shellUpdater?.restart();
@@ -270,6 +273,8 @@ async function boot(): Promise<void> {
   const windowCommands = createDesktopWindowCommandSynchronizer({
     fetch: consoleFetch,
     perform: (command) => {
+      // 떠난 콘솔의 늦은 명령이 지금 보이는 창을 움직이지 않는다 — 적용하는 순간 주인을 다시 확인한다.
+      if (!owners.holdsCommands()) { logger.info("window command ignored: its console does not hold this window"); return; }
       consoleInZen = command === "enter-fullscreen";
       zenFullscreen?.perform(command);
     },
@@ -327,6 +332,7 @@ async function boot(): Promise<void> {
     },
     // 크기 한도는 browser-views 가 디코드 전에 검사했다. 여기서는 필요한 사본만 만든다 — 전체면 자르지 않고, 같은 크기면
     // 늘이지 않고, 표면 밖이 없으면 캔버스를 만들지 않는다. 표면 밖 여백은 불투명 흰색이다.
+    mayControl: (origin) => owners.mayCommand(origin),
     composeCapture: (png, { crop, place, size, format, quality }) => {
       let image = nativeImage.createFromBuffer(png);
       if (image.isEmpty()) throw new Error("browser_capture_invalid_image");
@@ -433,47 +439,64 @@ async function boot(): Promise<void> {
     const holder = surfaceAuthority();
     return holder?.surface === "local" ? { contents: holder.contents, origin: holder.origin, generation: surface.generation() } : null;
   }, (message) => logger.info(message));
+  /**
+   * 지금 native 권한을 가진 콘솔 — 안정 상태의 활성 surface 하나뿐이다. 전환 중, 확인 전의 로컬, 끊긴 화면,
+   * 읽기 전용 격리 뷰는 창 명령·브라우저 제어·갱신의 주인이 아니다.
+   */
+  const ownerOrigin = (): string | null => {
+    const state = surface.state();
+    if (state === "local-ready") return policy?.localConsoleOrigin() ?? null;
+    if (state === "remote-ready" && proxy.active() === null) return policy?.dataConsoleOrigin() ?? null;
+    return null;
+  };
   /** 그 콘솔이 지금 창의 주인이다 — 테마·갱신·창 명령·브라우저 뷰·전체화면이 그 콘솔을 따른다. */
-  const followConsole = async (origin: string): Promise<void> => {
-    await synchronizeThemeAt(origin);
-    await subscribeSupervisedConsoleUpdates(origin);
-    await subscribeShellUpdates(origin);
-    await windowCommands.start(origin);
-    await synchronizeBrowserViews(origin);
-    fullscreenSynchronizer?.activate(origin);
+  const owners = createConsoleOwners({
+    currentOwner: ownerOrigin,
+    theme: synchronizeThemeAt,
+    supervisedUpdates: subscribeSupervisedConsoleUpdates,
+    shellUpdates: subscribeShellUpdates,
+    windowCommands,
+    browserViews: { start: synchronizeBrowserViews, stop: () => browserViews.stop() },
+    fullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
+    log: (message) => logger.info(message),
+  });
+  const followConsole = (origin: string): void => {
+    void owners.follow(origin).catch((error: unknown) => logger.error(`console owners failed: ${describeError(error)}`));
   };
   /**
-   * 로컬로 돌아오기 전에 그 뷰가 지금도 이 앱이 띄운 콘솔을 그리고 있는지 본다. 렌더러를 잃었거나 다른 곳에
-   * 서 있으면 다시 적재한다 — 뒤에서 멈춰 버린 옛 화면을 지금의 사실처럼 보여 주지 않는다.
+   * 로컬로 돌아온다. 화면은 곧바로 로컬을 앞에 세우지만, 권한은 관리 중인 콘솔이 지금도 그 주소에서 lock의 자격으로
+   * 답하고 로컬 뷰가 그 콘솔의 살아 있는 문서를 그리고 있음을 확인한 뒤에만 돌아간다. 확인하지 못하면 던진다 —
+   * 상태 머신이 권한 없는 끊김으로 남긴다. 뒤에서 멈춰 버린 옛 화면을 지금의 사실처럼 믿지 않는다.
    */
-  const presentLocal = async (): Promise<void> => {
+  const presentLocal = async (attempt: { isCurrent(): boolean }): Promise<void> => {
     switchVeil.dismiss("return");
     const current = window;
     const home = localConsoleOrigin;
-    if (!current || current.isDestroyed()) return;
+    if (!current || current.isDestroyed()) throw new Error("local_console_unavailable");
     const local = current.consoleContents;
-    const intact = home !== null && !local.isDestroyed() && !local.isCrashed() && isAllowedConsoleUrl(local.getURL(), home);
     current.stack.activateSurface("local");
     try { local.focus(); } catch { /* 포커스는 부가 동작이다. */ }
     policy?.clearDataOrigin();
     void dataView.release();
     refreshNativeUpdateActions?.();
-    if (home === null) return;
-    if (!intact) {
+    if (home === null) throw new Error("local_console_unavailable");
+    const { healthy, origin } = await withinMs(supervisor.health(), LOCAL_CONFIRM_TIMEOUT_MS, "local_console_unresponsive");
+    if (!healthy || origin !== home) throw new Error(healthy ? "local_console_moved" : "local_console_unhealthy");
+    if (!attempt.isCurrent()) return;
+    if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) {
       logger.info("local console view reloaded on return");
-      void local.loadURL(`${home}/console/`).catch((error: unknown) => logger.error(`local console reload failed: ${describeError(error)}`));
-    } else {
-      /**
-       * 관리 중인 콘솔이 지금도 그 주소에서 답하는지 본다. 답하지 않으면 화면을 다시 적재하지 않는다 — 오류 문서로
-       * 바꾸는 대신, 스트림을 잃은 화면이 스스로 끊김을 알리고 재기동한 콘솔은 launch 경로가 다시 넘긴다.
-       */
-      void supervisor.health().then(({ healthy, origin }) => {
-        if (!healthy || origin !== home) logger.error(`local console not current on return healthy=${healthy} moved=${origin !== home}`);
-      }).catch((error: unknown) => logger.error(`local console health on return failed: ${describeError(error)}`));
+      await withinMs(local.loadURL(`${home}/console/`), LOCAL_RELOAD_TIMEOUT_MS, "local_console_reload_timeout");
+      if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) throw new Error("local_console_document_unavailable");
     }
+  };
+  /** 확인이 끝난 로컬이 권한을 되찾았다. */
+  const adoptLocal = (): void => {
+    const home = localConsoleOrigin;
+    refreshNativeUpdateActions?.();
+    if (home === null) return;
     // 떠남 알림을 걷어 둔다 — 다시 붙는 화면이 끝난 전환의 알림을 받아 공유를 멈추지 않게.
     void publishShellHome(home);
-    void followConsole(home).catch((error: unknown) => logger.error(`local console owners failed: ${describeError(error)}`));
+    followConsole(home);
   };
   const surface = createConsoleSurface({
     localOrigin: () => localConsoleOrigin,
@@ -499,7 +522,7 @@ async function boot(): Promise<void> {
       log: (message) => logger.info(message),
     }),
     prepareData: (selection, attempt) => bridge.prepare(selection, attempt),
-    suspendOwners: () => { windowCommands.stop(); browserViews.stop(); },
+    suspendOwners: () => owners.suspend(),
     presentData: (origin) => {
       const current = window;
       const isolated = proxy.active();
@@ -517,9 +540,10 @@ async function boot(): Promise<void> {
       try { contents.focus(); } catch { /* 포커스는 부가 동작이다. */ }
       try { contents.setZoomLevel(zoomState.load()); } catch { /* 줌은 부가 동작이다. */ }
       refreshNativeUpdateActions?.();
-      void followConsole(origin).catch((error: unknown) => logger.error(`console owners failed: ${describeError(error)}`));
+      followConsole(origin);
     },
     presentLocal,
+    adoptLocal,
     endRemoteSession: (origin) => {
       if (proxy.active()?.remoteOrigin === origin) void proxy.end("final");
       else bridge.endSession(origin);
@@ -529,7 +553,9 @@ async function boot(): Promise<void> {
     },
     announceGeneration: (generation) => { void proxyBroker.announceSwitch(generation); },
     report: (error) => bridge.report(error),
-    notify: (reason) => notifier.show({ type: "info", title: "Back on this computer", body: describeDisconnect(reason) }),
+    notify: (reason) => notifier.show(reason === "local_unavailable"
+      ? { type: "error", title: "This computer's console is not responding", body: describeDisconnect(reason) }
+      : { type: "info", title: "Back on this computer", body: describeDisconnect(reason) }),
     log: (message) => logger.info(message),
   });
   /**
@@ -608,6 +634,7 @@ async function boot(): Promise<void> {
       }
     },
     cover: (url, views, load) => switchVeil.around(url, views, load),
+    onCleanupFailed: () => notifier.show({ type: "error", title: "Read-only view could not be fully closed", body: "Read-only views of other consoles stay off until Fleet Desktop restarts." }),
     log: (message) => logger.info(message),
   });
   /** 이 앱이 띄우지 않은 콘솔을 그리는 뷰. 창과 함께 만들어 로컬 뷰 뒤에 빈 문서로 세워 둔다. */
@@ -810,10 +837,12 @@ async function boot(): Promise<void> {
       handoffOrigin: (origin) => {
         localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);
+        // 로컬을 확인하지 못해 권한 없이 서 있던 창은, 관리 중인 콘솔이 다시 넘겨진 지금 다시 확인한다.
+        if (surface.state() === "disconnected") void surface.returnLocal();
         controls.handoffStarted();
         void publishShellHome(origin);
       },
-      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
+      synchronizeTheme: (origin) => owners.follow(origin),
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
       onConsoleLoaded: () => { consoleShown = true; controls.onConsoleLoaded(); },
       onFirstRunFailure: async () => showFirstRunFailure(),
@@ -973,6 +1002,18 @@ function writeDevelopmentUpdateConfig(userDataDirectory: string, feedUrl: string
   }
 }
 
+/** 로컬 콘솔이 지금도 맞는지 묻는 시간. 루프백 한 번 왕복에 넉넉하다. */
+const LOCAL_CONFIRM_TIMEOUT_MS = 2_000;
+/** 로컬 문서를 다시 적재하는 데 기다리는 시간. */
+const LOCAL_RELOAD_TIMEOUT_MS = 10_000;
+
+function withinMs<T>(work: Promise<T>, ms: number, code: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(code)), ms);
+    work.then((value) => { clearTimeout(timer); resolve(value); }, (error: unknown) => { clearTimeout(timer); reject(error); });
+  });
+}
+
 /** broker가 알린 끝을 사람에게 말할 이유로 좁힌다. 셸이 스스로 끝낸 것은 여기 오지 않는다. */
 function disconnectReasonOf(reason: EpochTerminalReason): DisconnectReason {
   if (reason === "reclaimed" || reason === "superseded" || reason === "expired") return reason;
@@ -981,6 +1022,7 @@ function disconnectReasonOf(reason: EpochTerminalReason): DisconnectReason {
 
 /** 원격이 끝나 로컬로 돌아왔을 때의 한 줄. 직결에서는 회수와 만료를 셸이 가를 수 없으므로 끝났다는 사실만 말한다. */
 function describeDisconnect(reason: DisconnectReason): string {
+  if (reason === "local_unavailable") return "Screen capture, window commands, and browser control stay off until this computer's console answers again. Choose Return to This Computer to try again.";
   if (reason === "reclaimed") return "The owner of that console took control back, so this window returned to this computer's console.";
   if (reason === "superseded") return "Another device opened that console, so this window returned to this computer's console.";
   if (reason === "ended") return "The read-only view of that console ended, so this window returned to this computer's console.";

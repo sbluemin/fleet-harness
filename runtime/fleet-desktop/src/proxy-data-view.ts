@@ -137,12 +137,19 @@ export function createProxyDataViews(deps: ProxyDataViewDeps): ProxyDataViews {
         async teardown() {
           sealed = true;
           // 렌더러와 그 worker를 먼저 닫는다 — 살아 있는 문서가 정리 도중 저장소를 다시 쓰지 못하게.
-          await closeContents(contents);
+          // 닫혔음을 확인하지 못하면 정리는 실패다. 그래도 봉인은 유지하고 저장소는 비워 둔다.
+          let closed = true;
+          try {
+            await closeContents(contents);
+          } catch {
+            closed = false;
+          }
           try {
             await teardownSession();
+            if (!closed) throw new Error("proxy_renderer_close_unconfirmed");
           } catch (error) {
             poisoned = true;
-            deps.log?.(`proxy view cleanup unconfirmed epoch=${epoch.epochId}`);
+            deps.log?.(`proxy view cleanup unconfirmed epoch=${epoch.epochId} renderer_closed=${closed}`);
             throw error instanceof Error && error.message === "proxy_cleanup_unconfirmed" ? error : new Error("proxy_cleanup_unconfirmed", { cause: error });
           }
           deps.log?.(`proxy view cleaned epoch=${epoch.epochId}`);
@@ -195,12 +202,22 @@ async function setCapability(session: Session, epoch: ProxyEpoch, log?: (message
   log?.(`proxy capability cookie set secure=${secure && stored[0].secure === true}`);
 }
 
+/** 렌더러를 닫고 실제로 파괴됐음을 확인한다. 시간 안에 확인되지 않거나 닫기가 던지면 실패다. */
 function closeContents(contents: WebContents): Promise<void> {
   if (contents.isDestroyed()) return Promise.resolve();
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, CLOSE_TIMEOUT_MS);
-    contents.once("destroyed", () => { clearTimeout(timer); resolve(); });
-    try { contents.close({ waitForBeforeUnload: false }); } catch { clearTimeout(timer); resolve(); }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("proxy_renderer_close_timeout")), CLOSE_TIMEOUT_MS);
+    contents.once("destroyed", () => {
+      clearTimeout(timer);
+      if (contents.isDestroyed()) resolve();
+      else reject(new Error("proxy_renderer_close_unconfirmed"));
+    });
+    try {
+      contents.close({ waitForBeforeUnload: false });
+    } catch (error) {
+      clearTimeout(timer);
+      reject(error instanceof Error ? error : new Error("proxy_renderer_close_failed"));
+    }
   });
 }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createConsoleOwners } from "../src/console-owners.js";
+import { createConsoleSurface } from "../src/console-surface-state.js";
 import { confinePickerNavigation, createSecureShellWindow, createWindowPolicy, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, installPermissionDispatcher, isAllowedConsoleUrl, type SurfaceAuthority } from "../src/window-policy.js";
 
 const HOME = "http://127.0.0.1:4310";
@@ -161,5 +163,73 @@ describe("secure window policy", () => {
     const preventDefault = vi.fn();
     (dataListeners.get("will-navigate") as ((event: { preventDefault(): void }, url: string) => void))({ preventDefault }, `${HOME}/console/`);
     expect(preventDefault).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * 화면이 보여 주는 콘솔과 native 권한(창 명령·브라우저 제어·캡처)의 주인은 늘 같아야 한다. 늦게 끝난 옛 전환이 주인을
+ * 되찾거나, 확인하지 못한 로컬이 권한을 되찾으면 그 둘이 갈라진다.
+ */
+describe("surface authority lifecycle", () => {
+  it("never hands native control back to a console the window has already left", async () => {
+    let owner: string | null = REMOTE;
+    let releaseRemoteTheme: () => void = () => undefined;
+    const started = { commands: [] as string[], browser: [] as string[] };
+    const owners = createConsoleOwners({
+      currentOwner: () => owner,
+      theme: (origin) => (origin === REMOTE ? new Promise<void>((resolve) => { releaseRemoteTheme = resolve; }) : Promise.resolve()),
+      supervisedUpdates: async () => undefined,
+      shellUpdates: async () => undefined,
+      windowCommands: { start: async (origin) => { started.commands.push(origin); }, stop: () => undefined },
+      browserViews: { start: async (origin) => { started.browser.push(origin); }, stop: () => undefined },
+      fullscreen: () => undefined,
+    });
+
+    // 원격이 주인이 되는 도중(테마 응답이 늦다) 사람이 로컬로 돌아온다.
+    const remoteChain = owners.follow(REMOTE);
+    owners.suspend();
+    owner = HOME;
+    await owners.follow(HOME);
+    releaseRemoteTheme();
+    await remoteChain;
+
+    expect(started).toEqual({ commands: [HOME], browser: [HOME] });
+    expect(owners.mayCommand(REMOTE)).toBe(false);
+    expect(owners.holdsCommands()).toBe(true);
+    // 주인이 바뀌는 순간, 이미 붙어 있던 창 명령도 적용되지 않는다.
+    owner = null;
+    expect(owners.holdsCommands()).toBe(false);
+  });
+
+  it("keeps local authority closed until the managed console is confirmed", async () => {
+    let confirm: () => Promise<void> = async () => { throw new Error("local_console_unhealthy"); };
+    const adoptLocal = vi.fn();
+    const notify = vi.fn();
+    const surface = createConsoleSurface({
+      localOrigin: () => HOME,
+      quiesceLocal: async () => undefined,
+      prepareData: async () => undefined,
+      suspendOwners: () => undefined,
+      presentData: () => undefined,
+      presentLocal: () => confirm(),
+      adoptLocal,
+      endRemoteSession: () => undefined,
+      report: () => undefined,
+      notify,
+      log: () => undefined,
+    });
+    await surface.select({ origin: REMOTE });
+    expect(surface.state()).toBe("remote-ready");
+
+    await surface.returnLocal();
+    expect(surface.state()).toBe("disconnected");
+    expect(adoptLocal).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith("local_unavailable");
+
+    // 다시 확인되면 그때 권한이 돌아온다.
+    confirm = async () => undefined;
+    await surface.returnLocal();
+    expect(surface.state()).toBe("local-ready");
+    expect(adoptLocal).toHaveBeenCalledOnce();
   });
 });

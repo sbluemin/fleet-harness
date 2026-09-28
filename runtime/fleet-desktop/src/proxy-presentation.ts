@@ -37,6 +37,8 @@ export interface ProxyPresentationDeps {
   readonly probeRemote: (origin: string) => Promise<{ readonly access: string | null; readonly version: string | null }>;
   readonly localVersion: () => Promise<string | null>;
   readonly cover: (url: string, views: { readonly from: WebContents; readonly to: WebContents }, load: () => Promise<void>) => Promise<void>;
+  /** 격리 뷰를 끝까지 정리했다고 확인하지 못했다. 이 실행에서 A′는 더 이상 열리지 않는다(뷰 관리자가 막는다). */
+  readonly onCleanupFailed?: () => void;
   readonly log?: (message: string) => void;
 }
 
@@ -75,6 +77,7 @@ export function createProxyPresentation(deps: ProxyPresentationDeps): ProxyPrese
       await surface.teardown();
     } catch (error) {
       deps.log?.(`proxy teardown failed: ${error instanceof Error ? error.message : "unknown"}`);
+      deps.onCleanupFailed?.();
     } finally {
       try { deps.shell()?.stack.unmountProxyView(surface.view); } catch { /* 창이 먼저 닫혔다. */ }
     }
