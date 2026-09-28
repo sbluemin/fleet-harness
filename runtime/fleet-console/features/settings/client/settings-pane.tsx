@@ -12,11 +12,6 @@ import { getT, useConsoleLocale, useT } from "../../../core/client/src/i18n/inde
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
 import {
   closeRailPanel,
-  RAIL_OVERLAY_ALPHA_DEFAULT,
-  RAIL_OVERLAY_ALPHA_MAX,
-  RAIL_OVERLAY_ALPHA_MIN,
-  setRailOverlayAlpha,
-  useRailOverlayAlpha,
 } from "../../../core/client/src/chrome/rail/rail-store.js";
 import {
   setSideBarGlassAlpha,
@@ -306,57 +301,20 @@ function SettingsChip({ label, help, active, onSelect }: {
 }
 
 /**
- * 크롬 재질 손잡이 묶음 — 좌·우 사이드바가 캔버스 위에서 어떻게 서는지를 사람이 직접 고른다.
- * 셋 다 서버 설정이 아니라 브라우저-로컬 store지만, 터미널 렌더러가 그렇듯 브라우저-로컬도
+ * 크롬 재질 손잡이 묶음 — 좌측 사이드바가 캔버스 위에서 어떻게 서는지를 사람이 직접 고른다.
+ * 둘 다 서버 설정이 아니라 브라우저-로컬 store지만, 터미널 렌더러가 그렇듯 브라우저-로컬도
  * 설정 화면에 선다: 사람이 찾는 기준은 저장 위치가 아니라 하는 일이다.
  *
- * 순서는 재가된 배치를 지킨다 — 우측 불투명도가 "비포커스 패널 흐리기" 바로 아래 자리를
- * 계속 가지고, 좌측 손잡이 둘이 그 아래에 붙는다. 이 묶음 전체는 데스크톱 페인만
- * 주입한다: 같은 헬퍼가 사이드바도 레일도 없는 모바일의 본문이라, 직접 넣으면 폰에 죽은
- * 슬라이더 셋이 선다.
+ * 우측 도구 패널 카드는 불투명 --surface-panel 한 재질이라 손잡이가 없다(불투명도 슬라이더 퇴역).
+ * 이 묶음 전체는 데스크톱 페인만 주입한다: 같은 헬퍼가 사이드바가 없는 모바일의 본문이라,
+ * 직접 넣으면 폰에 죽은 슬라이더가 선다.
  */
 function ChromeMaterialRows() {
   return (
     <>
-      <RailOpacityRow />
       <SideBarOpacityRow />
       <SideBarBlurRow />
     </>
-  );
-}
-
-/**
- * 도구 패널 카드 불투명도 — 서버 설정이 아니라 브라우저-로컬 rail-store다. 전용
- * "레일 패널" 카드는 퇴역했다 — 화면 재질을 다루는 다른 손잡이(리퀴드 글래스·패널 흐리기)와
- * 같은 테마 카드에 한 행으로 선다(재가된 배치·리네이밍).
- */
-function RailOpacityRow() {
-  const t = useT();
-  const overlayAlpha = useRailOverlayAlpha();
-  return (
-    <div className="global-settings-row">
-      <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">
-          {t("settings.theme.railOpacity")}
-          <SettingsHelp title={t("settings.theme.railOpacity")}>{t("settings.theme.railOpacityHelp")}</SettingsHelp>
-        </p>
-      </div>
-      <SettingsSlider
-        value={overlayAlpha}
-        min={RAIL_OVERLAY_ALPHA_MIN}
-        max={RAIL_OVERLAY_ALPHA_MAX}
-        step={1}
-        label={t("settings.theme.railOpacity")}
-        formatValue={(value) => `${value}%`}
-        decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.railOpacity") })}
-        increaseLabel={t("settings.slider.increase", { title: t("settings.theme.railOpacity") })}
-        onPreview={setRailOverlayAlpha}
-        onCommit={setRailOverlayAlpha}
-        defaultValue={RAIL_OVERLAY_ALPHA_DEFAULT}
-        resetLabel={t("settings.slider.reset")}
-        resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.railOpacity") })}
-      />
-    </div>
   );
 }
 

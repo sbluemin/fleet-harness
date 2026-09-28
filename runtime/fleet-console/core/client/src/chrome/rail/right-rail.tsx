@@ -18,7 +18,7 @@ import { getState, subscribe } from "../../integration/store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
-import { reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
+import { reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   clearStoredPanelWidth,
@@ -72,7 +72,6 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
   const soloMaxWidthRef = useRef(soloMaxWidth);
   soloMaxWidthRef.current = soloMaxWidth;
   const extraWidth = soloWidth === null ? requestedExtraWidth : 0;
-  const overlayAlpha = useRailOverlayAlpha();
   const bindings = useRailEntries();
   // 페인을 세우는 엔트리와 그냥 실행하는 엔트리의 구분은 "이 엔트리가 세우는 페인이 있는가"라는
   // 사실 하나가 진다(pane 계약, #957). 활성 패널·폭 계산은 페인 엔트리만 본다.
@@ -247,10 +246,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
       inert={!hasPanel}
       style={{ "--right-rail-panel-width": `${slotWidth}px` } as CSSProperties}
     >
-      <div
-        className="right-rail-panel-slot"
-        style={{ "--right-rail-overlay-alpha": overlayAlpha / 100 } as CSSProperties}
-      >
+      <div className="right-rail-panel-slot">
         {hasPanel && (
           <div
             className="right-rail-resize-handle"

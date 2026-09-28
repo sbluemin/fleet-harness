@@ -177,8 +177,6 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--whatsnew-delay",
   // Right Rail TSX injects the current panel width.
   "--right-rail-panel-width",
-  // Right Rail TSX injects the user-selected overlay opacity.
-  "--right-rail-overlay-alpha",
   // Right Rail TSX injects the continuous opacity slider's filled-track percentage.
   "--slider-fill",
   // Repository Rail TSX injects the user-resized workspace tree width.
@@ -2008,23 +2006,21 @@ describe("Instrument core design contract", () => {
     expect(rail).not.toContain(".right-rail.is-switching");
     expect(rail).toMatch(/\.right-rail \{[^}]*position: absolute;/);
     expect(rail).toMatch(/\.right-rail \{[^}]*border-radius: var\(--radius-md\);/);
-    // Doctrine: the slot ::before composites its glass layers over the
-    // --glass-underlay channel — its default is the old opaque var(--ink-deep), so with the
-    // liquid glass gate closed the slider's 100% endpoint stays fully opaque, and with the
-    // gate open the same channel turns transparent under backdrop blur.
-    expect(rail).toMatch(/\.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
-    // Doctrine: keep both WebKit and Firefox track styling so the continuous
-    // opacity control communicates its filled range in either engine. The recipe is shared -
-    // the rail's opacity and the Settings fade strength are one control grammar. The control
-    // itself lives in the settings pane (Appearance > Rail panels) — the old gear menu is
-    // dismantled and the rail keeps only its own layout.
+    // Doctrine: tool panels never wear liquid glass. The slot ::before is one opaque
+    // --surface-panel sheet in every theme and glass state — no backdrop blur, no glass tints,
+    // no user opacity knob — so the canvas never shows through a tool panel.
+    const slotMaterial = rail.match(/\.right-rail-panel-slot::before \{[^}]*\}/)?.[0] ?? "";
+    expect(slotMaterial).toContain("background: var(--surface-panel);");
+    expect(slotMaterial).not.toMatch(/backdrop-filter|--glass-|opacity:/);
+    // Doctrine: keep both WebKit and Firefox track styling so continuous controls
+    // (Settings fade strength, side bar material) communicate their filled range in either engine.
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
     // 연속값은 SDK 슬라이더 한 문법이다 — 코어 전용 슬라이더 클래스가 되살아나면 두 모양이 된다.
     expect(settingsPane).toContain("<SettingsSlider");
     expect(source("styles/components.css")).not.toContain(".settings-slider-field");
-    expect(settingsPane).toContain("setRailOverlayAlpha");
-    // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드라
-    // 남는 취향은 카드 불투명도 하나다.
+    // 도구 패널 카드는 불투명 한 재질이라 불투명도 손잡이가 없다 — 되살아나면 비치는 도구 패널이 돌아온다.
+    expect(settingsPane).not.toContain("setRailOverlayAlpha");
+    // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드다.
     expect(settingsPane).not.toContain("toggleRailPanelBehavior");
     // 독점 상주 계약: 카드에는 패널 하나만 상주한다 — 단일 activeId가 고정 목록을 대체하고
     // 섹션 접기는 퇴역했다(안 볼 패널은 접는 게 아니라 닫거나 교체한다).

@@ -11,7 +11,7 @@
   --z-codex-side: 20;
 }
 
-/* 부유 유리 카드 — 캔버스 위에 뜬 카드다. "가리지 않는다"는 기대는 아레나 인셋(캔버스 기하가
+/* 부유 카드 — 캔버스 위에 뜬 카드다. "가리지 않는다"는 기대는 아레나 인셋(캔버스 기하가
    열린 카드 폭을 항상 제외)이 진다. 켜진 도구가 없으면 폭 0으로 걷히고 보이지 않는다. */
 .right-rail {
   position: absolute;
@@ -23,20 +23,19 @@
   width: var(--right-rail-panel-width, 0px);
   min-height: 0;
   z-index: var(--z-rail);
-  /* Glass 부유 카드 — 144df6c 이전 독립 ALERTS 도크의 함교 계기판 질감을 계승한다:
-     우상단 brass 코너 조명 + glass 본체, 부유 그림자, 단일 blur 레이어.
-     자식(panel-slot)은 표면을 갖지 않고 이 카드 위에 투명하게 얹힌다. */
+  /* 불투명 부유 카드 — 도구 패널은 리퀴드 글래스를 쓰지 않는다. 재질은 슬롯 ::before의
+     불투명 --surface-panel 한 장이고, 카드는 테두리와 부양 그림자만 진다.
+     자식(panel-slot)은 표면을 갖지 않고 이 카드 위에 얹힌다. */
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim);
   background: none;
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  box-shadow: var(--shadow-floating);
   overflow: hidden;
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
-   폭 전환으로 spring 펼침/접힘을 구현한다. 슬롯 재질은 알파 슬라이더가 조절하는 자체
-   ::before가 진다(구 overlay 변형의 판독성 계약을 기본으로 승격). */
+   폭 전환으로 spring 펼침/접힘을 구현한다. 슬롯 재질은 자체 ::before가 진다. */
 .right-rail-panel-slot {
   position: relative;
   width: 0;
@@ -57,21 +56,10 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  /* maritime/carbon 테마의 --surface-glass-strong은 78~80% 알파의 반투명 토큰이라 glass 층만으로는
-     알파 100에서도 Map이 비쳐 보인다. 최하단에 불투명 --ink-deep 언더레이를 깔아 슬라이더
-     최대값 100=완전 불투명을 보장하고, glass 믹스의 제2 성분이 이미 --ink-deep이므로 색조는 유지된다.
-     감쇠는 ::before 전체 opacity로만 적용되어 슬라이더 수치(40–100%)가 실제 불투명도와 일치한다. */
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--glass-tint-strong) 92%, var(--ink-deep)),
-      color-mix(in oklch, var(--glass-tint-strong) 92%, var(--ink-deep))
-    ),
-    var(--glass-underlay);
-  /* 구 overlay 슬롯의 판독성 계약 그대로 — blur가 빠지면 다크 유리에서 뒤 캔버스의 글자·격자가
-     54% 틴트를 생으로 관통해 패널 본문과 겹친다(적대 리뷰 확정). */
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
-  opacity: var(--right-rail-overlay-alpha, 1);
+  /* 도구 패널의 한 재질 — Objectives가 정한 패널 면(--surface-panel)이다. 글래스 게이트·테마와
+     무관하게 불투명이라 뒤 캔버스가 비치지 않고, 모든 도구·설정 페인이 같은 면 위에 선다.
+     옛 불투명도 슬라이더(--right-rail-overlay-alpha)와 backdrop blur는 퇴역했다. */
+  background: var(--surface-panel);
   pointer-events: none;
 }
 
