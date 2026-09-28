@@ -194,7 +194,7 @@
   border: 1px solid var(--brass);
   border-radius: var(--radius-pill);
   background: var(--ink-abyss);
-  color: var(--brass);
+  color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   font-variant-numeric: tabular-nums;
