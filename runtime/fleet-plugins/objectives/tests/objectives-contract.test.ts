@@ -624,6 +624,9 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual(["one"]);
     expect(events.at(-1)).toMatchObject({ op: "upsert", objectiveId: "one", order: ["three", "one", "two"] });
     expect(order(reload())).toEqual(["three", "one", "two"]);
+    // 순서 이동은 사람이 목표로 다룬다는 뜻이 아니다 — 레코드가 된 뒤 임무가 붙어도 「목표 밖」에 남는다(구상·개시만 올린다).
+    store.missionAdd("one", { text: "x" }, { by: "human" });
+    expect(reload().find("one")).toMatchObject({ enlisted: false });
 
     // 첫 편집도 지금 자리를 그대로 받는다(레코드가 되면서 튀지 않는다) — 바뀐 줄은 방송에 실린다.
     store.patch("two", { note: "b" });

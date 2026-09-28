@@ -269,7 +269,8 @@ const idFraction = (id: string): number => {
 const virtualRank = (node: Pick<OperationNode, "id" | "ts">): number => -(node.ts.createdAt + idFraction(node.id));
 
 /** 따로 만든 Operation 처럼 아직 목표 고유값이 없는 목표 — 저장하지 않고, 첫 편집 때 지금 자리를 그대로 받아 레코드가 된다. */
-const bareRecord = (operationId: string): StoredObjective => ({ operationId, rank: 0, note: "", missions: [] });
+// 레코드 없는 목표(따로 만든 세션)의 빈 모양 — 순서 이동·재배치처럼 update 를 거치지 않고 이것으로 파일을 세우는 길도 「목표 밖」으로 남긴다.
+const bareRecord = (operationId: string): StoredObjective => ({ operationId, rank: 0, note: "", enlisted: false, missions: [] });
 /** 목표가 되는 Operation — Console 이 띄우는 에이전트 세션(플러그인 소유 Operation 은 아니다). */
 /** 보드가 지은 지휘관 세션 이름(`launch.ts` 의 commanderSession) — 옛 레코드의 「보드에서 만든 목표」 판정에만 쓴다. */
 const BOARD_COMMANDER_SESSION = /^objective-[0-9a-f]{6}-cmdr$/;
