@@ -482,8 +482,11 @@ async function boot(): Promise<void> {
       await withinMs(local.loadURL(`${home}/console/`), LOCAL_RELOAD_TIMEOUT_MS, "local_console_reload_timeout");
       if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) throw new Error("local_console_document_unavailable");
     }
-    // 덮개의 "호스트 관리"처럼 로컬 콘솔 안의 화면을 정해 돌아온 경우, 확인된 로컬 문서를 그 화면으로 옮긴 뒤에 권한을 돌려준다.
-    if (url !== undefined && url !== local.getURL() && isAllowedConsoleUrl(url, home)) {
+    /**
+     * 덮개의 "호스트 관리"처럼 로컬 콘솔 안의 화면을 정해 돌아온 경우, 확인된 로컬 문서를 그 화면으로 옮긴 뒤에 권한을 돌려준다.
+     * 덮개의 로컬 줄은 콘솔 입구(`/console/`)만 실어 오므로 옮기지 않는다 — 뒤에 둔 화면이 다시 적재되지 않고 그대로 이어진다.
+     */
+    if (url !== undefined && url !== local.getURL() && isAllowedConsoleUrl(url, home) && !isConsoleEntryUrl(url)) {
       if (!attempt.isCurrent()) return;
       await withinMs(local.loadURL(url), LOCAL_RELOAD_TIMEOUT_MS, "local_console_reload_timeout");
       if (local.isDestroyed() || local.isCrashed() || !isAllowedConsoleUrl(local.getURL(), home)) throw new Error("local_console_document_unavailable");
@@ -918,6 +921,16 @@ function withinMs<T>(work: Promise<T>, ms: number, code: string): Promise<T> {
 }
 
 /** 원격이 끝나 로컬로 돌아왔을 때의 한 줄. 회수와 만료는 셸이 가를 수 없으므로 끝났다는 사실만 말한다. */
+/** 콘솔 입구 주소인가 — 특정 화면을 가리키지 않는다(화면 모드 쿼리나 표현 상태 fragment는 실을 수 있다). */
+function isConsoleEntryUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname === "/console/" || parsed.pathname === "/console";
+  } catch {
+    return false;
+  }
+}
+
 function describeDisconnect(reason: DisconnectReason): string {
   if (reason === "local_unavailable") return "Screen capture, window commands, and browser control stay off until this computer's console answers again. Choose Return to This Computer to try again.";
   if (reason === "crashed") return "The other console's page stopped responding, so this window returned to this computer's console.";
