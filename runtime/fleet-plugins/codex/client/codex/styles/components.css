@@ -2911,7 +2911,7 @@ button.chip:focus-visible {
   gap: var(--space-1);
   border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--surface-rim));
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--brass) 10%, var(--surface-panel-raised));
+  background: color-mix(in oklch, var(--brass) 4%, var(--surface-panel-raised));
   color: var(--text-primary);
   cursor: pointer;
   font-family: var(--font-body);

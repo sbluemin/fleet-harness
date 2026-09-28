@@ -499,7 +499,7 @@
 .global-settings-nav-item.is-active,
 .global-settings-nav-item[aria-pressed="true"] {
   border-color: transparent;
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  background: var(--control-wash);
   box-shadow: inset 2px 0 0 var(--brass);
 }
 
