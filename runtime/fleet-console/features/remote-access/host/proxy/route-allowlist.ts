@@ -65,6 +65,8 @@ export function resolveEpochRoute(method: string | undefined, rawUrl: string | u
     case "/api/v1/operations/groups": return theaterOnly() ? upstream("http") : { ok: false, status: 404 };
     case "/api/v1/operations/catalog": return none ? upstream("http") : { ok: false, status: 404 };
     case "/api/v1/operations/events": return theaterOnly() ? upstream("sse", OPERATIONS_STREAM_EVENTS) : { ok: false, status: 404 };
+    // 원격 기계의 Agent CLI 표시값(id·label·available·signedIn). 없으면 활동 축이 degraded로 접혀 거짓 경보가 선다.
+    case "/api/v1/agent/state":
     case "/api/v1/agent/sessions": return none ? upstream("http") : { ok: false, status: 404 };
     case "/api/v1/agent/events": return none ? upstream("sse", AGENT_STREAM_EVENTS) : { ok: false, status: 404 };
     default: break;
