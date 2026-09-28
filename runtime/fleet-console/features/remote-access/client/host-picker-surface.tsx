@@ -28,8 +28,14 @@ export function HostPickerScreen({ surface }: { readonly surface: HostPickerCont
     const root = rootRef.current;
     const panel = root?.querySelector<HTMLElement>(".host-switcher-panel") ?? null;
     if (anchor === null || root === null || panel === null) return;
+    /**
+     * 칩의 자리는 부른 콘솔의 CSS px로 오는데, 이 화면의 배율은 그 콘솔과 다를 수 있다(줌은 host마다
+     * 따로 저장된다). 두 뷰는 같은 창을 덮으므로 처음 잰 뷰포트 폭의 비가 곧 두 배율의 비다 — 한 번
+     * 재어 두고 창이 바뀌어도 그대로 쓴다. 줌이 바뀌면 셸이 이 덮개를 걷는다.
+     */
+    const scaled = scaleAnchor(anchor, window.innerWidth / anchor.viewportWidth);
     const place = () => {
-      const style = placePanel(anchor, panel.offsetWidth, window.innerWidth, window.innerHeight);
+      const style = placePanel(scaled, panel.offsetWidth, window.innerWidth, window.innerHeight);
       for (const [name, value] of Object.entries(style)) root.style.setProperty(name, value);
     };
     place();
@@ -48,6 +54,18 @@ export function HostPickerScreen({ surface }: { readonly surface: HostPickerCont
       <HostSwitcher picker={surface} />
     </div>
   );
+}
+
+function scaleAnchor(anchor: HostPickerAnchor, scale: number): HostPickerAnchor {
+  if (!Number.isFinite(scale) || scale <= 0 || scale === 1) return anchor;
+  return {
+    left: anchor.left * scale,
+    top: anchor.top * scale,
+    right: anchor.right * scale,
+    bottom: anchor.bottom * scale,
+    viewportWidth: anchor.viewportWidth * scale,
+    viewportHeight: anchor.viewportHeight * scale,
+  };
 }
 
 /**

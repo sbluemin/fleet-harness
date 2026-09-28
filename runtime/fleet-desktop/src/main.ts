@@ -413,7 +413,6 @@ async function boot(): Promise<void> {
     shell: () => window,
     confine: (contents) => confinePickerNavigation(contents, localConsoleOrigin ?? "", (url) => consoleTarget(url, localConsoleOrigin) !== null),
     attachBridge: (contents) => bridge.attachPicker(contents),
-    zoomFactor: () => window?.consoleContents.getZoomFactor() ?? 1,
     log: (message) => logger.error(message),
   });
   const entryLanguage = app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en";
@@ -573,9 +572,10 @@ async function boot(): Promise<void> {
     show: () => { void lifecycle.show(); },
     quit: () => { void lifecycle.quit(); },
     diagnostics: () => { void shell.openPath(path.join(app.getPath("userData"), "logs")); },
-    zoomIn: () => { controls.zoomIn(); refreshNativeChrome(); },
-    zoomOut: () => { controls.zoomOut(); refreshNativeChrome(); },
-    actualSize: () => { controls.actualSize(); refreshNativeChrome(); },
+    // 줌이 바뀌면 떠 있는 호스트 목록을 걷는다 — 판을 매단 칩이 어디로 갔는지는 아래 콘솔만 안다.
+    zoomIn: () => { picker.close(); controls.zoomIn(); refreshNativeChrome(); },
+    zoomOut: () => { picker.close(); controls.zoomOut(); refreshNativeChrome(); },
+    actualSize: () => { picker.close(); controls.actualSize(); refreshNativeChrome(); },
     reloadConsole: () => controls.reloadConsole(),
     consoleReady: () => controls.consoleReady(),
     updates,

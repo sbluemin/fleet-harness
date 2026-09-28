@@ -61,8 +61,8 @@ const PICKER_ANCHOR_PARAM = "anchor";
 const PICKER_ANCHOR_LIMIT = 100_000;
 
 /**
- * 목록을 부른 칩의 자리 — 부른 콘솔의 뷰포트 CSS px. 덮개는 창 전체를 덮으므로 같은 좌표계다
- * (셸이 덮개의 줌을 아래 콘솔에 맞춘다).
+ * 목록을 부른 칩의 자리 — 부른 콘솔의 뷰포트 CSS px. 덮개는 창 전체를 덮으므로 배율만 다를 뿐 같은
+ * 자리를 가리키고, 그 배율 차이는 덮개가 뷰포트 폭의 비로 되돌린다.
  */
 export interface HostPickerAnchor {
   readonly left: number;
