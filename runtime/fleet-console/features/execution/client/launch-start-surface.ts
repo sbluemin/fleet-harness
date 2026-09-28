@@ -2,8 +2,8 @@
  * 우클릭 런치 메뉴가 여는 시작 표면 — 터미널이냐 채팅이냐.
  *
  * **Quick Launch의 `view`와 일부러 갈라 둔 값이다.** 두 입구는 같은 것을 실행하지만 서로 다른
- * 습관에 속한다: 컴포저는 문장을 먼저 쓰고 보내는 자리라 대화가 기본이 되기 쉽고, 메뉴는
- * 캔버스 위 좌표를 찍어 띄우는 자리다. 한쪽에서의 한 번이 다른 쪽 기본을 바꾸면, 사용자는
+ * 습관에 속한다: 컴포저는 문장을 먼저 쓰고 보내는 자리이고, 메뉴는
+ * 캔버스 위 좌표를 찍어 띄우는 자리라 쓰는 손이 다르다. 두 입구의 기본은 채팅이다. 한쪽에서의 한 번이 다른 쪽 기본을 바꾸면, 사용자는
  * 자기가 건드리지 않은 문이 바뀐 것을 발사한 뒤에야 알게 된다. 그래서 기억은 둘이고,
  * 어긋남은 각 표면이 **자기 표식을 상시 세워** 갚는다(숨은 모드 금지).
  *
@@ -20,12 +20,12 @@ import type { OperationLaunchView } from "@fleet-console/sdk/operations";
 
 const STORAGE_KEY = "fleet-console.launchMenu.startSurface";
 
-/** 기억이 없거나 읽을 수 없을 때의 표면. 기본은 기억이 아니라 계약이 정한다. */
-export const DEFAULT_LAUNCH_START_SURFACE: OperationLaunchView = "terminal";
+/** 기억이 없거나 읽을 수 없을 때의 표면. 기본은 채팅이며, 기억이 아니라 계약이 정한다. */
+export const DEFAULT_LAUNCH_START_SURFACE: OperationLaunchView = "chat";
 
 export function readLaunchStartSurface(): OperationLaunchView {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === "chat" ? "chat" : DEFAULT_LAUNCH_START_SURFACE;
+    return window.localStorage.getItem(STORAGE_KEY) === "terminal" ? "terminal" : DEFAULT_LAUNCH_START_SURFACE;
   } catch {
     // 스토리지 차단(사생활 보호 모드)은 "기억 없음"과 같은 상태다.
     return DEFAULT_LAUNCH_START_SURFACE;
