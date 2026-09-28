@@ -414,6 +414,12 @@ describe("triage store", () => {
     expect(resolveTriageQueue(operations, after, 2_000)[0]?.operation.id).toBe("arriving");
     expect(getTriageMapHeldStageId()).toBe("staged");
     expect(getTriageMapHeldQueueIds()).toEqual(["arriving"]);
+    // 층이 열린 뒤 처음 보인 Operation이 이미 대기여도(재연결 수화처럼) 보류에 든다 — 층을 열기 전부터 있던 것만 뺀다.
+    const late = operation("late", 4, "theater-b");
+    const afterLate: Readonly<Record<string, OperationRuntimeState>> = { ...after, late: { lifecycle: "live", activity: "awaiting" } };
+    setConsoleState({ operations: [...operations, late], operationRuntime: afterLate });
+    recordTriageActivity([...operations, late], afterLate, 2_050);
+    expect(getTriageMapHeldQueueIds()).toEqual(["arriving", "late"]);
 
     // 닫으면 같은 무대와 치워둠으로 돌아온다 — 앞줄에 든 새 대기가 닫는 순간 무대를 가로채지 않는다.
     closeTriageMap();

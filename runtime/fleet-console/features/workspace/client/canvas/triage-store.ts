@@ -741,7 +741,9 @@ export function recordTriageActivity(
     } else if (activeAwaitingClaimId === operation.id && !waiting) {
       activeAwaitingClaimId = null;
     }
-    if (triageActive && triageMapOpen && previousWaiting === false && waiting && !dismissed.has(operation.id)) {
+    // 층을 열기 전부터 있던 Operation은 모두 기준값이 있다 — 기준값이 없는 것은 층이 열린 뒤 처음 보인 것이라
+    // (재연결 수화처럼) 처음부터 대기여도 새 대기로 보류한다.
+    if (triageActive && triageMapOpen && previousWaiting !== true && waiting && !dismissed.has(operation.id)) {
       triageMapHeldArrivals.add(operation.id);
     } else if (!waiting) {
       triageMapHeldArrivals.delete(operation.id);
