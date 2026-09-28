@@ -76,7 +76,12 @@ export function publishTriageStage(operationId: string | null): void {
   // 복귀 무대 표식은 그 무대가 서 있는 동안만 산다 — 무대가 다른 건으로 바뀌면 보통의 순서로 돌아간다.
   if (triageReturnStageId !== null && operationId !== triageReturnStageId) triageReturnStageId = null;
   if (stagedOperationId === operationId) return;
+  const stageEmptied = operationId === null && stagedOperationId !== null;
   stagedOperationId = operationId;
+  if (stageEmptied && triageMapResumeAfterStage && triageActive && !triageMapOpen) {
+    openTriageMap();
+    return;
+  }
   emitTriage();
 }
 export function useTriageStage(): string | null {
@@ -97,6 +102,9 @@ const triageMapWaitingAtOpen = new Set<string>();
 let triageReturnStageId: string | null = null;
 // 덱이 한 화면을 넘는가 — 지도를 저절로 열지 않고 Map 칩만 밝힌다. 덱이 재서 알린다.
 let triageDeckOverflowing = false;
+// 지목이 지도 층을 걷었는가 — 지목한 무대는 잠시 들른 곳이다. 무대가 비면(처리할 대기가 더 없으면) 사람은
+// 떠나온 지도로 돌아간다. 층을 사람이 직접 여닫거나 War Room을 떠나면 이 약속은 끝난다.
+let triageMapResumeAfterStage = false;
 
 export function isTriageMapOpen(): boolean {
   return triageActive && triageMapOpen;
@@ -123,6 +131,7 @@ export function getTriageMapHeldQueueIds(): readonly string[] {
 export function openTriageMap(): void {
   if (!triageActive || triageMapOpen) return;
   clearTriageSetAsideArm();
+  triageMapResumeAfterStage = false;
   triageMapOpen = true;
   triageMapHeldStageId = stagedOperationId;
   triageReturnStageId = null;
@@ -374,6 +383,7 @@ export function setTriageActive(active: boolean, animate = true): void {
   triageActive = false;
   stagedOperationId = null;
   triageMapOpen = false;
+  triageMapResumeAfterStage = false;
   triageMapHeldStageId = null;
   triageMapHeldArrivals.clear();
   triageMapWaitingAtOpen.clear();
@@ -541,9 +551,10 @@ export function recordTriageStageTheater(theaterId: string): void {
 export function pickTriageOperation(operationId: string): void {
   clearTriageSetAsideArm();
   triageReturnStageId = null;
-  // 지목은 그 Operation을 무대에서 보겠다는 뜻이다 — 지도 층은 걷히고 지목한 무대가 선다.
+  // 지목은 그 Operation을 무대에서 보겠다는 뜻이다 — 지도 층은 걷히고 지목한 무대가 선다. 무대가 비면 층이 돌아온다.
   if (triageMapOpen) {
     triageMapOpen = false;
+    triageMapResumeAfterStage = true;
     triageMapHeldStageId = null;
     triageMapHeldArrivals.clear();
     triageMapWaitingAtOpen.clear();

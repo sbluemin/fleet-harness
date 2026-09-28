@@ -43,7 +43,7 @@ import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operation
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { companionSlotWeightsFor, COMPANION_CRAMPED_SLOT_RATIO, COMPANION_KEYBOARD_STEP_PX, COMPANION_MIN_SLOT_PX, COMPANION_SESSION_SLOT_ID, COMPANION_SLOT_GAP_PX, resetCompanionSlotWeights, resolveCompanionSlotWidths, setCompanionSlotWeights, useCompanionSlotWeights } from "./companion-widths.js";
-import { disarmTriageSetAside, dismissTriageOperation, getTriageMapHeldStageId, useTriageMapOpen, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, publishTriageStage, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, setTriageDecisionRoots, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, getTriageMapHeldStageId, useTriageMapOpen, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageMapOpen, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, publishTriageStage, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, setTriageDecisionRoots, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 // 모드 전환 제목(킥커·제목·설명)이 서 있는 길이. 패널 glide(--duration-slow + 슬롯 stagger)와
 // 제목의 낱말 진입·퇴장이 모두 이 안에서 끝난다 — CSS의 mode-title 키프레임 길이와 같은 값.
@@ -782,8 +782,9 @@ export function OperationsCanvas({
           });
         }
       }
-    } else if (previousStageId && triageDeckOperations.length > 0 && !triageEntering && !triageMapOpen) {
-      // 지도 층이 열린 동안 무대가 걷히면 돌아갈 칸이 층 아래에 숨어 있다 — 날리지 않는다.
+    } else if (previousStageId && triageDeckOperations.length > 0 && !triageEntering && !isTriageMapOpen()) {
+      // 지도 층이 열린 동안 무대가 걷히면 돌아갈 칸이 층 아래에 숨어 있다 — 날리지 않는다. 무대가 비며 층이
+      // 막 돌아온 경우도 같아, 렌더 시점 값이 아니라 지금 상태를 본다.
       const from = triageStageRectRef.current.get(previousStageId) ?? null;
       if (from) {
         window.requestAnimationFrame(() => {
