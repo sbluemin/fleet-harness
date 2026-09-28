@@ -74,8 +74,8 @@ const PICKER_SURFACE_PARAM = "desktop-surface";
 const PICKER_SURFACE_OPEN = "host-picker";
 const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
 /** 전환 직전 화면 모드. Console이 새 문서에서 읽고 지운다(zen-mode.ts). */
-const MODE_PARAM = "mode";
-const MODE_ZEN = "zen";
+const MODE_PARAM = "fleet-zen";
+const MODE_ZEN = "1";
 
 export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   const localFetch = deps.localFetch ?? globalThis.fetch;
@@ -102,7 +102,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   /**
    * `url`은 루프백 콘솔로 갈 때만 그대로 쓰인다 — 그 콘솔 안의 어느 화면을 열지까지 정해져 온 경우다
    * (덮개의 "호스트 관리"가 그렇다). 원격은 핸드오프가 돌려준 origin의 `/console/`로만 가고,
-   * 전환 직전 화면 모드(`mode=zen`)만 옮겨 싣는다.
+   * 전환 직전 화면 모드(`fleet-zen=1`)만 옮겨 싣는다.
    */
   async function open(origin: string, url?: string): Promise<void> {
     // 집으로 돌아가는 길에는 핀도 자격도 필요 없다 — 루프백은 언제나 허용된 origin이다.

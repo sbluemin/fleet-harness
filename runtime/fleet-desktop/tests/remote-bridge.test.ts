@@ -222,8 +222,8 @@ describe("host picker surface", () => {
   it("carries only the Zen mode into a remote console, not the requesting page's path or query", async () => {
     const harness = createHarness();
 
-    await harness.bridge.open(REMOTE, `${REMOTE}/console/settings?mode=zen&section=remote-access`);
+    await harness.bridge.open(REMOTE, `${REMOTE}/console/settings?fleet-zen=1&section=remote-access`);
 
-    expect(harness.trace).toContain(`load:${REMOTE}/console/?mode=zen`);
+    expect(harness.trace).toContain(`load:${REMOTE}/console/?fleet-zen=1`);
   });
 });
