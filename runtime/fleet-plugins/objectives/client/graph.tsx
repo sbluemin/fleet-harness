@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSP
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { isLoose, missionReady, unseenRecords, wouldCycle, type Objective, type ObjectiveMission } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { graphLayout, type Point } from "./graph-layout.js";
+import { graphLayout, stretchLayout, type GraphLayout, type Point } from "./graph-layout.js";
 import { GraphPopup } from "./graph-popup.js";
 import { usePointerDrag } from "./pointer-drag.js";
 import "./graph.css";
@@ -35,6 +35,26 @@ interface GraphProps {
   reveal?: { id: string; at: number } | null; zoom?: boolean; suspended?: boolean;
   /** 확대 전용 — 그래프가 스크롤 없이 들어가는 확대 카드의 폭(border-box). */
   onFitWidth?: (width: number) => void;
+}
+/** 배치 폭 구간 — 레일·사이드바를 끄는 동안 폭은 매 프레임 바뀐다. 이름 자리 찾기는 구간이 바뀔 때만 하고 구간 안의 차이는 열 간격으로 채운다. */
+const LAYOUT_STEP = 32;
+/** 이름 폭 재기 — 캔버스 하나를 모든 그래프가 나눠 쓰고 같은 글꼴·글자는 한 번만 잰다(줄임표 자리를 찾느라 글자마다 잰다). */
+let measureContext: CanvasRenderingContext2D | null | undefined;
+let measureFont = "";
+const measured = new Map<string, number>();
+function textMeasure(font: string, wide: boolean): (text: string) => number {
+  if (measureContext === undefined) measureContext = document.createElement("canvas").getContext("2d");
+  return (text) => {
+    const key = `${font}\n${text}`;
+    let width = measured.get(key);
+    if (width === undefined) {
+      if (measureContext) { if (measureFont !== font) { measureContext.font = font; measureFont = font; } width = measureContext.measureText(text).width; }
+      else width = [...text].length * (wide ? 12 : 11);
+      if (measured.size >= 20000) measured.clear();
+      measured.set(key, width);
+    }
+    return width;
+  };
 }
 /** 확대 카드의 기본 폭 — 그래프가 이보다 넓어야 할 때만 화면 폭까지 넓힌다. */
 const ZOOM_BASE = 940;
@@ -79,15 +99,22 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     return () => observer.disconnect();
   }, [zoom]);
   const loose = objective.missions.filter(isLoose);
+  // 배치는 폭(구간)별로 담아 둔다 — 임무·글꼴이 바뀌면 통째로 비운다. 끄는 동안 오가는 폭은 담아 둔 배치를 다시 쓴다.
+  const layouts = useMemo(() => new Map<number, GraphLayout>(), [objective.missions, wide, font, fontEpoch, t]);
   const layout = useMemo(() => {
-    const context = document.createElement("canvas").getContext("2d");
-    if (context) context.font = font;
-    const measure = (s: string) => context?.measureText(s).width ?? [...s].length * (wide ? 12 : 11);
-    const run = (w: number) => graphLayout(objective.missions.filter(m => !isLoose(m)), w, wide, measure, t("objectives.graph.commander"));
-    if (!zoom || !fit) return run(width);
+    const run = (w: number) => {
+      let hit = layouts.get(w);
+      if (!hit) {
+        if (layouts.size >= 24) layouts.clear();
+        hit = graphLayout(objective.missions.filter(m => !isLoose(m)), w, wide, textMeasure(font, wide), t("objectives.graph.commander"));
+        layouts.set(w, hit);
+      }
+      return hit;
+    };
+    if (!zoom || !fit) return stretchLayout(run(width < LAYOUT_STEP ? width : Math.floor(width / LAYOUT_STEP) * LAYOUT_STEP), width);
     const first = run(fit.base);
     return first.width > fit.base && fit.w > fit.base ? run(Math.min(first.width, fit.w)) : first;
-  }, [objective.missions, width, wide, font, fontEpoch, t, zoom, fit]);
+  }, [layouts, objective.missions, width, wide, font, t, zoom, fit]);
   const scale = zoom && fit ? Math.max(ZOOM_MIN_SCALE, Math.min(1, fit.w / layout.width, fit.h / layout.height)) : 1;
   const fitWidth = zoom && fit ? Math.ceil(Math.min(fit.w, Math.max(fit.base, layout.width * scale)) + fit.chromeX) : null;
   const onFitWidthRef = useRef(onFitWidth); onFitWidthRef.current = onFitWidth;

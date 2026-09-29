@@ -105,3 +105,24 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
   for (const e of edges) Object.assign(e, edgeGeometry({ x: e.points[0]!.x, y: e.points[0]!.y + dy }, { x: e.points[59]!.x, y: e.points[59]!.y + dy }));
   return { width: canvasWidth, height: Math.round(maxY + dy + 4), g, pos, root, rootLabel, edges, labels: best.labels, colW, cols };
 }
+
+export type GraphLayout = ReturnType<typeof graphLayout>;
+
+/**
+ * 배치한 폭보다 넓은 칸을 열 간격만 늘려 채운다 — 이름 자리 찾기는 다시 하지 않는다. 노드와 이름은 제 열의 몫만큼 함께 옮기고
+ * (간격이 넓어지기만 하므로 새 겹침이 없다) 선만 다시 긋는다. 한 열 그래프는 가운데를 따라 옮긴다.
+ */
+export function stretchLayout(layout: GraphLayout, width: number): GraphLayout {
+  const extra = width - layout.width;
+  if (extra < 1) return layout;
+  const { g, cols, root } = layout;
+  const colW = cols > 1 ? layout.colW + extra / (cols - 1) : 0;
+  const shift = (col: number) => cols > 1 ? col * (colW - layout.colW) : extra / 2;
+  const pos = new Map([...layout.pos].map(([id, p]) => [id, { ...p, x: p.x + shift(p.col) }]));
+  const labels = new Map([...layout.labels].map(([id, label]) => [id, { ...label, x: label.x + shift(layout.pos.get(id)!.col) }]));
+  const edges = layout.edges.map(e => {
+    const p = pos.get(e.to)!, q = e.from ? pos.get(e.from)! : null;
+    return { ...e, ...edgeGeometry(q ? { x: q.x + g.r + 1, y: q.y } : { x: root.x + 6, y: root.y }, { x: p.x - g.r - 1, y: p.y }) };
+  });
+  return { ...layout, width, colW, pos, labels, edges };
+}

@@ -12,3 +12,7 @@ branch: objectives-mission-list
   ko: 목표의 세 칸 화면에서 목표 목록을 접어 상세를 넓게 볼 수 있습니다. 접은 뒤에는 상세의 뒤로가기 버튼이 목록을 다시 펼칩니다.
 - Drag an empty area of the mission graph to move around a wide graph, in place of the scrollbar.
   ko: 넓은 임무 그래프는 스크롤바 대신 빈 곳을 끌어 이리저리 옮겨 볼 수 있습니다.
+
+#### Fixed
+- Resizing the side bar or the right rail no longer stutters or piles up memory while an objective's mission graph is on screen.
+  ko: 임무 그래프가 보이는 동안 사이드바나 오른쪽 레일 폭을 끌어도 더 이상 버벅이거나 메모리가 쌓이지 않습니다.
