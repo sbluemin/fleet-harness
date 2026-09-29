@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { ObjectiveResult, StoredEvidence } from "./results.js";
-import type { MemberRating, RoleCuration } from "./roles.js";
 export type { ObjectiveResult, PrObservation } from "./results.js";
 
 /**
@@ -250,7 +249,7 @@ export interface Retrospective {
  * 모든 임무와 기준이 끝난 동안에만 유효하다: 그 조건이 깨지는 변경(임무 추가·재개, 기준 표시 해제 등)은 기록도 거둔다.
  */
 export type StoredHandoff =
-  | { readonly by: "commander"; readonly at: number; readonly retrospective: Retrospective; readonly ratings?: readonly MemberRating[] }
+  | { readonly by: "commander"; readonly at: number; readonly retrospective: Retrospective }
   | { readonly by: "human"; readonly at: number };
 
 export interface DecisionOption {
@@ -528,8 +527,6 @@ export interface ObjectiveHandoff {
   readonly by: StoredHandoff["by"];
   readonly at: number;
   readonly retrospective: Retrospective | null;
-  /** 지휘관이 인계 때 남긴 구성원별 평가 — 없으면 빈 배열. */
-  readonly ratings: readonly MemberRating[];
 }
 
 export interface ObjectiveFollowupEvidenceView {
@@ -870,12 +867,6 @@ export type PlanInput = z.output<typeof planSchema>;
 
 /** 브라우저·Console Use 양쪽으로 나가는 사건 프레임. */
 export const OBJECTIVE_CHANNEL = "objectives:objective";
-/** Theater 의 역할 정리가 바뀌었다 — 받는 쪽은 그 Theater 의 정리를 갈아 끼운다. */
-export interface RoleCurationEvent {
-  readonly op: "roles";
-  readonly theaterId: string;
-  readonly roles: RoleCuration;
-}
 
 export interface ObjectiveEvent {
   readonly op: "upsert" | "remove";

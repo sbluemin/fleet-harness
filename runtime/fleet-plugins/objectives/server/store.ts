@@ -7,7 +7,6 @@ import { readOperationLaunch, type OperationNode, type OperationDescription } fr
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
 import { checkedResultInput, patchedResultInput, prTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
-import { curate, EMPTY_CURATION, parseCuration, ROLES_FILE, type MemberRating, type RoleCurateInput, type RoleCuration } from "./roles.js";
 import {
   MAX_CRITERIA,
   MAX_CRITERION_TEXT,
@@ -35,7 +34,6 @@ import {
   type ObjectiveEditKind,
   type Objective,
   type ObjectiveEvent,
-  type RoleCurationEvent,
   OBJECTIVE_FILE,
   type MemberLaunch,
   type StoredMember,
@@ -97,8 +95,6 @@ export interface ObjectiveStoreOptions {
   readonly theaterIds?: () => readonly string[];
   readonly operations: { get(id: string): OperationNode | null; list(): readonly OperationNode[]; describe?(id: string): OperationDescription | null };
   readonly emit: (event: ObjectiveEvent) => void;
-  /** 역할 정리의 방송 — 목표 사건과 따로 간다. */
-  readonly emitRoles?: (event: RoleCurationEvent) => void;
   readonly now?: () => number;
 }
 
@@ -190,11 +186,7 @@ export interface ObjectiveStore {
   operationIntent(objectiveId: string): StoredObjective["operationIntent"];
   acknowledgeOperationIntent(objectiveId: string, requestId: string): void;
   /** 인계 대기의 목표를 검토 대기로 넘긴다 — 인계 기록을 남긴다. 지휘관은 회고와 함께, 사람은 회고 없이. */
-  handOff(objectiveId: string, input: { readonly by: "commander"; readonly retrospective: Retrospective; readonly ratings?: readonly MemberRating[] } | { readonly by: "human" }): Objective;
-  /** Theater 의 역할 정리(숨김·합침) — 파일이 없거나 Theater 경로를 모르면 빈 정리. */
-  roleCuration(theaterId: string): RoleCuration;
-  /** 역할 정리 한 건 — 합침이 고리를 만들면 role_merge_cycle, 한도를 넘으면 role_curation_full. */
-  roleCurate(theaterId: string, input: RoleCurateInput): RoleCuration;
+  handOff(objectiveId: string, input: { readonly by: "commander"; readonly retrospective: Retrospective } | { readonly by: "human" }): Objective;
   /** `unplaced` — 사람이 선행 없이 더한 임무는 미분류로 들어간다(지휘관이 자리를 잡는다). */
   missionAdd(objectiveId: string, input: MissionAddInput, options?: { readonly unplaced?: boolean; readonly by?: "human" }): Objective;
   missionPatch(objectiveId: string, missionId: string, input: MissionPatchInput, options?: { readonly by?: "human" }): Objective;
@@ -468,8 +460,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   };
   /** Theater 마다 목표 id → 레코드. 폴더를 처음 볼 때 한 번 읽어 올리고, 그 뒤로는 이 캐시가 저장소의 모양이다. */
   const cache = new Map<string, Map<string, StoredObjective>>();
-  /** Theater 마다 역할 정리 — 목표 폴더 바로 아래 `roles.json` 한 파일. 목표 디렉터리가 아니라 목표 목록에는 서지 않는다. */
-  const curations = new Map<string, RoleCuration>();
 
   const dirFor = (theaterId: string): string => {
     const dir = options.dirOf(theaterId);
@@ -578,7 +568,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       done: stored.done ?? null,
       awaitingHandoff: awaitingHandoff(stored),
       awaitingReview: awaitingReview(stored),
-      handoff: stored.handoff ? { by: stored.handoff.by, at: stored.handoff.at, retrospective: stored.handoff.by === "commander" ? stored.handoff.retrospective : null, ratings: stored.handoff.by === "commander" && Array.isArray(stored.handoff.ratings) ? stored.handoff.ratings : [] } : null,
+      handoff: stored.handoff ? { by: stored.handoff.by, at: stored.handoff.at, retrospective: stored.handoff.by === "commander" ? stored.handoff.retrospective : null } : null,
       criteria: (stored.criteria ?? []).map((criterion) => ({ ...criterion })),
       criteriaProposals: (stored.criteriaProposals ?? []).map((proposal) => ({ ...proposal })),
       members,
@@ -1104,38 +1094,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     acknowledgeOperationIntent(objectiveId, requestId) {
       update(objectiveId, (stored) => stored.operationIntent?.requestId === requestId ? { ...stored, operationIntent: undefined } : stored);
     },
-    roleCuration(theaterId) {
-      const cached = curations.get(theaterId);
-      if (cached) return cached;
-      const dir = options.dirOf(theaterId);
-      if (!dir) return EMPTY_CURATION;
-      let curation = EMPTY_CURATION;
-      const file = path.join(dir, ROLES_FILE);
-      try {
-        // 목표 폴더 밖을 가리키는 링크는 따라가지 않는다 — 없는 것으로 본다.
-        if (!fs.lstatSync(file).isSymbolicLink()) curation = parseCuration(JSON.parse(fs.readFileSync(file, "utf8")));
-      } catch (error) {
-        // 없는 파일은 빈 정리다. 읽을 수 없는 정리(깨진 JSON·디렉터리·권한)도 빈 정리로 보고 보드는 연다 — 정리는 사람이
-        // 다시 할 수 있는 화면 판단이고, 목표 목록까지 막을 이유가 아니다. 쓰기는 그 자리를 그대로 만나 실패를 알린다.
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.warn(`[objectives] roles_unreadable: ${(error as NodeJS.ErrnoException).code ?? "invalid"}`);
-      }
-      curations.set(theaterId, curation);
-      return curation;
-    },
-    roleCurate(theaterId, input) {
-      const next = curate(store.roleCuration(theaterId), input);
-      if (!next) throw new ObjectiveStoreError(input.kind === "merge" ? "role_merge_cycle" : "role_curation_full");
-      const dir = dirFor(theaterId);
-      fs.mkdirSync(dir, { recursive: true });
-      writeFileExclusive(containedFile(dir, ROLES_FILE), Buffer.from(`${JSON.stringify(next, null, 2)}\n`, "utf8"));
-      curations.set(theaterId, next);
-      options.emitRoles?.({ op: "roles", theaterId, roles: next });
-      return next;
-    },
     handOff: (objectiveId, input) => update(objectiveId, (stored) => {
       if (!awaitingHandoff(stored)) throw new ObjectiveStoreError("not_awaiting_handoff");
       const at = now();
-      return { ...stored, handoff: input.by === "commander" ? { by: "commander", at, retrospective: input.retrospective, ...(input.ratings?.length ? { ratings: input.ratings } : {}) } : { by: "human", at } };
+      return { ...stored, handoff: input.by === "commander" ? { by: "commander", at, retrospective: input.retrospective } : { by: "human", at } };
     }),
 
     missionAdd: (objectiveId, input, addOptions) => update(objectiveId, (stored) => {

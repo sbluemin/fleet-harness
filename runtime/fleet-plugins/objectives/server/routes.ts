@@ -9,7 +9,6 @@ import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.j
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { roleCurateSchema } from "./roles.js";
 import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type MissionPatchInput, type ObjectiveEditKind, type Objective } from "./types.js";
 
 /**
@@ -164,7 +163,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
   const only = (patch: Record<string, unknown>, keys: readonly string[]): boolean => Object.keys(patch).every((key) => keys.includes(key));
 
   return [
-    { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => { prStatus?.refresh(); return { objectives: store.list(theaterId), roles: store.roleCuration(theaterId), groups: groupsOf(theaterId), launch: launch.describe() }; }) },
+    { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => { prStatus?.refresh(); return { objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() }; }) },
     // 따로 만든 Operation 도 목표다 — 화면이 처음 보는 에이전트 Operation 을 목표 모양으로 받아 간다.
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표를 만들면 지휘관 Operation 이 dormant 로 함께 태어난다 — 깨우는 것은 「구상」·「시작」이다.
@@ -232,8 +231,6 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "decision/answer", method: "POST", summary: "Answer the Commander's current decision request: every question at once. The answers reach the Commander (waking it when idle or dormant); once delivered they stay as decisions and the request clears.", handler: json(decisionAnswersSchema.extend({ objectiveId: ids, language }), ({ objectiveId, language, requestId, answers }) => launch.answerDecision(objectiveId, { requestId, answers }, { language }).then(objective)) },
     { name: "commander/message", method: "POST", summary: "Send the person's words verbatim to the Commander or one member session; a member message is also quoted to the Commander in one line.", handler: json(objectiveRef.extend({ memberId: ids.nullable().optional(), text: z.string().trim().min(1).max(MAX_CONTEXT) }), ({ objectiveId, language, memberId, text }) => launch.message(objectiveId, memberId ?? null, text, { language })) },
     { name: "commander/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(objectiveRef.extend({ context }), ({ objectiveId, language, context: note }) => launch.steer(objectiveId, { language, context: note }).then(objective)) },
-    // 지난 역할의 정리 — 사람의 화면 판단이라 보드 편집(edited)이 아니고, 지휘관이 일하는 동안에도 받는다. 다음 구상부터 보인다.
-    { name: "roles/curate", method: "POST", summary: "Hide, show, merge or unmerge a past role of a Theater; the curation shapes the past roles later Commanders read.", handler: json(z.object({ theaterId: ids, language, action: roleCurateSchema }), ({ theaterId, action }) => ({ roles: store.roleCurate(theaterId, action) })) },
     { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();
       const hits = store.list(theaterId).filter((candidate) => !candidate.done && !candidate.removed && candidate.title.toLowerCase().includes(needle)).slice(0, limit ?? 20);
