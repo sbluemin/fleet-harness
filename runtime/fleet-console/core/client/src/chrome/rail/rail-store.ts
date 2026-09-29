@@ -14,8 +14,10 @@ interface RailStore {
   readonly panelSoloMaxWidth: number | null;
   readonly panelWidthReset: number;
   readonly overlayAlpha: RailOverlayAlpha;
-  /** 도구 패널 카드가 캔버스 위에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. */
+  /** 도구 패널 카드가 캔버스 위에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. 끄는 동안에도 매 프레임 따라간다. */
   readonly railOccupiedPx: number;
+  /** 끌기가 끝나 확정된 점유 폭(px). 끄는 동안에는 끌기 직전 값에 머문다. */
+  readonly railSettledPx: number;
 }
 
 export type RailOverlayAlpha = number;
@@ -40,6 +42,7 @@ let store: RailStore = {
   panelWidthReset: 0,
   overlayAlpha: readStoredOverlayAlpha(),
   railOccupiedPx: 0,
+  railSettledPx: 0,
 };
 try { localStorage.removeItem(LEGACY_PREFS_CHROME_EXPANDED); } catch { /* ignore */ }
 
@@ -50,6 +53,11 @@ export function subscribeRailStore(listener: Listener): () => void {
 
 export function getRailStoreSnapshot(): RailStore {
   return store;
+}
+
+// 구독은 필드 단위다 — 스냅숏 전체를 구독하면 레일 끌기가 매 픽셀 보고하는 점유 폭 하나에도 모든 구독자가 다시 그린다.
+function useRailStoreField<K extends keyof RailStore>(key: K): RailStore[K] {
+  return useSyncExternalStore(subscribeRailStore, () => store[key]);
 }
 
 /** 아이콘 클릭의 배타 토글 — 켜진 패널이면 닫고, 아니면 그 패널로 교체한다. */
@@ -101,38 +109,45 @@ export function resetRailPanelWidth(panelId: string): void {
 }
 
 export function useRailPanelWidthReset(): number {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelWidthReset;
+  return useRailStoreField("panelWidthReset");
 }
 
 export function useRailPanelSoloMaxWidth(): number | null {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelSoloMaxWidth;
+  return useRailStoreField("panelSoloMaxWidth");
 }
 
 export function useRailPanelSoloWidth(): number | null {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelSoloWidth;
+  return useRailStoreField("panelSoloWidth");
 }
 
-/** RightRail이 레이아웃 후 자기 점유 폭을 보고한다 — Operations 페이지의 아레나 계산 원료. */
-export function reportRailOccupiedPx(px: number): void {
+/** RightRail이 레이아웃 후 자기 점유 폭을 보고한다 — Operations 페이지의 아레나 계산 원료. 끄는 동안의 보고는 확정 폭을 옮기지 않는다. */
+export function reportRailOccupiedPx(px: number, settled: boolean): void {
   const normalized = Math.max(0, Math.round(px));
-  if (normalized === store.railOccupiedPx) return;
-  setStore({ ...store, railOccupiedPx: normalized });
+  const settledPx = settled ? normalized : store.railSettledPx;
+  if (normalized === store.railOccupiedPx && settledPx === store.railSettledPx) return;
+  setStore({ ...store, railOccupiedPx: normalized, railSettledPx: settledPx });
 }
 
 export function useRailActivePanelId(): string | null {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).activePanelId;
+  return useRailStoreField("activePanelId");
 }
 
 export function useRailPanelExtraWidth(): number {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).panelExtraWidth;
+  return useRailStoreField("panelExtraWidth");
 }
 
 export function useRailOverlayAlpha(): RailOverlayAlpha {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).overlayAlpha;
+  return useRailStoreField("overlayAlpha");
 }
 
-export function useRailOccupiedPx(): number {
-  return useSyncExternalStore(subscribeRailStore, getRailStoreSnapshot).railOccupiedPx;
+/** 확정된 점유 폭 — 끄는 동안 다시 그리지 않아도 되는 구독자(페이지 배치·fit-all 원료)의 값이다. */
+export function useRailSettledPx(): number {
+  return useRailStoreField("railSettledPx");
+}
+
+/** 끄는 중인 폭이 확정 폭에서 벗어난 양. `follow`가 꺼져 있으면 0에 머물러 끌기가 구독자를 다시 그리지 않는다. */
+export function useRailDragDeltaPx(follow: boolean): number {
+  return useSyncExternalStore(subscribeRailStore, () => (follow ? store.railOccupiedPx - store.railSettledPx : 0));
 }
 
 function activateRailPanel(id: string): void {

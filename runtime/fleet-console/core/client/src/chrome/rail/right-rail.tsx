@@ -58,7 +58,8 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
  * 같은 자리에 선다(Zen에서는 작업 표시줄 위까지). 도구 아이콘은 여기 없다: 콘솔 도구모음이 하나뿐인
  * 도구 줄이고(console-toolbar.tsx), 카드는 켜진 도구가 있을 때만 선다.
  */
-export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps) {
+// 부모(Operations)는 운영 상태가 바뀔 때마다 다시 그린다 — 받는 값이 그대로면 레일(과 열린 패널 본문)은 따라 그리지 않는다.
+export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps) {
   const t = useT();
   const connection = useSyncExternalStore(subscribe, () => getState().connection, () => "connecting" as const);
   const connectionLostAt = useSyncExternalStore(subscribe, () => getState().connectionLostAt, () => null);
@@ -153,8 +154,8 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
     ? Math.max(MIN_PANEL_WIDTH, Math.min(cardWidth + extraWidth, Math.max(MIN_PANEL_WIDTH, widthBudget)))
     : 0;
   useLayoutEffect(() => {
-    reportRailOccupiedPx(slotWidth);
-  }, [slotWidth]);
+    reportRailOccupiedPx(slotWidth, !isDragging);
+  }, [slotWidth, isDragging]);
 
   const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -288,7 +289,7 @@ export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps)
       </div>
     </div>
   );
-}
+});
 
 /** 레일 도구가 여는 표면의 공통 문맥 — 레일 카드와 Zen 탭이 같은 문맥으로 도구를 연다. 언어는 늘 정해져 있다. */
 export type RailToolContext = RailPanelContext & { readonly language: ConsoleLocale };

@@ -276,7 +276,9 @@ interface FollowDriver {
  * - 전환이 꺼진 경우(드래그 리사이즈·reduced motion)에만 목표 인셋이 즉시 선다.
  */
 function followDriverFor(card: HTMLElement): FollowDriver | null {
-  if (typeof card.getAnimations !== "function") return null;
+  // 드래그 리사이즈는 전환이 꺼져 있어 탈 것이 없다 — 매 픽셀 getAnimations()로 스타일을 확정하면 끌기 프레임마다
+  // 문서 스타일 계산을 한 번 더 강제한다.
+  if (card.dataset.resizing === "true" || typeof card.getAnimations !== "function") return null;
   // getAnimations()가 스타일을 확정하므로 이 커밋이 연 전환이 여기서 잡힌다 — 첫 프레임부터 따라간다.
   const moving = typeof CSSTransition === "undefined" ? [] : card.getAnimations().filter((animation): animation is CSSTransition => animation instanceof CSSTransition
     && CARD_MOTION_PROPERTIES.includes(animation.transitionProperty)

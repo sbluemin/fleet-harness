@@ -32,7 +32,7 @@ import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
 import { ZEN_TASKBAR_HEIGHT, ZenTaskbar } from "./zen/zen-taskbar.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
 import { sideBarOccupiedWidth, toggleSideBarStatusAxis, useSideBarState } from "./sidebar/operations-side-bar-store.js";
-import { useRailOccupiedPx } from "../../../core/client/src/chrome/rail/rail-store.js";
+import { useRailSettledPx } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-surface/layer.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
@@ -109,7 +109,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zenMode]);
   const sideBar = useSideBarState();
-  const railOccupiedPx = useRailOccupiedPx();
+  // 끄는 동안의 폭은 캔버스가 직접 따라간다 — 페이지는 확정 폭으로만 다시 그린다.
+  const railOccupiedPx = useRailSettledPx();
   const zenState = useZenModeState();
   const zenSideBarHidden = zenMode && !zenState.sideBarRevealed;
   const sideBarOccupiedPx = triageActive || zenSideBarHidden ? 0 : sideBarOccupiedWidth(sideBar);

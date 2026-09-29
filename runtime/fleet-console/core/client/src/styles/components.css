@@ -5896,6 +5896,9 @@ body[data-companion-resizing="true"] .canvas-operation {
    폭은 --side-bar-width CSS 변수(인라인 style)로 외부 제어, 리사이즈 핸들로 연속 조정.
 ═══════════════════════════════════════════════════════════════════════════════════ */
 
+/* 폭 변수는 카드 자신만 읽는다. 상속되면 폭을 끄는 매 프레임 카드 안 칩 전부가 스타일을 다시 계산한다. */
+@property --side-bar-width { syntax: "<length>"; inherits: false; initial-value: 0px; }
+
 /* 부유 유리 카드 — 전면 해도 개편으로 사이드바는 그리드 열이 아니라 캔버스 위에 뜬 카드다.
    z는 레일과 같은 --z-rail을 공유해 전면 캔버스(z:0 스택 컨텍스트) 위에 선다.
    유리는 자식 없는 ::before가 진다 — 루트 backdrop-filter는 containing block을 만들어

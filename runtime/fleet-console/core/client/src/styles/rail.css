@@ -11,6 +11,11 @@
   --z-codex-side: 20;
 }
 
+/* 카드 폭(--right-rail-panel-width)은 RightRail 인라인 스타일이 싣고 레일 끌기 동안 매 프레임 바뀐다. 상속되는
+   사용자 정의 속성이면 열린 패널 본문 전체가 픽셀마다 스타일을 다시 계산하므로, 아레나 인셋처럼 상속을 끄고
+   폭을 쓰는 슬롯에만 한 단계 물린다. */
+@property --right-rail-panel-width { syntax: "<length>"; inherits: false; initial-value: 0px; }
+
 /* 부유 유리 카드 — 캔버스 위에 뜬 카드다. "가리지 않는다"는 기대는 아레나 인셋(캔버스 기하가
    열린 카드 폭을 항상 제외)이 진다. 켜진 도구가 없으면 폭 0으로 걷히고 보이지 않는다. */
 .right-rail {
@@ -38,6 +43,7 @@
    폭 전환으로 spring 펼침/접힘을 구현한다. 슬롯 재질은 알파 슬라이더가 조절하는 자체
    ::before가 진다(구 overlay 변형의 판독성 계약을 기본으로 승격). */
 .right-rail-panel-slot {
+  --right-rail-panel-width: inherit;
   position: relative;
   width: 0;
   /* 요청 시점 클램프(rail-store) 이후 뷰포트가 줄어도 슬롯이 뷰포트를 넘지 않도록 렌더 시점 상한 — 드래그 클램프(148px 여유)와 동일 시맨틱 */
