@@ -319,19 +319,23 @@ describe("delegation assignment", () => {
   });
 
   it("proxies native Claude requests to Anthropic with caller credentials and without alias advertisement", async () => {
-    // 설치된 CLI의 표에는 구버전 명시 id도 섞여 온다. alias는 그중 최신으로만 풀려야 한다.
+    // Claude Code 2.1.284가 실제로 보고한 표 모양이다. Opus는 1M 좌표로만 오고 구버전 명시 id도 섞인다.
+    // alias는 그중 최신으로만 풀리고, API로 가는 id에는 1M 표식이 남지 않아야 한다.
+    const ladder = ["low", "medium", "high", "xhigh", "max"];
     const ensureClaudeNativeModels = vi.fn(async () => {
       applyClaudeNativeModels([
-        { value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus 5.5", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
-        { value: "claude-opus-5", resolvedModel: "claude-opus-5", displayName: "Opus 5", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
-        { value: "sonnet", resolvedModel: "claude-sonnet-5", displayName: "Sonnet 5", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
+        { value: "default", resolvedModel: "claude-opus-5-5[1m]", displayName: "Default (recommended)", effortLevels: ladder },
+        { value: "opus[1m]", resolvedModel: "claude-opus-5-5[1m]", displayName: "Opus (1M context)", effortLevels: ladder },
+        { value: "claude-opus-5[1m]", resolvedModel: "claude-opus-5[1m]", displayName: "Opus 5", effortLevels: ladder },
+        { value: "sonnet", resolvedModel: "claude-sonnet-5-5", displayName: "Sonnet", effortLevels: ladder },
+        { value: "sonnet[1m]", resolvedModel: "claude-sonnet-5-5[1m]", displayName: "Sonnet 5.5 (1M context)", effortLevels: ladder },
       ]);
     });
     const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       expect(String(url)).toBe("https://api.anthropic.com/v1/messages");
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
-      expect(JSON.parse(String(init?.body)).model).toBe("claude-sonnet-5");
+      expect(JSON.parse(String(init?.body)).model).toBe("claude-sonnet-5-5");
       return new Response(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", content: [] }), {
         status: 200,
         headers: { "content-type": "application/json" },

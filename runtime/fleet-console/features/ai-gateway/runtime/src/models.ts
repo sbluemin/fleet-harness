@@ -360,7 +360,7 @@ const CLAUDE_PROVIDER_NAME = "Claude";
 const CLAUDE_NATIVE_FAMILIES = [
   { alias: "fable", name: "Fable", capabilityClass: "flagship", oneMillion: true },
   { alias: "opus", name: "Opus", capabilityClass: "flagship", oneMillion: true },
-  { alias: "sonnet", name: "Sonnet", capabilityClass: "standard", oneMillion: false },
+  { alias: "sonnet", name: "Sonnet", capabilityClass: "standard", oneMillion: true },
   { alias: "haiku", name: "Haiku", capabilityClass: "light", oneMillion: false },
 ] as const satisfies readonly {
   readonly alias: string;
@@ -370,6 +370,7 @@ const CLAUDE_NATIVE_FAMILIES = [
 }[];
 const CLAUDE_DEFAULT_ALIAS = "sonnet";
 const CLAUDE_ONE_MILLION_CONTEXT_WINDOW = 1_000_000;
+const CLAUDE_ONE_MILLION_SUFFIX = /\[1m\]$/i;
 /** The ladder assumed until the CLI reports one. Haiku has never taken effort. */
 const CLAUDE_UNRESOLVED_EFFORT: Readonly<Record<string, readonly GatewayReasoningEffort[]>> = {
   fable: ["low", "medium", "high", "xhigh", "max"],
@@ -480,24 +481,29 @@ function buildGatewayModels(): readonly GatewayModel[] {
  * Pick each alias's latest version from the installed CLI's model picker.
  *
  * An alias row is authoritative: it is exactly what the CLI launches for that
- * alias. A family the picker lists only by explicit ids (Fable today) takes the
- * highest version among them, which is what the CLI's own alias resolves to.
+ * alias. The picker may list a family only by its 1M coordinate (Opus today) or
+ * only by explicit ids (Fable today); those take the highest version reported.
+ * The `default` row names the account's default family, not a family of its own.
+ * The wire id and label never carry the 1M marker — the 1M entry adds it back.
  */
 export function resolveClaudeNativeModels(rows: readonly ClaudeNativeModelRow[]): readonly ClaudeNativeResolution[] {
   return CLAUDE_NATIVE_FAMILIES.flatMap((family) => {
-    const aliasRow = rows.find((row) => row.value === family.alias && row.resolvedModel);
-    const row = aliasRow ?? rows
-      .filter((candidate) => candidate.resolvedModel && claudeFamilyVersion(candidate.resolvedModel, family.alias))
-      .sort((left, right) => compareVersions(
-        claudeFamilyVersion(right.resolvedModel!, family.alias)!,
-        claudeFamilyVersion(left.resolvedModel!, family.alias)!,
-      ))[0];
-    if (!row?.resolvedModel) return [];
+    const candidates = rows.flatMap((row) => {
+      if (row.value === "default" || !row.resolvedModel) return [];
+      const model = row.resolvedModel.replace(CLAUDE_ONE_MILLION_SUFFIX, "");
+      const version = claudeFamilyVersion(model, family.alias);
+      return version ? [{ row, model, version }] : [];
+    });
+    const aliasCandidate = candidates.find(({ row }) => row.value === family.alias)
+      ?? candidates.find(({ row }) => row.value === `${family.alias}[1m]`);
+    const picked = aliasCandidate
+      ?? [...candidates].sort((left, right) => compareVersions(right.version, left.version))[0];
+    if (!picked) return [];
     return [{
       alias: family.alias,
-      model: row.resolvedModel,
-      displayName: row.displayName,
-      effortLevels: row.effortLevels.filter(
+      model: picked.model,
+      displayName: `${family.name} ${picked.version.join(".")}`,
+      effortLevels: picked.row.effortLevels.filter(
         (level): level is GatewayReasoningEffort => ANTHROPIC_EFFORT_RUNGS.has(level as GatewayReasoningEffort),
       ),
     }];
