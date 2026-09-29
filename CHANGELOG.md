@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.201.1] - 2026-09-29
+
+### fleet-desktop
+
+#### Changed
+- Switching to another console in the Desktop app works as it did before 1.201.0 again: the seamless switch that kept this computer's console open behind the other one is withdrawn for now.
+
 ## [1.201.0] - 2026-09-28
 
 ### fleet-console

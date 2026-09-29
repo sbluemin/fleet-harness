@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.201.1] - 2026-09-29
+
+### fleet-desktop
+
+#### Changed
+- Desktop 앱에서 다른 콘솔로 전환하는 방식이 1.201.0 이전으로 돌아갑니다. 이 컴퓨터의 콘솔을 뒤에 두고 끊김 없이 전환하던 기능은 당분간 철회합니다.
+
 ## [1.201.0] - 2026-09-28
 
 ### fleet-console
