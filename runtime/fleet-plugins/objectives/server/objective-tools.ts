@@ -60,11 +60,16 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
   /**
    * 지휘관의 번호표 — 마지막으로 읽은(read·mine·plan) 편성 순의 missionId. 임무를 더하거나 선행을 바꾸면 편성 순이 다시 서지만,
    * 지휘관이 다시 읽기 전까지 그의 n 은 이 번호표를 가리킨다(실모델 실측: 밀린 번호로 다른 임무를 배치·완료했다). 그 뒤 더한 임무는
-   * 다음 번호를 받는다. 번호표가 없으면(이 서버에서 아직 읽지 않았다) 지금 편성 순이다.
+   * 다음 번호를 받는다. 번호표는 이 서버의 메모리에만 있다 — 재시작 뒤 이어진 지휘관의 옛 n 을 지금 편성 순으로 풀면 다른 임무로
+   * 가므로, 이 서버에서 아직 읽지 않았으면 n 을 거절하고 다시 읽게 한다(missionId 는 그대로 받는다).
    */
   const numbered = new Map<string, readonly string[]>();
   const renumber = (objective: Objective) => numbered.set(objective.id, objective.missions.map((mission) => mission.id));
-  const numbering = (objective: Objective): readonly string[] => numbered.get(objective.id) ?? objective.missions.map((mission) => mission.id);
+  const numbering = (objective: Objective): readonly string[] => {
+    const shown = numbered.get(objective.id);
+    if (!shown) throw new ObjectiveStoreError("numbering_unread", undefined, { hint: "Mission numbers n refer to the Commander's latest read, and there has been none in this Console run; read returns the current numbers. missionIds are accepted as they are." });
+    return shown;
+  };
   const missionOf = (objective: Objective, ref: { missionId?: string; n?: number }): ObjectiveMission => {
     const id = ref.missionId ?? (ref.n !== undefined ? numbering(objective)[ref.n - 1] : undefined);
     const found = id ? objective.missions.find((mission) => mission.id === id) : undefined;
@@ -188,10 +193,11 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       z.object({ objectiveId: ids, text: z.string().trim().min(1).max(200), prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
       (args, objective) => {
         const prerequisites = prerequisitesOf(objective, args.prerequisites ?? []);
-        const known = numbering(objective);
+        const known = numbered.get(objective.id);
         const next = launch.missionAdded(objective.id, { text: args.text, prerequisites: prerequisites.ids, ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...(args.member ? { member: resolveMember(objective, args.member) } : {}) });
         const mission = added(objective.missions, next.missions);
         if (!mission) return text({ ok: true });
+        if (!known) return text({ ok: true, missionId: mission.id });
         numbered.set(objective.id, [...known, mission.id]);
         return text({ ok: true, missionId: mission.id, n: known.length + 1 });
       }),
@@ -263,7 +269,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
-        if (!objective.awaitingHandoff) return refuse("not_awaiting_handoff", notAwaitingHandoff(objective, numbering(objective)));
+        if (!objective.awaitingHandoff) return refuse("not_awaiting_handoff", notAwaitingHandoff(objective, numbered.get(objective.id) ?? []));
         const retrospective = retrospectiveSchema.safeParse(args.retrospective);
         if (!retrospective.success) return refuse("retrospective_format", { hint: RETROSPECTIVE_FORMAT });
         const input = memberRatingsSchema.safeParse(args.ratings ?? []);
