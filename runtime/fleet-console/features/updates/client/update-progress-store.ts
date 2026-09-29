@@ -16,7 +16,17 @@ import type { ConsoleUpdateProgress } from "../../../core/client/src/integration
  * 새로고침해도 커튼이 유지돼야 하므로 watching은 sessionStorage에 남긴다. 완료 통보를
  * 영원히 반복하지 않도록, 확인한 실행은 그 실행의 startedAt으로 기억한다.
  */
-export type UpdateProgressPhase = "stopping" | "installing" | "starting" | "reconnecting";
+
+/**
+ * 화면이 **직접 겪은** 단계. 워커의 국면은 서버가 살아 있을 때만 읽히고, 서버가 사라지는
+ * 동안에는 마지막으로 읽은 국면이 낡은 채 남는다. 그래서 단계는 국면이 아니라 이 탭이
+ * 관측한 사실로 정한다 — 적용 직후(stopping), 처음 닿지 않음(installing), 끊긴 뒤 다시
+ * 닿음(reconnecting). 한 번 도달한 단계로 되돌아가지 않는다.
+ */
+export type UpdateCurtainStage = "stopping" | "installing" | "reconnecting";
+
+/** 커튼이 약속하는 단계, 순서 그대로. */
+export const UPDATE_CURTAIN_STAGES: readonly UpdateCurtainStage[] = ["stopping", "installing", "reconnecting"];
 
 export interface UpdateProgressSnapshot {
   /** 커튼을 내릴지 여부. 이 탭이 업데이트를 지켜보는 중이면 true. */
@@ -27,27 +37,36 @@ export interface UpdateProgressSnapshot {
   /** 셸이 수행하기로 한 요청. 이 창은 곧 재시작된다. */
   readonly delegated: boolean;
   readonly targetVersion: string | null;
+  readonly stage: UpdateCurtainStage;
 }
 
 type Listener = () => void;
 
 const WATCH_KEY = "fleet-console.update.watching";
+/** 도달한 단계. 버전이 바뀌어 문서를 다시 받아도 새 문서가 같은 단계에서 이어 가게 한다. */
+const STAGE_KEY = "fleet-console.update.stage";
 const SEEN_KEY = "fleet-console.update.seen";
 const POLL_INTERVAL_MS = 1_500;
 /** 종착 없이 이만큼 지나면 지켜보기를 멈춘다 — 커튼이 영원히 남는 것이 가장 나쁘다. */
 const WATCH_TIMEOUT_MS = 10 * 60 * 1000;
 /**
- * 위임은 폴링할 대상이 없다 — 워커가 없으니 진행 기록도 없고, 수행자인 셸은 곧 이 창을
- * 통째로 재시작한다. 그런데 듣는 셸이 없으면 아무 일도 일어나지 않으므로, 그때 커튼이
- * 영원히 남지 않도록 이만큼만 기다린다.
+ * 위임에는 진행 기록이 없다 — 워커가 없고, 수행자인 셸은 곧 이 창을 통째로 재시작한다.
+ * 폴링은 서버가 아직 닿는지만 확인한다. 그런데 듣는 셸이 없으면 아무 일도 일어나지 않으므로,
+ * 그때 커튼이 영원히 남지 않도록 이만큼만 기다린다.
  */
 const DELEGATED_TIMEOUT_MS = 60 * 1000;
 
 const listeners = new Set<Listener>();
-let store: UpdateProgressSnapshot = { watching: false, progress: null, outcome: null, delegated: false, targetVersion: null };
+const IDLE_SNAPSHOT: UpdateProgressSnapshot = { watching: false, progress: null, outcome: null, delegated: false, targetVersion: null, stage: "stopping" };
+let store: UpdateProgressSnapshot = IDLE_SNAPSHOT;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let delegatedTimer: ReturnType<typeof setTimeout> | null = null;
 let watchStartedAt: number | null = null;
+/**
+ * 이 문서는 끊김을 겪은 뒤 다시 받은 문서다. 여기서 보이는 버전 차이는 낡은 번들이 아니라
+ * 서버가 이 실행의 목표와 다른 버전을 말한다는 뜻이므로, 다시 불러와도 해결되지 않는다.
+ */
+let reloadedAfterDisconnect = false;
 
 function getUpdateProgressSnapshot(): UpdateProgressSnapshot {
   return store;
@@ -71,14 +90,16 @@ function setStore(next: UpdateProgressSnapshot): void {
 export function beginUpdateWatch(targetVersion: string | null): void {
   watchStartedAt = Date.now();
   writeSessionValue(WATCH_KEY, String(watchStartedAt));
-  setStore({ ...store, watching: true, outcome: null, delegated: false, targetVersion });
+  writeSessionValue(STAGE_KEY, "stopping");
+  setStore({ ...store, watching: true, outcome: null, delegated: false, targetVersion, stage: "stopping" });
   schedulePoll(0);
 }
 
-/** 이 설치 레이아웃은 셸이 갈아 끼운다. 창은 곧 재시작되므로 폴링할 서버도 없다. */
+/** 이 설치 레이아웃은 셸이 갈아 끼운다. 창은 곧 재시작되므로 서버가 닿는지만 지켜본다. */
 export function markUpdateDelegated(targetVersion: string | null): void {
   watchStartedAt = Date.now();
-  setStore({ ...store, watching: true, delegated: true, outcome: null, targetVersion });
+  setStore({ ...store, watching: true, delegated: true, outcome: null, targetVersion, stage: "stopping" });
+  schedulePoll(POLL_INTERVAL_MS);
   if (delegatedTimer !== null) clearTimeout(delegatedTimer);
   delegatedTimer = setTimeout(() => {
     delegatedTimer = null;
@@ -93,12 +114,13 @@ export function acknowledgeUpdateOutcome(): void {
   const startedAt = store.progress?.startedAt;
   if (startedAt) writeLocalValue(SEEN_KEY, startedAt);
   stopWatching();
-  setStore({ watching: false, progress: null, outcome: null, delegated: false, targetVersion: null });
+  setStore(IDLE_SNAPSHOT);
 }
 
 function stopWatching(): void {
   watchStartedAt = null;
   removeSessionValue(WATCH_KEY);
+  removeSessionValue(STAGE_KEY);
   if (pollTimer !== null) {
     clearTimeout(pollTimer);
     pollTimer = null;
@@ -107,6 +129,13 @@ function stopWatching(): void {
     clearTimeout(delegatedTimer);
     delegatedTimer = null;
   }
+}
+
+/** 단계는 앞으로만 간다. 위임은 창째 재시작되므로 새 문서에 넘길 것이 없다. */
+function reachStage(stage: UpdateCurtainStage): void {
+  if (UPDATE_CURTAIN_STAGES.indexOf(stage) <= UPDATE_CURTAIN_STAGES.indexOf(store.stage)) return;
+  if (!store.delegated) writeSessionValue(STAGE_KEY, stage);
+  setStore({ ...store, stage });
 }
 
 function schedulePoll(delayMs: number): void {
@@ -130,6 +159,13 @@ async function pollOnce(): Promise<void> {
     progress = await fetchUpdateProgress();
   } catch {
     // 닿지 않는 것 자체가 진행 중이라는 신호다 — 커튼을 유지한 채 계속 두드린다.
+    reachStage("installing");
+    schedulePoll(POLL_INTERVAL_MS);
+    return;
+  }
+  if (store.stage === "installing") reachStage("reconnecting");
+  // 위임의 폴링은 닿는지만 본다. 결과를 말할 워커 기록이 없고, 이 창은 셸이 재시작한다.
+  if (store.delegated) {
     schedulePoll(POLL_INTERVAL_MS);
     return;
   }
@@ -138,16 +174,18 @@ async function pollOnce(): Promise<void> {
     schedulePoll(POLL_INTERVAL_MS);
     return;
   }
-  if (progress.state === "completed" && hasConsoleVersionDrifted(progress.targetVersion ?? null)) {
+  if (progress.state === "completed" && !reloadedAfterDisconnect && hasConsoleVersionDrifted(progress.targetVersion ?? null)) {
     // 콘솔은 새 버전으로 돌아왔지만 이 문서는 옛 번들이다. 커튼을 내린 채 새 문서를 받는다 —
-    // 결과 통보는 돌아온 문서가 디스크의 기록에서 다시 읽어 알린다(hydrateUpdateProgress).
-    stopWatching();
+    // 지켜보기와 도달한 단계는 남겨 두어, 돌아온 문서가 재연결 단계에서 결과를 읽어 알린다.
+    if (pollTimer !== null) clearTimeout(pollTimer);
+    pollTimer = null;
     location.reload();
     return;
   }
   if (progress.state === "completed" || progress.state === "failed") {
     stopWatching();
     setStore({
+      ...store,
       watching: false,
       progress,
       outcome: progress.state,
@@ -158,7 +196,7 @@ async function pollOnce(): Promise<void> {
   }
   // idle: 서버는 어떤 업데이트도 기억하지 못한다. 지켜볼 것이 없다.
   stopWatching();
-  setStore({ watching: false, progress: null, outcome: null, delegated: false, targetVersion: null });
+  setStore(IDLE_SNAPSHOT);
 }
 
 /**
@@ -169,7 +207,13 @@ export function hydrateUpdateProgress(): void {
   const resumed = readSessionValue(WATCH_KEY);
   if (resumed !== null) {
     watchStartedAt = Number.parseInt(resumed, 10) || Date.now();
-    setStore({ ...store, watching: true });
+    // 이 문서를 받았다는 것은 서버가 닿는다는 뜻이다. 앞선 문서가 끊김을 겪었다면 지금이
+    // 곧 재연결이다 — 버전이 바뀌어 다시 받은 문서가 이 경우다.
+    const resumedStage = readSessionValue(STAGE_KEY);
+    const disconnected = resumedStage !== null && resumedStage !== "stopping";
+    reloadedAfterDisconnect = disconnected;
+    if (disconnected) writeSessionValue(STAGE_KEY, "reconnecting");
+    setStore({ ...store, watching: true, stage: disconnected ? "reconnecting" : "stopping" });
     schedulePoll(0);
     return;
   }
@@ -186,12 +230,14 @@ export function hydrateUpdateProgress(): void {
     if (progress.state === "running") {
       watchStartedAt = Date.now();
       writeSessionValue(WATCH_KEY, String(watchStartedAt));
-      setStore({ ...store, watching: true, progress, targetVersion: progress.targetVersion ?? null });
+      writeSessionValue(STAGE_KEY, "stopping");
+      setStore({ ...store, watching: true, progress, targetVersion: progress.targetVersion ?? null, stage: "stopping" });
       schedulePoll(POLL_INTERVAL_MS);
       return;
     }
     if (progress.startedAt && readLocalValue(SEEN_KEY) === progress.startedAt) return;
     setStore({
+      ...store,
       watching: false,
       progress,
       outcome: progress.state,

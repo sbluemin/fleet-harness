@@ -1,5 +1,5 @@
 import { useT } from "../../../core/client/src/i18n/index.js";
-import { acknowledgeUpdateOutcome, useUpdateProgress } from "./update-progress-store.js";
+import { UPDATE_CURTAIN_STAGES, acknowledgeUpdateOutcome, useUpdateProgress } from "./update-progress-store.js";
 
 /**
  * 업데이트를 **연결 오류가 아니라 진행 상태**로 만드는 화면.
@@ -7,9 +7,10 @@ import { acknowledgeUpdateOutcome, useUpdateProgress } from "./update-progress-s
  * 이 커튼이 없으면 같은 순간이 "연결 끊김"으로 보이고, 그것은 고장과 구별되지 않는다.
  * 그래서 커튼은 서버가 닿지 않는 동안에도 내려가지 않는다 — 닿지 않는 것이 곧 진행 중이라는
  * 뜻이기 때문이다. 커튼을 걷는 것은 종착 기록(성공/실패)뿐이다.
+ *
+ * 단계는 이 화면이 관측할 수 있는 사실만큼만 나눈다. 서버가 닿지 않는 동안 설치와 기동은
+ * 구별할 방법이 없으므로 한 단계다.
  */
-const STEP_KEYS = ["stopping", "installing", "starting", "reconnecting"] as const;
-
 export function UpdateCurtain() {
   const t = useT();
   const state = useUpdateProgress();
@@ -36,18 +37,18 @@ export function UpdateCurtain() {
 
   if (!state.watching) return null;
 
-  const activeIndex = state.delegated ? 2 : resolveStepIndex(state.progress?.phase ?? null);
+  const activeIndex = UPDATE_CURTAIN_STAGES.indexOf(state.stage);
   // 지나간 단계와 남을 단계의 이름은 싣지 않는다 — 기다리는 사람에게 필요한 것은 지금 무엇을
-  // 하고 있는지와 얼마나 남았는지뿐이다. 칸 넷이 "얼마나"를, 한 줄이 "무엇을" 말한다.
+  // 하고 있는지와 얼마나 남았는지뿐이다. 칸들이 "얼마나"를, 한 줄이 "무엇을" 말한다.
   return (
     <div className="update-curtain" role="status" aria-live="polite">
       <div className="update-curtain-plate">
         <div className="update-curtain-now">
-          <span className="update-curtain-step">{t(`chrome.update.step.${STEP_KEYS[activeIndex]}` as "chrome.update.step.stopping")}</span>
-          <span className="update-curtain-count">{activeIndex + 1} / {STEP_KEYS.length}</span>
+          <span className="update-curtain-step">{t(`chrome.update.step.${state.stage}`)}</span>
+          <span className="update-curtain-count">{activeIndex + 1} / {UPDATE_CURTAIN_STAGES.length}</span>
         </div>
         <span className="update-curtain-track" aria-hidden="true">
-          {STEP_KEYS.map((key, index) => (
+          {UPDATE_CURTAIN_STAGES.map((key, index) => (
             <i key={key} className={index < activeIndex ? "is-done" : index === activeIndex ? "is-now" : undefined} />
           ))}
         </span>
@@ -59,17 +60,6 @@ export function UpdateCurtain() {
       </div>
     </div>
   );
-}
-
-/**
- * 서버가 닿지 않는 동안에는 국면을 물어볼 곳이 없다. 그때 화면이 가리키는 단계는 추측이
- * 아니라 사실이다 — 워커는 콘솔을 내린 **직후** 설치를 시작하므로, 닿지 않는 시간은
- * 설치 시간이다.
- */
-export function resolveStepIndex(phase: string | null): number {
-  if (phase === "starting" || phase === "preflight-ok" || phase === "stopping-console") return 0;
-  if (phase === "starting-daemon") return 2;
-  return 1;
 }
 
 function describeFailure(error: string | null, t: ReturnType<typeof useT>): string {
