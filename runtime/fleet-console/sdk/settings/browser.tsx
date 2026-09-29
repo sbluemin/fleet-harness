@@ -581,6 +581,11 @@ export function SettingsSlider({
   // 저마다 다르게 걸러 내므로, 같은 값을 두 번 저장하지 않는 책임은 이 컨트롤이 진다.
   const lastCommittedRef = React.useRef(value);
   const dirtyRef = React.useRef(false);
+  // 조작 중이 아닐 때 값이 밖에서 바뀌면(테마 전환으로 기본값이 바뀌는 경우 등) 그 값을 이미
+  // 저장된 기준으로 삼는다 — 안 그러면 손대지 않은 컨트롤의 blur가 바뀐 값을 저장값으로 굳힌다.
+  React.useEffect(() => {
+    if (!dirtyRef.current) lastCommittedRef.current = value;
+  }, [value]);
   const commit = (next: number, deliberate = false): void => {
     if (!deliberate && !dirtyRef.current && next === lastCommittedRef.current) return;
     lastCommittedRef.current = next;
