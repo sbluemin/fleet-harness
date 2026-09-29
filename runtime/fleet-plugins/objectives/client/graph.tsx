@@ -99,6 +99,26 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   useEffect(() => { onShowingRef.current(popup && !popup.closing && !suspended ? popup.id : null); }, [popup?.id, popup?.closing, suspended]);
   const [drag, setDrag] = useState<Drag | null>(null), dragRef = useRef(drag); dragRef.current = drag;
   const trackDrag = usePointerDrag();
+  // 도화지처럼 끌어 옮기기 — 가로로 넘칠 때 빈 곳을 끌면 그래프가 따라온다. 스크롤바 대신 넘친 쪽 가장자리가 흐려진다.
+  const trackPan = usePointerDrag();
+  const panning = useRef(false);
+  const pannable = layout.width * scale > width + 1;
+  const fadeEdges = () => {
+    const el = scroll.current; if (!el) return;
+    el.classList.toggle("is-fade-left", el.scrollLeft > 1);
+    el.classList.toggle("is-fade-right", el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  };
+  useLayoutEffect(fadeEdges, [layout, width, scale]);
+  const startPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const el = scroll.current;
+    if (!el || !pannable || suspended || event.pointerType === "touch" || (event.target as Element).closest("[data-graph-node], [data-graph-label], .objectives-graph-edge")) return;
+    const x0 = event.clientX, left0 = el.scrollLeft;
+    trackPan(event, el, {
+      onStart: () => { panning.current = true; cancelOpen(); },
+      onMove: (move) => { el.classList.add("is-panning"); el.scrollLeft = left0 - (move.clientX - x0); },
+      onEnd: () => { panning.current = false; el.classList.remove("is-panning"); },
+    });
+  };
   const [link, setLink] = useState<{ from: string; over: string } | null>(null);
   const popupId = useId();
   const timers = useRef<{ open?: ReturnType<typeof setTimeout>; close?: ReturnType<typeof setTimeout>; exit?: ReturnType<typeof setTimeout>; pending?: string; last?: Point }>({});
@@ -149,7 +169,7 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     return !(d.some(v => v < 0) && d.some(v => v > 0)) && Math.hypot(p.x - last.x, p.y - last.y) > .5;
   };
   const hover = (event: ReactPointerEvent) => {
-    if (suspended || event.pointerType === "touch" || dragRef.current || popupRef.current?.pinned || link) return;
+    if (suspended || event.pointerType === "touch" || dragRef.current || panning.current || popupRef.current?.pinned || link) return;
     const p = { x: event.clientX, y: event.clientY }, id = nodeId(event.target);
     if ((event.target as Element).closest("[data-graph-popup]")) { keep(); cancelOpen(); }
     else if (id) {
@@ -243,7 +263,7 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   };
   const shownMission = popup ? objective.missions.find(m => m.id === popup.id) : null;
   return <div ref={box} className={`objectives-branch-graph${zoom ? " is-zoom" : ""}${wide ? " is-wide" : ""}${drag?.moved ? " is-dragging" : ""}`} style={{ "--graph-r": `${layout.g.r}px`, "--graph-label-line": `${layout.g.llh}px` } as CSSProperties} onPointerMove={hover} onPointerLeave={() => { if (!dragRef.current) leave(); }}>
-    <div ref={scroll} className="objectives-graph-scroll" onScroll={() => { if (popupRef.current && !popupRef.current.pinned) close(); }}>
+    <div ref={scroll} className={`objectives-graph-scroll${pannable ? " is-pannable" : ""}`} onPointerDown={startPan} onScroll={() => { fadeEdges(); if (popupRef.current && !popupRef.current.pinned) close(); }}>
       <div className="objectives-graph-fit" style={{ width: layout.width * scale, height: layout.height * scale }}>
       <div className={`objectives-graph-canvas${current ? " is-dim" : ""}`} style={{ width: layout.width, height: layout.height, ...(scale < 1 ? { transform: `scale(${scale})`, transformOrigin: "0 0" } : {}) }}>
         <svg className="objectives-graph-edges" width={layout.width} height={layout.height} aria-hidden="true">{layout.edges.map(e => <path key={`${e.from}-${e.to}`} data-from={e.from ?? undefined} data-to={e.to} className={`objectives-graph-edge${e.from ? "" : " is-root"}${current?.id === e.to ? " is-up" : current?.id === e.from ? " is-down" : ""}`} d={e.d} onClick={() => select(e.to)} />)}</svg>

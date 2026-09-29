@@ -111,12 +111,13 @@ export function TidiedList({ objectives, t, language, selected, onSelect, call }
 }
 
 /** 지우거나 합친 목표의 상세 — 읽기 전용. 누가·언제·이유와 되돌리기, 합쳤으면 받은 목표로 가는 길. */
-export function TidiedDetail({ objective, t, language, call, onClose, onOpenObjective, detailRef, three, head }: {
+export function TidiedDetail({ objective, t, language, call, back, onOpenObjective, detailRef, three, head }: {
   readonly objective: Objective;
   readonly t: T;
   readonly language: Language;
   readonly call: Call;
-  readonly onClose: () => void;
+  /** 머리의 뒤로가기 — 세 칸에서 목록이 펼쳐져 있으면 없다. */
+  readonly back: { readonly label: string; readonly onClick: () => void } | null;
   readonly onOpenObjective: (objectiveId: string) => void;
   readonly detailRef: RefObject<HTMLElement | null>;
   readonly three: boolean;
@@ -132,7 +133,7 @@ export function TidiedDetail({ objective, t, language, call, onClose, onOpenObje
         <div className="objectives-detail-pane is-content">
           <div className="objectives-group">
             <div className="objectives-detail-head">
-              <button type="button" className="objectives-glyph objectives-detail-back" aria-label={t("objectives.detail.backToList")} title={t("objectives.detail.backToList")} onClick={onClose}>‹</button>
+              {back ? <button type="button" className="objectives-glyph objectives-detail-back" aria-label={back.label} title={back.label} onClick={back.onClick}>‹</button> : null}
               <span className="objectives-objective-ring objectives-tidied-glyph" aria-hidden="true">{into ? <MergeGlyph /> : <GoneGlyph />}</span>
               <div className="objectives-detail-title is-tidied">{objective.title}</div>
               {head}

@@ -34,6 +34,13 @@
 .objectives-detail.is-three .objectives-detail-pane.is-ops { grid-column: 3; grid-row: 1; padding-top: 6px; }
 .objectives-detail.is-three > .objectives-detail-bottom { grid-column: 3; grid-row: 2; min-width: 0; padding-bottom: 8px; border-left: 1px solid var(--surface-rim); container: objectives-detail / inline-size; }
 .objectives-detail-grip.is-list { right: auto; left: calc(var(--objectives-list-w, 360px) - 5px); }
+/* 목록 칸을 접은 세 칸 — 목록 열을 0 으로 걷고 내용 칸의 선도 거둔다. 상세 머리의 뒤로가기가 목록을 다시 편다. */
+.objectives-root.is-three.is-list-folded { grid-template-columns: 0 minmax(0, 1fr) var(--objectives-detail-w, 440px); }
+.objectives-root.is-three.is-list-folded > .objectives-main { display: none; }
+.objectives-root.is-three.is-list-folded .objectives-detail-pane.is-content { border-left: 0; }
+/* 목록 칸 접기 — 범위 낱말 첫 줄의 오른쪽 끝(세 칸에서만 선다). 낱말이 꺾여도 글리프는 첫 줄에 남는다. */
+.objectives-root.is-three .objectives-title { flex-wrap: nowrap; align-items: flex-start; }
+.objectives-title .objectives-list-fold { margin-left: auto; }
 .objectives-place-button {
   flex: none;
   display: grid;

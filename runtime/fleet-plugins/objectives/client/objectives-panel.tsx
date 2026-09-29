@@ -104,6 +104,8 @@ function saveDetailWidth(split: DetailSplit, width: number | null): void {
  * 세 칸 폭 — 1120 이상에서 목록 | 내용·계획 | 운영·판단으로 선다. 목록·운영은 기존 최대 폭인 360·440 을 기본으로 쓴다.
  * 기억은 두 칸의 상세 폭과 따로 둔다. 각 칸의 이전 폭 기억은 새 기본값으로 돌린다.
  */
+/** 세 칸 목록 칸의 접힘 — 보기 상태의 접힘 기록에 구획 키처럼 산다. */
+const LIST_PANE = "pane:list";
 const THREE_PANE = { key: "fleet.objectives.three-pane-width", threshold: 1120, contentMin: 480, list: { min: 280, max: 360, fallback: 360 }, ops: { min: 300, max: 640, fallback: 440 } } as const;
 interface ThreeWidths { readonly list: number; readonly ops: number }
 function readThreeWidths(): ThreeWidths {
@@ -665,6 +667,14 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 세 칸은 자리(레일·확대)가 아니라 목표 표면의 실제 안쪽 폭으로만 판정한다.
   const three = sized && rootWidth >= THREE_PANE.threshold;
   const threeShown = three ? shownThreeWidths(rootWidth, threeWidths) : null;
+  // 세 칸의 목록 칸 접기 — 보기 상태(Theater 별, 새로고침 전까지)에 산다. 접으면 상세의 뒤로가기가 목록을 다시 편다.
+  // 두 칸·한 열의 뒤로가기는 그대로 상세를 닫는다.
+  const listFolded = three && !isOpen(LIST_PANE, true);
+  const foldList = (fold: boolean) => {
+    patchObjectiveView(theaterId, (view) => ({ collapsed: { ...view.collapsed, [LIST_PANE]: fold } }));
+    requestAnimationFrame(() => rootRef.current?.querySelector<HTMLElement>(fold ? ".objectives-detail-back" : ".objectives-list-fold")?.focus({ preventScroll: true }));
+  };
+  const detailBack: DetailBack | null = listFolded ? { label: t("objectives.detail.unfoldList"), onClick: () => foldList(false) } : three ? null : { label: t("objectives.detail.backToList"), onClick: closeDetail };
   const setThree = (patch: Partial<ThreeWidths>, save: boolean) => setThreeWidths((current) => { const next = { ...current, ...patch }; if (save) saveThreeWidths(next); return next; });
   const rootStyle = threeShown ? { "--objectives-list-w": `${threeShown.list}px`, "--objectives-detail-w": `${threeShown.ops}px` } as CSSProperties : sized ? { "--objectives-detail-w": `${shownDetail}px` } as CSSProperties : undefined;
   const pickAddGroup = (groupId: string) => { setAddGroupId(groupId); requestAnimationFrame(() => addInputRef.current?.focus()); };
@@ -758,14 +768,15 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         highlightTimer.current = null;
         setHighlightMission(null);
       }
-    }}><div ref={rootRef} className={`objectives-root${current ? " has-detail" : ""}${three ? " is-three" : ""}${resizing ? " is-resizing" : ""}`} style={rootStyle}>
+    }}><div ref={rootRef} className={`objectives-root${current ? " has-detail" : ""}${three ? " is-three" : ""}${listFolded ? " is-list-folded" : ""}${resizing ? " is-resizing" : ""}`} style={rootStyle}>
       {threeShown ? <>
-        <PaneGrip side="list" label={t("objectives.detail.listWidth")} tip={t("objectives.detail.widthTip")} width={threeShown.list} min={THREE_PANE.list.min} max={threeShown.listMax} fallback={THREE_PANE.list.fallback} rootRef={rootRef} onResize={(list, save) => setThree({ list }, save)} onResizing={setResizing} />
+        {listFolded ? null : <PaneGrip side="list" label={t("objectives.detail.listWidth")} tip={t("objectives.detail.widthTip")} width={threeShown.list} min={THREE_PANE.list.min} max={threeShown.listMax} fallback={THREE_PANE.list.fallback} rootRef={rootRef} onResize={(list, save) => setThree({ list }, save)} onResizing={setResizing} />}
         <PaneGrip side="ops" label={t("objectives.detail.opsWidth")} tip={t("objectives.detail.widthTip")} width={threeShown.ops} min={THREE_PANE.ops.min} max={threeShown.opsMax} fallback={THREE_PANE.ops.fallback} rootRef={rootRef} onResize={(ops, save) => setThree({ ops }, save)} onResizing={setResizing} />
       </> : sized ? <DetailGrip t={t} split={split} width={shownDetail} max={detailMax} rootRef={rootRef} onResize={setDetailWidth} onResizing={setResizing} /> : null}
       <section ref={mainRef} className="objectives-main">
         <div className="objectives-title">
           <ScopeWords current={list} onPick={setList} t={t} count={listCount} dropOver={drag?.over ?? null} flash={flash} tidied={tidied.length > 0 || list === "tidied"} tidyUnseen={tidyUnseen} />
+          {three ? <button type="button" className="objectives-glyph objectives-list-fold" aria-label={t("objectives.detail.foldList")} title={t("objectives.detail.foldList")} onClick={() => foldList(true)}><ListFoldGlyph /></button> : null}
           {placeButton("objectives-place-main")}
         </div>
         {list === "due" ? (
@@ -821,7 +832,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       </section>
 
       {current?.removed ? (
-        <TidiedDetail key={current.id} objective={current} t={t} language={language} call={call} onClose={closeDetail} onOpenObjective={openObjectiveDetail} detailRef={detailRef} three={three} head={placeButton("objectives-place-detail")} />
+        <TidiedDetail key={current.id} objective={current} t={t} language={language} call={call} back={detailBack} onOpenObjective={openObjectiveDetail} detailRef={detailRef} three={three} head={placeButton("objectives-place-detail")} />
       ) : current ? (
         <ObjectiveDetail
           key={current.id}
@@ -842,7 +853,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
           onToggleSection={(key) => toggleSection(key, key !== "detail:missionList")}
           onOpenSection={(key) => patchObjectiveView(theaterId, (view) => ({ collapsed: { ...view.collapsed, [key]: false } }))}
           highlightMission={highlightMission}
-          onClose={closeDetail}
+          back={detailBack}
           detailRef={detailRef}
           layout={three ? "three" : "split"}
           placeButton={placeButton("objectives-place-detail")}
@@ -1291,6 +1302,7 @@ function OpChip({ state, label, title, onRemove, removeLabel }: { state: string;
   );
 }
 
+interface DetailBack { readonly label: string; readonly onClick: () => void }
 type DetailSection = "detail:criteria" | "detail:missions" | "detail:missionList" | "detail:results" | "detail:decisions" | "detail:followups" | "detail:members" | "detail:retro";
 
 interface DetailProps {
@@ -1313,7 +1325,8 @@ interface DetailProps {
   readonly onToggleSection: (key: DetailSection) => void;
   readonly onOpenSection: (key: DetailSection) => void;
   readonly highlightMission: string | null;
-  readonly onClose: () => void;
+  /** 머리의 뒤로가기 — 세 칸에서 목록이 펼쳐져 있으면 없다(목록 칸의 접기 글리프가 대신한다). */
+  readonly back: DetailBack | null;
   readonly detailRef: RefObject<HTMLElement | null>;
   /** 두 칸(목록 | 상세) 또는 세 칸(목록 | 내용·계획 | 운영·판단) — 같은 상세를 어떻게 나눠 그릴지만 정한다. */
   readonly layout: "split" | "three";
@@ -1375,6 +1388,9 @@ function LineupZoom({ t, title, width, onClose, children }: { readonly t: Transl
     </div>
   );
 }
+
+/** 목록 칸 접기 — 왼쪽 칸이 있는 창과 왼쪽 화살. */
+const ListFoldGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="11" height="10" rx="1.5" /><path d="M6.5 3v10M11 6.5 9.5 8l1.5 1.5" /></svg>;
 
 const AssignGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="5" cy="5" r="2.2" /><circle cx="11" cy="11" r="2.2" /><path d="M7 5h3.5a1.5 1.5 0 0 1 1.5 1.5V8.8M9 11H5.5A1.5 1.5 0 0 1 4 9.5V7.2" /></svg>;
 
@@ -1641,7 +1657,7 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
 
 const BRIEF_LINES = 3;
 
-function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, onClose, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
+function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, back, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
   const [note, setNote] = useState(objective.note);
   const [title, setTitle] = useState(objective.title);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1873,7 +1889,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const sHead = (<>
       <div className="objectives-group">
         <div className="objectives-detail-head">
-          <button type="button" className="objectives-glyph objectives-detail-back" aria-label={t("objectives.detail.backToList")} title={t("objectives.detail.backToList")} onClick={onClose}>‹</button>
+          {back ? <button type="button" className="objectives-glyph objectives-detail-back" aria-label={back.label} title={back.label} onClick={back.onClick}>‹</button> : null}
           {/* 한 열에서만 선다(CSS) — 넓은 표면에서는 목록 위 요약 줄이 같은 말을 한다. */}
           {otherRequests > 0 ? <button type="button" className="objectives-detail-requests" title={t("objectives.requests.othersTip")} onClick={onNextRequest}><RequestGlyph />{t("objectives.requests.others", { count: otherRequests })}</button> : null}
           {(() => {

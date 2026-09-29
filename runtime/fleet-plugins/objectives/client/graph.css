@@ -1,5 +1,12 @@
 .objectives-branch-graph { --graph-r: 11px; --graph-label-line: 14px; position: relative; min-width: 0; padding: 6px 0; font-family: var(--font-body); }
-.objectives-graph-scroll { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.objectives-graph-scroll { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
+.objectives-graph-scroll::-webkit-scrollbar { display: none; }
+/* 넘치면 빈 곳을 끌어 옮긴다 — 스크롤바 대신 이어지는 쪽 가장자리가 흐려진다. */
+.objectives-graph-scroll.is-pannable { cursor: grab; }
+.objectives-graph-scroll.is-panning, .objectives-graph-scroll.is-panning * { cursor: grabbing; user-select: none; }
+.objectives-graph-scroll.is-fade-right { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.objectives-graph-scroll.is-fade-left { mask-image: linear-gradient(to right, transparent, #000 28px); }
+.objectives-graph-scroll.is-fade-left.is-fade-right { mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
 .objectives-graph-canvas { position: relative; user-select: none; }
 /* 확대 — 줄인 그래프가 카드보다 좁으면 가운데 선다. */
 .objectives-branch-graph.is-zoom .objectives-graph-fit { margin: 0 auto; }
