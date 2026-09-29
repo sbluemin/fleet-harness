@@ -22,19 +22,18 @@ Stable Release starts only when the pusher is not `github-actions[bot]` and the 
      --json databaseId,headSha,status,conclusion,url,displayTitle --limit 10
    ```
 
-2. Watch that run until it reaches a terminal conclusion (`gh run watch <id> --exit-status`, or poll). Typical wall-clock is several minutes (verify + npm). Do not declare success from a still-running `release` job.
+2. Watch that run until it reaches a terminal conclusion (`gh run watch <id> --exit-status`, or poll). Typical wall-clock is several minutes (verify + release assets). Do not declare success from a still-running `release` job.
 
 3. Success means all of:
 
    - Run `conclusion: success`.
-   - `resolve`, `verify / verify`, `release`, `console-assets`, `console / publish`, and `publish-release` succeeded.
+   - `resolve`, `verify / verify`, `release`, `console-assets`, and `publish-release` succeeded.
    - Exactly one of `desktop-build` or `desktop-carry` succeeded (the other is skipped).
    - `git fetch origin main --tags` shows `origin/main` as `chore(release): vX.Y.Z`.
    - `gh release view vX.Y.Z --json isDraft,publishedAt,tagName,url,assets` is not a draft and lists `fleet-console-X.Y.Z.tgz`, `fleet-console.tgz`, `fleet-console-release.json`, and `fleet-console-SHA256SUMS.txt`.
    - `curl -fsSL https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console-release.json` reports `"version": "X.Y.Z"` — installs and self-updates follow this manifest, not the tag.
-   - `npm view @dotobokuri/fleet-console version` equals `X.Y.Z`.
 
-4. On failure: stop. Report the run URL and the failed job. Do not locally craft a `chore(release):` commit, tag, or npm publish to "finish" it. Re-running the failed GitHub jobs is allowed; pushing a new empty commit to `main` is not, unless the user explicitly directs a recovery.
+4. On failure: stop. Report the run URL and the failed job. Do not locally craft a `chore(release):` commit, tag, or asset upload to "finish" it. Re-running the failed GitHub jobs is allowed; pushing a new empty commit to `main` is not, unless the user explicitly directs a recovery.
 
 ### Phase 7 — Fast-forward canary to the release commit
 
@@ -60,5 +59,5 @@ If local `main` exists and is not checked out in another worktree, fast-forward 
 - Local `pnpm build` / `typecheck` / `test` / fragment `--check` pass or fail; any canary fix commit SHAs.
 - Whether `release-tip-guard` reported release-affecting or ignorable.
 - Main push SHA and the Stable Release run URL.
-- Published version, tag, GitHub Release URL, Console assets and latest manifest version, npm version, desktop built vs carried.
+- Published version, tag, GitHub Release URL, Console assets and latest manifest version, desktop built vs carried.
 - Final refs: equality of `canary` / `origin/canary` / `origin/main` / the version tag, or that canary contains the release commit and is ahead, or that synchronization found nothing to ship.
