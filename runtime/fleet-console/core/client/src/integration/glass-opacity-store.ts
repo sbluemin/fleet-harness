@@ -64,13 +64,20 @@ function readStored(group: GlassGroup): number | null {
   try {
     if (typeof window === "undefined") return null;
     const raw = localStorage.getItem(storageKey(group));
-    if (raw !== null && raw.trim() !== "" && Number.isFinite(Number(raw))) return clampOpacity(Number(raw));
     const legacyKey = LEGACY_KEYS[group];
+    if (raw !== null && raw.trim() !== "" && Number.isFinite(Number(raw))) {
+      // 새 값이 이긴 자리에도 구 키를 남기지 않는다 — 남으면 초기화 뒤 다음 부팅이 구 값을 다시 옮겨 온다.
+      if (legacyKey !== undefined) localStorage.removeItem(legacyKey);
+      return clampOpacity(Number(raw));
+    }
     const legacy = legacyKey ? localStorage.getItem(legacyKey) : null;
     if (legacyKey === undefined || legacy === null) return null;
     localStorage.removeItem(legacyKey);
     const parsed = Number(legacy);
     if (legacy.trim() === "" || !Number.isFinite(parsed)) return null;
+    // 구 척도 100은 「현행 재질 그대로」(구 초기화가 박던 값)다 — 수치로 옮기면 테마를 바꿔도 고정되고
+    // 초기화도 비활성이라 풀 수 없다. 만지지 않은 묶음으로 둔다.
+    if (parsed >= 100) return null;
     const converted = clampOpacity((glassOpacityDefault(group) * parsed) / 100);
     localStorage.setItem(storageKey(group), String(converted));
     return converted;
