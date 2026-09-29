@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.202.3] - 2026-09-29
+
+### fleet-console
+
+#### Fixed
+- Dragging the right rail or the side bar to resize it stays smooth even with many panels on the map and a mission graph open.
+
 ## [1.202.2] - 2026-09-29
 
 ### fleet-console

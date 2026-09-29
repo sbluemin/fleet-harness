@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.202.3] - 2026-09-29
+
+### fleet-console
+
+#### Fixed
+- 맵에 패널이 많고 임무 그래프가 열려 있어도 오른쪽 레일이나 사이드바 폭을 끌어 조절할 때 버벅이지 않습니다.
+
 ## [1.202.2] - 2026-09-29
 
 ### fleet-console

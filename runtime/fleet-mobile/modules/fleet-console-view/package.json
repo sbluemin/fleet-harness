@@ -1,6 +1,6 @@
 {
   "name": "fleet-console-view",
-  "version": "1.202.2",
+  "version": "1.202.3",
   "private": true,
   "main": "src/index.ts",
   "expo": {
