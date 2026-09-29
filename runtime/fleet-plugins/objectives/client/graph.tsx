@@ -135,7 +135,14 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     el.classList.toggle("is-fade-left", el.scrollLeft > 1);
     el.classList.toggle("is-fade-right", el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   };
-  useLayoutEffect(fadeEdges, [layout, width, scale]);
+  // 넘침은 레이아웃이 끝난 뒤 관찰해 잰다 — 커밋마다 layout effect에서 스크롤 기하를 읽으면 레일 폭이 바뀌는 매 프레임이
+  // 레이아웃을 강제로 한 번 더 돈다. 틀과 내용 중 어느 쪽 크기가 바뀌어도 관찰이 온다.
+  useEffect(() => {
+    const el = scroll.current, fit = el?.firstElementChild; if (!el || !fit) return;
+    const observer = new ResizeObserver(fadeEdges); observer.observe(el); observer.observe(fit);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const startPan = (event: ReactPointerEvent<HTMLDivElement>) => {
     const el = scroll.current;
     if (!el || !pannable || suspended || event.pointerType === "touch" || (event.target as Element).closest("[data-graph-node], [data-graph-label], .objectives-graph-edge")) return;
@@ -271,7 +278,8 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   const from = drag?.moved ? drag.from : link?.from, over = drag?.moved ? drag.over : link?.over;
   const reason = from && over ? check(from, over) : null;
   const targetNode = over ? box.current?.querySelector<HTMLElement>(`[data-graph-node="${CSS.escape(over)}"]`) : null;
-  const tipRect = targetNode?.getBoundingClientRect(), boxRect = box.current?.getBoundingClientRect();
+  // 끌어 잇는 동안에만 잰다 — 렌더마다 재면 레일 폭이 바뀌는 매 커밋이 페이지 레이아웃을 강제로 한 번 더 돈다.
+  const tipRect = targetNode?.getBoundingClientRect(), boxRect = targetNode ? box.current?.getBoundingClientRect() : undefined;
   const focusNode = (id: string) => {
     const n = box.current?.querySelector<HTMLElement>(`[data-graph-node="${CSS.escape(id)}"]`);
     n?.focus({ preventScroll: true }); n?.scrollIntoView({ block: "nearest", inline: "nearest" });

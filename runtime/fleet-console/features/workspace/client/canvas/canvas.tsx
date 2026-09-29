@@ -1,5 +1,6 @@
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
+import { getRailStoreSnapshot, subscribeRailStore, useRailDragDeltaPx } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -123,7 +124,7 @@ function isEditingOutsideTerminal(element: Element | null): boolean {
 
 export function OperationsCanvas({
   state,
-  arenaInsets,
+  arenaInsets: settledArenaInsets,
   onTriageGlowHost,
   catalog,
   canLaunch,
@@ -340,6 +341,23 @@ export function OperationsCanvas({
     enforceStationKeeping();
   }, [focusLayerActive, triageActive]);
 
+  // 레일 끌기는 오른쪽 인셋을 매 프레임 바꾼다. 아레나에 칸을 편 패널(스냅 유지·정렬·War Room·companion)이 있을 때만
+  // 끄는 폭으로 다시 그리고, 없으면 CSS 채널(--arena-right)만 따라가 놓는 순간 한 번 그린다 — 오른쪽 인셋을 읽는 JS
+  // 소비자(칸·무대·스냅 막대)가 화면에 없는데 패널 세계 전체가 픽셀마다 다시 그리지 않게. 페이지는 확정 폭만 넘긴다.
+  const arenaFollowsRail = canvas.snapHold !== null || triageActive || focusLayerActive;
+  const railDragDeltaPx = useRailDragDeltaPx(arenaFollowsRail);
+  const arenaInsets = railDragDeltaPx === 0 ? settledArenaInsets : { ...settledArenaInsets, right: settledArenaInsets.right + railDragDeltaPx };
+  const settledArenaRightRef = useRef(settledArenaInsets.right);
+  settledArenaRightRef.current = settledArenaInsets.right;
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (arenaFollowsRail || !element) return;
+    return subscribeRailStore(() => {
+      const { railOccupiedPx, railSettledPx } = getRailStoreSnapshot();
+      element.style.setProperty("--arena-right", `${settledArenaRightRef.current + railOccupiedPx - railSettledPx}px`);
+    });
+  }, [arenaFollowsRail]);
+
   // ── 아레나 좌표계 ──────────────────────────────────────────────────────────
   // 전면 캔버스에서 저장된 viewport/geometry는 아레나-상대 좌표를 유지한다(무마이그레이션 계약).
   // 화면 변환에는 아레나 원점을 더한 screenViewport를 쓰고, 제스처가 돌려준 값에서는 도로 빼서
@@ -374,22 +392,23 @@ export function OperationsCanvas({
   // left/top/width/height 레이아웃 전환을 360ms 동안 탄다(패널 32개 실측: 레일 왕복 525→223ms).
   // layout effect는 브라우저가 새 스타일을 계산하기 전에 돌아 전환이 아예 시작되지 않고, 표식은
   // 새 기하가 스타일에 반영된 뒤(두 프레임) 걷혀 이후의 스냅·최대화 글라이드는 그대로 남는다.
+  // 레일 끌기처럼 인셋이 매 프레임 바뀌는 동안에는 표식을 세운 채 두고 걷는 예약만 미룬다 — 커밋마다 떼었다
+  // 붙이면 표식에 걸린 패널 전부의 스타일이 매 픽셀 두 번씩 다시 계산된다.
   const arenaShiftSettledRef = useRef<string | null>(null);
+  const arenaShiftFrameRef = useRef(0);
   useLayoutEffect(() => {
     const key = `${arenaInsets.left}|${arenaInsets.right}|${arenaInsets.top}|${arenaInsets.bottom}`;
     const previous = arenaShiftSettledRef.current;
     arenaShiftSettledRef.current = key;
     const element = canvasRef.current;
     if (previous === null || previous === key || !element) return;
-    element.dataset.arenaShifting = "true";
-    let frame = requestAnimationFrame(() => {
-      frame = requestAnimationFrame(() => { delete element.dataset.arenaShifting; });
+    if (element.dataset.arenaShifting !== "true") element.dataset.arenaShifting = "true";
+    cancelAnimationFrame(arenaShiftFrameRef.current);
+    arenaShiftFrameRef.current = requestAnimationFrame(() => {
+      arenaShiftFrameRef.current = requestAnimationFrame(() => { delete element.dataset.arenaShifting; });
     });
-    return () => {
-      cancelAnimationFrame(frame);
-      delete element.dataset.arenaShifting;
-    };
   }, [arenaInsets.left, arenaInsets.right, arenaInsets.top, arenaInsets.bottom]);
+  useEffect(() => () => cancelAnimationFrame(arenaShiftFrameRef.current), []);
   const storedViewportFromScreen = useCallback((viewport: { readonly x: number; readonly y: number; readonly zoom: number }) => ({
     x: viewport.x - arenaInsets.left,
     y: viewport.y - arenaInsets.top,
