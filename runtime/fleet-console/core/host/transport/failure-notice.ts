@@ -1,3 +1,5 @@
+import { CONSOLE_RELEASE_TARBALL_ALIAS, consoleReleaseLatestAssetUrl } from "@fleet-console/protocol/release";
+
 /**
  * 터미널로 나가는 실패의 공통 형태.
  *
@@ -52,7 +54,7 @@ export function describeDaemonStartFailure(input: DaemonStartFailureInput): stri
       why: appendCleanup(`the server process could not be spawned — ${input.spawnError}`, input.cleanupError),
       next: [
         "Check that this Node install can run the Console: node --version",
-        "Reinstall if the package is incomplete: npm install -g @dotobokuri/fleet-console",
+        `Reinstall if the package is incomplete: npm install -g ${consoleReleaseLatestAssetUrl(CONSOLE_RELEASE_TARBALL_ALIAS)}`,
       ],
     });
   }

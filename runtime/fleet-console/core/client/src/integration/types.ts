@@ -89,6 +89,7 @@ export interface ObserverStatus {
   readonly channel: "stable" | "local" | "unknown";
   readonly updateAvailable: boolean;
   readonly latestVersion?: string;
+  readonly shellUpdateRequired?: boolean;
   readonly port: number;
   readonly portMode: "dynamic" | "static";
   readonly requestedPort: number | null;
@@ -106,9 +107,12 @@ export interface ConsoleEnvironmentDiagnostics {
 }
 
 export type ConsoleUpdateApplyError =
+  | "checksum_mismatch"
   | "console_not_ready"
+  | "download_failed"
   | "local_channel"
   | "managed_runtime_update_requires_relaunch"
+  | "shell_update_required"
   | "update_already_in_progress"
   | "update_not_available"
   | "update_worker_unavailable";
@@ -241,6 +245,7 @@ export interface ConsoleState {
   readonly version: string;
   readonly updateAvailable: boolean;
   readonly latestVersion: string | null;
+  readonly shellUpdateRequired: boolean;
   readonly portMode: "dynamic" | "static";
   readonly requestedPort: number | null;
   readonly effectivePort: number;

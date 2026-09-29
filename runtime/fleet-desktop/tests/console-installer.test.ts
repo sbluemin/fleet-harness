@@ -5,6 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createConsoleInstallerEnvironment, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables, replaceLatest } from "../src/runtime/console-installer.js";
 import { resolveRuntimePaths } from "../src/runtime/runtime-paths.js";
 
+function release(version: string) {
+  return { schema: 1, package: "@dotobokuri/fleet-console", version, tag: `v${version}`, tarball: { name: `fleet-console-${version}.tgz`, size: 1, sha256: "0".repeat(64) } } as const;
+}
+
 function missing(): NodeJS.ErrnoException { const error = new Error("missing") as NodeJS.ErrnoException; error.code = "ENOENT"; return error; }
 
 function fileSystem(existing = new Set<string>()) {
@@ -30,10 +34,11 @@ describe("console installer", () => {
     const paths = resolveRuntimePaths("/Users/fleet");
     const nodeRoot = path.resolve("/runtime/node");
     const staging = path.join(paths.console, ".staging-test");
-    await expect(installConsole({ paths, nodeRoot, packageName: "@dotobokuri/fleet-console", version: "1.2.3", nodeRuntimeVersion: "22.23.1", platform: "darwin", architecture: "arm64", dependencies: { environment: { NODE_OPTIONS: "--require attacker", npm_config_registry: "https://attacker.invalid", NPM_CONFIG_CACHE: "/attacker", PATH: "/safe/bin" }, fileSystem: fs, run, randomSuffix: () => "test" } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
+    const tarball = path.join(`${staging}.download`, "fleet-console-1.2.3.tgz");
+    await expect(installConsole({ paths, nodeRoot, packageName: "@dotobokuri/fleet-console", release: release("1.2.3"), nodeRuntimeVersion: "22.23.1", platform: "darwin", architecture: "arm64", dependencies: { environment: { NODE_OPTIONS: "--require attacker", npm_config_registry: "https://attacker.invalid", NPM_CONFIG_CACHE: "/attacker", PATH: "/safe/bin" }, fileSystem: fs, run, randomSuffix: () => "test", downloadTarball: async () => tarball } })).resolves.toEqual({ root: paths.latest, version: "1.2.3" });
     const nodeBin = path.join(nodeRoot, "bin");
     // 번들 node bin이 PATH 앞에 붙어야 npm lifecycle 스크립트가 node를 찾는다.
-    expect(run).toHaveBeenCalledWith(path.join(nodeBin, "node"), [path.join(nodeRoot, "lib", "node_modules", "npm", "bin", "npm-cli.js"), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", "@dotobokuri/fleet-console@1.2.3"], { env: expect.objectContaining({ PATH: `${nodeBin}:/safe/bin`, npm_config_registry: "https://registry.npmjs.org/", npm_config_userconfig: path.join(staging, ".npmrc"), npm_config_globalconfig: path.join(staging, ".npmrc-global") }) });
+    expect(run).toHaveBeenCalledWith(path.join(nodeBin, "node"), [path.join(nodeRoot, "lib", "node_modules", "npm", "bin", "npm-cli.js"), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", tarball], { env: expect.objectContaining({ PATH: `${nodeBin}:/safe/bin`, npm_config_registry: "https://registry.npmjs.org/", npm_config_userconfig: path.join(staging, ".npmrc"), npm_config_globalconfig: path.join(staging, ".npmrc-global") }) });
     const firstRun = run.mock.calls[0];
     if (!firstRun) throw new Error("npm invocation was not captured");
     const runEnvironment = firstRun[2].env;
@@ -45,6 +50,7 @@ describe("console installer", () => {
     expect(fs.writeFile).toHaveBeenCalledWith(path.join(staging, ".npmrc-global"), "");
     expect(fs.rm).toHaveBeenCalledWith(path.join(staging, ".npmrc"));
     expect(fs.rm).toHaveBeenCalledWith(path.join(staging, ".npmrc-global"));
+    expect(fs.rm).toHaveBeenCalledWith(`${staging}.download`);
     expect(fs.rename).toHaveBeenCalledWith(path.join(staging, "node_modules", "@dotobokuri", "fleet-console"), `${staging}.package`);
     expect(fs.stat).toHaveBeenCalledWith(path.join(staging, "dist", "cli.mjs"));
     expect(fs.stat).toHaveBeenCalledWith(path.join(staging, "node_modules", "node-pty"));
@@ -54,13 +60,15 @@ describe("console installer", () => {
     expect(fs.accessExecutable).toHaveBeenCalledWith(spawnHelper);
   });
 
-  it("rejects npm aliases, URLs, ranges, and prereleases before spawning npm", async () => {
+  it("rejects non-release versions, and experiment builds without an override, before downloading", async () => {
     const fs = fileSystem();
     const run = vi.fn(async () => undefined);
+    const downloadTarball = vi.fn(async () => "/never.tgz");
     const paths = resolveRuntimePaths("/Users/fleet");
-    for (const version of ["npm:attacker@1.0.0", "https://attacker.invalid/pkg.tgz", "^1.2.3", "1.2.3-beta.1"]) {
-      await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", version, nodeRuntimeVersion: "22.23.1", platform: "darwin", dependencies: { fileSystem: fs, run, randomSuffix: () => "test" } })).rejects.toThrow("console_install_version_invalid");
+    for (const version of ["npm:attacker@1.0.0", "^1.2.3", "1.2.3-beta.1", "1.2.3-exp.1"]) {
+      await expect(installConsole({ paths, nodeRoot: "/runtime/node", packageName: "@dotobokuri/fleet-console", release: release(version), nodeRuntimeVersion: "22.23.1", platform: "darwin", dependencies: { fileSystem: fs, run, randomSuffix: () => "test", downloadTarball } })).rejects.toThrow("console_install_version_invalid");
     }
+    expect(downloadTarball).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
   });
 

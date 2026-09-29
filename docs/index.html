@@ -373,11 +373,13 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
           <p class="lede" lang="ko">Claude Code를 어떤 프런티어 모델로든 실행하고, 세션은 내 머신 위에 살려 둔 채 브라우저·데스크톱 앱·폰 어디서든 함대 전체를 지휘하세요.</p>
 
           <div class="install" role="group" aria-label="Install">
-            <div class="install-row"><span class="p" aria-hidden="true">$</span><code>npm install -g @dotobokuri/fleet-console</code><button class="copy" type="button" data-copy="npm install -g @dotobokuri/fleet-console"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
+            <div class="install-row"><span class="p" aria-hidden="true">$</span><code>npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz</code><button class="copy" type="button" data-copy="npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
             <div class="install-row"><span class="p" aria-hidden="true">$</span><code>fleet console</code><button class="copy" type="button" data-copy="fleet console"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
           </div>
           <p class="req" lang="en">Needs Node.js 20.19+ and Claude Code, installed and signed in.</p>
           <p class="req" lang="ko">Node.js 20.19 이상, 그리고 설치와 로그인을 마친 Claude Code가 필요합니다.</p>
+          <p class="req" lang="en">Update from the Console or with <code>fleet update</code>. <code>npm update -g</code> rolls Fleet back to the old version left on npm.</p>
+          <p class="req" lang="ko">업데이트는 Console 화면이나 <code>fleet update</code>로 하세요. <code>npm update -g</code>는 npm에 남은 옛 버전으로 되돌립니다.</p>
 
           <div class="cta">
             <a class="btn btn-solid" href="https://github.com/sbluemin/fleet-harness"><span lang="en">View on GitHub</span><span lang="ko">GitHub에서 보기</span> <span class="arr" aria-hidden="true">→</span></a>
@@ -643,7 +645,7 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
       <p class="sub rv" lang="en"><code>fleet console</code> prints a local address. Add a project folder as a Theater, then right-click the canvas.</p>
       <p class="sub rv" lang="ko"><code>fleet console</code>이 로컬 주소를 출력합니다. 프로젝트 폴더를 Theater로 추가하고 캔버스를 우클릭하세요.</p>
       <div class="install rv" role="group" aria-label="Install">
-        <div class="install-row"><span class="p" aria-hidden="true">$</span><code>npm install -g @dotobokuri/fleet-console</code><button class="copy" type="button" data-copy="npm install -g @dotobokuri/fleet-console"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
+        <div class="install-row"><span class="p" aria-hidden="true">$</span><code>npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz</code><button class="copy" type="button" data-copy="npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
         <div class="install-row"><span class="p" aria-hidden="true">$</span><code>fleet console</code><button class="copy" type="button" data-copy="fleet console"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
       </div>
       <div class="links rv">
@@ -651,7 +653,7 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
         <a href="https://github.com/sbluemin/fleet-harness/blob/canary/docs/fleet-development-reference.md">Development reference</a>
         <a href="https://github.com/sbluemin/fleet-harness/blob/canary/docs/console-agent-sdk.md">Console Agent SDK</a>
         <a href="https://github.com/sbluemin/fleet-harness/blob/canary/CHANGELOG.md"><span lang="en">Changelog</span><span lang="ko">변경 이력</span></a>
-        <a href="https://www.npmjs.com/package/@dotobokuri/fleet-console">npm</a>
+        <a href="https://github.com/sbluemin/fleet-harness/releases/latest"><span lang="en">Releases</span><span lang="ko">릴리스</span></a>
       </div>
     </div>
   </section>

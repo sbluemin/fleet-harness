@@ -1,5 +1,7 @@
 import { createRequire } from "node:module";
 
+import { isExperimentConsoleVersion } from "@fleet-console/protocol/release";
+
 export type FleetCliChannel = "stable" | "local";
 
 export interface FleetCliRelease {
@@ -18,4 +20,9 @@ export function readFleetCliRelease(): FleetCliRelease {
     return { channel: "local", version };
   }
   return { channel: "stable", version };
+}
+
+/** The label beside the version. An experiment prerelease is published, but it is not a stable release. */
+export function formatFleetCliReleaseLabel(release: FleetCliRelease): string {
+  return release.channel === "stable" && isExperimentConsoleVersion(release.version) ? "experiment" : release.channel;
 }

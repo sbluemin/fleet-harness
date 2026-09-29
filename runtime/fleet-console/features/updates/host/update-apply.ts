@@ -5,10 +5,12 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { createGlobalPackageUpdater } from "@fleet-console/updates";
-import type { GlobalPackageManagerCommand } from "@fleet-console/updates";
+import { consoleReleaseTarballDir, createGlobalPackageUpdater, downloadVerifiedConsoleTarball } from "@fleet-console/updates";
+import type { ConsoleTarballDownload, GlobalPackageManagerCommand } from "@fleet-console/updates";
+import { getFleetDataDir } from "@fleet-console/infra/data-dir";
 import { withHidden, withNodeSystemCa } from "@fleet-console/process";
 import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
+import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
 import { CONSOLE_UPDATE_PROGRESS_FILE, writeConsoleUpdateProgress } from "./update-progress.js";
 
@@ -22,7 +24,8 @@ export interface ConsoleUpdateApplyRequest {
   readonly currentEndpoint: string;
   readonly currentPackageRoot: string;
   readonly lockFile: string;
-  readonly targetVersion: string;
+  /** The release the update check verified; its version is the target and its sha256 guards the bytes. */
+  readonly release: ConsoleReleaseManifest;
   readonly fromVersion: string;
 }
 
@@ -32,6 +35,10 @@ export interface ConsoleUpdateApplyStartResult {
 
 export interface CreateConsoleUpdateApplyServiceDeps {
   readonly env?: NodeJS.ProcessEnv;
+  /** Fleet data root; verified release tarballs are kept beneath it for as long as they stay installed. */
+  readonly fleetDataDir?: string;
+  readonly downloadTarball?: (release: ConsoleReleaseManifest, releasesDir: string) => Promise<ConsoleTarballDownload>;
+  readonly removeFile?: (filePath: string) => void;
   readonly execPath?: string;
   readonly makeDir?: (dirPath: string, options: { readonly mode: number; readonly recursive: true }) => void;
   readonly now?: () => number;
@@ -58,6 +65,9 @@ export interface ConsoleUpdateWorkerScriptConfig {
   readonly logFile: string;
   readonly packageManager: ConsoleUpdatePackageManagerSpec;
   readonly packageNames: readonly [string, ...string[]];
+  /** Already downloaded and sha256-verified before this Console was asked to stop. */
+  readonly tarballPath: string;
+  readonly releasesDir: string;
   readonly serverModulePath: string;
   readonly startedAt: string;
   readonly statusFile: string;
@@ -102,6 +112,8 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
   const now = deps.now ?? Date.now;
   const processPid = deps.processPid ?? process.pid;
   const preflightInstall = deps.preflightInstall ?? ((currentPackageRoot: string) => preflightPackageManager(currentPackageRoot, env));
+  const downloadTarball = deps.downloadTarball ?? ((release: ConsoleReleaseManifest, dir: string) => downloadVerifiedConsoleTarball(release, { releasesDir: dir }));
+  const removeFile = deps.removeFile ?? ((filePath: string) => fs.rmSync(filePath, { force: true }));
   const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
   const spawnWorker = deps.spawnWorker ?? defaultSpawnWorker;
   const tmpDir = deps.tmpDir ?? os.tmpdir();
@@ -115,6 +127,26 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     // entry-flow transaction until a recoverable same-window handoff exists.
     if (isManagedRuntimePackageRoot(request.currentPackageRoot)) throw new Error("managed_runtime_update_requires_relaunch");
     const packageManager = await preflightInstall(request.currentPackageRoot);
+    // Every byte is fetched and checked while this Console still serves. A failed download or a
+    // hash mismatch is reported here, and nothing has been stopped or installed.
+    const releasesDir = consoleReleaseTarballDir(deps.fleetDataDir ?? getFleetDataDir(env));
+    const download = await downloadTarball(request.release, releasesDir);
+    if (!download.ok) throw new Error(download.reason);
+    const targetVersion = request.release.version;
+    try {
+      return await launchWorker(request, packageManager, { releasesDir, tarballPath: download.tarballPath, targetVersion });
+    } catch (error) {
+      removeFile(download.tarballPath);
+      throw error;
+    }
+  }
+
+  async function launchWorker(
+    request: ConsoleUpdateApplyRequest,
+    packageManager: ConsoleUpdatePackageManagerSpec,
+    target: { readonly releasesDir: string; readonly tarballPath: string; readonly targetVersion: string },
+  ): Promise<ConsoleUpdateApplyStartResult> {
+    const { releasesDir, tarballPath, targetVersion } = target;
     const stamp = `${now()}-${processPid}`;
     const workerPath = path.join(tmpDir, `${WORKER_FILE_PREFIX}${stamp}${WORKER_FILE_SUFFIX}`);
     makeDir(request.dataDir, { recursive: true, mode: 0o700 });
@@ -132,11 +164,13 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       packageManager,
       packageNames: PACKAGE_NAMES,
       progressFile,
+      releasesDir,
       resumePort: readEndpointPort(request.currentEndpoint),
       serverModulePath,
       statusFile,
       startedAt,
-      targetVersion: request.targetVersion,
+      tarballPath,
+      targetVersion,
       workerPath,
     });
     writeFile(workerPath, script, { mode: TEMP_FILE_MODE });
@@ -149,7 +183,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       phase: "starting",
       startedAt,
       updatedAt: startedAt,
-      targetVersion: request.targetVersion,
+      targetVersion,
       fromVersion: request.fromVersion,
     }, { makeDir, writeFile });
     return { accepted: true };
@@ -317,9 +351,39 @@ function ensureGlobalRootWritable(manager) {
 }
 
 async function installPackages(manager) {
-  const packages = config.packageNames.map((name) => name + "@" + config.targetVersion);
-  const code = await spawnExit(manager.bin, [...manager.prefixArgs, "i", "-g", "--force", ...packages]);
-  if (code !== 0) throw new Error("global package install failed with exit code " + code);
+  // The package's postinstall would otherwise start a Console of its own and race startNewDaemon.
+  const env = { ...process.env, FLEET_CONSOLE_NO_AUTO_START: "1" };
+  const code = await spawnExit(manager.bin, [...manager.prefixArgs, "i", "-g", "--force", config.tarballPath], env);
+  if (code !== 0) {
+    removeFileBestEffort(config.tarballPath);
+    throw new Error("global package install failed with exit code " + code);
+  }
+  // pnpm records a tarball install as a file: dependency, so the installed tarball has to stay.
+  // Everything older is no longer referenced once this install has succeeded.
+  pruneReleaseTarballs();
+}
+
+function pruneReleaseTarballs() {
+  let entries;
+  try {
+    entries = fs.readdirSync(config.releasesDir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const entryPath = path.join(config.releasesDir, entry);
+    if (entryPath === config.tarballPath) continue;
+    if (!/^fleet-console-.+\.tgz$/.test(entry)) continue;
+    removeFileBestEffort(entryPath);
+  }
+}
+
+function removeFileBestEffort(filePath) {
+  try {
+    fs.rmSync(filePath, { force: true });
+  } catch {
+    // 남은 tarball은 다음 업데이트가 정리한다.
+  }
 }
 
 function daemonEnv() {
@@ -382,9 +446,9 @@ function isSameEndpoint(left, right) {
   }
 }
 
-function spawnExit(command, args) {
+function spawnExit(command, args, env = process.env) {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: "ignore", windowsHide: true });
+    const child = spawn(command, args, { env, stdio: "ignore", windowsHide: true });
     child.once("error", () => resolve(1));
     child.once("exit", (code) => resolve(code ?? 1));
   });
@@ -504,6 +568,7 @@ function sanitizeError(error) {
     .replaceAll(config.lockFile, "[path]")
     .replaceAll(config.logFile, "[path]")
     .replaceAll(config.statusFile, "[path]")
+    .replaceAll(config.tarballPath, "[path]")
     .replaceAll(config.workerPath, "[path]");
 }
 `;
@@ -538,7 +603,6 @@ async function preflightPackageManager(packageRoot: string, env: NodeJS.ProcessE
     env,
     packageNames: PACKAGE_NAMES,
     resolveCurrentPackageRoot: () => packageRoot,
-    resolveCurrentVersion: () => undefined,
   });
   const detection = await updater.detectPackageManager();
   if (detection.manager === undefined) {

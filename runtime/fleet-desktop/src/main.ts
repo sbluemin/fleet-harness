@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
 
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
+import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 import { autoUpdater } from "electron-updater";
 
@@ -32,7 +33,7 @@ import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
 import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables } from "./runtime/console-installer.js";
 import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
-import { createRegistryChecker } from "./runtime/registry-check.js";
+import { createReleaseChecker } from "./runtime/release-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
@@ -133,12 +134,12 @@ async function boot(): Promise<void> {
   const environment = await createHydratedDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   bootLogger = logger;
-  const registry = createRegistryChecker({ packageName: PACKAGE_NAME });
+  const releases = createReleaseChecker();
   let pushRuntimeProgress: RuntimeProgress | null = null;
   const initialServiceVersion = readInstalledVersion(isPackaged ? runtimePaths.latest : desktopResources.serviceRoot) ?? "";
   const supervisor = new SidecarSupervisor({
     ...(isPackaged
-      ? { resolveRuntime: () => resolvePackagedRuntime(runtimePaths, registry, (state, detail, progress) => pushRuntimeProgress?.(state, detail, progress) ?? Promise.resolve(), logger) }
+      ? { resolveRuntime: () => resolvePackagedRuntime(runtimePaths, releases, (state, detail, progress) => pushRuntimeProgress?.(state, detail, progress) ?? Promise.resolve(), logger) }
       : { nodePath: desktopResources.nodePath, cliPath: desktopResources.cliPath, serviceRoot: desktopResources.serviceRoot }),
     env: environment.serviceEnv,
     lockFile: path.join(environment.consoleDir, "console.lock"),
@@ -604,7 +605,7 @@ async function boot(): Promise<void> {
   }
 }
 
-async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, registry: ReturnType<typeof createRegistryChecker>, progress: RuntimeProgress, logger: DesktopLogger): Promise<SidecarRuntime> {
+async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRuntimePaths>, releases: ReturnType<typeof createReleaseChecker>, progress: RuntimeProgress, logger: DesktopLogger): Promise<SidecarRuntime> {
   try {
     const manifest = JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest;
     const engine = readConsoleNodeEngine(runtimePaths.latest);
@@ -619,13 +620,13 @@ async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRun
     await reconcileConsoleInstallations(runtimePaths, createInstallerFileSystem());
     const installedVersion = readInstalledVersion(runtimePaths.latest);
     if (installedVersion) await repairConsoleNativeExecutables(runtimePaths.latest, process.platform, process.arch, createInstallerFileSystem());
-    const result = await registry.check(installedVersion ?? "");
-    const version = result.latest ?? installedVersion;
+    const result = await releases.check(installedVersion ?? "");
+    const version = result.release?.version ?? installedVersion;
     if (!version) throw new Error("console_runtime_unavailable");
-    if (result.latest) {
+    if (result.release) {
       await progress("installing", `Fleet Console ${version}`, 0);
       try {
-        await installConsole({ paths: runtimePaths, nodeRoot: runtimePaths.node, packageName: PACKAGE_NAME, version, nodeRuntimeVersion: manifest.version, platform: process.platform });
+        await installConsole({ paths: runtimePaths, nodeRoot: runtimePaths.node, packageName: PACKAGE_NAME, release: result.release, allowExperimentVersion: readConsoleReleaseTagOverride(process.env).kind === "tag", nodeRuntimeVersion: manifest.version, platform: process.platform });
       } catch (error) {
         if (!installedVersion) throw error;
         await progress("offline", "install-failed");

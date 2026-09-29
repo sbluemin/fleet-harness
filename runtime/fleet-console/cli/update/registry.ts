@@ -1,9 +1,6 @@
-import { fetchLatestVersion, type UpdateChannel } from "@fleet-console/updates";
+import { fetchConsoleRelease, type ConsoleReleaseLookup } from "@fleet-console/updates";
 
-export type { UpdateChannel };
-
-const FLEET_CONSOLE_PACKAGE_NAME = "@dotobokuri/fleet-console";
-
-export async function fetchLatestFleetCliVersion(channel: UpdateChannel): Promise<string | undefined> {
-  return await fetchLatestVersion(FLEET_CONSOLE_PACKAGE_NAME, channel);
+/** The release `fleet update` follows: latest stable, or the tag FLEET_CONSOLE_RELEASE_TAG names. */
+export async function fetchFleetCliRelease(env: NodeJS.ProcessEnv = process.env): Promise<ConsoleReleaseLookup> {
+  return await fetchConsoleRelease({ env });
 }

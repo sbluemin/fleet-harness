@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-console"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-console?style=flat-square&color=c9a455&label=npm" alt="npm version"></a>
+  <a href="https://github.com/sbluemin/fleet-harness/releases/latest"><img src="https://img.shields.io/github/v/release/sbluemin/fleet-harness?style=flat-square&color=c9a455&label=release" alt="Latest release"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-5c9e92?style=flat-square" alt="MIT license"></a>
   <a href="https://sbluemin.github.io/fleet-harness/"><img src="https://img.shields.io/badge/site-sbluemin.github.io-2b2f38?style=flat-square" alt="Project site"></a>
 </p>
@@ -31,11 +31,13 @@
 ## Start
 
 ```bash
-npm install -g @dotobokuri/fleet-console
+npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz
 fleet console
 ```
 
 `fleet console` starts a local server and prints its address. Open that address in any browser. You need Node.js 20.19 or later and Claude Code installed and signed in. Running `fleet` on its own opens Claude Code in your terminal, routed through the same AI Gateway.
+
+Update from the Console or with `fleet update`. `npm update -g` rolls Fleet back to the old version left on npm.
 
 Add a project folder as a **Theater**, then right-click the canvas to launch your first **Operation**.
 

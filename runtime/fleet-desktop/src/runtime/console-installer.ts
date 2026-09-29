@@ -6,8 +6,10 @@ import { promisify } from "node:util";
 
 import { withNodeSystemCa } from "@fleet-console/process";
 import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
+import { isExperimentConsoleVersion, isStableConsoleVersion, type ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 
 import { satisfiesNodeEngine } from "./node-bootstrap.js";
+import { downloadVerifiedConsoleTarball } from "./release-check.js";
 import type { RuntimePaths } from "./runtime-paths.js";
 
 export interface ConsoleInstallerFileSystem {
@@ -27,13 +29,17 @@ export interface ConsoleInstallerDependencies {
   readonly fileSystem: ConsoleInstallerFileSystem;
   readonly run: (command: string, arguments_: readonly string[], options: { readonly env: NodeJS.ProcessEnv }) => Promise<void>;
   readonly randomSuffix: () => string;
+  /** Returns the absolute path of a tarball whose size and sha256 already match the manifest. */
+  readonly downloadTarball?: (release: ConsoleReleaseManifest, directory: string) => Promise<string>;
 }
 
 export interface InstallConsoleOptions {
   readonly paths: RuntimePaths;
   readonly nodeRoot: string;
   readonly packageName: string;
-  readonly version: string;
+  readonly release: ConsoleReleaseManifest;
+  /** Only an explicit release-tag override may install an `X.Y.Z-exp.N` build. */
+  readonly allowExperimentVersion?: boolean;
   readonly nodeRuntimeVersion: string;
   readonly platform: NodeJS.Platform;
   /** 부재 = 현재 프로세스의 아키텍처. platform과 같이 주입 가능해야 호스트 아키텍처와 무관하게 검증된다. */
@@ -46,17 +52,22 @@ export interface InstalledConsole {
   readonly version: string;
 }
 
-const STABLE_SEMVER = /^\d+\.\d+\.\d+$/;
-
 export async function installConsole(options: InstallConsoleOptions): Promise<InstalledConsole> {
-  if (!STABLE_SEMVER.test(options.version)) throw new Error("console_install_version_invalid");
+  const version = options.release.version;
+  if (!isStableConsoleVersion(version) && !(options.allowExperimentVersion === true && isExperimentConsoleVersion(version))) throw new Error("console_install_version_invalid");
   const dependencies = options.dependencies ?? createConsoleInstallerDependencies();
+  const downloadTarball = dependencies.downloadTarball ?? ((release, directory) => downloadVerifiedConsoleTarball(release, { directory }));
   const staging = path.join(options.paths.console, `.staging-${dependencies.randomSuffix()}`);
+  // The tarball sits beside staging, never inside it, so it cannot be promoted with the install.
+  // Its `.staging-` prefix lets reconciliation remove it after an interrupted run.
+  const download = `${staging}.download`;
   try {
     await dependencies.fileSystem.mkdir(options.paths.console);
     await reconcileConsoleInstallations(options.paths, dependencies.fileSystem);
     await dependencies.fileSystem.rm(staging);
+    await dependencies.fileSystem.rm(download);
     await dependencies.fileSystem.mkdir(staging);
+    const tarballPath = await downloadTarball(options.release, download);
     const npmUserConfiguration = path.join(staging, ".npmrc");
     const npmGlobalConfiguration = path.join(staging, ".npmrc-global");
     await dependencies.fileSystem.writeFile(npmUserConfiguration, "");
@@ -65,18 +76,20 @@ export async function installConsole(options: InstallConsoleOptions): Promise<In
     // 번들 node 바이너리로 npm-cli.js를 직접 구동한다. 단, 이것만으로는 lifecycle 스크립트가 `node`를 찾지
     // 못하므로(npm은 실행 node의 dir을 자식 PATH에 넣지 않음) createConsoleInstallerEnvironment가 PATH에 주입한다.
     try {
-      await dependencies.run(nodeBinaryPath(options.nodeRoot, options.platform), [npmCliPath(options.nodeRoot, options.platform), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", `${options.packageName}@${options.version}`], { env: createConsoleInstallerEnvironment(dependencies.environment, npmUserConfiguration, npmGlobalConfiguration, path.dirname(nodeBinaryPath(options.nodeRoot, options.platform)), options.platform) });
+      await dependencies.run(nodeBinaryPath(options.nodeRoot, options.platform), [npmCliPath(options.nodeRoot, options.platform), "install", "--prefix", staging, "--global=false", "--force=false", "--package-lock=false", "--no-audit", "--no-fund", tarballPath], { env: createConsoleInstallerEnvironment(dependencies.environment, npmUserConfiguration, npmGlobalConfiguration, path.dirname(nodeBinaryPath(options.nodeRoot, options.platform)), options.platform) });
     } finally {
       await dependencies.fileSystem.rm(npmUserConfiguration);
       await dependencies.fileSystem.rm(npmGlobalConfiguration);
+      await dependencies.fileSystem.rm(download);
     }
     await normalizePrefixInstallation(staging, options.packageName, dependencies.fileSystem);
     await repairConsoleNativeExecutables(staging, options.platform, options.architecture ?? process.arch, dependencies.fileSystem);
-    await verifyInstallation(staging, options.version, options.nodeRuntimeVersion, dependencies.fileSystem);
+    await verifyInstallation(staging, version, options.nodeRuntimeVersion, dependencies.fileSystem);
     await replaceLatest(options.paths.latest, staging, dependencies.fileSystem);
-    return { root: options.paths.latest, version: options.version };
+    return { root: options.paths.latest, version };
   } catch (error) {
     await dependencies.fileSystem.rm(staging);
+    await dependencies.fileSystem.rm(download);
     throw error;
   }
 }

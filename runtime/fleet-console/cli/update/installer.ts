@@ -1,26 +1,32 @@
 import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
-import { accessSync, constants, realpathSync } from "node:fs";
+import { accessSync, constants, realpathSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { createGlobalPackageUpdater, type GlobalPackageManagerInstall, type GlobalPackageSpawnContext, type GlobalPackageUpdater } from "@fleet-console/updates";
+import { getFleetDataDir } from "@fleet-console/infra/data-dir";
+import { hasDesktopGithubReleaseConsoleSource } from "@fleet-console/protocol/desktop";
+import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
+import {
+  consoleReleaseTarballDir,
+  createGlobalPackageUpdater,
+  downloadVerifiedConsoleTarball,
+  formatConsoleReleaseInstallCommands,
+  retainOnlyConsoleReleaseTarball,
+  type GlobalPackageManagerInstall,
+  type GlobalPackageSpawnContext,
+  type GlobalPackageUpdater,
+} from "@fleet-console/updates";
 import {
   resolvePathBinary,
 } from "@fleet-console/process";
 import { readFleetCliRelease } from "../release.js";
-import { checkUpdateStatus, resolveUpdateChannel } from "./check.js";
+import { isManagedRuntimePackageRoot } from "../../features/updates/host/update-apply.js";
+import { checkUpdateStatus, describeReleaseLookupFailure, type UpdateCheckResult } from "./check.js";
 import { resolveSiblingConsoleCliPath, stopRunningConsoleBeforeUpdate } from "./stop-console.js";
-import type { UpdateChannel } from "./registry.js";
 import type { UpdateCommandIo } from "./dispatcher.js";
 
 type PackageManagerInstall = GlobalPackageManagerInstall;
-
-interface GlobalInstallTarget {
-  readonly channel: UpdateChannel;
-  readonly manager: PackageManagerInstall | undefined;
-  readonly reason: "local" | "permission" | undefined;
-}
 
 const PACKAGE_NAMES = ["@dotobokuri/fleet-console"] as const;
 const FLEET_CONSOLE_PACKAGE_NAME = "@dotobokuri/fleet-console";
@@ -37,51 +43,66 @@ export interface RunFleetUpdateOptions {
 export async function runFleetUpdate(io: UpdateCommandIo, options: RunFleetUpdateOptions = {}): Promise<number> {
   const siblingCliPath = options.siblingCliPath ?? resolveSiblingConsoleCliPath();
   const release = readFleetCliRelease();
-  const channel = resolveUpdateChannel(release.version);
   if (release.channel === "local") {
     io.stdout.write(`Fleet is running from a local development build (v${release.version}) — nothing to update here.\n`);
     return 0;
   }
-  const updater = createFleetPackageUpdater(io, release.version, siblingCliPath);
-  const target = await resolveGlobalInstallTarget(channel, updater);
-  if (target.manager === undefined) {
-    writeManualInstallMessage(io, target.channel, target.reason);
-    return 0;
-  }
-  const updateCheck = await checkUpdateStatus(release, { forceRefresh: true }).catch(() => ({ status: "unavailable" as const }));
+  const updateCheck = await checkUpdateStatus(release, { forceRefresh: true }).catch((): UpdateCheckResult => ({ status: "unavailable" }));
   if (updateCheck.status === "current") {
     io.stdout.write(`Fleet is already on the latest version (v${release.version}).\n`);
     return 0;
   }
-  const versionOrChannel = updateCheck.status === "update" ? updateCheck.latest : target.channel;
-  if (updateCheck.status === "unavailable") {
-    io.stdout.write(`Could not reach the npm registry to check for updates; reinstalling the latest published version with ${target.manager.command}...\n`);
-  } else {
-    io.stdout.write(`Updating Fleet with ${target.manager.command} (${versionOrChannel})...\n`);
+  // Without a verified manifest there is nothing safe to install; reinstalling "whatever is latest" is not an update.
+  if (updateCheck.status !== "update" || updateCheck.release === undefined) {
+    io.stderr.write(`${describeReleaseLookupFailure(updateCheck.status === "unavailable" ? updateCheck.reason : undefined)} Nothing was installed.\n`);
+    // A bad tag is fixed by the variable, not by installing something else, and Fleet Desktop's
+    // install tree is never replaced by a global install.
+    const invalidTag = updateCheck.status === "unavailable" && updateCheck.reason === "invalid_override";
+    if (!invalidTag && !isDesktopManagedInstall()) {
+      writeManualInstallCommands(io, null, "You can install the latest release manually:");
+    }
+    return 1;
   }
+  const manifest = updateCheck.release;
+  // Fleet Desktop owns this install tree, exactly as the Console update menu treats it: a global
+  // install would land somewhere else and leave the running Console unchanged.
+  if (isDesktopManagedInstall()) {
+    io.stderr.write(hasDesktopGithubReleaseConsoleSource(process.env)
+      ? `Fleet Desktop installs Console updates for this install. Apply v${manifest.version} from the Console update menu, or restart Fleet Desktop.\n`
+      : `Fleet v${manifest.version} is available, but this Fleet Desktop cannot install it. Update Fleet Desktop first; it brings the new Console with it.\n`);
+    return 1;
+  }
+  const updater = createFleetPackageUpdater(io, siblingCliPath);
+  const { manager, reason } = await updater.detectPackageManager();
+  if (manager === undefined) {
+    writeManualInstallMessage(io, manifest, reason);
+    return 0;
+  }
+  io.stdout.write(`Downloading Fleet v${manifest.version} from GitHub Releases...\n`);
+  const releasesDir = consoleReleaseTarballDir(getFleetDataDir());
+  const download = await downloadVerifiedConsoleTarball(manifest, { releasesDir });
+  if (!download.ok) {
+    io.stderr.write(download.reason === "checksum_mismatch"
+      ? "The downloaded release did not match its published checksum, so nothing was installed.\n"
+      : "The release could not be downloaded, so nothing was installed.\n");
+    return 1;
+  }
+  io.stdout.write(`Updating Fleet with ${manager.command} (v${manifest.version})...\n`);
   await stopRunningConsoleBeforeUpdate(io, { siblingCliPath });
-  const status = await installFleetPackages(target.manager, versionOrChannel, io, siblingCliPath);
-  if (status !== 0) {
-    io.stderr.write(`Fleet update did not complete. You can run this manually:\n${formatInstallCommand(target.manager.command, target.channel)}\n`);
+  const status = await installFleetPackages(manager, download.tarballPath, io, siblingCliPath);
+  if (status === 0) {
+    retainOnlyConsoleReleaseTarball(releasesDir, download.tarballPath);
+  } else {
+    removeFileBestEffort(download.tarballPath);
+    io.stderr.write(`Fleet update did not complete. You can run this manually:\n${formatConsoleReleaseInstallCommands(manifest).filter((command) => command.startsWith(manager.command)).join("\n")}\n`);
   }
   return status;
 }
 
-async function resolveGlobalInstallTarget(channel: UpdateChannel, updater: GlobalPackageUpdater): Promise<GlobalInstallTarget> {
-  const { manager, reason } = await updater.detectPackageManager();
-  return { channel, manager, reason };
-}
-
-function createFleetPackageUpdater(
-  io: UpdateCommandIo,
-  currentVersion = "",
-  siblingCliPath?: string,
-): GlobalPackageUpdater {
+function createFleetPackageUpdater(io: UpdateCommandIo, siblingCliPath?: string): GlobalPackageUpdater {
   return createGlobalPackageUpdater({
     packageNames: PACKAGE_NAMES,
     resolveCurrentPackageRoot: getCurrentPackageRoot,
-    resolveCurrentVersion: () => currentVersion,
-    prepareInstall: () => stopRunningConsoleBeforeUpdate(io, { siblingCliPath }),
     report: (message) => reportUpdaterMessage(io, message),
     resolveBinary: (command, env, options) => resolvePathBinary(command, env, options),
     execFile: (file, args) => execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }),
@@ -96,6 +117,11 @@ function reportUpdaterMessage(io: UpdateCommandIo, message: string): void {
   if (match !== null) {
     io.stderr.write(`Failed to detect Fleet's global ${match[1]} install: ${match[2]}\n`);
   }
+}
+
+export function isDesktopManagedInstall(): boolean {
+  const packageRoot = getCurrentPackageRoot();
+  return packageRoot !== undefined && isManagedRuntimePackageRoot(packageRoot);
 }
 
 function getCurrentPackageRoot(): string | undefined {
@@ -114,11 +140,17 @@ function getCurrentPackageRoot(): string | undefined {
 
 function installFleetPackages(
   manager: PackageManagerInstall,
-  versionOrChannel: string,
+  tarballPath: string,
   io: UpdateCommandIo,
   siblingCliPath?: string,
 ): Promise<number> {
-  return createFleetPackageUpdater(io, "", siblingCliPath).install(manager, versionOrChannel);
+  return createFleetPackageUpdater(io, siblingCliPath).install(manager, tarballPath);
+}
+
+function removeFileBestEffort(filePath: string): void {
+  try {
+    rmSync(filePath, { force: true });
+  } catch {}
 }
 
 function spawnInstallProcess(file: string, args: readonly string[], context: GlobalPackageSpawnContext, io: UpdateCommandIo): ReturnType<typeof spawn> {
@@ -140,23 +172,20 @@ function spawnInstallProcess(file: string, args: readonly string[], context: Glo
   return child;
 }
 
-function writeManualInstallMessage(io: UpdateCommandIo, channel: UpdateChannel, reason: "local" | "permission" | undefined): void {
+function writeManualInstallMessage(io: UpdateCommandIo, manifest: ConsoleReleaseManifest, reason: "local" | "permission" | undefined): void {
   if (reason === "permission") {
     io.stdout.write("Fleet's global install location is not writable, so no installer was run.\n");
   } else {
     io.stdout.write("Fleet could not detect its global npm or pnpm installation, so no installer was run.\n");
   }
-  writeManualInstallCommands(io, channel, "Run one of these commands manually:");
+  writeManualInstallCommands(io, manifest, "Run one of these commands manually:");
 }
 
-function writeManualInstallCommands(io: UpdateCommandIo, channel: UpdateChannel, header: string): void {
+function writeManualInstallCommands(io: UpdateCommandIo, manifest: ConsoleReleaseManifest | null, header: string): void {
   io.stdout.write(`${header}\n`);
-  io.stdout.write(`${formatInstallCommand("npm", channel)}\n`);
-  io.stdout.write(`${formatInstallCommand("pnpm", channel)}\n`);
-}
-
-function formatInstallCommand(command: "npm" | "pnpm", channel: UpdateChannel): string {
-  return `${command} i -g ${PACKAGE_NAMES.map((name) => `${name}@${channel}`).join(" ")}`;
+  for (const command of formatConsoleReleaseInstallCommands(manifest)) {
+    io.stdout.write(`${command}\n`);
+  }
 }
 
 function canWrite(targetPath: string): boolean {

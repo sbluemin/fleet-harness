@@ -143,6 +143,7 @@ export function ConsoleHelpMenu() {
       version={state.version}
       latestVersion={state.latestVersion}
       updateAvailable={state.updateAvailable}
+      shellUpdateRequired={state.shellUpdateRequired}
       // 새로고침/언어 전환 실패는 이미 표시 중인 노트를 버리지 않는다. 남은 노트가 있으면
       // Help 진입도 열어 두어 inline 오류를 보고 다시 시도할 수 있어야 한다.
       releaseDisabled={state.releaseNotesLoading || state.releaseNotes.length === 0}
@@ -650,9 +651,11 @@ function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
   return next.length === afterOnboarding.length ? afterOnboarding : next;
 }
 
-function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: {
+function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, latestVersion, version }: {
   readonly releaseDisabled: boolean;
   readonly updateAvailable: boolean;
+  /** 새 Console이 있지만 이 셸이 먼저 바뀌어야 받을 수 있다. Console 쪽에서 누를 것은 없다. */
+  readonly shellUpdateRequired: boolean;
   readonly latestVersion: string | null;
   readonly version: string;
 }) {
@@ -671,7 +674,8 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   const shellUpdate = useDesktopShellUpdate(opens);
   // 점의 뜻은 "이 메뉴 안에 올릴 것이 있다"이다 — Console이든 Desktop이든. 어느 행인지는
   // 메뉴를 열면 칩이 말한다.
-  const updateReady = updateAvailable || shellUpdate.stage === "available" || shellUpdate.stage === "ready";
+  const consoleActionable = updateAvailable && !shellUpdateRequired;
+  const updateReady = consoleActionable || shellUpdate.stage === "available" || shellUpdate.stage === "ready";
   /**
    * 셸 재시작 한 번이 Console까지 최신으로 만든다 — 돌아온 셸의 진입 흐름이 새 Console을 조달하기
    * 때문이다. 그래서 셸 갱신이 걸려 있으면 Console 행은 칩을 거두고 그 사실만 말한다.
@@ -683,7 +687,8 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   const consoleFoldsIntoShell = updateAvailable
     && onHomeConsole
     && (shellUpdate.stage === "available" || shellUpdate.stage === "downloading" || shellUpdate.stage === "ready");
-  const notice = useUpdateNotice({ shellUpdate, updateAvailable, latestVersion, onHomeConsole });
+  // 셸이 먼저 바뀌어야 하는 Console 갱신은 셸 갱신에 실려 올 때만 알린다 — 따로 알릴 버튼이 없다.
+  const notice = useUpdateNotice({ shellUpdate, updateAvailable: shellUpdateRequired ? consoleFoldsIntoShell : updateAvailable, latestVersion, onHomeConsole });
   // "화면 안내 다시 보기"는 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다 —
   // 카탈로그의 모든 피처 투어 시청 기록과 최초 설정 가이드 기록을 함께 지워, 어느 화면에
   // 있든 온보딩을 처음부터 다시 보게 한다.
@@ -722,7 +727,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
       <button type="button" role="menuitem" disabled={replayDisabled} onClick={replayScreenGuide} title={t(replayDisabled ? "chrome.system.replayScreenGuideNone" : "chrome.system.replayScreenGuideTitle")}><ScreenGuideGlyph /><span>{t("chrome.system.replayScreenGuide")}</span></button>
       <div className="command-band-system-menu-divider" role="separator" />
-      <ConsoleVersionRow version={version} latestVersion={updateAvailable ? latestVersion : null} foldedIntoShell={consoleFoldsIntoShell} onStarted={() => setOpen(false)} />
+      <ConsoleVersionRow version={version} latestVersion={updateAvailable ? latestVersion : null} foldedIntoShell={consoleFoldsIntoShell} shellUpdateRequired={shellUpdateRequired} onStarted={() => setOpen(false)} />
       {shell.desktopVersion ? <DesktopVersionRow version={shell.desktopVersion} update={shellUpdate} /> : null}
       <div className="command-band-system-menu-divider" role="separator" />
       <GithubLinks />
@@ -737,11 +742,12 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
  * 예전 업데이트 행의 것을 그대로 가져왔고, 두 번째 누름이 곧 호스트 재시작 동의라는 문법도 같다.
  * 칩이 없으면(최신, 또는 확인 불가) 행은 정보만 말하는 정적 행이다.
  */
-function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, onStarted }: {
+function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdateRequired, onStarted }: {
   readonly version: string;
   readonly latestVersion: string | null;
   /** 셸 재시작이 이 갱신까지 가져온다 — 누를 것을 두 개 두지 않고, 그 사실만 적는다. */
   readonly foldedIntoShell: boolean;
+  readonly shellUpdateRequired: boolean;
   readonly onStarted: () => void;
 }) {
   const t = useT();
@@ -753,6 +759,14 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, onStarted 
       <div className="command-band-version-row command-band-version-row--static command-band-version-row--blocked" aria-label={t("chrome.system.version.consoleFolded", { version, latest: latestVersion })} title={t("chrome.system.update.foldedTitle")}>
         {body}
         <span className="command-band-version-row-chip">{t("chrome.system.update.folded")}</span>
+      </div>
+    );
+  }
+  if (latestVersion !== null && shellUpdateRequired) {
+    return (
+      <div className="command-band-version-row command-band-version-row--static command-band-version-row--blocked" aria-label={t("chrome.system.version.consoleUpdate", { version, latest: latestVersion })} title={t("chrome.system.update.shellRequiredTitle")}>
+        {body}
+        <span className="command-band-version-row-chip">{t("chrome.system.update.shellRequired")}</span>
       </div>
     );
   }
@@ -900,7 +914,7 @@ async function refreshDesktop(): Promise<boolean> {
  */
 async function refreshConsole(): Promise<boolean> {
   const status = await checkConsoleUpdate();
-  setState({ updateAvailable: status.updateAvailable, latestVersion: status.latestVersion });
+  setState({ updateAvailable: status.updateAvailable, latestVersion: status.latestVersion, shellUpdateRequired: status.shellUpdateRequired });
   return status.updateAvailable;
 }
 
@@ -979,7 +993,7 @@ export function resolveUpdateApplyCopyFor(
     };
   }
   if (applyState === "blocked") return resolveBlockedUpdateApplyCopy(errorCode, t);
-  if (applyState === "error") return { label: t("common.retry"), title: t("chrome.system.update.retryTitle"), tone: "error", disabled: false };
+  if (applyState === "error") return { label: t("common.retry"), title: resolveUpdateErrorTitle(errorCode, t), tone: "error", disabled: false };
   // 대기 중 업데이트 안내는 정보다. 칩은 목표 버전만 말하고, 신호 채널은 확인 대기(warn)·진행(live)·실패(error)만 쓴다.
   return { label: latestVersion ? `v${latestVersion} ↑` : t("chrome.system.update.available"), title: latest, tone: "info", disabled: false };
 }
@@ -989,13 +1003,21 @@ function resolveBlockedUpdateApplyCopy(errorCode: string | null, t: Translate<Co
   // 이 콘솔이 스스로 갈아 끼울 수 없는 레이아웃은 이제 셸에게 넘어간다. 이 문구는 그
   // 위임을 모르는 옛 서버에 붙었을 때만 남는 마지막 안내다.
   if (errorCode === "managed_runtime_update_requires_relaunch") return { label: t("chrome.system.update.managed"), title: t("chrome.system.update.managedTitle"), tone: "blocked", disabled: true };
+  if (errorCode === "shell_update_required") return { label: t("chrome.system.update.shellRequired"), title: t("chrome.system.update.shellRequiredTitle"), tone: "blocked", disabled: true };
   if (errorCode === "update_already_in_progress") return { label: t("chrome.system.update.busy"), title: t("chrome.system.update.busyTitle"), tone: "blocked", disabled: true };
   if (errorCode === "update_not_available") return { label: t("chrome.system.update.current"), title: t("chrome.system.update.currentTitle"), tone: "blocked", disabled: true };
   return { label: t("chrome.system.update.blocked"), title: t("chrome.system.update.blockedTitle"), tone: "error", disabled: false };
 }
 
+// 내려받기·검증 실패는 콘솔을 내리기 전에 난다. 다시 누를 수 있는 실패이므로 이유만 제목에 적는다.
+function resolveUpdateErrorTitle(errorCode: string | null, t: Translate<CoreMessageKey>): string {
+  if (errorCode === "checksum_mismatch") return t("chrome.system.update.checksumTitle");
+  if (errorCode === "download_failed") return t("chrome.system.update.downloadFailedTitle");
+  return t("chrome.system.update.retryTitle");
+}
+
 function isBlockedUpdateApplyError(code: string): boolean {
-  return code === "local_channel" || code === "managed_runtime_update_requires_relaunch" || code === "update_already_in_progress" || code === "update_not_available";
+  return code === "local_channel" || code === "managed_runtime_update_requires_relaunch" || code === "shell_update_required" || code === "update_already_in_progress" || code === "update_not_available";
 }
 
 function useGithubStars(): GithubStarsState {

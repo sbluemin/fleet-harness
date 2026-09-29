@@ -7,6 +7,7 @@ import { resolvePathBinary } from "@fleet-console/process";
 import { readFleetCliRelease } from "../../cli/release.js";
 import { checkUpdateStatus } from "../../cli/update/check.js";
 import { __installerTestHooks, runFleetUpdate } from "../../cli/update/installer.js";
+import { isManagedRuntimePackageRoot } from "../../features/updates/host/update-apply.js";
 import type { UpdateCommandIo } from "../../cli/update/dispatcher.js";
 
 interface StringWriter {
@@ -36,9 +37,14 @@ vi.mock("../../cli/release.js", () => ({
   readFleetCliRelease: vi.fn(),
 }));
 
-vi.mock("../../cli/update/check.js", () => ({
+vi.mock("../../cli/update/check.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../cli/update/check.js")>(),
   checkUpdateStatus: vi.fn(),
-  resolveUpdateChannel: vi.fn(() => "latest"),
+}));
+
+vi.mock("../../features/updates/host/update-apply.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../features/updates/host/update-apply.js")>(),
+  isManagedRuntimePackageRoot: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock("@fleet-console/process", async (importOriginal) => {
@@ -55,11 +61,19 @@ vi.mock("../../cli/update/stop-console.js", () => ({
 }));
 
 const mockedExecFileSync = vi.mocked(execFileSync);
+const mockedIsManagedRuntimePackageRoot = vi.mocked(isManagedRuntimePackageRoot);
 const mockedCheckUpdateStatus = vi.mocked(checkUpdateStatus);
 const mockedReadFleetCliRelease = vi.mocked(readFleetCliRelease);
 const mockedResolvePathBinary = vi.mocked(resolvePathBinary);
 const mockedSpawn = vi.mocked(spawn);
 const originalAccessSync = fsMock.accessSync.getMockImplementation();
+const RELEASE_1_3_0 = {
+  schema: 1,
+  package: "@dotobokuri/fleet-console",
+  version: "1.3.0",
+  tag: "v1.3.0",
+  tarball: { name: "fleet-console-1.3.0.tgz", size: 1, sha256: "0".repeat(64) },
+} as const;
 
 describe("update installer process invocation", () => {
   beforeEach(() => {
@@ -67,9 +81,10 @@ describe("update installer process invocation", () => {
     fsMock.accessSync.mockImplementation(originalAccessSync!);
     mockedReadFleetCliRelease.mockReturnValue({ channel: "stable", version: "1.2.0" });
     mockedCheckUpdateStatus.mockResolvedValue({ status: "unavailable" });
+    mockedIsManagedRuntimePackageRoot.mockReturnValue(false);
   });
 
-  it("does not install when the registry confirms Fleet is current", async () => {
+  it("does not install when the release check confirms Fleet is current", async () => {
     const io = createIo();
     mockedResolvePathBinary.mockReturnValue({ bin: "npm", prefixArgs: [] });
     mockedExecFileSync.mockReturnValue(`${process.cwd()}\n`);
@@ -89,6 +104,7 @@ describe("update installer process invocation", () => {
     });
     mockedResolvePathBinary.mockReturnValue({ bin: "npm", prefixArgs: [] });
     mockedExecFileSync.mockReturnValue(`${process.cwd()}\n`);
+    mockedCheckUpdateStatus.mockResolvedValue({ status: "update", latest: "1.3.0", release: RELEASE_1_3_0 });
 
     try {
       await expect(runFleetUpdate(io)).resolves.toBe(0);
@@ -99,8 +115,8 @@ describe("update installer process invocation", () => {
       [
         "Fleet's global install location is not writable, so no installer was run.",
         "Run one of these commands manually:",
-        "npm i -g @dotobokuri/fleet-console@latest",
-        "pnpm i -g @dotobokuri/fleet-console@latest",
+        "npm i -g https://github.com/sbluemin/fleet-harness/releases/download/v1.3.0/fleet-console-1.3.0.tgz",
+        "pnpm add -g https://github.com/sbluemin/fleet-harness/releases/download/v1.3.0/fleet-console-1.3.0.tgz",
         "",
       ].join("\n"),
     );
@@ -108,17 +124,34 @@ describe("update installer process invocation", () => {
   });
 });
 
+describe("update installer on a Fleet Desktop install", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedReadFleetCliRelease.mockReturnValue({ channel: "stable", version: "1.2.0" });
+    mockedCheckUpdateStatus.mockResolvedValue({ status: "update", latest: "1.3.0", release: RELEASE_1_3_0 });
+    mockedIsManagedRuntimePackageRoot.mockReturnValue(true);
+    vi.stubEnv("FLEET_DESKTOP_CONSOLE_SOURCE", undefined);
+  });
+
+  it("points an older Desktop to its own update instead of a global install", async () => {
+    const io = createIo();
+
+    // The Console update menu refuses this install with shell_update_required; the CLI must not
+    // offer a global install that would leave the running Console unchanged.
+    await expect(runFleetUpdate(io)).resolves.toBe(1);
+
+    expect(io.stderr.toString()).toContain("Update Fleet Desktop first");
+    expect(io.stdout.toString()).not.toMatch(/npm i -g|pnpm add -g/);
+    expect(mockedResolvePathBinary).not.toHaveBeenCalled();
+    expect(mockedSpawn).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+});
+
 function createIo(): UpdateCommandIo & { readonly stderr: StringWriter } {
   return {
     stderr: createStringWriter(),
     stdout: createStringWriter(),
-  };
-}
-
-function createWindowsResolvedShim(shimPath: string): { readonly bin: string; readonly prefixArgs: readonly string[] } {
-  return {
-    bin: "C:\\Windows\\System32\\cmd.exe",
-    prefixArgs: ["/d", "/s", "/c", "call", `${shimPath} `],
   };
 }
 

@@ -13,6 +13,11 @@
       "types": "./desktop/index.ts",
       "import": "./desktop/index.ts",
       "default": "./desktop/index.ts"
+    },
+    "./release": {
+      "types": "./release/index.ts",
+      "import": "./release/index.ts",
+      "default": "./release/index.ts"
     }
   },
   "scripts": {

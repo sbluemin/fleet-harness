@@ -1,17 +1,27 @@
-import { fetchLatestVersion, isVersionGreater } from "@fleet-console/updates";
+import { hasDesktopGithubReleaseConsoleSource } from "@fleet-console/protocol/desktop";
+import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
+import { fetchConsoleRelease, isVersionGreater, type ConsoleReleaseLookup } from "@fleet-console/updates";
 
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "../../../core/host/bootstrap/release.js";
+import { isManagedRuntimePackageRoot } from "./update-apply.js";
 
 export interface ConsoleUpdateStatus {
   readonly updateAvailable: boolean;
   readonly latestVersion?: string;
+  /**
+   * The update exists but this Desktop shell can only install from npm, so Console must not install it
+   * in place. The shell update carries it instead; this is a standing rule, not a one-release bridge.
+   */
+  readonly shellUpdateRequired?: true;
 }
 
 export interface ConsoleUpdateCheckService {
   getStatus(): ConsoleUpdateStatus;
   refresh(options?: ConsoleUpdateRefreshOptions): Promise<ConsoleUpdateStatus>;
-  /** 지금 레지스트리를 다시 묻는다. refresh와 달리 조회 실패를 "업데이트 없음"으로 뭉개지 않고 거부한다. */
+  /** 지금 Release를 다시 묻는다. refresh와 달리 조회 실패를 "업데이트 없음"으로 뭉개지 않고 거부한다. */
   check?(): Promise<ConsoleUpdateStatus>;
+  /** 마지막 조회가 찾은 더 새 Release의 manifest. 적용 경로만 읽고 상태 DTO에는 싣지 않는다. */
+  latestRelease?(): ConsoleReleaseManifest | null;
   start?(): void;
   stop?(): void;
   onChange?(listener: ConsoleUpdateCheckChangeListener): () => void;
@@ -19,7 +29,15 @@ export interface ConsoleUpdateCheckService {
 
 export interface ConsoleUpdateCheckDeps {
   readonly readRelease?: () => FleetConsoleRelease;
-  readonly fetchLatest?: (packageName: string, channel?: string) => Promise<string | undefined>;
+  readonly fetchRelease?: () => Promise<ConsoleReleaseLookup>;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly isManagedRuntime?: (packageRoot: string) => boolean;
+  /**
+   * Hears why a lookup failed. Callers show every failure as "could not check", so this is where
+   * a missing manifest, a bad release tag, and a network failure stay distinguishable. It fires when
+   * the reason changes, not on every retry of the same failure.
+   */
+  readonly onLookupFailure?: (error: Error) => void;
   readonly isGreater?: (left: string, right: string) => boolean;
   readonly now?: () => number;
   readonly ttlMs?: number;
@@ -37,6 +55,7 @@ export type ConsoleUpdateCheckChangeListener = (status: ConsoleUpdateStatus) => 
 
 interface CachedConsoleUpdateStatus {
   readonly status: ConsoleUpdateStatus;
+  readonly manifest: ConsoleReleaseManifest | null;
   readonly checkedAt: number;
   readonly ttlMs: number;
 }
@@ -45,7 +64,6 @@ export interface ConsoleUpdateCheckInterval {
   unref?(): void;
 }
 
-const FLEET_CONSOLE_PACKAGE_NAME = "@dotobokuri/fleet-console";
 const UPDATE_CHECK_TTL_MS = 60 * 60 * 1000;
 const UPDATE_CHECK_ERROR_TTL_MS = 5 * 60 * 1000;
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
@@ -53,7 +71,9 @@ const NO_UPDATE_STATUS: ConsoleUpdateStatus = { updateAvailable: false };
 
 export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {}): ConsoleUpdateCheckService {
   const readRelease = deps.readRelease ?? readFleetConsoleRelease;
-  const fetchLatest = deps.fetchLatest ?? fetchLatestVersion;
+  const env = deps.env ?? process.env;
+  const fetchRelease = deps.fetchRelease ?? (() => fetchConsoleRelease({ env }));
+  const isManagedRuntime = deps.isManagedRuntime ?? isManagedRuntimePackageRoot;
   const isGreater = deps.isGreater ?? isVersionGreater;
   const now = deps.now ?? Date.now;
   const ttlMs = deps.ttlMs ?? UPDATE_CHECK_TTL_MS;
@@ -62,6 +82,7 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
   const startInterval = deps.setInterval ?? ((callback, delayMs) => setInterval(callback, delayMs));
   const stopInterval = deps.clearInterval ?? ((interval) => clearInterval(interval as NodeJS.Timeout));
   let cached: CachedConsoleUpdateStatus | null = null;
+  let lastFailureMessage: string | null = null;
   let inFlight: Promise<ConsoleUpdateStatus> | null = null;
   let interval: ConsoleUpdateCheckInterval | null = null;
   const changeListeners = new Set<ConsoleUpdateCheckChangeListener>();
@@ -80,16 +101,26 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
   const lookup = (): Promise<ConsoleUpdateStatus> => {
     if (inFlight) return inFlight;
     inFlight = resolveUpdateStatus()
-      .then((status) => {
+      .then(({ status, manifest }) => {
+        lastFailureMessage = null;
         const previousStatus = cached?.status ?? NO_UPDATE_STATUS;
-        cached = { status, checkedAt: now(), ttlMs };
+        cached = { status, manifest, checkedAt: now(), ttlMs };
         notifyIfChanged(previousStatus, status);
         return status;
       })
       .catch((error: unknown) => {
         // 조회 실패는 "모름"이지 "없음"이 아니다. 마지막으로 확인된 상태를 짧은 오류 TTL로 붙들어,
         // 이미 알려진 업데이트가 일시적 장애로 사라졌다 돌아오지 않게 한다.
-        cached = { status: cached?.status ?? NO_UPDATE_STATUS, checkedAt: now(), ttlMs: errorTtlMs };
+        cached = { status: cached?.status ?? NO_UPDATE_STATUS, manifest: cached?.manifest ?? null, checkedAt: now(), ttlMs: errorTtlMs };
+        const failure = error instanceof Error ? error : new Error(String(error));
+        if (failure.message !== lastFailureMessage) {
+          lastFailureMessage = failure.message;
+          try {
+            deps.onLookupFailure?.(failure);
+          } catch {
+            // A diagnostic observer must not change what the lookup reports.
+          }
+        }
         throw error;
       })
       .finally(() => {
@@ -108,21 +139,29 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
 
   const check = (): Promise<ConsoleUpdateStatus> => lookup();
 
-  const resolveUpdateStatus = async (): Promise<ConsoleUpdateStatus> => {
+  const latestRelease = (): ConsoleReleaseManifest | null => (cached?.status.updateAvailable === true ? cached.manifest : null);
+
+  const resolveUpdateStatus = async (): Promise<{ readonly status: ConsoleUpdateStatus; readonly manifest: ConsoleReleaseManifest | null }> => {
     const release = readRelease();
     if (release.channel === "local") {
-      return NO_UPDATE_STATUS;
+      return { status: NO_UPDATE_STATUS, manifest: null };
     }
-    const latestVersion = await fetchLatest(FLEET_CONSOLE_PACKAGE_NAME);
-    if (latestVersion === undefined) {
-      // 실 fetchLatestVersion은 타임아웃·비정상 응답에서 throw 대신 undefined를 반환하므로,
-      // 여기서 throw로 승격해야 조회 실패가 짧은 오류 TTL(catch 경로)로 캐시된다.
-      throw new Error("registry lookup failed");
+    const lookupResult = await fetchRelease();
+    if (!lookupResult.ok) {
+      // 조회 실패는 throw로 승격해야 짧은 오류 TTL(catch 경로)로 캐시된다.
+      throw new Error(`release lookup failed: ${lookupResult.reason}`);
     }
-    if (!isGreater(latestVersion, release.version)) {
-      return NO_UPDATE_STATUS;
+    const { manifest } = lookupResult;
+    if (!isGreater(manifest.version, release.version)) {
+      return { status: NO_UPDATE_STATUS, manifest: null };
     }
-    return { updateAvailable: true, latestVersion };
+    // An old Desktop shell reinstalls its managed runtime from npm, so an in-place Release install
+    // there would be undone or fight the shell. It needs the shell update first.
+    const shellUpdateRequired = isManagedRuntime(release.packageRoot) && !hasDesktopGithubReleaseConsoleSource(env);
+    return {
+      status: { updateAvailable: true, latestVersion: manifest.version, ...(shellUpdateRequired ? { shellUpdateRequired: true as const } : {}) },
+      manifest,
+    };
   };
 
   const start = (): void => {
@@ -147,15 +186,16 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
   function notifyIfChanged(previous: ConsoleUpdateStatus, next: ConsoleUpdateStatus): void {
     const updateBecameAvailable = !previous.updateAvailable && next.updateAvailable;
     const latestVersionChanged = previous.latestVersion !== next.latestVersion;
-    if (!updateBecameAvailable && !latestVersionChanged) return;
+    const shellGateChanged = previous.shellUpdateRequired !== next.shellUpdateRequired;
+    if (!updateBecameAvailable && !latestVersionChanged && !shellGateChanged) return;
     for (const listener of changeListeners) {
       try {
         listener(next);
       } catch {
-        // An observer must not turn a completed registry lookup into an error cache entry.
+        // An observer must not turn a completed release lookup into an error cache entry.
       }
     }
   }
 
-  return { getStatus, refresh, check, start, stop, onChange };
+  return { getStatus, refresh, check, latestRelease, start, stop, onChange };
 }

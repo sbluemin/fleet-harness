@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-console"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-console?style=flat-square&color=c9a455&label=npm" alt="npm 버전"></a>
+  <a href="https://github.com/sbluemin/fleet-harness/releases/latest"><img src="https://img.shields.io/github/v/release/sbluemin/fleet-harness?style=flat-square&color=c9a455&label=release" alt="최신 릴리스"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-5c9e92?style=flat-square" alt="MIT 라이선스"></a>
   <a href="https://sbluemin.github.io/fleet-harness/?lang=ko"><img src="https://img.shields.io/badge/site-sbluemin.github.io-2b2f38?style=flat-square" alt="프로젝트 사이트"></a>
 </p>
@@ -31,11 +31,13 @@
 ## 시작하기
 
 ```bash
-npm install -g @dotobokuri/fleet-console
+npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz
 fleet console
 ```
 
 `fleet console`을 실행하면 로컬 서버가 뜨고 접속 주소가 출력됩니다. 그 주소를 아무 브라우저에서나 여세요. Node.js 20.19 이상, 그리고 설치와 로그인을 마친 Claude Code가 필요합니다. 인자 없이 `fleet`만 실행하면 같은 AI Gateway를 거치는 Claude Code가 터미널에서 바로 열립니다.
+
+업데이트는 Console 화면이나 `fleet update`로 하세요. `npm update -g`는 npm에 남은 옛 버전으로 되돌립니다.
 
 프로젝트 폴더를 **Theater**로 추가하고, 캔버스를 우클릭해 첫 **Operation**을 띄우세요.
 

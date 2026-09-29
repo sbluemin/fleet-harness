@@ -3,10 +3,9 @@ import path from "node:path";
 
 import { getFleetDataDir } from "@fleet-console/infra/data-dir";
 
-import type { UpdateChannel } from "./registry.js";
-
 interface UpdateCheckCache {
-  readonly channel: UpdateChannel;
+  /** "latest" or the release tag an override named. */
+  readonly source: string;
   readonly checkedAt: number;
   readonly latest: string;
 }
@@ -14,13 +13,13 @@ interface UpdateCheckCache {
 const UPDATE_CACHE_TTL_MS = 60 * 60 * 1000;
 const UPDATE_CACHE_FILENAME = "update-check.json";
 
-export function readCachedLatestVersion(channel: UpdateChannel): string | undefined {
+export function readCachedLatestVersion(source: string): string | undefined {
   try {
     if (!existsSync(getUpdateCachePath())) {
       return undefined;
     }
     const parsed = JSON.parse(readFileSync(getUpdateCachePath(), "utf8")) as Partial<UpdateCheckCache>;
-    if (parsed.channel !== channel || typeof parsed.latest !== "string" || typeof parsed.checkedAt !== "number") {
+    if (parsed.source !== source || typeof parsed.latest !== "string" || typeof parsed.checkedAt !== "number") {
       return undefined;
     }
     if (Date.now() - parsed.checkedAt >= UPDATE_CACHE_TTL_MS) {
@@ -32,10 +31,10 @@ export function readCachedLatestVersion(channel: UpdateChannel): string | undefi
   }
 }
 
-export function writeCachedLatestVersion(channel: UpdateChannel, latest: string): void {
+export function writeCachedLatestVersion(source: string, latest: string): void {
   try {
     mkdirSync(getFleetDataDir(), { recursive: true });
-    writeFileSync(getUpdateCachePath(), JSON.stringify({ channel, latest, checkedAt: Date.now() }), "utf8");
+    writeFileSync(getUpdateCachePath(), JSON.stringify({ source, latest, checkedAt: Date.now() }), "utf8");
   } catch {}
 }
 

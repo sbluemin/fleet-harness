@@ -7,7 +7,7 @@ description: Run a user-requested fleet-harness canary synchronization and Stabl
 
 Execute the requested release lifecycle. That request includes direct canary work and a validated fast-forward push from `origin/canary` to `main`. Reading this document or automatic skill selection alone does not authorize deployment.
 
-`.github/workflows/stable-release.yml` owns version calculation, workspace version synchronization, changelogs, release commit/tag, GitHub Release, npm, and app assets. Do not edit local versions/generated changelogs or substitute local tags/npm publishing for CI.
+`.github/workflows/stable-release.yml` owns version calculation, workspace version synchronization, changelogs, release commit/tag, GitHub Release, Console release assets, npm, and app assets. Do not edit local versions/generated changelogs or substitute local tags, asset uploads, or npm publishing for CI. Console installs and self-updates read the latest GitHub Release, so never manually publish or mark as latest a Release that lacks the Console assets.
 
 ## Inputs and routes
 
@@ -30,6 +30,6 @@ No required inputs. If the user requests synchronization only, stop before deplo
 
 ## Completion and reporting
 
-Deployment is complete only after run success, required publish jobs, exactly one successful desktop build/carry path, release commit/tag, non-draft GitHub Release, and matching npm version. Verify canary contains that release commit too. Running jobs are not success.
+Deployment is complete only after run success, required publish jobs, exactly one successful desktop build/carry path, release commit/tag, non-draft latest GitHub Release carrying the Console assets whose manifest names that version, and matching npm version. Verify canary contains that release commit too. Running jobs are not success.
 
-Report canary path, old/new SHAs, shipped range, consumed fragments/fragmentless commits, validation/fix SHAs, trigger gate, main pushed SHA/run URL, version/tag/Release URL/npm/desktop outcome, and final ref relationships. Distinguish synchronization-only, nothing-to-ship, and failure from deployment success. The host synthesizes directly from verified git/CI evidence.
+Report canary path, old/new SHAs, shipped range, consumed fragments/fragmentless commits, validation/fix SHAs, trigger gate, main pushed SHA/run URL, version/tag/Release URL/Console assets/npm/desktop outcome, and final ref relationships. Distinguish synchronization-only, nothing-to-ship, and failure from deployment success. The host synthesizes directly from verified git/CI evidence.
