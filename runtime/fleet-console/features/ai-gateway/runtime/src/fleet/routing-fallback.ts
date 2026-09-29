@@ -1,13 +1,14 @@
 /** AI 판단 실패·미설정·Workflow stage에 사용하는 로컬 fallback 정책. 사용자 선택 방식이 아니다. */
 import { FLEET_EXECUTION_AGENT_TYPE } from "@fleet-console/agent-runtime/fleet";
 
-import type { GatewayModel, GatewayEffortExposure, GatewayProvider } from "../models.js";
+import type { GatewayModel, GatewayEffortExposure, GatewayProvider, GatewayReasoningEffort } from "../models.js";
 import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import type { GatewayQuotaSnapshot } from "./quota-snapshot.js";
 import { modelPressure } from "./routing-allowance.js";
 import {
   buildGatewayRoutingTable,
   routingTableIsEmpty,
+  TIER_EFFORT,
   toRoutingLabel,
   type GatewayRoutingCandidate,
   type GatewayRoutingTier,
@@ -50,6 +51,11 @@ function tierOf(request: GatewayAssignmentRequest): GatewayRoutingTier {
   // 읽기 전용으로 넓게 훑는 실행. 긴 컨텍스트를 쓰고 추론 깊이는 덜 쓴다고 스스로 말한다.
   if (request.subagentType === "Explore") return "scan";
   return "work";
+}
+
+/** 이 요청의 등급이 바라는 강도. 난이도 판단이 없을 때 AI 판단 경로도 이 값으로 물러선다. */
+export function requestTierEffort(request: GatewayAssignmentRequest): GatewayReasoningEffort {
+  return TIER_EFFORT[tierOf(request)];
 }
 
 /** 호스트가 실제로 무엇을 말했는지, 판에 적을 만큼 짧게. */

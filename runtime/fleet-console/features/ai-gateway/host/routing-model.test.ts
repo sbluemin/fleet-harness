@@ -12,7 +12,7 @@ it("does not launch a catalog routing model after it is removed from the roster"
     baseUrl: "http://127.0.0.1:1",
     directory: "/unused-routing-test",
     settings: { version: 1, delegationRoutingModel: "claude--fable", models: [] },
-    instructions: [], state: {}, criteria: {},
+    instructions: [], state: {}, criteria: {}, difficulty: { instructions: [], criteria: {} },
   })).rejects.toThrow("Routing model is not exposed");
   expect(sdk).not.toHaveBeenCalled();
 });

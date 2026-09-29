@@ -141,16 +141,16 @@ export function buildGatewayRoutingTable(
  * 등급이 바라는 강도. 사다리가 이 값을 그대로 갖고 있지 않으면 가장 가까운 단을 쓴다 —
  * 사용자가 노출을 좁혀 두었을 때 요청을 사다리 밖으로 밀지 않기 위해서다.
  */
-const TIER_EFFORT: Readonly<Record<GatewayRoutingTier, GatewayReasoningEffort>> = {
+export const TIER_EFFORT: Readonly<Record<GatewayRoutingTier, GatewayReasoningEffort>> = {
   scan: "low",
   work: "medium",
   deep: "high",
 };
 
 /** 카탈로그 사다리의 순서. 가까움은 이 축 위의 거리로 잰다. */
-const EFFORT_ORDER: readonly GatewayReasoningEffort[] = ["low", "medium", "high", "xhigh", "max"];
+export const EFFORT_ORDER: readonly GatewayReasoningEffort[] = ["low", "medium", "high", "xhigh", "max"];
 
-function nearestRung(
+export function nearestRung(
   ladder: readonly GatewayReasoningEffort[],
   target: GatewayReasoningEffort,
 ): GatewayReasoningEffort | undefined {

@@ -155,7 +155,7 @@ describe("delegation assignment", () => {
       seen.push(state.gateway_models.recentAssignments.providers.codex.assignments);
       calls++;
       if (calls === 1) await barrier;
-      return Object.keys(criteria).find(key => criteria[key].includes("codex"))!;
+      return { seat: Object.keys(criteria).find(key => criteria[key].includes("codex"))! };
     });
     const options = { choose, refreshExposure: () => current };
     const first = decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
@@ -443,9 +443,13 @@ describe("delegation assignment", () => {
         expect(body.state.gateway_models.models[0]).toMatchObject({ preferenceRank: 1, quotaPool: "codex:shared" });
         expect(body.state.gateway_models.quotaPools["xai:shared"]).toEqual({ observation: "unknown" });
         expect(body.state).not.toHaveProperty("candidates");
+        // 좌석은 모델만 고르고, 강도는 xhigh를 상한으로 하는 난이도 질문이 정한다.
+        expect(Object.keys(body.questions.difficulty.criteria)).toEqual(["low", "medium", "high", "xhigh"]);
+        expect(Object.values(jevCriteria as Record<string, string>).some((value) => value.includes("effort"))).toBe(false);
         return new Response(JSON.stringify({
         model: "jev-latest",
         answers: {
+          difficulty: { type: "choice", choice: "high" },
           seat: {
             type: "choice",
             choice: xaiChoice,
@@ -469,10 +473,25 @@ describe("delegation assignment", () => {
       expect(instructions).toEqual(jevInstructions);
       expect(criteria).toEqual(jevCriteria);
       expect(criteria[xaiChoice]).toContain("claude-gateway--xai--grok-composer-2.5-fast");
-      return xaiChoice;
+      return { seat: xaiChoice };
     } });
     expect(aiPicked.model).toBe(picked.model);
     expect(aiPicked.because).toContain("AI model");
+
+    // 난이도는 고른 모델의 사다리 위에서 강도가 된다. 난이도가 없으면 등급 강도(work → medium)로 물러선다.
+    const rated = await decideGatewayRoutingAssignmentWithJev(request, {
+      ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
+    }, { choose: async ({ criteria }) => ({
+      seat: Object.keys(criteria).find((key) => criteria[key]!.includes("--codex--"))!, difficulty: "high",
+    }) });
+    expect(rated).toMatchObject({ model: "claude-gateway--codex--gpt-5.6-terra", effort: "high" });
+    expect(rated.because).toContain("difficulty high");
+    const unrated = await decideGatewayRoutingAssignmentWithJev(request, {
+      ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
+    }, { choose: async ({ criteria }) => ({
+      seat: Object.keys(criteria).find((key) => criteria[key]!.includes("--codex--"))!, difficulty: "max",
+    }) });
+    expect(unrated.effort).toBe("medium");
 
     const unsigned = new SystemOneClient({
       readApiKey: async () => undefined,
@@ -511,7 +530,7 @@ describe("delegation assignment", () => {
         client: new SystemOneClient({
           readApiKey: async () => "tsv_test", maxAttempts: 1,
           fetch: async () => new Response(JSON.stringify({
-            answers: { seat: { type: "choice", choice: xaiChoice, ...metadata } },
+            answers: { difficulty: { type: "choice", choice: "low" }, seat: { type: "choice", choice: xaiChoice, ...metadata } },
           })),
         }),
       });
@@ -524,7 +543,7 @@ describe("delegation assignment", () => {
       client: new SystemOneClient({
         readApiKey: async () => "tsv_test", maxAttempts: 1,
         fetch: async () => new Response(JSON.stringify({
-          answers: { seat: { type: "choice", choice: "not-offered" } },
+          answers: { difficulty: { type: "choice", choice: "low" }, seat: { type: "choice", choice: "not-offered" } },
         })),
       }),
     });
@@ -580,7 +599,7 @@ describe("delegation assignment", () => {
       const decision = await decideGatewayRoutingAssignmentWithJev({ surface: "agent", prompt: "review authentication" }, {
         delegationRoutingEnabled: true, delegationRoutingMode: "model", quota,
         delegationModels: [requireGatewayModel("codex--gpt-5.6-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
-      }, { choose: async ({ state }) => { data = (state as Record<string, unknown>).gateway_models; return "c0"; } });
+      }, { choose: async ({ state }) => { data = (state as Record<string, unknown>).gateway_models; return { seat: "c0" }; } });
       expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
       return data;
     };
