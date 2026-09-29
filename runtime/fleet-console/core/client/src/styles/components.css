@@ -13389,7 +13389,7 @@ body[data-codex-side="true"] .command-card {
    backdrop-filter(--glass-backdrop-strong)를 theme.css의 glass 채널로만 소비한다.
    채널 기본값이 곧 구 계약이다 — 언더레이는 불투명 --ink-deep, 틴트는 기존 표면 토큰
    별칭, 블러는 none. 그래서 게이트(@supports 미달·prefers-reduced-transparency·
-   설정 data-glass="off") 중 하나라도 닫히면 모든 팝업이 구 불투명 계약으로 돌아간다.
+   라이트 테마) 중 하나라도 닫히면 모든 팝업이 구 불투명 계약으로 돌아간다.
    게이트가 열리면 언더레이가 transparent로, 틴트가 테마별 α52~72% 유리 재료로,
    블러가 20px대로 바뀌어 리퀴드 글래스가 된다. 판독은 틴트 α 하한(≈0.52)과 블러가
    함께 보장하며, 원료 표면 토큰(--surface-*)을 팝업이 직접 칠하는 것은 회귀다.

@@ -5,7 +5,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
-import { SettingsSlider, SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import { SettingsSlider } from "@fleet-console/sdk/settings/browser";
 import { useEffect, useState, type ReactNode } from "react";
 import { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 export { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
@@ -14,7 +14,7 @@ import { BackendApiSection } from "../../../core/client/src/chrome/components/ba
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { renderMessage, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
-import { setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade, themePolarity } from "../../../core/client/src/integration/store.js";
+import { setActiveTheme, setActiveUiFont, setUnfocusedPanelFade } from "../../../core/client/src/integration/store.js";
 import { type GlobalSettingsState, type ThemeId, type UiFontId, type UiFontSettings } from "../../../core/client/src/integration/types.js";
 import { ExperimentsSection } from "./experiments-section.js";
 import { isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
@@ -146,7 +146,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       label: t("settings.core.appearance.label"),
       // 도구 패널 불투명도는 데스크톱 페인이 테마 카드에 덧세우는 행이다 — 검색은 그
       // 행 이름으로도 닿아야 한다. 모바일은 이 entries를 읽지 않으므로 여기 실어도 무해하다.
-      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.liquidGlass"), t("settings.theme.panelFade"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.theme.railOpacity"), t("settings.theme.sideBarOpacity"), t("settings.theme.sideBarBlur"), t("settings.core.appearance.keywords")],
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.panelFade"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.theme.railOpacity"), t("settings.theme.sideBarOpacity"), t("settings.theme.sideBarBlur"), t("settings.core.appearance.keywords")],
     },
     {
       id: "language",
@@ -326,14 +326,6 @@ export function ThemeCard({
       if (!saved) setActiveTheme(previousTheme);
     });
   };
-  /* 라이트 테마는 유리를 받지 않는다(theme.css 게이트가 극성으로 제외한다). 그래서 이 줄은
-     저장된 선호가 아니라 **지금 화면에 실제로 실린 재질**을 말해야 한다 — 크롬이 불투명한데
-     손잡이만 켜져 있으면 화면과 컨트롤이 서로 다른 말을 한다. 켜진 채로 흐려진 손잡이는
-     이 저장소에서 이미 "꺼진 것으로 읽힌다"고 못박은 실패 양식이기도 하다(agent-cli 강도 사다리).
-     저장값 자체는 건드리지 않는다 — 쓰기는 toggleLiquidGlass 하나뿐이고, 다크로 돌아오면
-     사용자가 고른 값이 그대로 다시 선다. */
-  const lightTheme = themePolarity(activeTheme) === "light";
-  const liquidGlass = (state?.liquidGlass ?? true) && !lightTheme;
   const savedPanelFade = state?.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT;
   // 끄는 동안의 값은 화면이 들고, 서버 값은 손을 뗄 때 따라온다. 저장 왕복마다 손잡이가
   // 서버 값으로 되튀면 연속 조작이 끊긴다.
@@ -351,14 +343,6 @@ export function ThemeCard({
     void setGlobalSettingsField("unfocusedPanelFade", next).then((saved) => {
       setDraftPanelFade(null);
       if (!saved) setUnfocusedPanelFade(savedPanelFade);
-    });
-  };
-  const toggleLiquidGlass = (enabled: boolean) => {
-    if (!state) return;
-    // 낙관 적용 후 저장 실패 시 되돌린다 — selectTheme의 실패 복원과 같은 문법.
-    setLiquidGlass(enabled);
-    void setGlobalSettingsField("liquidGlass", enabled).then((saved) => {
-      if (!saved) setLiquidGlass(!enabled);
     });
   };
   return (
@@ -402,24 +386,6 @@ export function ThemeCard({
                 );
               })}
             </div>
-          </div>
-
-          <div className="global-settings-row">
-            <div className="global-settings-row-text">
-              <p className="global-settings-resp-title">
-                {t("settings.theme.liquidGlass")}
-                {/* 라이트 테마에서는 비활성 이유를 안내한다. */}
-                <SettingsHelp title={t("settings.theme.liquidGlass")}>
-                  {t(lightTheme ? "settings.theme.liquidGlassLightHelp" : "settings.theme.liquidGlassHelp")}
-                </SettingsHelp>
-              </p>
-            </div>
-            <SettingsToggle
-              checked={liquidGlass}
-              disabled={saving.has("liquidGlass") || state === null || lightTheme}
-              ariaLabel={t("settings.theme.liquidGlass")}
-              onChange={toggleLiquidGlass}
-            />
           </div>
 
           <div className="global-settings-row">

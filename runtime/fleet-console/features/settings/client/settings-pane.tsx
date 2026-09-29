@@ -393,12 +393,12 @@ function SideBarOpacityRow() {
 
 /**
  * 유리 게이트가 지금 이 화면에서 닫혀 있는가 — 판정은 테마·설정 추론이 아니라 **채널의 계산값**을
- * 읽어서 한다. theme.css의 게이트는 넷이고(@supports 미달 · prefers-reduced-transparency ·
- * 리퀴드 글래스 끔 · 라이트 테마), 그중 둘은 CSS에만 있어 TS가 볼 수 있는 상태가 아니다.
+ * 읽어서 한다. theme.css의 게이트는 셋이고(@supports 미달 · prefers-reduced-transparency ·
+ * 라이트 테마), 그중 둘은 CSS에만 있어 TS가 볼 수 있는 상태가 아니다.
  * 조건을 여기서 복제하면 반드시 원본보다 좁아진다(적대 리뷰 적발: OS 투명도 줄이기에서 손잡이가
  * 살아 남아 화면에 닿지 않는 값을 저장했다). 채널을 읽으면 게이트가 몇 개든 CSS 하나가 진실이다.
  *
- * 다시 읽어야 할 계기도 CSS를 여는 것들이다: 루트의 data-theme·data-glass 속성 변화와 OS 투명도
+ * 다시 읽어야 할 계기도 CSS를 여는 것들이다: 루트의 data-theme 속성 변화와 OS 투명도
  * 선호의 변화. 저장값 스토어가 아니라 루트 속성을 보는 이유는, 테마가 서버 하이드레이션·낙관
  * 적용·데스크톱 주입 어느 경로로 바뀌든 게이트를 실제로 여닫는 것은 이 속성이기 때문이다.
  * @supports는 런타임에 바뀌지 않으므로 최초 1회로 충분하다.
@@ -410,7 +410,7 @@ function useGlassGateClosed(): boolean {
     const read = () => setClosed(readGlassGateClosed());
     read();
     const observer = new MutationObserver(read);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-glass"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     const media = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-transparency: reduce)") : null;
     media?.addEventListener("change", read);
     return () => {

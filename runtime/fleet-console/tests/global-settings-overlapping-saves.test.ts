@@ -21,7 +21,6 @@ const BASE: GlobalSettingsState = {
   consoleStaticPort: null,
   seenFeatureTours: [],
   theme: "instrument",
-  liquidGlass: true,
   unfocusedPanelFade: 50,
   shortcuts: {},
   uiFont: { source: "builtin", id: "manrope", size: 14 },

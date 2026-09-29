@@ -18,10 +18,10 @@ export type StaticConsoleHandler = (req: http.IncomingMessage, res: http.ServerR
 
 export function createStaticConsoleHandler(
   packageRoot: string,
-  deps?: { readonly getActiveTheme?: () => ConsoleThemeId; readonly getLiquidGlass?: () => boolean },
+  deps?: { readonly getActiveTheme?: () => ConsoleThemeId; readonly getLegacyGlassOff?: () => boolean },
 ): StaticConsoleHandler {
   const consoleRoot = path.join(packageRoot, "dist", "client");
-  return (req, res, pathname) => tryServeStaticConsole(req, res, pathname, consoleRoot, deps?.getActiveTheme, deps?.getLiquidGlass);
+  return (req, res, pathname) => tryServeStaticConsole(req, res, pathname, consoleRoot, deps?.getActiveTheme, deps?.getLegacyGlassOff);
 }
 
 function tryServeStaticConsole(
@@ -30,7 +30,7 @@ function tryServeStaticConsole(
   pathname: string,
   consoleRoot: string,
   getActiveTheme?: () => ConsoleThemeId,
-  getLiquidGlass?: () => boolean,
+  getLegacyGlassOff?: () => boolean,
 ): boolean {
   if (pathname !== "/console" && !pathname.startsWith("/console/")) return false;
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -61,12 +61,12 @@ function tryServeStaticConsole(
       res.end();
       return true;
     }
-    res.end(contentType === MIME_TYPES[".html"] ? injectActiveTheme(data.toString("utf8"), getActiveTheme, getLiquidGlass) : data);
+    res.end(contentType === MIME_TYPES[".html"] ? injectActiveTheme(data.toString("utf8"), getActiveTheme, getLegacyGlassOff) : data);
     return true;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     if (pathname.startsWith("/console/")) {
-      return serveFallbackIndex(req, res, consoleRoot, getActiveTheme, getLiquidGlass);
+      return serveFallbackIndex(req, res, consoleRoot, getActiveTheme, getLegacyGlassOff);
     }
     res.writeHead(404, withSecurityHeaders({ "Content-Type": "application/json" }));
     res.end(JSON.stringify({ error: "Not found" }));
@@ -79,7 +79,7 @@ function serveFallbackIndex(
   res: http.ServerResponse,
   consoleRoot: string,
   getActiveTheme?: () => ConsoleThemeId,
-  getLiquidGlass?: () => boolean,
+  getLegacyGlassOff?: () => boolean,
 ): boolean {
   try {
     const data = fs.readFileSync(path.join(consoleRoot, "index.html"));
@@ -88,7 +88,7 @@ function serveFallbackIndex(
       res.end();
       return true;
     }
-    res.end(injectActiveTheme(data.toString("utf8"), getActiveTheme, getLiquidGlass));
+    res.end(injectActiveTheme(data.toString("utf8"), getActiveTheme, getLegacyGlassOff));
     return true;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
@@ -98,15 +98,15 @@ function serveFallbackIndex(
   }
 }
 
-function injectActiveTheme(html: string, getActiveTheme?: () => ConsoleThemeId, getLiquidGlass?: () => boolean): string {
+function injectActiveTheme(html: string, getActiveTheme?: () => ConsoleThemeId, getLegacyGlassOff?: () => boolean): string {
   if (!getActiveTheme) return html;
   const theme = getActiveTheme();
   if (theme !== "instrument" && theme !== "maritime" && theme !== "carbon" && theme !== "whites") {
     return html;
   }
-  /* 리퀴드 글래스는 기본 옵트인이라 꺼짐만 표식이 필요하다 — data-glass="off"가 첫 페인트
-     전에 서 있어야 설정 해제 사용자가 로드마다 유리 플래시를 보지 않는다(테마 주입과 동형). */
-  const glassOff = getLiquidGlass !== undefined && getLiquidGlass() === false ? ' data-glass="off"' : "";
+  /* 퇴역한 리퀴드 글래스 스위치를 꺼 둔 사람의 표식 — theme-boot가 첫 페인트 전에 읽어
+     기기별로 한 번 유리 불투명도를 100%로 옮기고 지운다. 화면을 직접 여닫지 않는다. */
+  const glassOff = getLegacyGlassOff?.() === true ? ' data-glass-legacy="off"' : "";
   return html.replace('data-theme="instrument"', `data-theme="${theme}" data-theme-source="server"${glassOff}`);
 }
 

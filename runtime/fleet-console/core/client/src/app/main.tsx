@@ -41,7 +41,7 @@ import { installOperationArchive } from "../integration/operation-archive.js";
 import { installModalOpenMarker } from "../integration/modal-open-marker.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
-import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass, setUnfocusedPanelFade } from "../integration/store.js";
+import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredSideBarGlass } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { consumeInitialZenModeParam } from "../integration/zen-mode.js";
 
@@ -91,7 +91,6 @@ installModalOpenMarker();
 try {
   const settings = await fetchGlobalSettingsState();
   setActiveTheme(settings.theme);
-  setLiquidGlass(settings.liquidGlass);
   setUnfocusedPanelFade(settings.unfocusedPanelFade);
   setActiveUiFont(settings.uiFont);
   hydrateGlobalSettings(settings);

@@ -884,7 +884,7 @@ describe("Instrument core design contract", () => {
     expect(css).not.toMatch(/--op-accent|--chip-accent/);
     // 리퀴드 글래스 계약: backdrop-filter는 theme.css의 glass 채널(var(--glass-backdrop-*))만
     // 소비한다. raw blur를 표면에 직접 들면 세 게이트(@supports 미달·prefers-reduced-transparency·
-    // 설정 data-glass="off")가 그 표면을 놓쳐 불투명 폴백 계약이 깨진다. 중첩 Shell·Operation
+    // 라이트 테마)가 그 표면을 놓쳐 불투명 폴백 계약이 깨진다. 중첩 Shell·Operation
     // 자식의 명시적 none은 조상 blur가 이중 적용되지 않게 닫는 유일한 예외다.
     const backdropDeclarations = css.match(/(?:-webkit-)?backdrop-filter:[^;\n]*;/g) ?? [];
     expect(backdropDeclarations.length).toBeGreaterThan(0);
@@ -907,34 +907,11 @@ describe("Instrument core design contract", () => {
     expect(css).toMatch(/\.fc-btn--primary \{[^}]*color: var\(--text-on-brass\);/);
   });
 
-  /* 라이트(Whites)는 리퀴드 글래스를 받지 않는다. 이 계약은 세 조각이 **함께** 서야만 성립한다.
-
-     (1) 게이트 여섯 곳이 글자까지 같아야 한다. theme.css 둘은 채널을, layout.css 넷은 밴드
-         언더플로를 연다. layout.css는 채널이 아니라 data-glass 속성을 직접 읽으므로,
-         theme.css만 고치면 라이트에서 불투명해진 밴드 뒤로 본문이 계속 흘러 가려지기만 한다.
-     (2) 제외는 :not(A, B) 목록 한 겹이어야 한다. :not(A):not(B) 사슬은 특이도를 (0,2,0)에서
-         (0,3,0)으로 올려, 같은 특이도로 나중에 서서 이기던 축소-투명도 되돌림 블록을 무력화한다
-         (@media는 특이도를 더하지 않는다). 주 선택자만 고치면 다크 3종의 접근성 계약이 깨진다.
-     (3) 라이트 블록에 유리 재료가 없어야 한다. 재료를 남긴 채 게이트만 닫으면 죽은 리터럴이고,
-         게이트를 안 닫은 채 재료만 지우면 라이트가 base(다크) 재료를 상속해 밤빛 유리를 칠한다. */
-  it("closes the liquid glass gate on the light theme across every gate that reads data-glass", () => {
+  /* 라이트(Whites)는 리퀴드 글래스를 받지 않는다 — 게이트가 극성으로 닫히므로, 라이트 블록에
+     유리 재료가 남으면 죽은 리터럴이고, 재료만 지운 채 게이트를 안 닫으면 라이트가 base(다크)
+     재료를 상속해 밤빛 유리를 칠한다. */
+  it("keeps glass material out of the light theme", () => {
     const theme = source("styles/theme.css");
-    const layout = source("styles/layout.css");
-    const GATE = ':root:not([data-glass="off"], [data-theme="whites"])';
-
-    // 사슬 형태는 특이도를 올려 축소-투명도 되돌림을 죽인다 — 어느 파일에도 있어선 안 된다.
-    for (const css of [theme, layout]) {
-      expect(css).not.toMatch(/:not\(\[data-glass="off"\]\):not\(/);
-      expect(css).not.toMatch(/:not\(\[data-theme="whites"\]\):not\(\[data-glass/);
-      // data-glass를 읽는 선택자는 전부 같은 제외 목록을 달고 있어야 한다.
-      const gates = css.match(/:root:not\(\[data-glass="off"\][^)]*\)/g) ?? [];
-      expect(gates.length).toBeGreaterThan(0);
-      for (const gate of gates) expect(gate).toBe(GATE);
-    }
-    // 채널 게이트 둘(주 + 축소-투명도 되돌림)과 밴드 언더플로 넷.
-    expect((theme.match(/:root:not\(\[data-glass="off"\], \[data-theme="whites"\]\)/g) ?? []).length).toBe(2);
-    expect((layout.match(/:root:not\(\[data-glass="off"\], \[data-theme="whites"\]\)/g) ?? []).length).toBe(4);
-
     // 라이트 블록에는 유리 재료 선언이 한 줄도 없다. 주석은 그 부재를 설명해야 하므로
     // 토큰 이름을 그대로 적는다 — 계약은 산문이 아니라 선언에만 걸린다.
     const whites = theme.match(/:root\[data-theme="whites"\] \{[\s\S]*?\n\}/)?.[0] ?? "";
@@ -943,40 +920,6 @@ describe("Instrument core design contract", () => {
     expect(whitesDeclarations).not.toMatch(/--(?:glass|canvas)-on-/);
     // 반대 방향도 못박는다 — 다크 3종은 계속 재료를 가져야 게이트가 실을 것이 있다.
     expect(theme).toMatch(/--glass-on-backdrop-strong: blur\(/);
-  });
-
-  /* 설정의 리퀴드 글래스 줄은 라이트에서 "끌 수 없고, 지금 실린 재질을 보여 주고, 저장값은
-     건드리지 않는다"를 동시에 지켜야 한다. 셋 중 하나만 빠져도 실패가 다르다.
-     - 끄기만 하고 checked를 저장값에 묶어 두면: 크롬은 불투명한데 손잡이는 켜짐이라 화면과
-       컨트롤이 다른 말을 한다. 게다가 .settings-switch:disabled는 늘 opacity를 내리므로
-       "켜진 채 흐려진" 손잡이가 되는데, 이 저장소는 그 모양을 이미 "꺼진 것으로 읽힌다"고
-       못박았다(agent-cli 강도 사다리).
-     - 반대로 테마 전환에서 setLiquidGlass(false)나 저장 왕복을 부르면: 사용자가 다크에서
-       고른 값이 조용히 지워진다. 쓰기 경로는 toggleLiquidGlass 하나뿐이어야 한다.
-     페이지 컴포넌트는 번들러 가상 모듈(virtual:fleet-plugins)을 끌어와 단위 렌더가 불가능하므로
-     (quick-launch.ts의 같은 주석), 이 파일의 다른 설정 계약과 같은 소스 수준으로 못박는다. */
-  it("locks the liquid glass row to the material actually on screen under the light theme", () => {
-    const settings = source("../../../features/settings/client/sections.tsx");
-
-    // 극성 판정은 store의 단일 소유자를 쓴다 — 여기서 === "whites"를 다시 쓰면 두 번째 진실이 된다.
-    expect(settings).toMatch(/import \{[^}]*\bthemePolarity\b[^}]*\} from "\.\.\/\.\.\/\.\.\/core\/client\/src\/integration\/store\.js";/);
-    expect(settings).toMatch(/const lightTheme = themePolarity\(activeTheme\) === "light";/);
-
-    // 손잡이는 저장값이 아니라 화면에 실린 재질을 말한다.
-    expect(settings).toMatch(/const liquidGlass = \(state\?\.liquidGlass \?\? true\) && !lightTheme;/);
-    // 그리고 끌 수 없다.
-    expect(settings).toMatch(/disabled=\{saving\.has\("liquidGlass"\) \|\| state === null \|\| lightTheme\}/);
-
-    // 도움말은 갈아 끼운다 — 기본 문안("끄면 원래대로")은 끌 수 없는 자리에서 거짓이 된다.
-    expect(settings).toContain('t(lightTheme ? "settings.theme.liquidGlassLightHelp" : "settings.theme.liquidGlassHelp")');
-
-    // 저장값을 건드리는 경로는 사용자가 손잡이를 누르는 하나뿐이다. 테마 전환이 유리 설정을
-    // 쓰기 시작하면 다크에서 고른 값이 사라진다.
-    expect((settings.match(/setLiquidGlass\(/g) ?? []).length).toBe(2); // toggle 낙관 적용 + 실패 복원
-    expect((settings.match(/setGlobalSettingsField\("liquidGlass"/g) ?? []).length).toBe(1);
-    const selectTheme = settings.match(/const selectTheme = \([\s\S]*?\n  \};/)?.[0] ?? "";
-    expect(selectTheme).not.toBe("");
-    expect(selectTheme).not.toMatch(/[Ll]iquidGlass/);
   });
 
   /* 겉모습 축소판은 페인 이전과 함께 은퇴했다 — 설정이 콘솔 옆에 서므로 콘솔 자체가
@@ -2090,7 +2033,7 @@ describe("Instrument core design contract", () => {
     // .whatsnew-card in components.css). The channel defaults reproduce the old opaque
     // contract exactly — underlay = var(--ink-deep), tint = the old surface tokens,
     // blur = none — so any closed gate (@supports, prefers-reduced-transparency,
-    // data-glass="off") restores full opacity. Painting raw --surface-* or var(--ink-deep)
+    // light theme) restores full opacity. Painting raw --surface-* or var(--ink-deep)
     // directly on a popup is a regression: that surface would escape the gates.
     const componentsPopupSelectors = [
       ".whatsnew-card",

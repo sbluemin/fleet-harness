@@ -67,7 +67,8 @@ export interface ConsoleGeneralSettings {
   readonly remoteAccess?: ConsoleRemoteAccessSettings;
   readonly seenFeatureTours?: readonly string[];
   readonly theme?: ConsoleThemeId;
-  /** 리퀴드 글래스 머티리얼 — 부재는 켜짐(기본 옵트인)이다. */
+  /** 퇴역한 리퀴드 글래스 스위치 — 쓰지 않는다. 꺼 둔 사람을 불투명도 100%로 옮기는 기기별
+      일회 이관 판단(static-console 주입)만 읽는다. */
   readonly liquidGlass?: boolean;
   /**
    * 포커스하지 않은 패널의 본문이 물러나는 세기(백분율). 0은 물러나지 않음, 클수록 더 흐리다.
@@ -466,7 +467,6 @@ interface GlobalSettingsBody {
   readonly remoteAccess?: unknown;
   readonly seenFeatureTours?: unknown;
   readonly theme?: unknown;
-  readonly liquidGlass?: unknown;
   readonly unfocusedPanelFade?: unknown;
   readonly uiFont?: unknown;
   readonly experiments?: unknown;
@@ -569,10 +569,6 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
   }
-  if (body.liquidGlass !== undefined && typeof body.liquidGlass !== "boolean") {
-    deps.writeJson(res, 400, { error: "invalid_liquid_glass" });
-    return;
-  }
   if (body.unfocusedPanelFade !== undefined && !isUnfocusedPanelFade(body.unfocusedPanelFade)) {
     deps.writeJson(res, 400, { error: "invalid_unfocused_panel_fade" });
     return;
@@ -622,7 +618,6 @@ async function mutateGlobalSettings(
       ...(body.remoteAccess !== undefined ? { remoteAccess: nextRemoteAccess } : {}),
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
-      ...(typeof body.liquidGlass === "boolean" ? { liquidGlass: body.liquidGlass } : {}),
       ...(isUnfocusedPanelFade(body.unfocusedPanelFade) ? { unfocusedPanelFade: body.unfocusedPanelFade } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
       ...(body.experiments !== undefined ? { experiments: resolveExperimentSettings(body.experiments) } : {}),
@@ -692,7 +687,6 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     remoteAccess: general.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt),
     seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "instrument",
-    liquidGlass: general.liquidGlass ?? true,
     unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     experiments: general.experiments ?? DEFAULT_EXPERIMENT_SETTINGS,
