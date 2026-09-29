@@ -538,8 +538,8 @@ export function readChatCommandLaneName(text: string): string | null {
  * 사람·다른 Operation이 보낸 표식은 앞에 보이지 않는 글자가 붙어 읽히지 않고, 플러그인이 본문에
  * 심은 표식은 호스트 표식 뒤에 서므로 읽히지 않는다.
  */
-const CHAT_ORIGIN_TAG = /^<fleet-origin plugin="([A-Za-z0-9._-]{1,64})"(?: shown="(\d{1,6})-(\d{1,6})")?( format="markdown")?\/>\n/;
-const CHAT_ORIGIN_PLUGIN_ID = /^[A-Za-z0-9._-]{1,64}$/;
+const CHAT_ORIGIN_TAG = /^<fleet-origin plugin="([A-Za-z0-9._-]{1,128})"(?: shown="(\d{1,6})-(\d{1,6})")?( format="markdown")?\/>\n/;
+const CHAT_ORIGIN_PLUGIN_ID = /^[A-Za-z0-9._-]{1,128}$/;
 // `\s`는 BOM(U+FEFF)을 포함하고 U+200B는 포함하지 않는다 — 무력화한 문면은 다시 걸리지 않는다.
 const CHAT_ORIGIN_TAG_LEAD = /^\s*<fleet-origin\b/i;
 
