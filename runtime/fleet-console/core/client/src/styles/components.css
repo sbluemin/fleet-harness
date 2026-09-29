@@ -5280,8 +5280,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
   transition: none;
 }
 
-/* 유지 칸은 계산값이 규약이다 — 320×200 CSS 최소값이 칸을 이기면 좁은 캔버스·다패널에서 겹침이 생긴다. */
+/* 유지 칸은 계산값이 규약이다 — 320×200 CSS 최소값이 칸을 이기면 좁은 캔버스·다패널에서 겹침이 생긴다.
+   모두 정렬의 칸도 같은 유지 파이프라 같은 규약을 따른다(정렬 패널은 is-snap-held 대신 is-align-held를 단다). */
 .canvas-operation.is-snap-held,
+.canvas-operation.is-align-held,
 .operations-canvas.is-companion-layout .canvas-operation {
   min-width: 0;
   min-height: 0;
@@ -8885,14 +8887,14 @@ body[data-companion-resizing="true"] .canvas-operation {
     var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
-  -webkit-backdrop-filter: var(--glass-backdrop-strong);
-  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -14px) scale(0.96);
   transform-origin: top center;
-  transition: transform 220ms var(--ease-glide), opacity 150ms ease;
+  /* 유리 블러는 보이는 동안만 선다 — 숨은 바가 블러 합성층을 상주시키면 맵의 모든 프레임이 그 값을 낸다.
+     닫힐 때는 흐려지기가 끝난 뒤(150ms) 걷는다. */
+  transition: transform 220ms var(--ease-glide), opacity 150ms ease, backdrop-filter 0s linear 150ms, -webkit-backdrop-filter 0s linear 150ms;
 }
 
 /* 꼭대기 핫존 — 바 전체가 하나의 칸처럼 brass로 달아오른다(고스트가 아레나를 덮는 것과 짝). */
@@ -8902,8 +8904,11 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .canvas-snap-bar.is-open {
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   opacity: 1;
   transform: translate(-50%, 0) scale(1);
+  transition: transform 220ms var(--ease-glide), opacity 150ms ease;
 }
 
 .canvas-snap-preset {
@@ -8950,18 +8955,20 @@ body[data-companion-resizing="true"] .canvas-operation {
   /* 밴드의 유리(--glass-tint-band·soft backdrop)를 그대로 잇는다 — 띠에서 뽑혀 나온 서랍이니 띠와
      같은 색이어야지, 캡슐·바의 진한 유리를 쓰면 라이트 테마에서 흰 판으로 떠 보인다. */
   background: var(--glass-tint-band);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
   box-shadow: 0 8px 20px -14px oklch(0 0 0 / 0.45);
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -100%);
-  transition: transform 220ms var(--ease-glide), opacity 150ms ease;
+  /* 바와 같다 — 블러는 보이는 동안만, 걷기는 흐려지기가 끝난 뒤. */
+  transition: transform 220ms var(--ease-glide), opacity 150ms ease, backdrop-filter 0s linear 150ms, -webkit-backdrop-filter 0s linear 150ms;
 }
 
 .canvas-snap-handle.is-on {
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
   opacity: 1;
   transform: translate(-50%, 0);
+  transition: transform 220ms var(--ease-glide), opacity 150ms ease;
 }
 
 

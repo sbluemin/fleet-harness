@@ -17,6 +17,7 @@ import { diagramHydratorLabels, getT } from "./scuttlebutt-catalog.js";
 import type { AideGrants } from "./settings-store.js";
 import type { ChatStreamUsage } from "./sse-client.js";
 import { useStreamedHtml } from "./streamed-html.js";
+import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
 /** 어느 실험이 켜져 있는가 — 켜진 확장만 메뉴에 행으로 선다(Operation 메뉴와 같다). */
 export interface AideExtensionAvailability {
@@ -411,7 +412,7 @@ export function ChatCard({
         event.preventDefault();
         submit();
       }}>
-        <textarea
+        <SyncedTextarea
           ref={inputRef}
           value={draft}
           disabled={busy}

@@ -56,6 +56,10 @@ function textMeasure(font: string, wide: boolean): (text: string) => number {
     return width;
   };
 }
+/** 배치 캐시 — 임무(id·문구·선행)·글꼴·폭 구간이 같으면 다시 쓴다. 모듈에 둬서 레일을 다시 열거나 확대를 여닫아도 이름 자리
+ * 찾기(임무 수의 제곱으로 느는 탐색)를 되풀이하지 않는다. 오래 안 쓴 배치부터 비운다. */
+const layoutCache = new Map<string, GraphLayout>();
+const LAYOUT_CACHE_LIMIT = 64;
 /** 확대 카드의 기본 폭 — 그래프가 이보다 넓어야 할 때만 화면 폭까지 넓힌다. */
 const ZOOM_BASE = 940;
 /** 이보다 줄이면 글자를 읽을 수 없다 — 그때는 줄인 채로 스크롤한다. */
@@ -99,22 +103,26 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     return () => observer.disconnect();
   }, [zoom]);
   const loose = objective.missions.filter(isLoose);
-  // 배치는 폭(구간)별로 담아 둔다 — 임무·글꼴이 바뀌면 통째로 비운다. 끄는 동안 오가는 폭은 담아 둔 배치를 다시 쓴다.
-  const layouts = useMemo(() => new Map<number, GraphLayout>(), [objective.missions, wide, font, fontEpoch, t]);
+  // 배치는 모양(임무·글꼴·폭 구간)별로 모듈 캐시에 담는다. 끄는 동안 오가는 폭과 다시 여는 레일은 담아 둔 배치를 다시 쓴다.
+  const shape = useMemo(() => objective.missions.filter(m => !isLoose(m)).map(m => `${m.id}\u0001${m.text}\u0001${m.prerequisites.join(",")}`).join("\u0002"), [objective.missions]);
   const layout = useMemo(() => {
+    const commander = t("objectives.graph.commander");
     const run = (w: number) => {
-      let hit = layouts.get(w);
-      if (!hit) {
-        if (layouts.size >= 24) layouts.clear();
-        hit = graphLayout(objective.missions.filter(m => !isLoose(m)), w, wide, textMeasure(font, wide), t("objectives.graph.commander"));
-        layouts.set(w, hit);
+      const key = `${font}\u0003${wide}\u0003${fontEpoch}\u0003${commander}\u0003${w}\u0003${shape}`;
+      let hit = layoutCache.get(key);
+      if (hit) layoutCache.delete(key);
+      else {
+        hit = graphLayout(objective.missions.filter(m => !isLoose(m)), w, wide, textMeasure(font, wide), commander);
+        if (layoutCache.size >= LAYOUT_CACHE_LIMIT) layoutCache.delete(layoutCache.keys().next().value!);
       }
+      layoutCache.set(key, hit);
       return hit;
     };
     if (!zoom || !fit) return stretchLayout(run(width < LAYOUT_STEP ? width : Math.floor(width / LAYOUT_STEP) * LAYOUT_STEP), width);
     const first = run(fit.base);
     return first.width > fit.base && fit.w > fit.base ? run(Math.min(first.width, fit.w)) : first;
-  }, [layouts, objective.missions, width, wide, font, t, zoom, fit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 임무는 shape로 비교한다.
+  }, [shape, width, wide, font, fontEpoch, t, zoom, fit]);
   const scale = zoom && fit ? Math.max(ZOOM_MIN_SCALE, Math.min(1, fit.w / layout.width, fit.h / layout.height)) : 1;
   const fitWidth = zoom && fit ? Math.ceil(Math.min(fit.w, Math.max(fit.base, layout.width * scale)) + fit.chromeX) : null;
   const onFitWidthRef = useRef(onFitWidth); onFitWidthRef.current = onFitWidth;

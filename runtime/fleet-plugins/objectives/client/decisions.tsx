@@ -5,6 +5,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { Decision, DecisionQuestion, Objective } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
+import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
 /**
  * 결정 요청과 결정 — 지휘관이 보드에 올린 질문 묶음에 사람이 한 번에 답하고, 보낸 답은 「결정」에 질문마다 남는다.
@@ -149,7 +150,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
                   {question.multiSelect ? <span className="objectives-decision-hint">{t("objectives.decision.multiHint")}</span> : null}
                 </div>
               ) : null}
-              <textarea
+              <SyncedTextarea
                 className="objectives-decision-free"
                 rows={1}
                 maxLength={2000}

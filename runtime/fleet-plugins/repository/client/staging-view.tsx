@@ -12,6 +12,7 @@ import { HunkView } from "./hunk-view.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
 import { SplitSeam, useSeamContainerSize } from "./split-seam.js";
+import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
 type T = Translate<RepositoryMessageKey>;
 
@@ -473,7 +474,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
         onChange={(event) => setSubject(event.target.value)}
         onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !commitDisabled) void commit(); }}
       />
-      <textarea
+      <SyncedTextarea
         className="repository-commit-body"
         placeholder={t("repository.staging.bodyPlaceholder")}
         aria-label={t("repository.staging.bodyPlaceholder")}

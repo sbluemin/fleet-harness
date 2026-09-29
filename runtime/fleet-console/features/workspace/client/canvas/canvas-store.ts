@@ -1550,9 +1550,12 @@ function cancelZoomTween(): void {
   zoomRaf = null;
 }
 
+// 패널 렌더마다 묻는다 — 질의 객체는 같은 matchMedia에서 하나만 만들고 현재 값(matches)만 읽는다.
+let reducedMotionQuery: { readonly source: Window["matchMedia"]; readonly query: MediaQueryList } | null = null;
 export function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reducedMotionQuery?.source !== window.matchMedia) reducedMotionQuery = { source: window.matchMedia, query: window.matchMedia("(prefers-reduced-motion: reduce)") };
+  return reducedMotionQuery.query.matches;
 }
 
 /**

@@ -5,6 +5,7 @@ import { ModelPicker, SettingsHelpTip, SettingsToggle, defineSettingsSection } f
 import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
+import { SyncedTextarea } from "@fleet-console/sdk/composer";
 export const aiGatewaySettingsSection = defineSettingsSection({
   id: "agent-cli",
   title: (locale) => getT(locale)("terminal.settings.agentCli"),
@@ -449,7 +450,7 @@ function RoutingTest({ mode, disabled }: { readonly mode: DelegationRoutingMode;
         </button>
       ))}
     </div>
-    <textarea className="ai-gateway-routing-task" aria-label={t("terminal.settings.routingTestTask")} rows={3} maxLength={65536}
+    <SyncedTextarea className="ai-gateway-routing-task" aria-label={t("terminal.settings.routingTestTask")} rows={3} maxLength={65536}
       value={prompt} disabled={busy}
       placeholder={t("terminal.settings.routingTestTask")} onChange={event => { setPrompt(event.target.value); setResult(null); }} />
     <button type="button" className="ai-gateway-add-button" disabled={disabled || busy || !prompt.trim()} onClick={() => void run()}>
