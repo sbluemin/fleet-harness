@@ -6,7 +6,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { prependPathEntries, withNodeSystemCa } from "@fleet-console/process";
-import { DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, DESKTOP_PROTOCOL_VERSION, DESKTOP_PROTOCOL_VERSION_ENV, DESKTOP_RESOURCE_ROOT_ENV, resolveCanonicalLocalConsolePaths, resolveCanonicalStableConsolePaths } from "@fleet-console/protocol/desktop";
+import { DESKTOP_CONSOLE_SOURCE_ENV, DESKTOP_CONSOLE_SOURCE_GITHUB_RELEASE, DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, DESKTOP_PROTOCOL_VERSION, DESKTOP_PROTOCOL_VERSION_ENV, DESKTOP_RESOURCE_ROOT_ENV, resolveCanonicalLocalConsolePaths, resolveCanonicalStableConsolePaths } from "@fleet-console/protocol/desktop";
+import { CONSOLE_RELEASE_TAG_OVERRIDE_ENV, readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 export interface DesktopEnvironment {
   readonly ownerId: string;
@@ -26,6 +27,8 @@ export interface HydratedDesktopEnvironmentOptions {
 }
 
 const DESKTOP_CONTROL_ENV_KEYS = new Set([
+  CONSOLE_RELEASE_TAG_OVERRIDE_ENV,
+  DESKTOP_CONSOLE_SOURCE_ENV,
   DESKTOP_DEVELOPMENT_ENV,
   DESKTOP_OWNER_ID_ENV,
   DESKTOP_OWNER_KIND_ENV,
@@ -89,6 +92,7 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
   const ownerId = fs.existsSync(ownerFile) ? fs.readFileSync(ownerFile, "utf8").trim() : crypto.randomUUID();
   if (!fs.existsSync(ownerFile)) fs.writeFileSync(ownerFile, `${ownerId}\n`, { mode: 0o600 });
   const sanitized = sanitizeEnvironment(env);
+  const releaseTagOverride = readConsoleReleaseTagOverride(env);
   const serviceBase = isPackaged
     ? createPackagedServiceEnvironment(sanitized, options.loginShellPath, options.platform ?? process.platform, options.homeDirectory ?? os.homedir())
     : sanitized;
@@ -109,6 +113,10 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
       // 더 낡은 Console을 절차적으로 조달했을 때의 안전망이다 — 한쪽만 아는 Console도 자리를 찾는다.
       ...(isPackaged && overrideDirectory === undefined ? {} : { FLEET_CONSOLE_DIR: paths.dir, FLEET_CONSOLE_DATA_DIR: paths.dir }),
       FLEET_CONSOLE_DESKTOP_VERSION: appVersion,
+      // This shell procures Console from GitHub Releases, so Console may offer its own updates here.
+      // The release tag override reaches Console only in the form the installer itself accepted.
+      ...(isPackaged ? { [DESKTOP_CONSOLE_SOURCE_ENV]: DESKTOP_CONSOLE_SOURCE_GITHUB_RELEASE } : {}),
+      ...(releaseTagOverride.kind === "tag" ? { [CONSOLE_RELEASE_TAG_OVERRIDE_ENV]: releaseTagOverride.tag } : {}),
     },
   };
 }

@@ -13,3 +13,8 @@ branch: console-release-updater
   ko: Console 업데이트를 이제 GitHub Releases에서 받습니다. Console이 계속 동작하는 동안 업데이트를 내려받아 확인하며, 다운로드나 체크섬 확인에 실패하면 현재 버전을 그대로 둡니다.
 - In an older Fleet Desktop, Console points you to the Desktop update instead of updating itself in place.
   ko: 이전 Fleet Desktop에서는 Console이 스스로 업데이트하는 대신 Desktop 업데이트를 안내합니다.
+
+### fleet-desktop
+#### Changed
+- Fleet Desktop now installs and updates Console from GitHub Releases, checking each download against its published checksum before replacing the current version.
+  ko: Fleet Desktop이 이제 GitHub Releases에서 Console을 설치하고 업데이트하며, 현재 버전을 바꾸기 전에 내려받은 파일을 게시된 체크섬으로 확인합니다.
