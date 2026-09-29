@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["remote/**/*.ts", "desktop/**/*.ts"],
+  "include": ["remote/**/*.ts", "desktop/**/*.ts", "release/**/*.ts"],
   "exclude": ["node_modules"]
 }

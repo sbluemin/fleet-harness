@@ -58,6 +58,13 @@ export const DESKTOP_OWNER_KIND_ENV = "FLEET_CONSOLE_OWNER_KIND";
 export const DESKTOP_PROTOCOL_VERSION_ENV = "FLEET_CONSOLE_PROTOCOL_VERSION";
 export const DESKTOP_RESOURCE_ROOT_MARKER = ".fleet-console-resource-root";
 export const DESKTOP_DEVELOPMENT_ENV = "FLEET_CONSOLE_DESKTOP_DEVELOPMENT";
+/**
+ * Optional capability a shell grants its managed Console: the shell procures Console builds from
+ * this source. A managed Console without it runs under a shell that cannot install what Console's
+ * own updater would offer, so its updates wait for a shell update instead.
+ */
+export const DESKTOP_CONSOLE_SOURCE_ENV = "FLEET_DESKTOP_CONSOLE_SOURCE";
+export const DESKTOP_CONSOLE_SOURCE_GITHUB_RELEASE = "github-release";
 
 const LOCK_DIR_NAME = "fleet-console";
 const LOCK_FILE_NAME = "console.lock";
@@ -65,6 +72,10 @@ const CONSOLE_DATA_DIR_NAME = "console";
 const CONSOLE_STATE_FILE_NAME = "state.json";
 const CONSOLE_SETTINGS_FILE_NAME = "settings.json";
 const CONSOLE_CAPTURES_DIR_NAME = "captures";
+
+export function hasDesktopGithubReleaseConsoleSource(env: Readonly<Record<string, string | undefined>>): boolean {
+  return env[DESKTOP_CONSOLE_SOURCE_ENV] === DESKTOP_CONSOLE_SOURCE_GITHUB_RELEASE;
+}
 
 export function isDesktopDevelopmentEnvironment(env: Readonly<Record<string, string | undefined>>): boolean {
   return env[DESKTOP_DEVELOPMENT_ENV] === "1";
