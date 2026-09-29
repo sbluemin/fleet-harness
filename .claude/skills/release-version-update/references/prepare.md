@@ -39,7 +39,7 @@ Re-fetch once before concluding. Then:
 - `git diff --stat origin/main...origin/canary`
 - `git diff --name-only origin/main...origin/canary`
 
-**Empty range.** The tips already match. Confirm the tip is a published release (`git describe --tags --exact-match origin/main`, `gh release view` not draft, `npm view @dotobokuri/fleet-console version`). Report that there is nothing to ship. Do **not** invent an empty patch, bump versions, or push `main` to retrigger CI.
+**Empty range.** The tips already match. Confirm the tip is a published release (`git describe --tags --exact-match origin/main`, `gh release view` not draft, the latest Console manifest check from [Publish and sync](publish-and-sync.md) Phase 6, `npm view @dotobokuri/fleet-console version`). Report that there is nothing to ship. Do **not** invent an empty patch, bump versions, or push `main` to retrigger CI.
 
 **Non-empty range.** Summarize:
 
