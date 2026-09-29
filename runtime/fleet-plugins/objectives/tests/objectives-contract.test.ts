@@ -948,7 +948,7 @@ describe("Objectives contract", () => {
   });
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
-    const { store, call, launch, workspace, events } = harness();
+    const { ctx, store, call, launch, workspace, events } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -1050,6 +1050,16 @@ describe("Objectives contract", () => {
     const p2N = store.find(objective.id)!.missions.findIndex((mission) => mission.id === p2.id) + 1;
     await call("place_mission", { objectiveId: objective.id, n: p2N, prerequisites: [1], member: "build" }, commander);
     expect(store.find(objective.id)!.missions.find((mission) => mission.id === p2.id)!.member).toBeNull();
+    // 지휘관의 n 은 마지막으로 읽은 번호표를 가리킨다 — 선행 없이 더한 임무가 첫 열로 서며 편성 순이 바뀌어도, 다음 호출의 n 이 다른 임무로 가지 않는다.
+    const read = store.find(objective.id)!.missions.map((mission) => mission.id);
+    const hotfix = (await call("add_mission", { objectiveId: objective.id, text: "hotfix" }, commander)).structuredContent as { missionId: string; n: number };
+    expect(hotfix.n).toBe(read.length + 1);
+    expect(store.find(objective.id)!.missions.map((mission) => mission.id)).not.toEqual([...read, hotfix.missionId]);
+    const qa = (await call("add_mission", { objectiveId: objective.id, text: "qa", prerequisites: [{ n: hotfix.n }, { n: read.length, why: "after the rest" }] }, commander)).structuredContent as { missionId: string };
+    expect(store.find(objective.id)!.missions.find((mission) => mission.id === qa.missionId)).toMatchObject({ prerequisites: [hotfix.missionId, read.at(-1)], why: { [read.at(-1)!]: "after the rest" } });
+    // 번호표는 서버 메모리에만 있다 — 재시작 뒤에는 옛 n 을 지금 편성 순으로 풀지 않고 다시 읽게 한다.
+    const restarted = createObjectiveMcpTools(ctx, store, launch).find((tool) => tool.name === "complete_mission")!;
+    expect(((await restarted.execute({ objectiveId: objective.id, n: read.length, summary: ["stale"] }, { cwd: "/", caller: { kind: "operation", operationId: commander } })) as { structuredContent: Record<string, unknown> }).structuredContent.error).toBe("numbering_unread");
     // 완료는 결론 먼저 1–3줄의 기록과 함께이고, 산문 문단은 거절된다. 구성원은 완료하지 못한다.
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["r"] }, member.id)).structuredContent.error).toBe("not_commander");
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["x".repeat(400)] }, commander)).structuredContent.error).toBe("summary_format");

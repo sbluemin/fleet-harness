@@ -1140,7 +1140,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
     missionAdd: (objectiveId, input, addOptions) => update(objectiveId, (stored) => {
       const known = new Set(stored.missions.map((mission) => mission.id));
-      const prerequisites = (input.prerequisites ?? []).filter((id) => known.has(id)).map((id): StoredEdge => ({ id }));
+      const prerequisites = (input.prerequisites ?? []).filter((id) => known.has(id)).map((id): StoredEdge => ({ id, ...(input.why?.[id] ? { why: input.why[id] } : {}) }));
       // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 임무뿐이다.
       const unplaced = addOptions?.unplaced === true && input.prerequisites === undefined;
       if (input.member && !(stored.members ?? []).some((member) => member.id === input.member)) throw new ObjectiveStoreError("unknown_member");

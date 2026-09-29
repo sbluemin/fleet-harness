@@ -772,7 +772,7 @@ export const criterionProposalSchema = z.union([
 ]);
 export type CriterionProposalInput = z.output<typeof criterionProposalSchema>;
 
-export const missionAddSchema = z.object({ text: missionText, prerequisites: z.array(ids).max(MAX_MISSIONS).optional(), member: ids.nullable().optional() }).strict();
+export const missionAddSchema = z.object({ text: missionText, prerequisites: z.array(ids).max(MAX_MISSIONS).optional(), why: z.record(ids, z.string().max(300)).optional(), member: ids.nullable().optional() }).strict();
 export const missionPatchSchema = z.object({
   text: missionText.optional(),
   done: z.boolean().optional(),
