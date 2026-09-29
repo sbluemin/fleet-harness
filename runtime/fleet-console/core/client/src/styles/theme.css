@@ -6,6 +6,8 @@
   --agent-control-badge-ink: oklch(100% 0 0);
   --console-use-badge: oklch(76% 0.15 60);
   --console-use-badge-ink: oklch(22% 0.025 60);
+  /* 같은 채널을 글자로 쓸 때의 잉크 — 면 위의 배지와 달리 본문 표면 위에서 읽혀야 하므로 텍스트 티어에 선다. */
+  --text-console-use: var(--console-use-badge);
 
   --hairline: oklch(29% 0.018 245);
   --hairline-strong: oklch(37% 0.02 245);
@@ -706,6 +708,9 @@
    보이는 광학 보정이다(위계 3티어는 불변 — regular 티어의 값만 라이트에서 재조율). */
 :root[data-theme="whites"] {
   color-scheme: light;
+
+  /* 76% 배지 잉크는 밝은 본문 표면 위에서 글자로 읽히지 않는다 — 같은 색상각에서 명도만 내린다. */
+  --text-console-use: oklch(52% 0.125 60);
 
   --ink-abyss: oklch(97% 0.003 100);
   --ink-deep: oklch(95.5% 0.005 100);

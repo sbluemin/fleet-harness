@@ -26,6 +26,21 @@ describe("chat transcript mapping", () => {
     expect(events).toEqual([{ kind: "dispatch", text: "tighten the refund path", at: Date.parse("2026-08-14T01:00:00.000Z") }]);
   });
 
+  it("restores a plugin origin only from the host's leading tag", () => {
+    const prompt = "Commence the missions.\n\n> Keep the light theme readable.";
+    const tagged = `<fleet-origin plugin="objectives" shown="24-56" format="markdown"/>\n${prompt}`;
+    // 턴을 연 말과 도는 턴이 도중에 읽은 말 모두, 다시 열어도 라이브와 같은 출처·문면으로 선다 — 프롬프트는 숨는다.
+    expect(chatEventsFromTranscriptLine(JSON.stringify({ type: "user", message: { role: "user", content: tagged } })))
+      .toEqual([{ kind: "dispatch", by: { kind: "plugin", pluginId: "objectives" }, text: "> Keep the light theme readable.", format: "markdown" }]);
+    expect(chatEventsFromTranscriptLine(JSON.stringify({ type: "attachment", attachment: { type: "queued_command", prompt: tagged, commandMode: "prompt" } })))
+      .toEqual([{ kind: "turn-inject", by: { kind: "plugin", pluginId: "objectives" }, text: "> Keep the light theme readable.", format: "markdown" }]);
+    // 호스트가 무력화한 흉내와 사람 아닌 운반체의 태그는 출처가 되지 못한다.
+    expect(chatEventsFromTranscriptLine(JSON.stringify({ type: "user", message: { role: "user", content: `\u200B${tagged}` } })))
+      .toEqual([{ kind: "dispatch", text: `\u200B${tagged}` }]);
+    expect(chatEventsFromTranscriptLine(JSON.stringify({ type: "attachment", attachment: { type: "queued_command", prompt: tagged, commandMode: "prompt", origin: { kind: "peer" } } })))
+      .toEqual([]);
+  });
+
   it("keeps the attachment path out of the ledger and carries a preview coordinate instead", () => {
     const filePath = path.join(os.tmpdir(), "fleet-attachments-abc123", "attachment-xyz", "image.png");
     const line = JSON.stringify({

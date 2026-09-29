@@ -4,7 +4,7 @@ import type { ConsoleCaller } from "@fleet-console/sdk/mcp";
 import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { decisionTurn, memberMessageTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { decisionTurn, humanWords, memberMessageTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { COMMANDER_PRESET, type DecisionAnswer, type DecisionAnswersInput, type MemberPatchInput, type Objective, type ObjectiveMember, type PlanInput, type SlotBy, type MissionAddInput, type MissionPatchInput } from "./types.js";
@@ -149,10 +149,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (node && node.payload.objectiveLanguage !== language) ctx.host.operations.patch(operationId, { payload: { ...node.payload, objectiveLanguage: language } });
   };
 
-  /** 전달됐는지를 돌려준다 — 못 닿은 알림에 기대 상태를 지우면 다음 시작이 같은 변경을 말하지 못한다. */
-  const send = async (operationId: string, text: string, reportFailure = false): Promise<boolean> => {
+  /**
+   * 전달됐는지를 돌려준다 — 못 닿은 알림에 기대 상태를 지우면 다음 시작이 같은 변경을 말하지 못한다.
+   * `display`는 채팅 원장에 설 사람의 말이다. 프롬프트는 모델의 것이라 원장에 서지 않는다.
+   */
+  const send = async (operationId: string, text: string, display: string, reportFailure = false): Promise<boolean> => {
     if (!ctx.host.consoleControl || !ctx.host.operations.get(operationId)) return false;
-    try { await ctx.host.consoleControl.request({ kind: "send", operationId, text }); return true; }
+    try { await ctx.host.consoleControl.request({ kind: "send", operationId, text, display, displayFormat: "markdown" }); return true; }
     catch (error) {
       // 개시·구상은 사람이 재시도해야 할 실패다. 알림의 best-effort 전달과 달리 원인을 보존한다.
       if (reportFailure) asStoreError(error);
@@ -579,7 +582,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 새 지휘관은 보드를 처음부터 읽는다 — 앞서 쌓인 변경 기록은 뜻이 없다.
       const firstWake = neverStarted(objectiveId);
       if (firstWake) current = store.setEdited(objectiveId, null);
-      const delivered = await send(objectiveId, startTurn(current, language, options?.context), true);
+      const delivered = await send(objectiveId, startTurn(current, language, options?.context), humanWords(options?.context), true);
       if (!delivered) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
       // 개시가 닿은 목표는 목록의 「진행 중」에 선다 — 따로 만든 세션도 여기서 「목표 밖」을 떠난다.
@@ -601,7 +604,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       current = store.setCriteriaOpen(objectiveId, true);
       const firstWake = neverStarted(objectiveId);
       if (firstWake) current = store.setEdited(objectiveId, null);
-      if (!(await send(objectiveId, planTurn(current, language), true))) throw new ObjectiveStoreError("launch_failed");
+      if (!(await send(objectiveId, planTurn(current, language), humanWords(current.planRequest), true))) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
       return { objective: current, operationId: objectiveId };
     }, "plan"),
@@ -662,7 +665,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         }
         try {
           await accessOperation(objectiveId);
-          await control().request({ kind: "send", operationId: objectiveId, text: decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options)) });
+          await control().request({ kind: "send", operationId: objectiveId, text: decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options)), display: "", displayFormat: "markdown" });
         } catch (error) {
           // 닿지 않았다 — 요청과 답은 화면에 그대로 남고 결정은 쌓이지 않는다. 호스트의 거절 사유는 함께 돌려준다.
           store.decisionSettle(objectiveId, accepted.request.id, false);
@@ -707,7 +710,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 스티어링 턴에서 기준 제안은 불가하다. 전송 전에 닫아 턴 전환 중 계획 쓰기와 경합하지 않는다.
       if (current.criteriaOpen) store.setCriteriaOpen(objectiveId, false);
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
-      await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context) }).catch(asStoreError);
+      await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context), display: humanWords(options?.context), displayFormat: "markdown" }).catch(asStoreError);
       // 지휘관에게 닿았다 — 쌓인 편집을 지우고, 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다.
       store.setEdited(objectiveId, null);
       return store.clearMet(objectiveId);
@@ -724,9 +727,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       await accessOperation(target);
       editableObjective(objectiveId);
       // 스티어링처럼 거절을 삼키지 않는다 — 닿지 않았는데 띠가 「보냈다」고 말하면 사람은 전해진 줄 안다.
-      await control().request({ kind: "send", operationId: target, text }).catch(asStoreError);
+      await control().request({ kind: "send", operationId: target, text, display: text.trim(), displayFormat: "markdown" }).catch(asStoreError);
       if (!member) return { objective: objective(objectiveId), notified: null };
-      const notified = await accessOperation(current.id).then(() => send(current.id, memberMessageTurn(current, member.role, text, languageOf(options))), () => false);
+      const notified = await accessOperation(current.id).then(() => send(current.id, memberMessageTurn(current, member.role, text, languageOf(options)), humanWords(text)), () => false);
       return { objective: objective(objectiveId), notified };
     }),
 

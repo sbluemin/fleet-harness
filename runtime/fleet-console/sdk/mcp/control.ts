@@ -13,7 +13,9 @@ export interface ConsoleActionInput {
   readonly viewMode?: "chat" | "terminal";
   /**
    * launch·send 전용 — 원장(채팅뷰 말풍선)에 세울 문면. 없으면 `text` 가 그대로 선다. 자식에게 가는 것은 언제나
-   * `text` 다. 플러그인이 모델용 구조화 프롬프트와 사람용 요약을 갈라 보낼 때 쓴다.
+   * `text` 다. 플러그인이 모델용 구조화 프롬프트와 사람용 요약을 갈라 보낼 때 쓴다. send 의 빈 문자열은 "보일 문면이
+   * 없다"는 뜻이다 — 플러그인이 보낸 말은 출처 줄 하나로만 선다. `text` 안의 부분 문자열이면 세션을 다시 연 뒤에도
+   * 같은 문면이 선다.
    */
   readonly display?: string;
   /** `display` 의 형식. markdown 이면 말풍선이 마크다운으로 그린다. 기본은 평문. */

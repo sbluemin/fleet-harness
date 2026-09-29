@@ -21,7 +21,7 @@ const actionObjectSchema = z.object({
   theaterId: z.string().min(1).max(128).optional(), operationId: z.string().min(1).max(128).optional(),
   text: z.string().min(1).max(32_000).optional(), model: z.string().max(200).optional(), effort: z.string().max(32).optional(),
   viewMode: z.enum(["chat", "terminal"]).optional(),
-  display: z.string().min(1).max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
+  display: z.string().max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
   groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
   disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),

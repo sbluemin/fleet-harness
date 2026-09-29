@@ -338,6 +338,7 @@ export type AgentChatStreamEvent =
 export interface AgentChatQueueEntry {
   readonly id: string;
   readonly text: string;
+  readonly by?: ChatOrigin;
 }
 
 /**
@@ -433,6 +434,8 @@ interface TranscriptLine {
    * 조용히 사라진다.
    */
   readonly origin?: { readonly kind?: unknown };
+  /** 도는 턴이 도중에 집어간 말(`queued_command`)이 여기 실린다. 그 말에는 `message`가 없다. */
+  readonly attachment?: { readonly type?: unknown; readonly prompt?: unknown; readonly commandMode?: unknown; readonly origin?: { readonly kind?: unknown } };
   readonly message?: {
     readonly role?: unknown;
     readonly content?: unknown;
@@ -520,6 +523,57 @@ export function readChatCommandLaneName(text: string): string | null {
   return isChatCommandLane(name) ? name : null;
 }
 
+/**
+ * 플러그인이 보낸 말의 출처 표식 — 자식에게 가는 문면의 맨 앞에 호스트만 붙인다.
+ *
+ * 저널은 메모리에 있고 상한이 있어, 세션을 다시 열거나 Console을 재시작하면 원장은 트랜스크립트에서
+ * 다시 선다. 그때 남는 것은 자식이 받은 문면뿐이라 `by`와 원장 문면(`display`)이 사라지고, 플러그인이
+ * 보낸 지시가 사람이 친 말풍선으로 되살아난다. 별도 저장소를 두는 대신 그 문면 자체에 출처를 싣는다.
+ *
+ * `shown`은 본문 안에서 원장에 설 구간(UTF-16 오프셋)이다. 재생은 문장 모양을 짐작하지 않고 이
+ * 구간만 잘라 세우므로, 라이브와 같은 문면이 선다. 구간이 없으면 원장 문면이 빈 줄이다.
+ *
+ * 위조는 두 겹으로 막는다. 호스트는 모든 대화 문면의 선두 표식을 무력화한 뒤에 자기 표식을 붙이고
+ * (`neutralizeChatOriginTag`), 재생은 문면의 **정확히 0번 자리**에 있는 첫 표식만 읽는다. 그래서
+ * 사람·다른 Operation이 보낸 표식은 앞에 보이지 않는 글자가 붙어 읽히지 않고, 플러그인이 본문에
+ * 심은 표식은 호스트 표식 뒤에 서므로 읽히지 않는다.
+ */
+const CHAT_ORIGIN_TAG = /^<fleet-origin plugin="([A-Za-z0-9._-]{1,64})"(?: shown="(\d{1,6})-(\d{1,6})")?( format="markdown")?\/>\n/;
+const CHAT_ORIGIN_PLUGIN_ID = /^[A-Za-z0-9._-]{1,64}$/;
+// `\s`는 BOM(U+FEFF)을 포함하고 U+200B는 포함하지 않는다 — 무력화한 문면은 다시 걸리지 않는다.
+const CHAT_ORIGIN_TAG_LEAD = /^\s*<fleet-origin\b/i;
+
+/** 선두의 출처 표식을 읽히지 않게 만든다. 앞에 폭 없는 공백 하나를 세울 뿐 모델이 읽을 뜻은 그대로다. */
+export function neutralizeChatOriginTag(text: string): string {
+  return CHAT_ORIGIN_TAG_LEAD.test(text) ? `​${text}` : text;
+}
+
+/**
+ * 자식에게 보낼 문면. 플러그인 출처이고 정비 명령이 아닐 때만 표식을 붙인다 — `/compact`에
+ * 붙이면 명령이 아니라 말이 된다. 그 밖의 출처는 무력화만 거친다.
+ */
+export function tagChatOrigin(text: string, by: ChatOrigin | undefined, display: string, format?: "markdown"): string {
+  const body = neutralizeChatOriginTag(text);
+  if (by?.kind !== "plugin" || !CHAT_ORIGIN_PLUGIN_ID.test(by.pluginId) || body.startsWith("/")) return body;
+  const start = display.length > 0 ? body.lastIndexOf(display) : -1;
+  const shown = start >= 0 ? ` shown="${start}-${start + display.length}"` : "";
+  return `<fleet-origin plugin="${by.pluginId}"${shown}${format === "markdown" ? ' format="markdown"' : ""}/>\n${body}`;
+}
+
+/** 재생 문면이 호스트 표식으로 시작하면 출처와 원장 문면을 되찾는다. */
+function readChatOriginTag(text: string): { readonly by: ChatOrigin; readonly text: string; readonly format?: "markdown" } | null {
+  const match = CHAT_ORIGIN_TAG.exec(text);
+  if (!match) return null;
+  const body = text.slice(match[0].length);
+  const start = match[2] === undefined ? 0 : Number(match[2]);
+  const end = match[3] === undefined ? 0 : Number(match[3]);
+  return {
+    by: { kind: "plugin", pluginId: match[1]! },
+    text: start <= end ? body.slice(start, end).trim() : "",
+    ...(match[4] ? { format: "markdown" as const } : {}),
+  };
+}
+
 function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   // auto-compact가 남긴 이어짐 요약은 런타임 메타다 — 사람이 친 지시처럼 재생하면
   // "전환이 세션을 summarize했다"로 읽힌다. isMeta가 없는 별도 플래그라 따로 거른다.
@@ -532,6 +586,10 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     if (results.length > 0) return results;
     const text = readUserText(line.message?.content);
     if (text === null) return [];
+    // 호스트가 붙인 출처 표식은 운반체 판정보다 먼저 읽는다 — SDK로 보낸 줄에 CLI가 어떤 출처를
+    // 달든, 이 줄은 플러그인이 보낸 지시이고 라이브에서 그렇게 섰다.
+    const tagged = isInjectedOrigin(line.origin) ? null : readChatOriginTag(text);
+    if (tagged) return [{ kind: "dispatch", ...tagged, ...atField }];
     // 사람이 친 것이 아닌 운반체는 지휘 로그에 사용자 발화로 서지 않는다. 다만 본문만 걷고 턴
     // 경계까지 지우면 뒤따르는 응답이 앞 턴에 얹혀 앞 턴의 Answer를 갈아치우므로, 말풍선 없는
     // 여는 이벤트만 남긴다. 그 이벤트가 실제로 턴이 될지는 재생 루프가 정한다(지연 발행).
@@ -548,6 +606,13 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
   }
   if (line.type === "assistant") {
     return eventsFromAssistantContent(line.message?.content, options);
+  }
+  // 도는 턴이 도중에 집어간 말. 표식 없는 것은 전처럼 재생하지 않는다 — 사람의 말과 다른 세션의
+  // 전언이 같은 모양으로 오고, 이 자리에서 둘을 가를 근거가 없다.
+  if (line.type === "attachment" && line.attachment?.type === "queued_command" && line.attachment.commandMode === "prompt" && !isInjectedOrigin(line.attachment.origin)) {
+    const text = readUserText(line.attachment.prompt);
+    const tagged = text === null ? null : readChatOriginTag(text);
+    if (tagged) return [{ kind: "turn-inject", ...tagged, ...atField }];
   }
   return [];
 }

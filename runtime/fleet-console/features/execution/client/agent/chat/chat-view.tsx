@@ -11,6 +11,7 @@ import { agentChatAttachmentPreviewUrl, messageAgentSession, readAgentChatJobDet
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { ToolDetail } from "./tool-detail.js";
 import { AgentGlyph } from "../agent-glyphs.js";
+import { OriginMark, originExcerpt, type AgentChatPluginOrigin } from "./origin-mark.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
 import {
   AGENT_CHAT_JOB_FAMILY,
@@ -1305,7 +1306,11 @@ const ChatTurn = React.memo(function ChatTurn({
   if (turn.command) return <ChatCommandRow command={turn.command} state={turn.state} language={language} />;
   return (
     <>
-      {turn.dispatch ? (
+      {turn.dispatch?.by?.kind === "plugin" ? (
+        <div className="agent-chat-received-head">
+          <OriginLine by={turn.dispatch.by} text={turn.dispatch.text} format={turn.dispatch.format} at={turn.dispatch.at} language={language} />
+        </div>
+      ) : turn.dispatch ? (
         <div className="agent-chat-dispatch">
           <div className="agent-chat-dispatch-meta">
             {/* "Quick Launch로 전달" 배지는 퇴역했다 — 패널 컴포저가 주 경로가 되면서 들어온 문이
@@ -1639,7 +1644,9 @@ function Ledger({
                 );
               }
               if (part.item.type === "inject") {
-                return <InjectLine key={at} item={part.item} language={language} />;
+                return part.item.by?.kind === "plugin"
+                  ? <OriginLine key={at} by={part.item.by} text={part.item.text ?? ""} format={part.item.format} at={part.item.at} language={language} />
+                  : <InjectLine key={at} item={part.item} language={language} />;
               }
               if (part.item.type === "received") {
                 return <ReceivedLine key={at} item={part.item} language={language} />;
@@ -1699,6 +1706,56 @@ function ReceivedLine({
       </summary>
       <div className="agent-chat-tally-body">
         <StreamedMarkdown text={text} streaming={false} className="agent-chat-received-body markdown-body" language={language} />
+      </div>
+    </details>
+  );
+}
+
+const ORIGIN_TIME_FORMATS = {
+  en: new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }),
+  ko: new Intl.DateTimeFormat("ko", { hour: "2-digit", minute: "2-digit" }),
+};
+
+/**
+ * 플러그인이 대신 보낸 말 한 줄 — 받은 메시지와 같은 문법으로 원장 왼편에 선다. 사람의 말풍선이 아니다:
+ * 프롬프트는 모델의 몫이라 보이지 않고, 플러그인이 표시 문면으로 준 것(목표라면 사람이 덧붙인 말)만 본문이 된다.
+ * 본문이 없으면 출처와 시각만 서고 눌리지 않는다. 본문이 있으면 펼친 채로 서고 접으면 첫 줄 조각이 남는다.
+ * 턴을 연 말(dispatch)이든 도는 턴이 도중에 읽은 말(inject)이든 같은 줄이다 — 출처가 같은 말은 같게 읽힌다.
+ */
+function OriginLine({
+  by,
+  text,
+  format,
+  at,
+  language,
+}: {
+  readonly by: AgentChatPluginOrigin;
+  readonly text: string;
+  readonly format: "markdown" | undefined;
+  readonly at: number | undefined;
+  readonly language: "en" | "ko";
+}) {
+  const body = text.trim();
+  const excerpt = originExcerpt(body);
+  const line = (
+    <span className="agent-chat-tally-text agent-chat-received-text">
+      <OriginMark by={by} language={language} className="agent-chat-tally-clause agent-chat-origin-source" />
+      {excerpt ? <><span className="agent-chat-tally-sep agent-chat-received-preview" aria-hidden="true">·</span><span className="agent-chat-received-preview agent-chat-received-excerpt">{excerpt}</span></> : null}
+    </span>
+  );
+  const time = at !== undefined ? <span className="agent-chat-origin-time">{ORIGIN_TIME_FORMATS[language].format(new Date(at))}</span> : null;
+  if (body.length === 0) return <div className="agent-chat-tally agent-chat-origin">{line}{time}</div>;
+  return (
+    <details className="agent-chat-tally-fold agent-chat-origin-fold" open>
+      <summary className="agent-chat-tally agent-chat-origin">
+        {line}
+        {time}
+        <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
+      </summary>
+      <div className="agent-chat-origin-body">
+        {format === "markdown"
+          ? <StreamedMarkdown text={body} streaming={false} className="agent-chat-received-body markdown-body" language={language} />
+          : <div className="agent-chat-origin-plain">{body}</div>}
       </div>
     </details>
   );
