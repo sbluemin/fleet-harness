@@ -119,6 +119,9 @@ export function acknowledgeUpdateOutcome(): void {
 
 function stopWatching(): void {
   watchStartedAt = null;
+  // 재접속 뒤 드리프트 reload를 막는 표시는 이 실행에만 속한다. 같은 탭의 다음 업데이트는
+  // 다시 옛 번들로 시작하므로 reload가 필요하다.
+  reloadedAfterDisconnect = false;
   removeSessionValue(WATCH_KEY);
   removeSessionValue(STAGE_KEY);
   if (pollTimer !== null) {
