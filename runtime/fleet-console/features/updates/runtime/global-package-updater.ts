@@ -4,15 +4,16 @@ import { accessSync, constants, realpathSync } from "node:fs";
 import path from "node:path";
 
 import { resolvePathBinary, type ResolveBinaryOptions, type ResolvedBinary } from "@fleet-console/process";
-import { fetchLatestVersion, isVersionGreater } from "./version-check.js";
+import {
+  CONSOLE_RELEASE_TARBALL_ALIAS,
+  consoleReleaseLatestAssetUrl,
+  consoleReleaseTarballUrl,
+  type ConsoleReleaseManifest,
+} from "@fleet-console/protocol/release";
 
 export type GlobalPackageManagerCommand = "npm" | "pnpm";
 export type GlobalPackageUpdateReason = "local" | "permission";
-export type GlobalPackageUpdateStatus = "current" | "installed" | "failed" | "manual";
 export type GlobalPackageUpdaterReport = (message: string) => void;
-export type GlobalPackageUpdaterHook<T> = (context: T) => MaybePromise<void>;
-export type GlobalPackageVersionResolver = (packageName: string, channel: string) => Promise<string | undefined>;
-export type GlobalPackageCurrentVersionResolver = () => MaybePromise<string | undefined>;
 export type GlobalPackageRootResolver = () => MaybePromise<string | undefined>;
 export type GlobalPackageBinaryResolver = (command: GlobalPackageManagerCommand, env: NodeJS.ProcessEnv, options: ResolveBinaryOptions) => ResolvedBinary | undefined;
 export type GlobalPackageExecFile = (file: string, args: readonly string[]) => string;
@@ -33,29 +34,14 @@ export interface GlobalPackageManagerDetection {
   readonly reason: GlobalPackageUpdateReason | undefined;
 }
 
-export interface GlobalPackageUpdateOptions {
-  readonly channel?: string;
-}
-
 export interface GlobalPackageInstallContext {
   readonly manager: GlobalPackageManagerInstall;
-  readonly versionOrChannel: string;
-  readonly packageNames: readonly [string, ...string[]];
+  /** An already verified local tarball; the installer never resolves a version from a registry. */
+  readonly tarballPath: string;
 }
 
 export interface GlobalPackageSpawnContext extends GlobalPackageInstallContext {
   readonly commandArgs: readonly string[];
-}
-
-export interface GlobalPackageUpdateResult {
-  readonly status: GlobalPackageUpdateStatus;
-  readonly code: number;
-  readonly manager?: GlobalPackageManagerInstall;
-  readonly reason?: GlobalPackageUpdateReason;
-  readonly currentVersion?: string;
-  readonly latestVersion?: string;
-  readonly versionOrChannel?: string;
-  readonly manualMessage?: string;
 }
 
 export interface GlobalPackageInstallProcess {
@@ -65,20 +51,12 @@ export interface GlobalPackageInstallProcess {
 
 export interface GlobalPackageUpdater {
   detectPackageManager(): Promise<GlobalPackageManagerDetection>;
-  update(options?: GlobalPackageUpdateOptions): Promise<GlobalPackageUpdateResult>;
-  install(manager: GlobalPackageManagerInstall, versionOrChannel: string): Promise<number>;
-  createManualInstallMessage(channel: string, reason: GlobalPackageUpdateReason | undefined): string;
-  formatInstallCommand(command: GlobalPackageManagerCommand, versionOrChannel: string): string;
+  install(manager: GlobalPackageManagerInstall, tarballPath: string): Promise<number>;
 }
 
 export interface CreateGlobalPackageUpdaterDeps {
   readonly packageNames: readonly [string, ...string[]];
   readonly resolveCurrentPackageRoot: GlobalPackageRootResolver;
-  readonly resolveCurrentVersion: GlobalPackageCurrentVersionResolver;
-  readonly resolveLatestVersion?: GlobalPackageVersionResolver;
-  readonly isVersionGreater?: (left: string, right: string) => boolean;
-  readonly prepareInstall?: GlobalPackageUpdaterHook<GlobalPackageInstallContext>;
-  readonly finalizeSuccess?: GlobalPackageUpdaterHook<GlobalPackageInstallContext>;
   readonly report?: GlobalPackageUpdaterReport;
   readonly env?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
@@ -92,11 +70,6 @@ export interface CreateGlobalPackageUpdaterDeps {
 interface ResolvedUpdaterDeps {
   readonly packageNames: readonly [string, ...string[]];
   readonly resolveCurrentPackageRoot: GlobalPackageRootResolver;
-  readonly resolveCurrentVersion: GlobalPackageCurrentVersionResolver;
-  readonly resolveLatestVersion: GlobalPackageVersionResolver;
-  readonly isVersionGreater: (left: string, right: string) => boolean;
-  readonly prepareInstall: GlobalPackageUpdaterHook<GlobalPackageInstallContext> | undefined;
-  readonly finalizeSuccess: GlobalPackageUpdaterHook<GlobalPackageInstallContext> | undefined;
   readonly report: GlobalPackageUpdaterReport | undefined;
   readonly env: NodeJS.ProcessEnv;
   readonly platform: NodeJS.Platform;
@@ -107,18 +80,28 @@ interface ResolvedUpdaterDeps {
   readonly canWrite: GlobalPackageCanWrite;
 }
 
-const DEFAULT_CHANNEL = "latest";
 const PACKAGE_MANAGER_COMMANDS = ["npm", "pnpm"] as const;
 
 export function createGlobalPackageUpdater(deps: CreateGlobalPackageUpdaterDeps): GlobalPackageUpdater {
   const resolvedDeps = resolveDeps(deps);
   return {
     detectPackageManager: () => detectPackageManager(resolvedDeps),
-    update: (options = {}) => updatePackages(resolvedDeps, options),
-    install: (manager, versionOrChannel) => installPackages(resolvedDeps, manager, versionOrChannel),
-    createManualInstallMessage: (channel, reason) => createManualInstallMessage(resolvedDeps, channel, reason),
-    formatInstallCommand: (command, versionOrChannel) => formatInstallCommand(resolvedDeps.packageNames, command, versionOrChannel),
+    install: (manager, tarballPath) => installTarball(resolvedDeps, manager, tarballPath),
   };
+}
+
+/** npm and pnpm both accept `i -g --force <absolute .tgz>`; `--force` lets a same-version reinstall replace the bins. */
+export function globalTarballInstallArgs(prefixArgs: readonly string[], tarballPath: string): readonly string[] {
+  return [...prefixArgs, "i", "-g", "--force", tarballPath];
+}
+
+/**
+ * Commands a person can run when Console cannot install for them. They point at the release asset
+ * itself, never at the npm registry, so a manual update lands on the same build an automatic one would.
+ */
+export function formatConsoleReleaseInstallCommands(manifest: Pick<ConsoleReleaseManifest, "tag" | "tarball"> | null): readonly string[] {
+  const url = manifest === null ? consoleReleaseLatestAssetUrl(CONSOLE_RELEASE_TARBALL_ALIAS) : consoleReleaseTarballUrl(manifest);
+  return [`npm i -g ${url}`, `pnpm add -g ${url}`];
 }
 
 function resolveDeps(deps: CreateGlobalPackageUpdaterDeps): ResolvedUpdaterDeps {
@@ -128,11 +111,6 @@ function resolveDeps(deps: CreateGlobalPackageUpdaterDeps): ResolvedUpdaterDeps 
   return {
     packageNames: deps.packageNames,
     resolveCurrentPackageRoot: deps.resolveCurrentPackageRoot,
-    resolveCurrentVersion: deps.resolveCurrentVersion,
-    resolveLatestVersion: deps.resolveLatestVersion ?? fetchLatestVersion,
-    isVersionGreater: deps.isVersionGreater ?? isVersionGreater,
-    prepareInstall: deps.prepareInstall,
-    finalizeSuccess: deps.finalizeSuccess,
     report: deps.report,
     env: deps.env ?? process.env,
     platform: deps.platform ?? process.platform,
@@ -141,64 +119,6 @@ function resolveDeps(deps: CreateGlobalPackageUpdaterDeps): ResolvedUpdaterDeps 
     spawnInstall: deps.spawnInstall ?? defaultSpawnInstall,
     realpath: deps.realpath ?? realpathSync,
     canWrite: deps.canWrite ?? defaultCanWrite,
-  };
-}
-
-async function updatePackages(deps: ResolvedUpdaterDeps, options: GlobalPackageUpdateOptions): Promise<GlobalPackageUpdateResult> {
-  const channel = options.channel ?? DEFAULT_CHANNEL;
-  const detection = await detectPackageManager(deps);
-  if (detection.manager === undefined) {
-    return {
-      status: "manual",
-      code: 0,
-      reason: detection.reason,
-      manualMessage: createManualInstallMessage(deps, channel, detection.reason),
-    };
-  }
-
-  const currentVersion = await deps.resolveCurrentVersion();
-  const latestVersion = await deps.resolveLatestVersion(deps.packageNames[0], channel);
-  if (currentVersion !== undefined && latestVersion !== undefined && !deps.isVersionGreater(latestVersion, currentVersion)) {
-    deps.report?.(`Global package is already on the latest version (v${currentVersion}).`);
-    return {
-      status: "current",
-      code: 0,
-      manager: detection.manager,
-      currentVersion,
-      latestVersion,
-    };
-  }
-
-  const versionOrChannel = latestVersion ?? channel;
-  if (latestVersion === undefined) {
-    deps.report?.(`Could not resolve the latest package version; reinstalling ${channel}.`);
-  } else {
-    deps.report?.(`Installing global packages at ${versionOrChannel}.`);
-  }
-
-  const context = createInstallContext(deps, detection.manager, versionOrChannel);
-  await deps.prepareInstall?.(context);
-  const code = await installPackages(deps, detection.manager, versionOrChannel);
-  if (code === 0) {
-    await deps.finalizeSuccess?.(context);
-    return {
-      status: "installed",
-      code,
-      manager: detection.manager,
-      currentVersion,
-      latestVersion,
-      versionOrChannel,
-    };
-  }
-
-  return {
-    status: "failed",
-    code,
-    manager: detection.manager,
-    currentVersion,
-    latestVersion,
-    versionOrChannel,
-    manualMessage: createManualInstallMessage(deps, channel, undefined),
   };
 }
 
@@ -266,10 +186,9 @@ function createManagerDetection(
   };
 }
 
-function installPackages(deps: ResolvedUpdaterDeps, manager: GlobalPackageManagerInstall, versionOrChannel: string): Promise<number> {
-  const context = createInstallContext(deps, manager, versionOrChannel);
-  const commandArgs = [...manager.resolved.prefixArgs, "i", "-g", "--force", ...deps.packageNames.map((name) => `${name}@${versionOrChannel}`)];
-  const child = deps.spawnInstall(manager.resolved.bin, commandArgs, { ...context, commandArgs });
+function installTarball(deps: ResolvedUpdaterDeps, manager: GlobalPackageManagerInstall, tarballPath: string): Promise<number> {
+  const commandArgs = globalTarballInstallArgs(manager.resolved.prefixArgs, tarballPath);
+  const child = deps.spawnInstall(manager.resolved.bin, commandArgs, { manager, tarballPath, commandArgs });
   return new Promise((resolve) => {
     child.once("error", () => {
       resolve(1);
@@ -282,27 +201,6 @@ function installPackages(deps: ResolvedUpdaterDeps, manager: GlobalPackageManage
       resolve(signal === null ? 0 : 1);
     });
   });
-}
-
-function createInstallContext(deps: ResolvedUpdaterDeps, manager: GlobalPackageManagerInstall, versionOrChannel: string): GlobalPackageInstallContext {
-  return {
-    manager,
-    versionOrChannel,
-    packageNames: deps.packageNames,
-  };
-}
-
-function createManualInstallMessage(deps: ResolvedUpdaterDeps, channel: string, reason: GlobalPackageUpdateReason | undefined): string {
-  const reasonLine =
-    reason === "permission"
-      ? "Global package install location is not writable, so no installer was run."
-      : "Global npm or pnpm installation could not be detected, so no installer was run.";
-  const commands = PACKAGE_MANAGER_COMMANDS.map((command) => formatInstallCommand(deps.packageNames, command, channel));
-  return [reasonLine, "Run one of these commands manually:", ...commands].join("\n");
-}
-
-function formatInstallCommand(packageNames: readonly [string, ...string[]], command: GlobalPackageManagerCommand, versionOrChannel: string): string {
-  return `${command} i -g ${packageNames.map((name) => `${name}@${versionOrChannel}`).join(" ")}`;
 }
 
 function isPathInside(deps: ResolvedUpdaterDeps, child: string, parent: string): boolean {

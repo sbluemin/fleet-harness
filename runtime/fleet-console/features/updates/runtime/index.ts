@@ -1,11 +1,16 @@
 export type {
-  UpdateChannel,
-} from "./version-check.js";
+  ConsoleReleaseFetch,
+  ConsoleReleaseLookup,
+  ConsoleReleaseLookupFailure,
+  ConsoleTarballDownload,
+  ConsoleTarballDownloadFailure,
+  DownloadConsoleTarballOptions,
+  FetchConsoleReleaseOptions,
+} from "./release-source.js";
 export type {
   CreateGlobalPackageUpdaterDeps,
   GlobalPackageBinaryResolver,
   GlobalPackageCanWrite,
-  GlobalPackageCurrentVersionResolver,
   GlobalPackageExecFile,
   GlobalPackageInstallContext,
   GlobalPackageInstallProcess,
@@ -16,19 +21,21 @@ export type {
   GlobalPackageRootResolver,
   GlobalPackageSpawnContext,
   GlobalPackageSpawnInstall,
-  GlobalPackageUpdateOptions,
   GlobalPackageUpdateReason,
-  GlobalPackageUpdateResult,
-  GlobalPackageUpdateStatus,
   GlobalPackageUpdater,
-  GlobalPackageUpdaterHook,
   GlobalPackageUpdaterReport,
-  GlobalPackageVersionResolver,
 } from "./global-package-updater.js";
 export {
-  fetchLatestVersion,
   isVersionGreater,
 } from "./version-check.js";
 export {
+  consoleReleaseTarballDir,
+  downloadVerifiedConsoleTarball,
+  fetchConsoleRelease,
+  retainOnlyConsoleReleaseTarball,
+} from "./release-source.js";
+export {
   createGlobalPackageUpdater,
+  formatConsoleReleaseInstallCommands,
+  globalTarballInstallArgs,
 } from "./global-package-updater.js";

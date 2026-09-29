@@ -72,6 +72,8 @@ export interface ConsoleObserverStatus {
   readonly channel: "stable" | "local" | "unknown";
   readonly updateAvailable: boolean;
   readonly latestVersion?: string;
+  /** The update exists, but this Desktop shell must update before Console can take it. */
+  readonly shellUpdateRequired?: boolean;
   readonly port: number;
   readonly portMode: "dynamic" | "static";
   readonly requestedPort: number | null;
@@ -223,10 +225,13 @@ export interface ConsoleUpdateApplyAcceptedResponse {
 // An apply request can be refused by the current installation layout without
 // implying a Desktop release channel or Console feature mode.
 export type ConsoleUpdateApplyError =
+  | "checksum_mismatch"
   | "console_not_ready"
+  | "download_failed"
   | "host_restart_confirmation_required"
   | "local_channel"
   | "managed_runtime_update_requires_relaunch"
+  | "shell_update_required"
   | "update_already_in_progress"
   | "update_not_available"
   | "update_worker_unavailable";

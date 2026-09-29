@@ -457,7 +457,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const lock = createConsoleLock({ hostname: () => host });
   const releaseNotes = deps.releaseNotes ?? createConsoleReleaseNotesService();
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService({ readRelease: () => release });
-  const updateApply = deps.updateApply ?? createConsoleUpdateApplyService();
   const theaters = new TheaterRegistry();
   // 그룹 이동은 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮긴다.
   const operations = createOperationStore({
@@ -479,6 +478,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     ?? (process.env.FLEET_DATA_DIR === undefined ? consoleSlotOverride : undefined)
     ?? getFleetDataDir();
   const durablePaths = createConsoleDataPaths({ fleetDataDir: deps.dataDir });
+  const updateApply = deps.updateApply ?? createConsoleUpdateApplyService({ fleetDataDir });
   const recordFailure = createConsoleFailureLog(durablePaths.dir);
   const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const archiveStorage = createOperationArchiveStorage({ directory: durablePaths.dir, stateStore: durableStateStore });

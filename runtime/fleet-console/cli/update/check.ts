@@ -1,21 +1,19 @@
+import { readConsoleReleaseTagOverride, type ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 import { isVersionGreater } from "@fleet-console/updates";
 
 import type { FleetCliRelease } from "../release.js";
 import { readCachedLatestVersion, writeCachedLatestVersion } from "./cache.js";
-import { fetchLatestFleetCliVersion, type UpdateChannel } from "./registry.js";
+import { fetchFleetCliRelease } from "./registry.js";
 
 export type UpdateCheckResult =
   | { readonly status: "current"; readonly latest: string }
   | { readonly status: "unavailable" }
-  | { readonly status: "update"; readonly latest: string };
+  /** `release` is present only when this check read the manifest itself rather than the cache. */
+  | { readonly status: "update"; readonly latest: string; readonly release?: ConsoleReleaseManifest };
 
 export interface UpdateCheckOptions {
   readonly forceRefresh?: boolean;
-}
-
-export function resolveUpdateChannel(_version: string): UpdateChannel {
-  // canary 채널 운영을 종료하면서 모든 게시 빌드는 latest dist-tag만 사용한다.
-  return "latest";
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export async function checkForUpdate(release: FleetCliRelease | undefined): Promise<string | undefined> {
@@ -27,17 +25,29 @@ export async function checkUpdateStatus(release: FleetCliRelease | undefined, op
   if (release === undefined || release.version.length === 0 || release.channel === "local") {
     return { status: "unavailable" };
   }
-  const channel = resolveUpdateChannel(release.version);
+  const env = options.env ?? process.env;
+  const source = resolveUpdateSource(env);
+  if (source === undefined) {
+    return { status: "unavailable" };
+  }
   if (options.forceRefresh !== true) {
-    const cached = readCachedLatestVersion(channel);
+    const cached = readCachedLatestVersion(source);
     if (cached !== undefined) {
       return isVersionGreater(cached, release.version) ? { status: "update", latest: cached } : { status: "current", latest: cached };
     }
   }
-  const latest = await fetchLatestFleetCliVersion(channel);
-  if (latest === undefined) {
+  const lookup = await fetchFleetCliRelease(env);
+  if (!lookup.ok) {
     return { status: "unavailable" };
   }
-  writeCachedLatestVersion(channel, latest);
-  return isVersionGreater(latest, release.version) ? { status: "update", latest } : { status: "current", latest };
+  const latest = lookup.manifest.version;
+  writeCachedLatestVersion(source, latest);
+  return isVersionGreater(latest, release.version) ? { status: "update", latest, release: lookup.manifest } : { status: "current", latest };
+}
+
+/** Cache entries are keyed by what was asked, so an experiment tag never answers for latest stable. */
+function resolveUpdateSource(env: NodeJS.ProcessEnv): string | undefined {
+  const override = readConsoleReleaseTagOverride(env);
+  if (override.kind === "invalid") return undefined;
+  return override.kind === "tag" ? override.tag : "latest";
 }

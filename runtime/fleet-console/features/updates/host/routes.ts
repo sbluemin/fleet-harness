@@ -3,11 +3,14 @@ import crypto from "node:crypto";
 import { ConsoleReleaseNotesUnavailableError, type ConsoleReleaseNotesService, type ReleaseNotesLocale } from "./release-notes/release-notes.js";
 import { IDLE_CONSOLE_UPDATE_PROGRESS, readConsoleUpdateProgress, type ConsoleUpdateProgressStatus } from "./update-progress.js";
 import type { ConsoleUpdateCheckService, ConsoleUpdateStatus } from "./update-check.js";
+import { hasDesktopGithubReleaseConsoleSource } from "@fleet-console/protocol/desktop";
 import { isManagedRuntimePackageRoot, type ConsoleUpdateApplyService } from "./update-apply.js";
 import type { ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "../../../core/host/transport/console-contract-types.js";
 
 type UpdateApplyBody = Record<string, unknown>;
-const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
+// The body may only acknowledge; where the update comes from and what it installs is never the caller's to name.
+const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "tag", "targetVersion", "url", "version"]);
+const UPDATE_APPLY_START_ERRORS: ReadonlySet<ConsoleUpdateApplyError> = new Set<ConsoleUpdateApplyError>(["managed_runtime_update_requires_relaunch", "download_failed", "checksum_mismatch"]);
 interface UpdatesRouteDeps {
   readonly releaseNotes: ConsoleReleaseNotesService;
   readonly updateCheck: ConsoleUpdateCheckService;
@@ -23,10 +26,12 @@ interface UpdatesRouteDeps {
   readonly readUrl: (req: http.IncomingMessage) => URL;
   readonly currentRuntime: () => { readonly lockHandle: unknown; readonly activeEndpoint: string | null; readonly activeLockFile: string | null };
   readonly publishDesktopUpdateRequest: (request: { readonly requestedVersion: string; readonly requestId: string }) => void;
+  readonly env?: NodeJS.ProcessEnv;
   readonly stopAfterAcceptedUpdateApply: () => Promise<void>;
 }
 export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
   const { releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime, publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply } = deps;
+  const env = deps.env ?? process.env;
   let updateApplyInFlight = false;
   async function handleObserverReleaseNotes(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "GET") {
@@ -67,7 +72,7 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
   }
 
   /**
-   * 사용자가 "지금 확인"을 눌렀다. 캐시 TTL을 기다리게 하지 않고 레지스트리를 한 번 다시 묻는다.
+   * 사용자가 "지금 확인"을 눌렀다. 캐시 TTL을 기다리게 하지 않고 Release를 한 번 다시 묻는다.
    * 결과가 달라지면 기존 변경 리스너가 관찰자들에게 알리고, 같으면 이 응답만이 답이다 —
    * 그래서 응답에 상태를 그대로 싣는다.
    */
@@ -88,7 +93,11 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
       writeJson(res, 503, { error: "registry_unreachable" });
       return;
     }
-    writeJson(res, 200, { updateAvailable: status.updateAvailable, ...(status.latestVersion ? { latestVersion: status.latestVersion } : {}) });
+    writeJson(res, 200, {
+      updateAvailable: status.updateAvailable,
+      ...(status.latestVersion ? { latestVersion: status.latestVersion } : {}),
+      ...(status.shellUpdateRequired ? { shellUpdateRequired: true } : {}),
+    });
   }
 
   async function handleUpdateApply(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -132,9 +141,20 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
     // 이 트리를 제자리에서 고칠 수 없는 설치 레이아웃이라면, 업데이트를 거절하는 대신
     // 창을 들고 있는 셸에게 넘긴다. 거절은 사용자를 아무 데도 데려가지 않았다.
     if (isManagedRuntimePackageRoot(release.packageRoot)) {
+      // 그러나 Release에서 받을 줄 모르는 옛 셸에게 넘기면 셸은 npm에서 다시 설치한다. 그 셸은
+      // 먼저 바뀌어야 한다 — 이 규칙은 한 번의 다리가 아니라 새 업데이터의 영구 규칙이다.
+      if (!hasDesktopGithubReleaseConsoleSource(env)) {
+        writeJson(res, 409, { error: "shell_update_required" });
+        return;
+      }
       publishDesktopUpdateRequest({ requestedVersion: freshStatus.latestVersion, requestId: crypto.randomUUID() });
       const delegated: ConsoleUpdateApplyAcceptedResponse = { status: "delegated" };
       writeJson(res, 202, delegated);
+      return;
+    }
+    const latestRelease = updateCheck.latestRelease?.() ?? null;
+    if (latestRelease === null || latestRelease.version !== freshStatus.latestVersion) {
+      writeJson(res, 409, { error: "update_not_available" });
       return;
     }
     const { lockHandle: handle, activeEndpoint, activeLockFile } = currentRuntime();
@@ -151,12 +171,14 @@ export function createUpdatesRoutes(deps: UpdatesRouteDeps) {
         dataDir: durablePaths.dir,
         fromVersion: version,
         lockFile: activeLockFile,
-        targetVersion: freshStatus.latestVersion,
+        release: latestRelease,
       });
     } catch (error) {
       updateApplyInFlight = false;
-      const updateError: ConsoleUpdateApplyError = error instanceof Error && error.message === "managed_runtime_update_requires_relaunch"
-        ? "managed_runtime_update_requires_relaunch"
+      // 다운로드·검증 실패는 콘솔을 내리기 전에 난다. 콘솔은 그대로 서 있고 사용자는 이유를 읽는다.
+      const message = error instanceof Error ? error.message : "";
+      const updateError: ConsoleUpdateApplyError = UPDATE_APPLY_START_ERRORS.has(message as ConsoleUpdateApplyError)
+        ? (message as ConsoleUpdateApplyError)
         : "update_worker_unavailable";
       writeJson(res, 503, { error: updateError });
       return;

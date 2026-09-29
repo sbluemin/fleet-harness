@@ -116,14 +116,15 @@ export interface ApplyConsoleUpdateOptions {
   readonly signal?: AbortSignal;
 }
 
-/** 캐시를 건너뛰고 레지스트리를 지금 다시 묻는다. 응답이 곧 최신 상태다. */
-export async function checkConsoleUpdate(signal?: AbortSignal): Promise<{ readonly updateAvailable: boolean; readonly latestVersion: string | null }> {
+/** 캐시를 건너뛰고 Release를 지금 다시 묻는다. 응답이 곧 최신 상태다. */
+export async function checkConsoleUpdate(signal?: AbortSignal): Promise<{ readonly updateAvailable: boolean; readonly latestVersion: string | null; readonly shellUpdateRequired: boolean }> {
   const response = await fetch("/api/v1/updates/check", { method: "POST", ...(signal ? { signal } : {}) });
   await assertOk(response);
-  const payload = await response.json() as { readonly updateAvailable?: unknown; readonly latestVersion?: unknown };
+  const payload = await response.json() as { readonly updateAvailable?: unknown; readonly latestVersion?: unknown; readonly shellUpdateRequired?: unknown };
   return {
     updateAvailable: payload.updateAvailable === true,
     latestVersion: typeof payload.latestVersion === "string" ? payload.latestVersion : null,
+    shellUpdateRequired: payload.shellUpdateRequired === true,
   };
 }
 
@@ -452,6 +453,7 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     channel: payload.channel,
     updateAvailable: payload.updateAvailable,
     latestVersion: typeof payload.latestVersion === "string" ? payload.latestVersion : undefined,
+    ...(payload.shellUpdateRequired === true ? { shellUpdateRequired: true } : {}),
     port: payload.port,
     portMode: payload.portMode,
     requestedPort: payload.requestedPort,

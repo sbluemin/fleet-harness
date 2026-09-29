@@ -17,6 +17,6 @@ export async function runFleetUpdateCheck(io: UpdateCommandIo): Promise<number> 
     io.stdout.write(`A newer Fleet version is available: v${result.latest} (installed v${release.version}).\nRun fleet update to install it.\n`);
     return 0;
   }
-  io.stdout.write("Could not reach the npm registry to check for updates.\n");
+  io.stdout.write("Could not read the Fleet release information from GitHub to check for updates.\n");
   return 1;
 }
