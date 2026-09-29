@@ -13,25 +13,17 @@ interface RailStore {
   readonly panelSoloWidth: number | null;
   readonly panelSoloMaxWidth: number | null;
   readonly panelWidthReset: number;
-  readonly overlayAlpha: RailOverlayAlpha;
   /** 도구 패널 카드가 캔버스 위에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. 끄는 동안에도 매 프레임 따라간다. */
   readonly railOccupiedPx: number;
   /** 끌기가 끝나 확정된 점유 폭(px). 끄는 동안에는 끌기 직전 값에 머문다. */
   readonly railSettledPx: number;
 }
 
-export type RailOverlayAlpha = number;
-
-export const RAIL_OVERLAY_ALPHA_MIN = 40;
-export const RAIL_OVERLAY_ALPHA_MAX = 100;
-export const RAIL_OVERLAY_ALPHA_DEFAULT = 100;
-
 type Listener = () => void;
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
 const LEGACY_PREFS_PINNED_PANELS = "fleet-console.rail.pinnedPanels";
 // 옛 아이콘 열의 접힘 선호 — 열이 도구모음으로 옮겨 가며 퇴역했다. 남은 값은 첫 로드에 걷는다.
 const LEGACY_PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
-const PREFS_OVERLAY_ALPHA = "fleet-console.rail.overlayAlpha";
 const PREFS_REPOSITORY_SOURCE = "fleet-console.repository.source";
 const listeners = new Set<Listener>();
 let store: RailStore = {
@@ -40,7 +32,6 @@ let store: RailStore = {
   panelSoloWidth: null,
   panelSoloMaxWidth: null,
   panelWidthReset: 0,
-  overlayAlpha: readStoredOverlayAlpha(),
   railOccupiedPx: 0,
   railSettledPx: 0,
 };
@@ -77,13 +68,6 @@ export function openRailPanel(id: string): void {
 export function closeRailPanel(id: string): void {
   if (store.activePanelId !== id) return;
   deactivateRailPanel();
-}
-
-export function setRailOverlayAlpha(alpha: number): void {
-  const clamped = clampRailOverlayAlpha(alpha);
-  if (store.overlayAlpha === clamped) return;
-  setStore({ ...store, overlayAlpha: clamped });
-  saveStoredOverlayAlpha(clamped);
 }
 
 // 폭 요구는 활성 패널만 말할 수 있다 — 독점 슬롯에서 화면 밖 패널의 요구는 실체가 없다.
@@ -134,10 +118,6 @@ export function useRailActivePanelId(): string | null {
 
 export function useRailPanelExtraWidth(): number {
   return useRailStoreField("panelExtraWidth");
-}
-
-export function useRailOverlayAlpha(): RailOverlayAlpha {
-  return useRailStoreField("overlayAlpha");
 }
 
 /** 확정된 점유 폭 — 끄는 동안 다시 그리지 않아도 되는 구독자(페이지 배치·fit-all 원료)의 값이다. */
@@ -212,28 +192,11 @@ function normalizeStoredPanelId(stored: string): string | null {
   return stored;
 }
 
-function readStoredOverlayAlpha(): RailOverlayAlpha {
-  try {
-    const stored = localStorage.getItem(PREFS_OVERLAY_ALPHA);
-    if (stored === null || stored.trim() === "") return RAIL_OVERLAY_ALPHA_DEFAULT;
-    const parsed = Number(stored);
-    return Number.isFinite(parsed) ? clampRailOverlayAlpha(parsed) : RAIL_OVERLAY_ALPHA_DEFAULT;
-  } catch { return RAIL_OVERLAY_ALPHA_DEFAULT; }
-}
-
-function clampRailOverlayAlpha(alpha: number): RailOverlayAlpha {
-  return Math.min(RAIL_OVERLAY_ALPHA_MAX, Math.max(RAIL_OVERLAY_ALPHA_MIN, Math.round(alpha)));
-}
-
 function saveStoredActivePanelId(id: string | null): void {
   try {
     if (id === null) localStorage.removeItem(PREFS_ACTIVE_PANEL);
     else localStorage.setItem(PREFS_ACTIVE_PANEL, id);
   } catch { /* ignore */ }
-}
-
-function saveStoredOverlayAlpha(alpha: RailOverlayAlpha): void {
-  try { localStorage.setItem(PREFS_OVERLAY_ALPHA, String(alpha)); } catch { /* ignore */ }
 }
 
 function setStore(next: RailStore): void {

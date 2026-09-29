@@ -43,6 +43,7 @@ import { installConsoleUseGestures } from "../../../../features/console-use/clie
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredSideBarGlass } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
+import { applyStoredGlassOpacity } from "../integration/glass-opacity-store.js";
 import { consumeInitialZenModeParam } from "../integration/zen-mode.js";
 
 interface FleetConsoleRuntime {
@@ -85,6 +86,7 @@ applyDesktopShellMarker();
 // 사이드바 유리 취향은 브라우저-로컬이라 서버 왕복을 기다릴 이유가 없다 — 테마와 같은 줄에서
 // 첫 페인트 앞에 실어 두면 기본 재질이 잠깐 스쳤다 바뀌는 일이 없다.
 applyStoredSideBarGlass();
+applyStoredGlassOpacity();
 // 모달 표시는 CSS :has()가 아니라 루트 속성으로 흐른다 — 문서 전체 스타일 재계산을 막는다(modal-open-marker.ts).
 installModalOpenMarker();
 

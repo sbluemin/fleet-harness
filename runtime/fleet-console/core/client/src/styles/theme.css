@@ -226,6 +226,7 @@
      소비처가 자동으로 오늘의 불투명 계약으로 되돌아간다. */
   --glass-underlay: var(--ink-deep);
   --glass-tint-strong: var(--surface-glass-strong);
+  --glass-tint-rail: var(--surface-glass-strong);
   --glass-tint-soft: var(--surface-glass);
   --glass-tint-pillar: var(--surface-pillar);
   --glass-tint-raised: var(--surface-panel-raised);
@@ -288,25 +289,28 @@
      알파를 더 내리려면 블러/스크림 보조와 함께 AA를 재실측할 것. */
   --glass-on-underlay: transparent;
   --glass-on-tint-strong: oklch(24% 0.02 245 / 50%);
+  /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
+     섞인 결과가 슬라이더 수치와 같게 한다. 폴백 54%는 오늘 이 테마의 섞인 알파다. */
+  --glass-on-tint-rail: oklch(24% 0.02 245 / calc((var(--glass-rail-alpha, 54%) - 8%) / 0.92));
   --glass-on-tint-soft: oklch(19% 0.018 245 / 48%);
   --glass-on-tint-pillar: oklch(23.5% 0.02 245 / 52%);
   --glass-on-tint-raised: oklch(22% 0.02 245 / 52%);
   --glass-on-tint-deep: oklch(16.5% 0.016 245 / 48%);
   --glass-on-tint-abyss: oklch(13% 0.014 245 / 50%);
-  --glass-on-tint-chrome: oklch(19% 0.018 245 / 50%);
+  --glass-on-tint-chrome: oklch(19% 0.018 245 / var(--glass-side-bar-alpha, 50%));
   /* 다크 유리의 smoked-glass 문법 — Operation·War Room 카드는 blur 없이 60% 틴트와
      22% pane-light만으로 캔버스·겹친 창 윤곽을 그대로 통과시킨다. 패널 수에 따라 재질을 바꾸지
      않아 모든 모드가 같은 투과도를 유지한다. Shell은 같은 60% terminal tint 위에서만 20px blur를
      사용해 글자 밀도가 높은 단일 작업면의 판독성을 지킨다. 알파·명도를 다시 만지면 ANSI black과의
      부호(필드보다 어두울 것)와 dim 셀 floor를 반드시 재실측할 것. */
-  --glass-on-tint-panel: oklch(18.5% 0.028 245 / 60%);
+  --glass-on-tint-panel: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));
   --glass-on-tint-field: transparent;
   --glass-on-pane-light: oklch(25% 0.032 245 / 22%);
   --canvas-on-ambience: oklch(16% 0.022 245);
-  --glass-on-tint-caption: oklch(17% 0.018 245 / 64%);
-  --glass-on-tint-terminal: oklch(18.5% 0.028 245 / 60%);
+  --glass-on-tint-caption: oklch(17% 0.018 245 / calc(var(--glass-window-alpha, 60%) + 4%));
+  --glass-on-tint-terminal: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));
   --glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);
-  --glass-on-tint-band: oklch(13% 0.018 245 / 55%);
+  --glass-on-tint-band: oklch(13% 0.018 245 / var(--glass-bar-alpha, 55%));
   --glass-on-backdrop-strong: blur(24px) saturate(1.7);
   /* 좌측 사이드바 전용 재료 — strong과 같은 채도 보정 위에 blur 반경만 사용자 손잡이가 잡는다.
      반경 변수는 :root에 실려야 여기서 치환된다(operations-side-bar-store 주석 참조). 기본 24px는
@@ -549,20 +553,23 @@
   --surface-band: var(--ink-deep);
 
   --glass-on-tint-strong: oklch(32% 0.045 248 / 46%);
+  /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
+     섞인 결과가 슬라이더 수치와 같게 한다. 폴백 50%는 오늘 이 테마의 섞인 알파다. */
+  --glass-on-tint-rail: oklch(32% 0.045 248 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92));
   --glass-on-tint-soft: oklch(28% 0.04 248 / 44%);
   --glass-on-tint-pillar: oklch(22% 0.05 248 / 48%);
   --glass-on-tint-raised: oklch(28% 0.04 248 / 46%);
   --glass-on-tint-deep: oklch(20% 0.045 248 / 46%);
   --glass-on-tint-abyss: oklch(15% 0.04 250 / 48%);
-  --glass-on-tint-chrome: oklch(27% 0.04 248 / 45%);
-  --glass-on-tint-panel: oklch(25% 0.05 248 / 60%);
+  --glass-on-tint-chrome: oklch(27% 0.04 248 / var(--glass-side-bar-alpha, 45%));
+  --glass-on-tint-panel: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));
   --glass-on-tint-field: transparent;
   --glass-on-pane-light: oklch(32% 0.055 248 / 22%);
   --canvas-on-ambience: oklch(18% 0.035 235);
-  --glass-on-tint-caption: oklch(21% 0.03 248 / 64%);
-  --glass-on-tint-terminal: oklch(25% 0.05 248 / 60%);
+  --glass-on-tint-caption: oklch(21% 0.03 248 / calc(var(--glass-window-alpha, 60%) + 4%));
+  --glass-on-tint-terminal: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));
   --glass-on-tint-terminal-floor: oklch(22.3% 0.043 245);
-  --glass-on-tint-band: oklch(19% 0.045 248 / 50%);
+  --glass-on-tint-band: oklch(19% 0.045 248 / var(--glass-bar-alpha, 50%));
   --glass-on-rim: oklch(96% 0.012 88 / 18%);
 
   --hairline: oklch(36% 0.035 248);
@@ -660,20 +667,23 @@
   --surface-band: var(--ink-deep);
 
   --glass-on-tint-strong: oklch(29% 0.007 252 / 46%);
+  /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
+     섞인 결과가 슬라이더 수치와 같게 한다. 폴백 50%는 오늘 이 테마의 섞인 알파다. */
+  --glass-on-tint-rail: oklch(29% 0.007 252 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92));
   --glass-on-tint-soft: oklch(25% 0.006 252 / 44%);
   --glass-on-tint-pillar: oklch(20% 0.008 252 / 48%);
   --glass-on-tint-raised: oklch(25% 0.007 252 / 46%);
   --glass-on-tint-deep: oklch(18% 0.007 255 / 46%);
   --glass-on-tint-abyss: oklch(14% 0.006 255 / 48%);
-  --glass-on-tint-chrome: oklch(24% 0.006 252 / 45%);
-  --glass-on-tint-panel: oklch(21% 0.013 252 / 60%);
+  --glass-on-tint-chrome: oklch(24% 0.006 252 / var(--glass-side-bar-alpha, 45%));
+  --glass-on-tint-panel: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));
   --glass-on-tint-field: transparent;
   --glass-on-pane-light: oklch(28% 0.014 252 / 22%);
   --canvas-on-ambience: oklch(18% 0.014 250);
-  --glass-on-tint-caption: oklch(19% 0.008 252 / 64%);
-  --glass-on-tint-terminal: oklch(21% 0.013 252 / 60%);
+  --glass-on-tint-caption: oklch(19% 0.008 252 / calc(var(--glass-window-alpha, 60%) + 4%));
+  --glass-on-tint-terminal: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));
   --glass-on-tint-terminal-floor: oklch(19.8% 0.013 251);
-  --glass-on-tint-band: oklch(17% 0.007 255 / 50%);
+  --glass-on-tint-band: oklch(17% 0.007 255 / var(--glass-bar-alpha, 50%));
   --glass-on-rim: oklch(95% 0.003 250 / 16%);
 
   --hairline: oklch(33% 0.006 252);
@@ -891,6 +901,7 @@
   :root:not([data-theme="whites"]) {
     --glass-underlay: var(--glass-on-underlay);
     --glass-tint-strong: var(--glass-on-tint-strong);
+    --glass-tint-rail: var(--glass-on-tint-rail);
     --glass-tint-soft: var(--glass-on-tint-soft);
     --glass-tint-pillar: var(--glass-on-tint-pillar);
     --glass-tint-raised: var(--glass-on-tint-raised);
@@ -924,6 +935,7 @@
     :root:not([data-theme="whites"]) {
       --glass-underlay: var(--ink-deep);
       --glass-tint-strong: var(--surface-glass-strong);
+      --glass-tint-rail: var(--surface-glass-strong);
       --glass-tint-soft: var(--surface-glass);
       --glass-tint-pillar: var(--surface-pillar);
       --glass-tint-raised: var(--surface-panel-raised);

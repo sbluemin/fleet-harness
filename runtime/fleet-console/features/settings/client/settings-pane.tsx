@@ -10,20 +10,17 @@ import { SettingsHelp } from "../../../core/client/src/chrome/components/setting
 import { loadGlobalSettings, useGlobalSettingsStore } from "./global-settings-store.js";
 import { getT, useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
+import { closeRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import {
-  closeRailPanel,
-  RAIL_OVERLAY_ALPHA_DEFAULT,
-  RAIL_OVERLAY_ALPHA_MAX,
-  RAIL_OVERLAY_ALPHA_MIN,
-  setRailOverlayAlpha,
-  useRailOverlayAlpha,
-} from "../../../core/client/src/chrome/rail/rail-store.js";
+  GLASS_OPACITY_DEFAULTS,
+  GLASS_OPACITY_MAX,
+  GLASS_OPACITY_MIN,
+  setGlassOpacity,
+  useGlassOpacity,
+  type GlassGroup,
+} from "../../../core/client/src/integration/glass-opacity-store.js";
 import {
-  setSideBarGlassAlpha,
   setSideBarGlassBlur,
-  SIDE_BAR_GLASS_ALPHA_DEFAULT,
-  SIDE_BAR_GLASS_ALPHA_MAX,
-  SIDE_BAR_GLASS_ALPHA_MIN,
   SIDE_BAR_GLASS_BLUR_DEFAULT,
   SIDE_BAR_GLASS_BLUR_MAX,
   SIDE_BAR_GLASS_BLUR_MIN,
@@ -306,86 +303,67 @@ function SettingsChip({ label, help, active, onSelect }: {
 }
 
 /**
- * 크롬 재질 손잡이 묶음 — 좌·우 사이드바가 캔버스 위에서 어떻게 서는지를 사람이 직접 고른다.
- * 셋 다 서버 설정이 아니라 브라우저-로컬 store지만, 터미널 렌더러가 그렇듯 브라우저-로컬도
- * 설정 화면에 선다: 사람이 찾는 기준은 저장 위치가 아니라 하는 일이다.
+ * 유리 효과 손잡이 묶음 — 네 묶음의 틴트 불투명도와 좌측 사이드바 흐림. 전부 서버 설정이 아니라
+ * 브라우저-로컬 store지만, 터미널 렌더러가 그렇듯 브라우저-로컬도 설정 화면에 선다: 사람이 찾는
+ * 기준은 저장 위치가 아니라 하는 일이다.
  *
- * 순서는 재가된 배치를 지킨다 — 우측 불투명도가 "비포커스 패널 흐리기" 바로 아래 자리를
- * 계속 가지고, 좌측 손잡이 둘이 그 아래에 붙는다. 이 묶음 전체는 데스크톱 페인만
- * 주입한다: 같은 헬퍼가 사이드바도 레일도 없는 모바일의 본문이라, 직접 넣으면 폰에 죽은
- * 슬라이더 셋이 선다.
+ * "비포커스 패널 흐리기" 아래에 「유리 효과」 소제목으로 선다. 순서는 화면에서 큰 면부터다:
+ * 작업 창 → 상단 바·작업 표시줄 → 좌측 사이드바 → 도구 패널 → 좌측 사이드바 흐림. 이 묶음
+ * 전체는 데스크톱 페인만 주입한다: 같은 헬퍼가 사이드바도 레일도 없는 모바일의 본문이라, 직접
+ * 넣으면 폰에 죽은 슬라이더가 선다.
  */
 function ChromeMaterialRows() {
+  const t = useT();
   return (
     <>
-      <RailOpacityRow />
-      <SideBarOpacityRow />
+      <h4 className="global-settings-subsection-title">{t("settings.theme.glassTitle")}</h4>
+      <GlassOpacityRow group="window" titleKey="settings.theme.windowOpacity" helpKey="settings.theme.windowOpacityHelp" />
+      <GlassOpacityRow group="bar" titleKey="settings.theme.barOpacity" helpKey="settings.theme.barOpacityHelp" />
+      <GlassOpacityRow group="side-bar" titleKey="settings.theme.sideBarOpacity" helpKey="settings.theme.sideBarOpacityHelp" />
+      <GlassOpacityRow group="rail" titleKey="settings.theme.railOpacity" helpKey="settings.theme.railOpacityHelp" />
       <SideBarBlurRow />
     </>
   );
 }
 
 /**
- * 도구 패널 카드 불투명도 — 서버 설정이 아니라 브라우저-로컬 rail-store다. 전용
- * "레일 패널" 카드는 퇴역했다 — 화면 재질을 다루는 다른 손잡이(리퀴드 글래스·패널 흐리기)와
- * 같은 테마 카드에 한 행으로 선다(재가된 배치·리네이밍).
+ * 묶음 하나의 틴트 불투명도. 게이트가 닫힌 화면(라이트·투명도 줄이기·유리 미지원)은 언제나
+ * 불투명이라 손잡이가 화면에 닿지 않는다 — 비활성으로 두고 이유를 말한다. 저장값은 건드리지 않아
+ * 유리가 돌아오면 고른 값이 그대로 다시 선다.
  */
-function RailOpacityRow() {
+function GlassOpacityRow({ group, titleKey, helpKey }: {
+  readonly group: GlassGroup;
+  readonly titleKey: "settings.theme.windowOpacity" | "settings.theme.barOpacity" | "settings.theme.sideBarOpacity" | "settings.theme.railOpacity";
+  readonly helpKey: "settings.theme.windowOpacityHelp" | "settings.theme.barOpacityHelp" | "settings.theme.sideBarOpacityHelp" | "settings.theme.railOpacityHelp";
+}) {
   const t = useT();
-  const overlayAlpha = useRailOverlayAlpha();
+  const value = useGlassOpacity(group);
+  const glassOff = useGlassGateClosed();
+  const title = t(titleKey);
+  const onChange = (next: number) => setGlassOpacity(group, next);
   return (
     <div className="global-settings-row">
       <div className="global-settings-row-text">
         <p className="global-settings-resp-title">
-          {t("settings.theme.railOpacity")}
-          <SettingsHelp title={t("settings.theme.railOpacity")}>{t("settings.theme.railOpacityHelp")}</SettingsHelp>
+          {title}
+          <SettingsHelp title={title}>{t(glassOff ? "settings.theme.glassOpaqueHelp" : helpKey)}</SettingsHelp>
         </p>
       </div>
       <SettingsSlider
-        value={overlayAlpha}
-        min={RAIL_OVERLAY_ALPHA_MIN}
-        max={RAIL_OVERLAY_ALPHA_MAX}
+        value={value}
+        min={GLASS_OPACITY_MIN}
+        max={GLASS_OPACITY_MAX}
         step={1}
-        label={t("settings.theme.railOpacity")}
-        formatValue={(value) => `${value}%`}
-        decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.railOpacity") })}
-        increaseLabel={t("settings.slider.increase", { title: t("settings.theme.railOpacity") })}
-        onPreview={setRailOverlayAlpha}
-        onCommit={setRailOverlayAlpha}
-        defaultValue={RAIL_OVERLAY_ALPHA_DEFAULT}
+        disabled={glassOff}
+        label={title}
+        formatValue={(next) => `${next}%`}
+        decreaseLabel={t("settings.slider.decrease", { title })}
+        increaseLabel={t("settings.slider.increase", { title })}
+        onPreview={onChange}
+        onCommit={onChange}
+        defaultValue={GLASS_OPACITY_DEFAULTS[group]}
         resetLabel={t("settings.slider.reset")}
-        resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.railOpacity") })}
-      />
-    </div>
-  );
-}
-
-/** 좌측 사이드바 카드의 불투명도 — 우측과 같은 문법이되 소유 store만 다르다(사이드바 store). */
-function SideBarOpacityRow() {
-  const t = useT();
-  const glass = useSideBarGlass();
-  return (
-    <div className="global-settings-row">
-      <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">
-          {t("settings.theme.sideBarOpacity")}
-          <SettingsHelp title={t("settings.theme.sideBarOpacity")}>{t("settings.theme.sideBarOpacityHelp")}</SettingsHelp>
-        </p>
-      </div>
-      <SettingsSlider
-        value={glass.alpha}
-        min={SIDE_BAR_GLASS_ALPHA_MIN}
-        max={SIDE_BAR_GLASS_ALPHA_MAX}
-        step={1}
-        label={t("settings.theme.sideBarOpacity")}
-        formatValue={(value) => `${value}%`}
-        decreaseLabel={t("settings.slider.decrease", { title: t("settings.theme.sideBarOpacity") })}
-        increaseLabel={t("settings.slider.increase", { title: t("settings.theme.sideBarOpacity") })}
-        onPreview={setSideBarGlassAlpha}
-        onCommit={setSideBarGlassAlpha}
-        defaultValue={SIDE_BAR_GLASS_ALPHA_DEFAULT}
-        resetLabel={t("settings.slider.reset")}
-        resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.sideBarOpacity") })}
+        resetAriaLabel={t("settings.slider.resetAria", { title })}
       />
     </div>
   );
@@ -428,7 +406,7 @@ function readGlassGateClosed(): boolean {
 
 /**
  * 좌측 사이드바 유리의 blur 반경. 불투명도와 달리 이 손잡이는 유리 게이트에 종속된다 — 게이트가
- * 닫힌 화면에는 blur가 아예 없다. 리퀴드 글래스 줄이 이미 정한 실패 양식을 그대로 따른다:
+ * 닫힌 화면에는 blur가 아예 없다. 불투명도 줄과 같은 실패 양식을 따른다:
  * 화면에 없는 재질을 켜진 손잡이로 말하지 않고, 저장값은 건드리지 않아 유리가 돌아오면 고른 값이
  * 그대로 다시 선다.
  */

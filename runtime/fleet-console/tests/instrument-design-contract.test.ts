@@ -177,8 +177,6 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--whatsnew-delay",
   // Right Rail TSX injects the current panel width.
   "--right-rail-panel-width",
-  // Right Rail TSX injects the user-selected overlay opacity.
-  "--right-rail-overlay-alpha",
   // Right Rail TSX injects the continuous opacity slider's filled-track percentage.
   "--slider-fill",
   // Repository Rail TSX injects the user-resized workspace tree width.
@@ -961,12 +959,12 @@ describe("Instrument core design contract", () => {
     // 다크 3종은 Ghostty 계열 smoked pane처럼 60% tint로 뒤의 캔버스·겹친 창 윤곽을 통과시킨다.
     // pane-light는 22%만 얹고 Operation·War Room 카드는 blur하지 않는다. Shell은 같은 60%
     // terminal tint 위에 20px blur만 더해 글자 밀도가 높은 작업면의 판독성을 보존한다.
-    expect(theme).toContain("--glass-on-tint-panel: oklch(18.5% 0.028 245 / 60%);");
-    expect(theme).toContain("--glass-on-tint-panel: oklch(25% 0.05 248 / 60%);");
-    expect(theme).toContain("--glass-on-tint-panel: oklch(21% 0.013 252 / 60%);");
-    expect(theme).toContain("--glass-on-tint-terminal: oklch(18.5% 0.028 245 / 60%);");
-    expect(theme).toContain("--glass-on-tint-terminal: oklch(25% 0.05 248 / 60%);");
-    expect(theme).toContain("--glass-on-tint-terminal: oklch(21% 0.013 252 / 60%);");
+    expect(theme).toContain("--glass-on-tint-panel: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));");
+    expect(theme).toContain("--glass-on-tint-panel: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));");
+    expect(theme).toContain("--glass-on-tint-panel: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));");
+    expect(theme).toContain("--glass-on-tint-terminal: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));");
+    expect(theme).toContain("--glass-on-tint-terminal: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));");
+    expect(theme).toContain("--glass-on-tint-terminal: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));");
     expect((theme.match(/--glass-on-pane-light: oklch\([^)]+\/ 22%\);/g) ?? []).length).toBe(3);
     expect(theme).toContain("--glass-on-backdrop-panel: none;");
     expect(theme).toContain("--glass-on-backdrop-terminal: blur(20px) saturate(1.45);");
@@ -1965,7 +1963,7 @@ describe("Instrument core design contract", () => {
     // 연속값은 SDK 슬라이더 한 문법이다 — 코어 전용 슬라이더 클래스가 되살아나면 두 모양이 된다.
     expect(settingsPane).toContain("<SettingsSlider");
     expect(source("styles/components.css")).not.toContain(".settings-slider-field");
-    expect(settingsPane).toContain("setRailOverlayAlpha");
+    expect(settingsPane).toContain("setGlassOpacity");
     // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드라
     // 남는 취향은 카드 불투명도 하나다.
     expect(settingsPane).not.toContain("toggleRailPanelBehavior");
@@ -2307,14 +2305,13 @@ describe("Instrument core design contract", () => {
     // 갈아 끼우되 게이트 셋은 채널이 그대로 지고, soft(12px) 근처는 뒤에 깔리는 캔버스
     // 위브(48px 주기)의 대비를 ~73%나 남겨 근흑색 틴트 위에서 8-bit 계단 모자이크(가짜 격자)로
     // 양자화되는 최악 구간이다(2026-08-31 실측 + 사용자 보고). 24px는 같은 주기를 ~29%까지 누른다.
-    // 알파는 카드 루트가 아니라 이 배경 레이어만 내려간다 — 루트를 내리면 목록 글자까지 사라진다.
+    // 불투명도는 chrome 틴트의 알파가 진다 — 카드 루트를 내리면 목록 글자까지 사라진다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
     const sideBarBeforeBlock = components.match(/\.operations-side-bar::before \{[^}]*\}/)?.[0] ?? "";
     expect(sideBarBeforeBlock).toContain("linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),");
     expect(sideBarBeforeBlock).toContain("var(--glass-underlay);");
     expect(sideBarBeforeBlock).toContain("backdrop-filter: var(--glass-backdrop-side-bar);");
     expect(sideBarBeforeBlock).not.toContain("var(--glass-backdrop-soft)");
-    expect(sideBarBeforeBlock).toContain("opacity: var(--side-bar-glass-alpha, 1);");
     expect(sideBarBlock).not.toContain("opacity:");
     // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
