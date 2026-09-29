@@ -21,16 +21,18 @@
 
 // 퇴역한 리퀴드 글래스 스위치를 꺼 두었던 사람은 이 기기에서 처음 뜰 때 네 유리 불투명도를
 // 100%(완전 불투명)로 옮긴다 — 스위치가 사라져도 보던 화면이 그대로 남는다. 판단 근거는 서버
-// 저장값(static-console이 data-glass-legacy로 주입)과 구 부트 힌트 둘이며, 기기마다 한 번뿐이다.
+// 저장값(static-console이 data-glass-legacy로 주입)이고, 구 부트 힌트는 미주입 서빙 경로에서만 본다. 기기마다 한 번뿐이다.
 // 키는 glass-opacity-store.ts와 수동 동기화한다(플레인 JS라 import 불가). 첫 페인트 앞에서
 // 돌아야 유리가 한 번 스쳤다 불투명해지는 플래시가 없다.
 function migrateLegacyGlassOff() {
   const root = document.documentElement;
   const legacyOff = root.getAttribute("data-glass-legacy") === "off";
+  // 서버가 주입했으면 그 판단이 권위값이다 — 다른 기기에서 다시 켠 뒤 남은 낡은 힌트로 이관하지 않는다.
+  const serverInjected = root.getAttribute("data-theme-source") === "server";
   root.removeAttribute("data-glass-legacy");
   try {
     if (localStorage.getItem("fleet-console.glass.legacy-migrated") === "1") return;
-    if (legacyOff || localStorage.getItem("fleet-console.glass-hint") === "off") {
+    if (legacyOff || (!serverInjected && localStorage.getItem("fleet-console.glass-hint") === "off")) {
       for (const group of ["window", "bar", "side-bar", "rail"]) {
         localStorage.setItem(`fleet-console.glass.${group}-opacity`, "100");
       }
