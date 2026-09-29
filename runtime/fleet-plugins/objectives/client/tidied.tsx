@@ -117,7 +117,7 @@ export function TidiedDetail({ objective, t, language, call, back, onOpenObjecti
   readonly language: Language;
   readonly call: Call;
   /** 머리의 뒤로가기 — 세 칸에서 목록이 펼쳐져 있으면 없다. */
-  readonly back: { readonly label: string; readonly onClick: () => void } | null;
+  readonly back: { readonly label: string; readonly onClick: () => void; readonly glyph?: ReactNode } | null;
   readonly onOpenObjective: (objectiveId: string) => void;
   readonly detailRef: RefObject<HTMLElement | null>;
   readonly three: boolean;
@@ -133,7 +133,7 @@ export function TidiedDetail({ objective, t, language, call, back, onOpenObjecti
         <div className="objectives-detail-pane is-content">
           <div className="objectives-group">
             <div className="objectives-detail-head">
-              {back ? <button type="button" className="objectives-glyph objectives-detail-back" aria-label={back.label} title={back.label} onClick={back.onClick}>‹</button> : null}
+              {back ? <button type="button" className={`objectives-glyph objectives-detail-back${back.glyph ? " is-unfold" : ""}`} aria-label={back.label} title={back.label} onClick={back.onClick}>{back.glyph ?? "‹"}</button> : null}
               <span className="objectives-objective-ring objectives-tidied-glyph" aria-hidden="true">{into ? <MergeGlyph /> : <GoneGlyph />}</span>
               <div className="objectives-detail-title is-tidied">{objective.title}</div>
               {head}

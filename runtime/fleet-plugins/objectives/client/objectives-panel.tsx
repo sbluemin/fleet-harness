@@ -674,7 +674,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     patchObjectiveView(theaterId, (view) => ({ collapsed: { ...view.collapsed, [LIST_PANE]: fold } }));
     requestAnimationFrame(() => rootRef.current?.querySelector<HTMLElement>(fold ? ".objectives-detail-back" : ".objectives-list-fold")?.focus({ preventScroll: true }));
   };
-  const detailBack: DetailBack | null = listFolded ? { label: t("objectives.detail.unfoldList"), onClick: () => foldList(false) } : three ? null : { label: t("objectives.detail.backToList"), onClick: closeDetail };
+  const detailBack: DetailBack | null = listFolded ? { label: t("objectives.detail.unfoldList"), onClick: () => foldList(false), glyph: <ListUnfoldGlyph /> } : three ? null : { label: t("objectives.detail.backToList"), onClick: closeDetail };
   const setThree = (patch: Partial<ThreeWidths>, save: boolean) => setThreeWidths((current) => { const next = { ...current, ...patch }; if (save) saveThreeWidths(next); return next; });
   const rootStyle = threeShown ? { "--objectives-list-w": `${threeShown.list}px`, "--objectives-detail-w": `${threeShown.ops}px` } as CSSProperties : sized ? { "--objectives-detail-w": `${shownDetail}px` } as CSSProperties : undefined;
   const pickAddGroup = (groupId: string) => { setAddGroupId(groupId); requestAnimationFrame(() => addInputRef.current?.focus()); };
@@ -1302,7 +1302,8 @@ function OpChip({ state, label, title, onRemove, removeLabel }: { state: string;
   );
 }
 
-interface DetailBack { readonly label: string; readonly onClick: () => void }
+/** 상세 머리의 왼쪽 단추 — 두 칸·한 열은 상세를 닫는 ‹, 목록을 접은 세 칸은 목록을 펴는 글리프(‹와 다른 모양이라 닫기로 읽히지 않는다). */
+interface DetailBack { readonly label: string; readonly onClick: () => void; readonly glyph?: ReactNode }
 type DetailSection = "detail:criteria" | "detail:missions" | "detail:missionList" | "detail:results" | "detail:decisions" | "detail:followups" | "detail:members" | "detail:retro";
 
 interface DetailProps {
@@ -1390,6 +1391,8 @@ function LineupZoom({ t, title, width, onClose, children }: { readonly t: Transl
 }
 
 /** 목록 칸 접기 — 왼쪽 칸이 있는 창과 왼쪽 화살. */
+/** 목록 칸 펴기 — 접기와 같은 창에 화살만 오른쪽으로. */
+const ListUnfoldGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="11" height="10" rx="1.5" /><path d="M6.5 3v10M9.5 6.5 11 8l-1.5 1.5" /></svg>;
 const ListFoldGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="11" height="10" rx="1.5" /><path d="M6.5 3v10M11 6.5 9.5 8l1.5 1.5" /></svg>;
 
 const AssignGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="5" cy="5" r="2.2" /><circle cx="11" cy="11" r="2.2" /><path d="M7 5h3.5a1.5 1.5 0 0 1 1.5 1.5V8.8M9 11H5.5A1.5 1.5 0 0 1 4 9.5V7.2" /></svg>;
@@ -1889,7 +1892,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const sHead = (<>
       <div className="objectives-group">
         <div className="objectives-detail-head">
-          {back ? <button type="button" className="objectives-glyph objectives-detail-back" aria-label={back.label} title={back.label} onClick={back.onClick}>‹</button> : null}
+          {back ? <button type="button" className={`objectives-glyph objectives-detail-back${back.glyph ? " is-unfold" : ""}`} aria-label={back.label} title={back.label} onClick={back.onClick}>{back.glyph ?? "‹"}</button> : null}
           {/* 한 열에서만 선다(CSS) — 넓은 표면에서는 목록 위 요약 줄이 같은 말을 한다. */}
           {otherRequests > 0 ? <button type="button" className="objectives-detail-requests" title={t("objectives.requests.othersTip")} onClick={onNextRequest}><RequestGlyph />{t("objectives.requests.others", { count: otherRequests })}</button> : null}
           {(() => {
