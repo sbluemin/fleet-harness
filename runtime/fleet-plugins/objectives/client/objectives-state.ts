@@ -45,7 +45,7 @@ const inflight = new Map<string, Promise<void>>();
 /** 받으러 간 목표 — 같은 Operation 을 두 번 묻지 않는다. */
 const fetching = new Set<string>();
 /**
- * 서버가 4xx 로 목표가 아니라고 거절한 id. 네트워크·5xx 같은 일시 오류는 넣지 않아 다음 스냅숏에 다시 묻는다.
+ * 서버가 unknown_objective(404)로 목표가 아니라고 답한 id. 401·네트워크·5xx 같은 일시 거절은 넣지 않아 다음 스냅숏에 다시 묻는다.
  * 그 id 의 목표 사건이나 영구 삭제가 오기 전에는 지우지 않는다.
  */
 const notObjective = new Set<string>();
@@ -142,19 +142,15 @@ function reconcileOperations(api: ClientApiCapability): void {
       // 부모 아래 선 Operation(구성원)은 목표가 아니다 — 코어가 구성원으로 기록한 것은 묻지도 않는다.
       if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || members.has(operation.id) || fetching.has(operation.id) || notObjective.has(operation.id)) continue;
       fetching.add(operation.id);
-      // post 는 구조화 코드를 Error 메시지로 바꾸며 status 를 버린다. 4xx 만 캐시하려면 fetch 가 던진 ApiError 를 그대로 본다.
-      void api.fetch("objectives", "/objective/get", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ objectiveId: operation.id }) })
-        .then(async (response) => {
-          const payload = await response.json() as { objective?: Objective };
-          const objective = payload.objective;
-          if (!objective || typeof objective.id !== "string") return;
+      void post<{ objective: Objective }>(api, "/objective/get", { objectiveId: operation.id })
+        .then(({ objective }) => {
           const latest = theaters.get(objective.theaterId) ?? EMPTY;
           // 응답을 기다리는 사이 담당으로 연결됐으면 목표가 아니다.
           if (!latest.objectives.some((candidate) => candidate.id === objective.id) && !memberIds(latest.objectives).has(objective.id)) setTheater(objective.theaterId, { objectives: [objective, ...latest.objectives] });
         })
         .catch((error: unknown) => {
-          const status = apiErrorStatus(error);
-          if (status !== null && status >= 400 && status < 500) notObjective.add(operation.id);
+          // 목표가 없다는 확정 답(404 unknown_objective)만 기억한다 — 401 같은 일시 거절은 세션이 돌아오면 다시 묻는다.
+          if (error instanceof Error && error.message === "unknown_objective") notObjective.add(operation.id);
         })
         .finally(() => { fetching.delete(operation.id); });
     }
@@ -317,14 +313,6 @@ export async function post<T>(api: ClientApiCapability, path: string, body: unkn
   const payload = await response.json().catch(() => null) as (T & { error?: string }) | null;
   if (!response.ok) throw new Error(payload?.error ?? `http_${response.status}`);
   return payload as T;
-}
-
-/** ApiError 의 HTTP status. 번들이 달라도 모양으로만 본다. */
-function apiErrorStatus(error: unknown): number | null {
-  if (typeof error !== "object" || error === null) return null;
-  const record = error as Record<string, unknown>;
-  if (record.name !== "ApiError" || typeof record.status !== "number" || !Number.isInteger(record.status)) return null;
-  return record.status;
 }
 
 /**
