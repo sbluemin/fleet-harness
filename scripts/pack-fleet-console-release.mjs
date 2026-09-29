@@ -117,7 +117,7 @@ function assertPackedManifest(tarballPath, name, version) {
   if (problems.length > 0) throw new Error(`Packed manifest is not publishable (${problems.join(", ")})`);
 }
 
-// 격리 prefix에 전역 설치해 설치된 fleet이 이 버전을 stable로 보고하는지 본다. 의존성은 npm
+// 격리 prefix에 전역 설치해 설치된 fleet이 이 버전을 게시본(stable, 실험판은 experiment)으로 보고하는지 본다. 의존성은 npm
 // 레지스트리에서 풀리므로 external 목록이 설치 가능한지도 함께 확인된다.
 function smokeInstall(tarballPath, version) {
   const sandbox = mkdtempSync(path.join(os.tmpdir(), "fleet-console-smoke-"));
@@ -132,7 +132,7 @@ function smokeInstall(tarballPath, version) {
     execFileSync("npm", ["install", "--global", "--prefix", prefix, "--no-audit", "--no-fund", tarballPath], { stdio: "inherit", env });
     const bin = process.platform === "win32" ? path.join(prefix, "fleet.cmd") : path.join(prefix, "bin", "fleet");
     const reported = execFileSync(bin, ["--version"], { encoding: "utf8", env, shell: process.platform === "win32" }).split("\n")[0].trim();
-    const expected = `${CONSOLE_PACKAGE_NAME} ${version} (stable)`;
+    const expected = `${CONSOLE_PACKAGE_NAME} ${version} (${isExperimentConsoleVersion(version) ? "experiment" : "stable"})`;
     if (reported !== expected) throw new Error(`Smoke install reported "${reported}", expected "${expected}"`);
     console.log(`Smoke install OK: ${reported}`);
   } finally {

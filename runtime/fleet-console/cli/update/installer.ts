@@ -119,7 +119,7 @@ function reportUpdaterMessage(io: UpdateCommandIo, message: string): void {
   }
 }
 
-function isDesktopManagedInstall(): boolean {
+export function isDesktopManagedInstall(): boolean {
   const packageRoot = getCurrentPackageRoot();
   return packageRoot !== undefined && isManagedRuntimePackageRoot(packageRoot);
 }

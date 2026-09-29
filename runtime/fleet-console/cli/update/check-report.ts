@@ -1,6 +1,9 @@
+import { hasDesktopGithubReleaseConsoleSource } from "@fleet-console/protocol/desktop";
+
 import { readFleetCliRelease } from "../release.js";
 import { checkUpdateStatus, describeReleaseLookupFailure, type UpdateCheckResult } from "./check.js";
 import type { UpdateCommandIo } from "./dispatcher.js";
+import { isDesktopManagedInstall } from "./installer.js";
 
 export async function runFleetUpdateCheck(io: UpdateCommandIo): Promise<number> {
   const release = readFleetCliRelease();
@@ -14,7 +17,13 @@ export async function runFleetUpdateCheck(io: UpdateCommandIo): Promise<number> 
     return 0;
   }
   if (result.status === "update") {
-    io.stdout.write(`A newer Fleet version is available: v${result.latest} (installed v${release.version}).\nRun fleet update to install it.\n`);
+    // fleet update defers to Fleet Desktop for its own install tree, so the hint must not promise otherwise.
+    const next = !isDesktopManagedInstall()
+      ? "Run fleet update to install it."
+      : hasDesktopGithubReleaseConsoleSource(process.env)
+        ? "Apply it from the Console update menu, or restart Fleet Desktop."
+        : "Update Fleet Desktop first; it brings the new Console with it.";
+    io.stdout.write(`A newer Fleet version is available: v${result.latest} (installed v${release.version}).\n${next}\n`);
     return 0;
   }
   io.stdout.write(`${describeReleaseLookupFailure(result.reason)} Could not check for updates.\n`);
