@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.202.1] - 2026-09-29
+
+### fleet-console
+
+#### Fixed
+- Operation panels on the map no longer stutter when a long chat is open and you arrange all panels, snap them, or drag the side bar or right rail; zooming and mode switches are lighter too.
+
 ## [1.202.0] - 2026-09-29
 
 ### fleet-console

@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.202.1] - 2026-09-29
+
+### fleet-console
+
+#### Fixed
+- 긴 채팅이 열린 Operation 패널이 맵에 있을 때 모두 정렬·스냅이나 사이드바·오른쪽 레일 끌기에서 더 이상 버벅이지 않고, 줌과 모드 전환도 가벼워졌습니다.
+
 ## [1.202.0] - 2026-09-29
 
 ### fleet-console
