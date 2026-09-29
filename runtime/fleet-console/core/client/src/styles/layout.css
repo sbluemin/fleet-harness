@@ -94,8 +94,14 @@
   justify-content: center;
   padding: var(--space-4);
   /* 흐림은 쓰지 않는다(디자인 계약). 불투명 스크림만으로 가리되, 뒤에 남은 마지막 값이
-     완전히 사라지지는 않게 한다 — 그 잔상이 "돌아올 자리"라는 약속의 근거다. */
-  background: color-mix(in oklch, var(--ink-abyss) 80%, transparent);
+     완전히 사라지지는 않게 한다 — 그 잔상이 "돌아올 자리"라는 약속의 근거다.
+     카드가 없으므로 글씨가 앉는 가운데만 더 짙게 가린다. 고르게 가리면 뒤의 대화상자 글씨가
+     진행 문장과 겹쳐 읽힌다(실브라우저 재현). */
+  background: radial-gradient(
+    60% 50% at 50% 50%,
+    color-mix(in oklch, var(--ink-abyss) 97%, transparent),
+    color-mix(in oklch, var(--ink-abyss) 86%, transparent)
+  );
 }
 
 /* 카드는 두지 않는다 — 스크림 위의 한 줄과 칸 넷이 전부다. 재료는 Desktop 업데이트 말풍선과
@@ -146,6 +152,8 @@
 }
 
 .update-curtain-track > i.is-done { background: var(--warn-ink); }
+/* 흐름이 칸 끝에 닿아 있는 순간에도 지금 칸이 남은 칸과 구별되도록 옅게 칠해 둔다. */
+.update-curtain-track > i.is-now { background: color-mix(in oklch, var(--warn-ink) 35%, var(--surface-rim)); }
 
 /* 지금 칸만 흐른다. 서버가 닿지 않는 동안에도 화면이 멈춘 것이 아니라는 유일한 증거다. */
 .update-curtain-track > i.is-now::after {
@@ -243,7 +251,6 @@
 @media (prefers-reduced-motion: reduce) {
   .update-curtain-plate,
   .update-outcome { animation: none; }
-  .update-curtain-track > i.is-now { background: color-mix(in oklch, var(--warn-ink) 45%, var(--surface-rim)); }
   .update-curtain-track > i.is-now::after { animation: none; display: none; }
 }
 
