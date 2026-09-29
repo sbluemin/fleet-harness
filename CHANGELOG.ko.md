@@ -5,6 +5,31 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.204.0] - 2026-09-29
+
+### fleet-cli
+
+#### Changed
+- 이제 Fleet는 GitHub Releases에서 설치하고 업데이트합니다. `npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz`로 설치하며, `fleet update`는 실행 중인 Console을 멈추기 전에 내려받은 파일을 게시된 체크섬으로 확인합니다. 기존 npm 설치본은 다음 업데이트 때 새 경로로 넘어옵니다. `npm update -g`는 npm에 남은 이전 버전으로 되돌리므로 `fleet update`를 사용하세요.
+
+### fleet-console
+
+#### Changed
+- Console 업데이트를 이제 GitHub Releases에서 받습니다. Console이 계속 동작하는 동안 업데이트를 내려받아 확인하며, 다운로드나 체크섬 확인에 실패하면 현재 버전을 그대로 둡니다.
+- 이전 Fleet Desktop에서는 Console이 스스로 업데이트하는 대신 Fleet Desktop을 먼저 업데이트하도록 안내합니다.
+- AI Gateway 위임 라우팅이 남은 쿼터를 가장 먼저 보고 외부 벤치마크 점수는 더 이상 반영하지 않습니다. 할당량이 거의 바닥난 프로바이더는 소진 순서의 맨 앞이어도 건너뛰며, 모든 프로바이더가 그런 경우에만 사용합니다.
+- AI Gateway 위임 라우팅이 각 실행의 추론 강도를 쿼터와 함께 저울질하지 않고 작업이 얼마나 열린 문제인지로 정하며, 최대 xhigh까지 사용합니다.
+- 리퀴드 글래스가 Console의 기본 모습이 되었고, 켜고 끄는 스위치 대신 불투명도 슬라이더로 조절합니다. 100%로 올리면 완전히 불투명해집니다. 리퀴드 글래스를 꺼 두었다면 슬라이더가 100%에서 시작해 화면이 그대로 유지됩니다.
+- 목표가 채팅 세션에 보낸 메시지가 사용자의 말풍선 대신 조용한 「목표」 줄로 표시되고, 직접 덧붙인 말만 보이며, 세션을 다시 열어도 같은 모습을 유지합니다.
+
+#### Fixed
+- 최신 Claude Code에서도 AI Gateway가 Claude Opus와 Sonnet을 최신 버전으로 표시하고 라우팅하며 Opus를 "Default"로 표시하지 않고, Sonnet도 기본과 1M 컨텍스트 중에서 선택할 수 있습니다.
+
+### fleet-desktop
+
+#### Changed
+- Fleet Desktop이 이제 GitHub Releases에서 Console을 설치하고 업데이트하며, 현재 버전을 바꾸기 전에 내려받은 파일을 게시된 체크섬으로 확인합니다.
+
 ## [1.203.0] - 2026-09-29
 
 ### fleet-console

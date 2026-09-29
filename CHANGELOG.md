@@ -5,6 +5,31 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.204.0] - 2026-09-29
+
+### fleet-cli
+
+#### Changed
+- Fleet is now installed and updated from GitHub Releases: install with `npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz`, and `fleet update` checks each download against its published checksum before stopping a running Console. Existing npm installs move over with their next update; use `fleet update` rather than `npm update -g`, which would bring back the older npm version.
+
+### fleet-console
+
+#### Changed
+- Console updates now come from GitHub Releases: the update is downloaded and verified while Console keeps running, and a download or checksum failure leaves the current version untouched.
+- In an older Fleet Desktop, Console asks you to update Fleet Desktop first instead of updating itself in place.
+- AI Gateway delegation routing now puts remaining quota first and no longer weighs third-party benchmark scores; a provider whose allowance is nearly exhausted is skipped even when it heads your spend order, unless every provider is.
+- AI Gateway delegation routing now sets each run's reasoning effort from how open-ended the task is, up to xhigh, instead of weighing effort against quota.
+- Liquid glass is now the standard Console look, and the on/off switch is replaced by opacity sliders you can raise to 100% for a fully opaque surface. If you had turned liquid glass off, those sliders start at 100% so your Console looks the same.
+- Messages that Objectives sends to a chat session now appear as a quiet "Objectives" line instead of your own speech bubble, showing only the words you added, and keep that look after the session is reopened.
+
+#### Fixed
+- With current Claude Code releases, AI Gateway again shows and routes Claude Opus and Sonnet as their latest versions instead of labeling Opus "Default", and Sonnet can now be picked in its standard or 1M context variant.
+
+### fleet-desktop
+
+#### Changed
+- Fleet Desktop now installs and updates Console from GitHub Releases, checking each download against its published checksum before replacing the current version.
+
 ## [1.203.0] - 2026-09-29
 
 ### fleet-console
