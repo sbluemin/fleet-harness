@@ -231,6 +231,8 @@ export interface AgentChatCoordinatePair {
 export interface AgentChatQueueEntry {
   readonly id: string;
   readonly text: string;
+  /** 대신 보낸 발신자 — 플러그인 출처면 칩이 원장 줄과 같은 출처 표식으로 선다. */
+  readonly by?: AgentChatOrigin;
 }
 
 export interface AgentChatJournalEvent {
@@ -478,10 +480,11 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       const entries: AgentChatQueueEntry[] = [];
       for (const raw of event.entries) {
         if (!raw || typeof raw !== "object") continue;
-        const candidate = raw as { readonly id?: unknown; readonly text?: unknown };
+        const candidate = raw as { readonly id?: unknown; readonly text?: unknown; readonly by?: unknown };
         if (typeof candidate.id !== "string" || candidate.id.length === 0) continue;
         if (typeof candidate.text !== "string") continue;
-        entries.push({ id: candidate.id, text: candidate.text });
+        const by = readChatOrigin(candidate.by);
+        entries.push({ id: candidate.id, text: candidate.text, ...(by ? { by } : {}) });
       }
       return { ...journal, event: { kind: "queue", entries } };
     }

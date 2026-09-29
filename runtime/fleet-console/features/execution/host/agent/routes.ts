@@ -37,7 +37,7 @@ import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./o
 import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
-import { maskChatText, type ChatOrigin } from "./chat-events.js";
+import { maskChatText, neutralizeChatOriginTag, type ChatOrigin } from "./chat-events.js";
 import type { ConsoleUseActions } from "../../../console-use/host/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "../../../analyst/host/analysis-types.js";
@@ -512,6 +512,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       } finally { await handle.close(); }
     },
   };
+  /**
+   * 자식에게 갈 런치 프롬프트. 출처 표식은 채팅 세션만 붙이므로 여기서는 무력화만 한다 — 터미널로
+   * 태어난 세션의 트랜스크립트도 채팅으로 전환하면 재생되고, 그때 위조한 표식이 읽혀서는 안 된다.
+   */
+  const spawnPrompt = (text: string): string | undefined => {
+    const sanitized = sanitizeLaunchPrompt(text);
+    return sanitized === undefined ? undefined : neutralizeChatOriginTag(sanitized);
+  };
   /** Console Use 호출자를 채팅 원장의 저자로 — 제목만 싣는다. 사람이면 undefined. */
   const chatOrigin = (by: ConsoleCaller | undefined): ChatOrigin | undefined => {
     if (!by) return undefined;
@@ -562,7 +570,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: sanitizeLaunchPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableUserQuestions ? { disableUserQuestions: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -603,7 +611,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         settled("interrupted");
         return { operationId, delivery: "requested" };
       }
-      await deliverMessage(operationId, input.text!, [], reply, assertCurrent, settled, chatOrigin(caller), input.display ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
+      await deliverMessage(operationId, input.text!, [], reply, assertCurrent, settled, chatOrigin(caller), input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
       return { operationId, delivery: "queued" };
     },
@@ -872,7 +880,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     // spawn-only: sanitizeLaunchPrompt 결과는 Operation payload·브라우저 DTO에 넣지 않는다
     // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
-    const prompt = typeof body?.prompt === "string" ? sanitizeLaunchPrompt(body.prompt) : undefined;
+    const prompt = typeof body?.prompt === "string" ? spawnPrompt(body.prompt) : undefined;
     const attachmentIds = readAttachmentIds(body?.attachmentIds, res);
     if (attachmentIds === false) return true;
     // 시작 표면. 생략은 터미널이고, 모르는 값은 조용히 접지 않고 거절한다 — 오타가 터미널로
@@ -1545,7 +1553,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       reply(200, { delivered: true, chat: true });
       return true;
     }
-    const deliveredText = composeLaunchPromptWithAttachments(sanitized, attachmentPaths) as string;
+    const deliveredText = composeLaunchPromptWithAttachments(neutralizeChatOriginTag(sanitized), attachmentPaths) as string;
     const livePty = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
     if (!livePty) trustedPtySessions.delete(sessionId);
     if (deps.isClaudePathTrusted && !trustedPtySessions.has(sessionId)) {

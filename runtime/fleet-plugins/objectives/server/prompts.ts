@@ -17,6 +17,12 @@ const quoted = (context: string | undefined): string => {
 };
 
 /**
+ * 채팅 원장에 설 문면 — 프롬프트는 숨기고 사람이 덧붙인 말만 보인다(없으면 빈 문자열, 출처 줄만 선다).
+ * 프롬프트에 붙은 인용 그대로라 프롬프트의 부분 문자열이다. 호스트는 그 구간을 기억해 세션을 다시 연 뒤에도 같은 문면을 세운다.
+ */
+export const humanWords = (context: string | undefined): string => quoted(context).trimStart();
+
+/**
  * 구상 — 한 줄: 목표 id 와 「구상」. 편성은 보드에 올리고(plan·place_mission) 임무는 수행하지 않는다 — 「계획만」을 보드에
  * 쓰지 말라는 뜻으로 읽으면 사람이 개시 전에 계획을 보지 못한다. 사람이 함께 준 맥락이 있으면 그 아래 인용으로.
  */

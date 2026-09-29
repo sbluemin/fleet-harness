@@ -27,6 +27,7 @@ import { applyDeckPick, buildDeckSections, flattenDeckRows, readConsoleCommand, 
 import type { ChatConsoleCommand } from "./composer-deck.js";
 import { discardLaunchAttachment, messageAgentSession, readAgentChatCatalog, uploadLaunchAttachment } from "../api.js";
 import { drainComposerInbox, subscribeComposerInbox } from "./composer-inbox.js";
+import { OriginMark, originExcerpt } from "./origin-mark.js";
 
 // 폭 글리프의 말풍선과 설정 Select가 같은 이름을 쓴다 — 한 선호의 두 표면이 다른 어휘를 갖지 않게 한다.
 // 구성원 바닥 줄의 폭 글리프가 같은 말을 쓰므로 chat-view와 공유한다.
@@ -648,7 +649,13 @@ export function AgentChatComposer({
               {queue.map((entry, index) => (
                 <li key={entry.id} className="agent-chat-composer-queue-item">
                   <span className="agent-chat-composer-queue-ord" aria-hidden="true">{index + 1}</span>
-                  <span className="agent-chat-composer-queue-text">{entry.text}</span>
+                  {/* 플러그인이 대신 보낸 말은 원장 줄과 같은 출처로 선다 — 문면이 비어도(목표의 지시) 칩이 빈칸이 되지 않는다. */}
+                  {entry.by?.kind === "plugin"
+                    ? <span className="agent-chat-composer-queue-text agent-chat-composer-queue-origin">
+                        <OriginMark by={entry.by} language={language} className="agent-chat-tally-clause agent-chat-origin-source" />
+                        {originExcerpt(entry.text) ? <><span className="agent-chat-tally-sep" aria-hidden="true">·</span><span className="agent-chat-composer-queue-excerpt">{originExcerpt(entry.text)}</span></> : null}
+                      </span>
+                    : <span className="agent-chat-composer-queue-text">{entry.text}</span>}
                   <button
                     type="button"
                     className="agent-chat-composer-queue-cancel"

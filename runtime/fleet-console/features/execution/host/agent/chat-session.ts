@@ -40,6 +40,7 @@ import {
   overlayWorkflowActualModels,
   readChatCommandLaneName,
   readJobKind,
+  tagChatOrigin,
   type AgentChatCatalog,
   type AgentChatCatalogEntry,
   type AgentChatJobDetail,
@@ -315,6 +316,8 @@ interface QueuedDispatch {
   readonly format?: "markdown";
   /** 함께 보낸 이미지의 미리보기 좌표. 말풍선이 썸네일을 그리는 근거이며 경로는 싣지 않는다. */
   readonly attachments: readonly ChatAttachment[];
+  /** 대신 보낸 발신자. 문면이 비어도 칩이 출처로 서는 근거다. */
+  readonly by?: ChatOrigin;
 }
 
 /**
@@ -1035,7 +1038,7 @@ class AgentChatSession {
     // 기다리는 줄에 세우면 사용자가 방향을 고쳐 준 말이 이미 끝난 일에 대고 도착한다.
     if (this.handOverToRunningTurn(id, text, presentation, onSettled, by)) return;
     this.pendingTurns += 1;
-    this.queuedDispatches.set(id, { text, display: presentation.display ?? text, ...displayFormat(presentation), attachments: presentation.attachments ?? [] });
+    this.queuedDispatches.set(id, { text, display: presentation.display ?? text, ...displayFormat(presentation), attachments: presentation.attachments ?? [], ...(by ? { by } : {}) });
     // 접수를 곧바로 말한다. HTTP 응답보다 이 알림이 먼저 닿을 수 있고, 그것이 이 축을 서버가
     // 소유하는 이유다 — 화면이 자기 카운터를 세면 취소가 무엇을 지웠는지 둘이 따로 말하게 된다.
     this.pushQueue();
@@ -1103,10 +1106,10 @@ class AgentChatSession {
       ...(by ? { by } : {}),
       ...(onSettled ? { onSettled } : {}),
     });
-    this.queuedDispatches.set(id, { text, display, ...displayFormat(presentation), attachments });
+    this.queuedDispatches.set(id, { text, display, ...displayFormat(presentation), attachments, ...(by ? { by } : {}) });
     this.pushQueue();
     try {
-      session.send(text, { messageId });
+      session.send(tagChatOrigin(text, by, display, displayFormat(presentation).format), { messageId });
     } catch {
       // 건네지 못했으면 건넨 척하지 않는다. 칩을 걷고 거짓을 남기지 않은 채 실패를 말한다.
       this.hostedDispatches.delete(messageId);
@@ -1183,7 +1186,7 @@ class AgentChatSession {
    * 브라우저 DTO에 실리지 않는다는 것이 이 저장소의 규약이다. 길이는 한 줄에 들어갈 만큼만 자른다.
    */
   private queueEntries(): readonly AgentChatQueueEntry[] {
-    return [...this.queuedDispatches].map(([id, queued]) => ({ id, text: queued.display.slice(0, QUEUE_PREVIEW_CHARS) }));
+    return [...this.queuedDispatches].map(([id, queued]) => ({ id, text: queued.display.slice(0, QUEUE_PREVIEW_CHARS), ...(queued.by ? { by: queued.by } : {}) }));
   }
 
   /**
@@ -3089,7 +3092,7 @@ class AgentChatSession {
         return;
       }
       if (lane === null) this.requestContextSnapshot(session, "start");
-      session.send(text);
+      session.send(tagChatOrigin(text, by, presentation.display, presentation.format));
       // 이제부터 이 턴은 자식의 것이기도 하다 — 중지해도 자식이 결말을 낸다.
       this.turnReachedChild = true;
       await settled;

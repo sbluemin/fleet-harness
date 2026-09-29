@@ -21,7 +21,7 @@ const actionObjectSchema = z.object({
   theaterId: z.string().min(1).max(128).optional(), operationId: z.string().min(1).max(128).optional(),
   text: z.string().min(1).max(32_000).optional(), model: z.string().max(200).optional(), effort: z.string().max(32).optional(),
   viewMode: z.enum(["chat", "terminal"]).optional(),
-  display: z.string().min(1).max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
+  display: z.string().max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
   groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
   disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
@@ -38,7 +38,7 @@ export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   if ((value.parentOperationId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.childSessionId && (value.launchKey || value.newOperationId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind === "launch" && value.dormant && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
-  if (value.kind === "interrupt" && (value.text || value.display || value.displayFormat)) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
+  if (value.kind === "interrupt" && (value.text || value.display !== undefined || value.displayFormat)) ctx.addIssue({ code: "custom", message: "invalid_interrupt" });
   if (value.kind === "resume" && (value.text !== undefined || value.display !== undefined || value.displayFormat !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_resume" });
   if (value.text !== undefined && !sanitizeLaunchPrompt(value.text)) ctx.addIssue({ code: "custom", message: "empty_prompt" });
 });

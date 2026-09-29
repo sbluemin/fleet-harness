@@ -1817,6 +1817,20 @@
   color: var(--text-secondary);
 }
 
+/* 플러그인이 대신 보낸 예약 — 원장의 출처 줄과 같은 표식이 앞에 서고, 사람의 말 조각이 뒤에서 줄어든다. */
+.agent-chat-composer-queue-origin {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.agent-chat-composer-queue-origin > .agent-chat-tally-clause,
+.agent-chat-composer-queue-origin > .agent-chat-tally-sep { flex: none; }
+.agent-chat-composer-queue-excerpt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 취소는 파괴 동작 — coral은 상태 채널이라 hover에만 오른다(첨부 제거와 같은 계약). */
 .agent-chat-composer-queue-cancel {
   flex: none;
@@ -4253,6 +4267,45 @@
 
 .agent-chat .agent-chat-received-body.markdown-body > :first-child { margin-top: 0; }
 .agent-chat .agent-chat-received-body.markdown-body > :last-child { margin-bottom: 0; }
+
+/* 플러그인이 대신 보낸 말 — 받은 메시지와 같은 줄 문법으로 원장 왼편에 선다. 사람의 말풍선을
+   빌리지 않는 것이 요점이다: 그 모양은 "사람이 말했다"를 뜻하고, 이 말은 플러그인이 보냈다.
+   출처는 Console Use 표식과 같은 잉크로 선다 — 이 줄이 무엇에서 왔는지가 이 줄의 유일한 주장이다. */
+.agent-chat-origin { align-items: center; }
+.agent-chat-origin-source,
+.agent-chat-origin-source > .agent-chat-tally-glyph {
+  color: var(--text-console-use);
+  font-weight: var(--weight-medium);
+}
+.agent-chat-origin-time {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 본문은 줄기도 테두리도 없이 출처 글자 뒤 축에 선다(왼쪽 강조 띠 금지). 목표의 문면은 프롬프트에
+   붙은 인용 그대로라 바깥 인용 한 겹의 장식을 벗긴다 — 인용 안의 인용은 사람이 쓴 것이라 남긴다. */
+.agent-chat-origin-body {
+  padding: var(--space-1) var(--space-1) 2px 25px;
+  font-size: var(--t-md);
+  line-height: 1.6;
+  color: var(--text-primary);
+  min-width: 0;
+}
+.agent-chat-origin-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-chat .agent-chat-origin-body .markdown-body > blockquote {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-style: normal;
+}
+.agent-chat .agent-chat-origin-body .markdown-body > blockquote > * + * { margin-top: var(--space-2); }
+/* 사람이 여러 줄로 쓴 말은 그 줄바꿈대로 선다. 마크다운은 한 줄 줄바꿈을 공백으로 접지만, 이 본문은
+   문서가 아니라 사람의 말이다 — 프롬프트(모델이 받는 문면)는 그대로 두고 여기서만 줄을 살린다. */
+.agent-chat .agent-chat-origin-body .markdown-body p { white-space: pre-line; }
 
 /* 도는 턴이 도중에 집어간 사용자의 말.
 
