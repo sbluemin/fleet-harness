@@ -152,10 +152,16 @@ export function serializeChord(modifiers: Iterable<ChordModifier>, code: string)
   return [...CHORD_MODIFIERS.filter((modifier) => set.has(modifier)), code].join("+");
 }
 
+// 단축키 표기는 렌더마다 플랫폼을 묻는다 — userAgentData 읽기가 싸지 않아 같은 navigator면 한 번 판정한 값을 쓴다.
+let applePlatformFor: Navigator | null = null;
+let applePlatform = false;
 export function isApplePlatform(navigatorFor: Navigator = navigator): boolean {
+  if (navigatorFor === applePlatformFor) return applePlatform;
   const userAgentDataPlatform = (navigatorFor as Navigator & { readonly userAgentData?: { readonly platform?: string } }).userAgentData?.platform;
   const platform = userAgentDataPlatform ?? navigatorFor.platform;
-  return /mac|iphone|ipad|ipod/i.test(platform);
+  applePlatformFor = navigatorFor;
+  applePlatform = /mac|iphone|ipad|ipod/i.test(platform);
+  return applePlatform;
 }
 
 interface ChordEventLike {

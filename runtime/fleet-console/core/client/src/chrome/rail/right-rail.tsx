@@ -18,7 +18,7 @@ import { getState, subscribe } from "../../integration/store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
-import { reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
+import { RAIL_OVERLAY_ALPHA_MAX, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailOverlayAlpha, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   clearStoredPanelWidth,
@@ -249,7 +249,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
       style={{ "--right-rail-panel-width": `${slotWidth}px` } as CSSProperties}
     >
       <div
-        className="right-rail-panel-slot"
+        className={`right-rail-panel-slot${overlayAlpha >= RAIL_OVERLAY_ALPHA_MAX ? " is-opaque" : ""}`}
         style={{ "--right-rail-overlay-alpha": overlayAlpha / 100 } as CSSProperties}
       >
         {hasPanel && (

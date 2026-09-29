@@ -5,6 +5,8 @@ export interface Rect extends Point { w: number; h: number }
 interface Label extends Rect { lines: string[]; shown: number; full: boolean }
 export interface GraphEdge { from: string | null; to: string; d: string; points: Point[] }
 export const intersects = (a: Rect, b: Rect, pad = 0) => a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
+const SAMPLE_CELL = 24;
+const cellKey = (cx: number, cy: number) => (cx + 4096) * 8192 + (cy + 4096);
 const inside = (p: Point, r: Rect, pad = 0) => p.x >= r.x - pad && p.x <= r.x + r.w + pad && p.y >= r.y - pad && p.y <= r.y + r.h + pad;
 const bezier = (a: number, b: number, c: number, d: number, t: number) => (1 - t) ** 3 * a + 3 * (1 - t) ** 2 * t * b + 3 * (1 - t) * t * t * c + t ** 3 * d;
 export function edgeGeometry(a: Point, b: Point) {
@@ -55,7 +57,17 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
   const nodeRects = [...pos.values()].map(p => ({ x: p.x - g.r - 4, y: p.y - g.r - 7, w: 2 * g.r + 8, h: 2 * g.r + 17 }));
   nodeRects.push({ x: root.x - 8, y: root.y - 8, w: 16, h: 16 });
   const rootLabel = { x: Math.max(0, root.x - measure(commander) / 2), y: root.y + 10, w: measure(commander), h: 13, lines: [commander] };
-  const samples = edges.flatMap(e => e.points);
+  // 선 표본은 칸 격자에 담아 이름 후보 둘레의 칸만 본다 — 후보마다 모든 표본을 훑으면 가지가 많은 그래프에서 탐색이 수억 번으로 는다.
+  const cellOf = (value: number) => Math.floor(value / SAMPLE_CELL);
+  const sampleCells = new Map<number, Point[]>();
+  for (const e of edges) for (const point of e.points) { const key = cellKey(cellOf(point.x), cellOf(point.y)); const list = sampleCells.get(key); if (list) list.push(point); else sampleCells.set(key, [point]); }
+  const touchesSample = (r: Rect, pad: number) => {
+    for (let cx = cellOf(r.x - pad), cx1 = cellOf(r.x + r.w + pad); cx <= cx1; cx++) for (let cy = cellOf(r.y - pad), cy1 = cellOf(r.y + r.h + pad); cy <= cy1; cy++) {
+      const list = sampleCells.get(cellKey(cx, cy));
+      if (list) for (const point of list) if (inside(point, r, pad)) return true;
+    }
+    return false;
+  };
   const maxWidth = Math.min(g.capW + extra, cols > 1 ? colW * 1.9 - 10 : canvasWidth - 40);
   const branches = (m: ObjectiveMission) => {
     const p = pos.get(m.id)!; let up = 0, down = 0;
@@ -66,6 +78,14 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
     }
     return { up, down, difficulty: (up && down ? 10 : 0) + up + down };
   };
+  // 줄임은 임무·폭 배율·줄 수로만 정해진다 — 위·아래 두 자리와 다시 도는 배치가 같은 결과를 나눠 쓴다.
+  const fittedCache = new Map<string, ReturnType<typeof ellipsize>>();
+  const fitted = (m: ObjectiveMission, factor: number, count: number) => {
+    const key = `${m.id}\u0001${factor}\u0001${count}`;
+    let label = fittedCache.get(key);
+    if (!label) { label = ellipsize(m.text, maxWidth * factor, count, measure); fittedCache.set(key, label); }
+    return label;
+  };
   const place = (order: readonly ObjectiveMission[]) => {
     const occupied: Rect[] = [rootLabel], labels = new Map<string, Label>();
     for (const m of order) {
@@ -73,13 +93,15 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
       const preferred = up < down ? "above" : down < up ? "below" : p.col % 2 === 0 ? "above" : "below";
       let best: (Label & { score: number }) | null = null;
       for (const side of [preferred, preferred === "above" ? "below" : "above"]) for (const factor of [1, .84, .7, .58, .46, .36]) for (const count of g.lines > 1 ? [g.lines, 1] : [1]) {
-        const label = ellipsize(m.text, maxWidth * factor, count, measure), w = Math.ceil(label.w) + 2, h = label.lines.length * g.llh;
+        const label = fitted(m, factor, count), w = Math.ceil(label.w) + 2, h = label.lines.length * g.llh;
         for (const dx of [0, -.3, .3, "L", "R", -.46, .46]) {
           const x = dx === "L" ? p.x - g.r + 1 : dx === "R" ? p.x + g.r - 1 - w : p.x - w / 2 + (dx as number) * w;
           const y = side === "above" ? p.y - g.r - 9 - h : p.y + g.r + 12, r = { x, y, w, h };
-          if (x < 4 || x + w > canvasWidth - 4 || nodeRects.some(n => intersects(r, n, 1)) || occupied.some(l => intersects(r, l, 3)) || samples.some(s => inside(s, r, 2))) continue;
+          if (x < 4 || x + w > canvasWidth - 4 || nodeRects.some(n => intersects(r, n, 1)) || occupied.some(l => intersects(r, l, 3)) || touchesSample(r, 2)) continue;
           const center = { x: x + w / 2, y: y + h / 2 }, own = Math.hypot(p.x - center.x, p.y - center.y);
-          if ([...pos].some(([id, q]) => id !== m.id && Math.hypot(q.x - center.x, q.y - center.y) < own + 2)) continue;
+          let closer = false;
+          for (const [id, q] of pos) if (id !== m.id && Math.hypot(q.x - center.x, q.y - center.y) < own + 2) { closer = true; break; }
+          if (closer) continue;
           const score = label.shown * 10 + (side === preferred ? 3 : 0) + (dx === 0 ? 2 : 0) - (typeof dx === "number" ? Math.abs(dx) * 2 : 1.2) - w * .01 - count * .5;
           if (!best || score > best.score) best = { ...label, ...r, score };
         }

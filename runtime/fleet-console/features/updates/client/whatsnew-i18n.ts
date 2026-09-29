@@ -11,6 +11,19 @@ export function resolveConsoleLanguage(preference: ConsoleLanguagePreference, na
   return navigatorLanguage === "ko" || navigatorLanguage.startsWith("ko-") ? "ko" : "en";
 }
 
+// 언어 해석은 번역 훅마다(=렌더마다) 돈다 — 브라우저 언어는 같은 navigator에서 languagechange가 오기 전까지 다시 읽지 않는다.
+let navigatorLanguageFor: Navigator | null = null;
+let navigatorLanguage = "";
+let languageListening = false;
 function readNavigatorLanguage(): string {
-  return typeof navigator === "undefined" ? "" : navigator.language.toLowerCase();
+  if (typeof navigator === "undefined") return "";
+  if (navigator !== navigatorLanguageFor) {
+    navigatorLanguageFor = navigator;
+    navigatorLanguage = navigator.language.toLowerCase();
+    if (!languageListening && typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      languageListening = true;
+      window.addEventListener("languagechange", () => { navigatorLanguageFor = null; });
+    }
+  }
+  return navigatorLanguage;
 }

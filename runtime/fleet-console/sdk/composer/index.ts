@@ -19,8 +19,8 @@ export {
   resolveRowEffort,
 } from "./effort-track.js";
 export type { EffortTrackProps } from "./effort-track.js";
-export { ComposerInput } from "./input.js";
-export type { ComposerInputProps } from "./input.js";
+export { ComposerInput, SyncedTextarea, useTextareaValue } from "./input.js";
+export type { ComposerInputProps, SyncedTextareaProps } from "./input.js";
 export {
   ComposerAttachControl,
   ComposerBar,

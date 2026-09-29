@@ -32,6 +32,7 @@ import {
 } from "./followups.js";
 import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace, FollowupForkGlyph } from "./followups-view.js";
 import { criterionSources, MergedTrail, MergeGlyph, TidiedDetail, TidiedList } from "./tidied.js";
+import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
 export interface ObjectiveContext {
   readonly theaterId: string | null;
@@ -1495,12 +1496,12 @@ function WrapText({ className, label, editLabel, value, readOnly, maxLength, pla
     );
   }
   return (
-    <textarea
+    <SyncedTextarea
       ref={ref}
       className={className}
       rows={1}
       aria-label={label}
-      defaultValue={value}
+      value={value}
       readOnly={readOnly}
       maxLength={maxLength}
       placeholder={placeholder}
@@ -1632,12 +1633,12 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
       ) : null}
       {open ? (
         <div className="objectives-proposal-note">
-          <textarea
+          <SyncedTextarea
             ref={fieldRef}
             autoFocus
             rows={2}
             maxLength={300}
-            defaultValue={saved}
+            value={saved}
             placeholder={t(PROPOSAL_PLACEHOLDER[proposal.kind])}
             aria-label={t("objectives.proposal.annotationAria")}
             onKeyDown={(event) => {
@@ -1658,13 +1659,139 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
 
 const BRIEF_LINES = 3;
 
-function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, back, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
+// 제목 초안은 제 칸에서만 산다 — 상세 전체가 글자마다 다시 그리지 않는다. 값은 SyncedTextarea가 DOM에 맞춘다(글자마다
+// React가 defaultValue를 다시 쓰면 문서의 :has() 무효화가 맵 전체의 스타일을 다시 계산한다).
+function DetailTitle({ objective, t, editable, call }: { objective: Objective; t: T; editable: boolean; call: DetailProps["call"] }) {
+  return (
+    <SyncedTextarea className="objectives-detail-title" aria-label={t("objectives.objective.titleAria")} value={objective.title} rows={1} readOnly={!editable} onKeyDown={(event) => { if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); } }} onBlur={(event) => { const title = event.currentTarget.value; if (title.trim() && title !== objective.title) void call("/objective/patch", { objectiveId: objective.id, patch: { title: title.trim() } }); }} />
+  );
+}
+
+// 브리핑 구획 — 초안·초점·접힘·첨부 상태를 구획 안에 둬서 쓰는 동안 상세의 나머지(그래프·구획 입력칸)가 따라 그리지 않는다.
+function BriefSection({ objective, t, language, touchable, call, onOpenObjective }: { objective: Objective; t: T; language: DetailProps["language"]; touchable: boolean; call: DetailProps["call"]; onOpenObjective: DetailProps["onOpenObjective"] }) {
   const [note, setNote] = useState(objective.note);
-  const [title, setTitle] = useState(objective.title);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const launchRows = useLaunchRows();
   useEffect(() => { setNote(objective.note); }, [objective.note]);
-  useEffect(() => { setTitle(objective.title); }, [objective.title]);
+  const attachments = useAttachmentUpload(objective, t);
+  const [dropping, setDropping] = useState(false);
+  // 브리핑 — 쉴 때 3줄, 넘치면 「더 보기」. 쓰는 동안(초점)은 다 보인다(360px 뒤로는 안에서 스크롤).
+  const noteRef = useRef<HTMLTextAreaElement | null>(null);
+  const readRef = useRef<HTMLDivElement | null>(null);
+  const wasEditing = useRef(false);
+  const briefCaret = useRef<number | null>(null);
+  const [noteFocus, setNoteFocus] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteOverflow, setNoteOverflow] = useState(false);
+  const [briefEditing, setBriefEditing] = useState(false);
+  const noteClamped = !noteOpen && !noteFocus;
+  // 빈 브리핑은 「브리핑 추가」 한 줄 — 누르거나 초점이 오면 편집 칸이 아래로 세 줄 펼쳐진다. 끌어오는 동안은 겹판만 서고 자리는 그대로다.
+  const [briefActive, setBriefActive] = useState(false);
+  const briefBlank = !note.trim() && objective.attachments.length === 0;
+  const briefCollapsed = briefBlank && touchable && !briefActive && !attachments.error && attachments.sending === 0;
+  const startBrief = (offset: number | null = null) => {
+    briefCaret.current = offset;
+    setBriefEditing(true);
+    setBriefActive(true);
+    setNoteFocus(true);
+  };
+  const fitNote = useCallback(() => {
+    const element = noteRef.current;
+    if (!element) return;
+    const style = getComputedStyle(element);
+    const line = parseFloat(style.lineHeight) || 20;
+    const pad = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    const clampAt = line * BRIEF_LINES + pad;
+    element.style.height = "0px";
+    const full = element.scrollHeight;
+    element.style.height = `${Math.ceil(Math.min(full, noteClamped ? clampAt : 360))}px`;
+    setNoteOverflow(full > clampAt + 1);
+  }, [noteClamped]);
+  const fitRead = useCallback(() => {
+    const element = readRef.current;
+    if (!element) return;
+    const style = getComputedStyle(element);
+    const line = parseFloat(style.lineHeight) || 20;
+    const pad = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    const clampAt = line * BRIEF_LINES + pad;
+    const clamped = !noteOpen;
+    element.style.maxHeight = "none";
+    element.style.overflow = "visible";
+    const full = element.scrollHeight;
+    element.style.maxHeight = `${Math.ceil(Math.min(full, clamped ? clampAt : 360))}px`;
+    element.style.overflow = clamped ? "hidden" : "auto";
+    setNoteOverflow(full > clampAt + 1);
+  }, [noteOpen]);
+  useLayoutEffect(() => {
+    if (briefEditing) {
+      const field = noteRef.current;
+      const entering = !wasEditing.current;
+      if (entering) field?.focus();
+      wasEditing.current = true;
+      fitNote();
+      if (entering && field) placeCaret(field, briefCaret.current);
+    } else {
+      wasEditing.current = false;
+      fitRead();
+    }
+  }, [note, briefEditing, fitNote, fitRead]);
+  useEffect(() => {
+    const element = briefEditing ? noteRef.current : readRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    let width = element.clientWidth;
+    const observer = new ResizeObserver(() => { if (element.clientWidth !== width) { width = element.clientWidth; if (briefEditing) fitNote(); else fitRead(); } });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [briefEditing, fitNote, fitRead]);
+
+  const saveNote = (value: string) => {
+    setNote(value);
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => { void call("/objective/patch", { objectiveId: objective.id, patch: { note: value } }); }, 600);
+  };
+  return (<>
+      {/* 브리핑 — 사람이 쓴 요구. 붙이는 입구는 머리의 첨부 글리프이고, 첨부 띠는 이미지가 있을 때만 본문 위에 선다.
+          메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다 — 끌어오는 동안은 자리를 밀지 않는 겹판이 선다. */}
+      <div
+        className="objectives-group objectives-note-group"
+        data-objectives-tour="brief"
+        onFocus={() => setBriefActive(true)}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setBriefActive(false); }}
+        onDragOver={(event) => { if (touchable && [...event.dataTransfer.types].includes("Files")) { event.preventDefault(); setDropping(true); } }}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
+        onDrop={(event) => { if (!touchable) return; event.preventDefault(); setDropping(false); const files = imageFiles(event.dataTransfer.files); if (files.length) void attachments.upload(files); }}
+      >
+        <SectionHead glyph={<BriefGlyph />} label={t("objectives.objective.memo")} tools={objective.attachments.length > 0 || touchable ? <>
+          {objective.attachments.length > 0 ? <span className="objectives-criteria-count">{t("objectives.brief.images", { count: objective.attachments.length })}</span> : null}
+          {touchable && !briefEditing ? <button type="button" className="objectives-read-edit" onClick={() => startBrief()}>{t("objectives.link.edit")}</button> : null}
+          {touchable ? <AttachButton objective={objective} t={t} upload={attachments.upload} sending={attachments.sending} /> : null}
+        </> : null} />
+        <NoteAttachments objective={objective} t={t} touchable={touchable} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { objectiveId: objective.id, attachmentId: attachment.id })} />
+        {briefEditing && touchable ? (
+          <SyncedTextarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}${briefBlank && !briefCollapsed ? " is-writing" : ""}`} rows={1} aria-label={t("objectives.objective.memo")} placeholder={t("objectives.objective.memoPlaceholder")} value={note} onChange={(event) => saveNote(event.target.value)}
+            onFocus={() => setNoteFocus(true)} onBlur={() => { setNoteFocus(false); setBriefEditing(false); }}
+            onPaste={(event) => { const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
+        ) : note.trim() ? (
+          <div ref={readRef} className={`objectives-note is-read${noteClamped ? " is-clamped" : ""}`} onClick={(event) => {
+            if (!touchable) return;
+            const target = event.target;
+            if (target instanceof Element && target.closest("a")) return;
+            if (window.getSelection()?.toString()) return;
+            startBrief(readCaretOffset(event.currentTarget, event.clientX, event.clientY));
+          }}><LinkText text={note} /></div>
+        ) : touchable ? (
+          <button type="button" className="objectives-note is-read is-placeholder" onFocus={() => startBrief()} onClick={() => startBrief()}>{t("objectives.objective.memoPlaceholder")}</button>
+        ) : (
+          <div className="objectives-note is-read is-placeholder">{t("objectives.objective.memoPlaceholder")}</div>
+        )}
+        {dropping ? <AttachmentDropVeil t={t} /> : null}
+        {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
+        <MergedTrail objective={objective} t={t} language={language} call={call} onOpenObjective={onOpenObjective} />
+      </div>
+  </>);
+}
+
+function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, back, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
+  const launchRows = useLaunchRows();
   const mode = commanderMode(objective.missions);
   const mergedFrom = criterionSources(objective);
   // 수동 재개로 초기화된 유휴 세션도 잠근다. 구성원의 활동이 아니라 지휘관 자신의 상태로 판단한다.
@@ -1674,8 +1801,6 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const touchable = !objective.done;
   const notStarted = (mission: ObjectiveMission) => !mission.done;
   const canEditMission = (missionId: string) => { if (editable) return true; const target = objective.missions.find((candidate) => candidate.id === missionId); return touchable && !!target && notStarted(target); };
-  const attachments = useAttachmentUpload(objective, t);
-  const [dropping, setDropping] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
   // 확대 카드 폭 — 확대 그래프가 스크롤 없이 들어가는 폭을 알려 준다.
   const [zoomWidth, setZoomWidth] = useState<number | null>(null);
@@ -1810,80 +1935,6 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     if (followupSectionOpen && followupIdsKey) markFollowupsSeen(objective.id, followupIdsKey.split(","));
   }, [objective.id, followupIdsKey, followupSectionOpen]);
 
-  // 브리핑 — 쉴 때 3줄, 넘치면 「더 보기」. 쓰는 동안(초점)은 다 보인다(360px 뒤로는 안에서 스크롤).
-  const noteRef = useRef<HTMLTextAreaElement | null>(null);
-  const readRef = useRef<HTMLDivElement | null>(null);
-  const wasEditing = useRef(false);
-  const briefCaret = useRef<number | null>(null);
-  const [noteFocus, setNoteFocus] = useState(false);
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [noteOverflow, setNoteOverflow] = useState(false);
-  const [briefEditing, setBriefEditing] = useState(false);
-  const noteClamped = !noteOpen && !noteFocus;
-  // 빈 브리핑은 「브리핑 추가」 한 줄 — 누르거나 초점이 오면 편집 칸이 아래로 세 줄 펼쳐진다. 끌어오는 동안은 겹판만 서고 자리는 그대로다.
-  const [briefActive, setBriefActive] = useState(false);
-  const briefBlank = !note.trim() && objective.attachments.length === 0;
-  const briefCollapsed = briefBlank && touchable && !briefActive && !attachments.error && attachments.sending === 0;
-  const startBrief = (offset: number | null = null) => {
-    briefCaret.current = offset;
-    setBriefEditing(true);
-    setBriefActive(true);
-    setNoteFocus(true);
-  };
-  const fitNote = useCallback(() => {
-    const element = noteRef.current;
-    if (!element) return;
-    const style = getComputedStyle(element);
-    const line = parseFloat(style.lineHeight) || 20;
-    const pad = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-    const clampAt = line * BRIEF_LINES + pad;
-    element.style.height = "0px";
-    const full = element.scrollHeight;
-    element.style.height = `${Math.ceil(Math.min(full, noteClamped ? clampAt : 360))}px`;
-    setNoteOverflow(full > clampAt + 1);
-  }, [noteClamped]);
-  const fitRead = useCallback(() => {
-    const element = readRef.current;
-    if (!element) return;
-    const style = getComputedStyle(element);
-    const line = parseFloat(style.lineHeight) || 20;
-    const pad = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-    const clampAt = line * BRIEF_LINES + pad;
-    const clamped = !noteOpen;
-    element.style.maxHeight = "none";
-    element.style.overflow = "visible";
-    const full = element.scrollHeight;
-    element.style.maxHeight = `${Math.ceil(Math.min(full, clamped ? clampAt : 360))}px`;
-    element.style.overflow = clamped ? "hidden" : "auto";
-    setNoteOverflow(full > clampAt + 1);
-  }, [noteOpen]);
-  useLayoutEffect(() => {
-    if (briefEditing) {
-      const field = noteRef.current;
-      const entering = !wasEditing.current;
-      if (entering) field?.focus();
-      wasEditing.current = true;
-      fitNote();
-      if (entering && field) placeCaret(field, briefCaret.current);
-    } else {
-      wasEditing.current = false;
-      fitRead();
-    }
-  }, [note, briefEditing, fitNote, fitRead]);
-  useEffect(() => {
-    const element = briefEditing ? noteRef.current : readRef.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    let width = element.clientWidth;
-    const observer = new ResizeObserver(() => { if (element.clientWidth !== width) { width = element.clientWidth; if (briefEditing) fitNote(); else fitRead(); } });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [briefEditing, fitNote, fitRead]);
-
-  const saveNote = (value: string) => {
-    setNote(value);
-    if (noteTimer.current) clearTimeout(noteTimer.current);
-    noteTimer.current = setTimeout(() => { void call("/objective/patch", { objectiveId: objective.id, patch: { note: value } }); }, 600);
-  };
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
 
@@ -1921,7 +1972,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           }}><CheckGlyph /></button>
             );
           })()}
-          <textarea className="objectives-detail-title" aria-label={t("objectives.objective.titleAria")} value={title} rows={1} readOnly={!editable} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (submitKey(event)) { event.preventDefault(); event.currentTarget.blur(); } }} onBlur={() => { if (title.trim() && title !== objective.title) void call("/objective/patch", { objectiveId: objective.id, patch: { title: title.trim() } }); }} />
+          <DetailTitle objective={objective} t={t} editable={editable} call={call} />
           {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.objective.delete")} title={t("objectives.objective.delete")} onClick={async () => { const removed = await call<{ objective: Objective }>("/objective/remove", { objectiveId: objective.id }); if (removed && !removed.objective.removed) { removeObjectiveLocally(objective.id); toast(t("objectives.toast.deleted")); } }}><TrashGlyph /></button> : null}
           {placeButton}
         </div>
@@ -1978,46 +2029,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           expanded={objective.members.length === 0 || sectionOpen("detail:members")} onToggle={() => onToggleSection("detail:members")} />
       </div>
   </>);
-  const sBrief = (<>
-      {/* 브리핑 — 사람이 쓴 요구. 붙이는 입구는 머리의 첨부 글리프이고, 첨부 띠는 이미지가 있을 때만 본문 위에 선다.
-          메모에 이미지를 붙여넣거나 이 구획에 끌어오면 띠에 들어간다 — 끌어오는 동안은 자리를 밀지 않는 겹판이 선다. */}
-      <div
-        className="objectives-group objectives-note-group"
-        data-objectives-tour="brief"
-        onFocus={() => setBriefActive(true)}
-        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setBriefActive(false); }}
-        onDragOver={(event) => { if (touchable && [...event.dataTransfer.types].includes("Files")) { event.preventDefault(); setDropping(true); } }}
-        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
-        onDrop={(event) => { if (!touchable) return; event.preventDefault(); setDropping(false); const files = imageFiles(event.dataTransfer.files); if (files.length) void attachments.upload(files); }}
-      >
-        <SectionHead glyph={<BriefGlyph />} label={t("objectives.objective.memo")} tools={objective.attachments.length > 0 || touchable ? <>
-          {objective.attachments.length > 0 ? <span className="objectives-criteria-count">{t("objectives.brief.images", { count: objective.attachments.length })}</span> : null}
-          {touchable && !briefEditing ? <button type="button" className="objectives-read-edit" onClick={() => startBrief()}>{t("objectives.link.edit")}</button> : null}
-          {touchable ? <AttachButton objective={objective} t={t} upload={attachments.upload} sending={attachments.sending} /> : null}
-        </> : null} />
-        <NoteAttachments objective={objective} t={t} touchable={touchable} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { objectiveId: objective.id, attachmentId: attachment.id })} />
-        {briefEditing && touchable ? (
-          <textarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}${briefBlank && !briefCollapsed ? " is-writing" : ""}`} rows={1} aria-label={t("objectives.objective.memo")} placeholder={t("objectives.objective.memoPlaceholder")} value={note} onChange={(event) => saveNote(event.target.value)}
-            onFocus={() => setNoteFocus(true)} onBlur={() => { setNoteFocus(false); setBriefEditing(false); }}
-            onPaste={(event) => { const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }} />
-        ) : note.trim() ? (
-          <div ref={readRef} className={`objectives-note is-read${noteClamped ? " is-clamped" : ""}`} onClick={(event) => {
-            if (!touchable) return;
-            const target = event.target;
-            if (target instanceof Element && target.closest("a")) return;
-            if (window.getSelection()?.toString()) return;
-            startBrief(readCaretOffset(event.currentTarget, event.clientX, event.clientY));
-          }}><LinkText text={note} /></div>
-        ) : touchable ? (
-          <button type="button" className="objectives-note is-read is-placeholder" onFocus={() => startBrief()} onClick={() => startBrief()}>{t("objectives.objective.memoPlaceholder")}</button>
-        ) : (
-          <div className="objectives-note is-read is-placeholder">{t("objectives.objective.memoPlaceholder")}</div>
-        )}
-        {dropping ? <AttachmentDropVeil t={t} /> : null}
-        {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
-        <MergedTrail objective={objective} t={t} language={language} call={call} onOpenObjective={onOpenObjective} />
-      </div>
-  </>);
+  const sBrief = <BriefSection objective={objective} t={t} language={language} touchable={touchable} call={call} onOpenObjective={onOpenObjective} />;
   const sOrigin = (<>
       {/* 출처 — 후속으로 태어난 목표의 원본. 한 줄(말줄임 제목 + ↗)로만 두고, 원본이 없으면 비활성 한 줄. */}
       {followupOrigin ? (

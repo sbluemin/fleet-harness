@@ -18,6 +18,7 @@ import {
   useFollowupSelection,
 } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
+import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -658,7 +659,7 @@ export function ActionBand(props: ActionBandProps) {
               <div className="objectives-comp-edits"><span>{t("objectives.band.edits")}</span>{kinds.map((kind) => <span key={kind} className="objectives-comp-chip">{kind}</span>)}</div>
             ) : null}
             <div className="objectives-comp-field">
-              <textarea
+              <SyncedTextarea
                 ref={fieldRef}
                 rows={2}
                 maxLength={MAX_CONTEXT}

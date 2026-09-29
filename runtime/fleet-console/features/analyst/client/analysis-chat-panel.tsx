@@ -22,6 +22,7 @@ import type { AnalysisArtifact } from "./analysis-types.js";
 import { StreamedMarkdown } from "../../execution/client/agent/streamed-markdown.js";
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
 import { LiveLine } from "@fleet-console/sdk/components/live-line";
+import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
 const SUGGESTIONS = [
   { icon: "◈", tone: "aurora", textKey: "terminal.analyst.suggestion.walkthrough" },
@@ -380,7 +381,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 window.requestAnimationFrame(() => textareaRef.current?.focus());
               }}
             >/</button>
-            <textarea
+            <SyncedTextarea
               ref={textareaRef}
               id={`analysis-${context.operationId}`}
               role="combobox"
