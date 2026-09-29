@@ -7,6 +7,7 @@ import { resolvePathBinary } from "@fleet-console/process";
 import { readFleetCliRelease } from "../../cli/release.js";
 import { checkUpdateStatus } from "../../cli/update/check.js";
 import { __installerTestHooks, runFleetUpdate } from "../../cli/update/installer.js";
+import { isManagedRuntimePackageRoot } from "../../features/updates/host/update-apply.js";
 import type { UpdateCommandIo } from "../../cli/update/dispatcher.js";
 
 interface StringWriter {
@@ -36,8 +37,14 @@ vi.mock("../../cli/release.js", () => ({
   readFleetCliRelease: vi.fn(),
 }));
 
-vi.mock("../../cli/update/check.js", () => ({
+vi.mock("../../cli/update/check.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../cli/update/check.js")>(),
   checkUpdateStatus: vi.fn(),
+}));
+
+vi.mock("../../features/updates/host/update-apply.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../features/updates/host/update-apply.js")>(),
+  isManagedRuntimePackageRoot: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock("@fleet-console/process", async (importOriginal) => {
@@ -54,6 +61,7 @@ vi.mock("../../cli/update/stop-console.js", () => ({
 }));
 
 const mockedExecFileSync = vi.mocked(execFileSync);
+const mockedIsManagedRuntimePackageRoot = vi.mocked(isManagedRuntimePackageRoot);
 const mockedCheckUpdateStatus = vi.mocked(checkUpdateStatus);
 const mockedReadFleetCliRelease = vi.mocked(readFleetCliRelease);
 const mockedResolvePathBinary = vi.mocked(resolvePathBinary);
@@ -73,6 +81,7 @@ describe("update installer process invocation", () => {
     fsMock.accessSync.mockImplementation(originalAccessSync!);
     mockedReadFleetCliRelease.mockReturnValue({ channel: "stable", version: "1.2.0" });
     mockedCheckUpdateStatus.mockResolvedValue({ status: "unavailable" });
+    mockedIsManagedRuntimePackageRoot.mockReturnValue(false);
   });
 
   it("does not install when the release check confirms Fleet is current", async () => {
@@ -112,6 +121,30 @@ describe("update installer process invocation", () => {
       ].join("\n"),
     );
     expect(mockedSpawn).not.toHaveBeenCalled();
+  });
+});
+
+describe("update installer on a Fleet Desktop install", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedReadFleetCliRelease.mockReturnValue({ channel: "stable", version: "1.2.0" });
+    mockedCheckUpdateStatus.mockResolvedValue({ status: "update", latest: "1.3.0", release: RELEASE_1_3_0 });
+    mockedIsManagedRuntimePackageRoot.mockReturnValue(true);
+    vi.stubEnv("FLEET_DESKTOP_CONSOLE_SOURCE", undefined);
+  });
+
+  it("points an older Desktop to its own update instead of a global install", async () => {
+    const io = createIo();
+
+    // The Console update menu refuses this install with shell_update_required; the CLI must not
+    // offer a global install that would leave the running Console unchanged.
+    await expect(runFleetUpdate(io)).resolves.toBe(1);
+
+    expect(io.stderr.toString()).toContain("Update Fleet Desktop first");
+    expect(io.stdout.toString()).not.toMatch(/npm i -g|pnpm add -g/);
+    expect(mockedResolvePathBinary).not.toHaveBeenCalled();
+    expect(mockedSpawn).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
 });
 

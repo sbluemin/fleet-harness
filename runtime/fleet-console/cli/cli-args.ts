@@ -9,7 +9,7 @@ import {
   section,
   stripAnsi,
 } from "./styles/tokens.js";
-import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
+import { formatFleetCliReleaseLabel, readFleetCliRelease, type FleetCliRelease } from "./release.js";
 
 export interface FleetCliOptions {
   readonly help: boolean;
@@ -21,7 +21,7 @@ export function isFleetVersionArg(value: string | undefined): boolean {
 }
 
 export function buildFleetVersionText(release: FleetCliRelease = readFleetCliRelease()): string {
-  return `@dotobokuri/fleet-console ${release.version} (${release.channel})\nClaude Code version: fleet cli --version\n`;
+  return `@dotobokuri/fleet-console ${release.version} (${formatFleetCliReleaseLabel(release)})\nClaude Code version: fleet cli --version\n`;
 }
 
 export interface BuildFleetHelpTextOptions {

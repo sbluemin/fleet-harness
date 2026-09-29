@@ -5,7 +5,7 @@ import type { AuthService } from "@fleet-console/ai-gateway";
 import { getFleetDataDir } from "@fleet-console/infra";
 
 import { AUTH_CLI_DEFINITIONS } from "./auth/login-flow.js";
-import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
+import { formatFleetCliReleaseLabel, readFleetCliRelease, type FleetCliRelease } from "./release.js";
 import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 import { runConsoleStatus } from "../core/host/bootstrap/console-lifecycle.js";
 
@@ -67,7 +67,7 @@ export async function buildFleetDoctorText(deps: DoctorDeps): Promise<string> {
   const consoleLine = await readConsoleStatusLine(readConsoleStatus);
 
   return [
-    formatRow("package", `@dotobokuri/fleet-console ${release.version} (${release.channel})`),
+    formatRow("package", `@dotobokuri/fleet-console ${release.version} (${formatFleetCliReleaseLabel(release)})`),
     formatRow("data", dataDir),
     formatRow("binary", binary),
     formatRow("opencode", signedIn.has(AUTH_CLI_DEFINITIONS.opencode.providerId) ? "signed in" : "signed out"),

@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import { getFleetDataDir } from "@fleet-console/infra/data-dir";
+import { hasDesktopGithubReleaseConsoleSource } from "@fleet-console/protocol/desktop";
 import type { ConsoleReleaseManifest } from "@fleet-console/protocol/release";
 import {
   consoleReleaseTarballDir,
@@ -20,7 +21,8 @@ import {
   resolvePathBinary,
 } from "@fleet-console/process";
 import { readFleetCliRelease } from "../release.js";
-import { checkUpdateStatus } from "./check.js";
+import { isManagedRuntimePackageRoot } from "../../features/updates/host/update-apply.js";
+import { checkUpdateStatus, describeReleaseLookupFailure, type UpdateCheckResult } from "./check.js";
 import { resolveSiblingConsoleCliPath, stopRunningConsoleBeforeUpdate } from "./stop-console.js";
 import type { UpdateCommandIo } from "./dispatcher.js";
 
@@ -45,18 +47,31 @@ export async function runFleetUpdate(io: UpdateCommandIo, options: RunFleetUpdat
     io.stdout.write(`Fleet is running from a local development build (v${release.version}) — nothing to update here.\n`);
     return 0;
   }
-  const updateCheck = await checkUpdateStatus(release, { forceRefresh: true }).catch(() => ({ status: "unavailable" as const }));
+  const updateCheck = await checkUpdateStatus(release, { forceRefresh: true }).catch((): UpdateCheckResult => ({ status: "unavailable" }));
   if (updateCheck.status === "current") {
     io.stdout.write(`Fleet is already on the latest version (v${release.version}).\n`);
     return 0;
   }
   // Without a verified manifest there is nothing safe to install; reinstalling "whatever is latest" is not an update.
   if (updateCheck.status !== "update" || updateCheck.release === undefined) {
-    io.stderr.write("Could not read the Fleet release information from GitHub, so nothing was installed.\n");
-    writeManualInstallCommands(io, null, "You can install the latest release manually:");
+    io.stderr.write(`${describeReleaseLookupFailure(updateCheck.status === "unavailable" ? updateCheck.reason : undefined)} Nothing was installed.\n`);
+    // A bad tag is fixed by the variable, not by installing something else, and Fleet Desktop's
+    // install tree is never replaced by a global install.
+    const invalidTag = updateCheck.status === "unavailable" && updateCheck.reason === "invalid_override";
+    if (!invalidTag && !isDesktopManagedInstall()) {
+      writeManualInstallCommands(io, null, "You can install the latest release manually:");
+    }
     return 1;
   }
   const manifest = updateCheck.release;
+  // Fleet Desktop owns this install tree, exactly as the Console update menu treats it: a global
+  // install would land somewhere else and leave the running Console unchanged.
+  if (isDesktopManagedInstall()) {
+    io.stderr.write(hasDesktopGithubReleaseConsoleSource(process.env)
+      ? `Fleet Desktop installs Console updates for this install. Apply v${manifest.version} from the Console update menu, or restart Fleet Desktop.\n`
+      : `Fleet v${manifest.version} is available, but this Fleet Desktop cannot install it. Update Fleet Desktop first; it brings the new Console with it.\n`);
+    return 1;
+  }
   const updater = createFleetPackageUpdater(io, siblingCliPath);
   const { manager, reason } = await updater.detectPackageManager();
   if (manager === undefined) {
@@ -102,6 +117,11 @@ function reportUpdaterMessage(io: UpdateCommandIo, message: string): void {
   if (match !== null) {
     io.stderr.write(`Failed to detect Fleet's global ${match[1]} install: ${match[2]}\n`);
   }
+}
+
+function isDesktopManagedInstall(): boolean {
+  const packageRoot = getCurrentPackageRoot();
+  return packageRoot !== undefined && isManagedRuntimePackageRoot(packageRoot);
 }
 
 function getCurrentPackageRoot(): string | undefined {

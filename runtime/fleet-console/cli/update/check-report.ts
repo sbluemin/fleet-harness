@@ -1,5 +1,5 @@
 import { readFleetCliRelease } from "../release.js";
-import { checkUpdateStatus } from "./check.js";
+import { checkUpdateStatus, describeReleaseLookupFailure, type UpdateCheckResult } from "./check.js";
 import type { UpdateCommandIo } from "./dispatcher.js";
 
 export async function runFleetUpdateCheck(io: UpdateCommandIo): Promise<number> {
@@ -8,7 +8,7 @@ export async function runFleetUpdateCheck(io: UpdateCommandIo): Promise<number> 
     io.stdout.write(`Fleet is running from a local development build (v${release.version}) — nothing to update here.\n`);
     return 0;
   }
-  const result = await checkUpdateStatus(release, { forceRefresh: true }).catch(() => ({ status: "unavailable" as const }));
+  const result = await checkUpdateStatus(release, { forceRefresh: true }).catch((): UpdateCheckResult => ({ status: "unavailable" }));
   if (result.status === "current") {
     io.stdout.write(`Fleet is already on the latest version (v${release.version}).\n`);
     return 0;
@@ -17,6 +17,6 @@ export async function runFleetUpdateCheck(io: UpdateCommandIo): Promise<number> 
     io.stdout.write(`A newer Fleet version is available: v${result.latest} (installed v${release.version}).\nRun fleet update to install it.\n`);
     return 0;
   }
-  io.stdout.write("Could not read the Fleet release information from GitHub to check for updates.\n");
+  io.stdout.write(`${describeReleaseLookupFailure(result.reason)} Could not check for updates.\n`);
   return 1;
 }

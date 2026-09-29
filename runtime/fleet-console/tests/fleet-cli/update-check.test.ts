@@ -50,6 +50,7 @@ describe("update check status", () => {
 
     await expect(checkUpdateStatus({ channel: "stable", version: "1.2.0" }, { forceRefresh: true, env: {} })).resolves.toEqual({
       status: "unavailable",
+      reason: "unreachable",
     });
 
     expect(mockedReadCachedLatestVersion).not.toHaveBeenCalled();

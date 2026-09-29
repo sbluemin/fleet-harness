@@ -32,6 +32,12 @@ export interface ConsoleUpdateCheckDeps {
   readonly fetchRelease?: () => Promise<ConsoleReleaseLookup>;
   readonly env?: NodeJS.ProcessEnv;
   readonly isManagedRuntime?: (packageRoot: string) => boolean;
+  /**
+   * Hears why a lookup failed. Callers show every failure as "could not check", so this is where
+   * a missing manifest, a bad release tag, and a network failure stay distinguishable. It fires when
+   * the reason changes, not on every retry of the same failure.
+   */
+  readonly onLookupFailure?: (error: Error) => void;
   readonly isGreater?: (left: string, right: string) => boolean;
   readonly now?: () => number;
   readonly ttlMs?: number;
@@ -76,6 +82,7 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
   const startInterval = deps.setInterval ?? ((callback, delayMs) => setInterval(callback, delayMs));
   const stopInterval = deps.clearInterval ?? ((interval) => clearInterval(interval as NodeJS.Timeout));
   let cached: CachedConsoleUpdateStatus | null = null;
+  let lastFailureMessage: string | null = null;
   let inFlight: Promise<ConsoleUpdateStatus> | null = null;
   let interval: ConsoleUpdateCheckInterval | null = null;
   const changeListeners = new Set<ConsoleUpdateCheckChangeListener>();
@@ -95,6 +102,7 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
     if (inFlight) return inFlight;
     inFlight = resolveUpdateStatus()
       .then(({ status, manifest }) => {
+        lastFailureMessage = null;
         const previousStatus = cached?.status ?? NO_UPDATE_STATUS;
         cached = { status, manifest, checkedAt: now(), ttlMs };
         notifyIfChanged(previousStatus, status);
@@ -104,6 +112,15 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
         // 조회 실패는 "모름"이지 "없음"이 아니다. 마지막으로 확인된 상태를 짧은 오류 TTL로 붙들어,
         // 이미 알려진 업데이트가 일시적 장애로 사라졌다 돌아오지 않게 한다.
         cached = { status: cached?.status ?? NO_UPDATE_STATUS, manifest: cached?.manifest ?? null, checkedAt: now(), ttlMs: errorTtlMs };
+        const failure = error instanceof Error ? error : new Error(String(error));
+        if (failure.message !== lastFailureMessage) {
+          lastFailureMessage = failure.message;
+          try {
+            deps.onLookupFailure?.(failure);
+          } catch {
+            // A diagnostic observer must not change what the lookup reports.
+          }
+        }
         throw error;
       })
       .finally(() => {
