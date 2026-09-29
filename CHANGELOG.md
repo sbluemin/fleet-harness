@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.202.0] - 2026-09-29
+
+### fleet-console
+
+#### Changed
+- Bring back the mission list above the mission graph. It starts collapsed; expand it from the Missions header to check off, rename, assign, or remove missions row by row.
+- The enlarged mission graph now sizes itself to the whole graph, widening up to the window and scaling down when needed, so long or tall graphs fit without scrollbars.
+- In the three-column Objectives layout, collapse the objective list to give the detail more room, and expand it again from the detail header.
+- Drag an empty area of the mission graph to move around a wide graph, in place of the scrollbar.
+
+#### Fixed
+- Resizing the side bar or the right rail no longer stutters or piles up memory while an objective's mission graph is on screen.
+
 ## [1.201.1] - 2026-09-29
 
 ### fleet-desktop
