@@ -104,6 +104,19 @@ export function setGlassOpacity(group: GlassGroup, value: number): void {
   for (const listener of listeners) listener();
 }
 
+/** 초기화 — 저장값과 루트 변수를 걷어 테마별 CSS 폴백으로 돌아간다(수치를 박으면 테마를 바꿔도 고정된다). */
+export function resetGlassOpacity(group: GlassGroup): void {
+  if (opacity[group] === null) return;
+  opacity = { ...opacity, [group]: null };
+  try {
+    localStorage.removeItem(storageKey(group));
+  } catch {
+    // 저장소 접근 불가 환경에서는 이번 문서에만 적용한다.
+  }
+  apply(group, null);
+  for (const listener of listeners) listener();
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

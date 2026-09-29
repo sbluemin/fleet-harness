@@ -14,6 +14,7 @@ import { closeRailPanel } from "../../../core/client/src/chrome/rail/rail-store.
 import {
   GLASS_OPACITY_MAX,
   GLASS_OPACITY_MIN,
+  resetGlassOpacity,
   setGlassOpacity,
   useGlassOpacity,
   type GlassGroup,
@@ -361,6 +362,7 @@ function GlassOpacityRow({ group, titleKey, helpKey }: {
         onPreview={onChange}
         onCommit={onChange}
         defaultValue={defaultValue}
+        onReset={() => resetGlassOpacity(group)}
         resetLabel={t("settings.slider.reset")}
         resetAriaLabel={t("settings.slider.resetAria", { title })}
       />

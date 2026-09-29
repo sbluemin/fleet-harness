@@ -107,6 +107,11 @@ export interface SettingsSliderProps {
   readonly resetLabel?: string;
   /** 기본값 버튼의 접근성 이름 — 비우면 `resetLabel`. */
   readonly resetAriaLabel?: string;
+  /**
+   * 기본값 버튼이 기본값을 저장하는 대신 부를 동작. 기본값이 문맥(테마 등)에 따라 달라지는
+   * 소비처는 수치를 박지 말고 "지정 없음"으로 되돌려야 문맥이 바뀔 때 기본값을 따라간다.
+   */
+  readonly onReset?: () => void;
 }
 
 export function defineSettingsSection(descriptor: SettingsSectionDescriptor): SettingsSectionDescriptor {
@@ -565,6 +570,7 @@ export function SettingsSlider({
   defaultValue,
   resetLabel,
   resetAriaLabel,
+  onReset,
 }: SettingsSliderProps): React.ReactElement {
   const clamp = (next: number): number => Math.max(min, Math.min(max, next));
   const read = (event: React.SyntheticEvent<HTMLInputElement>): number =>
@@ -635,7 +641,15 @@ export function SettingsSlider({
           disabled={disabled || value === defaultValue}
           aria-label={resetAriaLabel ?? resetLabel}
           title={resetAriaLabel}
-          onClick={() => commit(clamp(defaultValue), true)}
+          onClick={() => {
+            if (onReset === undefined) {
+              commit(clamp(defaultValue), true);
+              return;
+            }
+            lastCommittedRef.current = clamp(defaultValue);
+            dirtyRef.current = false;
+            onReset();
+          }}
         >
           {resetLabel}
         </button>
