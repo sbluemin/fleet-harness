@@ -15,17 +15,12 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
       const efforts = exposedEffortLadder(model.id, constraints.effortLadder, exposure.effortExposure);
       const pool = `${model.provider}:shared`;
       quotaPools[pool] ??= normalizeRoutingQuota(exposure.quota?.[model.provider], now);
-      const benchmark = constraints.benchmark;
       const rank = preference.indexOf(model.provider);
       return {
         modelId: toClaudeGatewayModelId(model), provider: model.provider, quotaPool: pool, efforts,
         ...(rank < 0 ? {} : { preferenceRank: rank + 1 }),
         ...(constraints.contextWindow === undefined ? {} : { contextWindow: constraints.contextWindow }),
         ...(constraints.capabilityClass === undefined ? {} : { capabilityClass: constraints.capabilityClass }),
-        ...(benchmark && efforts.includes(benchmark.effort) ? { benchmark: {
-          score: benchmark.score, effort: benchmark.effort,
-          tieBandPoints: benchmark.routingTieBandPoints, observedAt: benchmark.observedAt,
-        } } : {}),
       };
     });
   return { quotaPools, models,

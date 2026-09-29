@@ -139,33 +139,35 @@ interface Seat {
 }
 
 /**
- * 허용량이 허락하는 후보 중에서 지금 가장 덜 쓴 공급자를 고른다.
+ * 허용량이 허락하는 후보 중에서 고른다. 쿼터가 1순위다.
  *
- * 사용자가 소진 순서를 정해 뒀으면 그 순서가 이긴다 — 균등 분배를 사용자 의도로 대체하는
- * 것이 그 설정의 뜻이고, 압박 예측도 그 앞에서는 양보한다. 정하지 않았을 때만 회전한다.
+ * `critical`인 공급자는 모든 대안이 더 나쁠 때만 간다 — 사용자가 정한 소진 순서도 그 앞에서
+ * 양보한다. 순서를 정해 둔 사용자는 공급자를 고르는 순서를 정한 것이지, 바닥난 공급자로
+ * 위임을 보내라고 한 것이 아니다. 전부 critical이면 위임을 죽이는 것보다 낫다.
  *
- * 회전은 카운터가 아니라 **부하 최솟값**으로 한다. 커서를 돌리면 중간에 한 공급자가 막혔을
- * 때 그 자리를 건너뛴 만큼 균형이 영구히 어긋나지만, 최솟값은 그 다음 배정에서 스스로
- * 되돌아온다. 같은 부하면 목록 순서가 가른다 — 그래야 같은 상태에서 같은 답이 나온다.
+ * 남은 후보 안에서는 소진 순서가 있으면 그 머리를, 없으면 부하 최솟값으로 회전한다.
+ * 커서를 돌리면 중간에 한 공급자가 막혔을 때 그 자리를 건너뛴 만큼 균형이 영구히 어긋나지만,
+ * 최솟값은 그 다음 배정에서 스스로 되돌아온다. 같은 부하면 목록 순서가 가른다 — 그래야 같은
+ * 상태에서 같은 답이 나온다.
  */
 export function pickSeat(
   reachable: readonly GatewayRoutingCandidate[],
   exposure: GatewayAssignmentExposure,
 ): Seat {
-  if (exposure.providerPriority !== undefined && exposure.providerPriority.length > 0) {
-    // 목록은 이미 그 순서로 정렬돼 있다. 머리가 곧 가장 먼저 쓸 공급자다.
-    return { model: reachable[0] as GatewayRoutingCandidate, suffix: " · spend order" };
-  }
-  if (exposure.providerLoad === undefined) {
-    return { model: reachable[0] as GatewayRoutingCandidate, suffix: "" };
-  }
-  const scored = reachable.map((candidate, index) => {
-    const pressure = modelPressure(exposure.quota?.[candidate.provider]);
-    return { candidate, index, pressure };
-  });
-  // `critical`은 모든 대안이 더 나쁠 때만 간다. 전부 critical이면 위임을 죽이는 것보다 낫다.
+  const scored = reachable.map((candidate) => ({
+    candidate,
+    pressure: modelPressure(exposure.quota?.[candidate.provider]),
+  }));
   const usable = scored.filter((entry) => entry.pressure !== "critical");
   const pool = usable.length > 0 ? usable : scored;
+  const critical = usable.length === 0 ? " · every allowance is critical" : "";
+  if (exposure.providerPriority !== undefined && exposure.providerPriority.length > 0) {
+    // 목록은 이미 그 순서로 정렬돼 있다. 남은 것의 머리가 곧 가장 먼저 쓸 공급자다.
+    return { model: (pool[0] as (typeof pool)[number]).candidate, suffix: ` · spend order${critical}` };
+  }
+  if (exposure.providerLoad === undefined) {
+    return { model: (pool[0] as (typeof pool)[number]).candidate, suffix: critical };
+  }
   let best: (typeof pool)[number] | undefined;
   let bestLoad = Number.POSITIVE_INFINITY;
   for (const entry of pool) {
@@ -179,11 +181,5 @@ export function pickSeat(
       bestLoad = load;
     }
   }
-  const chosen = best ?? pool[0] as (typeof pool)[number];
-  const suffix = usable.length === 0
-    ? " · every allowance is critical"
-    : chosen.pressure === "critical"
-      ? " · critical"
-      : "";
-  return { model: chosen.candidate, suffix };
+  return { model: (best ?? pool[0] as (typeof pool)[number]).candidate, suffix: critical };
 }

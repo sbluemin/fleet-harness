@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-25T00:00:00Z",
+  "updatedAt": "2026-09-29T00:00:00Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
@@ -25,8 +25,7 @@
               "medium": "gemini-3.8-flash-medium",
               "high": "gemini-3.8-flash-high"
             }
-          },
-          "benchmarkKey": "gemini-3.8-flash"
+          }
         },
         {
           "modelId": "gemini-3.1-pro",
@@ -190,8 +189,7 @@
           },
           "aliases": [
             "gpt-5.6-terra"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-5.6-terra-fast",
@@ -212,8 +210,7 @@
           },
           "aliases": [
             "gpt-5.6-terra-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-6-astra-524k",
@@ -356,8 +353,7 @@
           },
           "aliases": [
             "gpt-5.6-terra-524k"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-5.6-terra-524k-fast",
@@ -378,8 +374,7 @@
           },
           "aliases": [
             "gpt-5.6-terra-524k-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-6-astra-1m",
@@ -522,8 +517,7 @@
           },
           "aliases": [
             "gpt-5.6-terra-1m"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         },
         {
           "modelId": "gpt-5.6-terra-1m-fast",
@@ -544,8 +538,7 @@
           },
           "aliases": [
             "gpt-5.6-terra-1m-fast"
-          ],
-          "benchmarkKey": "gpt-5.6-terra"
+          ]
         }
       ]
     },

@@ -639,7 +639,7 @@ describe("delegation assignment", () => {
     expect(providerLoad.get("codex")).toBe(1);
   });
 
-  it("preserves deterministic spend order with providerPriority even under critical quota", () => {
+  it("puts quota ahead of the spend order: a critical provider yields unless every one is critical", () => {
     const reachable = [
       {
         model: "claude-gateway--codex--gpt-5.6-terra",
@@ -667,12 +667,18 @@ describe("delegation assignment", () => {
       },
     };
 
-    // 결정론 pickSeat: 소진 순서가 압박 예측을 이겨 critical인 codex를 그대로 집는다.
+    // 쿼터가 1순위다. 소진 순서의 머리라도 critical인 codex는 건너뛴다.
     const seat = pickSeat(reachable, exposure);
-    expect(seat.model.provider).toBe("codex");
+    expect(seat.model.provider).toBe("xai");
     expect(seat.suffix).toBe(" · spend order");
 
-
+    // 전부 critical이면 위임을 죽이지 않고 소진 순서대로 간다.
+    const allCritical = pickSeat(reachable, {
+      ...exposure,
+      quota: { ...exposure.quota, xai: { status: "ok", windows: [{ id: "monthly", usedPercent: 100 }] } },
+    });
+    expect(allCritical.model.provider).toBe("codex");
+    expect(allCritical.suffix).toBe(" · spend order · every allowance is critical");
   });
 
   it("spreads provider load across concurrent Jev assignments resolving at the same barrier", async () => {
