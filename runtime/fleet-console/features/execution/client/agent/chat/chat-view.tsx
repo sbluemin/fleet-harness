@@ -1175,7 +1175,8 @@ function ChatCommandRow({
   );
 }
 
-function ChatTurn({
+// 턴은 props가 모두 안정적이다 — 패널 틀이 다시 그려질 때(모드 전환·정렬·줌) 수십 턴이 함께 다시 그려지지 않게 비교한다.
+const ChatTurn = React.memo(function ChatTurn({
   operationId,
   turn,
   nextContextBefore,
@@ -1391,7 +1392,7 @@ function ChatTurn({
       ) : null}
     </>
   );
-}
+});
 
 /** 진행 중 턴 헤드의 라이브 티커 — 시각 전용이라 라이브 리전이 아니다(매초 재낭독 방지).
  *  집계 줄과 같은 명도 물결을 진다: 둘 다 "이 턴이 아직 살아 있다"를 말하므로 같은 어휘다. */

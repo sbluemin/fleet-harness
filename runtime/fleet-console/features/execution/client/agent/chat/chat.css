@@ -4214,6 +4214,14 @@
   margin-inline: auto;
 }
 
+/* 펼친 역사의 지난 턴은 화면 밖이면 레이아웃·페인트를 건너뛴다. 턴은 가상화하지 않아 모두 DOM에 있고, 패널 폭이
+   바뀔 때마다(정렬·스냅 전환, 정렬 중 사이드바·레일 끌기) 수십 턴이 매 프레임 다시 배치되던 비용을 화면 안의 턴만으로
+   줄인다. 한 번 그린 턴은 제 높이를 기억한다(auto). 진행 중인 마지막 턴은 역사 밖이라 늘 그대로 그린다. */
+.agent-chat-history > .agent-chat-turn {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 480px;
+}
+
 .agent-chat-history > * + *,
 .agent-chat-history:not([hidden]) + * {
   margin-top: var(--space-4);
