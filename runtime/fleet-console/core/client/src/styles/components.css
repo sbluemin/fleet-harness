@@ -4462,7 +4462,8 @@
 /* ── Quick-Look ─────────────────────────────────────────────────────────────
    숨은 덱 칸의 실제 패널을 그 크기 그대로 지도 위로 들어 올린다. 칸은 격자에 남아 자리를 지키고
    마운트만 고정 배치로 뜬다 — 크기가 같아 PTY는 리사이즈되지 않고, portal 대상이 그대로라 패널은
-   remount되지 않는다. 엿보기는 읽기 전용이다: 패널은 포인터를 받지 않고, 지도의 빈 곳·Esc가 틀을 걷는다.
+   remount되지 않는다. 마운트는 포인터를 받는다. 본문은 프레임이 inert로 잠그고, 칸에 포인터가
+   들어오면 그 잠금만 풀린다. 닫기는 지도의 빈 곳·Esc가 맡는다.
    좌표는 캔버스(contain: paint) 기준이라 격자의 스크롤 포트가 자르지 않는다. */
 .canvas-triage-quick-look {
   position: fixed;
@@ -4480,7 +4481,7 @@
 .canvas-triage-deck-cell.is-quick-look > .canvas-triage-deck-mount {
   position: fixed;
   visibility: visible;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 @keyframes fleet-map-in {
@@ -4607,6 +4608,12 @@
   outline-offset: 0;
 }
 
+/* 엿보기의 z 30과 위 규칙이 (0,2,0)으로 같고 위 규칙이 뒤라, hover 순간 배경 틀(z 25)이 패널을 덮는다.
+   칸이 엿보기인 동안은 위치 링과 무관하게 30을 유지한다. */
+.canvas-triage-deck-cell.is-quick-look:is(:hover, :focus-within, .is-queue-hovered) {
+  z-index: 30;
+}
+
 .canvas-triage-deck-cell:is(.is-awaiting, .is-unseen):is(:hover, :focus-within, .is-queue-hovered) {
   outline-color: color-mix(in oklch, var(--brass) 70%, transparent);
   outline-offset: 2px;
@@ -4688,6 +4695,11 @@
 .canvas-triage-deck-pick:focus-visible {
   outline: 2px solid color-mix(in oklch, var(--brass) 65%, transparent);
   outline-offset: -2px;
+}
+
+/* 무장(hover)된 칸의 승격 면은 본문 휠·클릭을 가리지 않는다. 클릭은 격자 위임이 승격으로 되돌린다. */
+.canvas-triage-deck-cell:hover > .canvas-triage-deck-pick {
+  pointer-events: none;
 }
 
 /* 검토 전 대기·도착·착지 신호는 칸이 받아 그 안의 패널 테두리로 말한다 — 신호가 칸이 아니라
@@ -5763,6 +5775,17 @@ body[data-companion-resizing="true"] .canvas-operation {
 .canvas-operation.is-deck-tile .canvas-operation-caption-actions > :not(.agent-operation-marks):not(:has(.fleet-caption-action.is-agent)) { display: none; }
 .canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action:not(.is-agent) { display: none; }
 .canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action.is-agent { pointer-events: none; }
+/* 무장된 칸과 엿보기는 캡션 액션을 되돌린다. 숨김보다 구체적이어야 이긴다.
+   전체 칸 버튼은 덱 타일에 렌더되지 않으므로 되살리지 않는다. */
+.canvas-triage-deck-cell:is(:hover, :focus-within, .is-quick-look) .canvas-operation.is-deck-tile .canvas-operation-caption-actions > :not(.agent-operation-marks):not(:has(.fleet-caption-action.is-agent)) {
+  display: inline-flex;
+}
+.canvas-triage-deck-cell:is(:hover, :focus-within, .is-quick-look) .canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action:not(.is-agent) {
+  display: grid;
+}
+.canvas-triage-deck-cell:is(:hover, :focus-within, .is-quick-look) .canvas-operation.is-deck-tile .canvas-operation-caption-actions .fleet-caption-action.is-agent {
+  pointer-events: auto;
+}
 /* reduced-motion 은 상태 레일과 같은 단락 — 사용 색의 균일 채움. 색이 상태 레일과 다르므로 색면만으로 갈린다. */
 @media (prefers-reduced-motion: reduce) {
   .canvas-operation:has(> .canvas-operation-titlebar .agent-control-badge:not(.is-leaving)) > .canvas-operation-titlebar::after,

@@ -730,8 +730,7 @@ export function OperationsCanvas({
   }, []);
   const setAsideArmedId = getTriageSetAsideArmedId();
   // 덱 줌 wheel은 React 합성 onWheel 밖에서 부착한다 — React는 root wheel을 passive로
-  // 묶어 preventDefault(브라우저 페이지 줌 차단)가 무용해진다. wheel 문법: bare wheel은
-  // 덱 줌(캔버스와 동일), shift+wheel은 카드 격자 스크롤, alt는 건드리지 않는다.
+  // 묶어 preventDefault(브라우저 페이지 줌 차단)가 무용해진다. 판정 순서는 덱 컨트롤러가 소유한다.
   useEffect(() => {
     const canvasElement = canvasRef.current;
     if (!canvasElement) return;
@@ -1727,8 +1726,7 @@ export function OperationsCanvas({
                     rootActivity={resolveOperationActivity(operation, ownOperationRuntime())}
                     onPick={(operationId) => {
                       selectNestedBody(operation.id, operationId);
-                      // 덱 카드의 본문은 inert라 키보드 포커스를 보낼 곳이 없다 — 칩은 보이는 본문만 바꾼다.
-                      // 포인터로 누른 카드가 활성이 되는 것은 캡션과 같은 카드 크롬의 관례다(줄의 pointerdown).
+                      // 덱·엿보기의 본문은 키보드 조작면이 아니다 — 칩은 보이는 본문만 바꾼다.
                       if (deckSlot) return;
                       setActiveOperation(operation.id);
                       requestOperationKeyboardFocus(operation.id);

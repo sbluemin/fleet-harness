@@ -134,7 +134,8 @@ export function getTriageDeckCardRect(operationId: string): DOMRect | null {
 
 // 줌 제어는 deck와 rail의 공용 컨트롤러다. rAF tween과 wheel 부착은 React 합성
 // 이벤트 밖에서 다뤄야 한다 — React는 root wheel을 passive로 묶어 preventDefault가 무용해진다.
-// wheel 문법: bare wheel은 덱 줌(캔버스와 동일), shift+wheel은 카드 격자 스크롤, alt는 건드리지 않는다.
+// wheel 문법: Alt는 그대로 둔다. Ctrl/Meta는 언제나 줌·지도 당김이다. 무장 본문과 엿보기 칸은
+// 네이티브 스크롤에 맡기고, Shift는 격자, 나머지는 줌이다. 합성 WheelEvent는 xterm에 닿지 않는다.
 export interface TriageDeckZoomControl {
   readonly snapZoomTween: () => void;
   /** 프리셋 등 외부 배율 변경도 이 경로로 — 영속은 settle 시 휠과 동일하게. */
@@ -154,6 +155,68 @@ const TRIAGE_MAP_PUSH_CLOSE = 1.35;
 const TRIAGE_MAP_GESTURE_IDLE_MS = 400;
 const TRIAGE_MAP_GESTURE_QUIET_MS = 180;
 
+function elementCanScroll(element: HTMLElement, deltaX: number, deltaY: number): boolean {
+  const style = getComputedStyle(element);
+  const scrollable = (overflow: string) => overflow === "auto" || overflow === "scroll" || overflow === "overlay";
+  if (scrollable(style.overflowY) && deltaY > 0 && element.scrollTop + element.clientHeight < element.scrollHeight - 1) return true;
+  if (scrollable(style.overflowY) && deltaY < 0 && element.scrollTop > 0) return true;
+  if (scrollable(style.overflowX) && deltaX > 0 && element.scrollLeft + element.clientWidth < element.scrollWidth - 1) return true;
+  if (scrollable(style.overflowX) && deltaX < 0 && element.scrollLeft > 0) return true;
+  return false;
+}
+
+/** 대상에서 본문(없으면 칸·엿보기 틀)까지만 본다 — 그 밖의 격자까지 가면 숨은 덱이 따라 스크롤된다. */
+function wheelHasScrollRoom(target: Element, deltaX: number, deltaY: number): boolean {
+  const boundary = target.closest(".canvas-operation-terminal")
+    ?? target.closest(".canvas-triage-deck-cell")
+    ?? target.closest(".canvas-triage-quick-look");
+  let node: Element | null = target;
+  while (node) {
+    if (node instanceof HTMLElement && elementCanScroll(node, deltaX, deltaY)) return true;
+    if (node === boundary) break;
+    node = node.parentElement;
+  }
+  return false;
+}
+
+function setDeckTerminalInert(cell: HTMLElement, inert: boolean): void {
+  const terminal = cell.querySelector<HTMLElement>(".canvas-operation-terminal");
+  if (terminal) terminal.inert = inert;
+}
+
+/** 포인터가 칸 안에 있는 동안만 본문 inert 를 푼다. 한 번에 한 칸이다. */
+let armedDeckCell: HTMLElement | null = null;
+
+function armDeckCell(cell: HTMLElement): void {
+  if (armedDeckCell && armedDeckCell !== cell) setDeckTerminalInert(armedDeckCell, true);
+  armedDeckCell = cell;
+  setDeckTerminalInert(cell, false);
+}
+
+function disarmDeckCell(cell: HTMLElement): void {
+  setDeckTerminalInert(cell, true);
+  if (armedDeckCell === cell) armedDeckCell = null;
+}
+
+function isEditableField(target: Element): boolean {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
+  return target instanceof HTMLElement && target.isContentEditable;
+}
+
+/** 엿보기 탭 루프 — 본문과 승격 면은 빼서 캡션 → 칩 rail → 스트립만 남긴다. */
+function peekDeckTabbables(cell: HTMLElement): HTMLElement[] {
+  const operation = cell.querySelector<HTMLElement>(".canvas-operation");
+  if (!operation) return [];
+  const result: HTMLElement[] = [];
+  for (const el of operation.querySelectorAll<HTMLElement>("button, a[href], input, select, textarea, [tabindex]")) {
+    if (el.closest(".canvas-operation-terminal")) continue;
+    if (el.tabIndex < 0 || el.hasAttribute("disabled") || el.getAttribute("aria-hidden") === "true") continue;
+    if (el.getClientRects().length === 0) continue;
+    result.push(el);
+  }
+  return result;
+}
+
 export function useTriageDeckZoomControl(): {
   readonly zoom: number;
   readonly control: TriageDeckZoomControl;
@@ -164,7 +227,7 @@ export function useTriageDeckZoomControl(): {
   const ownerRef = useRef<HTMLElement | null>(null);
   const lastDisplayRef = useRef<string | null>(null);
   const [, setZoomRevision] = useState(0);
-  const gestureRef = useRef<{ pull: number; push: number; resetTimer: number | null; latchUntil: number }>({ pull: 1, push: 1, resetTimer: null, latchUntil: 0 });
+  const gestureRef = useRef<{ pull: number; push: number; resetTimer: number | null; latchUntil: number; bodyLatchUntil: number }>({ pull: 1, push: 1, resetTimer: null, latchUntil: 0, bodyLatchUntil: 0 });
 
   const stopTween = () => {
     if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
@@ -286,34 +349,11 @@ export function useTriageDeckZoomControl(): {
       const previousOwner = ownerRef.current;
       ownerRef.current = element;
       if (previousOwner !== element) applyZoom(zoomRef.current);
-      const handleWheel = (event: WheelEvent) => {
-        // 덱 줌은 triage 모드 안에서, 덱 위에서만 발화한다 — 무경계 소비는 자유 캔버스의
-        // 기존 줌과 이중 소비되고 브라우저 페이지 줌을 전역 차단한다.
-        if (!isTriageActive()) return;
-        if (!(event.target instanceof Element) || event.target.closest(".canvas-triage-deck") === null) return;
-        // Alt 제스처는 건드리지 않는다.
-        if (event.altKey) return;
-        // deltaMode 정규화 — Firefox 물리 휠은 line(1)/page(2) 단위로 보고한다. 픽셀 튜닝된
-        // 지수·스크롤 경로에 그대로 넣으면 한 노치가 0.7% 줌이 되거나 페이지 단위로 튄다.
-        const deltaScale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
-          ? 16
-          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-            ? Math.max(240, element.clientHeight)
-            : 1;
-        // Shift+wheel은 카드 격자 세로 스크롤.
-        if (event.shiftKey) {
-          const grid = event.target.closest(".canvas-triage-deck")?.querySelector(".canvas-triage-deck-grid");
-          if (!(grid instanceof HTMLElement)) return;
-          event.preventDefault();
-          // 일부 브라우저·트랙패드는 Shift+wheel을 deltaX로 보고한다 — 세로 스크롤로 수렴시킨다.
-          grid.scrollTop += (event.deltaY !== 0 ? event.deltaY : event.deltaX) * deltaScale;
-          return;
-        }
-        // bare wheel과 Ctrl/Meta+wheel 모두 덱 줌 — 브라우저 페이지 줌 차단도 유지한다.
+      const consumeDeckZoomWheel = (event: WheelEvent, deltaScale: number) => {
+        // 줌·지도 당김은 브라우저 페이지 줌도 막는다. 층 전환 뒤의 휠은 기한을 늘리며 버린다.
         event.preventDefault();
         const gesture = gestureRef.current;
         const now = performance.now();
-        // 층 전환 뒤의 휠 — 이벤트마다 기한을 늘려, 휠이 멎은 뒤의 첫 이벤트부터 받는다.
         if (now < gesture.latchUntil) {
           gesture.latchUntil = now + TRIAGE_MAP_GESTURE_QUIET_MS;
           return;
@@ -355,8 +395,61 @@ export function useTriageDeckZoomControl(): {
         applyZoom(next);
         setTargetZoom(next);
       };
+      const handleWheel = (event: WheelEvent) => {
+        // 덱 줌은 triage 모드 안에서, 덱 위에서만 발화한다 — 무경계 소비는 자유 캔버스의
+        // 기존 줌과 이중 소비되고 브라우저 페이지 줌을 전역 차단한다.
+        if (!isTriageActive()) return;
+        if (!(event.target instanceof Element) || event.target.closest(".canvas-triage-deck") === null) return;
+        // 판정 순서: Alt → Ctrl/Meta → 본문·엿보기 → Shift → 나머지.
+        if (event.altKey) return;
+        const deltaScale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? Math.max(240, element.clientHeight)
+            : 1;
+        if (event.ctrlKey || event.metaKey) {
+          consumeDeckZoomWheel(event, deltaScale);
+          return;
+        }
+        const target = event.target;
+        const inTerminal = target.closest(".canvas-triage-deck-cell .canvas-operation-terminal") !== null;
+        // 엿보기 칸의 Shift 포함 모든 비-Ctrl 휠은 본문 규칙이다 — 지도가 닫히거나 숨은 격자가 스크롤되지 않는다.
+        const inQuickLook = target.closest(".canvas-triage-deck-cell.is-quick-look, .canvas-triage-quick-look") !== null;
+        const gesture = gestureRef.current;
+        const now = performance.now();
+        if (!inTerminal && !inQuickLook && now < gesture.bodyLatchUntil) {
+          event.preventDefault();
+          gesture.bodyLatchUntil = now + TRIAGE_MAP_GESTURE_QUIET_MS;
+          return;
+        }
+        if (inTerminal || inQuickLook) {
+          // 당김은 누적하지 않는다. 스크롤은 기본 동작이나 xterm에 맡기고, 끝에 닿으면 조상으로 새지 않게 흡수한다.
+          resetGesture();
+          gesture.bodyLatchUntil = performance.now() + TRIAGE_MAP_GESTURE_QUIET_MS;
+          if (!event.defaultPrevented && !wheelHasScrollRoom(target, event.deltaX, event.deltaY)) event.preventDefault();
+          return;
+        }
+        if (event.shiftKey) {
+          const grid = target.closest(".canvas-triage-deck")?.querySelector(".canvas-triage-deck-grid");
+          if (!(grid instanceof HTMLElement)) return;
+          event.preventDefault();
+          // 일부 브라우저·트랙패드는 Shift+wheel을 deltaX로 보고한다 — 세로 스크롤로 수렴시킨다.
+          grid.scrollTop += (event.deltaY !== 0 ? event.deltaY : event.deltaX) * deltaScale;
+          return;
+        }
+        consumeDeckZoomWheel(event, deltaScale);
+      };
+      // Ctrl/Meta는 타깃(xterm)보다 먼저 기본 동작을 끊는다. 본문 휠의 흡수 판정은 버블에 둔다 —
+      // xterm이 먼저 preventDefault 했는지(!defaultPrevented)를 봐야 하기 때문이다.
+      const handleWheelCapture = (event: WheelEvent) => {
+        if (!isTriageActive() || event.altKey || (!event.ctrlKey && !event.metaKey)) return;
+        if (!(event.target instanceof Element) || event.target.closest(".canvas-triage-deck") === null) return;
+        event.preventDefault();
+      };
+      element.addEventListener("wheel", handleWheelCapture, { capture: true, passive: false });
       element.addEventListener("wheel", handleWheel, { passive: false });
       return () => {
+        element.removeEventListener("wheel", handleWheelCapture, { capture: true });
         element.removeEventListener("wheel", handleWheel);
         if (ownerRef.current === element) ownerRef.current = null;
       };
@@ -568,20 +661,149 @@ export function TriageWatchDeck({
   // 클릭을 네이티브로 받는 것과 같은 이유다.
   const deckPointerRef = useRef<{
     openMenu: (operationId: string, event: MouseEvent, host: HTMLElement) => void;
-  }>({ openMenu: () => {} });
+    pick: (operationId: string, element: HTMLElement) => void;
+  }>({ openMenu: () => {}, pick: () => {} });
+  const quickLookKeyRef = useRef<{ id: string | null; close: () => void }>({ id: null, close: () => {} });
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid || !visible) return;
+    // 무장 본문의 포인터는 캡처에서 끊는다. 칸에 건 합성 핸들러는 portal 본문을 보지 못한다.
+    const bodyEvents = ["pointerdown", "pointerup", "pointermove", "mousedown", "mouseup", "mousemove", "dblclick", "auxclick", "click", "contextmenu"] as const;
+    const terminalOf = (target: EventTarget | null) => (
+      target instanceof Element ? target.closest<HTMLElement>(".canvas-triage-deck-cell .canvas-operation-terminal") : null
+    );
+    const promote = (cell: HTMLElement) => {
+      if (cell.classList.contains("is-quick-look")) return;
+      const operationId = cell.dataset.triageDeckCard;
+      const surface = cell.querySelector<HTMLElement>(".canvas-triage-deck-pick");
+      if (!operationId || !surface) return;
+      deckPointerRef.current.pick(operationId, surface);
+    };
+    const onBodyPointer = (event: Event) => {
+      const terminal = terminalOf(event.target);
+      if (!terminal) return;
+      event.stopPropagation();
+      if (event.type === "pointerdown" || event.type === "mousedown") {
+        if (event.cancelable) event.preventDefault();
+        return;
+      }
+      if (event.type === "contextmenu" && event instanceof MouseEvent) {
+        const cell = terminal.closest<HTMLElement>(".canvas-triage-deck-cell");
+        const operationId = cell?.dataset.triageDeckCard;
+        if (cell && operationId) deckPointerRef.current.openMenu(operationId, event, cell);
+        return;
+      }
+      // pointerdown 의 preventDefault 는 click 을 취소하지 않는다 — 승격은 click 한 경로다.
+      if (event.type !== "click" || (event instanceof MouseEvent && event.button !== 0)) return;
+      const cell = terminal.closest<HTMLElement>(".canvas-triage-deck-cell");
+      if (!cell) return;
+      promote(cell);
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      const terminal = terminalOf(event.target);
+      if (!terminal) return;
+      const cell = terminal.closest<HTMLElement>(".canvas-triage-deck-cell");
+      if (!cell) return;
+      const surface = cell.querySelector<HTMLElement>(".canvas-triage-deck-pick");
+      if (!cell.classList.contains("is-quick-look")) {
+        surface?.focus({ preventScroll: true });
+        return;
+      }
+      // 승격 면에서 거꾸로 들어오면 본문 앞 마지막 컨트롤로 — 아니면 점과의 루프로 보낸다.
+      const backward = event.relatedTarget instanceof Node && !!surface && (event.relatedTarget === surface || surface.contains(event.relatedTarget));
+      const next = backward
+        ? peekDeckTabbables(cell).at(-1) ?? null
+        : sectionRef.current?.querySelector<HTMLElement>(`[data-fleet-map-dot="${escapeAttributeValue(cell.dataset.triageDeckCard ?? "")}"]`) ?? null;
+      (next ?? surface)?.focus({ preventScroll: true });
+    };
+    // 리마운트는 패널이 mount 에 직접 붙는 경우뿐이다. 스트리밍 채팅 노드마다 :hover 를 묻지 않는다.
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof HTMLElement) || !node.classList.contains("canvas-operation")) continue;
+          const mount = node.parentElement;
+          if (!mount?.classList.contains("canvas-triage-deck-mount")) continue;
+          const cell = mount.parentElement;
+          if (cell instanceof HTMLElement && cell.classList.contains("canvas-triage-deck-cell") && cell.matches(":hover")) armDeckCell(cell);
+        }
+      }
+    });
+    observer.observe(grid, { subtree: true, childList: true });
+    // 패널은 portal이라 React enter/leave가 셀을 놓친다. 격자의 네이티브 위임만 무장을 맡는다.
+    const cellOf = (target: EventTarget | null) => (
+      target instanceof Element ? target.closest<HTMLElement>(".canvas-triage-deck-cell") : null
+    );
+    const onPointerOver = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      const cell = cellOf(event.target);
+      if (!cell || armedDeckCell === cell) return;
+      armDeckCell(cell);
+    };
+    const onPointerOut = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      const cell = cellOf(event.target);
+      if (!cell) return;
+      const next = cellOf(event.relatedTarget);
+      if (next === cell) return;
+      disarmDeckCell(cell);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      const peek = quickLookKeyRef.current;
+      if (!peek.id || !(event.target instanceof Element)) return;
+      if (event.key === "Escape") {
+        if (event.defaultPrevented || isEditableField(event.target)) return;
+        if (!event.target.closest("[data-fleet-map], .canvas-triage-quick-look, .canvas-triage-deck-cell.is-quick-look")) return;
+        event.preventDefault();
+        peek.close();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const section = sectionRef.current;
+      const cell = section?.querySelector<HTMLElement>(".canvas-triage-deck-cell.is-quick-look");
+      const dot = section?.querySelector<HTMLElement>(`[data-fleet-map-dot="${escapeAttributeValue(peek.id)}"]`);
+      if (!cell || !dot) return;
+      const controls = peekDeckTabbables(cell);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      const active = event.target;
+      if (!event.shiftKey && (active === dot || dot.contains(active))) {
+        if (!first) return;
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+        return;
+      }
+      if (event.shiftKey && first && (active === first || first.contains(active))) {
+        event.preventDefault();
+        dot.focus({ preventScroll: true });
+        return;
+      }
+      if (!event.shiftKey && last && (active === last || last.contains(active))) {
+        event.preventDefault();
+        dot.focus({ preventScroll: true });
+      }
+    };
+    const section = sectionRef.current;
+    grid.addEventListener("pointerover", onPointerOver);
+    grid.addEventListener("pointerout", onPointerOut);
+    section?.addEventListener("keydown", onKeyDown);
+    for (const type of bodyEvents) grid.addEventListener(type, onBodyPointer, true);
+    grid.addEventListener("focusin", onFocusIn);
     const onContextMenu = (event: MouseEvent) => {
-      const cell = event.target instanceof Element
-        ? event.target.closest<HTMLElement>("[data-triage-deck-card]")
-        : null;
+      if (terminalOf(event.target)) return;
+      const cell = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-triage-deck-card]") : null;
       const operationId = cell?.dataset.triageDeckCard;
       if (!cell || !operationId) return;
       deckPointerRef.current.openMenu(operationId, event, cell);
     };
     grid.addEventListener("contextmenu", onContextMenu);
     return () => {
+      observer.disconnect();
+      if (armedDeckCell) disarmDeckCell(armedDeckCell);
+      grid.removeEventListener("pointerover", onPointerOver);
+      grid.removeEventListener("pointerout", onPointerOut);
+      section?.removeEventListener("keydown", onKeyDown);
+      for (const type of bodyEvents) grid.removeEventListener(type, onBodyPointer, true);
+      grid.removeEventListener("focusin", onFocusIn);
       grid.removeEventListener("contextmenu", onContextMenu);
     };
   }, [visible]);
@@ -622,16 +844,19 @@ export function TriageWatchDeck({
     }
     const frame = { left: left - origin.left, top: top - origin.top, width, height };
     cell.classList.add("is-quick-look");
-    // 엿보기는 읽기 전용이다 — 포인터만 막으면 캡션 컨트롤이 탭 순서에 남는다. 닫기는 지도의 빈 곳·Esc가 맡는다.
-    mount.inert = true;
+    // 마운트는 잠그지 않는다. 본문만 프레임의 inert 기본값이고, 포인터가 칸 위에 남아 있으면 그것만 다시 푼다.
     mount.style.setProperty("left", `${frame.left + QUICK_LOOK_PAD_PX}px`);
     mount.style.setProperty("top", `${frame.top + QUICK_LOOK_PAD_PX}px`);
     mount.style.setProperty("width", `${size.width}px`);
     mount.style.setProperty("height", `${size.height}px`);
+    const hoverFrame = window.requestAnimationFrame(() => {
+      if (cell.isConnected && cell.matches(":hover")) armDeckCell(cell);
+    });
     setQuickLookPlacement({ operationId: quickLook.operationId, frame });
     return () => {
+      window.cancelAnimationFrame(hoverFrame);
       cell.classList.remove("is-quick-look");
-      mount.inert = false;
+      if (!cell.matches(":hover")) disarmDeckCell(cell);
       for (const property of ["left", "top", "width", "height"]) mount.style.removeProperty(property);
     };
   }, [quickLook, mapLayerOpen]);
@@ -641,9 +866,16 @@ export function TriageWatchDeck({
     setQuickLook(null);
     if (operationId) sectionRef.current?.querySelector<HTMLElement>(`[data-fleet-map-dot="${escapeAttributeValue(operationId)}"]`)?.focus({ preventScroll: true });
   };
-  // 엿보던 Operation이 판에서 내려가면(종료·최소화) Quick-Look도 걷는다.
+  quickLookKeyRef.current = { id: quickLook?.operationId ?? null, close: closeQuickLook };
+  // 엿보던 Operation이 판에서 내려가면(최소화·보관) 틀을 걷고, 초점은 그 점으로 — 점이 없으면 판으로.
   useEffect(() => {
-    if (quickLook && !operations.some((operation) => operation.id === quickLook.operationId)) setQuickLook(null);
+    if (!quickLook || operations.some((operation) => operation.id === quickLook.operationId)) return;
+    const operationId = quickLook.operationId;
+    setQuickLook(null);
+    const section = sectionRef.current;
+    const dot = section?.querySelector<HTMLElement>(`[data-fleet-map-dot="${escapeAttributeValue(operationId)}"]`);
+    const plate = section?.querySelector<HTMLElement>("[data-fleet-map]");
+    (dot ?? plate)?.focus({ preventScroll: true });
   }, [operations, quickLook]);
 
   if (!visible) return null;
@@ -680,7 +912,7 @@ export function TriageWatchDeck({
     onOperationContextMenu?.(operationId, new DOMRect(event.clientX, event.clientY, 0, 0), returnFocus);
   };
   // 위임 리스너가 읽는 최신 핸들러 — effect는 한 번만 붙고, 매 렌더의 값은 이 ref로 건넨다.
-  deckPointerRef.current = { openMenu: openOperationMenu };
+  deckPointerRef.current = { openMenu: openOperationMenu, pick };
   const openOperationMenuFromKeyboard = (operationId: string, event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return false;
     event.preventDefault();
@@ -759,14 +991,6 @@ export function TriageWatchDeck({
       ref={sectionRef}
       className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""} ${mapLayerOpen ? "is-map-open" : ""}`}
       data-canvas-blocker
-      onKeyDown={(event) => {
-        // 엿보기 닫기는 초점이 지도나 엿보기 틀 안에 있을 때만의 Esc다 — 무대 터미널은 이 섹션 밖이라
-        // 거기서 누른 Esc는 여기 닿지 않고, 터미널이 그대로 받는다.
-        if (event.key !== "Escape" || !quickLook) return;
-        if (!(event.target instanceof Element) || !event.target.closest("[data-fleet-map], .canvas-triage-quick-look")) return;
-        event.preventDefault();
-        closeQuickLook();
-      }}
       onClick={(event) => {
         // 엿보는 동안 지도의 빈 곳을 누르면 엿보기가 걷힌다 — 점(다른 점 엿보기·무대)과 머리의 버튼은 제 일을 한다.
         if (!quickLook || !(event.target instanceof Element)) return;

@@ -44,6 +44,11 @@ let operationsSnapshot: readonly ConsoleOperationSummary[] = [];
 const inflight = new Map<string, Promise<void>>();
 /** 받으러 간 목표 — 같은 Operation 을 두 번 묻지 않는다. */
 const fetching = new Set<string>();
+/**
+ * 서버가 4xx 로 목표가 아니라고 거절한 id. 네트워크·5xx 같은 일시 오류는 넣지 않아 다음 스냅숏에 다시 묻는다.
+ * 그 id 의 목표 사건이나 영구 삭제가 오기 전에는 지우지 않는다.
+ */
+const notObjective = new Set<string>();
 
 /**
  * 보관된 Operation 의 요약 — 완료한 목표의 지휘관·구성원은 Core 보관함으로 옮겨져 일반 목록에 없다. 세션 줄이 이름을
@@ -135,15 +140,22 @@ function reconcileOperations(api: ClientApiCapability): void {
     const members = memberIds(state.objectives);
     for (const operation of operationsSnapshot) {
       // 부모 아래 선 Operation(구성원)은 목표가 아니다 — 코어가 구성원으로 기록한 것은 묻지도 않는다.
-      if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || members.has(operation.id) || fetching.has(operation.id)) continue;
+      if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || members.has(operation.id) || fetching.has(operation.id) || notObjective.has(operation.id)) continue;
       fetching.add(operation.id);
-      void post<{ objective: Objective }>(api, "/objective/get", { objectiveId: operation.id })
-        .then(({ objective }) => {
+      // post 는 구조화 코드를 Error 메시지로 바꾸며 status 를 버린다. 4xx 만 캐시하려면 fetch 가 던진 ApiError 를 그대로 본다.
+      void api.fetch("objectives", "/objective/get", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ objectiveId: operation.id }) })
+        .then(async (response) => {
+          const payload = await response.json() as { objective?: Objective };
+          const objective = payload.objective;
+          if (!objective || typeof objective.id !== "string") return;
           const latest = theaters.get(objective.theaterId) ?? EMPTY;
           // 응답을 기다리는 사이 담당으로 연결됐으면 목표가 아니다.
           if (!latest.objectives.some((candidate) => candidate.id === objective.id) && !memberIds(latest.objectives).has(objective.id)) setTheater(objective.theaterId, { objectives: [objective, ...latest.objectives] });
         })
-        .catch(() => { /* 플러그인 소유이거나 담당이면 목표가 아니다 */ })
+        .catch((error: unknown) => {
+          const status = apiErrorStatus(error);
+          if (status !== null && status >= 400 && status < 500) notObjective.add(operation.id);
+        })
         .finally(() => { fetching.delete(operation.id); });
     }
   }
@@ -159,11 +171,31 @@ function setTheater(theaterId: string, next: Partial<TheaterState>): void {
   describeMissingOperations();
 }
 
+/**
+ * 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤에만 나머지를 읽는다.
+ * 나머지는 스냅숏의 최상위 에이전트 Operation(`type==="agent" && !parentOperationId`)이 속한 Theater 다.
+ */
+function loadAgentTheaters(api: ClientApiCapability, activeId: string | null): void {
+  const rest: string[] = [];
+  const seen = new Set<string>();
+  for (const operation of operationsSnapshot) {
+    if (operation.type !== "agent" || operation.parentOperationId || !operation.theaterId || operation.theaterId === activeId || seen.has(operation.theaterId)) continue;
+    seen.add(operation.theaterId);
+    rest.push(operation.theaterId);
+  }
+  const lead = activeId ? loadTheater(api, activeId) : Promise.resolve();
+  void lead.then(() => {
+    if (installed?.api !== api) return;
+    for (const theaterId of rest) void loadTheater(api, theaterId);
+  });
+}
+
 export function installObjectiveState(ctx: PluginInstallContext): () => void {
   installed = ctx;
   const offItem = ctx.consoleEvents.subscribe("objectives:objective", (payload) => {
     const event = payload as ObjectiveEvent | null;
     if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
+    notObjective.delete(event.objectiveId);
     const current = theaters.get(event.theaterId) ?? EMPTY;
     if (event.op === "remove") { setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
     if (!event.objective) return;
@@ -191,6 +223,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   const offPurged = ctx.consoleEvents.subscribe(OPERATION_PURGED_EVENT, (payload) => {
     const operationId = (payload as { operationId?: unknown } | null)?.operationId;
     if (typeof operationId !== "string") return;
+    notObjective.delete(operationId);
     described.set(operationId, null);
     describedRevision += 1;
     removeObjectiveLocally(operationId);
@@ -200,18 +233,19 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (!data || typeof data.groupId !== "string") return;
     for (const [theaterId, state] of theaters) if (state.groups.some((group) => group.id === data.groupId)) setTheater(theaterId, { groups: state.groups.filter((group) => group.id !== data.groupId) });
   });
-  // 활성 Theater 가 바뀌면 그 Theater 의 항목을 미리 읽는다 — 캡션 칩은 표면이 닫혀 있어도 서야 한다.
+  // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 최상위 에이전트 Operation 이 속한 나머지 Theater 를 읽는다.
+  // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadTheater 는 멱등이다.
   let lastTheater = ctx.consoleState.getActiveTheaterId();
-  if (lastTheater) void loadTheater(ctx.api, lastTheater);
   operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
+  loadAgentTheaters(ctx.api, lastTheater);
   const offConsole = ctx.consoleState.subscribe(() => {
     const current = ctx.consoleState.getActiveTheaterId();
     if (current !== lastTheater) {
       lastTheater = current;
       clearSelectionTheater();
-      if (current) void loadTheater(ctx.api, current);
     }
     operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
+    loadAgentTheaters(ctx.api, current);
     reconcileOperations(ctx.api);
     notify();
     describeMissingOperations();
@@ -283,6 +317,14 @@ export async function post<T>(api: ClientApiCapability, path: string, body: unkn
   const payload = await response.json().catch(() => null) as (T & { error?: string }) | null;
   if (!response.ok) throw new Error(payload?.error ?? `http_${response.status}`);
   return payload as T;
+}
+
+/** ApiError 의 HTTP status. 번들이 달라도 모양으로만 본다. */
+function apiErrorStatus(error: unknown): number | null {
+  if (typeof error !== "object" || error === null) return null;
+  const record = error as Record<string, unknown>;
+  if (record.name !== "ApiError" || typeof record.status !== "number" || !Number.isInteger(record.status)) return null;
+  return record.status;
 }
 
 /**
