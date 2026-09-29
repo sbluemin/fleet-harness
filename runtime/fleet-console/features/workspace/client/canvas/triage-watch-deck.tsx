@@ -693,6 +693,8 @@ export function TriageWatchDeck({
         if (cell && operationId) deckPointerRef.current.openMenu(operationId, event, cell);
         return;
       }
+      // 전파를 끊으면 채팅 링크 가로채기(link-open)도 돌지 않는다 — 앵커의 이동·새 탭은 여기서 취소한다.
+      if (event.type === "click" || event.type === "auxclick") event.preventDefault();
       // pointerdown 의 preventDefault 는 click 을 취소하지 않는다 — 승격은 click 한 경로다.
       if (event.type !== "click" || (event instanceof MouseEvent && event.button !== 0)) return;
       const cell = terminal.closest<HTMLElement>(".canvas-triage-deck-cell");
