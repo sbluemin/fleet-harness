@@ -24,8 +24,10 @@ import { createBoardViews, refuse, roleIn, text } from "./views.js";
  */
 
 const ids = z.string().min(1).max(128);
-/** 임무를 가리키는 두 길 — 변하지 않는 missionId, 또는 편성 순서의 1-based 번호 n. */
+/** 임무를 가리키는 두 길 — 변하지 않는 missionId, 또는 지휘관 번호표의 1-based 번호 n. */
 const missionRef = { objectiveId: ids, missionId: ids.optional(), n: z.number().int().min(1).optional() };
+/** 선행 한 칸 — 번호 n 이나 missionId, 그리고 이유. */
+const prerequisiteRef = z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() }).strict();
 const memberReference = z.string().trim().min(1).max(128);
 const PLANNING_ONLY = "The objective is in planning: its lineup can change, but missions are not carried out and members are not launched until the person commences.";
 const BOARD_CHANGED = "The person edited the objective after your last read.";
@@ -55,10 +57,24 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     if (!objective) throw new ObjectiveStoreError("unknown_objective");
     return objective;
   };
+  /**
+   * 지휘관의 번호표 — 마지막으로 읽은(read·mine·plan) 편성 순의 missionId. 임무를 더하거나 선행을 바꾸면 편성 순이 다시 서지만,
+   * 지휘관이 다시 읽기 전까지 그의 n 은 이 번호표를 가리킨다(실모델 실측: 밀린 번호로 다른 임무를 배치·완료했다). 그 뒤 더한 임무는
+   * 다음 번호를 받는다. 번호표가 없으면(이 서버에서 아직 읽지 않았다) 지금 편성 순이다.
+   */
+  const numbered = new Map<string, readonly string[]>();
+  const renumber = (objective: Objective) => numbered.set(objective.id, objective.missions.map((mission) => mission.id));
+  const numbering = (objective: Objective): readonly string[] => numbered.get(objective.id) ?? objective.missions.map((mission) => mission.id);
   const missionOf = (objective: Objective, ref: { missionId?: string; n?: number }): ObjectiveMission => {
-    const found = ref.missionId ? objective.missions.find((mission) => mission.id === ref.missionId) : ref.n !== undefined ? objective.missions[ref.n - 1] : undefined;
+    const id = ref.missionId ?? (ref.n !== undefined ? numbering(objective)[ref.n - 1] : undefined);
+    const found = id ? objective.missions.find((mission) => mission.id === id) : undefined;
     if (!found) throw new ObjectiveStoreError("unknown_mission");
     return found;
+  };
+  /** 선행 목록을 missionId 로 — 모르는 임무가 하나라도 있으면 거절한다. */
+  const prerequisitesOf = (objective: Objective, refs: readonly (number | z.output<typeof prerequisiteRef>)[]) => {
+    const edges = refs.map((ref) => (typeof ref === "number" ? { mission: missionOf(objective, { n: ref }) } : { mission: missionOf(objective, ref), why: ref.why }));
+    return { ids: edges.map((edge) => edge.mission.id), why: Object.fromEntries(edges.flatMap((edge) => (edge.why ? [[edge.mission.id, edge.why]] : []))) };
   };
   /** id 가 먼저, 그다음 역할 이름. 같은 역할 이름이 둘 이상이면 어느 구성원인지 고르지 않고 거절한다. */
   const resolveMember = (objective: Objective, reference: string): string => {
@@ -75,7 +91,9 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
    */
   const readView = (objective: Objective, caller: ConsoleCaller | undefined) => {
     if (roleIn(objective, caller)?.role !== "commander") return objectiveView(objective);
-    const view = objectiveView(store.setEdited(objective.id, null));
+    const read = store.setEdited(objective.id, null);
+    renumber(read);
+    const view = objectiveView(read);
     if (objective.members.length > 0 || objective.done) return view;
     const roles = pastRoles(store.list(objective.theaterId), store.roleCuration(objective.theaterId), { exclude: objective.id });
     if (roles.length === 0) return view;
@@ -120,7 +138,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!own) return refuse("not_participant");
       return text({ role: "commander", objectiveId: own.id, objective: readView(own, caller) });
     }),
-    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order and shift as it changes; missionIds do not. Tools that change the board return only what they created, not the board. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} ${PAST_ROLES}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
+    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order as of the Commander's latest read (read or mine) or plan; the Commander's n keep pointing at those missions while it writes, missions it adds take the next numbers, and its next read renumbers them. missionIds never change. Tools that change the board return only what they created, not the board. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} ${PAST_ROLES}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
       const objective = find(objectiveId);
       if (!roleIn(objective, caller)) return refuse("not_participant");
       return text({ objective: readView(objective, caller) });
@@ -163,23 +181,28 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const repeated = objective.missions.filter((mission) => (mission.done || mission.unplaced || mission.records.length > 0 || mission.memberBy === "human") && args.missions.some((planned) => same(planned.text) === same(mission.text)));
         if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((mission) => ({ missionId: mission.id, text: mission.text, ...(mission.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board and are referenced by missionId." });
         const planned = launch.planApplied(objective.id, { missions: args.missions, ...(args.members ? { members: args.members } : {}), ...(args.criteria !== undefined ? { criteria: args.criteria } : {}) });
+        renumber(planned);
         return text({ ok: true, missions: planned.missions.map((mission, index) => ({ n: index + 1, missionId: mission.id, text: mission.text })) });
       }),
-    commanderTool("add_mission", "Add a mission, optionally naming its member by roster id or role; none means the Commander. The returned n is its place in the lineup.", z.object({ objectiveId: ids, text: z.string().trim().min(1).max(200), member: memberReference.optional() }).strict(),
+    commanderTool("add_mission", "Add a mission with its prerequisites — each the n or missionId of a mission on the board, finished or not, with an optional why — and optionally its member by roster id or role; none means the Commander. A mission added without prerequisites is ready at once and stands in the lineup's first column, ahead of missions that wait on others. The returned n is its number until the Commander's next read.",
+      z.object({ objectiveId: ids, text: z.string().trim().min(1).max(200), prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
       (args, objective) => {
-        const next = launch.missionAdded(objective.id, { text: args.text, ...(args.member ? { member: resolveMember(objective, args.member) } : {}) });
+        const prerequisites = prerequisitesOf(objective, args.prerequisites ?? []);
+        const known = numbering(objective);
+        const next = launch.missionAdded(objective.id, { text: args.text, prerequisites: prerequisites.ids, ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...(args.member ? { member: resolveMember(objective, args.member) } : {}) });
         const mission = added(objective.missions, next.missions);
-        return text({ ok: true, ...(mission ? { missionId: mission.id, n: next.missions.indexOf(mission) + 1 } : {}) });
+        if (!mission) return text({ ok: true });
+        numbered.set(objective.id, [...known, mission.id]);
+        return text({ ok: true, missionId: mission.id, n: known.length + 1 });
       }),
-    commanderTool("place_mission", "Set an open mission's prerequisites by mission number n, counting from 1 in lineup order ([] makes it ready), and optionally its member (null means the Commander). A member the person chose stays. Missions the person added stay unready until placed.",
-      z.object({ ...missionRef, prerequisites: z.array(z.number().int().min(1)).max(40), member: memberReference.nullable().optional() }).strict(),
+    commanderTool("place_mission", "Replace an open mission's prerequisites — each a mission number n, or {n or missionId, why} — ([] makes it ready), and optionally set its member (null means the Commander). A member the person chose stays. Missions the person added stay unready until placed.",
+      z.object({ ...missionRef, prerequisites: z.array(z.union([z.number().int().min(1), prerequisiteRef])).max(40), member: memberReference.nullable().optional() }).strict(),
       (args, objective) => {
         const target = missionOf(objective, args);
         if (target.done) return refuse("mission_done");
-        const prerequisites = args.prerequisites.map((n) => objective.missions[n - 1]?.id);
-        if (prerequisites.some((id) => !id)) return refuse("unknown_mission");
+        const prerequisites = prerequisitesOf(objective, args.prerequisites);
         const assignment = args.member !== undefined && target.memberBy !== "human" ? { member: args.member === null ? null : resolveMember(objective, args.member) } : {};
-        launch.missionPatched(objective.id, target.id, { prerequisites: prerequisites.filter((id): id is string => !!id && id !== target.id), ...assignment });
+        launch.missionPatched(objective.id, target.id, { prerequisites: prerequisites.ids.filter((id) => id !== target.id), ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...assignment });
         return text({ ok: true, missionId: target.id });
       }),
     commanderTool("request_decision", `Place a decision request on the Objectives surfaces the person sees: questions the person answers there, not a notice that clears when read or when a session is opened. Storage limits are 1–${MAX_DECISION_QUESTIONS} questions per request and either no options or 2–${MAX_DECISION_OPTIONS} per question; the person can always write an answer of their own. The person sends every answer at once. An objective holds one current request; a new request replaces all of the previous one. missionId and memberId are optional context per question. expectedRevision is the board's decisionRequestRevision; a different value is refused as decision_request_changed. Once the answers reach the Commander, the request clears and each answer stays in decisions, which members read too, and stays through reruns. A request cleared by the person's board edits, by a referenced mission or member leaving the board, by withdrawal or by replacement becomes no decision. A request and its answers are not tool permission and do not mark criteria met. After placing the request the call waits up to ${DECISION_WAIT_MS / 60_000} minutes: answers given in that time return in the result (answered: true, answers) and are recorded as decisions; a request cleared meanwhile returns cleared: true; otherwise the result says answered: false and answers given later arrive in this session as input. While the call waits, messages from members arrive only after it returns.`,
@@ -240,7 +263,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
-        if (!objective.awaitingHandoff) return refuse("not_awaiting_handoff", notAwaitingHandoff(objective));
+        if (!objective.awaitingHandoff) return refuse("not_awaiting_handoff", notAwaitingHandoff(objective, numbering(objective)));
         const retrospective = retrospectiveSchema.safeParse(args.retrospective);
         if (!retrospective.success) return refuse("retrospective_format", { hint: RETROSPECTIVE_FORMAT });
         const input = memberRatingsSchema.safeParse(args.ratings ?? []);
@@ -269,10 +292,11 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
 }
 
 /** 인계 대기가 아닌 이유 — 남은 임무·미충족 기준 번호, 이미 넘겼거나 완료된 목표. */
-function notAwaitingHandoff(objective: Objective) {
+function notAwaitingHandoff(objective: Objective, numbering: readonly string[]) {
   return {
     ...(objective.done ? { done: true } : objective.handoff ? { handedOff: true } : {}),
-    openMissions: objective.missions.flatMap((mission, index) => (mission.done ? [] : [index + 1])),
+    // 지휘관의 번호표로 — 번호표에 없는(사람이 그 뒤 더한) 임무는 missionId 로.
+    openMissions: objective.missions.flatMap((mission) => (mission.done ? [] : [numbering.indexOf(mission.id) + 1 || mission.id])),
     unmetCriteria: objective.criteria.flatMap((criterion, index) => (criterion.met ? [] : [index + 1])),
     ...(objective.missions.length === 0 ? { missions: 0 } : {}),
   };

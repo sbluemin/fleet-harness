@@ -1050,6 +1050,13 @@ describe("Objectives contract", () => {
     const p2N = store.find(objective.id)!.missions.findIndex((mission) => mission.id === p2.id) + 1;
     await call("place_mission", { objectiveId: objective.id, n: p2N, prerequisites: [1], member: "build" }, commander);
     expect(store.find(objective.id)!.missions.find((mission) => mission.id === p2.id)!.member).toBeNull();
+    // 지휘관의 n 은 마지막으로 읽은 번호표를 가리킨다 — 선행 없이 더한 임무가 첫 열로 서며 편성 순이 바뀌어도, 다음 호출의 n 이 다른 임무로 가지 않는다.
+    const read = store.find(objective.id)!.missions.map((mission) => mission.id);
+    const hotfix = (await call("add_mission", { objectiveId: objective.id, text: "hotfix" }, commander)).structuredContent as { missionId: string; n: number };
+    expect(hotfix.n).toBe(read.length + 1);
+    expect(store.find(objective.id)!.missions.map((mission) => mission.id)).not.toEqual([...read, hotfix.missionId]);
+    const qa = (await call("add_mission", { objectiveId: objective.id, text: "qa", prerequisites: [{ n: hotfix.n }, { n: read.length, why: "after the rest" }] }, commander)).structuredContent as { missionId: string };
+    expect(store.find(objective.id)!.missions.find((mission) => mission.id === qa.missionId)).toMatchObject({ prerequisites: [hotfix.missionId, read.at(-1)], why: { [read.at(-1)!]: "after the rest" } });
     // 완료는 결론 먼저 1–3줄의 기록과 함께이고, 산문 문단은 거절된다. 구성원은 완료하지 못한다.
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["r"] }, member.id)).structuredContent.error).toBe("not_commander");
     expect((await call("complete_mission", { objectiveId: objective.id, n: 1, summary: ["x".repeat(400)] }, commander)).structuredContent.error).toBe("summary_format");
