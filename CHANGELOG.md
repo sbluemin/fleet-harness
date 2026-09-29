@@ -5,6 +5,21 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.203.0] - 2026-09-29
+
+### fleet-console
+
+#### Changed
+- Typing is lighter across the Console: the chat and Quick Launch composers, objective titles and briefings, and inline edits no longer restyle the whole map on every keystroke.
+- The Objectives panel opens faster, especially for objectives with many missions or wide branching.
+
+#### Fixed
+- Arranging many panels in a narrow map area no longer makes them overlap; each panel now fits its slot.
+- Missions a Commander adds after you steer an objective now wait on the work they follow, and the Commander no longer completes or rearranges the wrong mission when the lineup reorders.
+
+#### Removed
+- Objectives no longer collect past roles: the past roles list below the member list and member ratings at hand-off are gone, and Commanders now propose members from each objective's own brief.
+
 ## [1.202.3] - 2026-09-29
 
 ### fleet-console

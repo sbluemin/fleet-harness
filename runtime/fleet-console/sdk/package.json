@@ -1,6 +1,6 @@
 {
   "name": "@fleet-console/sdk",
-  "version": "1.202.3",
+  "version": "1.203.0",
   "private": true,
   "type": "module",
   "exports": {
