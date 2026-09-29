@@ -34,11 +34,15 @@ const MINIMAP_HEIGHT = 176;
 const MINIMAP_PADDING = 12;
 // Operation/뷰포트 묶음 주변에 두는 world 여유 — 가장자리에 붙지 않게 한다.
 const WORLD_MARGIN = 220;
+/** 다시 잡는 틀의 여유(양쪽 각각 필요 폭의 비율)와, 틀을 유지하는 헐거움의 상한(필요 폭의 배수). */
+const MINIMAP_BOUNDS_PAD = 0.05;
+const MINIMAP_BOUNDS_SLACK = 1.3;
 const RADAR_COLLAPSED_STORAGE_KEY = "fleet-console.map.radarCollapsed";
 
 export function CanvasMinimap({ operations, pluginOperations, accents, viewport, canvasSize, onJump }: CanvasMinimapProps) {
   const t = useT();
   const innerRef = useRef<HTMLDivElement | null>(null);
+  const boundsRef = useRef<{ minX: number; minY: number; maxX: number; maxY: number } | null>(null);
   const draggingRef = useRef(false);
   const collapsedBeforeAlignRef = useRef<boolean | null>(null);
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -115,14 +119,22 @@ export function CanvasMinimap({ operations, pluginOperations, accents, viewport,
     height: canvasSize.height / viewport.zoom,
   };
 
-  let minX = Math.min(view.x, ...rects.map((r) => r.x));
-  let minY = Math.min(view.y, ...rects.map((r) => r.y));
-  let maxX = Math.max(view.x + view.width, ...rects.map((r) => r.x + r.width));
-  let maxY = Math.max(view.y + view.height, ...rects.map((r) => r.y + r.height));
-  minX -= WORLD_MARGIN;
-  minY -= WORLD_MARGIN;
-  maxX += WORLD_MARGIN;
-  maxY += WORLD_MARGIN;
+  const need = {
+    minX: Math.min(view.x, ...rects.map((r) => r.x)) - WORLD_MARGIN,
+    minY: Math.min(view.y, ...rects.map((r) => r.y)) - WORLD_MARGIN,
+    maxX: Math.max(view.x + view.width, ...rects.map((r) => r.x + r.width)) + WORLD_MARGIN,
+    maxY: Math.max(view.y + view.height, ...rects.map((r) => r.y + r.height)) + WORLD_MARGIN,
+  };
+  // 틀은 필요한 영역이 벗어나거나 틀이 너무 헐거워질 때만 다시 잡는다 — 줌·이동 틱마다 축척이 바뀌면 패널 사각형
+  // 전부가 매 프레임 다시 쓰인다. 다시 잡을 때는 여유를 둬 다음 몇 틱을 같은 틀로 받는다.
+  const held = boundsRef.current;
+  const needW = need.maxX - need.minX, needH = need.maxY - need.minY;
+  const fits = !!held && held.minX <= need.minX && held.minY <= need.minY && held.maxX >= need.maxX && held.maxY >= need.maxY
+    && held.maxX - held.minX <= needW * MINIMAP_BOUNDS_SLACK && held.maxY - held.minY <= needH * MINIMAP_BOUNDS_SLACK;
+  const padX = needW * MINIMAP_BOUNDS_PAD, padY = needH * MINIMAP_BOUNDS_PAD;
+  const bounds = fits ? held! : { minX: need.minX - padX, minY: need.minY - padY, maxX: need.maxX + padX, maxY: need.maxY + padY };
+  boundsRef.current = bounds;
+  const { minX, minY, maxX, maxY } = bounds;
 
   const worldW = maxX - minX;
   const worldH = maxY - minY;
