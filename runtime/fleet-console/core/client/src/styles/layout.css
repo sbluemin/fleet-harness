@@ -95,112 +95,156 @@
   padding: var(--space-4);
   /* 흐림은 쓰지 않는다(디자인 계약). 불투명 스크림만으로 가리되, 뒤에 남은 마지막 값이
      완전히 사라지지는 않게 한다 — 그 잔상이 "돌아올 자리"라는 약속의 근거다. */
-  background: color-mix(in oklch, var(--ink-abyss) 88%, transparent);
+  background: color-mix(in oklch, var(--ink-abyss) 80%, transparent);
 }
 
-.update-curtain-card {
+/* 카드는 두지 않는다 — 스크림 위의 한 줄과 칸 넷이 전부다. 재료는 Desktop 업데이트 말풍선과
+   같다: mono 글씨, 2px 막대, warn-ink 한 색. 가리는 화면이지 알리는 화면이 아니므로 더 말하지 않는다. */
+.update-curtain-plate {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--space-3);
-  width: min(420px, 100%);
-  padding: var(--space-5) var(--space-4);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: var(--surface-glass-strong);
-  box-shadow: var(--shadow-floating);
-  text-align: center;
+  gap: var(--space-2);
+  width: min(300px, 100%);
+  font-family: var(--font-mono);
+  animation: update-curtain-rise var(--duration-base) var(--ease-spring) both;
 }
 
-.update-curtain-title {
-  margin: 0;
+.update-curtain-now {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.update-curtain-step {
+  flex: 1;
+  min-width: 0;
   color: var(--text-primary);
-  font-size: var(--t-lg);
+  font-size: var(--t-sm);
   font-weight: var(--weight-bold);
+}
+
+.update-curtain-count {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.update-curtain-track {
+  display: flex;
+  gap: 3px;
+  height: 2px;
+  margin-top: 2px;
+}
+
+.update-curtain-track > i {
+  position: relative;
+  flex: 1;
+  border-radius: var(--radius-pill);
+  background: var(--surface-rim);
+  overflow: hidden;
+}
+
+.update-curtain-track > i.is-done { background: var(--warn-ink); }
+
+/* 지금 칸만 흐른다. 서버가 닿지 않는 동안에도 화면이 멈춘 것이 아니라는 유일한 증거다. */
+.update-curtain-track > i.is-now::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--warn-ink), transparent);
+  transform: translateX(-100%);
+  animation: update-curtain-sweep 1.6s ease-in-out infinite;
 }
 
 .update-curtain-sub {
   margin: 0;
-  max-width: 34em;
   color: var(--text-tertiary);
-  font-size: var(--t-sm);
-}
-
-.update-curtain-steps {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.update-curtain-step {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
   font-size: var(--t-xs);
+  line-height: 1.55;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
-.update-curtain-mark {
-  flex: none;
-  width: 12px;
-  height: 12px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-pill);
+@keyframes update-curtain-rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
 }
 
-.update-curtain-step.is-done { color: var(--text-secondary); }
-.update-curtain-step.is-done .update-curtain-mark { border-color: var(--positive); background: var(--positive); }
-.update-curtain-step.is-now { color: var(--warn-ink); }
-.update-curtain-step.is-now .update-curtain-mark { border-color: var(--warn); box-shadow: 0 0 0 3px var(--warn-glow); }
+@keyframes update-curtain-sweep {
+  to { transform: translateX(100%); }
+}
 
-/* 결과는 링크 배너와 같은 자리, 같은 문법으로 말한다 — 다른 것은 채널뿐이다. */
+/* 결과는 링크 배너와 같은 자리에 서되 색 띠를 두르지 않는다 — 신호는 점 하나가 맡고,
+   실패만 문장에 색을 싣는다. 끝난 일을 알리는 자리이지 경보가 아니다. */
 .update-outcome {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   flex: none;
-  min-height: 34px;
-  padding: var(--space-1) var(--space-4);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
+  min-height: 30px;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+  background: var(--surface-panel-raised);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  animation: update-outcome-drop var(--duration-base) var(--ease-spring) both;
 }
 
-.update-outcome--ok {
-  border-bottom: 1px solid color-mix(in oklch, var(--positive) 55%, var(--surface-rim));
-  background: var(--positive-glow);
-  color: var(--positive-ink);
+.update-outcome-signal {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--positive);
 }
 
-.update-outcome--failed {
-  border-bottom: 1px solid color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
-  background: var(--coral-glow);
-  color: var(--coral-ink);
+.update-outcome--failed .update-outcome-signal { background: var(--coral); }
+.update-outcome--failed .update-outcome-text { color: var(--coral-ink); }
+
+.update-outcome-text {
+  flex: 1;
+  min-width: 0;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
-.update-outcome-note { color: inherit; opacity: 0.8; }
+.update-outcome-note {
+  margin-left: var(--space-2);
+  color: var(--text-tertiary);
+}
 
 .update-outcome-dismiss {
-  padding: 4px 8px;
-  border: 1px solid currentColor;
+  flex: none;
+  padding: 0 4px;
+  border: 0;
   border-radius: var(--radius-xs);
-  background: var(--surface-glass);
-  color: inherit;
-  font: inherit;
-  font-weight: var(--weight-bold);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  line-height: 1.4;
   cursor: pointer;
 }
 
-.update-outcome-dismiss:hover,
+.update-outcome-dismiss:hover { color: var(--text-primary); }
+
 .update-outcome-dismiss:focus-visible {
-  border-color: var(--brass);
+  color: var(--text-primary);
   outline: 1px solid var(--brass);
   outline-offset: 1px;
+}
+
+@keyframes update-outcome-drop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-curtain-plate,
+  .update-outcome { animation: none; }
+  .update-curtain-track > i.is-now { background: color-mix(in oklch, var(--warn-ink) 45%, var(--surface-rim)); }
+  .update-curtain-track > i.is-now::after { animation: none; display: none; }
 }
 
 .console-body,

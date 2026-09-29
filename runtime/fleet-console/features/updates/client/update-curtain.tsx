@@ -18,16 +18,17 @@ export function UpdateCurtain() {
     const failed = state.outcome === "failed";
     return (
       <div className={`update-outcome update-outcome--${failed ? "failed" : "ok"}`} role="status" aria-live="polite">
+        <span className="update-outcome-signal" aria-hidden="true" />
         <span className="update-outcome-text">
           {failed
             ? t("chrome.update.outcomeFailed", { reason: describeFailure(state.progress?.error ?? null, t) })
             : t("chrome.update.outcomeDone", { version: state.progress?.targetVersion ?? "" })}
+          {state.progress?.endpointChanged === true ? (
+            <span className="update-outcome-note">{t("chrome.update.addressMoved")}</span>
+          ) : null}
         </span>
-        {state.progress?.endpointChanged === true ? (
-          <span className="update-outcome-note">{t("chrome.update.addressMoved")}</span>
-        ) : null}
-        <button type="button" className="update-outcome-dismiss" onClick={acknowledgeUpdateOutcome}>
-          {t("common.dismiss")}
+        <button type="button" className="update-outcome-dismiss" onClick={acknowledgeUpdateOutcome} aria-label={t("common.dismiss")}>
+          ×
         </button>
       </div>
     );
@@ -36,26 +37,25 @@ export function UpdateCurtain() {
   if (!state.watching) return null;
 
   const activeIndex = state.delegated ? 2 : resolveStepIndex(state.progress?.phase ?? null);
+  // 지나간 단계와 남을 단계의 이름은 싣지 않는다 — 기다리는 사람에게 필요한 것은 지금 무엇을
+  // 하고 있는지와 얼마나 남았는지뿐이다. 칸 넷이 "얼마나"를, 한 줄이 "무엇을" 말한다.
   return (
     <div className="update-curtain" role="status" aria-live="polite">
-      <div className="update-curtain-card">
-        <h2 className="update-curtain-title">{t("chrome.update.curtainTitle")}</h2>
+      <div className="update-curtain-plate">
+        <div className="update-curtain-now">
+          <span className="update-curtain-step">{t(`chrome.update.step.${STEP_KEYS[activeIndex]}` as "chrome.update.step.stopping")}</span>
+          <span className="update-curtain-count">{activeIndex + 1} / {STEP_KEYS.length}</span>
+        </div>
+        <span className="update-curtain-track" aria-hidden="true">
+          {STEP_KEYS.map((key, index) => (
+            <i key={key} className={index < activeIndex ? "is-done" : index === activeIndex ? "is-now" : undefined} />
+          ))}
+        </span>
         <p className="update-curtain-sub">
           {state.delegated
             ? t("chrome.update.curtainSubShell")
             : t("chrome.update.curtainSub", { version: state.targetVersion ?? "" })}
         </p>
-        <ol className="update-curtain-steps">
-          {STEP_KEYS.map((key, index) => (
-            <li
-              key={key}
-              className={`update-curtain-step${index < activeIndex ? " is-done" : index === activeIndex ? " is-now" : ""}`}
-            >
-              <span className="update-curtain-mark" aria-hidden="true" />
-              <span>{t(`chrome.update.step.${key}` as "chrome.update.step.stopping")}</span>
-            </li>
-          ))}
-        </ol>
       </div>
     </div>
   );
