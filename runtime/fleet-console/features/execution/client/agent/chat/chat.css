@@ -4303,6 +4303,9 @@
   font-style: normal;
 }
 .agent-chat .agent-chat-origin-body .markdown-body > blockquote > * + * { margin-top: var(--space-2); }
+/* 사람이 여러 줄로 쓴 말은 그 줄바꿈대로 선다. 마크다운은 한 줄 줄바꿈을 공백으로 접지만, 이 본문은
+   문서가 아니라 사람의 말이다 — 프롬프트(모델이 받는 문면)는 그대로 두고 여기서만 줄을 살린다. */
+.agent-chat .agent-chat-origin-body .markdown-body p { white-space: pre-line; }
 
 /* 도는 턴이 도중에 집어간 사용자의 말.
 

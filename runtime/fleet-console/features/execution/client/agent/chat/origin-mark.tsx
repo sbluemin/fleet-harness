@@ -24,11 +24,20 @@ export function OriginMark({ by, language, className }: {
   );
 }
 
-const unquote = (line: string): string => line.replace(/^(?:>\s?)+/, "").trim();
+/**
+ * 한 줄을 평문으로 — 인용·제목·목록 표식과 강조·코드·링크 장식을 걷는다. 조각은 렌더하지 않으므로 기호가
+ * 남으면 사람이 쓴 적 없는 `**` 가 읽힌다. `_` 는 식별자(snake_case)를 깨므로 걷지 않는다.
+ */
+const plainLine = (line: string): string => line
+  .replace(/^(?:>\s?)+/, "")
+  .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/, "")
+  .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+  .replace(/\*\*|~~|[*`]/g, "")
+  .trim();
 
-/** 출처 문면의 한 줄 조각. 목표의 문면은 인용이라 인용 표식을 걷고 말만 읽는다. */
+/** 출처 문면의 한 줄 조각. 목표의 문면은 인용이라 인용 표식을 걷고 말만 평문으로 읽는다. 코드 울타리 줄은 말이 아니다. */
 export function originExcerpt(text: string, max = 160): string {
-  const lines = text.split(/\r?\n/).map(unquote).filter((line) => line.length > 0);
+  const lines = text.split(/\r?\n/).filter((line) => !/^\s*(?:>\s?)*(?:```|~~~)/.test(line)).map(plainLine).filter((line) => line.length > 0);
   const first = lines[0]?.replace(/\s+/g, " ") ?? "";
   return `${first.slice(0, max)}${first.length > max || lines.length > 1 ? "…" : ""}`;
 }
