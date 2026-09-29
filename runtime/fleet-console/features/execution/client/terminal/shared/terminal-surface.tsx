@@ -643,14 +643,14 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
     outputSchedulerRef.current?.setInactiveFlushMs(inactiveFlushMs);
   }, [inactiveFlushMs, mountedTerminalEpoch]);
 
-  // 리퀴드 글래스 게이트의 실효 상태 — 채널 계산값이 단일 진실이다(설정·@supports·
-  // prefers-reduced-transparency 세 게이트를 모두 통과했을 때만 backdrop 채널이 none이 아니다).
+  // 리퀴드 글래스 게이트의 실효 상태 — 채널 계산값이 단일 진실이다(@supports·
+  // prefers-reduced-transparency·테마 극성 세 게이트를 모두 통과했을 때만 backdrop 채널이 none이 아니다).
   const [liquidGlassPane, setLiquidGlassPane] = useState(() => readLiquidGlassPaneActive());
   useEffect(() => {
     const sync = () => setLiquidGlassPane(readLiquidGlassPaneActive());
     sync();
     const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-glass", "data-theme"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     // OS 접근성 설정(prefers-reduced-transparency)은 속성 변이 없이 채널을 닫는다 —
     // 미디어쿼리 변화도 같은 sync로 받아야 열린 터미널이 즉시 불투명 계약으로 돌아간다.
     // jsdom에는 matchMedia가 없으므로 기능 검사로 가드한다(테스트 환경 크래시 방지).
@@ -731,8 +731,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
     };
     applyTerminalTheme();
-    // liquidGlassPane 의존이 곧 리로드 없는 즉시 전환이다 — 설정 토글이 data-glass 속성을
-    // 바꾸면 위 옵저버가 상태를 올리고, 이 효과가 terminal 채널 계산값을 다시 읽는다.
+    // liquidGlassPane 의존이 곧 리로드 없는 즉시 전환이다 — 테마가 게이트를 여닫으면 위
+    // 옵저버가 상태를 올리고, 이 효과가 terminal 채널 계산값을 다시 읽는다.
   }, [activeTheme, mountedTerminalEpoch, liquidGlassPane, surface]);
 
   useEffect(() => {
@@ -951,7 +951,7 @@ export function terminalFieldIsTranslucent(background: string): boolean {
   return channels.length > 3 && Number.parseFloat(channels[3] ?? "1") < 1;
 }
 
-/* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 네 게이트(설정·@supports·
+/* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 세 게이트(@supports·
    reduced-transparency·테마 극성)를 개별로 다시 판정하지 않고 채널 계산값 하나를 진실로 삼는다.
    특히 극성은 여기서 다시 묻지 않는다: 라이트를 닫는 일은 CSS 게이트가 하고, 이 함수는
    그 결과만 읽는다. JS에 극성 분기를 심으면 진실이 두 벌이 된다. */

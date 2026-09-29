@@ -11,7 +11,10 @@
   font-family: var(--font-body);
   font-size: var(--t-md);
   color: var(--text-primary);
-  background: var(--surface-panel);
+  /* 도구 패널·확장 표면의 유리를 그대로 비춘다(게이트가 닫히면 불투명 패널). 상세 열은 그 위에
+     얹힌 약한 들림이다 — display: contents 뒤의 조각까지 같은 면을 쓰도록 변수로 나눠 준다. */
+  --objectives-detail-face: color-mix(in oklch, var(--glass-panel-face) 88%, var(--surface-panel-raised));
+  background: var(--glass-panel-face);
 }
 /* 상세 폭은 손잡이로 바꾼 값 또는 자리의 기본값(--objectives-detail-w). 카드 열의 최소 폭은 JS 가 폭을 제한해 지킨다. */
 .objectives-root.has-detail { grid-template-columns: minmax(0, 1fr) var(--objectives-detail-w, 480px); }
@@ -29,7 +32,7 @@
 .objectives-root.is-three { grid-template-columns: var(--objectives-list-w, 360px) minmax(0, 1fr) var(--objectives-detail-w, 440px); grid-template-rows: minmax(0, 1fr) auto; }
 .objectives-root.is-three > .objectives-main { grid-column: 1; grid-row: 1 / -1; }
 .objectives-detail.is-three, .objectives-detail.is-three > .objectives-detail-scroll { display: contents; }
-.objectives-detail.is-three .objectives-detail-pane { display: block; min-width: 0; min-height: 0; overflow: auto; border-left: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised)); container: objectives-detail / inline-size; }
+.objectives-detail.is-three .objectives-detail-pane { display: block; min-width: 0; min-height: 0; overflow: auto; border-left: 1px solid var(--surface-rim); background: var(--objectives-detail-face); container: objectives-detail / inline-size; }
 .objectives-detail.is-three .objectives-detail-pane.is-content { grid-column: 2; grid-row: 1 / -1; padding: 6px 0 8px; }
 .objectives-detail.is-three .objectives-detail-pane.is-ops { grid-column: 3; grid-row: 1; padding-top: 6px; }
 .objectives-detail.is-three > .objectives-detail-bottom { grid-column: 3; grid-row: 2; min-width: 0; padding-bottom: 8px; border-left: 1px solid var(--surface-rim); container: objectives-detail / inline-size; }
@@ -343,11 +346,11 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: color-mix(in oklch, var(--surface-panel) 88%, var(--surface-panel-raised));
+  background: var(--objectives-detail-face);
   container: objectives-detail / inline-size;
 }
 .objectives-detail-scroll { flex: 1; min-height: 0; overflow: auto; }
-.objectives-detail-bottom { flex: none; background: inherit; }
+.objectives-detail-bottom { flex: none; background: var(--objectives-detail-face); }
 .objectives-group { display: flex; flex-direction: column; padding: 6px 0; }
 .objectives-group + .objectives-group { border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
 .objectives-detail-head { display: flex; gap: 8px; align-items: flex-start; padding: 8px 20px 10px 22px; }

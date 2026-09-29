@@ -182,8 +182,6 @@ export interface GlobalSettingsState {
   readonly remoteAccess?: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ThemeId;
-  /** 리퀴드 글래스 머티리얼 — 기본 옵트인(true). */
-  readonly liquidGlass: boolean;
   /** 포커스하지 않은 패널 본문이 물러나는 세기(백분율, 0~70). 0은 물러나지 않음. */
   readonly unfocusedPanelFade: number;
   readonly uiFont: UiFontSettings;

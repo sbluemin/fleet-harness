@@ -63,21 +63,20 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  /* maritime/carbon 테마의 --surface-glass-strong은 78~80% 알파의 반투명 토큰이라 glass 층만으로는
-     알파 100에서도 Map이 비쳐 보인다. 최하단에 불투명 --ink-deep 언더레이를 깔아 슬라이더
-     최대값 100=완전 불투명을 보장하고, glass 믹스의 제2 성분이 이미 --ink-deep이므로 색조는 유지된다.
-     감쇠는 ::before 전체 opacity로만 적용되어 슬라이더 수치(40–100%)가 실제 불투명도와 일치한다. */
+  /* 게이트가 닫히면 --surface-glass-strong(maritime/carbon은 78~80% 알파)만으로는 Map이 비쳐
+     보인다 — 최하단 불투명 --ink-deep 언더레이가 불투명 폴백을 보장한다. 게이트가 열리면 rail
+     채널의 알파가 「도구 패널 불투명도」에서 역산되어, 92:8 믹스의 결과 알파가 슬라이더 수치
+     (20–100%, 100 = 완전 불투명)와 같다(theme.css --glass-on-tint-rail). */
   background:
     linear-gradient(
-      color-mix(in oklch, var(--glass-tint-strong) 92%, var(--ink-deep)),
-      color-mix(in oklch, var(--glass-tint-strong) 92%, var(--ink-deep))
+      color-mix(in oklch, var(--glass-tint-rail) 92%, var(--ink-deep)),
+      color-mix(in oklch, var(--glass-tint-rail) 92%, var(--ink-deep))
     ),
     var(--glass-underlay);
   /* 구 overlay 슬롯의 판독성 계약 그대로 — blur가 빠지면 다크 유리에서 뒤 캔버스의 글자·격자가
      54% 틴트를 생으로 관통해 패널 본문과 겹친다(적대 리뷰 확정). */
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  opacity: var(--right-rail-overlay-alpha, 1);
   pointer-events: none;
 }
 

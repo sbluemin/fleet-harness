@@ -15,8 +15,20 @@
   /* 트레이(도구 · 종료 · 앰블럼)가 겹쳐 서는 자리를 비운다 — 폭은 트레이가 매 프레임 알린다. */
   padding: 0 calc(var(--zen-bar-width, 0px) + var(--space-1)) 0 var(--space-1);
   border-top: 1px solid var(--surface-rim);
-  background: var(--surface-band);
   animation: zen-taskbar-rise var(--duration-base) var(--ease-spring) both;
+}
+/* 상단 바와 같은 재질(바 슬라이더 알파 · 12px 흐림 · 윗면 하이라이트). backdrop-filter를 루트에
+   걸면 막대가 새 합성 루트가 되어 포털·자식의 흐림이 막대 안에 갇힌다 — 유리는 z -1 층에만 싣는다. */
+.zen-taskbar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--zen-taskbar-face, var(--glass-tint-band));
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
+  box-shadow: inset 0 1px 0 var(--glass-rim);
+  pointer-events: none;
 }
 @keyframes zen-taskbar-rise {
   from { transform: translateY(100%); }
@@ -106,7 +118,7 @@
   height: 7px;
   border-radius: var(--radius-pill);
   background: var(--aurora);
-  box-shadow: 0 0 0 2px var(--surface-band);
+  box-shadow: 0 0 0 2px var(--zen-taskbar-face, var(--glass-tint-band));
 }
 .zen-taskbar-theater-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 

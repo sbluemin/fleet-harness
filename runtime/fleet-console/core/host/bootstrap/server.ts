@@ -497,7 +497,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   reclaimLegacyTrees(fleetDataDir, durablePaths.dir);
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
     getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
-    getLiquidGlass: () => consoleSettingsStore.load().general?.liquidGlass ?? true,
+    getLegacyGlassOff: () => consoleSettingsStore.load().general?.liquidGlass === false,
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();

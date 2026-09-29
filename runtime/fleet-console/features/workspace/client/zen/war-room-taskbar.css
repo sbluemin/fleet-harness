@@ -2,18 +2,18 @@
 .zen-taskbar.war-room-taskbar, .war-room-glow {
   --wr-horizon: color-mix(in oklch, var(--brass) 70%, transparent);
   --wr-horizon-glow: color-mix(in oklch, var(--brass) 11%, transparent);
-  --wr-face: color-mix(in oklch, var(--brass) 3.5%, var(--surface-band));
+  --wr-face: color-mix(in oklch, var(--brass) 3.5%, var(--glass-tint-band));
 }
 .zen-taskbar.war-room-taskbar {
   border-top: 0;
-  background: var(--wr-face);
+  --zen-taskbar-face: var(--wr-face);
   animation: none;
 }
 :root[data-theme="whites"] .zen-taskbar.war-room-taskbar,
 :root[data-theme="whites"] .war-room-glow {
   --wr-horizon: color-mix(in oklch, var(--brass) 80%, transparent);
   --wr-horizon-glow: color-mix(in oklch, var(--brass) 12%, transparent);
-  --wr-face: color-mix(in oklch, var(--brass) 4%, var(--surface-band));
+  --wr-face: color-mix(in oklch, var(--brass) 4%, var(--glass-tint-band));
 }
 .war-room-taskbar::before {
   content: "";

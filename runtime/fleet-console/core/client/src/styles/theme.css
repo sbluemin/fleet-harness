@@ -221,11 +221,16 @@
   /* ── 리퀴드 글래스 채널 ──────────────────────────────────────────────
      부유층(팝업·메뉴·오버레이 슬롯)의 최하층·틴트·블러와 상주 크롬의 블러·림은
      아래 역할 채널만 소비한다. 기본값은 현행 판독 계약 그대로다 — 불투명 언더레이,
-     현행 틴트, 무블러. 유리는 파일 하단의 data-glass 게이트 블록에서만 켜지므로,
-     게이트가 닫히면(@supports 미달·prefers-reduced-transparency·설정 해제) 모든
+     현행 틴트, 무블러. 유리는 파일 하단의 게이트 블록에서만 켜지므로,
+     게이트가 닫히면(@supports 미달·prefers-reduced-transparency·라이트 테마) 모든
      소비처가 자동으로 오늘의 불투명 계약으로 되돌아간다. */
   --glass-underlay: var(--ink-deep);
   --glass-tint-strong: var(--surface-glass-strong);
+  --glass-tint-rail: var(--surface-glass-strong);
+  --glass-tint-expanded: color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
+  /* 유리 표면(도구 패널 슬롯·확장 표면) 안에 사는 플러그인 본문의 바탕. 게이트가 닫히면 오늘의
+     불투명 패널, 열리면 비워서 담는 표면의 재질(알파·흐림)이 그대로 비치게 한다. */
+  --glass-panel-face: var(--surface-panel);
   --glass-tint-soft: var(--surface-glass);
   --glass-tint-pillar: var(--surface-pillar);
   --glass-tint-raised: var(--surface-panel-raised);
@@ -288,25 +293,31 @@
      알파를 더 내리려면 블러/스크림 보조와 함께 AA를 재실측할 것. */
   --glass-on-underlay: transparent;
   --glass-on-tint-strong: oklch(24% 0.02 245 / 50%);
+  /* 확장 표면 재질 — 소비처가 이 틴트를 불투명 --ink-deep과 94:6으로 섞는다. 섞인 알파는 작업 창
+     슬라이더를 따른다: 60%(미조작)에서 오늘 값, 100%에서 완전 불투명, 그 아래는 비례. 6:94로 역산한다. */
+  --glass-on-tint-expanded: oklch(24% 0.02 245 / calc((max(var(--glass-window-alpha, 60%) * 53 / 60, 53% + (var(--glass-window-alpha, 60%) - 60%) * 47 / 40) - 6%) / 0.94));
+  /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
+     섞인 결과가 슬라이더 수치와 같게 한다. 폴백 54%는 오늘 이 테마의 섞인 알파다. */
+  --glass-on-tint-rail: oklch(24% 0.02 245 / calc((var(--glass-rail-alpha, 54%) - 8%) / 0.92));
   --glass-on-tint-soft: oklch(19% 0.018 245 / 48%);
   --glass-on-tint-pillar: oklch(23.5% 0.02 245 / 52%);
   --glass-on-tint-raised: oklch(22% 0.02 245 / 52%);
   --glass-on-tint-deep: oklch(16.5% 0.016 245 / 48%);
   --glass-on-tint-abyss: oklch(13% 0.014 245 / 50%);
-  --glass-on-tint-chrome: oklch(19% 0.018 245 / 50%);
+  --glass-on-tint-chrome: oklch(19% 0.018 245 / var(--glass-side-bar-alpha, 50%));
   /* 다크 유리의 smoked-glass 문법 — Operation·War Room 카드는 blur 없이 60% 틴트와
      22% pane-light만으로 캔버스·겹친 창 윤곽을 그대로 통과시킨다. 패널 수에 따라 재질을 바꾸지
      않아 모든 모드가 같은 투과도를 유지한다. Shell은 같은 60% terminal tint 위에서만 20px blur를
      사용해 글자 밀도가 높은 단일 작업면의 판독성을 지킨다. 알파·명도를 다시 만지면 ANSI black과의
      부호(필드보다 어두울 것)와 dim 셀 floor를 반드시 재실측할 것. */
-  --glass-on-tint-panel: oklch(18.5% 0.028 245 / 60%);
+  --glass-on-tint-panel: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));
   --glass-on-tint-field: transparent;
   --glass-on-pane-light: oklch(25% 0.032 245 / 22%);
   --canvas-on-ambience: oklch(16% 0.022 245);
-  --glass-on-tint-caption: oklch(17% 0.018 245 / 64%);
-  --glass-on-tint-terminal: oklch(18.5% 0.028 245 / 60%);
+  --glass-on-tint-caption: oklch(17% 0.018 245 / calc(var(--glass-window-alpha, 60%) + 4%));
+  --glass-on-tint-terminal: oklch(18.5% 0.028 245 / var(--glass-window-alpha, 60%));
   --glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);
-  --glass-on-tint-band: oklch(13% 0.018 245 / 55%);
+  --glass-on-tint-band: oklch(13% 0.018 245 / var(--glass-bar-alpha, 55%));
   --glass-on-backdrop-strong: blur(24px) saturate(1.7);
   /* 좌측 사이드바 전용 재료 — strong과 같은 채도 보정 위에 blur 반경만 사용자 손잡이가 잡는다.
      반경 변수는 :root에 실려야 여기서 치환된다(operations-side-bar-store 주석 참조). 기본 24px는
@@ -549,20 +560,26 @@
   --surface-band: var(--ink-deep);
 
   --glass-on-tint-strong: oklch(32% 0.045 248 / 46%);
+  /* 확장 표면 재질 — 소비처가 이 틴트를 불투명 --ink-deep과 94:6으로 섞는다. 섞인 알파는 작업 창
+     슬라이더를 따른다: 60%(미조작)에서 오늘 값, 100%에서 완전 불투명, 그 아래는 비례. 6:94로 역산한다. */
+  --glass-on-tint-expanded: oklch(32% 0.045 248 / calc((max(var(--glass-window-alpha, 60%) * 49.24 / 60, 49.24% + (var(--glass-window-alpha, 60%) - 60%) * 50.76 / 40) - 6%) / 0.94));
+  /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
+     섞인 결과가 슬라이더 수치와 같게 한다. 폴백 50%는 오늘 이 테마의 섞인 알파다. */
+  --glass-on-tint-rail: oklch(32% 0.045 248 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92));
   --glass-on-tint-soft: oklch(28% 0.04 248 / 44%);
   --glass-on-tint-pillar: oklch(22% 0.05 248 / 48%);
   --glass-on-tint-raised: oklch(28% 0.04 248 / 46%);
   --glass-on-tint-deep: oklch(20% 0.045 248 / 46%);
   --glass-on-tint-abyss: oklch(15% 0.04 250 / 48%);
-  --glass-on-tint-chrome: oklch(27% 0.04 248 / 45%);
-  --glass-on-tint-panel: oklch(25% 0.05 248 / 60%);
+  --glass-on-tint-chrome: oklch(27% 0.04 248 / var(--glass-side-bar-alpha, 45%));
+  --glass-on-tint-panel: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));
   --glass-on-tint-field: transparent;
   --glass-on-pane-light: oklch(32% 0.055 248 / 22%);
   --canvas-on-ambience: oklch(18% 0.035 235);
-  --glass-on-tint-caption: oklch(21% 0.03 248 / 64%);
-  --glass-on-tint-terminal: oklch(25% 0.05 248 / 60%);
+  --glass-on-tint-caption: oklch(21% 0.03 248 / calc(var(--glass-window-alpha, 60%) + 4%));
+  --glass-on-tint-terminal: oklch(25% 0.05 248 / var(--glass-window-alpha, 60%));
   --glass-on-tint-terminal-floor: oklch(22.3% 0.043 245);
-  --glass-on-tint-band: oklch(19% 0.045 248 / 50%);
+  --glass-on-tint-band: oklch(19% 0.045 248 / var(--glass-bar-alpha, 50%));
   --glass-on-rim: oklch(96% 0.012 88 / 18%);
 
   --hairline: oklch(36% 0.035 248);
@@ -660,20 +677,26 @@
   --surface-band: var(--ink-deep);
 
   --glass-on-tint-strong: oklch(29% 0.007 252 / 46%);
+  /* 확장 표면 재질 — 소비처가 이 틴트를 불투명 --ink-deep과 94:6으로 섞는다. 섞인 알파는 작업 창
+     슬라이더를 따른다: 60%(미조작)에서 오늘 값, 100%에서 완전 불투명, 그 아래는 비례. 6:94로 역산한다. */
+  --glass-on-tint-expanded: oklch(29% 0.007 252 / calc((max(var(--glass-window-alpha, 60%) * 49.24 / 60, 49.24% + (var(--glass-window-alpha, 60%) - 60%) * 50.76 / 40) - 6%) / 0.94));
+  /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
+     섞인 결과가 슬라이더 수치와 같게 한다. 폴백 50%는 오늘 이 테마의 섞인 알파다. */
+  --glass-on-tint-rail: oklch(29% 0.007 252 / calc((var(--glass-rail-alpha, 50%) - 8%) / 0.92));
   --glass-on-tint-soft: oklch(25% 0.006 252 / 44%);
   --glass-on-tint-pillar: oklch(20% 0.008 252 / 48%);
   --glass-on-tint-raised: oklch(25% 0.007 252 / 46%);
   --glass-on-tint-deep: oklch(18% 0.007 255 / 46%);
   --glass-on-tint-abyss: oklch(14% 0.006 255 / 48%);
-  --glass-on-tint-chrome: oklch(24% 0.006 252 / 45%);
-  --glass-on-tint-panel: oklch(21% 0.013 252 / 60%);
+  --glass-on-tint-chrome: oklch(24% 0.006 252 / var(--glass-side-bar-alpha, 45%));
+  --glass-on-tint-panel: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));
   --glass-on-tint-field: transparent;
   --glass-on-pane-light: oklch(28% 0.014 252 / 22%);
   --canvas-on-ambience: oklch(18% 0.014 250);
-  --glass-on-tint-caption: oklch(19% 0.008 252 / 64%);
-  --glass-on-tint-terminal: oklch(21% 0.013 252 / 60%);
+  --glass-on-tint-caption: oklch(19% 0.008 252 / calc(var(--glass-window-alpha, 60%) + 4%));
+  --glass-on-tint-terminal: oklch(21% 0.013 252 / var(--glass-window-alpha, 60%));
   --glass-on-tint-terminal-floor: oklch(19.8% 0.013 251);
-  --glass-on-tint-band: oklch(17% 0.007 255 / 50%);
+  --glass-on-tint-band: oklch(17% 0.007 255 / var(--glass-bar-alpha, 50%));
   --glass-on-rim: oklch(95% 0.003 250 / 16%);
 
   --hairline: oklch(33% 0.006 252);
@@ -874,26 +897,26 @@
 }
 
 /* ── 리퀴드 글래스 게이트 ────────────────────────────────────────────────
-   기본 옵트인: data-glass 속성이 없으면 켜진 상태이고 "off"만 의미를 가진다.
-   설정 해제는 서버 주입(static-console)·부트 힌트(theme-boot)·store가 :root에
-   data-glass="off"를 세운다. 블러를 그릴 수 없는 엔진은 @supports가 걸러내고,
+   유리는 기본 재질이며 끄는 스위치가 없다 — 사람은 묶음별 불투명도(100%는 완전 불투명)로
+   조절한다. 블러를 그릴 수 없는 엔진은 @supports가 걸러내고,
    투명도 축소 선호는 아래 media 블록이 같은 특이도로 나중에 서서 기본값(불투명
-   언더레이)으로 되돌린다 — 네 게이트 중 하나만 닫혀도 유리는 꺼지고, 소비처는
+   언더레이)으로 되돌린다 — 세 게이트 중 하나만 닫혀도 유리는 꺼지고, 소비처는
    아무것도 몰라도 된다(채널 기본값이 곧 현행 계약이므로).
 
-   넷째 게이트는 테마 극성이다. 라이트(Whites)는 유리를 아예 받지 않는다 — 종이 위
-   백유리는 지각 불가에 가깝고, 뒤가 이미 밝아 blur가 굴절시킬 명도차가 없다. 이 제외는
-   설정값과 무관하다: 저장된 선호는 다크로 돌아갈 때를 위해 그대로 보존되고(그래서
-   라이트에서도 data-glass 속성은 사용자의 선호 그대로다), 화면을 닫는 일은 여기서만 한다.
+   셋째 게이트는 테마 극성이다. 라이트(Whites)는 유리를 아예 받지 않는다 — 종이 위
+   백유리는 지각 불가에 가깝고, 뒤가 이미 밝아 blur가 굴절시킬 명도차가 없다. 불투명도
+   저장값은 다크로 돌아갈 때를 위해 그대로 보존되고, 화면을 닫는 일은 여기서만 한다.
 
-   제외는 반드시 **선택자 목록** :not(A, B) 한 겹으로 쓴다. :not(A):not(B)로 사슬을 걸면
-   특이도가 (0,2,0)에서 (0,3,0)으로 올라가고, 아래 축소-투명도 되돌림 블록이 같은 특이도로
-   나중에 서서 이기던 계약이 깨진다(@media는 특이도를 더하지 않는다). 두 선택자는 언제나
-   글자까지 같아야 하며, 그 대칭은 계약 테스트가 못박는다. */
+   아래 축소-투명도 되돌림 블록은 주 블록과 같은 특이도로 나중에 서서 이긴다(@media는
+   특이도를 더하지 않는다). 제외 조건을 늘릴 때는 :not(A, B) 목록 한 겹으로 써서 특이도를
+   (0,2,0)에 묶어 둔다. 두 선택자는 언제나 글자까지 같아야 한다. */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root:not([data-glass="off"], [data-theme="whites"]) {
+  :root:not([data-theme="whites"]) {
     --glass-underlay: var(--glass-on-underlay);
     --glass-tint-strong: var(--glass-on-tint-strong);
+    --glass-tint-rail: var(--glass-on-tint-rail);
+    --glass-tint-expanded: color-mix(in oklch, var(--glass-on-tint-expanded) 94%, var(--ink-deep));
+    --glass-panel-face: transparent;
     --glass-tint-soft: var(--glass-on-tint-soft);
     --glass-tint-pillar: var(--glass-on-tint-pillar);
     --glass-tint-raised: var(--glass-on-tint-raised);
@@ -924,9 +947,12 @@
   }
 
   @media (prefers-reduced-transparency: reduce) {
-    :root:not([data-glass="off"], [data-theme="whites"]) {
+    :root:not([data-theme="whites"]) {
       --glass-underlay: var(--ink-deep);
       --glass-tint-strong: var(--surface-glass-strong);
+      --glass-tint-rail: var(--surface-glass-strong);
+      --glass-tint-expanded: color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
+      --glass-panel-face: var(--surface-panel);
       --glass-tint-soft: var(--surface-glass);
       --glass-tint-pillar: var(--surface-pillar);
       --glass-tint-raised: var(--surface-panel-raised);
