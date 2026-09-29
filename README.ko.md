@@ -37,6 +37,8 @@ fleet console
 
 `fleet console`을 실행하면 로컬 서버가 뜨고 접속 주소가 출력됩니다. 그 주소를 아무 브라우저에서나 여세요. Node.js 20.19 이상, 그리고 설치와 로그인을 마친 Claude Code가 필요합니다. 인자 없이 `fleet`만 실행하면 같은 AI Gateway를 거치는 Claude Code가 터미널에서 바로 열립니다.
 
+업데이트는 Console 화면이나 `fleet update`로 하세요. `npm update -g`는 npm에 남은 옛 버전으로 되돌립니다.
+
 프로젝트 폴더를 **Theater**로 추가하고, 캔버스를 우클릭해 첫 **Operation**을 띄우세요.
 
 ## 탭을 닫아도 살아 있는 세션

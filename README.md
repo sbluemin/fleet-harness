@@ -37,6 +37,8 @@ fleet console
 
 `fleet console` starts a local server and prints its address. Open that address in any browser. You need Node.js 20.19 or later and Claude Code installed and signed in. Running `fleet` on its own opens Claude Code in your terminal, routed through the same AI Gateway.
 
+Update from the Console or with `fleet update`. `npm update -g` rolls Fleet back to the old version left on npm.
+
 Add a project folder as a **Theater**, then right-click the canvas to launch your first **Operation**.
 
 ## Sessions that outlive the tab
