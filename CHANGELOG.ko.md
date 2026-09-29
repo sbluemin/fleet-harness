@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.202.2] - 2026-09-29
+
+### fleet-console
+
+#### Fixed
+- 최소화하거나 가려졌던 채팅 패널을 다시 열면 이전 대화를 처음부터 훑어 내려가지 않고, 이전 턴은 접힌 채 마지막 대화를 바로 보여 줍니다.
+
 ## [1.202.1] - 2026-09-29
 
 ### fleet-console

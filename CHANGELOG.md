@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.202.2] - 2026-09-29
+
+### fleet-console
+
+#### Fixed
+- Reopening a minimized or hidden chat panel now shows the latest exchange right away, with earlier turns folded, instead of scrolling down through the whole history.
+
 ## [1.202.1] - 2026-09-29
 
 ### fleet-console
