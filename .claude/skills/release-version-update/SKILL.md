@@ -7,7 +7,7 @@ description: Run a user-requested fleet-harness canary synchronization and Stabl
 
 Execute the requested release lifecycle. That request includes direct canary work and a validated fast-forward push from `origin/canary` to `main`. Reading this document or automatic skill selection alone does not authorize deployment.
 
-`.github/workflows/stable-release.yml` owns version calculation, workspace version synchronization, changelogs, release commit/tag, GitHub Release, Console release assets, npm, and app assets. Do not edit local versions/generated changelogs or substitute local tags, asset uploads, or npm publishing for CI. Console installs and self-updates read the latest GitHub Release, so never manually publish or mark as latest a Release that lacks the Console assets.
+`.github/workflows/stable-release.yml` owns version calculation, workspace version synchronization, changelogs, release commit/tag, GitHub Release, Console release assets, and app assets. Do not edit local versions/generated changelogs or substitute local tags or asset uploads for CI. Fleet Console is no longer published to npm; never publish it there manually. Console installs and self-updates read the latest GitHub Release, so never manually publish or mark as latest a Release that lacks the Console assets.
 
 ## Inputs and routes
 
@@ -22,7 +22,7 @@ No required inputs. If the user requests synchronization only, stop before deplo
 
 1. Start from the absolute path of the actual `canary` checkout. Preserve user changes and stop on a dirty tree. Never send a topic worktree's HEAD to `main`.
 2. Fetch `origin/canary`, `origin/main`, and tags. Fast-forward local canary. If public canary and main diverge, merge main into canary; never rebase/force-push. Preserve release-owned history/version and canary's unconsumed fragments/unique product work.
-3. For an empty range, verify the published tag/Release/npm and finish. For docs-only/ignored ranges, confirm with `release-tip-guard` and report that deployment will not trigger. Do not manufacture a release with dummy files or empty commits.
+3. For an empty range, verify the published tag/Release and finish. For docs-only/ignored ranges, confirm with `release-tip-guard` and report that deployment will not trigger. Do not manufacture a release with dummy files or empty commits.
 4. For real release inputs, run **full** `pnpm build`, `pnpm typecheck`, `pnpm test`, and fragment `--check --allow-empty` from canary. Full verification is a release gate. Fix failures narrowly on canary, commit/push, then repeat all four checks. Do not waive local verification because CI also runs.
 5. Recheck that current canary matches the verified SHA. If canary advanced, synchronize and verify the new tip. Push `origin/canary:main` only when clean, remote-matching, validated, and descended from main.
 6. Watch the Stable Release run matching the pushed SHA to completion. On failure, report job/run URL and stop. Failed-job retries are allowed; local tags/publishing or a new empty main commit are not substitutes.
@@ -30,6 +30,6 @@ No required inputs. If the user requests synchronization only, stop before deplo
 
 ## Completion and reporting
 
-Deployment is complete only after run success, required publish jobs, exactly one successful desktop build/carry path, release commit/tag, non-draft latest GitHub Release carrying the Console assets whose manifest names that version, and matching npm version. Verify canary contains that release commit too. Running jobs are not success.
+Deployment is complete only after run success, required publish jobs, exactly one successful desktop build/carry path, release commit/tag, non-draft latest GitHub Release carrying the Console assets whose manifest names that version. Verify canary contains that release commit too. Running jobs are not success.
 
-Report canary path, old/new SHAs, shipped range, consumed fragments/fragmentless commits, validation/fix SHAs, trigger gate, main pushed SHA/run URL, version/tag/Release URL/Console assets/npm/desktop outcome, and final ref relationships. Distinguish synchronization-only, nothing-to-ship, and failure from deployment success. The host synthesizes directly from verified git/CI evidence.
+Report canary path, old/new SHAs, shipped range, consumed fragments/fragmentless commits, validation/fix SHAs, trigger gate, main pushed SHA/run URL, version/tag/Release URL/Console assets/desktop outcome, and final ref relationships. Distinguish synchronization-only, nothing-to-ship, and failure from deployment success. The host synthesizes directly from verified git/CI evidence.
