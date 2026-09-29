@@ -1,6 +1,3 @@
-import { createHash } from "node:crypto";
-
-import benchmarksData from "../benchmarks.json" with { type: "json" };
 import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
@@ -79,83 +76,6 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
 const GATEWAY_CAPABILITY_CLASSES = ["flagship", "standard", "light"] as const;
 export type GatewayCapabilityClass = typeof GATEWAY_CAPABILITY_CLASSES[number];
 
-const GatewayBenchmarkScoreSchema = z.number().finite().nonnegative().max(100);
-
-const GatewayBenchmarkSourceSchema = z.object({
-  name: z.string().min(1),
-  benchVersion: z.string().min(1),
-  observedAt: z.iso.datetime(),
-  url: z.url(),
-  method: z.string().min(1),
-  license: z.string().min(1),
-  artifacts: z.array(z.object({
-    url: z.url(),
-    sha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
-  }).strict()).min(1),
-  metrics: z.record(z.string().min(1), z.object({
-    unit: z.string().min(1),
-    direction: z.enum(["higher", "lower"]),
-    role: z.enum(["quality", "context", "sample-size"]),
-  }).strict()),
-}).strict();
-
-const GatewayBenchmarkModelEntrySchema = z.object({
-  effort: z.enum(GATEWAY_REASONING_EFFORTS),
-  measurements: z.record(z.string().min(1), z.object({
-    model: z.string().min(1),
-    metrics: z.record(z.string().min(1), z.number().finite().nonnegative()),
-  }).strict()),
-  normalized: z.object({
-    score: GatewayBenchmarkScoreSchema,
-    sourceScores: z.record(z.string().min(1), GatewayBenchmarkScoreSchema),
-  }).strict(),
-}).strict();
-
-/**
- * 모든 소스의 지표와 동일 effort가 확인된 모델만 같은 코호트에서 정규화한다.
- * 누락된 측정값은 추정하지 않고 모델 전체를 제외하며 원문 라벨과 근거를 보존한다.
- * 소스 수집·effort 확인·갱신 절차는 ../benchmark-methodology.md를 따른다.
- */
-const GatewayBenchmarksRegistrySchema = z.object({
-  version: z.literal(3),
-  updatedAt: z.iso.datetime(),
-  normalization: z.object({
-    method: z.literal("cohort-min-max"),
-    sourceWeighting: z.literal("equal"),
-    missingData: z.literal("exclude-model"),
-    effortPolicy: z.literal("exact-match"),
-    // 소스가 발표한 통계적 유의성이 아니라 Fleet의 보수적 라우팅 정책이다.
-    tieBandPoints: z.literal(2),
-  }).strict(),
-  sources: z.record(z.string().min(1), GatewayBenchmarkSourceSchema),
-  models: z.record(z.string().min(1), GatewayBenchmarkModelEntrySchema),
-  excluded: z.record(z.string().min(1), z.object({ reason: z.string().min(1) }).strict()),
-  sourceAudit: z.record(z.string().min(1), z.object({
-    name: z.string().min(1),
-    url: z.url(),
-    status: z.literal("excluded"),
-    reason: z.string().min(1),
-  }).strict()),
-}).strict();
-
-export type GatewayBenchmarkFigures = {
-  readonly score: number;
-};
-
-export type GatewayModelBenchmark = {
-  readonly method: "cohort-min-max";
-  readonly cohortSize: number;
-  readonly effort: GatewayReasoningEffort;
-  readonly score: number;
-  readonly sourceScores: Readonly<Record<string, number>>;
-  readonly sources: readonly string[];
-  readonly observedAt: string;
-  readonly routingTieBandPoints: 2;
-  readonly caveat: string;
-};
-
-type GatewayBenchmarksRegistry = z.infer<typeof GatewayBenchmarksRegistrySchema>;
-
 const GatewayModelPricingSchema = z.object({
   inputCostPerToken: z.number().nonnegative(),
   outputCostPerToken: z.number().nonnegative(),
@@ -174,7 +94,6 @@ const GatewayModelEntrySchema = z.object({
   modelId: z.string().min(1),
   name: z.string().min(1),
   capabilityClass: z.enum(GATEWAY_CAPABILITY_CLASSES).optional(),
-  benchmarkKey: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
   /** A serving sibling with its own wire id names the catalog base separately. */
@@ -241,8 +160,6 @@ export interface GatewayModel {
   readonly wire?: GatewayModelWire;
   /** Provider-stated lineup positioning; absent only on routing aliases. */
   readonly capabilityClass?: GatewayCapabilityClass;
-  /** Third-party benchmark evidence keyed from benchmarks.json. */
-  readonly benchmark?: GatewayModelBenchmark;
   readonly description?: string;
   /** Authoritative input context window reported by the provider/reference catalog. */
   readonly contextWindow?: number;
@@ -257,98 +174,6 @@ export interface GatewayModel {
   readonly claudeAlias?: string;
 }
 
-
-const benchmarksRegistry = parseGatewayBenchmarksRegistry(benchmarksData);
-
-export function parseGatewayBenchmarksRegistry(value: unknown): GatewayBenchmarksRegistry {
-  const parsed = GatewayBenchmarksRegistrySchema.parse(value);
-  const sourceIds = Object.keys(parsed.sources);
-  const models = Object.entries(parsed.models);
-  if (sourceIds.length < 2 || models.length < 2) {
-    throw new Error("Gateway benchmark cohort requires at least two sources and two complete models");
-  }
-  for (const [sourceId, source] of Object.entries(parsed.sources)) {
-    if (Object.hasOwn(parsed.sourceAudit, sourceId)) {
-      throw new Error(`Gateway benchmark source overlaps excluded source audit: ${sourceId}`);
-    }
-    if (Object.values(source.metrics).filter((metric) => metric.role === "quality").length !== 1) {
-      throw new Error(`Gateway benchmark source requires exactly one quality metric: ${sourceId}`);
-    }
-  }
-  for (const [modelKey, entry] of models) {
-    if (Object.hasOwn(parsed.excluded, modelKey)) {
-      throw new Error(`Gateway benchmark model overlaps excluded models: ${modelKey}`);
-    }
-    for (const sourceId of Object.keys(entry.measurements)) {
-      if (!Object.hasOwn(parsed.sources, sourceId)) {
-        throw new Error(`Gateway benchmark model entry names an unknown source: ${modelKey} -> ${sourceId}`);
-      }
-    }
-    requireBenchmarkKeys(entry.measurements, sourceIds, `${modelKey} measurements`);
-    requireBenchmarkKeys(entry.normalized.sourceScores, sourceIds, `${modelKey} sourceScores`);
-    for (const sourceId of sourceIds) {
-      requireBenchmarkKeys(
-        entry.measurements[sourceId]!.metrics,
-        Object.keys(parsed.sources[sourceId]!.metrics),
-        `${modelKey}/${sourceId} metrics`,
-      );
-    }
-  }
-
-  // 모든 소스가 같은 완전 코호트를 사용하며 품질 이외의 지표는 점수에 섞지 않는다.
-  const recomputedScores = new Map<string, number[]>();
-  for (const sourceId of sourceIds) {
-    const source = parsed.sources[sourceId]!;
-    for (const [metricId, metric] of Object.entries(source.metrics)) {
-      if (metric.role !== "sample-size") continue;
-      const expected = models[0]![1].measurements[sourceId]!.metrics[metricId]!;
-      for (const [modelKey, entry] of models) {
-        const count = entry.measurements[sourceId]!.metrics[metricId]!;
-        if (!Number.isSafeInteger(count) || count <= 0 || count !== expected) {
-          throw new Error(`Gateway benchmark sample-size must be an equal positive integer across the cohort: ${modelKey}/${sourceId}/${metricId}`);
-        }
-      }
-    }
-    const [qualityId, quality] = Object.entries(source.metrics).find(([, metric]) => metric.role === "quality")!;
-    const values = models.map(([, entry]) => entry.measurements[sourceId]!.metrics[qualityId]!);
-    const min = values.reduce((minimum, value) => Math.min(minimum, value), Infinity);
-    const max = values.reduce((maximum, value) => Math.max(maximum, value), -Infinity);
-    for (const [index, [modelKey, entry]] of models.entries()) {
-      const value = values[index]!;
-      const score = roundBenchmarkScore(max === min ? 50 : 100 * (
-        quality.direction === "higher" ? (value - min) / (max - min) : (max - value) / (max - min)
-      ));
-      requireBenchmarkScore(entry.normalized.sourceScores[sourceId]!, score, `${modelKey}/${sourceId}`);
-      const scores = recomputedScores.get(modelKey) ?? [];
-      scores.push(score);
-      recomputedScores.set(modelKey, scores);
-    }
-  }
-  for (const [modelKey, entry] of models) {
-    const scores = recomputedScores.get(modelKey)!;
-    const score = roundBenchmarkScore(scores.reduce((sum, value) => sum + value, 0) / sourceIds.length);
-    requireBenchmarkScore(entry.normalized.score, score, modelKey);
-  }
-  return parsed;
-}
-
-function requireBenchmarkKeys(value: Record<string, unknown>, expected: readonly string[], label: string): void {
-  if (Object.keys(value).length !== expected.length || expected.some((key) => !Object.hasOwn(value, key))) {
-    throw new Error(`Gateway benchmark requires exact complete keys: ${label}`);
-  }
-}
-
-function roundBenchmarkScore(score: number): number {
-  return Math.round(score * 1_000_000) / 1_000_000;
-}
-
-function requireBenchmarkScore(stored: number, expected: number, label: string): void {
-  const floatingPointSlack = Number.EPSILON * Math.max(1, Math.abs(stored), Math.abs(expected));
-  if (Math.abs(stored - expected) > 1e-6 + floatingPointSlack) {
-    throw new Error(`Gateway benchmark normalized score differs from recomputed score: ${label}`);
-  }
-}
-
 const CLAUDE_PROVIDER_NAME = "Claude";
 
 /**
@@ -360,7 +185,7 @@ const CLAUDE_PROVIDER_NAME = "Claude";
 const CLAUDE_NATIVE_FAMILIES = [
   { alias: "fable", name: "Fable", capabilityClass: "flagship", oneMillion: true },
   { alias: "opus", name: "Opus", capabilityClass: "flagship", oneMillion: true },
-  { alias: "sonnet", name: "Sonnet", capabilityClass: "standard", oneMillion: false },
+  { alias: "sonnet", name: "Sonnet", capabilityClass: "standard", oneMillion: true },
   { alias: "haiku", name: "Haiku", capabilityClass: "light", oneMillion: false },
 ] as const satisfies readonly {
   readonly alias: string;
@@ -370,6 +195,7 @@ const CLAUDE_NATIVE_FAMILIES = [
 }[];
 const CLAUDE_DEFAULT_ALIAS = "sonnet";
 const CLAUDE_ONE_MILLION_CONTEXT_WINDOW = 1_000_000;
+const CLAUDE_ONE_MILLION_SUFFIX = /\[1m\]$/i;
 /** The ladder assumed until the CLI reports one. Haiku has never taken effort. */
 const CLAUDE_UNRESOLVED_EFFORT: Readonly<Record<string, readonly GatewayReasoningEffort[]>> = {
   fable: ["low", "medium", "high", "xhigh", "max"],
@@ -383,11 +209,7 @@ export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistr
   return parsed;
 }
 
-const registry = (() => {
-  const parsed = parseGatewayModelsRegistry(modelsData);
-  validateBenchmarkCoverage(parsed);
-  return parsed;
-})();
+const registry = parseGatewayModelsRegistry(modelsData);
 
 export const GATEWAY_MODELS_UPDATED_AT = registry.updatedAt;
 export const GATEWAY_MODEL_PRICING: Readonly<Record<string, GatewayModelPricing>> = Object.freeze(
@@ -398,11 +220,6 @@ export const GATEWAY_MODEL_PRICING: Readonly<Record<string, GatewayModelPricing>
     ]),
   ),
 );
-
-/** 측정값·정규화 정책·제외 근거까지 전체 스냅샷의 변경을 로스터 revision에 반영한다. */
-export const GATEWAY_BENCHMARKS_STAMP = `sha256:${createHash("sha256")
-  .update(JSON.stringify(benchmarksRegistry))
-  .digest("hex")}`;
 
 /** Human-readable provider names as declared by the model registry. */
 export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> = Object.freeze({
@@ -448,14 +265,15 @@ function buildGatewayModels(): readonly GatewayModel[] {
   const claude = CLAUDE_NATIVE_FAMILIES.flatMap((family) => {
     const resolution = claudeNativeResolutions.get(family.alias);
     const levels = resolution ? resolution.effortLevels : CLAUDE_UNRESOLVED_EFFORT[family.alias] ?? [];
+    const effort: GatewayModelEffort = levels.length > 0
+      ? Object.freeze({ supported: true as const, levels: Object.freeze([...levels]) })
+      : UNSUPPORTED_GATEWAY_MODEL_EFFORT;
     const base = {
       displayName: `${CLAUDE_PROVIDER_NAME}-${resolution?.displayName ?? family.name}`,
       provider: "claude" as const,
       ...(resolution ? { upstreamId: resolution.model } : {}),
       capabilityClass: family.capabilityClass,
-      effort: levels.length > 0
-        ? Object.freeze({ supported: true as const, levels: Object.freeze([...levels]) })
-        : UNSUPPORTED_GATEWAY_MODEL_EFFORT,
+      effort,
       claudeAlias: family.alias,
     };
     const entries: GatewayModel[] = [Object.freeze({
@@ -480,24 +298,29 @@ function buildGatewayModels(): readonly GatewayModel[] {
  * Pick each alias's latest version from the installed CLI's model picker.
  *
  * An alias row is authoritative: it is exactly what the CLI launches for that
- * alias. A family the picker lists only by explicit ids (Fable today) takes the
- * highest version among them, which is what the CLI's own alias resolves to.
+ * alias. The picker may list a family only by its 1M coordinate (Opus today) or
+ * only by explicit ids (Fable today); those take the highest version reported.
+ * The `default` row names the account's default family, not a family of its own.
+ * The wire id and label never carry the 1M marker — the 1M entry adds it back.
  */
 export function resolveClaudeNativeModels(rows: readonly ClaudeNativeModelRow[]): readonly ClaudeNativeResolution[] {
   return CLAUDE_NATIVE_FAMILIES.flatMap((family) => {
-    const aliasRow = rows.find((row) => row.value === family.alias && row.resolvedModel);
-    const row = aliasRow ?? rows
-      .filter((candidate) => candidate.resolvedModel && claudeFamilyVersion(candidate.resolvedModel, family.alias))
-      .sort((left, right) => compareVersions(
-        claudeFamilyVersion(right.resolvedModel!, family.alias)!,
-        claudeFamilyVersion(left.resolvedModel!, family.alias)!,
-      ))[0];
-    if (!row?.resolvedModel) return [];
+    const candidates = rows.flatMap((row) => {
+      if (row.value === "default" || !row.resolvedModel) return [];
+      const model = row.resolvedModel.replace(CLAUDE_ONE_MILLION_SUFFIX, "");
+      const version = claudeFamilyVersion(model, family.alias);
+      return version ? [{ row, model, version }] : [];
+    });
+    const aliasCandidate = candidates.find(({ row }) => row.value === family.alias)
+      ?? candidates.find(({ row }) => row.value === `${family.alias}[1m]`);
+    const picked = aliasCandidate
+      ?? [...candidates].sort((left, right) => compareVersions(right.version, left.version))[0];
+    if (!picked) return [];
     return [{
       alias: family.alias,
-      model: row.resolvedModel,
-      displayName: row.displayName,
-      effortLevels: row.effortLevels.filter(
+      model: picked.model,
+      displayName: `${family.name} ${picked.version.join(".")}`,
+      effortLevels: picked.row.effortLevels.filter(
         (level): level is GatewayReasoningEffort => ANTHROPIC_EFFORT_RUNGS.has(level as GatewayReasoningEffort),
       ),
     }];
@@ -596,14 +419,6 @@ export interface GatewayModelConstraints {
    * implies it. Absent on routing aliases.
    */
   readonly capabilityClass?: GatewayCapabilityClass;
-  /**
-   * Third-party measured evidence about the vendor model. Where present and
-   * fresh it outranks the capabilityClass prior for quality ordering, and
-   * capabilityClass stands where it is absent. Fleet treats a score gap within
-   * routingTieBandPoints as a routing tie; that band is Fleet's own policy, not
-   * a significance threshold published by the source.
-   */
-  readonly benchmark?: GatewayModelBenchmark;
 }
 
 export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelConstraints {
@@ -616,7 +431,6 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     effortLadder: Object.freeze([...ladder]),
     effortSupported: ladder.length > 0,
     ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
-    ...(model.benchmark && ladder.includes(model.benchmark.effort) ? { benchmark: model.benchmark } : {}),
   };
 }
 
@@ -702,34 +516,11 @@ function scopedModelId(provider: GatewayProvider, modelId: string): string {
   return `${provider}--${modelId}`;
 }
 
-function resolveGatewayModelBenchmark(
-  entry: GatewayModelEntry,
-  effort: GatewayModelEffort,
-  benchmarks: GatewayBenchmarksRegistry = benchmarksRegistry,
-): GatewayModelBenchmark | undefined {
-  if (!entry.benchmarkKey || !Object.hasOwn(benchmarks.models, entry.benchmarkKey)) return undefined;
-  const benchEntry = benchmarks.models[entry.benchmarkKey]!;
-  if (!effort.supported || !effort.levels.includes(benchEntry.effort)) return undefined;
-
-  return Object.freeze({
-    method: benchmarks.normalization.method,
-    cohortSize: Object.keys(benchmarks.models).length,
-    effort: benchEntry.effort,
-    score: benchEntry.normalized.score,
-    sourceScores: Object.freeze({ ...benchEntry.normalized.sourceScores }),
-    sources: Object.freeze(Object.values(benchmarks.sources).map((source) => `${source.name} ${source.benchVersion}`)),
-    observedAt: benchmarks.updatedAt,
-    routingTieBandPoints: benchmarks.normalization.tieBandPoints,
-    caveat: "A relative index within a cohort sharing the same source set, not absolute accuracy. Applies only to the measured effort and does not establish serving success.",
-  });
-}
-
 function toGatewayModel(
   provider: RegistryProvider,
   providerName: string,
   entry: GatewayModelEntry,
 ): GatewayModel {
-  const benchmark = resolveGatewayModelBenchmark(entry, freezeGatewayModelEffort(entry.effort));
   return {
     id: scopedModelId(provider, entry.modelId),
     displayName: `${providerName}-${entry.name}`,
@@ -738,7 +529,6 @@ function toGatewayModel(
     ...(entry.serviceTier ? { serviceTier: entry.serviceTier } : {}),
     ...(entry.wire ? { wire: entry.wire } : {}),
     ...(entry.capabilityClass ? { capabilityClass: entry.capabilityClass } : {}),
-    ...(benchmark ? { benchmark } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
@@ -750,47 +540,7 @@ function providerModels(provider: GatewayProvider): readonly GatewayModel[] {
   return Object.freeze(GATEWAY_MODELS.filter((model) => model.provider === provider));
 }
 
-export function validateBenchmarkCoverage(
-  value: GatewayModelsRegistry,
-  benchmarks: GatewayBenchmarksRegistry = benchmarksRegistry,
-): void {
-  const referencedBenchmarkKeys = new Set<string>();
-  for (const provider of REGISTRY_PROVIDERS) {
-    for (const model of value.providers[provider].models) {
-      validateBenchmarkJoin(provider, model, benchmarks);
-      if (model.benchmarkKey) referencedBenchmarkKeys.add(model.benchmarkKey);
-    }
-  }
-  for (const key of Object.keys(benchmarks.models)) {
-    if (!referencedBenchmarkKeys.has(key)) {
-      throw new Error(`Gateway benchmark entry is orphaned: ${key}`);
-    }
-  }
-}
-
-function validateBenchmarkJoin(
-  provider: RegistryProvider,
-  model: GatewayModelEntry,
-  benchmarks: GatewayBenchmarksRegistry,
-): void {
-  if (!model.benchmarkKey) return;
-  if (!Object.hasOwn(benchmarks.models, model.benchmarkKey)) {
-    throw new Error(`Gateway benchmark key is unknown: ${provider}/${model.modelId} -> ${model.benchmarkKey}`);
-  }
-  if (model.providerModelId === "default") {
-    throw new Error(`Gateway routing alias cannot carry a benchmark key: ${provider}/${model.modelId}`);
-  }
-  if (!resolveGatewayModelBenchmark(model, freezeGatewayModelEffort(model.effort), benchmarks)) {
-    throw new Error(`Gateway benchmark effort is not reachable: ${provider}/${model.modelId}`);
-  }
-}
-
 function validateRegistry(value: GatewayModelsRegistry): void {
-  for (const provider of REGISTRY_PROVIDERS) {
-    for (const model of value.providers[provider].models) {
-      validateBenchmarkJoin(provider, model, benchmarksRegistry);
-    }
-  }
   const lookupIds = new Set<string>();
   for (const family of CLAUDE_NATIVE_FAMILIES) {
     registerLookupId(lookupIds, family.alias, `claude/${family.alias}`);
@@ -847,9 +597,6 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         }
         if (base && base.capabilityClass !== model.capabilityClass) {
           throw new Error(`Gateway service-tier sibling class differs from its base: ${provider}/${model.modelId}`);
-        }
-        if (base && base.benchmarkKey !== model.benchmarkKey) {
-          throw new Error(`Gateway service-tier sibling benchmark key differs from its base: ${provider}/${model.modelId}`);
         }
       }
       if (model.serviceTier && !model.providerModelId) {

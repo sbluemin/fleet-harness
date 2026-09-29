@@ -1,13 +1,14 @@
 /** AI 판단 실패·미설정·Workflow stage에 사용하는 로컬 fallback 정책. 사용자 선택 방식이 아니다. */
 import { FLEET_EXECUTION_AGENT_TYPE } from "@fleet-console/agent-runtime/fleet";
 
-import type { GatewayModel, GatewayEffortExposure, GatewayProvider } from "../models.js";
+import type { GatewayModel, GatewayEffortExposure, GatewayProvider, GatewayReasoningEffort } from "../models.js";
 import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import type { GatewayQuotaSnapshot } from "./quota-snapshot.js";
 import { modelPressure } from "./routing-allowance.js";
 import {
   buildGatewayRoutingTable,
   routingTableIsEmpty,
+  TIER_EFFORT,
   toRoutingLabel,
   type GatewayRoutingCandidate,
   type GatewayRoutingTier,
@@ -50,6 +51,11 @@ function tierOf(request: GatewayAssignmentRequest): GatewayRoutingTier {
   // 읽기 전용으로 넓게 훑는 실행. 긴 컨텍스트를 쓰고 추론 깊이는 덜 쓴다고 스스로 말한다.
   if (request.subagentType === "Explore") return "scan";
   return "work";
+}
+
+/** 이 요청의 등급이 바라는 강도. 난이도 판단이 없을 때 AI 판단 경로도 이 값으로 물러선다. */
+export function requestTierEffort(request: GatewayAssignmentRequest): GatewayReasoningEffort {
+  return TIER_EFFORT[tierOf(request)];
 }
 
 /** 호스트가 실제로 무엇을 말했는지, 판에 적을 만큼 짧게. */
@@ -139,33 +145,35 @@ interface Seat {
 }
 
 /**
- * 허용량이 허락하는 후보 중에서 지금 가장 덜 쓴 공급자를 고른다.
+ * 허용량이 허락하는 후보 중에서 고른다. 쿼터가 1순위다.
  *
- * 사용자가 소진 순서를 정해 뒀으면 그 순서가 이긴다 — 균등 분배를 사용자 의도로 대체하는
- * 것이 그 설정의 뜻이고, 압박 예측도 그 앞에서는 양보한다. 정하지 않았을 때만 회전한다.
+ * `critical`인 공급자는 모든 대안이 더 나쁠 때만 간다 — 사용자가 정한 소진 순서도 그 앞에서
+ * 양보한다. 순서를 정해 둔 사용자는 공급자를 고르는 순서를 정한 것이지, 바닥난 공급자로
+ * 위임을 보내라고 한 것이 아니다. 전부 critical이면 위임을 죽이는 것보다 낫다.
  *
- * 회전은 카운터가 아니라 **부하 최솟값**으로 한다. 커서를 돌리면 중간에 한 공급자가 막혔을
- * 때 그 자리를 건너뛴 만큼 균형이 영구히 어긋나지만, 최솟값은 그 다음 배정에서 스스로
- * 되돌아온다. 같은 부하면 목록 순서가 가른다 — 그래야 같은 상태에서 같은 답이 나온다.
+ * 남은 후보 안에서는 소진 순서가 있으면 그 머리를, 없으면 부하 최솟값으로 회전한다.
+ * 커서를 돌리면 중간에 한 공급자가 막혔을 때 그 자리를 건너뛴 만큼 균형이 영구히 어긋나지만,
+ * 최솟값은 그 다음 배정에서 스스로 되돌아온다. 같은 부하면 목록 순서가 가른다 — 그래야 같은
+ * 상태에서 같은 답이 나온다.
  */
 export function pickSeat(
   reachable: readonly GatewayRoutingCandidate[],
   exposure: GatewayAssignmentExposure,
 ): Seat {
-  if (exposure.providerPriority !== undefined && exposure.providerPriority.length > 0) {
-    // 목록은 이미 그 순서로 정렬돼 있다. 머리가 곧 가장 먼저 쓸 공급자다.
-    return { model: reachable[0] as GatewayRoutingCandidate, suffix: " · spend order" };
-  }
-  if (exposure.providerLoad === undefined) {
-    return { model: reachable[0] as GatewayRoutingCandidate, suffix: "" };
-  }
-  const scored = reachable.map((candidate, index) => {
-    const pressure = modelPressure(exposure.quota?.[candidate.provider]);
-    return { candidate, index, pressure };
-  });
-  // `critical`은 모든 대안이 더 나쁠 때만 간다. 전부 critical이면 위임을 죽이는 것보다 낫다.
+  const scored = reachable.map((candidate) => ({
+    candidate,
+    pressure: modelPressure(exposure.quota?.[candidate.provider]),
+  }));
   const usable = scored.filter((entry) => entry.pressure !== "critical");
   const pool = usable.length > 0 ? usable : scored;
+  const critical = usable.length === 0 ? " · every allowance is critical" : "";
+  if (exposure.providerPriority !== undefined && exposure.providerPriority.length > 0) {
+    // 목록은 이미 그 순서로 정렬돼 있다. 남은 것의 머리가 곧 가장 먼저 쓸 공급자다.
+    return { model: (pool[0] as (typeof pool)[number]).candidate, suffix: ` · spend order${critical}` };
+  }
+  if (exposure.providerLoad === undefined) {
+    return { model: (pool[0] as (typeof pool)[number]).candidate, suffix: critical };
+  }
   let best: (typeof pool)[number] | undefined;
   let bestLoad = Number.POSITIVE_INFINITY;
   for (const entry of pool) {
@@ -179,11 +187,5 @@ export function pickSeat(
       bestLoad = load;
     }
   }
-  const chosen = best ?? pool[0] as (typeof pool)[number];
-  const suffix = usable.length === 0
-    ? " · every allowance is critical"
-    : chosen.pressure === "critical"
-      ? " · critical"
-      : "";
-  return { model: chosen.candidate, suffix };
+  return { model: (best ?? pool[0] as (typeof pool)[number]).candidate, suffix: critical };
 }

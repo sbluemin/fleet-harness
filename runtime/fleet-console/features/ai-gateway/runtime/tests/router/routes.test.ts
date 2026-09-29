@@ -155,7 +155,7 @@ describe("delegation assignment", () => {
       seen.push(state.gateway_models.recentAssignments.providers.codex.assignments);
       calls++;
       if (calls === 1) await barrier;
-      return Object.keys(criteria).find(key => criteria[key].includes("codex"))!;
+      return { seat: Object.keys(criteria).find(key => criteria[key].includes("codex"))! };
     });
     const options = { choose, refreshExposure: () => current };
     const first = decideGatewayRoutingAssignmentWithJev({ surface: "agent" }, current, options);
@@ -319,19 +319,23 @@ describe("delegation assignment", () => {
   });
 
   it("proxies native Claude requests to Anthropic with caller credentials and without alias advertisement", async () => {
-    // 설치된 CLI의 표에는 구버전 명시 id도 섞여 온다. alias는 그중 최신으로만 풀려야 한다.
+    // Claude Code 2.1.284가 실제로 보고한 표 모양이다. Opus는 1M 좌표로만 오고 구버전 명시 id도 섞인다.
+    // alias는 그중 최신으로만 풀리고, API로 가는 id에는 1M 표식이 남지 않아야 한다.
+    const ladder = ["low", "medium", "high", "xhigh", "max"];
     const ensureClaudeNativeModels = vi.fn(async () => {
       applyClaudeNativeModels([
-        { value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus 5.5", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
-        { value: "claude-opus-5", resolvedModel: "claude-opus-5", displayName: "Opus 5", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
-        { value: "sonnet", resolvedModel: "claude-sonnet-5", displayName: "Sonnet 5", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
+        { value: "default", resolvedModel: "claude-opus-5-5[1m]", displayName: "Default (recommended)", effortLevels: ladder },
+        { value: "opus[1m]", resolvedModel: "claude-opus-5-5[1m]", displayName: "Opus (1M context)", effortLevels: ladder },
+        { value: "claude-opus-5[1m]", resolvedModel: "claude-opus-5[1m]", displayName: "Opus 5", effortLevels: ladder },
+        { value: "sonnet", resolvedModel: "claude-sonnet-5-5", displayName: "Sonnet", effortLevels: ladder },
+        { value: "sonnet[1m]", resolvedModel: "claude-sonnet-5-5[1m]", displayName: "Sonnet 5.5 (1M context)", effortLevels: ladder },
       ]);
     });
     const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       expect(String(url)).toBe("https://api.anthropic.com/v1/messages");
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
-      expect(JSON.parse(String(init?.body)).model).toBe("claude-sonnet-5");
+      expect(JSON.parse(String(init?.body)).model).toBe("claude-sonnet-5-5");
       return new Response(JSON.stringify({ id: "msg_1", type: "message", role: "assistant", content: [] }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -439,9 +443,13 @@ describe("delegation assignment", () => {
         expect(body.state.gateway_models.models[0]).toMatchObject({ preferenceRank: 1, quotaPool: "codex:shared" });
         expect(body.state.gateway_models.quotaPools["xai:shared"]).toEqual({ observation: "unknown" });
         expect(body.state).not.toHaveProperty("candidates");
+        // 좌석은 모델만 고르고, 강도는 xhigh를 상한으로 하는 난이도 질문이 정한다.
+        expect(Object.keys(body.questions.difficulty.criteria)).toEqual(["low", "medium", "high", "xhigh"]);
+        expect(Object.values(jevCriteria as Record<string, string>).some((value) => value.includes("effort"))).toBe(false);
         return new Response(JSON.stringify({
         model: "jev-latest",
         answers: {
+          difficulty: { type: "choice", choice: "high" },
           seat: {
             type: "choice",
             choice: xaiChoice,
@@ -465,10 +473,25 @@ describe("delegation assignment", () => {
       expect(instructions).toEqual(jevInstructions);
       expect(criteria).toEqual(jevCriteria);
       expect(criteria[xaiChoice]).toContain("claude-gateway--xai--grok-composer-2.5-fast");
-      return xaiChoice;
+      return { seat: xaiChoice };
     } });
     expect(aiPicked.model).toBe(picked.model);
     expect(aiPicked.because).toContain("AI model");
+
+    // 난이도는 고른 모델의 사다리 위에서 강도가 된다. 난이도가 없으면 등급 강도(work → medium)로 물러선다.
+    const rated = await decideGatewayRoutingAssignmentWithJev(request, {
+      ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
+    }, { choose: async ({ criteria }) => ({
+      seat: Object.keys(criteria).find((key) => criteria[key]!.includes("--codex--"))!, difficulty: "high",
+    }) });
+    expect(rated).toMatchObject({ model: "claude-gateway--codex--gpt-5.6-terra", effort: "high" });
+    expect(rated.because).toContain("difficulty high");
+    const unrated = await decideGatewayRoutingAssignmentWithJev(request, {
+      ...jevExposure, delegationRoutingMode: "model", providerLoad: new Map(),
+    }, { choose: async ({ criteria }) => ({
+      seat: Object.keys(criteria).find((key) => criteria[key]!.includes("--codex--"))!, difficulty: "max",
+    }) });
+    expect(unrated.effort).toBe("medium");
 
     const unsigned = new SystemOneClient({
       readApiKey: async () => undefined,
@@ -507,7 +530,7 @@ describe("delegation assignment", () => {
         client: new SystemOneClient({
           readApiKey: async () => "tsv_test", maxAttempts: 1,
           fetch: async () => new Response(JSON.stringify({
-            answers: { seat: { type: "choice", choice: xaiChoice, ...metadata } },
+            answers: { difficulty: { type: "choice", choice: "low" }, seat: { type: "choice", choice: xaiChoice, ...metadata } },
           })),
         }),
       });
@@ -520,7 +543,7 @@ describe("delegation assignment", () => {
       client: new SystemOneClient({
         readApiKey: async () => "tsv_test", maxAttempts: 1,
         fetch: async () => new Response(JSON.stringify({
-          answers: { seat: { type: "choice", choice: "not-offered" } },
+          answers: { difficulty: { type: "choice", choice: "low" }, seat: { type: "choice", choice: "not-offered" } },
         })),
       }),
     });
@@ -576,7 +599,7 @@ describe("delegation assignment", () => {
       const decision = await decideGatewayRoutingAssignmentWithJev({ surface: "agent", prompt: "review authentication" }, {
         delegationRoutingEnabled: true, delegationRoutingMode: "model", quota,
         delegationModels: [requireGatewayModel("codex--gpt-5.6-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
-      }, { choose: async ({ state }) => { data = (state as Record<string, unknown>).gateway_models; return "c0"; } });
+      }, { choose: async ({ state }) => { data = (state as Record<string, unknown>).gateway_models; return { seat: "c0" }; } });
       expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
       return data;
     };
@@ -635,7 +658,7 @@ describe("delegation assignment", () => {
     expect(providerLoad.get("codex")).toBe(1);
   });
 
-  it("preserves deterministic spend order with providerPriority even under critical quota", () => {
+  it("puts quota ahead of the spend order: a critical provider yields unless every one is critical", () => {
     const reachable = [
       {
         model: "claude-gateway--codex--gpt-5.6-terra",
@@ -663,12 +686,18 @@ describe("delegation assignment", () => {
       },
     };
 
-    // 결정론 pickSeat: 소진 순서가 압박 예측을 이겨 critical인 codex를 그대로 집는다.
+    // 쿼터가 1순위다. 소진 순서의 머리라도 critical인 codex는 건너뛴다.
     const seat = pickSeat(reachable, exposure);
-    expect(seat.model.provider).toBe("codex");
+    expect(seat.model.provider).toBe("xai");
     expect(seat.suffix).toBe(" · spend order");
 
-
+    // 전부 critical이면 위임을 죽이지 않고 소진 순서대로 간다.
+    const allCritical = pickSeat(reachable, {
+      ...exposure,
+      quota: { ...exposure.quota, xai: { status: "ok", windows: [{ id: "monthly", usedPercent: 100 }] } },
+    });
+    expect(allCritical.model.provider).toBe("codex");
+    expect(allCritical.suffix).toBe(" · spend order · every allowance is critical");
   });
 
   it("spreads provider load across concurrent Jev assignments resolving at the same barrier", async () => {
