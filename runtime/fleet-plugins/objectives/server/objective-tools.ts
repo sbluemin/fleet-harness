@@ -10,7 +10,6 @@ import { resultInputSchema, resultPatchSchema, RESULT_LIMITS } from "./results.j
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { criterionProposalSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
-import { memberRatingsSchema, MAX_RATING_NOTE, pastRoles, type MemberRating } from "./roles.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
 
 /**
@@ -38,9 +37,6 @@ const FOLLOWUP_ANYTIME = "Follow-up candidates can be placed on the objective at
 /** read·mine 설명의 한 줄 — 결정 요청과 결정이 보드에 있다는 사실. */
 const DECISIONS_ON_BOARD = "Sessions launched for an objective start without AskUserQuestion; a session that was already running when it joined keeps the tools it was launched with until it next starts, and an AskUserQuestion prompt shows only in that session's own panel. The board holds the current decisionRequest and decisionRequestRevision, and decisions: the person's answers recorded after successful delivery, each with the question, the labels of the options chosen (selected) and any words written (text). Only the person's board submissions create decision records; there is no model write tool for them, the Commander and members read them, and they survive reruns. The person may not be watching the Commander's panel text. Reading does not clear a request or change a decision.";
 const DECISION_DELIVERING = "The person's answers have been accepted, but delivery and recording are not yet finalized. The current request cannot be replaced or withdrawn.";
-/** read·mine 설명의 한 줄 — 빈 명단의 지휘관 보기에 실리는 지난 역할. */
-const PAST_ROLES = "While the roster is empty, the Commander's view also holds pastRoles: the roles members filled in this Theater's other objectives, with how many objectives and missions each took and the ratings Commanders left at hand-off, as the person has curated them; titles, records, briefs and models of other objectives are not included.";
-const RATINGS_FORMAT = `ratings is optional: members to rate, each {member: roster id or role, rating: well or short, note: one line of at most ${MAX_RATING_NOTE} characters, as: the role name this member's work is filed under in pastRoles, defaulting to its role}.`;
 const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS} {point, because} and fellShort: 1–${MAX_RETRO_PAIRS} {point, ifOnly}, each field one line of at most ${MAX_RETRO_TEXT} characters.`;
 
 /** request_decision 이 사람의 답을 기다리는 최대 시간. 그 뒤의 답은 프롬프트로 간다. */
@@ -91,20 +87,13 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     return byRole[0].id;
   };
   /**
-   * 지휘관이 제 목표를 읽었다 — 그 뒤의 계획·충족 판단은 사람의 변경을 다시 막지 않는다. 명단이 비어 있는 동안(구상에서
-   * 구성원을 제안할 수 있는 때) 지휘관 보기에 이 Theater 의 지난 역할이 함께 실린다. 숨긴 역할은 빠진다.
+   * 지휘관이 제 목표를 읽었다 — 그 뒤의 계획·충족 판단은 사람의 변경을 다시 막지 않는다.
    */
   const readView = (objective: Objective, caller: ConsoleCaller | undefined) => {
     if (roleIn(objective, caller)?.role !== "commander") return objectiveView(objective);
     const read = store.setEdited(objective.id, null);
     renumber(read);
-    const view = objectiveView(read);
-    if (objective.members.length > 0 || objective.done) return view;
-    const roles = pastRoles(store.list(objective.theaterId), store.roleCuration(objective.theaterId), { exclude: objective.id });
-    if (roles.length === 0) return view;
-    return { ...view, pastRoles: roles.map((role) => ({ role: role.role, ...(role.aliases.length ? { aliases: role.aliases } : {}), objectives: role.objectives, members: role.members,
-      ...(role.maxParallel > 1 ? { maxParallel: role.maxParallel } : {}), missions: `${role.missions.done}/${role.missions.assigned}`,
-      ...(role.well || role.short ? { ratings: { well: role.well, short: role.short }, notes: role.notes } : {}) })) };
+    return objectiveView(read);
   };
 
   const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, caller: ConsoleCaller | undefined, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> | unknown): PluginMcpTool => ({
@@ -127,7 +116,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     });
 
   return [
-    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's evidence directory, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} ${PAST_ROLES} At hand-off the Commander asks members for a retrospective.`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's evidence directory, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective.`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findMember(caller.operationId);
       if (assigned) {
@@ -143,7 +132,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!own) return refuse("not_participant");
       return text({ role: "commander", objectiveId: own.id, objective: readView(own, caller) });
     }),
-    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order as of the Commander's latest read (read or mine) or plan; the Commander's n keep pointing at those missions while it writes, missions it adds take the next numbers, and its next read renumbers them. missionIds never change. Tools that change the board return only what they created, not the board. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} ${PAST_ROLES}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
+    tool("read", `The objective as it stands: the person's brief and attached image paths, the roster, missions with prerequisites, readiness, member and latest record, and the success criteria. Mission numbers n count from 1 in lineup order as of the Commander's latest read (read or mine) or plan; the Commander's n keep pointing at those missions while it writes, missions it adds take the next numbers, and its next read renumbers them. missionIds never change. Tools that change the board return only what they created, not the board. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME}`, z.object({ objectiveId: ids }).strict(), ({ objectiveId }, caller) => {
       const objective = find(objectiveId);
       if (!roleIn(objective, caller)) return refuse("not_participant");
       return text({ objective: readView(objective, caller) });
@@ -264,25 +253,17 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         return text({ ok: true, id: args.withdraw!.id });
       }),
     // 회고 형식이 어긋나면 invalid_arguments 대신 형식을 말하는 거절로 — 입력 스키마는 모델에게 온전한 모양을 보인다.
-    { ...commanderTool("hand_off", `Hand an objective awaiting hand-off to the person's review with a retrospective: the Commander's synthesis of the members' retrospectives and its own. ${RETROSPECTIVE_FORMAT} because and ifOnly point at instructions, skills, tools or approaches; whoever maintains those reads each pair on its own, without this objective's context. The retrospective stays on the objective as a record and does not become work. ${RATINGS_FORMAT} Later Commanders of this Theater staff their objectives from these ratings through pastRoles, and the person sees them on the hand-off record. A hand-off does not depend on the number of follow-up candidates. Refused as not_awaiting_handoff, with the open mission and unmet criterion numbers, unless every mission is done, every criterion is met and it has not been handed off; a hand-off on a board the person has since edited is refused as board_changed.`,
-      z.object({ objectiveId: ids, retrospective: z.unknown(), ratings: z.unknown().optional() }).strict(),
+    { ...commanderTool("hand_off", `Hand an objective awaiting hand-off to the person's review with a retrospective: the Commander's synthesis of the members' retrospectives and its own. ${RETROSPECTIVE_FORMAT} because and ifOnly point at instructions, skills, tools or approaches; whoever maintains those reads each pair on its own, without this objective's context. The retrospective stays on the objective as a record and does not become work. A hand-off does not depend on the number of follow-up candidates. Refused as not_awaiting_handoff, with the open mission and unmet criterion numbers, unless every mission is done, every criterion is met and it has not been handed off; a hand-off on a board the person has since edited is refused as board_changed.`,
+      z.object({ objectiveId: ids, retrospective: z.unknown() }).strict(),
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
         if (!objective.awaitingHandoff) return refuse("not_awaiting_handoff", notAwaitingHandoff(objective, numbered.get(objective.id) ?? []));
         const retrospective = retrospectiveSchema.safeParse(args.retrospective);
         if (!retrospective.success) return refuse("retrospective_format", { hint: RETROSPECTIVE_FORMAT });
-        const input = memberRatingsSchema.safeParse(args.ratings ?? []);
-        if (!input.success) return refuse("ratings_format", { hint: RATINGS_FORMAT });
-        const ratings: MemberRating[] = [];
-        for (const entry of input.data) {
-          const member = objective.members.find((candidate) => candidate.id === resolveMember(objective, entry.member))!;
-          if (ratings.some((rated) => rated.memberId === member.id)) return refuse("ratings_format", { hint: "Each member is rated at most once." });
-          ratings.push({ memberId: member.id, role: member.role, rating: entry.rating, note: entry.note, ...(entry.as && entry.as !== member.role ? { as: entry.as } : {}) });
-        }
-        store.handOff(objective.id, { by: "commander", retrospective: retrospective.data, ratings });
+        store.handOff(objective.id, { by: "commander", retrospective: retrospective.data });
         return text({ ok: true });
-      }), inputSchema: z.toJSONSchema(z.object({ objectiveId: ids, retrospective: retrospectiveSchema, ratings: memberRatingsSchema.optional() }).strict()) },
+      }), inputSchema: z.toJSONSchema(z.object({ objectiveId: ids, retrospective: retrospectiveSchema }).strict()) },
     commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. That line is text; PRs and files the person can open are results attached through attach_result. Once every mission is done and every criterion is met, the objective awaits hand-off; it reaches the person's review only when handed off, and the person completes it. New or reopened missions and the person's edits clear every mark and any hand-off. A mark made on a board the person has since edited is refused as board_changed.",
       z.object({ objectiveId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_EVIDENCE).optional() }).strict(),
       (args, objective) => {
@@ -325,7 +306,7 @@ export function handoffPrompt(objective: Objective): string {
     "Every mission is done and every criterion is met: the objective awaits hand-off, and it reaches the person's review only through hand_off.",
     `Only follow-up candidates carry beyond this objective; mission records and messages end with it, so a finding that is not a candidate reaches no later objective. ${handoffInventory(objective)} A hand-off with no follow-up candidates is valid.`,
     members
-      ? "The hand-off step: the Commander requests each member's retrospective by SendMessage, gathers them, and synthesizes them with its own into the retrospective that hand_off carries; hand_off can also rate each member (ratings). SendMessage reaches only live sessions; muster brings dormant members back."
+      ? "The hand-off step: the Commander requests each member's retrospective by SendMessage, gathers them, and synthesizes them with its own into the retrospective that hand_off carries. SendMessage reaches only live sessions; muster brings dormant members back."
       : "The hand-off step: the Commander writes the retrospective that hand_off carries.",
   ].join("\n\n");
 }

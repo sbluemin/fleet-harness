@@ -1325,47 +1325,6 @@ describe("Objectives contract", () => {
     expect(store.find(as)!.criteriaProposals).toEqual([]); // 대상 기준 삭제와 제안 삭제는 같은 보드 변경이다.
   });
 
-  it("hands a later Commander this Theater's past roles and hand-off ratings as the person curates them, without other objectives' titles, briefs, records or models", async () => {
-    const { store, call, route, launch, objectivesDir } = harness();
-    const past = (await launch.create({ theaterId: "t1", title: "Secret title", groupId: null })).id;
-    await launch.requestPlan(past);
-    store.setPlanning(past, true);
-    await call("plan", { objectiveId: past, missions: [{ text: "look", member: "Researcher" }, { text: "draft a", member: "Drafter A" }, { text: "draft b", member: "Drafter B" }], members: [{ role: "Researcher", brief: "private brief" }, { role: "Drafter A" }, { role: "Drafter B" }] }, past);
-    store.setPlanning(past, false);
-    const [researcher] = store.find(past)!.members;
-    await route("member/patch", { objectiveId: past, memberId: researcher!.id, patch: { launch: { mode: "model", model: "secret-model" } } });
-    for (const n of [1, 2, 3]) await call("complete_mission", { objectiveId: past, n, summary: ["private record"] }, past);
-    await call("read", { objectiveId: past }, past);
-    const retrospective = { wentWell: [{ point: "p", because: "b" }], fellShort: [{ point: "p", ifOnly: "i" }] };
-    const handOff = async (ratings: unknown) => (await call("hand_off", { objectiveId: past, retrospective, ratings }, past)).structuredContent;
-    expect((await handOff([{ member: "Researcher", rating: "great", note: "n" }])).error).toBe("ratings_format");
-    expect((await handOff([{ member: "Researcher", rating: "well", note: "n" }, { member: researcher!.id, rating: "short", note: "n" }])).error).toBe("ratings_format");
-    expect((await handOff([{ member: "Researcher", rating: "well", note: "found the cause" }, { member: "Drafter A", rating: "short", note: "missed a case", as: "Drafter" }, { member: "Drafter B", rating: "well", note: "clear options", as: "Drafter" }])).ok).toBe(true);
-    expect(store.find(past)!.handoff!.ratings).toMatchObject([{ role: "Researcher", rating: "well" }, { role: "Drafter A", as: "Drafter", rating: "short" }, { role: "Drafter B", as: "Drafter" }]);
-    // 다음 목표의 지휘관은 명단이 비어 있는 동안 역할 이름·숫자·평가 한 줄만 받는다.
-    const next = (await launch.create({ theaterId: "t1", title: "Next", groupId: null })).id;
-    const pastRolesOf = async () => ((await call("read", { objectiveId: next }, next)).structuredContent.objective as { pastRoles?: unknown }).pastRoles;
-    const roles = await pastRolesOf();
-    expect(roles).toEqual([
-      { role: "Researcher", objectives: 1, members: 1, missions: "1/1", ratings: { well: 1, short: 0 }, notes: [{ rating: "well", note: "found the cause" }] },
-      { role: "Drafter", aliases: ["Drafter A", "Drafter B"], objectives: 1, members: 2, maxParallel: 2, missions: "2/2", ratings: { well: 1, short: 1 }, notes: [{ rating: "short", note: "missed a case" }, { rating: "well", note: "clear options" }] },
-    ]);
-    expect(JSON.stringify(roles)).not.toMatch(/Secret title|private brief|private record|secret-model/);
-    expect(((await call("read", { objectiveId: past }, past)).structuredContent.objective as { pastRoles?: unknown }).pastRoles).toBeUndefined();
-    // 사람의 정리 — 숨긴 역할은 지휘관 보기에서 빠지고, 합침은 고리를 만들지 않으며, 정리는 목표가 아닌 Theater 파일에 남는다.
-    expect((await route("roles/curate", { theaterId: "t1", action: { kind: "merge", role: "Drafter", into: "Researcher" } })).status).toBe(200);
-    expect((await route("roles/curate", { theaterId: "t1", action: { kind: "merge", role: "Researcher", into: "Drafter" } })).value.error).toBe("role_merge_cycle");
-    expect(await pastRolesOf()).toMatchObject([{ role: "Researcher", aliases: ["Drafter", "Drafter A", "Drafter B"], members: 3, ratings: { well: 2, short: 1 } }]);
-    await route("roles/curate", { theaterId: "t1", action: { kind: "hide", role: "Researcher" } });
-    expect(await pastRolesOf()).toBeUndefined();
-    expect(JSON.parse(fs.readFileSync(path.join(objectivesDir, "roles.json"), "utf8"))).toEqual({ hidden: ["Researcher"], merged: { Drafter: "Researcher" } });
-    expect(store.list("t1").map((objective) => objective.id).sort()).toEqual([next, past].sort());
-    // 같은 역할 이름의 구성원이 둘이면 역할 이름으로 가리킨 임무를 첫 번째에게 몰지 않고 거절한다.
-    await launch.requestPlan(next);
-    store.setPlanning(next, true);
-    expect((await call("plan", { objectiveId: next, missions: [{ text: "a", member: "Drafter" }], members: [{ role: "Drafter" }, { role: "Drafter" }] }, next)).structuredContent.error).toBe("ambiguous_member");
-  });
-
   it("admits observable follow-ups and creates records once after hand-off without launching their Operations", async () => {
     const { store, route, call, launch, launches, operations, savedObjective } = harness();
     const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });

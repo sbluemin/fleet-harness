@@ -8,7 +8,6 @@ import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import { commanderMode, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting, type MessageRecipient } from "./action-band.js";
 import { DecisionGlyph, DecisionList, DecisionRequestBlock, RequestGlyph } from "./decisions.js";
-import { PastRoles } from "./past-roles.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ObjectiveResults, ResultsGlyph, ResultsHeadTools } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
@@ -1250,7 +1249,6 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         <input aria-label={t("objectives.members.add")} placeholder={t("objectives.members.add")} maxLength={40} onKeyDown={(event) => { if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget; const role = target.value.trim(); target.value = ""; void call("/member/add", { objectiveId: objective.id, member: { role } }); } }} />
       </div>
     ) : null}
-    <PastRoles objective={objective} t={t} call={call} touchable={touchable} />
     </div>
     <p className="objectives-sr" aria-live="polite">{announce}</p>
   </div>;
@@ -2279,7 +2277,6 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
             by={objective.handoff.by}
             good={objective.handoff.retrospective?.wentWell.map((pair) => ({ text: pair.point, aside: pair.because })) ?? []}
             regret={objective.handoff.retrospective?.fellShort.map((pair) => ({ text: pair.point, aside: pair.ifOnly })) ?? []}
-            ratings={objective.handoff.ratings ?? []}
           />
         </div>
       </div>
