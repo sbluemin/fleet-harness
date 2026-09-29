@@ -14312,8 +14312,8 @@ body[data-codex-side="true"] .command-card {
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     linear-gradient(
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
+      var(--glass-tint-expanded),
+      var(--glass-tint-expanded)
     ),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -15110,8 +15110,8 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     linear-gradient(
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
+      var(--glass-tint-expanded),
+      var(--glass-tint-expanded)
     ),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);

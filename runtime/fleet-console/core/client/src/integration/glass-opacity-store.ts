@@ -9,19 +9,29 @@ import { useSyncExternalStore } from "react";
    theme.css의 유리 재료(`--glass-on-tint-*`)가 :root에서 이 변수를 알파 자리에 치환하므로,
    다른 요소에 실으면 이미 폴백이 박힌 값만 상속된다. 사람이 한 번도 만지지 않은 묶음은
    변수를 싣지 않는다 — 재료의 폴백이 테마별 현행 알파라 기본 화면이 정확히 오늘 그대로다.
-   아래 DEFAULT는 슬라이더가 보여 줄 기본 테마(Instrument)의 현행 값이다.
+   아래 표는 그 폴백을 테마별로 옮겨 적은 것이다(theme.css의 `var(--glass-<group>-alpha, N%)`와
+   수동 동기화). 슬라이더의 표시·기본·초기화 값이 이 표를 읽어야 첫 조작에서 화면이 튀지 않는다.
 
    키는 public/theme-boot.js의 퇴역 스위치 이관(꺼 둔 사람 → 100%)과 수동 동기화한다. */
 export type GlassGroup = "window" | "bar" | "side-bar" | "rail";
 
 export const GLASS_OPACITY_MIN = 20;
 export const GLASS_OPACITY_MAX = 100;
-export const GLASS_OPACITY_DEFAULTS: Readonly<Record<GlassGroup, number>> = {
-  window: 60,
-  bar: 55,
-  "side-bar": 50,
-  rail: 54,
+const INSTRUMENT_DEFAULTS: Readonly<Record<GlassGroup, number>> = { window: 60, bar: 55, "side-bar": 50, rail: 54 };
+const DEEP_DEFAULTS: Readonly<Record<GlassGroup, number>> = { window: 60, bar: 50, "side-bar": 45, rail: 50 };
+const THEME_DEFAULTS: Readonly<Record<string, Readonly<Record<GlassGroup, number>>>> = {
+  maritime: DEEP_DEFAULTS,
+  carbon: DEEP_DEFAULTS,
 };
+
+function currentTheme(): string {
+  return typeof document === "undefined" ? "" : document.documentElement.getAttribute("data-theme") ?? "";
+}
+
+/** 테마가 폴백으로 쓰는 현행 알파 — 모르는 테마(라이트 포함)는 기본 테마 값이다. */
+export function glassOpacityDefault(group: GlassGroup, theme: string = currentTheme()): number {
+  return (THEME_DEFAULTS[theme] ?? INSTRUMENT_DEFAULTS)[group];
+}
 
 const GROUPS: readonly GlassGroup[] = ["window", "bar", "side-bar", "rail"];
 /* 구 척도(재질 한 겹 전체의 opacity, 100 = 현행 재질)로 저장된 두 값. 새 키가 없을 때만
@@ -61,7 +71,7 @@ function readStored(group: GlassGroup): number | null {
     localStorage.removeItem(legacyKey);
     const parsed = Number(legacy);
     if (legacy.trim() === "" || !Number.isFinite(parsed)) return null;
-    const converted = clampOpacity((GLASS_OPACITY_DEFAULTS[group] * parsed) / 100);
+    const converted = clampOpacity((glassOpacityDefault(group) * parsed) / 100);
     localStorage.setItem(storageKey(group), String(converted));
     return converted;
   } catch {
@@ -99,8 +109,17 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** 슬라이더가 보여 줄 값 — 만지지 않은 묶음은 기본값이다. */
-export function useGlassOpacity(group: GlassGroup): number {
+function subscribeTheme(listener: () => void): () => void {
+  if (typeof MutationObserver === "undefined" || typeof document === "undefined") return () => {};
+  const observer = new MutationObserver(listener);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => observer.disconnect();
+}
+
+/** 슬라이더가 보여 줄 값과 초기화 값 — 만지지 않은 묶음은 지금 테마의 현행 알파다. */
+export function useGlassOpacity(group: GlassGroup): { readonly value: number; readonly defaultValue: number } {
   const stored = useSyncExternalStore(subscribe, () => opacity[group], () => opacity[group]);
-  return stored ?? GLASS_OPACITY_DEFAULTS[group];
+  const theme = useSyncExternalStore(subscribeTheme, currentTheme, currentTheme);
+  const defaultValue = glassOpacityDefault(group, theme);
+  return { value: stored ?? defaultValue, defaultValue };
 }

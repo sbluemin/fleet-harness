@@ -2592,8 +2592,8 @@ button.chip:focus-visible {
      유리 게이트가 열릴 때만 body 뒤의 화면을 흐린다. */
   background:
     linear-gradient(
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
-      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
+      var(--glass-tint-expanded),
+      var(--glass-tint-expanded)
     ),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);

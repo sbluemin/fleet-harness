@@ -12,7 +12,6 @@ import { getT, useConsoleLocale, useT } from "../../../core/client/src/i18n/inde
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
 import { closeRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import {
-  GLASS_OPACITY_DEFAULTS,
   GLASS_OPACITY_MAX,
   GLASS_OPACITY_MIN,
   setGlassOpacity,
@@ -337,7 +336,7 @@ function GlassOpacityRow({ group, titleKey, helpKey }: {
   readonly helpKey: "settings.theme.windowOpacityHelp" | "settings.theme.barOpacityHelp" | "settings.theme.sideBarOpacityHelp" | "settings.theme.railOpacityHelp";
 }) {
   const t = useT();
-  const value = useGlassOpacity(group);
+  const { value, defaultValue } = useGlassOpacity(group);
   const glassOff = useGlassGateClosed();
   const title = t(titleKey);
   const onChange = (next: number) => setGlassOpacity(group, next);
@@ -361,7 +360,7 @@ function GlassOpacityRow({ group, titleKey, helpKey }: {
         increaseLabel={t("settings.slider.increase", { title })}
         onPreview={onChange}
         onCommit={onChange}
-        defaultValue={GLASS_OPACITY_DEFAULTS[group]}
+        defaultValue={defaultValue}
         resetLabel={t("settings.slider.reset")}
         resetAriaLabel={t("settings.slider.resetAria", { title })}
       />
