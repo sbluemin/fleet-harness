@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-console"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-console?style=flat-square&color=c9a455&label=npm" alt="npm 버전"></a>
+  <a href="https://github.com/sbluemin/fleet-harness/releases/latest"><img src="https://img.shields.io/github/v/release/sbluemin/fleet-harness?style=flat-square&color=c9a455&label=release" alt="최신 릴리스"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-5c9e92?style=flat-square" alt="MIT 라이선스"></a>
   <a href="https://sbluemin.github.io/fleet-harness/?lang=ko"><img src="https://img.shields.io/badge/site-sbluemin.github.io-2b2f38?style=flat-square" alt="프로젝트 사이트"></a>
 </p>
@@ -31,7 +31,7 @@
 ## 시작하기
 
 ```bash
-npm install -g @dotobokuri/fleet-console
+npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz
 fleet console
 ```
 
