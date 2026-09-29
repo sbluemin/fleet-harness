@@ -34,6 +34,13 @@
 .objectives-detail.is-three .objectives-detail-pane.is-ops { grid-column: 3; grid-row: 1; padding-top: 6px; }
 .objectives-detail.is-three > .objectives-detail-bottom { grid-column: 3; grid-row: 2; min-width: 0; padding-bottom: 8px; border-left: 1px solid var(--surface-rim); container: objectives-detail / inline-size; }
 .objectives-detail-grip.is-list { right: auto; left: calc(var(--objectives-list-w, 360px) - 5px); }
+/* 목록 칸을 접은 세 칸 — 목록 열을 0 으로 걷고 내용 칸의 선도 거둔다. 상세 머리의 뒤로가기가 목록을 다시 편다. */
+.objectives-root.is-three.is-list-folded { grid-template-columns: 0 minmax(0, 1fr) var(--objectives-detail-w, 440px); }
+.objectives-root.is-three.is-list-folded > .objectives-main { display: none; }
+.objectives-root.is-three.is-list-folded .objectives-detail-pane.is-content { border-left: 0; }
+/* 목록 칸 접기 — 범위 낱말 첫 줄의 오른쪽 끝(세 칸에서만 선다). 낱말이 꺾여도 글리프는 첫 줄에 남는다. */
+.objectives-root.is-three .objectives-title { flex-wrap: nowrap; align-items: flex-start; }
+.objectives-title .objectives-list-fold { margin-left: auto; }
 .objectives-place-button {
   flex: none;
   display: grid;
@@ -837,7 +844,7 @@ span.objectives-row-main { cursor: default; }
   .objectives-row-lab { overflow-wrap: normal; }
 }
 .objectives-zoom-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 12px; background: color-mix(in oklch, var(--ink-deep) 55%, transparent); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); }
-.objectives-zoom { width: min(940px, 100%); max-height: 100%; overflow: auto; padding: 12px 16px 16px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); outline: none; }
+.objectives-zoom { box-sizing: border-box; width: min(940px, 100%); max-height: 100%; overflow: auto; padding: 12px 16px 16px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-popover, 0 12px 32px color-mix(in oklch, var(--ink-deep) 55%, transparent)); outline: none; }
 .objectives-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .objectives-zoom-title { display: inline-flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--t-base); font-weight: var(--weight-bold); color: var(--text-primary); }
 .objectives-zoom-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-regular); color: var(--text-secondary); }
@@ -873,7 +880,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-read-placeholder { color: var(--text-tertiary); opacity: 0.7; }
 .objectives-read-edit { margin-left: 8px; padding: 0; border: 0; background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); line-height: inherit; cursor: pointer; vertical-align: baseline; }
 .objectives-read-edit:hover, .objectives-read-edit:focus-visible { color: var(--brass-ink); outline: none; text-decoration: underline; text-underline-offset: 3px; }
-.objectives-member-brief.is-read, .objectives-criterion-text.is-read { cursor: text; white-space: pre-wrap; }
+.objectives-member-brief.is-read, .objectives-criterion-text.is-read, .objectives-mission-text.is-read { cursor: text; white-space: pre-wrap; }
 a.objectives-link { color: inherit; text-decoration: underline; text-decoration-color: var(--text-tertiary); text-underline-offset: 3px; overflow-wrap: anywhere; }
 a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-ink); text-decoration-color: var(--brass); outline: none; }
 
