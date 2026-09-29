@@ -131,7 +131,14 @@ export function AgentChatView({
   readonly tourAnchors: boolean;
 }) {
   const t = getT(context.language ?? "en");
-  const state = useAgentChatStream(context.operationId, context.bodyLive !== false);
+  const live = context.bodyLive !== false;
+  const state = useAgentChatStream(context.operationId, live);
+  // 재접속 스냅숏은 로그를 비운 뒤 턴을 도착하는 대로 다시 쌓는다. 그 사이에는 직전 화면을 그대로 두고 끝난 순간
+  // 한 번에 바꾼다 — 쌓이는 턴마다 바닥을 따라가며 맨 위부터 훑어 내려가는 모습이 보이지 않게. 판단(스크롤·도착 셈·
+  // 실행 중 여부)은 계속 state.turns를 본다. 화면에 그리는 목록만 이것이다.
+  const shownTurnsRef = React.useRef(state.turns);
+  if (!state.snapshotting) shownTurnsRef.current = state.turns;
+  const turns = shownTurnsRef.current;
   // 채팅 폭 선호 — 콘솔 단위 사용자 선호(플러그인 설정 서버 영속)라 모든 채팅 패널이 함께 따른다.
   // 대화 컬럼과 입력창이 이 값 하나를 함께 따른다.
   const readingWidth = useChatReadingWidth();
@@ -305,6 +312,23 @@ export function AgentChatView({
   // 기본 앵커링이 이미 같은 보정을 하고 있어서, 높이 차를 한 번 더 더하면 두 배로 튄다. 바닥까지의
   // 거리로 목표 좌표를 새로 계산하면 누가 먼저 손을 댔든 결과가 같다.
   const historyAnchorRef = React.useRef<number | null>(null);
+  // 패널이 가려지면(최소화·다른 모드에서 숨김) 스트림이 닫히고, 다시 보이면 새로 열린다. 가려지는 순간 펼쳐 둔 역사를
+  // 접고 바닥 추적으로 돌려 둔다 — 다시 보일 때 접힌 채 마지막 문답에서 시작하고, 펼친 역사가 한 프레임 스치지도 않는다.
+  // 보이는 채로 연결만 다시 붙은 경우(네트워크)는 읽던 자리를 건드리지 않는다.
+  const reactivatedRef = React.useRef(false);
+  const wasLiveRef = React.useRef(live);
+  React.useLayoutEffect(() => {
+    if (!live) {
+      historyAnchorRef.current = null;
+      nearBottomRef.current = true;
+      bottomDistanceRef.current = null;
+      setFollowing(true);
+      setHistoryOpen(false);
+    } else if (!wasLiveRef.current) {
+      reactivatedRef.current = true;
+    }
+    wasLiveRef.current = live;
+  }, [live]);
   const markHistoryAnchor = React.useCallback(() => {
     const log = logRef.current;
     if (!log || log.clientHeight === 0) return;
@@ -319,6 +343,18 @@ export function AgentChatView({
     setHistoryOpen(true);
   }, [markHistoryAnchor]);
   useHistoryReveal({ ref: logRef, armed: !historyOpen && state.turns.length > 1, onReveal: revealHistory });
+
+  // 스냅숏이 끝나 화면이 바뀌는 순간 — 턴 수가 그대로여도 목록이 통째로 바뀌므로 바닥 추적을 한 번 다시 한다.
+  React.useLayoutEffect(() => {
+    if (state.snapshotting) return;
+    // 다시 보인 패널은 바닥에서 시작한다 — 스냅숏 동안 사용자가 스크롤을 옮겼어도 가려지기 전 약속을 지킨다.
+    if (reactivatedRef.current) {
+      reactivatedRef.current = false;
+      nearBottomRef.current = true;
+      requestAnimationFrame(() => restoreFollow());
+    }
+    restoreFollow();
+  }, [restoreFollow, state.snapshotting]);
 
   // 새 턴 도착이 밴드를 도로 접을 때는 좌표를 남기지 않는다 — 그 경로는 로그를 맨 위로 되돌리는
   // 것이 의도이고, 여기서 자리를 지키면 그 의도를 덮는다.
@@ -677,7 +713,7 @@ export function AgentChatView({
           상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
       {state.errorCode === "chat_transcript_missing"
         ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.transcriptMissing")}</div>
-        : state.connection === "connecting" && state.turns.length === 0
+        : state.connection === "connecting" && turns.length === 0
           ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
           : null}
       {/* 재생 자체는 소리 없이 콘텐츠만 되쓴다 — 같은 세션의 지난 턴은 표면(CLI/Chat)을 오가도
@@ -694,18 +730,18 @@ export function AgentChatView({
           같은 좌표가 세션의 첫 질문을 가리키게 되어, 보던 자리를 잃는다. 위 레이아웃 효과가 바닥
           까지의 거리로 그 자리를 지킨다. */}
       <HistoryBand
-        count={state.turns.length - 1}
+        count={turns.length - 1}
         open={historyOpen}
         onToggle={toggleHistory}
-        label={t(historyOpen ? "terminal.chat.historyBandOpen" : "terminal.chat.historyBand", { count: state.turns.length - 1 })}
+        label={t(historyOpen ? "terminal.chat.historyBandOpen" : "terminal.chat.historyBand", { count: turns.length - 1 })}
       />
       <div className="agent-chat-history" hidden={!historyOpen}>
-        {state.turns.slice(0, -1).map((turn, index) => (
+        {turns.slice(0, -1).map((turn, index) => (
           <ChatTurn
             key={index}
             operationId={context.operationId}
             turn={turn}
-            nextContextBefore={state.turns[index + 1]?.contextBefore}
+            nextContextBefore={turns[index + 1]?.contextBefore}
             language={language}
             timeFormat={timeFormat}
             streaming={false}
@@ -718,15 +754,15 @@ export function AgentChatView({
           />
         ))}
       </div>
-      {state.turns.length > 0 ? (
+      {turns.length > 0 ? (
         <ChatTurn
-          key={state.turns.length - 1}
+          key={turns.length - 1}
           operationId={context.operationId}
-          turn={state.turns[state.turns.length - 1]!}
+          turn={turns[turns.length - 1]!}
           nextContextBefore={undefined}
           language={language}
           timeFormat={timeFormat}
-          streaming={state.turns[state.turns.length - 1]!.state === "working"}
+          streaming={turns[turns.length - 1]!.state === "working"}
           jobsByToolUse={jobsByToolUse}
           onOpenJob={showJob}
           onAnswer={state.answerAsk}
