@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.205.0] - 2026-09-29
+
+### fleet-console
+
+#### Changed
+- Hovering a War Room fleet-map peek or deck card lets you scroll its body and use its caption buttons and Objectives chips.
+- Objectives chips now appear for Theaters that are not the active one.
+
 ## [1.204.0] - 2026-09-29
 
 ### fleet-cli

@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.205.0] - 2026-09-29
+
+### fleet-console
+
+#### Changed
+- War Room 함대 지도 엿보기나 덱 카드에 마우스를 올리면 본문을 스크롤하고 캡션 버튼과 Objectives 칩을 쓸 수 있습니다.
+- 활성 Theater가 아닌 곳의 Objectives 칩도 표시됩니다.
+
 ## [1.204.0] - 2026-09-29
 
 ### fleet-cli
