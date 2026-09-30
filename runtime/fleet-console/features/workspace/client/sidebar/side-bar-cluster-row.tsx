@@ -131,13 +131,15 @@ interface SideBarClusterRowProps {
   readonly dragging?: boolean;
   readonly dragOffsetY?: number;
   readonly dropTarget?: boolean;
+  /** 뿌리 Operation 의 사용자 accent — 칩처럼 제목 잉크만 소유한다. */
+  readonly accentValue?: string | null;
   /** 칩과 같은 포커스 경로 — 뿌리가 선 줄을 누르면 그 Operation 패널로 간다(최소화 복원·휴면·Theater 전환 포함). */
   readonly onFocus: (operationId: string) => void;
   readonly onPointerDragStart?: (event: ReactPointerEvent<HTMLLIElement>, item: SideBarRowItem) => void;
   readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => void;
 }
 
-export function SideBarClusterRow({ item, groupDot = null, dragging = false, dragOffsetY = 0, dropTarget = false, onFocus, onPointerDragStart, onContextMenu }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, groupDot = null, dragging = false, dragOffsetY = 0, dropTarget = false, accentValue = null, onFocus, onPointerDragStart, onContextMenu }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = usePluginRegistry();
@@ -150,7 +152,10 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       : state === "done"
         ? t("sidebar.row.glyph.done")
         : operationMarkLabel(state);
-  const selected = row.selected === true || item.fold.some((entry) => entry.active);
+  // 하이라이트는 칩과 같은 조건이다 — 뿌리가 선 줄은 그 묶음의 Operation 이 캔버스에서 활성일 때만 선다. 목표 화면의 선택만으로는
+  // 서지 않는다(패널과 목표 화면이 서로 다른 줄을 가리키는 이중 하이라이트가 없게). 활성이 될 수 없는 뿌리 없는 줄만 화면의 선택을 따른다.
+  const active = anchor ? anchor.active || item.fold.some((entry) => entry.active) : row.selected === true;
+  const minimized = anchor?.minimized === true;
   const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" }[] = [];
   if (row.decisionRequestedAt !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions ?? 1 }), tone: "req" });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `✓ ${row.progress.done}/${row.progress.total}` });
@@ -173,12 +178,15 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
     onFocus(operationId);
     for (const provider of registry.providers) provider.onMapOperationSelected?.(operationId);
   };
-  const style = dragging ? ({ transform: `translateY(${dragOffsetY}px)` } as CSSProperties) : undefined;
+  const style = dragging || accentValue
+    ? ({ ...(accentValue ? { "--user-accent": accentValue } : {}), ...(dragging ? { transform: `translateY(${dragOffsetY}px)` } : {}) } as CSSProperties)
+    : undefined;
   return (
     <li
       className={[
         "side-bar-cluster-row",
-        selected ? "sel" : "",
+        active ? "side-bar-cluster-row--active" : "",
+        minimized ? "side-bar-cluster-row--minimized" : "",
         dragging ? "is-dragging" : "",
         dropTarget ? "is-drop-target" : "",
       ].filter(Boolean).join(" ")}
@@ -203,7 +211,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       <button
         type="button"
         className="side-bar-cluster-row-main"
-        aria-current={row.selected ? "true" : undefined}
+        aria-current={active ? "true" : undefined}
         aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), groupDot ? groupDot.name : ""].filter(Boolean).join(", ")}
         onClick={open}
       >

@@ -835,11 +835,13 @@ export function OperationsSideBar({
   const renderRow = (item: SideBarRowItem, promoted: boolean) => {
     const sourceId = item.anchor?.operation.id ?? `row:${item.layout.cluster.id}`;
     const rowDragging = drag?.kind === "chip" && drag.sourceId === sourceId && drag.dragging;
+    const accentKey = item.anchor ? canvas.operationAccent[item.anchor.operation.id] ?? operationAccentFromNode(item.anchor.operation) : null;
     return (
       <SideBarClusterRow
         key={item.layout.cluster.id}
         item={item}
         groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
+        accentValue={accentKey ? resolveAccentColor(accentKey) : null}
         dragging={rowDragging}
         dragOffsetY={rowDragging ? drag.currentY - drag.startY : 0}
         onFocus={onFocus}
@@ -1705,14 +1707,18 @@ function TheaterInactiveSection({
     const color = resolveAccentColor(group.color);
     return [group.id, color ? { name: group.name, color } : null] as const;
   }));
-  const renderRow = (item: SideBarRowItem, promoted: boolean) => (
-    <SideBarClusterRow
-      key={item.layout.cluster.id}
-      item={item}
-      groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
-      onFocus={onFocus}
-    />
-  );
+  const renderRow = (item: SideBarRowItem, promoted: boolean) => {
+    const accentKey = item.anchor ? operationAccent[item.anchor.operation.id] ?? operationAccentFromNode(item.anchor.operation) : null;
+    return (
+      <SideBarClusterRow
+        key={item.layout.cluster.id}
+        item={item}
+        groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
+        accentValue={accentKey ? resolveAccentColor(accentKey) : null}
+        onFocus={onFocus}
+      />
+    );
+  };
   const minimizedSet = new Set(entries.filter((entry) => entry.minimized).map((entry) => entry.operation.id));
   const { living: statusSections, minimized: minimizedSection, dormant: dormantSection } = groupTheaterStatusEntries(
     entries,

@@ -6750,23 +6750,43 @@ body[data-companion-resizing="true"] .canvas-operation {
     transform var(--duration-fast) var(--ease-spring);
 }
 
+/* 묶음 줄(목표) — 1줄 제목, 2줄 mono 메타. 머무름·키보드 포커스·활성·최소화·accent 이름 잉크는 아래 칩 규칙을 함께 쓴다:
+   뿌리가 선 줄은 칩 자리를 이어받았으니 활성 Operation 일 때 칩과 같은 값으로 하이라이트한다(왼쪽 띠 없음).
+   바탕은 공유한 상태 규칙보다 앞에 서야 한다 — 뒤에 서면 바탕의 border 가 같은 특이도의 활성 테두리를 덮는다. */
+.side-bar-cluster-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 8px;
+  align-items: start;
+  padding: 6px 8px;
+  margin: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-cluster-row:hover,
 .side-bar-chip:hover,
 .side-bar-chip:focus-visible {
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
   outline: none;
 }
 
+.side-bar-cluster-row:has(.side-bar-cluster-row-main:focus-visible),
 .side-bar-chip:focus-visible {
   border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
   background: var(--brass-glow);
 }
 
 /* active: brass highlight */
+.side-bar-cluster-row--active,
 .side-bar-chip--active {
   background: color-mix(in oklch, var(--brass) 14%, transparent);
   border-color: color-mix(in oklch, var(--brass) 40%, transparent);
 }
 
+.side-bar-cluster-row--active .side-bar-cluster-row-title,
 .side-bar-chip--active .side-bar-chip-name {
   color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary));
 }
@@ -6774,10 +6794,12 @@ body[data-companion-resizing="true"] .canvas-operation {
 /* minimized: 이름은 판독 가능한 --ink-muted 티어로 유지하고 "치워둠" 신호는 아이콘 감쇠로만
    전달한다. 예전의 칩 전체 opacity(색 × 투명도 이중 감쇠)는 이름 대비를 WCAG 하한 아래로
    무너뜨렸다(instrument 1.84:1). 위계: active brass › 기본 ink-spectral › 최소화 ink-muted. */
+.side-bar-cluster-row--minimized .side-bar-cluster-row-title,
 .side-bar-chip--minimized .side-bar-chip-name {
   color: var(--ink-muted);
 }
 
+.side-bar-cluster-row--minimized .side-bar-cluster-row-glyph,
 .side-bar-chip--minimized .side-bar-chip-status {
   opacity: 0.62;
 }
@@ -6808,10 +6830,13 @@ body[data-companion-resizing="true"] .canvas-operation {
    Whites의 --id-*(L50~56)가 chrome 면의 hover/active 워시 위에서 AA(4.5:1)를 잃는다(amber 3.8~3.9:1);
    25% 믹스는 여덟 톤 모두 4.5:1 이상(최소 amber active 4.59:1)을 지키면서 다크 3종에서는 원색과 같은 채도로 읽힌다.
    brass 포커스·aurora/warn 상태는 각자의 채널을 그대로 갖는다. */
+.side-bar-cluster-row[style*="--user-accent"] .side-bar-cluster-row-title,
 .side-bar-chip[style*="--user-accent"] .side-bar-chip-name {
   color: color-mix(in oklab, var(--user-accent) 70%, var(--text-tertiary));
 }
 
+.side-bar-cluster-row[style*="--user-accent"]:hover .side-bar-cluster-row-title,
+.side-bar-cluster-row[style*="--user-accent"].side-bar-cluster-row--active .side-bar-cluster-row-title,
 .side-bar-chip[style*="--user-accent"]:hover .side-bar-chip-name,
 .side-bar-chip[style*="--user-accent"].side-bar-chip--active .side-bar-chip-name {
   color: color-mix(in oklab, var(--user-accent) 75%, var(--text-secondary));
@@ -6820,6 +6845,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 /* 최소화된 칩은 "치워둠" 티어(--ink-muted)를 accent 위에서도 유지한다 — 언포커스보다 한 단계 더 물러난
    45% 믹스이며 hover로 되살아나지 않는다(무액센트 최소화 칩도 hover에 색을 바꾸지 않는다). 위 hover 규칙과
    같은 명세성(0,3,1)이므로 반드시 그 뒤에 온다. Whites chrome 위 최소 5.5:1. */
+.side-bar-cluster-row[style*="--user-accent"].side-bar-cluster-row--minimized .side-bar-cluster-row-title,
 .side-bar-chip[style*="--user-accent"].side-bar-chip--minimized .side-bar-chip-name {
   color: color-mix(in oklab, var(--user-accent) 55%, var(--ink-muted));
 }
@@ -7660,29 +7686,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   outline: none;
 }
 
-/* 묶음 줄(목표) — 1줄 제목, 2줄 mono 메타. 선택은 테두리 전체와 워시로만 말한다(왼쪽 띠 없음). */
-.side-bar-cluster-row {
-  display: grid;
-  grid-template-columns: 14px 1fr auto;
-  gap: 8px;
-  align-items: start;
-  padding: 6px 8px;
-  margin: 0 var(--space-1);
-  border: 1px solid transparent;
-  border-radius: 7px;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
-}
-
-.side-bar-cluster-row:hover {
-  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-}
-
-.side-bar-cluster-row.sel {
-  background: var(--brass-glow);
-  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
-}
-
 .side-bar-cluster-row.is-dragging {
   position: relative;
   z-index: 2;
@@ -7709,10 +7712,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .side-bar-cluster-row-main:focus-visible {
   outline: none;
-}
-
-.side-bar-cluster-row:has(.side-bar-cluster-row-main:focus-visible) {
-  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
 }
 
 .side-bar-cluster-row-title {

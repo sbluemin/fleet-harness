@@ -577,7 +577,10 @@ export interface OperationClusterRow {
   readonly progress?: { readonly done: number; readonly total: number };
   /** 다른 목표의 후속으로 태어난 줄. `originTitle` 이 null 이면 원래 목표를 더는 찾을 수 없다. */
   readonly followup?: { readonly originTitle: string | null };
-  /** 플러그인 표면이 지금 이 줄을 보고 있다. */
+  /**
+   * 플러그인 표면이 지금 이 줄을 보고 있다. 호스트는 Operation 이 없는 줄만 이 값으로 하이라이트한다 — 뿌리가 선 줄은 칩처럼
+   * 그 Operation 이 캔버스에서 활성일 때 하이라이트한다.
+   */
   readonly selected?: boolean;
   /** `glyph: "review"` 를 눌렀을 때 — 글리프가 버튼이 되는 유일한 경우다. */
   readonly review?: (language: "en" | "ko") => void;
