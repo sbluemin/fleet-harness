@@ -24,11 +24,14 @@ Options:
   --operations <count>     Positive integer, default ${DEFAULT_OPERATIONS}, maximum ${MAX_OPERATIONS}
   --trials <count>         Positive integer, default ${DEFAULT_TRIALS}, maximum ${MAX_TRIALS}
   --timeout-ms <count>     Positive integer, default ${DEFAULT_TIMEOUT_MS}, maximum ${MAX_TIMER_MS}
+  --auth-path <path>       Console slot auth.json holding the OpenCode API key; required for opencode models
   ${CONFIRM_LIVE_PROVIDER}  Required explicit consent to spend live provider quota
   --help                   Show this help before loading build artifacts or credentials
 
 Example:
-  pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--opencode--deepseek-v4-flash[1m]' --operations 3 --trials 5 --confirm-live-provider
+  pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--opencode--deepseek-v4.1-flash[1m]' --auth-path <console-dir>/auth.json --operations 3 --trials 5 --confirm-live-provider
+
+Codex, xAI, and Antigravity read their vendor CLI credentials, so they need no --auth-path.
 
 FLEET_GATEWAY_WIRE_LOG records raw prompt and tool payloads. Use it only with an isolated
 scratch path after explicit opt-in; credentials are not recorded, but the payloads are sensitive.
@@ -60,6 +63,7 @@ function parseArguments(argv) {
   if (normalizedArgv.includes("--help")) return { help: true };
 
   const options = {
+    authPath: null,
     effort: null,
     model: null,
     operations: DEFAULT_OPERATIONS,
@@ -78,7 +82,7 @@ function parseArguments(argv) {
     }
 
     const optionName = argument;
-    if (!new Set(["--model", "--effort", "--operations", "--trials", "--timeout-ms"]).has(optionName)) {
+    if (!new Set(["--model", "--effort", "--operations", "--trials", "--timeout-ms", "--auth-path"]).has(optionName)) {
       throw new UsageError(`Unknown argument ${JSON.stringify(argument)}`);
     }
     if (seen.has(optionName)) throw new UsageError(`${optionName} may be provided only once`);
@@ -88,6 +92,8 @@ function parseArguments(argv) {
     index += 1;
     if (optionName === "--model" || optionName === "--effort") {
       options[optionName.slice(2)] = value;
+    } else if (optionName === "--auth-path") {
+      options.authPath = value;
     } else if (optionName === "--operations") {
       options.operations = parsePositiveInteger(optionName, value);
     } else if (optionName === "--trials") {
@@ -361,6 +367,10 @@ function validateTarget(gateway, options) {
       throw new UsageError(`--effort ${options.effort} is not supported by model ${options.model}`);
     }
   }
+  // The auth store never guesses a data root, so an OpenCode run must name the slot's file.
+  if (target.provider === "opencode" && options.authPath === null) {
+    throw new UsageError("--auth-path is required for opencode models");
+  }
   return target;
 }
 
@@ -400,13 +410,15 @@ function createTrialServer(router) {
 }
 
 async function runTrialWithLifecycle({ gateway, options, target }) {
-  const authService = gateway.createProviderAuthService();
+  const authService = options.authPath === null
+    ? null
+    : gateway.createProviderAuthService({ authPath: options.authPath });
   const router = gateway.createAiGatewayRouter({
     originator: "core-ai-gateway-provider-loop-e2e",
     readAuth: gateway.readCodexSubscriptionAuth,
     readXaiToken: gateway.readXaiSubscriptionToken,
     readAntigravityToken: gateway.readAntigravitySubscriptionToken,
-    readOpencodeApiKey: () => authService.getApiKey(gateway.OPENCODE_AUTH_PROVIDER_ID),
+    readOpencodeApiKey: async () => authService?.getApiKey(gateway.OPENCODE_AUTH_PROVIDER_ID),
   });
   const server = createTrialServer(router);
   let serverClosed = false;
