@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.206.1] - 2026-09-30
+
+### fleet-console
+
+#### Fixed
+- Make every new agent Operation, including ones started from a right-click or Quick Launch, an objective from the start that you can plan or commence.
+- Pressing an objective in the sidebar takes you to its Operation panel again, just like its chip, instead of opening the Objectives view.
+
 ## [1.206.0] - 2026-09-30
 
 ### fleet-console

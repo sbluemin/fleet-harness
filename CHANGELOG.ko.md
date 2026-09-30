@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.206.1] - 2026-09-30
+
+### fleet-console
+
+#### Fixed
+- 우클릭이나 Quick Launch로 시작한 것을 포함해 새 에이전트 Operation은 만드는 순간 목표가 되고, 바로 구상하거나 개시할 수 있습니다.
+- 사이드바에서 목표를 누르면 칩처럼 다시 그 Operation 패널로 이동하며, 목표 화면이 열리지 않습니다.
+
 ## [1.206.0] - 2026-09-30
 
 ### fleet-console
