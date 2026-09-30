@@ -3371,9 +3371,10 @@
   background: color-mix(in oklch, var(--text-tertiary) 42%, transparent);
 }
 
+/* 체크는 1차 잉크 — --ink-abyss 는 42% 중성 채움 위에서 두 테마 모두 2:1 안팎이다(비문자 대비 3:1 미달). */
 .status-glyph.is-done::after {
   left: 3.3px;
-  border-color: var(--ink-abyss);
+  border-color: var(--text-primary);
 }
 
 button.status-glyph.is-actionable {
