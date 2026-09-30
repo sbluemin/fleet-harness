@@ -842,6 +842,7 @@ export function OperationsSideBar({
         groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
         dragging={rowDragging}
         dragOffsetY={rowDragging ? drag.currentY - drag.startY : 0}
+        onFocus={onFocus}
         onPointerDragStart={promoted ? undefined : beginRowPointerDrag}
         onContextMenu={openRowContextMenu}
       />
@@ -1697,7 +1698,7 @@ function TheaterInactiveSection({
   const t = useT();
   const sections = groupOperations(entries, groups, []);
   // 목표 줄·구역·「시작 전」 접기는 활성 Theater 와 같은 계획을 쓴다 — Theater 를 옮겨도 줄 모양이 바뀌지 않는다.
-  // 끌기·메뉴는 활성 Theater 의 몫이고, 줄을 누르면 플러그인이 그 Theater 로 옮긴 뒤 표면을 연다.
+  // 끌기·메뉴는 활성 Theater 의 몫이다. 줄을 누르면 칩처럼 그 Theater 로 옮겨 패널로 가고, 뿌리 없는 줄만 플러그인이 표면을 연다.
   const rowPlan = planSideBarRows(sections, useClusterIndex(), theater.id);
   const freshFolds = useSideBarFreshFolds();
   const groupMarkByGroupId = new Map(groups.map((group) => {
@@ -1709,6 +1710,7 @@ function TheaterInactiveSection({
       key={item.layout.cluster.id}
       item={item}
       groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
+      onFocus={onFocus}
     />
   );
   const minimizedSet = new Set(entries.filter((entry) => entry.minimized).map((entry) => entry.operation.id));

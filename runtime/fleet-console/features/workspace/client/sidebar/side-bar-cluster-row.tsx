@@ -5,6 +5,7 @@ import type { OperationClusterRow } from "@fleet-console/sdk/plugin";
 import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
+import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { operationMarkLabel, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
@@ -130,13 +131,16 @@ interface SideBarClusterRowProps {
   readonly dragging?: boolean;
   readonly dragOffsetY?: number;
   readonly dropTarget?: boolean;
+  /** 칩과 같은 포커스 경로 — 뿌리가 선 줄을 누르면 그 Operation 패널로 간다(최소화 복원·휴면·Theater 전환 포함). */
+  readonly onFocus: (operationId: string) => void;
   readonly onPointerDragStart?: (event: ReactPointerEvent<HTMLLIElement>, item: SideBarRowItem) => void;
   readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => void;
 }
 
-export function SideBarClusterRow({ item, groupDot = null, dragging = false, dragOffsetY = 0, dropTarget = false, onPointerDragStart, onContextMenu }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, groupDot = null, dragging = false, dragOffsetY = 0, dropTarget = false, onFocus, onPointerDragStart, onContextMenu }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
+  const registry = usePluginRegistry();
   const { layout, row, anchor } = item;
   const state = rowGlyphState(item);
   const label = state === "fresh"
@@ -154,12 +158,20 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   if (row.followup) meta.push({ key: "from", text: row.followup.originTitle ? t("sidebar.row.followupOf", { title: row.followup.originTitle }) : t("sidebar.row.followup"), tone: "from" });
   // 끌어 놓은 줄은 포인터를 따라왔으니 놓는 순간의 클릭도 이 줄에 떨어진다 — 칩처럼 그 클릭은 여는 동작이 아니다.
   const suppressClickRef = useRef(false);
+  // 뿌리가 선 줄은 칩과 똑같이 그 패널로 간다. 플러그인 표면은 열지 않고, 이미 열려 있으면 선택 알림으로 따라오게 한다.
+  // 열 패널이 없는 줄(Operation 이 아직 없는 시작 전 목표)만 플러그인이 자기 표면을 연다.
   const open = () => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
-    layout.cluster.open?.();
+    if (!anchor) {
+      layout.cluster.open?.();
+      return;
+    }
+    const operationId = anchor.operation.id;
+    onFocus(operationId);
+    for (const provider of registry.providers) provider.onMapOperationSelected?.(operationId);
   };
   const style = dragging ? ({ transform: `translateY(${dragOffsetY}px)` } as CSSProperties) : undefined;
   return (
