@@ -563,6 +563,8 @@ function RailIcon({ entry, context, language, isActive }: RailIconProps) {
       disabled={entry.activate !== undefined && context.theaterId === null}
       // 이름은 도구모음 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
       data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
+      // 선언한 도구만 활성 해제 가드를 넘는다(active-operation-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.
+      data-keep-operation-active={entry.keepsOperationActive ? "" : undefined}
       onClick={handleClick}
     >
       {icon}

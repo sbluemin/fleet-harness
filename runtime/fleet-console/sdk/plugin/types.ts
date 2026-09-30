@@ -249,7 +249,7 @@ export interface ClientExecutionProvider {
    */
   readonly experimentModelOptions?: () => Promise<readonly ExperimentModelOption[]>;
   /**
-   * Cruise의 명시적 frame·Fleet Map 점 선택 또는 War Room의 실제 무대 변경(수동·자동) 시 호출된다.
+   * Cruise의 명시적 frame·Fleet Map 점 선택, 사이드바 묶음 줄 선택, 또는 War Room의 실제 무대 변경(수동·자동) 시 호출된다.
    * 무대가 비면 호출하지 않는다. 이 알림은 키보드 포커스 이동을 뜻하지 않는다.
    */
   readonly onMapOperationSelected?: (operationId: string) => void;
@@ -411,6 +411,8 @@ export interface ClientConsoleStateCapability {
    */
   getOperations(options?: { readonly nested?: boolean }): readonly ConsoleOperationSummary[];
   getActiveTheaterId(): string | null;
+  /** 캔버스에서 활성인 Operation — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
+  getActiveOperationId(): string | null;
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
 }
@@ -546,7 +548,8 @@ export interface OperationCluster {
   readonly decisionRequest?: boolean;
   /**
    * 사이드바 그룹 트리에 서는 한 줄 — 있으면 호스트는 뿌리 칩과 `fold` 의 칩을 이 줄 하나로 접어 그린다. 줄의 뜻(오늘·기한·
-   * 검토 대기·진행)은 플러그인이 계산해 넘기고, 호스트는 칩 문법으로 그리기만 한다. 줄을 누르면 `open()` 이 불린다.
+   * 검토 대기·진행)은 플러그인이 계산해 넘기고, 호스트는 칩 문법으로 그리기만 한다. 줄을 누르면 칩처럼 그 Operation(뿌리, 없으면
+   * `fold` 의 첫 칩)으로 포커스하고 `onMapOperationSelected` 를 알린다. 열 Operation 이 없는 줄만 `open()` 이 불린다.
    */
   readonly row?: OperationClusterRow;
 }
@@ -576,7 +579,10 @@ export interface OperationClusterRow {
   readonly progress?: { readonly done: number; readonly total: number };
   /** 다른 목표의 후속으로 태어난 줄. `originTitle` 이 null 이면 원래 목표를 더는 찾을 수 없다. */
   readonly followup?: { readonly originTitle: string | null };
-  /** 플러그인 표면이 지금 이 줄을 보고 있다. */
+  /**
+   * 플러그인 표면이 지금 이 줄을 보고 있다. 호스트는 Operation 이 없는 줄만 이 값으로 하이라이트한다 — 뿌리가 선 줄은 칩처럼
+   * 그 Operation 이 캔버스에서 활성일 때 하이라이트한다.
+   */
   readonly selected?: boolean;
   /** `glyph: "review"` 를 눌렀을 때 — 글리프가 버튼이 되는 유일한 경우다. */
   readonly review?: (language: "en" | "ko") => void;

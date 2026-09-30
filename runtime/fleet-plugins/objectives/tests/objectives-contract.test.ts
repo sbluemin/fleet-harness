@@ -671,10 +671,6 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual(["one"]);
     expect(events.at(-1)).toMatchObject({ op: "upsert", objectiveId: "one", order: ["three", "one", "two"] });
     expect(order(reload())).toEqual(["three", "one", "two"]);
-    // 순서 이동은 사람이 목표로 다룬다는 뜻이 아니다 — 레코드가 된 뒤 임무가 붙어도 「목표 밖」에 남는다(구상·개시만 올린다).
-    store.missionAdd("one", { text: "x" }, { by: "human" });
-    expect(reload().find("one")).toMatchObject({ enlisted: false });
-
     // 첫 편집도 지금 자리를 그대로 받는다(레코드가 되면서 튀지 않는다) — 바뀐 줄은 방송에 실린다.
     store.patch("two", { note: "b" });
     expect(order(store)).toEqual(["three", "one", "two"]);
@@ -830,15 +826,15 @@ describe("Objectives contract", () => {
     const waiting = await launch.create({ theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
     const started = await launch.create({ theaterId: "t1", title: "Started", groupId: null });
     await launch.requestPlan(started.id);
-    type Row = { id: string; kind: string; operation: boolean; done: boolean; self?: boolean; brief?: string; briefTruncated?: boolean; criteria?: string[] };
+    type Row = { id: string; operation: boolean; done: boolean; self?: boolean; brief?: string; briefTruncated?: boolean; criteria?: string[] };
     const rows = async (filter?: string) => ((await use({ view: "objectives", ...(filter ? { filter } : {}) })).structuredContent.objectives as Row[]);
     const byId = (list: Row[]) => new Map(list.map((row) => [row.id, row]));
-    // 한 번 읽은 목록만으로 Operation 유무·보드 목표와 대화 세션·자기 세션·브리핑과 기준을 가른다.
+    // 한 번 읽은 목록만으로 Operation 유무·자기 세션·브리핑과 기준을 가른다.
     const open = byId(await rows());
-    expect(open.get(waiting.id)).toMatchObject({ kind: "objective", operation: false, briefTruncated: true, criteria: ["one", "two"] });
+    expect(open.get(waiting.id)).toMatchObject({ operation: false, briefTruncated: true, criteria: ["one", "two"] });
     expect(open.get(waiting.id)!.brief!.length).toBeLessThan(waiting.note.length);
-    expect(open.get(started.id)).toMatchObject({ kind: "objective", operation: true });
-    expect(open.get(caller.id)).toMatchObject({ kind: "session", operation: true, self: true });
+    expect(open.get(started.id)).toMatchObject({ operation: true });
+    expect(open.get(caller.id)).toMatchObject({ operation: true, self: true });
     // 시작 전 목표의 지휘관은 닫힘이 아니다.
     const detail = (await use({ view: "objective", objectiveId: waiting.id })).structuredContent as { objective: { graph: { commander: { state: string } } } };
     expect(detail.objective.graph.commander.state).toBe("not_started");
@@ -851,12 +847,12 @@ describe("Objectives contract", () => {
     const planned = await launch.create({ theaterId: "t1", title: "Planned by hand", groupId: null, missions: [{ text: "keep me" }] });
     const stale = await launch.create({ theaterId: "t1", title: "Stale", groupId: null });
     const before = store.find(waiting.id)!;
-    // Operation 이 있는 목표·대화 세션·옮길 수 없는 것을 가진 원본이 하나라도 끼면 아무것도 바꾸지 않고 이유를 하나씩 댄다.
+    // Operation 이 있는 목표·옮길 수 없는 것을 가진 원본이 하나라도 끼면 아무것도 바꾸지 않고 이유를 하나씩 댄다.
     const refused = await use({ merge: { into: waiting.id, from: [duplicate.id, started.id, caller.id, planned.id] } });
     expect(refused.isError).toBe(true);
     expect(refused.structuredContent).toMatchObject({ error: "tidy_refused", refusals: expect.arrayContaining([
       expect.objectContaining({ objectiveId: started.id, reason: "has_operation" }),
-      expect.objectContaining({ objectiveId: caller.id, reason: "conversation_session" }),
+      expect.objectContaining({ objectiveId: caller.id, reason: "has_operation" }),
       expect.objectContaining({ objectiveId: planned.id, reason: "merge_would_drop", kinds: ["missions"] }),
     ]) });
     expect(store.find(waiting.id)).toMatchObject({ note: before.note, removed: null });
@@ -911,31 +907,37 @@ describe("Objectives contract", () => {
     expect(savedIds()).not.toContain(stale.id);
   });
 
-  it("shows every agent Operation created elsewhere as an objective, but not member or plugin Operations", async () => {
-    const { store, launch, add, savedIds, launches, call } = harness();
+  it("shows every agent Operation created elsewhere as an objective, including records saved as not enlisted, but not member or plugin Operations", async () => {
+    const { store, launch, add, savedIds, launches, call, objectiveFile, savedObjective } = harness();
     add("sidebar", { title: "Made in the sidebar", groupId: "g-a" });
     add("wiki", { pluginId: "codex", type: "codex-wiki" });
+    add("legacy", { title: "Saved outside objectives" });
+    fs.mkdirSync(path.dirname(objectiveFile("legacy")), { recursive: true });
+    fs.writeFileSync(objectiveFile("legacy"), JSON.stringify({ operationId: "legacy", rank: 5, note: "kept", enlisted: false, missions: [] }));
     const made = await launch.create({ theaterId: "t1", title: "Made in Objectives", groupId: null, missions: [{ text: "one" }] });
     const madeMember = store.memberAdd(made.id, { role: "build" }, "human").members[0]!;
     await launch.requestPlan(made.id);
     store.setPlanning(made.id, false);
     await launch.muster(made.id);
     // 레코드 없는 Operation 은 빈 목표로 선다 — 구성원(launched-2)과 플러그인 Operation 은 목표가 아니다.
-    expect(store.list("t1").map((objective) => objective.id).sort()).toEqual([made.id, "sidebar"].sort());
+    expect(store.list("t1").map((objective) => objective.id).sort()).toEqual([made.id, "legacy", "sidebar"].sort());
     expect(store.find("sidebar")).toMatchObject({ title: "Made in the sidebar", groupId: "g-a", note: "", missions: [], awaitingReview: false });
     expect(store.find(madeMember.id)).toBeNull();
-    // 첫 편집이 레코드를 만든다 — 그래도 목표로 올리지는 않는다. 보드에서 만든 목표만 처음부터 목표다.
+    // 첫 편집이 레코드를 만든다 — 목표인 채 그대로다.
     expect(savedIds()).not.toContain("sidebar");
     store.patch("sidebar", { note: "now it has a brief" });
     expect(savedIds()).toContain("sidebar");
-    expect(store.find("sidebar")).toMatchObject({ enlisted: false, commenced: false });
-    expect(store.find(made.id)).toMatchObject({ enlisted: true, commenced: false });
-    // 구상하면 시작 전 목표가 되고, 개시가 닿으면 진행 중이 된다 — 다시 읽어도 그대로다.
+    expect(store.find("sidebar")).toMatchObject({ commenced: false });
+    // 옛 판이 「목표 밖」(enlisted:false)으로 남긴 레코드도 목표로 선다 — 다음 편집이 새 판으로 고쳐 쓴다.
+    expect(store.find("legacy")).toMatchObject({ note: "kept", commenced: false, removed: null });
+    store.patch("legacy", { today: true });
+    expect((savedObjective("legacy") as { enlisted?: boolean }).enlisted).toBe(true);
+    // 구상은 시작 전으로 두고, 개시가 닿으면 진행 중이 된다 — 다시 읽어도 그대로다.
     await launch.requestPlan("sidebar");
-    expect(store.find("sidebar")).toMatchObject({ enlisted: true, commenced: false });
+    expect(store.find("sidebar")).toMatchObject({ commenced: false });
     store.setPlanning("sidebar", false);
     await launch.startCommander("sidebar");
-    expect(store.find("sidebar")).toMatchObject({ enlisted: true, commenced: true });
+    expect(store.find("sidebar")).toMatchObject({ commenced: true });
     // 따로 만든 지휘관에게는 고정 이름이 없다 — 구성원은 그래도 사람에게 묻지 않고, 주소를 지어내지 않고 null 로 받는다.
     const helper = store.memberAdd("sidebar", { role: "helper" }, "human").members.at(-1)!;
     await launch.muster("sidebar");

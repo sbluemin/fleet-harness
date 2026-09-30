@@ -71,8 +71,8 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
     return () => { window.removeEventListener("keydown", onKey, true); window.removeEventListener("pointerdown", onPointer, true); };
   }, [open]);
 
-  const live = objectives.filter((objective) => objective.enlisted && !objective.removed && !objective.done);
-  const none = !objectives.some((objective) => objective.enlisted && !objective.removed);
+  const live = objectives.filter((objective) => !objective.removed && !objective.done);
+  const none = !objectives.some((objective) => !objective.removed);
   const decisions = live.filter((objective) => !!objective.decisionRequest)
     .sort((a, b) => (a.decisionRequest?.createdAt ?? 0) - (b.decisionRequest?.createdAt ?? 0));
   const today = live.filter((objective) => !objective.decisionRequest && (objective.today || overdueOf(objective)));

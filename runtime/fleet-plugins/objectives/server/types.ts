@@ -364,8 +364,8 @@ export interface StoredObjective {
   readonly decisionDelivery?: DecisionDelivery;
   readonly decisions?: readonly Decision[];
   /**
-   * 사람이 이것을 목표로 다룬다 — 보드에서 만들었거나 구상·개시했다. 따로 만든 에이전트 Operation 이 첫 편집(순서·오늘·브리핑 등)으로
-   * 레코드가 될 때는 false 로 남아 「목표 밖」에 선다. 이 필드가 없는 옛 레코드는 목표의 흔적으로 판정한다(`enlistedOf`).
+   * 레코드 판 표지 — 새 레코드는 늘 true 로 쓴다. 이 필드가 없는 옛 레코드는 개시 여부를 기동 흔적으로 읽는다.
+   * 옛 판이 false 로 남긴 레코드도 목표로 읽고, 다음 편집 때 true 로 고쳐 쓴다. 에이전트 Operation 은 모두 목표다.
    */
   readonly enlisted?: boolean;
   /** 개시했다 — 구상만 한 목표는 아직 시작 전이다. */
@@ -502,8 +502,6 @@ export interface Objective {
   readonly decisionDelivery: { readonly requestId: string; readonly at: number } | null;
   readonly decisions: readonly Decision[];
   readonly recorded?: boolean;
-  /** 목표로 다룬다 — false 면 사람이 아직 목표로 다루지 않은 세션이라 「목표 밖」에 선다. */
-  readonly enlisted: boolean;
   /** 개시했다 — 목록의 「진행 중」 구역. 구상만 했거나 보드에서 막 만든 목표는 「시작 전」이다. */
   readonly commenced: boolean;
   /** 에이전트가 지웠거나 다른 목표로 합쳤다 — 보드의 보통 구역에서 빠지고, 사람이 되돌릴 수 있다. */

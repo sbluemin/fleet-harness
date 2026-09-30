@@ -52,7 +52,7 @@ const fetching = new Set<string>();
  * 서버가 unknown_objective(404)로 목표가 아니라고 답한 id. 401·네트워크·5xx 같은 일시 거절은 넣지 않아 다음 스냅숏에 다시 묻는다.
  * 그 id 의 목표 사건이나 영구 삭제가 오기 전에는 지우지 않는다.
  */
-const notObjective = new Set<string>();
+const unknownToServer = new Set<string>();
 
 /**
  * 보관된 Operation 의 요약 — 완료한 목표의 지휘관·구성원은 Core 보관함으로 옮겨져 일반 목록에 없다. 세션 줄이 이름을
@@ -144,7 +144,7 @@ function reconcileOperations(api: ClientApiCapability): void {
     const members = memberIds(state.objectives);
     for (const operation of operationsSnapshot) {
       // 부모 아래 선 Operation(구성원)은 목표가 아니다 — 코어가 구성원으로 기록한 것은 묻지도 않는다.
-      if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || members.has(operation.id) || fetching.has(operation.id) || notObjective.has(operation.id)) continue;
+      if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || members.has(operation.id) || fetching.has(operation.id) || unknownToServer.has(operation.id)) continue;
       fetching.add(operation.id);
       void post<{ objective: Objective }>(api, "/objective/get", { objectiveId: operation.id })
         .then(({ objective }) => {
@@ -154,7 +154,7 @@ function reconcileOperations(api: ClientApiCapability): void {
         })
         .catch((error: unknown) => {
           // 목표가 없다는 확정 답(404 unknown_objective)만 기억한다 — 401 같은 일시 거절은 세션이 돌아오면 다시 묻는다.
-          if (error instanceof Error && error.message === "unknown_objective") notObjective.add(operation.id);
+          if (error instanceof Error && error.message === "unknown_objective") unknownToServer.add(operation.id);
         })
         .finally(() => { fetching.delete(operation.id); });
     }
@@ -200,7 +200,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   const offItem = ctx.consoleEvents.subscribe("objectives:objective", (payload) => {
     const event = payload as ObjectiveEvent | null;
     if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
-    notObjective.delete(event.objectiveId);
+    unknownToServer.delete(event.objectiveId);
     const current = theaters.get(event.theaterId) ?? EMPTY;
     if (event.op === "remove") { setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
     if (!event.objective) return;
@@ -228,7 +228,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   const offPurged = ctx.consoleEvents.subscribe(OPERATION_PURGED_EVENT, (payload) => {
     const operationId = (payload as { operationId?: unknown } | null)?.operationId;
     if (typeof operationId !== "string") return;
-    notObjective.delete(operationId);
+    unknownToServer.delete(operationId);
     described.set(operationId, null);
     describedRevision += 1;
     removeObjectiveLocally(operationId);
@@ -241,6 +241,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 등록된 나머지 Theater 와 최상위 에이전트 Operation 이 속한 Theater 를 읽는다.
   // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadTheater 는 멱등이다.
   let lastTheater = ctx.consoleState.getActiveTheaterId();
+  let lastActiveOperation = ctx.consoleState.getActiveOperationId();
   operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
   loadAgentTheaters(ctx.api, lastTheater);
   const offConsole = ctx.consoleState.subscribe(() => {
@@ -248,6 +249,16 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (current !== lastTheater) {
       lastTheater = current;
       clearSelectionTheater();
+    }
+    // 가장 마지막 선택이 이긴다 — 어느 경로로든 Operation 이 활성이 되면 그 전에 줄·팔레트가 남긴 reveal 은 버리고,
+    // 표면이 열려 있으면 활성 Operation 의 목표로 옮긴다. 닫혀 있으면 다음에 열릴 때 따라간다.
+    const activeOperation = ctx.consoleState.getActiveOperationId();
+    if (activeOperation !== lastActiveOperation) {
+      lastActiveOperation = activeOperation;
+      if (activeOperation) {
+        reveal = null;
+        followActiveOperation();
+      }
     }
     operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
     loadAgentTheaters(ctx.api, current);
@@ -378,6 +389,10 @@ export function activeTheaterId(): string | null {
   return installed?.consoleState.getActiveTheaterId() ?? null;
 }
 
+export function activeOperationId(): string | null {
+  return installed?.consoleState.getActiveOperationId() ?? null;
+}
+
 /** 팔레트·캡션에서 "이 항목으로" — 표면이 마운트되어 있으면 즉시, 아니면 열릴 때 집는다. */
 export function revealObjective(target: { objectiveId: string; missionId?: string; followups?: boolean; focusTitle?: boolean }): void {
   reveal = { ...target, at: Date.now() };
@@ -468,11 +483,15 @@ export function useObjectiveDisplayTheater(contextTheaterId: string | null): str
 }
 
 /**
- * Cruise의 frame·Fleet Map 선택과 War Room의 수동·자동 등단을 열린 목표 레일에 반영한다.
+ * Cruise의 frame·Fleet Map 선택, 사이드바 목표 줄 선택과 War Room의 수동·자동 등단을 열린 목표 레일에 반영한다.
  * 레일이 닫혀 있거나 확장 전용 표면일 때는 자동 열기/전환 없이 조용히 무시하고, 미연결 Operation 은 기존 선택을 보존한다.
  */
 export function handleMapOperationSelected(operationId: string): void {
-  if (!installed?.rail.isOpen("objectives")) return;
+  selectOperationObjective(operationId, () => !!installed?.rail.isOpen(OBJECTIVE_PANEL_ID));
+}
+
+function selectOperationObjective(operationId: string, shown: () => boolean): void {
+  if (!installed || !shown()) return;
   const token = ++latestSelectionToken;
   pendingSelectionOperationId = null;
   // 자동 등단으로 현재 목표의 편집 DOM을 교체하지 않는다. 입력을 떠나면 가장 최근 등단만 적용한다.
@@ -502,7 +521,7 @@ export function handleMapOperationSelected(operationId: string): void {
   const theaterId = targetTheaterId;
   selectionTheater = { contextTheaterId: activeTheaterId(), theaterId };
   const select = () => {
-    if (token !== latestSelectionToken || !installed?.rail.isOpen("objectives")) return;
+    if (token !== latestSelectionToken || !shown()) return;
     if (selectionTheater?.theaterId !== theaterId) return;
     // 조회를 기다리는 사이 시작한 편집도 같은 보류 규칙을 따른다.
     if (isObjectiveEditing()) { pendingSelectionOperationId = operationId; return; }
@@ -516,6 +535,18 @@ export function handleMapOperationSelected(operationId: string): void {
   else void loadTheater(installed.api, theaterId).then(select);
   // 연결된 목표가 없어도 목록은 무대 소속 Theater만 보여 준다.
   notify();
+}
+
+/**
+ * 표면이 열릴 때 — 사람이 줄·팔레트로 가리킨 목표(reveal)가 없으면 캔버스의 활성 Operation 을 따라간다. 사이드바가 그 줄을
+ * 활성으로 보이는 동안 표면이 빈 채 서지 않게 한다. 선택 규칙(편집 중 보류, 연결 목표가 없으면 보던 자리 유지)은 위와 같고,
+ * 활성 Operation 이 없으면 보던 자리 그대로다.
+ */
+export function followActiveOperation(): void {
+  if (reveal) return;
+  const operationId = installed?.consoleState.getActiveOperationId() ?? null;
+  // 레일이든 확장 표면이든 — 열린 자리가 활성 Operation 을 보인다.
+  if (operationId) selectOperationObjective(operationId, isObjectiveSurfaceOpen);
 }
 
 const ACCESS_ARRIVAL_TIMEOUT_MS = 5_000;

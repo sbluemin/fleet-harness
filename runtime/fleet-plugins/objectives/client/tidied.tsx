@@ -75,7 +75,7 @@ export function TidiedList({ objectives, t, language, selected, onSelect, call }
   const latest = (items: readonly Objective[]) => Math.max(...items.map((objective) => objective.removed!.at));
   const ordered = [...groups.entries()].sort((a, b) => latest(b[1]) - latest(a[1]));
   return (<>
-    <p className="objectives-outside-hint">{t("objectives.tidied.hint")}</p>
+    <p className="objectives-tidied-hint">{t("objectives.tidied.hint")}</p>
     {objectives.length === 0 ? <div className="objectives-empty">{t("objectives.tidied.empty")}</div> : null}
     {ordered.map(([key, items]) => {
       const merged = items.filter((objective) => objective.removed!.mergedInto).length;

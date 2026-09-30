@@ -17,7 +17,7 @@ import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { LaunchControl, LaunchedText, launchedWords, useLaunchRows } from "./launch-control.js";
-import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
+import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
   discardedFollowups,
@@ -158,6 +158,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 사이드바 줄의 선택 표시는 표면이 열려 있을 때만 선다 — 열리고 닫힐 때 줄이 다시 읽게 한다(닫힘은 자리 상태가 바뀐 뒤에).
   useEffect(() => {
     notifyObjectiveSurface();
+    // 사이드바가 활성으로 보이는 Operation 의 목표로 연다 — 줄·팔레트가 가리킨 목표(reveal)가 있으면 그쪽이 앞선다.
+    followActiveOperation();
     return () => { setTimeout(notifyObjectiveSurface, 0); };
   }, []);
   const placeButton = (className: string) => <button type="button" className={`objectives-place-button ${className}`} data-objectives-tour="place" aria-label={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} title={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} onClick={ctx.place === "rail" ? expandObjective : dockObjective}>
@@ -202,7 +204,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   /** 전환 목록 줄의 글리프 — 사이드바 줄과 같은 판정: 검토 대기 · 시작 전 · 묶음에서 가장 급한 활동. */
   const glyphOf = (objective: Objective): { state: StatusGlyphState; label: string } => {
     if (objective.awaitingReview) return { state: "review", label: t("objectives.objectives.review") };
-    if (!objective.commander.started) return { state: "fresh", label: t("objectives.state.fresh") };
+    if (!objective.commander.started && !operationOf(objective.id)) return { state: "fresh", label: t("objectives.state.fresh") };
     const activity = objectiveActivity(objective);
     return activity === "awaiting" || activity === "running" || activity === "background" || activity === "idle"
       ? { state: activity, label: stateLabel(activity) }
@@ -212,8 +214,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? null : null;
   const detailRef = useRef<HTMLElement | null>(null);
   // 결정 요청은 전부 센다 — 상세 머리의 「다른 요청」이 이 줄을 돈다.
-  const requests = useMemo(() => state.objectives.filter((objective) => hasDecisionRequest(objective) && objective.enlisted && !objective.removed).sort(byRequestTime), [state.objectives]);
-  const reviews = useMemo(() => state.objectives.filter((objective) => objective.enlisted && objective.awaitingReview && !objective.done && !objective.removed && !hasDecisionRequest(objective)), [state.objectives]);
+  const requests = useMemo(() => state.objectives.filter((objective) => hasDecisionRequest(objective) && !objective.removed).sort(byRequestTime), [state.objectives]);
+  const reviews = useMemo(() => state.objectives.filter((objective) => objective.awaitingReview && !objective.done && !objective.removed && !hasDecisionRequest(objective)), [state.objectives]);
   /** 「다른 요청」 — 요청이 선 차례대로 다음 목표를 고른다(고른 목표가 요청이 아니면 첫 요청). 끝에서 처음으로 돌아간다. */
   const openNextRequest = () => {
     if (requests.length === 0) return;
@@ -325,8 +327,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       onNewOperation={openNewOperation}
     />
   );
-  const noObjectives = state.loaded && !state.objectives.some((objective) => objective.enlisted && !objective.removed);
-  const objectiveShown = !!current && !current.removed && current.enlisted;
+  const noObjectives = state.loaded && !state.objectives.some((objective) => !objective.removed);
+  const objectiveShown = !!current && !current.removed;
   const two = objectiveShown && ctx.place !== "rail" && rootWidth >= TWO_PANE.threshold;
   const rootStyle = two ? { "--objectives-ops-w": `${opsWidthOf(rootWidth)}px` } as CSSProperties : undefined;
 
@@ -376,21 +378,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     );
   } else if (current.removed) {
     body = <TidiedDetail key={current.id} objective={current} t={t} language={language} call={call} onOpenObjective={openObjectiveDetail} detailRef={detailRef} head={<>{switcher}{placeButton("objectives-place-detail")}</>} />;
-  } else if (!current.enlisted) {
-    // 목표로 다루기 전의 세션 — 지도에서 Operation 을 고르면 여기 선다. 구상하거나 개시하면 목표가 된다.
-    body = (
-      <aside ref={detailRef} className="objectives-detail" aria-label={current.title}>
-        <div className="objectives-pick-head">
-          <span className="objectives-pick-label is-title">{current.title}</span>
-          {switcher}
-          {placeButton("objectives-place-detail")}
-        </div>
-        <div className="objectives-pick">
-          <h5>{t("objectives.notObjective.title")}</h5>
-          <p>{t("objectives.notObjective.body")}</p>
-        </div>
-      </aside>
-    );
   } else {
     body = (
       <ObjectiveDetail

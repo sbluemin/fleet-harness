@@ -68,6 +68,7 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
         }));
       },
       getActiveTheaterId: () => getState().activeTheaterId,
+      getActiveOperationId: () => getState().activeOperationId,
       setActiveTheater: (theaterId) => setActiveTheater(theaterId),
       subscribe: (listener) => subscribe(listener),
     },

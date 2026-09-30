@@ -2,7 +2,7 @@ import type { OperationCluster, OperationClusterMember, OperationClusterProgress
 
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { openFollowups } from "./followups.js";
-import { activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
+import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -13,9 +13,9 @@ import { activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFr
  * 색인하므로 같은 id 를 두 번 내지 않는다). 임무를 맡지 않은 구성원도 역할 이름 칸으로 서서 따로 떠돌지 않는다.
  * 임무도 떠 있는 구성원도 없는 Operation 은 캡션 띠·노드 줄을 세우지 않는다. 완료된 목표도 묶음으로 남는다.
  *
- * 목록에 든(enlisted) 끝나지 않은 목표는 사이드바 그룹 트리의 한 줄(`row`)로도 선다 — 지휘관·구성원 칩은 그 줄로 접히고,
+ * 끝나지 않은 목표는 사이드바 그룹 트리의 한 줄(`row`)로도 선다 — 지휘관·구성원 칩은 그 줄로 접히고,
  * Operation 이 아직 없는 시작 전 목표도 뿌리 없는 줄로 선다. 오늘·기한·검토 대기의 판정은 여기서 하고 호스트는 그리기만 한다.
- * 목록에 들지 않은 에이전트 Operation 은 여느 칩 그대로다.
+ * 셸처럼 목표가 아닌 Operation 은 여느 칩 그대로다.
  * 호스트가 useSyncExternalStore 로 읽으므로, 내용이 같으면 같은 배열을 돌려준다.
  */
 
@@ -53,9 +53,9 @@ export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Ob
   return byId.get(objective.origin.objectiveId)?.title ?? null;
 }
 
-/** 사이드바 줄 — 목록에 든 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
-function rowOf(objective: Objective, order: number, fold: readonly string[], selected: boolean, originTitle: string | null | undefined): OperationClusterRow | null {
-  if (!objective.enlisted || objective.removed || objective.done) return null;
+/** 사이드바 줄 — 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
+function rowOf(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined): OperationClusterRow | null {
+  if (objective.removed || objective.done) return null;
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
   const review = objective.awaitingReview;
@@ -63,7 +63,8 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], sel
     groupId: objective.groupId,
     order,
     fold,
-    ...(review ? { glyph: "review" as const } : !objective.commander.started ? { glyph: "fresh" as const } : {}),
+    // 「시작 전」은 세션이 없는 목표에만 — Operation 이 서 있으면 개시 전이라도 호스트가 칩과 같은 활동 상태로 그린다.
+    ...(review ? { glyph: "review" as const } : !objective.commander.started && !hasSession ? { glyph: "fresh" as const } : {}),
     ...(objective.today || overdue ? { today: true } : {}),
     ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}),
     ...(objective.decisionRequest ? { decisionRequestedAt: objective.decisionRequest.createdAt, decisionQuestions: objective.decisionRequest.questions.length } : {}),
@@ -103,7 +104,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const live = (operationId: string | null | undefined): string | null => (operationId && operationId !== commander && activity.has(operationId) ? operationId : null);
     const liveMembers = objective.members.flatMap((member) => { const operationId = live(member.id); return operationId ? [{ member, operationId }] : []; });
     const fold = [...new Set([...(activity.has(commander) ? [commander] : []), ...liveMembers.map((entry) => entry.operationId), ...objective.missions.flatMap((mission) => { const operationId = live(mission.operationId); return operationId ? [operationId] : []; })])];
-    const row = rowOf(objective, order, fold, selectedOf(objective), originTitleOf(objective, byId));
+    const row = rowOf(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId));
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Operation 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
     const decisionRequest = !!objective.decisionRequest && !objective.done;
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
@@ -190,7 +191,8 @@ export const objectivesClusterSource: OperationClusterSource = {
   get: () => {
     const activity = new Map(operationSummaries().map((summary) => [summary.id, summary.activity]));
     // 줄의 선택 표시는 표면이 열려 보고 있는 목표에만 선다 — 표면은 활성 Theater 를 보므로 비활성 Theater 의 줄에는 서지 않는다.
-    const surfaceOpen = isObjectiveSurfaceOpen();
+    // Operation 이 활성인 동안은 그 줄(칩)이 하이라이트를 가지므로 표면 선택으로는 서지 않는다 — 사이드바 하이라이트는 언제나 한 줄이다.
+    const surfaceOpen = isObjectiveSurfaceOpen() && !activeOperationId();
     const theaterId = activeTheaterId();
     const next = clustersOf(readAllTheaters().flatMap((state) => state.objectives), activity, (objective) => surfaceOpen && objective.theaterId === theaterId && readObjectiveView(objective.theaterId).selected === objective.id);
     const nextSignature = signature(next);
