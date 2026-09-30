@@ -86,6 +86,7 @@ function toPaneContext(ctx: ExpandedSurfaceContext, role: import("@fleet-console
     signal: new AbortController().signal,
     language: ctx.language,
     theme: ctx.theme,
+    ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }),
   };
 }
 

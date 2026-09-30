@@ -23,6 +23,15 @@ interface CanvasContextMenuProps {
   readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onClose: () => void;
+  /** 실행 종류 앞에 서는 항목 — 사이드바 「+」가 Operation 없이 시작하는 줄(목표 등)을 먼저 보인다. */
+  readonly leadingItems?: readonly CanvasContextMenuLeadingItem[];
+}
+
+export interface CanvasContextMenuLeadingItem {
+  readonly id: string;
+  readonly label: string;
+  readonly icon?: ReactNode;
+  readonly onSelect: () => void;
 }
 
 // 폭은 세 곳이 함께 알아야 한다 — 이 상수(측정 전 clamp 폴백), .canvas-context-menu의 width,
@@ -64,11 +73,13 @@ const EDGE_PAGE_JUMP_RATIO = 0.8;
 // 스크롤 게이지가 마지막 스크롤 뒤 사라지기까지의 대기.
 const SCROLL_GAUGE_HIDE_MS = 650;
 
+const NO_LEADING_ITEMS: readonly CanvasContextMenuLeadingItem[] = [];
+
 function prefersReducedMotion(): boolean {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, leadingItems = NO_LEADING_ITEMS }: CanvasContextMenuProps) {
   const t = useT();
   const globalSettings = useGlobalSettingsStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -595,6 +606,28 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         >
           <div className="canvas-context-menu-edge-fill"><EdgeChevron direction="up" /></div>
         </div>
+        {leadingItems.length > 0 ? (
+          <div role="group">
+            {leadingItems.map((item) => (
+              <div key={item.id} className="operation-launch-menu-item-wrap">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="theater-menu-item canvas-context-menu-item operation-launch-menu-item"
+                  data-menu-leading-item={item.id}
+                  tabIndex={-1}
+                  onMouseEnter={() => setHoverKey(null)}
+                  onFocus={() => setFocusKey(null)}
+                  onClick={() => { item.onSelect(); onClose(); }}
+                >
+                  <span className="theater-menu-check" aria-hidden="true">{item.icon ?? <FallbackGlyph />}</span>
+                  <span className="theater-menu-label">{item.label}</span>
+                </button>
+              </div>
+            ))}
+            {launchCatalog.length > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
+          </div>
+        ) : null}
         {launchCatalog.length > 0 ? <>
           {launchCatalog.map((plugin, index) => {
             // 모델 밴드를 펼치는 실행 종류와 바로 실행되는 종류를 갈라 세운다.
@@ -777,7 +810,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             </div>
             );
           })}
-        </> : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
+        </> : leadingItems.length > 0 ? null : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
         <div
           className={`canvas-context-menu-edge canvas-context-menu-edge--bottom${edgeState.down ? " is-on" : ""}`}
           aria-hidden="true"

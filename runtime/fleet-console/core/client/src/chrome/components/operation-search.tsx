@@ -446,7 +446,6 @@ export function OperationSearch({
         break;
       }
       case "toggle-sidebar": {
-        if (isTriageActive()) break;
         if (isZenMode() && location.pathname.startsWith("/operations")) {
           previousFocusRef.current = null;
           const shown = toggleZenSideBar();

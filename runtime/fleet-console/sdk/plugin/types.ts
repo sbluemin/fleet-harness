@@ -174,6 +174,12 @@ export interface ClientExecutionProvider {
    */
   readonly operationClusters?: OperationClusterSource;
   /**
+   * 보관함 시트 안의 칸 — 플러그인이 소유한 "끝났거나 치운 것"(완료한 목표·정리한 목표)이 Core 의 보관된 세션 곁에 선다.
+   * 호스트는 칸의 자리·머리·사이드바 보관함 입구의 개수만 그리고, 본문과 복원·영구 삭제는 플러그인이 그린다.
+   * 개수가 0 인 칸은 서지 않는다. `count` 는 바뀌지 않았으면 같은 값을 돌려준다(useSyncExternalStore).
+   */
+  readonly archiveSections?: readonly ArchiveSectionDescriptor[];
+  /**
    * 콘솔이 살아 있는 동안 호스트가 계속 마운트해 두는 화면 없는 기여.
    *
    * rail 패널도 확대 표면도 열려 있을 때만 마운트되므로, 주소 동기화처럼 "열려 있지
@@ -525,8 +531,11 @@ export interface OperationCluster {
   readonly theaterId: string;
   /** 묶음의 제목(목표 제목) — 툴팁과 War Room 위치 표시에 선다. */
   readonly title: string;
-  /** 뿌리(조율자) operationId. 뿌리는 구성원 목록에 들지 않는다. */
-  readonly root: string;
+  /**
+   * 뿌리(조율자) operationId. 뿌리는 구성원 목록에 들지 않는다. 아직 Operation 이 없는 묶음(시작 전 목표)은 뿌리가 없다 —
+   * 그런 묶음은 `row` 로만 서고, 캡션 띠·노드 줄·선별 표식에는 서지 않는다.
+   */
+  readonly root?: string;
   readonly members: readonly OperationClusterMember[];
   /** 띠·위치 표시를 누르면 — 플러그인의 표면으로 간다. 구성원 id 가 오면 그 구성원을 집는다. */
   readonly open?: (operationId?: string) => void;
@@ -535,11 +544,77 @@ export interface OperationCluster {
    * `awaiting`)와 별개의 사실이라 활동 축을 바꾸지 않는다. 답은 플러그인 표면(`open`)에서 한다.
    */
   readonly decisionRequest?: boolean;
+  /**
+   * 사이드바 그룹 트리에 서는 한 줄 — 있으면 호스트는 뿌리 칩과 `fold` 의 칩을 이 줄 하나로 접어 그린다. 줄의 뜻(오늘·기한·
+   * 검토 대기·진행)은 플러그인이 계산해 넘기고, 호스트는 칩 문법으로 그리기만 한다. 줄을 누르면 `open()` 이 불린다.
+   */
+  readonly row?: OperationClusterRow;
+}
+
+/** 묶음 줄의 원형 글리프를 플러그인이 정할 때 — 없으면 호스트가 뿌리·`fold` 가운데 가장 급한 활동으로 그린다. */
+export type OperationClusterRowGlyph = "fresh" | "review" | "done";
+
+export interface OperationClusterRow {
+  /** 줄이 서는 사이드바 그룹. null 이면 미분류. */
+  readonly groupId: string | null;
+  /** 같은 Theater 안에서의 순서 — 뿌리가 없는 줄이 뿌리 있는 줄 사이에 끼는 자리를 정한다. */
+  readonly order: number;
+  /** 이 줄로 접혀 따로 서지 않는 Operation id(뿌리 포함). */
+  readonly fold: readonly string[];
+  readonly glyph?: OperationClusterRowGlyph;
+  /** 「오늘」 구역에 올라간다 — 오늘 표시했거나 기한이 지났다. */
+  readonly today?: boolean;
+  /** 둘째 줄의 기한 — `date` 는 YYYY-MM-DD, 호스트가 자기 로케일로 적는다. 지남 판정은 플러그인이 한다. */
+  readonly due?: { readonly date: string; readonly overdue: boolean };
+  /** 결정 요청이 선 시각(ms). 있으면 「결정 요청」 구역에 요청 시각순으로 선다. */
+  readonly decisionRequestedAt?: number;
+  /** 결정 요청의 질문 수. */
+  readonly decisionQuestions?: number;
+  readonly progress?: { readonly done: number; readonly total: number };
+  /** 플러그인 표면이 지금 이 줄을 보고 있다. */
+  readonly selected?: boolean;
+  /** `glyph: "review"` 를 눌렀을 때 — 글리프가 버튼이 되는 유일한 경우다. */
+  readonly review?: (language: "en" | "ko") => void;
+  /** 뿌리가 없는 줄을 다른 그룹으로 끌어 놓았을 때. 뿌리가 있으면 호스트가 뿌리 Operation 의 그룹을 바꾼다. */
+  readonly moveToGroup?: (groupId: string | null) => void;
+}
+
+export interface ArchiveSectionContext {
+  readonly language: "en" | "ko";
+  readonly theaterId: string | null;
+  /** 칸의 줄이 다른 표면으로 옮겨 갈 때 시트를 닫는다. */
+  readonly close: () => void;
+}
+
+export interface ArchiveSectionDescriptor {
+  readonly id: string;
+  readonly title: (language: "en" | "ko") => string;
+  readonly subscribe: (listener: () => void) => () => void;
+  /** 이 Theater(null 이면 활성 Theater)에서 칸이 담은 수 — 보관함 입구의 「· 이름 N」과 칸 머리에 선다. */
+  readonly count: (theaterId: string | null) => number;
+  readonly render: (context: ArchiveSectionContext) => ReactNode;
 }
 
 export interface OperationClusterSource {
   readonly subscribe: (listener: () => void) => () => void;
   readonly get: () => readonly OperationCluster[];
+  /**
+   * 사이드바 Theater·그룹 머리 「+」 메뉴 맨 앞에 서는 새 줄 — 목표처럼 Operation 이 아직 없는 묶음을 만든다.
+   * 호스트는 항목의 자리와 메뉴만 그리고, 무엇을 만들고 어디로 여는지는 플러그인이 정한다.
+   */
+  readonly newRow?: OperationClusterNewRow;
+}
+
+export interface OperationClusterNewRowContext {
+  readonly theaterId: string;
+  /** 그룹 머리에서 열었으면 그 그룹, Theater 머리에서 열었으면 null(미분류). */
+  readonly groupId: string | null;
+  readonly language: "en" | "ko";
+}
+
+export interface OperationClusterNewRow {
+  readonly label: (language: "en" | "ko") => string;
+  readonly create: (context: OperationClusterNewRowContext) => void;
 }
 
 export interface OperationKindDescriptor {

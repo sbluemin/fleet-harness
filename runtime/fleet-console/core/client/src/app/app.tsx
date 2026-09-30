@@ -47,7 +47,7 @@ import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
-import { isTriageActive, useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
+import { useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { subscribeDormantAutoMinimize } from "../../../../features/workspace/client/canvas/dormant-auto-minimize.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
 import { useMobileSessionOpen } from "../chrome/mobile/mobile-store.js";
@@ -478,9 +478,7 @@ export function App() {
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed: (collapsed) => {
-        // 전역 단축키는 이미 소비했다. War Room에서는 Cruise의 표시 선호도 바꾸지 않는다.
-        if (isTriageActive()) return;
-        // Zen은 /operations 데스크톱에서만 켜진다. 그 안의 토글은 Zen을 유지한 채 좌측만 드러낸다.
+        // Zen은 /operations 데스크톱에서만 켜진다(War Room도 Zen 안이다). 그 안의 토글은 Zen을 유지한 채 좌측만 드러낸다.
         if (isZenMode() && resolvePanelShortcut() === "apply") {
           hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar);
           return;

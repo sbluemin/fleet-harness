@@ -273,7 +273,7 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
       const b = el.getBoundingClientRect();
       if (current.x < b.left + 28) el.scrollLeft -= 8; else if (current.x > b.right - 28) el.scrollLeft += 8;
       // 두 칸의 pane은 display:contents다. 각 레이아웃에서 실제로 스크롤하는 상자를 고른다.
-      const detail = box.current?.closest<HTMLElement>(".objectives-detail:not(.is-three) .objectives-detail-scroll, .objectives-detail.is-three .objectives-detail-pane, .objectives-zoom");
+      const detail = box.current?.closest<HTMLElement>(".objectives-detail:not(.is-two) .objectives-detail-scroll, .objectives-detail.is-two .objectives-detail-pane, .objectives-zoom");
       if (detail) { const d = detail.getBoundingClientRect(); if (current.y < d.top + 28) detail.scrollTop -= 8; else if (current.y > d.bottom - 28) detail.scrollTop += 8; }
       const hit = nodeId(document.elementFromPoint(current.x, current.y));
       if (hit !== current.over && hit !== current.from) { const next = { ...current, over: hit }; dragRef.current = next; setDrag(next); }

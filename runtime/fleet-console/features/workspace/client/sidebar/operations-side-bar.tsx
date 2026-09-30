@@ -33,6 +33,10 @@ import {
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
+import { StatusGlyph } from "@fleet-console/sdk/components/status-glyph";
+import { planSideBarRows, SideBarClusterRow, SideBarRowZone, type SideBarRowItem } from "./side-bar-cluster-row.js";
+import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
@@ -56,6 +60,8 @@ import {
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 interface OperationsSideBarProps {
+  /** War Room 무대 최소 폭을 지키려는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
+  readonly widthCap?: number;
   readonly theaters: readonly TheaterInfo[];
   readonly activeTheaterId: string | null;
   readonly operations: readonly OperationNode[];
@@ -68,7 +74,7 @@ interface OperationsSideBarProps {
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
   readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
+  readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>, groupId?: string | null) => void;
   readonly onClose: (operationId: string) => void;
   readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
@@ -102,6 +108,8 @@ type ActiveContextMenu =
 interface NewMenuState {
   readonly anchor: { readonly x: number; readonly y: number };
   readonly viewportBounds?: { readonly width: number; readonly height: number };
+  /** 그룹 머리 「+」에서 열었으면 그 그룹 — 새 줄(목표)과 발사한 Operation 이 그 그룹에 선다. */
+  readonly groupId?: string | null;
 }
 
 interface ChipDragState {
@@ -115,6 +123,8 @@ interface ChipDragState {
   readonly dragging: boolean;
   readonly dropIndex: number;
   readonly dropGroupId: string | null;
+  /** 뿌리 Operation 이 없는 묶음 줄(시작 전 목표) — 순서 대신 그룹만 옮긴다. */
+  readonly moveRow?: (groupId: string | null) => void;
 }
 
 interface GroupDragState {
@@ -351,13 +361,15 @@ export function OperationsSideBar({
   onAddTheater,
   onCancelAddTheater,
   onForgetTheater,
+  widthCap,
 }: OperationsSideBarProps) {
   const t = useT();
   const searchShortcut = useSearchShortcutLabel();
   const rootRef = useRef<HTMLElement | null>(null);
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
-  const { width, collapsed } = sideBar;
+  const { collapsed } = sideBar;
+  const width = widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const statusAxis = useSideBarStatusAxis();
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
@@ -405,6 +417,8 @@ export function OperationsSideBar({
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   // 묶음 띠(임무 점)는 지휘관 행의 셋째 줄에 선다. 구성원 행은 스토어의 기본 목록에 없어 여기서 거를 것이 없다.
   const clusterIndex = useClusterIndex();
+  const { clusterNewRows } = usePluginRegistry();
+  const locale = useConsoleLocale();
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
@@ -431,6 +445,8 @@ export function OperationsSideBar({
     };
   });
   const groupedSections = groupOperations(allEntries, activeGroups, activeOperationOrder);
+  // 그룹 축에서는 묶음 줄(목표)이 뿌리·구성원 칩을 접고 제자리에 선다. 결정 요청·오늘은 맨 위 구역으로 올라간다.
+  const rowPlan = planSideBarRows(groupedSections, clusterIndex, activeTheaterId);
   const statusGrouped = groupTheaterStatusEntries(allEntries, minimizedSet, getStatusTransitionTick, t);
   const statusSections = statusGrouped.living;
   const { minimized: minimizedSection, dormant: dormantSection } = statusGrouped;
@@ -697,6 +713,10 @@ export function OperationsSideBar({
       }
 
       const { sourceId, sourceGroupId, dropIndex, dropGroupId } = snap;
+      if (snap.moveRow) {
+        if (dropGroupId !== sourceGroupId) snap.moveRow(dropGroupId);
+        return;
+      }
       const sections = dropSectionsRef.current;
       const allIds = currentOrderRef.current;
 
@@ -751,6 +771,50 @@ export function OperationsSideBar({
       dropIndex: currentOrder.indexOf(operationId),
       dropGroupId: sourceGroupId,
     });
+  };
+
+  const beginRowPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, item: SideBarRowItem) => {
+    if (item.anchor) {
+      beginPointerDrag(event, item.anchor.operation.id);
+      return;
+    }
+    const moveRow = item.row.moveToGroup;
+    if (statusAxis || !moveRow || event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest(".status-glyph.is-actionable")) return;
+    setActiveContextMenu(null);
+    updateDrag({
+      kind: "chip",
+      sourceId: `row:${item.layout.cluster.id}`,
+      sourceGroupId: item.row.groupId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentY: event.clientY,
+      dragging: false,
+      dropIndex: 0,
+      dropGroupId: item.row.groupId,
+      moveRow,
+    });
+  };
+  const openRowContextMenu = (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => {
+    if (!item.anchor) return;
+    setNewMenu(null);
+    setActiveContextMenu({ kind: "chip", operationId: item.anchor.operation.id, anchor, returnFocus });
+  };
+  const renderRow = (item: SideBarRowItem, promoted: boolean) => {
+    const sourceId = item.anchor?.operation.id ?? `row:${item.layout.cluster.id}`;
+    const rowDragging = drag?.kind === "chip" && drag.sourceId === sourceId && drag.dragging;
+    return (
+      <SideBarClusterRow
+        key={item.layout.cluster.id}
+        item={item}
+        groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
+        dragging={rowDragging}
+        dragOffsetY={rowDragging ? drag.currentY - drag.startY : 0}
+        onPointerDragStart={promoted ? undefined : beginRowPointerDrag}
+        onContextMenu={openRowContextMenu}
+      />
+    );
   };
 
   const beginGroupPointerDrag = (event: ReactPointerEvent<HTMLDivElement>, groupId: string) => {
@@ -841,12 +905,13 @@ export function OperationsSideBar({
     onEscape: closeActiveContextMenu,
   });
 
-  const openTheaterLaunchMenuAt = (anchor: DOMRect, theaterId: string) => {
+  const openTheaterLaunchMenuAt = (anchor: DOMRect, theaterId: string, groupId: string | null = null) => {
     if (theaterId !== activeTheaterId) onSelectTheater(theaterId);
     setActiveContextMenu(null);
     setNewMenu({
       anchor: { x: anchor.right + 8, y: anchor.top },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
+      groupId,
     });
   };
 
@@ -1052,7 +1117,19 @@ export function OperationsSideBar({
                     dormantSection={dormantSection}
                     renderEntry={renderActiveStatusEntry}
                   />,
-                ]) : groupedSections.map((section) => {
+                ]) : [
+                  ...(rowPlan.decisions.length > 0 ? [
+                    <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length}>
+                      {rowPlan.decisions.map((item) => renderRow(item, true))}
+                    </SideBarRowZone>,
+                  ] : []),
+                  ...(rowPlan.today.length > 0 ? [
+                    <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length}>
+                      {rowPlan.today.map((item) => renderRow(item, true))}
+                    </SideBarRowZone>,
+                  ] : []),
+                ].concat(groupedSections.map((section) => {
+          const sectionItems = rowPlan.sections.get(section.groupId) ?? [];
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
           const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
           const sectionStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
@@ -1079,7 +1156,7 @@ export function OperationsSideBar({
               {section.group ? (
                 <OperationsSideBarGroupHeader
                   group={section.group}
-                  count={section.entries.length}
+                  count={sectionItems.length}
                   collapsed={isCollapsed}
                   dragging={isGroupDragging}
                   dragOffsetY={isGroupDragging ? drag.currentY - drag.startY : 0}
@@ -1087,8 +1164,9 @@ export function OperationsSideBar({
                   onToggle={toggleGroupCollapsed}
                   onContextMenu={(groupId, anchor) => setActiveContextMenu({ kind: "group", groupId, anchor })}
                   onPointerDragStart={beginGroupPointerDrag}
+                  onOpenLaunch={(groupId, anchor) => { if (activeTheaterId) openTheaterLaunchMenuAt(anchor, activeTheaterId, groupId); }}
                 />
-              ) : hasCustomGroups && section.entries.length > 0 ? (
+              ) : hasCustomGroups && sectionItems.length > 0 ? (
                 <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
                   <span>{t("sidebar.ungrouped.label")}</span>
                 </div>
@@ -1104,7 +1182,9 @@ export function OperationsSideBar({
                   data-group-section-id={section.groupId ?? "__ungrouped__"}
                   aria-label={section.group ? section.group.name : t("sidebar.ungrouped.label")}
                 >
-                  {section.entries.map((entry) => {
+                  {sectionItems.map((sectionItem) => {
+                    if (sectionItem.kind === "row") return renderRow(sectionItem.item, false);
+                    const entry = sectionItem.entry;
                     const globalIndex = allEntries.indexOf(entry);
                     const sectionLocalIndex = section.entries.indexOf(entry);
                     const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
@@ -1142,7 +1222,7 @@ export function OperationsSideBar({
               ) : null}
             </li>
           );
-        })}
+        }))}
               </ol>
               ) : null}
             </li>
@@ -1196,8 +1276,14 @@ export function OperationsSideBar({
           catalog={catalog}
           canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
-          onLaunchKind={(pluginId, kind, variantLaunch) => { setNewMenu(null); onLaunchKind(pluginId, kind, variantLaunch); }}
+          onLaunchKind={(pluginId, kind, variantLaunch) => { setNewMenu(null); onLaunchKind(pluginId, kind, variantLaunch, newMenu.groupId ?? null); }}
           onClose={() => setNewMenu(null)}
+          leadingItems={activeTheaterId && !statusAxis ? clusterNewRows.map((newRow, index) => ({
+            id: `new-row-${index}`,
+            label: newRow.label(locale),
+            icon: <StatusGlyph state="fresh" label="" decorative />,
+            onSelect: () => newRow.create({ theaterId: activeTheaterId, groupId: newMenu.groupId ?? null, language: locale }),
+          })) : undefined}
         />,
         document.body,
       ) : null}

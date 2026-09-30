@@ -28,6 +28,7 @@ export const canvasEn = {
   "canvas.triage.picked": "Picked",
   "canvas.triage.setAsideArmed": "Press ↓ again to set aside",
   "canvas.triage.modeKicker": "WAR ROOM",
+  "canvas.triage.sideBarToggle": "Expand or collapse the sidebar",
   "canvas.triage.modeTitle": "Switching to War Room",
   "canvas.triage.modeBody": "Bringing up {waiting} waiting items one at a time. {stowed} panels stowed.",
   "canvas.triage.modeBodyEmpty": "Nothing is waiting. All {stowed} panels stowed.",
@@ -270,6 +271,13 @@ export const canvasEn = {
 
   "sidebar.ungrouped.label": "Ungrouped",
   "sidebar.ungrouped.aria": "Ungrouped operations",
+  "sidebar.group.add": "Add to {name}",
+  "sidebar.row.glyph.fresh": "Not started",
+  "sidebar.row.glyph.review": "Awaiting review — complete or pick follow-ups",
+  "sidebar.row.glyph.done": "Done",
+  "sidebar.row.decisions": "{n} to decide",
+  "sidebar.zone.decisions": "Decision requests",
+  "sidebar.zone.today": "Today",
 
   "sidebar.group.expand": "Expand group {name}",
   "sidebar.group.collapse": "Collapse group {name}",
@@ -368,6 +376,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.triage.picked": "지목",
   "canvas.triage.setAsideArmed": "한 번 더 ↓ 누르면 치워둡니다",
   "canvas.triage.modeKicker": "WAR ROOM",
+  "canvas.triage.sideBarToggle": "사이드바 펼치기·접기",
   "canvas.triage.modeTitle": "War Room 전환",
   "canvas.triage.modeBody": "답을 기다리는 {waiting}건을 한 건씩 세웁니다. 나머지 {stowed}개는 접었습니다.",
   "canvas.triage.modeBodyEmpty": "대기 중인 작업이 없습니다. {stowed}개를 모두 접었습니다.",
@@ -609,6 +618,13 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "sidebar.ungrouped.label": "미분류",
   "sidebar.ungrouped.aria": "미분류 Operation",
+  "sidebar.group.add": "{name}에 추가",
+  "sidebar.row.glyph.fresh": "시작 전",
+  "sidebar.row.glyph.review": "검토 대기 — 완료하거나 후속을 고릅니다",
+  "sidebar.row.glyph.done": "완료",
+  "sidebar.row.decisions": "결정 요청 {n}",
+  "sidebar.zone.decisions": "결정 요청",
+  "sidebar.zone.today": "오늘",
 
   "sidebar.group.expand": "{name} 그룹 펼치기",
   "sidebar.group.collapse": "{name} 그룹 접기",

@@ -1,5 +1,6 @@
 import type { OperationActivityVisual } from "../../../../../features/execution/client/operation-activity.js";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
 
 import { ViewModeToggle } from "../components/view-mode-toggle.js";
 import { useT } from "../../i18n/index.js";
@@ -63,7 +64,7 @@ export function MobileOperationList({ operations, operationRuntime, notification
                 const harnessLabel = session?.harness === "claude-code" ? "Claude Code" : null;
                 return (
                   <button type="button" className="mobile-operation-card" key={operation.id} onClick={() => onOpen(operation.id)}>
-                    <span className={beaconClass(status)} aria-hidden="true" />
+                    <span className={statusGlyphClassName(operationActivityVisual(status))} aria-hidden="true" />
                     <span className="mobile-operation-card-copy">
                       <strong>{operation.title}</strong>
                       {harnessLabel ? <span>{harnessLabel}</span> : null}
@@ -79,13 +80,4 @@ export function MobileOperationList({ operations, operationRuntime, notification
       </div>
     </section>
   );
-}
-
-function beaconClass(status: OperationActivityVisual): string {
-  const visual = operationActivityVisual(status);
-  if (visual === "running") return "tenant-beacon is-turn-running";
-  if (visual === "background") return "tenant-beacon is-background";
-  if (visual === "awaiting") return "tenant-beacon is-awaiting";
-  if (visual === "ended") return "tenant-beacon is-ended";
-  return "tenant-beacon is-idle";
 }

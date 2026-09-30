@@ -31,6 +31,10 @@ interface TheaterState {
 export interface RevealTarget {
   readonly objectiveId: string;
   readonly missionId?: string;
+  /** 사이드바 검토 대기 글리프에서 왔다 — 표면이 후속 후보 선택을 연다. */
+  readonly followups?: boolean;
+  /** 사이드바 「+ 목표」로 막 만들었다 — 표면이 제목 칸에 포커스를 두고 전체 선택한다. */
+  readonly focusTitle?: boolean;
   readonly at: number;
 }
 
@@ -381,7 +385,7 @@ export function activeTheaterId(): string | null {
 }
 
 /** 팔레트·캡션에서 "이 항목으로" — 표면이 마운트되어 있으면 즉시, 아니면 열릴 때 집는다. */
-export function revealObjective(target: { objectiveId: string; missionId?: string }): void {
+export function revealObjective(target: { objectiveId: string; missionId?: string; followups?: boolean; focusTitle?: boolean }): void {
   reveal = { ...target, at: Date.now() };
   notify();
 }
@@ -425,9 +429,17 @@ export function patchObjectiveView(theaterId: string | null, patch: (current: Ob
   views.set(theaterId, next);
   for (const listener of viewListeners) listener();
 }
+/** 표면이 열리고 닫힌 것을 보기 구독자에게 알린다 — 사이드바 줄의 선택 표시는 표면이 열려 있을 때만 선다. */
+export function notifyObjectiveSurface(): void {
+  for (const listener of viewListeners) listener();
+}
+export function subscribeObjectiveView(listener: () => void): () => void {
+  viewListeners.add(listener);
+  return () => { viewListeners.delete(listener); };
+}
 export function useObjectiveView(theaterId: string | null): ObjectiveViewState {
   return useSyncExternalStore(
-    (listener) => { viewListeners.add(listener); return () => { viewListeners.delete(listener); }; },
+    subscribeObjectiveView,
     () => readObjectiveView(theaterId),
     () => readObjectiveView(theaterId),
   );
@@ -513,7 +525,7 @@ export function handleMapOperationSelected(operationId: string): void {
       (objective) => objective.id === operationId || objective.members.some((member) => member.id === operationId && member.sessionName !== null),
     );
     if (!matchingObjective) return;
-    patchObjectiveView(theaterId, () => ({ selected: matchingObjective.id, list: matchingObjective.enlisted ? "all" : "outside", externalSelectionId: matchingObjective.id }));
+    patchObjectiveView(theaterId, () => ({ selected: matchingObjective.id, externalSelectionId: matchingObjective.id }));
   };
   if (theaters.get(theaterId)?.loaded) select();
   else void loadTheater(installed.api, theaterId).then(select);
@@ -589,6 +601,10 @@ export function onObjectiveSurfaceClose(): void {
   // Esc나 다른 표면에 밀려 닫힌 경우에도 마지막 자리는 확장 표면이다.
   // 도킹 전환의 close 통보는 dockObjective가 이어서 rail로 다시 쓴다.
   rememberObjectivePlace("expanded");
+}
+
+export function isObjectiveSurfaceOpen(): boolean {
+  return !!installed && (installed.rail.isOpen(OBJECTIVE_PANEL_ID) || installed.surfaces.isOpen(OBJECTIVE_PANEL_ID));
 }
 
 /** 캡션 칩은 이미 열린 자리를 사용하고, 닫혀 있을 때만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */

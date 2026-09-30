@@ -6,6 +6,9 @@ import { createRoot } from "react-dom/client";
 import { ApiError, type OperationPurgeConfirmation } from "@fleet-console/sdk/operations/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// 보관함 시트는 플러그인 보관함 칸을 레지스트리에서 읽는다 — 빌드가 만드는 가상 모듈 없이 불러오도록 비워 둔다.
+vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => ({ archiveSections: [] }) }));
+
 import { ArchivePurgeButton } from "../features/workspace/client/archive/archive-sheet.js";
 
 /**

@@ -211,6 +211,12 @@ export interface PaneContext {
   readonly signal: AbortSignal;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
+  /**
+   * 호스트 좌측 사이드바(Theater 그룹 트리)가 지금 보이는가. 접혔거나 모바일이면 false다 — 사이드바에
+   * 묶음 줄(`OperationCluster.row`)을 세운 플러그인은 이때 자기 화면 안에 같은 목록으로 가는 길을 둔다.
+   * 모르는 호스트는 싣지 않는다(생략 = 알 수 없음).
+   */
+  readonly sideBarVisible?: boolean;
 }
 
 /**

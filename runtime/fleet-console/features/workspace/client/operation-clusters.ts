@@ -98,26 +98,41 @@ export function mostUrgentProgress(cluster: OperationCluster): OperationClusterP
 export interface ClusterIndex {
   readonly clusters: readonly OperationCluster[];
   readonly layouts: ReadonlyMap<string, ClusterLayout>;
-  /** operationId → 그 Operation 이 뿌리인 묶음. */
+  /**
+   * operationId → 그 Operation 이 뿌리인 묶음. 구조(구성원·결정 요청)가 있는 묶음만 든다 — 캡션 띠·노드 줄·선별 표식이 읽는다.
+   * 줄(`row`)만 있는 묶음은 여기 없고 `rows` 로만 선다.
+   */
   readonly rootOf: ReadonlyMap<string, ClusterLayout>;
+  /** 사이드바 그룹 트리에 줄로 서는 묶음 — 선언 순서. */
+  readonly rows: readonly ClusterLayout[];
+  /** operationId → 그 Operation 을 대표하는 줄(뿌리 또는 `fold`). */
+  readonly rowOf: ReadonlyMap<string, ClusterLayout>;
 }
 
-const EMPTY_INDEX: ClusterIndex = { clusters: [], layouts: new Map(), rootOf: new Map() };
+const EMPTY_INDEX: ClusterIndex = { clusters: [], layouts: new Map(), rootOf: new Map(), rows: [], rowOf: new Map() };
 
 export function indexClusters(clusters: readonly OperationCluster[]): ClusterIndex {
   if (clusters.length === 0) return EMPTY_INDEX;
   const layouts = new Map<string, ClusterLayout>();
   const rootOf = new Map<string, ClusterLayout>();
+  const rows: ClusterLayout[] = [];
+  const rowOf = new Map<string, ClusterLayout>();
   // 한 Operation 은 한 묶음에만 선다 — 이미 구성원으로 선 Operation 은 다른 묶음의 뿌리가 되지 않는다.
   const memberOf = new Set<string>();
   for (const cluster of clusters) {
     const layout = layoutCluster(cluster);
     layouts.set(cluster.id, layout);
+    const root = cluster.root;
+    const structured = cluster.members.length > 0 || cluster.decisionRequest === true;
     // 한 Operation 은 한 묶음에만 선다 — 먼저 선언된 묶음이 이긴다.
-    if (!rootOf.has(cluster.root) && !memberOf.has(cluster.root)) rootOf.set(cluster.root, layout);
-    for (const laid of layout.formation.members) if (!rootOf.has(laid.member.operationId)) memberOf.add(laid.member.operationId);
+    if (root !== undefined && structured && !rootOf.has(root) && !memberOf.has(root)) rootOf.set(root, layout);
+    if (structured) for (const laid of layout.formation.members) if (!rootOf.has(laid.member.operationId)) memberOf.add(laid.member.operationId);
+    if (cluster.row && (root === undefined || !rowOf.has(root))) {
+      rows.push(layout);
+      for (const operationId of [...(root === undefined ? [] : [root]), ...cluster.row.fold]) if (!rowOf.has(operationId)) rowOf.set(operationId, layout);
+    }
   }
-  return { clusters, layouts, rootOf };
+  return { clusters, layouts, rootOf, rows, rowOf };
 }
 
 export function useOperationClusters(): readonly OperationCluster[] {

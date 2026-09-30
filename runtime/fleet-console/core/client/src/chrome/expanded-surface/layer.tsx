@@ -11,6 +11,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { useT } from "../../i18n/index.js";
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
+import { useHostSideBarVisible } from "../../integration/zen-chrome-toggles.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
 import { getState, subscribe } from "../../integration/store.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
@@ -300,6 +301,7 @@ function SurfacePane({
     return () => observer.disconnect();
   }, []);
 
+  const sideBarVisible = useHostSideBarVisible();
   const context = useMemo<ExpandedSurfaceContext>(() => ({
     surfaceId: instance.surfaceId,
     instanceId: instance.instanceId,
@@ -319,10 +321,11 @@ function SurfacePane({
     preferences: capabilities.preferences,
     language,
     theme,
+    sideBarVisible,
     close: () => closeExpandedSurface(instance.instanceId),
     focus: () => focusExpandedSurface(instance.instanceId),
     replaceParams: (next) => replaceExpandedSurfaceParams(instance.instanceId, next),
-  }), [capabilities, focused, index, instance, language, paneCount, paneWidth, theaterId, theme]);
+  }), [capabilities, focused, index, instance, language, paneCount, paneWidth, sideBarVisible, theaterId, theme]);
 
   // 제목은 aria-label이라 문자열이어야 하고, 그래서 자식 컴포넌트로 미룰 수 없다 —
   // 경계가 잡아 줄 수 없는 유일한 콜백이므로 여기서 직접 막는다.

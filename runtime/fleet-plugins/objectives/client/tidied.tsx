@@ -111,16 +111,14 @@ export function TidiedList({ objectives, t, language, selected, onSelect, call }
 }
 
 /** 지우거나 합친 목표의 상세 — 읽기 전용. 누가·언제·이유와 되돌리기, 합쳤으면 받은 목표로 가는 길. */
-export function TidiedDetail({ objective, t, language, call, back, onOpenObjective, detailRef, three, head }: {
+export function TidiedDetail({ objective, t, language, call, onOpenObjective, detailRef, head }: {
   readonly objective: Objective;
   readonly t: T;
   readonly language: Language;
   readonly call: Call;
-  /** 머리의 뒤로가기 — 세 칸에서 목록이 펼쳐져 있으면 없다. */
-  readonly back: { readonly label: string; readonly onClick: () => void; readonly glyph?: ReactNode } | null;
   readonly onOpenObjective: (objectiveId: string) => void;
   readonly detailRef: RefObject<HTMLElement | null>;
-  readonly three: boolean;
+  /** 머리 끝의 도구 — 전환 목록 ⌄ 와 자리 옮기기. */
   readonly head?: ReactNode;
 }) {
   const now = useNow();
@@ -128,12 +126,11 @@ export function TidiedDetail({ objective, t, language, call, back, onOpenObjecti
   const into = removed.mergedInto;
   const moved = into ? objective.criteria.length : 0;
   return (
-    <aside ref={detailRef} className={`objectives-detail is-tidied${three ? " is-three" : ""}`} aria-label={objective.title}>
+    <aside ref={detailRef} className="objectives-detail is-tidied" aria-label={objective.title}>
       <div className="objectives-detail-scroll">
         <div className="objectives-detail-pane is-content">
           <div className="objectives-group">
             <div className="objectives-detail-head">
-              {back ? <button type="button" className={`objectives-glyph objectives-detail-back${back.glyph ? " is-unfold" : ""}`} aria-label={back.label} title={back.label} onClick={back.onClick}>{back.glyph ?? "‹"}</button> : null}
               <span className="objectives-objective-ring objectives-tidied-glyph" aria-hidden="true">{into ? <MergeGlyph /> : <GoneGlyph />}</span>
               <div className="objectives-detail-title is-tidied">{objective.title}</div>
               {head}

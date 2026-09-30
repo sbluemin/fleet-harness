@@ -7,13 +7,12 @@ function T(key: ObjectiveMessageKey): LocalizedText {
   return (locale: ConsoleLocale) => getT(locale)(key);
 }
 
-// 목록 투어는 목록이 보일 때(상세를 열지 않았을 때)만 짚는다 — 좁은 레일에서는 상세가 목록을 display:none으로 가리지만
-// DOM에는 남아 있어, 조건 없이 짚으면 보이지 않는 대상 앞에서 안내가 재생된다.
-const LIST = ".objectives-root:not(.has-detail)";
+// 목록은 Console 사이드바 그룹 트리에 산다. 표면의 투어는 아직 목표를 고르지 않은 빈 상태에서 짚는다.
+const PICK = ".objectives-pick-pane";
 const DETAIL = ".objectives-detail";
 
 /**
- * Objectives 온보딩 — 웰컴 슬라이드, 레일 진입점 힌트, 목록·상세 투어. 이 플러그인이 문구·앵커·일러스트의 단일 원천이고,
+ * Objectives 온보딩 — 웰컴 슬라이드, 레일 진입점 힌트, 빈 상태·상세 투어. 이 플러그인이 문구·앵커·일러스트의 단일 원천이고,
  * 호스트는 Console 코어 기능의 온보딩 다음 순서로 보인다. 본 기록 키(objectives.welcome·objectives.rail-hint·
  * objectives.walkthrough·objectives-detail.walkthrough)는 한 번 배포하면 바꾸지 않는다.
  */
@@ -37,9 +36,10 @@ export const objectivesOnboarding: OnboardingContribution = {
       // 사용자가 직접 연 순간이 안내가 닿는 때이므로 미루지 않는다.
       spotlight: null,
       walkthrough: [
-        { anchor: `${LIST} [data-objectives-tour="list"]`, title: T("objectives.onboarding.list.step1Title"), body: T("objectives.onboarding.list.step1Body") },
-        { anchor: `${LIST} [data-objectives-tour="add"]`, title: T("objectives.onboarding.list.step2Title"), body: T("objectives.onboarding.list.step2Body"), example: T("objectives.onboarding.list.step2Example") },
-        { anchor: `${LIST} .objectives-place-main[data-objectives-tour="place"]`, title: T("objectives.onboarding.list.step3Title"), body: T("objectives.onboarding.list.step3Body") },
+        { anchor: `${PICK} [data-objectives-tour="pick"]`, title: T("objectives.onboarding.list.step1Title"), body: T("objectives.onboarding.list.step1Body") },
+        // 목표 만들기는 호스트 사이드바의 「+」 메뉴다 — 다른 번들의 DOM 이라 짚지 않고 말로만 안내한다.
+        { anchor: null, title: T("objectives.onboarding.list.step2Title"), body: T("objectives.onboarding.list.step2Body"), example: T("objectives.onboarding.list.step2Example") },
+        { anchor: `${PICK} [data-objectives-tour="place"]`, title: T("objectives.onboarding.list.step3Title"), body: T("objectives.onboarding.list.step3Body") },
       ],
     },
     {
