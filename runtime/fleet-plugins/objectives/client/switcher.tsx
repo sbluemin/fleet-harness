@@ -107,7 +107,7 @@ export function ObjectiveSwitcher({ t, language, objectives, groups, selected, g
 
   return (
     <span ref={wrapRef} className="objectives-switch-wrap">
-      <button ref={buttonRef} type="button" className="objectives-glyph objectives-switch" aria-haspopup="true" aria-expanded={open} aria-label={t("objectives.switch.label")} title={t("objectives.switch.label")} onClick={() => setOpen((value) => !value)}>
+      <button ref={buttonRef} type="button" className="objectives-switch" aria-haspopup="true" aria-expanded={open} aria-label={t("objectives.switch.label")} title={t("objectives.switch.label")} onClick={() => setOpen((value) => !value)}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5" /></svg>
       </button>
       {open ? (

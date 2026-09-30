@@ -44,10 +44,15 @@
 .objectives-pick-shortcuts button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .objectives-pick-shortcuts button:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 
-/* 제목 ⌄ 전환 목록 — 사이드바가 접힌 자리에서 같은 그룹 트리를 머리 아래에 띄운다. 기준은 머리(position: relative). */
+/* 제목 ⌄ 전환 목록 — 사이드바가 접힌 자리에서 같은 그룹 트리를 머리 아래에 띄운다. 기준은 머리(position: relative).
+   ⌄ 는 상자 없는 글자로 제목 끝에 붙는다: 제목은 글자 폭만 차지하고, ⌄ 뒤의 도구가 오른쪽으로 밀린다. brass 는 ⌄ 에만 — 제목은 편집 칸이다. */
 .objectives-switch-wrap { display: contents; }
-.objectives-switch { margin-top: 2px; }
-.objectives-switch[aria-expanded="true"] { color: var(--brass-ink); }
+:is(.objectives-detail-head, .objectives-pick-head):has(> .objectives-switch-wrap) > :is(.objectives-detail-title, .objectives-pick-label) { flex: 0 1 auto; }
+.objectives-switch { flex: none; display: inline-grid; place-items: center; width: 16px; height: 25px; margin-right: auto; padding: 0; border: 0; background: transparent; color: var(--text-tertiary); cursor: pointer; }
+.objectives-pick-head .objectives-switch { height: 18px; }
+.objectives-switch svg { width: 13px; height: 13px; }
+.objectives-switch:hover, .objectives-switch[aria-expanded="true"] { color: var(--brass-ink); }
+.objectives-switch:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; border-radius: var(--radius-xs); }
 .objectives-pop { position: absolute; z-index: 20; top: calc(100% + 4px); left: 14px; width: 300px; max-width: calc(100% - 28px); max-height: 460px; overflow: auto; padding: 6px 4px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: 0 16px 40px oklch(0% 0 0 / 50%); }
 .objectives-pop-tree, .objectives-pop-tree ol { margin: 0; padding: 0; list-style: none; }
 .objectives-pop-zone + li, .objectives-pop-group + li { margin-top: 6px; }
