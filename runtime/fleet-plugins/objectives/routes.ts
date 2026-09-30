@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { OPERATION_GROUPED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
+import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import { createObjectiveConsoleTools } from "./server/console-tools.js";
@@ -92,6 +92,15 @@ export default definePlugin({
       if (typeof event.theaterId !== "string" || (event.groupId !== null && typeof event.groupId !== "string")) return;
       launch.operationGrouped(event as OperationGroupedEvent);
     });
+    // 개시 전 목표와 후속 배치의 그룹은 저장 레코드에만 있다 — 그룹이 지워지면 미분류로 비우고, 기동 때는 이미 지워진 그룹을 가리키는 옛 레코드를 고쳐 쓴다.
+    ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe(OPERATION_GROUP_REMOVED_EVENT_CHANNEL, (payload) => {
+      const event = payload as { groupId?: unknown; theaterId?: unknown };
+      if (typeof event.groupId !== "string" || typeof event.theaterId !== "string") return;
+      try { store.releaseGroups({ theaterId: event.theaterId, groupId: event.groupId }); }
+      catch (error) { console.warn(`[objectives] group release failed: ${error instanceof Error ? error.message : String(error)}`); }
+    }));
+    try { store.releaseGroups(); }
+    catch (error) { console.warn(`[objectives] group heal skipped: ${error instanceof Error ? error.message : String(error)}`); }
 
     // 완료 여부가 아니라 미완료 Core 요청만 재접수한다. 과거 완료 목표의 자동 보관은 하지 않는다.
     void launch.resumeOperationIntents().catch((error) => console.warn(`[objectives] Operation request recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`));

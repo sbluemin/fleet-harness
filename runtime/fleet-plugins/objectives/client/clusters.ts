@@ -1,8 +1,8 @@
-import type { OperationCluster, OperationClusterMember, OperationClusterNewRowContext, OperationClusterProgress, OperationClusterRow, OperationClusterSource } from "@fleet-console/sdk/plugin";
+import type { OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterSource } from "@fleet-console/sdk/plugin";
 
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { openFollowups } from "./followups.js";
-import { discardPendingSelection, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, patchObjectiveView, post, readAllTheaters, readObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
+import { isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -44,8 +44,17 @@ const placeholderId = (missionId: string) => `mission:${missionId}`;
 
 const todayIso = (): string => new Date().toISOString().slice(0, 10);
 
+/**
+ * 후속 목표의 원래 목표 제목 — 읽을 때 지금 목록에서 찾는다. 후속이 아니면 undefined, 원래 목표가 영구 삭제돼 없으면 null.
+ * 서버가 실어 보낸 origin.title 은 원래 목표가 사라진 뒤에도 옛 값으로 남아 있을 수 있어 쓰지 않는다.
+ */
+export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Objective>): string | null | undefined {
+  if (!objective.origin) return undefined;
+  return byId.get(objective.origin.objectiveId)?.title ?? null;
+}
+
 /** 사이드바 줄 — 목록에 든 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
-function rowOf(objective: Objective, order: number, fold: readonly string[], selected: boolean): OperationClusterRow | null {
+function rowOf(objective: Objective, order: number, fold: readonly string[], selected: boolean, originTitle: string | null | undefined): OperationClusterRow | null {
   if (!objective.enlisted || objective.removed || objective.done) return null;
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
@@ -59,6 +68,7 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], sel
     ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}),
     ...(objective.decisionRequest ? { decisionRequestedAt: objective.decisionRequest.createdAt, decisionQuestions: objective.decisionRequest.questions.length } : {}),
     ...(objective.missions.length ? { progress: { done: doneMissions, total: objective.missions.length } } : {}),
+    ...(originTitle !== undefined ? { followup: { originTitle } } : {}),
     ...(selected ? { selected: true } : {}),
     ...(review ? { review: (language: "en" | "ko") => reviewObjective(objective, language) } : {}),
     moveToGroup: (groupId: string | null) => moveObjective(objective, groupId),
@@ -85,6 +95,7 @@ function moveObjective(objective: Objective, groupId: string | null): void {
 export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false): OperationCluster[] {
   const out: OperationCluster[] = [];
   const orderIn = new Map<string, number>();
+  const byId = new Map(objectives.map((objective) => [objective.id, objective]));
   for (const objective of objectives) {
     const commander = objective.id;
     const order = orderIn.get(objective.theaterId) ?? 0;
@@ -92,7 +103,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const live = (operationId: string | null | undefined): string | null => (operationId && operationId !== commander && activity.has(operationId) ? operationId : null);
     const liveMembers = objective.members.flatMap((member) => { const operationId = live(member.id); return operationId ? [{ member, operationId }] : []; });
     const fold = [...new Set([...(activity.has(commander) ? [commander] : []), ...liveMembers.map((entry) => entry.operationId), ...objective.missions.flatMap((mission) => { const operationId = live(mission.operationId); return operationId ? [operationId] : []; })])];
-    const row = rowOf(objective, order, fold, selectedOf(objective));
+    const row = rowOf(objective, order, fold, selectedOf(objective), originTitleOf(objective, byId));
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Operation 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
     const decisionRequest = !!objective.decisionRequest && !objective.done;
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
@@ -164,35 +175,13 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
   return out;
 }
 
-const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.progress ?? null, row.selected === true] : null);
+const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.progress ?? null, row.followup ?? null, row.selected === true] : null);
 const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
-
-/** 채팅/터미널 시작 보기 — 마지막으로 고른 값이 다음 목표의 시작 보기가 된다(표면 발사 제어가 같은 키를 쓴다). */
-export const START_VIEW_KEY = "fleet.objectives.start-view";
-const readStartView = (): "chat" | "terminal" => { try { return localStorage.getItem(START_VIEW_KEY) === "terminal" ? "terminal" : "chat"; } catch { return "chat"; } };
-
-/** 사이드바 「+ 목표」·전환 목록 「+」 — 「새 목표」로 만들고 표면에서 제목부터 고치게 연다. */
-export async function createObjective({ theaterId, groupId, language }: OperationClusterNewRowContext): Promise<void> {
-  const api = objectivesApi();
-  if (!api) return;
-  const title = language === "ko" ? "새 목표" : "New objective";
-  const { objective } = await post<{ objective: Objective }>(api, "/objective/create", { theaterId, groupId, title, viewMode: readStartView(), language });
-  upsertObjectiveLocally(objective);
-  // 사람이 방금 만든 목표가 이긴다 — 입력 중이라 보류해 둔 외부 선택은 버린다.
-  discardPendingSelection();
-  revealObjective({ objectiveId: objective.id, focusTitle: true });
-  openObjectiveFromCluster();
-  patchObjectiveView(theaterId, () => ({ selected: objective.id }));
-}
 
 let cached: readonly OperationCluster[] = [];
 let cachedSignature = "";
 
 export const objectivesClusterSource: OperationClusterSource = {
-  newRow: {
-    label: (language) => (language === "ko" ? "목표" : "Objective"),
-    create: (context) => { void createObjective(context).catch(() => undefined); },
-  },
   subscribe: (listener) => {
     const offObjective = subscribeObjective(listener);
     const offView = subscribeObjectiveView(listener);

@@ -33,10 +33,7 @@ import {
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
-import { StatusGlyph } from "@fleet-console/sdk/components/status-glyph";
 import { planSideBarRows, SideBarClusterRow, SideBarRowZone, type SideBarRowItem } from "./side-bar-cluster-row.js";
-import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
-import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
@@ -44,7 +41,9 @@ import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import {
   consumeStatusLandings,
+  freshFoldKey,
   setSideBarCollapsed,
+  setSideBarFreshFoldExpanded,
   setSideBarPeeking,
   setTheaterCollapsed,
   getStatusTransitionTick,
@@ -52,6 +51,7 @@ import {
   trackOperationActivityTransitions,
   toggleSideBarStatusSectionCollapsed,
   useCollapsedTheaters,
+  useSideBarFreshFolds,
   useSideBarState,
   useSideBarStatusAxis,
   useSideBarStatusSectionCollapsed,
@@ -371,6 +371,7 @@ export function OperationsSideBar({
   const { collapsed } = sideBar;
   const width = widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const statusAxis = useSideBarStatusAxis();
+  const freshFolds = useSideBarFreshFolds();
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
@@ -417,8 +418,6 @@ export function OperationsSideBar({
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   // 묶음 띠(임무 점)는 지휘관 행의 셋째 줄에 선다. 구성원 행은 스토어의 기본 목록에 없어 여기서 거를 것이 없다.
   const clusterIndex = useClusterIndex();
-  const { clusterNewRows } = usePluginRegistry();
-  const locale = useConsoleLocale();
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
@@ -447,6 +446,9 @@ export function OperationsSideBar({
   const groupedSections = groupOperations(allEntries, activeGroups, activeOperationOrder);
   // 그룹 축에서는 묶음 줄(목표)이 뿌리·구성원 칩을 접고 제자리에 선다. 결정 요청·오늘은 맨 위 구역으로 올라간다.
   const rowPlan = planSideBarRows(groupedSections, clusterIndex, activeTheaterId);
+  // 고른 목표가 「시작 전」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal) 그 접기를 펼치고 줄이 보이게 스크롤한다.
+  // 고른 목표가 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
+  const selectedFresh = [...rowPlan.folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected).map((item) => ({ groupId, id: item.layout.cluster.id })))[0] ?? null;
   const statusGrouped = groupTheaterStatusEntries(allEntries, minimizedSet, getStatusTransitionTick, t);
   const statusSections = statusGrouped.living;
   const { minimized: minimizedSection, dormant: dormantSection } = statusGrouped;
@@ -513,6 +515,16 @@ export function OperationsSideBar({
     );
   };
 
+
+  useEffect(() => {
+    if (!selectedFresh || !activeTheaterId || statusAxis) return;
+    setSideBarFreshFoldExpanded(activeTheaterId, selectedFresh.groupId, true);
+    if (selectedFresh.groupId && collapsedGroupSet.has(selectedFresh.groupId)) toggleGroupCollapsed(selectedFresh.groupId);
+    const frame = window.requestAnimationFrame(() => {
+      chipsRef.current?.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(selectedFresh.id)}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedFresh?.id, activeTheaterId, statusAxis]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => subscribeSideBarOperationAction((request) => {
     const operation = operations.find((candidate) => candidate.id === request.operationId);
@@ -1130,6 +1142,8 @@ export function OperationsSideBar({
                   ] : []),
                 ].concat(groupedSections.map((section) => {
           const sectionItems = rowPlan.sections.get(section.groupId) ?? [];
+          const foldItems = rowPlan.folds.get(section.groupId) ?? [];
+          const foldExpanded = !!activeTheaterId && freshFolds.has(freshFoldKey(activeTheaterId, section.groupId));
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
           const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
           const sectionStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
@@ -1156,7 +1170,7 @@ export function OperationsSideBar({
               {section.group ? (
                 <OperationsSideBarGroupHeader
                   group={section.group}
-                  count={sectionItems.length}
+                  count={sectionItems.length + foldItems.length}
                   collapsed={isCollapsed}
                   dragging={isGroupDragging}
                   dragOffsetY={isGroupDragging ? drag.currentY - drag.startY : 0}
@@ -1166,7 +1180,7 @@ export function OperationsSideBar({
                   onPointerDragStart={beginGroupPointerDrag}
                   onOpenLaunch={(groupId, anchor) => { if (activeTheaterId) openTheaterLaunchMenuAt(anchor, activeTheaterId, groupId); }}
                 />
-              ) : hasCustomGroups && sectionItems.length > 0 ? (
+              ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
                 <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
                   <span>{t("sidebar.ungrouped.label")}</span>
                 </div>
@@ -1218,6 +1232,29 @@ export function OperationsSideBar({
                       />
                     );
                   })}
+                  {foldItems.length > 0 ? (
+                    <li className="side-bar-fresh-fold" data-fresh-fold={section.groupId ?? "__ungrouped__"}>
+                      <button
+                        type="button"
+                        className="side-bar-fresh-fold-toggle"
+                        aria-expanded={foldExpanded}
+                        aria-label={t("sidebar.fold.freshAria", { n: foldItems.length })}
+                        // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
+                        onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); }}
+                        onClick={() => { if (activeTheaterId) setSideBarFreshFoldExpanded(activeTheaterId, section.groupId, !foldExpanded); }}
+                      >
+                        <span className="side-bar-fresh-fold-rings" aria-hidden="true"><i /><i /><i /></span>
+                        <span aria-hidden="true">{t("sidebar.fold.fresh")}</span>
+                        <span className="side-bar-fresh-fold-count" aria-hidden="true">{foldItems.length}</span>
+                        <span className="side-bar-fresh-fold-chev" aria-hidden="true">›</span>
+                      </button>
+                      {foldExpanded ? (
+                        <ol className="side-bar-fresh-fold-body" aria-label={t("sidebar.fold.fresh")}>
+                          {foldItems.map((item) => renderRow(item, false))}
+                        </ol>
+                      ) : null}
+                    </li>
+                  ) : null}
                 </ol>
               ) : null}
             </li>
@@ -1278,12 +1315,6 @@ export function OperationsSideBar({
           renderKindIcon={renderKindIcon}
           onLaunchKind={(pluginId, kind, variantLaunch) => { setNewMenu(null); onLaunchKind(pluginId, kind, variantLaunch, newMenu.groupId ?? null); }}
           onClose={() => setNewMenu(null)}
-          leadingItems={activeTheaterId && !statusAxis ? clusterNewRows.map((newRow, index) => ({
-            id: `new-row-${index}`,
-            label: newRow.label(locale),
-            icon: <StatusGlyph state="fresh" label="" decorative />,
-            onSelect: () => newRow.create({ theaterId: activeTheaterId, groupId: newMenu.groupId ?? null, language: locale }),
-          })) : undefined}
         />,
         document.body,
       ) : null}

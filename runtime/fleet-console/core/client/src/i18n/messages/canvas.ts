@@ -278,6 +278,10 @@ export const canvasEn = {
   "sidebar.row.decisions": "{n} to decide",
   "sidebar.zone.decisions": "Decision requests",
   "sidebar.zone.today": "Today",
+  "sidebar.fold.fresh": "Not started",
+  "sidebar.fold.freshAria": "{n} not started",
+  "sidebar.row.followup": "Follow-up",
+  "sidebar.row.followupOf": "Follow-up · {title}",
 
   "sidebar.group.expand": "Expand group {name}",
   "sidebar.group.collapse": "Collapse group {name}",
@@ -625,6 +629,10 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "sidebar.row.decisions": "결정 요청 {n}",
   "sidebar.zone.decisions": "결정 요청",
   "sidebar.zone.today": "오늘",
+  "sidebar.fold.fresh": "시작 전",
+  "sidebar.fold.freshAria": "시작 전 {n}",
+  "sidebar.row.followup": "후속",
+  "sidebar.row.followupOf": "후속 · {title}",
 
   "sidebar.group.expand": "{name} 그룹 펼치기",
   "sidebar.group.collapse": "{name} 그룹 접기",

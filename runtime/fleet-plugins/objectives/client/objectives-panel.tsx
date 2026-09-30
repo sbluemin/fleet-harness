@@ -18,7 +18,6 @@ import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { LaunchControl, LaunchedText, launchedWords, useLaunchRows } from "./launch-control.js";
 import { dockObjective, expandObjective, hasDecisionRequest, removeObjectiveLocally, focusOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
-import { createObjective } from "./clusters.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
   discardedFollowups,
@@ -297,12 +296,13 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     <ObjectiveSwitcher
       t={t}
       language={language}
+      theaterId={theaterId}
       objectives={state.objectives}
       groups={state.groups}
       selected={selected}
       glyphOf={glyphOf}
+      hasOperation={(objectiveId) => operationOf(objectiveId) !== null}
       onPick={setSelected}
-      onCreate={(groupId) => { void createObjective({ theaterId, groupId, language }).catch(() => undefined); }}
     />
   );
   const objectiveShown = !!current && !current.removed && current.enlisted;

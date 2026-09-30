@@ -1,6 +1,7 @@
 import type {
   OperationCreateInput as SdkOperationCreateInput,
   OperationGroupedEvent,
+  OperationGroupRemovedEvent,
   OperationNode as SdkOperationNode,
   OperationPatchInput as SdkOperationPatchInput,
   ChildSession,
@@ -168,6 +169,8 @@ export interface OperationStoreDeps {
    * 지나므로 여기서 한 번만 알린다. 재수화(replace)는 이동이 아니라 알리지 않는다.
    */
   readonly onGroupChanged?: (event: OperationGroupedEvent) => void;
+  /** 그룹이 지워진 뒤 — 멤버를 그룹 밖으로 옮긴 다음 한 번. Theater 삭제로 함께 사라지는 그룹(deleteGroupsByTheater)은 알리지 않는다. */
+  readonly onGroupRemoved?: (event: OperationGroupRemovedEvent) => void;
 }
 
 export function createOperationStore(deps: OperationStoreDeps = {}): OperationStore {
@@ -373,7 +376,8 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
   }
 
   function deleteGroup(id: string): boolean {
-    if (!groups.has(id)) return false;
+    const removed = groups.get(id);
+    if (!removed) return false;
     groups.delete(id);
     const ungrouped: [OperationNode, OperationNode][] = [];
     for (const [nodeId, node] of nodes.entries()) {
@@ -383,6 +387,7 @@ export function createOperationStore(deps: OperationStoreDeps = {}): OperationSt
       ungrouped.push([node, next]);
     }
     for (const [before, after] of ungrouped) grouped(before, after);
+    deps.onGroupRemoved?.({ groupId: id, theaterId: removed.theaterId });
     return true;
   }
 

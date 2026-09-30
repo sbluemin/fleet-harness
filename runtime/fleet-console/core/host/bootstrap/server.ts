@@ -26,7 +26,7 @@ import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
 import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
-import { OPERATION_GROUPED_EVENT_CHANNEL, withSubagentSpawn, withUserQuestions } from "@fleet-console/sdk/operations";
+import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, withSubagentSpawn, withUserQuestions } from "@fleet-console/sdk/operations";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
@@ -457,9 +457,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const lock = createConsoleLock({ hostname: () => host });
   const releaseNotes = deps.releaseNotes ?? createConsoleReleaseNotesService();
   const theaters = new TheaterRegistry();
-  // 그룹 이동은 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮긴다.
+  // 그룹 이동·삭제는 서버 안 플러그인에도 사건이다 — 목표 같은 플러그인이 연결 항목을 따라 옮기거나 비운다.
   const operations = createOperationStore({
     onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event),
+    onGroupRemoved: (event) => publishPluginEvent(OPERATION_GROUP_REMOVED_EVENT_CHANNEL, event),
     isReserved: (id) => archiveStorage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingOperation(id),
     assertRelationMutable: (id) => operationArchive.assertMutable(id),
   });

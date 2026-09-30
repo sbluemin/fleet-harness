@@ -551,7 +551,10 @@ export interface OperationCluster {
   readonly row?: OperationClusterRow;
 }
 
-/** 묶음 줄의 원형 글리프를 플러그인이 정할 때 — 없으면 호스트가 뿌리·`fold` 가운데 가장 급한 활동으로 그린다. */
+/**
+ * 묶음 줄의 원형 글리프를 플러그인이 정할 때 — 없으면 호스트가 뿌리·`fold` 가운데 가장 급한 활동으로 그린다.
+ * `fresh`(시작 전) 줄은 「오늘」·「결정 요청」 구역에 올라가지 않는 한 그룹 맨 아래 「시작 전 N」 접기 안에 선다.
+ */
 export type OperationClusterRowGlyph = "fresh" | "review" | "done";
 
 export interface OperationClusterRow {
@@ -571,6 +574,8 @@ export interface OperationClusterRow {
   /** 결정 요청의 질문 수. */
   readonly decisionQuestions?: number;
   readonly progress?: { readonly done: number; readonly total: number };
+  /** 다른 목표의 후속으로 태어난 줄. `originTitle` 이 null 이면 원래 목표를 더는 찾을 수 없다. */
+  readonly followup?: { readonly originTitle: string | null };
   /** 플러그인 표면이 지금 이 줄을 보고 있다. */
   readonly selected?: boolean;
   /** `glyph: "review"` 를 눌렀을 때 — 글리프가 버튼이 되는 유일한 경우다. */
@@ -598,23 +603,6 @@ export interface ArchiveSectionDescriptor {
 export interface OperationClusterSource {
   readonly subscribe: (listener: () => void) => () => void;
   readonly get: () => readonly OperationCluster[];
-  /**
-   * 사이드바 Theater·그룹 머리 「+」 메뉴 맨 앞에 서는 새 줄 — 목표처럼 Operation 이 아직 없는 묶음을 만든다.
-   * 호스트는 항목의 자리와 메뉴만 그리고, 무엇을 만들고 어디로 여는지는 플러그인이 정한다.
-   */
-  readonly newRow?: OperationClusterNewRow;
-}
-
-export interface OperationClusterNewRowContext {
-  readonly theaterId: string;
-  /** 그룹 머리에서 열었으면 그 그룹, Theater 머리에서 열었으면 null(미분류). */
-  readonly groupId: string | null;
-  readonly language: "en" | "ko";
-}
-
-export interface OperationClusterNewRow {
-  readonly label: (language: "en" | "ko") => string;
-  readonly create: (context: OperationClusterNewRowContext) => void;
 }
 
 export interface OperationKindDescriptor {

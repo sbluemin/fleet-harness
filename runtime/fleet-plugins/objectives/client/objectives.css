@@ -36,10 +36,10 @@
 .objectives-pick-head { position: relative; display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 12px 20px 8px 22px; }
 .objectives-pick-label { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-tertiary); }
 .objectives-pick-label.is-title { font-family: inherit; font-size: var(--t-lg); font-weight: var(--weight-medium); letter-spacing: 0; color: var(--text-primary); overflow-wrap: anywhere; }
-.objectives-pick { flex: 1; display: grid; align-content: center; justify-items: center; gap: 6px; padding: 24px; text-align: center; }
+.objectives-pick { flex: 1; display: grid; align-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
 .objectives-pick h5 { margin: 0; font-family: var(--font-display); font-size: var(--t-lg); font-weight: var(--weight-medium); color: var(--text-secondary); }
-.objectives-pick p { margin: 0; max-width: 34ch; font-size: var(--t-sm); line-height: 1.5; color: var(--text-tertiary); }
-.objectives-pick-shortcuts { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 10px; }
+.objectives-pick p { margin: 0; max-width: 40ch; font-size: var(--t-md); line-height: 1.5; color: var(--text-tertiary); }
+.objectives-pick-shortcuts { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .objectives-pick-shortcuts button { max-width: 100%; padding: 2px 0; border: 0; background: transparent; font: inherit; font-size: var(--t-sm); color: var(--brass-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .objectives-pick-shortcuts button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .objectives-pick-shortcuts button:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
@@ -57,24 +57,36 @@
 .objectives-pop-tree, .objectives-pop-tree ol { margin: 0; padding: 0; list-style: none; }
 .objectives-pop-zone + li, .objectives-pop-group + li { margin-top: 6px; }
 .objectives-pop-zone-hd, .objectives-pop-group-hd { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-pop-group-hd { font-size: var(--t-sm); }
+.objectives-pop-group-hd .objectives-swatch { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.objectives-pop-group-hd .objectives-pop-count { margin-left: auto; }
+.objectives-pop-zone-hd { letter-spacing: 0.03em; }
+.objectives-pop-zone-hd::after { content: ""; flex: 1; height: 1px; margin-left: 6px; background: var(--hairline); }
 .objectives-pop-zone.is-decisions .objectives-pop-zone-hd { color: var(--aurora); }
-.objectives-pop-zone.is-today .objectives-pop-zone-hd { color: var(--text-secondary); }
 .objectives-pop-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .objectives-pop-count { font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
-.objectives-pop-add { margin-left: auto; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-md); line-height: 1; opacity: 0; cursor: pointer; }
-.objectives-pop-group-hd:hover .objectives-pop-add, .objectives-pop-add:focus-visible { opacity: 1; }
-.objectives-pop-add:hover { color: var(--brass-ink); }
-.objectives-pop-add:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.objectives-pop-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) 6px; align-items: start; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.objectives-pop-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) 6px; align-items: start; gap: 8px; width: 100%; padding: 4px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
 .objectives-pop-row > :first-child { margin-top: 3px; }
 .objectives-pop-row:hover { background: var(--control-rest); }
 .objectives-pop-row:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
-.objectives-pop-row[aria-current="true"] { background: var(--control-rest); color: var(--brass-ink); }
+/* 선택은 사이드바 줄과 같은 문법 — 테두리 전체와 brass 워시(왼쪽 띠 없음). */
+.objectives-pop-row[aria-current="true"] { background: var(--brass-glow); border-color: color-mix(in oklch, var(--brass) 45%, transparent); }
 .objectives-pop-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .objectives-pop-title { font-size: var(--t-sm); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-pop-meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-pop-meta .is-req { color: var(--aurora); }
 .objectives-pop-meta .is-late { color: var(--coral); }
+.objectives-pop-meta .is-from { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 「시작 전 N ›」 — 글자형 한 줄. 상자·채움·왼쪽 띠 없이, 머무를 때만 줄 배경이 옅게 선다. */
+.objectives-pop-fold { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
+.objectives-pop-fold:hover { background: var(--control-rest); color: var(--text-secondary); }
+.objectives-pop-fold:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.objectives-pop-fold-rings { display: inline-flex; gap: 2px; }
+.objectives-pop-fold-rings i { width: 6px; height: 6px; border: 1px solid var(--ink-fog); border-radius: 50%; }
+.objectives-pop-fold-chev { margin-left: auto; transition: transform 150ms ease; }
+.objectives-pop-fold[aria-expanded="true"] .objectives-pop-fold-chev { transform: rotate(90deg); }
+.objectives-pop-fold-body { padding-left: 10px; }
+@media (prefers-reduced-motion: reduce) { .objectives-pop-fold-chev { transition: none; } }
 .objectives-pop-dot { width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: var(--grp-color); }
 .objectives-pop-empty { margin: 0; padding: 10px 8px; font-size: var(--t-sm); color: var(--text-tertiary); }
 
@@ -157,7 +169,8 @@
   transition: background var(--duration-fast), border-color var(--duration-fast);
 }
 .objectives-check svg { width: 10px; height: 10px; opacity: 0; }
-.objectives-check.is-on { background: var(--brass); border-color: var(--brass); }
+/* 완료는 상태 글리프의 「완료」와 같은 중성 채움 + 어두운 체크 — brass는 위치·초점만 말한다. */
+.objectives-check.is-on { background: color-mix(in oklch, var(--text-tertiary) 42%, transparent); border-color: transparent; color: var(--ink-abyss); }
 .objectives-check.is-on svg { opacity: 1; }
 .objectives-check:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-objective-title { grid-area: title; font-size: var(--t-md); line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }

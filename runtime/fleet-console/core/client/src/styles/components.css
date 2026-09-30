@@ -7740,6 +7740,85 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--coral);
 }
 
+/* 후속 줄의 원래 목표 — 긴 제목은 한 줄로 말줄인다. */
+.side-bar-cluster-row-meta .is-from {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 「시작 전 N ›」 — 그룹 맨 아래 글자형 한 줄. 상자·채움·왼쪽 띠 없이 줄과 같은 격자에 서고, 머무를 때만 줄 배경이 옅게 선다. */
+.side-bar-fresh-fold-toggle {
+  display: grid;
+  grid-template-columns: 14px auto auto 1fr;
+  gap: 8px;
+  align-items: center;
+  width: calc(100% - 2 * var(--space-1));
+  margin: 0 var(--space-1);
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-fresh-fold-toggle:hover {
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  color: var(--text-secondary);
+}
+
+.side-bar-fresh-fold-toggle:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
+}
+
+.side-bar-fresh-fold-rings {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+
+.side-bar-fresh-fold-rings i {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--ink-fog);
+  border-radius: 50%;
+}
+
+.side-bar-fresh-fold-count {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.side-bar-fresh-fold-chev {
+  justify-self: end;
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-fresh-fold-toggle[aria-expanded="true"] .side-bar-fresh-fold-chev {
+  transform: rotate(90deg);
+}
+
+.side-bar-fresh-fold-body {
+  margin: 0;
+  padding: 0 0 0 10px;
+  list-style: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-bar-fresh-fold-toggle,
+  .side-bar-fresh-fold-chev {
+    transition: none;
+  }
+}
+
 /* 구역으로 올라간 줄의 원래 그룹 — 5px 점 하나. */
 .side-bar-cluster-row-dot {
   width: 5px;

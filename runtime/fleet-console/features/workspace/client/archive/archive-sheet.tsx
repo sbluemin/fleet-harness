@@ -166,6 +166,19 @@ function ArchiveSheetDialog() {
       .finally(() => setRestoring(null));
   };
 
+  // 플러그인 구획은 자기 줄을 지워도(정리된 목표 비우기) 초점을 옮겨 주지 않아 BODY로 빠진다. 그때 누른 Esc·Tab도 시트가 받는다.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog || document.activeElement !== document.body || (event.key !== "Escape" && event.key !== "Tab")) return;
+      event.preventDefault();
+      dialog.focus();
+      if (event.key === "Escape") closeArchiveSheet();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();

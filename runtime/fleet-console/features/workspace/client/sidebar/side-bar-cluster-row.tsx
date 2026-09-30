@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { useRef, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { OperationClusterRow } from "@fleet-console/sdk/plugin";
@@ -35,7 +35,12 @@ export interface SideBarRowPlan {
   readonly decisions: readonly SideBarRowItem[];
   /** 「오늘」 구역 — 보드 순서. */
   readonly today: readonly SideBarRowItem[];
+  /** 그룹(또는 미분류) id → 그 그룹 맨 아래 「시작 전 N」 접기에 드는 줄, 보드 순서. 비었으면 키가 없다. */
+  readonly folds: ReadonlyMap<string | null, readonly SideBarRowItem[]>;
 }
+
+/** 「시작 전」 접기에 드는 줄 — Operation 이 아직 없는 시작 전 목표. 개시해 뿌리가 서면 첫 턴 전이라도 빠진다. */
+const foldedFresh = (item: SideBarRowItem) => item.row.glyph === "fresh" && !item.anchor && item.fold.length === 0;
 
 // 칩 칸과 같은 셈법: 사람을 기다리는 것이 먼저, 끝난 것이 마지막.
 const MARK_URGENCY: Record<OperationMarkVisual, number> = { awaiting: 0, unseen: 1, running: 2, background: 3, idle: 4, ended: 5 };
@@ -51,8 +56,9 @@ export function rowGlyphState(item: SideBarRowItem): StatusGlyphState {
 }
 
 /**
- * 그룹 섹션의 엔트리에 묶음 줄을 섞는다. 뿌리가 선 줄은 뿌리 칩 자리를 이어받고, 뿌리 없는 줄(시작 전 목표)은
- * 같은 그룹 안에서 보드 순서가 가장 가까운 줄 곁에 선다. 구역으로 올라간 줄은 그룹 자리에서 빠진다.
+ * 그룹 섹션의 엔트리에 묶음 줄을 섞는다. 뿌리가 선 줄은 뿌리 칩 자리를 이어받고, 뿌리 없는 줄은 같은 그룹 안에서
+ * 보드 순서가 가장 가까운 줄 곁에 선다. 뿌리 없는 시작 전 줄은 섹션이 아니라 그 그룹의 「시작 전」 접기로 간다.
+ * 구역으로 올라간 줄은 그룹 자리에서도 접기에서도 빠진다.
  */
 export function planSideBarRows(
   sections: readonly { readonly groupId: string | null; readonly entries: readonly SideBarEntry[] }[],
@@ -78,6 +84,7 @@ export function planSideBarRows(
   const byAnchor = new Map(items.flatMap((item) => (item.anchor ? [[item.anchor.operation.id, item] as const] : [])));
 
   const result = new Map<string | null, SideBarSectionItem[]>();
+  const folds = new Map<string | null, SideBarRowItem[]>();
   for (const section of sections) {
     const list: SideBarSectionItem[] = [];
     for (const entry of section.entries) {
@@ -94,6 +101,10 @@ export function planSideBarRows(
   for (const item of [...items].sort((a, b) => a.row.order - b.row.order)) {
     if (item.anchor || promoted(item)) continue;
     const key = item.row.groupId !== null && sectionIds.has(item.row.groupId) ? item.row.groupId : null;
+    if (foldedFresh(item)) {
+      folds.set(key, [...(folds.get(key) ?? []), item]);
+      continue;
+    }
     const list = result.get(key) ?? [];
     const placed = list.flatMap((candidate, index) => (candidate.kind === "row" ? [{ index, order: candidate.item.row.order }] : []));
     const before = placed.filter((candidate) => candidate.order < item.row.order).pop();
@@ -102,7 +113,7 @@ export function planSideBarRows(
     list.splice(at, 0, { kind: "row", item });
     result.set(key, list);
   }
-  return { sections: result, decisions, today };
+  return { sections: result, decisions, today, folds };
 }
 
 function formatDue(date: string, locale: ConsoleLocale): string {
@@ -135,11 +146,20 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         ? t("sidebar.row.glyph.done")
         : operationMarkLabel(state);
   const selected = row.selected === true || item.fold.some((entry) => entry.active);
-  const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" }[] = [];
+  const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" }[] = [];
   if (row.decisionRequestedAt !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions ?? 1 }), tone: "req" });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `✓ ${row.progress.done}/${row.progress.total}` });
   if (row.due) meta.push({ key: "due", text: formatDue(row.due.date, locale), ...(row.due.overdue ? { tone: "late" as const } : {}) });
-  const open = () => layout.cluster.open?.();
+  if (row.followup) meta.push({ key: "from", text: row.followup.originTitle ? t("sidebar.row.followupOf", { title: row.followup.originTitle }) : t("sidebar.row.followup"), tone: "from" });
+  // 끌어 놓은 줄은 포인터를 따라왔으니 놓는 순간의 클릭도 이 줄에 떨어진다 — 칩처럼 그 클릭은 여는 동작이 아니다.
+  const suppressClickRef = useRef(false);
+  const open = () => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    layout.cluster.open?.();
+  };
   const style = dragging ? ({ transform: `translateY(${dragOffsetY}px)` } as CSSProperties) : undefined;
   return (
     <li
@@ -153,6 +173,9 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       {...(anchor ? { "data-side-bar-chip-id": anchor.operation.id } : {})}
       style={style}
       onPointerDown={onPointerDragStart ? (event) => onPointerDragStart(event, item) : undefined}
+      onPointerUp={() => {
+        if (dragging) suppressClickRef.current = true;
+      }}
       onContextMenu={onContextMenu ? (event: MouseEvent<HTMLLIElement>) => {
         event.preventDefault();
         onContextMenu(item, event.currentTarget.getBoundingClientRect(), event.currentTarget.querySelector<HTMLElement>(".side-bar-cluster-row-main"));
