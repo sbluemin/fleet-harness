@@ -95,7 +95,7 @@ export function FleetMapDetailCard({ id, operation, status, anchor, bounds, obst
         <span className="operation-detail-key">{t("sidebar.chip.detail.status")}</span>
         <span className={`operation-detail-value fleet-map-detail-status is-${status}`}>
           {status === "unknown"
-            ? <span className="tenant-beacon" aria-hidden="true" />
+            ? <span className="status-glyph" aria-hidden="true" />
             : <OperationStatusIcon status={status} decorative />}
           {t(`canvas.fleetMap.detail.status.${status}`)}
         </span>

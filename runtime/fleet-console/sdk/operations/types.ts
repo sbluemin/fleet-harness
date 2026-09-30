@@ -179,6 +179,17 @@ export interface OperationGroupedEvent {
   readonly previousGroupId: string | null;
 }
 
+/**
+ * 서버 안 이벤트 채널 — 사이드바 그룹 하나가 지워진 뒤 한 번 난다(사이드바 DELETE·Console Use·플러그인 groups.delete 가 모두
+ * 같은 저장 쓰기를 지난다). 멤버 Operation 의 이동은 `operation:grouped` 가 따로 알린다. 그룹 id 를 따로 쥔 플러그인이 비울 때 쓴다.
+ */
+export const OPERATION_GROUP_REMOVED_EVENT_CHANNEL = "operation:group-removed";
+
+export interface OperationGroupRemovedEvent {
+  readonly groupId: string;
+  readonly theaterId: string;
+}
+
 export interface OperationLaunchVariantChip {
   readonly id: string;
   readonly label: string;

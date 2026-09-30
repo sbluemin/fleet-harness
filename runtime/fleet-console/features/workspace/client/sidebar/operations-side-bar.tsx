@@ -33,6 +33,7 @@ import {
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
+import { planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
@@ -40,7 +41,9 @@ import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import {
   consumeStatusLandings,
+  freshFoldKey,
   setSideBarCollapsed,
+  setSideBarFreshFoldExpanded,
   setSideBarPeeking,
   setTheaterCollapsed,
   getStatusTransitionTick,
@@ -48,6 +51,7 @@ import {
   trackOperationActivityTransitions,
   toggleSideBarStatusSectionCollapsed,
   useCollapsedTheaters,
+  useSideBarFreshFolds,
   useSideBarState,
   useSideBarStatusAxis,
   useSideBarStatusSectionCollapsed,
@@ -56,6 +60,8 @@ import {
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 interface OperationsSideBarProps {
+  /** War Room 무대 최소 폭을 지키려는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
+  readonly widthCap?: number;
   readonly theaters: readonly TheaterInfo[];
   readonly activeTheaterId: string | null;
   readonly operations: readonly OperationNode[];
@@ -68,7 +74,7 @@ interface OperationsSideBarProps {
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
   readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
+  readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>, groupId?: string | null) => void;
   readonly onClose: (operationId: string) => void;
   readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
@@ -102,6 +108,8 @@ type ActiveContextMenu =
 interface NewMenuState {
   readonly anchor: { readonly x: number; readonly y: number };
   readonly viewportBounds?: { readonly width: number; readonly height: number };
+  /** 그룹 머리 「+」에서 열었으면 그 그룹 — 새 줄(목표)과 발사한 Operation 이 그 그룹에 선다. */
+  readonly groupId?: string | null;
 }
 
 interface ChipDragState {
@@ -115,6 +123,8 @@ interface ChipDragState {
   readonly dragging: boolean;
   readonly dropIndex: number;
   readonly dropGroupId: string | null;
+  /** 뿌리 Operation 이 없는 묶음 줄(시작 전 목표) — 순서 대신 그룹만 옮긴다. */
+  readonly moveRow?: (groupId: string | null) => void;
 }
 
 interface GroupDragState {
@@ -351,14 +361,17 @@ export function OperationsSideBar({
   onAddTheater,
   onCancelAddTheater,
   onForgetTheater,
+  widthCap,
 }: OperationsSideBarProps) {
   const t = useT();
   const searchShortcut = useSearchShortcutLabel();
   const rootRef = useRef<HTMLElement | null>(null);
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
-  const { width, collapsed } = sideBar;
+  const { collapsed } = sideBar;
+  const width = widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const statusAxis = useSideBarStatusAxis();
+  const freshFolds = useSideBarFreshFolds();
   const previousCollapsedRef = useRef(collapsed);
   const canvas = useCanvasState();
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
@@ -408,6 +421,12 @@ export function OperationsSideBar({
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
+    // Zen·War Room 에는 엣지 독이 없다 — War Room 막대의 사이드바 토글(반대쪽 컨트롤)이, 그 막대가 없으면 작업면이 받는다.
+    if (!previousCollapsedRef.current && collapsed && !document.querySelector(".side-bar-edge-dock")) {
+      focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, document.querySelector(".war-room-taskbar .sbtoggle") ? ".war-room-taskbar .sbtoggle" : ".operations-center-stage");
+    }
+    // 대칭 — 엣지 독에 포커스를 둔 채 단축키로 펼치면 독이 사라지며 포커스가 BODY 로 빠진다. 접기 셰브런이 받는다.
+    if (previousCollapsedRef.current && !collapsed && document.activeElement === document.body) rootRef.current?.querySelector<HTMLElement>(".side-bar-collapse")?.focus();
     previousCollapsedRef.current = collapsed;
   }, [collapsed]);
 
@@ -431,6 +450,11 @@ export function OperationsSideBar({
     };
   });
   const groupedSections = groupOperations(allEntries, activeGroups, activeOperationOrder);
+  // 그룹 축에서는 묶음 줄(목표)이 뿌리·구성원 칩을 접고 제자리에 선다. 결정 요청·오늘은 맨 위 구역으로 올라간다.
+  const rowPlan = planSideBarRows(groupedSections, clusterIndex, activeTheaterId);
+  // 고른 목표가 「시작 전」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal) 그 접기를 펼치고 줄이 보이게 스크롤한다.
+  // 고른 목표가 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
+  const selectedFresh = [...rowPlan.folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected).map((item) => ({ groupId, id: item.layout.cluster.id })))[0] ?? null;
   const statusGrouped = groupTheaterStatusEntries(allEntries, minimizedSet, getStatusTransitionTick, t);
   const statusSections = statusGrouped.living;
   const { minimized: minimizedSection, dormant: dormantSection } = statusGrouped;
@@ -497,6 +521,29 @@ export function OperationsSideBar({
     );
   };
 
+
+  useEffect(() => {
+    if (!selectedFresh || !activeTheaterId || statusAxis) return;
+    setSideBarFreshFoldExpanded(activeTheaterId, selectedFresh.groupId, true);
+    if (selectedFresh.groupId && collapsedGroupSet.has(selectedFresh.groupId)) toggleGroupCollapsed(selectedFresh.groupId);
+    const frame = window.requestAnimationFrame(() => {
+      chipsRef.current?.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(selectedFresh.id)}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedFresh?.id, activeTheaterId, statusAxis]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 목표를 고른 입구(팔레트·빈 상태 바로가기·다른 Theater 줄)는 고르는 순간 사라져 포커스가 BODY 로 빠진다.
+  // 그때만 사이드바에 보이는 그 목표 줄이 받는다 — 접힘을 펼친 뒤 프레임에서. 숨은 사이드바면 표면의 ⌄ 가 받는다.
+  const selectedRowId = clusterIndex.rows.find((layout) => layout.cluster.theaterId === activeTheaterId && layout.cluster.row?.selected)?.cluster.id ?? null;
+  useEffect(() => {
+    if (!selectedRowId || collapsed) return;
+    const frame = window.requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active !== null && active !== document.body && active.isConnected) return;
+      chipsRef.current?.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(selectedRowId)}"] .side-bar-cluster-row-main`)?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedRowId, activeTheaterId, collapsed]);
 
   useEffect(() => subscribeSideBarOperationAction((request) => {
     const operation = operations.find((candidate) => candidate.id === request.operationId);
@@ -697,6 +744,10 @@ export function OperationsSideBar({
       }
 
       const { sourceId, sourceGroupId, dropIndex, dropGroupId } = snap;
+      if (snap.moveRow) {
+        if (dropGroupId !== sourceGroupId) snap.moveRow(dropGroupId);
+        return;
+      }
       const sections = dropSectionsRef.current;
       const allIds = currentOrderRef.current;
 
@@ -751,6 +802,50 @@ export function OperationsSideBar({
       dropIndex: currentOrder.indexOf(operationId),
       dropGroupId: sourceGroupId,
     });
+  };
+
+  const beginRowPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, item: SideBarRowItem) => {
+    if (item.anchor) {
+      beginPointerDrag(event, item.anchor.operation.id);
+      return;
+    }
+    const moveRow = item.row.moveToGroup;
+    if (statusAxis || !moveRow || event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest(".status-glyph.is-actionable")) return;
+    setActiveContextMenu(null);
+    updateDrag({
+      kind: "chip",
+      sourceId: `row:${item.layout.cluster.id}`,
+      sourceGroupId: item.row.groupId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentY: event.clientY,
+      dragging: false,
+      dropIndex: 0,
+      dropGroupId: item.row.groupId,
+      moveRow,
+    });
+  };
+  const openRowContextMenu = (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => {
+    if (!item.anchor) return;
+    setNewMenu(null);
+    setActiveContextMenu({ kind: "chip", operationId: item.anchor.operation.id, anchor, returnFocus });
+  };
+  const renderRow = (item: SideBarRowItem, promoted: boolean) => {
+    const sourceId = item.anchor?.operation.id ?? `row:${item.layout.cluster.id}`;
+    const rowDragging = drag?.kind === "chip" && drag.sourceId === sourceId && drag.dragging;
+    return (
+      <SideBarClusterRow
+        key={item.layout.cluster.id}
+        item={item}
+        groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
+        dragging={rowDragging}
+        dragOffsetY={rowDragging ? drag.currentY - drag.startY : 0}
+        onPointerDragStart={promoted ? undefined : beginRowPointerDrag}
+        onContextMenu={openRowContextMenu}
+      />
+    );
   };
 
   const beginGroupPointerDrag = (event: ReactPointerEvent<HTMLDivElement>, groupId: string) => {
@@ -841,12 +936,13 @@ export function OperationsSideBar({
     onEscape: closeActiveContextMenu,
   });
 
-  const openTheaterLaunchMenuAt = (anchor: DOMRect, theaterId: string) => {
+  const openTheaterLaunchMenuAt = (anchor: DOMRect, theaterId: string, groupId: string | null = null) => {
     if (theaterId !== activeTheaterId) onSelectTheater(theaterId);
     setActiveContextMenu(null);
     setNewMenu({
       anchor: { x: anchor.right + 8, y: anchor.top },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
+      groupId,
     });
   };
 
@@ -1052,7 +1148,21 @@ export function OperationsSideBar({
                     dormantSection={dormantSection}
                     renderEntry={renderActiveStatusEntry}
                   />,
-                ]) : groupedSections.map((section) => {
+                ]) : [
+                  ...(rowPlan.decisions.length > 0 ? [
+                    <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length}>
+                      {rowPlan.decisions.map((item) => renderRow(item, true))}
+                    </SideBarRowZone>,
+                  ] : []),
+                  ...(rowPlan.today.length > 0 ? [
+                    <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length}>
+                      {rowPlan.today.map((item) => renderRow(item, true))}
+                    </SideBarRowZone>,
+                  ] : []),
+                ].concat(groupedSections.map((section) => {
+          const sectionItems = rowPlan.sections.get(section.groupId) ?? [];
+          const foldItems = rowPlan.folds.get(section.groupId) ?? [];
+          const foldExpanded = !!activeTheaterId && freshFolds.has(freshFoldKey(activeTheaterId, section.groupId));
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
           const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
           const sectionStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
@@ -1079,7 +1189,7 @@ export function OperationsSideBar({
               {section.group ? (
                 <OperationsSideBarGroupHeader
                   group={section.group}
-                  count={section.entries.length}
+                  count={sectionItems.length + foldItems.length}
                   collapsed={isCollapsed}
                   dragging={isGroupDragging}
                   dragOffsetY={isGroupDragging ? drag.currentY - drag.startY : 0}
@@ -1087,8 +1197,9 @@ export function OperationsSideBar({
                   onToggle={toggleGroupCollapsed}
                   onContextMenu={(groupId, anchor) => setActiveContextMenu({ kind: "group", groupId, anchor })}
                   onPointerDragStart={beginGroupPointerDrag}
+                  onOpenLaunch={(groupId, anchor) => { if (activeTheaterId) openTheaterLaunchMenuAt(anchor, activeTheaterId, groupId); }}
                 />
-              ) : hasCustomGroups && section.entries.length > 0 ? (
+              ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
                 <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
                   <span>{t("sidebar.ungrouped.label")}</span>
                 </div>
@@ -1104,7 +1215,9 @@ export function OperationsSideBar({
                   data-group-section-id={section.groupId ?? "__ungrouped__"}
                   aria-label={section.group ? section.group.name : t("sidebar.ungrouped.label")}
                 >
-                  {section.entries.map((entry) => {
+                  {sectionItems.map((sectionItem) => {
+                    if (sectionItem.kind === "row") return renderRow(sectionItem.item, false);
+                    const entry = sectionItem.entry;
                     const globalIndex = allEntries.indexOf(entry);
                     const sectionLocalIndex = section.entries.indexOf(entry);
                     const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
@@ -1138,11 +1251,14 @@ export function OperationsSideBar({
                       />
                     );
                   })}
+                  {foldItems.length > 0 && activeTheaterId ? (
+                    <SideBarFreshFold theaterId={activeTheaterId} groupId={section.groupId} items={foldItems} expanded={foldExpanded} renderRow={(item) => renderRow(item, false)} />
+                  ) : null}
                 </ol>
               ) : null}
             </li>
           );
-        })}
+        }))}
               </ol>
               ) : null}
             </li>
@@ -1196,7 +1312,7 @@ export function OperationsSideBar({
           catalog={catalog}
           canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
-          onLaunchKind={(pluginId, kind, variantLaunch) => { setNewMenu(null); onLaunchKind(pluginId, kind, variantLaunch); }}
+          onLaunchKind={(pluginId, kind, variantLaunch) => { setNewMenu(null); onLaunchKind(pluginId, kind, variantLaunch, newMenu.groupId ?? null); }}
           onClose={() => setNewMenu(null)}
         />,
         document.body,
@@ -1580,6 +1696,21 @@ function TheaterInactiveSection({
 }: TheaterInactiveSectionProps) {
   const t = useT();
   const sections = groupOperations(entries, groups, []);
+  // 목표 줄·구역·「시작 전」 접기는 활성 Theater 와 같은 계획을 쓴다 — Theater 를 옮겨도 줄 모양이 바뀌지 않는다.
+  // 끌기·메뉴는 활성 Theater 의 몫이고, 줄을 누르면 플러그인이 그 Theater 로 옮긴 뒤 표면을 연다.
+  const rowPlan = planSideBarRows(sections, useClusterIndex(), theater.id);
+  const freshFolds = useSideBarFreshFolds();
+  const groupMarkByGroupId = new Map(groups.map((group) => {
+    const color = resolveAccentColor(group.color);
+    return [group.id, color ? { name: group.name, color } : null] as const;
+  }));
+  const renderRow = (item: SideBarRowItem, promoted: boolean) => (
+    <SideBarClusterRow
+      key={item.layout.cluster.id}
+      item={item}
+      groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
+    />
+  );
   const minimizedSet = new Set(entries.filter((entry) => entry.minimized).map((entry) => entry.operation.id));
   const { living: statusSections, minimized: minimizedSection, dormant: dormantSection } = groupTheaterStatusEntries(
     entries,
@@ -1666,7 +1797,21 @@ function TheaterInactiveSection({
               dormantSection={dormantSection}
               renderEntry={renderInactiveStatusEntry}
             />,
-          ]) : sections.map((section) => {
+          ]) : [
+            ...(rowPlan.decisions.length > 0 ? [
+              <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length}>
+                {rowPlan.decisions.map((item) => renderRow(item, true))}
+              </SideBarRowZone>,
+            ] : []),
+            ...(rowPlan.today.length > 0 ? [
+              <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length}>
+                {rowPlan.today.map((item) => renderRow(item, true))}
+              </SideBarRowZone>,
+            ] : []),
+          ].concat(sections.map((section) => {
+            const sectionItems = rowPlan.sections.get(section.groupId) ?? [];
+            const foldItems = rowPlan.folds.get(section.groupId) ?? [];
+            const foldExpanded = freshFolds.has(freshFoldKey(theater.id, section.groupId));
             const isCollapsed = section.groupId !== null && collapsedGroups.has(section.groupId);
             const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
             return (
@@ -1678,7 +1823,7 @@ function TheaterInactiveSection({
                 {section.group ? (
                   <OperationsSideBarGroupHeader
                     group={section.group}
-                    count={section.entries.length}
+                    count={sectionItems.length + foldItems.length}
                     collapsed={isCollapsed}
                     dragging={false}
                     dragOffsetY={0}
@@ -1687,14 +1832,17 @@ function TheaterInactiveSection({
                     onContextMenu={() => {}}
                     onPointerDragStart={() => {}}
                   />
-                ) : hasCustomGroups && section.entries.length > 0 ? (
+                ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
                   <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
                     <span>{t("sidebar.ungrouped.label")}</span>
                   </div>
                 ) : null}
                 {!isCollapsed ? (
                   <ol className="side-bar-group-chips" aria-label={section.group ? section.group.name : t("sidebar.ungrouped.label")}>
-                    {section.entries.map((entry, index) => {
+                    {sectionItems.map((sectionItem) => {
+                      if (sectionItem.kind === "row") return renderRow(sectionItem.item, false);
+                      const entry = sectionItem.entry;
+                      const index = section.entries.indexOf(entry);
                       const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
                       const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
                       return (
@@ -1717,11 +1865,14 @@ function TheaterInactiveSection({
                         />
                       );
                     })}
+                    {foldItems.length > 0 ? (
+                      <SideBarFreshFold theaterId={theater.id} groupId={section.groupId} items={foldItems} expanded={foldExpanded} renderRow={(item) => renderRow(item, false)} />
+                    ) : null}
                   </ol>
                 ) : null}
               </li>
             );
-          })}
+          }))}
         </ol>
       ) : null}
     </li>

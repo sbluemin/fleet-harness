@@ -18,6 +18,7 @@ import { closeArchiveSheet, refreshOperationArchive, useOperationArchive } from 
 import { fetchOperations } from "../../../../core/client/src/integration/api.js";
 import { getState, hydrateOperations, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
+import { useArchiveSections } from "./archive-entry.js";
 
 /**
  * 보관함 — 보관한 Operation을 조회·복원·영구 삭제하는 한 곳. 사이드바 맨 아래 「보관함 N」, Zen 작업 표시줄의
@@ -27,7 +28,8 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
  * 항목은 보관한 날(사용자 기기의 달력 날짜)마다 묶는다. 날짜는 왼쪽 여백열에 한 번 서고 그날 항목이 끝날 때까지
  * 따라오며, 날짜가 여백열에 있으니 항목 메타에는 그날 안의 보관 시각만 적는다.
  * 복원은 늘 Cluster 전체를 휴면으로 돌리고 세션을 자동 실행하지 않는다. 영구 삭제는 여기서만 한다.
- * 이 화면에는 어떤 플러그인의 개념도 나오지 않는다 — Core가 아는 부모·하위 관계만 쓴다.
+ * Operation 항목에는 어떤 플러그인의 개념도 나오지 않는다 — Core가 아는 부모·하위 관계만 쓴다. 플러그인이 보관하는
+ * 것(완료한 목표·정리된 목표)은 그 아래 플러그인 칸으로 선다: 머리는 호스트가, 본문은 플러그인이 그린다.
  */
 
 const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -125,6 +127,9 @@ function ArchiveSheetDialog() {
   }, []);
 
   const clusters = clustersOf(archive.snapshot?.entries ?? []);
+  const sections = useArchiveSections().filter((entry) => entry.count > 0);
+  const theaterId = useConsoleState().activeTheaterId;
+  const total = archive.total + sections.reduce((sum, entry) => sum + entry.count, 0);
 
   // 영구 삭제한 항목이 목록에서 빠지면 포커스가 사라진 항목과 함께 BODY로 빠지고 Esc가 시트에 닿지 않는다.
   // 같은 자리에 선 다음 항목(마지막이었다면 새 마지막 항목)의 「영구 삭제…」로, 남은 항목이 없으면 시트로 옮긴다.
@@ -160,6 +165,19 @@ function ArchiveSheetDialog() {
       })
       .finally(() => setRestoring(null));
   };
+
+  // 플러그인 구획은 자기 줄을 지워도(정리된 목표 비우기) 초점을 옮겨 주지 않아 BODY로 빠진다. 그때 누른 Esc·Tab도 시트가 받는다.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog || document.activeElement !== document.body || (event.key !== "Escape" && event.key !== "Tab")) return;
+      event.preventDefault();
+      dialog.focus();
+      if (event.key === "Escape") closeArchiveSheet();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
@@ -199,12 +217,12 @@ function ArchiveSheetDialog() {
         <header className="archive-sheet-head">
           <span className="archive-sheet-glyph" aria-hidden="true"><ArchiveGlyph /></span>
           <h2 id="archive-sheet-title">{t("archive.title")}</h2>
-          <span className="archive-sheet-count">{archive.total}</span>
+          <span className="archive-sheet-count">{total}</span>
           <button type="button" className="archive-sheet-close" onClick={closeArchiveSheet} aria-label={t("archive.closeAria")}>✕</button>
         </header>
         {notice ? <p className="archive-sheet-notice" role="status">{t(notice)}</p> : null}
         <div className="archive-sheet-body">
-          {clusters.length === 0 ? (
+          {clusters.length === 0 && sections.length > 0 ? null : clusters.length === 0 ? (
             <p className="archive-sheet-empty">{archive.loading && archive.snapshot === null ? t("archive.loading") : archive.error && archive.snapshot === null ? t("archive.loadFailed") : t("archive.empty")}</p>
           ) : daysOf(clusters).map((day) => {
             const label = dayLabelOf(day.at, now, locale, t);
@@ -236,6 +254,15 @@ function ArchiveSheetDialog() {
               </section>
             );
           })}
+          {sections.map(({ section, count }) => (
+            <section key={section.id} className="archive-sheet-section" aria-labelledby={`archive-sheet-section-${section.id}`} data-archive-section={section.id}>
+              <h3 id={`archive-sheet-section-${section.id}`} className="archive-sheet-section-head">
+                <span>{section.title(locale)}</span>
+                <span className="archive-sheet-section-count">{count}</span>
+              </h3>
+              <div className="archive-sheet-section-body">{section.render({ language: locale, theaterId, close: closeArchiveSheet })}</div>
+            </section>
+          ))}
         </div>
       </div>
     </div>,

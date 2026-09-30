@@ -181,7 +181,7 @@ export function OperationsCanvas({
   // 묶음 색인은 띠·노드 줄·피커를 그리는 데만 쓴다.
   const clusterIndex = useClusterIndex();
   // 결정 요청이 선 뿌리는 선별 대기열에 든다 — 큐를 읽는 모든 곳(무대·막대·키보드)이 같은 집합을 보게 모듈에 넣는다.
-  useEffect(() => { setTriageDecisionRoots(new Set(clusterIndex.clusters.filter((cluster) => cluster.decisionRequest === true).map((cluster) => cluster.root))); }, [clusterIndex]);
+  useEffect(() => { setTriageDecisionRoots(new Set(clusterIndex.clusters.flatMap((cluster) => (cluster.decisionRequest === true && cluster.root !== undefined ? [cluster.root] : [])))); }, [clusterIndex]);
   // 지휘관의 공개 활동은 코어 스토어가 살아 있는 구성원까지 반영한다 — 구성원의 결정 대기도 지휘관을 대기로 올린다.
   const operationRuntime = state.operationRuntime;
   const [focusFadeTransitionReady, setFocusFadeTransitionReady] = useState(activePluginOperationId !== null);

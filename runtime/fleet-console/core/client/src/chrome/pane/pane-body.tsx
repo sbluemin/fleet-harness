@@ -12,6 +12,7 @@ import type {
 } from "@fleet-console/sdk/plugin";
 
 import type { HostPaneContext } from "./pane-registry.js";
+import { useHostSideBarVisible } from "../../integration/zen-chrome-toggles.js";
 
 /**
  * 페인 컨텍스트와 본문 — 마운트가 어디든 같은 것을 그린다.
@@ -112,6 +113,7 @@ export function usePaneContext({
     isOpen: (paneId) => isOpen?.(paneId) ?? (paneId === descriptor.id && visibleRef.current),
   }), [descriptor.id, handleOpen, isOpen, onClose, onCloseOther, onReplaceParams]);
 
+  const sideBarVisible = useHostSideBarVisible();
   const ctx = useMemo<HostPaneContext>(() => ({
     paneId: descriptor.id,
     instanceId,
@@ -130,9 +132,10 @@ export function usePaneContext({
     ...(requestExtraWidth === undefined ? {} : { requestExtraWidth }),
     language,
     theme,
+    sideBarVisible,
     legacySurfaces,
     legacyLaunchOperation,
-  }), [api, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mount, panes, params, preferences, requestExtraWidth, theaterId, theme, visible, width]);
+  }), [api, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mount, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
 
   return ctx;
 }

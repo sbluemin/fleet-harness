@@ -15,6 +15,8 @@ interface GroupHeaderProps {
   readonly onToggle: (groupId: string) => void;
   readonly onContextMenu: (groupId: string, anchor: DOMRect) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, groupId: string) => void;
+  /** 그룹 「+」 — 이 그룹에 서는 새 목표·Operation 메뉴. 없으면 버튼을 세우지 않는다. */
+  readonly onOpenLaunch?: (groupId: string, anchor: DOMRect) => void;
 }
 
 export function OperationsSideBarGroupHeader({
@@ -27,6 +29,7 @@ export function OperationsSideBarGroupHeader({
   onToggle,
   onContextMenu,
   onPointerDragStart,
+  onOpenLaunch,
 }: GroupHeaderProps) {
   const t = useT();
   const suppressClickRef = useRef(false);
@@ -88,6 +91,21 @@ export function OperationsSideBarGroupHeader({
       </button>
       <span className="side-bar-group-header__name">{group.name}</span>
       <span className="side-bar-group-header__count" aria-label={t("sidebar.group.operationsCount", { count })}>{count}</span>
+      {onOpenLaunch ? (
+        <button
+          type="button"
+          className="side-bar-group-header__plus"
+          aria-label={t("sidebar.group.add", { name: group.name })}
+          title={t("sidebar.group.add", { name: group.name })}
+          aria-haspopup="menu"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenLaunch(group.id, event.currentTarget.getBoundingClientRect());
+          }}
+        >
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5v7M2.5 6h7" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
+        </button>
+      ) : null}
     </div>
   );
 }

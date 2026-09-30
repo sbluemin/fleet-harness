@@ -3189,15 +3189,14 @@
 
 /* OperationActivity 색은 이 축에서 한 번만 선언한다. dormant의 brass는 위치 채널 토큰을
    상태에 쓰는 기존 STATUS 예외다. 함대 지도의 점까지 같은 판독을 공유하도록 예외 범위를 함께 넓힌다.
-   War Room 덱은 자기 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다. */
-.tenant-beacon.is-awaiting,
+   상태 글리프(.status-glyph)는 이 축을 읽지 않는다 — 원의 테두리와 가운데 점이 상태마다 다른 신호
+   토큰을 직접 조합하므로 한 색 변수로 접히지 않는다. */
 .canvas-fleet-map-dot.is-awaiting,
 .side-bar-status-section--awaiting {
   --activity-color: var(--aurora);
   --activity-glow: var(--aurora-glow);
 }
 
-.tenant-beacon.is-turn-running,
 .canvas-fleet-map-dot.is-running,
 .side-bar-status-section--running {
   --activity-color: var(--warn);
@@ -3207,8 +3206,6 @@
 /* 미확인 완료는 유휴와 같은 초록을 쓴다 — 이미 끝난 일이라는 사실이 색을 정하고, 아직 열지
    않았다는 것은 색이 아니라 느린 점등이 말한다. 상태 섹션에는 자기 칸이 없다(승격되어 AWAITING
    칸에 선다): 색과 칸이 갈리는 자리이며, 놓치지 않게 위로 모으는 쪽을 택한 결과다. */
-.tenant-beacon.is-idle,
-.tenant-beacon.is-unseen,
 .canvas-fleet-map-dot.is-idle,
 .canvas-fleet-map-dot.is-unseen,
 .side-bar-status-section--idle {
@@ -3216,7 +3213,6 @@
   --activity-glow: var(--positive-glow);
 }
 
-.tenant-beacon.is-ended,
 .canvas-fleet-map-dot.is-ended,
 .side-bar-status-section--ended {
   --activity-color: var(--ink-fog);
@@ -3229,7 +3225,6 @@
   --activity-color: var(--ink-fog);
 }
 
-.tenant-beacon.is-background,
 .canvas-fleet-map-dot.is-background {
   --activity-color: var(--warn);
   --activity-glow: var(--warn-glow);
@@ -3244,67 +3239,190 @@
   background: var(--ink-rim);
 }
 
-/* Operation 활동 마크는 조형이 하나다 — 둥근 네모. 원형은 이 축에서 폐지되었고, 상태는
-   색과 채움·중공·발광·맥동으로만 갈린다. 조형이 상태마다 갈리면 같은 축의 다섯 값이
-   서로 다른 종류의 사물로 읽힌다. */
-.tenant-beacon {
-  /* accent-immune: beacon marks are system status signals, never user accent fill. */
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 2px;
-  background: var(--ink-rim);
-}
-
 .status-dot--live {
   background: var(--aurora);
   box-shadow: 0 0 12px var(--aurora-glow);
   animation: aurora-pulse 1.8s ease-in-out infinite;
 }
 
-/* awaiting — aurora(청록). 운영자 입력을 기다리는 살아있는 대기 신호(pulse). */
-.tenant-beacon.is-awaiting {
-  background: var(--activity-color);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--activity-color) 30%, transparent);
-  animation: aurora-pulse 1.8s ease-in-out infinite;
-}
-
-.tenant-beacon.is-ended {
-  background: none;
-  border: 1.5px solid var(--activity-color);
+/* 상태 글리프 — 제품 전체의 상태 마크는 12px 원 하나다. 테두리가 진행을(회전 호·점선), 가운데
+   점·획이 결과를(대기·유휴·끝남·완료) 말한다. 색은 신호 토큰만 쓰고(대기 aurora·진행 warn·유휴
+   positive), 끝난 것·시작 전은 중성 잉크로 물러선다. 조형은 SDK status-glyph 모듈이 고정한다. */
+.status-glyph {
+  /* accent-immune: status glyphs are system status signals, never user accent fill. */
+  position: relative;
+  display: inline-block;
+  flex: none;
   box-sizing: border-box;
-}
-
-/* Agent CLI 턴 진행 중(캐리어 스트리밍 포함) — 노랑(--warn). aurora(awaiting 대기)와 구별한다. */
-.tenant-beacon.is-turn-running {
-  background: var(--activity-color);
-  box-shadow: 0 0 10px var(--activity-glow);
-}
-
-/* background — 턴은 끝났지만 백그라운드 서브에이전트/워크플로우 작업이 남아있음. running(--warn 채움)의 중공 변형. */
-.tenant-beacon.is-background {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 1.3px solid var(--hairline-strong);
+  border-radius: 50%;
   background: none;
-  border: 1.5px solid var(--activity-color);
-  box-sizing: border-box;
-  box-shadow: 0 0 8px var(--activity-glow);
 }
 
-/* idle — 그린(--positive). 유휴 상태(턴 미진행/종료). 정적 dot, 외곽 애니메이션 없음. */
-.tenant-beacon.is-idle {
-  background: var(--activity-color);
-  box-shadow: 0 0 9px var(--activity-glow);
+.status-glyph::before,
+.status-glyph::after {
+  content: "";
+  position: absolute;
 }
 
-/* unseen — 끝났지만 아직 열지 않음. 색은 유휴와 같은 그린이고, 느린 점등만이 미확인을 말한다.
-   주기는 awaiting 맥동(1.8s)의 두 배라 "부르는 중"과 "안 본 채 끝난 것"이 한눈에 갈린다.
-   키프레임의 0%/100%는 완전 점등이다 — reduced-motion이 1회로 잘라도 켜진 채 남는다. */
-.tenant-beacon.is-unseen {
-  background: var(--activity-color);
-  /* 정지 상태를 키프레임의 0%와 같게 못박는다 — 애니메이션은 fill-mode: none이라 reduced-motion이
-     1회로 자르고 나면 요소 자기 스타일로 되돌아온다. 글로우를 키프레임에만 두면 그 자리에서
-     마크가 유휴(9px 글로우)보다도 약한 평평한 사각으로 남는다. */
-  box-shadow: 0 0 10px 1px var(--activity-glow);
-  animation: beacon-unseen-blink 3.6s var(--ease-glide) infinite;
+.status-glyph.is-fresh {
+  border-color: var(--ink-fog);
+}
+
+.status-glyph.is-running {
+  border-color: color-mix(in oklch, var(--warn) 28%, transparent);
+}
+
+/* 회전 호 — 원 위에 겹친 1/4 두 칸이 돈다. 테두리 자리(-1.3px)에 정확히 포개 호가 원을 벗어나지 않는다. */
+.status-glyph.is-running::before {
+  inset: -1.3px;
+  border: 1.3px solid transparent;
+  border-top-color: var(--warn);
+  border-right-color: var(--warn);
+  border-radius: 50%;
+  animation: status-glyph-spin 1.4s linear infinite;
+}
+
+/* 백그라운드 작업 — 턴은 끝났지만 일이 남았다. 도는 호 대신 점선 원이 "아직 진행 중"을 조용히 말한다. */
+.status-glyph.is-background {
+  border: 1.3px dashed color-mix(in oklch, var(--warn) 80%, transparent);
+}
+
+/* 입력·허용 대기 — 사람을 부르는 유일한 맥동이다. */
+.status-glyph.is-awaiting {
+  border-color: var(--aurora);
+  animation: status-glyph-breathe 1.8s ease-in-out infinite;
+}
+
+.status-glyph.is-awaiting::after,
+.status-glyph.is-idle::after,
+.status-glyph.is-unseen::after {
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+}
+
+.status-glyph.is-awaiting::after {
+  background: var(--aurora);
+}
+
+.status-glyph.is-idle {
+  border-color: var(--hairline-strong);
+}
+
+.status-glyph.is-idle::after {
+  background: var(--positive);
+}
+
+/* 안 본 완료 — 색은 유휴와 같은 초록이고, 느린 점등(대기 맥동의 두 배 주기)만이 미확인을 말한다.
+   키프레임의 0%/100%는 완전 점등이라 reduced-motion이 모션을 끊어도 켜진 채 남는다. */
+.status-glyph.is-unseen {
+  border-color: color-mix(in oklch, var(--positive) 45%, var(--hairline-strong));
+}
+
+.status-glyph.is-unseen::after {
+  background: var(--positive);
+  animation: status-glyph-blink 3.6s ease-in-out infinite;
+}
+
+.status-glyph.is-ended {
+  border-color: var(--hairline);
+}
+
+.status-glyph.is-ended::after {
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 1.3px;
+  margin: -0.65px 0 0 -2.5px;
+  border-radius: 1px;
+  background: var(--ink-fog);
+}
+
+/* 검토 대기 — 사람의 판정을 기다리는 목표. 누를 수 있는 유일한 글리프다(완료·후속 선택). */
+.status-glyph.is-review {
+  border-color: var(--aurora);
+  background: color-mix(in oklch, var(--aurora) 12%, transparent);
+}
+
+.status-glyph.is-review::after,
+.status-glyph.is-done::after {
+  top: 1.9px;
+  width: 2.6px;
+  height: 4.6px;
+  border-style: solid;
+  border-width: 0 1.3px 1.3px 0;
+  transform: rotate(40deg);
+}
+
+.status-glyph.is-review::after {
+  left: 3.1px;
+  border-color: var(--aurora);
+}
+
+.status-glyph.is-done {
+  border-color: transparent;
+  background: color-mix(in oklch, var(--text-tertiary) 42%, transparent);
+}
+
+/* 체크는 1차 잉크 — --ink-abyss 는 42% 중성 채움 위에서 두 테마 모두 2:1 안팎이다(비문자 대비 3:1 미달). */
+.status-glyph.is-done::after {
+  left: 3.3px;
+  border-color: var(--text-primary);
+}
+
+button.status-glyph.is-actionable {
+  cursor: pointer;
+  appearance: none;
+}
+
+button.status-glyph.is-actionable:hover {
+  background: color-mix(in oklch, var(--aurora) 24%, transparent);
+}
+
+button.status-glyph.is-actionable:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+@keyframes status-glyph-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes status-glyph-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--aurora-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--aurora-glow);
+  }
+}
+
+@keyframes status-glyph-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-glyph,
+  .status-glyph::before,
+  .status-glyph::after {
+    animation: none !important;
+  }
 }
 
 /* 활동 축의 --activity-glow를 읽으므로 theme.css가 아니라 이 파일에 산다 — 토큰이 선언되는
@@ -4304,7 +4422,8 @@
   pointer-events: auto;
 }
 
-/* 지도 마커도 같은 활동 축을 읽는다 — 조형은 행·캡션과 같은 둥근 네모다.
+/* 지도 마커도 같은 활동 축을 읽는다. 조형은 목록의 상태 글리프(원)와 다른 채움 표지다 — 지도는
+   글리프를 나열하는 목록이 아니라 위치를 찍는 판이어서, 14px 면적과 유영이 판독을 맡는다(의도된 예외).
    지도 축척이라 반경만 치수에 맞춰 3px로 든다. 모든 점이 제자리에서 유영한다 — 살아 있는
    함대의 판에서 정지한 점은 죽은 표시로 읽힌다. 상태 위계는 움직임의 유무가 아니라
    진폭·주기(JS가 주입하는 --fleet-drift-*)가 만든다. */
@@ -5809,7 +5928,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   }
 }
 
-/* 상태 레일 색 — OperationActivity 매핑 축(.tenant-beacon 선언)과 같은 토큰을 쓴다.
+/* 상태 레일 색 — OperationActivity 매핑 축(.canvas-fleet-map-dot 선언)과 같은 토큰을 쓴다.
    turn/background: warn(에이전트 턴·백그라운드 작업) · awaiting: aurora(운영자 입력 대기)
    · unseen: positive(미확인 완료). idle·dormant는 레일을 켜지 않는다. */
 .canvas-operation.is-running--turn,
@@ -7322,7 +7441,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   transform: rotate(-90deg);
 }
 
-/* 상태 그룹 헤더는 라벨·카운트·왼쪽 스트라이프로 버킷을 말한다. 둥근 네모 마크는
+/* 상태 그룹 헤더는 라벨·카운트·왼쪽 스트라이프로 버킷을 말한다. 원형 상태 글리프는
    칩과 패널이 이미 그리므로 머리글에 반복하지 않는다. */
 
 .side-bar-status-header__count {
@@ -7512,6 +7631,229 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .side-bar-group-header[style*="--grp-color"] .side-bar-group-header__count {
   color: color-mix(in oklch, var(--grp-color) 65%, var(--text-primary));
+}
+
+/* 그룹 「+」 — 이 그룹에 서는 새 목표·Operation. 카운트 뒤에 조용히 서고 hover에서만 또렷해진다. */
+.side-bar-group-header__plus {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.side-bar-group-header__plus svg {
+  width: 12px;
+  height: 12px;
+}
+
+.side-bar-group-header__plus:hover,
+.side-bar-group-header__plus:focus-visible {
+  color: var(--brass-ink);
+  background: var(--brass-glow);
+  outline: none;
+}
+
+/* 묶음 줄(목표) — 1줄 제목, 2줄 mono 메타. 선택은 테두리 전체와 워시로만 말한다(왼쪽 띠 없음). */
+.side-bar-cluster-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 8px;
+  align-items: start;
+  padding: 6px 8px;
+  margin: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-cluster-row:hover {
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+}
+
+.side-bar-cluster-row.sel {
+  background: var(--brass-glow);
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+}
+
+.side-bar-cluster-row.is-dragging {
+  position: relative;
+  z-index: 2;
+  opacity: 0.85;
+}
+
+.side-bar-cluster-row-glyph {
+  justify-self: center;
+  margin-top: 3px;
+}
+
+.side-bar-cluster-row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.side-bar-cluster-row-main:focus-visible {
+  outline: none;
+}
+
+.side-bar-cluster-row:has(.side-bar-cluster-row-main:focus-visible) {
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
+}
+
+.side-bar-cluster-row-title {
+  font-size: var(--t-sm);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-bar-cluster-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 1px;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
+
+.side-bar-cluster-row-meta .is-req {
+  color: var(--aurora);
+}
+
+.side-bar-cluster-row-meta .is-late {
+  color: var(--coral);
+}
+
+/* 후속 줄의 원래 목표 — 긴 제목은 한 줄로 말줄인다. */
+.side-bar-cluster-row-meta .is-from {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 「시작 전 N ›」 — 그룹 맨 아래 글자형 한 줄. 상자·채움·왼쪽 띠 없이 줄과 같은 격자에 서고, 머무를 때만 줄 배경이 옅게 선다. */
+.side-bar-fresh-fold-toggle {
+  display: grid;
+  grid-template-columns: 14px auto auto 1fr;
+  gap: 8px;
+  align-items: center;
+  width: calc(100% - 2 * var(--space-1));
+  margin: 0 var(--space-1);
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-fresh-fold-toggle:hover {
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  color: var(--text-secondary);
+}
+
+.side-bar-fresh-fold-toggle:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
+}
+
+.side-bar-fresh-fold-rings {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+
+.side-bar-fresh-fold-rings i {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--ink-fog);
+  border-radius: 50%;
+}
+
+.side-bar-fresh-fold-count {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.side-bar-fresh-fold-chev {
+  justify-self: end;
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-fresh-fold-toggle[aria-expanded="true"] .side-bar-fresh-fold-chev {
+  transform: rotate(90deg);
+}
+
+.side-bar-fresh-fold-body {
+  margin: 0;
+  padding: 0 0 0 10px;
+  list-style: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-bar-fresh-fold-toggle,
+  .side-bar-fresh-fold-chev {
+    transition: none;
+  }
+}
+
+/* 구역으로 올라간 줄의 원래 그룹 — 5px 점 하나. */
+.side-bar-cluster-row-dot {
+  width: 5px;
+  height: 5px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--grp-color);
+}
+
+/* 결정 요청·오늘 구역 — 접지 않는 머리. 뒤따르는 가는 선이 구역의 끝을 긋지 않고 자리만 잡는다. */
+.side-bar-row-zone-pin {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px var(--space-2) 3px calc(var(--space-2) + var(--space-1));
+  font-size: var(--t-xs);
+  letter-spacing: 0.03em;
+  color: var(--text-tertiary);
+}
+
+.side-bar-row-zone.is-decisions .side-bar-row-zone-pin {
+  color: var(--aurora);
+}
+
+.side-bar-row-zone-count {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.side-bar-row-zone-rim {
+  flex: 1;
+  height: 1px;
+  margin-left: 6px;
+  background: var(--hairline);
 }
 
 /* Ungrouped label */
@@ -10342,7 +10684,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 .quick-launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* .operation-provider-mark 대조표는 퇴역했다 — 기존 Operation을 고르는 목록 표면(사이드바 칩·
-   커맨드 밴드·팔레트·Quick Launch 멘션)의 이름 왼쪽 슬롯은 활동 상태(tenant-beacon)가 소유한다.
+   커맨드 밴드·팔레트·Quick Launch 멘션)의 이름 왼쪽 슬롯은 활동 상태(status-glyph)가 소유한다.
    새 Operation의 실행 좌표를 고르는 표면의 공급자 톤은 --launch-provider-tone 축이 맡는다. */
 
 .operation-launch-variant-entry {
@@ -12183,7 +12525,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 /* 명령 행의 선행 글리프 슬롯과 같은 자리를 Operation 행에서는 활동 상태 마크가 쓴다 —
-   내용물(8px tenant-beacon / 14px Shell 종류 글리프)은 자기 치수를 소유하고, 이 슬롯은
+   내용물(12px status-glyph)은 자기 치수를 소유하고, 이 슬롯은
    16px 그리드로 명령 글리프와 같은 정렬 계약만 진다. 마크가 항상 서므로 제목 열이 어긋나지 않는다. */
 .operation-search-op-mark {
   display: grid;
@@ -18679,6 +19021,13 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .side-bar-archive-label {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-bar-archive-part {
+  color: var(--text-tertiary);
 }
 
 .side-bar-archive-count,
@@ -18820,6 +19169,45 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
     gap: var(--space-2);
     padding-top: 0;
   }
+}
+
+/* 플러그인 칸 — 보관한 Operation 목록 아래, 날짜 묶음과 같은 가는 선으로 나뉜다. 본문은 플러그인이 그린다. */
+.archive-sheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.archive-sheet-day + .archive-sheet-section,
+.archive-sheet-section + .archive-sheet-section {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--surface-rim);
+}
+
+.archive-sheet-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 6px 0 0 var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+.archive-sheet-section-count {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.archive-sheet-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .archive-sheet-empty {

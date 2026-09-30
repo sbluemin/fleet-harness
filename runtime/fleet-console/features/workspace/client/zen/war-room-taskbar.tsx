@@ -2,6 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExter
 import { createPortal } from "react-dom";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
+import { toggleZenSideBar } from "../../../../core/client/src/integration/zen-chrome-toggles.js";
+import { useZenModeState } from "../../../../core/client/src/integration/zen-mode.js";
+import { useSideBarShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
@@ -31,6 +35,10 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
   const arrivals = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   useCanvasState();
   const stagedId = useTriageStage();
+  const zenState = useZenModeState();
+  const sideBarCollapsed = useSideBarState().collapsed;
+  const sideBarShown = zenState.sideBarRevealed && !sideBarCollapsed;
+  const sideBarShortcut = useSideBarShortcutLabel();
   const clusterIndex = useClusterIndex();
   const minimizedIds = new Set(getTheaterMinimizedIds(theaters.map((theater) => theater.id)));
   const ended = operations.filter((operation) => resolveOperationActivity(operation, operationRuntime) === "ended");
@@ -175,6 +183,10 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
   return <nav className={`zen-taskbar war-room-taskbar${entering ? " is-entering" : ""}`} aria-label={t("chrome.commandBand.modeWarRoom")} data-fit={fit.step}>
     {triageGlowHost ? createPortal(<div ref={glowRef} className={`war-room-glow${attentionClasses}`} />, triageGlowHost) : null}
     <div className="zen-taskbar-left war-room-taskbar-row" ref={rowRef}>
+      <button type="button" className={`sbtoggle${sideBarShown ? " on" : ""}`} aria-pressed={sideBarShown}
+        title={`${t("canvas.triage.sideBarToggle")} ${sideBarShortcut}`} aria-label={t("canvas.triage.sideBarToggle")} onClick={() => { toggleZenSideBar(); }}>
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M6 2.5v11" /></svg>
+      </button>
       {fit.step < 5 ? <span className="war-room-kicker">{t("canvas.triage.modeKicker")}</span> : null}
       <span className="zen-taskbar-axis"><CanvasModeSwitch /><ArchiveTaskbarEntry /></span>
       <span className="war-room-tools"><WarRoomModeTools compact={fit.step >= 2} /></span>

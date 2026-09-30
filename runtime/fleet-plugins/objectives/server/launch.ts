@@ -168,7 +168,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const code = error instanceof Error ? error.message : "";
     throw new ObjectiveStoreError(/^[a-z_]{1,64}$/.test(code) ? code : "launch_failed");
   };
+  // 지워졌거나 다른 Theater 의 그룹은 미분류로 연다 — 거절하면 옛 그룹을 쥔 개시가 실패한다. 그룹을 모르는 호스트에서는 그대로 둔다.
+  const liveGroupId = (theaterId: string, groupId: string | null | undefined): string | null => {
+    const groups = ctx.host.operations.groups;
+    if (!groupId || !groups) return groupId ?? null;
+    return groups.get(groupId)?.theaterId === theaterId ? groupId : null;
+  };
   const launch = async (input: { objectiveId: string; newOperationId?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; parentOperationId?: string; childSessionId?: string; launchKey?: string }): Promise<string> => {
+    const groupId = liveGroupId(input.theaterId, input.groupId);
     const result = await control().request({
       kind: "launch",
       theaterId: input.theaterId,
@@ -182,7 +189,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       disableUserQuestions: true,
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
-      ...(input.groupId ? { groupId: input.groupId } : {}),
+      ...(groupId ? { groupId } : {}),
       // 구성원은 태어날 때부터 지휘관 아래 선다 — 코어가 목록 표면에서 빼고 지휘관이 대표한다.
       ...(input.parentOperationId && input.childSessionId ? { parentOperationId: input.parentOperationId, childSessionId: input.childSessionId } : {}),
       ...(input.launchKey ? { launchKey: input.launchKey } : {}),

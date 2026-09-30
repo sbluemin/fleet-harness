@@ -5,7 +5,7 @@ import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surf
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
 import type {
-  OperationCaptionContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
+  ArchiveSectionDescriptor, OperationCaptionContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
@@ -37,6 +37,8 @@ export interface PluginRegistry {
   readonly operationCaptionContributions: readonly OperationCaptionContribution[];
   /** 모든 플러그인의 묶음을 한 원천으로 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
   readonly operationClusters: OperationClusterSource;
+  /** 보관함 시트의 플러그인 칸 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
+  readonly archiveSections: readonly ArchiveSectionDescriptor[];
   /** 플러그인의 온보딩 기여 — 엔진은 코어 기능의 온보딩 다음 순서로 보인다. */
   readonly onboarding: readonly OnboardingContribution[];
 }
@@ -206,6 +208,10 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
     }))),
     expandedSurfaces,
     operationCaptionContributions: providers.flatMap((plugin) => (plugin.operationCaptionContributions ?? []).map((descriptor) => ({
+      ...descriptor,
+      id: `${plugin.id}:${descriptor.id}`,
+    }))),
+    archiveSections: providers.flatMap((plugin) => (plugin.archiveSections ?? []).map((descriptor) => ({
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),

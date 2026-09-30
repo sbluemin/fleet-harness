@@ -47,7 +47,7 @@ import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { COMMISSIONING_SEEN_KEY, closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
-import { isTriageActive, useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
+import { useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { subscribeDormantAutoMinimize } from "../../../../features/workspace/client/canvas/dormant-auto-minimize.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
 import { useMobileSessionOpen } from "../chrome/mobile/mobile-store.js";
@@ -183,15 +183,17 @@ export function App() {
     if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
     else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
   }, [zenActive]);
-  // Zen 단축키로 한쪽 크롬을 숨길 때, 포커스가 그 안에 있었다면 위 Zen 진입과 같은 복귀 규칙을
-  // 따른다. 숨길 영역 밖의 포커스는 건드리지 않는다.
-  const hideZenChromeRestoringFocus = useCallback((regionSelector: string, hide: () => boolean) => {
+  // Zen 단축키로 한쪽 크롬을 숨길 때, 포커스가 그 안에 있었다면 반대쪽 컨트롤(War Room 막대의 사이드바
+  // 토글)이 있으면 거기로, 없으면 위 Zen 진입과 같은 복귀 규칙을 따른다. 숨길 영역 밖의 포커스는 건드리지 않는다.
+  const hideZenChromeRestoringFocus = useCallback((regionSelector: string, hide: () => boolean, oppositeSelector?: string) => {
     const focused = document.activeElement;
     const focusInside = focused instanceof HTMLElement && focused.closest(regionSelector) !== null;
     if (hide() || !focusInside) return;
     requestAnimationFrame(() => {
       const now = document.activeElement;
       if (now instanceof HTMLElement && now !== document.body && !now.closest("[inert], [hidden]")) return;
+      const opposite = oppositeSelector ? document.querySelector<HTMLElement>(oppositeSelector) : null;
+      if (opposite && !opposite.closest("[inert], [hidden]")) { opposite.focus({ preventScroll: true }); return; }
       const target = workFocusRef.current;
       if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
       else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
@@ -478,11 +480,9 @@ export function App() {
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed: (collapsed) => {
-        // 전역 단축키는 이미 소비했다. War Room에서는 Cruise의 표시 선호도 바꾸지 않는다.
-        if (isTriageActive()) return;
-        // Zen은 /operations 데스크톱에서만 켜진다. 그 안의 토글은 Zen을 유지한 채 좌측만 드러낸다.
+        // Zen은 /operations 데스크톱에서만 켜진다(War Room도 Zen 안이다). 그 안의 토글은 Zen을 유지한 채 좌측만 드러낸다.
         if (isZenMode() && resolvePanelShortcut() === "apply") {
-          hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar);
+          hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar, ".war-room-taskbar .sbtoggle");
           return;
         }
         setZenMode(false);

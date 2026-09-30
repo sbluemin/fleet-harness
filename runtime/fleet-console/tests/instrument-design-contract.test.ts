@@ -1807,14 +1807,19 @@ describe("Instrument core design contract", () => {
 
     // Doctrine: status-section border/count are signal-owned, while the chip group mark
     // consumes only resolveAccentColor identity values and never repaints the status beacon.
-    // The group header does not repeat the rounded activity mark; chips and panels already do.
+    // The group header does not repeat the circular status glyph; chips and panels already do.
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
-    expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-fleet-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
+    expect(components).toContain(".canvas-fleet-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
     // 미확인 완료는 유휴와 같은 --positive를 받는다 — 색은 "끝난 일"을 말하고, 미확인은 모션이 말한다.
-    expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.tenant-beacon\.is-unseen,\s*\.canvas-fleet-map-dot\.is-idle,\s*\.canvas-fleet-map-dot\.is-unseen,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
-    expect(components).toContain(".tenant-beacon.is-ended,\n.canvas-fleet-map-dot.is-ended,\n.side-bar-status-section--ended {");
+    expect(components).toMatch(/\.canvas-fleet-map-dot\.is-idle,\s*\.canvas-fleet-map-dot\.is-unseen,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
+    expect(components).toContain(".canvas-fleet-map-dot.is-ended,\n.side-bar-status-section--ended {");
     expect(components).toContain("--activity-color: var(--ink-fog);");
-    expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-fleet-map-dot\.is-background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
+    expect(components).toMatch(/\.canvas-fleet-map-dot\.is-background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
+    // 상태 마크의 조형은 12px 원 하나다(둥근 네모 비콘은 폐지). 테두리가 진행을, 가운데 점·획이 결과를 말한다.
+    expect(components).not.toContain(".tenant-beacon");
+    expect(components).toMatch(/\.status-glyph \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 1\.3px solid var\(--hairline-strong\);[^}]*border-radius: 50%;/);
+    expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.4s linear infinite;/);
+    expect(components).toMatch(/\.status-glyph\.is-background \{\s*border: 1\.3px dashed/);
     expect(components).toMatch(/\.canvas-fleet-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
     expect(components).not.toContain(".canvas-triage-deck-card");
@@ -1858,8 +1863,10 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-status-header__unseen");
     // 마크 축은 진짜 대기(aurora 1.8s 호출 맥동)와 미확인 완료(positive 3.6s 느린 점등)를 갈라 그린다.
     // 두 사실이 한 색이면 화면은 "사람을 기다리는 중"과 "안 본 채 끝난 것"을 구별해 주지 못한다.
-    expect(components).toMatch(/\.tenant-beacon\.is-unseen \{[^}]*background:\s*var\(--activity-color\);[^}]*box-shadow:\s*0 0 10px 1px var\(--activity-glow\);\s*animation:\s*beacon-unseen-blink 3\.6s/);
-    expect(components).toMatch(/\.tenant-beacon\.is-awaiting \{[^}]*animation:\s*aurora-pulse 1\.8s/);
+    expect(components).toMatch(/\.status-glyph\.is-unseen::after \{[^}]*background: var\(--positive\);\s*animation: status-glyph-blink 3\.6s/);
+    expect(components).toMatch(/\.status-glyph\.is-awaiting \{[^}]*animation: status-glyph-breathe 1\.8s/);
+    expect(components).toMatch(/@keyframes status-glyph-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
+    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.status-glyph,\s*\.status-glyph::before,\s*\.status-glyph::after \{\s*animation: none !important;/);
     // 키프레임은 --activity-glow가 사는 이 파일에 있어야 하고, 0%/100%가 완전 점등이어야 한다 —
     // reduced-motion이 iteration-count를 1로 자를 때 꺼진 채 남으면 신호가 사라진다.
     expect(components).toMatch(/@keyframes beacon-unseen-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
@@ -3403,7 +3410,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".command-band-system-cluster {");
     expect(components).not.toContain(".side-bar-brand-foot");
 
-    expect(sidebar).toContain("hasCustomGroups && section.entries.length > 0");
+    expect(sidebar).toContain("hasCustomGroups && sectionItems.length + foldItems.length > 0");
     expect(sidebar).toContain("theaterInitials(theater.label)");
     expect(chip).toContain("side-bar-chip-status");
     // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 "Shell이면 글리프" 분기를 다시 적으면
@@ -3411,11 +3418,10 @@ describe("Instrument core design contract", () => {
     expect(chip).toContain('import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js"');
     expect(nameMark).toContain('return <OperationStatusIcon status={status}');
     // 상태 마크 해석은 여전히 상태 아이콘 하나가 소유한다 — 종류 분기는 그 위층의 다른 질문이다.
-    expect(statusIcon).toContain('if (visual === "background") return "tenant-beacon is-background"');
-    expect(statusIcon).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
+    expect(statusIcon).toContain('import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";');
+    expect(statusIcon).toContain("return operationMarkVisual(status);");
     // Shell이 Operation을 떠난 뒤로 이 칸에는 활동 비콘만 선다 — 종류 분기가 사라졌다.
     expect(components).not.toContain(".canvas-fleet-map-dot.is-shell,");
-    expect(components).not.toContain(".tenant-beacon.is-shell");
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
     expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-name {\n  color: var(--ink-muted);");

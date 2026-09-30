@@ -43,7 +43,8 @@ export function ClusterNodeRail({ layout, current, rootActivity, onPick }: {
   const [tooltipName, setTooltipName] = useState("");
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [scrollState, setScrollState] = useState({ overflow: false, left: false, right: false, awaitingLeft: 0, awaitingRight: 0 });
-  const root = layout.cluster.root;
+  // 노드 레일은 rootOf(구조화된 묶음)로만 닿는다 — 구조화된 묶음은 늘 root를 가진다.
+  const root = layout.cluster.root ?? current;
   const nodes = useMemo(() => layout.cluster.members
     .map((member, index) => ({ member, n: index + 1 }))
     .filter(({ member }) => layout.formation.byOperationId.has(member.operationId))

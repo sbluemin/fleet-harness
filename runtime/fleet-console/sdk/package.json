@@ -159,6 +159,12 @@
       "import": "./components/caption-actions.tsx",
       "default": "./components/caption-actions.tsx"
     },
+    "./components/status-glyph": {
+      "types": "./components/status-glyph.tsx",
+      "browser": "./components/status-glyph.tsx",
+      "import": "./components/status-glyph.tsx",
+      "default": "./components/status-glyph.tsx"
+    },
     "./components/live-line": {
       "types": "./components/live-line.tsx",
       "browser": "./components/live-line.tsx",

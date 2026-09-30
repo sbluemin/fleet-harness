@@ -31,6 +31,10 @@ interface TheaterState {
 export interface RevealTarget {
   readonly objectiveId: string;
   readonly missionId?: string;
+  /** 사이드바 검토 대기 글리프에서 왔다 — 표면이 후속 후보 선택을 연다. */
+  readonly followups?: boolean;
+  /** 사이드바 「+ 목표」로 막 만들었다 — 표면이 제목 칸에 포커스를 두고 전체 선택한다. */
+  readonly focusTitle?: boolean;
   readonly at: number;
 }
 
@@ -169,15 +173,20 @@ function setTheater(theaterId: string, next: Partial<TheaterState>): void {
 
 /**
  * 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤에만 나머지를 읽는다.
- * 나머지는 스냅숏의 최상위 에이전트 Operation(`type==="agent" && !parentOperationId`)이 속한 Theater 다.
+ * 나머지는 등록된 모든 Theater(비활성 Theater 의 사이드바에도 목표 줄이 선다)와, 스냅숏의 최상위 에이전트
+ * Operation(`type==="agent" && !parentOperationId`)이 속한 Theater 다. 한 번 읽은 뒤에는 사건으로만 갱신한다.
  */
 function loadAgentTheaters(api: ClientApiCapability, activeId: string | null): void {
   const rest: string[] = [];
-  const seen = new Set<string>();
-  for (const operation of operationsSnapshot) {
-    if (operation.type !== "agent" || operation.parentOperationId || !operation.theaterId || operation.theaterId === activeId || seen.has(operation.theaterId)) continue;
-    seen.add(operation.theaterId);
-    rest.push(operation.theaterId);
+  const seen = new Set<string>(activeId ? [activeId] : []);
+  const candidates = [
+    ...(installed?.consoleState.getTheaters() ?? []).map((theater) => theater.id),
+    ...operationsSnapshot.filter((operation) => operation.type === "agent" && !operation.parentOperationId).map((operation) => operation.theaterId),
+  ];
+  for (const theaterId of candidates) {
+    if (!theaterId || seen.has(theaterId)) continue;
+    seen.add(theaterId);
+    rest.push(theaterId);
   }
   const lead = activeId ? loadTheater(api, activeId) : Promise.resolve();
   void lead.then(() => {
@@ -229,7 +238,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (!data || typeof data.groupId !== "string") return;
     for (const [theaterId, state] of theaters) if (state.groups.some((group) => group.id === data.groupId)) setTheater(theaterId, { groups: state.groups.filter((group) => group.id !== data.groupId) });
   });
-  // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 최상위 에이전트 Operation 이 속한 나머지 Theater 를 읽는다.
+  // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 등록된 나머지 Theater 와 최상위 에이전트 Operation 이 속한 Theater 를 읽는다.
   // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadTheater 는 멱등이다.
   let lastTheater = ctx.consoleState.getActiveTheaterId();
   operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
@@ -274,17 +283,6 @@ export function removeObjectiveLocally(objectiveId: string): void {
   for (const [theaterId, state] of theaters) {
     if (state.objectives.some((objective) => objective.id === objectiveId)) setTheater(theaterId, { objectives: state.objectives.filter((objective) => objective.id !== objectiveId) });
   }
-}
-
-/**
- * 사람이 방금 만든 목표를 사건보다 먼저 이 화면에 들인다 — removeObjectiveLocally 의 짝. 이미 있으면 교체하고, 없으면 목록 끝에
- * 둔다(서버가 새 목표에 주는 자리가 Theater 의 맨 끝이라, 뒤이어 오는 사건의 순서가 도착해도 행이 튀지 않는다).
- * 뒤이은 사건은 같은 id 를 교체한다.
- */
-export function upsertObjectiveLocally(objective: Objective): void {
-  const current = theaters.get(objective.theaterId) ?? EMPTY;
-  const exists = current.objectives.some((candidate) => candidate.id === objective.id);
-  setTheater(objective.theaterId, { objectives: exists ? current.objectives.map((candidate) => (candidate.id === objective.id ? objective : candidate)) : [...current.objectives, objective] });
 }
 
 /** 사람의 답을 기다리는 결정 요청 — 요청이 섰고 끝나지 않은 목표. 목록 요약·구획·레일 배지가 같은 셈을 쓴다. */
@@ -381,7 +379,7 @@ export function activeTheaterId(): string | null {
 }
 
 /** 팔레트·캡션에서 "이 항목으로" — 표면이 마운트되어 있으면 즉시, 아니면 열릴 때 집는다. */
-export function revealObjective(target: { objectiveId: string; missionId?: string }): void {
+export function revealObjective(target: { objectiveId: string; missionId?: string; followups?: boolean; focusTitle?: boolean }): void {
   reveal = { ...target, at: Date.now() };
   notify();
 }
@@ -425,9 +423,17 @@ export function patchObjectiveView(theaterId: string | null, patch: (current: Ob
   views.set(theaterId, next);
   for (const listener of viewListeners) listener();
 }
+/** 표면이 열리고 닫힌 것을 보기 구독자에게 알린다 — 사이드바 줄의 선택 표시는 표면이 열려 있을 때만 선다. */
+export function notifyObjectiveSurface(): void {
+  for (const listener of viewListeners) listener();
+}
+export function subscribeObjectiveView(listener: () => void): () => void {
+  viewListeners.add(listener);
+  return () => { viewListeners.delete(listener); };
+}
 export function useObjectiveView(theaterId: string | null): ObjectiveViewState {
   return useSyncExternalStore(
-    (listener) => { viewListeners.add(listener); return () => { viewListeners.delete(listener); }; },
+    subscribeObjectiveView,
     () => readObjectiveView(theaterId),
     () => readObjectiveView(theaterId),
   );
@@ -443,15 +449,6 @@ function isObjectiveEditing(element: EventTarget | null = typeof document === "u
 }
 
 let selectionTheater: { readonly contextTheaterId: string | null; readonly theaterId: string } | null = null;
-
-/**
- * 사람이 방금 한 선택이 이긴다 — 입력 중이라 보류해 둔 외부 선택(지도·등단)과, 그 Theater 를 읽는 중이던 선택을 버린다.
- * 목표 추가처럼 사람의 행동으로 서는 선택은 편집 중 보류 규칙을 타지 않는다.
- */
-export function discardPendingSelection(): void {
-  pendingSelectionOperationId = null;
-  latestSelectionToken += 1;
-}
 
 function clearSelectionTheater(): void {
   pendingSelectionOperationId = null;
@@ -513,7 +510,7 @@ export function handleMapOperationSelected(operationId: string): void {
       (objective) => objective.id === operationId || objective.members.some((member) => member.id === operationId && member.sessionName !== null),
     );
     if (!matchingObjective) return;
-    patchObjectiveView(theaterId, () => ({ selected: matchingObjective.id, list: matchingObjective.enlisted ? "all" : "outside", externalSelectionId: matchingObjective.id }));
+    patchObjectiveView(theaterId, () => ({ selected: matchingObjective.id, externalSelectionId: matchingObjective.id }));
   };
   if (theaters.get(theaterId)?.loaded) select();
   else void loadTheater(installed.api, theaterId).then(select);
@@ -591,8 +588,19 @@ export function onObjectiveSurfaceClose(): void {
   rememberObjectivePlace("expanded");
 }
 
+export function isObjectiveSurfaceOpen(): boolean {
+  return !!installed && (installed.rail.isOpen(OBJECTIVE_PANEL_ID) || installed.surfaces.isOpen(OBJECTIVE_PANEL_ID));
+}
+
+/** 목표가 하나도 없는 Theater 의 입구 — 목표는 새 Operation 에서 시작하니 호스트 컴포저를 연다. 어느 모양으로 서는지는 호스트 몫이다. */
+export function openNewOperation(): void {
+  installed?.composer.open();
+}
+
 /** 캡션 칩은 이미 열린 자리를 사용하고, 닫혀 있을 때만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
-export function openObjectiveFromCluster(): void {
+export function openObjectiveFromCluster(theaterId?: string): void {
+  // 비활성 Theater 의 줄 — 그 Theater 로 옮긴 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
+  if (installed && theaterId && installed.consoleState.getActiveTheaterId() !== theaterId) installed.consoleState.setActiveTheater(theaterId);
   if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
   installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
 }

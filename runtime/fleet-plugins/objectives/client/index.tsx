@@ -3,6 +3,7 @@ import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-c
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
+import { objectivesArchiveSections } from "./archive.js";
 import { objectivesClusterSource } from "./clusters.js";
 import { getT } from "./i18n/index.js";
 import { ObjectivePanel } from "./objectives-panel.js";
@@ -25,7 +26,7 @@ export const objectivesPane: PaneDescriptor = {
   mounts: ["rail"],
   title: (ctx) => getT(ctx.language)("objectives.panel.title"),
   widthClass: "standard",
-  render: (ctx) => <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "rail" }} />,
+  render: (ctx) => <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "rail", ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
 };
 
 export const objectivesSurface: ExpandedSurfaceDescriptor = {
@@ -35,7 +36,7 @@ export const objectivesSurface: ExpandedSurfaceDescriptor = {
   // 레일 아이콘이 여닫으므로 호스트의 부유 닫기는 중복이다.
   ownsClose: true,
   onClose: onObjectiveSurfaceClose,
-  render: (ctx: ExpandedSurfaceContext) => <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "expanded" }} />,
+  render: (ctx: ExpandedSurfaceContext) => <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "expanded", ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
 };
 
 export const objectivesEntry: RailEntryDescriptor = {
@@ -79,6 +80,8 @@ const objectivesPlugin = definePlugin({
   expandedSurfaces: [objectivesSurface],
   // 지휘관과 담당 Operation은 한 묶음이다 — 호스트는 이 서술자로 지휘관 패널의 구성원·임무 줄을 그린다.
   operationClusters: objectivesClusterSource,
+  // 끝난 목표와 정리된 목표는 사이드바 트리가 아니라 보관함에 선다.
+  archiveSections: objectivesArchiveSections,
 });
 
 export const plugins = [objectivesPlugin] as const;

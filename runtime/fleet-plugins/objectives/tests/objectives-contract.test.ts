@@ -98,6 +98,8 @@ function harness(routingOrigin: () => string | null = () => null) {
   const deletedKeys = new Set<string>();
   const reservedKeys = new Set<string>();
   const hostFault = { afterCreate: 0, sendError: null as string | null };
+  // 사람이 지운 사이드바 그룹 — 호스트의 groups.get 이 더는 돌려주지 않는다.
+  const removedGroups = new Set<string>();
   const operationsHost = {
     describe: (id: string) => {
       const operation = operations.get(id) ?? archivedOperations.get(id);
@@ -134,7 +136,7 @@ function harness(routingOrigin: () => string | null = () => null) {
     // 호스트처럼 지운 Operation 의 기동 키는 삭제로 읽힌다(유예·purge).
     delete: (id: string) => { deleted.push(id); for (const [key, target] of keyed) if (target === id) deletedKeys.add(key); return operations.delete(id) || archivedOperations.delete(id); },
     deleteChild: (id: string) => { if (!operations.get(id)?.parentOperationId) return false; deleted.push(id); return operations.delete(id); },
-    groups: { list: () => [], get: (id: string) => (id.startsWith("g-") ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
+    groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
   const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++ });
   let routeBody: unknown;
@@ -214,7 +216,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault };
+  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault, removedGroups };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -369,7 +371,7 @@ describe("Objectives contract", () => {
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
-    const { store, events, launch, call, route, resultFile, operations, operationsHost, archivedOperations, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault } = harness();
+    const { store, events, launch, call, route, resultFile, operations, operationsHost, archivedOperations, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault, removedGroups } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
     expect(launches).toEqual([]);
     expect(operations.has(objective.id)).toBe(false);
@@ -542,6 +544,16 @@ describe("Objectives contract", () => {
     launch.operationPurged(objective.id);
     expect(fs.existsSync(path.join(objectivesDir, objective.id))).toBe(false);
     expect(savedIds()).toEqual([]);
+    // 그룹 삭제 — 개시 전 목표의 그룹은 레코드에만 있어 코어가 옮겨 주지 않는다. 삭제 사건이 미분류로 비워 영속하고,
+    // 재시작 뒤에도 미분류이며, 그 목표를 개시한 Operation 도 없는 그룹이 아니라 미분류에 선다.
+    const loose = await launch.create({ theaterId: "t1", title: "Loose", groupId: "g-temp" });
+    removedGroups.add("g-temp");
+    expect(store.releaseGroups({ theaterId: "t1", groupId: "g-temp" })).toBe(1);
+    expect(savedObjective(loose.id)).toHaveProperty("pending.groupId", null);
+    const restarted = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
+    expect(restarted.find(loose.id)?.groupId).toBeNull();
+    await launch.startCommander(loose.id);
+    expect(operations.get(loose.id)?.groupId).toBeNull();
   });
 
   it("writes one objective's file per change and turns no link, failed write, failed read or failed delete into success", async () => {

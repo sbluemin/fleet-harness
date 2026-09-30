@@ -237,9 +237,10 @@ export function takeCommissioningReturnFocus(): HTMLElement | null {
 
 // 패널이 접히는 순간 포커스가 그 안에 있으면, 접힘 뒤에도 남는 안정 좌표(그 패널의 엣지 독
 // 트리거)로 넘긴다 — 옛 좌표는 밴드 토글이었고, 토글이 패널 소유로 이관되며 독이 승계했다.
+// 누른 접기 컨트롤은 접힘과 같은 커밋에서 사라지므로, 이 시점의 BODY 는 패널 안에서 빠진 포커스다.
 export function focusEdgeDockWhenPanelContainsActiveElement(panel: HTMLElement | null, dockSelector: string): void {
   const activeElement = document.activeElement;
-  if (panel === null || !(activeElement instanceof Node) || !panel.contains(activeElement)) return;
+  if (panel === null || !(activeElement instanceof Node) || (activeElement !== document.body && !panel.contains(activeElement))) return;
   document.querySelector<HTMLButtonElement>(dockSelector)?.focus();
 }
 

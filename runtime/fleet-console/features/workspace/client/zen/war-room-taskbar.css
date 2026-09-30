@@ -160,7 +160,6 @@
 @keyframes war-room-chip-wash { 50% { background: color-mix(in oklch, var(--wr-chip-signal) 14%, transparent); } }
 .war-room-summary { display: flex; align-items: center; flex: none; gap: 5px; margin-left: auto; padding: 0 8px; color: var(--text-tertiary); font: var(--t-xs) var(--font-body); white-space: nowrap; }
 .war-room-summary > span { display: inline-flex; align-items: center; gap: 5px; }
-.war-room-summary .tenant-beacon { width: 6px; height: 6px; box-shadow: none; }
 .war-room-shelves { color: var(--text-tertiary); }
 /* 모든 접힘을 사용한 뒤에도 극단적으로 좁으면 남겨 둔 다음·무대 칩의 이름만 줄인다. */
 .war-room-taskbar[data-fit="5"] .war-room-queue { flex: 1; min-width: 0; }
@@ -171,3 +170,21 @@
   .war-room-glow.is-arriving::after, .war-room-chip.is-new { animation: none; }
   .war-room-chip { transition: none; }
 }
+
+/* 왼쪽 끝 사이드바 토글 — 켜짐은 위치 채널(brass)이다. */
+.war-room-taskbar .sbtoggle {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.war-room-taskbar .sbtoggle:hover { color: var(--text-primary); background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
+.war-room-taskbar .sbtoggle.on { color: var(--brass-ink); background: var(--brass-glow); }
+.war-room-taskbar .sbtoggle:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }

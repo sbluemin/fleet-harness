@@ -141,18 +141,6 @@ export type StartView = "terminal" | "chat";
 export const StartViewGlyph = ({ view }: { readonly view: StartView }) => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{view === "chat" ? <path d="M2.75 4.25c0-.83.67-1.5 1.5-1.5h7.5c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5H7.2L4.5 13.1v-2.35h-.25c-.83 0-1.5-.67-1.5-1.5z" /> : <path d="M3 4.5 6.5 8 3 11.5M8 12h5" />}</svg>;
 export const startViewLabel = (t: Translate<ObjectiveMessageKey>, view: StartView) => t(view === "chat" ? "objectives.view.chat" : "objectives.view.terminal");
 
-export function StartViewPicker({ t, value, onChange }: { readonly t: Translate<ObjectiveMessageKey>; readonly value: StartView; readonly onChange: (view: StartView) => void }) {
-  return <div className="objectives-view-picker" role="radiogroup" aria-label={t("objectives.view.label")}>
-    {(["terminal", "chat"] as const).map((view) => <button key={view} type="button" role="radio" aria-checked={value === view} tabIndex={value === view ? 0 : -1} aria-label={startViewLabel(t, view)} title={startViewLabel(t, view)} onClick={() => onChange(view)} onKeyDown={(event) => {
-      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
-      event.preventDefault();
-      const next = view === "chat" ? "terminal" : "chat";
-      onChange(next);
-      event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-view="${next}"]`)?.focus();
-    }} data-view={view}><StartViewGlyph view={view} />{value === view ? <span>{t(view === "chat" ? "objectives.view.chatShort" : "objectives.view.terminalShort")}</span> : null}</button>)}
-  </div>;
-}
-
 interface LaunchControlProps {
   readonly t: Translate<ObjectiveMessageKey>;
   readonly model: string | undefined;

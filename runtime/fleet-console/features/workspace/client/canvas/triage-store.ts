@@ -11,7 +11,7 @@ import { clearSideBarOperationAction } from "../sidebar/interaction.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import { readCanvasModeSession, rememberWarRoomActive } from "./canvas-mode-session.js";
 import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
-import { isZenMode, requestZenMode, setZenMode, subscribeZenMode } from "../../../../core/client/src/integration/zen-mode.js";
+import { isZenMode, requestZenMode, setZenMode, setZenSideBarRevealed, subscribeZenMode } from "../../../../core/client/src/integration/zen-mode.js";
 import {
   forceDropCompanionOperationId,
   getLoadedTheaterId,
@@ -364,6 +364,8 @@ export function setTriageActive(active: boolean, animate = true): void {
     // 모두 정렬은 스냅 유지라 War Room 왕복에 남는다 — 진입이 걷지 않는다.
     if (!triageActive) {
       triageActive = true;
+      // War Room은 사이드바를 접은 채로 시작한다 — Zen Cruise에서 드러내 둔 좌측도 걷는다.
+      setZenSideBarRevealed(false);
       rememberWarRoomActive(true);
       enteredAt = animate ? Date.now() : 0;
       lastStagedTheaterId = null;

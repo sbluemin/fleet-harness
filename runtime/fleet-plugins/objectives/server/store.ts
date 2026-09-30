@@ -93,7 +93,7 @@ export interface ObjectiveStoreOptions {
   /** Theater 의 목표 디렉터리 — `workspaces/<프로젝트>/objectives`. Theater 경로를 모르면 null. */
   readonly dirOf: (theaterId: string) => string | null;
   readonly theaterIds?: () => readonly string[];
-  readonly operations: { get(id: string): OperationNode | null; list(): readonly OperationNode[]; describe?(id: string): OperationDescription | null };
+  readonly operations: { get(id: string): OperationNode | null; list(): readonly OperationNode[]; describe?(id: string): OperationDescription | null; readonly groups?: { get(id: string): { readonly theaterId: string } | null } };
   readonly emit: (event: ObjectiveEvent) => void;
   readonly now?: () => number;
 }
@@ -252,6 +252,11 @@ export interface ObjectiveStore {
   followupBatch(objectiveId: string, batchId: string): StoredFollowupBatch | null;
   /** 이 id 에 목표 레코드가 있는가 — 후속 재시도의 중복 생성을 막는다. */
   recorded(operationId: string): boolean;
+  /**
+   * 개시 전 목표의 그룹과 후속 배치의 기동 그룹 가운데 지워진(또는 다른 Theater 의) 그룹을 가리키는 것을 미분류로 비우고 저장한다.
+   * scope 를 주면 그 그룹만 — 그룹 삭제 사건이 부른다. 비운 목표 수.
+   */
+  releaseGroups(scope?: { readonly theaterId: string; readonly groupId: string }): number;
   /** 지휘관의 결정 요청 — 현재 요청을 통째로 새 id 들로 대체한다. revision 이 다르거나 답을 보내는 중이면 거절한다. */
   decisionRequest(objectiveId: string, input: { readonly expectedRevision: number; readonly questions: readonly DecisionQuestionInput[] }): { readonly objective: Objective; readonly request: DecisionRequest; readonly replacedRequestId: string | null };
   /** 지휘관의 철회 — 그 요청이 지금 요청일 때만. 요청이 없으면 변화 없이 withdrawn false. */
@@ -458,6 +463,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const dangling = request.questions.some((question) => (question.missionId && !missions.has(question.missionId)) || (question.memberId && !members.has(question.memberId)));
     return dangling ? withoutDecisionRequest(stored) : stored;
   };
+  /**
+   * 그룹 id 가 이 Theater 의 살아 있는 그룹인가 — 아니면 미분류(null). 그룹을 모르는 호스트(구버전·테스트 스텁)에서는 그대로 둔다.
+   * 개시 전 목표의 그룹은 저장 레코드에만 있어 코어의 그룹 삭제가 옮겨 주지 않는다.
+   */
+  const liveGroup = (theaterId: string, groupId: string | null): string | null => {
+    if (!groupId || !options.operations.groups) return groupId;
+    return options.operations.groups.get(groupId)?.theaterId === theaterId ? groupId : null;
+  };
   /** Theater 마다 목표 id → 레코드. 폴더를 처음 볼 때 한 번 읽어 올리고, 그 뒤로는 이 캐시가 저장소의 모양이다. */
   const cache = new Map<string, Map<string, StoredObjective>>();
 
@@ -551,7 +564,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     return {
       id: stored.operationId,
       theaterId: node?.theaterId ?? pending!.theaterId,
-      groupId: node ? node.groupId ?? null : pending!.groupId,
+      groupId: node ? node.groupId ?? null : liveGroup(pending!.theaterId, pending!.groupId),
       title: node?.title ?? pending!.title,
       createdAt: node?.ts.createdAt ?? pending!.createdAt,
       commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: launch.model } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started },
@@ -878,7 +891,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         operationId,
         // 새 목표는 저장된 자리의 맨 아래(양수 밴드)에 선다 — 레코드 없는 목표들 밑이다.
         rank: bottomRank(theaterId),
-        ...(pending ? { pending } : {}),
+        ...(pending ? { pending: { ...pending, groupId: liveGroup(theaterId, pending.groupId) } } : {}),
         note: init.note ?? "",
         ...(init.dueDate ? { dueDate: init.dueDate } : {}),
         ...(init.today ? { today: true as const } : {}),
@@ -890,6 +903,25 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         missions: [...lineupOrder(missions)],
       };
       return commit(theaterId, stored, true) ?? project(stored, node);
+    },
+
+    releaseGroups(scope) {
+      let released = 0;
+      for (const theaterId of scope ? [scope.theaterId] : theaterIds()) {
+        const stale = (groupId: string | null | undefined): boolean => !!groupId && (scope ? groupId === scope.groupId : liveGroup(theaterId, groupId) === null);
+        for (const stored of [...load(theaterId).values()]) {
+          const batches = stored.followupBatches ?? [];
+          const pendingStale = stale(stored.pending?.groupId);
+          if (!pendingStale && !batches.some((batch) => stale(batch.launch.groupId))) continue;
+          commit(theaterId, {
+            ...stored,
+            ...(pendingStale ? { pending: { ...stored.pending!, groupId: null } } : {}),
+            ...(batches.length ? { followupBatches: batches.map((batch) => (stale(batch.launch.groupId) ? { ...batch, launch: { ...batch.launch, groupId: null } } : batch)) } : {}),
+          });
+          released += 1;
+        }
+      }
+      return released;
     },
 
     pending(objectiveId) { try { return locate(objectiveId).stored.pending ?? null; } catch { return null; } },
