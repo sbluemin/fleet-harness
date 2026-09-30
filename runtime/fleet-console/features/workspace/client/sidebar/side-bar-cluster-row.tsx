@@ -8,6 +8,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { operationMarkLabel, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
+import { setSideBarFreshFoldExpanded } from "./operations-side-bar-store.js";
 
 /**
  * 묶음 줄 — 플러그인이 `row` 로 선언한 묶음(목표)이 사이드바 그룹 트리에 서는 한 줄.
@@ -220,6 +221,42 @@ export function SideBarRowZone({ zone, count, children }: { readonly zone: "deci
         <span className="side-bar-row-zone-rim" aria-hidden="true" />
       </div>
       <ol className="side-bar-group-chips side-bar-row-zone-list" aria-label={title}>{children}</ol>
+    </li>
+  );
+}
+
+/**
+ * 그룹 맨 아래 「시작 전 N」 접기 — 활성·비활성 Theater 가 같은 줄을 세운다. 펼침은 Theater·그룹별로 이 탭의 메모리에만 둔다.
+ */
+export function SideBarFreshFold({ theaterId, groupId, items, expanded, renderRow }: {
+  readonly theaterId: string;
+  readonly groupId: string | null;
+  readonly items: readonly SideBarRowItem[];
+  readonly expanded: boolean;
+  readonly renderRow: (item: SideBarRowItem) => ReactNode;
+}) {
+  const t = useT();
+  return (
+    <li className="side-bar-fresh-fold" data-fresh-fold={groupId ?? "__ungrouped__"}>
+      <button
+        type="button"
+        className="side-bar-fresh-fold-toggle"
+        aria-expanded={expanded}
+        aria-label={t("sidebar.fold.freshAria", { n: items.length })}
+        // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
+        onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); }}
+        onClick={() => setSideBarFreshFoldExpanded(theaterId, groupId, !expanded)}
+      >
+        <span className="side-bar-fresh-fold-rings" aria-hidden="true"><i /><i /><i /></span>
+        <span aria-hidden="true">{t("sidebar.fold.fresh")}</span>
+        <span className="side-bar-fresh-fold-count" aria-hidden="true">{items.length}</span>
+        <span className="side-bar-fresh-fold-chev" aria-hidden="true">›</span>
+      </button>
+      {expanded ? (
+        <ol className="side-bar-fresh-fold-body" aria-label={t("sidebar.fold.fresh")}>
+          {items.map(renderRow)}
+        </ol>
+      ) : null}
     </li>
   );
 }

@@ -3410,7 +3410,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".command-band-system-cluster {");
     expect(components).not.toContain(".side-bar-brand-foot");
 
-    expect(sidebar).toContain("hasCustomGroups && section.entries.length > 0");
+    expect(sidebar).toContain("hasCustomGroups && sectionItems.length + foldItems.length > 0");
     expect(sidebar).toContain("theaterInitials(theater.label)");
     expect(chip).toContain("side-bar-chip-status");
     // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 "Shell이면 글리프" 분기를 다시 적으면

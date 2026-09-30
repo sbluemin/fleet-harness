@@ -33,7 +33,7 @@ import {
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
-import { planSideBarRows, SideBarClusterRow, SideBarRowZone, type SideBarRowItem } from "./side-bar-cluster-row.js";
+import { planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
@@ -1232,28 +1232,8 @@ export function OperationsSideBar({
                       />
                     );
                   })}
-                  {foldItems.length > 0 ? (
-                    <li className="side-bar-fresh-fold" data-fresh-fold={section.groupId ?? "__ungrouped__"}>
-                      <button
-                        type="button"
-                        className="side-bar-fresh-fold-toggle"
-                        aria-expanded={foldExpanded}
-                        aria-label={t("sidebar.fold.freshAria", { n: foldItems.length })}
-                        // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
-                        onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); }}
-                        onClick={() => { if (activeTheaterId) setSideBarFreshFoldExpanded(activeTheaterId, section.groupId, !foldExpanded); }}
-                      >
-                        <span className="side-bar-fresh-fold-rings" aria-hidden="true"><i /><i /><i /></span>
-                        <span aria-hidden="true">{t("sidebar.fold.fresh")}</span>
-                        <span className="side-bar-fresh-fold-count" aria-hidden="true">{foldItems.length}</span>
-                        <span className="side-bar-fresh-fold-chev" aria-hidden="true">›</span>
-                      </button>
-                      {foldExpanded ? (
-                        <ol className="side-bar-fresh-fold-body" aria-label={t("sidebar.fold.fresh")}>
-                          {foldItems.map((item) => renderRow(item, false))}
-                        </ol>
-                      ) : null}
-                    </li>
+                  {foldItems.length > 0 && activeTheaterId ? (
+                    <SideBarFreshFold theaterId={activeTheaterId} groupId={section.groupId} items={foldItems} expanded={foldExpanded} renderRow={(item) => renderRow(item, false)} />
                   ) : null}
                 </ol>
               ) : null}
@@ -1697,6 +1677,21 @@ function TheaterInactiveSection({
 }: TheaterInactiveSectionProps) {
   const t = useT();
   const sections = groupOperations(entries, groups, []);
+  // 목표 줄·구역·「시작 전」 접기는 활성 Theater 와 같은 계획을 쓴다 — Theater 를 옮겨도 줄 모양이 바뀌지 않는다.
+  // 끌기·메뉴는 활성 Theater 의 몫이고, 줄을 누르면 플러그인이 그 Theater 로 옮긴 뒤 표면을 연다.
+  const rowPlan = planSideBarRows(sections, useClusterIndex(), theater.id);
+  const freshFolds = useSideBarFreshFolds();
+  const groupMarkByGroupId = new Map(groups.map((group) => {
+    const color = resolveAccentColor(group.color);
+    return [group.id, color ? { name: group.name, color } : null] as const;
+  }));
+  const renderRow = (item: SideBarRowItem, promoted: boolean) => (
+    <SideBarClusterRow
+      key={item.layout.cluster.id}
+      item={item}
+      groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
+    />
+  );
   const minimizedSet = new Set(entries.filter((entry) => entry.minimized).map((entry) => entry.operation.id));
   const { living: statusSections, minimized: minimizedSection, dormant: dormantSection } = groupTheaterStatusEntries(
     entries,
@@ -1783,7 +1778,21 @@ function TheaterInactiveSection({
               dormantSection={dormantSection}
               renderEntry={renderInactiveStatusEntry}
             />,
-          ]) : sections.map((section) => {
+          ]) : [
+            ...(rowPlan.decisions.length > 0 ? [
+              <SideBarRowZone key="__decisions__" zone="decisions" count={rowPlan.decisions.length}>
+                {rowPlan.decisions.map((item) => renderRow(item, true))}
+              </SideBarRowZone>,
+            ] : []),
+            ...(rowPlan.today.length > 0 ? [
+              <SideBarRowZone key="__today__" zone="today" count={rowPlan.today.length}>
+                {rowPlan.today.map((item) => renderRow(item, true))}
+              </SideBarRowZone>,
+            ] : []),
+          ].concat(sections.map((section) => {
+            const sectionItems = rowPlan.sections.get(section.groupId) ?? [];
+            const foldItems = rowPlan.folds.get(section.groupId) ?? [];
+            const foldExpanded = freshFolds.has(freshFoldKey(theater.id, section.groupId));
             const isCollapsed = section.groupId !== null && collapsedGroups.has(section.groupId);
             const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
             return (
@@ -1795,7 +1804,7 @@ function TheaterInactiveSection({
                 {section.group ? (
                   <OperationsSideBarGroupHeader
                     group={section.group}
-                    count={section.entries.length}
+                    count={sectionItems.length + foldItems.length}
                     collapsed={isCollapsed}
                     dragging={false}
                     dragOffsetY={0}
@@ -1804,14 +1813,17 @@ function TheaterInactiveSection({
                     onContextMenu={() => {}}
                     onPointerDragStart={() => {}}
                   />
-                ) : hasCustomGroups && section.entries.length > 0 ? (
+                ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
                   <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
                     <span>{t("sidebar.ungrouped.label")}</span>
                   </div>
                 ) : null}
                 {!isCollapsed ? (
                   <ol className="side-bar-group-chips" aria-label={section.group ? section.group.name : t("sidebar.ungrouped.label")}>
-                    {section.entries.map((entry, index) => {
+                    {sectionItems.map((sectionItem) => {
+                      if (sectionItem.kind === "row") return renderRow(sectionItem.item, false);
+                      const entry = sectionItem.entry;
+                      const index = section.entries.indexOf(entry);
                       const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
                       const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
                       return (
@@ -1834,11 +1846,14 @@ function TheaterInactiveSection({
                         />
                       );
                     })}
+                    {foldItems.length > 0 ? (
+                      <SideBarFreshFold theaterId={theater.id} groupId={section.groupId} items={foldItems} expanded={foldExpanded} renderRow={(item) => renderRow(item, false)} />
+                    ) : null}
                   </ol>
                 ) : null}
               </li>
             );
-          })}
+          }))}
         </ol>
       ) : null}
     </li>

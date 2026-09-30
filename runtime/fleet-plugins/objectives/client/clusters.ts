@@ -2,7 +2,7 @@ import type { OperationCluster, OperationClusterMember, OperationClusterProgress
 
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { openFollowups } from "./followups.js";
-import { isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
+import { activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -79,7 +79,7 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], sel
 function reviewObjective(objective: Objective, language: "en" | "ko"): void {
   if (openFollowups(objective).length > 0) {
     revealObjective({ objectiveId: objective.id, followups: true });
-    openObjectiveFromCluster();
+    openObjectiveFromCluster(objective.theaterId);
     return;
   }
   const api = objectivesApi();
@@ -108,7 +108,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const decisionRequest = !!objective.decisionRequest && !objective.done;
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
-      if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : {}), members: [], open: () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(); }, row });
+      if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : {}), members: [], open: () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId); }, row });
       continue;
     }
     // 구성원 Operation → 대표 임무. 끝나지 않은 첫 임무가 이기고, 모두 끝났으면 마지막 임무.
@@ -168,7 +168,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
         ? operationId.startsWith("mission:") ? operationId.slice("mission:".length) : representative.get(operationId)
         : undefined;
       revealObjective(missionId ? { objectiveId: objective.id, missionId } : { objectiveId: objective.id });
-      openObjectiveFromCluster();
+      openObjectiveFromCluster(objective.theaterId);
     };
     out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, root: commander, members, open, ...(decisionRequest ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
   }
@@ -189,9 +189,10 @@ export const objectivesClusterSource: OperationClusterSource = {
   },
   get: () => {
     const activity = new Map(operationSummaries().map((summary) => [summary.id, summary.activity]));
-    // 줄의 선택 표시는 표면이 열려 보고 있는 목표에만 선다.
+    // 줄의 선택 표시는 표면이 열려 보고 있는 목표에만 선다 — 표면은 활성 Theater 를 보므로 비활성 Theater 의 줄에는 서지 않는다.
     const surfaceOpen = isObjectiveSurfaceOpen();
-    const next = clustersOf(readAllTheaters().flatMap((state) => state.objectives), activity, (objective) => surfaceOpen && readObjectiveView(objective.theaterId).selected === objective.id);
+    const theaterId = activeTheaterId();
+    const next = clustersOf(readAllTheaters().flatMap((state) => state.objectives), activity, (objective) => surfaceOpen && objective.theaterId === theaterId && readObjectiveView(objective.theaterId).selected === objective.id);
     const nextSignature = signature(next);
     if (nextSignature === cachedSignature) return cached;
     cached = next;

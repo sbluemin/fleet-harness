@@ -173,15 +173,20 @@ function setTheater(theaterId: string, next: Partial<TheaterState>): void {
 
 /**
  * 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤에만 나머지를 읽는다.
- * 나머지는 스냅숏의 최상위 에이전트 Operation(`type==="agent" && !parentOperationId`)이 속한 Theater 다.
+ * 나머지는 등록된 모든 Theater(비활성 Theater 의 사이드바에도 목표 줄이 선다)와, 스냅숏의 최상위 에이전트
+ * Operation(`type==="agent" && !parentOperationId`)이 속한 Theater 다. 한 번 읽은 뒤에는 사건으로만 갱신한다.
  */
 function loadAgentTheaters(api: ClientApiCapability, activeId: string | null): void {
   const rest: string[] = [];
-  const seen = new Set<string>();
-  for (const operation of operationsSnapshot) {
-    if (operation.type !== "agent" || operation.parentOperationId || !operation.theaterId || operation.theaterId === activeId || seen.has(operation.theaterId)) continue;
-    seen.add(operation.theaterId);
-    rest.push(operation.theaterId);
+  const seen = new Set<string>(activeId ? [activeId] : []);
+  const candidates = [
+    ...(installed?.consoleState.getTheaters() ?? []).map((theater) => theater.id),
+    ...operationsSnapshot.filter((operation) => operation.type === "agent" && !operation.parentOperationId).map((operation) => operation.theaterId),
+  ];
+  for (const theaterId of candidates) {
+    if (!theaterId || seen.has(theaterId)) continue;
+    seen.add(theaterId);
+    rest.push(theaterId);
   }
   const lead = activeId ? loadTheater(api, activeId) : Promise.resolve();
   void lead.then(() => {
@@ -233,7 +238,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (!data || typeof data.groupId !== "string") return;
     for (const [theaterId, state] of theaters) if (state.groups.some((group) => group.id === data.groupId)) setTheater(theaterId, { groups: state.groups.filter((group) => group.id !== data.groupId) });
   });
-  // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 최상위 에이전트 Operation 이 속한 나머지 Theater 를 읽는다.
+  // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 등록된 나머지 Theater 와 최상위 에이전트 Operation 이 속한 Theater 를 읽는다.
   // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadTheater 는 멱등이다.
   let lastTheater = ctx.consoleState.getActiveTheaterId();
   operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
@@ -588,7 +593,9 @@ export function isObjectiveSurfaceOpen(): boolean {
 }
 
 /** 캡션 칩은 이미 열린 자리를 사용하고, 닫혀 있을 때만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
-export function openObjectiveFromCluster(): void {
+export function openObjectiveFromCluster(theaterId?: string): void {
+  // 비활성 Theater 의 줄 — 그 Theater 로 옮긴 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
+  if (installed && theaterId && installed.consoleState.getActiveTheaterId() !== theaterId) installed.consoleState.setActiveTheater(theaterId);
   if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
   installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
 }
