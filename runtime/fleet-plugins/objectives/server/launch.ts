@@ -592,8 +592,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const delivered = await send(objectiveId, startTurn(current, language, options?.context), humanWords(options?.context), true);
       if (!delivered) throw new ObjectiveStoreError("launch_failed");
       if (firstWake) announceStarted(objectiveId);
-      // 개시가 닿은 목표는 목록의 「진행 중」에 선다 — 따로 만든 세션도 여기서 「목표 밖」을 떠난다.
-      store.enlist(objectiveId, "commenced");
+      // 개시가 닿은 목표는 「진행 중」에 선다.
+      store.recordStage(objectiveId, "commenced");
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
       return { objective: store.setEdited(objectiveId, null), operationId: objectiveId };
     }, "start"),
@@ -604,8 +604,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (current.done) throw new ObjectiveStoreError("objective_done");
       await ensureCommander(objectiveId);
       rememberLanguage(objectiveId, language);
-      // 구상은 사람이 이것을 목표로 다룬다는 뜻이다 — 따로 만든 세션도 「목표 밖」을 떠나 시작 전 목표가 된다.
-      store.enlist(objectiveId, "planned");
+      store.recordStage(objectiveId, "planned");
       // 구상은 계획과 메모만이다 — 임무 수행도, 담당 기동도 「시작」이 한다.
       if (!current.planning) current = store.setPlanning(objectiveId, true);
       current = store.setCriteriaOpen(objectiveId, true);

@@ -13,9 +13,9 @@ import { activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFr
  * 색인하므로 같은 id 를 두 번 내지 않는다). 임무를 맡지 않은 구성원도 역할 이름 칸으로 서서 따로 떠돌지 않는다.
  * 임무도 떠 있는 구성원도 없는 Operation 은 캡션 띠·노드 줄을 세우지 않는다. 완료된 목표도 묶음으로 남는다.
  *
- * 목록에 든(enlisted) 끝나지 않은 목표는 사이드바 그룹 트리의 한 줄(`row`)로도 선다 — 지휘관·구성원 칩은 그 줄로 접히고,
+ * 끝나지 않은 목표는 사이드바 그룹 트리의 한 줄(`row`)로도 선다 — 지휘관·구성원 칩은 그 줄로 접히고,
  * Operation 이 아직 없는 시작 전 목표도 뿌리 없는 줄로 선다. 오늘·기한·검토 대기의 판정은 여기서 하고 호스트는 그리기만 한다.
- * 목록에 들지 않은 에이전트 Operation 은 여느 칩 그대로다.
+ * 셸처럼 목표가 아닌 Operation 은 여느 칩 그대로다.
  * 호스트가 useSyncExternalStore 로 읽으므로, 내용이 같으면 같은 배열을 돌려준다.
  */
 
@@ -53,9 +53,9 @@ export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Ob
   return byId.get(objective.origin.objectiveId)?.title ?? null;
 }
 
-/** 사이드바 줄 — 목록에 든 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
+/** 사이드바 줄 — 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
 function rowOf(objective: Objective, order: number, fold: readonly string[], selected: boolean, originTitle: string | null | undefined): OperationClusterRow | null {
-  if (!objective.enlisted || objective.removed || objective.done) return null;
+  if (objective.removed || objective.done) return null;
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
   const review = objective.awaitingReview;

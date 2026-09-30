@@ -52,7 +52,7 @@ const fetching = new Set<string>();
  * 서버가 unknown_objective(404)로 목표가 아니라고 답한 id. 401·네트워크·5xx 같은 일시 거절은 넣지 않아 다음 스냅숏에 다시 묻는다.
  * 그 id 의 목표 사건이나 영구 삭제가 오기 전에는 지우지 않는다.
  */
-const notObjective = new Set<string>();
+const unknownToServer = new Set<string>();
 
 /**
  * 보관된 Operation 의 요약 — 완료한 목표의 지휘관·구성원은 Core 보관함으로 옮겨져 일반 목록에 없다. 세션 줄이 이름을
@@ -144,7 +144,7 @@ function reconcileOperations(api: ClientApiCapability): void {
     const members = memberIds(state.objectives);
     for (const operation of operationsSnapshot) {
       // 부모 아래 선 Operation(구성원)은 목표가 아니다 — 코어가 구성원으로 기록한 것은 묻지도 않는다.
-      if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || members.has(operation.id) || fetching.has(operation.id) || notObjective.has(operation.id)) continue;
+      if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || members.has(operation.id) || fetching.has(operation.id) || unknownToServer.has(operation.id)) continue;
       fetching.add(operation.id);
       void post<{ objective: Objective }>(api, "/objective/get", { objectiveId: operation.id })
         .then(({ objective }) => {
@@ -154,7 +154,7 @@ function reconcileOperations(api: ClientApiCapability): void {
         })
         .catch((error: unknown) => {
           // 목표가 없다는 확정 답(404 unknown_objective)만 기억한다 — 401 같은 일시 거절은 세션이 돌아오면 다시 묻는다.
-          if (error instanceof Error && error.message === "unknown_objective") notObjective.add(operation.id);
+          if (error instanceof Error && error.message === "unknown_objective") unknownToServer.add(operation.id);
         })
         .finally(() => { fetching.delete(operation.id); });
     }
@@ -200,7 +200,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   const offItem = ctx.consoleEvents.subscribe("objectives:objective", (payload) => {
     const event = payload as ObjectiveEvent | null;
     if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
-    notObjective.delete(event.objectiveId);
+    unknownToServer.delete(event.objectiveId);
     const current = theaters.get(event.theaterId) ?? EMPTY;
     if (event.op === "remove") { setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
     if (!event.objective) return;
@@ -228,7 +228,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   const offPurged = ctx.consoleEvents.subscribe(OPERATION_PURGED_EVENT, (payload) => {
     const operationId = (payload as { operationId?: unknown } | null)?.operationId;
     if (typeof operationId !== "string") return;
-    notObjective.delete(operationId);
+    unknownToServer.delete(operationId);
     described.set(operationId, null);
     describedRevision += 1;
     removeObjectiveLocally(operationId);

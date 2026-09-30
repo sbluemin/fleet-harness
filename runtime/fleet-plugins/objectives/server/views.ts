@@ -126,13 +126,12 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       at: new Date(decision.at).toISOString() })) }),
   });
   /**
-   * 목록 한 줄 — 상세를 열지 않고도 목표끼리 견줄 수 있게 한다. kind 는 사람이 목표로 다루는지(objective)와 아직 목표 밖의
-   * 대화 세션인지(session), operation 은 지휘관·세션 Operation 이 있는지다(보드에서 만들고 아직 기동하지 않은 목표만 false).
+   * 목록 한 줄 — 상세를 열지 않고도 목표끼리 견줄 수 있게 한다. operation 은 지휘관 Operation 이 있는지다(보드에서 만들고
+   * 아직 기동하지 않은 목표만 false).
    * 브리핑은 앞부분만 싣고, 잘렸으면 briefTruncated 로 알린다. 전문은 목표 하나를 읽는다.
    */
   const rowView = (objective: Objective) => ({
     id: objective.id, groupId: objective.groupId, title: objective.title,
-    kind: objective.enlisted ? "objective" as const : "session" as const,
     operation: !store.pending(objective.id),
     done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy?.operationId ?? null,
     ...withoutEmpty({

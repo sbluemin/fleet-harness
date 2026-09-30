@@ -212,8 +212,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? null : null;
   const detailRef = useRef<HTMLElement | null>(null);
   // 결정 요청은 전부 센다 — 상세 머리의 「다른 요청」이 이 줄을 돈다.
-  const requests = useMemo(() => state.objectives.filter((objective) => hasDecisionRequest(objective) && objective.enlisted && !objective.removed).sort(byRequestTime), [state.objectives]);
-  const reviews = useMemo(() => state.objectives.filter((objective) => objective.enlisted && objective.awaitingReview && !objective.done && !objective.removed && !hasDecisionRequest(objective)), [state.objectives]);
+  const requests = useMemo(() => state.objectives.filter((objective) => hasDecisionRequest(objective) && !objective.removed).sort(byRequestTime), [state.objectives]);
+  const reviews = useMemo(() => state.objectives.filter((objective) => objective.awaitingReview && !objective.done && !objective.removed && !hasDecisionRequest(objective)), [state.objectives]);
   /** 「다른 요청」 — 요청이 선 차례대로 다음 목표를 고른다(고른 목표가 요청이 아니면 첫 요청). 끝에서 처음으로 돌아간다. */
   const openNextRequest = () => {
     if (requests.length === 0) return;
@@ -325,8 +325,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       onNewOperation={openNewOperation}
     />
   );
-  const noObjectives = state.loaded && !state.objectives.some((objective) => objective.enlisted && !objective.removed);
-  const objectiveShown = !!current && !current.removed && current.enlisted;
+  const noObjectives = state.loaded && !state.objectives.some((objective) => !objective.removed);
+  const objectiveShown = !!current && !current.removed;
   const two = objectiveShown && ctx.place !== "rail" && rootWidth >= TWO_PANE.threshold;
   const rootStyle = two ? { "--objectives-ops-w": `${opsWidthOf(rootWidth)}px` } as CSSProperties : undefined;
 
@@ -376,21 +376,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     );
   } else if (current.removed) {
     body = <TidiedDetail key={current.id} objective={current} t={t} language={language} call={call} onOpenObjective={openObjectiveDetail} detailRef={detailRef} head={<>{switcher}{placeButton("objectives-place-detail")}</>} />;
-  } else if (!current.enlisted) {
-    // 목표로 다루기 전의 세션 — 지도에서 Operation 을 고르면 여기 선다. 구상하거나 개시하면 목표가 된다.
-    body = (
-      <aside ref={detailRef} className="objectives-detail" aria-label={current.title}>
-        <div className="objectives-pick-head">
-          <span className="objectives-pick-label is-title">{current.title}</span>
-          {switcher}
-          {placeButton("objectives-place-detail")}
-        </div>
-        <div className="objectives-pick">
-          <h5>{t("objectives.notObjective.title")}</h5>
-          <p>{t("objectives.notObjective.body")}</p>
-        </div>
-      </aside>
-    );
   } else {
     body = (
       <ObjectiveDetail

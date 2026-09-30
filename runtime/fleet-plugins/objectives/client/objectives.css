@@ -35,7 +35,6 @@
 .objectives-pick-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--objectives-detail-face); }
 .objectives-pick-head { position: relative; display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 12px 20px 8px 22px; }
 .objectives-pick-label { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--t-2xs); letter-spacing: 0.06em; color: var(--text-tertiary); }
-.objectives-pick-label.is-title { font-family: inherit; font-size: var(--t-lg); font-weight: var(--weight-medium); letter-spacing: 0; color: var(--text-primary); overflow-wrap: anywhere; }
 .objectives-pick { flex: 1; display: grid; align-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
 .objectives-pick h5 { margin: 0; font-family: var(--font-display); font-size: var(--t-lg); font-weight: var(--weight-medium); color: var(--text-secondary); }
 .objectives-pick p { margin: 0; max-width: 48ch; font-size: var(--t-md); line-height: 1.5; color: var(--text-tertiary); text-wrap: balance; word-break: keep-all; }
@@ -121,7 +120,7 @@
    초점은 범위 낱말처럼 황동 글자와 이름 밑줄로 자리를 말한다. */
 .objectives-section-chev { display: inline-grid; place-items: center; width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-fast), color var(--duration-fast); }
 .objectives-section-chev svg { width: 11px; height: 11px; }
-.objectives-outside-hint { margin: 2px 0 4px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); }
+.objectives-tidied-hint { margin: 2px 0 4px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); }
 .objectives-empty { color: var(--text-tertiary); font-size: var(--t-sm); padding: 24px 8px; text-align: center; }
 /* 보관함 한 줄 — 표식 · 제목/메타 · 오른쪽 행동 자리. */
 .objectives-objective {
@@ -180,8 +179,6 @@
 .objectives-check:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-objective-title { grid-area: title; font-size: var(--t-md); line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
 .objectives-objective-meta { grid-area: meta; display: flex; gap: 3px 10px; align-items: center; flex-wrap: wrap; min-width: 0; font-size: var(--t-xs); color: var(--text-tertiary); margin-top: 3px; font-variant-numeric: tabular-nums; }
-
-/* 목표 밖 세션의 점 — 목표의 완료 동그라미와 모양부터 다르다. 대화 전은 빈 점. */
 
 .objectives-op {
   display: inline-flex;
