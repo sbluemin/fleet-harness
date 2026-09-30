@@ -98,6 +98,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       getTheaters: () => [],
       getOperations: () => [],
       getActiveTheaterId: () => null,
+      getActiveOperationId: () => null,
       setActiveTheater: () => undefined,
       subscribe: () => () => undefined,
     },

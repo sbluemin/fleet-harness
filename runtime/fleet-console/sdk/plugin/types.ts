@@ -411,6 +411,8 @@ export interface ClientConsoleStateCapability {
    */
   getOperations(options?: { readonly nested?: boolean }): readonly ConsoleOperationSummary[];
   getActiveTheaterId(): string | null;
+  /** 캔버스에서 활성인 Operation — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
+  getActiveOperationId(): string | null;
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
 }

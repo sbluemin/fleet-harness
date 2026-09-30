@@ -54,7 +54,7 @@ export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Ob
 }
 
 /** 사이드바 줄 — 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
-function rowOf(objective: Objective, order: number, fold: readonly string[], selected: boolean, originTitle: string | null | undefined): OperationClusterRow | null {
+function rowOf(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined): OperationClusterRow | null {
   if (objective.removed || objective.done) return null;
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
@@ -63,7 +63,8 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], sel
     groupId: objective.groupId,
     order,
     fold,
-    ...(review ? { glyph: "review" as const } : !objective.commander.started ? { glyph: "fresh" as const } : {}),
+    // 「시작 전」은 세션이 없는 목표에만 — Operation 이 서 있으면 개시 전이라도 호스트가 칩과 같은 활동 상태로 그린다.
+    ...(review ? { glyph: "review" as const } : !objective.commander.started && !hasSession ? { glyph: "fresh" as const } : {}),
     ...(objective.today || overdue ? { today: true } : {}),
     ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}),
     ...(objective.decisionRequest ? { decisionRequestedAt: objective.decisionRequest.createdAt, decisionQuestions: objective.decisionRequest.questions.length } : {}),
@@ -103,7 +104,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const live = (operationId: string | null | undefined): string | null => (operationId && operationId !== commander && activity.has(operationId) ? operationId : null);
     const liveMembers = objective.members.flatMap((member) => { const operationId = live(member.id); return operationId ? [{ member, operationId }] : []; });
     const fold = [...new Set([...(activity.has(commander) ? [commander] : []), ...liveMembers.map((entry) => entry.operationId), ...objective.missions.flatMap((mission) => { const operationId = live(mission.operationId); return operationId ? [operationId] : []; })])];
-    const row = rowOf(objective, order, fold, selectedOf(objective), originTitleOf(objective, byId));
+    const row = rowOf(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId));
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Operation 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
     const decisionRequest = !!objective.decisionRequest && !objective.done;
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);

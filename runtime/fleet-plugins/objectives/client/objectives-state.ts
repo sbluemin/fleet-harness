@@ -518,6 +518,17 @@ export function handleMapOperationSelected(operationId: string): void {
   notify();
 }
 
+/**
+ * 표면이 열릴 때 — 사람이 줄·팔레트로 가리킨 목표(reveal)가 없으면 캔버스의 활성 Operation 을 따라간다. 사이드바가 그 줄을
+ * 활성으로 보이는 동안 표면이 빈 채 서지 않게 한다. 선택 규칙(편집 중 보류, 연결 목표가 없으면 보던 자리 유지)은 위와 같고,
+ * 활성 Operation 이 없으면 보던 자리 그대로다.
+ */
+export function followActiveOperation(): void {
+  if (reveal) return;
+  const operationId = installed?.consoleState.getActiveOperationId() ?? null;
+  if (operationId) handleMapOperationSelected(operationId);
+}
+
 const ACCESS_ARRIVAL_TIMEOUT_MS = 5_000;
 
 export function focusOperation(operationId: string): void {

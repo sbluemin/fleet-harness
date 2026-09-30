@@ -17,7 +17,7 @@ import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { LaunchControl, LaunchedText, launchedWords, useLaunchRows } from "./launch-control.js";
-import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
+import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
   discardedFollowups,
@@ -158,6 +158,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 사이드바 줄의 선택 표시는 표면이 열려 있을 때만 선다 — 열리고 닫힐 때 줄이 다시 읽게 한다(닫힘은 자리 상태가 바뀐 뒤에).
   useEffect(() => {
     notifyObjectiveSurface();
+    // 사이드바가 활성으로 보이는 Operation 의 목표로 연다 — 줄·팔레트가 가리킨 목표(reveal)가 있으면 그쪽이 앞선다.
+    followActiveOperation();
     return () => { setTimeout(notifyObjectiveSurface, 0); };
   }, []);
   const placeButton = (className: string) => <button type="button" className={`objectives-place-button ${className}`} data-objectives-tour="place" aria-label={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} title={t(ctx.place === "rail" ? "objectives.panel.expand" : "objectives.panel.dock")} onClick={ctx.place === "rail" ? expandObjective : dockObjective}>
@@ -202,7 +204,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   /** 전환 목록 줄의 글리프 — 사이드바 줄과 같은 판정: 검토 대기 · 시작 전 · 묶음에서 가장 급한 활동. */
   const glyphOf = (objective: Objective): { state: StatusGlyphState; label: string } => {
     if (objective.awaitingReview) return { state: "review", label: t("objectives.objectives.review") };
-    if (!objective.commander.started) return { state: "fresh", label: t("objectives.state.fresh") };
+    if (!objective.commander.started && !operationOf(objective.id)) return { state: "fresh", label: t("objectives.state.fresh") };
     const activity = objectiveActivity(objective);
     return activity === "awaiting" || activity === "running" || activity === "background" || activity === "idle"
       ? { state: activity, label: stateLabel(activity) }
