@@ -89,6 +89,11 @@
 @media (prefers-reduced-motion: reduce) { .objectives-pop-fold-chev { transition: none; } }
 .objectives-pop-dot { width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: var(--grp-color); }
 .objectives-pop-empty { margin: 0; padding: 10px 8px; font-size: var(--t-sm); color: var(--text-tertiary); }
+.objectives-pop-none { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 8px; }
+.objectives-pop-none p { margin: 0; font-size: var(--t-sm); line-height: 1.5; color: var(--text-secondary); word-break: keep-all; }
+.objectives-pop-none .objectives-new-operation { padding: 2px 0; border: 0; background: transparent; font: inherit; font-size: var(--t-sm); color: var(--brass-ink); cursor: pointer; }
+.objectives-pop-none .objectives-new-operation:hover { text-decoration: underline; text-underline-offset: 3px; }
+.objectives-pop-none .objectives-new-operation:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 
 .objectives-place-button {
   flex: none;
@@ -169,8 +174,8 @@
   transition: background var(--duration-fast), border-color var(--duration-fast);
 }
 .objectives-check svg { width: 10px; height: 10px; opacity: 0; }
-/* 완료는 상태 글리프의 「완료」와 같은 중성 채움 + 어두운 체크 — brass는 위치·초점만 말한다. */
-.objectives-check.is-on { background: color-mix(in oklch, var(--text-tertiary) 42%, transparent); border-color: transparent; color: var(--ink-abyss); }
+/* 완료는 상태 글리프의 「완료」와 같은 중성 채움 + 1차 잉크 체크 — brass는 위치·초점만 말한다. */
+.objectives-check.is-on { background: color-mix(in oklch, var(--text-tertiary) 42%, transparent); border-color: transparent; color: var(--text-primary); }
 .objectives-check.is-on svg { opacity: 1; }
 .objectives-check:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-objective-title { grid-area: title; font-size: var(--t-md); line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }

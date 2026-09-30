@@ -592,6 +592,11 @@ export function isObjectiveSurfaceOpen(): boolean {
   return !!installed && (installed.rail.isOpen(OBJECTIVE_PANEL_ID) || installed.surfaces.isOpen(OBJECTIVE_PANEL_ID));
 }
 
+/** 목표가 하나도 없는 Theater 의 입구 — 목표는 새 Operation 에서 시작하니 호스트 컴포저를 연다. 어느 모양으로 서는지는 호스트 몫이다. */
+export function openNewOperation(): void {
+  installed?.composer.open();
+}
+
 /** 캡션 칩은 이미 열린 자리를 사용하고, 닫혀 있을 때만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
 export function openObjectiveFromCluster(theaterId?: string): void {
   // 비활성 Theater 의 줄 — 그 Theater 로 옮긴 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.

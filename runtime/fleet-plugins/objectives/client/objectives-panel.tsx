@@ -17,7 +17,7 @@ import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { LaunchControl, LaunchedText, launchedWords, useLaunchRows } from "./launch-control.js";
-import { dockObjective, expandObjective, hasDecisionRequest, removeObjectiveLocally, focusOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
+import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
   discardedFollowups,
@@ -292,6 +292,20 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     }
   }, [reveal, state.objectives]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 고른 입구(팔레트·빈 상태 바로가기)가 사라져 포커스가 BODY 로 빠졌고 트리를 보일 사이드바도 없다 — 새 상세의 ⌄ 가 받는다.
+  // 사이드바가 보이면 그 줄이 받는다(호스트 몫). 상세가 새 목표로 다시 마운트된 뒤 프레임에서.
+  useEffect(() => {
+    if (!selected || ctx.sideBarVisible === true) return;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (active !== null && active !== document.body && active.isConnected) return;
+        rootRef.current?.querySelector<HTMLElement>(".objectives-switch")?.focus({ preventScroll: true });
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selected, ctx.sideBarVisible]);
+
   if (!theaterId) return <div className="objectives-container"><div className="objectives-root"><div className="objectives-pick-pane"><div className="objectives-pick"><p>{t("objectives.objectives.emptyTheater")}</p></div></div></div></div>;
 
   // 사이드바가 보이면 트리는 거기 있다. 접혀 있거나(Zen·War Room·Cruise 접힘) 사이드바가 없는 자리(모바일)에서만 ⌄ 가 선다.
@@ -308,14 +322,34 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       onPick={setSelected}
       open={switcherOpen}
       onOpenChange={setSwitcherOpen}
+      onNewOperation={openNewOperation}
     />
   );
+  const noObjectives = state.loaded && !state.objectives.some((objective) => objective.enlisted && !objective.removed);
   const objectiveShown = !!current && !current.removed && current.enlisted;
   const two = objectiveShown && ctx.place !== "rail" && rootWidth >= TWO_PANE.threshold;
   const rootStyle = two ? { "--objectives-ops-w": `${opsWidthOf(rootWidth)}px` } as CSSProperties : undefined;
 
   let body: ReactNode;
-  if (!current) {
+  if (!current && noObjectives) {
+    // 고를 목표가 없다 — 「고르세요」도 「목록 열기」도 틀린다. 목표가 어디서 시작하는지 말하고 그 입구를 둔다.
+    body = (
+      <div className="objectives-pick-pane">
+        <div className="objectives-pick-head">
+          <span className="objectives-pick-label">{t("objectives.pick.label")}</span>
+          {switcher}
+          {placeButton("objectives-place-detail")}
+        </div>
+        <div className="objectives-pick" data-objectives-tour="pick">
+          <h5>{t("objectives.none.title")}</h5>
+          <p>{t("objectives.none.body")}</p>
+          <div className="objectives-pick-shortcuts">
+            <button type="button" className="objectives-new-operation" onClick={openNewOperation}>{t("objectives.none.newOperation")}</button>
+          </div>
+        </div>
+      </div>
+    );
+  } else if (!current) {
     body = (
       <div className="objectives-pick-pane">
         <div className="objectives-pick-head">

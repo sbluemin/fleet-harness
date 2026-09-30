@@ -42,9 +42,11 @@ export interface SwitcherProps {
   readonly onPick: (objectiveId: string) => void;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  /** 목표가 하나도 없을 때 목록 대신 서는 「새 Operation」 — 목표는 거기서 시작한다. */
+  readonly onNewOperation: () => void;
 }
 
-export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, selected, glyphOf, hasOperation, onPick, open, onOpenChange: setOpen }: SwitcherProps) {
+export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, selected, glyphOf, hasOperation, onPick, open, onOpenChange: setOpen, onNewOperation }: SwitcherProps) {
   const [, setFoldTick] = useState(0);
   const popRef = useRef<HTMLDivElement | null>(null);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
@@ -70,6 +72,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
   }, [open]);
 
   const live = objectives.filter((objective) => objective.enlisted && !objective.removed && !objective.done);
+  const none = !objectives.some((objective) => objective.enlisted && !objective.removed);
   const decisions = live.filter((objective) => !!objective.decisionRequest)
     .sort((a, b) => (a.decisionRequest?.createdAt ?? 0) - (b.decisionRequest?.createdAt ?? 0));
   const today = live.filter((objective) => !objective.decisionRequest && (objective.today || overdueOf(objective)));
@@ -77,7 +80,13 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
   const rest = live.filter((objective) => !promoted.has(objective.id));
   const day = new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", weekday: "short" });
   const groupOf = (objective: Objective) => (objective.groupId ? groups.find((group) => group.id === objective.groupId) ?? null : null);
-  const pick = (objectiveId: string) => { setOpen(false); refocusTrigger = true; onPick(objectiveId); };
+  // 지금 목표를 다시 고르면 선택이 바뀌지 않아 아래 되돌림이 돌지 않는다 — 닫히는 줄과 함께 초점이 빠지기 전에 ⌄ 로 옮긴다.
+  const pick = (objectiveId: string) => {
+    setOpen(false);
+    if (objectiveId === selected) { buttonRef.current?.focus(); return; }
+    refocusTrigger = true;
+    onPick(objectiveId);
+  };
   useEffect(() => {
     if (!refocusTrigger) return;
     refocusTrigger = false;
@@ -175,13 +184,22 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
       </button>
       {open ? (
         <div ref={popRef} className="objectives-pop" role="dialog" aria-label={t("objectives.switch.label")}>
-          <ul className="objectives-pop-tree">
-            {zone("decisions", decisions)}
-            {zone("today", today)}
-            {groups.map((group) => section(group, rest.filter((objective) => objective.groupId === group.id)))}
-            {section(null, ungrouped)}
-          </ul>
-          {live.length === 0 ? <p className="objectives-pop-empty">{t("objectives.switch.empty")}</p> : null}
+          {/* 목표가 하나도 없으면 빈 그룹 머리(0)만 늘어선다 — 트리를 세우지 않는다. */}
+          {none ? null : (
+            <ul className="objectives-pop-tree">
+              {zone("decisions", decisions)}
+              {zone("today", today)}
+              {groups.map((group) => section(group, rest.filter((objective) => objective.groupId === group.id)))}
+              {section(null, ungrouped)}
+            </ul>
+          )}
+          {/* 닫히는 목록의 버튼 대신 ⌄ 가 초점을 쥔 채 연다 — Quick Launch 를 닫으면 초점이 ⌄ 로 돌아온다. */}
+          {none ? (
+            <div className="objectives-pop-none">
+              <p>{t("objectives.none.title")} {t("objectives.none.body")}</p>
+              <button type="button" className="objectives-new-operation" onClick={() => { setOpen(false); buttonRef.current?.focus(); onNewOperation(); }}>{t("objectives.none.newOperation")}</button>
+            </div>
+          ) : live.length === 0 ? <p className="objectives-pop-empty">{t("objectives.switch.empty")}</p> : null}
         </div>
       ) : null}
     </span>
