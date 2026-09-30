@@ -5,6 +5,20 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.206.0] - 2026-09-30
+
+### fleet-console
+
+#### Added
+- Codex 모델 선별에서 GPT-6.1 Sol을 272K·524K·1M 컨텍스트 변형과 Fast 짝과 함께 제공합니다. GPT-6 Sol도 계속 쓸 수 있습니다.
+
+#### Changed
+- 목표가 사이드바 그룹 트리에 함께 서고 결정 요청과 오늘 할 목표가 맨 위에 모이며, 넓은 화면의 목표 화면은 고른 목표와 세션을 나란히 보여 줍니다.
+- 활성 Theater뿐 아니라 사이드바의 모든 Theater에 같은 목표 트리가 서고, 다른 Theater의 목표를 고르면 그 Theater로 옮겨 해당 목표를 엽니다.
+- 아직 시작하지 않은 목표는 그룹 맨 아래 한 줄로 접히고, 새 목표는 따로 있던 「목표 추가」 대신 「새 Operation」에서 시작합니다.
+- 세션과 목표의 상태를 Console 전체에서 같은 원형 상태 표시로 보여 줍니다.
+- War Room과 Zen에서도 같은 사이드바를 쓸 수 있습니다. 처음에는 접혀 있고 Cmd+B나 작업 표시줄 버튼으로 펼치며, 접혀 있는 동안 목표 화면에서 「목표 목록 열기」로 목표를 고를 수 있습니다.
+
 ## [1.205.0] - 2026-09-29
 
 ### fleet-console

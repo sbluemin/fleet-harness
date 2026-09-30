@@ -5,6 +5,20 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.206.0] - 2026-09-30
+
+### fleet-console
+
+#### Added
+- Offer GPT-6.1 Sol in the Codex model loadout, with 272K, 524K, and 1M context variants and a Fast twin. GPT-6 Sol stays available.
+
+#### Changed
+- Objectives now live in the sidebar group tree, with decision requests and today's work gathered at the top, and the Objectives surface shows the selected objective side by side with its sessions on wide screens.
+- Every Theater in the sidebar shows the same objective tree, not just the active one, and picking an objective in another Theater switches to it and opens that objective.
+- Objectives that have not started yet fold into one line at the bottom of each group, and new objectives now start from New Operation instead of a separate Add Objective button.
+- Session and objective status now use one set of round status marks across Console.
+- War Room and Zen now share the sidebar, which starts collapsed and opens with Cmd+B or the taskbar button; while it is collapsed, the Objectives surface offers Open objective list instead.
+
 ## [1.205.0] - 2026-09-29
 
 ### fleet-console
