@@ -421,6 +421,12 @@ export function OperationsSideBar({
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
+    // Zen·War Room 에는 엣지 독이 없다 — War Room 막대의 사이드바 토글(반대쪽 컨트롤)이, 그 막대가 없으면 작업면이 받는다.
+    if (!previousCollapsedRef.current && collapsed && !document.querySelector(".side-bar-edge-dock")) {
+      focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, document.querySelector(".war-room-taskbar .sbtoggle") ? ".war-room-taskbar .sbtoggle" : ".operations-center-stage");
+    }
+    // 대칭 — 엣지 독에 포커스를 둔 채 단축키로 펼치면 독이 사라지며 포커스가 BODY 로 빠진다. 접기 셰브런이 받는다.
+    if (previousCollapsedRef.current && !collapsed && document.activeElement === document.body) rootRef.current?.querySelector<HTMLElement>(".side-bar-collapse")?.focus();
     previousCollapsedRef.current = collapsed;
   }, [collapsed]);
 
@@ -525,6 +531,19 @@ export function OperationsSideBar({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [selectedFresh?.id, activeTheaterId, statusAxis]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 목표를 고른 입구(팔레트·빈 상태 바로가기·다른 Theater 줄)는 고르는 순간 사라져 포커스가 BODY 로 빠진다.
+  // 그때만 사이드바에 보이는 그 목표 줄이 받는다 — 접힘을 펼친 뒤 프레임에서. 숨은 사이드바면 표면의 ⌄ 가 받는다.
+  const selectedRowId = clusterIndex.rows.find((layout) => layout.cluster.theaterId === activeTheaterId && layout.cluster.row?.selected)?.cluster.id ?? null;
+  useEffect(() => {
+    if (!selectedRowId || collapsed) return;
+    const frame = window.requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active !== null && active !== document.body && active.isConnected) return;
+      chipsRef.current?.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(selectedRowId)}"] .side-bar-cluster-row-main`)?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedRowId, activeTheaterId, collapsed]);
 
   useEffect(() => subscribeSideBarOperationAction((request) => {
     const operation = operations.find((candidate) => candidate.id === request.operationId);
