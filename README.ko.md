@@ -57,7 +57,7 @@ Operation은 지금 보고 있는 페이지가 아니라 Fleet 서버가 소유�
 
 | 공급자 | 로그인 | 모델 |
 |---|---|---|
-| **Codex** | ChatGPT 구독 | GPT-6 Astra · Sol · Luna, GPT-5.6 Terra. 각각 272K·524K·1M 컨텍스트, 그리고 각각의 Fast 쌍둥이 |
+| **Codex** | ChatGPT 구독 | GPT-6.1 Sol, GPT-6 Astra · Sol · Luna, GPT-5.6 Terra. 각각 272K·524K·1M 컨텍스트, 그리고 각각의 Fast 쌍둥이 |
 | **Antigravity** | Google 구독 | Gemini 3.8 Flash · Gemini 3.1 Pro |
 | **xAI** | Grok 구독 | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
 | **Muse Code** | Muse Code 구독 | Muse Spark 1.3 · Muse Spark 1.3 Contributor |
