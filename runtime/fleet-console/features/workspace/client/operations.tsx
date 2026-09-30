@@ -52,8 +52,10 @@ const DEFAULT_SHELL_HEIGHT = 360;
 // 부유 크롬 카드의 가장자리 인셋(12px) + 카드와 아레나 사이 숨(12px). 카드 자신의 폭에 더해
 // 아레나 인셋이 된다 — CSS의 카드 인셋(var(--space-3))과 한 값이어야 한다.
 const CHROME_FLOAT_GUTTER = 24;
-/** War Room 무대(아레나)의 최소 폭 — 펼친 사이드바가 이보다 좁게 밀지 않는다. */
+/** War Room 무대(Operation 창)의 최소 폭 — 펼친 사이드바가 이보다 좁게 밀지 않는다. */
 const WAR_ROOM_STAGE_MIN_PX = 320;
+// 무대는 아레나 좌우에서 18px씩 들어앉는다(triageStageGeometryFor) — 아레나 하한은 그만큼 넓다.
+const WAR_ROOM_ARENA_MIN_PX = WAR_ROOM_STAGE_MIN_PX + 36;
 
 interface OperationsProps {
   readonly state: ConsoleState;
@@ -121,9 +123,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-  // War Room은 펼친 사이드바가 무대를 민다 — 무대(아레나)가 WAR_ROOM_STAGE_MIN_PX 밑으로 줄지 않게 사이드바 폭을 깎는다.
+  // War Room은 펼친 사이드바가 무대를 민다 — 무대가 WAR_ROOM_STAGE_MIN_PX 밑으로 줄지 않게 사이드바 폭을 깎는다.
   const warRoomSideBarCap = triageActive
-    ? Math.max(0, viewportWidth - WAR_ROOM_STAGE_MIN_PX - CHROME_FLOAT_GUTTER - (railOccupiedPx > 0 ? railOccupiedPx + CHROME_FLOAT_GUTTER : 0))
+    ? Math.max(0, viewportWidth - WAR_ROOM_ARENA_MIN_PX - CHROME_FLOAT_GUTTER - (railOccupiedPx > 0 ? railOccupiedPx + CHROME_FLOAT_GUTTER : 0))
     : null;
   const sideBarOccupiedPx = zenSideBarHidden ? 0 : Math.min(sideBarOccupiedWidth(sideBar), warRoomSideBarCap ?? Number.POSITIVE_INFINITY);
   // Zen은 사이드바를 걷고 화면 아래에 작업 표시줄을 세운다 — 막대 높이만 아래 인셋으로 비운다.
