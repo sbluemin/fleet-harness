@@ -6750,14 +6750,14 @@ body[data-companion-resizing="true"] .canvas-operation {
     transform var(--duration-fast) var(--ease-spring);
 }
 
-/* 묶음 줄(목표) — 1줄 제목, 2줄 mono 메타. 머무름·키보드 포커스·활성·최소화·accent 이름 잉크는 아래 칩 규칙을 함께 쓴다:
+/* 묶음 줄(목표) — 1줄 제목, 2줄 mono 메타. 제목 글꼴·잉크, 머무름·키보드 포커스·활성·최소화·accent 이름 잉크는 아래 칩 규칙을 함께 쓴다:
    뿌리가 선 줄은 칩 자리를 이어받았으니 활성 Operation 일 때 칩과 같은 값으로 하이라이트한다(왼쪽 띠 없음).
    바탕은 공유한 상태 규칙보다 앞에 서야 한다 — 뒤에 서면 바탕의 border 가 같은 특이도의 활성 테두리를 덮는다. */
 .side-bar-cluster-row {
   display: grid;
   grid-template-columns: 14px 1fr auto;
   gap: 8px;
-  align-items: start;
+  align-items: center;
   padding: 6px 8px;
   margin: 0 var(--space-1);
   border: 1px solid transparent;
@@ -6859,14 +6859,19 @@ body[data-companion-resizing="true"] .canvas-operation {
   height: 24px;
 }
 
-.side-bar-chip-name {
-  flex: 1;
+/* 칩 이름과 목표 줄 제목은 같은 이름 문법이다 — 섞여 선 목록에서 한 목소리로 읽힌다. */
+.side-bar-chip-name,
+.side-bar-cluster-row-title {
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: var(--font-body);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
   color: var(--text-secondary);
+}
+
+.side-bar-chip-name {
+  flex: 1;
   opacity: 1;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -7694,13 +7699,16 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 .side-bar-cluster-row-glyph {
   justify-self: center;
-  margin-top: 3px;
 }
 
+/* 칩의 24px 비콘 칸과 같은 세로 리듬 — 메타 없는 한 줄이면 칩과 같은 높이에, 상태 글리프는 줄 가운데에 선다.
+   메타가 붙으면 두 줄만큼 자라고 글리프는 칩 비콘처럼 두 줄의 세로 가운데에 머문다. */
 .side-bar-cluster-row-main {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   min-width: 0;
+  min-height: 24px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -7715,10 +7723,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 }
 
 .side-bar-cluster-row-title {
-  font-size: var(--t-sm);
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.3;
   white-space: nowrap;
 }
 
@@ -7823,7 +7828,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 .side-bar-cluster-row-dot {
   width: 5px;
   height: 5px;
-  margin-top: 7px;
   border-radius: 50%;
   background: var(--grp-color);
 }
