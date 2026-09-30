@@ -2,7 +2,7 @@ import type { OperationCluster, OperationClusterMember, OperationClusterProgress
 
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { openFollowups } from "./followups.js";
-import { activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
+import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -191,7 +191,8 @@ export const objectivesClusterSource: OperationClusterSource = {
   get: () => {
     const activity = new Map(operationSummaries().map((summary) => [summary.id, summary.activity]));
     // 줄의 선택 표시는 표면이 열려 보고 있는 목표에만 선다 — 표면은 활성 Theater 를 보므로 비활성 Theater 의 줄에는 서지 않는다.
-    const surfaceOpen = isObjectiveSurfaceOpen();
+    // Operation 이 활성인 동안은 그 줄(칩)이 하이라이트를 가지므로 표면 선택으로는 서지 않는다 — 사이드바 하이라이트는 언제나 한 줄이다.
+    const surfaceOpen = isObjectiveSurfaceOpen() && !activeOperationId();
     const theaterId = activeTheaterId();
     const next = clustersOf(readAllTheaters().flatMap((state) => state.objectives), activity, (objective) => surfaceOpen && objective.theaterId === theaterId && readObjectiveView(objective.theaterId).selected === objective.id);
     const nextSignature = signature(next);
