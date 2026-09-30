@@ -16,6 +16,8 @@ type T = Translate<ObjectiveMessageKey>;
  * 빠진다. 빈 구역은 세우지 않는다. 시작 전 목표는 그룹 맨 아래 「시작 전 N ›」 한 줄로 접힌다 — 펼침은 그룹별로 이 탭의 메모리에만
  * 둔다(사이드바의 접기와 같은 규칙, 번들이 달라 상태는 따로). 고른 목표가 접기 안에 있으면 열 때 그 접기를 펼쳐 둔다.
  * 사람이 세션 없는 목표를 만드는 입구는 없다 — 목표는 「새 Operation」에서 시작한다. Esc 나 바깥 누름으로 닫힌다.
+ * 열림은 표면이 쥔다 — 빈 상태의 「목표 목록 열기」도 같은 목록을 연다. 그 입구(`data-objectives-switch-opener`)로 열면 초점이
+ * 목록 안으로 들어가고, Esc 는 초점을 연 입구로 돌려보낸다.
  */
 
 /** 그룹별 「시작 전」 펼침 — `${theaterId}:${groupId}`. 새로 고침하면 모두 접힌다. */
@@ -38,14 +40,16 @@ export interface SwitcherProps {
   /** 지휘관 Operation 이 서 있는가 — 개시한 목표는 첫 턴 전이라도 접기에서 빠진다(사이드바의 뿌리 있는 줄과 같은 규칙). */
   readonly hasOperation: (objectiveId: string) => boolean;
   readonly onPick: (objectiveId: string) => void;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
 }
 
-export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, selected, glyphOf, hasOperation, onPick }: SwitcherProps) {
-  const [open, setOpen] = useState(false);
+export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, selected, glyphOf, hasOperation, onPick, open, onOpenChange: setOpen }: SwitcherProps) {
   const [, setFoldTick] = useState(0);
   const popRef = useRef<HTMLDivElement | null>(null);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -53,9 +57,13 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
       event.preventDefault();
       event.stopPropagation();
       setOpen(false);
-      buttonRef.current?.focus();
+      (openerRef.current?.isConnected ? openerRef.current : buttonRef.current)?.focus();
     };
-    const onPointer = (event: PointerEvent) => { if (!wrapRef.current?.contains(event.target as Node)) setOpen(false); };
+    // 바깥 입구를 다시 누르면 입구가 닫는다 — 여기서 먼저 닫으면 같은 누름의 click 이 다시 연다.
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as Element;
+      if (!wrapRef.current?.contains(target) && !target.closest?.("[data-objectives-switch-opener]")) setOpen(false);
+    };
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("pointerdown", onPointer, true);
     return () => { window.removeEventListener("keydown", onKey, true); window.removeEventListener("pointerdown", onPointer, true); };
@@ -85,7 +93,13 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
   const selectedObjective = selected ? rest.find((objective) => objective.id === selected) : undefined;
   if (open && selectedObjective && freshOf(selectedObjective)) foldOpen.set(foldKey(theaterId, sectionOf(selectedObjective)), true);
   useLayoutEffect(() => {
-    if (open) popRef.current?.querySelector<HTMLElement>('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+    if (!open) return;
+    const current = popRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    current?.scrollIntoView({ block: "nearest" });
+    // 목록 밖 입구로 열었다 — 목록은 머리에 붙어 그 입구보다 앞에 서니 Tab 으로는 닿지 않는다. 초점을 목록 안으로 옮긴다.
+    const active = document.activeElement;
+    openerRef.current = active instanceof HTMLElement && active.closest("[data-objectives-switch-opener]") ? active : null;
+    if (openerRef.current) (current ?? popRef.current?.querySelector<HTMLElement>("button"))?.focus();
   }, [open]);
 
   const row = (objective: Objective, dot: boolean, from = false) => {
@@ -156,7 +170,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
 
   return (
     <span ref={wrapRef} className="objectives-switch-wrap">
-      <button ref={buttonRef} type="button" className="objectives-switch" aria-haspopup="true" aria-expanded={open} aria-label={t("objectives.switch.label")} title={t("objectives.switch.label")} onClick={() => setOpen((value) => !value)}>
+      <button ref={buttonRef} type="button" className="objectives-switch" aria-haspopup="true" aria-expanded={open} aria-label={t("objectives.switch.label")} title={t("objectives.switch.label")} onClick={() => setOpen(!open)}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5" /></svg>
       </button>
       {open ? (

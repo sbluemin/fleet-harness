@@ -38,7 +38,7 @@
 .objectives-pick-label.is-title { font-family: inherit; font-size: var(--t-lg); font-weight: var(--weight-medium); letter-spacing: 0; color: var(--text-primary); overflow-wrap: anywhere; }
 .objectives-pick { flex: 1; display: grid; align-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
 .objectives-pick h5 { margin: 0; font-family: var(--font-display); font-size: var(--t-lg); font-weight: var(--weight-medium); color: var(--text-secondary); }
-.objectives-pick p { margin: 0; max-width: 40ch; font-size: var(--t-md); line-height: 1.5; color: var(--text-tertiary); }
+.objectives-pick p { margin: 0; max-width: 48ch; font-size: var(--t-md); line-height: 1.5; color: var(--text-tertiary); text-wrap: balance; word-break: keep-all; }
 .objectives-pick-shortcuts { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .objectives-pick-shortcuts button { max-width: 100%; padding: 2px 0; border: 0; background: transparent; font: inherit; font-size: var(--t-sm); color: var(--brass-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .objectives-pick-shortcuts button:hover { text-decoration: underline; text-underline-offset: 3px; }

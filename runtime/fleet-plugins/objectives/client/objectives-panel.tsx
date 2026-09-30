@@ -137,6 +137,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const toggleSection = (key: string, defaultOpen: boolean) => patchObjectiveView(theaterId, (current) => ({ collapsed: { ...current.collapsed, [key]: key in current.collapsed ? !current.collapsed[key] : defaultOpen } }));
   const isOpen = (key: string, defaultOpen: boolean) => (key in collapsed ? !collapsed[key] : defaultOpen);
   const [highlightMission, setHighlightMission] = useState<string | null>(null);
+  // 전환 목록의 열림 — ⌄ 와 빈 상태의 「목표 목록 열기」가 함께 쓴다. 사이드바가 다시 보이면 ⌄ 와 함께 닫는다.
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  useEffect(() => { if (ctx.sideBarVisible === true) setSwitcherOpen(false); }, [ctx.sideBarVisible]);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); }, []);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -303,6 +306,8 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       glyphOf={glyphOf}
       hasOperation={(objectiveId) => operationOf(objectiveId) !== null}
       onPick={setSelected}
+      open={switcherOpen}
+      onOpenChange={setSwitcherOpen}
     />
   );
   const objectiveShown = !!current && !current.removed && current.enlisted;
@@ -320,11 +325,16 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         </div>
         <div className="objectives-pick" data-objectives-tour="pick">
           <h5>{t("objectives.pick.title")}</h5>
-          <p>{t("objectives.pick.body")}</p>
-          {requests.length || reviews.length ? (
+          {/* 트리가 사이드바에 없으면 「사이드바에서 고르라」는 말이 틀린다 — 접혔다고 밝히고(사이드바가 없는 자리에서는 생략) 목록을 여는 입구를 둔다. */}
+          <p>{switcher ? [
+            ctx.sideBarVisible === false ? t("objectives.pick.collapsed") : null,
+            t(requests.length || reviews.length ? "objectives.pick.openHintShortcuts" : "objectives.pick.openHint"),
+          ].filter(Boolean).join(" ") : t("objectives.pick.body")}</p>
+          {requests.length || reviews.length || switcher ? (
             <div className="objectives-pick-shortcuts">
               {requests.map((objective) => <button key={objective.id} type="button" onClick={() => setSelected(objective.id)}>{t("objectives.pick.request", { title: objective.title })}</button>)}
               {reviews.map((objective) => <button key={objective.id} type="button" onClick={() => setSelected(objective.id)}>{t("objectives.pick.review", { title: objective.title })}</button>)}
+              {switcher ? <button type="button" className="objectives-pick-open" data-objectives-switch-opener aria-haspopup="true" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen(!switcherOpen)}>{t("objectives.pick.openList")}</button> : null}
             </div>
           ) : null}
         </div>
