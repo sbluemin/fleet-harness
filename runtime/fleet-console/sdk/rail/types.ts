@@ -127,6 +127,11 @@ export interface RailEntryDescriptor {
    */
   readonly surfaceId?: string;
   /**
+   * 아이콘을 눌러도 캔버스의 활성 Operation 을 풀지 않는다. 레일 도구를 누르면 기본으로 활성이 풀리지만(Map 밖의 누름),
+   * 지금 보는 Operation 을 그대로 이어 여는 도구 — 활성 Operation 의 목표를 여는 목표 표면처럼 — 만 켠다.
+   */
+  readonly keepsOperationActive?: boolean;
+  /**
    * 이 엔트리가 팔레트 검색 결과를 낼 수 있다면 그 공급자.
    *
    * 검색은 보통 페인에 붙는다 — 결과를 고르면 "어느 페인에 어떤 params로" 열지를 알아야 하고,
