@@ -19,18 +19,19 @@
 .objectives-graph-label { position: absolute; z-index: 2; font-size: var(--t-xs); line-height: var(--graph-label-line); color: var(--text-secondary); white-space: nowrap; cursor: pointer; touch-action: none; }
 .objectives-graph-label > span { display: block; }
 .objectives-graph-label.is-root { color: var(--text-tertiary); }
-.objectives-graph-label.is-done { color: var(--brass-ink); }
+.objectives-graph-label.is-done { color: var(--text-tertiary); }
 .objectives-graph-label.is-root { font-size: var(--t-2xs); cursor: default; }
 .objectives-graph-label.is-awaiting, .objectives-graph-label.is-running, .objectives-graph-label.is-ready, .objectives-graph-label.is-lit { color: var(--text-primary); }
 .objectives-graph-node { position: absolute; z-index: 3; width: 30px; height: 30px; margin: -15px; padding: 0; border: 0; background: none; display: grid; place-items: center; cursor: pointer; touch-action: none; }
 .objectives-graph-shape { position: relative; display: grid; place-items: center; width: calc(var(--graph-r) * 2); height: calc(var(--graph-r) * 2); border-radius: 50%; border: 1.5px solid var(--text-tertiary); background: var(--surface-panel); }
 .objectives-graph-number { font-family: var(--font-mono); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-primary); font-variant-numeric: tabular-nums; line-height: 1; }
-.objectives-graph-shape.is-done { background: var(--brass); border-color: var(--brass); }
-.objectives-graph-shape.is-done .objectives-graph-number { color: var(--text-on-brass); }
+/* 완료는 상태 글리프의 「완료」와 같은 중성 채움 — brass는 위치·초점(선택 간선)만 말한다. 번호는 다른 노드와 같은 1차 잉크로 둔다:
+   글리프의 --ink-abyss 체크를 번호에 쓰면 42% 채움 위에서 두 테마 모두 대비가 2:1 안팎이고, 밝은 테마에서는 흰 글자가 된다. */
+.objectives-graph-shape.is-done { background: color-mix(in oklch, var(--text-tertiary) 42%, transparent); border-color: transparent; }
 .objectives-graph-shape.is-ready { border: 2.5px solid var(--aurora); }
 .objectives-graph-shape.is-running { border-color: var(--positive); }
 .objectives-graph-shape.is-running::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1.5px solid transparent; border-top-color: var(--positive); border-right-color: var(--positive); animation: objectives-graph-spin 1.2s linear infinite; }
-/* 결정 대기는 호스트 활동축의 awaiting과 같은 aurora다 — 완료(brass)와 색으로도 갈리고, 준비됨(빈 aurora 링)과는 채움·모양으로 갈린다. */
+/* 결정 대기는 호스트 활동축의 awaiting과 같은 aurora다 — 완료(중성 채움)와 색으로도 갈리고, 준비됨(빈 aurora 링)과는 채움·모양으로 갈린다. */
 .objectives-graph-shape.is-awaiting { border-radius: 4px; transform: rotate(45deg) scale(.72); background: var(--aurora); border-color: var(--aurora); }
 .objectives-graph-shape.is-awaiting .objectives-graph-number { transform: rotate(-45deg) scale(1.39); color: var(--text-on-brass); }
 .objectives-graph-shape.is-unplaced { border: 1.5px dashed var(--text-secondary); }
@@ -75,8 +76,8 @@
 .objectives-popup-head .objectives-glyph { margin-left: auto; }
 .objectives-popup-state { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-body); }
 .objectives-popup-state i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--text-tertiary); }
-.objectives-popup-state.is-done { color: var(--brass-ink); }
-.objectives-popup-state.is-done i { background: var(--brass); border-color: var(--brass); }
+.objectives-popup-state.is-done { color: var(--text-tertiary); }
+.objectives-popup-state.is-done i { background: color-mix(in oklch, var(--text-tertiary) 42%, transparent); border-color: transparent; }
 .objectives-popup-state.is-ready { color: var(--aurora-ink); }
 .objectives-popup-state.is-ready i { border: 2px solid var(--aurora); }
 .objectives-popup-state.is-running { color: var(--positive-ink); }
