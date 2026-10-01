@@ -785,10 +785,11 @@ export function OperationsSideBar({
     };
   }, [dragPointerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => {
+  // interactive: 누르면 끌기 대신 제 동작을 하는 자손. 칩은 안의 버튼(최소화·보관)이 그렇다.
+  const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string, interactive = "button") => {
     if (statusAxis) return;
     if (event.button !== 0) return;
-    if (event.target instanceof Element && event.target.closest("button")) return;
+    if (event.target instanceof Element && event.target.closest(interactive)) return;
     setActiveContextMenu(null);
     const sourceEntry = allEntries.find((e) => e.operation.id === operationId);
     const sourceGroupId = sourceEntry?.operation.groupId ?? null;
@@ -807,8 +808,9 @@ export function OperationsSideBar({
   };
 
   const beginRowPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, item: SideBarRowItem) => {
+    // 줄은 본문 전체가 여는 버튼이다 — 칩처럼 줄 어디를 잡아도 끌리고, 버튼이 되는 검토 글리프만 뺀다.
     if (item.anchor) {
-      beginPointerDrag(event, item.anchor.operation.id);
+      beginPointerDrag(event, item.anchor.operation.id, ".status-glyph.is-actionable");
       return;
     }
     const moveRow = item.row.moveToGroup;
