@@ -49,10 +49,79 @@ const inflight = new Map<string, Promise<void>>();
 /** 받으러 간 목표 — 같은 Operation 을 두 번 묻지 않는다. */
 const fetching = new Set<string>();
 /**
- * 서버가 unknown_objective(404)로 목표가 아니라고 답한 id. 401·네트워크·5xx 같은 일시 거절은 넣지 않아 다음 스냅숏에 다시 묻는다.
+ * 서버가 unknown_objective(404)로 목표가 아니라고 답한 id. 401·네트워크·5xx 같은 일시 거절은 넣지 않고 세션 게이트(`degraded`)가 내려간 뒤 다시 묻는다.
  * 그 id 의 목표 사건이나 영구 삭제가 오기 전에는 지우지 않는다.
  */
 const unknownToServer = new Set<string>();
+
+const RETRY_BASE_MS = 2_000;
+const RETRY_MAX_MS = 30_000;
+const retryDelay = (failures: number) => Math.min(RETRY_BASE_MS * 2 ** (failures - 1), RETRY_MAX_MS);
+
+interface LoadRetry {
+  readonly permanent: boolean;
+  readonly failures: number;
+  readonly failedAt: number;
+  readonly nextAt: number;
+}
+/**
+ * `/state` 실패 장부 — 화면 상태가 아니라 재시도 일정이다. 성공하면 지운다. 일시 실패는 `loaded` 를 올리지 않고 기한
+ * (2s→×2→30s)까지 기다리고, 확정 실패는 `loaded` 로 정착시켜 그 Theater 가 다시 등록되기 전에는 묻지 않는다.
+ */
+const loadRetries = new Map<string, LoadRetry>();
+/**
+ * 세션 일시 거절 게이트 — `/state`·`/objective/get` 이 일시 거절을 받으면 서고, 성공 증거(objectives 요청 성공·스트림 프레임)가
+ * 오면 내려간다. 서 있는 동안 스냅숏 경로는 기한이 지난 뒤 탐침 하나만 보내고, `/objective/get` 은 기한까지 보류한다.
+ */
+let degraded: { readonly failures: number; readonly until: number } | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 일시 거절 — 네트워크(상태 없음)·401·408·429·5xx. 나머지 4xx 는 다시 물어도 같은 답이 오는 확정 거절이다. */
+function isTransient(error: unknown): boolean {
+  const status = typeof error === "object" && error !== null ? (error as { status?: unknown }).status : undefined;
+  return typeof status !== "number" || status === 401 || status === 408 || status === 429 || status >= 500;
+}
+
+/** 미룬 조회를 마지막 실패에서 첫 간격만 지나면 다시 묻게 당긴다 — 증거·사람의 동작이 잦아도 2초에 한 번을 넘지 않는다. */
+function rearm(theaterId: string): void {
+  const retry = loadRetries.get(theaterId);
+  if (retry && !retry.permanent) loadRetries.set(theaterId, { ...retry, nextAt: Math.min(retry.nextAt, retry.failedAt + RETRY_BASE_MS) });
+}
+
+function noteTransient(): void {
+  const failures = (degraded?.failures ?? 0) + 1;
+  degraded = { failures, until: Date.now() + retryDelay(failures) };
+  scheduleRetry();
+}
+
+/** 세션이 살아 있다는 증거 — 게이트를 내리고 일시 실패로 미룬 Theater 를 곧 다시 묻는다. */
+function noteAlive(): void {
+  if (!degraded) return;
+  degraded = null;
+  for (const theaterId of loadRetries.keys()) rearm(theaterId);
+  scheduleRetry();
+}
+
+/** 타이머는 하나다 — 게이트가 서 있으면 그 기한, 아니면 가장 이른 Theater 기한에 스냅숏 경로를 한 번 돌린다. 스냅숏이 없는 한가한 Console 도 회복된다. */
+function scheduleRetry(): void {
+  if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
+  let next = degraded?.until ?? Number.POSITIVE_INFINITY;
+  if (!degraded) for (const retry of loadRetries.values()) if (!retry.permanent) next = Math.min(next, retry.nextAt);
+  if (next === Number.POSITIVE_INFINITY) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (!installed) return;
+    operationsSnapshot = installed.consoleState.getOperations({ nested: true });
+    loadAgentTheaters(installed.api, installed.consoleState.getActiveTheaterId());
+    reconcileOperations(installed.api);
+  }, Math.max(0, next - Date.now()));
+}
+
+/** 확정 실패로 정착시킨 Theater 를 처음부터 다시 묻게 한다 — 다시 등록됐거나 플러그인이 새로 설치됐다. */
+function unsettle(theaterId: string): void {
+  loadRetries.delete(theaterId);
+  setTheater(theaterId, { loaded: false });
+}
 
 /**
  * 보관된 Operation 의 요약 — 완료한 목표의 지휘관·구성원은 Core 보관함으로 옮겨져 일반 목록에 없다. 세션 줄이 이름을
@@ -129,6 +198,8 @@ function memberIds(objectives: readonly Objective[]): ReadonlySet<string> {
  */
 function reconcileOperations(api: ClientApiCapability): void {
   const listed = new Set(operationsSnapshot.map((operation) => operation.id));
+  // 세션이 일시 거절 중이면 목표를 묻지 않는다 — 게이트가 내려가거나 기한이 지난 뒤의 스냅숏·타이머가 다시 맞춘다.
+  const holding = degraded !== null && Date.now() < degraded.until;
   for (const [theaterId, state] of theaters) {
     if (!state.loaded) continue;
     if (state.objectives.some((objective) => objective.recorded === false && !listed.has(objective.id))) {
@@ -145,6 +216,7 @@ function reconcileOperations(api: ClientApiCapability): void {
     for (const operation of operationsSnapshot) {
       // 부모 아래 선 Operation(구성원)은 목표가 아니다 — 코어가 구성원으로 기록한 것은 묻지도 않는다.
       if (operation.theaterId !== theaterId || operation.type !== "agent" || operation.parentOperationId || known.has(operation.id) || members.has(operation.id) || fetching.has(operation.id) || unknownToServer.has(operation.id)) continue;
+      if (holding) continue;
       fetching.add(operation.id);
       void post<{ objective: Objective }>(api, "/objective/get", { objectiveId: operation.id })
         .then(({ objective }) => {
@@ -155,6 +227,7 @@ function reconcileOperations(api: ClientApiCapability): void {
         .catch((error: unknown) => {
           // 목표가 없다는 확정 답(404 unknown_objective)만 기억한다 — 401 같은 일시 거절은 세션이 돌아오면 다시 묻는다.
           if (error instanceof Error && error.message === "unknown_objective") unknownToServer.add(operation.id);
+          else if (isTransient(error)) noteTransient();
         })
         .finally(() => { fetching.delete(operation.id); });
     }
@@ -188,16 +261,31 @@ function loadAgentTheaters(api: ClientApiCapability, activeId: string | null): v
     seen.add(theaterId);
     rest.push(theaterId);
   }
+  // 세션이 일시 거절 중이면 기한이 지난 뒤 아직 못 읽은 첫 Theater 하나만 탐침으로 묻는다 — 성공하면 게이트가 내려가 나머지가 따라간다.
+  if (degraded) {
+    if (Date.now() < degraded.until || inflight.size > 0) return;
+    const probe = [...(activeId ? [activeId] : []), ...rest].find((theaterId) => !theaters.get(theaterId)?.loaded);
+    if (probe) void loadTheater(api, probe, true);
+    return;
+  }
   const lead = activeId ? loadTheater(api, activeId) : Promise.resolve();
   void lead.then(() => {
-    if (installed?.api !== api) return;
+    // 활성 Theater 가 일시 거절을 받았으면 나머지를 한꺼번에 두드리지 않는다.
+    if (installed?.api !== api || degraded) return;
     for (const theaterId of rest) void loadTheater(api, theaterId);
   });
 }
 
 export function installObjectiveState(ctx: PluginInstallContext): () => void {
   installed = ctx;
+  // 실패 장부는 새 설치에서 처음부터다 — 확정 실패로 정착시킨 Theater 도 다시 묻는다.
+  for (const [theaterId, retry] of [...loadRetries]) if (retry.permanent) unsettle(theaterId);
+  loadRetries.clear();
+  degraded = null;
+  scheduleRetry();
   const offItem = ctx.consoleEvents.subscribe("objectives:objective", (payload) => {
+    // 스트림 프레임은 살아 있는 세션에서만 온다.
+    noteAlive();
     const event = payload as ObjectiveEvent | null;
     if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
     unknownToServer.delete(event.objectiveId);
@@ -218,6 +306,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     setTheater(event.theaterId, { objectives });
   });
   const offGroup = ctx.consoleEvents.subscribe("group:changed", (payload) => {
+    noteAlive();
     const group = (payload as { group?: ObjectiveGroup } | null)?.group;
     if (!group || typeof group.id !== "string" || typeof group.theaterId !== "string") return;
     const current = theaters.get(group.theaterId) ?? EMPTY;
@@ -234,6 +323,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     removeObjectiveLocally(operationId);
   });
   const offRemoved = ctx.consoleEvents.subscribe("group:removed", (payload) => {
+    noteAlive();
     const data = payload as { groupId?: string; theaterId?: string } | null;
     if (!data || typeof data.groupId !== "string") return;
     for (const [theaterId, state] of theaters) if (state.groups.some((group) => group.id === data.groupId)) setTheater(theaterId, { groups: state.groups.filter((group) => group.id !== data.groupId) });
@@ -242,6 +332,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadTheater 는 멱등이다.
   let lastTheater = ctx.consoleState.getActiveTheaterId();
   let lastActiveOperation = ctx.consoleState.getActiveOperationId();
+  let listedTheaters = new Set(ctx.consoleState.getTheaters().map((theater) => theater.id));
   operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
   loadAgentTheaters(ctx.api, lastTheater);
   const offConsole = ctx.consoleState.subscribe(() => {
@@ -249,7 +340,13 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (current !== lastTheater) {
       lastTheater = current;
       clearSelectionTheater();
+      // 사람이 그 Theater 를 보러 왔다 — 일시 실패로 미룬 조회를 게이트와 무관하게, 마지막 실패에서 첫 간격이 지났으면 지금 묻는다.
+      if (current && !theaters.get(current)?.loaded) { rearm(current); void loadTheater(ctx.api, current); }
     }
+    // 등록·복원으로 다시 나타난 Theater 는 확정 실패를 풀고 처음부터 묻는다.
+    const theaterIds = new Set(ctx.consoleState.getTheaters().map((theater) => theater.id));
+    for (const [theaterId, retry] of [...loadRetries]) if (retry.permanent && theaterIds.has(theaterId) && !listedTheaters.has(theaterId)) unsettle(theaterId);
+    listedTheaters = theaterIds;
     // 가장 마지막 선택이 이긴다 — 어느 경로로든 Operation 이 활성이 되면 그 전에 줄·팔레트가 남긴 reveal 은 버리고,
     // 표면이 열려 있으면 활성 Operation 의 목표로 옮긴다. 닫혀 있으면 다음에 열릴 때 따라간다.
     const activeOperation = ctx.consoleState.getActiveOperationId();
@@ -286,6 +383,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
     if (focusOutTimer !== null) clearTimeout(focusOutTimer);
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
+    if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
   };
 }
 
@@ -315,12 +413,14 @@ export async function post<T>(api: ClientApiCapability, path: string, body: unkn
   } catch (error) {
     // 호스트가 !ok 응답을 먼저 ApiError 로 끊어 post 의 코드 추출에 닿지 않는다 —
     // body 의 구조화 코드만 살려 띠·토스트가 사람의 말을 고르게 한다. 코드가 아니면 원본을 그대로 던진다.
+    // 상태는 함께 싣는다 — 부르는 쪽이 일시 거절(401·5xx)과 확정 거절을 가른다. 코드 비교(message)는 그대로다.
     const code = apiErrorCode(error);
     if (code === null) throw error;
-    throw new Error(code);
+    throw Object.assign(new Error(code), { status: (error as { status: number }).status });
   }
   const payload = await response.json().catch(() => null) as (T & { error?: string }) | null;
-  if (!response.ok) throw new Error(payload?.error ?? `http_${response.status}`);
+  if (!response.ok) throw Object.assign(new Error(payload?.error ?? `http_${response.status}`), { status: response.status });
+  noteAlive();
   return payload as T;
 }
 
@@ -338,18 +438,40 @@ function apiErrorCode(error: unknown): string | null {
   return typeof code === "string" && /^[a-z_]{1,64}$/.test(code) ? code : null;
 }
 
+/** `force` 는 읽은 여부와 일시 실패 기한을 무시하고 지금 묻는다 — 게이트의 탐침이 쓴다. */
 export function loadTheater(api: ClientApiCapability, theaterId: string, force = false): Promise<void> {
   const current = theaters.get(theaterId);
   if (current?.loaded && !force) return Promise.resolve();
   const pending = inflight.get(theaterId);
   if (pending) return pending;
+  // 일시 실패로 미룬 Theater 는 기한 전에 다시 묻지 않는다 — 스냅숏마다 부르는 길이 /state 를 두드리지 않게.
+  const retry = loadRetries.get(theaterId);
+  if (retry && !force && Date.now() < retry.nextAt) return Promise.resolve();
+  const fail = (permanent: boolean) => {
+    if (!permanent) noteTransient();
+    // 이미 읽은 Theater 의 재조회 실패는 기존 목록을 그대로 둔다.
+    if (theaters.get(theaterId)?.loaded) return;
+    const now = Date.now();
+    if (permanent) {
+      loadRetries.set(theaterId, { permanent: true, failures: 0, failedAt: now, nextAt: Number.POSITIVE_INFINITY });
+      setTheater(theaterId, { loaded: true });
+      return;
+    }
+    const previous = loadRetries.get(theaterId);
+    const failures = (previous?.failures ?? 0) + 1;
+    loadRetries.set(theaterId, { permanent: false, failures, failedAt: now, nextAt: now + retryDelay(failures) });
+  };
   const task = post<{ objectives: Objective[]; groups: ObjectiveGroup[]; launch: { available: boolean } }>(api, "/state", { theaterId })
     .then((state) => {
+      // 200 인데 모양이 다르면 확정 실패다 — 다시 물어도 같은 답이 온다.
+      if (!Array.isArray(state?.objectives) || !Array.isArray(state.groups) || typeof state.launch !== "object" || state.launch === null) { fail(true); return; }
+      loadRetries.delete(theaterId);
       setTheater(theaterId, { objectives: state.objectives, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
       // 읽는 사이 생긴 Operation 도 목표로 — 스냅숏 기준으로 한 번 맞춘다.
       if (installed) { operationsSnapshot = installed.consoleState.getOperations({ nested: true }); reconcileOperations(installed.api); }
-    })
-    .catch(() => { setTheater(theaterId, { loaded: true }); })
+    }, (error: unknown) => { fail(!isTransient(error)); })
+    // 응답을 적용하다 던진 것은 요청 실패가 아니다 — 같은 답이 다시 올 테니 확정으로 정착시킨다.
+    .catch(() => { fail(true); })
     .finally(() => { inflight.delete(theaterId); });
   inflight.set(theaterId, task);
   return task;
@@ -532,7 +654,7 @@ function selectOperationObjective(operationId: string, shown: () => boolean): vo
     patchObjectiveView(theaterId, () => ({ selected: matchingObjective.id, externalSelectionId: matchingObjective.id }));
   };
   if (theaters.get(theaterId)?.loaded) select();
-  else void loadTheater(installed.api, theaterId).then(select);
+  else { rearm(theaterId); void loadTheater(installed.api, theaterId).then(select); }
   // 연결된 목표가 없어도 목록은 무대 소속 Theater만 보여 준다.
   notify();
 }
