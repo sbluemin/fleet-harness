@@ -27,7 +27,7 @@ Stable Release starts only when the pusher is not `github-actions[bot]` and the 
 3. Success means all of:
 
    - Run `conclusion: success`.
-   - `resolve`, `verify / verify`, `release`, `console-assets`, and `publish-release` succeeded.
+   - `resolve`, `release`, `console-assets`, and `publish-release` succeeded. `verify / verify` either succeeded or was skipped because `resolve` found a passing canary Workspace Verify run on the same SHA.
    - Exactly one of `desktop-build` or `desktop-carry` succeeded (the other is skipped).
    - `git fetch origin main --tags` shows `origin/main` as `chore(release): vX.Y.Z`.
    - `gh release view vX.Y.Z --json isDraft,publishedAt,tagName,url,assets` is not a draft and lists `fleet-console-X.Y.Z.tgz`, `fleet-console.tgz`, `fleet-console-release.json`, and `fleet-console-SHA256SUMS.txt`.

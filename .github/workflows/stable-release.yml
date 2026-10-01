@@ -33,29 +33,57 @@ jobs:
   resolve:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
     outputs:
       sha: ${{ steps.target.outputs.sha }}
+      verified: ${{ steps.verified.outputs.verified }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - id: target
-        run: |
-          git fetch origin main
-          echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "sha=$(gh api "repos/${{ github.repository }}/commits/main" -q .sha)" >> "$GITHUB_OUTPUT"
 
-  # 되돌리기 어려운 Release 공개 앞에 워크스페이스 전체 타입체크·테스트를 세운다. verify는 canary
-  # push와 workflow_call로만 발화하므로, main은 릴리스 전 여기서만 전체 검증을 받는다. 검증 대상은
-  # 릴리스 커밋 직전의 main이며, 릴리스 커밋 자체는 버전 필드와 컴파일된 changelog만 바꾼다.
+      # main에 올라오는 커밋은 보통 canary에서 그대로 fast-forward된 것이라, canary push가 띄운
+      # Workspace Verify가 같은 SHA를 이미 검증했거나 검증하는 중이다. 그 결과를 기다려 쓰고, 같은
+      # SHA의 성공 런이 없을 때만(main 직접 push, canary 검증 실패·문서 전용 push로 미실행) 아래
+      # verify가 직접 검증한다.
+      - id: verified
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          runs="repos/${{ github.repository }}/actions/workflows/workspace-verify.yml/runs?head_sha=$SHA&event=push"
+          while :; do
+            state=$(gh api "$runs" -q 'if any(.workflow_runs[]; .conclusion == "success") then "success" elif any(.workflow_runs[]; .status != "completed") then "pending" else "none" end')
+            case "$state" in
+              success) echo "Workspace Verify already passed on $SHA."; echo "verified=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              pending) echo "Waiting for the Workspace Verify run on $SHA..."; sleep 20 ;;
+              *) echo "No passing Workspace Verify run on $SHA; verifying here."; echo "verified=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            esac
+          done
+
+  # 되돌리기 어려운 Release 공개 앞에 워크스페이스 전체 타입체크·테스트를 세운다. 같은 SHA를 canary에서
+  # 이미 통과했다면 resolve가 그 결과를 넘기고 이 잡은 건너뛴다. 검증 대상은 릴리스 커밋 직전의
+  # main이며, 릴리스 커밋 자체는 버전 필드와 컴파일된 changelog만 바꾼다.
   verify:
     needs: resolve
+    if: needs.resolve.outputs.verified != 'true'
     uses: ./.github/workflows/workspace-verify.yml
     with:
       ref: ${{ needs.resolve.outputs.sha }}
 
   release:
     needs: [resolve, verify]
-    if: github.actor != 'github-actions[bot]'
+    # verify가 건너뛰어진 경우(같은 SHA의 canary 검증 성공)에도 진행해야 하므로 !cancelled()와
+    # 명시적 result 확인이 필요하다. verify가 실패하면 여기서 멈춘다.
+    if: >-
+      !cancelled() &&
+      github.actor != 'github-actions[bot]' &&
+      needs.resolve.result == 'success' &&
+      (needs.verify.result == 'success' || needs.verify.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -513,6 +541,8 @@ jobs:
             --generate-notes
 
   # 릴리스 커밋이 만들어진 뒤, 각 산출물을 재사용 워크플로로 배포한다(모두 릴리스 ref를 checkout).
+  # 아래 잡들의 !cancelled()와 needs.release.result 확인은 verify가 건너뛰어진 런을 위한 것이다 — 기본
+  # success()는 조상 잡 중 하나라도 skipped면 거짓이 되어, 릴리스 커밋만 만들고 산출물 없이 멈춘다.
   # 별도 이벤트 트리거가 아니라 호출로 같은 런에 이어붙인다(GITHUB_TOKEN 이벤트는 워크플로를 트리거하지 못함).
   #
   # 원자성 전략(atomic release):
@@ -529,7 +559,7 @@ jobs:
   # @fleet-console/protocol/release를 pack 스크립트가 읽어서 정한다.
   console-assets:
     needs: release
-    if: needs.release.outputs.should_release == 'true'
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.release.outputs.should_release == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -542,11 +572,12 @@ jobs:
         with:
           node-version: '22'
           cache: pnpm
+      # postinstall이 릴리스 커밋 트리로 Console까지 빌드하므로 pack은 다시 빌드하지 않는다.
       - run: pnpm install --frozen-lockfile
       - name: Pack Console release assets
         env:
           NEXT_VERSION: ${{ needs.release.outputs.next_version }}
-        run: node scripts/pack-fleet-console-release.mjs --version "$NEXT_VERSION" --out "$RUNNER_TEMP/console-assets" --smoke
+        run: node scripts/pack-fleet-console-release.mjs --version "$NEXT_VERSION" --out "$RUNNER_TEMP/console-assets" --smoke --skip-build
       - name: Upload Console release assets to the draft
         env:
           GH_TOKEN: ${{ github.token }}
@@ -562,7 +593,7 @@ jobs:
 
   desktop-build:
     needs: release
-    if: needs.release.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'true'
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.release.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'true' }}
     uses: ./.github/workflows/desktop-release.yml
     with:
       ref: ${{ needs.release.outputs.release_sha }}
@@ -575,7 +606,7 @@ jobs:
   # desktop-carry에 해당하는 짝도 없다: 변경이 없으면 그냥 배포하지 않는다.
   mobile-build:
     needs: release
-    if: needs.release.outputs.should_release == 'true' && needs.release.outputs.mobile_changed == 'true'
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.release.outputs.should_release == 'true' && needs.release.outputs.mobile_changed == 'true' }}
     uses: ./.github/workflows/mobile-release.yml
     with:
       ref: ${{ needs.release.outputs.release_sha }}
@@ -590,7 +621,7 @@ jobs:
   # 이월된 메타데이터는 이월된 버전을 그대로 가리키므로 없는 업데이트를 알리지도 않는다.
   desktop-carry:
     needs: release
-    if: needs.release.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'false'
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.release.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'false' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -623,7 +654,7 @@ jobs:
   # 다음 릴리스가 미빌드 변경을 다시 잡아 재빌드한다. 태그에 별도 Release는 만들지 않는다.
   desktop-tag:
     needs: [release, desktop-build]
-    if: needs.release.outputs.should_release == 'true' && needs.desktop-build.result == 'success'
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.release.outputs.should_release == 'true' && needs.desktop-build.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -644,7 +675,7 @@ jobs:
   # 실패하면 태그가 없어 다음 릴리스가 같은 변경을 다시 잡아 재배포한다.
   mobile-tag:
     needs: [release, mobile-build]
-    if: needs.release.outputs.should_release == 'true' && needs.mobile-build.result == 'success'
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.release.outputs.should_release == 'true' && needs.mobile-build.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

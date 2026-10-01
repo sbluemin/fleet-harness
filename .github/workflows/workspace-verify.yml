@@ -64,9 +64,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # postinstall이 Fleet Console까지 빌드하므로 따로 빌드하지 않는다.
       - run: pnpm install --frozen-lockfile
-      - name: Build Fleet Console
-        run: pnpm --filter @dotobokuri/fleet-console build
       # mock signal만 확인하면 Windows에서 남은 프로세스와 잠긴 파일을 놓친다.
       - name: Test Windows Console process lifecycle
         shell: pwsh

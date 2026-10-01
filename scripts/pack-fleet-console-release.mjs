@@ -22,8 +22,9 @@ import {
 // 지휘관이 로컬에서 게시하는 실험 prerelease가 같은 경로를 쓴다 — 두 경로의 자산이 갈라지면
 // 실험 e2e가 stable을 입증하지 못한다.
 //
-//   node scripts/pack-fleet-console-release.mjs --out <dir> [--version <semver>] [--smoke]
+//   node scripts/pack-fleet-console-release.mjs --out <dir> [--version <semver>] [--smoke] [--skip-build]
 //
+// --skip-build는 방금 `pnpm install`의 postinstall이 같은 트리를 빌드한 CI에서만 쓴다.
 // --version을 생략하면 package.json의 버전을 쓴다. 트리와 다른 버전은 실험 prerelease(X.Y.Z-exp.N)로만
 // 허용한다 — stable 번호를 트리가 선언하지 않은 내용에 붙이지 않기 위해서다.
 //
@@ -39,7 +40,7 @@ const PKG_PATH = path.join(PKG_DIR, "package.json");
 main(parseArgs(process.argv.slice(2)));
 
 function parseArgs(argv) {
-  const options = { out: undefined, version: undefined, smoke: false };
+  const options = { out: undefined, version: undefined, smoke: false, skipBuild: false };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     const [flag, inline] = arg.includes("=") ? [arg.slice(0, arg.indexOf("=")), arg.slice(arg.indexOf("=") + 1)] : [arg, undefined];
@@ -47,7 +48,8 @@ function parseArgs(argv) {
     if (flag === "--out") options.out = value();
     else if (flag === "--version") options.version = value();
     else if (flag === "--smoke") options.smoke = true;
-    else throw new Error(`Unknown argument: ${arg}\nUsage: pack-fleet-console-release.mjs --out <dir> [--version <semver>] [--smoke]`);
+    else if (flag === "--skip-build") options.skipBuild = true;
+    else throw new Error(`Unknown argument: ${arg}\nUsage: pack-fleet-console-release.mjs --out <dir> [--version <semver>] [--smoke] [--skip-build]`);
   }
   if (!options.out) throw new Error("--out <dir> is required");
   return options;
@@ -70,7 +72,7 @@ function main(options) {
   }
   mkdirSync(outDir, { recursive: true });
 
-  execFileSync("pnpm", ["build"], { cwd: PKG_DIR, stdio: "inherit" });
+  if (!options.skipBuild) execFileSync("pnpm", ["build"], { cwd: PKG_DIR, stdio: "inherit" });
 
   const packDir = mkdtempSync(path.join(os.tmpdir(), "fleet-console-pack-"));
   let packed;

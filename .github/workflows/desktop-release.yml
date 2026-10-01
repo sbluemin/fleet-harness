@@ -46,11 +46,9 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build console protocol + desktop shell
-        run: |
-          pnpm --filter @fleet-console/process build
-          pnpm --filter @dotobokuri/fleet-console build
-          pnpm --filter @dotobokuri/fleet-desktop build
+      # postinstall이 desktop을 뺀 워크스페이스 전체(Console 포함)를 이미 빌드했다.
+      - name: Build desktop shell
+        run: pnpm --filter @dotobokuri/fleet-desktop build
       - name: Package shell installers (mac arm64)
         env:
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
@@ -110,11 +108,9 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build console protocol + desktop shell
-        run: |
-          pnpm --filter @fleet-console/process build
-          pnpm --filter @dotobokuri/fleet-console build
-          pnpm --filter @dotobokuri/fleet-desktop build
+      # postinstall이 desktop을 뺀 워크스페이스 전체(Console 포함)를 이미 빌드했다.
+      - name: Build desktop shell
+        run: pnpm --filter @dotobokuri/fleet-desktop build
       - name: Package shell installer (nsis, ${{ matrix.arch }})
         shell: bash
         run: >-
