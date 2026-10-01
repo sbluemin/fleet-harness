@@ -472,7 +472,12 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
     }, (error: unknown) => { fail(!isTransient(error)); })
     // 응답을 적용하다 던진 것은 요청 실패가 아니다 — 같은 답이 다시 올 테니 확정으로 정착시킨다.
     .catch(() => { fail(true); })
-    .finally(() => { inflight.delete(theaterId); });
+    .finally(() => {
+      inflight.delete(theaterId);
+      // 아직 미룬 Theater 가 남았으면 그 기한에 다시 깨운다 — 게이트가 없을 때 noteAlive 는 타이머를 다시 걸지 않는다.
+      // inflight 를 지운 뒤라 이미 묻는 중인 엔트리로 0ms 타이머를 되풀이하지 않는다.
+      if (installed) scheduleRetry();
+    });
   inflight.set(theaterId, task);
   return task;
 }
