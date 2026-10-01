@@ -75,6 +75,7 @@ const loadRetries = new Map<string, LoadRetry>();
  */
 let degraded: { readonly failures: number; readonly until: number } | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryAt = Number.POSITIVE_INFINITY;
 
 /** 일시 거절 — 네트워크(상태 없음)·401·408·429·5xx. 나머지 4xx 는 다시 물어도 같은 답이 오는 확정 거절이다. */
 function isTransient(error: unknown): boolean {
@@ -94,27 +95,44 @@ function noteTransient(): void {
   scheduleRetry();
 }
 
-/** 세션이 살아 있다는 증거 — 게이트를 내리고 일시 실패로 미룬 Theater 를 곧 다시 묻는다. */
+/**
+ * 세션이 살아 있다는 증거 — 게이트를 내리고 곧바로 한 번 스윕한다. 게이트가 서 있던 동안 탐침에 밀려 한 번도 묻지 않은
+ * Theater 는 장부에 없으므로, 장부 기한만 겨냥하는 타이머로는 깨어나지 않는다. 미룬 엔트리는 마지막 실패에서 첫 간격까지 당긴다.
+ */
 function noteAlive(): void {
   if (!degraded) return;
   degraded = null;
   for (const theaterId of loadRetries.keys()) rearm(theaterId);
-  scheduleRetry();
+  scheduleRetry(true);
 }
 
-/** 타이머는 하나다 — 게이트가 서 있으면 그 기한, 아니면 가장 이른 Theater 기한에 스냅숏 경로를 한 번 돌린다. 스냅숏이 없는 한가한 Console 도 회복된다. */
-function scheduleRetry(): void {
+function clearRetryTimer(): void {
   if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
-  let next = degraded?.until ?? Number.POSITIVE_INFINITY;
-  if (!degraded) for (const retry of loadRetries.values()) if (!retry.permanent) next = Math.min(next, retry.nextAt);
-  if (next === Number.POSITIVE_INFINITY) return;
+  retryAt = Number.POSITIVE_INFINITY;
+}
+
+/**
+ * 타이머는 하나다 — `sweep` 이면 곧바로, 게이트가 서 있으면 그 기한, 아니면 아직 오지 않은 가장 이른 Theater 기한에 스냅숏 경로를
+ * 한 번 돌리고 다음 기한을 다시 건다. 스냅숏이 없는 한가한 Console 도 회복된다. 더 이른 예약은 덮지 않는다. 지난 기한은 겨냥하지 않는다
+ * — 그 엔트리는 방금 물었거나 묻는 중이고, 끝나면 그 요청의 finally 가 다시 건다. 그래서 0ms 타이머가 되풀이되지 않는다.
+ */
+function scheduleRetry(sweep = false): void {
+  const now = Date.now();
+  let next = sweep ? now : Number.POSITIVE_INFINITY;
+  if (degraded) { if (degraded.until > now) next = Math.min(next, degraded.until); }
+  else for (const retry of loadRetries.values()) if (!retry.permanent && retry.nextAt > now) next = Math.min(next, retry.nextAt);
+  if (next === Number.POSITIVE_INFINITY || (retryTimer !== null && retryAt <= next)) return;
+  clearRetryTimer();
+  retryAt = next;
   retryTimer = setTimeout(() => {
     retryTimer = null;
+    retryAt = Number.POSITIVE_INFINITY;
     if (!installed) return;
     operationsSnapshot = installed.consoleState.getOperations({ nested: true });
     loadAgentTheaters(installed.api, installed.consoleState.getActiveTheaterId());
     reconcileOperations(installed.api);
-  }, Math.max(0, next - Date.now()));
+    scheduleRetry();
+  }, next - now);
 }
 
 /** 확정 실패로 정착시킨 Theater 를 처음부터 다시 묻게 한다 — 다시 등록됐거나 플러그인이 새로 설치됐다. */
@@ -282,7 +300,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   for (const [theaterId, retry] of [...loadRetries]) if (retry.permanent) unsettle(theaterId);
   loadRetries.clear();
   degraded = null;
-  scheduleRetry();
+  clearRetryTimer();
   const offItem = ctx.consoleEvents.subscribe("objectives:objective", (payload) => {
     // 스트림 프레임은 살아 있는 세션에서만 온다.
     noteAlive();
@@ -383,7 +401,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
     if (focusOutTimer !== null) clearTimeout(focusOutTimer);
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
-    if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
+    clearRetryTimer();
   };
 }
 
@@ -415,8 +433,10 @@ export async function post<T>(api: ClientApiCapability, path: string, body: unkn
     // body 의 구조화 코드만 살려 띠·토스트가 사람의 말을 고르게 한다. 코드가 아니면 원본을 그대로 던진다.
     // 상태는 함께 싣는다 — 부르는 쪽이 일시 거절(401·5xx)과 확정 거절을 가른다. 코드 비교(message)는 그대로다.
     const code = apiErrorCode(error);
-    if (code === null) throw error;
-    throw Object.assign(new Error(code), { status: (error as { status: number }).status });
+    const failure = code === null ? error : Object.assign(new Error(code), { status: (error as { status: number }).status });
+    // 확정 거절도 서버가 인가한 뒤의 답이다 — 세션은 살아 있다. 게이트가 확정 실패한 탐침 뒤에 서 있지 않게 한다.
+    if (!isTransient(failure)) noteAlive();
+    throw failure;
   }
   const payload = await response.json().catch(() => null) as (T & { error?: string }) | null;
   if (!response.ok) throw Object.assign(new Error(payload?.error ?? `http_${response.status}`), { status: response.status });
@@ -474,8 +494,7 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
     .catch(() => { fail(true); })
     .finally(() => {
       inflight.delete(theaterId);
-      // 아직 미룬 Theater 가 남았으면 그 기한에 다시 깨운다 — 게이트가 없을 때 noteAlive 는 타이머를 다시 걸지 않는다.
-      // inflight 를 지운 뒤라 이미 묻는 중인 엔트리로 0ms 타이머를 되풀이하지 않는다.
+      // 아직 미룬 Theater 가 남았으면 그 기한에 다시 깨운다 — 더 이른 예약(게이트가 내려간 스윕 등)은 그대로 둔다.
       if (installed) scheduleRetry();
     });
   inflight.set(theaterId, task);
