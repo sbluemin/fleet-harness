@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -28,6 +29,13 @@ export function toWorkspaceDirectoryName(canonicalCwd: string): string {
   if (!canonicalCwd) {
     throw new Error("Workspace cwd is required");
   }
+  // 해시 접미사와 잠금 디렉터리의 .lock까지 파일명 길이 한도 안에 남긴다.
+  const readableName = toLegacyWorkspaceDirectoryName(canonicalCwd).slice(0, 180);
+  const digest = createHash("sha256").update(canonicalCwd).digest("hex");
+  return `${readableName}--${digest}`;
+}
+
+function toLegacyWorkspaceDirectoryName(canonicalCwd: string): string {
   return canonicalCwd.replace(/[^a-zA-Z0-9]/g, "-");
 }
 
@@ -40,7 +48,15 @@ function getWorkspaceDirectoryRoot(dataDir: string): string {
 
 export function resolveWorkspaceDirectory(dataDir: string, cwd: string): WorkspaceDirectory {
   const canonicalCwd = canonicalizeWorkspaceCwd(cwd);
-  return buildWorkspaceDirectory(dataDir, toWorkspaceDirectoryName(canonicalCwd), canonicalCwd);
+  const workspace = buildWorkspaceDirectory(dataDir, toWorkspaceDirectoryName(canonicalCwd), canonicalCwd);
+  assertSafeWorkspaceRoot(dataDir, workspace.root, true);
+  if (safeLstat(workspace.path)) return workspace;
+
+  // 옛 위치는 정확히 같은 cwd가 소유할 때만 재사용한다. 이동하지 않아 저장된 경로도 유지된다.
+  const legacyName = toLegacyWorkspaceDirectoryName(canonicalCwd);
+  if (legacyName.length > 255) return workspace;
+  const legacy = readWorkspaceDirectoryIfPresent(buildWorkspaceDirectory(dataDir, legacyName, canonicalCwd));
+  return legacy?.cwd === canonicalCwd ? legacy : workspace;
 }
 
 export function ensureWorkspaceDirectory(dataDir: string, cwd: string): WorkspaceDirectory {
@@ -72,12 +88,8 @@ export function ensureWorkspaceDirectory(dataDir: string, cwd: string): Workspac
 export function findWorkspaceDirectory(dataDir: string, cwd: string): WorkspaceDirectory | null {
   const expected = resolveWorkspaceDirectory(dataDir, cwd);
   assertSafeWorkspaceRoot(dataDir, expected.root, true);
-  const workspaceStat = safeLstat(expected.path);
-  if (!workspaceStat) return null;
-  if (!workspaceStat.isDirectory() || workspaceStat.isSymbolicLink()) {
-    throw new Error(`Workspace directory not found or unsafe: ${expected.name}`);
-  }
-  const existing = readExistingWorkspaceDirectory(expected.root, expected.name, expected.path);
+  const existing = readWorkspaceDirectoryIfPresent(expected);
+  if (!existing) return null;
   if (existing.cwd !== expected.cwd) {
     throw new Error(
       `Workspace directory identity collision for ${expected.name}: expected ${expected.cwd}, found ${existing.cwd}`,
@@ -100,13 +112,22 @@ export function resolveWorkspaceDirectoryByName(dataDir: string, name: string): 
   return readExistingWorkspaceDirectory(root, name, workspacePath);
 }
 
+function readWorkspaceDirectoryIfPresent(workspace: WorkspaceDirectory): WorkspaceDirectory | null {
+  const stat = safeLstat(workspace.path);
+  if (!stat) return null;
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error(`Workspace directory not found or unsafe: ${workspace.name}`);
+  }
+  return readExistingWorkspaceDirectory(workspace.root, workspace.name, workspace.path);
+}
+
 function readExistingWorkspaceDirectory(root: string, name: string, workspacePath: string): WorkspaceDirectory {
   const identityPath = path.join(workspacePath, WORKSPACE_IDENTITY_FILE_NAME);
   const identity = readWorkspaceIdentity(identityPath);
   if (!identity) {
     throw new Error(`Workspace directory identity is missing: ${name}`);
   }
-  if (toWorkspaceDirectoryName(identity.cwd) !== name) {
+  if (toWorkspaceDirectoryName(identity.cwd) !== name && toLegacyWorkspaceDirectoryName(identity.cwd) !== name) {
     throw new Error(`Workspace directory identity does not match its name: ${name}`);
   }
 
