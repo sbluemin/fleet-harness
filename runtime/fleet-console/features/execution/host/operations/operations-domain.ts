@@ -7,6 +7,8 @@ import type {
   ChildSession,
 } from "@fleet-console/sdk/operations";
 
+import { isOperationGroupColor } from "@fleet-console/sdk/operations/identity-tones";
+
 export type { OperationGeometry, OperationTimestamps } from "@fleet-console/sdk/operations";
 
 export interface OperationGroup {
@@ -745,8 +747,12 @@ async function handleGroupCollection(req: http.IncomingMessage, res: http.Server
     return;
   }
   const body = await deps.readJsonBody<CreateGroupBody>(req);
-  if (!body || typeof body.theaterId !== "string" || typeof body.name !== "string" || typeof body.color !== "string") {
+  if (!body || typeof body.theaterId !== "string" || typeof body.name !== "string") {
     deps.writeJson(res, 400, { error: "invalid_group" });
+    return;
+  }
+  if (!isOperationGroupColor(body.color)) {
+    deps.writeJson(res, 400, { error: "invalid_group_color" });
     return;
   }
   try {
@@ -783,6 +789,10 @@ async function handleGroupItem(req: http.IncomingMessage, res: http.ServerRespon
   const body = await deps.readJsonBody<PatchGroupBody>(req);
   if (!body) {
     deps.writeJson(res, 400, { error: "invalid_group_patch" });
+    return;
+  }
+  if (body.color !== undefined && !isOperationGroupColor(body.color)) {
+    deps.writeJson(res, 400, { error: "invalid_group_color" });
     return;
   }
   const group: OperationGroup | null = deps.store.updateGroup(id, {
