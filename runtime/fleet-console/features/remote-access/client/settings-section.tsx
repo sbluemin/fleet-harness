@@ -1,5 +1,6 @@
 import "@fleet-console/font-picker/styles.css";
 import type { Translate } from "@fleet-console/sdk/i18n";
+import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { ExperimentalBadge, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
@@ -75,7 +76,9 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
 
   return (
     <>
-      <section className="global-settings-card remote-section" aria-label={t("settings.remote.title")}>
+      {/* 안내 카드는 이 섹션 옆에 서고, 세로 위치만 지금 짚는 카드에 맞춘다. 섹션 안에 서면 화면보다 키 큰 카드의
+          머리, 곧 안내가 가리키는 컨트롤 위에 떠서 그 클릭을 받아 버린다. */}
+      <section className="global-settings-card remote-section" aria-label={t("settings.remote.title")} {...onboardingBoundary("anchor")}>
         <header className="remote-section-head">
           {/* 성숙도 표시는 아래 .remote-danger(보안 경고)와 다른 것을 말한다 — 하나는 "아직 바뀔 수
               있다", 하나는 "켜면 이 기계가 열린다"이므로 한 줄로 합치지 않는다. */}

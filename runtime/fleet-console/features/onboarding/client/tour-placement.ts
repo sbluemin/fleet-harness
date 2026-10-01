@@ -8,11 +8,15 @@ type Rect = Pick<DOMRect, "left" | "right" | "top" | "bottom" | "width">;
 type BoundaryRect = Pick<DOMRect, "left" | "right" | "top" | "bottom" | "width" | "height">;
 
 /**
- * 투어 카드 자리. 경계가 있으면 경계 옆(오른쪽 → 왼쪽 → 아래 → 위), 없으면 앵커 아래(모자라면 위)에 선다.
+ * 투어 카드 자리. 경계가 있으면 경계 옆(오른쪽 → 왼쪽 → 아래 → 위), 없으면 앵커 아래 → 위 → 오른쪽 → 왼쪽에 선다.
  *
  * alignToAnchor는 경계 옆에 서되 세로를 앵커 높이에 맞춘다. 키 큰 패널 안에서 구획을 차례로 짚을 때 경계 가운데에
  * 서면 카드와 가리키는 구획이 멀어진다. 좌우 어디에도 자리가 없으면 경계 위아래가 아니라 앵커 기준 배치로
  * 돌아간다 — 화면을 거의 채운 경계의 위아래에는 카드가 들어갈 틈이 없다.
+ *
+ * 카드는 그 아래의 클릭을 받아 버린다. 그래서 위아래에 자리가 없는 키 큰 앵커에서 카드를 화면 위쪽에 눌러 붙이지
+ * 않는다 — 그 자리는 앵커의 머리, 곧 안내가 가리키는 컨트롤이라 첫 클릭이 카드의 버튼에 떨어진다. 어디에도 자리가
+ * 없을 때만 화면 아래에 서서 앵커의 머리를 비워 둔다.
  */
 export function resolveTourCardPosition(options: {
   readonly anchor: Rect;
@@ -45,13 +49,13 @@ export function resolveTourCardPosition(options: {
     }
     return { left: centeredLeft, top: Math.max(margin, boundary.top - cardHeight - gap), centered: false };
   }
+  const centeredLeft = clampLeft(anchor.left + anchor.width / 2 - cardWidth / 2);
   const below = anchor.bottom + gap;
-  const top = below + cardHeight <= viewportHeight - margin
-    ? below
-    : Math.max(margin, anchor.top - cardHeight - gap);
-  return {
-    left: clampLeft(anchor.left + anchor.width / 2 - cardWidth / 2),
-    top,
-    centered: false,
-  };
+  if (below + cardHeight <= viewportHeight - margin) return { left: centeredLeft, top: below, centered: false };
+  const above = anchor.top - gap - cardHeight;
+  if (above >= margin) return { left: centeredLeft, top: above, centered: false };
+  const besideTop = clampTop(anchor.top - 8);
+  if (anchor.right + gap + cardWidth <= viewportWidth - margin) return { left: anchor.right + gap, top: besideTop, centered: false };
+  if (anchor.left - gap - cardWidth >= margin) return { left: anchor.left - gap - cardWidth, top: besideTop, centered: false };
+  return { left: centeredLeft, top: clampTop(viewportHeight), centered: false };
 }
