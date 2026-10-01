@@ -60,14 +60,24 @@ describe("WorkspaceDirectory", () => {
     expect(existsSync(path.join(dataDir, "workspaces"))).toBe(false);
   });
 
-  it("keeps ASCII paths with lossy legacy names in independent workspaces", () => {
-    const root = makeTempRoot();
-    assertIndependentWorkspaces(root, path.join(root, "a", "b-c"), path.join(root, "a", "b", "c"));
-  });
-
   it("keeps paths differing only in non-ASCII names in independent workspaces", () => {
     const root = makeTempRoot();
-    assertIndependentWorkspaces(root, path.join(root, "활성 무대"), path.join(root, "대기 무대"));
+    const first = path.join(root, "활성 무대");
+    const second = path.join(root, "대기 무대");
+    const dataDir = path.join(root, "fleet-data");
+    mkdirSync(first, { recursive: true });
+    mkdirSync(second, { recursive: true });
+    const firstWorkspace = ensureWorkspaceDirectory(dataDir, first);
+    const secondWorkspace = ensureWorkspaceDirectory(dataDir, second);
+    expect(firstWorkspace.path).not.toBe(secondWorkspace.path);
+    writeFileSync(path.join(firstWorkspace.path, "knowledge.json"), "first");
+    writeFileSync(path.join(secondWorkspace.path, "knowledge.json"), "second");
+    for (const [cwd, workspace, contents] of [[first, firstWorkspace, "first"], [second, secondWorkspace, "second"]] as const) {
+      expect(ensureWorkspaceDirectory(dataDir, cwd)).toEqual(workspace);
+      expect(findWorkspaceDirectory(dataDir, cwd)).toEqual(workspace);
+      expect(resolveWorkspaceDirectoryByName(dataDir, workspace.name)).toEqual(workspace);
+      expect(readFileSync(path.join(workspace.path, "knowledge.json"), "utf8")).toBe(contents);
+    }
   });
 
   it("reuses verified legacy data and gives a colliding cwd its own new workspace", () => {
@@ -133,23 +143,6 @@ describe("WorkspaceDirectory", () => {
     expect(() => ensureWorkspaceDirectory(dataDir, cwd)).toThrow(/root not found or unsafe/);
   });
 });
-
-function assertIndependentWorkspaces(root: string, first: string, second: string): void {
-  const dataDir = path.join(root, "fleet-data");
-  mkdirSync(first, { recursive: true });
-  mkdirSync(second, { recursive: true });
-  const firstWorkspace = ensureWorkspaceDirectory(dataDir, first);
-  const secondWorkspace = ensureWorkspaceDirectory(dataDir, second);
-  expect(firstWorkspace.path).not.toBe(secondWorkspace.path);
-  writeFileSync(path.join(firstWorkspace.path, "knowledge.json"), "first");
-  writeFileSync(path.join(secondWorkspace.path, "knowledge.json"), "second");
-  for (const [cwd, workspace, contents] of [[first, firstWorkspace, "first"], [second, secondWorkspace, "second"]] as const) {
-    expect(ensureWorkspaceDirectory(dataDir, cwd)).toEqual(workspace);
-    expect(findWorkspaceDirectory(dataDir, cwd)).toEqual(workspace);
-    expect(resolveWorkspaceDirectoryByName(dataDir, workspace.name)).toEqual(workspace);
-    expect(readFileSync(path.join(workspace.path, "knowledge.json"), "utf8")).toBe(contents);
-  }
-}
 
 function makeTempRoot(): string {
   const root = mkdtempSync(path.join(os.tmpdir(), "fleet-workspace-dir-"));
