@@ -118,10 +118,18 @@ export function planSideBarRows(
   return { sections: result, decisions, today, folds };
 }
 
+// 포매터 생성은 비싸다 — 줄이 다시 그려질 때마다 만들지 않고 언어별로 하나를 쓴다.
+const dueFormats = new Map<ConsoleLocale, Intl.DateTimeFormat>();
+
 function formatDue(date: string, locale: ConsoleLocale): string {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
-  return new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", weekday: "short" }).format(parsed);
+  let format = dueFormats.get(locale);
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", weekday: "short" });
+    dueFormats.set(locale, format);
+  }
+  return format.format(parsed);
 }
 
 interface SideBarClusterRowProps {

@@ -22,7 +22,7 @@ import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/compon
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
+import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
@@ -373,7 +373,7 @@ export function OperationsSideBar({
   const statusAxis = useSideBarStatusAxis();
   const freshFolds = useSideBarFreshFolds();
   const previousCollapsedRef = useRef(collapsed);
-  const canvas = useCanvasState();
+  const operationAccent = useOperationAccent();
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
   const didMountStatusLandingRef = useRef(false);
   const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
@@ -487,7 +487,7 @@ export function OperationsSideBar({
     recovery?: "minimized" | "ended",
   ) => {
     const globalIndex = entryIndexById.get(entry.operation.id) ?? index;
-    const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
+    const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
     const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
     const groupMark = entry.operation.groupId ? groupMarkByGroupId.get(entry.operation.groupId) ?? null : null;
     const ended = recovery === "ended";
@@ -835,7 +835,7 @@ export function OperationsSideBar({
   const renderRow = (item: SideBarRowItem, promoted: boolean) => {
     const sourceId = item.anchor?.operation.id ?? `row:${item.layout.cluster.id}`;
     const rowDragging = drag?.kind === "chip" && drag.sourceId === sourceId && drag.dragging;
-    const accentKey = item.anchor ? canvas.operationAccent[item.anchor.operation.id] ?? operationAccentFromNode(item.anchor.operation) : null;
+    const accentKey = item.anchor ? operationAccent[item.anchor.operation.id] ?? operationAccentFromNode(item.anchor.operation) : null;
     return (
       <SideBarClusterRow
         key={item.layout.cluster.id}
@@ -1223,7 +1223,7 @@ export function OperationsSideBar({
                     const entry = sectionItem.entry;
                     const globalIndex = allEntries.indexOf(entry);
                     const sectionLocalIndex = section.entries.indexOf(entry);
-                    const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
+                    const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
                     const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
                     return (
                       <OperationsSideBarChip
@@ -1326,7 +1326,7 @@ export function OperationsSideBar({
           kind="chip"
           operation={contextMenuOperation}
           groups={groups.filter((group) => group.theaterId === contextMenuOperation.theaterId)}
-          accentKey={canvas.operationAccent[contextMenuOperation.id] ?? operationAccentFromNode(contextMenuOperation)}
+          accentKey={operationAccent[contextMenuOperation.id] ?? operationAccentFromNode(contextMenuOperation)}
           anchor={activeContextMenu.anchor}
           actions={{
             onSetAccent: (key) => onSetAccent(contextMenuOperation.id, key),
