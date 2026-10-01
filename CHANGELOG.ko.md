@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.206.2] - 2026-10-01
+
+### fleet-console
+
+#### Fixed
+- 사이드바에 목표가 떠 있어도 패널을 끌거나 맵을 이동할 때 버벅이지 않습니다.
+
 ## [1.206.1] - 2026-09-30
 
 ### fleet-console
