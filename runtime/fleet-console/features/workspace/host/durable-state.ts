@@ -7,6 +7,8 @@ import {
   type DurableJsonStore,
 } from "@fleet-console/infra";
 
+import { DEFAULT_OPERATION_GROUP_COLOR, isOperationGroupColor } from "@fleet-console/sdk/operations/identity-tones";
+
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../../../core/host/bootstrap/paths.js";
 import { MAX_GROUP_NAME_LENGTH, type OperationNode } from "../../execution/host/operations/operations-domain.js";
 import type { TheaterRegistration } from "./theaters/theater-domain.js";
@@ -58,14 +60,6 @@ const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";
 const V3_BACKUP_SUFFIX = ".v3-backup";
-// 그룹 색상 키 화이트리스트 — 8톤 정체성 팔레트(operation-accent.ts)와 동일 키를 durable에 허용한다.
-// 구 16키는 기존 durable state 하위호환용으로만 남는다(클라이언트가 읽기 시점에 8톤으로 매핑).
-const VALID_GROUP_COLOR_KEYS = new Set([
-  "crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose",
-  "red", "orange", "yellow", "lime", "green",
-  "emerald", "cyan", "sky", "blue",
-  "violet", "purple", "magenta",
-]);
 
 export function createConsoleDurableStateStore(deps: CreateConsoleDurableStateStoreDeps = {}): DurableJsonStore<DurableConsoleState> {
   const paths = deps.paths ?? createConsoleDataPaths();
@@ -403,12 +397,12 @@ function sanitizeOperationGroup(value: unknown): DurableOperationGroup | null {
   const id = readNonEmptyString(value.id);
   const theaterId = readNonEmptyString(value.theaterId);
   const rawName = readNonEmptyString(value.name);
-  const color = readNonEmptyString(value.color);
+  const rawColor = readNonEmptyString(value.color);
+  const color = isOperationGroupColor(rawColor) ? rawColor : DEFAULT_OPERATION_GROUP_COLOR;
   const order = readNonNegativeInteger(value.order);
   const createdAt = readFiniteNumber(value.createdAt);
-  if (!id || !theaterId || !rawName || !color || order === null || createdAt === null) return null;
+  if (!id || !theaterId || !rawName || order === null || createdAt === null) return null;
   if (rawName.length > MAX_GROUP_NAME_LENGTH) return null;
-  if (!VALID_GROUP_COLOR_KEYS.has(color)) return null;
   return { id, theaterId, name: rawName, color, order, createdAt };
 }
 

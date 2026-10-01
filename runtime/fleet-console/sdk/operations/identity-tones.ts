@@ -1,8 +1,8 @@
 /**
  * 정체성 톤 — Operation 강조색과 사이드바 그룹 색이 함께 쓰는 여덟 키. 각 키는 테마의 `--id-<key>` 토큰이다.
  *
- * 그룹 색은 이 키 중 하나여야 영속 상태에 남는다(목록 밖 색을 가진 그룹은 불러올 때 버려진다). 그래서 그룹이나 강조색을
- * 쓰는 쪽(호스트 메뉴·Console Use·플러그인 라우트)은 사본을 두지 않고 이 목록으로 검사한다.
+ * 그룹 색은 이 키와 구키를 허용한다. 쓰기에서는 모르는 색을 거절하고, 영속 상태를 읽을 때는 기본 색으로 복구한다.
+ * 그룹이나 강조색을 쓰는 쪽(호스트 메뉴·Console Use·플러그인 라우트)은 사본을 두지 않고 이 목록으로 검사한다.
  */
 export const IDENTITY_TONES = ["crimson", "amber", "moss", "teal", "cerulean", "indigo", "plum", "rose"] as const;
 
@@ -28,6 +28,13 @@ const LEGACY_TONES: Readonly<Record<string, IdentityTone>> = {
   purple: "plum",
   magenta: "rose",
 };
+
+export const DEFAULT_OPERATION_GROUP_COLOR = "blue";
+
+/** 그룹 색 계약 — 현재 여덟 톤과 기존에 저장된 구키를 함께 허용한다. */
+export function isOperationGroupColor(value: unknown): value is string {
+  return typeof value === "string" && (isIdentityTone(value) || Object.hasOwn(LEGACY_TONES, value));
+}
 
 /** 저장된 키를 지금의 여덟 톤 중 하나로 — 구키는 가장 가까운 톤으로, 모르는 키와 빈 값은 null. */
 export function normalizeIdentityTone(value: string | null | undefined): IdentityTone | null {

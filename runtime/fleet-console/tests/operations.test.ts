@@ -79,6 +79,44 @@ describe("operations platform", () => {
     expect(store.get("a")?.order).toBeUndefined();
   });
 
+  it("그룹 API는 hex 색의 생성·수정을 영속화 전에 거절한다", async () => {
+    const store = createOperationStore({ now: () => 10 });
+    const persist = vi.fn();
+    let body: Record<string, unknown> = { theaterId: "one", name: "Alpha", color: "#4f8cff" };
+    const router = createOperationsRouter({
+      store, isAuthorized: () => true, readJsonBody: async <T,>() => body as T,
+      writeJson: (res, status, payload) => Object.assign(res, { status, payload }), persist,
+      deleteOperation: () => null,
+    });
+    const createRes: { status?: number; payload?: unknown } = {};
+    await router({ req: { method: "POST" } as never, res: createRes as never, pathname: "/api/v1/operations/groups" });
+    expect(createRes).toEqual({ status: 400, payload: { error: "invalid_group_color" } });
+    expect(store.listAllGroups()).toEqual([]);
+    expect(persist).not.toHaveBeenCalled();
+
+    body = { ...body, color: "blue" };
+    const acceptedRes: { status?: number; payload?: { group: { id: string; color: string } } } = {};
+    await router({ req: { method: "POST" } as never, res: acceptedRes as never, pathname: "/api/v1/operations/groups" });
+    expect(acceptedRes.status).toBe(201);
+    expect(acceptedRes.payload?.group.color).toBe("blue");
+    const groupId = acceptedRes.payload!.group.id;
+    persist.mockClear();
+
+    body = { color: "#4f8cff" };
+    const patchRes: { status?: number; payload?: unknown } = {};
+    await router({ req: { method: "PATCH" } as never, res: patchRes as never, pathname: `/api/v1/operations/groups/${groupId}` });
+    expect(patchRes).toEqual({ status: 400, payload: { error: "invalid_group_color" } });
+    expect(store.listAllGroups()[0]?.color).toBe("blue");
+    expect(persist).not.toHaveBeenCalled();
+
+    body = { color: "teal" };
+    const updatedRes: { status?: number } = {};
+    await router({ req: { method: "PATCH" } as never, res: updatedRes as never, pathname: `/api/v1/operations/groups/${groupId}` });
+    expect(updatedRes.status).toBe(200);
+    expect(store.listAllGroups()[0]?.color).toBe("teal");
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
   it("strips fixed and plugin-declared sensitive fields from browser DTOs fail-closed", () => {
     const store = createOperationStore({ now: () => 10 });
     const node = store.create({
