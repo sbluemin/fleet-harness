@@ -22,7 +22,7 @@ import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/compon
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent } from "../canvas/canvas-store.js";
+import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
@@ -374,6 +374,8 @@ export function OperationsSideBar({
   const freshFolds = useSideBarFreshFolds();
   const previousCollapsedRef = useRef(collapsed);
   const operationAccent = useOperationAccent();
+  // 비활성 Theater 묶음은 렌더 중 저장값(getTheaterCanvasSnapshot)을 읽는다 — 그 값이 바뀔 때 다시 그린다.
+  useStoredTheaterRevision();
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
   const didMountStatusLandingRef = useRef(false);
   const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
