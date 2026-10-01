@@ -156,6 +156,7 @@ const alignLayoutListeners = new Set<Listener>();
 const alignActivationListeners = new Set<Listener>();
 const focusLayersByTheater = new Map<string, FocusLayerState>();
 let activeTheaterId: string | null = null;
+let storedTheaterRevision = 0;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
 let focusLayer: FocusLayerState | null = null;
@@ -319,11 +320,22 @@ export function toggleTheaterGroupCollapsed(theaterId: string, groupId: string):
   writeStoredState(theaterId, { ...theaterState, collapsedGroups });
   // 현재 Theater 값은 바꾸지 않되 구독 컴포넌트가 비활성 Theater 스냅샷을 다시 읽게 한다.
   state = { ...state };
+  storedTheaterRevision += 1;
   emit();
 }
 
 export function useCollapsedGroups(): readonly string[] {
   return useSyncExternalStore(subscribe, getCollapsedGroupsSnapshot, getCollapsedGroupsSnapshot);
+}
+
+/** 색만 읽는 구독 — 패널 끌기·캔버스 이동의 매 프레임(지오메트리·뷰포트)에는 깨어나지 않는다. */
+export function useOperationAccent(): Readonly<Record<string, string>> {
+  return useSyncExternalStore(subscribe, getOperationAccentSnapshot, getOperationAccentSnapshot);
+}
+
+/** 비활성 Theater 저장값이 바뀐 횟수 — 활성 Theater 조각만 구독하는 화면이 저장된 다른 Theater 스냅샷을 다시 읽게 한다. */
+export function useStoredTheaterRevision(): number {
+  return useSyncExternalStore(subscribe, getStoredTheaterRevision, getStoredTheaterRevision);
 }
 
 // 즉시 이동(pan 드래그·검색 이동 등). 진행 중 줌 보간을 취소하고 current·target을 같은 값으로 맞춘다.
@@ -459,6 +471,7 @@ export function setTheaterOperationGeometry(
   });
   // 현재 Theater 값은 그대로 두되 구독 컴포넌트가 비활성 Theater 스냅샷을 다시 읽게 한다.
   state = { ...state };
+  storedTheaterRevision += 1;
   emit();
 }
 
@@ -496,6 +509,7 @@ export function setTheaterOperationMinimized(theaterId: string, sessionId: strin
     snapHold: minimized ? snapHoldWithout(theaterState.snapHold, [sessionId]) : theaterState.snapHold,
   });
   state = { ...state };
+  storedTheaterRevision += 1;
   emit();
 }
 
@@ -1217,8 +1231,10 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   // 사라진 세션은 최소화 목록에서도 함께 제거해 유령 칩이 태스크바에 남지 않게 한다.
   const minimized = state.minimized.filter((sessionId) => valid.has(sessionId));
   const minimizedChanged = minimized.length !== state.minimized.length;
-  const operationAccent = Object.fromEntries(Object.entries(state.operationAccent).filter(([sessionId]) => valid.has(sessionId)));
-  const accentChanged = Object.keys(operationAccent).length !== Object.keys(state.operationAccent).length;
+  const prunedAccent = Object.fromEntries(Object.entries(state.operationAccent).filter(([sessionId]) => valid.has(sessionId)));
+  const accentChanged = Object.keys(prunedAccent).length !== Object.keys(state.operationAccent).length;
+  // 색이 그대로면 참조도 그대로 둔다 — 색만 구독하는 사이드바가 지오메트리 정리에 깨어나지 않게.
+  const operationAccent = accentChanged ? prunedAccent : state.operationAccent;
   const companionOperationId = getCompanionOperationId();
   // companion은 목록 부재만으로 즉시 정리하지 않는다 — ops 푸시 레이스로 일시 부재가 흔하며,
   // 지속 부재의 정리는 캔버스 렌더 측 유예 효과가 소유한다. 최소화는 사용자 확정 액션이라 즉시 닫는다.
@@ -1500,6 +1516,14 @@ function getMinimizedSnapshot(): readonly string[] {
 
 function getCollapsedGroupsSnapshot(): readonly string[] {
   return state.collapsedGroups;
+}
+
+function getOperationAccentSnapshot(): Readonly<Record<string, string>> {
+  return state.operationAccent;
+}
+
+function getStoredTheaterRevision(): number {
+  return storedTheaterRevision;
 }
 
 function emitFocusLayer(): void {

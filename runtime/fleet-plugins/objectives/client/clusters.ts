@@ -181,6 +181,8 @@ const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clus
 
 let cached: readonly OperationCluster[] = [];
 let cachedSignature = "";
+/** 마지막 계산의 입력 — 호스트는 렌더마다(끌기·캔버스 이동의 매 프레임) 스냅숏을 읽으므로, 입력이 같으면 다시 셈하지 않는다. */
+let cachedInputs: readonly unknown[] = [];
 
 export const objectivesClusterSource: OperationClusterSource = {
   subscribe: (listener) => {
@@ -189,13 +191,20 @@ export const objectivesClusterSource: OperationClusterSource = {
     return () => { offObjective(); offView(); };
   },
   get: () => {
-    const activity = new Map(operationSummaries().map((summary) => [summary.id, summary.activity]));
+    const summaries = operationSummaries();
+    const theaterStates = readAllTheaters();
     // 줄의 선택 표시는 표면이 열려 보고 있는 목표에만 선다 — 표면은 활성 Theater 를 보므로 비활성 Theater 의 줄에는 서지 않는다.
     // Operation 이 활성인 동안은 그 줄(칩)이 하이라이트를 가지므로 표면 선택으로는 서지 않는다 — 사이드바 하이라이트는 언제나 한 줄이다.
     const surfaceOpen = isObjectiveSurfaceOpen() && !activeOperationId();
     const theaterId = activeTheaterId();
-    const next = clustersOf(readAllTheaters().flatMap((state) => state.objectives), activity, (objective) => surfaceOpen && objective.theaterId === theaterId && readObjectiveView(objective.theaterId).selected === objective.id);
+    const selected = surfaceOpen ? readObjectiveView(theaterId).selected : null;
+    // 기한 지남은 날짜로 판정하므로 날이 바뀌면 다시 셈한다.
+    const inputs = [summaries, surfaceOpen, theaterId, selected, todayIso(), ...theaterStates];
+    if (inputs.length === cachedInputs.length && inputs.every((input, index) => input === cachedInputs[index])) return cached;
+    const activity = new Map(summaries.map((summary) => [summary.id, summary.activity]));
+    const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id);
     const nextSignature = signature(next);
+    cachedInputs = inputs;
     if (nextSignature === cachedSignature) return cached;
     cached = next;
     cachedSignature = nextSignature;
