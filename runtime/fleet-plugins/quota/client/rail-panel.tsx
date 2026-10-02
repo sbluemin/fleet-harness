@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 
+import { LiveLine } from "@fleet-console/sdk/components/live-line";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
@@ -352,18 +353,99 @@ export function riskNote(window: QuotaWindow, now: number, t: T): string | null 
   return null;
 }
 
+/**
+ * 한 창의 트랙 — 채움·예측 빗금·경과 눈금 세 겹. 펼친 미터와 줄의 미니 막대가 같은 부품을
+ * 쓴다: 둘이 다른 그림을 그리면 한 공급자가 접힘과 펼침에서 서로 다른 판정을 말하게 된다.
+ * 심각도 채널은 감싸는 `.quota-meter--*`가 싣는다.
+ */
+function MeterTrack({
+  window,
+  now,
+  t,
+  label,
+  note,
+}: {
+  readonly window: QuotaWindow;
+  readonly now: number;
+  readonly t: T;
+  /** 있으면 보조기술이 읽는 막대다. 없으면 줄의 장식 — 요약은 줄 버튼의 이름이 말한다. */
+  readonly label?: string;
+  readonly note?: string | null;
+}) {
+  const projection = projectedSpan(window, now);
+  const elapsedMark = elapsedMarkPercent(window);
+  const usedText = t("quota.meter.used", { pct: window.usedPercent });
+  const semantics = label === undefined
+    ? { "aria-hidden": true as const }
+    : {
+        role: "progressbar",
+        "aria-label": label,
+        "aria-valuemin": 0,
+        "aria-valuemax": 100,
+        "aria-valuenow": window.usedPercent,
+        ...(note ? { "aria-valuetext": `${usedText} · ${note}` } : {}),
+      };
+  return (
+    <span className="quota-meter__bar" {...semantics}>
+      {projection ? (
+        <span
+          className="quota-meter__projection"
+          title={label === undefined ? undefined : t("quota.meter.projected")}
+          style={{ left: `${projection.left}%`, width: `${projection.width}%` }}
+        />
+      ) : null}
+      <span className="quota-meter__fill" style={{ width: `${clampPercent(window.usedPercent)}%` }} />
+      {elapsedMark !== null ? (
+        <span
+          className="quota-meter__elapsed"
+          title={label === undefined ? undefined : t("quota.meter.elapsed", { pct: elapsedMark })}
+          style={{ left: `${elapsedMark}%` }}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+/** 응답이 바꾼 숫자를 고르는 열쇠. 줄의 대표 퍼센트와 펼친 미터가 같은 열쇠를 써서 함께 숨 쉰다. */
+export function usageKey(id: ProviderId, window: QuotaWindow): string {
+  return `${id}:${window.id}:${window.label ?? ""}`;
+}
+
+/**
+ * 새 응답에서 사용률이 달라진 창. 처음 받는 공급자·창은 고르지 않는다 — 비교할 이전 값이
+ * 없으면 "바뀌었다"가 아니라 "처음 보인다"이고, 그것까지 빛나면 첫 화면 전체가 깜박인다.
+ */
+export function changedUsageKeys(previous: QuotaSummaryDto | null, next: QuotaSummaryDto): ReadonlySet<string> {
+  const changed = new Set<string>();
+  if (previous === null) return changed;
+  for (const [id, provider] of Object.entries(next.providers)) {
+    if (!isProviderId(id)) continue;
+    const before = new Map((previous.providers[id]?.windows ?? []).map((window) => [usageKey(id, window), window.usedPercent]));
+    for (const window of provider?.windows ?? []) {
+      const key = usageKey(id, window);
+      const was = before.get(key);
+      if (was !== undefined && was !== window.usedPercent) changed.add(key);
+    }
+  }
+  return changed;
+}
+
 function Meter({
+  id,
   window,
   cycleDays,
   now,
   locale,
   t,
+  changed,
 }: {
+  readonly id: ProviderId;
   readonly window: QuotaWindow;
   readonly cycleDays?: number;
   readonly now: number;
   readonly locale: ConsoleLocale;
   readonly t: T;
+  readonly changed: ReadonlySet<string>;
 }) {
   const severity = meterSeverity(window);
   const label = window.label ?? t(
@@ -376,53 +458,275 @@ function Meter({
     : window.id === "weekly"
       ? "7d"
       : window.id === "cycle" && cycleDays !== undefined ? `${cycleDays}d` : undefined;
-  const usedText = t("quota.meter.used", { pct: window.usedPercent });
   const note = riskNote(window, now, t);
-  const projection = projectedSpan(window, now);
-  const elapsedMark = elapsedMarkPercent(window);
+  const pulse = changed.has(usageKey(id, window)) ? " quota-changed" : "";
   return (
     <div className={`quota-meter quota-meter--${severity}`}>
       <div className="quota-meter__top">
-        <span className="quota-meter__label">{label}{windowChip ? <span className="quota-meter__window">{windowChip}</span> : null}</span>
-        {note !== null ? <span className="quota-meter__forecast">{note}</span> : null}
+        <span className="quota-meter__label">{label}</span>
+        {windowChip ? <span className="quota-meter__window">{windowChip}</span> : null}
+        <span className={`quota-meter__percent${pulse}`}>{window.usedPercent}%</span>
       </div>
-      <div
-        className="quota-meter__bar"
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={window.usedPercent}
-        {...(note !== null ? { "aria-valuetext": `${usedText} · ${note}` } : {})}
-      >
-        {projection ? (
-          <span
-            className="quota-meter__projection"
-            title={t("quota.meter.projected")}
-            style={{ left: `${projection.left}%`, width: `${projection.width}%` }}
-          />
-        ) : null}
-        <span className="quota-meter__fill" style={{ width: `${clampPercent(window.usedPercent)}%` }} />
-        {elapsedMark !== null ? (
-          <span
-            className="quota-meter__elapsed"
-            title={t("quota.meter.elapsed", { pct: elapsedMark })}
-            style={{ left: `${elapsedMark}%` }}
-          />
-        ) : null}
-      </div>
-      <div className="quota-meter__foot">
-        <span className="quota-meter__percent">{usedText}</span>
-        {window.resetsAt !== undefined ? (
-          <span className="quota-meter__reset">{resetCaption(window.resetsAt, now, locale, t)}</span>
-        ) : null}
-      </div>
+      <MeterTrack window={window} now={now} t={t} label={label} note={note} />
+      {note !== null || window.resetsAt !== undefined ? (
+        <div className="quota-meter__foot">
+          {note !== null ? <span className="quota-meter__forecast">{note}</span> : null}
+          {window.resetsAt !== undefined ? (
+            <span className="quota-meter__reset">{resetCaption(window.resetsAt, now, locale, t)}</span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function StatusStrip({ kind, children }: { readonly kind: "expired" | "stale" | "error"; readonly children: React.ReactNode }) {
-  return <div className={`quota-strip quota-strip--${kind}`}>{children}</div>;
+/**
+ * 펼친 상세의 상태 한 줄. 신호는 6px 점 하나가 지고 문장은 본문 잉크로 남는다 — 틴트 면과
+ * 좌측 띠를 함께 쓰던 스트립은 목록의 한 행 안에 상자를 하나 더 세웠다.
+ */
+function StatusLine({ tone, children }: { readonly tone: "quiet" | "warn" | "error"; readonly children: React.ReactNode }) {
+  return <p className={`quota-status quota-status--${tone}`}>{children}</p>;
+}
+
+function ProviderStatusLines({ id, provider, name, now, t }: {
+  readonly id: ProviderId;
+  readonly provider: ProviderDto;
+  readonly name: string;
+  readonly now: number;
+  readonly t: T;
+}) {
+  switch (provider.status) {
+    case "signed_out":
+      return <StatusLine tone="quiet">{t(SIGNED_OUT_KEY[id])}</StatusLine>;
+    case "no_subscription":
+      return <StatusLine tone="quiet">{t(NO_SUBSCRIPTION_KEY[id])}</StatusLine>;
+    case "expired":
+      return <StatusLine tone="error">{t(EXPIRED_KEY[id])}</StatusLine>;
+    case "stale": {
+      // 이전 값을 보여 주더라도 사용자가 고칠 수 있는 원인(키체인 권한 등)은 가리지 않는다.
+      const credentialKey = credentialUnavailableKey(provider.message);
+      return (
+        <>
+          <StatusLine tone="warn">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusLine>
+          {credentialKey ? <StatusLine tone="error">{t(credentialKey, { provider: name })}</StatusLine> : null}
+        </>
+      );
+    }
+    case "error": {
+      const match = provider.message?.match(/^Certificate verification failed \(([A-Za-z0-9_]+)\)$/);
+      if (match?.[1] !== undefined) {
+        return <StatusLine tone="error">{t("quota.error.tls", { provider: name, code: match[1] })}</StatusLine>;
+      }
+      // 로그인이 없는 것과 저장소를 읽지 못한 것은 다른 조치를 부른다 — 로그인하라고 하면 틀린 지시가 된다.
+      const credentialKey = credentialUnavailableKey(provider.message);
+      return <StatusLine tone="error">{t(credentialKey ?? "quota.error", { provider: name })}</StatusLine>;
+    }
+    default:
+      return isIdle(id, provider) ? <StatusLine tone="quiet">{t("quota.museCode.idle")}</StatusLine> : null;
+  }
+}
+
+/* 드래그와 키보드 이동이 같은 자리에서 시작한다. 실제 조작은 패널이 위임으로 받고,
+   버튼인 이유는 키보드 포커스가 앉을 실재하는 자리가 필요해서다. */
+function GripButton({ name, t }: { readonly name: string; readonly t: T }) {
+  return (
+    <button type="button" className="quota-grip" aria-label={t("quota.reorder.handle", { provider: name })}>
+      <svg width="8" height="13" viewBox="0 0 8 13" aria-hidden="true">
+        <g fill="currentColor">
+          <circle cx="1.5" cy="1.5" r="1.3" /><circle cx="6.5" cy="1.5" r="1.3" />
+          <circle cx="1.5" cy="6.5" r="1.3" /><circle cx="6.5" cy="6.5" r="1.3" />
+          <circle cx="1.5" cy="11.5" r="1.3" /><circle cx="6.5" cy="11.5" r="1.3" />
+        </g>
+      </svg>
+    </button>
+  );
+}
+
+/** 줄의 미니 막대가 대변할 창 — 가장 급한 셋을 원래 순서대로. 열한 창을 모두 세우면 막대가 선이 된다. */
+export function lineWindows(windows: readonly QuotaWindow[] | undefined, limit = 3): readonly QuotaWindow[] {
+  if (windows === undefined || windows.length <= limit) return windows ?? [];
+  const ranked = [...windows].sort((a, b) =>
+    (SEVERITY_RANK[meterSeverity(b)] - SEVERITY_RANK[meterSeverity(a)]) || (b.usedPercent - a.usedPercent));
+  const kept = new Set(ranked.slice(0, limit));
+  return windows.filter((window) => kept.has(window));
+}
+
+/**
+ * 줄의 요약 — 창별 미니 막대와 가장 급한 창의 퍼센트. 접기가 "치워두기"가 아니라
+ * "밀도 바꾸기"가 되는 지점이다: 쿼터는 이 패널 밖에 신호가 없어, 접힌 줄이 그 공급자의
+ * 유일한 통로다. 읽을 수치가 없으면 "여기에는 볼 것이 없다"는 한 마디를 남긴다.
+ */
+function LineSummary({
+  id,
+  provider,
+  summary,
+  now,
+  t,
+  changed,
+}: {
+  readonly id: ProviderId;
+  readonly provider: ProviderDto;
+  readonly summary: QuotaWindow | null;
+  readonly now: number;
+  readonly t: T;
+  readonly changed: ReadonlySet<string>;
+}) {
+  if (summary === null) {
+    const statusKey = isIdle(id, provider) ? "quota.fold.idle" : FOLDED_STATUS_KEY[provider.status];
+    return statusKey === undefined ? null : <span className="quota-fold__quiet">{t(statusKey)}</span>;
+  }
+  const severity = meterSeverity(summary);
+  const pulse = changed.has(usageKey(id, summary)) ? " quota-changed" : "";
+  return (
+    <>
+      <span className="quota-fold__twin" aria-hidden="true">
+        {lineWindows(provider.windows).map((window, index) => (
+          <span key={`${window.id}-${window.label ?? index}`} className={`quota-meter quota-meter--${meterSeverity(window)}`}>
+            <MeterTrack window={window} now={now} t={t} />
+          </span>
+        ))}
+      </span>
+      <span className={`quota-fold__percent quota-fold__percent--${severity}${pulse}`}>{summary.usedPercent}%</span>
+    </>
+  );
+}
+
+/** 크레딧 칩의 표식. 미터의 리셋 카운트다운과 달리 "내가 당길 수 있는 리셋"이라 회전 화살표를 쓴다. */
+function ResetGlyph() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10.5 6a4.5 4.5 0 1 1-4.5-4.5c1.26 0 2.47.53 3.35 1.41L10.5 4" />
+      <path d="M10.5 1.5V4H8" />
+    </svg>
+  );
+}
+
+function ChevronGlyph() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1.5 3.5 L5 7 L8.5 3.5" />
+    </svg>
+  );
+}
+
+/**
+ * 공급자 한 줄. 줄 전체가 펼침 버튼이고 그립은 그 형제다 — 버튼은 버튼을 품지 못하므로,
+ * 재배열·연결 해제 같은 다른 조작은 이 버튼 바깥(그립은 앞, 나머지는 상세 안)에 산다.
+ * 버튼을 제목이 감싸는 것은 아코디언 문법이다: 제목 탐색으로 공급자를 건너다닐 수 있다.
+ */
+function ProviderCard({
+  id,
+  provider,
+  now,
+  locale,
+  t,
+  connect,
+  dragging,
+  folded,
+  toggleFold,
+  changed,
+}: {
+  readonly id: ProviderId;
+  readonly provider: ProviderDto;
+  readonly now: number;
+  readonly locale: ConsoleLocale;
+  readonly t: T;
+  readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
+  readonly dragging: boolean;
+  readonly folded: boolean;
+  readonly toggleFold: (provider: ProviderId) => void;
+  readonly changed: ReadonlySet<string>;
+}) {
+  const name = PROVIDER_NAME[id];
+  const regionId = `quota-card-${id}`;
+  const readable = provider.status === "ok" || provider.status === "stale";
+  const summary = readable ? foldedWindow(provider.windows) : null;
+  // 위험한 공급자는 이름 잉크가 그 판정을 입는다. 일곱 줄을 훑을 때 한 줄만 읽게 만드는 것은
+  // 퍼센트가 아니라 이 이름이다. 접힘과 무관하게 같은 줄이므로 판정도 같다.
+  const alarm = summary !== null && meterSeverity(summary) === "critical";
+  const staleTag = provider.status === "stale" ? t("quota.row.staleTag", { t: elapsed(provider.fetchedAt, now) }) : null;
+  const summaryText = summary !== null
+    ? summary.resetsAt === undefined
+      ? t("quota.meter.used", { pct: summary.usedPercent })
+      : t("quota.fold.summary", { pct: summary.usedPercent, t: formatCountdown(summary.resetsAt, now) })
+    : (() => {
+        const statusKey = isIdle(id, provider) ? "quota.fold.idle" : FOLDED_STATUS_KEY[provider.status];
+        return statusKey === undefined ? null : t(statusKey);
+      })();
+  const modifiers = `${dragging ? " quota-card--dragging" : ""}${folded ? " quota-card--folded" : ""}${alarm ? " quota-card--alarm" : ""}`;
+  const credits = readable ? visibleCredits(provider.credits) : null;
+  return (
+    <section className={`quota-provider${modifiers}`} data-provider={id}>
+      <header className="quota-provider__header">
+        <GripButton name={name} t={t} />
+        <h3 className="quota-provider__title">
+          <button
+            type="button"
+            className="quota-fold"
+            aria-expanded={!folded}
+            aria-controls={regionId}
+            aria-label={[name, staleTag, summaryText].filter((part) => part !== null).join(", ")}
+            onClick={() => toggleFold(id)}
+          >
+            <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
+            <span className="quota-fold__name">
+              <span className="quota-fold__label">{name}</span>
+              {staleTag !== null ? <span className="quota-fold__stale">{staleTag}</span> : null}
+            </span>
+            <LineSummary id={id} provider={provider} summary={summary} now={now} t={t} changed={changed} />
+            <span className="quota-fold__chev"><ChevronGlyph /></span>
+          </button>
+        </h3>
+      </header>
+      <div className="quota-card__collapse" id={regionId}>
+        <div className="quota-card__rest">
+          <div className="quota-detail">
+            {provider.plan ? <p className="quota-plan" title={provider.plan}>{displayPlanName(id, provider.plan)}</p> : null}
+            {isConnectable(id) && provider.status === "not_connected" ? (
+              <div className="quota-connect">
+                <p>{t("quota.connect.body")}</p>
+                {provider.method === "keychain" ? <p className="quota-connect__hint">{t("quota.connect.keychain")}</p> : null}
+                <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t("quota.connect.action")}</button>
+              </div>
+            ) : (
+              <>
+                <ProviderStatusLines id={id} provider={provider} name={name} now={now} t={t} />
+                {readable && provider.windows?.length ? (
+                  <div className="quota-meters">
+                    {provider.windows.map((window, index) => (
+                      <Meter key={`${window.id}-${window.label ?? index}`} id={id} window={window} cycleDays={provider.cycleDays} now={now} locale={locale} t={t} changed={changed} />
+                    ))}
+                  </div>
+                ) : null}
+                {credits ? (
+                  <p className="quota-credits">
+                    <ResetGlyph />
+                    <span>{t("quota.credits", { n: credits.available })}</span>
+                    {credits.nextExpiresAt !== undefined ? <span className="quota-credits__expiry">{t("quota.credits.expiry", { t: formatCountdown(credits.nextExpiresAt, now) })}</span> : null}
+                  </p>
+                ) : null}
+                {isConnectable(id) ? (
+                  <div className="quota-detail__actions">
+                    <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 /**
@@ -486,248 +790,52 @@ function BarLegend({ t }: { readonly t: T }) {
   );
 }
 
-/* 드래그와 키보드 이동이 같은 자리에서 시작한다. 실제 조작은 패널이 위임으로 받고,
-   버튼인 이유는 키보드 포커스가 앉을 실재하는 자리가 필요해서다. */
-function GripButton({ name, t }: { readonly name: string; readonly t: T }) {
-  return (
-    <button type="button" className="quota-grip" aria-label={t("quota.reorder.handle", { provider: name })}>
-      <svg width="8" height="13" viewBox="0 0 8 13" aria-hidden="true">
-        <g fill="currentColor">
-          <circle cx="1.5" cy="1.5" r="1.3" /><circle cx="6.5" cy="1.5" r="1.3" />
-          <circle cx="1.5" cy="6.5" r="1.3" /><circle cx="6.5" cy="6.5" r="1.3" />
-          <circle cx="1.5" cy="11.5" r="1.3" /><circle cx="6.5" cy="11.5" r="1.3" />
-        </g>
-      </svg>
-    </button>
-  );
-}
-
-/* 카드 하나를 헤더 한 줄로 접었다 펴는 조작. 그립·연결 해제와 나란한 형제 버튼인
-   이유는 버튼이 버튼을 품을 수 없어서다 — 헤더 전체를 하나의 disclosure 버튼으로
-   만들면 이미 그 안에 사는 두 컨트롤이 접근성 트리에서 사라진다. */
-function FoldButton({
-  folded,
-  name,
-  regionId,
-  onToggle,
-  t,
-}: {
-  readonly folded: boolean;
-  readonly name: string;
-  readonly regionId: string;
-  readonly onToggle: () => void;
-  readonly t: T;
-}) {
-  return (
-    <button
-      type="button"
-      className="quota-fold"
-      aria-expanded={!folded}
-      aria-controls={regionId}
-      aria-label={t(folded ? "quota.unfold.action" : "quota.fold.action", { provider: name })}
-      onClick={onToggle}
-    >
-      <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M1.5 3.5 L5 7 L8.5 3.5" />
-      </svg>
-    </button>
-  );
-}
-
 /**
- * 접힌 행에 남는 요약. 접기가 "치워두기"가 아니라 "밀도 바꾸기"가 되는 지점이다 —
- * 이 자리가 비면 90%를 넘긴 공급자를 접어둔 사용자는 그 사실을 어디서도 듣지 못한다.
- * 패널 밖에 쿼터 신호가 하나도 없어 이 행이 유일한 통로이기 때문이다.
- *
- * 막대는 미터와 같은 채널을 탄다(--meter-accent/--meter-weight). 심각도가 두 문법으로
- * 갈리면 같은 공급자가 접힘/펼침에서 서로 다른 판정을 말하게 된다.
+ * summary 계열 응답은 코어 DTO에 플러그인 소유의 패널 설정을 얹어 온다. `revalidating`은
+ * `stale=1` 요청이 만료된 캐시를 먼저 받았고 Gateway가 뒤에서 다시 읽는 중이라는 뜻이다.
  */
-function FoldSpine({
-  id,
-  provider,
-  now,
-  t,
-}: {
-  readonly id: ProviderId;
-  readonly provider: ProviderDto;
-  readonly now: number;
-  readonly t: T;
-}) {
-  const window = (provider.status === "ok" || provider.status === "stale")
-    ? foldedWindow(provider.windows)
-    : null;
-  if (window === null) {
-    const statusKey = isIdle(id, provider) ? "quota.fold.idle" : FOLDED_STATUS_KEY[provider.status];
-    return statusKey === undefined
-      ? null
-      : <span className="quota-fold-spine quota-fold-spine--quiet">{t(statusKey)}</span>;
-  }
-  const severity = meterSeverity(window);
-  const countdown = window.resetsAt === undefined ? null : formatCountdown(window.resetsAt, now);
-  const used = t("quota.meter.used", { pct: window.usedPercent });
-  return (
-    <span
-      className={`quota-fold-spine quota-fold-spine--${severity}`}
-      role="img"
-      aria-label={countdown === null ? used : t("quota.fold.summary", { pct: window.usedPercent, t: countdown })}
-    >
-      <span className="quota-fold-spine__percent">{window.usedPercent}%</span>
-      <span className="quota-fold-spine__bar">
-        <span className="quota-fold-spine__fill" style={{ width: `${clampPercent(window.usedPercent)}%` }} />
-      </span>
-      {countdown === null ? null : <span className="quota-fold-spine__reset">{countdown}</span>}
-    </span>
-  );
-}
-
-/** 크레딧 칩의 표식. 미터의 리셋 카운트다운과 달리 "내가 당길 수 있는 리셋"이라 회전 화살표를 쓴다. */
-function ResetGlyph() {
-  return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M10.5 6a4.5 4.5 0 1 1-4.5-4.5c1.26 0 2.47.53 3.35 1.41L10.5 4" />
-      <path d="M10.5 1.5V4H8" />
-    </svg>
-  );
-}
-
-function ProviderCard({
-  id,
-  provider,
-  now,
-  locale,
-  t,
-  connect,
-  dragging,
-  folded,
-  toggleFold,
-}: {
-  readonly id: ProviderId;
-  readonly provider: ProviderDto;
-  readonly now: number;
-  readonly locale: ConsoleLocale;
-  readonly t: T;
-  readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
-  readonly dragging: boolean;
-  readonly folded: boolean;
-  readonly toggleFold: (provider: ProviderId) => void;
-}) {
-  const name = PROVIDER_NAME[id];
-  const regionId = `quota-card-${id}`;
-  // 접힌 카드가 위험을 말하고 있으면 테두리도 그 판정을 입는다. 40px 행 일곱 줄을
-  // 훑을 때 한 줄만 읽게 만드는 것은 스파인의 숫자가 아니라 이 테두리다.
-  const summary = folded && (provider.status === "ok" || provider.status === "stale")
-    ? foldedWindow(provider.windows)
-    : null;
-  const alarm = summary !== null && meterSeverity(summary) === "critical";
-  const modifiers = `${dragging ? " quota-card--dragging" : ""}${folded ? " quota-card--folded" : ""}${alarm ? " quota-card--alarm" : ""}`;
-  const foldButton = (
-    <FoldButton folded={folded} name={name} regionId={regionId} onToggle={() => toggleFold(id)} t={t} />
-  );
-  if (isConnectable(id) && provider.status === "not_connected") {
-    const titleKey = "quota.connect.title";
-    const bodyKey = "quota.connect.body";
-    const actionKey = "quota.connect.action";
-    return (
-      <section className={`quota-connect-card${modifiers}`} data-provider={id}>
-        <header className="quota-provider__header">
-          <GripButton name={name} t={t} />
-          <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
-          {/* 접힌 행은 목록의 한 줄이지 권유가 아니다 — 버튼이 사라진 자리에 "연결하세요"만
-              남으면 누를 곳 없는 지시가 된다. 그 자리에는 공급자 이름을 둔다. */}
-          <h3>{folded ? name : t(titleKey)}</h3>
-          {folded ? <FoldSpine id={id} provider={provider} now={now} t={t} /> : null}
-          {foldButton}
-        </header>
-        <div className="quota-card__collapse" id={regionId}>
-          <div className="quota-card__rest">
-            <p>{t(bodyKey)}</p>
-            {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
-            <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t(actionKey)}</button>
-          </div>
-        </div>
-      </section>
-    );
-  }
-  return (
-    <section className={`quota-provider${modifiers}`} data-provider={id}>
-      <header className="quota-provider__header">
-        <GripButton name={name} t={t} />
-        <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
-        <h3>{name}</h3>
-        {folded ? <FoldSpine id={id} provider={provider} now={now} t={t} /> : null}
-        {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
-        {provider.plan ? <span className="quota-plan" title={provider.plan}>{displayPlanName(id, provider.plan)}</span> : null}
-        {foldButton}
-      </header>
-      <div className="quota-card__collapse" id={regionId}>
-      <div className="quota-card__rest">
-      {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
-      {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
-      {isIdle(id, provider) ? <div className="quota-signed-out">{t("quota.museCode.idle")}</div> : null}
-      {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
-      {provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
-      {provider.status === "stale" ? (() => {
-        // 이전 값을 보여 주더라도 사용자가 고칠 수 있는 원인(키체인 권한 등)은 가리지 않는다.
-        const credentialKey = credentialUnavailableKey(provider.message);
-        return credentialKey ? <StatusStrip kind="error">{t(credentialKey, { provider: name })}</StatusStrip> : null;
-      })() : null}
-      {provider.status === "error" ? (() => {
-        const match = provider.message?.match(/^Certificate verification failed \(([A-Za-z0-9_]+)\)$/);
-        if (match?.[1] !== undefined) {
-          return <StatusStrip kind="error">{t("quota.error.tls", { provider: name, code: match[1] })}</StatusStrip>;
-        }
-        // 로그인이 없는 것과 저장소를 읽지 못한 것은 다른 조치를 부른다 — 로그인하라고 하면 틀린 지시가 된다.
-        const credentialKey = credentialUnavailableKey(provider.message);
-        return credentialKey
-          ? <StatusStrip kind="error">{t(credentialKey, { provider: name })}</StatusStrip>
-          : <div className="quota-error">{t("quota.error", { provider: name })}</div>;
-      })() : null}
-      {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
-        <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} locale={locale} t={t} />
-      )) : null}
-      {(provider.status === "ok" || provider.status === "stale") ? (() => {
-        const credits = visibleCredits(provider.credits);
-        if (!credits) return null;
-        return (
-          <div className="quota-credits">
-            <span className="quota-credits__chip">
-              <ResetGlyph />
-              {t("quota.credits", { n: credits.available })}
-            </span>
-            {credits.nextExpiresAt !== undefined ? <small>{t("quota.credits.expiry", { t: formatCountdown(credits.nextExpiresAt, now) })}</small> : null}
-          </div>
-        );
-      })() : null}
-      </div>
-      </div>
-    </section>
-  );
-}
-
-/** summary 계열 응답은 코어 DTO에 플러그인 소유의 패널 설정을 얹어 온다. */
 type SummaryResponse = QuotaSummaryDto & {
   readonly providerOrder?: unknown;
   readonly foldedProviders?: unknown;
+  readonly revalidating?: boolean;
 };
+
+interface RememberedPanel {
+  readonly data: QuotaSummaryDto;
+  readonly order: readonly ProviderId[];
+  readonly folded: readonly ProviderId[];
+}
+
+/* 레일을 닫으면 패널은 언마운트된다(keepAlive 없음). 다시 열 때 이미 읽은 요약을 두고
+   "불러오는 중"부터 보이지 않도록, 마지막으로 그린 것을 이 번들 안에 남겨 첫 렌더에 쓴다.
+   마운트가 곧바로 새 요청을 보내 도착하면 갈아 끼우고, 오래된 정도는 푸터의 "갱신 N분 전"이
+   말한다. 순서·접힘도 함께 남겨야 도착 순간 카드가 기본 순서에서 제자리로 뛰지 않는다.
+   preferences(localStorage)가 아닌 이유: 새로고침을 넘어 며칠 전 수치를 되살릴 이유가 없고,
+   폴링마다 쓰기를 남길 설정 채널도 아니다. */
+let rememberedPanel: RememberedPanel | null = null;
+
+const NO_CHANGES: ReadonlySet<string> = new Set();
+
+/* "갱신 중"을 세우기 전의 유예. 캐시가 살아 있는 폴링은 수 ms에 끝나는데, 그때마다 링이
+   켜졌다 꺼지면 1분마다 푸터가 깜박인다 — 기다림이 실제로 보일 만큼일 때만 말한다. */
+const REFRESHING_GRACE_MS = 300;
 
 function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
   const t = useMemo(() => getT(ctx.language), [ctx.language]);
-  const [data, setData] = useState<QuotaSummaryDto | null>(null);
+  const [restored] = useState(() => rememberedPanel);
+  const [data, setData] = useState<QuotaSummaryDto | null>(restored?.data ?? null);
   const [requestError, setRequestError] = useState(false);
+  /** 최신 요청이 아직 답하지 않았다. 만료 캐시를 받은 뒤의 후속 요청도 여기에 든다. */
+  const [requestPending, setRequestPending] = useState(false);
+  const [refreshingShown, setRefreshingShown] = useState(false);
+  /** 마지막 응답이 바꾼 사용률. 그 숫자만 한 번 숨 쉬고 비워진다. */
+  const [changed, setChanged] = useState<ReadonlySet<string>>(NO_CHANGES);
+  /** 화면에 선 요약 — 바뀐 숫자를 고르는 비교 기준. 상태는 콜백 클로저에서 낡는다. */
+  const shownRef = useRef<QuotaSummaryDto | null>(restored?.data ?? null);
   const [now, setNow] = useState(Date.now());
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const [order, setOrder] = useState<readonly ProviderId[]>(PROVIDER_ORDER_DEFAULT);
-  const [folded, setFolded] = useState<readonly ProviderId[]>([]);
+  const [order, setOrder] = useState<readonly ProviderId[]>(restored?.order ?? PROVIDER_ORDER_DEFAULT);
+  const [folded, setFolded] = useState<readonly ProviderId[]>(restored?.folded ?? []);
   const [draggingId, setDraggingId] = useState<ProviderId | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const forceRef = useRef(false);
@@ -743,7 +851,7 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
   const foldSaveRef = useRef<Promise<void>>(Promise.resolve());
   /* 토글이 읽는 진실은 상태가 아니라 이 ref다. 같은 틱에 두 카드를 접으면 두 핸들러가
      모두 렌더 전의 옛 집합을 읽어, 나중 것이 앞의 접힘을 지운 채로 저장된다. */
-  const foldedRef = useRef<readonly ProviderId[]>([]);
+  const foldedRef = useRef<readonly ProviderId[]>(restored?.folded ?? []);
   /* 응답이 실어온 접힘을 채택해도 되는지는 "지금 저장이 날아가는 중인가"로 판정할 수 없다.
      서버는 요청을 받은 시점의 설정을 읽고, 그 답이 오는 사이에 사용자가 접은 카드의 저장은
      이미 끝나 있을 수 있다 — 그 순간 카운터는 0이라 옛 집합이 통과한다. 실측에서 화면은
@@ -759,6 +867,23 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
     setFolded(next);
   }, []);
 
+  // summary와 connect의 응답이 같은 문으로 들어온다.
+  const adoptSummary = useCallback((
+    result: SummaryResponse,
+    foldCapture: { readonly revision: number; readonly persisted: number },
+  ) => {
+    const changedKeys = changedUsageKeys(shownRef.current, result);
+    shownRef.current = result;
+    setData(result);
+    setOrder(sanitizeProviderOrder(result.providerOrder));
+    if (adoptsFoldedProviders(foldCapture, foldRevisionRef.current)) {
+      adoptFolded(sanitizeFoldedProviders(result.foldedProviders));
+    }
+    setRequestError(false);
+    setNow(Date.now());
+    if (changedKeys.size > 0) setChanged(changedKeys);
+  }, [adoptFolded]);
+
   const refresh = useCallback((forceRequest = false) => {
     forceRef.current = forceRequest;
     setRefreshNonce((value) => value + 1);
@@ -768,6 +893,7 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
     const generation = beginRequestGeneration(requestGenerationRef);
     const foldCapture = { persisted: foldPersistedRef.current, revision: foldRevisionRef.current };
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
+    setRequestPending(true);
     ctx.api.fetch("quota", "connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -779,19 +905,17 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
       })
       .then((result) => {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
-          setData(result);
-          setOrder(sanitizeProviderOrder(result.providerOrder));
-          if (adoptsFoldedProviders(foldCapture, foldRevisionRef.current)) {
-            adoptFolded(sanitizeFoldedProviders(result.foldedProviders));
-          }
-          setRequestError(false);
-          setNow(Date.now());
+          adoptSummary(result, foldCapture);
+          setRequestPending(false);
         }
       })
       .catch(() => {
-        if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(true);
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) {
+          setRequestError(true);
+          setRequestPending(false);
+        }
       });
-  }, [ctx.api]);
+  }, [ctx.api, adoptSummary]);
 
   const persistOrder = useCallback((next: readonly ProviderId[], movedId: ProviderId) => {
     setOrder(next);
@@ -963,35 +1087,63 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
     const force = forceRef.current;
     forceRef.current = false;
-    ctx.api.fetch("quota", force ? "summary?force=1" : "summary")
+    setRequestPending(true);
+    // 그릴 것이 하나도 없을 때만 만료된 캐시라도 먼저 받는다. 이미 그린 화면이 있으면
+    // 기다림이 보이지 않으므로 평소대로 새 값을 기다린다.
+    const path = force ? "summary?force=1" : data === null ? "summary?stale=1" : "summary";
+    ctx.api.fetch("quota", path)
       .then((response) => {
         if (!response.ok) throw new Error("summary_failed");
         return response.json() as Promise<SummaryResponse>;
       })
       .then((result) => {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
-          setData(result);
-          setOrder(sanitizeProviderOrder(result.providerOrder));
-          if (adoptsFoldedProviders(foldCapture, foldRevisionRef.current)) {
-            adoptFolded(sanitizeFoldedProviders(result.foldedProviders));
-          }
-          setRequestError(false);
-          setNow(Date.now());
+          adoptSummary(result, foldCapture);
+          // 뒤에서 도는 갱신에 일반 요청으로 합류한다 — Gateway가 single-flight로 묶어 upstream을
+          // 다시 부르지 않고, 그 갱신이 끝나는 순간 답이 온다. 그동안 갱신 중 상태를 끊지 않는다.
+          setRequestPending(result.revalidating === true);
+          if (result.revalidating === true) refresh(false);
         }
       })
       .catch(() => {
-        if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(true);
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) {
+          setRequestError(true);
+          setRequestPending(false);
+        }
       });
     return () => {
       if (isLatestRequestGeneration(requestGenerationRef, generation)) {
         beginRequestGeneration(requestGenerationRef);
       }
     };
-  }, [ctx.api, refreshNonce]);
+  }, [ctx.api, adoptSummary, refresh, refreshNonce]);
 
   useEffect(() => () => {
     beginRequestGeneration(requestGenerationRef);
   }, []);
+
+  // 응답 채택과 낙관 반영(순서 이동·접기)을 가리지 않고 화면에 선 그대로를 남긴다.
+  useEffect(() => {
+    if (data !== null) rememberedPanel = { data, order, folded };
+  }, [data, order, folded]);
+
+  useEffect(() => {
+    if (changed.size === 0) return;
+    const timer = setTimeout(() => setChanged(NO_CHANGES), 1_000);
+    return () => clearTimeout(timer);
+  }, [changed]);
+
+  /* 보이는 값이 있고 그보다 새 값을 기다리는 중이다. 아무것도 없을 때의 기다림은 로딩 상태가
+     말하므로 여기 들지 않는다. */
+  const refreshing = requestPending && data !== null;
+  useEffect(() => {
+    if (!refreshing) {
+      setRefreshingShown(false);
+      return;
+    }
+    const timer = setTimeout(() => setRefreshingShown(true), REFRESHING_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [refreshing]);
 
   useEffect(() => {
     const poll = setInterval(() => {
@@ -1041,6 +1193,7 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
             dragging={draggingId === id}
             folded={folded.includes(id)}
             toggleFold={toggleFold}
+            changed={changed}
           />
         )) : null}
         {draggingId !== null ? <span className="quota-drop-line" ref={dropLineRef} aria-hidden="true" /> : null}
@@ -1048,9 +1201,25 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
       <footer className="quota-footer">
         <div className="quota-footer__row">
           <span className="quota-live" aria-live="polite">{announcement}</span>
-          {fetchedAt > 0 ? <span>{updatedMinutes < 1 ? t("quota.updated.now") : t("quota.updated.ago", { m: updatedMinutes })}</span> : null}
+          {/* 기다리는 동안에도 지금 보이는 값의 나이는 말한다 — 링만 돌면 이 화면이 몇 분 전 것인지 모른다. */}
+          {refreshingShown ? (
+            <LiveLine
+              className="quota-footer__live"
+              label={t("quota.refreshing")}
+              {...(fetchedAt > 0 && updatedMinutes >= 1 ? { meta: t("quota.refreshing.age", { m: updatedMinutes }) } : {})}
+            />
+          ) : fetchedAt > 0 ? (
+            <span className="quota-footer__stamp">{updatedMinutes < 1 ? t("quota.updated.now") : t("quota.updated.ago", { m: updatedMinutes })}</span>
+          ) : null}
           <BarLegend t={t} />
-          <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
+          <button
+            type="button"
+            className="quota-refresh"
+            disabled={refreshingShown || (data === null && requestPending)}
+            onClick={() => refresh(true)}
+          >
+            {t("quota.refresh")}
+          </button>
         </div>
       </footer>
     </div>
@@ -1073,7 +1242,10 @@ export const quotaEntry: RailEntryDescriptor = {
   scope: "fleet",
 };
 
-/** 계기판 한 열. 카드 순서와 접힘은 서버에 남으므로 닫혀도 잃을 것이 없다. */
+/**
+ * 계기판 한 열. 카드 순서와 접힘은 서버에 남으므로 닫혀도 잃을 것이 없다.
+ * 닫았다 다시 열 때의 첫 화면은 `rememberedPanel`이 채운다.
+ */
 export const quotaPane: PaneDescriptor = {
   id: "quota",
   role: "primary",

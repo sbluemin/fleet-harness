@@ -119,8 +119,21 @@ export function startAiGateway(ctx: GatewayStartContext) {
     if (provider !== null && !GATEWAY_PROVIDERS.includes(provider as typeof GATEWAY_PROVIDERS[number])) {
       ctx.host.http.writeJson(res, 400, { error: "invalid_provider" }); return true;
     }
+    const force = url.searchParams.get("force") === "1";
+    // `stale=1`: 만료된 캐시라도 먼저 돌려주고 갱신은 뒤에서 돈다. 명시적 새로고침은 기다리는 것이
+    // 계약이라 force와 함께 오면 무시한다. `revalidating`은 이 응답에만 실린다 — 호출자가 HTTP 너머라
+    // 캐시에서 나온 값인지 알 길이 이것뿐이고, 공유 DTO는 넓히지 않는다. 진행 중인 갱신에는 다음
+    // 일반 요청이 single-flight로 합류한다.
+    if (!force && provider === null && url.searchParams.get("stale") === "1") {
+      const cached = quota.readCachedSummary();
+      if (cached?.expired === true) {
+        void quota.getSummary().catch(() => undefined);
+        ctx.host.http.writeJson(res, 200, { ...cached.summary, revalidating: true });
+        return true;
+      }
+    }
     const summary = await quota.getSummary({
-      force: url.searchParams.get("force") === "1",
+      force,
       ...(provider === null ? {} : { forceProvider: provider as typeof GATEWAY_PROVIDERS[number] }),
     });
     ctx.host.http.writeJson(res, 200, summary);

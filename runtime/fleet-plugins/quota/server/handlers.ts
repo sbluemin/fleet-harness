@@ -1,7 +1,7 @@
 import type http from "node:http";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import type { QuotaService } from "@fleet-console/ai-gateway";
+import type { QuotaService, QuotaSummaryDto } from "@fleet-console/ai-gateway";
 
 import {
   isProviderId,
@@ -12,6 +12,17 @@ import {
 } from "../provider-order.js";
 
 export type SettingsSerializer = <T>(operation: () => Promise<T>) => Promise<T>;
+
+/**
+ * Gateway quota 라우트를 읽는 창구. `stale`이면 만료된 캐시라도 먼저 받고, 그렇게 받은 응답은
+ * `revalidating`으로 갱신이 뒤에서 돌고 있음을 알린다 — 공유 DTO가 아니라 이 응답에만 있다.
+ */
+export interface QuotaSummarySource {
+  getSummary(options?: NonNullable<Parameters<QuotaService["getSummary"]>[0]> & { readonly stale?: boolean }):
+    Promise<GatewayQuotaSummary>;
+}
+
+export type GatewayQuotaSummary = QuotaSummaryDto & { readonly revalidating?: boolean };
 
 interface StoredSettings {
   readonly claudeConnected?: unknown;
@@ -76,7 +87,7 @@ export async function handleSummary(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
-  service: Pick<QuotaService, "getSummary">,
+  service: QuotaSummarySource,
 ): Promise<void> {
   if (req.method !== "GET") {
     ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" });
@@ -87,7 +98,9 @@ export async function handleSummary(
     return;
   }
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-  const summary = await service.getSummary({ force: url.searchParams.get("force") === "1" });
+  const force = url.searchParams.get("force") === "1";
+  const stale = !force && url.searchParams.get("stale") === "1";
+  const summary = await service.getSummary({ force, ...(stale ? { stale } : {}) });
   ctx.host.http.writeJson(res, 200, { ...summary, ...(await panelSettings(ctx)) });
 }
 
@@ -95,7 +108,7 @@ export async function handleConnect(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
-  service: Pick<QuotaService, "getSummary">,
+  service: QuotaSummarySource,
   serializeSettings: SettingsSerializer,
 ): Promise<void> {
   if (rejectUnlessJsonPost(req, res, ctx)) return;

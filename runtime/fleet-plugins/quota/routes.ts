@@ -1,7 +1,5 @@
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
-import type { QuotaService, QuotaSummaryDto } from "@fleet-console/ai-gateway";
-
-import { handleConnect, handleFold, handleOrder, handleSummary } from "./server/handlers.js";
+import { handleConnect, handleFold, handleOrder, handleSummary, type GatewayQuotaSummary, type QuotaSummarySource } from "./server/handlers.js";
 
 export default definePlugin({
   id: "quota",
@@ -13,20 +11,21 @@ export default definePlugin({
       return result;
     };
     // 공급자 수집과 캐시는 Gateway가 소유한다. 플러그인은 패널 설정과 명시적 새로고침만 전달한다.
-    const service: Pick<QuotaService, "getSummary"> = {
+    const service: QuotaSummarySource = {
       async getSummary(options = {}) {
         const origin = ctx.host.server.origin();
         if (!origin) throw new Error("Console is not listening");
         const url = new URL("/api/v1/ai-gateway/quota", origin);
         if (options.force) url.searchParams.set("force", "1");
         if (options.forceProvider) url.searchParams.set("forceProvider", options.forceProvider);
+        if (options.stale) url.searchParams.set("stale", "1");
         const response = await fetch(url, {
           headers: { Origin: origin, Accept: "application/json" },
           redirect: "error",
           signal: AbortSignal.timeout(25_000),
         });
         if (!response.ok) throw new Error("Gateway quota lookup failed");
-        return await response.json() as QuotaSummaryDto;
+        return await response.json() as GatewayQuotaSummary;
       },
     };
     registerRouter(ctx, "summary", async ({ req, res }) => {

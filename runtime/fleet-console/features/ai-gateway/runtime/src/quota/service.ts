@@ -31,6 +31,13 @@ export const QUOTA_FORCE_MIN_INTERVAL_MS = 60_000;
 export interface QuotaService {
   peekSummary(): QuotaSummaryDto | undefined;
   /**
+   * 패널이 기다리지 않고 먼저 그릴 마지막 값. 나이 상한이 없다 — 사람은 "N분 전" 표시로
+   * 나이를 판단한다. 다만 리셋이 지난 창과 만료된 크레딧은 이미 틀린 값이라 뺀다. 공급자 하나라도
+   * 캐시에 없거나 남을 창이 없으면 undefined이고, 그때는 `getSummary`를 기다려야 한다.
+   * `expired`는 TTL이 지난 공급자가 있어 다음 `getSummary`가 upstream을 부른다는 뜻이다.
+   */
+  readCachedSummary(): { readonly summary: QuotaSummaryDto; readonly expired: boolean } | undefined;
+  /**
    * 추론 응답이 함께 알려 준 사용량을 조회 결과처럼 기록한다. upstream이 방금 답한 값이라
    * backoff를 풀고, 요금제·로그인 방식은 마지막 조회 값을 잇는다.
    */
@@ -200,10 +207,16 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   /** stale 값을 지금 시각에 맞춰 다듬는다. 리셋이 지나 남은 창이 없으면 `failure`를 돌려준다. */
   function presentable(value: ProviderDto, at = now(), failure?: ProviderDto): ProviderDto {
     if (value.status !== "stale") return value;
-    const fallback = failure ?? { status: "error", ...(value.message ? { message: value.message } : {}) };
+    return withoutLapsed(value, at)
+      ?? failure
+      ?? { status: "error", ...(value.message ? { message: value.message } : {}) };
+  }
+
+  /** 리셋이 지난 창과 만료가 지난 크레딧을 뺀다. 창이 있었는데 하나도 남지 않으면 null. */
+  function withoutLapsed(value: ProviderDto, at: number): ProviderDto | null {
     const windows = value.windows ?? [];
     const current = windows.filter((window) => window.resetsAt === undefined || window.resetsAt > at);
-    if (windows.length > 0 && current.length === 0) return fallback;
+    if (windows.length > 0 && current.length === 0) return null;
     // 크레딧도 창과 같다. 가장 이른 만료가 지나면 남은 개수를 알 수 없으므로 뺀다.
     const creditsLapsed = value.credits?.nextExpiresAt !== undefined && value.credits.nextExpiresAt <= at;
     if (current.length === windows.length && !creditsLapsed) return value;
@@ -258,6 +271,32 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         opencode: read("opencode"), xai: read("xai"), antigravity: read("antigravity"),
         "muse-code": read("muse-code"),
       } };
+    },
+    readCachedSummary() {
+      const at = now();
+      let expired = false;
+      const read = (id: ProviderId): ProviderDto | null => {
+        const cached = cache.get(id);
+        if (!cached) return null;
+        // 다시 읽어도 upstream을 부르지 않는 항목(연결 전 Claude, backoff 중)은 갱신을 예고하지 않는다.
+        const waitsOnUpstream = cached.value.status !== "not_connected"
+          && (cached.backoffUntil === undefined || cached.backoffUntil <= at);
+        if (cached.expiresAt <= at && waitsOnUpstream) expired = true;
+        // stale은 조회 경로와 같은 판정(남은 창이 없으면 오류)을, 성공값은 창이 모두 지나면 기다림을 고른다.
+        const value = cached.value.status === "stale" ? presentable(cached.value, at) : withoutLapsed(cached.value, at);
+        return value === null ? null : withRisk(value);
+      };
+      const claude = read("claude");
+      const codex = read("codex");
+      const opencode = read("opencode");
+      const xai = read("xai");
+      const antigravity = read("antigravity");
+      const museCode = read("muse-code");
+      if (!claude || !codex || !opencode || !xai || !antigravity || !museCode) return undefined;
+      return {
+        summary: { providers: { claude, codex, opencode, xai, antigravity, "muse-code": museCode } },
+        expired,
+      };
     },
     async getSummary(options = {}) {
       const [claude, codex, opencode, xai, antigravity, museCode] = await Promise.all([
