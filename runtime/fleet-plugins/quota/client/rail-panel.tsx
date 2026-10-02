@@ -756,6 +756,7 @@ type SummaryResponse = QuotaSummaryDto & {
 
 interface RememberedPanel {
   readonly data: QuotaSummaryDto;
+  readonly checkedAt: number;
   readonly order: readonly ProviderId[];
   readonly folded: readonly ProviderId[];
 }
@@ -772,6 +773,7 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
   const t = useMemo(() => getT(ctx.language), [ctx.language]);
   const [restored] = useState(() => rememberedPanel);
   const [data, setData] = useState<QuotaSummaryDto | null>(restored?.data ?? null);
+  const [checkedAt, setCheckedAt] = useState(restored?.checkedAt ?? 0);
   const [requestError, setRequestError] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -1028,7 +1030,9 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
             adoptFolded(sanitizeFoldedProviders(result.foldedProviders));
           }
           setRequestError(false);
-          setNow(Date.now());
+          const adoptedAt = Date.now();
+          setNow(adoptedAt);
+          if (result.revalidating !== true) setCheckedAt(adoptedAt);
           // 뒤에서 도는 갱신에 일반 요청으로 합류한다 — Gateway가 single-flight로 묶어 upstream을
           // 다시 부르지 않고, 그 갱신이 끝나는 순간 답이 온다.
           if (result.revalidating === true) refresh(false);
@@ -1050,8 +1054,8 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
 
   // 응답 채택과 낙관 반영(순서 이동·접기)을 가리지 않고 화면에 선 그대로를 남긴다.
   useEffect(() => {
-    if (data !== null) rememberedPanel = { data, order, folded };
-  }, [data, order, folded]);
+    if (data !== null) rememberedPanel = { data, checkedAt, order, folded };
+  }, [data, checkedAt, order, folded]);
 
   useEffect(() => {
     const poll = setInterval(() => {
@@ -1073,6 +1077,7 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
     data?.providers.xai.fetchedAt ?? 0,
   );
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
+  const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));
   return (
     <div className="quota-root">
       <div
@@ -1108,7 +1113,11 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
       <footer className="quota-footer">
         <div className="quota-footer__row">
           <span className="quota-live" aria-live="polite">{announcement}</span>
-          {fetchedAt > 0 ? <span>{updatedMinutes < 1 ? t("quota.updated.now") : t("quota.updated.ago", { m: updatedMinutes })}</span> : null}
+          {fetchedAt > 0 ? (
+            <span>{updatedMinutes < 1 ? t("quota.updated.now") : t("quota.updated.ago", { m: updatedMinutes })}</span>
+          ) : checkedAt > 0 ? (
+            <span>{checkedMinutes < 1 ? t("quota.checked.now") : t("quota.checked.ago", { m: checkedMinutes })}</span>
+          ) : null}
           <BarLegend t={t} />
           <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
         </div>
