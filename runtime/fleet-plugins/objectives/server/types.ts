@@ -62,6 +62,43 @@ export type SlotBy = "human" | { readonly operationId: string };
 export type MemberLaunch = { readonly mode: "same" } | { readonly mode: "model"; readonly model: string; readonly effort?: string };
 export type MemberSelection = MemberLaunch | { readonly mode: "route" };
 
+/** 모델·강도 한 쌍 — 강도가 없으면 그 모델의 기본이다. */
+export interface MemberPreset {
+  readonly model?: string;
+  readonly effort?: string;
+}
+
+/**
+ * 라우팅 판단 한 자리. route 는 판단이 모델을 줬고, fallback 은 지휘관 프리셋으로 뜬다 — 모델은 띄우는 순간의 지휘관 값이라
+ * 담지 않는다. reason 은 사유 코드(화면이 번역한다), detail 은 Gateway·호스트가 준 원문 한 줄이다.
+ */
+export type RoutingDecision =
+  | { readonly via: "route"; readonly model: string; readonly effort?: string; readonly because: string }
+  | { readonly via: "fallback"; readonly reason: string; readonly detail?: string };
+
+/** 띄운 구성원의 기동 근거 — 라우팅으로 떴으면 그 근거, 폴백이면 사유. 다른 모델로 재개하면 지운다. */
+export type MemberRouted =
+  | { readonly via: "route"; readonly because: string }
+  | { readonly via: "fallback"; readonly reason: string; readonly detail?: string };
+
+/**
+ * 개시한 구성원의 「다음 재개부터」 예약 — 자식 Operation 의 세션 좌표는 이미 이 값으로 바꿔 두었고, from 은 지금 프로세스가
+ * 쓰는 실행값이다. was 는 예약 전의 선택(없으면 라우팅)이라 취소하면 그리로 돌아간다. failed 는 재개가 이 모델을 거절해
+ * 실행값으로 재개했다는 표시다(좌표도 from 으로 되돌렸다).
+ */
+export interface MemberNext {
+  readonly model: string;
+  readonly effort?: string;
+  readonly from: MemberPreset;
+  readonly was?: MemberLaunch;
+  readonly failed?: string;
+  /**
+   * 예약할 때 그 세션이 휴면이었는가, 떠 있었는가. 휴면 중 예약은 다음에 관측이 live 면 이미 이 좌표로 깨었다는 뜻이라 적용된 것으로 본다.
+   * 떠 있던 세션은 프로세스 세대 표식이 없어 지금 프로세스와 다음 프로세스를 가를 수 없다 — 플러그인이 재개를 확인할 때만 거둔다.
+   */
+  readonly reservedWhile?: "dormant" | "live";
+}
+
 export interface StoredMember {
   readonly id: string;
   readonly role: string;
@@ -70,15 +107,34 @@ export interface StoredMember {
   /** 서브에이전트 허용. 없거나 false면 강제 차단이다. true만 저장한다. */
   readonly subagents?: true;
   readonly by: "human" | "commander";
+  readonly routed?: MemberRouted;
+  readonly next?: MemberNext;
 }
 
-export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents"> {
+export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagents" | "routed" | "next"> {
   readonly launch: MemberSelection;
   /** 저장된 허용. 키 없음은 false. */
   readonly subagents: boolean;
   readonly sessionName: string | null;
+  /** 지금 프로세스의 실행값 — 예약이 있으면 예약 전 값이다. */
   readonly model?: string;
   readonly effort?: string;
+  readonly routed: MemberRouted | null;
+  /** 다음 재개부터 쓸 값 — 실패했으면 failed 에 사유 코드. */
+  readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null; readonly reservedWhile: "dormant" | "live" } | null;
+}
+
+/** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */
+export const ROUTING_PREVIEW_TTL_MS = 10 * 60_000;
+
+/** 개시 전 라우팅 확인 시트 — 판단 결과의 화면 모양. 폴백은 지금 지휘관 프리셋을 함께 싣는다. */
+export interface RoutingPreview {
+  /** 이 응답에서 새로 판단한 구성원이 있다. */
+  readonly judged: boolean;
+  /** 가장 오래된 결과의 판단 시각과, 결과가 다음 개시에 쓰이지 않게 되는 시각. */
+  readonly at: number;
+  readonly expiresAt: number;
+  readonly members: readonly ({ readonly id: string } & RoutingDecision & MemberPreset)[];
 }
 
 
@@ -370,6 +426,8 @@ export interface StoredObjective {
   readonly enlisted?: boolean;
   /** 개시했다 — 구상만 한 목표는 아직 시작 전이다. */
   readonly commenced?: true;
+  /** 사람이 「개시 전 라우팅 결과 확인」을 껐다 — 기본은 켬이라 끈 것만 저장한다. */
+  readonly routingConfirm?: false;
   /**
    * 에이전트가 Console Use 로 지웠다(합쳤으면 mergedInto 가 받은 목표). 기동 전 목표에만 붙고 레코드는 그대로 남아, 사람이 보드에서
    * 되돌리면 이 표시만 없어진다. 사람이 지우면 지금처럼 곧바로 사라진다.
@@ -504,6 +562,8 @@ export interface Objective {
   readonly recorded?: boolean;
   /** 개시했다 — 목록의 「진행 중」 구역. 구상만 했거나 보드에서 막 만든 목표는 「시작 전」이다. */
   readonly commenced: boolean;
+  /** 사람의 개시가 라우팅으로 새로 띄울 구성원의 판단 결과를 먼저 보여 준다. 지휘관 도구·후속 목표의 기동은 묻지 않는다. */
+  readonly routingConfirm: boolean;
   /** 에이전트가 지웠거나 다른 목표로 합쳤다 — 보드의 보통 구역에서 빠지고, 사람이 되돌릴 수 있다. */
   readonly removed: {
     readonly at: number;
@@ -745,6 +805,7 @@ export const patchObjectiveSchema = z.object({
   dueDate: dueDate.optional(),
   today: z.boolean().optional(),
   groupId: ids.nullable().optional(),
+  routingConfirm: z.boolean().optional(),
   /** 지휘관 모델·강도 — 지휘관 Operation 에 쓴다. */
   launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["terminal", "chat"]).optional() }).strict().optional(),
 }).strict();

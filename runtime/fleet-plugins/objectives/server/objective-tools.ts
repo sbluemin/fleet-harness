@@ -233,7 +233,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const withdrawn = store.decisionWithdraw(objective.id, requestId);
         return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequestRevision: withdrawn.objective.decisionRequestRevision });
       }),
-    commanderTool("muster", "Bring every roster member to a live session: absent members launch waiting for a first message, dormant ones resume their own session, live ones stay as they are. A waiting session costs nothing until it receives a message; a session left idle after working can go dormant, and SendMessage and ListAgents reach only live sessions. A member knows only what it has been sent and what it has read, and keeps that across missions.",
+    commanderTool("muster", "Bring every roster member to a live session: absent members launch waiting for a first message, dormant ones resume their own session, live ones stay as they are. A waiting session costs nothing until it receives a message; a session left idle after working can go dormant, and SendMessage and ListAgents reach only live sessions. A member knows only what it has been sent and what it has read, and keeps that across missions. A member whose launch or resume the host refuses comes back as state failed with its error code; the others proceed.",
       z.object({ objectiveId: ids }).strict(),
       async ({ objectiveId }, objective) => {
         if (objective.planning) return refuse("planning_only", { hint: PLANNING_ONLY });

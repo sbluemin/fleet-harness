@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as Rea
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { MAX_CONTEXT, type ObjectiveEditKind, type Objective } from "../server/types.js";
+import { MAX_CONTEXT, ROUTING_PREVIEW_TTL_MS, type ObjectiveEditKind, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
+import { LaunchControl, LaunchedText, launchedWords, routingReason, useLaunchRows } from "./launch-control.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import {
   clearSelection,
@@ -19,6 +20,7 @@ import {
 } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
+import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -84,7 +86,24 @@ export interface ActionBandProps {
   /** 실패하면 코드를 message 로 던진다. */
   readonly request: (path: string, body: Record<string, unknown>) => Promise<unknown>;
   readonly onFocusOperation: (operationId: string) => void;
+  /** 개시가 라우팅으로 새로 띄울 구성원 — 있으면 「개시 전 라우팅 결과 확인」 스위치가 선다. */
+  readonly routingTargets: readonly ObjectiveMember[];
+  /** 이미 띄운 구성원인가 — 확인 시트에서 그대로 재개할 줄로 선다. */
+  readonly memberLaunched: (member: ObjectiveMember) => boolean;
+  readonly memberMark: (memberId: string) => ReactNode;
 }
+
+/** 라우팅 확인 시트 — 판단 중(judging)·본 결과를 갱신 중(refreshing)·결과(ready). overridden 은 시트에서 직접 지정으로 바꾼 구성원이다. */
+interface RoutingSheet {
+  readonly phase: "judging" | "refreshing" | "ready";
+  readonly preview: RoutingPreview | null;
+  readonly overridden: ReadonlySet<string>;
+  readonly error: string | null;
+}
+/** 대상 전원에 걸친 사유 — 항목별 사유가 아니라 판단 자체가 돌지 못했다. 시트 위에 띠로 선다. */
+const SET_WIDE_REASONS = new Set(["routing_disabled", "routing_timeout", "routing_unavailable", "routing_failed"]);
+const NOTICE_MS = 6000;
+const Spinner = () => <span className="objectives-routing-spinner" aria-hidden="true" />;
 
 const WandGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 13l7-7M10 3l.6 1.6L12.2 5l-1.6.6L10 7.2 9.4 5.6 7.8 5l1.6-.6zM13 9l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4z" /></svg>;
 const StartGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 3.5l8 4.5-8 4.5z" /></svg>;
@@ -152,6 +171,7 @@ const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   steer_required: "objectives.band.reason.steerRequired",
   not_in_review: "objectives.band.reason.notInReview",
   not_awaiting_handoff: "objectives.band.reason.notAwaitingHandoff",
+  routing_preview_stale: "objectives.band.reason.routingStale",
 };
 
 /** 메시지의 거절은 지휘관이 아니라 받는 이의 사정이다. */
@@ -227,6 +247,15 @@ export function ActionBand(props: ActionBandProps) {
   const bandRef = useRef<HTMLButtonElement | null>(null);
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
   const compRef = useRef<HTMLDivElement | null>(null);
+  const rows = useLaunchRows();
+  const [sheet, setSheet] = useState<RoutingSheet | null>(null);
+  // 시트의 판단 응답이 닫은 뒤나 다른 목표에서 늦게 닿으면 버린다.
+  const sheetToken = useRef(0);
+  const sheetContext = useRef("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(noticeTimer.current), []);
+  useEffect(() => { sheetToken.current += 1; setSheet(null); clearTimeout(noticeTimer.current); setNotice(null); }, [objective.id]);
 
   // 컨텍스트 압축 — 두 번 눌러 지휘관과 구성원 모두에게 /compact 를 보낸다. 주행동 보내기와는 서로 잠그지 않는다(이동 칸과 같다).
   const [compactPhase, setCompactPhase] = useState<"idle" | "armed" | "busy" | "done">("idle");
@@ -248,18 +277,34 @@ export function ActionBand(props: ActionBandProps) {
   const proposals = objective.criteriaProposals.length;
   const annotated = objective.criteriaProposals.filter((proposal) => !!proposal.annotation).length;
   const replanDesc = gated ? (annotated ? t("objectives.band.replan.annotated", { count: annotated }) : t("objectives.band.replan.pending")) : t("objectives.band.replan.desc");
+
+  // 라우팅 확인 — 목표마다 스위치(기본 켬). 사람의 개시 경로(개시·재개·유휴 스티어링)만 지나고, 지휘관 도구·후속 목표는 묻지 않는다.
+  const routeCount = props.routingTargets.length;
+  const confirmOn = objective.routingConfirm;
+  const reviewable = (key: IntentKey | null) => (key === "start" || key === "resume" || key === "steerIdle") && routeCount > 0;
+  const willReview = (key: IntentKey | null) => reviewable(key) && confirmOn;
+  const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
+  const ttlMinutes = Math.round(ROUTING_PREVIEW_TTL_MS / 60_000);
+  const say = (text: string) => { clearTimeout(noticeTimer.current); setNotice(text); noticeTimer.current = setTimeout(() => setNotice(null), NOTICE_MS); };
+  /** 개시 응답의 failed — 띄우지 못한 구성원을 띠가 잠시 말한다(개시 자체는 이어졌다). */
+  const reportFailed = (result: unknown) => {
+    const failed = (result as { failed?: readonly { role: string }[] } | undefined)?.failed ?? [];
+    if (failed.length) say(t("objectives.start.failedMembers", { count: failed.length, roles: failed.map((entry) => entry.role).join(", ") }));
+  };
+  const commence = (context: string) => request("/commander/start", { objectiveId, ...(context ? { context } : {}) }).then(reportFailed);
+  const startDesc = members ? `${t("objectives.start.members", { count: members })}${routeCount ? t(confirmOn ? "objectives.start.routeConfirm" : "objectives.start.routeDirect", { count: routeCount }) : ""}` : objective.missions.length ? t("objectives.start.direct") : t("objectives.band.start.bare");
   const intents: Record<IntentKey, Intent> = {
     plan: { word: t("objectives.band.plan"), desc: t("objectives.band.plan.desc"), talk: true, glyph: <WandGlyph />, placeholder: t("objectives.commander.planContext"), run: (context) => request("/plan/request", { objectiveId, context }) },
     replan: { word: t("objectives.band.replan"), desc: replanDesc, talk: true, glyph: <WandGlyph />, placeholder: t("objectives.band.replan.ph"), run: (context) => request("/plan/request", { objectiveId, context }) },
-    start: { word: t("objectives.commander.start"), desc: members ? t("objectives.start.members", { count: members }) : objective.missions.length ? t("objectives.start.direct") : t("objectives.band.start.bare"), talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.start.ph"), run: (context) => request("/commander/start", { objectiveId, ...(context ? { context } : {}) }) },
-    resume: { word: t("objectives.commander.start"), desc: `${props.commanderState} · ${t("objectives.start.resume")}`, talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.resume.ph"), run: (context) => request("/commander/start", { objectiveId, ...(context ? { context } : {}) }) },
+    start: { word: t("objectives.commander.start"), desc: startDesc, talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.start.ph"), run: commence },
+    resume: { word: t("objectives.commander.start"), desc: `${props.commanderState} · ${t("objectives.start.resume")}`, talk: true, glyph: <StartGlyph />, placeholder: t("objectives.band.resume.ph"), run: commence },
     steer: {
       word: t("objectives.steer"),
       desc: objective.planning && !props.working ? t("objectives.band.steer.planning", { kinds: kindText }) : `${t("objectives.band.steer.desc", { kinds: kindText })}${objective.awaitingReview ? t("objectives.band.steer.review") : ""}`,
       talk: true, glyph: <SteerGlyph />, placeholder: t("objectives.band.steer.ph"),
       run: (context) => request("/commander/steer", { objectiveId, ...(context ? { context } : {}) }),
     },
-    steerIdle: { word: t("objectives.steer"), desc: t("objectives.band.steerIdle.desc", { kinds: kindText }), talk: true, glyph: <SteerGlyph />, placeholder: t("objectives.band.steer.ph"), run: (context) => request("/commander/start", { objectiveId, ...(context ? { context } : {}) }) },
+    steerIdle: { word: t("objectives.steer"), desc: t("objectives.band.steerIdle.desc", { kinds: kindText }), talk: true, glyph: <SteerGlyph />, placeholder: t("objectives.band.steer.ph"), run: commence },
     complete: { word: t("objectives.review.complete"), desc: t(objective.criteria.length > 0 ? "objectives.review.subCriteria" : "objectives.review.sub"), talk: false, tone: "aurora", run: () => request("/objective/complete", { objectiveId }) },
     handOff: { word: t("objectives.handoff.send"), desc: t("objectives.handoff.sendDesc"), talk: false, glyph: <HandOffGlyph />, run: () => request("/objective/hand-off", { objectiveId }) },
     decide: { word: t("objectives.awaiting.word"), desc: t("objectives.awaiting.commander"), talk: false, tone: "aurora", glyph: <DecideDot />, run: async () => props.onFocusOperation(objectiveId) },
@@ -325,6 +370,8 @@ export function ActionBand(props: ActionBandProps) {
     if (sending || unavailable(key)) return;
     // 메시지는 말이 곧 내용이다 — 빈 칸은 보내지 않고 칸으로 돌아간다. 허용 대기 중인 받는 이는 호스트가 거절하므로 잠근다.
     if (key === "message" && (!draft.trim() || !recipient || recipientBlocked)) { fieldRef.current?.focus(); return; }
+    // 확인을 켰으면 개시가 판단 → 확인 → 기동으로 나뉜다 — 여기서는 판단만 하고 시트를 연다.
+    if (willReview(key)) { sheetContext.current = draft.trim(); setError(null); loadPreview(false); return; }
     setPending(key);
     setError(null);
     try {
@@ -370,6 +417,57 @@ export function ActionBand(props: ActionBandProps) {
       const reason = REASONS[code] ? t(REASONS[code]!) : t("objectives.band.reason.other", { code });
       setError(t("objectives.band.failedAction", { reason }));
     });
+  };
+  /** 판단(또는 캐시) — rejudge 면 다시 판단한다. 결과를 이미 보고 있으면 그대로 두고 갱신만 한다(refreshing). */
+  const loadPreview = (rejudge: boolean) => {
+    const token = ++sheetToken.current;
+    setSheet((current) => ({ phase: current?.preview && !rejudge ? "refreshing" : "judging", preview: current?.preview ?? null, overridden: current?.overridden ?? new Set(), error: null }));
+    void request("/routing/preview", { objectiveId, ...(rejudge ? { rejudge: true } : {}) }).then((result) => {
+      if (token !== sheetToken.current) return;
+      const preview = (result as { preview?: RoutingPreview } | undefined)?.preview ?? null;
+      setSheet((current) => current && { ...current, phase: "ready", preview });
+    }, (failure: unknown) => {
+      if (token !== sheetToken.current) return;
+      const code = failure instanceof Error ? failure.message : "unknown";
+      setSheet((current) => current && { ...current, phase: "ready", error: code });
+    });
+  };
+  const closeSheet = () => {
+    sheetToken.current += 1;
+    if (sheet?.preview) say(t("objectives.routing.kept", { minutes: ttlMinutes }));
+    setSheet(null);
+    requestAnimationFrame(() => bandRef.current?.focus());
+  };
+  /** 시트의 직접 지정 — 구성원 선택을 바꾸고(라우팅으로 되돌리기 포함) 결과를 다시 읽는다. 함께 판단한 구성원이면 새 판단은 없다. */
+  const pickInSheet = (member: ObjectiveMember, launch: { mode: "model"; model: string; effort?: string } | null) => {
+    if (!sheet) return;
+    const overridden = new Set(sheet.overridden);
+    if (launch) overridden.add(member.id); else overridden.delete(member.id);
+    setSheet({ ...sheet, overridden });
+    void request("/member/patch", { objectiveId, memberId: member.id, patch: { launch } }).then(() => loadPreview(false), (failure: unknown) => {
+      const code = failure instanceof Error ? failure.message : "unknown";
+      setSheet((current) => current && { ...current, error: code });
+    });
+  };
+  /** 「이대로 개시」 — 본 결과 그대로 띄운다. 그새 결과를 쓸 수 없게 됐으면 다시 읽어 보여 준다(바뀐 대상만 판단). */
+  const goSheet = async () => {
+    if (sending || !sheet || sheet.phase !== "ready") return;
+    setPending(intent ?? "start");
+    try {
+      const context = sheetContext.current;
+      reportFailed(await request("/commander/start", { objectiveId, routing: "preview", ...(context ? { context } : {}) }));
+      sheetToken.current += 1;
+      setDraft("");
+      setSheet(null);
+      setOpen(false);
+      requestAnimationFrame(() => bandRef.current?.focus());
+    } catch (failure) {
+      const code = failure instanceof Error ? failure.message : "unknown";
+      if (code === "routing_preview_stale") { loadPreview(false); setSheet((current) => current && { ...current, error: code }); }
+      else setSheet((current) => current && { ...current, error: code });
+    } finally {
+      setPending(null);
+    }
   };
   const press = () => {
     disarm();
@@ -480,7 +578,8 @@ export function ActionBand(props: ActionBandProps) {
   const sentLine: ReactNode = sentNote ? (
     <span className="objectives-compact-note" role="status"><b>{t("objectives.message.sent", { role: sentNote.role })}</b>{sentNote.notified === true ? t("objectives.message.notified") : sentNote.notified === false ? t("objectives.message.notNotified") : null}</span>
   ) : null;
-  const bandNote: ReactNode = compactNote ?? sentLine;
+  const noticeLine: ReactNode = notice ? <span className="objectives-compact-note" role="status"><b>{notice}</b></span> : null;
+  const bandNote: ReactNode = compactNote ?? sentLine ?? noticeLine;
   /** 보내는 동안의 부제 — 중단은 「중단하는 중…」, 나머지는 「보내는 중…」. */
   const pendingText = (key: IntentKey) => t(key === "stop" ? "objectives.band.stopping" : "objectives.band.sending");
   const word = (entry: Intent) => <span className="objectives-start-word">{entry.tone ? entry.glyph : null}{entry.word}</span>;
@@ -536,6 +635,77 @@ export function ActionBand(props: ActionBandProps) {
           >
             {word(complete)}
             <span className="objectives-start-sub">{pending ? pendingText(pending) : sendSub}</span>
+            <span className="objectives-start-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (sheet) {
+    const judging = sheet.phase === "judging";
+    const settling = sheet.phase !== "ready";
+    const results = new Map((sheet.preview?.members ?? []).map((entry) => [entry.id, entry]));
+    const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
+    const wide = (sheet.preview?.members ?? []).flatMap((entry) => (entry.via === "fallback" && SET_WIDE_REASONS.has(entry.reason) ? [entry.reason] : []))[0];
+    const minutes = sheet.preview ? Math.floor((Date.now() - sheet.preview.at) / 60_000) : 0;
+    const status = judging ? t("objectives.routing.judging") : !sheet.preview ? "" : sheet.preview.judged ? t("objectives.routing.judgedNow") : minutes <= 0 ? t("objectives.routing.cachedNow") : t("objectives.routing.cached", { minutes });
+    const words = (model: string | undefined, effort: string | undefined) => { const shown = launchedWords(rows, model, effort, labels); return <span className="objectives-routing-words" title={shown.title}><LaunchedText model={shown.model} words={shown.words} /></span>; };
+    const reasonText = (code: string) => (REASONS[code] ? t(REASONS[code]!) : t("objectives.band.reason.other", { code }));
+    const memberRow = (member: ObjectiveMember) => {
+      const result = results.get(member.id);
+      const target = props.routingTargets.some((candidate) => candidate.id === member.id);
+      const picked = sheet.overridden.has(member.id) && member.launch.mode === "model";
+      const row = (label: string, pick: ReactNode, why?: { readonly text: string; readonly warn?: boolean }, fixed = false) => (
+        <div key={member.id} className={`objectives-routing-row${fixed ? " is-fixed" : ""}`}>
+          {props.memberMark(member.id)}
+          <span className="objectives-routing-who"><span className="objectives-routing-role">{member.role}</span><small>{label}</small></span>
+          <span className="objectives-routing-pick">{pick}</span>
+          {why ? <span className={`objectives-routing-why${why.warn ? " is-warn" : ""}`}>{why.text}</span> : null}
+        </div>
+      );
+      // 예약이 걸린 구성원은 예약값으로 재개를 시도한다 — 시트도 그 모델을 보인다.
+      if (props.memberLaunched(member)) return member.next && !member.next.failed
+        ? row(t("objectives.routing.fixedReserved"), words(member.next.model, member.next.effort), undefined, true)
+        : row(t("objectives.routing.fixedResume"), words(member.model, member.effort), undefined, true);
+      const resultWords = result ? `${launchedWords(rows, result.model, result.effort, labels).title}${result.via === "fallback" ? ` · ${t("objectives.members.fallback")}` : ""}` : t("objectives.routing.atLaunch");
+      const useResult = { id: "route", label: t("objectives.routing.useResult"), hint: resultWords };
+      const onModel = (next: { model?: string; effort?: string }) => { if (next.model) pickInSheet(member, { mode: "model", model: next.model, ...(next.effort ? { effort: next.effort } : {}) }); };
+      if (picked && member.launch.mode === "model") {
+        return row(t("objectives.routing.viaPicked"), <LaunchControl t={t} model={member.launch.model} effort={member.launch.effort} locked={settling || sending} startAtList triggerLabel={t("objectives.routing.rowAria", { role: member.role })}
+          extras={[{ ...useResult, active: false, onPick: () => pickInSheet(member, null) }]} onChange={onModel} />, { text: t("objectives.routing.picked") });
+      }
+      if (target) {
+        const trigger = judging && !result ? <span className="objectives-routing-judging"><Spinner />{t("objectives.routing.judgingRow")}</span>
+          : result ? <>{words(result.model, result.effort)}{result.via === "fallback" ? <span className="objectives-member-via is-fallback">{t("objectives.members.fallback")}</span> : null}</>
+          : <span className="objectives-launch-model">{t("objectives.routing.atLaunch")}</span>;
+        const why = !result || judging ? undefined : result.via === "route" ? (result.because ? { text: result.because } : undefined) : { text: t("objectives.routing.fallbackWhy", { reason: routingReason(t, result.reason) }), warn: true };
+        return row(t("objectives.routing.viaRoute"), <LaunchControl t={t} model={undefined} effort={undefined} locked={settling || sending} startAtList triggerLabel={t("objectives.routing.rowAria", { role: member.role })} triggerText={trigger}
+          extras={[{ ...useResult, active: true, onPick: () => undefined }]} onChange={onModel} />, why);
+      }
+      if (member.launch.mode === "model") return row(t("objectives.routing.fixedModel"), words(member.launch.model, member.launch.effort), undefined, true);
+      return row(t("objectives.memberSelection.inherit"), words(objective.commander.model, objective.commander.effort), undefined, true);
+    };
+    return (
+      <div className="objectives-group objectives-start-group">
+        <div ref={compRef} className="objectives-comp objectives-routing" role="dialog" aria-label={t("objectives.routing.title")} aria-busy={judging || undefined}
+          onKeyDown={(event) => { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); closeSheet(); } }}>
+          <div className="objectives-comp-top">
+            <span className="objectives-routing-head"><b>{t("objectives.routing.title")}</b><span aria-live="polite">{judging ? <><Spinner />{status}</> : status}</span></span>
+            <span className="objectives-comp-tools">
+              <button type="button" className="objectives-glyph objectives-comp-fold" aria-label={t("objectives.routing.close")} title={t("objectives.routing.close")} onClick={closeSheet}><CloseGlyph /></button>
+            </span>
+          </div>
+          {wide && !judging ? <div className="objectives-routing-banner" role="note">{wide === "routing_disabled" ? t("objectives.routing.banner.disabled", { model: `${commanderWords.words.model} · ${commanderWords.words.effort}` }) : t("objectives.routing.banner.other", { reason: routingReason(t, wide), model: `${commanderWords.words.model} · ${commanderWords.words.effort}` })}</div> : null}
+          <div className="objectives-routing-list">{objective.members.map(memberRow)}</div>
+          {sheet.error ? <div className="objectives-band-error" role="alert">{sheet.error === "routing_preview_stale" ? reasonText(sheet.error) : t("objectives.routing.failed", { reason: reasonText(sheet.error) })}</div> : null}
+          <div className="objectives-routing-foot">
+            <span>{routeCount ? t("objectives.routing.foot", { count: routeCount, minutes: ttlMinutes }) : t("objectives.routing.footNone")}</span>
+            <button type="button" className="objectives-btn is-small" disabled={settling || sending || routeCount === 0} onClick={() => loadPreview(true)}>{t("objectives.routing.rejudge")}</button>
+          </div>
+          <button type="button" className="objectives-start objectives-comp-send" disabled={settling || sending} aria-busy={sending || undefined} onClick={() => void goSheet()}>
+            <span className="objectives-start-word">{t("objectives.routing.go")}</span>
+            <span className="objectives-start-sub">{pending ? pendingText(pending) : <>{sheetContext.current ? <b className="objectives-band-draft">{t("objectives.band.draft")}</b> : null}{intents[intent ?? "start"].desc}</>}</span>
             <span className="objectives-start-arrow" aria-hidden="true">→</span>
           </button>
         </div>
@@ -653,6 +823,14 @@ export function ActionBand(props: ActionBandProps) {
             })}
           </div>
         ) : null}
+        {reviewable(intent) ? (
+          // 켬/끔은 콘솔 공용 스위치 한 모양 — 목표에 저장되고 다음 개시에도 남는다.
+          <div className="objectives-routing-switch">
+            <SettingsToggle checked={confirmOn} disabled={sending} ariaLabel={t("objectives.routing.confirm")}
+              onChange={(next) => void request("/objective/patch", { objectiveId, patch: { routingConfirm: next } }).catch((failure: unknown) => setError(t("objectives.band.failedAction", { reason: t("objectives.band.reason.other", { code: failure instanceof Error ? failure.message : "unknown" }) })))} />
+            <span className="objectives-routing-switch-copy"><b>{t("objectives.routing.confirm")}</b><span>{t("objectives.routing.confirmHint", { count: routeCount })}</span></span>
+          </div>
+        ) : null}
         {current.talk ? (
           <>
             {(intent === "steer" || intent === "steerIdle") && kinds.length ? (
@@ -682,8 +860,8 @@ export function ActionBand(props: ActionBandProps) {
           title={unavailable(intent) ? t("objectives.commander.unavailable") : undefined}
           onClick={() => void run(intent)}
         >
-          {intent === "message" && recipient ? <span className="objectives-start-word">{t("objectives.band.message.to", { role: recipient.role })}</span> : word(current)}
-          <span className="objectives-start-sub">{pending ? pendingText(pending) : intent === "message" && recipient ? messageHow(recipient) : current.talk ? t("objectives.band.keys") : current.desc}</span>
+          {intent === "message" && recipient ? <span className="objectives-start-word">{t("objectives.band.message.to", { role: recipient.role })}</span> : willReview(intent) ? <span className="objectives-start-word">{t("objectives.routing.review")}</span> : word(current)}
+          <span className="objectives-start-sub">{pending ? pendingText(pending) : intent === "message" && recipient ? messageHow(recipient) : willReview(intent) ? t("objectives.routing.reviewSub") : current.talk ? t("objectives.band.keys") : current.desc}</span>
           <span className="objectives-start-arrow" aria-hidden="true">→</span>
         </button>
       </div>

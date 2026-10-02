@@ -36,6 +36,8 @@ import {
   type ObjectiveEvent,
   OBJECTIVE_FILE,
   type MemberLaunch,
+  type MemberNext,
+  type MemberRouted,
   type StoredMember,
   type StoredMerge,
   type StoredRemoval,
@@ -96,6 +98,8 @@ export interface ObjectiveStoreOptions {
   readonly operations: { get(id: string): OperationNode | null; list(): readonly OperationNode[]; describe?(id: string): OperationDescription | null; readonly groups?: { get(id: string): { readonly theaterId: string } | null } };
   readonly emit: (event: ObjectiveEvent) => void;
   readonly now?: () => number;
+  /** 세션의 지금 생명주기 — 휴면 중 예약이 이미 깨어 적용됐는지 투영이 가른다. 모르면 null. */
+  readonly lifecycle?: (operationId: string) => "live" | "dormant" | "unknown" | null;
 }
 
 /** 새 목표의 목표 고유값 — Operation 은 부르는 쪽이 먼저 만든다. */
@@ -141,6 +145,7 @@ export interface ObjectivePatch {
   readonly planRequest?: string;
   readonly dueDate?: string | null;
   readonly today?: boolean;
+  readonly routingConfirm?: boolean;
 }
 
 export interface ObjectiveStore {
@@ -197,8 +202,15 @@ export interface ObjectiveStore {
   missionRemove(objectiveId: string, missionId: string): Objective;
   memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: "human" | "commander"): Objective;
   memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): Objective;
+  /**
+   * 띄운 구성원의 기동 기록 — 기동 근거(routed)·다음 재개 예약(next)·예약을 취소할 때 돌아갈 선택(launch). 사람의 편집이 아니라
+   * 기동 경로의 사실이라 편집 기록을 쌓지 않는다. null 은 지운다.
+   */
+  memberLaunchState(objectiveId: string, memberId: string, patch: { readonly routed?: MemberRouted | null; readonly next?: MemberNext | null; readonly launch?: MemberLaunch | null }): Objective;
+  /** 저장된 구성원 그대로 — 예약의 실행값·이전 선택처럼 화면 모양에 싣지 않는 값을 기동 경로가 읽는다. 없으면 null. */
+  storedMember(objectiveId: string, memberId: string): StoredMember | null;
   /** 직접 고른 모델(model)과 이미 그 선택인 구성원은 그대로 둔다. changed 는 실제로 바뀐 구성원 수다. */
-  memberBatchLaunch(objectiveId: string, mode: "same" | "route"): { readonly objective: Objective; readonly changed: number };
+  memberBatchLaunch(objectiveId: string, mode: "same" | "route", skip?: ReadonlySet<string>): { readonly objective: Objective; readonly changed: number };
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean; readonly changed: boolean };
@@ -395,6 +407,19 @@ function writeObjectiveAtomic(dir: string, objective: StoredObjective): void {
   writeFileExclusive(containedFile(dir, OBJECTIVE_FILE), Buffer.from(`${JSON.stringify(compact(objective), null, 2)}\n`, "utf8"));
 }
 
+/** 구성원 기동 기록은 읽을 때 모양을 확인한다 — 어긋난 값은 없는 것으로 보고 화면에 싣지 않는다. */
+const shortText = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max;
+function storedRouted(value: StoredMember["routed"]): MemberRouted | null {
+  if (!value || typeof value !== "object") return null;
+  if (value.via === "route" && shortText(value.because, 300)) return { via: "route", because: value.because };
+  if (value.via === "fallback" && shortText(value.reason, 64)) return { via: "fallback", reason: value.reason, ...(shortText(value.detail, 300) ? { detail: value.detail } : {}) };
+  return null;
+}
+function storedNext(value: StoredMember["next"]): MemberNext | null {
+  if (!value || typeof value !== "object" || !shortText(value.model, 128) || !value.from || typeof value.from !== "object") return null;
+  return { ...value, ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), ...(value.reservedWhile === "live" || value.reservedWhile === "dormant" ? {} : { reservedWhile: undefined }) };
+}
+
 /** 기본값·빈 값은 쓰지 않는다 — 저장 모양에는 뜻이 있는 값만 남는다. */
 function compact(objective: StoredObjective): StoredObjective {
   const out: Record<string, unknown> = { ...objective };
@@ -404,6 +429,7 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.followupBatches?.length) delete out.followupBatches;
   for (const key of ["planning", "criteriaOpen", "today", "commenced"] as const) if (out[key] !== true) delete out[key];
   if (typeof objective.enlisted !== "boolean") delete out.enlisted;
+  if (objective.routingConfirm !== false) delete out.routingConfirm;
   if (!(objective.attachments?.length)) delete out.attachments;
   if (!objective.results?.length) delete out.results;
   if (!objective.evidence?.length) delete out.evidence;
@@ -411,7 +437,8 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!(objective.criteriaProposals?.length)) delete out.criteriaProposals;
   if (!objective.members?.length) delete out.members;
   else out.members = objective.members.map((member) => ({ id: member.id, role: member.role, by: member.by,
-    ...(member.brief ? { brief: member.brief } : {}), ...(member.launch ? { launch: member.launch } : {}), ...(member.subagents === true ? { subagents: true } : {}) }));
+    ...(member.brief ? { brief: member.brief } : {}), ...(member.launch ? { launch: member.launch } : {}), ...(member.subagents === true ? { subagents: true } : {}),
+    ...(member.routed ? { routed: member.routed } : {}), ...(member.next ? { next: member.next } : {}) }));
   if (!objective.edited) delete out.edited;
   if (!objective.done) delete out.done;
   if (!objective.handoff) delete out.handoff;
@@ -548,9 +575,17 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const members = (stored.members ?? []).map((member) => {
       const memberNode = node?.childSessions?.find((child) => child.id === member.id);
       const preset = memberNode ? readOperationLaunch(memberNode.payload) : null;
+      // 예약이 있으면 세션 좌표는 이미 다음 재개의 값이다 — 지금 프로세스의 실행값은 예약이 기억한 from 이다. 실패한 예약은 좌표를 되돌렸다.
+      const stored = memberNode ? storedNext(member.next) : null;
+      // 휴면 중 예약이 live 로 관측되면 그 재개가 이미 예약 좌표를 읽었다 — 예약이 곧 실행값이고, 라우팅이 고른 모델도 아니다.
+      const applied = !!stored && !stored.failed && stored.reservedWhile !== "live" && options.lifecycle?.(member.id) === "live";
+      const next = applied ? null : stored;
+      const running = next && !next.failed ? next.from : preset;
       return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}),
         subagents: member.subagents === true, launch: member.launch ?? { mode: "route" as const },
-        sessionName: preset?.sessionName ?? null, ...(preset?.model ? { model: preset.model } : {}), ...(preset?.effort ? { effort: preset.effort } : {}) };
+        sessionName: preset?.sessionName ?? null, ...(running?.model ? { model: running.model } : {}), ...(running?.effort ? { effort: running.effort } : {}),
+        routed: memberNode && !applied ? storedRouted(member.routed) : null,
+        next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null, reservedWhile: next.reservedWhile ?? "dormant" } : null };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);
@@ -609,6 +644,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       merged: (stored.merged ?? []).map((entry) => ({ sourceId: entry.sourceId, title: entry.title, at: entry.at, by: { operationId: entry.by, title: operationNode(entry.by)?.title ?? entry.byTitle ?? null }, criteriaIds: [...entry.criteriaIds],
         restorable: load(node?.theaterId ?? pending!.theaterId).get(entry.sourceId)?.removed?.mergedInto === stored.operationId })),
       commenced: stored.commenced === true || (legacy && launch.started && stored.planning !== true),
+      routingConfirm: stored.routingConfirm !== false,
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
         return {
@@ -1039,6 +1075,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       ...(input.planRequest !== undefined ? { planRequest: input.planRequest } : {}),
       ...(input.dueDate !== undefined ? { dueDate: input.dueDate ?? undefined } : {}),
       ...(input.today !== undefined ? { today: input.today ? true as const : undefined } : {}),
+      ...(input.routingConfirm !== undefined ? { routingConfirm: input.routingConfirm ? undefined : false as const } : {}),
     })),
 
     refresh(operationId) {
@@ -1193,11 +1230,27 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         ...(patch.subagents !== undefined ? { subagents: patch.subagents ? true as const : undefined } : {}),
       } : member) };
     }),
-    memberBatchLaunch(objectiveId, mode) {
+    memberLaunchState: (objectiveId, memberId, patch) => update(objectiveId, (stored) => {
+      const target = (stored.members ?? []).find((member) => member.id === memberId);
+      if (!target) throw new ObjectiveStoreError("unknown_member");
+      const { routed: _routed, next: _next, launch: _launch, ...rest } = target;
+      const value = <K extends "launch" | "routed" | "next">(key: K) => (patch[key] !== undefined ? patch[key] : target[key]) ?? undefined;
+      const launch = value("launch"), routed = value("routed"), next = value("next");
+      const changed: StoredMember = { ...rest, ...(launch ? { launch } : {}), ...(routed ? { routed } : {}), ...(next ? { next } : {}) };
+      if (JSON.stringify(changed) === JSON.stringify(target)) return stored;
+      return { ...stored, members: stored.members!.map((member) => (member.id === memberId ? changed : member)) };
+    }),
+    storedMember(objectiveId, memberId) {
+      try {
+        const member = (locate(objectiveId).stored.members ?? []).find((candidate) => candidate.id === memberId);
+        return member ? { ...member, ...(member.next ? { next: storedNext(member.next) ?? undefined } : {}) } : null;
+      } catch { return null; }
+    },
+    memberBatchLaunch(objectiveId, mode, skip) {
       let changed = 0;
       const objective = update(objectiveId, (stored) => {
         const members = (stored.members ?? []).map((member) => {
-          if (member.launch?.mode === "model") return member;
+          if (member.launch?.mode === "model" || skip?.has(member.id)) return member;
           if ((member.launch?.mode ?? "route") === mode) return member;
           changed += 1;
           if (mode === "route") {

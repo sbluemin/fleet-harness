@@ -52,7 +52,7 @@ export default definePlugin({
     const releaseChannel = ctx.host.events.registerSseChannel(OBJECTIVE_CHANNEL);
     ctx.host.lifecycle.registerCleanup(releaseChannel);
     let prStatus: PrStatusService | undefined;
-    const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, emit: (event) => {
+    const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, lifecycle: (operationId) => ctx.host.consoleControl?.observe(operationId)?.lifecycle ?? null, emit: (event) => {
       ctx.host.events.publish(OBJECTIVE_CHANNEL, event);
       prStatus?.refresh(event.objectiveId);
     } });
