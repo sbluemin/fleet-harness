@@ -190,6 +190,19 @@ export interface OperationGroupRemovedEvent {
   readonly theaterId: string;
 }
 
+/**
+ * 서버 안 이벤트 채널 — Operation(자식 세션 포함)의 `readOperationLaunch` 투영(세션 이름·표면·모델·effort·개시)이 실제로
+ * 바뀌면 한 번 난다. 채팅의 모델 적용, 채팅↔터미널 전환, 재개·세션 캡처가 모두 같은 호스트 patch 를 지나므로 이 채널 하나로
+ * 전부 들린다. 힌트일 뿐 값은 싣지 않는다 — 구독자는 `operations.get` 으로 지금 값을 다시 읽는다. 브라우저로는 나가지 않는다.
+ */
+export const OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL = "operation:launch-changed";
+
+export interface OperationLaunchChangedEvent {
+  readonly operationId: string;
+  /** 자식 세션이면 그 부모 Operation, 최상위 Operation 이면 null. */
+  readonly parentOperationId: string | null;
+}
+
 export interface OperationLaunchVariantChip {
   readonly id: string;
   readonly label: string;
