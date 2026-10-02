@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import type { LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
-import { resultInputSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
+import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { criterionProposalSchema, memberAddSchema, MAX_MISSIONS, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
@@ -119,7 +119,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     tool(name, `Commander only. ${description}`, schema, (args, caller, context) => {
       const objective = find((args as { objectiveId: string }).objectiveId);
       const role = roleIn(objective, caller);
-      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it reads the board and may seal evidence, but only the Commander changes the board; the Commander receives reports and decisions to make by SendMessage to its session.", commander: { session: objective.commander.sessionName, ...(objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) } });
+      if (role?.role === "member") return refuse("not_commander", { hint: "This session is a member: it can read the board and seal evidence, but only the Commander changes the board. Reports, sealed evidenceIds and decisions to make reach the Commander by SendMessage to its session.", commander: { session: objective.commander.sessionName, ...(objective.commander.sessionName ? {} : { hint: NO_FIXED_NAME }) } });
       if (!role) return refuse("not_participant");
       return run(args, objective, caller!, context);
     });
@@ -151,7 +151,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       if (!roleIn(objective, caller)) return refuse("not_participant");
       return text({ root: store.sharedDir(objective.theaterId, objective.id), note: "Only files under root can be sealed." });
     }),
-    tool("seal_evidence_from_path", `Copy a file from this objective's evidence directory (evidence_dir) into this objective's evidence store. path is absolute or relative to that directory's root. PNG, JPEG, WebP and GIF images are limited to ${RESULT_LIMITS.imageBytes / 1024 / 1024} MiB; UTF-8 MD, TXT, LOG and JSON text to ${RESULT_LIMITS.textBytes / 1024 / 1024} MiB. Symlinks, hardlinks, non-regular files, paths outside the evidence directory and files changed during reading are refused. The returned evidenceId is an immutable copy; only the Commander attaches it as a result. Unattached copies expire after ${RESULT_LIMITS.pendingEvidenceTtlMs / 3_600_000} hours.`, z.object({ objectiveId: ids, path: z.string().min(1).max(RESULT_LIMITS.sourcePath) }).strict(), async ({ objectiveId, path: source }, caller, context) => {
+    tool("seal_evidence_from_path", `Copy a file from this objective's evidence directory (evidence_dir) into this objective's evidence store. path is absolute or relative to that directory's root. Files copied into this directory are subject to the same sealing checks as files created here; sealing does not compare them with files elsewhere. PNG, JPEG, WebP and GIF images are limited to ${RESULT_LIMITS.imageBytes / 1024 / 1024} MiB; UTF-8 MD, TXT, LOG and JSON text to ${RESULT_LIMITS.textBytes / 1024 / 1024} MiB. Symlinks, hardlinks, non-regular files, paths outside the evidence directory and files changed during reading are refused. The Commander and members can seal files. The returned evidenceId identifies an immutable copy, not an attached result. Only the Commander can attach it through complete_mission or replace existing evidence through update_result. Unattached copies expire after ${RESULT_LIMITS.pendingEvidenceTtlMs / 3_600_000} hours; this expiry does not apply while attached.`, z.object({ objectiveId: ids, path: z.string().min(1).max(RESULT_LIMITS.sourcePath) }).strict(), async ({ objectiveId, path: source }, caller, context) => {
       const objective = find(objectiveId);
       if (!roleIn(objective, caller)) return refuse("not_participant");
       const root = store.sharedDir(objective.theaterId, objective.id);
@@ -161,17 +161,10 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       const sealed = store.evidenceSeal(objectiveId, caller.operationId, bytes);
       return text({ evidenceId: sealed.evidenceId, name: sealed.name, bytes: sealed.bytes, expiresAt: new Date(sealed.capturedAt + RESULT_LIMITS.pendingEvidenceTtlMs).toISOString() });
     }),
-    commanderTool("attach_result", `Attach a PR or sealed evidence reference to this objective. At most ${RESULT_LIMITS.count} results, including ${RESULT_LIMITS.evidenceCount} evidence files. PR URLs support github.com only; their status is server-observed, not caller-supplied. Evidence requires an evidenceId sealed for this objective; raw paths and URLs are not accepted as evidence. Duplicate targets are refused as result_exists. Results do not change missions, criteria, or hand-off readiness.`,
-      z.object({ objectiveId: ids, result: resultInputSchema }).strict(),
-      ({ result }, objective) => {
-        const attached = store.resultAdd(objective.id, result);
-        prStatus?.refresh(objective.id);
-        return text({ ok: true, resultId: attached.result.id });
-      }),
-    commanderTool("update_result", "Update a result by resultId without changing its kind. Omitted fields stay; null clears label, note, or sourceMissionId. A PR URL change resets its observation to unchecked. Evidence replacement requires another sealed evidenceId. Completed objectives refuse result changes as objective_done.",
+    commanderTool("update_result", "Correct an existing result without changing its resultId or kind. Omitted fields stay; null clears label, note, or sourceMissionId. PR and Artifact URLs can change within their kind. A changed PR URL resets its server observation to unchecked. Artifact links are not fetched or observed; unlike sealed evidence, no content copy is preserved. Replacing evidence with a different evidenceId requires one sealed for this objective; the previous evidenceId then becomes unavailable, while its source file is unchanged. Mission records are unchanged. Once the person completes the objective, changes are refused as objective_done.",
       z.object({ objectiveId: ids, resultId: ids, patch: resultPatchSchema }).strict(),
       ({ resultId, patch }, objective) => { store.resultUpdate(objective.id, resultId, patch); prStatus?.refresh(objective.id); return text({ ok: true }); }),
-    commanderTool("detach_result", "Detach a result by resultId. This removes the objective's reference, not a PR. Unknown result ids are refused as unknown_result; completed objectives refuse changes as objective_done.",
+    commanderTool("detach_result", "Remove a result and its mission link from the objective. A detached evidenceId becomes unavailable; the source file, PR and linked Artifact are unchanged. Mission records and completion states are unchanged. Unknown resultIds are refused as unknown_result; changes after the person completes the objective are refused as objective_done.",
       z.object({ objectiveId: ids, resultId: ids }).strict(),
       ({ resultId }, objective) => { store.resultRemove(objective.id, resultId); return text({ ok: true }); }),
     commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added missions (including after placement) stay and are referenced by missionId; restating one is refused as mission_kept. A mission's prerequisites are numbers n counting from 1 over this plan's own missions, or the missionId of a mission that stays. A mission may name a roster member by id or role; none means the Commander. Roster members are accepted only while empty (members_exist); enlist adds them later. Only a person's explicit Plan request opens success-criterion proposals: criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Use {text} to propose adding, {revise: criterion number or id, text} to revise, or {retire: criterion number or id, reason} to retire. In an extension round, existing met criteria are preserved; {recheck: criterion number or id, reason} proposes rechecking one old met criterion, and only the person's approval clears it. extensions holds the numbered rounds, the person's scope request, starting mission/criterion ids and previous hand-off retrospectives. Proposals require the person's approval and block commencement and steering until resolved (criteria_not_planning, criteria_pending). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed.",
@@ -249,17 +242,22 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         if (objective.planning) return refuse("planning_only", { hint: PLANNING_ONLY });
         return text({ members: (await launch.muster(objectiveId)).map(({ operationId: _operationId, ...member }) => member) });
       }),
-    commanderTool("complete_mission", `Mark a mission done with a record of 1–${MAX_RECORD_LINES} lines, conclusion first, each at most ${MAX_RECORD_LINE} characters. The person reads every record and the latest one is shown with the missions that follow; completing a mission again appends a record. Records are text; PRs and files the person can open are results attached through attach_result.`,
-      z.object({ ...missionRef, summary: z.array(z.string().max(2000)).min(1).max(20) }).strict(),
+    commanderTool("complete_mission", `Mark a mission done with a text record and optional PR, sealed-file or Artifact-link results the person can open. Results are linked automatically to this mission, not to an individual record. Repeating completion appends a record and adds results; omitted or empty results preserve existing results. Duplicate normalized PR or Artifact URLs, or evidenceIds, within the request or already attached, are refused as result_exists. A refused result leaves this completion's record, results and mission state unchanged. The objective holds at most ${RESULT_LIMITS.count} results, including ${RESULT_LIMITS.evidenceCount} evidence files totaling at most ${RESULT_LIMITS.totalEvidenceBytes / 1024 / 1024} MiB. Calls that add results return their new resultIds in input order. Results alone do not establish that a success criterion is met. Once the person completes the objective, calls with or without results are refused as objective_done.`,
+      z.object({ ...missionRef,
+        summary: z.array(z.string().max(2000)).min(1).max(20).describe(`The stored record is 1–${MAX_RECORD_LINES} lines, conclusion first, each at most ${MAX_RECORD_LINE} characters. Retained records are visible to the person; the latest is shown with the missions that follow.`),
+        results: completionResultsSchema.optional().describe("Optional new results: github.com PR URLs, evidenceIds produced by seal_evidence_from_path for this objective, or claude.ai Artifact links. Evidence accepts neither file paths nor URLs. PR status is server-observed, not caller-supplied. Artifact links accept only https://claude.ai/artifact/<id> or https://claude.ai/code/artifact/<uuid>. The server does not fetch or observe Artifact links; unlike sealed evidence, no content copy is preserved. Artifact links count toward the total result limit, not the evidence limits."),
+      }).strict(),
       (args, objective) => {
         if (objective.planning) return refuse("planning_only", { hint: PLANNING_ONLY });
         const target = missionOf(objective, args);
         const lines = recordLines(args.summary);
         if (!lines) return refuse("summary_format", { hint: `A record is 1–${MAX_RECORD_LINES} lines, each at most ${MAX_RECORD_LINE} characters.` });
-        const done = store.missionDone(objective.id, target.id, lines);
+        const done = store.missionDone(objective.id, target.id, lines, args.results);
+        const resultIds = done.results.slice(objective.results.length).map((result) => result.id);
+        if (resultIds.length) prStatus?.refresh(objective.id);
         // 마지막 임무를 마쳤다 — 인계 대기로 넘어갔으면 인계를, 아니면 달성 기준을 스스로 다시 따지게 한다. 이미 넘긴 목표에는 붙이지 않는다.
         const next = done.awaitingHandoff ? handoffPrompt(done) : done.missions.every((mission) => mission.done) && !done.awaitingReview ? criteriaCheckPrompt(done) : undefined;
-        return text({ ok: true, missionId: target.id, ...(next ? { next } : {}) });
+        return text({ ok: true, missionId: target.id, ...(resultIds.length ? { resultIds } : {}), ...(next ? { next } : {}) });
       }),
     commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. A candidate holds an improvement to the product features of the project worked on, as its users experience them; a finding with no user impact is not placed on the objective and stays only in the Commander's final report. Candidates can be added at any time until the objective is complete. add a candidate {title, summary (one line), userImpact (one line: what a user experiences differently), fromMission (the missionId of this objective's mission it came from), brief, criteria (1–10), evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note; at least one is a file with a line or a command)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective carrying that title, brief and criteria and no missions, and its evidence reaches that objective's Commander. A picked candidate is frozen; the person can also discard candidates.`,
       z.object({ objectiveId: ids, add: followupBodySchema.optional(), revise: followupReviseSchema.extend({ id: ids }).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
@@ -283,7 +281,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         store.handOff(objective.id, { by: "commander", retrospective: retrospective.data });
         return text({ ok: true });
       }), inputSchema: z.toJSONSchema(z.object({ objectiveId: ids, retrospective: retrospectiveSchema }).strict()) },
-    commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. That line is text; PRs and files the person can open are results attached through attach_result. Once every mission is done and every criterion is met, the objective awaits hand-off; it reaches the person's review only when handed off, and the person completes it. New or reopened missions clear the earlier marks and any hand-off; in an active extension round, old criterion marks stay until its hand-off: withdrawing one is refused as recheck_approval_required, and only a planning recheck the person approves clears it. The previous hand-off stays in the extension history. A mark made on a board the person has since edited is refused as board_changed.",
+    commanderTool("mark_criterion", "Mark success criterion n met with one line of evidence, or met: false to withdraw it. The evidence line is text only: it neither resolves evidenceIds nor attaches results. PRs, sealed files and Artifact links are optional results of complete_mission; attaching them does not mark a criterion met. Once every mission is done and every criterion is met, the objective awaits hand-off; it reaches the person's review only when handed off, and the person completes it. New or reopened missions clear the earlier marks and any hand-off; in an active extension round, old criterion marks stay until its hand-off: withdrawing one is refused as recheck_approval_required, and only a planning recheck the person approves clears it. The previous hand-off stays in the extension history. A mark made on a board the person has since edited is refused as board_changed.",
       z.object({ objectiveId: ids, n: z.number().int().min(1), met: z.boolean(), evidence: z.string().trim().max(MAX_EVIDENCE).optional() }).strict(),
       (args, objective) => {
         if (objective.criteriaProposals.length) return refuse("criteria_pending");
@@ -311,7 +309,7 @@ function notAwaitingHandoff(objective: Objective, numbering: readonly string[]) 
 function handoffInventory(objective: Objective): string {
   const candidates = objective.followups.filter((candidate) => candidate.state === "open").length;
   const results = objective.results.length;
-  return `The objective holds ${candidates} follow-up ${candidates === 1 ? "candidate" : "candidates"} and ${results} attached ${results === 1 ? "result" : "results"}.`;
+  return `The objective holds ${candidates} follow-up ${candidates === 1 ? "candidate" : "candidates"} and ${results} attached ${results === 1 ? "result" : "results"}. Hand-off has no minimum result count.`;
 }
 
 /**

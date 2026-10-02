@@ -42,6 +42,12 @@
 .objectives-graph-node .objectives-graph-mark.is-commander { --member-tone: var(--text-secondary); border-radius: 50%; background: var(--surface-panel); }
 .objectives-graph-record { position: absolute; left: calc(50% + 2px); top: calc(50% - var(--graph-r) - 6px); width: 7px; height: 9px; border: 1.25px solid var(--text-secondary); border-radius: 1.5px; background: var(--surface-panel); box-shadow: 0 0 0 1.5px var(--surface-panel); }
 .objectives-graph-record.is-new { background: var(--text-primary); border-color: var(--text-primary); }
+/* 결과물은 기록(오른쪽 위)·담당(오른쪽 아래)과 갈라 왼쪽 위의 상자로 표시한다. 이름 쪽으로 나가지 않는다. */
+.objectives-graph-results { position: absolute; left: calc(50% - var(--graph-r) - 4px); top: calc(50% - var(--graph-r) - 4px); display: grid; place-items: center; width: 11px; height: 11px; border-radius: 2px; background: var(--surface-panel); color: var(--text-secondary); box-shadow: 0 0 0 1.5px var(--surface-panel); pointer-events: none; }
+.objectives-graph-results svg { width: 10px; height: 10px; }
+.objectives-popup-results-link { display: inline-flex; align-items: center; gap: 6px; }
+.objectives-popup-results-link svg { width: 14px; height: 14px; color: var(--text-tertiary); }
+.objectives-popup-results-link:hover, .objectives-popup-results-link:focus-visible { color: var(--brass-ink); }
 .objectives-graph-node:hover .objectives-graph-shape, .objectives-graph-node.is-hov .objectives-graph-shape { box-shadow: 0 0 0 3px var(--control-rest-hover); }
 .objectives-graph-node:focus-visible { outline: none; }
 .objectives-graph-node:focus-visible .objectives-graph-shape, .objectives-graph-node.is-pin .objectives-graph-shape { box-shadow: 0 0 0 2px var(--surface-panel), 0 0 0 3.5px var(--brass); }

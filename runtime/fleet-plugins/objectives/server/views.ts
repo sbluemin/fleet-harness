@@ -20,6 +20,7 @@ const withoutEmpty = <T extends Record<string, unknown>>(value: T): Partial<T> =
 const resultView = (result: ObjectiveResult) => {
   const common = withoutEmpty({ id: result.id, kind: result.kind, label: result.label, note: result.note, sourceMissionId: result.sourceMissionId });
   if (result.kind === "evidence") return { ...common, name: result.name };
+  if (result.kind === "artifact") return { ...common, url: result.url };
   const observation = result.observation;
   return { ...common, url: result.url, state: observation.state, ...withoutEmpty({ title: observation.title, stale: observation.stale }),
     ...(observation.state === "error" ? { error: observation.error.code, ...(observation.lastSuccess ? { lastState: observation.lastSuccess.state } : {}) } : {}) };

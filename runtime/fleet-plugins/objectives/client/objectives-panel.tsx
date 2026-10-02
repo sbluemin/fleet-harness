@@ -1367,6 +1367,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     if (drop.length) setOpenRecords((current) => drop.some((id) => id in current) ? Object.fromEntries(Object.entries(current).filter(([id]) => !drop.includes(id))) : current);
   };
   const [missionReveal, setMissionReveal] = useState<{ id: string; at: number } | null>(null);
+  const [resultReveal, setResultReveal] = useState<{ id: string; at: number } | null>(null);
+  useEffect(() => { setResultReveal(null); setMissionReveal(null); }, [objective.id]);
   // 짚은 목록 행 — 그 행과 선행 행을 함께 켠다.
   const [focusMission, setFocusMission] = useState<string | null>(null);
   const focused = focusMission ? objective.missions.find((mission) => mission.id === focusMission) ?? null : null;
@@ -1392,6 +1394,12 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const showMission = (missionId: string) => {
     onOpenSection("detail:missions");
     setMissionReveal({ id: missionId, at: Date.now() });
+  };
+  const showResults = (missionId: string) => {
+    setZoomOpen(false);
+    setMissionReveal(null);
+    onOpenSection("detail:results");
+    setResultReveal({ id: missionId, at: Date.now() });
   };
   const sendDecision = async (requestId: string, answers: readonly { questionId: string; selectedOptionIds: readonly string[]; text: string }[]) => {
     await request("/decision/answer", { objectiveId: objective.id, requestId, answers });
@@ -1423,6 +1431,16 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const criteriaOpen = !criteriaCollapsible || sectionOpen("detail:criteria");
   const missionsOpen = !missionsCollapsible || sectionOpen("detail:missions");
   const resultsOpen = objective.results.length === 0 || sectionOpen("detail:results");
+  useEffect(() => {
+    if (!resultReveal || !resultsOpen || zoomOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const group = detailRef.current?.querySelector<HTMLElement>(`[data-result-mission="${CSS.escape(resultReveal.id)}"]`);
+      group?.scrollIntoView({ block: "start" });
+      group?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+    });
+    const timer = setTimeout(() => setResultReveal(null), 1600);
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
+  }, [resultReveal, resultsOpen, zoomOpen, detailRef]);
   // 임무 목록 — 그래프 위에 서고 접힘이 기본이다. 머리를 접어도 그래프와 추가 입력은 남는다.
   const missionListOpen = missionsCollapsible && sectionOpen("detail:missionList");
   // 제안이 새로 서면 접힌 기준 섹션을 편다 — 개시가 잠긴 까닭이 보여야 한다. 제안 목록이 바뀔 때 한 번만 펴서
@@ -1639,8 +1657,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       </div>
   </>);
   const sResults = (<>
-      {/* 결과물 — 달성 기준 바로 아래, 모든 상태에서 같은 자리. 증거가 먼저, PR 이 뒤. 없으면 머리 한 줄(「없음」)만 선다 —
-          붙이라고 권하지 않는다. 붙이고 고치는 것은 지휘관의 도구이고 사람은 읽는다. PR 상태는 서버 관측이 SSE 로 갱신한다. */}
+      {/* 결과물 장부 — 임무 순서의 묶음과 마지막 기록 한 줄. 임무 밖 연결은 끝에 남기고, 그래프 팝업과 묶음 머리가 왕복한다.
+          사람은 읽기만 한다. PR 관측은 SSE로 갱신하고 Artifact는 외부 링크만 연다. 결과물 0개도 유효하다. */}
       <div className="objectives-group objectives-results-group">
         <SectionHead
           glyph={<ResultsGlyph />}
@@ -1648,7 +1666,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           tools={<ResultsHeadTools objective={objective} t={t} expanded={resultsOpen} />}
           {...(objective.results.length > 0 ? { controls: "objectives-sec-results", expanded: resultsOpen, onToggle: () => onToggleSection("detail:results") } : {})}
         />
-        {objective.results.length > 0 ? <div id="objectives-sec-results" hidden={!resultsOpen}><ObjectiveResults objective={objective} t={t} language={language} /></div> : null}
+        {objective.results.length > 0 ? <div id="objectives-sec-results" hidden={!resultsOpen}><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} /></div> : null}
       </div>
   </>);
   const renderMissionDetail = (mission: ObjectiveMission, { close, select, state }: MissionDetailActions) => {
@@ -1679,6 +1697,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.parents")} {mission.prerequisites.length}</div>{mission.prerequisites.map(id => { const parent = objective.missions.find(m => m.id === id); return parent ? edgeRow(parent, parent.id, mission.id) : null; })}{mission.unplaced ? <p className="objectives-popup-hint">{t("objectives.graph.unplacedHint")}</p> : null}</div>
       {children.length ? <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.children")} {children.length}</div>{children.map(child => edgeRow(child, mission.id, child.id))}</div> : null}
       {mission.records.length ? <div className="objectives-popup-group"><button type="button" className="objectives-popup-text-button" aria-expanded={recordsOpen} onClick={() => togglePopupRecords(mission)}>{t("objectives.records.count", { index, count: mission.records.length })}{unseen ? ` · ${t("objectives.records.unseen", { count: unseen })}` : ""} {recordsOpen ? "−" : "+"}</button>{recordsOpen ? <MissionRecords id={`graph-records-${mission.id}`} records={mission.records} seenAtOpen={openRecords[mission.id] ?? EMPTY_IDS} open t={t} language={language} /> : <p className="objectives-popup-hint">{mission.records.at(-1)?.lines[0] ? <LinkText text={mission.records.at(-1)!.lines[0]!} /> : null}</p>}</div> : null}
+      {((count) => count > 0 ? <div className="objectives-popup-group"><button type="button" className="objectives-popup-text-button objectives-popup-results-link" onClick={() => { close(); showResults(mission.id); }}><ResultsGlyph />{t("objectives.graph.results", { count })}<span aria-hidden="true">↗</span></button></div> : null)(objective.results.filter((result) => result.sourceMissionId === mission.id).length)}
       {objective.decisions.filter(d => d.missionId === mission.id).map(d => <button key={d.id} type="button" className="objectives-popup-text-button" onClick={() => { close(); showDecision(d.id); }}>{t("objectives.decisions.missionLink", { index, count: 1 })}</button>)}
       <div className="objectives-popup-actions"><button type="button" className="objectives-popup-text-button" disabled={!editable} onClick={() => patch({ done: !mission.done })}>{t(mission.done ? "objectives.graph.reopen" : "objectives.missions.done")}</button><button type="button" className="objectives-popup-text-button is-danger" disabled={mission.done || !touchable} onClick={() => void call("/mission/remove", { objectiveId: objective.id, missionId: mission.id })}>{t("objectives.missions.remove")}</button></div>
       {!editable ? <p className="objectives-popup-hint">{t(objective.done ? "objectives.graph.locked" : "objectives.graph.doneLocked")}</p> : null}
