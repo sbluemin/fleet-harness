@@ -71,21 +71,27 @@ async function main() {
   if (!wsUrl.startsWith(`ws://127.0.0.1:${port}/`)) throw new Error(`unexpected inspector endpoint: ${wsUrl || 'none'}`);
   const ws = new WebSocket(wsUrl);
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
-  const reply = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('inspector did not answer within 30s')), 30_000);
-    ws.onclose = () => reject(new Error('inspector closed before answering'));
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      if (message.id === 1) { clearTimeout(timer); resolve(message); }
-    };
-    ws.send(JSON.stringify({
-      id: 1,
-      method: 'Runtime.evaluate',
-      params: { expression, returnByValue: true, awaitPromise: mode === 'crop' },
-    }));
-  });
-  ws.onclose = null;
-  ws.close();
+  let timer;
+  let reply;
+  try {
+    reply = await new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('inspector did not answer within 30s')), 30_000);
+      ws.onclose = () => reject(new Error('inspector closed before answering'));
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.id === 1) resolve(message);
+      };
+      ws.send(JSON.stringify({
+        id: 1,
+        method: 'Runtime.evaluate',
+        params: { expression, returnByValue: true, awaitPromise: mode === 'crop' },
+      }));
+    });
+  } finally {
+    clearTimeout(timer);
+    ws.onclose = null;
+    ws.close();
+  }
   if (reply.error || reply.result?.exceptionDetails) {
     throw new Error(`observation failed: ${JSON.stringify(reply.error ?? reply.result.exceptionDetails).slice(0, 800)}`);
   }
@@ -107,5 +113,6 @@ async function main() {
 
 main().catch((error) => {
   console.error(error.message);
-  process.exitCode = 1;
+  // A peer that never completes the WebSocket close handshake would otherwise keep Node alive past the timeout.
+  process.exit(1);
 });
