@@ -363,16 +363,23 @@ function readVendorCommands(response: unknown): readonly ClaudeGatewayCommand[] 
   });
 }
 
-/** 벤더의 `AgentInfo[]`를 계약 레코드로 옮긴다. 이름 없는 항목을 버리는 이유는 위와 같다. */
+/**
+ * 벤더의 `AgentInfo[]`를 계약 레코드로 옮긴다. 이름 없는 항목을 버리는 이유는 위와 같다.
+ *
+ * `model`은 frontmatter 값이 검증 없이 그대로 온다(실측: 별칭·전체 id·임의 문자열). 그중
+ * `inherit`만 벤더 어휘라서 계약의 `null`(부모를 따른다)로 옮긴다 — 남기면 화면이 그 낱말을
+ * 모델 이름으로 그린다.
+ */
 function readVendorAgents(response: unknown): readonly ClaudeGatewayAgent[] | null {
   if (!Array.isArray(response)) return null;
   return response.flatMap((row: unknown) => {
     const entry = row as { name?: unknown; description?: unknown; model?: unknown };
     if (typeof entry?.name !== "string" || entry.name.length === 0) return [];
+    const model = typeof entry.model === "string" ? entry.model.trim() : "";
     return [{
       name: entry.name,
       description: typeof entry.description === "string" ? entry.description : "",
-      model: typeof entry.model === "string" && entry.model.length > 0 ? entry.model : null,
+      model: model.length > 0 && model !== "inherit" ? model : null,
     }];
   });
 }

@@ -329,8 +329,15 @@ export function ChatComposerDeck({
                           {CONSOLE_ICON}
                           <span className="agent-chat-deck-meta-label">{t("terminal.chat.deckConsoleHint")}</span>
                         </span>
+                      ) : entry.model !== null ? (
+                        // 에이전트가 고정한 모델. 벤더 값 그대로 쓴다 — 컴포저 모델 칩과 이름 체계가 달라
+                        // 표시 이름으로 바꾸면 같은 모델이 두 이름으로 보인다. 말줄임될 수 있어 전문은 title이 진다.
+                        <span className="agent-chat-deck-meta is-model" title={t("terminal.chat.deckAgentModel", { model: entry.model })}>
+                          {entry.model}
+                        </span>
                       ) : (
                         // 빈 칸도 격자 칸을 지킨다 — 칸이 빠지면 subgrid의 열 배치가 그 행에서만 밀린다.
+                        // 모델을 지정하지 않은 에이전트(세션 모델을 따른다)도 여기서 빈칸으로 선다.
                         <span className="agent-chat-deck-meta">
                           {entry.argumentHint.length > 0 ? renderArgumentHint(entry.argumentHint) : null}
                         </span>

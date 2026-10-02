@@ -2562,7 +2562,12 @@ class AgentChatSession {
     return {
       commands,
       skills: dedupe(raw.commands.filter((row) => !isBuiltIn(row.name)).map(toEntry)),
-      agents: dedupe(raw.agents.map((entry) => ({ name: entry.name, description: entry.description, argumentHint: "" }))),
+      agents: dedupe(raw.agents.map((entry) => ({
+        name: entry.name,
+        description: entry.description,
+        argumentHint: "",
+        model: entry.model,
+      }))),
       unclassified: [...new Set(unclassified)],
     };
   }
