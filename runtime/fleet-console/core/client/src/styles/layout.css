@@ -1231,9 +1231,9 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   }
 }
 
-/* 자리별 캡슐 — 스위치는 좌측 사이드바 머리와 Zen 부유 섬에 선다(canvas-mode-switch.tsx).
-   사이드바 카드는 overflow:hidden이라 활성 글리프 가운데에 맞추면 캡슐 오른쪽이 카드 밖으로 잘린다 —
-   사이드바에서는 스위치 오른쪽 끝에 맞춰 아래로 연다. 섬의 아래 모서리는 위로, 위 모서리는 아래로 연다. */
+/* 사이드바 캡슐 — 스위치는 좌측 사이드바 머리에만 선다(canvas-mode-switch.tsx). 사이드바 카드는
+   overflow:hidden이라 활성 글리프 가운데에 맞추면 캡슐 오른쪽이 카드 밖으로 잘린다 — 스위치 오른쪽 끝에
+   맞춰 아래로 연다. */
 .side-bar-top-strip .command-band-mode-tray {
   left: auto;
   right: 0;
@@ -1241,11 +1241,6 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   transform-origin: top right;
 }
 .side-bar-top-strip .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: none; }
-.zen-bar .command-band-mode-tray { top: auto; bottom: calc(100% + 7px); transform: translate(-50%, 5px) scale(0.96); transform-origin: bottom center; }
-.zen-bar .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: translate(-50%, 0) scale(1); }
-.zen-bar .command-band-mode-tray::before { top: auto; bottom: -8px; }
-.zen-bar .command-band-mode-tray > .command-band-mode-tool { transform: translateY(3px); }
-.zen-bar .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) > .command-band-mode-tool { transform: none; }
 
 @media (forced-colors: active) {
   .command-band-mode-tray {

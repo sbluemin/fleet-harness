@@ -6,7 +6,7 @@ import { revealOperationStage } from "../../../../core/client/src/integration/st
 import { toggleZenSideBar } from "../../../../core/client/src/integration/zen-chrome-toggles.js";
 import { useZenModeState } from "../../../../core/client/src/integration/zen-mode.js";
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
-import { CanvasModeSwitch, WarRoomModeTools } from "../canvas/canvas-mode-switch.js";
+import { WarRoomModeTools } from "../canvas/canvas-mode-switch.js";
 import { pickTriageOperation, useTriageActive } from "../canvas/triage-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { useSideBarState } from "../sidebar/operations-side-bar-store.js";
@@ -30,7 +30,6 @@ export function ZenIslandControls() {
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M6 2.5v11" /></svg>
       {queue.length ? <span className="zen-island-count">{queue.length}</span> : null}
     </button>
-    <CanvasModeSwitch />
     {warRoom ? <>
       <button type="button" className="zen-island-next" disabled={next === null}
         aria-label={next ? t("zen.attention.nextTitle", { title: next.title, theater: theaterInitials(nextTheater) }) : t("zen.attention.noNext")}

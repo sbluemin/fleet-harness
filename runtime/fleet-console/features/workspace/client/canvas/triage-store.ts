@@ -493,8 +493,13 @@ export function confirmTriageEntry(): void {
     if (getViewModeSnapshot().effective === "mobile" || epoch !== entryEpoch) return;
     activateTriage(request.focusedOperationId, false);
   };
+  // 진입은 Zen 사이드바를 드러내므로 포커스는 그 머리의 War Room 세그먼트에 선다. 사이드바가 아직 inert라
+  // 받지 못하면 부유 섬의 사이드바 토글이 받는다.
   const focus = () => requestAnimationFrame(() => {
-    if (isTriageActive()) document.querySelector<HTMLButtonElement>('.zen-bar [data-canvas-mode="warRoom"]')?.focus({ preventScroll: true });
+    if (!isTriageActive()) return;
+    const segment = document.querySelector<HTMLButtonElement>('.zen-sidebar-chrome:not([data-zen-hidden]) [data-canvas-mode="warRoom"]');
+    segment?.focus({ preventScroll: true });
+    if (!segment || document.activeElement !== segment) document.querySelector<HTMLButtonElement>(".zen-bar [data-zen-sidebar-anchor]")?.focus({ preventScroll: true });
   });
   if (isZenMode()) { enter(); focus(); }
   else requestZenMode(true, { onLayout: enter, onComplete: focus });

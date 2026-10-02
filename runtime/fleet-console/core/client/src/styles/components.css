@@ -6222,7 +6222,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* 상태별 보기 토글 — 접기 컨트롤과 같은 24px 유령 버튼. 눌림은 바로 왼쪽 캔버스 모드 세그먼트
    (layout.css .command-band-mode-seg)와 같은 말로 한다 — 옅은 워시 · 기본 잉크 · 아래 12px brass 다텀.
-   나란히 선 두 스위치가 "지금 이것"을 다른 어휘로 말하지 않게. 사이드바 머리와 부유 섬이 같은 부품이다. */
+   나란히 선 두 스위치가 "지금 이것"을 다른 어휘로 말하지 않게. */
 .side-bar-status-view-toggle,
 .side-bar-view-menu-button {
   position: relative;
