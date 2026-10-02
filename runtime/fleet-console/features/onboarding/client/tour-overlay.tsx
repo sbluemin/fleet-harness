@@ -21,6 +21,12 @@ interface LockedTour {
   readonly phase: TourPhase;
 }
 
+interface CompletedTour {
+  readonly tourId: string;
+  /** 끝낸 순간 열려 있던 작업 표면 — 이 집합이 달라지면 사용자가 그 화면을 떠난 것이다. */
+  readonly surfaces: readonly HTMLElement[];
+}
+
 /**
  * 투어 오버레이 — 기여들이 등록한 투어를 등록 순서(코어 먼저)로 훑어, 앵커가 화면에 선 첫 투어를 재생한다.
  *
@@ -40,10 +46,11 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
   const [domRevision, setDomRevision] = useState(0);
   const [position, setPosition] = useState<TourCardPosition>({ left: 0, top: 0, centered: true });
   const cardRef = useRef<HTMLElement | null>(null);
-  // 마지막으로 끝낸 투어 — deferAfterAnotherTour가 붙은 투어는 그 투어의 화면을 떠나기 전까지 시작하지 않는다.
-  // 오버레이는 라우트 밖에 한 번만 마운트되므로 "이 마운트에서 끝냈다"로 재면 화면을 몇 번 오가도 값이 그대로라
-  // 미뤄둔 안내가 새로고침 전까지 영영 뜨지 않는다.
-  const completedTourIdRef = useRef<string | null>(null);
+  // 마지막으로 끝낸 투어와 끝낸 순간의 화면 — deferAfterAnotherTour가 붙은 투어는 그 화면을 떠나기 전까지 시작하지 않는다.
+  // 오버레이는 라우트 밖에 한 번만 마운트되므로 "이 마운트에서 끝냈다"로 재면 미뤄둔 안내가 새로고침 전까지 영영 뜨지 않는다.
+  // 앵커가 사라지는 것만으로 떠남을 재도 같다 — 모드 스위치처럼 화면에 상주하는 앵커는 사라지지 않는다. 그래서 작업 표면이
+  // 열리거나 닫히는 전이도 떠남으로 친다.
+  const completedTourRef = useRef<CompletedTour | null>(null);
   const seen = settings.state?.seenFeatureTours ?? [];
 
   useEffect(() => {
@@ -75,14 +82,14 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
   // 미뤄둔 투어까지 요청한 자리에서 재생된다.
   const seenCountRef = useRef(seen.length);
   useEffect(() => {
-    if (seen.length < seenCountRef.current) completedTourIdRef.current = null;
+    if (seen.length < seenCountRef.current) completedTourRef.current = null;
     seenCountRef.current = seen.length;
   }, [seen.length]);
 
   // 끝낸 투어의 화면을 떠난 순간 완료 표시를 푼다 — 그래야 미뤄둔 안내가 "다음 방문"에 뜬다.
   useEffect(() => {
-    if (completedTourIdRef.current === null) return;
-    if (!isCompletedTourScreenVisible(completedTourIdRef.current, tours, document)) completedTourIdRef.current = null;
+    if (completedTourRef.current === null) return;
+    if (!isCompletedTourScreenVisible(completedTourRef.current, tours, document)) completedTourRef.current = null;
   }, [domRevision, tours]);
 
   const resolved = useMemo(() => {
@@ -107,7 +114,7 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
       return { tour, phase: lockedTour.phase, steps } satisfies TourPresentation;
     }
     if (blocked()) return null;
-    return resolveNextTour(tours, seen, document, isCompletedTourScreenVisible(completedTourIdRef.current, tours, document));
+    return resolveNextTour(tours, seen, document, isCompletedTourScreenVisible(completedTourRef.current, tours, document));
   }, [blocked, domRevision, lockedTour, seen, settings.state, tours, suspended]);
 
   // 작업 표면에 물러난 스포트라이트는 잠금을 놓는다. 쥐고 있으면 사용자가 연 그 표면 안의 워크스루가 시작하지 못한다.
@@ -164,7 +171,7 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
     const base = resolved.phase === "walkthrough" && resolved.tour.spotlight
       ? appendSeen(seen, tourSeenKey(resolved.tour.id, "spotlight"))
       : seen;
-    completedTourIdRef.current = resolved.tour.id;
+    completedTourRef.current = { tourId: resolved.tour.id, surfaces: visibleWorkSurfaces(document) };
     setStepIndex(0);
     // 시청 기록 저장이 끝나기 전에 락을 풀면 뒤따르는 투어가 같은 필드에 대한 동시 저장을 시작해, 뒤쪽 저장이
     // 같은-필드 가드에 밀려나 '사용자당 1회' 기록이 유실된다. 저장을 먼저 마치고 락을 푼다.
@@ -261,12 +268,15 @@ function resolveWalkthrough(tour: OnboardingTour, root: ParentNode): TourPresent
 }
 
 // 방금 끝낸 투어의 화면에 아직 머물러 있는가 — 미뤄둔 투어가 같은 방문에서 이어 재생되는 것만 막는다.
-function isCompletedTourScreenVisible(completedTourId: string | null, tours: readonly OnboardingTour[], root: ParentNode): boolean {
-  if (completedTourId === null) return false;
-  const completed = tours.find((tour) => tour.id === completedTourId);
-  if (!completed) return false;
-  const activation = completed.walkthrough.find((step) => step.anchor !== null)?.anchor ?? completed.spotlight?.anchor ?? null;
-  return activation !== null && root.querySelector(activation) !== null;
+// 활성 앵커가 사라졌거나 끝낸 뒤 작업 표면이 열리거나 닫혔으면 떠난 것이다.
+function isCompletedTourScreenVisible(completed: CompletedTour | null, tours: readonly OnboardingTour[], root: ParentNode): boolean {
+  if (completed === null) return false;
+  const tour = tours.find((entry) => entry.id === completed.tourId);
+  if (!tour) return false;
+  const activation = tour.walkthrough.find((step) => step.anchor !== null)?.anchor ?? tour.spotlight?.anchor ?? null;
+  if (activation === null || root.querySelector(activation) === null) return false;
+  const surfaces = visibleWorkSurfaces(root);
+  return surfaces.length === completed.surfaces.length && surfaces.every((surface) => completed.surfaces.includes(surface));
 }
 
 function resolveAnchor(step: OnboardingTourStep, root: ParentNode): HTMLElement | null {
@@ -288,7 +298,11 @@ function visibleElements(root: ParentNode, selector: string): readonly HTMLEleme
 // 스포트라이트는 사용자가 열어 둔 작업 표면(레일 패널 등) 바깥을 가리키는 동안 물러난다. 칩 아래에 매달린 카드가 그
 // 표면의 컨트롤을 덮기 때문이다. 시청 기록은 남기지 않으므로 표면이 닫히면 다시 선다.
 function isBlockedByWorkSurface(root: ParentNode, anchor: Element): boolean {
-  return visibleElements(root, ONBOARDING_WORK_SURFACE_SELECTOR).some((surface) => !surface.contains(anchor));
+  return visibleWorkSurfaces(root).some((surface) => !surface.contains(anchor));
+}
+
+function visibleWorkSurfaces(root: ParentNode): readonly HTMLElement[] {
+  return visibleElements(root, ONBOARDING_WORK_SURFACE_SELECTOR);
 }
 
 // 열려 있는 모달은 안내를 막는다. 다만 그 모달 안의 컨트롤을 짚는 안내까지 막지는 않는다 — 사용자가 직접 연 표면에서
