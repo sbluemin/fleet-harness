@@ -77,6 +77,11 @@ interface PendingTerminalSessionState {
   session?: CapturedAgentSession;
   /** 현재 작업 폴더·브랜치 투영. 추적기가 옵트인 동안만 채우고, 끄면 지운다. */
   workspace?: AgentSessionWorkspace;
+  /**
+   * PTY 생산자 세대. 세션을 세우거나 재기동할 때마다 새 무작위 값이다 — 같은 Operation id 위에서 옛 PTY와
+   * 새 PTY를 가르는 유일한 값이다. 휴면 투영에는 싣지 않는다(살아 있는 생산자가 없다).
+   */
+  terminalGeneration?: string;
 }
 
 type DormantOperationInput = AgentDurableOperation;
@@ -197,9 +202,23 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       theaterId,
       terminalSessionId: input.sessionId,
       status: "starting",
+      terminalGeneration: crypto.randomUUID(),
     };
     terminalSessionsById.set(state.sessionId, state);
     return toTerminalSessionInfo(state);
+  }
+
+  /** 재기동은 새 세대다 — 이 기동이 세울 PTY를 옛 PTY와 가른다. 세션이 없으면 아무것도 하지 않는다. */
+  function beginTerminalGeneration(sessionId: string): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    session.terminalGeneration = crypto.randomUUID();
+    return toTerminalSessionInfo(session);
+  }
+
+  /** consoleControl 관측의 PTY 세대 — 휴면 여부와 무관하게 마지막 기동의 값이다(해석은 관측 쪽이 한다). */
+  function getTerminalGeneration(sessionId: string): string | undefined {
+    return terminalSessionsById.get(sessionId)?.terminalGeneration;
   }
 
   function injectDormantOperation(operation: DormantOperationInput): AgentTerminalSessionInfo {
@@ -218,6 +237,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       terminalSessionId: operation.sessionId,
       status: "dormant",
       session: operation.session,
+      // 다시 주입해도 마지막 기동의 세대는 남는다 — 세대는 기동만 바꾼다.
+      ...(previous?.terminalGeneration ? { terminalGeneration: previous.terminalGeneration } : {}),
     };
     terminalSessionsById.set(state.sessionId, state);
     return toTerminalSessionInfo(state);
@@ -579,6 +600,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     transitionTerminalSessionToDormant,
     removeTerminalSession,
     registerTerminalRuntimeSession,
+    beginTerminalGeneration,
+    getTerminalGeneration,
     workspaceCount: () => listWorkspaces().length,
   };
 
@@ -609,6 +632,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     cliRunId: state.cliRunId,
     tenantId: state.cliRunId,
     resumeAvailable: state.session !== undefined,
+    ...(state.terminalGeneration && state.status !== "dormant" ? { generation: state.terminalGeneration } : {}),
   };
 }
 

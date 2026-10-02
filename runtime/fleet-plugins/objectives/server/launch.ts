@@ -613,12 +613,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   /** 다시 세운 세션이 휴면에 닿기를 기다리는 상한 — 호스트의 재우기 대기(5초)를 넘긴 「ending」 뒤에도 PTY 는 곧 내려온다. */
   const SWITCH_SETTLE_MS = 10_000;
   const SWITCH_POLL_MS = 100;
-  /**
-   * 휴면을 본 뒤 깨우기까지의 틈. 붙여 보내면 휴면과 재기동 방송이 한 덩어리로 화면에 닿는다 — 열려 있던 터미널 패널은 휴면을 한 번도
-   * 그리지 못한 채 옛 소켓의 종료를 뒤늦게 받아 방금 선 세션을 지우고 「종료됨」에 멈춘다(새로 고침해야 붙는다). 사람이 재우고 깨우는
-   * 간격이면 생기지 않는 경합이라 그만큼 띄운다.
-   */
-  const SWITCH_GAP_MS = 1_000;
   const untilDormant = async (operationId: string): Promise<boolean> => {
     const deadline = Date.now() + SWITCH_SETTLE_MS;
     while (ctx.host.consoleControl?.observe(operationId)?.lifecycle !== "dormant") {
@@ -648,7 +642,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     }
     patchMemberPreset(operationId, goal);
     if (slept.lifecycle === "ending" && !(await untilDormant(operationId))) { patchMemberPreset(operationId, running); return "busy"; }
-    await new Promise((resolve) => setTimeout(resolve, SWITCH_GAP_MS));
     try { await control().request({ kind: "resume", operationId }); return "applied"; }
     catch (error) {
       // 휴면을 본 뒤 고친 좌표다 — 그새 누가 깨웠거나(not_dormant) 응답만 늦었으면(request_timeout) 떠 있는 것은 새 좌표로 선 프로세스다.

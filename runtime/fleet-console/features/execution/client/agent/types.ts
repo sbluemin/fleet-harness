@@ -80,6 +80,11 @@ export interface SessionInfo {
   readonly tenantId?: string;
   readonly registrationId?: string;
   readonly resumeAvailable: boolean;
+  /**
+   * 살아 있는 PTY의 세대 — 기동마다 바뀌고 휴면에는 없다. 터미널 표면은 세대마다 새로 붙고, 옛 소켓의
+   * 종료(4001)는 같은 세대의 항목만 지운다. 옛 서버는 싣지 않는다.
+   */
+  readonly generation?: string;
 }
 
 export interface AgentClientState {

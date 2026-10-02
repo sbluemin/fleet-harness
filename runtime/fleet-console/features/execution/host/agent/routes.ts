@@ -331,7 +331,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     reminderWriter.cancel(id);
     workspaceContext.forget(id);
     observability.removeTerminalSession(id);
-    terminalGenerations.delete(id);
   });
   ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("operation:archived", (payload) => {
     if (isOperationDeletedEventPayload(payload) && payload.pluginId === null) observability.removeTerminalSession(payload.operationId);
@@ -352,9 +351,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     launchAttachments.releaseSession(payload.operationId);
   });
 
-  // 관측의 생산자 세대. PTY 는 세션을 세우거나 재기동할 때마다 새 값이고, 채팅은 SDK 세션 인스턴스마다 하나다 — 인스턴스는
-  // 태어날 때 받은 seed 의 좌표로 서므로 인스턴스가 곧 한 세대다. 무작위 값이라 Console 을 다시 띄워도 옛 세대와 겹치지 않는다.
-  const terminalGenerations = new Map<string, string>();
+  // 관측의 생산자 세대. PTY 는 세션을 세우거나 재기동할 때마다 새 값이고(관측 저장소가 쥐고 세션 DTO 에도 싣는다 — 패널이
+  // 옛 PTY 의 종료와 새 PTY 를 그것으로 가른다), 채팅은 SDK 세션 인스턴스마다 하나다 — 인스턴스는 태어날 때 받은 seed 의
+  // 좌표로 서므로 인스턴스가 곧 한 세대다. 무작위 값이라 Console 을 다시 띄워도 옛 세대와 겹치지 않는다.
   const chatGenerations = new WeakMap<object, string>();
   const chatGeneration = (chat: object): string => {
     let generation = chatGenerations.get(chat);
@@ -385,6 +384,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 휴면은 PTY 종료의 결과다(handleExit). 유휴 청소기와 같은 terminate 를 밟되, 캡처된 provider
     // 세션이 없으면 그 종료가 삭제로 끝나므로 여기서 거절한다. 전이는 exit 콜백이 하므로 잠깐 기다려
     // 준다 — 그 안에 못 보면 `ending` 으로 답하고, 다음 관측이 휴면을 말한다.
+    // 휴면 전이는 kill 신호 직후에 나가므로 그것만으로는 옛 프로세스가 사라졌다는 뜻이 아니다. 이 답을 받고
+    // 곧바로 깨우는 호출자(구성원 모델 전환)가 같은 Claude 세션의 두 번째 필자를 세우지 않도록, `dormant` 는
+    // 프로세스 종료까지 확인한 뒤에만 답한다.
     //
     // 채팅 표면에는 접을 PTY가 없다 — 대신 SDK 자식과 원장을 거두는 같은 결말을 밟고, 그
     // 전이는 그 자리에서 끝나므로 기다릴 것도 없다.
@@ -397,8 +399,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       if (session.status === "dormant") return { ok: false, error: "already_dormant" };
       if (!readProviderSession(ctx.host.operations.get(operationId)?.payload)) return { ok: false, error: "not_resumable" };
-      if (!terminalRuntime.terminate(operationId)) return { ok: false, error: "not_resumable" };
-      const dormant = await new Promise<boolean>((resolve) => {
+      const exited = terminalRuntime.terminateAndWait(operationId, SLEEP_SETTLE_MS);
+      const dormant = new Promise<boolean>((resolve) => {
         const finish = (value: boolean) => { clearTimeout(timer); unsubscribe(); resolve(value); };
         const timer = setTimeout(() => finish(false), SLEEP_SETTLE_MS);
         const unsubscribe = observability.subscribeAll((event) => {
@@ -406,7 +408,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         });
         if (observability.getTerminalSessionInfo(operationId)?.status === "dormant") finish(true);
       });
-      return { ok: true, lifecycle: dormant ? "dormant" : "ending" };
+      const [gone, settled] = await Promise.all([exited, dormant]);
+      return { ok: true, lifecycle: gone && settled ? "dormant" : "ending" };
     },
     setView: (operationId, mode) => setChatMode(operationId, mode === "chat"),
     pendingAsks: (operationId) => chatRegistry.get(operationId)?.listPendingAsks().map((ask) => ({ id: ask.id, form: ask.form, questions: ask.questions })) ?? [],
@@ -552,7 +555,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // 터미널이 아니라 대화로 돌아온다. 살아 있는 산출(output)만 소유권을 따른다.
       const chatSurface = session.chatActive === true || ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true;
       // 세대는 소유권을 따른다 — 살아 있는 생산자가 채팅이면 그 인스턴스, 아니면 마지막 PTY 기동.
-      const generation = runtime.lifecycle !== "live" ? undefined : session.chatActive === true ? (chat ? chatGeneration(chat) : undefined) : terminalGenerations.get(operationId);
+      const generation = runtime.lifecycle !== "live" ? undefined : session.chatActive === true ? (chat ? chatGeneration(chat) : undefined) : observability.getTerminalGeneration(operationId);
       return {
         activity: runtime.lifecycle === "dormant" ? "ended" : runtime.activity,
         lifecycle: runtime.lifecycle, ...(generation ? { generation } : {}), observedAt: consoleObservationTimes.get(operationId) ?? new Date(session.createdAt).toISOString(), source: "host",
@@ -1149,8 +1152,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     launchOptions.assertCurrent?.();
     if (launchOptions.newOperationId && ctx.host.operations.get(launchOptions.newOperationId)) throw new ConsoleControlError("operation_id_taken");
     const sessionId = launchOptions.childSessionId ?? launchOptions.newOperationId ?? crypto.randomUUID();
+    // 대기 세션이 곧 첫 세대다 — 저장소가 세운다.
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
-    terminalGenerations.set(sessionId, crypto.randomUUID());
     workspaceContext.observe(sessionId, theaterId, cwd);
     // 원문은 argv에 오르지 않고 파일 포인터가 첫 UserPromptSubmit이 된다. 그 지시는 절대
     // 경로라 deriveOperationLabel이 폐기하고, 작명이 후속 턴으로 밀린다. 원문은 이 시점에만
@@ -1357,7 +1360,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   ): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
     const { fresh, providerSession } = options;
     // 새 세대는 좌표를 읽기 전에 — 이 기동은 아래에서 읽는 세션 좌표로 선다(패널 재개·휴면 중 전달 모두 이 코어를 지난다).
-    terminalGenerations.set(sessionId, crypto.randomUUID());
+    observability.beginTerminalGeneration(sessionId);
     // launchModel 도입 전 Operation은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
     // 신규 Quick Launch와 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
     const launchSession = readAgentSession(node.payload);
@@ -1372,7 +1375,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
     if (!cwd) return { ok: false, status: 404, error: "theater_not_found" };
     resetOscActivity(sessionId);
-    const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
+    let starting = observability.updateTerminalSessionStatus(sessionId, "starting");
+    if (!starting) {
+      // 관측이 없던 Operation 은 여기서 주입된다 — 위에서 매기지 못한 세대를 이제 받는다.
+      const injected = injectOperation(node);
+      starting = observability.beginTerminalGeneration(sessionId) ?? injected;
+    }
     try {
       if (fresh) {
         // stale provider 상태는 spawn 전에 observability와 payload에서 모두 떼어낸다 —
