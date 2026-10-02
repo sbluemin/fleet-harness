@@ -1085,6 +1085,7 @@ function SectionHead({ glyph, label, tools, actions, controls, expanded, onToggl
  * 폭 경계가 아니라 실제 감김으로 가른다: 셈 문구의 폭은 언어와 건수마다 다르다. 재기는 표시를 걷은 제자리 배치에서 해
  * 이전 판정에 기대지 않는다(경계에서 왕복하지 않는다). 크기는 머리줄이 아니라 그것을 담은 스크롤 칸에서 지켜본다 — 표시가 바꾸는
  * 머리줄 높이가 감시를 다시 부르지 않으니 같은 프레임 안에서 판정을 마쳐 세 줄 모양이 한 프레임도 그려지지 않는다.
+ * 칸의 내용 폭(content-box)을 지켜봐 스크롤바가 생기고 사라지며 바뀌는 폭도 잡는다.
  */
 function useStackedProposalCount(headRef: RefObject<HTMLDivElement | null>, count: string | null, layoutKey: string) {
   useLayoutEffect(() => {
@@ -1103,7 +1104,7 @@ function useStackedProposalCount(headRef: RefObject<HTMLDivElement | null>, coun
     let pane = head.parentElement;
     while (pane && !/auto|scroll/.test(getComputedStyle(pane).overflowY)) pane = pane.parentElement;
     const observer = new ResizeObserver(fit);
-    observer.observe(pane ?? head, { box: "border-box" });
+    observer.observe(pane ?? head);
     let alive = true;
     void document.fonts.ready.then(() => { if (alive) fit(); });
     return () => { alive = false; observer.disconnect(); head.classList.remove("is-stacked"); };
