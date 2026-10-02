@@ -360,6 +360,15 @@ function windowLabel(window: QuotaWindow, t: T): string {
   );
 }
 
+/** 창의 주기 표식(5h·7d·Nd). 같은 라벨을 쓰는 창들(예: Antigravity의 두 "Gemini")은 이것으로만 갈린다. */
+function windowChip(window: QuotaWindow, cycleDays?: number): string | undefined {
+  return window.id === "session"
+    ? "5h"
+    : window.id === "weekly"
+      ? "7d"
+      : window.id === "cycle" && cycleDays !== undefined ? `${cycleDays}d` : undefined;
+}
+
 function Meter({
   window,
   cycleDays,
@@ -375,11 +384,7 @@ function Meter({
 }) {
   const severity = meterSeverity(window);
   const label = windowLabel(window, t);
-  const windowChip = window.id === "session"
-    ? "5h"
-    : window.id === "weekly"
-      ? "7d"
-      : window.id === "cycle" && cycleDays !== undefined ? `${cycleDays}d` : undefined;
+  const chip = windowChip(window, cycleDays);
   const usedText = t("quota.meter.used", { pct: window.usedPercent });
   const note = riskNote(window, now, t);
   const projection = projectedSpan(window, now);
@@ -387,7 +392,7 @@ function Meter({
   return (
     <div className={`quota-meter quota-meter--${severity}`}>
       <div className="quota-meter__top">
-        <span className="quota-meter__label">{label}{windowChip ? <span className="quota-meter__window">{windowChip}</span> : null}</span>
+        <span className="quota-meter__label">{label}{chip ? <span className="quota-meter__window">{chip}</span> : null}</span>
         {note !== null ? <span className="quota-meter__forecast">{note}</span> : null}
       </div>
       <div
@@ -573,9 +578,13 @@ function FoldSpine({
   const used = t("quota.meter.used", { pct: window.usedPercent });
   const bars = spineWindows(provider.windows);
   // 막대가 여럿이면 낭독도 창마다 한 마디씩 잇는다 — 눈에 보이는 것을 귀로도 들을 수 있어야 한다.
+  // 주기 표식까지 붙여야 라벨이 같은 창들(Antigravity의 두 "Gemini")이 서로 구별된다.
   const summary = countdown === null ? used : t("quota.fold.summary", { pct: window.usedPercent, t: countdown });
   const label = bars.length > 1
-    ? [summary, ...bars.map((bar) => `${windowLabel(bar, t)} ${t("quota.meter.used", { pct: bar.usedPercent })}`)].join(", ")
+    ? [summary, ...bars.map((bar) => {
+      const chip = windowChip(bar, provider.cycleDays);
+      return `${windowLabel(bar, t)}${chip ? ` ${chip}` : ""} ${t("quota.meter.used", { pct: bar.usedPercent })}`;
+    })].join(", ")
     : summary;
   return (
     <span className={`quota-fold-spine quota-fold-spine--${severity}`} role="img" aria-label={label}>
