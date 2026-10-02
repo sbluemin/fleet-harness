@@ -1276,8 +1276,10 @@ describe("Objectives contract", () => {
     const seal = (source: string, by = member.id) => call("seal_evidence_from_path", { objectiveId: objective.id, path: source }, by);
     expect((await seal(ownFile, other)).structuredContent.error).toBe("not_participant");
     expect((await call("evidence_dir", { objectiveId: objective.id }, member.id)).structuredContent.root).toBe(root);
-    const foreign = path.join(workspace, "other-session.md"); fs.writeFileSync(foreign, "not this session");
-    expect((await seal(foreign)).structuredContent.error).toBe("evidence_outside_dir");
+    const foreign = path.join(ctx.host.paths.resolveTheaterPath(objective.theaterId)!, "handout.md");
+    fs.mkdirSync(path.dirname(foreign), { recursive: true }); fs.writeFileSync(foreign, "theater evidence");
+    expect((await seal(foreign)).structuredContent).toMatchObject({ error: "evidence_outside_dir", reason: expect.any(String) });
+    fs.copyFileSync(foreign, ownFile);
     fs.renameSync(root, `${root}-saved`);
     fs.symlinkSync(`${root}-saved`, root);
     expect((await seal(path.join(root, "EVIDENCE.md"))).structuredContent.error).toBe("unsafe_path");
