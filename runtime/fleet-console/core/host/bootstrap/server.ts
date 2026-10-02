@@ -35,7 +35,7 @@ import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../featur
 import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
 import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
 import { createBrowserRouter } from "../../../features/browser/host/routes.js";
@@ -134,8 +134,8 @@ interface OperationSseSubscriber {
   readonly audience: AccessAudience;
   /** 원격 구독자의 세션 공개 이름. 루프백 구독자는 null이다. */
   readonly sessionHandle: string | null;
-  /** 이 화면을 든 것이 Fleet Desktop 창인가, 일반 브라우저·모바일인가. Operation 브라우저는 Desktop 창에서만 열린다. */
-  readonly client: "desktop" | "browser";
+  /** 네이티브 Operation 뷰는 Desktop 창 안의 페이지지만 Desktop 셸 권한을 갖지 않는다. */
+  readonly client: "desktop" | "browser" | "operation-browser";
 }
 
 /** 화면을 든 클라이언트의 종류 — Desktop 창은 Electron 표기를 단 UA 로 온다(클라이언트의 셸 표식과 같은 판정). */
@@ -1358,7 +1358,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         res.write(encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
       }
       // 이 화면이 붙기 전에 시작된 감시는 이벤트로 다시 오지 않는다 — 지금 상태를 실어 보낸다.
-      const subscriber: OperationSseSubscriber = { res, audience, sessionHandle, client: clientKindOf(req) };
+      // 자기 Console을 여는 네이티브 뷰도 일반 Chrome UA를 쓴다. 현재 호스트가 소유한 뷰만 별도로 세어
+      // 그 페이지가 자기 엔진을 shared로 닫지 않게 한다. 표식만 있거나 다른 호스트의 요청이면 인정하지 않는다.
+      const viewId = req.headers[DESKTOP_BROWSER_VIEW_HEADER];
+      const operationView = typeof viewId === "string" && shellOwner !== null
+        && desktopEngine.currentHost === shellOwner && Boolean(desktopEngine.viewOperation(viewId));
+      const subscriber: OperationSseSubscriber = { res, audience, sessionHandle, client: operationView ? "operation-browser" : clientKindOf(req) };
       operationSseSubscribers.add(subscriber);
       // 브라우저·모바일 화면이 붙는 순간 Operation 브라우저는 멈춘다 — 떠나면 다시 열린다.
       browserService.reconcile();

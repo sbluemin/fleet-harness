@@ -1,10 +1,11 @@
-import type { WebContentsView } from "electron";
+import type { Session, WebContentsView } from "electron";
 import {
   DESKTOP_BROWSER_EVENT,
   DESKTOP_BROWSER_EVENTS_PATH,
   DESKTOP_BROWSER_PATH,
   DESKTOP_BROWSER_RELAY_PATH,
   DESKTOP_BROWSER_SHELL_VIEW,
+  DESKTOP_BROWSER_VIEW_HEADER,
   isDesktopBrowserSnapshot,
   type DesktopBrowserRelay,
   type DesktopBrowserSnapshot,
@@ -209,6 +210,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const fetchFor = deps.fetch ?? globalThis.fetch;
   const log = deps.log ?? (() => {});
   const live = new Map<string, LiveView>();
+  const markedSessions = new Set<Session>();
   const executed = new Set<number>();
   let origin: string | null = null;
   /** start 마다 오른다 — 재시도 중인 배치가 옛 연결의 것인지 가리는 표. 같은 origin 으로 다시 붙어도 옛 배치는 버린다. */
@@ -328,6 +330,21 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     }
   };
 
+  /** 일반 Chrome UA는 유지한다. 현재 Console의 SSE에만 네이티브 뷰 출처를 붙이고 다른 사이트로는 보내지 않는다. */
+  const markSession = (browserSession: Session): void => {
+    if (!origin || markedSessions.has(browserSession)) return;
+    markedSessions.add(browserSession);
+    browserSession.webRequest.onBeforeSendHeaders({ urls: [`${origin}/api/v1/operations/events*`] }, (details, callback) => {
+      const headers = { ...details.requestHeaders };
+      // 페이지가 직접 넣은 값은 신뢰하지 않는다 — 영속 프로필을 공유해도 실제 요청을 낸 뷰를 찾는다.
+      for (const name of Object.keys(headers)) if (name.toLowerCase() === DESKTOP_BROWSER_VIEW_HEADER) delete headers[name];
+      const entry = [...live.values()].find((candidate) => candidate.view.webContents.id === details.webContentsId);
+      const url = new URL(details.url);
+      if (entry && url.origin === origin && url.pathname === "/api/v1/operations/events") headers[DESKTOP_BROWSER_VIEW_HEADER] = entry.spec.id;
+      callback({ requestHeaders: headers });
+    });
+  };
+
   const create = (spec: DesktopBrowserView): void => {
     const shell = deps.shell();
     if (!shell || shell.isDestroyed()) return;
@@ -346,6 +363,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const entry: LiveView = { view, spec, attached: false, parkViewport, lastBounds: null };
     live.set(spec.id, entry);
     const contents = view.webContents;
+    markSession(contents.session);
     const initialBounds = parkedNativeBounds(parkViewport, contentBounds);
     view.setBounds(initialBounds);
     entry.lastBounds = initialBounds;
@@ -495,6 +513,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     for (const task of [...captureTasks]) task.expire();
     stream.stop();
     for (const id of [...live.keys()]) drop(id, false);
+    for (const browserSession of markedSessions) browserSession.webRequest.onBeforeSendHeaders(null);
+    markedSessions.clear();
     executed.clear();
     generation = -1;
     outbox = emptyOutbox();

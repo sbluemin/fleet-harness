@@ -131,6 +131,8 @@ export const DESKTOP_BROWSER_PATH = "/api/v1/desktop/browser";
 export const DESKTOP_BROWSER_EVENTS_PATH = "/api/v1/desktop/browser/events";
 export const DESKTOP_BROWSER_RELAY_PATH = "/api/v1/desktop/browser/relay";
 export const DESKTOP_BROWSER_EVENT = "desktop:browser";
+/** 네이티브 뷰가 현재 Console의 Operation 스트림을 열 때만 셸이 붙이는 뷰 id. 인증·Desktop 권한 표식이 아니다. */
+export const DESKTOP_BROWSER_VIEW_HEADER = "x-fleet-browser-view";
 
 export interface DesktopBrowserBounds { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
 
