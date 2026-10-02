@@ -122,10 +122,12 @@ function attachChannel(source: EventSource, channel: string): void {
 /**
  * 재연결 신호. 서버는 단절 중에 보낸 프레임을 다시 보내지 않으므로, 채널 구독만으로는 놓친 사건을 되찾을 수 없다.
  * 코어는 스냅숏을 다시 읽고 스트림을 연다. 플러그인은 이 신호에서 자기 데이터를 다시 읽는다. 첫 연결은 놓친 것이
- * 없으므로 울리지 않는다.
+ * 없으므로 울리지 않는다. 다만 첫 스트림이 열리기도 전에 끊겨 다시 시도한 경우는 울린다 — 플러그인은 그 사이 자기
+ * 스냅숏을 이미 읽었을 수 있고, 그 뒤의 사건은 열리지 못한 스트림과 함께 사라졌다.
  */
 const reconnectListeners = new Set<() => void>();
-let streamOpenedOnce = false;
+/** 마지막으로 열린 뒤(또는 처음부터) 재연결 시도가 있었는가 — 다음 open이 재연결 신호를 울릴지 정한다. */
+let reconnectAttemptedSinceOpen = false;
 
 export function subscribeConsoleReconnect(listener: () => void): () => void {
   reconnectListeners.add(listener);
@@ -149,6 +151,7 @@ export function resetConsoleChannelsForTest(): void {
   channelListeners.clear();
   attachedChannels = new Set();
   reconnectListeners.clear();
+  reconnectAttemptedSinceOpen = false;
 }
 
 export function connectOperationsSse(): void {
@@ -327,8 +330,10 @@ export function connectOperationsSse(): void {
     refreshObserverStatus();
     // 단절 중 놓친 보관·복원·삭제 사건은 서버가 재전송하지 않는다.
     void refreshOperationArchive();
-    if (streamOpenedOnce) notifyReconnected();
-    streamOpenedOnce = true;
+    if (reconnectAttemptedSinceOpen) {
+      reconnectAttemptedSinceOpen = false;
+      notifyReconnected();
+    }
   };
 
   const drop = () => {
@@ -385,6 +390,7 @@ function scheduleReconnect(): void {
  * 깨우기가 당길 수 있다.
  */
 function attemptReconnect(): void {
+  reconnectAttemptedSinceOpen = true;
   const attemptGeneration = ++connectionGeneration;
   // "다시 연결하는 중"으로 전이시킨다 — 상태를 offline에 둔 채 재접속하면 서버가 여전히 죽어 있을 때
   // 수동 재연결 버튼을 눌러도 화면이 그대로여서 눌린 것인지 알 수 없다.

@@ -39,7 +39,7 @@ vi.mock("../core/client/src/integration/desktop-fullscreen.js", () => ({
   resetDesktopFullscreenSnapshot: mocks.resetDesktopFullscreenSnapshot,
 }));
 
-import { connectOperationsSse, reconnectOperationsSseNow, subscribeConsoleReconnect } from "../core/client/src/integration/operations-sse.js";
+import { connectOperationsSse, reconnectOperationsSseNow, resetConsoleChannelsForTest, subscribeConsoleReconnect } from "../core/client/src/integration/operations-sse.js";
 import { ApiError } from "../core/client/src/integration/api.js";
 import { getState as readState, setState } from "../core/client/src/integration/store.js";
 
@@ -86,6 +86,7 @@ describe("operations SSE update availability", () => {
   afterEach(() => {
     setState({ controlReclaimed: null });
     TestEventSource.instances = [];
+    resetConsoleChannelsForTest();
     mocks.applyObserverStatus.mockReset();
     mocks.applyDesktopFullscreenSnapshot.mockReset();
     mocks.applyOperationUpdate.mockReset();
