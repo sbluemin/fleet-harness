@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 
 import { SegmentedThumb } from "@fleet-console/sdk/react/browser";
 
-import { animateViewportTo, fitAllOperations, releaseAlignAll, setAlignAllLayout, setStationKeeping, toggleAlignAll, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "./canvas-store.js";
+import { animateViewportTo, fitAllOperations, releaseAlignAll, setAlignAllLayout, setStationKeeping, useAlignAll, useAlignLayout, useStationKeeping, type AlignAllLayout } from "./canvas-store.js";
+import { requestAlignAll } from "./align-fit-store.js";
 import { enterTriage, focusedTriageOperationId, getTriageMapHeldQueueIds, setTriageActive, setTriageSpotlightEnabled, toggleTriageMap, useTriageActive, useTriageDeckOverflowing, useTriageDeckZoomLive, useTriageMapOpen, useTriageSpotlightEnabled } from "./triage-store.js";
 import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { cycleTriageDeckZoomPreset } from "./triage-watch-deck.js";
@@ -78,11 +79,11 @@ export function CanvasModeSwitch() {
     if (state.activeTheaterId === null) return;
     if (!alignOn) {
       setAlignAllLayout(layout);
-      toggleAlignAll();
+      requestAlignAll(document.activeElement instanceof HTMLElement ? document.activeElement : null);
       return;
     }
     if (layout === alignMeta.layout) {
-      toggleAlignAll();
+      requestAlignAll();
       return;
     }
     setAlignAllLayout(layout);

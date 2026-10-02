@@ -132,6 +132,10 @@ export const OPERATION_WINDOW_CAPTION_HEIGHT = 32;
 // 모드 프레임 여백과 칸 사이 간격.
 export const SNAP_FRAME_INSET = 18;
 export const SNAP_GAP = 8;
+// 모두 정렬이 지키는 칸 본문 하한(캡션 제외). 가장 작은 본문이 이보다 작아지면 터미널 출력이 사라져
+// 정렬 진입 때 최소화를 제안한다. columns/rows의 grid 대체 문턱(MIN_OPERATION_*)과는 따로 쓴다.
+export const ALIGN_MIN_BODY_WIDTH = 280;
+export const ALIGN_MIN_BODY_HEIGHT = 200;
 
 export interface SnapRect {
   readonly x: number;

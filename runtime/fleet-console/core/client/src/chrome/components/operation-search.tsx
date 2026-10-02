@@ -45,7 +45,8 @@ import {
 } from "../../integration/palette-commands.js";
 import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from "../../integration/shortcuts.js";
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
-import { getLoadedTheaterId, ensureDefaultGeometry, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping, toggleAlignAll } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { getLoadedTheaterId, ensureDefaultGeometry, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { requestAlignAll } from "../../../../../features/workspace/client/canvas/align-fit-store.js";
 import { enterTriage, focusedTriageOperationId, isTriageActive, setTriageActive, toggleTriageMap, useTriageActive, useTriageMapOpen, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
@@ -406,7 +407,7 @@ export function OperationSearch({
         ensurePaletteCanvasTheater(state);
         // 모두 정렬 토글 — 단축키 ID·⌘K 이름만 바뀌고 같은 자리에서 부른다.
         // War Room 선별 중이면 진입 훅이 선별을 먼저 끝낸다.
-        toggleAlignAll();
+        requestAlignAll();
         break;
       }
       case "toggle-station-keeping": {

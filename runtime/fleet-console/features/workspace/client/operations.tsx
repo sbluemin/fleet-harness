@@ -13,7 +13,7 @@ import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlock
 import { archiveOperationFromUi, isArchivingOperation, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace, type ArchiveOutcome } from "../../../core/client/src/integration/operation-actions.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { Toast } from "../../../core/client/src/chrome/components/toast.js";
-import { claimTopZIndex, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getAlignAll, getLoadedTheaterId, getSnapFullOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, restoreSnapFullOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setTheaterOperationGeometry, toggleAlignAll, useCompanionOperationId, useMinimized, useSnapFullOperationId, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
+import { claimTopZIndex, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCanvasArenaInsets, getCanvasSnapArenaRect, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getAlignAll, getLoadedTheaterId, getSnapFullOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, restoreSnapFullOperation, setCanvasArenaInsets, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setTheaterOperationGeometry, useCompanionOperationId, useMinimized, useSnapFullOperationId, type CanvasArenaInsets, type OperationGeometry } from "./canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "./canvas/coordinates.js";
 import { SNAP_MIN_ZOOM, SNAP_PRESETS, snapZoneHitFor } from "./canvas/snap-layouts.js";
 import { applySnapZone, closeCompanionLayer, snapOperationToFullZone } from "./canvas/snap-full.js";
@@ -37,11 +37,13 @@ import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-s
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { companionDefaultChord, companionShortcutCommandId, isShortcutRecording, matchesChord, matchesShortcutCommand, resolveShortcutChords } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, revealOperationStage, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../../../core/client/src/integration/store.js";
+import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, flattenGroupedOrder, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, revealOperationStage, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../../../core/client/src/chrome/mobile/operation-body-pool.js";
 import { TriageEntryDialog } from "./canvas/triage-entry-dialog.js";
+import { AlignFitDialog } from "./canvas/align-fit-dialog.js";
+import { registerAlignAdmissionProvider, requestAlignAll } from "./canvas/align-fit-store.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { useZenMode, useZenModeState } from "../../../core/client/src/integration/zen-mode.js";
@@ -307,7 +309,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         event.stopImmediatePropagation();
         // 모두 정렬 토글 — 단축키 ID는 사용자 바인딩 호환을 위해 유지한다.
         // War Room 선별 중이면 진입 훅이 선별을 먼저 끝낸다.
-        toggleAlignAll();
+        requestAlignAll();
         return;
       }
       if (matchesShortcutCommand(event, "operations.toggle-triage")) {
@@ -643,6 +645,20 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId), resumeIfDormant);
   }, [focusMapOperation, registry.operationKinds, resumeIfDormant]);
 
+  // 모두 정렬 진입 확인이 읽는 보이는 패널 — 캔버스의 정렬 순서(alignOrderedIds)와 같은 원천이다.
+  useEffect(() => registerAlignAdmissionProvider(() => {
+    const snapshot = getState();
+    const minimized = new Set(getCanvasSnapshot().minimized);
+    const theaterOperations = snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId);
+    const panels = flattenGroupedOrder(
+      theaterOperations,
+      snapshot.groups.filter((group) => group.theaterId === snapshot.activeTheaterId),
+      operationOrderFromNodes(theaterOperations),
+      [],
+    ).filter((operation) => !minimized.has(operation.id)).map((operation) => ({ id: operation.id, title: operation.title }));
+    return { panels, focusedId: snapshot.activeOperationId };
+  }), []);
+
   // 빈 캔버스의 일괄 열기 — 대기 전원을 복원하고 「모두 열어 정렬」로 나란히 착지시킨다.
   // 목록 순서(updatedAt 내림차순)의 첫 항목을 활성으로 둔다. 비행 연출은 N개분이라 생략하고
   // 정렬 진입 전이가 그 역할을 대신한다.
@@ -650,7 +666,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (operationIds.length === 0) return;
     for (const operationId of operationIds) restoreOperation(operationId);
     setActiveOperation(operationIds[0] ?? null);
-    if (!getAlignAll()) toggleAlignAll();
+    if (!getAlignAll()) requestAlignAll();
   }, []);
 
   const handleMinimize = useCallback((operationId: string) => {
@@ -1009,6 +1025,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         />
       ) : null}
       <TriageEntryDialog />
+      <AlignFitDialog />
       <ExpandedSurfaceLayer />
     </div>
   );
