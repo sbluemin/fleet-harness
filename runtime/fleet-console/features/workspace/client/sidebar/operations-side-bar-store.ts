@@ -85,12 +85,12 @@ export function setSideBarWidth(width: number): void {
   notifyListeners();
 }
 
-export function setSideBarCollapsed(collapsed: boolean): void {
+export function setSideBarCollapsed(collapsed: boolean, remember = true): void {
   if (sideBarState.collapsed === collapsed) return;
   // dock 상태 전환은 어느 방향이든 픽을 끝낸다 — 펼침(고정)은 픽의 승격이고, 새 접힘은 픽 없이 시작한다.
   sideBarState = { ...sideBarState, collapsed, peeking: false };
   try {
-    if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_COLLAPSED, collapsed ? "1" : "0");
+    if (remember && typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_COLLAPSED, collapsed ? "1" : "0");
   } catch { /* ignore */ }
   notifyListeners();
 }

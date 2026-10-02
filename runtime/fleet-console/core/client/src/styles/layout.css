@@ -373,11 +373,11 @@
   pointer-events: none;
 }
 .zen-sidebar-chrome { display: contents; }
-/* Map은 Zen에서도 접힌 버튼으로 남는다(펼침은 Zen 한 회짜리 — canvas-minimap.tsx). 코너 독이 작업 표시줄을 비켜 선다. */
+/* Map은 Zen에서도 접힌 버튼으로 남는다(펼침은 Zen 한 회짜리 — canvas-minimap.tsx). 코너 독은 오른쪽 아래 섬 위로 쌓인다. */
 .console-shell.is-zen .canvas-shortcuts { display: none; }
-/* Zen의 도구 패널 카드와 좌측 사이드바는 작업 표시줄을 덮지 않는다. */
+/* Zen에서도 크롬 카드는 화면 가장자리 12px까지 쓴다. */
 .console-shell.is-zen .right-rail,
-.console-shell.is-zen .operations-side-bar { bottom: calc(var(--zen-taskbar-height) + var(--space-2)); }
+.console-shell.is-zen .operations-side-bar { bottom: var(--space-3); }
 /* Zen의 좌측 사이드바(⌘B) — 숨길 때는 왼쪽 가장자리 밖으로 미끄러져 나가며 흐려지고, 드러낼 때는 같은 길로
    돌아온다. 폭·테두리 전이(접기)는 평소 그대로 두고 이동과 흐림만 더한다. visibility는 나갈 때 이동이
    끝난 뒤에 내려 전이가 보이게 하고, 돌아올 때는 곧바로 올린다. */
@@ -414,26 +414,94 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* Zen 바 — 작업 표시줄 오른쪽 끝의 트레이(zen-bar.tsx). Zen 동안 콘솔 도구모음이 여기에 서고, 끝에
-   Fleet 앰블럼이 선다. 앱 셸이 들고 작업 표시줄 위에 겹쳐 세우므로 제 면을 따로 두지 않고 작업
-   표시줄의 면을 그대로 입는다 — 작업 표시줄은 --zen-bar-width만큼 비켜 선다. */
+/* 부유 섬 — 사이드바 카드와 같은 유리. 별도 배경 층이라 안쪽 메뉴를 가두지 않는다. */
 .zen-bar {
   position: fixed;
-  right: 0;
-  bottom: 0;
   z-index: calc(var(--z-rail, 10) + 1);
   display: flex;
   align-items: center;
   gap: 2px;
-  height: var(--zen-taskbar-height);
-  padding: 0 var(--space-2) 0 var(--space-1);
-  animation: zen-bar-rise var(--duration-base) var(--ease-spring) both;
+  height: 40px;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
+  transition: left 340ms var(--ease-spring), top 340ms var(--ease-spring);
 }
-/* 작업 표시줄과 같은 곡선으로 함께 올라온다. */
-@keyframes zen-bar-rise {
-  from { transform: translateY(100%); }
-  to { transform: none; }
+.zen-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)), var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  pointer-events: none;
 }
+.zen-bar.is-dragging { transition: none; }
+.zen-bar.is-mirrored,
+.zen-bar.is-mirrored .zen-island-controls,
+.zen-bar.is-mirrored .console-toolbar,
+.zen-bar.is-mirrored .console-toolbar-drawer-inner,
+.zen-bar.is-mirrored .console-toolbar-tools,
+.zen-bar.is-mirrored .zen-island-war-tools { flex-direction: row-reverse; }
+.zen-bar.is-mirrored .zen-bar-brand {
+  margin-inline-start: 0;
+  padding-inline-start: 0;
+  border-inline-start: 0;
+  margin-inline-end: var(--space-1);
+  padding-inline-end: var(--space-2);
+  border-inline-end: 1px solid var(--surface-rim-strong);
+}
+.zen-bar.is-war-room { border-top-color: color-mix(in oklch, var(--brass) 70%, var(--surface-rim)); }
+.zen-bar.is-war-room:has(.has-attention)::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 18%;
+  right: 18%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--aurora) 20% 80%, transparent);
+  box-shadow: 0 -4px 14px color-mix(in oklch, var(--aurora) 25%, transparent);
+  pointer-events: none;
+}
+.zen-island-controls,
+.zen-island-war-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+.zen-island-sidebar,
+.zen-island-next,
+.zen-island-war-tools .war-room-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.zen-island-sidebar:not(.has-attention) { opacity: .55; }
+.zen-island-sidebar svg,
+.zen-island-war-tools .war-room-tool svg { width: 16px; height: 16px; }
+.zen-island-count {
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--aurora);
+  color: var(--ink-abyss);
+  font: var(--weight-bold) calc(var(--t-2xs) * .9)/14px var(--font-mono);
+}
+.zen-island-next { color: var(--aurora); background: color-mix(in oklch, var(--aurora) 9%, transparent); }
+.zen-island-next:disabled { color: var(--text-tertiary); background: none; opacity: .6; }
+.zen-island-war-tools .war-room-tool[aria-pressed="true"] { color: var(--brass-ink); }
+.zen-island-war-tools .war-room-tool.is-suggested { color: var(--aurora); }
+.zen-island-sidebar:hover,
+.zen-island-war-tools .war-room-tool:hover { background: var(--control-hover-fill); color: var(--text-primary); }
+@media (prefers-reduced-motion: reduce) { .zen-bar { transition: none; } }
 
 /* ── 도구모음 ─────────────────────────────────────────────────────
    콘솔에 하나뿐인 도구 줄(console-toolbar.tsx). 상단 바 가운데와 Zen 트레이, 두 자리에 같은 줄이
@@ -632,10 +700,10 @@
   transform: translateY(-3.5px) rotate(45deg);
 }
 
-/* Zen 트레이 자리 — 화면 아래 끝이라 도움말 메뉴·업데이트 말풍선은 위로 뜬다. */
-.zen-bar .command-band-system-menu,
-.zen-bar .command-band-update-bubble,
-.zen-bar .host-switcher-panel { top: auto; bottom: calc(100% + 10px); }
+/* 아래 모서리의 메뉴는 위로, 위 모서리의 메뉴는 아래로 연다. */
+.zen-bar:not([data-corner="top-right"]) .command-band-system-menu,
+.zen-bar:not([data-corner="top-right"]) .command-band-update-bubble,
+.zen-bar:not([data-corner="top-right"]) .host-switcher-panel { top: auto; bottom: calc(100% + 10px); }
 
 /* 앰블럼 — 트레이의 끝. 도구모음과는 가는 선 하나로 나뉜다. */
 .zen-bar-brand {
@@ -646,8 +714,14 @@
   margin-inline-start: var(--space-1);
   padding-inline-start: var(--space-2);
   border-inline-start: 1px solid var(--surface-rim-strong);
-  height: 16px;
+  height: 28px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  border-radius: 6px;
 }
+.zen-bar.is-dragging .zen-bar-brand { cursor: grabbing; }
+.zen-bar-brand:hover .zen-bar-brand-wordmark { color: var(--brass-ink); }
 .zen-bar-brand-glyph { width: 18px; height: 18px; flex: none; }
 /* 워드마크의 서체·크기는 밴드 워드마크(.command-band-brand-wordmark)를 함께 입어 받는다 — 같은 브랜드, 같은 글자. */
 .zen-bar-brand-wordmark { color: var(--text-primary); line-height: 1; }
@@ -663,7 +737,7 @@
 :root[data-modal-open] .zen-bar .console-toolbar-plugins { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
 
 /* Zen 전환 장면 — 불투명한 커튼 한 겹과 그 위를 나는 앰블럼(zen-transition.tsx).
-   앰블럼이 나는 동안 제자리의 브랜드(밴드·작업 표시줄)는 비워 둔다 — 둘이 겹쳐 보이면 한 마크가
+   앰블럼이 나는 동안 제자리의 브랜드(밴드·부유 섬)는 비워 둔다 — 둘이 겹쳐 보이면 한 마크가
    두 개로 읽힌다. */
 .zen-transition {
   position: fixed;
@@ -1172,9 +1246,9 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   }
 }
 
-/* 자리별 캡슐 — 스위치는 좌측 사이드바 머리와 Zen 작업 표시줄에 선다(canvas-mode-switch.tsx).
+/* 자리별 캡슐 — 스위치는 좌측 사이드바 머리와 Zen 부유 섬에 선다(canvas-mode-switch.tsx).
    사이드바 카드는 overflow:hidden이라 활성 글리프 가운데에 맞추면 캡슐 오른쪽이 카드 밖으로 잘린다 —
-   사이드바에서는 스위치 오른쪽 끝에 맞춰 아래로 연다. 작업 표시줄은 화면 아래 끝이라 글리프 위로 연다. */
+   사이드바에서는 스위치 오른쪽 끝에 맞춰 아래로 연다. 섬의 아래 모서리는 위로, 위 모서리는 아래로 연다. */
 .side-bar-top-strip .command-band-mode-tray {
   left: auto;
   right: 0;
@@ -1182,11 +1256,11 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   transform-origin: top right;
 }
 .side-bar-top-strip .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: none; }
-.zen-taskbar .command-band-mode-tray { top: auto; bottom: calc(100% + 7px); transform: translate(-50%, 5px) scale(0.96); transform-origin: bottom center; }
-.zen-taskbar .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: translate(-50%, 0) scale(1); }
-.zen-taskbar .command-band-mode-tray::before { top: auto; bottom: -8px; }
-.zen-taskbar .command-band-mode-tray > .command-band-mode-tool { transform: translateY(3px); }
-.zen-taskbar .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) > .command-band-mode-tool { transform: none; }
+.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray { top: auto; bottom: calc(100% + 7px); transform: translate(-50%, 5px) scale(0.96); transform-origin: bottom center; }
+.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: translate(-50%, 0) scale(1); }
+.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray::before { top: auto; bottom: -8px; }
+.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray > .command-band-mode-tool { transform: translateY(3px); }
+.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) > .command-band-mode-tool { transform: none; }
 
 @media (forced-colors: active) {
   .command-band-mode-tray {

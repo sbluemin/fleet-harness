@@ -22,7 +22,7 @@ const TIP_GAP = 10;
 const VIEWPORT_MARGIN = 8;
 const ARROW_INSET = 12;
 
-const ITEM_SELECTOR = ".console-toolbar-fold, .console-toolbar-zen, .right-rail-ico, .command-band-button, .console-toolbar-plugins button";
+const ITEM_SELECTOR = ".console-toolbar-fold, .console-toolbar-zen, .right-rail-ico, .command-band-button, .console-toolbar-plugins button, .zen-island-sidebar, .zen-island-next, .war-room-tool";
 const POPUP_SELECTOR = '[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]';
 const STASHED_TITLE = "data-toolbar-tip-title";
 
@@ -126,7 +126,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
         setTip((current) => current?.target === item ? { ...current, text: tipTextOf(item) } : current);
       });
       targetObserver.observe(item, { attributes: true, attributeFilter: ["data-tip", STASHED_TITLE, "aria-label", "aria-expanded"] });
-      setTip({ target: item, text, placement: item.closest(".zen-bar") !== null ? "above" : "below" });
+      setTip({ target: item, text, placement: item.closest('.zen-bar:not([data-corner="top-right"])') !== null ? "above" : "below" });
       setVisible(true);
     };
     const request = (item: HTMLElement) => {

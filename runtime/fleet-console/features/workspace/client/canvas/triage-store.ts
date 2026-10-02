@@ -8,10 +8,11 @@ import { resolveOperationActivity, resolveOperationDisplayActivity } from "../..
 import { getState, clearPendingSideBarSignals, registerFocusTheaterSwitchSuppression, setActiveOperation, setActiveTheater } from "../../../../core/client/src/integration/store.js";
 import { claimTheaterBootMinimization } from "../../../../core/client/src/integration/boot-minimization-session.js";
 import { clearSideBarOperationAction } from "../sidebar/interaction.js";
+import { getSideBarState, setSideBarCollapsed } from "../sidebar/operations-side-bar-store.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import { readCanvasModeSession, rememberWarRoomActive } from "./canvas-mode-session.js";
 import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
-import { isZenMode, requestZenMode, setZenMode, setZenSideBarRevealed, subscribeZenMode } from "../../../../core/client/src/integration/zen-mode.js";
+import { getZenModeState, isZenMode, requestZenMode, setZenMode, setZenSideBarRevealed, subscribeZenMode } from "../../../../core/client/src/integration/zen-mode.js";
 import {
   forceDropCompanionOperationId,
   getLoadedTheaterId,
@@ -61,6 +62,7 @@ const SET_ASIDE_ARM_DURATION_MS = 1500;
 
 // 선별 처리는 전역 모드다 — 활성/지목/무장/카운트는 Theater와 무관하게 하나만 존재한다.
 let triageActive = false;
+let sideBarBeforeTriage = { revealed: false, collapsed: false };
 let pickedOperationId: string | null = null;
 let setAsideArmed: {
   readonly operationId: string;
@@ -364,8 +366,10 @@ export function setTriageActive(active: boolean, animate = true): void {
     // 모두 정렬은 스냅 유지라 War Room 왕복에 남는다 — 진입이 걷지 않는다.
     if (!triageActive) {
       triageActive = true;
-      // War Room은 사이드바를 접은 채로 시작한다 — Zen Cruise에서 드러내 둔 좌측도 걷는다.
-      setZenSideBarRevealed(false);
+      // 큐는 사이드바에만 선다. 펼침 시작은 일반 크롬 선호에 쓰지 않고 Cruise 상태를 보관한다.
+      sideBarBeforeTriage = { revealed: getZenModeState().sideBarRevealed, collapsed: getSideBarState().collapsed };
+      setSideBarCollapsed(false, false);
+      setZenSideBarRevealed(true);
       rememberWarRoomActive(true);
       enteredAt = animate ? Date.now() : 0;
       lastStagedTheaterId = null;
@@ -383,6 +387,8 @@ export function setTriageActive(active: boolean, animate = true): void {
     return;
   }
   triageActive = false;
+  setSideBarCollapsed(sideBarBeforeTriage.collapsed, false);
+  setZenSideBarRevealed(sideBarBeforeTriage.revealed);
   stagedOperationId = null;
   triageMapOpen = false;
   triageMapResumeAfterStage = false;
@@ -488,7 +494,7 @@ export function confirmTriageEntry(): void {
     activateTriage(request.focusedOperationId, false);
   };
   const focus = () => requestAnimationFrame(() => {
-    if (isTriageActive()) document.querySelector<HTMLButtonElement>('.zen-taskbar [data-canvas-mode="warRoom"]')?.focus({ preventScroll: true });
+    if (isTriageActive()) document.querySelector<HTMLButtonElement>('.zen-bar [data-canvas-mode="warRoom"]')?.focus({ preventScroll: true });
   });
   if (isZenMode()) { enter(); focus(); }
   else requestZenMode(true, { onLayout: enter, onComplete: focus });

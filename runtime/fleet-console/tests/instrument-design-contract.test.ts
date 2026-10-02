@@ -2154,7 +2154,6 @@ describe("Instrument core design contract", () => {
         <span ref={setToolbarHost} className="command-band-toolbar" />`);
     expect(toolbar).not.toContain("CanvasModeSwitch");
     expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).toContain("<CanvasModeSwitch />\n            <SideBarStatusViewToggle active={statusAxis} />");
-    expect(source("../../../features/workspace/client/zen/zen-taskbar.tsx")).toContain("<CanvasModeSwitch /><ArchiveTaskbarEntry /><SideBarStatusViewToggle active={statusAxis} />");
     // 접힘 상태도 펼침 상태와 같은 단일 간격으로 잇는다. 별도 구분선과 캡 표면은 사라진
     // 사이드바 경계를 다시 만들어 Command Band를 두 판처럼 보이게 하므로 두지 않는다.
     expect(commandBand).not.toContain("command-band-dock-divider");
@@ -2183,7 +2182,6 @@ describe("Instrument core design contract", () => {
     expect(modeSwitch).toContain('{canvasMode === "cruise" ? <>');
     // War Room 도구는 작업 표시줄에만 선다 — 사이드바 캡슐에 중복하지 않는다.
     expect(modeSwitch).toContain('{triageActive ? null : <div');
-    expect(source("../../../features/workspace/client/zen/war-room-taskbar.tsx")).toContain('<WarRoomModeTools compact={fit.step >= 2} />');
     expect(modeSwitch).toContain('{ALIGN_LAYOUTS.map((layout) => (');
     expect(modeSwitch).toContain("onClick={cycleTriageDeckZoomPreset}");
     expect(modeSwitch).toContain("onClick={() => setTriageSpotlightEnabled(!triageSpotlightEnabled)}");

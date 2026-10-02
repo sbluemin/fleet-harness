@@ -482,7 +482,7 @@ export function App() {
       setSideBarCollapsed: (collapsed) => {
         // Zen은 /operations 데스크톱에서만 켜진다(War Room도 Zen 안이다). 그 안의 토글은 Zen을 유지한 채 좌측만 드러낸다.
         if (isZenMode() && resolvePanelShortcut() === "apply") {
-          hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar, ".war-room-taskbar .sbtoggle");
+          hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar, ".zen-bar [data-zen-sidebar-anchor]");
           return;
         }
         setZenMode(false);

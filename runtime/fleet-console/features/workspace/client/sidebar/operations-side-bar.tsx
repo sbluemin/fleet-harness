@@ -62,6 +62,7 @@ import {
   type SideBarStatus,
 } from "./operations-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
+import { AttentionSection } from "../zen/attention-section.js";
 
 interface OperationsSideBarProps {
   /** War Room 무대 최소 폭을 지키려는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
@@ -446,9 +447,9 @@ export function OperationsSideBar({
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
-    // Zen·War Room 에는 엣지 독이 없다 — War Room 막대의 사이드바 토글(반대쪽 컨트롤)이, 그 막대가 없으면 작업면이 받는다.
+    // Zen·War Room 에는 엣지 독이 없다 — 부유 섬의 사이드바 토글이 포커스를 받는다.
     if (!previousCollapsedRef.current && collapsed && !document.querySelector(".side-bar-edge-dock")) {
-      focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, document.querySelector(".war-room-taskbar .sbtoggle") ? ".war-room-taskbar .sbtoggle" : ".operations-center-stage");
+      focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, document.querySelector(".zen-bar [data-zen-sidebar-anchor]") ? ".zen-bar [data-zen-sidebar-anchor]" : ".operations-center-stage");
     }
     // 대칭 — 엣지 독에 포커스를 둔 채 단축키로 펼치면 독이 사라지며 포커스가 BODY 로 빠진다. 접기 셰브런이 받는다.
     if (previousCollapsedRef.current && !collapsed && document.activeElement === document.body) rootRef.current?.querySelector<HTMLElement>(".side-bar-collapse")?.focus();
@@ -984,7 +985,7 @@ export function OperationsSideBar({
     openTheaterLaunchMenuAt(event.currentTarget.getBoundingClientRect(), theaterId);
   };
 
-  // "Theater 추가" 요청 소비(팔레트·Zen 작업 표시줄) — 접힘을 풀고 Theater 브라우저를 연다.
+  // "Theater 추가" 요청 소비(팔레트) — 접힘을 풀고 Theater 브라우저를 연다.
   // Zen에서는 사이드바를 숨긴 채 상자만 연다 — Cruise의 접힘 선호는 Zen 밖의 것이다.
   useEffect(() => {
     if (!pendingSideBarAddTheater) return;
@@ -1069,6 +1070,10 @@ export function OperationsSideBar({
 
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
+        {zenMode ? <AttentionSection onFocus={onFocus} onOpenOperationMenu={(operationId, anchor, returnFocus) => {
+          setNewMenu(null);
+          setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus });
+        }} /> : null}
         {theaters.map((theater, theaterIndex) => {
           const isActiveTheater = theater.id === activeTheaterId;
           const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);

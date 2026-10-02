@@ -3719,11 +3719,6 @@ button.status-glyph.is-actionable:focus-visible {
 .canvas-mode-bracket--sw { bottom: -2px; left: -2px; border-top: 0; border-right: 0; }
 .canvas-mode-bracket--se { right: -2px; bottom: -2px; border-top: 0; border-left: 0; }
 
-/* War Room의 바닥은 작업 표시줄 수평선이다 — 아래 괄호는 세로 팔로 그 선까지 잇는다. */
-.operations-canvas.is-triage .canvas-mode-frame { bottom: var(--arena-bottom, 0px); border-bottom: 0; }
-.operations-canvas.is-triage .canvas-mode-bracket--sw,
-.operations-canvas.is-triage .canvas-mode-bracket--se { bottom: 0; height: 34px; border-bottom: 0; }
-
 .is-triage-entering .canvas-mode-bracket--nw { animation: triage-bracket-nw var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 .is-triage-entering .canvas-mode-bracket--ne { animation: triage-bracket-ne var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
 .is-triage-entering .canvas-mode-bracket--sw { animation: triage-bracket-sw var(--duration-slow) cubic-bezier(0.2, 0.9, 0.25, 1) both; }
@@ -4142,7 +4137,7 @@ button.status-glyph.is-actionable:focus-visible {
 .canvas-triage-deck {
   position: absolute;
   /* 박스가 아니라 아레나 기준이다. 가로는 프레임을 따라 12px 가산으로 다가선다
-     (max(10px, 아레나 − 4px) + 16px). 아래는 작업 표시줄 높이 + 16px이다. */
+     (max(10px, 아레나 − 4px) + 16px). 아래는 아레나 하단 인셋 + 16px이다. */
   inset: calc(var(--arena-top, 0px) + 26px) max(26px, var(--arena-right, 0px) + 12px) calc(var(--arena-bottom, 0px) + 16px) max(26px, var(--arena-left, 0px) + 12px);
   z-index: 80;
   display: grid;
@@ -5179,7 +5174,7 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 /* 우하단 계기 열 — MAP(또는 접힌 Map 버튼)과 그 위의 허용 요청 더미가 함께 선다.
-   아레나 안 도킹이다: 레일 카드가 점유한 폭(--arena-right)과 Zen 작업 표시줄(--arena-bottom)을 피한다(사전 감사 high).
+   아레나 안 도킹이다: 레일 카드가 점유한 폭(--arena-right)을 피하고 오른쪽 아래 섬 위로 쌓인다.
    열은 z-index 를 두지 않아 쌓임 맥락을 만들지 않는다 — MAP(14)과 더미(81)가 캔버스 층에서 각자 겨룬다.
    빈 곳은 클릭을 통과시키고, 계기와 카드만 포인터를 쥔다. */
 .canvas-corner-dock {
@@ -5191,6 +5186,11 @@ button.status-glyph.is-actionable:focus-visible {
   align-items: flex-end;
   gap: var(--space-2);
   pointer-events: none;
+}
+
+/* 오른쪽 아래 섬 위에 8px 숨을 두고 쌓는다. 다른 모서리는 기존 독 자리다. */
+:root[data-zen-island-corner="bottom-right"] .console-shell.is-zen .canvas-corner-dock {
+  bottom: max(calc(var(--arena-bottom, 0px) + var(--space-4)), 60px);
 }
 
 /* 우하단 캔버스 미니맵 — 침묵하는 계기. 크롬은 중립 헤어라인으로 소등하고,
@@ -6227,7 +6227,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* 상태별 보기 토글 — 접기 컨트롤과 같은 24px 유령 버튼. 눌림은 바로 왼쪽 캔버스 모드 세그먼트
    (layout.css .command-band-mode-seg)와 같은 말로 한다 — 옅은 워시 · 기본 잉크 · 아래 12px brass 다텀.
-   나란히 선 두 스위치가 "지금 이것"을 다른 어휘로 말하지 않게. 사이드바 머리와 Zen 작업 표시줄이 같은 부품이다. */
+   나란히 선 두 스위치가 "지금 이것"을 다른 어휘로 말하지 않게. 사이드바 머리와 부유 섬이 같은 부품이다. */
 .side-bar-status-view-toggle,
 .side-bar-view-menu-button {
   position: relative;
@@ -7687,8 +7687,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   }
 
   .side-bar-status-view-toggle,
-  .side-bar-view-menu-button,
-  .zen-taskbar-archive {
+  .side-bar-view-menu-button {
     transition: none;
   }
 
@@ -19063,43 +19062,6 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .side-bar-archive-button:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: -2px;
-}
-
-/* Zen 작업 표시줄의 보관함 입구 — 옆의 캔버스 모드 세그먼트·상태별 보기 토글과 같은 24px 유령 버튼. 눌림 상태가 없는
-   동작 버튼이라 다텀을 세우지 않는다. 비어 있으면 잉크만 한 단계 낮추고, 누르면 여전히 빈 보관함을 연다. */
-.zen-taskbar-archive {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
-}
-
-.zen-taskbar-archive svg {
-  width: 14px;
-  height: 14px;
-}
-
-.zen-taskbar-archive.is-empty {
-  color: color-mix(in oklch, var(--text-tertiary) 55%, transparent);
-}
-
-.zen-taskbar-archive:hover,
-.zen-taskbar-archive:focus-visible {
-  background: var(--control-wash-hover);
-  color: var(--text-secondary);
-}
-
-.zen-taskbar-archive:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: 2px;
 }
 
 .side-bar-archive-glyph,
