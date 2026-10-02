@@ -10,7 +10,7 @@ Record the target worktree, OS/architecture, source SHA, Electron version, and t
 |---|---|
 | Setup and ownership for every Desktop run | [Setup](desktop/setup.md) |
 | Entry-to-Console handoff, sandbox, navigation, reload | [Shell/CDP](desktop/shell-cdp.md) |
-| Menus, dialogs, tray, quit/relaunch, sidecar/lock, package/signing | Relevant lane in [Native and package](desktop/native-and-package.md) |
+| Menus, dialogs, tray, native Browser view visibility, quit/relaunch, sidecar/lock, package/signing | Relevant lane in [Native and package](desktop/native-and-package.md) |
 | Windows ARM64, unavailable wrapper, platform-specific claim | [Platform automation](desktop/platform-automation.md) |
 
 ## Execution
