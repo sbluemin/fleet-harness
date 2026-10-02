@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { ArchiveGlyph } from "./archive-glyph.js";
 import type { PaletteCommandEntry, PaletteCommandGroup, PaletteGlyphId } from "../../integration/palette-commands.js";
 import { theaterInitials } from "../../../../../features/workspace/client/sidebar/operations-side-bar.js";
+import { TheaterMonogram } from "../../../../../features/workspace/client/sidebar/theater-monogram.js";
 
 /**
  * 팔레트 행·구역 글리프 한 벌. 16px 상자, 1.5px 선, 둥근 끝 — 시작 화면·상태 아이콘과 같은 굵기다.
@@ -67,7 +68,7 @@ export function PaletteRailIcon({ icon }: { readonly icon: ReactNode | (() => Re
 /** 명령 행의 선행 글리프. Theater는 사이드바 모노그램, 패널은 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
 export function PaletteCommandGlyph({ command }: { readonly command: PaletteCommandEntry }) {
   if (command.glyph === "theater-monogram") {
-    return <span className="operation-search-command-glyph operation-search-monogram" aria-hidden="true">{theaterInitials(command.monogramSource ?? command.label)}</span>;
+    return <span className="operation-search-command-glyph operation-search-monogram" aria-hidden="true"><TheaterMonogram compact>{theaterInitials(command.monogramSource ?? command.label)}</TheaterMonogram></span>;
   }
   if (command.glyph === "rail-entry") return <PaletteRailIcon icon={command.railIcon} />;
   return <span className="operation-search-command-glyph" aria-hidden="true">{LINE_GLYPHS[command.glyph]}</span>;

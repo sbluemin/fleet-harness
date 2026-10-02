@@ -14,6 +14,7 @@ import { OperationNameMark } from "../../../execution/client/components/operatio
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import { groupOperations, groupOperationsByStatus, theaterInitials } from "../sidebar/operations-side-bar.js";
+import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import type { SideBarEntry } from "../sidebar/operations-side-bar-chip.js";
 import { getStatusTransitionTick, useSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
@@ -532,7 +533,7 @@ function CruiseTaskbar({
               onClick={(event) => toggleMenu({ kind: "theaters", anchor: event.currentTarget.getBoundingClientRect() }, event.currentTarget)}
             >
               <span className="zen-taskbar-theater-anchor" aria-hidden="true">
-                {theaterInitials(theater.label)}
+                <TheaterMonogram compact>{theaterInitials(theater.label)}</TheaterMonogram>
                 {otherTheaterAwaiting ? <span className="zen-taskbar-theater-badge" /> : null}
               </span>
               <span className="zen-taskbar-theater-name">{theater.label}</span>
@@ -588,7 +589,7 @@ function CruiseTaskbar({
                     menuReturnFocusRef.current?.focus();
                   }}
                 >
-                  <span className={`zen-taskbar-theater-anchor${current ? "" : " is-dim"}`} aria-hidden="true">{theaterInitials(candidate.label)}</span>
+                  <span className={`zen-taskbar-theater-anchor${current ? "" : " is-dim"}`} aria-hidden="true"><TheaterMonogram compact>{theaterInitials(candidate.label)}</TheaterMonogram></span>
                   <span className="zen-taskbar-menu-title">{candidate.label}</span>
                   {awaiting > 0 ? <span className="zen-taskbar-menu-awaiting">{t("zen.taskbar.awaitingCount", { count: awaiting })}</span> : null}
                   <span className="zen-taskbar-menu-count">{operations.filter((operation) => operation.theaterId === candidate.id).length}</span>

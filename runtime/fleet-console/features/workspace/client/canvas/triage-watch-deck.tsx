@@ -7,6 +7,7 @@ import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/cli
 import { getIdleArrivalIds, useOperationStatusDetails } from "../../../execution/client/operation-marks.js";
 import { resolveOperationMarkVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../../../execution/client/operation-activity.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
+import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import type { OperationGeometry, OperationNode, OperationGroup } from "../../../../core/client/src/integration/types.js";
 import { flattenGroupedOrder, operationOrderFromNodes, revealOperationStage } from "../../../../core/client/src/integration/store.js";
 import { FleetMap, type FleetMapDotMark } from "./fleet-map.js";
@@ -1053,7 +1054,7 @@ export function TriageWatchDeck({
               onContextMenu={(event) => openTheaterMenu(band.theater, event)}
             >
               <header className="canvas-triage-deck-band-head">
-                <span className="canvas-triage-deck-band-chip" aria-hidden="true">{theaterInitials(band.theater.label)}</span>
+                <span className="canvas-triage-deck-band-chip" aria-hidden="true"><TheaterMonogram>{theaterInitials(band.theater.label)}</TheaterMonogram></span>
                 <span className="canvas-triage-deck-band-label">{band.theater.label}</span>
                 <span className="canvas-triage-deck-band-rule" aria-hidden="true" />
                 <span className="canvas-triage-deck-band-counts">

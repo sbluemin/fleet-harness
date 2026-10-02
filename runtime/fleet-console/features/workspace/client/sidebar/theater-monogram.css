@@ -1,0 +1,12 @@
+.theater-monogram {
+  white-space: nowrap;
+}
+
+.theater-monogram.is-wide {
+  letter-spacing: 0;
+}
+
+/* 18px 고정 칩(테두리가 있으면 안쪽 16px)에 전각 두 글자를 남긴다. 칩·라틴 조판은 바꾸지 않는다. */
+.theater-monogram.is-wide.is-compact {
+  font-size: 0.8em;
+}

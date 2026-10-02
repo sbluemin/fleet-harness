@@ -7,6 +7,7 @@ import { DirectoryBrowserModal } from "../components/directory-browser-modal.js"
 import { useT } from "../../i18n/index.js";
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
 import { theaterInitials } from "../../../../../features/workspace/client/sidebar/theater-initials.js";
+import { TheaterMonogram } from "../../../../../features/workspace/client/sidebar/theater-monogram.js";
 import { setActiveTheater } from "../../integration/store.js";
 import { registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
 import type { ConsoleState } from "../../integration/types.js";
@@ -77,7 +78,7 @@ export function MobileTheaterPage({ state }: { readonly state: ConsoleState }) {
           return (
             <div className="mobile-theater-card" key={theater.id}>
               <button type="button" className="mobile-theater-row" aria-current={here ? "true" : undefined} onClick={() => enter(theater.id)}>
-                <span className="mobile-theater-mark" aria-hidden="true">{theaterInitials(theater.label)}</span>
+                <span className="mobile-theater-mark" aria-hidden="true"><TheaterMonogram>{theaterInitials(theater.label)}</TheaterMonogram></span>
                 <span className="mobile-theater-copy">
                   <strong>{theater.label}</strong>
                   <span className="mobile-theater-summary">

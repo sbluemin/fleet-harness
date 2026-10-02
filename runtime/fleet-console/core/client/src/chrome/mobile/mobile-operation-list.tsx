@@ -6,6 +6,7 @@ import { ViewModeToggle } from "../components/view-mode-toggle.js";
 import { useT } from "../../i18n/index.js";
 import { operationActivityVisual, resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
 import { theaterInitials } from "../../../../../features/workspace/client/sidebar/operations-side-bar.js";
+import { TheaterMonogram } from "../../../../../features/workspace/client/sidebar/theater-monogram.js";
 import { openQuickLaunch } from "../../integration/store.js";
 import type { OperationNode } from "../../integration/types.js";
 
@@ -33,7 +34,7 @@ export function MobileOperationList({ operations, operationRuntime, notification
           <h1 id="mobile-operation-list-title">{t("mobile.operations.title")}</h1>
         ) : (
           <h1 id="mobile-operation-list-title" className="mobile-list-theater">
-            <span className="mobile-theater-mark" aria-hidden="true">{theaterInitials(theaterLabel)}</span>
+            <span className="mobile-theater-mark" aria-hidden="true"><TheaterMonogram>{theaterInitials(theaterLabel)}</TheaterMonogram></span>
             <span className="mobile-list-theater-label">{theaterLabel}</span>
           </h1>
         )}
