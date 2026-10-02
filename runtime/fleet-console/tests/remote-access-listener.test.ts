@@ -48,6 +48,7 @@ const tempDirs: string[] = [];
 afterEach(async () => {
   while (servers.length > 0) await servers.pop()!.stop();
   while (tempDirs.length > 0) fs.rmSync(tempDirs.pop()!, { force: true, recursive: true });
+  vi.restoreAllMocks();
 });
 
 describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
@@ -130,6 +131,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 둘 다 기억하되, 접속 줄은 언제나 하나만 살아 있다.
    */
   it("hands the single remote seat to the newest join and leaves the earlier pairing intact", async () => {
+    const realNow = Date.now.bind(Date);
+    let clockOffset = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => realNow() + clockOffset);
     const fixture = await startFixture({ remote: true });
     const first = await joinAs(fixture, "full", "first");
     const secondLink = await createLink(fixture);
@@ -184,8 +188,50 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(JSON.parse(vanished.body)).toEqual({ error: "unauthorized" });
     const reopened = await remoteRequest(restarted, "POST", "/api/v1/join", "{}", current);
     expect(reopened.status).toBe(204);
-    const reopenedCookie = cookiesOf(reopened);
+    let reopenedCookie = cookiesOf(reopened);
     await expect(remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie)).resolves.toMatchObject({ status: 200 });
+
+    // 유휴 만료 후 첫 전송이 sweep을 기다리지 않고 구독을 끝내야 한다.
+    const writeLocal = async (route: string, method: string, body: unknown) => {
+      const response = await fetch(`${restarted.loopbackEndpoint}api/v1/${route}`, {
+        method, headers: { Origin: restarted.loopbackEndpoint.replace(/\/$/u, ""), "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      expect(response.ok).toBe(true);
+      return response.json();
+    };
+    const grant = await writeLocal("theaters/folder-grants", "POST", { path: restarted.dir });
+    const theater = await writeLocal("theaters", "POST", { folderGrantId: grant.folderGrantId });
+    const { operation } = await writeLocal("operations", "POST", { theaterId: theater.id, type: "agent", pluginId: null, title: "before-idle", payload: {} });
+    const idleStream = await openRemoteEvents(restarted, reopenedCookie);
+    const secondIdleStream = await openRemoteEvents(restarted, reopenedCookie);
+    const localStream = await openLoopbackEvents(restarted);
+    try {
+      clockOffset += 61 * 60_000;
+      await writeLocal(`operations/${operation.id}`, "PATCH", { title: "after-idle" });
+      await idleStream.waitForClose();
+      await secondIdleStream.waitForClose();
+      for (const stream of [idleStream, secondIdleStream]) {
+        expect(stream.seen("operation:changed")).toBe(0);
+        expect(stream.seen("control:reclaimed")).toBe(0);
+      }
+      await localStream.waitFor("operation:changed", (data) => data.operation.title === "after-idle");
+      const expired = await remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie);
+      expect(expired.status).toBe(401);
+      expect(JSON.parse(expired.body)).toEqual({ error: "unauthorized" });
+      const rejoined = await remoteRequest(restarted, "POST", "/api/v1/join", "{}", reopenedCookie);
+      expect(rejoined.status).toBe(204);
+      reopenedCookie = cookiesOf(rejoined);
+      const freshStream = await openRemoteEvents(restarted, reopenedCookie);
+      try {
+        await writeLocal(`operations/${operation.id}`, "PATCH", { title: "after-rejoin" });
+        await freshStream.waitFor("operation:changed", (data) => data.operation.title === "after-rejoin");
+        expect(idleStream.seen("operation:changed")).toBe(0);
+      } finally { freshStream.close(); }
+    } finally {
+      localStream.close();
+      idleStream.close();
+      secondIdleStream.close();
+    }
 
     // 언페어링은 돌아올 권한까지 걷는다. 남은 쿠키에는 사유도 재합류도 주지 않는다.
     const reopenedDevice = (await readRemoteStatus(restarted)).devices.find((entry) => entry.device === "first")!;

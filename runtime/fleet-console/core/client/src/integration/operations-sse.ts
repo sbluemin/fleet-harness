@@ -402,13 +402,14 @@ function attemptReconnect(): void {
     scheduleReconnect();
   }, RECONNECT_ATTEMPT_DEADLINE_MS);
   const { signal } = controller;
-  void Promise.all([fetchOperations(null, signal), fetchGroups(null, signal).catch(() => null), fetchTheaters(signal).catch(() => null)])
+  const refreshSnapshots = () => Promise.all([fetchOperations(null, signal), fetchGroups(null, signal).catch(() => null), fetchTheaters(signal).catch(() => null)])
     .then(([operations, groups, theaters]) => {
       if (attemptGeneration !== connectionGeneration) return;
       if (theaters) hydrateTheaters(theaters);
       if (groups) hydrateGroups(groups);
       hydrateOperations(operations);
-    })
+    });
+  void refreshSnapshots()
     // 콘솔이 재기동하면 이 화면의 세션은 사라지지만 페어링은 남는다. 그 사실을 아무도
     // 쓰지 않으면 원격 화면은 401을 영원히 반복하며, 사람에게는 "새 액세스 링크를
     // 받으라"는 잘못된 결론만 남는다. 여기서 한 번, 조용히 다시 합류한다.
@@ -421,11 +422,25 @@ function attemptReconnect(): void {
         return;
       }
       if (sessionResumeRefused) return;
-      await resumeConsoleSession(signal).catch((joinError: unknown) => {
+      try {
+        await resumeConsoleSession(signal);
+      } catch (joinError: unknown) {
         // 401은 페어링이 정말 사라졌다는 답이다 — 더 두드려도 거절 카운터만 올린다.
         // 그 밖의 실패는 아직 답이 아니므로 다음 재시도에서 한 번 더 묻는다.
         if (attemptGeneration === connectionGeneration && joinError instanceof ApiError && joinError.status === 401) sessionResumeRefused = true;
-      });
+        return;
+      }
+      if (attemptGeneration !== connectionGeneration) return;
+      // 401로 못 받은 스냅숏은 합류 후 다시 읽는다. 같은 세대·기한 안에서 한 번만 재조회하므로,
+      // 그사이 놓친 변경을 채우기 전에 스트림을 열거나 같은 시도에서 join을 반복하지 않는다.
+      try {
+        await refreshSnapshots();
+      } catch (snapshotError: unknown) {
+        if (attemptGeneration !== connectionGeneration) return;
+        if (snapshotError instanceof ApiError && (snapshotError.sessionEndReason === "reclaimed" || snapshotError.sessionEndReason === "superseded")) {
+          endSession(snapshotError.sessionEndReason);
+        } else scheduleReconnect();
+      }
     })
     .finally(() => {
       clearTimeout(deadline);

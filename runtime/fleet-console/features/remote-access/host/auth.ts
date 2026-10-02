@@ -79,10 +79,11 @@ export interface AccessRegistryDeps {
   /**
    * prune이 실제로 세션을 걷어냈을 때 알린다. 만료는 조용히 일어나므로 알리지 않으면 화면은
    * 이미 없는 보유자를 계속 띄운 채 남는다 — 명시적 회수와 같은 신호가 나가야 한다.
+   * 지운 세션의 공개 이름을 함께 넘겨, 호스트가 그 세션으로 열린 스트림도 끝낼 수 있게 한다.
    *
    * prune은 다른 레지스트리 호출 안에서 돌기도 하므로 콜백은 재진입을 견뎌야 한다.
    */
-  readonly onSessionsPruned?: () => void;
+  readonly onSessionsPruned?: (handles: readonly string[]) => void;
 }
 
 export interface AccessRegistry {
@@ -298,14 +299,14 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     for (const [token, grant] of grants) {
       if (grant.expiresAt <= current) grants.delete(token);
     }
-    let removed = false;
+    const removed: string[] = [];
     for (const [id, stored] of sessions) {
       if (stored.absoluteExpiresAt <= current || stored.idleExpiresAt <= current) {
         sessions.delete(id);
-        removed = true;
+        removed.push(stored.handle);
       }
     }
-    if (removed) deps.onSessionsPruned?.();
+    if (removed.length > 0) deps.onSessionsPruned?.(removed);
   }
 
   function lookupSessionEnd(pairingId: string): ControlReclaimedReason | null {

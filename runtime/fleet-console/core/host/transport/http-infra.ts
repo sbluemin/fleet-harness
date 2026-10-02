@@ -32,11 +32,12 @@ export function encodeSseData(event: string, data: unknown): string {
 export function startSseKeepaliveLifecycle(
   res: http.ServerResponse,
   onCleanup: () => void,
+  write: (data: string) => void = (data) => { res.write(data); },
 ): () => void {
   res.setTimeout(0);
   const interval = setInterval(() => {
     if (res.writableEnded || res.destroyed) return;
-    res.write(encodeSseData("heartbeat", {}));
+    write(encodeSseData("heartbeat", {}));
   }, SSE_KEEPALIVE_INTERVAL_MS);
   interval.unref();
 

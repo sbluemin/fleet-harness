@@ -524,13 +524,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   /** 마지막으로 알린 보유자의 공개 이름. 바뀌지 않은 사실을 신호로 내보내지 않기 위한 기준이다. */
   let lastPublishedControlHolder: string | null = null;
   const access = createAccessRegistry({
-    onSessionsPruned: () => {
-      if (controlPruneNotifyQueued) return;
-      controlPruneNotifyQueued = true;
-      queueMicrotask(() => {
-        controlPruneNotifyQueued = false;
-        broadcastControlChanged();
-      });
+    onSessionsPruned: (handles) => {
+      if (!controlPruneNotifyQueued) {
+        controlPruneNotifyQueued = true;
+        queueMicrotask(() => {
+          controlPruneNotifyQueued = false;
+          try { broadcastControlChanged(); } catch (error) { recordFailure("session_prune_notification_failed", error); }
+        });
+      }
+      // 만료된 구독은 즉시 닫되, 재합류를 막는 회수 사유는 남기지 않는다.
+      // reconcile은 위 제어 갱신에서 한 번만 한다. 한 연결의 실패가 나머지 정리를 막지 않는다.
+      for (const handle of handles) {
+        try { endSessionStreams(handle, null, false); } catch (error) { recordFailure("session_prune_close_failed", error); }
+      }
     },
   });
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
@@ -608,7 +614,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 언젠가 민감한 필드를 싣는다.
     if (!pluginSseChannels.has(channel) || operationSseSubscribers.size === 0) return;
     const data = encodeSseData(channel, payload);
-    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
   }
   // 멱등 기동 키 원장 — 살아 있는 키는 Operation, 유예 중인 키는 tombstone 에서 읽고, purge 는 흔적을 지우기 전에 선기록한다.
   const launchKeys = createLaunchKeyLedger({
@@ -805,7 +811,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     scheduleOperationUseBroadcast();
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData(BROWSER_STATE_EVENT, state);
-    for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") subscriber.res.write(data);
+    for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") writeOperationSse(subscriber, data);
   });
   // 스크린샷은 Console 호스트에 놓인다 — 뷰를 그리는 Desktop 은 원격일 수 있어도 도구를 부르는 에이전트는
   // 언제나 이 기계에서 돌기 때문이다.
@@ -1355,52 +1361,52 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     broadcastGroupChanged,
     broadcastGroupRemoved,
     subscribeOperationSse: (req, res) => {
-      res.writeHead(200, withSecurityHeaders({
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      }));
-      res.write(":connected\n\n");
-      res.write(encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen)));
-      // 붙기 전에 시작된 콘솔·컴퓨터 사용과 허용 요청은 이벤트로 다시 오지 않는다 — 지금 스냅샷을 실어 보낸다.
-      // 재연결도 이 자리를 지나므로 끊긴 사이의 변경은 여기서 한 번에 맞춰진다.
-      res.write(encodeSseData(OPERATION_USE_STATE_EVENT, operationUseSnapshot()));
       const listener = listenerForRequest(req);
       const audience: AccessAudience = listener?.audience ?? "local";
       const sessionHandle = listener === null || listener.audience === "local"
         ? null
         : access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience)?.handle ?? null;
-      // 셸이 이미 게시한 집이 있으면 붙는 순간 실어 보낸다 — 화면의 한 번뿐인 물음과 게시가 어느 순서로
-      // 오든 창은 돌아갈 곳을 안다. 빈 답은 보내지 않는다: "아직 모른다"를 "집이 없다"로 굳히지 않기 위해서다.
+      if (audience === "remote" && sessionHandle === null) { writeJson(res, 401, { error: "unauthorized" }); return; }
       const shellOwner = audience === "local" ? "local" : sessionHandle;
-      const publishedShell = shellOwner === null ? undefined : desktopShellsByOwner.get(shellOwner);
-      if (publishedShell !== undefined) res.write(encodeSseData(DESKTOP_SHELL_EVENT, publishedShell));
-      const publishedShellUpdate = shellOwner === null ? undefined : desktopShellUpdatesByOwner.get(shellOwner);
-      if (publishedShellUpdate !== undefined) res.write(encodeSseData(DESKTOP_SHELL_UPDATE_EVENT, publishedShellUpdate));
-      // 루프백은 붙는 순간 현재 보유자를 받는다 — 커튼은 세션이 열린 뒤에 새로고침한 화면에서도
-      // 떠 있어야 하고, 이벤트만으로는 그 사이에 놓친 사실을 되찾을 수 없다.
-      if (audience === "local") {
-        res.write(encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
-      }
-      // 이 화면이 붙기 전에 시작된 감시는 이벤트로 다시 오지 않는다 — 지금 상태를 실어 보낸다.
       // 자기 Console을 여는 네이티브 뷰도 일반 Chrome UA를 쓴다. 현재 호스트가 소유한 뷰만 별도로 세어
       // 그 페이지가 자기 엔진을 shared로 닫지 않게 한다. 표식만 있거나 다른 호스트의 요청이면 인정하지 않는다.
       const viewId = req.headers[DESKTOP_BROWSER_VIEW_HEADER];
       const operationView = typeof viewId === "string" && shellOwner !== null
         && desktopEngine.currentHost === shellOwner && Boolean(desktopEngine.viewOperation(viewId));
       const subscriber: OperationSseSubscriber = { res, audience, sessionHandle, client: operationView ? "operation-browser" : clientKindOf(req) };
+      res.writeHead(200, withSecurityHeaders({
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      }));
       operationSseSubscribers.add(subscriber);
+      startSseKeepaliveLifecycle(res, () => {
+        if (operationSseSubscribers.delete(subscriber)) browserService.reconcile();
+      }, (data) => writeOperationSse(subscriber, data));
+      writeOperationSse(subscriber, ":connected\n\n");
+      writeOperationSse(subscriber, encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen)));
+      // 붙기 전에 시작된 콘솔·컴퓨터 사용과 허용 요청은 이벤트로 다시 오지 않는다 — 지금 스냅샷을 실어 보낸다.
+      // 재연결도 이 자리를 지나므로 끊긴 사이의 변경은 여기서 한 번에 맞춰진다.
+      writeOperationSse(subscriber, encodeSseData(OPERATION_USE_STATE_EVENT, operationUseSnapshot()));
+      // 셸이 이미 게시한 집이 있으면 붙는 순간 실어 보낸다 — 화면의 한 번뿐인 물음과 게시가 어느 순서로
+      // 오든 창은 돌아갈 곳을 안다. 빈 답은 보내지 않는다: "아직 모른다"를 "집이 없다"로 굳히지 않기 위해서다.
+      const publishedShell = shellOwner === null ? undefined : desktopShellsByOwner.get(shellOwner);
+      if (publishedShell !== undefined) writeOperationSse(subscriber, encodeSseData(DESKTOP_SHELL_EVENT, publishedShell));
+      const publishedShellUpdate = shellOwner === null ? undefined : desktopShellUpdatesByOwner.get(shellOwner);
+      if (publishedShellUpdate !== undefined) writeOperationSse(subscriber, encodeSseData(DESKTOP_SHELL_UPDATE_EVENT, publishedShellUpdate));
+      // 루프백은 붙는 순간 현재 보유자를 받는다 — 커튼은 세션이 열린 뒤에 새로고침한 화면에서도
+      // 떠 있어야 하고, 이벤트만으로는 그 사이에 놓친 사실을 되찾을 수 없다.
+      if (audience === "local") {
+        writeOperationSse(subscriber, encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
+      }
       // 브라우저·모바일 화면이 붙는 순간 Operation 브라우저는 멈춘다 — 떠나면 다시 열린다.
+      if (!operationSseSubscribers.has(subscriber)) return;
       browserService.reconcile();
       // 붙기 전에 일어난 브라우저 변화는 이벤트로 다시 오지 않는다. 스트림이 끊겼다 다시 붙는 길도 이 자리를 지나므로,
       // 그 사이 에이전트가 연 탭이나 바뀐 주소가 화면에 영영 낡은 채로 남지 않는다.
       if (subscriber.client === "desktop") {
-        for (const browsing of browserService.status().operations) res.write(encodeSseData(BROWSER_STATE_EVENT, browserService.state(browsing)));
+        for (const browsing of browserService.status().operations) writeOperationSse(subscriber, encodeSseData(BROWSER_STATE_EVENT, browserService.state(browsing)));
       }
-      startSseKeepaliveLifecycle(res, () => {
-        operationSseSubscribers.delete(subscriber);
-        browserService.reconcile();
-      });
     },
   });
   const operationArchiveRouter = createOperationArchiveRouter({ archive: operationArchive, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson, sanitize: (node) => sanitizeArchiveOperation(node, true) });
@@ -2108,24 +2114,32 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (encoded === lastOperationUseSnapshot) return;
     lastOperationUseSnapshot = encoded;
     const data = encodeSseData(OPERATION_USE_STATE_EVENT, snapshot);
-    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
+  }
+
+  function writeOperationSse(subscriber: OperationSseSubscriber, data: string): void {
+    // sweep 사이에도 만료된 세션에 프레임을 보내지 않는다. 초기 상태·heartbeat도 같은 문을 탄다.
+    // resolveSession은 idle 수명을 늘리므로 쓰지 않는다. prune이 이 구독을 제거했는지 다시 본다.
+    if (subscriber.audience === "remote") access.prune();
+    if (!operationSseSubscribers.has(subscriber)) return;
+    subscriber.res.write(data);
   }
 
   /** 그룹 사건 — 이름·색·순서뿐이라 민감 필드가 없다. 원격 세션에도 그대로 흐른다. */
   function broadcastGroupChanged(group: { readonly id: string; readonly name: string; readonly color: string; readonly order: number; readonly theaterId: string; readonly createdAt: number }): void {
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData("group:changed", { group });
-    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
   }
   function broadcastGroupRemoved(groupId: string, theaterId: string): void {
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData("group:removed", { groupId, theaterId });
-    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
   }
   function broadcastOperationRemoved(operationId: string): void {
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData(OPERATION_REMOVED_SSE_EVENT, { operationId });
-    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
     scheduleOperationUseBroadcast();
   }
   function broadcastOperationChanged(node: OperationNode): void {
@@ -2137,7 +2151,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const sanitized = createSanitizedOpDto(node, { sensitiveFields });
     const data = encodeSseData("operation:changed", { operation: sanitized });
     for (const subscriber of operationSseSubscribers) {
-      subscriber.res.write(data);
+      writeOperationSse(subscriber, data);
     }
     // payload(consoleUse)·childSessions·live 목록이 바뀌면 operation-use 스냅샷도 바뀐다 — 제목만 바뀐 patch 는 스킵이 흡수한다.
     scheduleOperationUseBroadcast();
@@ -2153,7 +2167,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData("update:available", {});
     for (const subscriber of operationSseSubscribers) {
-      subscriber.res.write(data);
+      writeOperationSse(subscriber, data);
     }
   }
 
@@ -2163,14 +2177,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const data = encodeSseData(DESKTOP_SHELL_EVENT, snapshot.homeOrigin === null ? emptyDesktopShell() : snapshot);
     for (const subscriber of operationSseSubscribers) {
       const subscriberOwner = subscriber.audience === "local" ? "local" : subscriber.sessionHandle;
-      if (subscriberOwner === owner) subscriber.res.write(data);
+      if (subscriberOwner === owner) writeOperationSse(subscriber, data);
     }
   }
 
   function broadcastDesktopFullscreenChanged(): void {
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen));
-    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
   }
 
   /**
@@ -2223,7 +2237,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const data = encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(holder));
     for (const subscriber of operationSseSubscribers) {
       if (subscriber.audience !== "local") continue;
-      subscriber.res.write(data);
+      writeOperationSse(subscriber, data);
     }
   }
 
@@ -2242,16 +2256,22 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * `reason`이 null이면 닫기만 하고 아무것도 말하지 않는다. 닫는 일과 알리는 일을 가르는 것이
    * 이 인자의 존재 이유다 — 둘을 하나로 두면 안내를 건너뛰는 자리가 정리까지 함께 건너뛴다.
    */
-  function endSessionStreams(handle: string, reason: ControlReclaimedReason | null): void {
+  function endSessionStreams(handle: string, reason: ControlReclaimedReason | null, reconcile = true): void {
     if (operationSseSubscribers.size === 0) return;
     const data = reason === null ? null : encodeSseData(CONTROL_RECLAIMED_EVENT, controlReclaimedSnapshot(reason));
     for (const subscriber of [...operationSseSubscribers]) {
       if (subscriber.sessionHandle !== handle) continue;
       operationSseSubscribers.delete(subscriber);
-      if (data !== null) subscriber.res.write(data);
-      subscriber.res.end();
+      try {
+        // 명시적 회수 안내만 이미 무효인 세션에 보낸다. 만료는 프레임 없이 끝난다.
+        if (data !== null) subscriber.res.write(data);
+        subscriber.res.end();
+      } catch (error) {
+        try { subscriber.res.destroy(); } catch (failure) { recordFailure("session_stream_destroy_failed", failure); }
+        recordFailure("session_stream_close_failed", error);
+      }
     }
-    browserService.reconcile();
+    if (reconcile) browserService.reconcile();
   }
 
   /**
@@ -2288,7 +2308,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const data = encodeSseData(DESKTOP_SHELL_UPDATE_EVENT, snapshot);
     for (const subscriber of operationSseSubscribers) {
       const subscriberOwner = subscriber.audience === "local" ? "local" : subscriber.sessionHandle;
-      if (subscriberOwner === owner) subscriber.res.write(data);
+      if (subscriberOwner === owner) writeOperationSse(subscriber, data);
     }
   }
 

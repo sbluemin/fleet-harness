@@ -198,21 +198,36 @@ describe("operations SSE update availability", () => {
   it("resumes vanished sessions but stops joining when the pairing has been forgotten", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", TestEventSource);
-    mocks.fetchOperations.mockRejectedValue(new ApiError(401, "unauthorized"));
-    mocks.resumeConsoleSession.mockResolvedValueOnce(undefined).mockRejectedValue(new ApiError(401, "unauthorized"));
+    let resolveSnapshot!: (operations: readonly { readonly id: string }[]) => void;
+    mocks.fetchOperations
+      .mockRejectedValueOnce(new ApiError(401, "unauthorized"))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSnapshot = resolve; }))
+      .mockRejectedValue(new ApiError(401, "unauthorized"));
+    mocks.resumeConsoleSession.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined).mockRejectedValue(new ApiError(401, "unauthorized"));
     connectOperationsSse();
     TestEventSource.instances.at(-1)!.open();
     TestEventSource.instances.at(-1)!.onerror?.();
     await vi.advanceTimersByTimeAsync(1_000);
     expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(1);
     expect(readState().controlReclaimed).toBeNull();
+    // 합류만 끝났을 때는 아직 스트림을 열지 않는다. 놓친 상태를 먼저 채운다.
+    expect(TestEventSource.instances).toHaveLength(1);
+    expect(mocks.hydrateOperations).not.toHaveBeenCalled();
+    resolveSnapshot([{ id: "changed-while-expired" }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.hydrateOperations).toHaveBeenCalledWith([{ id: "changed-while-expired" }]);
+    expect(TestEventSource.instances).toHaveLength(2);
     TestEventSource.instances.at(-1)!.open();
     TestEventSource.instances.at(-1)!.onerror?.();
     await vi.advanceTimersByTimeAsync(1_000);
+    // 합류 후 재조회도 401이면 같은 시도에서 join을 반복하지 않고 백오프로 돌아간다.
     expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(2);
-    TestEventSource.instances.at(-1)!.onerror?.();
+    expect(TestEventSource.instances).toHaveLength(2);
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(2);
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(3);
+    TestEventSource.instances.at(-1)!.onerror?.();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(3);
     expect(readState().controlReclaimed).toBeNull();
   });
 
