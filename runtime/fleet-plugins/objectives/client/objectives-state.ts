@@ -53,6 +53,12 @@ const fetching = new Set<string>();
  * 그 id 의 목표 사건이나 영구 삭제가 오기 전에는 지우지 않는다.
  */
 const unknownToServer = new Set<string>();
+/**
+ * 스트림 재연결 뒤 다시 읽어야 할, 이미 읽은 Theater. 서버는 단절 중의 사건을 다시 보내지 않으므로 `loaded` 만 보고 건너뛰면
+ * 놓친 변경(정리함의 복원·영구 삭제 등)이 그대로 남는다. 스냅숏 경로가 이 Theater 를 강제로 다시 묻고, 성공하거나 확정 실패하면 지운다.
+ * 일시 실패면 남겨 두어 게이트가 내려간 뒤 다시 묻는다.
+ */
+const refreshAfterReconnect = new Set<string>();
 
 const RETRY_BASE_MS = 2_000;
 const RETRY_MAX_MS = 30_000;
@@ -281,7 +287,8 @@ function setTheater(theaterId: string, next: Partial<TheaterState>): void {
 /**
  * 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤에만 나머지를 읽는다.
  * 나머지는 등록된 모든 Theater(비활성 Theater 의 사이드바에도 목표 줄이 선다)와, 스냅숏의 최상위 에이전트
- * Operation(`type==="agent" && !parentOperationId`)이 속한 Theater 다. 한 번 읽은 뒤에는 사건으로만 갱신한다.
+ * Operation(`type==="agent" && !parentOperationId`)이 속한 Theater 다. 한 번 읽은 뒤에는 사건으로만 갱신하고, 스트림이 다시 붙으면
+ * (`refreshAfterReconnect`) 같은 순서로 한 번 더 읽는다.
  */
 function loadAgentTheaters(api: ClientApiCapability, activeId: string | null): void {
   const rest: string[] = [];
@@ -298,15 +305,15 @@ function loadAgentTheaters(api: ClientApiCapability, activeId: string | null): v
   // 세션이 일시 거절 중이면 기한이 지난 뒤 아직 못 읽은 첫 Theater 하나만 탐침으로 묻는다 — 성공하면 게이트가 내려가 나머지가 따라간다.
   if (degraded) {
     if (Date.now() < degraded.until || inflight.size > 0) return;
-    const probe = [...(activeId ? [activeId] : []), ...rest].find((theaterId) => !theaters.get(theaterId)?.loaded);
+    const probe = [...(activeId ? [activeId] : []), ...rest].find((theaterId) => !theaters.get(theaterId)?.loaded || refreshAfterReconnect.has(theaterId));
     if (probe) void loadTheater(api, probe, true);
     return;
   }
-  const lead = activeId ? loadTheater(api, activeId) : Promise.resolve();
+  const lead = activeId ? loadTheater(api, activeId, refreshAfterReconnect.has(activeId)) : Promise.resolve();
   void lead.then(() => {
     // 활성 Theater 가 일시 거절을 받았으면 나머지를 한꺼번에 두드리지 않는다.
     if (installed?.api !== api || degraded) return;
-    for (const theaterId of rest) void loadTheater(api, theaterId);
+    for (const theaterId of rest) void loadTheater(api, theaterId, refreshAfterReconnect.has(theaterId));
   });
 }
 
@@ -315,6 +322,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   // 실패 장부는 새 설치에서 처음부터다 — 확정 실패로 정착시킨 Theater 도 다시 묻는다.
   for (const [theaterId, retry] of [...loadRetries]) if (retry.permanent) unsettle(theaterId);
   loadRetries.clear();
+  refreshAfterReconnect.clear();
   degraded = null;
   clearRetryTimer();
   const offItem = ctx.consoleEvents.subscribe("objectives:objective", (payload) => {
@@ -350,6 +358,15 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     const data = payload as { groupId?: string; theaterId?: string } | null;
     if (!data || typeof data.groupId !== "string") return;
     for (const [theaterId, state] of theaters) if (state.groups.some((group) => group.id === data.groupId)) setTheater(theaterId, { groups: state.groups.filter((group) => group.id !== data.groupId) });
+  });
+  /**
+   * 스트림이 다시 붙었다 — 단절 중의 목표·그룹 사건은 다시 오지 않는다. 이미 읽은 Theater 를 표시해 스냅숏 경로에 맡긴다.
+   * 같은 순간의 live 전이 스윕(noteReconnected)은 아직 못 읽은 Theater 를, 이 표시는 이미 읽은 Theater 를 맡으므로 서로 겹치지 않고,
+   * 같은 Theater 를 두 길이 함께 부르면 진행 중인 요청 하나를 나눠 쓴다. 확정 실패로 정착시킨 Theater 는 다시 묻지 않는다.
+   */
+  const offReconnect = ctx.consoleEvents.onReconnect?.(() => {
+    for (const [theaterId, state] of theaters) if (state.loaded && !loadRetries.get(theaterId)?.permanent) refreshAfterReconnect.add(theaterId);
+    loadAgentTheaters(ctx.api, ctx.consoleState.getActiveTheaterId());
   });
   // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 등록된 나머지 Theater 와 최상위 에이전트 Operation 이 속한 Theater 를 읽는다.
   // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadTheater 는 멱등이다.
@@ -407,7 +424,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   };
   if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
   return () => {
-    offItem(); offGroup(); offPurged(); offRemoved(); offConsole();
+    offItem(); offGroup(); offPurged(); offRemoved(); offReconnect?.(); offConsole();
     if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
     if (focusOutTimer !== null) clearTimeout(focusOutTimer);
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
@@ -486,7 +503,7 @@ function apiErrorCode(error: unknown): string | null {
   return typeof code === "string" && /^[a-z_]{1,64}$/.test(code) ? code : null;
 }
 
-/** `force` 는 읽은 여부와 일시 실패 기한을 무시하고 지금 묻는다 — 게이트의 탐침이 쓴다. */
+/** `force` 는 읽은 여부와 일시 실패 기한을 무시하고 지금 묻는다 — 게이트의 탐침과 재연결 뒤 다시 읽기가 쓴다. */
 export function loadTheater(api: ClientApiCapability, theaterId: string, force = false): Promise<void> {
   const current = theaters.get(theaterId);
   if (current?.loaded && !force) return Promise.resolve();
@@ -497,6 +514,8 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
   if (retry && !force && Date.now() < retry.nextAt) return Promise.resolve();
   const fail = (permanent: boolean) => {
     if (!permanent) noteTransient();
+    // 확정 실패는 다시 물어도 같은 답이다 — 재연결 표시도 거둔다. 일시 실패는 게이트가 내려간 뒤 다시 묻도록 남긴다.
+    else refreshAfterReconnect.delete(theaterId);
     // 이미 읽은 Theater 의 재조회 실패는 기존 목록을 그대로 둔다.
     if (theaters.get(theaterId)?.loaded) return;
     const now = Date.now();
@@ -514,6 +533,7 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
       // 200 인데 모양이 다르면 확정 실패다 — 다시 물어도 같은 답이 온다.
       if (!Array.isArray(state?.objectives) || !Array.isArray(state.groups) || typeof state.launch !== "object" || state.launch === null) { fail(true); return; }
       loadRetries.delete(theaterId);
+      refreshAfterReconnect.delete(theaterId);
       setTheater(theaterId, { objectives: state.objectives, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
       // 읽는 사이 생긴 Operation 도 목표로 — 스냅숏 기준으로 한 번 맞춘다.
       if (installed) { operationsSnapshot = installed.consoleState.getOperations({ nested: true }); reconcileOperations(installed.api); }

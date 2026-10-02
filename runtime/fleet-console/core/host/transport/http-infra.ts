@@ -22,6 +22,13 @@ export function encodeSseData(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+/**
+ * 주기 프레임은 주석이 아니라 이름 있는 `heartbeat` 사건이다.
+ *
+ * 주석 프레임은 EventSource의 어떤 리스너에도 닿지 않아, 받는 쪽은 오류 없이 멈춘 연결을 알아챌
+ * 수 없다. 사건으로 보내야 클라이언트가 마지막 수신 시각으로 생존을 판정한다. 빈 data는 브라우저가
+ * 사건을 버리므로 최소 데이터를 싣는다.
+ */
 export function startSseKeepaliveLifecycle(
   res: http.ServerResponse,
   onCleanup: () => void,
@@ -29,7 +36,7 @@ export function startSseKeepaliveLifecycle(
   res.setTimeout(0);
   const interval = setInterval(() => {
     if (res.writableEnded || res.destroyed) return;
-    res.write(": keepalive\n\n");
+    res.write(encodeSseData("heartbeat", {}));
   }, SSE_KEEPALIVE_INTERVAL_MS);
   interval.unref();
 

@@ -9,7 +9,7 @@ import { codexEntry, codexPane } from "./codex-panel.js";
 import { codexReaderPane } from "./codex-reader-pane.js";
 import { codexReadingSurface } from "./reading-surface.js";
 import { useCodexReaderUrlSync } from "./use-codex-reader-url.js";
-import { applyCodexChanged, applyCodexWatchState } from "./codex/live.js";
+import { applyCodexChanged, applyCodexWatchState, revalidateCodexNow } from "./codex/live.js";
 import { CODEX_CHANGED_EVENT, CODEX_WATCH_EVENT, type CodexKnowledgeScope, type CodexWatchState } from "../server/codex/contracts.js";
 import "./codex/styles/theme.css";
 import "./codex/styles/layout.css";
@@ -44,7 +44,9 @@ const codexPlugin = definePlugin({
       const frame = readWatchFrame(payload);
       if (frame) applyCodexWatchState(frame.workspaceId, frame.state);
     });
-    return () => { stopChanged(); stopWatch(); };
+    // 스트림이 끊겼다 붙는 사이의 변경 통지는 다시 오지 않는다 — 보고 있던 워크스페이스를 한 번 따라잡는다.
+    const stopReconnect = ctx.consoleEvents.onReconnect?.(() => revalidateCodexNow());
+    return () => { stopChanged(); stopWatch(); stopReconnect?.(); };
   },
 });
 

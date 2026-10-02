@@ -39,7 +39,7 @@ vi.mock("../core/client/src/integration/desktop-fullscreen.js", () => ({
   resetDesktopFullscreenSnapshot: mocks.resetDesktopFullscreenSnapshot,
 }));
 
-import { connectOperationsSse, reconnectOperationsSseNow } from "../core/client/src/integration/operations-sse.js";
+import { connectOperationsSse, reconnectOperationsSseNow, resetConsoleChannelsForTest, subscribeConsoleReconnect } from "../core/client/src/integration/operations-sse.js";
 import { ApiError } from "../core/client/src/integration/api.js";
 import { getState as readState, setState } from "../core/client/src/integration/store.js";
 
@@ -86,6 +86,7 @@ describe("operations SSE update availability", () => {
   afterEach(() => {
     setState({ controlReclaimed: null });
     TestEventSource.instances = [];
+    resetConsoleChannelsForTest();
     mocks.applyObserverStatus.mockReset();
     mocks.applyDesktopFullscreenSnapshot.mockReset();
     mocks.applyOperationUpdate.mockReset();
@@ -213,6 +214,47 @@ describe("operations SSE update availability", () => {
     await vi.advanceTimersByTimeAsync(2_000);
     expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(2);
     expect(readState().controlReclaimed).toBeNull();
+  });
+
+  it("keeps a heartbeating stream without extra requests and reconnects one that falls silent without an error", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.fetchOperations.mockResolvedValue([]);
+    const onReconnect = vi.fn();
+    const stopReconnect = subscribeConsoleReconnect(onReconnect);
+
+    connectOperationsSse();
+    const source = TestEventSource.instances.at(-1)!;
+    source.open();
+    for (let beat = 0; beat < 20; beat += 1) {
+      await vi.advanceTimersByTimeAsync(30_000);
+      source.emit("heartbeat", "{}");
+    }
+    expect(source.closed).toBe(false);
+    expect(mocks.fetchOperations).not.toHaveBeenCalled();
+    expect(TestEventSource.instances.at(-1)).toBe(source);
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    // 침묵 뒤 첫 스냅숏 조회는 답이 없다(죽은 소켓을 다시 쓴 요청) — 그래도 시도는 끊기고 다음 시도가 이어져야 한다.
+    let hungSnapshotAborted = false;
+    mocks.fetchOperations.mockImplementationOnce((_theaterId: unknown, signal?: AbortSignal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener("abort", () => {
+        hungSnapshotAborted = true;
+        reject(new DOMException("aborted", "AbortError"));
+      });
+    }));
+    // 기한 값을 고정하지 않는다 — 침묵이 이어지는 동안 새 스트림이 설 때까지만 시간을 흘린다.
+    for (let elapsed = 0; elapsed < 10 * 60_000 && TestEventSource.instances.at(-1) === source; elapsed += 1_000) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    expect(source.closed).toBe(true);
+    expect(mocks.setConnectionState).toHaveBeenCalledWith("offline");
+    expect(hungSnapshotAborted).toBe(true);
+    const reopened = TestEventSource.instances.at(-1)!;
+    expect(reopened).not.toBe(source);
+    reopened.open();
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    stopReconnect();
   });
 
   it("strictly replaces control holder snapshots and preserves them across SSE loss", async () => {
