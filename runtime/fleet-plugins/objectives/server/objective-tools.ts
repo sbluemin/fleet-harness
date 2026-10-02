@@ -236,6 +236,8 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     commanderTool("enlist", "Add members to the roster, each a role and an optional brief; plan accepts members only while the roster is empty. A new member has no session until muster brings it up.",
       z.object({ objectiveId: ids, members: z.array(memberAddSchema.pick({ role: true, brief: true })).min(1).max(MAX_MISSIONS) }).strict(),
       ({ members }, objective) => {
+        // 한 명씩 저장하므로 상한을 넘길 요청은 아무도 더하기 전에 거절한다 — 일부만 남은 채 실패로 답하지 않는다.
+        if (objective.members.length + members.length > MAX_MISSIONS) return refuse("too_many_members");
         const before = new Set(objective.members.map((member) => member.id));
         let current = objective;
         for (const member of members) current = store.memberAdd(objective.id, member, "commander");
