@@ -2558,7 +2558,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   async function reconcilePublicEndpointChange(next: ConsoleRemoteAccessSettings): Promise<void> {
     await stopRemoteAccess();
     access.revokeGrants("remote");
-    pairedDeviceStore.revokeAll("remote");
+    // 걷힌 페어링의 끝난 사유는 더 조회할 키가 없다 — 함께 걷어 메모리에 남기지 않는다.
+    for (const device of pairedDeviceStore.revokeAll("remote")) access.clearSessionEnd(device.id);
     remoteEndpointStore.forget();
     if (next.enabled) {
       remoteLastError = null;
@@ -2655,7 +2656,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (publicIdentityChanged) {
       access.revokeGrants("remote");
       access.revokeSessions("remote");
-      pairedDeviceStore.revokeAll("remote");
+      for (const device of pairedDeviceStore.revokeAll("remote")) access.clearSessionEnd(device.id);
       remoteEndpointStore.forget();
     }
     // 취소가 돌았다면 기억된 엔드포인트도 함께 지워졌다 — 지킬 주소가 없으므로 Auto는 다시 고를 수 있다.
