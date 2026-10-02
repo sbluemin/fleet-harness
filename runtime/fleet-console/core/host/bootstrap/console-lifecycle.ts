@@ -90,7 +90,8 @@ export type ConsoleHookCommand =
   | { readonly command: "background-spawn" }
   | { readonly command: "background-stop" }
   | { readonly command: "attention" }
-  | { readonly command: "auto-name" };
+  | { readonly command: "auto-name" }
+  | { readonly command: "agent-call" };
 
 export interface ConsoleRestartDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop" | "ensureDaemon" | "probe">;
@@ -121,7 +122,7 @@ interface ConsoleDaemonChildObservation {
 // background-spawn/background-stop은 더 이상 렌더되지 않지만, 업그레이드 시점에 이미 살아 있는 세션의
 // hooks.json이 여전히 그 이름으로 이 실행 파일을 호출한다(경로가 제자리 덮어써지므로 구 세션이 새 바이너리를 부른다).
 // 이름을 지우면 in-flight 세션의 hook이 예외로 죽으므로 계속 받아주고, 본문도 퇴역 당시 형식을 그대로 보낸다.
-const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "workspace", "background-report", "background-spawn", "background-stop", "attention", "auto-name"]);
+const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "workspace", "background-report", "background-spawn", "background-stop", "attention", "auto-name", "agent-call"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   // 인자가 없으면 기본 동작은 start(서버를 보장하고 그 주소를 출력한다)다.
@@ -162,6 +163,7 @@ export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCom
   if (commandName === "background-stop" && rest.length === 0) return { command: "background-stop" };
   if (commandName === "attention" && rest.length === 0) return { command: "attention" };
   if (commandName === "auto-name" && rest.length === 0) return { command: "auto-name" };
+  if (commandName === "agent-call" && rest.length === 0) return { command: "agent-call" };
   if (commandName === "capture-session" && rest.length === 1 && rest[0] === "claude") return { command: "capture-session", provider: rest[0] };
   throw new Error("Unknown fleet-console hook command");
 }
@@ -658,6 +660,12 @@ export async function main(): Promise<void> {
       await postAgentHook(`/sessions/${readHookSessionId(process.env)}/attention`, { input: await readStdinBestEffort() }, process.env);
       return;
     }
+    if (hookCommand.command === "agent-call") {
+      // 다른 hook과 달리 결정을 stdout으로 낸다. 침묵은 허용이고, 거절은 PreToolUse의 deny와 사유다.
+      const decision = await decideAgentCall(process.env.FLEET_CONSOLE_AGENT_CALL_SESSION_ID, await readStdinBestEffort(), process.env);
+      if (decision) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: decision } }));
+      return;
+    }
     if (hookCommand.command === "auto-name") {
       // 자동 작명 hook도 무출력·exit 0 best-effort다(stdin prompt를 읽어 서버로 전달만 한다).
       await postAgentHook(`/sessions/${readHookSessionId(process.env)}/auto-name`, { input: await readStdinBestEffort() }, process.env);
@@ -741,6 +749,47 @@ async function postAgentHook(pathname: string, body: Record<string, unknown>, en
     }
   } catch {
     // provider hook은 UI best-effort 신호라 실패해도 stdout/stderr와 exit code에 영향을 주지 않는다.
+  }
+}
+
+/** Console에 닿지 못해 판단을 받지 못한 서브에이전트 호출의 거절 사유. 판단이 없을 때 서브에이전트를 띄우지 않는다. */
+const AGENT_CALL_UNREACHABLE_REASON = "Subagents are not available in this Fleet Console session, and Fleet Console could not be reached to say how to delegate instead. Continue the work in this session.";
+const AGENT_CALL_TIMEOUT_MS = 5_000;
+
+/**
+ * 서브에이전트 호출 하나를 Console에 묻고 거절 사유를 돌려준다. null은 허용이다.
+ *
+ * 이 세션의 식별자가 없으면 Console이 띄운 Operation이 아니므로 관여하지 않는다. 식별자가 있는데 Console이
+ * 답하지 못하면(잠금 없음·시한 초과·오류 응답) 막는다 — 이 hook의 침묵은 곧 서브에이전트 실행이기 때문이다.
+ */
+export async function decideAgentCall(sessionId: string | undefined, input: string, env: NodeJS.ProcessEnv, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  if (!sessionId) return null;
+  if (!isAgentToolCall(input)) return null;
+  try {
+    const lock = createConsoleLock().readLock(createConsolePaths({ env }).lockFile);
+    if (!lock) return AGENT_CALL_UNREACHABLE_REASON;
+    const response = await fetchImpl(`${lock.endpoint}api/v1/agent/sessions/${encodeURIComponent(sessionId)}/agent-call`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${lock.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ input }),
+      signal: AbortSignal.timeout(AGENT_CALL_TIMEOUT_MS),
+    });
+    if (!response.ok) return AGENT_CALL_UNREACHABLE_REASON;
+    const body = await response.json() as { readonly reason?: unknown };
+    if (body.reason === null) return null;
+    return typeof body.reason === "string" && body.reason.length > 0 ? body.reason : AGENT_CALL_UNREACHABLE_REASON;
+  } catch {
+    return AGENT_CALL_UNREACHABLE_REASON;
+  }
+}
+
+/** 매처가 이미 거르지만, 다른 도구 이름이 이 hook에 닿아도 결정을 내지 않는다. 읽지 못한 입력은 서브에이전트 호출로 본다. */
+function isAgentToolCall(input: string): boolean {
+  try {
+    const toolName = (JSON.parse(input) as { readonly tool_name?: unknown }).tool_name;
+    return typeof toolName !== "string" || toolName === "Agent" || toolName === "Task";
+  } catch {
+    return true;
   }
 }
 

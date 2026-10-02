@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Select } from "@fleet-console/sdk/react/browser";
+import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
@@ -8,7 +9,7 @@ import type { TheaterInfo } from "../../../core/client/src/integration/types.js"
 import { useTheaterLabel } from "../../../core/client/src/hooks/use-store.js";
 import { theaterInitials } from "../../workspace/client/sidebar/theater-initials.js";
 import { TheaterMonogram } from "../../workspace/client/sidebar/theater-monogram.js";
-import { CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS, fetchTheaterSystemPrompt, saveTheaterSystemPrompt, type ClaudeCodeSystemPromptMode, type TheaterSystemPrompt } from "./execution-settings.js";
+import { CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS, fetchTheaterSubagents, fetchTheaterSystemPrompt, saveTheaterSubagents, saveTheaterSystemPrompt, type ClaudeCodeSystemPromptMode, type TheaterSystemPrompt } from "./execution-settings.js";
 import "./theater-system-prompt-sheet.css";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
@@ -341,7 +342,7 @@ export function TheaterSystemPromptSheet() {
   };
   const trapTab = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Tab") return;
-    const nodes = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]') ?? []);
+    const nodes = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), textarea:not(:disabled), input:not(:disabled), a[href]') ?? []);
     const first = nodes[0], last = nodes[nodes.length - 1];
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -384,7 +385,57 @@ export function TheaterSystemPromptSheet() {
         <p className={draft.mode === "off" ? "theater-prompt-warning" : "theater-prompt-caption"}>{caption}</p>
         {status !== "untouched" ? <p id={status === "over" ? "theater-prompt-length-error" : undefined} className={`theater-prompt-save is-${status}`} role={status === "over" ? "alert" : "status"} aria-live="polite"><i />{t(`sidebar.theater.prompt.save.${status}`)}</p> : null}
       </>}
+      {forgotten ? null : <TheaterSubagentsSection key={theater.id} theaterId={theater.id} />}
     </section>
     <span ref={tooltipRef} id="theater-prompt-tip-description" role="tooltip" className="theater-prompt-tooltip" hidden={!tipVisible} style={tipPosition}>{t("sidebar.theater.prompt.tip")}</span>
   </>, document.body);
+}
+
+/**
+ * Theater의 서브에이전트 — 켜져 있으면(기본) 서브에이전트 호출 자리에 Objectives 구성원이 선다. 프롬프트와 달리
+ * Console이 호출마다 읽으므로 실행 중인 세션도 다음 호출부터 따른다. 저장은 누르는 즉시이며, 실패하면 되돌린다.
+ */
+function TheaterSubagentsSection({ theaterId }: { readonly theaterId: string }) {
+  const t = useT();
+  const [replaced, setReplaced] = useState<boolean | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "saving" | "loadFailed" | "saveFailed">("loading");
+  const revisionRef = useRef(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchTheaterSubagents(theaterId, controller.signal).then((result) => {
+      setReplaced(!result.subagentsKept);
+      setState("ready");
+    }, () => { if (!controller.signal.aborted) setState("loadFailed"); });
+    return () => controller.abort();
+  }, [theaterId]);
+
+  const change = (next: boolean) => {
+    const previous = replaced;
+    const revision = ++revisionRef.current;
+    setReplaced(next);
+    setState("saving");
+    void saveTheaterSubagents(theaterId, !next).then((result) => {
+      if (revision !== revisionRef.current) return;
+      setReplaced(!result.subagentsKept);
+      setState("ready");
+    }, () => {
+      if (revision !== revisionRef.current) return;
+      setReplaced(previous);
+      setState("saveFailed");
+    });
+  };
+
+  return (
+    <div className="theater-subagents" role="group" aria-labelledby="theater-subagents-title">
+      <strong id="theater-subagents-title">{t("sidebar.theater.subagents.title")}</strong>
+      {state === "loading" ? <p role="status">{t("sidebar.theater.prompt.loading")}</p>
+        : state === "loadFailed" ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.loadFailed")}</p>
+          : <>
+            <SettingsToggle checked={replaced === true} disabled={state === "saving"} label={t("sidebar.theater.subagents.toggle")} onChange={change} />
+            <p className="theater-prompt-caption">{t(replaced ? "sidebar.theater.subagents.on" : "sidebar.theater.subagents.off")}</p>
+            {state === "saveFailed" ? <p className="theater-prompt-save is-error" role="alert">{t("sidebar.theater.subagents.saveFailed")}</p> : null}
+          </>}
+    </div>
+  );
 }

@@ -59,3 +59,7 @@
 .theater-prompt-settings-note button { justify-self: start; padding: 0; border: 0; background: none; color: var(--brass-ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .theater-prompt-backdrop.is-mobile { background: color-mix(in oklch, var(--ink-abyss) 48%, transparent); }
 .theater-prompt-sheet.is-mobile { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: 100%; max-width: none; max-height: min(86dvh, calc(100dvh - 12px)); padding: 18px 16px max(18px, env(safe-area-inset-bottom)); border-radius: 16px 16px 0 0; }
+/* 서브에이전트 — 프롬프트와 다른 설정이라 가는 선 아래 따로 선다. 제목은 필드 라벨과 같은 결이다. */
+.theater-subagents { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.theater-subagents > strong { color: var(--text-secondary); font: var(--t-sm) var(--font-mono); font-weight: var(--weight-medium); }
+.theater-subagents p { margin: 0; }

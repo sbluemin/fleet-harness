@@ -946,6 +946,13 @@ export interface FleetPluginConsoleControlHost {
    */
   setUserQuestions?(operationId: string, policy: "blocked" | "default"): void;
   /**
+   * Console이 띄운 Claude 세션의 서브에이전트(Agent 도구) 호출에 이 플러그인이 답한다. 호출마다 그 세션의 Operation id로
+   * `reason` 을 부르고, 문자열을 돌려주면 서브에이전트를 띄우지 않고 그 문장을 도구의 거절 사유로 모델에게 전한다. null 이면
+   * 이 플러그인은 관여하지 않는다. 판단이 던지면 호출은 막힌다. Workflow 도구의 agent()는 이 경로를 지나지 않는다.
+   * 등록을 거두는 함수를 돌려준다. 없는 호스트에서는 없다.
+   */
+  redirectAgentCalls?(reason: (operationId: string) => string | null): () => void;
+  /**
    * 떠 있는 채팅 세션의 모델·강도를 바꾼다 — 채팅 화면의 모델 메뉴와 같은 후보·같은 검증을 지난다. 턴이 도는 중이면 그 턴이 닫히는
    * 경계로 미루고(`scheduled`), 지금 실행값을 다시 고르면 예약을 거둔다. 이 플러그인이 띄운 Operation(또는 그 자식)만 받는다 —
    * 아니면 `forbidden`. `effort` 는 런치 어휘이며 null 은 모델 기본이다. 휴면·터미널 세션은 `chat_not_active` 다.

@@ -23,13 +23,6 @@ export interface AgentCliState {
 }
 
 /** 설치된 Claude Code가 보고한 내장 서브에이전트 로스터. 서버가 CLI를 격리 실행해 읽는다. */
-export interface ClaudeBuiltInAgentsState {
-  readonly available: boolean;
-  readonly agents: readonly string[];
-  readonly version: string | null;
-  readonly error: "cli_not_found" | "probe_failed" | null;
-}
-
 export interface AgentCliDiagnosticsEntry {
   readonly cliCommand: string;
   readonly configuredPath: string | null;

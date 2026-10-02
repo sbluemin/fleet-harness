@@ -43,20 +43,26 @@ describe("terminal settings routes", () => {
 
   it("keeps Theater prompts scoped, validates writes, and clears the pair together", async () => {
     const theaterUrl = "/api/v1/agent/theater-system-prompt?theaterId=theater-1";
-    const harness = createRouteHarness({ body: { prompt: { mode: "append", body: "  My rules\r\n" } }, data: { claudeCodeDisabledAgents: ["Explore"] } });
+    const harness = createRouteHarness({ body: { prompt: { mode: "append", body: "  My rules\r\n" } }, data: { agentIdleDormantMinutes: 30 } });
     await harness.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
     expect(harness.writes.pop()).toEqual({ status: 200, body: { theaterId: "theater-1", prompt: { mode: "append", body: "  My rules\n" } } });
-    expect(harness.currentData()).toEqual({ claudeCodeDisabledAgents: ["Explore"], claudeCodeTheaterSystemPrompts: { "theater-1": { mode: "append", body: "  My rules\n" } } });
+    expect(harness.currentData()).toEqual({ agentIdleDormantMinutes: 30, claudeCodeTheaterSystemPrompts: { "theater-1": { mode: "append", body: "  My rules\n" } } });
     await harness.handleTheaterPrompt({ req: req("GET", undefined, theaterUrl), res: res(), pathname: theaterUrl });
     expect(harness.writes.pop()?.body).toMatchObject({ prompt: { mode: "append" } });
     const cleared = createRouteHarness({ body: { prompt: null }, data: harness.currentData() });
     await cleared.handleTheaterPrompt({ req: req("PUT", "application/json", theaterUrl), res: res(), pathname: theaterUrl });
     expect(cleared.writes.pop()?.body).toEqual({ theaterId: "theater-1", prompt: null });
-    expect(cleared.currentData()).toEqual({ claudeCodeDisabledAgents: ["Explore"] });
+    expect(cleared.currentData()).toEqual({ agentIdleDormantMinutes: 30 });
     expect(cleared.theaterSystemPrompts.save("theater-1", { mode: "on", body: "" })).toBeNull();
     expect(cleared.theaterSystemPrompts.save("theater-1", { mode: "on", body: "saved for later" })).toEqual({ mode: "on", body: "saved for later" });
-    harness.theaterSystemPrompts.purge("theater-1");
-    expect(harness.currentData()).toEqual({ claudeCodeDisabledAgents: ["Explore"] });
+    // 서브에이전트는 Theater마다 켜 둘 수 있고(기본은 대체), 잊힌 Theater를 지울 때 프롬프트와 함께 사라진다.
+    const subagentsUrl = "/api/v1/agent/theater-subagents?theaterId=theater-1";
+    const kept = createRouteHarness({ body: { subagentsKept: true }, data: harness.currentData() });
+    await kept.handleTheaterSubagents({ req: req("PUT", "application/json", subagentsUrl), res: res(), pathname: subagentsUrl });
+    expect(kept.writes.pop()?.body).toEqual({ theaterId: "theater-1", subagentsKept: true });
+    expect(kept.theaterSystemPrompts.subagentsKept("theater-1")).toBe(true);
+    kept.theaterSystemPrompts.purge("theater-1");
+    expect(kept.currentData()).toEqual({ agentIdleDormantMinutes: 30 });
 
     const unknown = createRouteHarness({ body: { prompt: { mode: "off", body: "secret" } } });
     await unknown.handleTheaterPrompt({ req: req("PUT", "application/json", "/api/v1/agent/theater-system-prompt?theaterId=unknown"), res: res(), pathname: "" });
@@ -70,11 +76,11 @@ describe("terminal settings routes", () => {
     expect(invalid.updateCalls).toBe(0);
   });
 
-  it("drops legacy global prompt keys without migrating them into Theater settings", () => {
+  it("drops retired global prompt and subagent keys without migrating them into Theater settings", () => {
     expect(sanitizeAgentOptionsData({
       claudeCodeSystemPrompt: "off", claudeCodeCustomSystemPrompt: "old instructions",
       agentIdleDormantMinutes: 30, claudeCodeDisabledAgents: ["Explore"],
-    }).data).toEqual({ agentIdleDormantMinutes: 30, claudeCodeDisabledAgents: ["Explore"] });
+    })).toEqual({ data: { agentIdleDormantMinutes: 30 }, changed: true });
   });
 
   it("GET /api/v1/agent/settings resolves stored Jev routing mode", async () => {
@@ -112,27 +118,6 @@ describe("terminal settings routes", () => {
       delegationRoutingMode: "model",
       models: [{ id: "codex--gpt-6-sol" }],
     });
-  });
-
-  it("PUT /api/v1/agent/settings stores the built-in subagent opt-out and clears it on an empty list", async () => {
-    const harness = createRouteHarness({
-      body: { claudeCodeDisabledAgents: ["Explore", " Plan ", "", "Agent(x)", "Explore"] },
-      data: {},
-    });
-    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
-    expect(harness.writes[0]?.status).toBe(200);
-    // 저장소와 같은 정화기 — 공백은 다듬고, 빈 이름·규칙 구분자·중복은 버린다.
-    expect(harness.writes[0]?.body).toMatchObject({ claudeCodeDisabledAgents: ["Explore", "Plan"] });
-    expect(harness.currentData()).toEqual({ claudeCodeDisabledAgents: ["Explore", "Plan"] });
-
-    const cleared = createRouteHarness({
-      body: { claudeCodeDisabledAgents: [] },
-      data: { claudeCodeDisabledAgents: ["Explore"] },
-    });
-    await cleared.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
-    expect(cleared.writes[0]?.body).toMatchObject({ claudeCodeDisabledAgents: [] });
-    // 빈 목록은 키를 지운다 — "전부 켜짐"은 저장된 값이 아니라 키의 부재다.
-    expect(cleared.currentData()).toEqual({});
   });
 
   it("PUT /api/v1/agent/settings rejects payloads with unknown extra keys", async () => {
@@ -291,6 +276,7 @@ function createRouteHarness(options: HarnessOptions = {}) {
   return {
     handle,
     handleTheaterPrompt: routers.get("agent/theater-system-prompt")!,
+    handleTheaterSubagents: routers.get("agent/theater-subagents")!,
     theaterSystemPrompts,
     writes,
     currentData: () => data,

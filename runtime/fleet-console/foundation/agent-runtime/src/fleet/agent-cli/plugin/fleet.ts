@@ -110,9 +110,11 @@ function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unk
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;
-  const preToolUse = inputWaitingExec
-    ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
-    : [];
+  const preToolUse = [
+    ...(inputWaitingExec ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }] : []),
+    // `Task`는 Agent 도구의 옛 이름이다. 정확 매처로 묶어 다른 도구 이름의 부분 일치를 피한다.
+    ...(options.agentCallHookExec ? [{ matcher: "Agent|Task", hooks: [claudeCommandHook(options.agentCallHookExec)] }] : []),
+  ];
   return {
     // 함수 훅 모듈(Mod). 명령 훅과 같은 파일이 선언하지만 다른 표면이다 — 이쪽은 세션
     // 안에서 돌며 이벤트를 가로채고 화면을 그린다.

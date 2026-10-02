@@ -18,6 +18,7 @@ import {
   main,
   startFleetConsole,
   parseConsoleCliMode,
+  decideAgentCall,
   parseConsoleHookCommand,
   runConsoleStatus,
   runConsoleStop,
@@ -70,6 +71,25 @@ describe("fleet console CLI", () => {
       }
     }
     expect(isLockProcessAlive(deadPid)).toBe(false);
+  });
+
+  it("never lets a Console session's subagent call run without Console's answer", async () => {
+    // 서브에이전트 hook의 침묵은 곧 실행이다 — Console이 사유를 주면 그 사유로, 답하지 못하면 고정 사유로 막는다.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-agent-call-"));
+    TEMP_DIRS.push(dir);
+    const env = { FLEET_CONSOLE_DATA_DIR: dir };
+    const paths = createConsolePaths({ env });
+    const input = JSON.stringify({ tool_name: "Agent", tool_input: { prompt: "look around" } });
+    const answering = (body: unknown, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as typeof fetch;
+    // 잠금이 없으면(Console이 떠 있지 않으면) 묻지도 못한 채 막는다.
+    expect(await decideAgentCall("op-1", input, env, answering({ reason: null }))).toMatch(/could not be reached/);
+    createConsoleLock().writeLock({ dir, lockFile: paths.lockFile, pid: process.pid, port: 40125, endpoint: "http://127.0.0.1:40125/", version: "test" });
+    expect(await decideAgentCall("op-1", input, env, answering({ reason: "Use members." }))).toBe("Use members.");
+    expect(await decideAgentCall("op-1", input, env, answering({ reason: null }))).toBeNull();
+    expect(await decideAgentCall("op-1", input, env, answering({ error: "agent_call_undecided" }, 500))).toMatch(/could not be reached/);
+    // Console이 띄우지 않은 세션과 다른 도구에는 관여하지 않는다.
+    expect(await decideAgentCall(undefined, input, env, answering({ reason: "Use members." }))).toBeNull();
+    expect(await decideAgentCall("op-1", JSON.stringify({ tool_name: "Bash" }), env, answering({ reason: "Use members." }))).toBeNull();
   });
 
   describe("daemon startup lifecycle", () => {

@@ -178,8 +178,6 @@ const ledger: Row[] = [];
 
 const unreachable = new Set<string>();
 
-const awaitingSpawn = new Map<string, Row>();
-
 const running = new Map<string, Row>();
 
 const assigned = new Map<string, Decision>();
@@ -235,26 +233,6 @@ export const register: Register = (on) => {
     return { text: summaryLine() };
   });
 
-  on("tool.call", { tool: "Agent" }, async ($, e, next) => {
-    const call = e as { tool_use_id: string; description?: string; subagent_type?: string };
-    const row = addRow({
-      key: call.tool_use_id,
-      surface: "agent",
-      description: typeof call.description === "string" ? call.description : "subagent",
-      asked: call.subagent_type ?? "inherit",
-      state: "asked",
-      startedAt: Date.now(),
-    });
-    awaitingSpawn.set(call.tool_use_id, row);
-    await openPane($);
-    redraw($);
-    try {
-      return await next(e);
-    } finally {
-      awaitingSpawn.delete(call.tool_use_id);
-    }
-  });
-
   on("tool.call", { tool: "Workflow" }, async ($, e, next) => {
     await openPane($);
     redraw($);
@@ -262,16 +240,16 @@ export const register: Register = (on) => {
   });
 
   on("agent.spawn", async ($, e, next) => {
-    const row =
-      awaitingSpawn.get(e.tool_use_id) ??
-      addRow({
-        key: `${e.tool_use_id}:${ledger.length}`,
-        surface: "agent",
-        description: e.description || "subagent",
-        asked: e.subagentType || "inherit",
-        state: "asked",
-        startedAt: Date.now(),
-      });
+    // 행은 실제로 띄울 때 선다. Agent 호출이 PreToolUse에서 거절되면 이 이벤트가 오지 않으므로 판에 남는 것이 없다.
+    const row = addRow({
+      key: `${e.tool_use_id}:${ledger.length}`,
+      surface: "agent",
+      description: e.description || "subagent",
+      asked: e.subagentType || "inherit",
+      state: "asked",
+      startedAt: Date.now(),
+    });
+    await openPane($);
 
     row.description = e.description || row.description;
     row.asked = e.fork ? "fork" : e.subagentType || "inherit";

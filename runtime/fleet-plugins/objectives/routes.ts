@@ -7,6 +7,7 @@ import { createObjectiveConsoleTools } from "./server/console-tools.js";
 import { createLaunchService } from "./server/launch.js";
 import { createObjectiveMcpTools } from "./server/objective-tools.js";
 import { createGhPrLookup, createPrStatusService, type PrStatusService } from "./server/pr-status.js";
+import { agentCallRedirect } from "./server/prompts.js";
 import { createObjectiveRoutes } from "./server/routes.js";
 import { createObjectiveStore } from "./server/store.js";
 import { OBJECTIVE_CHANNEL } from "./server/types.js";
@@ -118,6 +119,10 @@ export default definePlugin({
     for (const route of routes) {
       registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
     }
+
+    // Console 세션의 서브에이전트 호출 — 띄우지 않고, 그 자리를 이 목표의 구성원이 맡는다는 사실로 답한다.
+    const releaseAgentCalls = ctx.host.consoleControl?.redirectAgentCalls?.((operationId) => agentCallRedirect(store.find(operationId), store.findMember(operationId) !== null));
+    if (releaseAgentCalls) ctx.host.lifecycle.registerCleanup(releaseAgentCalls);
 
     // 두 표면 — Console Use 의 보드(`console_objectives`, 사람처럼 보고 더한다)와 목표 수행 세션의 작업 도구(`fleet-objectives`).
     const releaseConsoleTools = ctx.host.consoleUse.contribute?.(createObjectiveConsoleTools(ctx, store, launch));

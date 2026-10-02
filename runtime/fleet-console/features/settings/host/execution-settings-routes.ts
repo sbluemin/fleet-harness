@@ -14,7 +14,6 @@ import type { TheaterSystemPromptService } from "./agent-options.js";
 import {
   MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS,
   sanitizeClaudeCodeCustomSystemPrompt,
-  sanitizeClaudeCodeDisabledAgents,
   type ClaudeCodeTheaterSystemPrompt,
   type AgentOptionsData,
   type AgentOptionsService,
@@ -51,7 +50,6 @@ interface TerminalSettingsRouteDeps {
 
 interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
-  readonly claudeCodeDisabledAgents?: unknown;
   readonly aiGateway?: unknown;
   readonly wireLogEnabled?: unknown;
   readonly delegationRoutingEnabled?: unknown;
@@ -63,7 +61,6 @@ interface TerminalSettingsBody {
 
 type TerminalSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
-  | { readonly claudeCodeDisabledAgents: readonly string[] | undefined }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly wireLogEnabled: boolean }
   | { readonly delegationRoutingEnabled: boolean }
@@ -76,8 +73,6 @@ const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
 export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
-  /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
-  readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly wireLogEnabled: boolean;
@@ -193,10 +188,6 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
         return true;
       }
       const updated = deps.agentOptionsService.update((current) => {
-        if ("claudeCodeDisabledAgents" in update && update.claudeCodeDisabledAgents === undefined) {
-          const { claudeCodeDisabledAgents: _cleared, ...rest } = current;
-          return rest;
-        }
         return { ...current, ...update };
       });
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
@@ -251,6 +242,48 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
     { method: "GET", path: "", summary: "Read a registered Theater's Claude Code system prompt.", category: "Console Execution", gate: "loopback", transport: "http" },
     { method: "PUT", path: "", summary: "Save or clear a registered Theater's Claude Code system prompt.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
+
+  // Theater별 서브에이전트 — 기본은 대체(키 없음)이고, 켜 둔 Theater만 서브에이전트를 그대로 쓴다.
+  // 판단은 호출마다 읽으므로 떠 있는 세션도 다음 서브에이전트 호출부터 바뀐 값을 따른다.
+  ctx.registerRouter("agent/theater-subagents", async ({ req, res }) => {
+    if (req.method !== "GET" && req.method !== "PUT") {
+      ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    if (req.method === "PUT" && !ctx.host.security.isTerminalAuthorized(req)) {
+      ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const theaterId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("theaterId");
+    if (!theaterId || !deps.theaterSystemPrompts.exists(theaterId)) {
+      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+      return true;
+    }
+    if (req.method === "GET") {
+      ctx.host.http.writeJson(res, 200, { theaterId, subagentsKept: deps.theaterSystemPrompts.subagentsKept(theaterId) });
+      return true;
+    }
+    if (!isJsonRequest(req)) {
+      ctx.host.http.writeJson(res, 415, { error: "unsupported_media_type" });
+      return true;
+    }
+    const body = await ctx.host.http.readJsonBody<unknown>(req);
+    const kept = body && typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 1 ? (body as { subagentsKept?: unknown }).subagentsKept : undefined;
+    if (typeof kept !== "boolean") {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_theater_subagents" });
+      return true;
+    }
+    // readJsonBody yields: the Theater may have been forgotten while the body was arriving.
+    if (!deps.theaterSystemPrompts.exists(theaterId)) {
+      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { theaterId, subagentsKept: deps.theaterSystemPrompts.keepSubagents(theaterId, kept) });
+    return true;
+  }, [
+    { method: "GET", path: "", summary: "Read whether a registered Theater keeps Claude Code subagents.", category: "Console Execution", gate: "loopback", transport: "http" },
+    { method: "PUT", path: "", summary: "Choose whether a registered Theater keeps Claude Code subagents.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  ]);
 }
 
 function parseTheaterSystemPromptUpdate(body: unknown): ClaudeCodeTheaterSystemPrompt | null | undefined {
@@ -275,7 +308,6 @@ function toTerminalSettingsState(
     agentIdleDormantMinutes: data.agentIdleDormantMinutes === undefined
       ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
       : data.agentIdleDormantMinutes,
-    claudeCodeDisabledAgents: resolveClaudeCodeDisabledAgents(data),
     aiGateway: configured
       ? {
         ...(aiGateway.models?.length ? { models: aiGateway.models } : {}),
@@ -290,11 +322,6 @@ function toTerminalSettingsState(
     compactCeiling: aiGateway.compactCeiling ?? null,
     xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
   };
-}
-
-/** 키가 없으면 빈 목록 — 규칙 없는 런치가 이미 하는 일이다. */
-export function resolveClaudeCodeDisabledAgents(data: AgentOptionsData): readonly string[] {
-  return data.claudeCodeDisabledAgents ?? [];
 }
 
 export function resolveAgentIdleDormantMinutes(data: AgentOptionsData): number | null {
@@ -313,12 +340,6 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
     return isAgentIdleDormantMinutes(body.agentIdleDormantMinutes)
       ? { agentIdleDormantMinutes: body.agentIdleDormantMinutes }
       : null;
-  }
-  if (keys[0] === "claudeCodeDisabledAgents") {
-    // 저장소와 같은 정화기를 거친다. 빈 목록은 키를 지워 "전부 켜짐"으로 돌아간다.
-    if (!Array.isArray(body.claudeCodeDisabledAgents)) return null;
-    if (!body.claudeCodeDisabledAgents.every((entry) => typeof entry === "string")) return null;
-    return { claudeCodeDisabledAgents: sanitizeClaudeCodeDisabledAgents(body.claudeCodeDisabledAgents) };
   }
   if (keys[0] === "aiGateway") {
     const parsed = parseAiGatewayUpdate(body.aiGateway);

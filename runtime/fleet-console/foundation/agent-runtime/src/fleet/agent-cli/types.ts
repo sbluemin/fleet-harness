@@ -158,6 +158,9 @@ export interface CreateAgentCliPluginOptions {
   readonly inputWaitingHookExec?: FleetHookExec;
   // 작전명 자동 작명(UserPromptSubmit)을 위해 prompt를 호스트로 전달하는 hook.
   readonly autoNameHookExec?: FleetHookExec;
+  // 서브에이전트 호출(Agent·Task의 PreToolUse)을 호스트에 묻는 hook. 호스트가 거절과 그 사유를 정하며,
+  // 이 패키지는 문구를 싣지 않는다. Workflow 도구의 agent()는 이 도구를 거치지 않으므로 걸리지 않는다.
+  readonly agentCallHookExec?: FleetHookExec;
   /** Gateway가 렌더링한 파일과 등록 이름. 파일 내용과 호출 허용 이름은 같은 투영이다. */
   /** 테스트가 레거시 트리 회수의 시계와 나이 창을 갈아 끼우는 자리. 프로덕션은 비워 둔다. */
 }

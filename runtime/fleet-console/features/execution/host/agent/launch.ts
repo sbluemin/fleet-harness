@@ -12,7 +12,6 @@ import { ALL_SUBAGENTS, createSessionCaptureHookExec, injectAgentCliProfile, pre
 import { prepareAiGatewayLaunchProfile } from "@fleet-console/ai-gateway";
 import type { AgentOptionsService } from "@fleet-console/infra";
 
-import { resolveClaudeCodeDisabledAgents } from "../../../settings/host/execution-settings-routes.js";
 import type { TheaterSystemPromptService } from "../../../settings/host/agent-options.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
 import type { WorkspaceHookBinding } from "./workspace-hooks.js";
@@ -305,7 +304,7 @@ async function createAgentCliLaunchSpec(options: {
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
       // Theater 설정은 새 세션에만 적용된다 — 값이 없으면 Claude Code 기본값으로 연다.
       ...(theaterPrompt ? { claudeCodeSystemPrompt: theaterPrompt.mode, claudeCodeCustomSystemPrompt: theaterPrompt.body } : {}),
-      claudeCodeDisabledAgents: options.disableSubagents ? [ALL_SUBAGENTS] : resolveClaudeCodeDisabledAgents(options.infraServices.agentOptionsService.load()),
+      ...(options.disableSubagents ? { claudeCodeDisabledAgents: [ALL_SUBAGENTS] } : {}),
       ...(options.disableUserQuestions ? { claudeCodeDisabledTools: [USER_QUESTION_TOOL] } : {}),
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.
       origin: options.resumeSessionId
@@ -423,7 +422,7 @@ function buildLaunchEnv(env: NodeJS.ProcessEnv, cwd: string, sessionId: string |
   delete launchEnv.CLAUDE_CODE_CHILD_SESSION;
   return withTerminalCapabilities({
     ...launchEnv,
-    ...(sessionId ? { FLEET_CONSOLE_SESSION_ID: sessionId, INIT_CWD: cwd, PWD: cwd } : {}),
+    ...(sessionId ? { FLEET_CONSOLE_SESSION_ID: sessionId, FLEET_CONSOLE_AGENT_CALL_SESSION_ID: sessionId, INIT_CWD: cwd, PWD: cwd } : {}),
     // 배경을 질의하지 않는 agent CLI를 위한 고전적 테마 극성 힌트 — spawn 시점 값에 고정된다.
     ...(colorScheme ? { COLORFGBG: colorScheme === "light" ? "0;15" : "15;0" } : {}),
   });

@@ -36,6 +36,10 @@ export function buildConsoleAttentionHookCommand(entry: ConsoleHookCommandEntry)
   return buildConsoleCliHookExec(entry, ["hook", "attention"]);
 }
 
+export function buildConsoleAgentCallHookCommand(entry: ConsoleHookCommandEntry): FleetHookExec {
+  return buildConsoleCliHookExec(entry, ["hook", "agent-call"]);
+}
+
 export function buildConsoleAutoNameHookCommand(entry: ConsoleHookCommandEntry): FleetHookExec {
   return buildConsoleCliHookExec(entry, ["hook", "auto-name"]);
 }
@@ -118,6 +122,7 @@ export function renderConsoleAgentCliPlugin(deps: RenderConsoleAgentCliPluginDep
     backgroundReportHookExec: buildConsoleBackgroundHookCommand(entry),
     inputWaitingHookExec: buildConsoleAttentionHookCommand(entry),
     autoNameHookExec: buildConsoleAutoNameHookCommand(entry),
+    agentCallHookExec: buildConsoleAgentCallHookCommand(entry),
   });
 }
 

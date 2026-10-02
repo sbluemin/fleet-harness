@@ -6,6 +6,7 @@ export {
   assertCliCanControlDaemon,
   buildConsoleHelpText,
   createConsoleDaemonLifecycle,
+  decideAgentCall,
   isLockProcessAlive,
   main,
   resolveDefaultServerModulePath,

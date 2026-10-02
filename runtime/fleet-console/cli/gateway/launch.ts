@@ -28,14 +28,9 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
     let profile = await resolveAgentCliProfile(options.env, options.cwd, { cliId: "claude" });
     profile = { ...profile, args: [...profile.args, ...options.passthroughArgs] };
     const selection = resolveAiGatewaySelection(options.runtime.aiGatewayStore.read());
-    // 독립 fleet CLI에는 Theater 좌표가 없다. 기본 Claude Code 프롬프트를 그대로 쓴다.
-    // 내장 서브에이전트 옵트아웃만 Console 슬롯의 공통 설정을 따른다.
-    const agentOptions = options.runtime.infraServices.agentOptionsService.load();
+    // 독립 fleet CLI에는 Theater 좌표가 없다. 기본 Claude Code 프롬프트와 서브에이전트를 그대로 쓴다.
     const injected = await injectAgentCliProfile(profile, {
       plugin: options.runtime.agentCliPlugin,
-      ...(agentOptions.claudeCodeDisabledAgents?.length
-        ? { claudeCodeDisabledAgents: agentOptions.claudeCodeDisabledAgents }
-        : {}),
       dedicatedMcpSession: options.runtime.dedicatedMcpSession,
       // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
       onCleanup: (cleanup) => profileCleanups.push(cleanup),

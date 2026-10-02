@@ -39,12 +39,11 @@ export interface AgentOptionsData {
   /** Registered Theater IDs are validated by the Console host, not this storage schema. */
   readonly claudeCodeTheaterSystemPrompts?: Readonly<Record<string, ClaudeCodeTheaterSystemPrompt>>;
   /**
-   * Claude Code built-in subagents the user opted out of, by agent name (`Explore`, `Plan`,
-   * ...). Key absent or empty means every built-in stays available, which is what a launch
-   * without any rule already does. Fleet reads the live roster from the installed CLI, so
-   * this list is an opt-out overlay, not a catalog: a name that no longer exists is inert.
+   * Registered Theaters whose Claude Code sessions keep their subagents instead of having the host
+   * replace them. Replacement is the default, so only the opt-out is stored. The Console host
+   * validates Theater IDs, as for system prompts.
    */
-  readonly claudeCodeDisabledAgents?: readonly string[];
+  readonly claudeCodeTheaterSubagents?: Readonly<Record<string, true>>;
 }
 
 /**
@@ -66,21 +65,23 @@ export function sanitizeAgentOptionsData(value: unknown): AgentOptionsValidation
 
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
   const claudeCodeTheaterSystemPrompts = sanitizeTheaterSystemPrompts(value.claudeCodeTheaterSystemPrompts);
-  const claudeCodeDisabledAgents = sanitizeClaudeCodeDisabledAgents(value.claudeCodeDisabledAgents);
+  const claudeCodeTheaterSubagents = sanitizeTheaterSubagents(value.claudeCodeTheaterSubagents);
   const data: AgentOptionsData = {
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
     ...(claudeCodeTheaterSystemPrompts !== undefined ? { claudeCodeTheaterSystemPrompts } : {}),
-    ...(claudeCodeDisabledAgents !== undefined ? { claudeCodeDisabledAgents } : {}),
+    ...(claudeCodeTheaterSubagents !== undefined ? { claudeCodeTheaterSubagents } : {}),
   };
+  // A retired key (the global built-in subagent opt-out list) is unknown here, so it is dropped
+  // and reported as a change: the next write leaves it behind.
   const allowedKeys = new Set([
     "agentIdleDormantMinutes",
     "claudeCodeTheaterSystemPrompts",
-    "claudeCodeDisabledAgents",
+    "claudeCodeTheaterSubagents",
   ]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
     ("claudeCodeTheaterSystemPrompts" in value && JSON.stringify(value.claudeCodeTheaterSystemPrompts) !== JSON.stringify(claudeCodeTheaterSystemPrompts)) ||
-    ("claudeCodeDisabledAgents" in value && !sameStringList(value.claudeCodeDisabledAgents, claudeCodeDisabledAgents));
+    ("claudeCodeTheaterSubagents" in value && JSON.stringify(value.claudeCodeTheaterSubagents) !== JSON.stringify(claudeCodeTheaterSubagents));
 
   return { data, changed };
 }
@@ -133,27 +134,10 @@ export function sanitizeClaudeCodeCustomSystemPrompt(value: unknown): string | u
   return normalized.length > MAX_CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_CHARS ? undefined : normalized;
 }
 
-/**
- * Only well-formed agent names survive: a non-empty string without whitespace or the
- * `Agent(...)` rule delimiters, since each entry becomes one `Agent(<name>)` deny rule.
- * Duplicates collapse and an empty result drops the key back to "all enabled".
- */
-export function sanitizeClaudeCodeDisabledAgents(value: unknown): readonly string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const names = new Set<string>();
-  for (const entry of value) {
-    if (typeof entry !== "string") continue;
-    const name = entry.trim();
-    if (name.length === 0 || name.length > 128 || !/^[^\s()]+$/.test(name)) continue;
-    names.add(name);
-  }
-  return names.size > 0 ? [...names] : undefined;
-}
-
-function sameStringList(raw: unknown, sanitized: readonly string[] | undefined): boolean {
-  if (!Array.isArray(raw)) return false;
-  if (sanitized === undefined) return raw.length === 0;
-  return raw.length === sanitized.length && raw.every((entry, index) => entry === sanitized[index]);
+function sanitizeTheaterSubagents(value: unknown): Readonly<Record<string, true>> | undefined {
+  if (!isRecord(value)) return undefined;
+  const entries = Object.entries(value).filter(([id, kept]) => id && id.length <= 128 && kept === true);
+  return entries.length ? Object.fromEntries(entries) as Record<string, true> : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

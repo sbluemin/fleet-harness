@@ -17,6 +17,7 @@ export function createConsoleRuntimeContext(deps: {
   readonly upgrades: UpgradeRegistry;
   readonly catalog: ApiCatalogEntry[];
   readonly consoleControl?: import("../../../features/console-use/host/console-control.js").ConsoleControl;
+  readonly agentCallRedirect?: (operationId: string) => string | null;
 }): ConsoleRuntimeContext {
   const basePath = "/api/v1";
   const wsBasePath = "/api/v1/terminal/ws";
@@ -29,6 +30,7 @@ export function createConsoleRuntimeContext(deps: {
   return {
     host: deps.host,
     consoleControl: deps.consoleControl,
+    ...(deps.agentCallRedirect ? { agentCallRedirect: deps.agentCallRedirect } : {}),
     dataDir: deps.dataDir,
     recordFailure: deps.recordFailure,
     legacyDataDir: deps.legacyDataDir,
