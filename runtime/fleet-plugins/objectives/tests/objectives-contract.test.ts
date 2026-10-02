@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -93,6 +94,14 @@ function harness(routingOrigin: () => string | null = () => null) {
   const userQuestions: { operationId: string; policy: "blocked" | "default" }[] = [];
   // 호스트처럼 표면은 채팅 표식이 말하고, 살아 있는 세션은 지금 보이는 표면으로 덮을 수 있다.
   const surfaces = new Map<string, "chat" | "terminal">();
+  // 호스트의 생산자 세대 — 깨울 때마다 새 값이고, 휴면 중에는 관측에 싣지 않는다.
+  const generations = new Map<string, string>();
+  const wake = (id: string) => { activity.set(id, "idle"); generations.set(id, randomUUID()); };
+  const observeLifecycle = (id: string) => {
+    const state = activity.get(id);
+    if (!state) return null;
+    return state === "dormant" ? { lifecycle: "dormant" as const } : { lifecycle: "live" as const, ...(generations.has(id) ? { generation: generations.get(id) } : {}) };
+  };
   // 호스트의 멱등 기동 키 — 키 하나에 Operation 하나, 지운 키는 다시 만들지 않는다. hostFault 는 생성 뒤 응답을 잃는 장애다.
   const keyed = new Map<string, string>();
   const deletedKeys = new Set<string>();
@@ -141,7 +150,7 @@ function harness(routingOrigin: () => string | null = () => null) {
     deleteChild: (id: string) => { if (!operations.get(id)?.parentOperationId) return false; deleted.push(id); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
-  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, lifecycle: (id) => (activity.has(id) ? (activity.get(id) === "dormant" ? "dormant" : "live") : null) });
+  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, observe: observeLifecycle });
   let routeBody: unknown;
   let authorized = true;
   let routeResult: { status: number; value: unknown } = { status: 0, value: null };
@@ -156,11 +165,11 @@ function harness(routingOrigin: () => string | null = () => null) {
         launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
         reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
         request: async (input: { kind: string; operationId?: string; text?: string; title?: string; sessionName?: string; viewMode?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; model?: string; effort?: string; groupId?: string; launchKey?: string; newOperationId?: string; parentOperationId?: string; childSessionId?: string }) => {
-          if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
+          if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") wake(input.operationId!); return { operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
           if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // resume 은 휴면만 세션째 되살린다.
-          if (input.kind === "resume") { if (activity.get(input.operationId!) !== "dormant") throw new Error("not_dormant"); if (hostFault.rejectModel && (operations.get(input.operationId!)?.payload.session as { model?: string } | undefined)?.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled"); resumed.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
+          if (input.kind === "resume") { if (activity.get(input.operationId!) !== "dormant") throw new Error("not_dormant"); if (hostFault.rejectModel && (operations.get(input.operationId!)?.payload.session as { model?: string } | undefined)?.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled"); resumed.push(input.operationId!); wake(input.operationId!); return { operationId: input.operationId }; }
           if (input.launchKey && deletedKeys.has(input.launchKey)) throw new Error("launch_key_deleted");
           if (hostFault.rejectModel && input.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled");
           if (input.launchKey && keyed.has(input.launchKey)) return { operationId: keyed.get(input.launchKey) };
@@ -184,7 +193,7 @@ function harness(routingOrigin: () => string | null = () => null) {
         },
         observe: (id: string) => {
           const state = activity.get(id);
-          return state ? { lifecycle: state === "dormant" ? "dormant" : "live", activity: state === "dormant" ? "idle" : state, surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"), supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
+          return state ? { ...observeLifecycle(id), activity: state === "dormant" ? "idle" : state, surface: surfaces.get(id) ?? (operations.get(id)?.payload.chatMode === true ? "chat" : "terminal"), supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])] } : null;
         },
         setSubagentSpawn: (operationId: string, policy: "blocked" | "default") => { subagentSpawns.push({ operationId, policy }); },
         setUserQuestions: (operationId: string, policy: "blocked" | "default") => { userQuestions.push({ operationId, policy }); },
@@ -220,7 +229,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault, removedGroups };
+  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, wake };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -351,7 +360,7 @@ describe("Objectives contract", () => {
 
   // 개시한 구성원의 모델은 세션 좌표가 권위다. 예약이 그 좌표를 바꾸고, 호스트가 한 구성원을 거절해도 개시는 이어져야 한다.
   it("reserves a launched member's model for its next resume and keeps one refused member from stopping the muster", async () => {
-    const { store, launch, route, operations, activity, resumed, hostFault } = harness();
+    const { store, launch, route, operations, activity, resumed, hostFault, wake } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
     await launch.startCommander(objective.id);
@@ -387,6 +396,23 @@ describe("Objectives contract", () => {
     expect(shown().next).toMatchObject({ model: "opus[1m]", reservedWhile: "dormant" });
     activity.set(reviewer.id, "idle");
     expect(shown()).toMatchObject({ model: "opus[1m]", effort: "high", next: null });
+
+    // 떠 있는 동안 한 예약은 그 프로세스가 사는 동안 예약으로 남는다. 휴면을 거쳐 사람이 패널에서 직접 깨운 새 프로세스면 플러그인 경로를 지나지 않아도 적용이다.
+    wake(reviewer.id);
+    await route("member/patch", { objectiveId: objective.id, memberId: reviewer.id, patch: { launch: { mode: "model", model: "sonnet", effort: "low" } } });
+    expect(shown()).toMatchObject({ model: "opus[1m]", effort: "high", next: { model: "sonnet", effort: "low", reservedWhile: "live" } });
+    activity.set(reviewer.id, "running");
+    await route("member/next-settle", { objectiveId: objective.id, memberId: reviewer.id });
+    expect(shown().next).toMatchObject({ model: "sonnet", reservedWhile: "live" });
+    activity.set(reviewer.id, "dormant");
+    wake(reviewer.id);
+    expect(shown()).toMatchObject({ model: "sonnet", effort: "low", next: null });
+    await route("member/next-settle", { objectiveId: objective.id, memberId: reviewer.id });
+    expect(store.storedMember(objective.id, reviewer.id)!.next).toBeUndefined();
+
+    // 세대 표식 전에 저장된 live 예약의 프로세스는 Console 재시작과 함께 끝났다 — 세대가 보이는 live 관측이면 적용이다.
+    store.memberLaunchState(objective.id, reviewer.id, { next: { model: "fable", from: { model: "sonnet", effort: "low" }, reservedWhile: "live" } });
+    expect(shown().next).toBeNull();
   });
 
   // 판단 한 번은 비용과 공유 배분 기록을 남긴다 — 사람이 확인한 결과는 다시 판단하지 않고 그대로 띄우고, 설명이 바뀌면 띄우기 전에 멈춘다.

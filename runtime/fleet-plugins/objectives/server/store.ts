@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
+import type { ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { readOperationLaunch, type OperationNode, type OperationDescription } from "@fleet-console/sdk/operations";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
@@ -98,8 +99,20 @@ export interface ObjectiveStoreOptions {
   readonly operations: { get(id: string): OperationNode | null; list(): readonly OperationNode[]; describe?(id: string): OperationDescription | null; readonly groups?: { get(id: string): { readonly theaterId: string } | null } };
   readonly emit: (event: ObjectiveEvent) => void;
   readonly now?: () => number;
-  /** 세션의 지금 생명주기 — 휴면 중 예약이 이미 깨어 적용됐는지 투영이 가른다. 모르면 null. */
-  readonly lifecycle?: (operationId: string) => "live" | "dormant" | "unknown" | null;
+  /** 세션의 지금 생명주기와 생산자 세대 — 예약이 이미 새 프로세스에 적용됐는지 투영이 가른다(nextApplied). 모르면 null. */
+  readonly observe?: (operationId: string) => SessionObservation | null;
+}
+
+export type SessionObservation = Pick<ConsoleOperationObservation, "lifecycle" | "generation">;
+
+/**
+ * 아직 쓰이지 않은 예약이 이미 실행값이 됐는가. 관측이 live 여야 하고 — 휴면 중 예약은 깨어난 것만으로, 떠 있던 중 예약은 그때의
+ * 프로세스가 끝나고 새 세대가 섰을 때 적용이다. 세대를 모르는 관측(세대 표식이 없는 호스트)은 같은 프로세스로 본다.
+ */
+export function nextApplied(next: MemberNext, observed: SessionObservation | null | undefined): boolean {
+  if (next.failed || observed?.lifecycle !== "live") return false;
+  if (next.reservedWhile !== "live") return true;
+  return observed.generation !== undefined && observed.generation !== next.reservedGeneration;
 }
 
 /** 새 목표의 목표 고유값 — Operation 은 부르는 쪽이 먼저 만든다. */
@@ -417,7 +430,7 @@ function storedRouted(value: StoredMember["routed"]): MemberRouted | null {
 }
 function storedNext(value: StoredMember["next"]): MemberNext | null {
   if (!value || typeof value !== "object" || !shortText(value.model, 128) || !value.from || typeof value.from !== "object") return null;
-  return { ...value, ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), ...(value.reservedWhile === "live" || value.reservedWhile === "dormant" ? {} : { reservedWhile: undefined }) };
+  return { ...value, ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), ...(value.reservedWhile === "live" || value.reservedWhile === "dormant" ? {} : { reservedWhile: undefined }), ...(shortText(value.reservedGeneration, 128) ? {} : { reservedGeneration: undefined }) };
 }
 
 /** 기본값·빈 값은 쓰지 않는다 — 저장 모양에는 뜻이 있는 값만 남는다. */
@@ -577,8 +590,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const preset = memberNode ? readOperationLaunch(memberNode.payload) : null;
       // 예약이 있으면 세션 좌표는 이미 다음 재개의 값이다 — 지금 프로세스의 실행값은 예약이 기억한 from 이다. 실패한 예약은 좌표를 되돌렸다.
       const stored = memberNode ? storedNext(member.next) : null;
-      // 휴면 중 예약이 live 로 관측되면 그 재개가 이미 예약 좌표를 읽었다 — 예약이 곧 실행값이고, 라우팅이 고른 모델도 아니다.
-      const applied = !!stored && !stored.failed && stored.reservedWhile !== "live" && options.lifecycle?.(member.id) === "live";
+      // 예약 뒤 새로 선 프로세스가 관측되면 그 기동이 이미 예약 좌표를 읽었다 — 예약이 곧 실행값이고, 라우팅이 고른 모델도 아니다.
+      const applied = !!stored && nextApplied(stored, options.observe?.(member.id));
       const next = applied ? null : stored;
       const running = next && !next.failed ? next.from : preset;
       return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}),

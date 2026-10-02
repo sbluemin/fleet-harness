@@ -6,8 +6,8 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { decisionTurn, humanWords, memberMessageTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
-import { checkedCriteria, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import { COMMANDER_PRESET, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberPatchInput, type MemberPreset, type MemberRouted, type Objective, type ObjectiveMember, type PlanInput, type RoutingDecision, type RoutingPreview, type SlotBy, type MissionAddInput, type MissionPatchInput } from "./types.js";
+import { checkedCriteria, nextApplied, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
+import { COMMANDER_PRESET, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type Objective, type ObjectiveMember, type PlanInput, type RoutingDecision, type RoutingPreview, type SlotBy, type MissionAddInput, type MissionPatchInput } from "./types.js";
 
 /**
  * 목표는 레코드로 태어난다. 첫 「개시」·「구상」에서만 같은 id 의 dormant 지휘관 Operation 을 세우고 깨운다.
@@ -611,7 +611,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
    * 실행 중인 프로세스는 건드리지 않는다(채팅·터미널 모두 다음 재개부터). 실행값과 같은 값을 고르면 예약을 거둔다.
    * 라우팅은 새로 띄울 때만 판단하므로, 띄운 구성원이 라우팅으로 돌아가면 예약만 거둔다.
    */
-  const reserve = (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: { readonly from: MemberPreset; readonly was?: MemberLaunch; readonly failed?: string; readonly reservedWhile?: "dormant" | "live" } }) => {
+  const reserve = (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: MemberNext }) => {
     const node = ctx.host.operations.get(memberId);
     if (!node) return;
     const pending = before.next && !before.next.failed ? before.next : null;
@@ -624,19 +624,22 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     }
     patchMemberPreset(memberId, target);
     const was = before.next ? before.next.was : before.launch;
-    const reservedWhile = pending?.reservedWhile === "live" || ctx.host.consoleControl?.observe(memberId)?.lifecycle === "live" ? "live" as const : "dormant" as const;
-    store.memberLaunchState(current.id, memberId, { next: { model: target.model, ...(target.effort ? { effort: target.effort } : {}), from: running, ...(was ? { was } : {}), reservedWhile } });
+    // 떠 있던 중 예약은 그 프로세스의 세대를 함께 남긴다 — 세대가 바뀌면 다음 프로세스가 이 좌표로 선 것이다. 바꿔 예약해도 프로세스는 그대로다.
+    const observed = ctx.host.consoleControl?.observe(memberId);
+    const live = pending?.reservedWhile === "live" ? { generation: pending.reservedGeneration } : observed?.lifecycle === "live" ? { generation: observed.generation } : null;
+    store.memberLaunchState(current.id, memberId, { next: { model: target.model, ...(target.effort ? { effort: target.effort } : {}), from: running, ...(was ? { was } : {}), reservedWhile: live ? "live" : "dormant", ...(live?.generation ? { reservedGeneration: live.generation } : {}) } });
   };
   /**
-   * 아직 쓰이지 않은 예약 — 휴면 중 예약이 live 로 관측되면 사람이 패널에서 깨웠든 지휘관이 말을 걸었든 이미 예약 좌표로 깨었으므로
-   * 적용으로 거둔다. 떠 있던 중 예약이 휴면으로 관측되면 옛 프로세스가 끝났으니 다음 깨움을 같은 규칙으로 가를 수 있게 휴면 예약으로 고친다.
+   * 아직 쓰이지 않은 예약 — 예약 뒤 새로 선 프로세스가 관측되면(nextApplied) 사람이 패널에서 깨웠든 지휘관이 말을 걸었든 이미 예약
+   * 좌표로 섰으므로 적용으로 거둔다. 떠 있던 중 예약이 휴면으로 관측되면 옛 프로세스가 끝났으니 휴면 예약으로 고친다 — 세대 표식이
+   * 없는 호스트에서도 다음 깨움을 가를 수 있다.
    */
   const pendingNext = (objectiveId: string, memberId: string) => {
     const next = store.storedMember(objectiveId, memberId)?.next;
     if (!next || next.failed) return null;
-    const lifecycle = ctx.host.consoleControl?.observe(memberId)?.lifecycle;
-    if (next.reservedWhile !== "live" && lifecycle === "live") { store.memberLaunchState(objectiveId, memberId, { next: null, routed: null }); return null; }
-    if (next.reservedWhile === "live" && lifecycle === "dormant") { const settled = { ...next, reservedWhile: "dormant" as const }; store.memberLaunchState(objectiveId, memberId, { next: settled }); return settled; }
+    const observed = ctx.host.consoleControl?.observe(memberId);
+    if (nextApplied(next, observed)) { store.memberLaunchState(objectiveId, memberId, { next: null, routed: null }); return null; }
+    if (next.reservedWhile === "live" && observed?.lifecycle === "dormant") { const settled = { ...next, reservedWhile: "dormant" as const, reservedGeneration: undefined }; store.memberLaunchState(objectiveId, memberId, { next: settled }); return settled; }
     return next;
   };
 

@@ -77,11 +77,17 @@ describe("agent dormant ticket guards", () => {
   it("resumes a dormant member through Console control without a message", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
+    // 생산자 세대는 같은 프로세스가 사는 동안 그대로이고, 재개한 새 프로세스에서 바뀐다 — 플러그인은 이것으로 그 사이의 휴면을 안다.
+    const born = harness.control.observe(sessionId)?.generation;
+    expect(born).toEqual(expect.any(String));
+    expect(harness.control.observe(sessionId)?.generation).toBe(born);
     await harness.transitionToDormant(sessionId);
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
     await expect(harness.control.request(caller, { kind: "resume", operationId: sessionId, text: "wrong" } as never)).rejects.toThrow();
     expect(await harness.control.request(caller, { kind: "resume", operationId: sessionId })).toEqual({ operationId: sessionId, delivery: "confirmed" });
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({ sessionId }));
+    expect(harness.control.observe(sessionId)).toMatchObject({ lifecycle: "live", generation: expect.any(String) });
+    expect(harness.control.observe(sessionId)?.generation).not.toBe(born);
     await expect(harness.control.request(caller, { kind: "resume", operationId: sessionId })).rejects.toThrow("not_dormant");
   });
 

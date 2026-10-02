@@ -51,6 +51,11 @@ export interface ConsoleActionInput {
 export interface ConsoleOperationObservation {
   readonly activity: ConsoleActivity;
   readonly lifecycle: "live" | "dormant" | "unknown";
+  /**
+   * live 동안만 — 지금 생산자(PTY·채팅 SDK 세션)의 불투명 세대. 세션 좌표를 읽고 선 프로세스마다 새 값이고 Console 을 다시 띄워도
+   * 겹치지 않는다. 같은 값이면 같은 프로세스다 — 휴면을 거쳐 다시 깨어났는지를 관측 한 번으로 가른다.
+   */
+  readonly generation?: string;
   readonly observedAt: string;
   readonly source: "host";
   readonly attention: { readonly kind: "none" | "input" | "permission" | "failure" | "unknown" };
