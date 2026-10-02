@@ -771,9 +771,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
+    onActiveOwnerChange: () => scheduleOperationUseBroadcast(),
   });
   // 패널 안 허용 요청 — 콘솔 사용과 컴퓨터 사용이 같은 브로커를 나눠 쓴다. 메모리 전용이라 재시작하면 비어 있다.
-  const useRequests = createUseRequestBroker();
+  const useRequests = createUseRequestBroker({ onChange: () => scheduleOperationUseBroadcast() });
   const computerUseMcp = createComputerUseMcpHost({
     transport: mcpHttp.transport,
     onFailure: recordFailure,
@@ -800,6 +801,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 뷰를 가진 Desktop 창에만 보낸다: 브라우저는 그 창에서만 열리고, 다른 화면에는 그릴 자리가 없다.
    */
   browserService.onState((state) => {
+    // driving 이 바뀌면 operation-use 의 browser 배열이 바뀐다 — 스냅샷을 다시 흘린다(변한 게 없으면 스킵).
+    scheduleOperationUseBroadcast();
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData(BROWSER_STATE_EVENT, state);
     for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") subscriber.res.write(data);
@@ -856,6 +859,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const count = Math.max(0, (consoleUseActivity.get(operationId) ?? 0) + (active ? 1 : -1));
       if (count) consoleUseActivity.set(operationId, count);
       else consoleUseActivity.delete(operationId);
+      scheduleOperationUseBroadcast();
     },
     control: consoleControl,
     requests: useRequests,
@@ -1197,6 +1201,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await computerUse.setPlatform(computerUsePlatforms[next.computerUseBackend]);
       if (!next.computerUse) await computerUse.stop();
       for (const listener of experimentListeners) listener(next);
+      // computerUse 실험 토글·백엔드는 listOperationUse 의 computer 배열과 요청 blocked 를 바꾼다.
+      scheduleOperationUseBroadcast();
     },
     onRemoteAccessChanged: (change) => reconcileRemoteAccess(change),
   });
@@ -1356,6 +1362,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }));
       res.write(":connected\n\n");
       res.write(encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen)));
+      // 붙기 전에 시작된 콘솔·컴퓨터 사용과 허용 요청은 이벤트로 다시 오지 않는다 — 지금 스냅샷을 실어 보낸다.
+      // 재연결도 이 자리를 지나므로 끊긴 사이의 변경은 여기서 한 번에 맞춰진다.
+      res.write(encodeSseData(OPERATION_USE_STATE_EVENT, operationUseSnapshot()));
       const listener = listenerForRequest(req);
       const audience: AccessAudience = listener?.audience ?? "local";
       const sessionHandle = listener === null || listener.audience === "local"
@@ -1424,17 +1433,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   routeRegistry.register("/api/v1/operation-use", async ({ req, res }) => {
     if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    const using = listOperationUse();
-    // 패널 안 허용 요청과 「이번 작업만」 허가 — 도구 이름·사유·시한만 싣는다(인자·내용·경로는 없다).
-    const live = new Set(operations.list().flatMap((operation) => [operation.id, ...(operation.childSessions ?? []).map((child) => child.id)]));
-    const { requests, grants } = useRequests.list();
-    writeJson(res, 200, {
-      console: using.console,
-      computer: using.computer ? [using.computer] : [],
-      browser: using.browser,
-      requests: requests.filter((request) => live.has(request.operationId)),
-      grants: { console: grants.console.filter((id) => live.has(id)), computer: grants.computer.filter((id) => live.has(id)) },
-    });
+    writeJson(res, 200, operationUseSnapshot());
     return true;
   });
   /**
@@ -2067,6 +2066,51 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return payload ? JSON.stringify(readOperationLaunch(payload)) : null;
   }
 
+  /**
+   * Operation 사용 스냅샷 — /api/v1/operation-use 응답과 같은 모양. 콘솔·컴퓨터·브라우저 사용, 패널 안 허용
+   * 요청, 「이번 작업만」 허가를 한 번에 싣는다. 도구 이름·사유·시한뿐이라 경로·인자 같은 민감 정보는 없다.
+   * 원천(consoleUseActivity, ComputerUseService.owner, browserService, useRequests)이 바뀔 때마다
+   * scheduleOperationUseBroadcast 로 이 스냅샷을 operations SSE 로 밀어 내보낸다.
+   */
+  const OPERATION_USE_STATE_EVENT = "operation-use:state";
+  let operationUseBroadcastQueued = false;
+  let lastOperationUseSnapshot: string | null = null;
+
+  function operationUseSnapshot() {
+    const using = listOperationUse();
+    const live = new Set(operations.list().flatMap((operation) => [operation.id, ...(operation.childSessions ?? []).map((child) => child.id)]));
+    const { requests, grants } = useRequests.list();
+    return {
+      console: using.console,
+      computer: using.computer ? [using.computer] : [],
+      browser: using.browser,
+      requests: requests.filter((request) => live.has(request.operationId)),
+      grants: { console: grants.console.filter((id) => live.has(id)), computer: grants.computer.filter((id) => live.has(id)) },
+    };
+  }
+
+  /** 한 틱에 몰린 원천 변화(턴 종료 → settle·revoke·operation:changed 등)를 스냅샷 한 번으로 합친다. */
+  function scheduleOperationUseBroadcast(): void {
+    if (operationUseBroadcastQueued) return;
+    operationUseBroadcastQueued = true;
+    queueMicrotask(() => {
+      operationUseBroadcastQueued = false;
+      broadcastOperationUse();
+    });
+  }
+
+  function broadcastOperationUse(): void {
+    if (operationSseSubscribers.size === 0) { lastOperationUseSnapshot = null; return; }
+    const snapshot = operationUseSnapshot();
+    const encoded = JSON.stringify(snapshot);
+    // 바뀌지 않은 사실은 내보내지 않는다 — broadcastOperationChanged 처럼 광범위하게 걸린 원천에서도
+    // 실제로 operation-use 스냅샷이 달라진 경우에만 프레임이 나간다.
+    if (encoded === lastOperationUseSnapshot) return;
+    lastOperationUseSnapshot = encoded;
+    const data = encodeSseData(OPERATION_USE_STATE_EVENT, snapshot);
+    for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+  }
+
   /** 그룹 사건 — 이름·색·순서뿐이라 민감 필드가 없다. 원격 세션에도 그대로 흐른다. */
   function broadcastGroupChanged(group: { readonly id: string; readonly name: string; readonly color: string; readonly order: number; readonly theaterId: string; readonly createdAt: number }): void {
     if (operationSseSubscribers.size === 0) return;
@@ -2082,6 +2126,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData(OPERATION_REMOVED_SSE_EVENT, { operationId });
     for (const subscriber of operationSseSubscribers) subscriber.res.write(data);
+    scheduleOperationUseBroadcast();
   }
   function broadcastOperationChanged(node: OperationNode): void {
     if (operationSseSubscribers.size === 0) return;
@@ -2094,6 +2139,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     for (const subscriber of operationSseSubscribers) {
       subscriber.res.write(data);
     }
+    // payload(consoleUse)·childSessions·live 목록이 바뀌면 operation-use 스냅샷도 바뀐다 — 제목만 바뀐 patch 는 스킵이 흡수한다.
+    scheduleOperationUseBroadcast();
   }
 
   /**
@@ -2332,6 +2379,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     publishPluginEvent("operation:archive-changed", { revision: operationArchive.revision(), total: archiveStorage.entries().length, totalsByTheater });
     publishPluginEvent("operation:cluster-changed", { removedIds: [...pendingClusterRemoved], operations: operations.list().map((node) => sanitizeArchiveOperation(node)) });
     pendingClusterRemoved.clear();
+    // 보관·복원은 live 목록을 통째로 바꾼다 — 그 Operation 에 걸린 요청·허가의 필터가 여기서 다시 맞춰진다.
+    scheduleOperationUseBroadcast();
   }
 
   async function stopServer(): Promise<void> {

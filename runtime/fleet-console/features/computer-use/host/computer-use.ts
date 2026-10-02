@@ -92,7 +92,13 @@ export class ComputerUseService {
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onFailure?: (kind: string, error: unknown) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
+    /** activeOwner() 결과가 바뀔 때마다 불린다 — 호스트가 operation-use 스냅샷을 밀어낸다. */
+    readonly onActiveOwnerChange?: (owner: string | null) => void;
   }) {}
+
+  private notifyOwnerChanged(): void {
+    this.deps.onActiveOwnerChange?.(this.activeOwner());
+  }
 
   async setPlatform(platform: ComputerUsePlatform): Promise<void> {
     const revision = ++this.platformRevision;
@@ -152,6 +158,8 @@ export class ComputerUseService {
   async stop(): Promise<void> {
     if (this.stopping) return this.stopping;
     this.state = "stopping";
+    // activeOwner() 가 null 로 꺾인다 — 소유자 표시가 여기서부터 즉시 사라진다.
+    this.notifyOwnerChanged();
     this.captureApp = null;
     this.captureUnavailable = false;
     try { this.deps.onCaptureTarget?.(null); }
@@ -281,6 +289,8 @@ export class ComputerUseService {
     this.cleanupFailure = null;
     this.warning = null;
     this.owner = owner;
+    // activeOwner() 가 null → owner 로 꺾인다 — 소유자 표시가 여기서부터 즉시 나타난다.
+    this.notifyOwnerChanged();
     this.controller ??= new AbortController();
     const lifetime = this.controller;
     const onAbort = () => { this.stopDetached(); };
