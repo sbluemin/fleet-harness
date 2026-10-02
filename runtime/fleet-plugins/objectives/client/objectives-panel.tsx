@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type MutableRefObject, type ReactNode, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { createPortal } from "react-dom";
 
@@ -470,7 +470,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
   const remove = (member: ObjectiveMember) => void call("/member/remove", { objectiveId: objective.id, memberId: member.id });
   const saving = useRef(new Set<string>());
-  const [fault, setFault] = useState<{ id: string; code: string } | null>(null);
+  // picked 는 모델 선택이 거절된 경우 — 그 실패는 칩의 말풍선으로 서고, 나머지는 행 아래 안내로 선다.
+  const [fault, setFault] = useState<{ id: string; code: string; picked?: { readonly model?: string; readonly effort?: string } } | null>(null);
   const [notes, setNotes] = useState<ReadonlySet<string>>(new Set());
   const [announce, setAnnounce] = useState("");
   const [batchOpen, setBatchOpen] = useState(false);
@@ -478,34 +479,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   const batchTriggerRef = useRef<HTMLButtonElement | null>(null);
   const batchMenuRef = useRef<HTMLDivElement | null>(null);
   const balloonTimer = useRef<number | null>(null);
-  // 실패 줄의 「다른 모델」이 그 구성원의 메뉴를 연다 — 구성원마다 여는 손잡이 하나.
-  const openers = useRef(new Map<string, MutableRefObject<(() => void) | null>>());
-  const opener = (id: string) => { let ref = openers.current.get(id); if (!ref) { ref = { current: null }; openers.current.set(id, ref); } return ref; };
   const cancelNext = (member: ObjectiveMember) => void call("/member/next-cancel", { objectiveId: objective.id, memberId: member.id });
-  // 예약한 구성원의 수명이 바뀌는 것을 보면 서버가 그 예약을 따지게 한다 — 휴면 중 예약은 깨어난 것으로, 떠 있던 중 예약은 잠들었다가
-  // 새 프로세스로 깨어난 것으로(서버가 세대를 가른다) 거둔다. 같은 예약·같은 수명 구간에서는 한 번만 묻고, 다시 휴면해도 옛 예약이 되살아나지 않는다.
-  const settled = useRef(new Map<string, string>());
-  const wokenKeys = objective.members.flatMap((member) => {
-    if (!member.next || member.next.failed) return [];
-    const state = member.sessionName !== null ? operationState(member.id) : "closed";
-    // 떠 있는 채팅의 턴 뒤 예약은 그 턴이 닫히는 것을 보면 서버가 호스트 좌표를 다시 읽어 마감한다(적용이 끝날 때까지 서버가 잠깐 더 본다).
-    if (member.next.afterTurn) return state === "idle" || state === "background" ? [`${member.id}:${member.next.model}:${member.next.effort ?? ""}:turn`] : [];
-    const live = MEMBER_LIVE.has(state);
-    if (!live && member.next.reservedWhile === "dormant") return [];
-    return [`${member.id}:${member.next.model}:${member.next.effort ?? ""}:${member.next.reservedWhile}:${live ? "live" : "ended"}`];
-  });
-  // 보드에서 예약이 사라진 구성원의 키는 잊는다 — 같은 값을 다시 예약하면 같은 키가 서고, 남겨 두면 그 예약은 정산되지 않는다.
-  const reservingIds = objective.members.filter((member) => member.next && !member.next.failed).map((member) => member.id);
-  useEffect(() => {
-    const open = new Set(reservingIds);
-    for (const memberId of [...settled.current.keys()]) if (!open.has(memberId)) settled.current.delete(memberId);
-    for (const key of wokenKeys) {
-      const memberId = key.slice(0, key.indexOf(":"));
-      if (settled.current.get(memberId) === key) continue;
-      settled.current.set(memberId, key);
-      void request("/member/next-settle", { objectiveId: objective.id, memberId }).catch(() => { if (settled.current.get(memberId) === key) settled.current.delete(memberId); });
-    }
-  }, [objective.id, wokenKeys.join("|"), reservingIds.join("|")]);
   // 안내는 구성원마다 따로 사라진다 — 한 타이머를 공유하면 앞서 뜬 구성원의 안내가 남는다.
   const noteTimers = useRef(new Map<string, number>());
   const dropNote = (id: string) => {
@@ -523,7 +497,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     }
   };
 
-  // 바뀐 순간의 확인 — 곧바로 적용된 응답이나 이번 턴 뒤 예약의 정산을 보면 그 행 아래에 잠깐 「바꿨습니다」를 세운다. 서버에 남기지 않는 화면의 일시 상태다.
+  // 바뀐 순간의 확인 — 곧바로 적용된 응답이나 이번 턴 뒤 예약의 정산을 보면 그 칩에 잠깐 「바꿨습니다」 말풍선을 세운다. 서버에 남기지 않는 화면의 일시 상태다.
   const [applied, setApplied] = useState<ReadonlyMap<string, { readonly model?: string; readonly effort?: string }>>(new Map());
   const appliedTimers = useRef(new Map<string, number>());
   const flashApplied = (id: string, to: { readonly model?: string; readonly effort?: string }) => {
@@ -536,15 +510,15 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     }, 2_600));
   };
   // 턴 뒤 예약은 서버 방송으로 정산된다 — 직전 렌더에 그 예약이 있었고, 이제 실패 없이 사라져 실행값이 그 값이면 바뀐 순간이다.
-  const afterTurnSeen = useRef(new Map<string, { readonly model: string; readonly effort?: string }>());
+  const pendingSeen = useRef(new Map<string, { readonly model: string; readonly effort?: string }>());
   useEffect(() => {
     const seen = new Map<string, { readonly model: string; readonly effort?: string }>();
     for (const member of objective.members) {
-      const before = afterTurnSeen.current.get(member.id);
+      const before = pendingSeen.current.get(member.id);
       if (before && !member.next && member.model === before.model && (member.effort ?? "") === (before.effort ?? "")) flashApplied(member.id, before);
-      if (member.next?.afterTurn && !member.next.failed) seen.set(member.id, { model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}) });
+      if (member.next && !member.next.failed) seen.set(member.id, { model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}) });
     }
-    afterTurnSeen.current = seen;
+    pendingSeen.current = seen;
   }, [objective.members]);
 
   useEffect(() => () => {
@@ -577,16 +551,17 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     };
   }, [batchOpen]);
 
-  // 띄운 구성원의 모델 — 떠 있는 채팅은 호스트가 곧바로 또는 이번 턴 뒤 바꾼다. 호스트가 거절하면(문맥이 새 모델의 창보다 큼 등) 그 행에 사유가 선다.
-  const pickLaunched = (member: ObjectiveMember, launch: Record<string, unknown>) => {
+  // 띄운 구성원의 모델 — 휴면·유휴면 곧바로, 일하는 중이면 이번 턴 뒤 바뀐다. 바꾸지 못하면(문맥이 새 모델의 창보다 큼 등) 그 칩에 사유가 선다.
+  const pickLaunched = (member: ObjectiveMember, launch: { readonly mode: "same" } | { readonly mode: "model"; readonly model: string; readonly effort?: string }) => {
+    const picked = launch.mode === "same" ? { model: objective.commander.model, effort: objective.commander.effort } : { model: launch.model, effort: launch.effort };
     void request("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } }).then(
       (payload) => {
         setFault((current) => current?.id === member.id ? null : current);
-        // 유휴 채팅은 곧바로 바뀐다 — 예약 없이 실행값이 달라졌으면 그 순간이다.
+        // 곧바로 바뀌었다 — 예약 없이 실행값이 달라졌으면 그 순간이다.
         const echoed = (payload as { objective?: Objective } | null)?.objective?.members.find((entry) => entry.id === member.id);
-        if (echoed?.switchesLive && !echoed.next && (echoed.model !== member.model || (echoed.effort ?? "") !== (member.effort ?? ""))) flashApplied(member.id, { ...(echoed.model ? { model: echoed.model } : {}), ...(echoed.effort ? { effort: echoed.effort } : {}) });
+        if (echoed && !echoed.next && (echoed.model !== member.model || (echoed.effort ?? "") !== (member.effort ?? ""))) flashApplied(member.id, { ...(echoed.model ? { model: echoed.model } : {}), ...(echoed.effort ? { effort: echoed.effort } : {}) });
       },
-      (error: unknown) => setFault({ id: member.id, code: error instanceof Error ? error.message : "unknown" }));
+      (error: unknown) => setFault({ id: member.id, code: error instanceof Error ? error.message : "unknown", picked }));
   };
   const toggleSubagents = (member: ObjectiveMember, live: boolean) => {
     if (saving.current.has(member.id)) return;
@@ -712,18 +687,19 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       {...(objective.members.length > 0 ? { controls: "objectives-sec-members", expanded, onToggle } : {})} />
     <div id="objectives-sec-members" hidden={!expanded}>
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
-    {objective.members.map((shownMember, index) => {
-      const count = objective.missions.filter((mission) => mission.member === shownMember.id).length;
-      const state = shownMember.sessionName !== null ? operationState(shownMember.id) : "closed";
-      // 휴면 중 예약한 구성원이 깨어 있으면 그 재개가 이미 예약 좌표를 읽었다 — 서버가 다시 방송하기 전에도 실행값으로 보인다.
-      const wokeOnNext = !!shownMember.next && !shownMember.next.failed && !shownMember.next.afterTurn && shownMember.next.reservedWhile === "dormant" && MEMBER_LIVE.has(state);
-      const member: ObjectiveMember = wokeOnNext && shownMember.next ? { ...shownMember, model: shownMember.next.model, effort: shownMember.next.effort, routed: null, next: null } : shownMember;
+    {objective.members.map((member, index) => {
+      const count = objective.missions.filter((mission) => mission.member === member.id).length;
+      const state = member.sessionName !== null ? operationState(member.id) : "closed";
       const launched = memberLaunched(member, operationState);
       const display = memberLaunchDisplay(member, launched, t, rows);
       const routed = launched ? member.routed : null;
       const next = launched ? member.next : null;
       const reserved = next && !next.failed ? next : null;
       const appliedTo = launched ? applied.get(member.id) ?? null : null;
+      // 바꾸지 못한 변경 — 방금 고른 값을 호스트가 거절했거나(닫으면 표시만 지운다), 이번 턴 뒤 예약이 적용되지 못했다(닫으면 예약 전 선택으로 돌아간다).
+      const picked = launched && fault?.id === member.id ? fault.picked ?? null : null;
+      const failure = picked && fault ? { model: picked.model, effort: picked.effort, code: fault.code, dismiss: () => setFault(null) }
+        : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
       const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
       const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
@@ -748,14 +724,15 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           <div className="objectives-member-meta">
             {routed ? <span className={`objectives-member-via is-${routed.via}`} title={t(routed.via === "route" ? "objectives.members.routedTitle" : ROUTING_OFF_REASONS.has(routed.reason) ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle")}>{t(routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback")}</span> : null}
             {launched ? (
-              // 띄운 구성원 — 행은 실행값 그대로, 고른 값은 다음 재개부터의 예약이다. 라우팅은 새로 띄울 때만 판단하므로 고를 수 없다.
+              // 띄운 구성원 — 행은 실행값이다. 고른 값은 곧바로 또는 이번 턴 뒤 바뀌고, 그 경과는 칩 곁 말풍선이 말한다.
+              // 라우팅은 새로 띄울 때만 판단하므로 고를 수 없다.
               <LaunchControl key={member.id} t={t} model={reserved ? reserved.model : member.model} effort={reserved ? reserved.effort : member.effort} locked={!touchable} startAtList triggerLabel={t("objectives.members.modelAria", { role: member.role })}
-                triggerText={display.text} triggerTitle={display.title} openRef={opener(member.id)}
-                head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : !member.switchesLive ? "objectives.members.menuHead.live" : state === "idle" || state === "background" ? "objectives.members.menuHead.chatIdle" : "objectives.members.menuHead.chatRunning")}</span></>}
+                triggerText={display.text} triggerTitle={display.title}
+                head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : state === "idle" ? "objectives.members.menuHead.idle" : "objectives.members.menuHead.working")}</span></>}
                 extras={[{ id: "same", label: t("objectives.memberSelection.inherit"), hint: `${commanderWords.words.model} · ${commanderWords.words.effort}`, active: member.launch.mode === "same", onPick: () => pickLaunched(member, { mode: "same" }) }]}
-                extrasCaption={t("objectives.members.routeAtLaunch")}
+                extrasCaption={t("objectives.members.routeAtLaunch")} commitOnClose
                 subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
-                onChange={(picked) => { const model = picked.model ?? reserved?.model ?? member.model; if (model) pickLaunched(member, { mode: "model", model, effort: picked.effort }); }} />
+                onChange={(choice) => { const model = choice.model ?? reserved?.model ?? member.model; if (model) pickLaunched(member, { mode: "model", model, effort: choice.effort }); }} />
             ) : (
             <LaunchControl key={member.id} t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} triggerLabel={t("objectives.members.modelAria", { role: member.role })}
               triggerText={display.text} triggerTitle={display.title}
@@ -765,31 +742,29 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
             )}
             <span className={`objectives-member-status is-${state}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}{allowed ? <span className="objectives-member-subagents">{t("objectives.members.subagentsMark")}</span> : null}</span>
           </div>
+          {/* 모델 변경의 경과는 칩 아래(설명 줄의 오른쪽 칸)에 서서 칩을 가리키는 한 줄 말풍선이다 — 행의 칸이라 다른 행이나 조작을 덮지
+              않고 레일 밖으로 넘치지 않는다. 실패의 사유는 길어서 말풍선의 title(과 읽기 도구용 문장)로 싣고, 다른 모델은 칩에서 고른다. */}
+          {reserved ? ((words) => (
+            <span className="objectives-member-bubble" role="status" title={`${t("objectives.members.next.whenTurn")} → ${words.title}`}>
+              <span className="objectives-member-bubble-when">{t("objectives.members.next.whenTurn")}</span>
+              <span className="objectives-member-bubble-arrow" aria-hidden="true">→</span>
+              <span className="objectives-member-bubble-to">{words.words.model}<span className="objectives-member-bubble-effort"> · {words.words.effort}</span></span>
+              {touchable ? <button type="button" className="objectives-glyph objectives-member-bubble-x" aria-label={t("objectives.members.next.cancel", { role: member.role })} title={t("objectives.members.next.cancel", { role: member.role })} onClick={() => cancelNext(member)}><CloseGlyph /></button> : null}
+            </span>
+          ))(launchedWords(rows, reserved.model, reserved.effort, labels)) : failure ? ((sentence) => (
+            <span className="objectives-member-bubble is-failed" role="alert" title={sentence}>
+              <span className="objectives-member-bubble-when">{t("objectives.members.next.failed")}</span>
+              <span className="objectives-sr">{sentence}</span>
+              {touchable ? <button type="button" className="objectives-glyph objectives-member-bubble-x" aria-label={t("objectives.members.next.dismiss")} title={t("objectives.members.next.dismiss")} onClick={failure.dismiss}><CloseGlyph /></button> : null}
+            </span>
+          ))(t("objectives.members.next.failedBody", { model: launchedWords(rows, failure.model, failure.effort, labels).title, reason: routingReason(t, failure.code) })) : appliedTo ? (
+            <span className="objectives-member-bubble is-applied" role="status"><span className="objectives-member-bubble-when">{t("objectives.members.next.applied")}</span></span>
+          ) : null}
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
         </div>
-        {reserved ? (
-          <div className="objectives-member-next">
-            <span className="objectives-member-next-when">{t(reserved.afterTurn ? "objectives.members.next.whenTurn" : "objectives.members.next.when")}</span>
-            <span className="objectives-member-next-arrow" aria-hidden="true">→</span>
-            {((words) => <span className="objectives-member-next-to" title={words.title}><LaunchedText model={words.model} words={words.words} /></span>)(launchedWords(rows, reserved.model, reserved.effort, labels))}
-            {touchable ? <button type="button" className="objectives-glyph objectives-member-next-x" aria-label={t("objectives.members.next.cancel", { role: member.role })} title={t("objectives.members.next.cancel", { role: member.role })} onClick={() => cancelNext(member)}><CloseGlyph /></button> : null}
-          </div>
-        ) : next?.failed ? (
-          <div className="objectives-member-next is-failed" role="alert">
-            <span className="objectives-member-next-when">{t(next.afterTurn ? "objectives.members.next.failedTurn" : "objectives.members.next.failed")}</span>
-            <span className="objectives-member-next-body">{t(next.afterTurn ? "objectives.members.next.failedTurnBody" : "objectives.members.next.failedBody", { model: launchedWords(rows, next.model, next.effort, labels).title, reason: routingReason(t, next.failed) })}</span>
-            {touchable ? <button type="button" className="objectives-btn is-small objectives-member-next-other" onClick={() => opener(member.id).current?.()}>{t("objectives.members.next.other")}</button> : null}
-            {touchable ? <button type="button" className="objectives-glyph objectives-member-next-x" aria-label={t("objectives.members.next.dismiss")} title={t("objectives.members.next.dismiss")} onClick={() => cancelNext(member)}><CloseGlyph /></button> : null}
-          </div>
-        ) : appliedTo ? (
-          <div className="objectives-member-next is-applied" role="status">
-            <span className="objectives-member-next-when">{t("objectives.members.next.applied")}</span>
-            <span className="objectives-member-next-arrow" aria-hidden="true">→</span>
-            {((words) => <span className="objectives-member-next-to" title={words.title}><LaunchedText model={words.model} words={words.words} /></span>)(launchedWords(rows, appliedTo.model, appliedTo.effort, labels))}
-          </div>
-        ) : routed?.via === "fallback" ? <p className="objectives-member-reason" title={routed.detail}>{routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) })}</p> : null}
+        {routed?.via === "fallback" ? <p className="objectives-member-reason" title={routed.detail}>{routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) })}</p> : null}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
-        {fault?.id === member.id ? <p className="objectives-member-note is-error" role="alert">{hasRoutingReason(fault.code) ? routingReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}
+        {fault?.id === member.id && !picked ? <p className="objectives-member-note is-error" role="alert">{hasRoutingReason(fault.code) ? routingReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}
         </div>
       );
     })}

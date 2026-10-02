@@ -82,9 +82,9 @@ export type MemberRouted =
   | { readonly via: "fallback"; readonly reason: string; readonly detail?: string };
 
 /**
- * 개시한 구성원의 「다음 재개부터」 예약 — 자식 Operation 의 세션 좌표는 이미 이 값으로 바꿔 두었고, from 은 지금 프로세스가
- * 쓰는 실행값이다. was 는 예약 전의 선택(없으면 라우팅)이라 취소하면 그리로 돌아간다. failed 는 재개가 이 모델을 거절해
- * 실행값으로 재개했다는 표시다(좌표도 from 으로 되돌렸다).
+ * 개시한 구성원의 「이번 턴 뒤」 예약 — 일하는 동안 고른 모델이다. 세션 좌표(payload)는 고치지 않았다(미리 고치면 패널이 옛 프로세스를
+ * 새 모델로 말한다). from 은 예약할 때의 실행값, was 는 예약 전의 선택(없으면 라우팅)이라 취소하면 그리로 돌아간다. failed 는 이 모델로
+ * 바꾸지 못했다는 표시다(세션 좌표는 실행값 그대로다).
  */
 export interface MemberNext {
   readonly model: string;
@@ -93,21 +93,12 @@ export interface MemberNext {
   readonly was?: MemberLaunch;
   readonly failed?: string;
   /**
-   * 예약할 때 그 세션이 휴면이었는가, 떠 있었는가. 휴면 중 예약은 다음에 관측이 live 면 이미 이 좌표로 깨었다는 뜻이라 적용된 것으로 본다.
-   * 떠 있던 중 예약은 관측 세대가 reservedGeneration 과 달라질 때 — 그 프로세스가 끝나고 새 프로세스가 이 좌표로 섰을 때 — 적용이다.
+   * 누가 그 턴 뒤를 기다리는가. host 는 떠 있는 채팅 — 호스트가 메모리에 들고 그 턴이 닫히는 경계에서 자식에 적용하며, 세션 좌표도 그때
+   * 호스트가 고친다. 정산은 호스트 좌표를 다시 읽어서 한다: 예약이 남았으면 아직, 비었고 실행값이 이 값이면 적용됨, 비었는데 실행값이
+   * 다르면 적용되지 않음(버림·실패·사람의 취소). plugin 은 떠 있는 터미널 — 플러그인의 감시자가 유휴를 보면 재웠다 이 좌표로 깨운다.
+   * 없으면 「다음 재개」 시절의 옛 기록이다(세션 좌표를 이미 바꿔 두었다) — 기동 때 적용으로 거둔다.
    */
-  readonly reservedWhile?: "dormant" | "live";
-  /**
-   * 떠 있던 중 예약의 그때 관측 세대. 없는 live 예약은 세대 표식 이전에 저장됐다 — 그 프로세스는 Console 재시작과 함께 끝났으므로
-   * 세대가 보이는 live 관측이면 적용이다. 호스트가 든 턴 뒤 예약(held)에는 쓰지 않는다.
-   */
-  readonly reservedGeneration?: string;
-  /**
-   * 떠 있는 채팅의 도는 턴 뒤 예약 — 호스트가 메모리에 들고 그 턴이 닫히는 경계에서 자식에 적용한다. 세션 좌표(payload)는 고치지 않았고
-   * 적용될 때 호스트가 고친다. 그래서 정산은 호스트 좌표를 다시 읽어서 한다: 예약이 남았으면 아직, 비었고 실행값이 이 값이면 적용됨,
-   * 비었는데 실행값이 다르면 적용되지 않음(버림·실패·사람의 취소, 또는 그사이 잠들어 사라짐).
-   */
-  readonly held?: "host";
+  readonly held?: "host" | "plugin";
 }
 
 /** 턴 뒤 예약이 적용되지 않은 채 사라졌다 — 실패 표시의 사유 코드다. */
@@ -123,14 +114,13 @@ export interface HostCoordinates {
 const samePair = (a: MemberPreset, b: MemberPreset) => (a.model ?? "") === (b.model ?? "") && (a.effort ?? "") === (b.effort ?? "");
 
 /**
- * 호스트가 든 예약의 지금 결말. `running` 은 호스트 좌표가 없을 때(휴면·터미널) 읽는 세션 좌표다 — 그 경우 메모리의 예약은
- * 사라졌으므로 세션 좌표가 예약값이면 적용된 것이고 아니면 적용되지 않은 것이다.
+ * 호스트가 든 예약의 지금 결말 — 떠 있는 채팅의 호스트 좌표로 가른다. 호스트 좌표가 없으면(그새 잠들었거나 터미널로 바뀜) 메모리의
+ * 예약이 사라진 것이라 이 함수로 가르지 않는다 — 감시자가 지금 상태에 맞게 다시 건다.
  */
-export function heldNextOutcome(next: Pick<MemberNext, "model" | "effort">, host: HostCoordinates | null, running: MemberPreset): "pending" | "applied" | "not_applied" {
+export function heldNextOutcome(next: Pick<MemberNext, "model" | "effort">, host: HostCoordinates): "pending" | "applied" | "not_applied" {
   const target = { model: next.model, ...(next.effort ? { effort: next.effort } : {}) };
-  if (host?.pending && samePair({ model: host.pending.model, ...(host.pending.effort ? { effort: host.pending.effort } : {}) }, target)) return "pending";
-  const now = host ? { model: host.model, ...(host.effort ? { effort: host.effort } : {}) } : running;
-  return samePair(now, target) ? "applied" : "not_applied";
+  if (host.pending && samePair({ model: host.pending.model, ...(host.pending.effort ? { effort: host.pending.effort } : {}) }, target)) return "pending";
+  return samePair({ model: host.model, ...(host.effort ? { effort: host.effort } : {}) }, target) ? "applied" : "not_applied";
 }
 
 export interface StoredMember {
@@ -150,17 +140,17 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagent
   /** 저장된 허용. 키 없음은 false. */
   readonly subagents: boolean;
   readonly sessionName: string | null;
-  /** 지금 프로세스의 실행값 — 예약이 있으면 예약 전 값이다. */
+  /** 지금 프로세스의 실행값 — 세션 좌표다. */
   readonly model?: string;
   readonly effort?: string;
   readonly routed: MemberRouted | null;
   /**
-   * 채팅 구성원이라 떠 있는 동안 고른 모델을 호스트가 곧바로(유휴) 또는 이번 턴 뒤(작업 중) 바꾼다. 터미널이거나 호스트가 그 능력을
-   * 내놓지 않으면 false — 떠 있어도 다음 재개부터 바뀐다. 휴면 여부는 화면이 구성원의 지금 활동으로 가른다.
+   * 떠 있는 동안 고른 모델을 곧바로(유휴) 또는 이번 턴 뒤(작업 중) 바꾼다 — 채팅은 호스트가, 터미널은 재웠다 깨워서. 호스트가 그 능력을
+   * 내놓지 않으면 false. 휴면 여부는 화면이 구성원의 지금 활동으로 가른다.
    */
   readonly switchesLive: boolean;
-  /** 다음 재개부터 쓸 값 — 실패했으면 failed 에 사유 코드. afterTurn 이면 다음 재개가 아니라 떠 있는 채팅의 도는 턴이 닫히는 경계에서 바뀌는(실패면 바뀌지 않은) 예약이다. */
-  readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null; readonly reservedWhile: "dormant" | "live"; readonly afterTurn: boolean } | null;
+  /** 이번 턴 뒤에 바뀔 값 — 실패했으면 failed 에 사유 코드이고 실행값은 그대로다. */
+  readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null } | null;
 }
 
 /** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */
