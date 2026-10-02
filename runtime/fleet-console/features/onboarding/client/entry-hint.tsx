@@ -22,7 +22,7 @@ export interface EntryHintCandidate {
 }
 
 export interface EntryHintPorts {
-  /** 레일 진입점 버튼. 없으면(플러그인 미설치·Theater 없음 등) 힌트는 서지 않는다. */
+  /** 레일 진입점 버튼. 없으면(플러그인 미설치 등) 힌트는 서지 않는다. 잠겨 있으면(Theater 없음 등) 열릴 때까지 기다린다. */
   readonly railEntryElement: (railEntryId: string) => HTMLElement | null;
   readonly shortcutLabel: (commandId: string) => string;
 }
@@ -34,13 +34,25 @@ const POLL_MS = 400;
 type Placement = { readonly top: number; readonly right: number };
 
 /** 지금 가리킬 수 있는 첫 힌트. 등록 순서(코어 먼저)를 따르고, 문이 보이지 않는 힌트는 건너뛴다. */
-export function findShowableHint(candidates: readonly EntryHintCandidate[], seen: readonly string[], ports: EntryHintPorts): EntryHintCandidate | null {
+function findShowableHint(candidates: readonly EntryHintCandidate[], seen: readonly string[], ports: EntryHintPorts): EntryHintCandidate | null {
   for (const candidate of candidates) {
     if (seen.includes(candidate.seenKey)) continue;
     const target = ports.railEntryElement(candidate.hint.railEntryId);
     if (target && isHintTargetVisible(target)) return candidate;
   }
   return null;
+}
+
+/**
+ * 투어를 붙잡을 힌트가 남았는가 — 지금 설 수 있는 힌트에 더해, 문은 보이지만 아직 잠긴(disabled) 힌트도 센다. 부팅 직후
+ * Theater가 하이드레이션되기 전에는 레일 진입점이 잠겨 있어, 이를 "가리킬 힌트 없음"으로 읽으면 그 틈에 투어가 먼저 잠긴다.
+ */
+export function hasPendingHint(candidates: readonly EntryHintCandidate[], seen: readonly string[], ports: EntryHintPorts): boolean {
+  return candidates.some((candidate) => {
+    if (seen.includes(candidate.seenKey)) return false;
+    const target = ports.railEntryElement(candidate.hint.railEntryId);
+    return target !== null && isHintDoorShown(target);
+  });
 }
 
 export function EntryHints({ candidates, seen, language, ports, held }: {
@@ -158,8 +170,12 @@ function EntryHintBubble({ candidate, language, ports }: {
 }
 
 function isHintTargetVisible(icon: HTMLElement): boolean {
+  return !(icon as HTMLButtonElement).disabled && isHintDoorShown(icon);
+}
+
+// 문이 화면에 서 있고 아직 열리지 않았다 — 잠겨 있는지(disabled)는 묻지 않는다.
+function isHintDoorShown(icon: HTMLElement): boolean {
   if (icon.closest("[hidden], [inert]")) return false;
-  if ((icon as HTMLButtonElement).disabled) return false;
   if (icon.getAttribute("aria-pressed") === "true") return false;
   const style = getComputedStyle(icon);
   if (style.visibility !== "visible" || style.display === "none") return false;

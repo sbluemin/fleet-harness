@@ -4,7 +4,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
 
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
-import { EntryHints, findShowableHint, type EntryHintCandidate, type EntryHintPorts } from "./entry-hint.js";
+import { EntryHints, hasPendingHint, type EntryHintCandidate, type EntryHintPorts } from "./entry-hint.js";
 import { hintSeenKey, rememberSeen, setMountedOnboardingContributions, welcomeSeenKey } from "./seen-store.js";
 import { TourOverlay } from "./tour-overlay.js";
 import { WelcomeDeck, type WelcomeCandidate } from "./welcome-deck.js";
@@ -76,9 +76,9 @@ export function OnboardingHost({ core, plugins, language, welcomeReady, firstRun
     && (welcomeReady || !welcomeGateExpired);
 
   // 가리킬 힌트가 남았는가를 투어가 시작을 판정하는 바로 그 순간에 잰다. 힌트 표면의 폴링 상태를 빌려 쓰면 본 기록이
-  // 바뀐 틱(예: 화면 안내 다시 보기)에 투어가 먼저 판정되어 순서가 뒤집힌다.
+  // 바뀐 틱(예: 화면 안내 다시 보기)에 투어가 먼저 판정되어 순서가 뒤집힌다. 문이 아직 잠긴 힌트도 남은 것으로 친다.
   const toursBlocked = useCallback(
-    () => welcomeHeld || (seen !== null && findShowableHint(hints, seen, ports) !== null),
+    () => welcomeHeld || (seen !== null && hasPendingHint(hints, seen, ports)),
     [hints, ports, seen, welcomeHeld],
   );
 
