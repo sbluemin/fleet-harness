@@ -249,8 +249,8 @@ export interface ClientExecutionProvider {
    */
   readonly experimentModelOptions?: () => Promise<readonly ExperimentModelOption[]>;
   /**
-   * Cruise의 명시적 frame·Fleet Map 점 선택, 사이드바 묶음 줄 선택, 또는 War Room의 실제 무대 변경(수동·자동) 시 호출된다.
-   * 무대가 비면 호출하지 않는다. 이 알림은 키보드 포커스 이동을 뜻하지 않는다.
+   * Cruise의 명시적 frame·Fleet Map 점 선택, 사이드바 묶음 줄 선택, 「더블클릭으로 열기」 사이드바의 한 번 클릭(열지 않는 선택),
+   * 또는 War Room의 실제 무대 변경(수동·자동) 시 호출된다. 무대가 비면 호출하지 않는다. 이 알림은 키보드 포커스 이동을 뜻하지 않는다.
    */
   readonly onMapOperationSelected?: (operationId: string) => void;
 }
@@ -419,6 +419,13 @@ export interface ClientConsoleStateCapability {
    * 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 `live` 로 다룬다.
    */
   getConnection?(): ConsoleConnectionState;
+  /**
+   * 사람이 사이드바에서 열지 않고 고르기만 한 Operation — 「더블클릭으로 열기」를 켰을 때의 한 번 클릭이다. 무대는 그대로이므로
+   * 활성과 다르며, 활성과 같아지거나 열리는 순간 null 로 돌아간다. 문맥을 따라가는 표면은 `getSelectedOperationId() ??
+   * getActiveOperationId()` 를 읽는다. 바뀌면 `subscribe` 가 알리고, 고를 때는 `onMapOperationSelected` 도 함께 온다.
+   * 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 고른 것이 없는 것(null)으로 다룬다.
+   */
+  getSelectedOperationId?(): string | null;
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
 }

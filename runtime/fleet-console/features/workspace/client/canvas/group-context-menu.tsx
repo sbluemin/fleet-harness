@@ -16,6 +16,10 @@ export interface GroupContextMenuChipActions {
   readonly onCreateGroup: (name: string) => void;
   /** 창 닫기 — 캡션 X와 같은 닫기(유예 삭제 + 실행 취소 토스트). 두 번 눌러 확정한 뒤에만 부른다. */
   readonly onCloseOperation: () => void;
+  /** 「더블클릭으로 열기」를 켠 사이드바만 — 한 번 클릭이 고르기라 메뉴 맨 위에서 연다. */
+  readonly onOpen?: () => void;
+  /** 사이드바 칩만 — 이름을 그 칩 자리에서 고친다(F2 와 같은 동작). */
+  readonly onRename?: () => void;
 }
 
 export interface GroupContextMenuHeaderActions {
@@ -150,8 +154,28 @@ function ChipMenuContent({
     onClose();
   };
 
+  const { onOpen, onRename } = actions;
   return (
     <>
+      {onOpen || onRename ? (
+        <>
+          {onOpen ? (
+            <button type="button" className="group-context-menu-item" role="menuitem" onClick={() => { onClose(); onOpen(); }}>
+              <span className="group-context-menu-item__glyph" aria-hidden="true"><OpenGlyph /></span>
+              <span className="group-context-menu-item__name">{t("canvas.groupMenu.open")}</span>
+              <kbd className="group-context-menu-item__key" aria-hidden="true">↵</kbd>
+            </button>
+          ) : null}
+          {onRename ? (
+            <button type="button" className="group-context-menu-item" role="menuitem" onClick={() => { onClose(); onRename(); }}>
+              <span className="group-context-menu-item__glyph" aria-hidden="true"><RenameGlyph /></span>
+              <span className="group-context-menu-item__name">{t("canvas.groupMenu.rename")}</span>
+              <kbd className="group-context-menu-item__key" aria-hidden="true">F2</kbd>
+            </button>
+          ) : null}
+          <div className="group-context-menu-divider" aria-hidden="true" />
+        </>
+      ) : null}
       <PluginOperationMenuSection operation={operation} onClose={onClose} />
       <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionGroup")}</div>
       {groups.map((group) => {
@@ -216,6 +240,14 @@ function ChipMenuContent({
       <CloseWindowItem onCloseOperation={actions.onCloseOperation} onClose={onClose} />
     </>
   );
+}
+
+function OpenGlyph() {
+  return <svg viewBox="0 0 14 14"><path d="M5.5 3H3.5a1 1 0 0 0-1 1v6.5a1 1 0 0 0 1 1H10a1 1 0 0 0 1-1V8.5M8 2.5h3.5V6M11.5 2.5 6.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function RenameGlyph() {
+  return <svg viewBox="0 0 14 14"><path d="M2.5 11.5h2.2l6.4-6.4a1.3 1.3 0 0 0-2.2-2.2L2.5 9.3v2.2ZM8 4l2.2 2.2" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 /**

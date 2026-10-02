@@ -24,11 +24,14 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "../canvas/canvas-store.js";
-import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
+import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
+import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import {
+  requestSideBarOperationAction,
   subscribeSideBarOperationAction,
   type SideBarOperationMenuAction,
 } from "./interaction.js";
@@ -37,7 +40,7 @@ import { clusterChipPropsFor } from "./cluster-rows.js";
 import { planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
-import { SideBarCollapseControl, SideBarStatusViewToggle } from "./side-bar-collapse-control.js";
+import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu } from "./side-bar-collapse-control.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import {
@@ -102,6 +105,8 @@ type ActiveContextMenu =
       readonly anchor: DOMRect;
       readonly returnFocus?: HTMLElement | null;
       readonly requestedAction?: SideBarOperationMenuAction;
+      /** 목표 줄에서 연 메뉴 — 줄 제목은 목표의 것이라 이름 바꾸기를 싣지 않고, 열기는 줄과 같이 선택 알림을 함께 보낸다. */
+      readonly fromRow?: boolean;
     }
   | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null }
   | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null };
@@ -158,6 +163,7 @@ interface TheaterEntryBuildInput {
   readonly operationOrder: readonly string[];
   readonly minimizedSet: ReadonlySet<string>;
   readonly activeOperationId: string | null;
+  readonly selectedOperationId?: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
 }
@@ -197,6 +203,8 @@ interface TheaterInactiveSectionProps {
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onResume: (operationId: string) => void;
+  /** 「더블클릭으로 열기」가 켜졌을 때만 — 칩·줄의 한 번 클릭이 여는 대신 고른다. */
+  readonly onSelect?: (operationId: string) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
@@ -414,6 +422,7 @@ export function OperationsSideBar({
   const {
     operationRuntime,
     activeOperationAcknowledged,
+    selectedOperationId,
     pendingSideBarAddTheater,
     pendingSideBarTheaterLaunch,
     launchMenuRequest,
@@ -421,6 +430,19 @@ export function OperationsSideBar({
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   // 묶음 띠(임무 점)는 지휘관 행의 셋째 줄에 선다. 구성원 행은 스토어의 기본 목록에 없어 여기서 거를 것이 없다.
   const clusterIndex = useClusterIndex();
+  const registry = usePluginRegistry();
+  // 「더블클릭으로 열기」 — 켜면 칩·목표 줄의 한 번 클릭은 열지 않고 고른다. 무대는 그대로 두고 문맥(목표 등)만 옮긴다:
+  // 코어의 선택 상태가 바뀌고, 열린 레일이 곧바로 따라오도록 지도 선택 알림도 함께 보낸다. 사이드바 밖의 경로는 그대로 연다.
+  const doubleClickOpen = useGlobalSettingsStore().state?.sideBarDoubleClickOpen === true;
+  const selectFromSideBar = useCallback((operationId: string) => {
+    selectOperation(operationId);
+    for (const provider of registry.providers) provider.onMapOperationSelected?.(operationId);
+  }, [registry.providers]);
+  const onSelect = doubleClickOpen ? selectFromSideBar : undefined;
+  // 끄면 남은 선택도 함께 거둔다 — 보이지 않는 선택이 문맥을 붙들고 있으면 안 된다.
+  useEffect(() => {
+    if (!doubleClickOpen && selectedOperationId !== null) selectOperation(null);
+  }, [doubleClickOpen, selectedOperationId]);
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
@@ -446,6 +468,7 @@ export function OperationsSideBar({
     return {
       operation,
       active: activeOperationId === operation.id,
+      selected: doubleClickOpen && selectedOperationId === operation.id,
       minimized: minimizedSet.has(operation.id),
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
       status: activity,
@@ -508,6 +531,7 @@ export function OperationsSideBar({
         minimizeEnabled={!recovery}
         menuEnabled={!recovery}
         resumeOnActivate={ended}
+        {...(onSelect ? { onSelect } : {})}
         dragging={false}
         dragOffsetY={0}
         dropTarget={false}
@@ -835,7 +859,7 @@ export function OperationsSideBar({
   const openRowContextMenu = (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => {
     if (!item.anchor) return;
     setNewMenu(null);
-    setActiveContextMenu({ kind: "chip", operationId: item.anchor.operation.id, anchor, returnFocus });
+    setActiveContextMenu({ kind: "chip", operationId: item.anchor.operation.id, anchor, returnFocus, fromRow: true });
   };
   const renderRow = (item: SideBarRowItem, promoted: boolean) => {
     const sourceId = item.anchor?.operation.id ?? `row:${item.layout.cluster.id}`;
@@ -850,6 +874,7 @@ export function OperationsSideBar({
         dragging={rowDragging}
         dragOffsetY={rowDragging ? drag.currentY - drag.startY : 0}
         onFocus={onFocus}
+        {...(onSelect ? { onSelect } : {})}
         onPointerDragStart={promoted ? undefined : beginRowPointerDrag}
         onContextMenu={openRowContextMenu}
       />
@@ -1036,6 +1061,7 @@ export function OperationsSideBar({
             <span className="side-bar-top-strip-eyebrow">{t(statusAxis ? "sidebar.view.byStatusEyebrow" : "sidebar.view.theaters")}</span>
             <CanvasModeSwitch />
             <SideBarStatusViewToggle active={statusAxis} />
+            <SideBarViewMenu />
           </>
         ) : <span className="side-bar-top-strip-spacer" aria-hidden="true" />}
         <SideBarCollapseControl />
@@ -1069,6 +1095,7 @@ export function OperationsSideBar({
               minimizedSet: new Set(theaterCanvas.minimized),
               // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
               activeOperationId: null,
+              selectedOperationId: doubleClickOpen ? selectedOperationId : null,
               operationNotifications,
               operationRuntime,
             });
@@ -1092,6 +1119,7 @@ export function OperationsSideBar({
                 onSelectTheater={onSelectTheater}
                 onFocus={onFocus}
                 onResume={onResume}
+                {...(onSelect ? { onSelect } : {})}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
                 onOpenActions={(anchor, returnFocus) => {
                   setNewMenu(null);
@@ -1247,6 +1275,7 @@ export function OperationsSideBar({
                           && drag.dropIndex === sectionLocalIndex
                           && drag.sourceId !== entry.operation.id
                         }
+                        {...(onSelect ? { onSelect } : {})}
                         onClose={onClose}
                         onMinimize={onMinimize}
                         onFocus={onFocus}
@@ -1338,6 +1367,13 @@ export function OperationsSideBar({
             onSetGroupId: (groupId) => onSetGroupId(contextMenuOperation.id, groupId),
             onCreateGroup: (name) => onCreateGroup(contextMenuOperation.theaterId, name, contextMenuOperation.id),
             onCloseOperation: () => onClose(contextMenuOperation.id),
+            ...(doubleClickOpen ? {
+              onOpen: () => {
+                onFocus(contextMenuOperation.id);
+                if (activeContextMenu.fromRow) for (const provider of registry.providers) provider.onMapOperationSelected?.(contextMenuOperation.id);
+              },
+            } : {}),
+            ...(activeContextMenu.fromRow ? {} : { onRename: () => requestSideBarOperationAction(contextMenuOperation.id, "rename") }),
           }}
           onClose={closeActiveContextMenu}
         />
@@ -1519,6 +1555,7 @@ export function buildTheaterEntries({
   operationOrder,
   minimizedSet,
   activeOperationId,
+  selectedOperationId = null,
   operationNotifications,
   operationRuntime,
 }: TheaterEntryBuildInput): SideBarEntry[] {
@@ -1531,6 +1568,7 @@ export function buildTheaterEntries({
     return {
       operation,
       active: activeOperationId === operation.id,
+      selected: selectedOperationId === operation.id,
       minimized: minimizedSet.has(operation.id),
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
       status: activity,
@@ -1696,6 +1734,7 @@ function TheaterInactiveSection({
   onSelectTheater,
   onFocus,
   onResume,
+  onSelect,
   onToggleCollapsed,
   onOpenActions,
   onOpenLaunch,
@@ -1721,6 +1760,7 @@ function TheaterInactiveSection({
         groupDot={promoted && item.row.groupId ? groupMarkByGroupId.get(item.row.groupId) ?? null : null}
         accentValue={accentKey ? resolveAccentColor(accentKey) : null}
         onFocus={onFocus}
+        {...(onSelect ? { onSelect } : {})}
       />
     );
   };
@@ -1753,6 +1793,7 @@ function TheaterInactiveSection({
         minimizeEnabled={false}
         menuEnabled={false}
         resumeOnActivate={ended}
+        {...(onSelect ? { onSelect } : {})}
         dragging={false}
         dragOffsetY={0}
         dropTarget={false}
@@ -1868,6 +1909,7 @@ function TheaterInactiveSection({
                           dragOffsetY={0}
                           dropTarget={false}
                           preview
+                          {...(onSelect ? { onSelect } : {})}
                           onClose={() => {}}
                           onMinimize={() => {}}
                           onFocus={onFocus}

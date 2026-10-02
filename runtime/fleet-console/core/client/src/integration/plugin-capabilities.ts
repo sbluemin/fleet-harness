@@ -70,6 +70,7 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       getActiveTheaterId: () => getState().activeTheaterId,
       getActiveOperationId: () => getState().activeOperationId,
       getConnection: () => getState().connection,
+      getSelectedOperationId: () => getState().selectedOperationId,
       setActiveTheater: (theaterId) => setActiveTheater(theaterId),
       subscribe: (listener) => subscribe(listener),
     },

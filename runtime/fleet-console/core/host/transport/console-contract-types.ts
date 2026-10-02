@@ -311,6 +311,8 @@ export interface GlobalSettingsState {
   readonly theme: ConsoleThemeId;
   /** 포커스하지 않은 패널 본문이 물러나는 세기(백분율, 0~70). 0은 물러나지 않음. */
   readonly unfocusedPanelFade: number;
+  /** 사이드바에서 Operation 을 더블클릭해야 여는지 — 켜면 한 번 클릭은 선택만 한다. 기본은 꺼짐. */
+  readonly sideBarDoubleClickOpen: boolean;
   readonly uiFont: UiFontSettings;
   /** 실험 기능과 모델 좌석 — 항상 실린다(기본은 전부 꺼짐). */
   readonly experiments: ConsoleExperimentSettings;

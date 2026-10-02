@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useAgentState } from "../../../execution/client/agent/store.js";
@@ -31,6 +31,8 @@ const DETAIL_HOVER_DELAY_MS = 400;
 export interface SideBarEntry {
   readonly operation: OperationNode;
   readonly active: boolean;
+  /** 「더블클릭으로 열기」를 켠 사이드바에서 열지 않고 고르기만 한 Operation — 활성이면 세우지 않는다. */
+  readonly selected?: boolean;
   readonly minimized: boolean;
   readonly notificationCount: number;
   /**
@@ -85,6 +87,11 @@ interface SideBarChipProps {
   readonly menuEnabled?: boolean;
   /** 휴면 선반처럼 본동작이 focus가 아닌 resume인 표면 — 접근성 이름과 툴팁도 같은 동사를 쓴다. */
   readonly resumeOnActivate?: boolean;
+  /**
+   * 「더블클릭으로 열기」 — 있으면 한 번 클릭과 Space 는 이것(열지 않고 고르기)을, 더블클릭과 Enter 는 본동작(onFocus)을 부른다.
+   * 터치 탭은 더블 탭 판정이 브라우저마다 달라 늘 본동작이다. 없으면 한 번 클릭이 곧 본동작이다(기본).
+   */
+  readonly onSelect?: (operationId: string) => void;
   readonly onClose: (operationId: string) => void;
   readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
@@ -112,6 +119,7 @@ export function OperationsSideBarChip({
   minimizeEnabled = true,
   menuEnabled = true,
   resumeOnActivate = false,
+  onSelect,
   dragging,
   dragOffsetY,
   dropTarget,
@@ -128,7 +136,10 @@ export function OperationsSideBarChip({
   const t = useT();
   const chipRef = useRef<HTMLLIElement | null>(null);
   const suppressClickRef = useRef(false);
+  // 터치 탭은 고르기 모드에서도 연다 — 클릭 사건이 포인터 종류를 싣지 않는 환경이 있어 누를 때 기록해 둔다.
+  const pointerTypeRef = useRef("mouse");
   const { operation, active, minimized, status, mark } = entry;
+  const selected = entry.selected === true && !active;
   // 마크 축이 없는 엔트리(직접 구성한 입력)는 섹션 축을 그대로 그린다 — 두 축은 "unseen"에서만 갈린다.
   const markVisual = mark ?? status;
   const title = displayTitle(operation);
@@ -153,11 +164,13 @@ export function OperationsSideBarChip({
   // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
   // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
   const ariaTitle = title;
-  const chipAriaLabel = resumeOnActivate
-    ? t("sidebar.chip.resumeAria", { title: ariaTitle, groupContext })
-    : active
-      ? t("sidebar.chip.focusedAria", { title: ariaTitle, groupContext })
-      : t("sidebar.chip.focusAria", { title: ariaTitle, groupContext });
+  const chipAriaLabel = selected
+    ? t("sidebar.chip.selectedAria", { title: ariaTitle, groupContext })
+    : resumeOnActivate
+      ? t("sidebar.chip.resumeAria", { title: ariaTitle, groupContext })
+      : active
+        ? t("sidebar.chip.focusedAria", { title: ariaTitle, groupContext })
+        : t("sidebar.chip.focusAria", { title: ariaTitle, groupContext });
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next) });
   // Console Use — 에이전트가 이 Operation 을 읽거나 만지면 행 전체가 그 채널 색으로 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => (preview ? null : getOperationWrap(operation.id)), () => null);
@@ -171,11 +184,12 @@ export function OperationsSideBarChip({
     "side-bar-chip",
     consoleUseWrapClassName(wrap),
     active ? "side-bar-chip--active" : "",
+    selected ? "side-bar-chip--selected" : "",
     minimized ? "side-bar-chip--minimized" : "",
     statusLanded ? "side-bar-chip--status-landed" : "",
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
-    chipContext ? "side-bar-chip--with-context" : "",
+    chipContext || selected ? "side-bar-chip--with-context" : "",
   ].filter(Boolean).join(" ");
   const chipStyle = {
     "--i": index,
@@ -188,6 +202,24 @@ export function OperationsSideBarChip({
       suppressClickRef.current = false;
       return;
     }
+    onFocus(operation.id);
+  };
+  // 고르기 모드의 한 번 클릭 — 더블클릭의 둘째 클릭(detail 2)은 이어지는 dblclick 이 연다.
+  const select = (event: ReactMouseEvent<HTMLLIElement>) => {
+    if (!onSelect || pointerTypeRef.current === "touch") {
+      focus();
+      return;
+    }
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    if (event.detail <= 1) onSelect(operation.id);
+  };
+  // 칩 안의 버튼(최소화·보관)과 이름 입력에서 난 더블클릭은 그 컨트롤의 것이다 — 버블된 것을 열기로 읽지 않는다.
+  const openOnDoubleClick = (event: ReactMouseEvent<HTMLLIElement>) => {
+    if (pointerTypeRef.current === "touch" || dragging) return;
+    if (event.target instanceof Element && event.target.closest("button, input")) return;
     onFocus(operation.id);
   };
   const stopClosePointer = (event: SyntheticEvent<HTMLButtonElement>) => {
@@ -298,7 +330,8 @@ export function OperationsSideBarChip({
       aria-description={wrap ? t("sidebar.chip.gaze", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : undefined}
       /* 네이티브 툴팁은 세우지 않는다 — 겨누면 상세 카드가 뜨고, 둘이 겹쳐 뜨면 어느 쪽도 읽히지 않는다. */
       style={chipStyle}
-      onClick={focus}
+      onClick={onSelect ? select : focus}
+      onDoubleClick={onSelect ? openOnDoubleClick : undefined}
       onContextMenu={preview || !menuEnabled ? undefined : openAccent}
       onPointerEnter={armDetail}
       onPointerLeave={closeDetail}
@@ -307,6 +340,7 @@ export function OperationsSideBarChip({
       }}
       onBlur={closeDetail}
       onPointerDown={(event) => {
+        pointerTypeRef.current = event.pointerType;
         closeDetail();
         if (reorderEnabled) onPointerDragStart(event, operation.id);
       }}
@@ -331,9 +365,15 @@ export function OperationsSideBarChip({
                     onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget);
           return;
         }
+        if (!preview && event.key === "F2") {
+          event.preventDefault();
+          rename.begin();
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          focus();
+          if (onSelect && event.key === " ") onSelect(operation.id);
+          else focus();
         }
       }}
     >
@@ -362,13 +402,17 @@ export function OperationsSideBarChip({
             />
           ) : (
             <>
-              <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
+              {/* 고르기 모드에서는 이름 위 더블클릭도 연다 — 이름 바꾸기는 F2 와 우클릭 메뉴가 진다. */}
+              <span className="side-bar-chip-name" onDoubleClick={preview || onSelect ? undefined : rename.begin}>{title}</span>
               {snapZone ? <SnapMark zone={snapZone} /> : null}
               {cluster?.decisionRequest ? <DecisionRequestMark /> : null}
             </>
           )}
         </span>
-        {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
+        {/* 고른 칩은 위치 줄 자리에 여는 법을 말한다 — 무대가 그대로라 고른 것과 연 것이 다르다는 사실이 여기서만 보인다. */}
+        {selected
+          ? <span className="side-bar-chip-context side-bar-chip-open-hint" aria-hidden="true">{t("sidebar.chip.openHint")}</span>
+          : chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
         {/* 묶음의 단계 띠는 이름·위치 줄 아래 셋째 줄 — 이름 옆에 세우면 제목이 밀려 잘린다. */}
         {cluster ? cluster.strip : null}
       </span>
