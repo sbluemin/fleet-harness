@@ -384,6 +384,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 휴면은 PTY 종료의 결과다(handleExit). 유휴 청소기와 같은 terminate 를 밟되, 캡처된 provider
     // 세션이 없으면 그 종료가 삭제로 끝나므로 여기서 거절한다. 전이는 exit 콜백이 하므로 잠깐 기다려
     // 준다 — 그 안에 못 보면 `ending` 으로 답하고, 다음 관측이 휴면을 말한다.
+    // 휴면 전이는 kill 신호 직후에 나가므로 그것만으로는 옛 프로세스가 사라졌다는 뜻이 아니다. 이 답을 받고
+    // 곧바로 깨우는 호출자(구성원 모델 전환)가 같은 Claude 세션의 두 번째 필자를 세우지 않도록, `dormant` 는
+    // 프로세스 종료까지 확인한 뒤에만 답한다.
     //
     // 채팅 표면에는 접을 PTY가 없다 — 대신 SDK 자식과 원장을 거두는 같은 결말을 밟고, 그
     // 전이는 그 자리에서 끝나므로 기다릴 것도 없다.
@@ -396,8 +399,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       if (session.status === "dormant") return { ok: false, error: "already_dormant" };
       if (!readProviderSession(ctx.host.operations.get(operationId)?.payload)) return { ok: false, error: "not_resumable" };
-      if (!terminalRuntime.terminate(operationId)) return { ok: false, error: "not_resumable" };
-      const dormant = await new Promise<boolean>((resolve) => {
+      const exited = terminalRuntime.terminateAndWait(operationId, SLEEP_SETTLE_MS);
+      const dormant = new Promise<boolean>((resolve) => {
         const finish = (value: boolean) => { clearTimeout(timer); unsubscribe(); resolve(value); };
         const timer = setTimeout(() => finish(false), SLEEP_SETTLE_MS);
         const unsubscribe = observability.subscribeAll((event) => {
@@ -405,7 +408,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         });
         if (observability.getTerminalSessionInfo(operationId)?.status === "dormant") finish(true);
       });
-      return { ok: true, lifecycle: dormant ? "dormant" : "ending" };
+      const [gone, settled] = await Promise.all([exited, dormant]);
+      return { ok: true, lifecycle: gone && settled ? "dormant" : "ending" };
     },
     setView: (operationId, mode) => setChatMode(operationId, mode === "chat"),
     pendingAsks: (operationId) => chatRegistry.get(operationId)?.listPendingAsks().map((ask) => ({ id: ask.id, form: ask.form, questions: ask.questions })) ?? [],
