@@ -962,7 +962,7 @@ describe("Objectives contract", () => {
   });
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
-    const { ctx, store, call, launch, workspace, events } = harness();
+    const { ctx, store, call, launch, workspace, events, add } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -988,11 +988,23 @@ describe("Objectives contract", () => {
     expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, commander: { session: store.find(objective.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
     expect(store.find(objective.id)!.commander.sessionName).toMatch(/-cmdr$/);
     expect((await call("read", { objectiveId: objective.id }, member.id)).isError).toBe(false);
+    // 같은 접두어의 다른 목표는 해석 후보가 아니다 — 자기 목표만 읽고, 외부 목표의 접두어는 없는 목표와 같은 답이다.
+    const shortId = objective.id.slice(0, 8);
+    const collision = `${shortId}-foreign`;
+    add(collision);
+    store.adopt(collision, { note: "private board" });
+    expect((await call("read", { objectiveId: shortId }, member.id)).structuredContent.objective).toHaveProperty("id", objective.id);
+    const missing = (await call("read", { objectiveId: "missing-objective" }, member.id)).structuredContent;
+    expect(missing).toMatchObject({ error: "unknown_objective", hint: expect.stringContaining("mine") });
+    expect((await call("read", { objectiveId: other.slice(0, 8) }, member.id)).structuredContent).toEqual(missing);
+    expect((await call("read", { objectiveId: shortId }, other)).structuredContent).toEqual(missing);
+    expect((await call("read", { objectiveId: shortId })).structuredContent).toEqual(missing);
+    expect((await call("read", { objectiveId: collision }, member.id)).structuredContent.error).toBe("not_participant");
     expect((await call("mine", {}, commander)).structuredContent).toMatchObject({ role: "commander", objectiveId: objective.id });
-    // 새 결과물 도구도 같은 인증 caller 경계를 지난다. 구성원·외부·호출자 없음이 보드 쓰기로 이어지지 않는다.
+    // 새 결과물 도구도 같은 인증 caller 경계를 지난다. 접두어로 읽어도 구성원의 쓰기 권한은 늘지 않는다.
     const resultInput = { kind: "pr", url: "https://github.com/example/project/pull/1" };
-    expect((await call("attach_result", { objectiveId: objective.id, result: resultInput }, member.id)).structuredContent.error).toBe("not_commander");
-    const attached = await call("attach_result", { objectiveId: objective.id, result: resultInput }, commander);
+    expect((await call("attach_result", { objectiveId: shortId, result: resultInput }, member.id)).structuredContent.error).toBe("not_commander");
+    const attached = await call("attach_result", { objectiveId: shortId, result: resultInput }, commander);
     const resultId = attached.structuredContent.resultId;
     expect(attached.isError).toBe(false);
     expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { label: "foreign" } }, other)).structuredContent.error).toBe("not_participant");
