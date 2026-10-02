@@ -127,6 +127,11 @@ function isConsoleOriginShape(origin: string): boolean {
   }
 }
 
+/** 종료 안내에서도 기존 호스트 칩과 같은 셸 항해로 집의 목록을 연다. */
+export function hostPickerUrl(homeOrigin: string): string {
+  return pickerUrl(homeOrigin, PICKER_SURFACE_OPEN);
+}
+
 function pickerUrl(homeOrigin: string, surface: string, at?: string, anchor?: string): string {
   const url = new URL("/console/", `${homeOrigin}/`);
   url.searchParams.set(PICKER_SURFACE_PARAM, surface);

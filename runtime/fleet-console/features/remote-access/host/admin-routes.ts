@@ -105,7 +105,7 @@ export function createRemoteAdminRoutes(deps: RemoteAdminDeps) {
       return;
     }
     const handle = decodeHandle(rawHandle);
-    if (!access.revokeSessionByHandle(handle)) {
+    if (!access.revokeSessionByHandle(handle, "reclaimed")) {
       // 이미 만료된 보유자를 향한 회수다. 404로만 끝내면 화면은 유령 보유자를 계속 띄운 채
       // 남으므로, 사라졌다는 사실을 여기서 다시 알려 스스로 정리되게 한다.
       broadcastControlChanged(true);
@@ -116,6 +116,8 @@ export function createRemoteAdminRoutes(deps: RemoteAdminDeps) {
     // 재사용되지 않는 이상 되살아나지는 않지만, 오래 뜬 서버에서 계속 쌓이기만 한다.
     forgetShell(handle);
     // 순서가 있다: 끊긴 쪽이 먼저 자기 안내를 받고, 그 다음 이 기계의 화면이 커튼을 걷는다.
+    // 죽은 스트림에는 안내 프레임이 닿지 못하므로, 재연결 401이 같은 사유를 읽을 수 있게
+    // 페어링에 끝난 사유를 남긴다.
     endSessionStreams(handle, "reclaimed");
     broadcastControlChanged();
     res.writeHead(204, withSecurityHeaders({}));
@@ -143,6 +145,8 @@ export function createRemoteAdminRoutes(deps: RemoteAdminDeps) {
     // 자격을 거두면서 그 자격으로 열려 있던 접속을 남겨 두면, 회수는 다음 요청까지만 참이다.
     const closed = access.listSessions("remote").filter((session) => session.pairingId === removed.id);
     access.revokeSessionsByPairing(removed.id);
+    // 페어링이 사라지면 그 페어링에 남은 끝난 사유도 조회할 키가 없다 — 함께 걷는다.
+    access.clearSessionEnd(removed.id);
     for (const session of closed) {
       forgetShell(session.handle);
       endSessionStreams(session.handle, "reclaimed");
@@ -187,6 +191,7 @@ export function createRemoteAdminRoutes(deps: RemoteAdminDeps) {
     }
     await remoteIdentityStore.rotate(advertisedHost);
     access.revokeGrants("remote");
+    for (const device of pairedDeviceStore.list("remote")) access.clearSessionEnd(device.id);
     pairedDeviceStore.revokeAll("remote");
     remoteEndpointStore.forget();
     await reconcileRemoteIdentity();

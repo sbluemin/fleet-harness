@@ -134,22 +134,63 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const first = await joinAs(fixture, "full", "first");
     const secondLink = await createLink(fixture);
 
-    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink), device: "second" })))
-      .resolves.toMatchObject({ status: 204 });
+    const secondJoin = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink), device: "second" }));
+    expect(secondJoin.status).toBe(204);
+    const second = cookiesOf(secondJoin);
 
     // 페어링은 둘이지만 접속은 하나다. 살아 있는 줄은 방금 붙은 쪽이다.
     const held = await readRemoteStatus(fixture);
     expect(held.devices).toHaveLength(2);
     expect(held.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device)).toEqual(["second"]);
 
-    // 밀려난 기기의 세션 쿠키는 그 자리에서 죽는다.
-    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, first)).resolves.toMatchObject({ status: 401 });
+    // 프레임을 못 받은 기기도 자기 페어링 쿠키로 사유만 받는다. 다른 세션의 정보는 실리지 않는다.
+    const ended = await remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, first);
+    expect(ended.status).toBe(401);
+    expect(JSON.parse(ended.body)).toEqual({ error: "unauthorized", reason: "superseded" });
+    const secondPairing = second.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"))!;
+    for (const cookie of [undefined, "unrelated=secret", secondPairing]) {
+      const denied = await remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookie);
+      expect(denied.status).toBe(401);
+      expect(JSON.parse(denied.body)).toEqual({ error: "unauthorized" });
+    }
+    expect((await readRemoteStatus(fixture)).rejectedJoins.count).toBe(0);
 
-    // 그래도 그 기기는 자기 페어링으로 돌아와 자리를 되찾는다 — 축출이 자격까지 지우지는 않는다.
+    // 명시적 재오픈은 성공하고 그 페어링의 사유를 지운다. 옛 세션 쿠키는 여전히 죽어 있다.
     const resumed = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), first);
     expect(resumed.status).toBe(204);
-    await expect(readRemoteStatus(fixture).then((status) => status.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device)))
-      .resolves.toEqual(["first"]);
+    const current = cookiesOf(resumed);
+    const cleared = await remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, first);
+    expect(JSON.parse(cleared.body)).toEqual({ error: "unauthorized" });
+    const resumedStatus = await readRemoteStatus(fixture);
+    expect(resumedStatus.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device)).toEqual(["first"]);
+
+    // 주인 회수도 스트림을 닫고 같은 재연결 표면에 사유를 남긴다.
+    const device = resumedStatus.devices.find((entry) => entry.device === "first")!;
+    const stream = await openRemoteEvents(fixture, current);
+    expect(await revoke(fixture, `access-sessions/${device.sessionHandle}`)).toBe(204);
+    await expect(stream.waitFor("control:reclaimed", () => true)).resolves.toEqual({ reason: "reclaimed" });
+    await stream.waitForClose();
+    const reclaimed = await remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, current);
+    expect(reclaimed.status).toBe(401);
+    expect(JSON.parse(reclaimed.body)).toEqual({ error: "unauthorized", reason: "reclaimed" });
+
+    // 재시작은 메모리 사유를 잊어 vanished가 된다. 페어링은 남고 다시 join할 수 있다.
+    const restarted = await restartFixture(fixture);
+    const vanished = await remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, current);
+    expect(vanished.status).toBe(401);
+    expect(JSON.parse(vanished.body)).toEqual({ error: "unauthorized" });
+    const reopened = await remoteRequest(restarted, "POST", "/api/v1/join", "{}", current);
+    expect(reopened.status).toBe(204);
+    const reopenedCookie = cookiesOf(reopened);
+    await expect(remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie)).resolves.toMatchObject({ status: 200 });
+
+    // 언페어링은 돌아올 권한까지 걷는다. 남은 쿠키에는 사유도 재합류도 주지 않는다.
+    const reopenedDevice = (await readRemoteStatus(restarted)).devices.find((entry) => entry.device === "first")!;
+    expect(await revoke(restarted, `access-sessions/${reopenedDevice.sessionHandle}`)).toBe(204);
+    expect(await revoke(restarted, `paired-devices/${device.id}`)).toBe(204);
+    const unpaired = await remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie);
+    expect(JSON.parse(unpaired.body)).toEqual({ error: "unauthorized" });
+    await expect(remoteRequest(restarted, "POST", "/api/v1/join", "{}", reopenedCookie)).resolves.toMatchObject({ status: 401 });
   });
 
   /**

@@ -63,11 +63,14 @@ const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "providerSession"
 
 export class ApiError extends Error {
   readonly status: number;
+  /** 원격 리스너가 세션 게이트의 401에 실은 종료 사유. ended(reclaimed/superseded)와 vanished를 가른다. */
+  readonly sessionEndReason: "reclaimed" | "superseded" | undefined;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, sessionEndReason?: "reclaimed" | "superseded") {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.sessionEndReason = sessionEndReason;
   }
 }
 
@@ -655,12 +658,14 @@ function assertDeferredDeletionResponse(value: unknown, status: number): Deferre
 async function assertOk(response: Response): Promise<void> {
   if (response.ok) return;
   let message = `${response.status} ${response.statusText}`;
+  let sessionEndReason: "reclaimed" | "superseded" | undefined;
   try {
-    const payload = await response.json() as { error?: unknown; message?: unknown };
+    const payload = await response.json() as { error?: unknown; message?: unknown; reason?: unknown };
     if (typeof payload.error === "string") message = payload.error;
     else if (typeof payload.message === "string") message = payload.message;
+    if (response.status === 401 && (payload.reason === "reclaimed" || payload.reason === "superseded")) sessionEndReason = payload.reason;
   } catch {
     // non-json 오류 본문은 상태 텍스트를 사용한다.
   }
-  throw new ApiError(response.status, message);
+  throw new ApiError(response.status, message, sessionEndReason);
 }

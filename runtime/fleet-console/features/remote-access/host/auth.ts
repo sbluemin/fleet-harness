@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+import type { ControlReclaimedReason } from "./access-control-contract.js";
+
 /**
  * 접근 자격은 발급 대상(audience)에 묶인다. 루프백 리스너용으로 발급된 자격은 원격
  * 리스너에서 거부되므로, 같은 조인 문법을 쓰면서도 로컬 자격이 원격으로 재생되지 않는다.
@@ -115,10 +117,14 @@ export interface AccessRegistry {
    */
   hasSession(audience: AccessAudience, access: AccessClass): boolean;
   revokeSession(id: string): boolean;
-  /** 이미 열린 세션 하나를 공개 이름으로 끊는다. */
-  revokeSessionByHandle(handle: string): boolean;
+  /** 이미 열린 세션 하나를 끊는다. 회수·대체 사유는 그 페어링의 다음 성공한 join까지 남긴다. */
+  revokeSessionByHandle(handle: string, reason?: ControlReclaimedReason | null): boolean;
   /** 한 페어링으로 열린 접속을 전부 끊는다. 페어링 회수가 접속을 남겨 두지 않게 한다. */
   revokeSessionsByPairing(pairingId: string): boolean;
+  /** 그 페어링의 끝난 사유. 없으면 null. */
+  lookupSessionEnd(pairingId: string): ControlReclaimedReason | null;
+  /** 그 페어링이 다시 join했거나 언페어링됐을 때 사유를 걷는다. */
+  clearSessionEnd(pairingId: string): void;
   /** 원격을 끄면 그 audience의 세션도 함께 죽는다 — 리스너만 닫으면 자격은 살아 남는다. */
   revokeSessions(audience: AccessAudience): void;
   revokeAllSessions(): void;
@@ -155,6 +161,13 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
   const randomHandle = deps.randomHandle ?? (() => crypto.randomBytes(8).toString("hex"));
   const grants = new Map<string, AccessGrant>();
   const sessions = new Map<string, StoredSession>();
+  /**
+   * 끝난 세션의 사유를 그 페어링에 남기는 메모리 표. 키는 페어링 id다 — 세션 쿠키 값이 아니므로
+   * 회수 뒤에도 기기가 들고 있는 페어링 쿠키로 다시 찾을 수 있고, handle·기기 이름은 어디에도
+   * 실리지 않는다. 재시작하면 메모리와 함께 사라지고(vanished 재합류), 언페어링·다음 성공한
+   * join이 지운다. 상한은 페어링 수(PAIRED_DEVICE_LIMIT)로 자연히 묶인다.
+   */
+  const sessionEnds = new Map<string, ControlReclaimedReason>();
 
   function issueGrant(audience: AccessAudience, access: AccessClass = "full"): AccessGrant {
     prune();
@@ -192,6 +205,8 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     const handle = randomHandle();
     const current = now();
     const absoluteExpiresAt = current + sessionTtlMs;
+    // 새 세션을 연 페어링은 더 이상 "끝난" 상태가 아니다 — 회수·대체된 사유를 이 자리에서 걷는다.
+    if (pairingId !== null) clearSessionEnd(pairingId);
     sessions.set(id, { handle, device, audience, access, pairingId, openedAt: current, absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs, lastSeenAt: current });
     return { id, handle, audience, access, pairingId, expiresAt: absoluteExpiresAt };
   }
@@ -245,9 +260,11 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     return false;
   }
 
-  function revokeSessionByHandle(handle: string): boolean {
+  function revokeSessionByHandle(handle: string, reason: ControlReclaimedReason | null = null): boolean {
     for (const [id, stored] of sessions) {
-      if (stored.handle === handle) return sessions.delete(id);
+      if (stored.handle !== handle) continue;
+      if (reason !== null && stored.pairingId !== null) sessionEnds.set(stored.pairingId, reason);
+      return sessions.delete(id);
     }
     return false;
   }
@@ -291,7 +308,15 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     if (removed) deps.onSessionsPruned?.();
   }
 
-  return { grantTtlMs, issueGrant, redeemGrant, consumeGrant, openSession, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, revokeSession, revokeSessionByHandle, revokeSessionsByPairing, revokeSessions, revokeAllSessions, prune };
+  function lookupSessionEnd(pairingId: string): ControlReclaimedReason | null {
+    return sessionEnds.get(pairingId) ?? null;
+  }
+
+  function clearSessionEnd(pairingId: string): void {
+    sessionEnds.delete(pairingId);
+  }
+
+  return { grantTtlMs, issueGrant, redeemGrant, consumeGrant, openSession, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, revokeSession, revokeSessionByHandle, revokeSessionsByPairing, revokeSessions, revokeAllSessions, lookupSessionEnd, clearSessionEnd, prune };
 }
 
 /**

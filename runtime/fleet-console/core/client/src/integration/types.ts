@@ -242,6 +242,8 @@ export interface ConsoleState {
   readonly connectionLostAt: number | null;
   readonly controlHolder: ControlHolder | null;
   readonly controlCurtainDismissed: boolean;
+  /** 이 원격 세션이 회수·대체로 끝났다면 그 사유. 종착 상태에서 폴링 등 소비자가 멈출 근거다. */
+  readonly controlReclaimed: "reclaimed" | "superseded" | null;
   readonly channel: ObserverStatus["channel"];
   readonly activeTheme: ConsoleTheme;
   readonly version: string;

@@ -50,7 +50,7 @@ import { createOperationStore, createOperationsRouter, createSanitizedOpDto } fr
 import { stripConsoleInternalEnv } from "../../../features/execution/host/terminal/launch-env.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot, type ControlReclaimedReason } from "../../../features/remote-access/host/access-control-contract.js";
 import { parseAccessLink, sanitizeAccessLabel } from "../../../features/remote-access/host/access-link.js";
-import { createAccessRegistry, createLoopbackListenerIdentity, listenerAuthority, listenerOrigin, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type ListenerIdentity } from "../../../features/remote-access/host/auth.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, listenerAuthority, listenerOrigin, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type ListenerIdentity } from "../../../features/remote-access/host/auth.js";
 import { createPairedDeviceStore } from "../../../features/remote-access/host/paired-devices.js";
 import { probeRemoteIdentity } from "../../../features/remote-access/host/remote-discovery.js";
 import { createRemoteEndpointStore } from "../../../features/remote-access/host/remote-endpoint.js";
@@ -1470,14 +1470,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 나머지는 모두 이 리스너에서 발급된 세션을 요구한다. 라우트마다 흩어진 게이트에 원격을
    * 맡기면 하나만 빠져도 통째로 열리므로, 판정을 라우팅 이전 한 곳에서 끝낸다.
    */
-  function isRemoteRequestAdmitted(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): boolean {
+  function remoteRequestAdmission(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): { admitted: true } | { admitted: false; reason?: ControlReclaimedReason } {
     // 세션 없이 지나는 경로는 이 하나뿐이다. 페어링은 전용 앱으로만 이루어지고 브라우저는
     // 자기서명 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
-    if (pathname === "/api/v1/join") return true;
+    if (pathname === "/api/v1/join") return { admitted: true };
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
-    if (session === null) return false;
-    // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
-    return session.access !== "monitoring" || isReadOnlyRequest(req);
+    if (session !== null) {
+      // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
+      return session.access !== "monitoring" || isReadOnlyRequest(req) ? { admitted: true } : { admitted: false };
+    }
+    // 세션이 없다는 것은 회수·대체·만료·재시작 중 하나다. 그 기기가 아직 들고 있는 페어링
+    // 쿠키로 끝난 사유를 찾아 — handle·기기 이름·openedAt은 들여다보지 않는다. 페어링이 없거나
+    // 사유가 없으면(재시작·유휴) 지금처럼 사유 없는 401이다.
+    const paired = pairedDeviceStore.resolve(readPairingCookie(req.headers, listener.port), listener.audience);
+    const reason = paired === null ? null : access.lookupSessionEnd(paired.id);
+    return reason === null ? { admitted: false } : { admitted: false, reason };
+  }
+
+  function isRemoteRequestAdmitted(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): boolean {
+    return remoteRequestAdmission(listener, req, pathname).admitted;
   }
 
   /** 읽기로 볼 수 있는 것만. 터미널 업그레이드는 method가 GET이어도 쓰기다. */
@@ -1495,9 +1506,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
      * 구조를 두지 않으려면 판정이 라우팅 앞에 있어야 한다.
      */
     const listener = listenerForRequest(req);
-    if (listener && listener.audience !== "local" && !isRemoteRequestAdmitted(listener, req, pathname)) {
-      writeJson(res, 401, { error: "unauthorized" });
-      return;
+    if (listener && listener.audience !== "local") {
+      const admission = remoteRequestAdmission(listener, req, pathname);
+      if (!admission.admitted) {
+        writeJson(res, 401, admission.reason === undefined ? { error: "unauthorized" } : { error: "unauthorized", reason: admission.reason });
+        return;
+      }
     }
     // Host 게이트는 순서를 바꾸지 않는다 — Codex는 wildcard 바인드에서 더 넓은 host 집합을 쓰므로
     // 자기 게이트를 그대로 유지한다. 대신 같은 리스너 판정을 주입받아, 원격 리스너의 Host·Origin도

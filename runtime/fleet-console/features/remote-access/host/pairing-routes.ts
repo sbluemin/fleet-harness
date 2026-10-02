@@ -159,14 +159,14 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
    */
   function supersedeRemoteSessions(ownPairingId: string | null): void {
     for (const session of access.listSessions("remote")) {
-      if (!access.revokeSessionByHandle(session.handle)) continue;
+      const displaced = session.pairingId === null || session.pairingId !== ownPairingId;
+      if (!access.revokeSessionByHandle(session.handle, displaced ? "superseded" : null)) continue;
       // 세션이 사라지면 그 세션이 게시한 집 주소도 가리킬 주인이 없다.
       forgetShell(session.handle);
       /**
        * 자기 페어링이 두고 간 접속에는 안내를 보내지 않는다 — 축출이 아니라 자기 자신의
        * 잔상이므로. 건너뛰는 것은 안내뿐이고 스트림은 그 사정과 무관하게 닫힌다.
        */
-      const displaced = session.pairingId === null || session.pairingId !== ownPairingId;
       endSessionStreams(session.handle, displaced ? "superseded" : null);
     }
   }

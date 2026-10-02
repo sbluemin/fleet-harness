@@ -89,6 +89,12 @@ const ONBOARDING_PORTS = {
 
 export function App() {
   const state = useConsoleState();
+  // 종료 안내는 같은 문서에 남기되 활성 화면 전체를 내려 WS·플러그인·폴링과 단축키를 정리한다.
+  return state.controlReclaimed === null ? <ConnectedApp /> : <ControlReclaimedNotice />;
+}
+
+function ConnectedApp() {
+  const state = useConsoleState();
   const updateProgress = useUpdateProgress();
   const bootOperationIdsRef = useRef<readonly string[] | null>(null);
   const location = useLocation();
@@ -666,7 +672,6 @@ export function App() {
         />
         <ZenTransition local={state.channel === "local"} />
         <ControlCurtain />
-        <ControlReclaimedNotice />
         <ToastHost>
           {/* 준비되지 않은 플러그인은 패널이 그냥 없는 것으로 보였다 — 서버 로그에만 남아
               운영자에게는 이유가 도달하지 않았다. 한 번은 말하고 지나간다. */}

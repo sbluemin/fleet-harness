@@ -47,8 +47,13 @@ function getSnapshot(): DesktopShellHome {
  * `reloadToken`이 바뀌면 다시 읽는다. 셸의 게시는 창을 띄우는 마감과 경주하므로 첫 읽기가 버전을
  * 놓칠 수 있다 — 그 값이 필요한 화면(도움말 메뉴)은 열릴 때 한 번 더 묻는다.
  */
+/** 이미 게시된 집만 읽는다. 종료 안내는 세션 없는 서버에 새 요청을 보내지 않는다. */
+export function useDesktopShellHome(): DesktopShellHome {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
 export function useDesktopHomeOrigin(reloadToken = 0): DesktopShellHome {
-  const home = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const home = useDesktopShellHome();
 
   useEffect(() => {
     const controller = new AbortController();
