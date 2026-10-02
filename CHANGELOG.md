@@ -5,6 +5,32 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.207.0] - 2026-10-02
+
+### fleet-console
+
+#### Added
+- Objectives can show the routed model for each new member before Commence, so you can review the choices, pick a different model, or judge again, and then launch exactly what you reviewed.
+- Turn on "Open Operations with a double-click" in the sidebar's view options menu to switch objectives and other context with a single click while the canvas stays put; double-click or press Enter to open.
+- Rename a sidebar Operation with F2 or from its right-click menu.
+
+#### Changed
+- Align All keeps panels from overlapping or shrinking until their terminals can't be read: when too many panels are open for the window, choose which to keep and the rest are minimized, not closed.
+- Find archived Operations by Theater or name, restore or clear several at once, and undo confirmed deletions for 10 seconds; closing Console during that window keeps the archived items intact.
+- The chat `/` and `@` menus have a calmer, consistent look and fit the space available, so they are no longer cut off in a new chat or scroll sideways on long entries.
+- Changing the model of a member that has already launched now takes effect right away for chat and terminal members alike, or after its current turn if it is working, with a bubble on the member's model showing the switch; the roster also shows why routing picked or fell back on a model, and a member that could not launch without stopping the rest.
+- Zen and War Room now use a floating tool island centered at the bottom of the map instead of a bottom taskbar, with a shared attention queue at the top of the sidebar. Switch Operations and restore minimized or ended work from the sidebar; War Room opens it automatically.
+
+#### Fixed
+- Opening its own Console page in the Operation Browser no longer closes the tabs or causes agent navigation to fail. This fix also requires an updated Fleet Desktop.
+- After a long Console outage, an open Console page reconnects as soon as you return to its tab or the network comes back, instead of staying disconnected for up to 30 seconds.
+- Operation groups no longer disappear after a Console restart when they were saved with an unsupported color; such groups come back with the default color and keep their objectives and Operations.
+- Objective members can now read their board when the Commander refers to the objective by a short ID, instead of reporting that the objective does not exist.
+- Objective chips and mission bands now come back on their own after a brief sign-in, network, or server error instead of staying hidden until you reload.
+- Right after the Console loads, the remote access highlight no longer appears before a feature's sidebar hint. Before your first Theater, screen tours wait until you register one.
+- Theater badges for Korean, Chinese, or Japanese names now stay on one line instead of breaking out of their square.
+- Theaters whose folder names differ only in non-ASCII characters, such as Korean names, or only in punctuation now keep their objectives separate instead of becoming unreadable or refusing new objectives.
+
 ## [1.206.3] - 2026-10-01
 
 Release v1.206.3
