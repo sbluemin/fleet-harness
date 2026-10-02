@@ -94,6 +94,9 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
 
   const resolved = useMemo(() => {
     if (suspended || domRevision === 0 || !settings.state) return null;
+    const nextTour = () => blocked()
+      ? null
+      : resolveNextTour(tours, seen, document, isCompletedTourScreenVisible(completedTourRef.current, tours, document));
     if (lockedTour) {
       const tour = tours.find((entry) => entry.id === lockedTour.tourId);
       if (!tour || seen.includes(tourSeenKey(tour.id, lockedTour.phase))) return null;
@@ -106,15 +109,20 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
       const steps = lockedTour.phase === "spotlight"
         ? tour.spotlight && resolveAnchor(tour.spotlight, document) ? [tour.spotlight] : []
         : availableSteps(tour.walkthrough, document);
-      if (steps.length === 0) return null;
+      if (steps.length === 0) {
+        // 표면이 닫혀 물러난 워크스루는 다른 투어에 양보한다 — 잠금을 쥐고 있으면 사용자가 새로 연 표면의 안내가 시작하지
+        // 못한다. 양보할 투어가 없으면 잠금과 스텝 위치를 그대로 두어 표면이 다시 열리면 이어진다.
+        if (lockedTour.phase === "spotlight") return null;
+        const next = nextTour();
+        return next && next.tour.id !== tour.id ? next : null;
+      }
       // 재생 중에도 발동과 같은 기준으로 다시 잰다 — 안내가 걸린 표면 위로 다른 모달이 열리면 물러난다.
       const anchor = resolveAnchor(steps[0]!, document);
       if (isBlockedByModal(document, anchor)) return null;
       if (lockedTour.phase === "spotlight" && anchor && isBlockedByWorkSurface(document, anchor)) return null;
       return { tour, phase: lockedTour.phase, steps } satisfies TourPresentation;
     }
-    if (blocked()) return null;
-    return resolveNextTour(tours, seen, document, isCompletedTourScreenVisible(completedTourRef.current, tours, document));
+    return nextTour();
   }, [blocked, domRevision, lockedTour, seen, settings.state, tours, suspended]);
 
   // 작업 표면에 물러난 스포트라이트는 잠금을 놓는다. 쥐고 있으면 사용자가 연 그 표면 안의 워크스루가 시작하지 못한다.
@@ -132,7 +140,9 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
     setStepIndex(0);
   }, [lockedTour, resolved]);
 
-  const currentStep = resolved?.steps[Math.min(stepIndex, Math.max(0, resolved.steps.length - 1))] ?? null;
+  // 재생 중에 스텝이 줄면 진행 위치가 범위를 넘을 수 있다. 보이는 스텝과 진행 표시는 같은 위치를 쓴다 — 따로 읽으면 "3 / 1"로 샌다.
+  const currentIndex = resolved ? Math.min(stepIndex, Math.max(0, resolved.steps.length - 1)) : 0;
+  const currentStep = resolved?.steps[currentIndex] ?? null;
   const anchor = currentStep ? resolveAnchor(currentStep, document) : null;
 
   // 스크롤되는 표면 안에서는 앵커가 보이는 영역 밖에 있을 수 있다. 스텝이 바뀐 순간 한 번만 가장 가까운 보이는 위치로
@@ -180,7 +190,7 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
   }, [resolved, seen]);
 
   if (!resolved || !currentStep) return null;
-  const lastStep = stepIndex >= resolved.steps.length - 1;
+  const lastStep = currentIndex >= resolved.steps.length - 1;
   const cardStyle = position.centered ? undefined : { left: position.left, top: position.top } as CSSProperties;
 
   return (
@@ -192,7 +202,7 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
     >
       <section aria-labelledby="feature-tour-title" className="feature-tour-card" ref={cardRef} role="dialog" style={cardStyle}>
         {resolved.phase === "walkthrough"
-          ? <span className="feature-tour-progress">{t("tour.progress", { current: stepIndex + 1, total: resolved.steps.length })}</span>
+          ? <span className="feature-tour-progress">{t("tour.progress", { current: currentIndex + 1, total: resolved.steps.length })}</span>
           : null}
         <h2 id="feature-tour-title">{resolveLocalizedText(currentStep.title, language)}</h2>
         <p>{resolveLocalizedText(currentStep.body, language)}</p>
@@ -230,8 +240,12 @@ function advanceTourStep(index: number, total: number): number {
   return Math.min(index + 1, Math.max(0, total - 1));
 }
 
+// 앵커 없는 스텝은 투어의 표면 위에 얹힌 설명이다. 앵커가 선 스텝이 하나도 남지 않았다면 표면이 닫힌 것이므로 함께
+// 물러난다 — 남겨 두면 재생 중에 패널을 닫았을 때 설명 카드만 화면 가운데에 떠 남는다. 잠금과 스텝 위치는 그대로라
+// 표면이 다시 열리면 닫힌 스텝에서 이어진다.
 function availableSteps(steps: readonly OnboardingTourStep[], root: ParentNode): readonly OnboardingTourStep[] {
-  return steps.filter((step) => step.anchor === null || root.querySelector(step.anchor) !== null);
+  const available = steps.filter((step) => step.anchor === null || root.querySelector(step.anchor) !== null);
+  return available.some((step) => step.anchor !== null) ? available : [];
 }
 
 function resolveNextTour(
