@@ -508,6 +508,26 @@
 
 .onboarding-hint-open:hover { background: color-mix(in oklch, var(--brass) 26%, transparent); }
 
+/* 가로 도구 줄의 힌트는 줄 바깥에 서고 꼬리만 아이콘 가운데를 가리킨다. */
+.onboarding-hint:is([data-placement="above"], [data-placement="below"]) { transform: none; }
+.onboarding-hint:is([data-placement="above"], [data-placement="below"])::before {
+  left: calc(var(--onboarding-hint-arrow-x, 50%) - 5px);
+  right: auto;
+  border: 0;
+}
+.onboarding-hint[data-placement="above"]::before {
+  top: auto;
+  bottom: -6px;
+  border-right: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
+  border-bottom: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
+}
+.onboarding-hint[data-placement="below"]::before {
+  top: -6px;
+  bottom: auto;
+  border-top: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
+  border-left: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
+}
+
 @keyframes onboarding-hint-in {
   from { opacity: 0; translate: 6px 0; }
   to { opacity: 1; translate: 0 0; }

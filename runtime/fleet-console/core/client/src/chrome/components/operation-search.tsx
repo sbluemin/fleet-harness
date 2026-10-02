@@ -455,10 +455,10 @@ export function OperationSearch({
           previousFocusRef.current = null;
           const shown = toggleZenSideBar();
           requestAnimationFrame(() => {
-            // 숨기면 War Room 막대의 사이드바 토글(반대쪽 컨트롤)로, 그 막대가 없는 Zen은 작업면으로 간다.
+            // 숨기면 섬의 사이드바 토글로, 펼치면 카드의 접기 컨트롤로 간다.
             (shown
               ? document.querySelector<HTMLElement>(".side-bar-collapse")
-              : document.querySelector<HTMLElement>(".war-room-taskbar .sbtoggle") ?? document.querySelector<HTMLElement>(".operations-center-stage"))?.focus({ preventScroll: true });
+              : document.querySelector<HTMLElement>(".zen-bar [data-zen-sidebar-anchor]") ?? document.querySelector<HTMLElement>(".operations-center-stage"))?.focus({ preventScroll: true });
           });
           break;
         }

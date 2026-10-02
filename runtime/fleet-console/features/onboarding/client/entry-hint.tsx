@@ -24,6 +24,10 @@ export interface EntryHintCandidate {
 export interface EntryHintPorts {
   /** 레일 진입점 버튼. 없으면(플러그인 미설치 등) 힌트는 서지 않는다. 잠겨 있으면(Theater 없음 등) 열릴 때까지 기다린다. */
   readonly railEntryElement: (railEntryId: string) => HTMLElement | null;
+  /** 가로 도구 줄이면 그 바깥 변을 호스트가 알려 준다. 없으면 기존 세로 레일 배치다. */
+  readonly railEntryHintAnchor?: (element: HTMLElement) => { readonly edge: number; readonly below: boolean } | null;
+  /** 접힌 도구 줄의 문. 보류 판정에만 쓰며 실제 힌트는 원래 아이콘이 보일 때 선다. */
+  readonly railEntryHintDoor?: (element: HTMLElement) => HTMLElement;
   readonly shortcutLabel: (commandId: string) => string;
 }
 
@@ -31,7 +35,9 @@ export interface EntryHintPorts {
 const SETTLE_MS = 1200;
 const POLL_MS = 400;
 
-type Placement = { readonly top: number; readonly right: number };
+type Placement =
+  | { readonly side: "left"; readonly top: number; readonly right: number }
+  | { readonly side: "above" | "below"; readonly edge: number; readonly center: number };
 
 /** 지금 가리킬 수 있는 첫 힌트. 등록 순서(코어 먼저)를 따르고, 문이 보이지 않는 힌트는 건너뛴다. */
 function findShowableHint(candidates: readonly EntryHintCandidate[], seen: readonly string[], ports: EntryHintPorts): EntryHintCandidate | null {
@@ -51,7 +57,8 @@ export function hasPendingHint(candidates: readonly EntryHintCandidate[], seen: 
   return candidates.some((candidate) => {
     if (seen.includes(candidate.seenKey)) return false;
     const target = ports.railEntryElement(candidate.hint.railEntryId);
-    return target !== null && isHintDoorShown(target);
+    if (target === null) return false;
+    return isHintDoorShown(ports.railEntryHintDoor?.(target) ?? target);
   });
 }
 
@@ -113,9 +120,14 @@ function EntryHintBubble({ candidate, language, ports }: {
       readySinceRef.current ??= now;
       if (now - readySinceRef.current < SETTLE_MS) return;
       const rect = target.getBoundingClientRect();
+      const anchor = ports.railEntryHintAnchor?.(target);
       setPlacement((current) => {
-        const next = { top: Math.round(rect.top + rect.height / 2), right: Math.round(window.innerWidth - rect.left + 10) };
-        return current && current.top === next.top && current.right === next.right ? current : next;
+        if (anchor) {
+          const next = { side: anchor.below ? "below" : "above", edge: anchor.edge, center: rect.left + rect.width / 2 } as const;
+          return current?.side === next.side && current.edge === next.edge && current.center === next.center ? current : next;
+        }
+        const next = { side: "left", top: Math.round(rect.top + rect.height / 2), right: Math.round(window.innerWidth - rect.left + 10) } as const;
+        return current?.side === "left" && current.top === next.top && current.right === next.right ? current : next;
       });
     };
     tick();
@@ -128,14 +140,19 @@ function EntryHintBubble({ candidate, language, ports }: {
   }, [dismissed, hint.railEntryId, ports]);
 
   // 말풍선이 뷰포트 끝을 넘으면 안쪽으로 끌어오고, 꼬리는 그만큼 거꾸로 옮겨 여전히 아이콘 가운데를 가리킨다.
-  const [lift, setLift] = useState(0);
+  const [adjustment, setAdjustment] = useState({ lift: 0, left: 12, arrowX: 12 });
   useLayoutEffect(() => {
     const bubble = bubbleRef.current;
     if (!bubble || !placement) return;
+    if (placement.side !== "left") {
+      const left = Math.max(12, Math.min(placement.center - bubble.offsetWidth / 2, window.innerWidth - bubble.offsetWidth - 12));
+      setAdjustment({ lift: 0, left, arrowX: Math.max(12, Math.min(bubble.offsetWidth - 12, placement.center - left)) });
+      return;
+    }
     const half = bubble.offsetHeight / 2;
     const overflowBottom = placement.top + half - (window.innerHeight - 12);
     const overflowTop = 12 - (placement.top - half);
-    setLift(overflowBottom > 0 ? -overflowBottom : overflowTop > 0 ? overflowTop : 0);
+    setAdjustment({ lift: overflowBottom > 0 ? -overflowBottom : overflowTop > 0 ? overflowTop : 0, left: 12, arrowX: 12 });
   }, [placement]);
 
   if (dismissed || !placement) return null;
@@ -144,7 +161,9 @@ function EntryHintBubble({ candidate, language, ports }: {
     dismiss();
     ports.railEntryElement(hint.railEntryId)?.click();
   };
-  const style = { top: placement.top + lift, right: placement.right, "--onboarding-hint-arrow-shift": `${-lift}px` } as CSSProperties;
+  const style: CSSProperties & { "--onboarding-hint-arrow-shift"?: string; "--onboarding-hint-arrow-x"?: string } = placement.side === "left"
+    ? { top: placement.top + adjustment.lift, right: placement.right, "--onboarding-hint-arrow-shift": `${-adjustment.lift}px` }
+    : { left: adjustment.left, ...(placement.side === "above" ? { bottom: window.innerHeight - placement.edge + 10 } : { top: placement.edge + 10 }), "--onboarding-hint-arrow-x": `${adjustment.arrowX}px` };
 
   return (
     <div
@@ -153,6 +172,7 @@ function EntryHintBubble({ candidate, language, ports }: {
       role="status"
       aria-live="polite"
       data-onboarding-hint={hint.railEntryId}
+      data-placement={placement.side}
       style={style}
       onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); dismiss(); } }}
     >

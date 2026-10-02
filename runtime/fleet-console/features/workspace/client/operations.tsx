@@ -29,7 +29,6 @@ import { RailToolIcons, RightRail, useRailPanelContext } from "../../../core/cli
 import { useToolbarToolsSlot } from "../../../core/client/src/integration/toolbar-slots.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
 import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
-import { ZEN_TASKBAR_HEIGHT, ZenTaskbar } from "./zen/zen-taskbar.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
 import { sideBarOccupiedWidth, toggleSideBarStatusAxis, useSideBarState } from "./sidebar/operations-side-bar-store.js";
 import { useRailSettledPx } from "../../../core/client/src/chrome/rail/rail-store.js";
@@ -69,7 +68,6 @@ interface OperationsProps {
 
 export function Operations({ state, claimBootPanelMinimization, onDeferredDeletion, onArchived, deletionToast }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const [triageGlowHost, setTriageGlowHost] = useState<HTMLDivElement | null>(null);
   const snapFullOperationId = useSnapFullOperationId();
   const companionOperationId = useCompanionOperationId();
   const minimized = useMinimized();
@@ -86,7 +84,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     readonly returnFocus?: HTMLElement | null;
     readonly align?: GroupContextMenuAlign;
     readonly fromSidebar?: boolean;
-    readonly fromZenTaskbar?: boolean;
   } | null>(null);
   const triageActive = useTriageActive();
 
@@ -107,9 +104,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 한쪽만 인셋을 아는 감사 실패 양식이 재발한다.
   const zenMode = useZenMode();
   useEffect(() => {
-    // 진입 때는 사이드바가 연 메뉴를, 종료 때는 Zen 작업 표시줄이 연 메뉴를 회수한다 — 둘 다 방금 걷히는
-    // 표면에 앵커해 되돌릴 포커스 자리를 잃는다. 작업면의 공용 메뉴와 이후 요청은 보존한다.
-    if (!(zenMode ? operationMenu?.fromSidebar : operationMenu?.fromZenTaskbar)) return;
+    // Zen 진입 때 사이드바가 숨으면 그곳의 메뉴도 걷는다. 작업면 공용 메뉴는 보존한다.
+    if (!zenMode || !operationMenu?.fromSidebar) return;
     setOperationMenu(null);
     bodyRef.current?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,16 +126,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     ? Math.max(0, viewportWidth - WAR_ROOM_ARENA_MIN_PX - CHROME_FLOAT_GUTTER - (railOccupiedPx > 0 ? railOccupiedPx + CHROME_FLOAT_GUTTER : 0))
     : null;
   const sideBarOccupiedPx = zenSideBarHidden ? 0 : Math.min(sideBarOccupiedWidth(sideBar), warRoomSideBarCap ?? Number.POSITIVE_INFINITY);
-  // Zen은 사이드바를 걷고 화면 아래에 작업 표시줄을 세운다 — 막대 높이만 아래 인셋으로 비운다.
-  // Zen 바(종료·도구)는 사용자가 옮기는 부유 도구막대라 인셋에 불참한다(아래 Operation을 덮어도 된다는
-  // 제품 결정).
+  // 부유 섬은 아레나 인셋에 불참한다 — 맵 전 영역 위에 도구가 뜬다.
   const sideBarInset = sideBarOccupiedPx > 0 ? sideBarOccupiedPx + CHROME_FLOAT_GUTTER : 0;
   const arenaInsets: CanvasArenaInsets = useMemo(() => ({
     left: sideBarInset,
     top: 0,
     right: railOccupiedPx > 0 ? railOccupiedPx + CHROME_FLOAT_GUTTER : 0,
-    bottom: zenMode ? ZEN_TASKBAR_HEIGHT : 0,
-  }), [railOccupiedPx, sideBarInset, zenMode]);
+    bottom: 0,
+  }), [railOccupiedPx, sideBarInset]);
   useEffect(() => {
     setCanvasArenaInsets(arenaInsets);
   }, [arenaInsets]);
@@ -253,6 +247,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       if (isShortcutRecording()) return;
       if (isBlockingDialogOpen()) return;
       const active = document.activeElement;
+      // 부유 섬 손잡이에 포커스가 있으면 ⌥방향키는 패널이 아니라 섬의 모서리를 옮긴다.
+      if (active instanceof HTMLElement && active.closest("[data-zen-island-handle]") && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.code.startsWith("Arrow")) return;
       const editing = active instanceof HTMLElement
         && active.matches("input, textarea, [contenteditable='true']")
         && !active.closest(".xterm");
@@ -756,10 +752,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (!stateRef.current.operations.some((operation) => operation.id === operationId)) return;
     setOperationMenu({ operationId, anchor, returnFocus, align });
   }, []);
-  const openZenTaskbarOperationMenu = useCallback((operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => {
-    if (!stateRef.current.operations.some((operation) => operation.id === operationId)) return;
-    setOperationMenu({ operationId, anchor, returnFocus, fromZenTaskbar: true });
-  }, []);
   // 포커스 복귀는 갱신 함수 밖에서 한다 — setState updater는 순수해야 하고, StrictMode의
   // 이중 호출에서 focus()가 두 번 실행된다.
   const closeOperationMenu = useCallback(() => {
@@ -954,7 +946,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         <OperationsCanvas
           state={state}
           arenaInsets={canvasArenaInsets}
-          onTriageGlowHost={setTriageGlowHost}
           catalog={catalog}
           canLaunch={canLaunch}
           renderKindIcon={renderKindIcon}
@@ -976,32 +967,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           {deletionToast}
           {alignNotice ? <Toast key={alignNotice.nonce} open tone="info" title={t(alignNotice.key)} onDismiss={() => setAlignNotice(null)} /> : null}
           {/* Theater 등록 오류는 사이드바가 그린다 — Zen은 사이드바를 숨기므로 같은 오류를 여기서 알린다. */}
-          {zenMode && state.theaterError ? <Toast open tone="error" title={t("zen.taskbar.addTheaterFailed")} message={state.theaterError} onDismiss={cancelAddTheater} /> : null}
+          {zenMode && state.theaterError ? <Toast open tone="error" title={t("operations.addTheaterFailed")} message={state.theaterError} onDismiss={cancelAddTheater} /> : null}
         </div>
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
       {toolbarToolsSlot !== null ? createPortal(<RailToolIcons context={toolsContext} />, toolbarToolsSlot) : null}
-      {zenMode ? (
-        <ZenTaskbar
-          triageGlowHost={triageGlowHost}
-          theaters={state.theaters}
-          activeTheaterId={state.activeTheaterId}
-          operations={state.operations}
-          groups={state.groups}
-          minimized={minimized}
-          activeOperationId={state.activeOperationId}
-          operationNotifications={state.operationNotifications}
-          operationRuntime={state.operationRuntime}
-          onFocus={handleFocus}
-          onMinimize={handleMinimize}
-          onResume={handleResume}
-          onSelectTheater={setActiveTheater}
-          addingTheater={state.addingTheater}
-          onOpenOperationMenu={openZenTaskbarOperationMenu}
-          openMenuOperationId={operationMenu?.operationId ?? null}
-          onSetGroupId={handleSetGroupId}
-        />
-      ) : null}
       {/* 접힌 Cruise 사이드바의 문 — War Room에는 사이드바도 엣지 드러냄도 없다. */}
       {triageActive || zenMode ? null : <SideBarEdgeDock />}
       {/* Operation 메뉴는 War Room 전용이 아니다 — 사이드바 우클릭·War Room 카드·패널 캡션의

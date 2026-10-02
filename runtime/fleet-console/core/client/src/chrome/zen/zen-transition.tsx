@@ -9,7 +9,7 @@ import { runZenWindowStage, setZenMode, setZenTransitionRunner, setZenTransition
  *   1. 테마 바탕색의 **불투명한** 커튼이 다 쳐진다 — 그 뒤에서 레이아웃이 Zen으로 바뀐다.
  *   2. Band 왼쪽의 앰블럼(마크+워드마크)이 화면 가운데로 옮겨 와 멈춘다. 가운데에서는 아무것도 하지 않는다.
  *   3. 창 단계 — Desktop은 네이티브 전체화면을 켜고 셸의 완료 알림까지 기다린다(브라우저는 곧바로 끝).
- *   4. 가운데에서 세로축으로 한 바퀴 뒤집히며 커졌다 작아진 뒤, 작업 표시줄 오른쪽 끝(트레이 앰블럼)으로
+ *   4. 가운데에서 세로축으로 한 바퀴 뒤집히며 커졌다 작아진 뒤, 부유 섬의 모서리 앰블럼으로
  *      내려앉는 동안 커튼이 걷힌다.
  *
  * 끌 때는 거울상이다: 앰블럼이 트레이에서 가운데로 오는 동안 커튼이 쳐지고, 가운데에서 거꾸로 한 바퀴 돈 뒤
@@ -63,9 +63,9 @@ export function ZenTransition({ local = false }: { readonly local?: boolean } = 
     if (busyRef.current) return true;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
     const veil = veilRef.current, mark = markRef.current, word = wordRef.current;
-    // 막대를 접어 둔 채 끄면 출발 자리(막대 끝)가 화면 밖이다 — 그때는 가운데에서 떠오르며 시작한다.
+    // 섬 자리를 재지 못하면 출발 자리가 없다 — 그때는 가운데에서 떠오르며 시작한다.
     // 켤 때 출발 자리(밴드 브랜드)를 못 재면 장면 없이 바꾼다.
-    const from = next ? measureBandBrand() : measureTaskbarBrand();
+    const from = next ? measureBandBrand() : measureIslandBrand();
     if (veil === null || mark === null || word === null || (from === null && next)) return false;
     busyRef.current = true;
     setZenTransitionActive(true);
@@ -115,7 +115,7 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
       ], { duration: SPIN_MS, easing: "ease-in-out", fill: "forwards" })).finished,
     ]);
   };
-  // 가운데 ↔ 트레이 — 자리가 없으면(막대를 접어 둠) 가운데에서 나타나거나 사라진다.
+  // 가운데 ↔ 트레이 — 자리가 없으면 가운데에서 나타나거나 사라진다.
   const land = (tray: BrandRects | null, towardTray: boolean) => {
     if (tray === null) {
       const frames = towardTray ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 0 }, { opacity: 1 }];
@@ -158,7 +158,7 @@ async function play(next: boolean, from: BrandRects | null, actors: { readonly v
       await runZenWindowStage(true);
       // 4 — 가운데에서 한 바퀴, 트레이로 내려앉으며 커튼이 걷힌다.
       await spin();
-      const tray = measureTaskbarBrand();
+      const tray = measureIslandBrand();
       root.dataset.zenLanding = "true";
       await Promise.all([land(tray, true), veilTo(0, LAND_MS * 0.9, "ease-in")]);
     } else {
@@ -195,7 +195,7 @@ function measureBandBrand(): BrandRects | null {
   return measureBrand(".command-band .command-band-brand-glyph", ".command-band .command-band-brand-wordmark");
 }
 
-function measureTaskbarBrand(): BrandRects | null {
+function measureIslandBrand(): BrandRects | null {
   return measureBrand(".zen-bar-brand-glyph", ".zen-bar-brand-wordmark");
 }
 
@@ -206,7 +206,7 @@ function measureBrand(glyphSelector: string, wordSelector: string): BrandRects |
   const glyphRect = glyph.getBoundingClientRect();
   const wordRect = wordmark.getBoundingClientRect();
   if (glyphRect.width === 0 || wordRect.width === 0) return null;
-  // 접힌 막대처럼 화면 밖으로 물러난 자리는 착지할 곳이 아니다.
+  // 화면 밖으로 물러난 자리는 착지할 곳이 아니다.
   if (glyphRect.bottom <= 0 || glyphRect.top >= window.innerHeight) return null;
   const fontSize = Number.parseFloat(getComputedStyle(wordmark).fontSize) || 13;
   const originX = window.innerWidth / 2;

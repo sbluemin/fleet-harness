@@ -1,0 +1,51 @@
+.side-bar-attention {
+  margin: 2px 0 8px;
+  padding: 6px 0 4px;
+  border: 1px solid color-mix(in oklch, var(--aurora) 16%, transparent);
+  border-radius: 9px;
+  background: color-mix(in oklch, var(--aurora) 5%, transparent);
+  list-style: none;
+}
+.side-bar-attention.is-war-room {
+  border-color: color-mix(in oklch, var(--brass) 22%, transparent);
+  background: color-mix(in oklch, var(--brass) 4%, transparent);
+}
+.side-bar-attention-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 8px;
+  color: var(--aurora);
+  font: var(--weight-bold) var(--t-2xs) var(--font-mono);
+  white-space: nowrap;
+}
+.side-bar-attention.is-war-room .side-bar-attention-head { color: var(--brass-ink); }
+.side-bar-attention-summary { margin-left: auto; color: var(--text-tertiary); font: var(--weight-regular) calc(var(--t-2xs) * .9) var(--font-body); }
+.side-bar-attention-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 8px);
+  height: 32px;
+  margin: 0 4px 2px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  text-align: start;
+}
+.side-bar-attention-row:hover { background: var(--control-hover-fill); }
+.side-bar-attention-row.is-active { background: var(--control-tint-fill); color: var(--text-primary); }
+.side-bar-attention-row:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.side-bar-attention-row > .side-bar-attention-mark { flex: none; width: 12px; height: 12px; }
+.side-bar-attention-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-bar-attention-next { flex: none; color: var(--aurora); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
+.side-bar-attention-more { display: block; width: 100%; height: 24px; padding: 0; border: 0; background: none; color: var(--text-tertiary); font-size: var(--t-xs); }
+.side-bar-attention-more:hover { color: var(--text-primary); }
+.side-bar-attention-empty { margin: 0; padding: 5px 10px; font-size: var(--t-xs); color: var(--text-tertiary); }
+
+.side-bar-attention-row.is-minimized .side-bar-attention-title { color: var(--ink-muted); }
+.side-bar-attention-row.is-minimized .side-bar-attention-mark { opacity: .62; }

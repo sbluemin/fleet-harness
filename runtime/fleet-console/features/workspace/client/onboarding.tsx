@@ -4,15 +4,15 @@ import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
 
 // 이 기능의 온보딩 문구 — 투어·웰컴의 내용은 기능이 소유하고, 엔진은 순서만 정한다.
 const messagesEn = {
-  "zenTaskbar.welcomeTitle": "Zen mode now has a taskbar",
-  "zenTaskbar.welcomeBody": "Turn on Zen and the sidebars step aside for one slim bar along the bottom. Pick a Theater and switch between its Operations, listed by status or by group, then open tools or leave Zen from the right end.",
+  "zenTaskbar.welcomeTitle": "Zen tools float in the corner",
+  "zenTaskbar.welcomeBody": "Zen gives the whole canvas to your work. Open the sidebar from the floating tools to switch Theaters or handle anything needing attention. Drag the emblem to move the tools to another corner.",
   "zenTaskbar.welcomeNext": "Try it from the Zen button in the top bar.",
   "canvasModes.step1Title": "Two ways to work the canvas",
   "canvasModes.step1Body": "Cruise keeps panels where you drop them. Align all (Alt+F) lines every panel up at once, and drops them back where they were when you toggle it off. War Room brings up one waiting panel at a time, across every Theater.",
   "canvasModes.step2Title": "Each mode has its own tools",
-  "canvasModes.step2Body": "In Cruise, hover or press the active mode to open its tools. War Room keeps auto-stage and deck density beside the mode switch in the taskbar.",
+  "canvasModes.step2Body": "In Cruise, hover or press the active mode to open its tools. War Room keeps auto-stage and deck density beside the mode switch in the floating tools.",
   "warRoom.step1Title": "War Room, one at a time",
-  "warRoom.step1Body": "Whatever is waiting comes up one at a time, in the taskbar queue's order. These tools are War Room's own: this one cycles deck density 1.0x -> 1.6x, and pinch or Ctrl+wheel takes it anywhere from 1.0x to 2.0x.",
+  "warRoom.step1Body": "Whatever is waiting comes up one at a time, in the sidebar's attention queue order. These tools are War Room's own: this one cycles deck density 1.0x -> 1.6x, and pinch or Ctrl+wheel takes it anywhere from 1.0x to 2.0x.",
   "warRoom.step2Title": "One at a time",
   "warRoom.step2Body": "Only what is waiting stays on stage. Answer it and the next item takes the same spot. Alt+→ pushes the current item to the back; Alt+↓ twice sets it aside.",
   "warRoom.step3Title": "The deck watches the rest",
@@ -26,15 +26,15 @@ const messagesEn = {
 } as const;
 
 const messagesKo: Record<keyof typeof messagesEn, string> = {
-  "zenTaskbar.welcomeTitle": "Zen mode에 작업 표시줄이 생겼습니다",
-  "zenTaskbar.welcomeBody": "Zen을 켜면 사이드바가 물러나고 화면 아래에 얇은 막대 하나가 섭니다. 여기서 Theater를 고르고 상태별·그룹별로 묶인 Operation 사이를 오가며, 오른쪽 끝에서 도구를 열거나 Zen을 끕니다.",
+  "zenTaskbar.welcomeTitle": "Zen 도구가 모서리에 떠 있습니다",
+  "zenTaskbar.welcomeBody": "Zen에서는 캔버스 전체를 작업에 씁니다. 부유 도구에서 사이드바를 열어 Theater를 오가고 「확인 필요」를 처리하세요. 엠블럼을 끌면 도구를 다른 모서리에 붙일 수 있습니다.",
   "zenTaskbar.welcomeNext": "상단 바의 Zen 버튼으로 켜 보세요.",
   "canvasModes.step1Title": "화면을 쓰는 두 가지 방식입니다",
   "canvasModes.step1Body": "Cruise는 패널을 놓은 자리에 그대로 둡니다. 모두 정렬(Alt+F)은 열린 패널을 한 번에 정렬했다가 끄면 원래 자리로 돌려놓습니다. War Room은 답을 기다리는 패널을 Theater 구분 없이 한 건씩 올립니다.",
   "canvasModes.step2Title": "모드마다 도구가 다릅니다",
-  "canvasModes.step2Body": "Cruise에서는 켜진 모드에 마우스를 올리거나 누르면 도구가 펼쳐집니다. War Room에서는 작업 표시줄의 모드 옆에 자동 올리기와 덱 배율이 있습니다.",
+  "canvasModes.step2Body": "Cruise에서는 켜진 모드에 마우스를 올리거나 누르면 도구가 펼쳐집니다. War Room에서는 부유 섬의 모드 옆에 자동 올리기와 덱 배율이 있습니다.",
   "warRoom.step1Title": "War Room은 한 번에 하나씩",
-  "warRoom.step1Body": "기다리는 건이 작업 표시줄의 대기열 순서대로 하나씩 올라옵니다. 이 도구들은 War Room의 것입니다 — 여기서 덱 밀도를 1.0× → 1.6×로 순환하고, 핀치나 Ctrl+휠로는 1.0×~2.0× 사이 어디든 갈 수 있습니다.",
+  "warRoom.step1Body": "기다리는 건이 사이드바 「확인 필요」 순서대로 하나씩 올라옵니다. 이 도구들은 War Room의 것입니다 — 여기서 덱 밀도를 1.0× → 1.6×로 순환하고, 핀치나 Ctrl+휠로는 1.0×~2.0× 사이 어디든 갈 수 있습니다.",
   "warRoom.step2Title": "한 번에 하나만 세웁니다",
   "warRoom.step2Body": "답을 기다리는 작업만 무대에 남습니다. 답을 보내면 다음 건이 같은 자리에 섭니다. Alt+→는 이번 건을 맨 뒤로 미루고, Alt+↓를 두 번 누르면 치워둡니다.",
   "warRoom.step3Title": "덱이 나머지를 지켜봅니다",
@@ -51,16 +51,16 @@ function T(key: keyof typeof messagesEn): LocalizedText {
   return (locale: ConsoleLocale) => createTranslator<keyof typeof messagesEn>({ en: messagesEn, ko: messagesKo }, locale)(key);
 }
 
-/** Zen 작업 표시줄을 알리는 웰컴과 캔버스(Cruise·War Room)의 투어. */
+/** Zen 부유 도구를 알리는 웰컴과 캔버스(Cruise·War Room)의 투어. */
 export const workspaceOnboarding: OnboardingContribution = {
   id: "workspace",
-  // 업데이트한 사용자에게 Zen 작업 표시줄이 생겼음을 알린다. Zen은 켜기 전에는 보이지 않는 화면이라 투어가 짚을
+  // 업데이트한 사용자에게 Zen 부유 도구를 알린다. Zen은 켜기 전에는 보이지 않는 화면이라 투어가 짚을
   // 자리가 없으므로, 켜는 곳(상단 바의 Zen 버튼)을 알리는 데서 그친다.
   welcome: {
     title: T("zenTaskbar.welcomeTitle"),
     body: T("zenTaskbar.welcomeBody"),
     next: T("zenTaskbar.welcomeNext"),
-    art: () => <ZenTaskbarWelcomeIllustration />,
+    art: () => <ZenIslandWelcomeIllustration />,
   },
   tours: [
     {
@@ -102,21 +102,18 @@ export const workspaceOnboarding: OnboardingContribution = {
   ],
 };
 
-/**
- * Zen 작업 표시줄 소개 일러스트 — 사이드바가 물러난 캔버스 아래로 작업 표시줄이 선다. 왼쪽은 Theater와 묶인 Operation
- * 목록(지금 보는 것은 brass 밑줄, 답을 기다리는 것은 aurora), 오른쪽 끝은 도구 · 종료 · Fleet 앰블럼이다. 테마 토큰만 소비한다.
- */
-export function ZenTaskbarWelcomeIllustration() {
+/** Zen 부유 도구 소개 — 아레나는 섬 뒤에서도 화면 가장자리까지 이어진다. */
+export function ZenIslandWelcomeIllustration() {
   return (
     <svg viewBox="0 0 360 176" role="img" aria-hidden="true" focusable="false">
       <defs>
-        <pattern id="zen-taskbar-welcome-dots" width="18" height="18" patternUnits="userSpaceOnUse">
+        <pattern id="zen-island-welcome-dots" width="18" height="18" patternUnits="userSpaceOnUse">
           <circle cx="1.5" cy="1.5" r="1.2" fill="var(--text-tertiary)" opacity="0.35" />
         </pattern>
       </defs>
       {/* 캔버스(Map) — 사이드바 없이 가장자리까지 */}
       <rect x="8" y="8" width="344" height="160" rx="10" fill="var(--canvas-sea-mid)" stroke="var(--hairline)" />
-      <rect x="8" y="8" width="344" height="160" rx="10" fill="url(#zen-taskbar-welcome-dots)" />
+      <rect x="8" y="8" width="344" height="160" rx="10" fill="url(#zen-island-welcome-dots)" />
       {/* 열린 Operation 두 장 */}
       <rect x="30" y="24" width="140" height="98" rx="8" fill="var(--surface-panel)" stroke="var(--hairline-strong)" />
       <rect x="30" y="24" width="140" height="20" rx="8" fill="none" stroke="var(--hairline-strong)" />
@@ -132,36 +129,19 @@ export function ZenTaskbarWelcomeIllustration() {
       <rect x="207" y="43.5" width="48" height="5" rx="2.5" fill="var(--text-secondary)" opacity="0.6" />
       <rect x="198" y="68" width="108" height="5" rx="2.5" fill="var(--text-tertiary)" opacity="0.45" />
       <rect x="198" y="82" width="84" height="5" rx="2.5" fill="var(--text-tertiary)" opacity="0.4" />
-      {/* 작업 표시줄 */}
-      <path d="M8 138h344v20a10 10 0 0 1-10 10H18a10 10 0 0 1-10-10z" fill="var(--surface-band)" />
-      <path d="M8 138h344" stroke="var(--surface-rim-strong)" />
-      {/* Theater 글리프와 이름 */}
-      <rect x="16" y="146" width="14" height="14" rx="4" fill="var(--brass)" opacity="0.22" />
-      <rect x="19.5" y="151.5" width="7" height="3" rx="1.5" fill="var(--brass)" />
-      <rect x="35" y="151" width="32" height="4" rx="2" fill="var(--text-primary)" opacity="0.75" />
-      <path d="M74 146v14" stroke="var(--surface-rim-strong)" />
-      {/* Operation 목록 — 지금 보는 것(brass 밑줄), 답을 기다리는 것(aurora), 그 밖 */}
-      <rect x="80" y="146" width="44" height="14" rx="4" fill="var(--surface-glass-strong)" />
-      <circle cx="87" cy="153" r="2.5" fill="var(--positive)" />
-      <rect x="93" y="151.5" width="25" height="3" rx="1.5" fill="var(--text-primary)" opacity="0.8" />
-      <rect x="86" y="161" width="32" height="1.6" rx="0.8" fill="var(--brass)" />
-      <rect x="128" y="146" width="44" height="14" rx="4" fill="none" stroke="var(--aurora)" strokeOpacity="0.7" />
-      <circle cx="135" cy="153" r="2.5" fill="var(--aurora)" />
-      <rect x="141" y="151.5" width="25" height="3" rx="1.5" fill="var(--text-secondary)" opacity="0.7" />
-      <circle cx="183" cy="153" r="2.5" fill="var(--text-tertiary)" opacity="0.7" />
-      <rect x="189" y="151.5" width="22" height="3" rx="1.5" fill="var(--text-tertiary)" opacity="0.6" />
-      {/* 오른쪽 끝 — 도구 · 종료 · Fleet 앰블럼 */}
-      <g fill="none" stroke="var(--text-secondary)" strokeWidth="1.2" strokeLinecap="round" opacity="0.8">
-        <circle cx="250" cy="153" r="3.6" />
-        <rect x="261" y="149.5" width="8" height="7" rx="1.5" />
-        <path d="M276 150.5h7M276 153h7M276 155.5h5" />
+      {/* 모서리에 뜬 도구 섬 — 맵은 그 뒤로 이어진다. */}
+      <rect x="172" y="134" width="168" height="24" rx="7" fill="var(--surface-chrome)" stroke="var(--surface-rim-strong)" />
+      <g fill="none" stroke="var(--text-secondary)" strokeWidth="1.2" strokeLinecap="round">
+        <rect x="180" y="140" width="11" height="11" rx="2" /><path d="M184 140v11" />
+        <rect x="202" y="141" width="9" height="8" rx="1.5" />
+        <path d="m220 142 3 4-3 4M234 142h8M234 146h8M234 150h5" />
       </g>
-      <path d="M296 150.5l5 5m0-5l-5 5" stroke="var(--coral)" strokeWidth="1.3" strokeLinecap="round" opacity="0.7" />
-      <path d="M309 146v14" stroke="var(--surface-rim-strong)" />
-      <rect x="315" y="146" width="14" height="14" rx="3.5" fill="var(--ink-deep)" stroke="var(--surface-rim-strong)" />
-      <circle cx="322" cy="153" r="4.2" fill="none" stroke="var(--brass)" strokeWidth="1.2" />
-      <circle cx="322" cy="153" r="1.2" fill="var(--brass)" />
-      <rect x="333" y="151" width="12" height="4" rx="2" fill="var(--text-primary)" opacity="0.75" />
+      <circle cx="193" cy="140" r="3" fill="var(--aurora)" />
+      <path d="M259 142l7 7m0-7-7 7" stroke="var(--coral)" strokeWidth="1.3" />
+      <path d="M275 138v16" stroke="var(--surface-rim-strong)" />
+      <circle cx="289" cy="146" r="6" fill="none" stroke="var(--brass)" strokeWidth="1.2" />
+      <circle cx="289" cy="146" r="1.5" fill="var(--brass)" />
+      <rect x="301" y="143" width="29" height="5" rx="2.5" fill="var(--text-primary)" opacity="0.75" />
     </svg>
   );
 }

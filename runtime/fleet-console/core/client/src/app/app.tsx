@@ -74,6 +74,17 @@ const THEME_NOTICE_AUTO_DISMISS_MS = 8_000;
 // 온보딩 엔진이 코어 크롬에 닿는 창구 — 레일 진입점 버튼(RailIcon이 세우는 #rail-tab-<id>)과 단축키 표기.
 const ONBOARDING_PORTS = {
   railEntryElement: (railEntryId: string) => document.getElementById(`rail-tab-${railEntryId}`),
+  railEntryHintAnchor: (element: HTMLElement) => {
+    const island = element.closest<HTMLElement>(".zen-bar");
+    if (!island) return null;
+    const rect = island.getBoundingClientRect();
+    const below = island.dataset.corner === "top-right";
+    return { below, edge: below ? rect.bottom : rect.top };
+  },
+  railEntryHintDoor: (element: HTMLElement) => {
+    const drawer = element.closest(".zen-bar .console-toolbar-drawer[inert]");
+    return drawer?.closest(".console-toolbar")?.querySelector<HTMLElement>(".console-toolbar-fold") ?? element;
+  },
   shortcutLabel: (commandId: string) => shortcutCommandLabel(commandId),
 } as const;
 
@@ -482,7 +493,7 @@ export function App() {
       setSideBarCollapsed: (collapsed) => {
         // Zen은 /operations 데스크톱에서만 켜진다(War Room도 Zen 안이다). 그 안의 토글은 Zen을 유지한 채 좌측만 드러낸다.
         if (isZenMode() && resolvePanelShortcut() === "apply") {
-          hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar, ".war-room-taskbar .sbtoggle");
+          hideZenChromeRestoringFocus(".zen-sidebar-chrome", toggleZenSideBar, ".zen-bar [data-zen-sidebar-anchor]");
           return;
         }
         setZenMode(false);

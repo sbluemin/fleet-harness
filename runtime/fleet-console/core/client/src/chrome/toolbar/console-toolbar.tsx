@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
 import { useT } from "../../i18n/index.js";
+import { useTriageActive } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { toggleOperationSearch } from "../../integration/store.js";
 import { setToolbarToolsSlot, useToolbarHost } from "../../integration/toolbar-slots.js";
@@ -13,7 +14,7 @@ import { ToolbarTipLayer } from "./toolbar-tip.js";
 
 /**
  * 도구모음 — 콘솔에 하나뿐인 도구 줄. 모드는 이 줄의 **자리**만 바꾼다: 평소에는 상단 바 가운데,
- * Zen에서는 작업 표시줄 오른쪽 끝 트레이. 내용과 순서는 같다.
+ * Zen에서는 부유 섬. 내용과 순서는 같다.
  *
  *   › 접기 | 레일 도구 · 설정 | 찾기 · 원격 · 도움말 | 플러그인 항목(부관 등) | Zen 켜기/끄기
  *
@@ -88,15 +89,19 @@ export function ConsoleToolbar({ zen, canvas }: ConsoleToolbarProps) {
   useLayoutEffect(() => () => mount.remove(), [mount]);
 
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const [folded, setFolded] = useState(readFolded);
+  const [preferredFolded, setFolded] = useState(readFolded);
+  const warRoom = useTriageActive();
+  const [warRoomFolded, setWarRoomFolded] = useState(true);
+  useLayoutEffect(() => { if (warRoom) setWarRoomFolded(true); }, [warRoom]);
+  const folded = warRoom ? warRoomFolded : preferredFolded;
   // 서랍이 말리거나 펴지는 동안만 가로를 자른다 — 늘 자르면 서랍보다 넓은 메뉴(원격·도움말)가 잘린다.
   const [folding, setFolding] = useState(false);
   const foldingTimerRef = useRef<number | null>(null);
   useEffect(() => () => { if (foldingTimerRef.current !== null) window.clearTimeout(foldingTimerRef.current); }, []);
   const toggleFold = () => {
     const next = !folded;
-    setFolded(next);
-    writeFolded(next);
+    if (warRoom) setWarRoomFolded(next);
+    else { setFolded(next); writeFolded(next); }
     setFolding(true);
     if (foldingTimerRef.current !== null) window.clearTimeout(foldingTimerRef.current);
     foldingTimerRef.current = window.setTimeout(() => {
