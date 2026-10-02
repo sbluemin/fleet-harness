@@ -407,6 +407,10 @@ export function OperationSearch({
         ensurePaletteCanvasTheater(state);
         // 모두 정렬 토글 — 단축키 ID·⌘K 이름만 바뀌고 같은 자리에서 부른다.
         // War Room 선별 중이면 진입 훅이 선별을 먼저 끝낸다.
+        // 팔레트가 닫히며 되돌릴 초점을 먼저 돌려 둔다 — requestAlignAll이 그 자리를 확인창의 복귀점으로 잡는다.
+        const returnFocus = previousFocusRef.current;
+        previousFocusRef.current = null;
+        if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
         requestAlignAll();
         break;
       }

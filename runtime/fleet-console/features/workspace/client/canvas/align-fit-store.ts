@@ -80,11 +80,16 @@ function collapsedArena(arena: SnapRect): SnapRect | null {
   return pulled > 0 ? { ...arena, width: arena.width + pulled } : null;
 }
 
+function currentFocus(): HTMLElement | null {
+  const active = typeof document === "undefined" ? null : document.activeElement;
+  return active instanceof HTMLElement && active !== document.body ? active : null;
+}
+
 /**
  * 모두 정렬 진입점 — 켜져 있으면 끄고, 꺼져 있으면 하한을 보고 바로 켜거나 확인을 연다.
  * 제공자·아레나를 모르면(캔버스 미마운트) 기존처럼 바로 토글한다.
  */
-export function requestAlignAll(returnFocus: HTMLElement | null = null): void {
+export function requestAlignAll(returnFocus: HTMLElement | null = currentFocus()): void {
   if (getAlignAll() || request) {
     if (getAlignAll()) toggleAlignAll();
     return;
@@ -137,6 +142,10 @@ export function confirmAlignFit(keptIds: readonly string[]): void {
   const kept = new Set(keptIds);
   minimizeOperations(current.panels.map((panel) => panel.id).filter((id) => !kept.has(id)));
   if (!getAlignAll()) toggleAlignAll();
+  // 대화상자가 걷히며 잃은 포커스를 돌려준다 — 기존 Alt+F는 포커스를 빼앗지 않았다. 최소화한 패널의
+  // 터미널은 다음 렌더에서 사라지므로 한 프레임 뒤에 아직 붙어 있는 요소만 되돌린다.
+  const target = current.returnFocus;
+  if (target) requestAnimationFrame(() => { if (target.isConnected) target.focus({ preventScroll: true }); });
 }
 
 /** 사이드바를 접고, 늘어난 수용 개수만큼 기본 우선순위로 남겨 정렬한다. */
