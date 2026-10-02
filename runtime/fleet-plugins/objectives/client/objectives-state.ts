@@ -90,6 +90,8 @@ function rearm(theaterId: string): void {
 }
 
 function noteTransient(): void {
+  // 기한 전에 도착한 거절은 같은 회차다 — 동시에 보낸 요청들이 한꺼번에 실패해도 간격은 한 단계만 늘어난다.
+  if (degraded && Date.now() < degraded.until) return;
   const failures = (degraded?.failures ?? 0) + 1;
   degraded = { failures, until: Date.now() + retryDelay(failures) };
   scheduleRetry();
