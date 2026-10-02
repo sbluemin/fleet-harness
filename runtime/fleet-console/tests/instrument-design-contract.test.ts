@@ -4022,8 +4022,8 @@ describe("Effort track interaction grammar", () => {
     expect(chat).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-chat-command-row\.is-running \.agent-chat-command-gauge-fill \{\s*animation: none;/);
 
     // 덱에서 Console로 가는 행. 행선지는 위치이므로 brass가 말하고, 활성 행은 물러나지 않는다.
-    const hint = block(".agent-chat-deck-hint.is-console");
-    expect(hint).toContain("var(--brass-ink)");
+    const destination = block(".agent-chat-deck-meta.is-console");
+    expect(destination).toContain("var(--brass-ink)");
     expect(chat).toContain(".agent-chat-deck-row.is-console:not(.is-active) .agent-chat-deck-name {");
 
     // 퇴역한 표면이 되살아나지 않게 못박는다 — 명령 결과는 Answer 옆이 아니라 자기 줄에 선다.
@@ -4158,7 +4158,21 @@ describe("Effort track interaction grammar", () => {
     // 좁은 폭에서도 각인이 물러나지 않는다(물러나면 좌표를 볼 길이 사라진다). 단독·그룹 선택자
     // 모두 막는다: 예전 정규식은 `.hint, .coord`를 놓쳐 숨김이 남아도 green이었다.
     expect(chat).not.toContain(".agent-chat-birth");
-    expect(chat).not.toMatch(/@container\s*\([^)]*\)\s*\{[\s\S]*?\.agent-chat-coord\s*(?:,|\{)[\s\S]*?display:\s*none;/);
+    // 판정은 @container 블록 하나 안에서 끝난다 — 블록 밖까지 이어 읽으면 앞선 다른 표면의
+    // 좁은 폭 규칙(능력 덱)이 뒤따르는 좌표 규칙의 `display: none`과 엮여 거짓 경보가 난다.
+    const containerBlocks = [...chat.matchAll(/@container\s*\([^)]*\)\s*\{/g)].map((match) => {
+      let depth = 1;
+      let at = match.index + match[0].length;
+      for (; at < chat.length && depth > 0; at += 1) {
+        if (chat[at] === "{") depth += 1;
+        else if (chat[at] === "}") depth -= 1;
+      }
+      return chat.slice(match.index, at);
+    });
+    expect(containerBlocks.length).toBeGreaterThan(0);
+    for (const container of containerBlocks) {
+      expect(container).not.toMatch(/\.agent-chat-coord\s*(?:,|\{)[^}]*display:\s*none;/);
+    }
 
     // 구성원 바닥 줄의 좌표는 사실이지 컨트롤이 아니다 — 구성원의 모델·강도는 지휘관의 축이라
     // 누를 수 있게 그리면 거짓 약속이 된다. 컴포저의 좌표는 채팅 중 모델·강도를 바꾸는 문을 겸하며

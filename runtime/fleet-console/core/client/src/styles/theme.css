@@ -1069,7 +1069,10 @@ html:focus-visible {
   height: 10px;
 }
 
-::-webkit-scrollbar-track {
+/* 모서리도 트랙과 같이 비운다 — 칠하지 않으면 가로·세로 스크롤바가 함께 서는 자리마다 엔진
+   기본값인 흰 사각이 다크 테마 위에 박힌다. */
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 
