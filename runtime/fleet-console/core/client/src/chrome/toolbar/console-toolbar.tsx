@@ -1,29 +1,32 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
 import { useT } from "../../i18n/index.js";
 import { useTriageActive } from "../../../../../features/workspace/client/canvas/triage-store.js";
+import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { toggleOperationSearch } from "../../integration/store.js";
 import { setToolbarToolsSlot, useToolbarHost } from "../../integration/toolbar-slots.js";
-import { requestZenMode } from "../../integration/zen-mode.js";
 import { ConsoleHelpMenu, HostSwitcher } from "../components/command-band-system-cluster.js";
+import { openRailPanel, toggleRailPanel, useRailActivePanelId } from "../rail/rail-store.js";
+import "../../styles/rail.css";
 import { ToolbarTipLayer } from "./toolbar-tip.js";
 
 /**
  * 도구모음 — 콘솔에 하나뿐인 도구 줄. 모드는 이 줄의 **자리**만 바꾼다: 평소에는 상단 바 가운데,
  * Zen에서는 부유 섬. 내용과 순서는 같다.
  *
- *   › 접기 | 레일 도구 · 설정 | 찾기 · 원격 · 도움말 | 플러그인 항목(부관 등) | Zen 켜기/끄기
+ *   › 접기 | 플러그인(레일 도구) | 시스템 도구(찾기 · 원격 · 도움말 · 설정) | Bridge(Quota 요약 → 부관)
  *
  * 줄은 자기 DOM 노드를 하나 만들어 들고, 자리가 바뀌면 그 노드를 새 자리로 옮긴다. React는 같은
  * 노드에 계속 포털하므로 안의 항목이 다시 마운트되지 않는다 — 플러그인은 자리가 사라졌다고 보지
  * 않고(부관이 캔버스로 돌아가지 않는다), 열린 메뉴·도구 칸의 포털도 끊기지 않는다.
  *
- * Zen 버튼은 늘 맨 끝 칸이다. 그래서 일반 모드의 켜기와 Zen의 끄기가 도구모음의 같은 자리에 선다.
- * 접으면 도구만 말려 들어가고, 플러그인 항목과 Zen 버튼은 남는다.
+ * 접으면 플러그인·시스템 칸만 말려 들어가고 Bridge는 남는다. Zen 켜고 끄기는 도구모음이 아니라 좌측
+ * 사이드바(모드 스위치 왼쪽)의 일이다 — 도구모음은 모드와 무관하게 같은 내용으로 선다.
  *
  * 칸의 이름은 한 장의 말풍선이 말한다(toolbar-tip.tsx) — 칸은 네이티브 title 대신 data-tip을 든다.
  */
@@ -59,7 +62,7 @@ function writeFolded(folded: boolean): void {
 interface ConsoleToolbarProps {
   /** Zen이 이 창에서 실제로 켜져 있는가 — 켜져 있으면 줄이 Zen 트레이에 선다. */
   readonly zen: boolean;
-  /** 캔버스 화면인가(/operations 데스크톱). 아니면 Zen 칸을 비운다. */
+  /** 캔버스 화면인가(/operations 데스크톱). 아니면 설정 톱니가 캔버스로 먼저 돌아간 뒤 설정을 연다. */
   readonly canvas: boolean;
 }
 
@@ -139,24 +142,56 @@ export function ConsoleToolbar({ zen, canvas }: ConsoleToolbarProps) {
           </button>
           <HostSwitcher />
           <ConsoleHelpMenu />
+          <ToolbarSettingsButton canvas={canvas} />
         </div>
       </div>
-      <ToolbarPluginEntries />
-      {canvas ? <ZenToggle zen={zen} /> : null}
+      <ToolbarBridge />
     </div>,
     mount,
   );
 }
 
 /**
- * 플러그인이 크롬에 둔 항목(부관 글리프 등). 도구모음 안에 서므로 모드가 바뀌어도 자리째 따라간다.
- * 접기 서랍 밖에 둔다 — 부관의 답 말풍선이 글리프를 닻으로 삼으므로 접어도 사라지지 않아야 한다.
+ * 설정 — 시스템 칸의 맨 끝. 톱니는 메뉴가 아니라 설정 표면(레일 패널)의 문이고, 켜짐은 레일 도구와 같은
+ * 활성 표식으로 "지금 여기"를 말한다. 문서 id(rail-settings-toggle)는 설정 패널의 이름표(aria-labelledby)와
+ * 온보딩 앵커가 가리키므로 그대로 둔다. 레일은 /operations에만 서므로, 다른 화면에서는 캔버스로 돌아간 뒤 연다.
  */
-function ToolbarPluginEntries() {
+function ToolbarSettingsButton({ canvas }: { readonly canvas: boolean }) {
+  const t = useT();
+  const navigate = useNavigate();
+  const activePanelId = useRailActivePanelId();
+  const active = canvas && activePanelId === SETTINGS_RAIL_ENTRY_ID;
+  return (
+    <button
+      id="rail-settings-toggle"
+      type="button"
+      className={`right-rail-ico right-rail-settings-btn${active ? " is-active" : ""}`}
+      aria-pressed={active}
+      aria-controls={active ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
+      aria-label={t("settings.title")}
+      data-tip={t("settings.title")}
+      onClick={() => {
+        if (canvas) { toggleRailPanel(SETTINGS_RAIL_ENTRY_ID); return; }
+        navigate("/operations");
+        openRailPanel(SETTINGS_RAIL_ENTRY_ID);
+      }}
+    >
+      <GearGlyph />
+    </button>
+  );
+}
+
+/**
+ * Bridge — 플러그인이 크롬에 둔 항목(사용 한도 요약 → 부관 글리프). 도구모음 안에 서므로 모드가 바뀌어도
+ * 자리째 따라간다. 순서는 레지스트리가 정한다(부관이 늘 끝 — plugin-registry.ts). 접기 서랍 밖에 둔다 —
+ * 부관의 답 말풍선이 글리프를 닻으로 삼고, 사용 한도 요약은 접어도 보이려고 켜는 것이다.
+ */
+function ToolbarBridge() {
+  const t = useT();
   const { commandBandEntries } = usePluginRegistry();
   if (commandBandEntries.length === 0) return null;
   return (
-    <span className="console-toolbar-plugins">
+    <span className="console-toolbar-bridge" role="group" aria-label={t("toolbar.bridge")}>
       {commandBandEntries.map((entry) => (
         // 플러그인의 render()는 경계 아래 자식 컴포넌트에서 부른다 — 한 항목의 throw가 도구모음 전체를
         // 내리지 않게(영속 컴포넌트·설정 섹션과 같은 격리).
@@ -170,32 +205,4 @@ function ToolbarPluginEntries() {
 
 function ToolbarPluginEntry({ render }: { readonly render: () => ReactNode }) {
   return <>{render()}</>;
-}
-
-/**
- * Zen 켜기/끄기 — 도구모음의 맨 끝 칸. 켜기는 도구 아이콘과 같은 잉크로 조용히 서고, 끄기는 옅은 coral
- * ×로 선다(겨눌 때만 붉은 면). 이름은 도구모음의 말풍선이 말한다 — 상단 바에서는 아래로, 트레이에서는 위로 뜬다.
- */
-function ZenToggle({ zen }: { readonly zen: boolean }) {
-  const t = useT();
-  return (
-    <button
-      type="button"
-      className={`console-toolbar-zen${zen ? " is-exit" : ""}`}
-      aria-label={t(zen ? "zen.exit" : "zen.enter")}
-      data-tip={t(zen ? "zen.exitShort" : "zen.enterShort")}
-      // 누르는 순간 포커스를 옮기지 않는다 — 전환 뒤 포커스 복귀는 앱 셸의 작업면 규칙이 맡는다.
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => requestZenMode(!zen)}
-    >
-      {zen ? (
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 5.5 5 5m0-5-5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-      ) : (
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4" />
-          <path d="M7.5 10h5" />
-        </svg>
-      )}
-    </button>
-  );
 }

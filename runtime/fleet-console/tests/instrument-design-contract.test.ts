@@ -1996,14 +1996,18 @@ describe("Instrument core design contract", () => {
     expect(rail).not.toContain("grid-template-rows: 32px minmax(0, 1fr);");
     expect(rightRail).not.toContain("HEAD_REVEAL");
     expect(rightRail).not.toMatch(/onPointerMove=\{(?:hasPanel \? )?handleSlotPointer/);
-    // Doctrine: the gear stands last in the toolbar's tool run, after a divider that splits it
-    // from the tools — governing the console and choosing a work tool are different kinds of
-    // act. Tools group by scope (Theater-scoped first, Fleet-scoped after a divider), each scope
-    // in plugin composition order. The gear is the settings surface's one door: it toggles the
-    // core settings pane and never appears again as a tab.
-    expect(rightRail).toMatch(/right-rail-tabs[\s\S]*renderRuns\(runsByScope\.theater\)[\s\S]*renderRuns\(runsByScope\.fleet\)[\s\S]{0,1200}\{divider\}[\s\S]{0,300}right-rail-settings-btn/);
+    // Doctrine: the gear is not a work tool — governing the console and choosing a work tool are
+    // different kinds of act — so it stands last in the toolbar's system run (search · remote ·
+    // help · settings), not in the plugin tool run. Tools group by scope (Theater-scoped first,
+    // Fleet-scoped after a divider), each scope in plugin composition order. The gear is the
+    // settings surface's one door: it toggles the core settings pane and never appears as a tab.
+    const toolbarSource = source("chrome/toolbar/console-toolbar.tsx");
+    expect(rightRail).toMatch(/right-rail-tabs[\s\S]*renderRuns\(runsByScope\.theater\)[\s\S]*renderRuns\(runsByScope\.fleet\)/);
+    expect(rightRail).not.toContain("right-rail-settings-btn");
+    expect(toolbarSource).toContain("<ConsoleHelpMenu />\n          <ToolbarSettingsButton canvas={canvas} />\n        </div>");
+    expect(toolbarSource).toContain('id="rail-settings-toggle"');
+    expect(toolbarSource).toContain("toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)");
     expect(rightRail).toContain('binding.entry.scope ?? "theater"');
-    expect(rightRail).toContain('toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)');
     expect(rightRail).toContain('binding.entry.id !== SETTINGS_RAIL_ENTRY_ID');
     expect(rail).toMatch(/\.right-rail-divider \{[^}]*background: var\(--surface-rim-strong\);/);
     // Doctrine: the gear carries an explicit glyph size. An SVG with only a viewBox fills its
@@ -2409,7 +2413,7 @@ describe("Instrument core design contract", () => {
     const zenBar = source("chrome/zen/zen-bar.tsx");
     const consoleToolbar = source("chrome/toolbar/console-toolbar.tsx");
     expect(consoleToolbar).toContain("host.appendChild(mount);");
-    expect(consoleToolbar).toContain("<ToolbarPluginEntries />");
+    expect(consoleToolbar).toContain("<ToolbarBridge />");
     // 트레이 자리는 Zen이 꺼져 있어도 DOM에 남는다. Zen 바 전체가 hidden이라 그려지지는 않는다.
     expect(zenBar).toContain('<span className="zen-bar-toolbar" ref={setZenToolbarHost} />');
     expect(zenBar).toContain("hidden={!active}");
@@ -3407,7 +3411,7 @@ describe("Instrument core design contract", () => {
     expect(systemCluster).toContain('className="command-band-system-menu" role="menu"');
     // 설정의 문은 레일의 톱니 하나다 — 커맨드 밴드에는 설정 진입이 더는 없다.
     expect(systemCluster).not.toContain("command-band-settings");
-    expect(source("chrome/rail/right-rail.tsx")).toContain('t("settings.title")');
+    expect(source("chrome/toolbar/console-toolbar.tsx")).toContain('t("settings.title")');
     expect(systemCluster).toContain('t("chrome.system.keyboardShortcuts")');
     expect(systemCluster).toContain("openWhatsNew");
     expect(components).not.toContain(".command-band-system-cluster {");

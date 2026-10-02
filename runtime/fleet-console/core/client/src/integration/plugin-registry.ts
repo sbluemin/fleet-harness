@@ -62,6 +62,8 @@ type PluginClientModule = {
 
 // 모듈 평가 때 createPluginRegistry 가 돈다 — 그 안에서 읽는 상수는 이 줄보다 위에 있어야 한다(TDZ).
 const NO_CLUSTERS: readonly OperationCluster[] = [];
+/** 도구모음 Bridge의 끝 자리 — 부관의 글리프. 답 말풍선이 이 글리프를 닻으로 삼아 줄 끝에서 뜬다. */
+const DEPUTY_COMMAND_BAND_ENTRY_ID = "scuttlebutt:dock";
 const EMPTY_PLUGIN_REGISTRY: PluginRegistry = createPluginRegistry(builtInPlugins);
 
 const PluginRegistryContext = createContext<PluginRegistry>(EMPTY_PLUGIN_REGISTRY);
@@ -202,10 +204,10 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),
-    commandBandEntries: providers.flatMap((plugin) => (plugin.commandBandEntries ?? []).map((descriptor) => ({
+    commandBandEntries: deputyLast(providers.flatMap((plugin) => (plugin.commandBandEntries ?? []).map((descriptor) => ({
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
-    }))),
+    })))),
     expandedSurfaces,
     operationCaptionContributions: providers.flatMap((plugin) => (plugin.operationCaptionContributions ?? []).map((descriptor) => ({
       ...descriptor,
@@ -218,7 +220,13 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
     operationClusters: combineClusterSources(providers.flatMap((plugin) => (plugin.operationClusters ? [{ pluginId: plugin.id ?? "core", source: plugin.operationClusters }] : []))),
   };
 }
-
+/**
+ * Bridge 순서: 부관은 늘 끝이고, 나머지(사용 한도 요약 등)는 합성 순서대로 그 앞에 선다. SDK에 순서 필드를
+ * 두지 않고 호스트가 한 자리만 고정한다(레일의 codex 앞세우기와 같은 방식) — 외부 플러그인이 붙어도 부관 앞이다.
+ */
+function deputyLast(entries: readonly CommandBandEntryDescriptor[]): readonly CommandBandEntryDescriptor[] {
+  return [...entries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID), ...entries.filter((entry) => entry.id === DEPUTY_COMMAND_BAND_ENTRY_ID)];
+}
 
 /**
  * 여러 플러그인의 묶음 원천을 하나로. 어느 원천도 참조가 바뀌지 않았으면 합친 배열도 같은 참조를 돌려준다 —

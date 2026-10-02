@@ -145,9 +145,9 @@ export interface ClientExecutionProvider {
   readonly panes?: readonly PaneDescriptor[];
   readonly floatingWidgets?: readonly FloatingWidgetDescriptor[];
   /**
-   * 커맨드 밴드 우측에 서는 24px 항목. 플러그인이 자기 상태를 상단 바에 상주시키는 자리다 —
-   * 호스트는 슬롯의 자리와 순서만 소유하고 본문은 플러그인이 그린다. 비어 있는 항목은 아무것도
-   * 그리지 않으면(null) 자리를 차지하지 않는다.
+   * 도구모음의 Bridge 칸(접어도 남는 끝 칸)에 서는 24px 항목. 플러그인이 자기 상태를 도구모음에
+   * 상주시키는 자리다 — 호스트는 슬롯의 자리와 순서만 소유하고 본문은 플러그인이 그린다. 비어 있는
+   * 항목은 아무것도 그리지 않으면(null) 자리를 차지하지 않는다.
    */
   readonly commandBandEntries?: readonly CommandBandEntryDescriptor[];
   /**

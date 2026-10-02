@@ -522,7 +522,7 @@
   gap: 2px;
 }
 .console-toolbar-tools,
-.console-toolbar-plugins {
+.console-toolbar-bridge {
   display: flex;
   align-items: center;
   gap: 1px;
@@ -537,14 +537,15 @@
   margin: 0 var(--space-1);
   background: var(--surface-rim-strong);
 }
-.console-toolbar-plugins {
+/* Bridge — 사용 한도 요약과 부관이 서는 칸. 접기 서랍 밖이라 늘 남고, 시스템 칸과는 가는 선 하나로 나뉜다. */
+.console-toolbar-bridge {
   margin-inline-start: var(--space-1);
   padding-inline-start: var(--space-1);
   border-inline-start: 1px solid var(--surface-rim-strong);
 }
-/* 플러그인이 항목을 그리지 않는 동안(부관을 하나도 도구모음에 두지 않음) 칸째 걷는다 — 남겨 두면 여백과
-   구분선만 선 빈자리가 도움말과 Zen 버튼 사이에 벌어진다. */
-.console-toolbar-plugins:empty { display: none; }
+/* 플러그인이 항목을 그리지 않는 동안(사용 한도 요약 꺼짐, 부관을 도구모음에 두지 않음) 칸째 걷는다 — 남겨 두면
+   여백과 구분선만 선 빈자리가 설정 뒤에 벌어진다. */
+.console-toolbar-bridge:empty { display: none; }
 
 /* 찾기·도움말 — 도구 아이콘(.right-rail-ico)과 같은 26px 둥근 칸, 같은 겨눔·켜짐 문법. */
 .console-toolbar .command-band-button {
@@ -567,8 +568,8 @@
   color: var(--brass-ink);
 }
 
-/* 서랍 — 도구·찾기·도움말. 접으면 열 폭이 0으로 말려 Zen 버튼 쪽으로 빨려 들며 흐려진다.
-   플러그인 항목과 Zen 버튼은 서랍 밖이라 남는다. */
+/* 서랍 — 플러그인(레일 도구)·시스템 도구. 접으면 열 폭이 0으로 말려 Bridge 쪽으로 빨려 들며 흐려진다.
+   Bridge는 서랍 밖이라 남는다. */
 /* flex: none — 펼친 서랍은 자기 내용 폭 아래로 눌리지 않는다. 눌리면 도움말이 뒤따르는 부관 칸 밑으로
    파고들고, 밴드는 눌린 폭을 자연 폭으로 재어 가운데 정렬을 포기하지 않는다(command-band.tsx 실측).
    접힘은 0fr 트랙이 내용 폭 자체를 0으로 줄이므로 수축 없이도 말려 들어간다. */
@@ -618,38 +619,6 @@
 .console-toolbar-fold:hover,
 .console-toolbar-fold:focus-visible { color: var(--brass-ink); background: var(--control-hover-fill); }
 .console-toolbar-fold:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
-
-/* Zen 켜기/끄기 — 도구모음의 맨 끝 칸. 켜기는 도구 아이콘과 같은 잉크로 조용히 선다.
-   끄기는 옅은 coral 잉크의 ×만 서서 시선을 끌지 않고, 겨눌 때에야 붉은 면이 차오른다.
-   Doctrine exception: coral은 위험 신호 채널이지만, Zen 종료는 사용자가 「일반적인 종료 버튼(레드 계열)」으로
-   지정한 자리라 이 한 버튼만 coral을 쓴다. 쉬는 상태는 중립 잉크 쪽으로 크게 눌러 경보로 읽히지 않게 한다. */
-.console-toolbar-zen {
-  position: relative;
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  margin-inline-start: 2px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide), transform var(--duration-fast) var(--ease-spring);
-}
-.console-toolbar-zen svg { width: 15px; height: 15px; }
-.console-toolbar-zen:hover,
-.console-toolbar-zen:focus-visible { background: var(--surface-glass); color: var(--text-secondary); }
-.console-toolbar-zen:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.console-toolbar-zen:active { transform: scale(0.92); }
-/* oklab으로 섞는다 — oklch로 섞으면 coral과 중립 잉크 사이 색상각을 돌아 보라로 샌다. */
-.console-toolbar-zen.is-exit { color: color-mix(in oklab, var(--coral) 55%, var(--text-tertiary)); }
-.console-toolbar-zen.is-exit svg { width: 14px; height: 14px; }
-.console-toolbar-zen.is-exit:hover,
-.console-toolbar-zen.is-exit:focus-visible { background: color-mix(in oklch, var(--coral) 16%, transparent); color: var(--coral); }
-.console-toolbar-zen.is-exit:active { background: color-mix(in oklch, var(--coral) 26%, transparent); }
-.console-toolbar-zen.is-exit:focus-visible { outline-color: color-mix(in oklch, var(--coral) 60%, transparent); }
 
 /* 도구모음 말풍선 — 도구모음의 모든 칸이 쓰는 한 장(toolbar-tip.tsx). 겨누면 잠깐(180ms, JS) 뒤에 떠오른다.
    상단 바에서는 아래로, Zen 트레이(화면 아래 끝)에서는 위로 뜬다(data-placement). 자리는 칸 가운데를 실측해
@@ -734,15 +703,14 @@
 /* 워드마크의 서체·크기는 밴드 워드마크(.command-band-brand-wordmark)를 함께 입어 받는다 — 같은 브랜드, 같은 글자. */
 .zen-bar-brand-wordmark { color: var(--text-primary); line-height: 1; }
 
-/* 모달이 열리면 Zen 트레이의 **접기·도구·Zen 버튼**만 물러난다 — 모달 뒤에서 누를 수 있는 조작면이 남지 않게.
+/* 모달이 열리면 Zen 트레이의 **접기·서랍**만 물러난다 — 모달 뒤에서 누를 수 있는 조작면이 남지 않게.
    트레이째 걷으면 그 안의 플러그인 항목까지 사라지는데, 상단 바에 둔 부관은 Zen에서 여기 말고
    닿을 자리가 없고 그 답 말풍선이 글리프를 닻으로 삼는다 — Quick Launch로 부관을 부르는 동안
    정작 그 부관이 사라졌다(인도 검수). visibility가 아니라 display로 내린다: 자리를 남기면 빈 칸이 선다.
    상단 바는 모달이 뜨면 aria-modal 경계 밖이라 따로 물러나지 않아도 닿지 않는다. */
-:root[data-modal-open] .zen-bar .console-toolbar-zen,
 :root[data-modal-open] .zen-bar .console-toolbar-drawer,
 :root[data-modal-open] .zen-bar .console-toolbar-fold { display: none; }
-:root[data-modal-open] .zen-bar .console-toolbar-plugins { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
+:root[data-modal-open] .zen-bar .console-toolbar-bridge { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
 
 /* Zen 전환 장면 — 불투명한 커튼 한 겹과 그 위를 나는 앰블럼(zen-transition.tsx).
    앰블럼이 나는 동안 제자리의 브랜드(밴드·부유 섬)는 비워 둔다 — 둘이 겹쳐 보이면 한 마크가
@@ -802,7 +770,6 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   .console-toolbar-drawer,
   .console-toolbar-drawer-inner,
   .console-toolbar-fold svg,
-  .console-toolbar-zen,
   .console-toolbar-tip { transition: none; }
 }
 

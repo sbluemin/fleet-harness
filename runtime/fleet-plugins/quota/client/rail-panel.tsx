@@ -3,7 +3,9 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
+import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
+import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@fleet-console/ai-gateway";
 import {
@@ -16,13 +18,15 @@ import {
 } from "../provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
+import { getQuotaSummarySnapshot, holdQuotaPanel, publishQuotaSummary } from "./summary-store.js";
+import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting, writeQuotaToolbarSummary } from "./toolbar-setting.js";
 import "./quota.css";
 
 type T = Translate<QuotaMessageKey>;
 /** Providers whose credential read is gated behind an explicit connect. */
 type ConnectableProviderId = "claude";
 
-const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
+export const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   antigravity: "Antigravity",
   claude: "Claude Code",
   codex: "Codex",
@@ -352,7 +356,7 @@ export function riskNote(window: QuotaWindow, now: number, t: T): string | null 
   return null;
 }
 
-function windowLabel(window: QuotaWindow, t: T): string {
+export function windowLabel(window: QuotaWindow, t: T): string {
   return window.label ?? t(
     window.id === "session"
       ? "quota.meter.session"
@@ -772,8 +776,10 @@ let rememberedPanel: RememberedPanel | null = null;
 function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
   const t = useMemo(() => getT(ctx.language), [ctx.language]);
   const [restored] = useState(() => rememberedPanel);
-  const [data, setData] = useState<QuotaSummaryDto | null>(restored?.data ?? null);
-  const [checkedAt, setCheckedAt] = useState(restored?.checkedAt ?? 0);
+  // 패널을 처음 여는 순간에도 도구모음 요약이 이미 읽어 둔 값이 있으면 그것부터 그린다(같은 원천).
+  const [shared] = useState(() => getQuotaSummarySnapshot());
+  const [data, setData] = useState<QuotaSummaryDto | null>(restored?.data ?? shared.data);
+  const [checkedAt, setCheckedAt] = useState(restored?.checkedAt ?? shared.checkedAt);
   const [requestError, setRequestError] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -1054,10 +1060,15 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
     beginRequestGeneration(requestGenerationRef);
   }, []);
 
-  // 응답 채택과 낙관 반영(순서 이동·접기)을 가리지 않고 화면에 선 그대로를 남긴다.
+  // 응답 채택과 낙관 반영(순서 이동·접기)을 가리지 않고 화면에 선 그대로를 남긴다. 도구모음 요약도 같은 값을 읽는다.
   useEffect(() => {
-    if (data !== null) rememberedPanel = { data, checkedAt, order, folded };
+    if (data === null) return;
+    rememberedPanel = { data, checkedAt, order, folded };
+    publishQuotaSummary(data, order, checkedAt);
   }, [data, checkedAt, order, folded]);
+
+  // 패널이 서 있는 동안은 폴링이 패널 몫이다 — 도구모음 요약은 그동안 따로 묻지 않는다.
+  useEffect(() => holdQuotaPanel(), []);
 
   useEffect(() => {
     const poll = setInterval(() => {
@@ -1123,7 +1134,22 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
           <BarLegend t={t} />
           <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
         </div>
+        <ToolbarSummaryToggle t={t} />
       </footer>
+    </div>
+  );
+}
+
+/** 패널 바닥의 「도구모음에 요약 표시」 — 설정 화면의 사용 한도 섹션과 같은 한 값을 바꾼다. */
+function ToolbarSummaryToggle({ t }: { readonly t: T }) {
+  const { toolbarSummary } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+  return (
+    <div className="quota-footer__row quota-footer__toolbar">
+      <SettingsToggle
+        checked={toolbarSummary}
+        label={t("quota.toolbar.toggle")}
+        onChange={(next) => { writeQuotaToolbarSummary(next).catch(() => undefined); }}
+      />
     </div>
   );
 }

@@ -2,7 +2,10 @@ import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } fr
 import { createPortal } from "react-dom";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
+import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { useSideBarShortcutLabel, useSideBarStatusViewShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
+import { requestZenMode, useZenModeState } from "../../../../core/client/src/integration/zen-mode.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import { setSideBarCollapsed, toggleSideBarStatusAxis, useSideBarState } from "./operations-side-bar-store.js";
@@ -63,6 +66,49 @@ export function SideBarStatusViewToggle({ active }: { readonly active: boolean }
 
 function StatusViewIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.6v10.8M5 13.4 2.8 11.2M5 13.4l2.2-2.2M11 13.4V2.6M11 2.6 8.8 4.8M11 2.6l2.2 2.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+// Zen 켜고 끄기 — 캔버스 모드 스위치(Cruise / War Room) 바로 왼쪽의 독립 토글. Zen은 두 모드와 함께 켜지는
+// 축이라 세그먼트의 한 칸이 아니라 따로 선 눌림 버튼이다. 켜짐은 상태별 보기와 같은 말(옅은 워시 · brass 다텀)로
+// 하고, Zen 안에서도 같은 자리가 해제다 — 도구모음에는 따로 끄는 버튼을 두지 않는다. 모바일에는 Zen이 없다.
+export function SideBarZenToggle() {
+  const t = useT();
+  useShortcutOverrides();
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const { active } = useZenModeState();
+  const mobile = useViewMode().effective === "mobile";
+  if (mobile) return null;
+  const shortcut = shortcutCommandLabel("console.toggle-zen");
+  const label = `${t(active ? "zen.exit" : "zen.enter")}${shortcut ? ` (${shortcut})` : ""}`;
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      className="side-bar-status-view-toggle side-bar-zen-toggle"
+      aria-pressed={active}
+      aria-label={label}
+      title={label}
+      // 누르는 순간 포커스를 옮기지 않는다 — 켜면 사이드바가 물러나므로 작업면 복귀는 앱 셸이 맡는다.
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => {
+        if (!active) { requestZenMode(true); return; }
+        // 끄고 나면 사이드바가 그대로 남는다 — 누른 사람은 같은 버튼에 남는다(전환 장면이 끝난 뒤).
+        requestZenMode(false, { onComplete: () => { if (buttonRef.current?.isConnected) buttonRef.current.focus({ preventScroll: true }); } });
+      }}
+    >
+      <ZenGlyph />
+    </button>
+  );
+}
+
+// Zen — 네 모서리의 괄호 안에 가로 한 획. 화면을 비우고 한 줄만 남기는 모드(옛 도구모음 Zen 버튼의 글리프).
+function ZenGlyph() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4" />
+      <path d="M7.5 10h5" />
+    </svg>
+  );
 }
 
 // 사이드바 보기 메뉴(「⋯」) — 한 번 정하면 오래 두는 사이드바 선호가 사는 자리다. 자주 뒤집는 보기 스위치(상태별 보기)와
