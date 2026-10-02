@@ -951,7 +951,12 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-criteria-head .objectives-row-lab { flex: 0 0 auto; white-space: nowrap; }
 .objectives-criteria-head .objectives-row-tools { min-width: 0; }
 .objectives-criteria-head .objectives-criteria-count.is-pending { white-space: normal; word-break: keep-all; text-align: right; }
-/* 아주 좁은 상세 — 라벨·승인 버튼은 첫 줄에 두고, 제안 셈에는 머리줄 전체 폭을 준다. */
+/* 아주 좁은 상세, 또는 제자리에서 세 줄 넘게 감기는 셈(is-stacked — 실제 감김을 JS 가 잰다) — 라벨·승인 버튼은 첫 줄에 두고,
+   제안 셈에는 머리줄 전체 폭을 준다. */
+.objectives-criteria-head.is-stacked { position: relative; padding-bottom: calc(var(--t-2xs) * 1.5 + 6px); }
+.objectives-criteria-head.is-stacked > .objectives-row { position: static; }
+.objectives-criteria-head.is-stacked .objectives-row-tools { position: absolute; left: 14px; right: 12px; bottom: 6px; margin-left: 0; }
+.objectives-criteria-head.is-stacked .objectives-criteria-count.is-pending { line-height: 1.5; white-space: nowrap; text-align: left; }
 @container objectives-detail (width < 340px) {
   .objectives-criteria-head:has(.is-pending) { position: relative; padding-bottom: calc(var(--t-2xs) * 1.5 + 6px); }
   .objectives-criteria-head:has(.is-pending) > .objectives-row { position: static; }

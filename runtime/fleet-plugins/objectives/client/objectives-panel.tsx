@@ -1080,6 +1080,37 @@ function SectionHead({ glyph, label, tools, actions, controls, expanded, onToggl
   );
 }
 
+/**
+ * 달성 기준 머리줄의 제안 셈은 제자리에서 두 줄까지만 감긴다 — 세 줄째부터는 머리줄이 한 줄 높이를 넘으니 is-stacked 로 아랫줄에 내린다.
+ * 폭 경계가 아니라 실제 감김으로 가른다: 셈 문구의 폭은 언어와 건수마다 다르다. 재기는 표시를 걷은 제자리 배치에서 해
+ * 이전 판정에 기대지 않는다(경계에서 왕복하지 않는다). 크기는 머리줄이 아니라 그것을 담은 스크롤 칸에서 지켜본다 — 표시가 바꾸는
+ * 머리줄 높이가 감시를 다시 부르지 않으니 같은 프레임 안에서 판정을 마쳐 세 줄 모양이 한 프레임도 그려지지 않는다.
+ * 칸의 내용 폭(content-box)을 지켜봐 스크롤바가 생기고 사라지며 바뀌는 폭도 잡는다.
+ */
+function useStackedProposalCount(headRef: RefObject<HTMLDivElement | null>, count: string | null, layoutKey: string) {
+  useLayoutEffect(() => {
+    const head = headRef.current;
+    if (!head) return;
+    const target = count === null ? null : head.querySelector(".objectives-criteria-count.is-pending");
+    if (!target) { head.classList.remove("is-stacked"); return; }
+    const fit = () => {
+      head.classList.remove("is-stacked");
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      const lines = new Set([...range.getClientRects()].filter((rect) => rect.width > 0).map((rect) => Math.round(rect.top))).size;
+      head.classList.toggle("is-stacked", lines > 2);
+    };
+    fit();
+    let pane = head.parentElement;
+    while (pane && !/auto|scroll/.test(getComputedStyle(pane).overflowY)) pane = pane.parentElement;
+    const observer = new ResizeObserver(fit);
+    observer.observe(pane ?? head);
+    let alive = true;
+    void document.fonts.ready.then(() => { if (alive) fit(); });
+    return () => { alive = false; observer.disconnect(); head.classList.remove("is-stacked"); };
+  }, [headRef, count, layoutKey]);
+}
+
 const PROPOSAL_PLACEHOLDER: Readonly<Record<ObjectiveCriterionProposal["kind"], ObjectiveMessageKey>> = {
   add: "objectives.proposal.ph.add",
   revise: "objectives.proposal.ph.revise",
@@ -1435,6 +1466,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
 
   // 섹션 접힘 — 항목이 없으면 접지 않는다.
   const criteriaCollapsible = objective.criteria.length + proposals.length > 0;
+  const criteriaHeadRef = useRef<HTMLDivElement>(null);
+  const pendingCount = proposals.length > 0 ? t("objectives.criteria.pending", { count: proposals.length }) : null;
+  const approveAll = proposals.length > 1 && touchable;
+  useStackedProposalCount(criteriaHeadRef, pendingCount, `${approveAll}:${criteriaCollapsible}`);
   const missionsCollapsible = objective.missions.length > 0;
   const criteriaOpen = !criteriaCollapsible || sectionOpen("detail:criteria");
   const missionsOpen = !missionsCollapsible || sectionOpen("detail:missions");
@@ -1618,15 +1653,15 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           마지막 임무 뒤 지휘관이 기준마다 스스로 다시 따져 근거와 함께 충족으로 표시한다. 새 작업이 생기면 충족 표시는 거둬져
           「미확인」으로 돌아간다. 모든 임무와 기준이 끝나면 저절로 검토 대기다. */}
       <div className="objectives-group objectives-criteria-group" data-objectives-tour="criteria">
-        <div className="objectives-criteria-head">
+        <div className="objectives-criteria-head" ref={criteriaHeadRef}>
           <SectionHead
             glyph={<CriteriaGlyph />}
             label={t("objectives.criteria.title")}
-            tools={proposals.length > 0 ? <span className="objectives-criteria-count is-pending">{t("objectives.criteria.pending", { count: proposals.length })}</span>
+            tools={pendingCount !== null ? <span className="objectives-criteria-count is-pending">{pendingCount}</span>
               : criteriaCollapsible ? <span className="objectives-criteria-count">{t("objectives.criteria.count", { met: objective.criteria.filter((criterion) => !!criterion.met).length, total: objective.criteria.length })}</span> : null}
             {...(criteriaCollapsible ? { controls: "objectives-sec-criteria", expanded: criteriaOpen, onToggle: () => onToggleSection("detail:criteria") } : {})}
           />
-          {proposals.length > 1 && touchable ? <button type="button" className="objectives-btn is-small objectives-approve-all" onClick={() => void call("/criterion/approve-all", { objectiveId: objective.id })}>{t("objectives.criteria.approveAll")}</button> : null}
+          {approveAll ? <button type="button" className="objectives-btn is-small objectives-approve-all" onClick={() => void call("/criterion/approve-all", { objectiveId: objective.id })}>{t("objectives.criteria.approveAll")}</button> : null}
         </div>
         <div id="objectives-sec-criteria" hidden={!criteriaOpen}>
           {objective.criteria.map((criterion, index) => {
