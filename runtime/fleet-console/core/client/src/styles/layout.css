@@ -461,10 +461,9 @@
 .zen-bar.is-mirrored .zen-bar-brand {
   margin-inline-start: 0;
   padding-inline-start: 0;
-  border-inline-start: 0;
   margin-inline-end: var(--space-1);
   padding-inline-end: var(--space-2);
-  border-inline-end: 1px solid var(--surface-rim-strong);
+  background-position: right center;
 }
 .zen-bar.is-war-room { border-top-color: color-mix(in oklch, var(--brass) 70%, transparent); }
 .zen-bar.is-war-room:has(.has-attention)::after {
@@ -731,7 +730,8 @@
   gap: 7px;
   margin-inline-start: var(--space-1);
   padding-inline-start: var(--space-2);
-  border-inline-start: 1px solid var(--surface-rim-strong);
+  /* 구분선은 16px 곧은 선이다. 손잡이 높이(28)와 둥근 모서리에 테두리를 쓰면 괄호처럼 휜 띠가 된다. */
+  background: linear-gradient(var(--surface-rim-strong), var(--surface-rim-strong)) left center / 1px 16px no-repeat;
   height: 28px;
   cursor: grab;
   touch-action: none;

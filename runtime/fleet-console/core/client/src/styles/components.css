@@ -5188,8 +5188,10 @@ button.status-glyph.is-actionable:focus-visible {
   pointer-events: none;
 }
 
-/* 오른쪽 아래 섬 위에 8px 숨을 두고 쌓는다. 다른 모서리는 기존 독 자리다. */
+/* 오른쪽 아래 섬 위에 8px 숨을 두고 쌓는다 — 섬과 같은 오른쪽 변(아레나 끝 + 12)에 맞춰 섬의 일부처럼 선다.
+   다른 모서리는 기존 독 자리다. */
 :root[data-zen-island-corner="bottom-right"] .console-shell.is-zen .canvas-corner-dock {
+  right: calc(var(--arena-right, 0px) + 12px);
   bottom: max(calc(var(--arena-bottom, 0px) + var(--space-4)), 60px);
 }
 

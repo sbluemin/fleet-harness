@@ -7,6 +7,7 @@ import { useT } from "../../i18n/index.js";
 import { setZenToolbarHost } from "../../integration/toolbar-slots.js";
 import { useZenModeState } from "../../integration/zen-mode.js";
 import { BrandMarkIcon, BrandWordmark } from "../components/command-band.js";
+import { useRailDragDeltaPx, useRailSettledPx } from "../rail/rail-store.js";
 
 /** 도구모음은 같은 DOM을 들고 옮겨 온다. 섬은 아레나를 비우지 않는 창 단위 크롬이다. */
 type Corner = "bottom-right" | "bottom-left" | "top-right";
@@ -15,6 +16,8 @@ const CORNERS: readonly Corner[] = ["bottom-right", "bottom-left", "top-right"];
 const STORAGE_KEY = "fleet-console.zen.island-corner";
 const EDGE = 12;
 const HEIGHT = 40;
+/** 레일 카드와 아레나 사이 틈 — Operations의 CHROME_FLOAT_GUTTER와 같은 값. 섬은 이 틈 안쪽, 맵 아레나 안에만 선다. */
+const RAIL_GUTTER = 24;
 
 function readCorner(): Corner {
   try {
@@ -36,6 +39,9 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
   const zenState = useZenModeState();
   const sidebar = useSideBarState();
   const sidebarShown = zenState.sideBarRevealed && !sidebar.collapsed;
+  // 오른쪽 레일이 점유한 폭만큼 섬의 오른쪽 경계를 아레나 안으로 들인다. 레일을 끄는 동안에도 따라간다.
+  const railPx = useRailSettledPx() + useRailDragDeltaPx(active);
+  const arenaRight = railPx > 0 ? railPx + RAIL_GUTTER : 0;
   const moveTo = (next: Corner, from?: Point) => {
     if (next === corner && !from) return;
     const rect = barRef.current?.getBoundingClientRect();
@@ -87,16 +93,16 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
 
   const positionFor = (at: Corner): Point => ({
     x: at === "bottom-left"
-      ? Math.min(Math.max(EDGE, size.sidebarRight + (sidebarShown ? EDGE : 0)), Math.max(EDGE, size.viewportWidth - size.width - EDGE))
-      : Math.max(EDGE, size.viewportWidth - size.width - EDGE),
+      ? Math.min(Math.max(EDGE, size.sidebarRight + (sidebarShown ? EDGE : 0)), Math.max(EDGE, size.viewportWidth - arenaRight - size.width - EDGE))
+      : Math.max(EDGE, size.viewportWidth - arenaRight - size.width - EDGE),
     y: at === "top-right" ? EDGE : Math.max(EDGE, size.viewportHeight - HEIGHT - EDGE),
   });
   const anchorStyle = (at: Corner): CSSProperties => ({
-    ...(at === "bottom-left" ? { left: positionFor(at).x } : { right: EDGE }),
+    ...(at === "bottom-left" ? { left: positionFor(at).x } : { right: arenaRight + EDGE }),
     ...(at === "top-right" ? { top: EDGE } : { bottom: EDGE }),
   });
   const clampPosition = (x: number, y: number): Point => ({
-    x: Math.max(EDGE, Math.min(size.viewportWidth - size.width - EDGE, x)),
+    x: Math.max(EDGE, Math.min(size.viewportWidth - arenaRight - size.width - EDGE, x)),
     y: Math.max(EDGE, Math.min(size.viewportHeight - HEIGHT - EDGE, y)),
   });
   const nearestCorner = (point: Point): Corner => [...CORNERS].sort((a, b) => {
