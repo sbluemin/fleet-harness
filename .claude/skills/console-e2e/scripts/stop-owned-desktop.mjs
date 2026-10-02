@@ -51,7 +51,7 @@ function ps() {
   return execFileSync('ps', ['-eo', 'pid,ppid,command'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 }
 
-function mainCheckoutOf(worktree) {
+export function mainCheckoutOf(worktree) {
   // The first porcelain entry is the main checkout.
   const out = execFileSync('git', ['-C', worktree, 'worktree', 'list', '--porcelain'], { encoding: 'utf8' });
   const first = /^worktree (.+)$/m.exec(out);
