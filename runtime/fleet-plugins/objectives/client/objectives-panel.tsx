@@ -482,6 +482,16 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   const openers = useRef(new Map<string, MutableRefObject<(() => void) | null>>());
   const opener = (id: string) => { let ref = openers.current.get(id); if (!ref) { ref = { current: null }; openers.current.set(id, ref); } return ref; };
   const cancelNext = (member: ObjectiveMember) => void call("/member/next-cancel", { objectiveId: objective.id, memberId: member.id });
+  // 휴면 중 예약한 구성원이 깨어 있는 것을 보면 서버가 그 예약을 거두게 한다 — 다시 휴면해도 옛 예약이 되살아나지 않는다(예약마다 한 번).
+  const settled = useRef(new Set<string>());
+  const wokenKeys = objective.members.filter((member) => member.next && !member.next.failed && member.next.reservedWhile === "dormant" && MEMBER_LIVE.has(member.sessionName !== null ? operationState(member.id) : "closed")).map((member) => `${member.id}:${member.next!.model}:${member.next!.effort ?? ""}`);
+  useEffect(() => {
+    for (const key of wokenKeys) {
+      if (settled.current.has(key)) continue;
+      settled.current.add(key);
+      void request("/member/next-settle", { objectiveId: objective.id, memberId: key.slice(0, key.indexOf(":")) }).catch(() => settled.current.delete(key));
+    }
+  }, [objective.id, wokenKeys.join("|")]);
   // 안내는 구성원마다 따로 사라진다 — 한 타이머를 공유하면 앞서 뜬 구성원의 안내가 남는다.
   const noteTimers = useRef(new Map<string, number>());
   const dropNote = (id: string) => {

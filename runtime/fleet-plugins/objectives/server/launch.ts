@@ -66,6 +66,8 @@ export interface LaunchService {
   routingPreview(objectiveId: string, options?: { readonly rejudge?: boolean }): Promise<RoutingPreview>;
   /** 「다음 재개부터」 예약을 거둔다 — 세션 좌표를 실행값으로 되돌리고 예약 전 선택으로 돌아간다. 실패 표시도 같은 길로 닫는다. */
   memberNextCancel(objectiveId: string, memberId: string): Promise<Objective>;
+  /** 휴면 중 예약한 구성원이 지금 깨어 있으면 예약을 적용으로 거둔다 — 판정은 서버의 관측으로 다시 한다. */
+  memberNextSettle(objectiveId: string, memberId: string): Objective;
   requestPlan(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly operationId: string }>;
   missionPatched(objectiveId: string, missionId: string, patch: MissionPatchInput): Objective;
   /** 사람이 더한 임무(`by: "human"`)는 선행을 함께 주지 않았다면 미분류로 들어간다 — 지휘관의 추가는 지휘관이 이미 자리를 안다. */
@@ -139,6 +141,8 @@ export interface LaunchOptions {
 }
 
 const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.language === "ko" ? "ko" : "en");
+/** 호스트가 모델·강도를 받지 않은 기동 거절 — 이때만 라우팅 구성원을 지휘관 프리셋으로 다시 띄운다. */
+const MODEL_REFUSALS = new Set(["gateway_model_not_enabled", "invalid_effort", "invalid_model"]);
 /** 라우팅 판단 한 번을 기다리는 상한 — Gateway 의 model 모드 판단(30초)보다 넉넉하다. */
 const ROUTING_TIMEOUT_MS = 45_000;
 /** Gateway 가 `because` 꼬리(`· fallback: <사유>`)로 주는 폴백 사유 → 화면이 번역할 코드. 모르는 사유는 원문만 남긴다. */
@@ -560,13 +564,22 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       catch (error) {
         if (error instanceof ObjectiveStoreError) throw error;
         const code = failureCode(error);
-        // 라우팅이 고른 모델을 호스트가 거절했다(그새 노출이 꺼짐 등) — 그 구성원만 지휘관 프리셋으로 다시 띄우고 폴백으로 남긴다.
-        if (decision?.via !== "route") { members.push({ id: member.id, role: member.role, session, operationId, state: "failed", error: code }); continue; }
-        try { launchedId = await spawn(commanderPreset); provenance = { via: "fallback", reason: "launch_rejected", detail: code }; }
-        catch (retry) {
-          if (retry instanceof ObjectiveStoreError) throw retry;
-          members.push({ id: member.id, role: member.role, session, operationId, state: "failed", error: failureCode(retry) });
+        // 시한(request_timeout)은 거절이 아니다 — 호스트는 기동을 이어 가므로, 그새 자식이 섰으면 고른 모델로 뜬 것이다.
+        if (ctx.host.operations.get(member.id)) launchedId = member.id;
+        else if (decision?.via !== "route" || !MODEL_REFUSALS.has(code)) {
+          // 아직 서지 않았다 — 이 구성원만 실패로 알린다. 늦게 서면 다음 muster 가 그 Operation 을 그대로 쓰므로 근거는 미리 남긴다.
+          if (code === "request_timeout" && provenance) store.memberLaunchState(objectiveId, member.id, { routed: provenance });
+          members.push({ id: member.id, role: member.role, session, operationId, state: "failed", error: code });
           continue;
+        }
+        // 라우팅이 고른 모델을 호스트가 거절했다(그새 노출이 꺼짐 등) — 그 구성원만 지휘관 프리셋으로 다시 띄우고 폴백으로 남긴다.
+        else {
+          try { launchedId = await spawn(commanderPreset); provenance = { via: "fallback", reason: "launch_rejected", detail: code }; }
+          catch (retry) {
+            if (retry instanceof ObjectiveStoreError) throw retry;
+            members.push({ id: member.id, role: member.role, session, operationId, state: "failed", error: failureCode(retry) });
+            continue;
+          }
         }
       }
       rememberLanguage(launchedId, ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en");
@@ -835,6 +848,11 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       previewTasks.set(objectiveId, task);
       void task.finally(() => { if (previewTasks.get(objectiveId) === task) previewTasks.delete(objectiveId); }).catch(() => undefined);
       return task;
+    },
+
+    memberNextSettle(objectiveId, memberId) {
+      pendingNext(objectiveId, memberId);
+      return objective(objectiveId);
     },
 
     memberNextCancel: (objectiveId, memberId) => orderedOperationRequest(objectiveId, async () => {

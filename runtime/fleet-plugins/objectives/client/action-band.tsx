@@ -668,7 +668,9 @@ export function ActionBand(props: ActionBandProps) {
       if (props.memberLaunched(member)) return member.next && !member.next.failed
         ? row(t("objectives.routing.fixedReserved"), words(member.next.model, member.next.effort), undefined, true)
         : row(t("objectives.routing.fixedResume"), words(member.model, member.effort), undefined, true);
-      const resultWords = result ? `${launchedWords(rows, result.model, result.effort, labels).title}${result.via === "fallback" ? ` · ${t("objectives.members.fallback")}` : ""}` : t("objectives.routing.atLaunch");
+      // 폴백은 띄우는 순간의 지휘관 프리셋으로 뜬다 — 시트를 연 사이 프리셋을 바꿔도 보이는 모델이 실제 기동과 같게 지금 값을 보인다.
+      const shownModel = result?.via === "fallback" ? objective.commander : result;
+      const resultWords = result ? `${launchedWords(rows, shownModel?.model, shownModel?.effort, labels).title}${result.via === "fallback" ? ` · ${t("objectives.members.fallback")}` : ""}` : t("objectives.routing.atLaunch");
       const useResult = { id: "route", label: t("objectives.routing.useResult"), hint: resultWords };
       const onModel = (next: { model?: string; effort?: string }) => { if (next.model) pickInSheet(member, { mode: "model", model: next.model, ...(next.effort ? { effort: next.effort } : {}) }); };
       if (picked && member.launch.mode === "model") {
@@ -677,7 +679,7 @@ export function ActionBand(props: ActionBandProps) {
       }
       if (target) {
         const trigger = judging && !result ? <span className="objectives-routing-judging"><Spinner />{t("objectives.routing.judgingRow")}</span>
-          : result ? <>{words(result.model, result.effort)}{result.via === "fallback" ? <span className="objectives-member-via is-fallback">{t("objectives.members.fallback")}</span> : null}</>
+          : result ? <>{words(shownModel?.model, shownModel?.effort)}{result.via === "fallback" ? <span className="objectives-member-via is-fallback">{t("objectives.members.fallback")}</span> : null}</>
           : <span className="objectives-launch-model">{t("objectives.routing.atLaunch")}</span>;
         const why = !result || judging ? undefined : result.via === "route" ? (result.because ? { text: result.because } : undefined) : { text: t("objectives.routing.fallbackWhy", { reason: routingReason(t, result.reason) }), warn: true };
         return row(t("objectives.routing.viaRoute"), <LaunchControl t={t} model={undefined} effort={undefined} locked={settling || sending} startAtList triggerLabel={t("objectives.routing.rowAria", { role: member.role })} triggerText={trigger}
