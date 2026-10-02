@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OnboardingTour, OnboardingTourStep } from "@fleet-console/sdk/onboarding";
-import { ONBOARDING_BOUNDARY_ATTRIBUTE, ONBOARDING_BOUNDARY_SELECTOR, ONBOARDING_TOUR_LAYER_ATTRIBUTE } from "@fleet-console/sdk/onboarding/anchors";
+import { ONBOARDING_BOUNDARY_ATTRIBUTE, ONBOARDING_BOUNDARY_SELECTOR, ONBOARDING_TOUR_LAYER_ATTRIBUTE, ONBOARDING_WORK_SURFACE_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { onboardingT } from "./i18n.js";
@@ -101,12 +101,23 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
         : availableSteps(tour.walkthrough, document);
       if (steps.length === 0) return null;
       // 재생 중에도 발동과 같은 기준으로 다시 잰다 — 안내가 걸린 표면 위로 다른 모달이 열리면 물러난다.
-      if (isBlockedByModal(document, resolveAnchor(steps[0]!, document))) return null;
+      const anchor = resolveAnchor(steps[0]!, document);
+      if (isBlockedByModal(document, anchor)) return null;
+      if (lockedTour.phase === "spotlight" && anchor && isBlockedByWorkSurface(document, anchor)) return null;
       return { tour, phase: lockedTour.phase, steps } satisfies TourPresentation;
     }
     if (blocked()) return null;
     return resolveNextTour(tours, seen, document, isCompletedTourScreenVisible(completedTourIdRef.current, tours, document));
   }, [blocked, domRevision, lockedTour, seen, settings.state, tours, suspended]);
+
+  // 작업 표면에 물러난 스포트라이트는 잠금을 놓는다. 쥐고 있으면 사용자가 연 그 표면 안의 워크스루가 시작하지 못한다.
+  // 시청 기록은 그대로라 표면이 닫히면 다음 판정에서 다시 선다.
+  useEffect(() => {
+    if (lockedTour?.phase !== "spotlight") return;
+    const spotlight = tours.find((entry) => entry.id === lockedTour.tourId)?.spotlight;
+    const anchor = spotlight ? resolveAnchor(spotlight, document) : null;
+    if (anchor && isBlockedByWorkSurface(document, anchor)) setLockedTour(null);
+  }, [domRevision, lockedTour, tours]);
 
   useEffect(() => {
     if (!resolved || (lockedTour?.tourId === resolved.tour.id && lockedTour.phase === resolved.phase)) return;
@@ -234,7 +245,7 @@ function resolveNextTour(
   for (const tour of tours) {
     if (!tour.spotlight || seen.includes(tourSeenKey(tour.id, "spotlight"))) continue;
     const anchor = resolveAnchor(tour.spotlight, root);
-    if (anchor !== null && !isBlockedByModal(root, anchor)) return { tour, phase: "spotlight", steps: [tour.spotlight] };
+    if (anchor !== null && !isBlockedByModal(root, anchor) && !isBlockedByWorkSurface(root, anchor)) return { tour, phase: "spotlight", steps: [tour.spotlight] };
   }
   return null;
 }
@@ -263,11 +274,21 @@ function resolveAnchor(step: OnboardingTourStep, root: ParentNode): HTMLElement 
 }
 
 export function visibleModals(root: ParentNode): readonly HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>('[aria-modal="true"]')].filter((element) => {
+  return visibleElements(root, '[aria-modal="true"]');
+}
+
+function visibleElements(root: ParentNode, selector: string): readonly HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(selector)].filter((element) => {
     if (element.hidden || element.getAttribute("aria-hidden") === "true") return false;
     const style = getComputedStyle(element);
     return style.display !== "none" && style.visibility !== "hidden";
   });
+}
+
+// 스포트라이트는 사용자가 열어 둔 작업 표면(레일 패널 등) 바깥을 가리키는 동안 물러난다. 칩 아래에 매달린 카드가 그
+// 표면의 컨트롤을 덮기 때문이다. 시청 기록은 남기지 않으므로 표면이 닫히면 다시 선다.
+function isBlockedByWorkSurface(root: ParentNode, anchor: Element): boolean {
+  return visibleElements(root, ONBOARDING_WORK_SURFACE_SELECTOR).some((surface) => !surface.contains(anchor));
 }
 
 // 열려 있는 모달은 안내를 막는다. 다만 그 모달 안의 컨트롤을 짚는 안내까지 막지는 않는다 — 사용자가 직접 연 표면에서

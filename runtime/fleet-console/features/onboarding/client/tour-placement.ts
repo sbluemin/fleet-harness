@@ -16,7 +16,8 @@ type BoundaryRect = Pick<DOMRect, "left" | "right" | "top" | "bottom" | "width" 
  *
  * 카드는 그 아래의 클릭을 받아 버린다. 그래서 위아래에 자리가 없는 키 큰 앵커에서 카드를 화면 위쪽에 눌러 붙이지
  * 않는다 — 그 자리는 앵커의 머리, 곧 안내가 가리키는 컨트롤이라 첫 클릭이 카드의 버튼에 떨어진다. 어디에도 자리가
- * 없을 때만 화면 아래에 서서 앵커의 머리를 비워 둔다.
+ * 없을 때만 앵커의 보이는 아랫단 안쪽에 서서 머리를 비워 둔다. 화면 맨 아래까지 내려가면 앵커 밑에 붙은 명령 막대를
+ * 덮는다.
  */
 export function resolveTourCardPosition(options: {
   readonly anchor: Rect;
@@ -57,5 +58,5 @@ export function resolveTourCardPosition(options: {
   const besideTop = clampTop(anchor.top - 8);
   if (anchor.right + gap + cardWidth <= viewportWidth - margin) return { left: anchor.right + gap, top: besideTop, centered: false };
   if (anchor.left - gap - cardWidth >= margin) return { left: anchor.left - gap - cardWidth, top: besideTop, centered: false };
-  return { left: centeredLeft, top: clampTop(viewportHeight), centered: false };
+  return { left: centeredLeft, top: clampTop(Math.min(anchor.bottom, viewportHeight) - gap - cardHeight), centered: false };
 }
