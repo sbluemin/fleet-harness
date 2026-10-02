@@ -93,6 +93,7 @@ let state: ConsoleState = {
   activeTheaterId: null,
   activeOperationId: null,
   activeOperationAcknowledged: true,
+  selectedOperationId: null,
   operationRuntime: {},
   // 기본은 ready 다. 런타임 축을 보고하는 플러그인이 스스로 pending 을 선언하고 시작하며,
   // 그런 플러그인이 하나도 없는 Console 은 기다릴 권위가 없으므로 처음부터 신뢰 가능한 상태다 —
@@ -155,8 +156,21 @@ export function subscribe(listener: Listener): () => void {
 }
 
 export function setState(patch: Partial<ConsoleState>): void {
-  state = { ...state, ...partitionOperationsPatch(patch) };
+  state = withLiveSelection(state, { ...state, ...partitionOperationsPatch(patch) });
   emit();
+}
+
+/**
+ * 선택은 살아 있는 Operation 을 가리킬 때만 남는다 — 제거·보관이 어느 경로로 오든 여기 한 곳에서 거둔다. 사라진
+ * Operation 을 가리킨 채 남으면 목표가 없는 문맥을 따라간다. 다른 Theater 로 옮겨 가면 그 Theater 의 것이 아닌 선택도 거둔다.
+ */
+function withLiveSelection(previous: ConsoleState, next: ConsoleState): ConsoleState {
+  const selectedId = next.selectedOperationId;
+  if (selectedId === null) return next;
+  const selected = next.operations.find((operation) => operation.id === selectedId);
+  const leftTheater = next.activeTheaterId !== previous.activeTheaterId && selected?.theaterId !== next.activeTheaterId;
+  if (selected && !leftTheater && selectedId !== next.activeOperationId) return next;
+  return { ...next, selectedOperationId: null };
 }
 
 /**
@@ -635,8 +649,20 @@ export function setActiveOperation(
   // 교차 Theater 전용 경로(focusOperation)만이 아니라 이 공용 활성화에서도 기록해야 한다.
   if (operationId !== null) noteOperationFocused(operationId);
   const body = nested ? withNestedBody(nested.parentOperationId!, nested.id) : {};
-  if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged && !("nestedBodySelection" in body)) return;
-  setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged, ...body });
+  // 여는 것은 고르는 것을 덮는다 — 어느 경로로든 Operation 이 활성이 되면 사이드바의 선택은 끝난다.
+  const selection = operationId !== null && state.selectedOperationId !== null ? { selectedOperationId: null } : {};
+  if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged && !("nestedBodySelection" in body) && !("selectedOperationId" in selection)) return;
+  setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged, ...body, ...selection });
+}
+
+/**
+ * 열지 않고 고른다 — 「더블클릭으로 열기」를 켠 사이드바의 한 번 클릭. 활성·최소화·카메라·미확인 도착 표식은 건드리지 않는다
+ * (setActiveOperation 은 도착을 확인 처리하고, 캔버스는 최소화된 활성을 곧바로 비운다). 이미 활성인 것을 고르면 선택은 비어 있다.
+ */
+export function selectOperation(operationId: string | null): void {
+  const next = operationId !== null && operationId === state.activeOperationId ? null : operationId;
+  if (state.selectedOperationId === next) return;
+  setState({ selectedOperationId: next });
 }
 
 /**
@@ -797,6 +823,7 @@ export function focusOperation(requestedOperationId: string, options?: { readonl
     pendingOperationFocus: operationId,
     pendingOperationFocusSnap: options?.snapFull === true,
     operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
+    selectedOperationId: null,
     ...body,
   });
 }

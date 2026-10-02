@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useRef, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { OperationClusterRow } from "@fleet-console/sdk/plugin";
@@ -143,11 +143,16 @@ interface SideBarClusterRowProps {
   readonly accentValue?: string | null;
   /** 칩과 같은 포커스 경로 — 뿌리가 선 줄을 누르면 그 Operation 패널로 간다(최소화 복원·휴면·Theater 전환 포함). */
   readonly onFocus: (operationId: string) => void;
+  /**
+   * 「더블클릭으로 열기」 — 있으면 뿌리가 선 줄의 한 번 클릭과 Space 는 열지 않고 고르기만 하고, 더블클릭과 Enter 가 연다.
+   * 터치 탭은 늘 연다. 뿌리 없는 줄(시작 전 목표)은 열 패널이 없어 그대로 플러그인 표면을 연다.
+   */
+  readonly onSelect?: (operationId: string) => void;
   readonly onPointerDragStart?: (event: ReactPointerEvent<HTMLLIElement>, item: SideBarRowItem) => void;
   readonly onContextMenu?: (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => void;
 }
 
-export function SideBarClusterRow({ item, groupDot = null, dragging = false, dragOffsetY = 0, dropTarget = false, accentValue = null, onFocus, onPointerDragStart, onContextMenu }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, groupDot = null, dragging = false, dragOffsetY = 0, dropTarget = false, accentValue = null, onFocus, onSelect, onPointerDragStart, onContextMenu }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = usePluginRegistry();
@@ -163,6 +168,9 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   // 하이라이트는 칩과 같은 조건이다 — 뿌리가 선 줄은 그 묶음의 Operation 이 캔버스에서 활성일 때만 선다. 목표 화면의 선택만으로는
   // 서지 않는다(패널과 목표 화면이 서로 다른 줄을 가리키는 이중 하이라이트가 없게). 활성이 될 수 없는 뿌리 없는 줄만 화면의 선택을 따른다.
   const active = anchor ? anchor.active || item.fold.some((entry) => entry.active) : row.selected === true;
+  // 사이드바에서 고른(열지 않은) 뿌리 — 열림(면+테두리)과 다른 문법(점선 테두리)이라 한 줄 하이라이트 규칙과 겹치지 않는다.
+  const selected = !active && anchor?.selected === true;
+  const selectMode = onSelect !== undefined && anchor !== null;
   const minimized = anchor?.minimized === true;
   const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" }[] = [];
   if (row.decisionRequestedAt !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions ?? 1 }), tone: "req" });
@@ -171,6 +179,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   if (row.followup) meta.push({ key: "from", text: row.followup.originTitle ? t("sidebar.row.followupOf", { title: row.followup.originTitle }) : t("sidebar.row.followup"), tone: "from" });
   // 끌어 놓은 줄은 포인터를 따라왔으니 놓는 순간의 클릭도 이 줄에 떨어진다 — 칩처럼 그 클릭은 여는 동작이 아니다.
   const suppressClickRef = useRef(false);
+  const pointerTypeRef = useRef("mouse");
   // 뿌리가 선 줄은 칩과 똑같이 그 패널로 간다. 플러그인 표면은 열지 않고, 이미 열려 있으면 선택 알림으로 따라오게 한다.
   // 열 패널이 없는 줄(Operation 이 아직 없는 시작 전 목표)만 플러그인이 자기 표면을 연다.
   const open = () => {
@@ -186,6 +195,35 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
     onFocus(operationId);
     for (const provider of registry.providers) provider.onMapOperationSelected?.(operationId);
   };
+  const selectAnchor = () => {
+    if (onSelect && anchor) onSelect(anchor.operation.id);
+  };
+  // 고르기 모드의 클릭 — 키보드·보조기술이 만든 클릭(detail 0)과 터치 탭은 연다. 더블클릭의 둘째 클릭은 dblclick 이 연다.
+  const activate = (event: MouseEvent<HTMLButtonElement>) => {
+    if (!selectMode || event.detail === 0 || pointerTypeRef.current === "touch") {
+      open();
+      return;
+    }
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    if (event.detail === 1) selectAnchor();
+  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!selectMode) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      open();
+      return;
+    }
+    if (event.key === " ") {
+      // 캔버스의 Space-pan 과 버튼의 기본 활성화(=열기)를 모두 막고 고르기만 한다.
+      event.preventDefault();
+      event.stopPropagation();
+      selectAnchor();
+    }
+  };
   const style = dragging || accentValue
     ? ({ ...(accentValue ? { "--user-accent": accentValue } : {}), ...(dragging ? { transform: `translateY(${dragOffsetY}px)` } : {}) } as CSSProperties)
     : undefined;
@@ -194,6 +232,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       className={[
         "side-bar-cluster-row",
         active ? "side-bar-cluster-row--active" : "",
+        selected ? "side-bar-cluster-row--selected" : "",
         minimized ? "side-bar-cluster-row--minimized" : "",
         dragging ? "is-dragging" : "",
         dropTarget ? "is-drop-target" : "",
@@ -201,7 +240,10 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       data-cluster-row-id={layout.cluster.id}
       {...(anchor ? { "data-side-bar-chip-id": anchor.operation.id } : {})}
       style={style}
-      onPointerDown={onPointerDragStart ? (event) => onPointerDragStart(event, item) : undefined}
+      onPointerDown={(event) => {
+        pointerTypeRef.current = event.pointerType;
+        onPointerDragStart?.(event, item);
+      }}
       onPointerUp={() => {
         if (dragging) suppressClickRef.current = true;
       }}
@@ -220,11 +262,16 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         type="button"
         className="side-bar-cluster-row-main"
         aria-current={active ? "true" : undefined}
-        aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), groupDot ? groupDot.name : ""].filter(Boolean).join(", ")}
-        onClick={open}
+        aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), groupDot ? groupDot.name : "", selected ? t("sidebar.row.selected") : ""].filter(Boolean).join(", ")}
+        onClick={activate}
+        onDoubleClick={selectMode ? () => { if (pointerTypeRef.current !== "touch" && !dragging) open(); } : undefined}
+        onKeyDown={selectMode ? handleKeyDown : undefined}
+        onKeyUp={selectMode ? (event) => { if (event.key === " ") event.preventDefault(); } : undefined}
       >
         <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>
-        {meta.length > 0 ? (
+        {selected ? (
+          <span className="side-bar-cluster-row-meta side-bar-cluster-row-open-hint" aria-hidden="true">{t("sidebar.chip.openHint")}</span>
+        ) : meta.length > 0 ? (
           <span className="side-bar-cluster-row-meta" aria-hidden="true">
             {meta.map((part) => (
               <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{part.text}</span>

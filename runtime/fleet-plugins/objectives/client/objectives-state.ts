@@ -365,7 +365,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 등록된 나머지 Theater 와 최상위 에이전트 Operation 이 속한 Theater 를 읽는다.
   // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadTheater 는 멱등이다.
   let lastTheater = ctx.consoleState.getActiveTheaterId();
-  let lastActiveOperation = ctx.consoleState.getActiveOperationId();
+  let lastContextOperation = contextOperationId(ctx);
   let listedTheaters = new Set(ctx.consoleState.getTheaters().map((theater) => theater.id));
   let lastConnection = ctx.consoleState.getConnection?.() ?? "live";
   operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
@@ -386,12 +386,12 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     const theaterIds = new Set(ctx.consoleState.getTheaters().map((theater) => theater.id));
     for (const [theaterId, retry] of [...loadRetries]) if (retry.permanent && theaterIds.has(theaterId) && !listedTheaters.has(theaterId)) unsettle(theaterId);
     listedTheaters = theaterIds;
-    // 가장 마지막 선택이 이긴다 — 어느 경로로든 Operation 이 활성이 되면 그 전에 줄·팔레트가 남긴 reveal 은 버리고,
-    // 표면이 열려 있으면 활성 Operation 의 목표로 옮긴다. 닫혀 있으면 다음에 열릴 때 따라간다.
-    const activeOperation = ctx.consoleState.getActiveOperationId();
-    if (activeOperation !== lastActiveOperation) {
-      lastActiveOperation = activeOperation;
-      if (activeOperation) {
+    // 가장 마지막 선택이 이긴다 — 어느 경로로든 Operation 이 활성이 되거나 사이드바에서 열지 않고 골라지면 그 전에 줄·팔레트가
+    // 남긴 reveal 은 버리고, 표면이 열려 있으면 그 Operation 의 목표로 옮긴다. 닫혀 있으면 다음에 열릴 때 따라간다.
+    const contextOperation = contextOperationId(ctx);
+    if (contextOperation !== lastContextOperation) {
+      lastContextOperation = contextOperation;
+      if (contextOperation) {
         reveal = null;
         followActiveOperation();
       }
@@ -560,6 +560,11 @@ export function activeOperationId(): string | null {
   return installed?.consoleState.getActiveOperationId() ?? null;
 }
 
+/** 목표가 따라가는 Operation — 사이드바에서 열지 않고 고른 것이 있으면 그것, 없으면 캔버스의 활성 Operation. */
+function contextOperationId(host: PluginInstallContext | null = installed): string | null {
+  return host?.consoleState.getSelectedOperationId?.() ?? host?.consoleState.getActiveOperationId() ?? null;
+}
+
 /** 팔레트·캡션에서 "이 항목으로" — 표면이 마운트되어 있으면 즉시, 아니면 열릴 때 집는다. */
 export function revealObjective(target: { objectiveId: string; missionId?: string; followups?: boolean; focusTitle?: boolean }): void {
   reveal = { ...target, at: Date.now() };
@@ -705,13 +710,13 @@ function selectOperationObjective(operationId: string, shown: () => boolean): vo
 }
 
 /**
- * 표면이 열릴 때 — 사람이 줄·팔레트로 가리킨 목표(reveal)가 없으면 캔버스의 활성 Operation 을 따라간다. 사이드바가 그 줄을
- * 활성으로 보이는 동안 표면이 빈 채 서지 않게 한다. 선택 규칙(편집 중 보류, 연결 목표가 없으면 보던 자리 유지)은 위와 같고,
- * 활성 Operation 이 없으면 보던 자리 그대로다.
+ * 표면이 열릴 때 — 사람이 줄·팔레트로 가리킨 목표(reveal)가 없으면 사이드바에서 고른 Operation, 없으면 캔버스의 활성 Operation 을
+ * 따라간다. 사이드바가 그 줄을 활성·선택으로 보이는 동안 표면이 빈 채 서지 않게 한다. 선택 규칙(편집 중 보류, 연결 목표가 없으면
+ * 보던 자리 유지)은 위와 같고, 따라갈 Operation 이 없으면 보던 자리 그대로다.
  */
 export function followActiveOperation(): void {
   if (reveal) return;
-  const operationId = installed?.consoleState.getActiveOperationId() ?? null;
+  const operationId = contextOperationId();
   // 레일이든 확장 표면이든 — 열린 자리가 활성 Operation 을 보인다.
   if (operationId) selectOperationObjective(operationId, isObjectiveSurfaceOpen);
 }

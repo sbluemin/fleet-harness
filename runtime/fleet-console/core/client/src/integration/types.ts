@@ -188,6 +188,8 @@ export interface GlobalSettingsState {
   readonly theme: ThemeId;
   /** 포커스하지 않은 패널 본문이 물러나는 세기(백분율, 0~70). 0은 물러나지 않음. */
   readonly unfocusedPanelFade: number;
+  /** 사이드바에서 Operation 을 더블클릭해야 여는지 — 켜면 한 번 클릭은 선택만 한다. 기본은 꺼짐. */
+  readonly sideBarDoubleClickOpen: boolean;
   readonly uiFont: UiFontSettings;
   readonly language: ConsoleLanguagePreference;
   /** 실험 기능과 모델 좌석 — 구서버 응답에는 없을 수 있고, 그때는 전부 꺼짐으로 정규화한다. */
@@ -265,6 +267,11 @@ export interface ConsoleState {
   readonly activeTheaterId: string | null;
   readonly activeOperationId: string | null;
   readonly activeOperationAcknowledged: boolean;
+  /**
+   * 사이드바에서 열지 않고 고르기만 한 Operation(「더블클릭으로 열기」를 켰을 때의 한 번 클릭). 무대·카메라·활성은 그대로이고
+   * 목표 같은 문맥만 이것을 따른다. 활성과 같은 값이 되면 비우며, 여는 순간(어느 경로든 활성을 세우는 순간) 사라진다.
+   */
+  readonly selectedOperationId: string | null;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly operationRuntimeHydration: OperationRuntimeHydration;
   readonly operationRuntimeError: string | null;

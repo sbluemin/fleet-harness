@@ -6228,7 +6228,8 @@ body[data-companion-resizing="true"] .canvas-operation {
 /* 상태별 보기 토글 — 접기 컨트롤과 같은 24px 유령 버튼. 눌림은 바로 왼쪽 캔버스 모드 세그먼트
    (layout.css .command-band-mode-seg)와 같은 말로 한다 — 옅은 워시 · 기본 잉크 · 아래 12px brass 다텀.
    나란히 선 두 스위치가 "지금 이것"을 다른 어휘로 말하지 않게. 사이드바 머리와 Zen 작업 표시줄이 같은 부품이다. */
-.side-bar-status-view-toggle {
+.side-bar-status-view-toggle,
+.side-bar-view-menu-button {
   position: relative;
   display: grid;
   place-items: center;
@@ -6244,7 +6245,8 @@ body[data-companion-resizing="true"] .canvas-operation {
   transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
 }
 
-.side-bar-status-view-toggle svg {
+.side-bar-status-view-toggle svg,
+.side-bar-view-menu-button svg {
   width: 16px;
   height: 16px;
 }
@@ -6274,9 +6276,69 @@ body[data-companion-resizing="true"] .canvas-operation {
   content: "";
 }
 
-.side-bar-status-view-toggle:focus-visible {
+.side-bar-status-view-toggle:focus-visible,
+.side-bar-view-menu-button:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
+}
+
+/* 사이드바 보기 메뉴(「⋯」) — 상태별 보기와 같은 24px 유령 버튼. 메뉴가 열려 있으면 눌림과 같은 워시,
+   켜 둔 선호(더블클릭으로 열기)가 있으면 같은 12px brass 다텀이 버튼 아래에 남는다 — 메뉴를 닫아도 켜짐이 보인다. */
+.side-bar-view-menu-button:hover,
+.side-bar-view-menu-button:focus-visible {
+  border-color: transparent;
+  background: var(--control-wash-hover);
+  color: var(--text-secondary);
+}
+
+.side-bar-view-menu-button[aria-expanded="true"] {
+  border-color: transparent;
+  background: var(--control-wash);
+  color: var(--text-primary);
+}
+
+.side-bar-view-menu-button[data-on="true"]::after {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 12px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  transform: translateX(-50%);
+  content: "";
+}
+
+/* 메뉴 항목은 두 줄이다 — 이름과, 켜면 한 번 클릭이 무엇이 되는지. 체크는 항목 앞에 선다. */
+.side-bar-view-menu {
+  max-width: 280px;
+}
+
+.group-context-menu-item.side-bar-view-menu-item {
+  align-items: flex-start;
+  height: auto;
+  padding: 7px 10px;
+}
+
+.side-bar-view-menu-item .group-context-menu-item__check {
+  margin-top: 3px;
+}
+
+.side-bar-view-menu-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.side-bar-view-menu-label {
+  color: inherit;
+}
+
+.side-bar-view-menu-hint {
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  line-height: 1.4;
+  white-space: normal;
 }
 
 .operations-side-bar-chips {
@@ -6789,6 +6851,25 @@ body[data-companion-resizing="true"] .canvas-operation {
 .side-bar-cluster-row--active .side-bar-cluster-row-title,
 .side-bar-chip--active .side-bar-chip-name {
   color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary));
+}
+
+/* selected(「더블클릭으로 열기」의 한 번 클릭): 같은 brass 위치 채널이되 면을 칠하지 않는다 — 열림은 면+테두리, 고름은
+   점선 테두리만이라 둘이 한 목록에 동시에 서도 무대에 선 것과 문맥만 옮긴 것이 갈린다. 이름은 1티어로 한 단 올린다.
+   여는 법은 위치 줄 자리의 힌트가 말한다(brass 잉크 — 위치에 대한 말이지 상태가 아니다). */
+.side-bar-cluster-row--selected,
+.side-bar-chip--selected {
+  border-style: dashed;
+  border-color: color-mix(in oklch, var(--brass) 60%, transparent);
+}
+
+.side-bar-cluster-row--selected .side-bar-cluster-row-title,
+.side-bar-chip--selected .side-bar-chip-name {
+  color: var(--text-primary);
+}
+
+.side-bar-chip--selected .side-bar-chip-context.side-bar-chip-open-hint,
+.side-bar-cluster-row--selected .side-bar-cluster-row-meta.side-bar-cluster-row-open-hint {
+  color: var(--brass-ink);
 }
 
 /* minimized: 이름은 판독 가능한 --ink-muted 티어로 유지하고 "치워둠" 신호는 아이콘 감쇠로만
@@ -7611,6 +7692,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   }
 
   .side-bar-status-view-toggle,
+  .side-bar-view-menu-button,
   .zen-taskbar-archive {
     transition: none;
   }
@@ -8508,6 +8590,14 @@ body[data-companion-resizing="true"] .canvas-operation {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* 단축키 힌트 — 사이드바 칩 메뉴의 「열기 ↵」「이름 바꾸기 F2」. 모노 3티어 잉크, 채널 색은 쓰지 않는다. */
+.group-context-menu-item__key {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
 }
 
 /* 검토 중은 aurora(상태 채널) 점 — 캡션의 진행 표시와 같은 말이다. */

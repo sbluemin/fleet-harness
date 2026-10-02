@@ -75,6 +75,11 @@ export interface ConsoleGeneralSettings {
    * 부재는 기본값이며, 상한은 곁을 훑는 일이 끊기지 않는 선에서 정한다.
    */
   readonly unfocusedPanelFade?: number;
+  /**
+   * 사이드바에서 Operation 을 더블클릭해야 여는지. 켜면 한 번 클릭은 선택만 하고 목표 같은 문맥만 옮긴다.
+   * 부재는 꺼짐(한 번 클릭으로 열기)이다 — 손에 익은 동작을 바꾸는 선호라 켜는 쪽이 사람의 선택이어야 한다.
+   */
+  readonly sideBarDoubleClickOpen?: boolean;
   readonly uiFont?: UiFontSettings;
   /**
    * 실험 기능과 모델 좌석. 부재는 전부 꺼짐이다 — 켜는 행위가 곧 동의이므로 기본값이 켜짐일 수 없다.
@@ -316,6 +321,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const uiFont = sanitizeUiFontSettings(value.uiFont);
   const liquidGlass = typeof value.liquidGlass === "boolean" ? value.liquidGlass : undefined;
   const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
+  const sideBarDoubleClickOpen = typeof value.sideBarDoubleClickOpen === "boolean" ? value.sideBarDoubleClickOpen : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   const shortcuts = sanitizeShortcutBindings(value.shortcuts);
   return {
@@ -327,6 +333,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(theme !== undefined ? { theme } : {}),
     ...(liquidGlass !== undefined ? { liquidGlass } : {}),
     ...(unfocusedPanelFade !== undefined ? { unfocusedPanelFade } : {}),
+    ...(sideBarDoubleClickOpen !== undefined ? { sideBarDoubleClickOpen } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
     ...(experiments !== undefined ? { experiments } : {}),
     ...(shortcuts !== undefined ? { shortcuts } : {}),
@@ -468,6 +475,7 @@ interface GlobalSettingsBody {
   readonly seenFeatureTours?: unknown;
   readonly theme?: unknown;
   readonly unfocusedPanelFade?: unknown;
+  readonly sideBarDoubleClickOpen?: unknown;
   readonly uiFont?: unknown;
   readonly experiments?: unknown;
   readonly shortcuts?: unknown;
@@ -573,6 +581,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_unfocused_panel_fade" });
     return;
   }
+  if (body.sideBarDoubleClickOpen !== undefined && typeof body.sideBarDoubleClickOpen !== "boolean") {
+    deps.writeJson(res, 400, { error: "invalid_side_bar_double_click_open" });
+    return;
+  }
   if (!isUiFontSettingsOrUndefined(body.uiFont)) {
     deps.writeJson(res, 400, { error: "invalid_ui_font" });
     return;
@@ -619,6 +631,7 @@ async function mutateGlobalSettings(
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
       ...(isUnfocusedPanelFade(body.unfocusedPanelFade) ? { unfocusedPanelFade: body.unfocusedPanelFade } : {}),
+      ...(typeof body.sideBarDoubleClickOpen === "boolean" ? { sideBarDoubleClickOpen: body.sideBarDoubleClickOpen } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
       ...(body.experiments !== undefined ? { experiments: resolveExperimentSettings(body.experiments) } : {}),
       ...(isShortcutBindingsInput(body.shortcuts) ? { shortcuts: body.shortcuts } : {}),
@@ -688,6 +701,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "instrument",
     unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
+    sideBarDoubleClickOpen: general.sideBarDoubleClickOpen ?? false,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
     experiments: general.experiments ?? DEFAULT_EXPERIMENT_SETTINGS,
     shortcuts: general.shortcuts ?? {},

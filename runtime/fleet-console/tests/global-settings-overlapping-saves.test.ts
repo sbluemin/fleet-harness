@@ -22,6 +22,7 @@ const BASE: GlobalSettingsState = {
   seenFeatureTours: [],
   theme: "instrument",
   unfocusedPanelFade: 50,
+  sideBarDoubleClickOpen: false,
   shortcuts: {},
   uiFont: { source: "builtin", id: "manrope", size: 14 },
   language: "auto",
