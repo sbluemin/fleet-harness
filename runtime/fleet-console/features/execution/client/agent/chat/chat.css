@@ -2254,10 +2254,11 @@
 }
 
 /* 좁은 덱: 이름에 폭을 조금 더 주고, 인자 힌트는 접는다. Console 표식은 아이콘만 남긴다 —
-   행선지는 고르기 전에 읽혀야 하는 사실이라 접지 않는다. */
+   행선지는 고르기 전에 읽혀야 하는 사실이라 접지 않는다. 에이전트 모델도 남긴다 — 별칭은 짧고,
+   전체 id처럼 긴 값은 메타 열 상한(30%)에서 말줄임해 설명 열을 다 먹지 않는다. */
 @container (max-width: 470px) {
-  .agent-chat-deck-list { grid-template-columns: 16px fit-content(50%) minmax(0, 1fr) auto; }
-  .agent-chat-deck-meta:not(.is-console) { display: none; }
+  .agent-chat-deck-list { grid-template-columns: 16px fit-content(50%) minmax(0, 1fr) fit-content(30%); }
+  .agent-chat-deck-meta:not(.is-console):not(.is-model) { display: none; }
   .agent-chat-deck-meta-label { display: none; }
 }
 

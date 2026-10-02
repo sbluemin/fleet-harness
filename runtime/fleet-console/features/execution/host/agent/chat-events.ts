@@ -833,6 +833,11 @@ export interface AgentChatCatalogEntry {
   /** 인자를 받는다는 표시. 빈 문자열이면 인자 없이 바로 실행되는 항목이다. */
   readonly argumentHint: string;
   /**
+   * `@` 에이전트가 고정으로 쓰는 모델. 벤더 값(별칭이든 전체 id든) 그대로이며, 세션 모델을
+   * 따르면 `null`이다. 명령·스킬 항목에는 싣지 않는다.
+   */
+  readonly model?: string | null;
+  /**
    * 이 항목이 **자식이 아니라 Console로** 가는 좌표. 없으면 평범한 통과 항목이다.
    *
    * 서버가 문구가 아니라 좌표를 싣는 이유는 `chat-command-policy.ts`에 적혀 있다.

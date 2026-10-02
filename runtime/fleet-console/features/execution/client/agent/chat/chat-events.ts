@@ -872,6 +872,8 @@ export interface AgentChatCatalogEntry {
   readonly description: string;
   /** 인자를 받는다는 표시. 비어 있으면 인자 없이 바로 실행되는 항목이다. */
   readonly argumentHint: string;
+  /** `@` 에이전트의 고정 모델. 세션 모델을 따르거나 명령·스킬 항목이면 `null`이다. */
+  readonly model: string | null;
   /** 자식이 아니라 Console이 받는 항목이다. 없으면 평범한 통과 항목. */
   readonly console?: ChatCommandConsoleTarget;
 }
@@ -898,6 +900,7 @@ function readCatalogEntries(value: unknown): readonly AgentChatCatalogEntry[] {
       name: entry.name,
       description: typeof entry.description === "string" ? entry.description : "",
       argumentHint: typeof entry.argumentHint === "string" ? entry.argumentHint : "",
+      model: typeof entry.model === "string" && entry.model.length > 0 ? entry.model : null,
       ...(target ? { console: target } : {}),
     });
   }
