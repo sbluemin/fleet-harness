@@ -126,7 +126,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
         setTip((current) => current?.target === item ? { ...current, text: tipTextOf(item) } : current);
       });
       targetObserver.observe(item, { attributes: true, attributeFilter: ["data-tip", STASHED_TITLE, "aria-label", "aria-expanded"] });
-      setTip({ target: item, text, placement: item.closest('.zen-bar:not([data-corner="top-right"])') !== null ? "above" : "below" });
+      setTip({ target: item, text, placement: item.closest(".zen-bar") !== null ? "above" : "below" });
       setVisible(true);
     };
     const request = (item: HTMLElement) => {

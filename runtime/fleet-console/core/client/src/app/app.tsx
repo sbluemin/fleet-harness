@@ -77,9 +77,8 @@ const ONBOARDING_PORTS = {
   railEntryHintAnchor: (element: HTMLElement) => {
     const island = element.closest<HTMLElement>(".zen-bar");
     if (!island) return null;
-    const rect = island.getBoundingClientRect();
-    const below = island.dataset.corner === "top-right";
-    return { below, edge: below ? rect.bottom : rect.top };
+    // 섬은 늘 아레나 아래 가운데에 선다 — 힌트는 섬 위에 선다.
+    return { below: false, edge: island.getBoundingClientRect().top };
   },
   railEntryHintDoor: (element: HTMLElement) => {
     const drawer = element.closest(".zen-bar .console-toolbar-drawer[inert]");

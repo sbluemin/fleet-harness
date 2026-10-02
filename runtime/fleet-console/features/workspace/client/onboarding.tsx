@@ -4,8 +4,8 @@ import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
 
 // 이 기능의 온보딩 문구 — 투어·웰컴의 내용은 기능이 소유하고, 엔진은 순서만 정한다.
 const messagesEn = {
-  "zenTaskbar.welcomeTitle": "Zen tools float in the corner",
-  "zenTaskbar.welcomeBody": "Zen gives the whole canvas to your work. Open the sidebar from the floating tools to switch Theaters or handle anything needing attention. Drag the emblem to move the tools to another corner.",
+  "zenTaskbar.welcomeTitle": "Zen tools float at the bottom of the map",
+  "zenTaskbar.welcomeBody": "Zen gives the whole canvas to your work. Open the sidebar from the floating tools to switch Theaters or handle anything needing attention.",
   "zenTaskbar.welcomeNext": "Try it from the Zen button in the top bar.",
   "canvasModes.step1Title": "Two ways to work the canvas",
   "canvasModes.step1Body": "Cruise keeps panels where you drop them. Align all (Alt+F) lines every panel up at once, and drops them back where they were when you toggle it off. War Room brings up one waiting panel at a time, across every Theater.",
@@ -26,8 +26,8 @@ const messagesEn = {
 } as const;
 
 const messagesKo: Record<keyof typeof messagesEn, string> = {
-  "zenTaskbar.welcomeTitle": "Zen 도구가 모서리에 떠 있습니다",
-  "zenTaskbar.welcomeBody": "Zen에서는 캔버스 전체를 작업에 씁니다. 부유 도구에서 사이드바를 열어 Theater를 오가고 「확인 필요」를 처리하세요. 엠블럼을 끌면 도구를 다른 모서리에 붙일 수 있습니다.",
+  "zenTaskbar.welcomeTitle": "Zen 도구가 맵 아래에 떠 있습니다",
+  "zenTaskbar.welcomeBody": "Zen에서는 캔버스 전체를 작업에 씁니다. 부유 도구에서 사이드바를 열어 Theater를 오가고 「확인 필요」를 처리하세요.",
   "zenTaskbar.welcomeNext": "상단 바의 Zen 버튼으로 켜 보세요.",
   "canvasModes.step1Title": "화면을 쓰는 두 가지 방식입니다",
   "canvasModes.step1Body": "Cruise는 패널을 놓은 자리에 그대로 둡니다. 모두 정렬(Alt+F)은 열린 패널을 한 번에 정렬했다가 끄면 원래 자리로 돌려놓습니다. War Room은 답을 기다리는 패널을 Theater 구분 없이 한 건씩 올립니다.",
@@ -129,7 +129,7 @@ export function ZenIslandWelcomeIllustration() {
       <rect x="207" y="43.5" width="48" height="5" rx="2.5" fill="var(--text-secondary)" opacity="0.6" />
       <rect x="198" y="68" width="108" height="5" rx="2.5" fill="var(--text-tertiary)" opacity="0.45" />
       <rect x="198" y="82" width="84" height="5" rx="2.5" fill="var(--text-tertiary)" opacity="0.4" />
-      {/* 모서리에 뜬 도구 섬 — 맵은 그 뒤로 이어진다. */}
+      {/* 맵 아래 가운데에 뜬 도구 섬 — 맵은 그 뒤로 이어진다. */}
       <rect x="172" y="134" width="168" height="24" rx="7" fill="var(--surface-chrome)" stroke="var(--surface-rim-strong)" />
       <g fill="none" stroke="var(--text-secondary)" strokeWidth="1.2" strokeLinecap="round">
         <rect x="180" y="140" width="11" height="11" rx="2" /><path d="M184 140v11" />

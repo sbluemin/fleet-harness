@@ -247,8 +247,6 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       if (isShortcutRecording()) return;
       if (isBlockingDialogOpen()) return;
       const active = document.activeElement;
-      // 부유 섬 손잡이에 포커스가 있으면 ⌥방향키는 패널이 아니라 섬의 모서리를 옮긴다.
-      if (active instanceof HTMLElement && active.closest("[data-zen-island-handle]") && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.code.startsWith("Arrow")) return;
       const editing = active instanceof HTMLElement
         && active.matches("input, textarea, [contenteditable='true']")
         && !active.closest(".xterm");

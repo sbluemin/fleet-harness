@@ -5174,7 +5174,7 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 /* 우하단 계기 열 — MAP(또는 접힌 Map 버튼)과 그 위의 허용 요청 더미가 함께 선다.
-   아레나 안 도킹이다: 레일 카드가 점유한 폭(--arena-right)을 피하고 오른쪽 아래 섬 위로 쌓인다.
+   아레나 안 도킹이다: 레일 카드가 점유한 폭(--arena-right)을 피한다. Zen 섬은 아래 가운데라 겹치지 않는다.
    열은 z-index 를 두지 않아 쌓임 맥락을 만들지 않는다 — MAP(14)과 더미(81)가 캔버스 층에서 각자 겨룬다.
    빈 곳은 클릭을 통과시키고, 계기와 카드만 포인터를 쥔다. */
 .canvas-corner-dock {
@@ -5186,13 +5186,6 @@ button.status-glyph.is-actionable:focus-visible {
   align-items: flex-end;
   gap: var(--space-2);
   pointer-events: none;
-}
-
-/* 오른쪽 아래 섬 위에 8px 숨을 두고 쌓는다 — 섬과 같은 오른쪽 변(아레나 끝 + 12)에 맞춰 섬의 일부처럼 선다.
-   다른 모서리는 기존 독 자리다. */
-:root[data-zen-island-corner="bottom-right"] .console-shell.is-zen .canvas-corner-dock {
-  right: calc(var(--arena-right, 0px) + 12px);
-  bottom: max(calc(var(--arena-bottom, 0px) + var(--space-4)), 60px);
 }
 
 /* 우하단 캔버스 미니맵 — 침묵하는 계기. 크롬은 중립 헤어라인으로 소등하고,

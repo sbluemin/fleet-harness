@@ -427,7 +427,9 @@
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
-  transition: left 340ms var(--ease-spring), scale 120ms var(--ease-glide);
+  /* 자리는 아레나 가운데 한 점(left)과 -50%로만 정한다 — 폭(내용)과 되먹임하지 않는다. */
+  translate: -50% 0;
+  transition: left 340ms var(--ease-spring);
 }
 .zen-bar::before {
   content: "";
@@ -439,31 +441,6 @@
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
   pointer-events: none;
-}
-.zen-bar.is-dragging {
-  scale: 1.02;
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating), 0 40px 80px -24px rgba(0, 0, 0, .35);
-  transition: none;
-}
-.zen-island-drop-target {
-  position: fixed;
-  z-index: var(--z-rail, 10);
-  border: 1px dashed color-mix(in oklch, var(--brass) 40%, transparent);
-  border-radius: var(--radius-md);
-  pointer-events: none;
-}
-.zen-bar.is-mirrored,
-.zen-bar.is-mirrored .zen-island-controls,
-.zen-bar.is-mirrored .console-toolbar,
-.zen-bar.is-mirrored .console-toolbar-drawer-inner,
-.zen-bar.is-mirrored .console-toolbar-tools,
-.zen-bar.is-mirrored .zen-island-war-tools { flex-direction: row-reverse; }
-.zen-bar.is-mirrored .zen-bar-brand {
-  margin-inline-start: 0;
-  padding-inline-start: 0;
-  margin-inline-end: var(--space-1);
-  padding-inline-end: var(--space-2);
-  background-position: right center;
 }
 .zen-bar.is-war-room { border-top-color: color-mix(in oklch, var(--brass) 70%, transparent); }
 .zen-bar.is-war-room:has(.has-attention)::after {
@@ -514,7 +491,6 @@
 .zen-island-war-tools .war-room-tool:hover { background: var(--control-hover-fill); color: var(--text-primary); }
 @media (prefers-reduced-motion: reduce) {
   .zen-bar { transition: none; }
-  .zen-bar.is-dragging { scale: none; }
 }
 
 /* ── 도구모음 ─────────────────────────────────────────────────────
@@ -715,12 +691,9 @@
 }
 
 /* 섬 바깥으로 10px 띄운다. 팝업 기준인 26px 버튼과 40px 섬 가장자리 사이의 7px도 더한다. */
-.zen-bar:not([data-corner="top-right"]) .command-band-system-menu,
-.zen-bar:not([data-corner="top-right"]) .command-band-update-bubble,
-.zen-bar:not([data-corner="top-right"]) .host-switcher-panel { top: auto; bottom: calc(100% + 10px + (40px - 26px) / 2); }
-.zen-bar[data-corner="top-right"] .command-band-system-menu,
-.zen-bar[data-corner="top-right"] .command-band-update-bubble,
-.zen-bar[data-corner="top-right"] .host-switcher-panel { top: calc(100% + 10px + (40px - 26px) / 2); bottom: auto; }
+.zen-bar .command-band-system-menu,
+.zen-bar .command-band-update-bubble,
+.zen-bar .host-switcher-panel { top: auto; bottom: calc(100% + 10px + (40px - 26px) / 2); }
 
 /* 앰블럼 — 트레이의 끝. 도구모음과는 가는 선 하나로 나뉜다. */
 .zen-bar-brand {
@@ -730,16 +703,10 @@
   gap: 7px;
   margin-inline-start: var(--space-1);
   padding-inline-start: var(--space-2);
-  /* 구분선은 16px 곧은 선이다. 손잡이 높이(28)와 둥근 모서리에 테두리를 쓰면 괄호처럼 휜 띠가 된다. */
+  /* 구분선은 16px 곧은 선이다. 28px 칸에 테두리를 쓰면 선이 칸 높이만큼 길어진다. */
   background: linear-gradient(var(--surface-rim-strong), var(--surface-rim-strong)) left center / 1px 16px no-repeat;
   height: 28px;
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-  border-radius: 6px;
 }
-.zen-bar.is-dragging .zen-bar-brand { cursor: grabbing; }
-.zen-bar-brand:hover .zen-bar-brand-wordmark { color: var(--brass-ink); }
 .zen-bar-brand-glyph { width: 18px; height: 18px; flex: none; }
 /* 워드마크의 서체·크기는 밴드 워드마크(.command-band-brand-wordmark)를 함께 입어 받는다 — 같은 브랜드, 같은 글자. */
 .zen-bar-brand-wordmark { color: var(--text-primary); line-height: 1; }
@@ -1274,11 +1241,11 @@ html[data-zen-flight] .zen-bar-brand { visibility: hidden; }
   transform-origin: top right;
 }
 .side-bar-top-strip .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: none; }
-.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray { top: auto; bottom: calc(100% + 7px); transform: translate(-50%, 5px) scale(0.96); transform-origin: bottom center; }
-.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: translate(-50%, 0) scale(1); }
-.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray::before { top: auto; bottom: -8px; }
-.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray > .command-band-mode-tool { transform: translateY(3px); }
-.zen-bar:not([data-corner="top-right"]) .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) > .command-band-mode-tool { transform: none; }
+.zen-bar .command-band-mode-tray { top: auto; bottom: calc(100% + 7px); transform: translate(-50%, 5px) scale(0.96); transform-origin: bottom center; }
+.zen-bar .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) { transform: translate(-50%, 0) scale(1); }
+.zen-bar .command-band-mode-tray::before { top: auto; bottom: -8px; }
+.zen-bar .command-band-mode-tray > .command-band-mode-tool { transform: translateY(3px); }
+.zen-bar .command-band-mode-tray:is(.is-open, .is-feature-tour-anchor, :has(.is-feature-tour-anchor)) > .command-band-mode-tool { transform: none; }
 
 @media (forced-colors: active) {
   .command-band-mode-tray {
