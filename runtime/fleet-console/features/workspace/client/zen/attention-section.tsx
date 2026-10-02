@@ -17,7 +17,7 @@ export function AttentionSection({ onFocus, onOpenOperationMenu }: {
   readonly onOpenOperationMenu: (operationId: string, anchor: DOMRect, returnFocus: HTMLElement) => void;
 }) {
   const t = useT();
-  const { state, queue, next, stagedId, arrivals, counts } = useAttentionQueue();
+  const { state, queue, next, stagedId, arrivals, minimizedIds, counts } = useAttentionQueue();
   const warRoom = useTriageActive();
   const clusters = useClusterIndex();
   const [expanded, setExpanded] = useState(false);
@@ -60,7 +60,7 @@ export function AttentionSection({ onFocus, onOpenOperationMenu }: {
           const theater = state.theaters.find((theater) => theater.id === operation.theaterId)?.label ?? operation.theaterId;
           const decision = hasDecisionRequest(clusters, operation.id);
           const active = warRoom ? operation.id === stagedId : operation.id === state.activeOperationId;
-          return <button key={operation.id} type="button" className={`side-bar-attention-row${active ? " is-active" : ""}`} data-attention-operation={operation.id}
+          return <button key={operation.id} type="button" className={`side-bar-attention-row${active ? " is-active" : ""}${minimizedIds.has(operation.id) ? " is-minimized" : ""}`} data-attention-operation={operation.id}
             data-keep-operation-active="" aria-current={active ? "true" : undefined} title={`${operation.title} · ${theater}`}
             onClick={() => {
               if (!warRoom && operation.theaterId !== state.activeTheaterId) setNotice(t("zen.attention.theaterChanged", { theater }));
@@ -73,7 +73,7 @@ export function AttentionSection({ onFocus, onOpenOperationMenu }: {
               }
             }}>
             {warRoom && operation.id === next?.id ? <span className="side-bar-attention-next">{t("canvas.triage.next")} ▸</span> : null}
-            <OperationNameMark operation={operation} status={visual} decorative />
+            <OperationNameMark operation={operation} status={visual} decorative className="side-bar-attention-mark" />
             <span className="side-bar-attention-title">{operation.title}</span>
             {decision ? <DecisionRequestMark /> : null}
             <TheaterMonogram>{theaterInitials(theater)}</TheaterMonogram>

@@ -33,8 +33,8 @@ export function ZenIslandControls() {
     <CanvasModeSwitch />
     {warRoom ? <>
       <button type="button" className="zen-island-next" disabled={next === null}
-        aria-label={next ? t("zen.attention.nextTitle", { title: next.title, theater: theaterInitials(nextTheater) }) : t("canvas.triage.queueEmpty")}
-        data-tip={next ? t("zen.attention.nextTitle", { title: next.title, theater: theaterInitials(nextTheater) }) : t("canvas.triage.queueEmpty")}
+        aria-label={next ? t("zen.attention.nextTitle", { title: next.title, theater: theaterInitials(nextTheater) }) : t("zen.attention.noNext")}
+        data-tip={next ? t("zen.attention.nextTitle", { title: next.title, theater: theaterInitials(nextTheater) }) : t("zen.attention.noNext")}
         onClick={() => { if (next) { revealOperationStage(); pickTriageOperation(next.id); } }}>
         {t("canvas.triage.next")} <span aria-hidden="true">▸</span>
       </button>

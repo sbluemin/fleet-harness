@@ -871,6 +871,7 @@ export function resolveTriageQueue(
   operations: readonly OperationNode[],
   operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
   now = Date.now(),
+  includeMinimized = false,
 ): readonly TriageQueueEntry[] {
   const candidates: Array<TriageQueueEntry & {
     readonly deferredAt: number | null;
@@ -890,7 +891,7 @@ export function resolveTriageQueue(
   };
 
   for (const operation of operations) {
-    if (isMinimized(operation)) continue;
+    if (isMinimized(operation) && (!includeMinimized || !isTriageWaitingOperation(operation, operationRuntime))) continue;
     const activity = resolveOperationActivity(operation, operationRuntime);
     const picked = operation.id === pickedOperationId;
     if (!picked && dismissed.has(operation.id)) continue;

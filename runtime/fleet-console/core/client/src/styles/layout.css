@@ -421,12 +421,13 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  width: max-content;
   height: 40px;
   padding: 0 8px 0 6px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
-  transition: left 340ms var(--ease-spring), top 340ms var(--ease-spring);
+  transition: left 340ms var(--ease-spring), scale 120ms var(--ease-glide);
 }
 .zen-bar::before {
   content: "";
@@ -439,7 +440,18 @@
   backdrop-filter: var(--glass-backdrop-strong);
   pointer-events: none;
 }
-.zen-bar.is-dragging { transition: none; }
+.zen-bar.is-dragging {
+  scale: 1.02;
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating), 0 40px 80px -24px rgba(0, 0, 0, .35);
+  transition: none;
+}
+.zen-island-drop-target {
+  position: fixed;
+  z-index: var(--z-rail, 10);
+  border: 1px dashed color-mix(in oklch, var(--brass) 40%, transparent);
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}
 .zen-bar.is-mirrored,
 .zen-bar.is-mirrored .zen-island-controls,
 .zen-bar.is-mirrored .console-toolbar,
@@ -454,7 +466,7 @@
   padding-inline-end: var(--space-2);
   border-inline-end: 1px solid var(--surface-rim-strong);
 }
-.zen-bar.is-war-room { border-top-color: color-mix(in oklch, var(--brass) 70%, var(--surface-rim)); }
+.zen-bar.is-war-room { border-top-color: color-mix(in oklch, var(--brass) 70%, transparent); }
 .zen-bar.is-war-room:has(.has-attention)::after {
   content: "";
   position: absolute;
@@ -501,7 +513,10 @@
 .zen-island-war-tools .war-room-tool.is-suggested { color: var(--aurora); }
 .zen-island-sidebar:hover,
 .zen-island-war-tools .war-room-tool:hover { background: var(--control-hover-fill); color: var(--text-primary); }
-@media (prefers-reduced-motion: reduce) { .zen-bar { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .zen-bar { transition: none; }
+  .zen-bar.is-dragging { scale: none; }
+}
 
 /* ── 도구모음 ─────────────────────────────────────────────────────
    콘솔에 하나뿐인 도구 줄(console-toolbar.tsx). 상단 바 가운데와 Zen 트레이, 두 자리에 같은 줄이
@@ -700,10 +715,13 @@
   transform: translateY(-3.5px) rotate(45deg);
 }
 
-/* 아래 모서리의 메뉴는 위로, 위 모서리의 메뉴는 아래로 연다. */
+/* 섬 바깥으로 10px 띄운다. 팝업 기준인 26px 버튼과 40px 섬 가장자리 사이의 7px도 더한다. */
 .zen-bar:not([data-corner="top-right"]) .command-band-system-menu,
 .zen-bar:not([data-corner="top-right"]) .command-band-update-bubble,
-.zen-bar:not([data-corner="top-right"]) .host-switcher-panel { top: auto; bottom: calc(100% + 10px); }
+.zen-bar:not([data-corner="top-right"]) .host-switcher-panel { top: auto; bottom: calc(100% + 10px + (40px - 26px) / 2); }
+.zen-bar[data-corner="top-right"] .command-band-system-menu,
+.zen-bar[data-corner="top-right"] .command-band-update-bubble,
+.zen-bar[data-corner="top-right"] .host-switcher-panel { top: calc(100% + 10px + (40px - 26px) / 2); bottom: auto; }
 
 /* 앰블럼 — 트레이의 끝. 도구모음과는 가는 선 하나로 나뉜다. */
 .zen-bar-brand {

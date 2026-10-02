@@ -27,7 +27,7 @@ const messagesEn = {
 
 const messagesKo: Record<keyof typeof messagesEn, string> = {
   "zenTaskbar.welcomeTitle": "Zen 도구가 모서리에 떠 있습니다",
-  "zenTaskbar.welcomeBody": "Zen에서는 캔버스 전체를 작업에 씁니다. 부유 도구에서 사이드바를 열어 Theater를 오가고 「확인 필요」를 처리하세요. 앞블럼을 끌면 도구를 다른 모서리에 붙일 수 있습니다.",
+  "zenTaskbar.welcomeBody": "Zen에서는 캔버스 전체를 작업에 씁니다. 부유 도구에서 사이드바를 열어 Theater를 오가고 「확인 필요」를 처리하세요. 엠블럼을 끌면 도구를 다른 모서리에 붙일 수 있습니다.",
   "zenTaskbar.welcomeNext": "상단 바의 Zen 버튼으로 켜 보세요.",
   "canvasModes.step1Title": "화면을 쓰는 두 가지 방식입니다",
   "canvasModes.step1Body": "Cruise는 패널을 놓은 자리에 그대로 둡니다. 모두 정렬(Alt+F)은 열린 패널을 한 번에 정렬했다가 끄면 원래 자리로 돌려놓습니다. War Room은 답을 기다리는 패널을 Theater 구분 없이 한 건씩 올립니다.",
