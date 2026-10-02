@@ -32,7 +32,9 @@ import { noteCommandRun, readRecentCommandIds } from "../../integration/palette-
 import { PaletteActionGlyph, PaletteCommandGlyph, PaletteRailIcon, PaletteSectionGlyph } from "./palette-glyphs.js";
 import { resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { archiveOperationFromUi, resumeOperationInPlace, type ArchiveOutcome } from "../../integration/operation-actions.js";
-import { openArchiveSheet } from "../../integration/operation-archive.js";
+import { openArchiveSheet, openRestoredOperation, refreshOperationArchive, useOperationArchive } from "../../integration/operation-archive.js";
+import { restoreOperationCluster } from "@fleet-console/sdk/operations/browser";
+import { fetchOperations } from "../../integration/api.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
 import {
   buildPaletteCommands,
@@ -56,6 +58,8 @@ import { requestSideBarOperationAction, type SideBarOperationAction } from "../.
 import {
   closeOperationSearch,
   focusOperation,
+  hydrateOperations,
+  getState,
   openKeyboardShortcuts,
   openOnboarding,
   openWhatsNew,
@@ -122,7 +126,20 @@ export function OperationSearch({
   const commandMode = mode === "commands";
   // 사이드바·커맨드 밴드와 같은 마크 축 — 안 본 채 끝난 Operation이 팔레트에서만 침묵하지 않게 한다.
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
-  const entries = useMemo(() => operationSearchEntries(state), [state]);
+  const archive = useOperationArchive();
+  const [archiveNotice, setArchiveNotice] = useState(false);
+  const restoringArchive = useRef(false);
+  useEffect(() => {
+    if (state.operationSearchOpen) { setArchiveNotice(false); void refreshOperationArchive(); }
+  }, [state.operationSearchOpen]);
+  const entries = useMemo(() => {
+    const active = operationSearchEntries(state);
+    const activeIds = new Set(active.map((entry) => entry.operationId));
+    const pendingIds = new Set(archive.snapshot?.pendingPurges?.flatMap((batch) => batch.operationIds) ?? []);
+    const archivedNodes = (archive.snapshot?.entries ?? []).filter((entry) => !activeIds.has(entry.operation.id) && !pendingIds.has(entry.operation.id)).map((entry) => entry.operation);
+    const archived = operationSearchEntries({ ...state, operations: archivedNodes }).map((entry) => ({ ...entry, archived: true as const, activity: "ended" as const }));
+    return [...active, ...archived];
+  }, [state, archive.snapshot]);
   const filteredEntries = useMemo(
     () => mode === "operations"
       ? orderOperationSearchEntries(filterOperationSearchEntries(entries, text), state.activeTheaterId, searchTokens(text).length > 0)
@@ -248,6 +265,20 @@ export function OperationSearch({
   if (!state.operationSearchOpen) return null;
 
   const selectEntry = (operationId: string) => {
+    if (entries.find((entry) => entry.operationId === operationId)?.archived) {
+      if (restoringArchive.current) return;
+      restoringArchive.current = true;
+      void restoreOperationCluster(operationId).then(async (result) => {
+        const restoredIds = new Set(result.operations.map((node) => node.id));
+        hydrateOperations([...getState().operations.filter((node) => !restoredIds.has(node.id)), ...result.operations]);
+        await fetchOperations(null).then(hydrateOperations).catch(() => {});
+        previousFocusRef.current = null;
+        if (!openRestoredOperation(result.rootOperationId)) throw new Error("restore_failed");
+        // focusOperation의 일반 열기 경로는 자동 재개할 수 있다. 보관 복원은 휴면 상태만 표시한다.
+        navigate("/operations"); closeOperationSearch(); void refreshOperationArchive();
+      }).catch(() => { setArchiveNotice(true); void refreshOperationArchive(); }).finally(() => { restoringArchive.current = false; });
+      return;
+    }
     // 선택은 대상 Operation으로 키보드 포커스를 넘기므로 닫힘 cleanup이 이전 UI 포커스를 되찾지 않게 한다.
     previousFocusRef.current = null;
     // 최대화 해제는 이동 경로(operations.tsx의 pendingOperationFocus 소비)에 위임한다 — 최대화 중이면 유지·교체.
@@ -547,6 +578,7 @@ export function OperationSearch({
 
   // Operation 행의 동작 띠. 정의는 명령 팔레트의 액션과 같다 — 같은 일이 두 자리에 서도 한 경로로 간다.
   const rowActions = (entry: OperationSearchEntry): readonly RowAction[] => {
+    if (entry.archived) return [{ id: "restore-open", label: t("archive.searchRestoreOpen"), glyph: "operation-open", run: () => selectEntry(entry.operationId) }];
     const actions: RowAction[] = [
       { id: "open", label: t("chrome.operationSearch.actionOpen"), glyph: "operation-open", run: () => selectEntry(entry.operationId) },
     ];
@@ -820,10 +852,10 @@ export function OperationSearch({
           ) : (
             <>
               {groups.map((group) => {
-                const headingId = operationGroupHeadingId(group.theaterId);
-                const activeGroup = group.theaterId === state.activeTheaterId;
+                const headingId = operationGroupHeadingId(group.theaterId) + (group.archived ? "-archived" : "");
+                const activeGroup = !group.archived && group.theaterId === state.activeTheaterId;
                 return (
-                  <section className="operation-search-section" key={group.theaterId ?? UNASSIGNED_GROUP_KEY} role="group" aria-labelledby={headingId}>
+                  <section className="operation-search-section" key={`${group.archived ? "archive:" : "active:"}${group.theaterId ?? UNASSIGNED_GROUP_KEY}`} role="group" aria-labelledby={headingId}>
                     <h2 id={headingId} className="operation-search-section-heading">
                       {highlightText(group.theaterLabel, tokens)}
                       {activeGroup ? <span className="operation-search-section-note">{t("chrome.operationSearch.current")}</span> : null}
@@ -867,6 +899,7 @@ export function OperationSearch({
                               {workspace ? <OperationWorkspaceContext workspace={workspace} /> : null}
                               {workspace ? <span className="operation-search-sr-only">{describeWorkspace(t, workspace)}</span> : null}
                             </span>
+                            {entry.archived ? <span className="operation-search-archived">{t("archive.searchArchived")}</span> : null}
                             <span className="operation-search-row-arrow" aria-hidden="true">{stripOpen ? "◂" : "▸"}</span>
                           </button>
                           {stripOpen ? (
@@ -896,6 +929,7 @@ export function OperationSearch({
             </>
           )}
         </div>
+        {archiveNotice ? <p className="archive-sheet-notice" role="status">{t("archive.notice.restoreFailed")}</p> : null}
         <div className="operation-search-legend">
           <span><kbd>↑</kbd><kbd>↓</kbd>{t("chrome.operationSearch.legendMove")}</span>
           <span><kbd>↵</kbd>{t(mode === "operations" ? "chrome.operationSearch.legendOpen" : "chrome.operationSearch.legendRun")}</span>

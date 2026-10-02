@@ -30,6 +30,7 @@ export interface OperationSearchEntry {
    * 메타 캡션에만 남는다 — 이름 왼쪽 슬롯은 활동 상태가 소유한다.
    */
   readonly launchProvider: LaunchProviderGlyphId | null;
+  readonly archived?: boolean;
 }
 
 function readSessionModel(payload: Record<string, unknown>): string | null {
@@ -58,6 +59,7 @@ export function parsePaletteSeed(seed: string | null): { readonly mode: PaletteM
 }
 
 export interface OperationSearchGroup {
+  readonly archived?: boolean;
   readonly theaterId: string | null;
   readonly theaterLabel: string;
   readonly entries: readonly OperationSearchEntry[];
@@ -190,6 +192,8 @@ export function orderOperationSearchEntries(
   return entries
     .map((entry, index) => ({ entry, index }))
     .sort((left, right) => {
+      const archiveDelta = Number(left.entry.archived === true) - Number(right.entry.archived === true);
+      if (archiveDelta !== 0) return archiveDelta;
       const activeDelta = Number(right.entry.theaterId === activeTheaterId) - Number(left.entry.theaterId === activeTheaterId);
       if (activeDelta !== 0) return activeDelta;
       if (hasQuery) return left.index - right.index;
@@ -202,7 +206,7 @@ export function groupOperationSearchEntries(entries: readonly OperationSearchEnt
   const groups: OperationSearchGroup[] = [];
   const groupIndexes = new Map<string, number>();
   for (const entry of entries) {
-    const key = entry.theaterId ?? UNASSIGNED_GROUP_KEY;
+    const key = `${entry.archived ? "archive:" : "active:"}${entry.theaterId ?? UNASSIGNED_GROUP_KEY}`;
     const existingIndex = groupIndexes.get(key);
     if (existingIndex !== undefined) {
       const group = groups[existingIndex];
@@ -210,7 +214,7 @@ export function groupOperationSearchEntries(entries: readonly OperationSearchEnt
       continue;
     }
     groupIndexes.set(key, groups.length);
-    groups.push({ theaterId: entry.theaterId, theaterLabel: entry.theaterLabel, entries: [entry] });
+    groups.push({ theaterId: entry.theaterId, theaterLabel: entry.theaterLabel, entries: [entry], archived: entry.archived });
   }
   return groups;
 }

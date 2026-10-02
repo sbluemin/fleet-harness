@@ -1381,7 +1381,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       });
     },
   });
-  const operationArchiveRouter = createOperationArchiveRouter({ archive: operationArchive, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson, sanitize: sanitizeArchiveOperation });
+  const operationArchiveRouter = createOperationArchiveRouter({ archive: operationArchive, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson, sanitize: (node) => sanitizeArchiveOperation(node, true) });
   routeRegistry.register("/api/v1/operations", async (context) => await operationArchiveRouter(context) || operationsRouter(context));
   routeRegistry.register("/api/v1/theaters", async (context) => {
     return false;
@@ -2287,16 +2287,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (archiveStorage.revision() !== previousRevision) publishArchiveChanged();
   }
 
-  function sanitizeArchiveOperation(node: OperationNode): OperationNode {
+  function sanitizeArchiveOperation(node: OperationNode, includeSessionNames = false): OperationNode {
     const sensitiveFields = node.pluginId === null ? CORE_AGENT_SENSITIVE_FIELDS : [
       ...(pluginHost.sensitiveFieldsByPluginId.get(node.pluginId) ?? []), ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
     ];
-    return createSanitizedOpDto(node, { sensitiveFields });
+    return createSanitizedOpDto(node, { sensitiveFields, includeSessionNames });
   }
 
   function publishArchiveChanged(): void {
-    publishPluginEvent("operation:archive-changed", { revision: archiveStorage.revision(), total: archiveStorage.entries().length });
-    publishPluginEvent("operation:cluster-changed", { removedIds: [...pendingClusterRemoved], operations: operations.list().map(sanitizeArchiveOperation) });
+    const totalsByTheater: Record<string, number> = {};
+    for (const entry of archiveStorage.entries()) totalsByTheater[entry.operation.theaterId] = (totalsByTheater[entry.operation.theaterId] ?? 0) + 1;
+    publishPluginEvent("operation:archive-changed", { revision: operationArchive.revision(), total: archiveStorage.entries().length, totalsByTheater });
+    publishPluginEvent("operation:cluster-changed", { removedIds: [...pendingClusterRemoved], operations: operations.list().map((node) => sanitizeArchiveOperation(node)) });
     pendingClusterRemoved.clear();
   }
 
@@ -2309,6 +2311,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     lockHandle = null;
     activeLockFile = null;
     activeEndpoint = null;
+    operationArchive.dispose();
     deletionCoordinator.dispose();
     // 입력 제어는 HTTP·플러그인 정리에 막히기 전에 회수하고 신규 호출도 닫는다.
     const stoppingComputerUse = computerUseMcp.dispose();

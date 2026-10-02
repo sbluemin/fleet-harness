@@ -28,7 +28,7 @@ export class ApiError extends Error {
 
 export const OPERATION_CATALOG_CHANGED_EVENT = "fleet:operation-catalog-changed";
 
-import type { OperationAccessIntent, OperationAccessResult, OperationArchiveReceipt, OperationArchiveSnapshot, OperationDescription, OperationPurgeConfirmation, OperationPurgeResult } from "./archive.js";
+import type { OperationAccessIntent, OperationAccessResult, OperationArchiveReceipt, OperationArchiveRestoreResult, OperationArchiveSnapshot, OperationDescription, OperationPurgeConfirmation, OperationPurgeResult } from "./archive.js";
 
 async function archiveRequest<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/api/v1/operations${path}`, {
@@ -68,6 +68,16 @@ export function previewOperationPurge(operationId: string, signal?: AbortSignal)
 }
 export function purgeArchivedOperations(confirmation: OperationPurgeConfirmation, signal?: AbortSignal): Promise<OperationPurgeResult> {
   return archiveRequest("/archive/purge", confirmation, signal);
+}
+export function previewOperationBatch(operationIds: readonly string[], signal?: AbortSignal): Promise<OperationPurgeConfirmation> {
+  return archiveRequest("/archive/purge-preview", { operationIds }, signal);
+}
+export function undoOperationPurge(purgeId: string, signal?: AbortSignal): Promise<OperationPurgeResult> {
+  return archiveRequest("/archive/purge-undo", { purgeId }, signal);
+}
+export async function restoreArchivedOperations(confirmation: OperationPurgeConfirmation, signal?: AbortSignal): Promise<OperationArchiveRestoreResult> {
+  const result = await archiveRequest<OperationArchiveRestoreResult>("/archive/restore", confirmation, signal);
+  return { ...result, operations: result.operations.map(assertOperationNode) };
 }
 
 export async function fetchOperationCatalog(signal?: AbortSignal): Promise<readonly OperationCatalogPlugin[]> {
