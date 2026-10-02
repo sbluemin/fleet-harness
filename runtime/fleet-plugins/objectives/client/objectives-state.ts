@@ -108,6 +108,20 @@ function noteAlive(): void {
   scheduleRetry(true);
 }
 
+/**
+ * 호스트 스트림이 다시 live 가 됐다 — 서버가 돌아왔다는 증거다. 한가한 서버는 재연결 뒤 objectives 프레임을 보내지 않으므로
+ * noteAlive 만 기다리면 게이트·장부 기한(최대 30s)까지 못 읽은 Theater 가 빈 채로 선다. 전이 한 번에 스윕 한 번 — 미룬 엔트리는
+ * 기한과 무관하게 지금 묻는다. 단절 중에는 부르지 않으므로 끊긴 동안의 간격은 그대로 백오프가 정한다.
+ * 재연결은 `/state` 가 된다는 증거가 아니다 — 기한만 풀고 실패 횟수는 남겨, 다시 실패하면 사다리가 처음이 아니라 이어서 오른다.
+ * 횟수를 지우는 것은 성공 증거(noteAlive·성공 응답)뿐이다.
+ */
+function noteReconnected(): void {
+  const now = Date.now();
+  if (degraded) degraded = { failures: degraded.failures, until: now };
+  for (const [theaterId, retry] of loadRetries) if (!retry.permanent) loadRetries.set(theaterId, { ...retry, nextAt: now });
+  scheduleRetry(true);
+}
+
 function clearRetryTimer(): void {
   if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
   retryAt = Number.POSITIVE_INFINITY;
@@ -353,9 +367,14 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   let lastTheater = ctx.consoleState.getActiveTheaterId();
   let lastActiveOperation = ctx.consoleState.getActiveOperationId();
   let listedTheaters = new Set(ctx.consoleState.getTheaters().map((theater) => theater.id));
+  let lastConnection = ctx.consoleState.getConnection?.() ?? "live";
   operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
   loadAgentTheaters(ctx.api, lastTheater);
   const offConsole = ctx.consoleState.subscribe(() => {
+    // live 동안의 잦은 통지가 아니라 non-live→live 전이에서만 스윕한다.
+    const connection = ctx.consoleState.getConnection?.() ?? "live";
+    if (connection === "live" && lastConnection !== "live") noteReconnected();
+    lastConnection = connection;
     const current = ctx.consoleState.getActiveTheaterId();
     if (current !== lastTheater) {
       lastTheater = current;

@@ -413,9 +413,17 @@ export interface ClientConsoleStateCapability {
   getActiveTheaterId(): string | null;
   /** 캔버스에서 활성인 Operation — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
   getActiveOperationId(): string | null;
+  /**
+   * 코어 이벤트 스트림의 연결 상태 — 바뀌면 `subscribe` 가 울린다. `live` 로 돌아온 전이는 단절 중 놓친
+   * 플러그인 데이터를 다시 읽을 신호다. 스트림 프레임은 변화가 있을 때만 오므로, 한가한 Console 에서는 이 전이가 유일한 회복 증거다.
+   * 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 `live` 로 다룬다.
+   */
+  getConnection?(): ConsoleConnectionState;
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
 }
+
+export type ConsoleConnectionState = "connecting" | "live" | "offline";
 
 export interface ConsoleTheaterSummary {
   readonly id: string;

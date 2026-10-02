@@ -99,6 +99,8 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       getOperations: () => [],
       getActiveTheaterId: () => null,
       getActiveOperationId: () => null,
+      // 스트림이 없는 사본은 끊긴 적도 없다 — offline 으로 두면 플러그인이 영원히 단절로 읽는다.
+      getConnection: () => "live",
       setActiveTheater: () => undefined,
       subscribe: () => () => undefined,
     },
