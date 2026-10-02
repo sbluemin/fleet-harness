@@ -494,14 +494,18 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     if (!live && member.next.reservedWhile === "dormant") return [];
     return [`${member.id}:${member.next.model}:${member.next.effort ?? ""}:${member.next.reservedWhile}:${live ? "live" : "ended"}`];
   });
+  // 보드에서 예약이 사라진 구성원의 키는 잊는다 — 같은 값을 다시 예약하면 같은 키가 서고, 남겨 두면 그 예약은 정산되지 않는다.
+  const reservingIds = objective.members.filter((member) => member.next && !member.next.failed).map((member) => member.id);
   useEffect(() => {
+    const open = new Set(reservingIds);
+    for (const memberId of [...settled.current.keys()]) if (!open.has(memberId)) settled.current.delete(memberId);
     for (const key of wokenKeys) {
       const memberId = key.slice(0, key.indexOf(":"));
       if (settled.current.get(memberId) === key) continue;
       settled.current.set(memberId, key);
       void request("/member/next-settle", { objectiveId: objective.id, memberId }).catch(() => { if (settled.current.get(memberId) === key) settled.current.delete(memberId); });
     }
-  }, [objective.id, wokenKeys.join("|")]);
+  }, [objective.id, wokenKeys.join("|"), reservingIds.join("|")]);
   // 안내는 구성원마다 따로 사라진다 — 한 타이머를 공유하면 앞서 뜬 구성원의 안내가 남는다.
   const noteTimers = useRef(new Map<string, number>());
   const dropNote = (id: string) => {
