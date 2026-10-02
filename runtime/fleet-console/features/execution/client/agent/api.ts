@@ -442,6 +442,7 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,
     registrationId: typeof payload.registrationId === "string" ? payload.registrationId : undefined,
     resumeAvailable: payload.resumeAvailable === true,
+    ...(typeof payload.generation === "string" && payload.generation ? { generation: payload.generation } : {}),
   };
 }
 

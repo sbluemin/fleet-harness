@@ -1,12 +1,23 @@
 // @vitest-environment jsdom
 
-import { act, createElement } from "react";
+import { act, createElement, useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ClientApiCapability, ClientNotificationsCapability, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// 표면 인스턴스마다 마운트 여부와 마지막 onExit를 남긴다 — 옛 PTY의 늦은 종료를 그 표면의 onExit로 흉내 낸다.
+const surfaces = vi.hoisted(() => ({ mounts: [] as Array<{ mounted: boolean; onExit?: () => void }> }));
 vi.mock("../terminal/shared/index.js", () => ({
-  TerminalSurface: () => createElement("div", { className: "terminal-surface-stub" }),
+  TerminalSurface: ({ onExit }: { readonly onExit?: () => void }) => {
+    const record = useRef<{ mounted: boolean; onExit?: () => void } | null>(null);
+    if (!record.current) {
+      record.current = { mounted: true };
+      surfaces.mounts.push(record.current);
+    }
+    record.current.onExit = onExit;
+    useEffect(() => () => { if (record.current) record.current.mounted = false; }, []);
+    return createElement("div", { className: "terminal-surface-stub" });
+  },
 }));
 
 import { disposeAnalysisStore } from "../../../analyst/client/analysis-store.js";
@@ -26,6 +37,7 @@ afterEach(() => {
   container?.remove();
   root = null;
   container = null;
+  surfaces.mounts.length = 0;
   vi.unstubAllGlobals();
 });
 
@@ -85,7 +97,45 @@ describe("dormant resume feedback", () => {
     expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
     expect(container?.querySelector(".terminal-surface-stub")).not.toBeNull();
   });
+
+  it("keeps a resumed session and attaches a new surface when the old PTY's close arrives after the resume", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    applySessionUpdate(liveSession("generation-a"));
+    await renderOperation(vi.fn(), {});
+    expect(surfaces.mounts).toHaveLength(1);
+    const old = surfaces.mounts[0]!;
+
+    // 재우고 곧바로 깨우면 휴면과 새 기동이 한 청크로 와서 한 번에 그려진다.
+    await act(async () => {
+      applySessionUpdate({ ...liveSession(undefined), status: "dormant" });
+      applySessionUpdate(liveSession("generation-b"));
+    });
+    // 옛 PTY의 종료(4001)는 그 뒤에 도착한다.
+    act(() => old.onExit?.());
+
+    expect(getAgentState().sessions[OPERATION_ID]).toMatchObject({ status: "registered", generation: "generation-b" });
+    expect(old.mounted).toBe(false);
+    expect(surfaces.mounts).toHaveLength(2);
+    expect(surfaces.mounts[1]?.mounted).toBe(true);
+    expect(container?.querySelector(".terminal-surface-stub")).not.toBeNull();
+    expect(container?.querySelector("button.canvas-operation-dormant")).toBeNull();
+  });
 });
+
+function liveSession(generation: string | undefined) {
+  return {
+    sessionId: OPERATION_ID,
+    terminalSessionId: OPERATION_ID,
+    cwdLabel: "Workspace",
+    label: "Resume test",
+    status: "registered" as const,
+    turnState: "none" as const,
+    createdAt: 1,
+    theaterId: "theater",
+    resumeAvailable: true,
+    ...(generation ? { generation } : {}),
+  };
+}
 
 async function renderOperation(
   fetch: ReturnType<typeof vi.fn>,

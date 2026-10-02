@@ -102,6 +102,11 @@ export interface AgentTerminalSessionInfo {
   readonly cliRunId?: string;
   readonly tenantId?: string;
   readonly resumeAvailable: boolean;
+  /**
+   * 살아 있는 PTY의 세대 — 기동마다 새 무작위 값이고 휴면에는 없다. 패널은 이 값으로 옛 소켓의 종료(4001)와
+   * 방금 선 PTY를 가르고, 값이 바뀌면 터미널 표면을 새로 붙인다. provider 신원이 아니다.
+   */
+  readonly generation?: string;
 }
 
 export interface AgentObservedWorkspace {

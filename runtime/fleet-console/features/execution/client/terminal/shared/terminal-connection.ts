@@ -119,6 +119,11 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
   let lastSentSize: { readonly cols: number; readonly rows: number } | null = null;
   let started = false;
   /**
+   * dispose 뒤에 도착한 닫힘은 이 연결의 소비자에게 알리지 않는다. 표면이 내려간 뒤에도 서버의 종료(4001)가
+   * 늦게 오면 onclose가 불리는데, 그때 onExit를 부르면 이미 다음 연결이 붙은 세션을 소비자가 지운다.
+   */
+  let disposed = false;
+  /**
    * 이 연결이 지금 요구하는 역할. 밀려나면(4000) control에서 viewer로 내려가고, 사용자가
    * 되찾겠다고 하면 control로 되돌린다 — 재접속 루프가 매 회 이 값으로 티켓을 받는다.
    */
@@ -232,6 +237,10 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       ws.onclose = (event) => {
         disposeInput();
         if (socket === ws) socket = null;
+        if (disposed) {
+          resolve();
+          return;
+        }
         const code = event?.code;
         if (code === TERMINAL_REPLACED_CLOSE_CODE) {
           /**
@@ -277,6 +286,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       socket?.close();
     },
     dispose: () => {
+      disposed = true;
       abort.abort();
       disposeInput();
       options.onStatus?.("closed");

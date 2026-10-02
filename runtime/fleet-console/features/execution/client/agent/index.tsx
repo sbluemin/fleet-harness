@@ -769,6 +769,17 @@ async function openTerminalForOperation(context: OperationRenderContext): Promis
   }
 }
 
+/**
+ * 터미널 표면의 PTY가 끝났다(4001). 그 표면이 붙어 있던 세대의 항목일 때만 지운다 — 항목이 이미 다른 세대를
+ * 싣고 있으면 그 사이 새 PTY가 섰다는 뜻이고, 늦게 온 옛 종료가 방금 선 세션을 지우면 패널은 「종료됨」에
+ * 멈춘다. 세대가 없는 항목(옛 서버)은 예전처럼 지운다.
+ */
+function removeExitedSession(sessionId: string, mountedGeneration: string | undefined): void {
+  const current = getAgentState().sessions[sessionId];
+  if (current?.generation !== undefined && current.generation !== mountedGeneration) return;
+  removeSession(sessionId);
+}
+
 const SORTIE_RIBBON_INLINE_LIMIT = 2;
 
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
@@ -826,7 +837,10 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     <div className="agent-stream-host">
       {/* 전환을 누르는 곳은 캡션이고, 무엇이 끝나야 넘어갈 수 있는지 말하는 이 오버레이는 본문이다. */}
       {chatPromptOpen ? <ChatModeInterstitial context={context} onClose={() => setChatPromptOpen(context.operationId, false)} /> : null}
+      {/* 세대가 바뀌면(재기동) 표면을 새로 붙인다 — 같은 청크로 휴면과 새 기동이 함께 오면 휴면을 그리지 못한 채
+          옛 표면이 남고, 그 연결은 옛 PTY의 종료(4001)로 재접속을 멈춘다. 새 표면이 새 티켓으로 새 PTY에 붙는다. */}
       <TerminalSurface
+        key={session.generation}
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
         wsPath={TERMINAL_WS_PATH}
@@ -839,7 +853,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onOpenLink={linkOpen.choose}
         knownLinks={(text) => confirmAgentSessionLinks(session.sessionId, text)}
-        onExit={() => removeSession(session.sessionId)}
+        onExit={() => removeExitedSession(session.sessionId, session.generation)}
       />
       <ComputerScreenShare operationId={context.operationId} />
       <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={context.language} placement="terminal" />
