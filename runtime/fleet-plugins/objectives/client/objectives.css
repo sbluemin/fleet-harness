@@ -1214,6 +1214,12 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-opt-pick[aria-checked="true"] .objectives-decision-ind { border-color: var(--brass); }
 .objectives-decision-opt-pick[aria-checked="true"] .objectives-decision-ind::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); }
 .objectives-decision-opt.is-multi .objectives-decision-opt-pick[aria-checked="true"] .objectives-decision-ind::after { border-radius: 1px; }
+/* 「내 의견으로 답하기」 — 보드가 붙이는 줄. 지휘관 선택지와 점선으로 갈리고, 표시기는 고르기 전까지 점선 원이다(여러 개 고르는 질문에서도 원). */
+.objectives-decision-own-sep { margin: 4px 6px 2px 26px; border-top: 1px dashed var(--hairline-strong); }
+.objectives-decision-opt.is-own { color: var(--text-tertiary); }
+.objectives-decision-opt.is-own .objectives-decision-ind { border-style: dashed; }
+.objectives-decision-opt.is-own .objectives-decision-opt-pick[aria-checked="true"] .objectives-decision-ind { border-style: solid; }
+.objectives-decision-own-label { margin-left: 12px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--brass-ink); }
 .objectives-decision-hint { padding: 2px 0 0 26px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-free { margin-left: 12px; width: calc(100% - 12px); min-height: 32px; max-height: 160px; padding: 6px 9px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.4; resize: vertical; box-sizing: border-box; }
 .objectives-decision-free:focus { outline: none; border-color: color-mix(in oklch, var(--brass) 60%, transparent); }
@@ -1231,6 +1237,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision + .objectives-decision { border-top: 1px solid var(--surface-rim); }
 .objectives-decision.is-flash { background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .objectives-decision-q-copy { margin: 0; font-size: var(--t-xs); color: var(--text-tertiary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-decision-chip { display: inline-block; margin-right: 6px; padding: 0 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: var(--t-2xs); line-height: 16px; color: var(--text-secondary); vertical-align: 1px; }
 .objectives-decision-a { margin: 0; font-size: var(--t-sm); color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .objectives-decision-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-family: var(--font-mono); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-meta span { display: inline-flex; align-items: center; gap: 4px; }

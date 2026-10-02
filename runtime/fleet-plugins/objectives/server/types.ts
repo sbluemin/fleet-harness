@@ -381,6 +381,13 @@ export interface Decision {
   readonly memberId?: string;
 }
 
+/**
+ * 내 의견 — 선택지가 있는 질문에 아무것도 고르지 않고 글만 보낸 답. 사람이 지휘관의 선택지를 모두 버리고 자기 답을 냈다는
+ * 뜻이다. 보드의 「내 의견으로 답하기」 줄은 저장된 선택지가 아니어서 따로 남기지 않고 이 모양으로 판정한다(옛 기록도 같다).
+ */
+export const ownAnswer = (question: { readonly options: readonly unknown[] }, answer: { readonly selectedOptionIds: readonly string[]; readonly text: string }): boolean =>
+  question.options.length > 0 && answer.selectedOptionIds.length === 0 && answer.text.trim().length > 0;
+
 /** 지휘관에게 보내는 중인 답 — 전달이 끝나야 결정이 된다. 기동이 끊겨 남으면 전달 결과를 모르는 상태다. */
 export interface DecisionDelivery {
   readonly requestId: string;

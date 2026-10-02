@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { Decision, DecisionQuestion, Objective } from "../server/types.js";
+import { ownAnswer, type Decision, type DecisionQuestion, type Objective } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
@@ -21,9 +21,12 @@ export const RequestGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="c
 export const DecisionGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" strokeLinecap="round" aria-hidden="true"><path d="M3.2 2.8h9.6a1.4 1.4 0 0 1 1.4 1.4v6a1.4 1.4 0 0 1-1.4 1.4H7.4L4.4 14v-2.4H3.2a1.4 1.4 0 0 1-1.4-1.4v-6a1.4 1.4 0 0 1 1.4-1.4z" /><path d="M5.6 7.2l1.7 1.7 3.2-3.4" /></svg>;
 const GoGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5H3.5v9h9V10M9.5 3.5h3v3M12.5 3.5 7.5 8.5" /></svg>;
 
-interface Draft { readonly picked: readonly string[]; readonly text: string }
+/** own — 「내 의견으로 답하기」 줄을 골랐다. 보드가 붙이는 줄이라 서버로는 고른 것 없이 글만 간다. */
+interface Draft { readonly picked: readonly string[]; readonly text: string; readonly own?: boolean }
 const EMPTY_DRAFT: Draft = { picked: [], text: "" };
 const answered = (draft: Draft) => draft.picked.length > 0 || draft.text.trim().length > 0;
+/** 내 의견 줄이 켜졌다 — 고른 것 없이 그 줄을 골랐거나 글을 썼다. 선택지가 있는 질문에서 글만 보낸 답은 곧 내 의견이다. */
+const ownOn = (draft: Draft) => draft.picked.length === 0 && (draft.own === true || draft.text.trim().length > 0);
 /**
  * 답변 초안 — 다른 목표를 보다 와도 남는다(목표 id 별, 이 탭의 메모리). 요청 id 가 다르면 교체·철회된 앞 요청의 초안이라
  * 버린다. 보내면 비운다. 플러그인 번들 안에서만 쓰는 보기 상태라 호스트와 나누지 않는다.
@@ -46,7 +49,8 @@ const clock = (at: number, language: "en" | "ko") => new Date(at).toLocaleTimeSt
 const stamp = (at: number, language: "en" | "ko") => new Date(at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /**
- * 결정 요청 칸 — 질문마다 선택지(목록 줄)와 늘 열린 직접 쓰기 칸. 모든 질문에 답해야 보낸다. 질문이 하나면 번호·셈을 숨겨
+ * 결정 요청 칸 — 질문마다 선택지(목록 줄)와 늘 열린 직접 쓰기 칸. 선택지가 있으면 끝에 「내 의견으로 답하기」 줄이 늘 붙고,
+ * 그 줄은 쓴 글이 있어야 답이 된다. 모든 질문에 답해야 보낸다. 질문이 하나면 번호·셈을 숨겨
  * 한 문장 요청처럼 읽힌다. 보내기가 실패하면 고른 것과 쓴 답을 지키고 사유 한 줄을 보인다.
  */
 export function DecisionRequestBlock({ objective, t, language, send, missionNumber, memberMark, onOpenSession, onShowMission }: {
@@ -82,7 +86,12 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
   const pick = (question: DecisionQuestion, optionId: string) => {
     const draft = draftOf(question);
     const on = draft.picked.includes(optionId);
-    edit(question, { ...draft, picked: question.multiSelect ? (on ? draft.picked.filter((id) => id !== optionId) : [...draft.picked, optionId]) : on ? [] : [optionId] });
+    edit(question, { ...draft, own: false, picked: question.multiSelect ? (on ? draft.picked.filter((id) => id !== optionId) : [...draft.picked, optionId]) : on ? [] : [optionId] });
+  };
+  // 내 의견 — 여러 개 고르는 질문에서도 홀로 선다. 고른 것을 비우고 쓰기 칸으로 간다.
+  const pickOwn = (question: DecisionQuestion) => {
+    edit(question, { ...draftOf(question), picked: [], own: true });
+    sectionRef.current?.querySelector<HTMLTextAreaElement>(`textarea[data-question-id="${CSS.escape(question.id)}"]`)?.focus();
   };
   // 이 화면에서 보내는 중이 아닌데 전달 중 표시가 남았다 — 앞선 보내기의 결과를 서버가 확인하지 못했다.
   const unconfirmed = !sending && objective.decisionDelivery?.requestId === request.id;
@@ -112,6 +121,9 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
           const n = index + 1;
           const missionN = question.missionId ? missionNumber(question.missionId) : 0;
           const member = question.memberId ? memberMark(question.memberId) : null;
+          const hasOptions = question.options.length > 0;
+          const own = hasOptions && ownOn(draft);
+          const ownLabelId = `objectives-decision-own-label-${question.id}`;
           return (
             <div key={question.id} className="objectives-decision-q">
               <div className="objectives-decision-q-top">
@@ -148,17 +160,30 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
                     );
                   })}
                   {question.multiSelect ? <span className="objectives-decision-hint">{t("objectives.decision.multiHint")}</span> : null}
+                  {/* 보드가 늘 붙이는 줄 — 저장된 선택지가 아니어서 점선으로 갈리고, 표시기도 점선 원이다. */}
+                  <div className="objectives-decision-own-sep" aria-hidden="true" />
+                  <div className="objectives-decision-opt is-own">
+                    <button type="button" role="radio" aria-checked={own} disabled={sending} className="objectives-decision-opt-pick" aria-describedby={`objectives-decision-desc-${question.id}-own`} onClick={() => pickOwn(question)}>
+                      <span className="objectives-decision-ind" aria-hidden="true" />
+                      <span>{t("objectives.decision.own")}</span>
+                    </button>
+                    <small id={`objectives-decision-desc-${question.id}-own`} onClick={() => { if (!sending) pickOwn(question); }}>{t("objectives.decision.ownHint")}</small>
+                  </div>
                 </div>
               ) : null}
+              {own ? <span id={ownLabelId} className="objectives-decision-own-label">{t("objectives.decision.ownLabel")}</span> : null}
               <SyncedTextarea
                 className="objectives-decision-free"
                 rows={1}
                 maxLength={2000}
                 disabled={sending}
                 value={draft.text}
+                data-question-id={question.id}
                 aria-label={t("objectives.decision.writeAria", { n })}
-                placeholder={t(question.options.length > 0 ? "objectives.decision.writeMore" : "objectives.decision.write")}
-                onChange={(event) => { edit(question, { ...draft, text: event.target.value }); fitField(event.currentTarget); }}
+                aria-describedby={own ? ownLabelId : undefined}
+                placeholder={t(!hasOptions ? "objectives.decision.write" : own ? "objectives.decision.writeOwn" : draft.picked.length > 0 ? "objectives.decision.writeAdd" : "objectives.decision.writeMore")}
+                // 고른 것 없이 쓰기 시작하면 내 의견이다 — 글을 지워도 그 줄은 켜진 채 남는다.
+                onChange={(event) => { const text = event.target.value; edit(question, { ...draft, text, own: draft.own || (draft.picked.length === 0 && text.trim().length > 0) }); fitField(event.currentTarget); }}
                 onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }}
               />
             </div>
@@ -178,7 +203,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
 
 const SHOWN = 3;
 
-/** 결정 한 건의 답 — 고른 선택지(답한 순간의 사본 이름)를 「 · 」로 잇고, 직접 쓴 말은 다음 줄에 그대로. */
+/** 결정 한 건의 답 — 고른 선택지(답한 순간의 사본 이름)를 「 · 」로 잇고, 직접 쓴 말은 다음 줄에 그대로. 내 의견은 칩이 앞에 선다. */
 const answerText = (decision: Decision): string => {
   const picked = decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label);
   return [picked.join(" · "), decision.answer.text].filter((part) => part.trim().length > 0).join("\n");
@@ -210,7 +235,7 @@ export function DecisionList({ objective, t, language, flash, memberMark }: {
         return (
           <div key={decision.id} data-decision-id={decision.id} className={`objectives-decision${flash === decision.id ? " is-flash" : ""}`}>
             <p className="objectives-decision-q-copy"><LinkText text={decision.question.text} /></p>
-            <p className="objectives-decision-a"><LinkText text={answerText(decision)} /></p>
+            <p className="objectives-decision-a">{ownAnswer(decision.question, decision.answer) ? <span className="objectives-decision-chip">{t("objectives.decisions.own")}</span> : null}<LinkText text={answerText(decision)} /></p>
             <p className="objectives-decision-meta">
               <span>{stamp(decision.at, language)}</span>
               {missionN > 0 ? <span>{t("objectives.decisions.mission", { n: missionN })}</span> : null}
