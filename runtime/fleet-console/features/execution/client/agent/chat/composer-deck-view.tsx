@@ -120,22 +120,25 @@ function renderArgumentHint(hint: string): React.ReactNode {
     });
 }
 
-/** 상자 위로 열지 아래로 열지, 그리고 그쪽에 남은 높이. 잘림 경계는 가장 가까운 overflow 조상이다. */
+/** 상자 위로 열지 아래로 열지, 그리고 그쪽에 남은 높이. 잘림 경계는 모든 overflow 조상의 교집합이다. */
 interface DeckPlacement {
   readonly below: boolean;
   readonly maxHeight: number;
 }
 
+/**
+ * 가장 가까운 조상에서 멈추지 않는다 — 줌인한 패널이 화면 위로 나가면 패널 자신의 경계는 화면 밖이고,
+ * 실제로 덱을 자르는 것은 그 바깥의 캔버스 뷰포트(상단 크롬 아래 선)다. 첫 조상만 보면 덱이
+ * 크롬 뒤로 솟아 머리 행이 잘렸다(실측 1.38배 줌, 덱 top 5.86px, 경계 36px).
+ */
 function findClipRect(from: HTMLElement): { readonly top: number; readonly bottom: number } {
   let top = 0;
   let bottom = window.innerHeight;
   for (let node = from.parentElement; node; node = node.parentElement) {
-    const style = window.getComputedStyle(node);
-    if (style.overflowY === "visible" && style.overflowX === "visible") continue;
+    if (window.getComputedStyle(node).overflowY === "visible") continue;
     const rect = node.getBoundingClientRect();
     top = Math.max(top, rect.top);
     bottom = Math.min(bottom, rect.bottom);
-    break;
   }
   return { top, bottom };
 }
