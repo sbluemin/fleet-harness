@@ -5,6 +5,8 @@
 // 목록 본문은 시트가 열려 있을 때만 다시 읽는다.
 
 import { useSyncExternalStore } from "react";
+import { ensureDefaultGeometry, loadForTheater, restoreOperation as restoreCanvasOperation } from "../../../../features/workspace/client/canvas/canvas-store.js";
+import { getState, setActiveOperation, setActiveTheater } from "./store.js";
 
 import {
   OPERATION_ARCHIVE_CHANGED_EVENT,
@@ -15,6 +17,7 @@ import {
 
 interface ArchiveState {
   readonly total: number;
+  readonly totalsByTheater: Readonly<Record<string, number>>;
   readonly revision: number;
   /** 마지막으로 읽은 목록. 시트를 한 번도 열지 않았으면 null. */
   readonly snapshot: OperationArchiveSnapshot | null;
@@ -25,7 +28,7 @@ interface ArchiveState {
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
-let state: ArchiveState = { total: 0, revision: -1, snapshot: null, loading: false, error: false, sheetOpen: false };
+let state: ArchiveState = { total: 0, totalsByTheater: {}, revision: -1, snapshot: null, loading: false, error: false, sheetOpen: false };
 let inflight: Promise<void> | null = null;
 let refetchAfterInflight = false;
 
@@ -54,16 +57,21 @@ export function refreshOperationArchive(): Promise<void> {
     return inflight;
   }
   setState({ loading: true });
-  inflight = fetchOperationArchive()
-    .then((snapshot) => { setState({ snapshot, total: snapshot.total, revision: snapshot.revision, loading: false, error: false }); })
-    .catch(() => { setState({ loading: false, error: true }); })
-    .finally(() => {
-      inflight = null;
-      if (refetchAfterInflight) {
-        refetchAfterInflight = false;
-        void refreshOperationArchive();
-      }
-    });
+  inflight = (async () => {
+    do {
+      refetchAfterInflight = false;
+      try {
+        const snapshot = await fetchOperationArchive();
+        const totalsByTheater: Record<string, number> = {};
+        for (const entry of snapshot.entries) totalsByTheater[entry.operation.theaterId] = (totalsByTheater[entry.operation.theaterId] ?? 0) + 1;
+        setState({ snapshot, total: snapshot.total, totalsByTheater, revision: snapshot.revision, loading: false, error: false });
+      } catch { setState({ loading: false, error: true }); }
+    } while (refetchAfterInflight);
+  })().finally(() => {
+    inflight = null;
+    // 마지막 응답과 finally 사이에 온 갱신도 기다린다. 삭제·복원 뒤 초점은 최신 목록에만 넘긴다.
+    if (refetchAfterInflight) { refetchAfterInflight = false; return refreshOperationArchive(); }
+  });
   return inflight;
 }
 
@@ -76,10 +84,25 @@ export function closeArchiveSheet(): void {
   if (state.sheetOpen) setState({ sheetOpen: false });
 }
 
-function readArchiveChanged(payload: unknown): { readonly revision: number; readonly total: number } | null {
+/** 명시적 열기는 패널만 꺼낸다. 일반 focusOperation의 자동 Resume 제스처를 만들지 않는다. */
+export function openRestoredOperation(id: string): boolean {
+  const node = getState().operations.find((operation) => operation.id === id);
+  if (!node) return false;
+  if (getState().activeTheaterId !== node.theaterId) setActiveTheater(node.theaterId);
+  loadForTheater(node.theaterId);
+  ensureDefaultGeometry(node.id, node.geometry);
+  restoreCanvasOperation(node.id);
+  setActiveOperation(node.id);
+  return true;
+}
+
+function readArchiveChanged(payload: unknown): { readonly revision: number; readonly total: number; readonly totalsByTheater?: Readonly<Record<string, number>> } | null {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as Record<string, unknown>;
-  return typeof record.revision === "number" && typeof record.total === "number" ? { revision: record.revision, total: record.total } : null;
+  if (typeof record.revision !== "number" || typeof record.total !== "number") return null;
+  const totals = record.totalsByTheater;
+  const validTotals = totals && typeof totals === "object" && !Array.isArray(totals) && Object.values(totals).every((value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
+  return { revision: record.revision, total: record.total, ...(validTotals ? { totalsByTheater: totals as Record<string, number> } : {}) };
 }
 
 /**
@@ -91,7 +114,7 @@ export function installOperationArchive(subscribeConsoleChannel: (channel: strin
     const changed = readArchiveChanged(payload);
     if (!changed) return;
     if (changed.revision === state.revision && changed.total === state.total) return;
-    setState({ total: changed.total, revision: changed.revision });
+    setState({ total: changed.total, revision: changed.revision, ...(changed.totalsByTheater ? { totalsByTheater: changed.totalsByTheater } : {}) });
     if (state.sheetOpen || state.snapshot !== null) void refreshOperationArchive();
   };
   const offChanged = subscribeConsoleChannel(OPERATION_ARCHIVE_CHANGED_EVENT, onChanged);

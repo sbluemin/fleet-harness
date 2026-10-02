@@ -37,7 +37,17 @@ export interface OperationArchiveSnapshot {
   readonly revision: number;
   readonly total: number;
   readonly entries: readonly OperationDescription[];
+  readonly pendingPurges?: readonly OperationPendingPurge[];
 }
+
+/** 유예 중에는 원본 보관 기록을 그대로 둔다. 보류만 서버 메모리에 있으며 재기동은 이를 취소한다. */
+export interface OperationPendingPurge {
+  readonly purgeId: string;
+  readonly operationIds: readonly string[];
+  readonly purgeAt: number;
+}
+
+export const OPERATION_PURGE_GRACE_MS = 10_000;
 
 /** 확인한 대상 집합과 revision을 그대로 확정 요청에 보낸다. */
 export interface OperationPurgeConfirmation {
@@ -49,11 +59,20 @@ export interface OperationPurgeConfirmation {
 export interface OperationPurgeResult {
   readonly operationIds: readonly string[];
   readonly revision: number;
+  readonly purgeId?: string;
+  readonly purgeAt?: number;
+}
+
+export interface OperationArchiveRestoreResult {
+  readonly operations: readonly OperationNode[];
+  readonly revision: number;
 }
 
 export interface OperationArchiveChangedEvent {
   readonly revision: number;
   readonly total: number;
+  /** total은 전체 수이며, 입구는 활성 Theater의 수만 읽는다. */
+  readonly totalsByTheater?: Readonly<Record<string, number>>;
 }
 
 export interface OperationClusterChangedEvent {
@@ -91,5 +110,6 @@ export interface OperationArchiveCapability {
   restore(id: string): Promise<OperationAccessResult>;
   undoArchive(receipt: Pick<OperationArchiveReceipt, "targetId" | "archiveId">): Promise<OperationAccessResult>;
   previewPurge(id: string): OperationPurgeConfirmation;
+  /** 10초 되돌리기 유예를 시작한다. 기록·데이터는 만료 뒤에만 지우며 서버 재기동은 보류를 취소한다. */
   purge(confirmation: OperationPurgeConfirmation): Promise<OperationPurgeResult>;
 }

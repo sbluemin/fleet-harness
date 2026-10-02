@@ -19116,7 +19116,7 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   display: flex;
   flex-direction: column;
   width: min(720px, calc(100vw - 32px));
-  height: min(84vh, calc(100dvh - 64px));
+  max-height: min(84vh, calc(100dvh - 64px));
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
   background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay);
@@ -19146,8 +19146,9 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 
 .archive-sheet-close {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
 }
@@ -19282,12 +19283,14 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 /* 한 줄 항목 — 왼쪽 이름·메타, 오른쪽 끝 복원·영구 삭제. */
 .archive-sheet-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 6px var(--space-3);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  min-width: 0;
 }
 
 .archive-sheet-item-main {
@@ -19351,8 +19354,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 
 .archive-sheet-restore,
 .archive-sheet-purge {
-  height: 24px;
-  padding: 0 var(--space-1);
+  height: 32px;
+  padding: 0 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: none;
@@ -19395,3 +19398,162 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
 }
+
+/* 보관함은 카드가 아닌 날짜별 줄 목록이다. brass는 고르기·초점만, coral은 삭제 무장만 말한다. */
+.archive-sheet-head,
+.archive-sheet-tools,
+.archive-sheet-selection { flex-shrink: 0; }
+.archive-sheet-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 10px 20px 4px;
+  min-width: 0;
+}
+.archive-sheet-search {
+  flex: 1 1 160px;
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+  padding: 0 0 4px;
+  border: none;
+  border-bottom: 1px solid var(--surface-rim);
+  border-radius: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-sm);
+  outline: none;
+}
+.archive-sheet-search::placeholder { color: var(--text-tertiary); }
+.archive-sheet-search:focus { border-bottom-color: var(--brass-ink); }
+.archive-sheet-scope {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+.archive-sheet-scope button {
+  max-width: 180px;
+  min-width: 0;
+  height: 32px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-tertiary);
+}
+.archive-sheet-scope button[aria-pressed="true"] {
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
+  border-bottom-color: var(--brass-ink);
+}
+.archive-sheet-item + .archive-sheet-item::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  background: var(--surface-rim);
+}
+.archive-sheet-item:hover,
+.archive-sheet-item:focus-within { background: color-mix(in oklch, var(--brass-ink) 8%, transparent); }
+.archive-sheet-item.is-selected {
+  border-color: color-mix(in oklch, var(--brass-ink) 50%, transparent);
+  background: color-mix(in oklch, var(--brass-ink) 12%, transparent);
+}
+.archive-sheet-item:is(:hover, :focus-within, .is-selected)::before,
+.archive-sheet-item:is(:hover, :focus-within, .is-selected) + .archive-sheet-item::before { background: transparent; }
+.archive-sheet-item.is-pending { opacity: 0.75; }
+.archive-sheet-item.is-restored .archive-sheet-item-title { color: var(--text-tertiary); }
+.archive-sheet-item mark {
+  background: color-mix(in oklch, var(--brass-ink) 28%, transparent);
+  color: inherit;
+}
+.archive-sheet-actions { color: var(--text-tertiary); font-size: var(--t-xs); }
+.archive-sheet-open,
+.archive-sheet-undo,
+.archive-sheet-old button,
+.archive-sheet-other button {
+  min-height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--brass-ink);
+  font-size: var(--t-sm);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  white-space: nowrap;
+}
+.archive-sheet-purge.is-armed {
+  position: relative;
+  color: var(--coral-ink);
+  font-weight: var(--weight-bold);
+}
+.archive-sheet-purge.is-armed::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 2px;
+  height: 1px;
+  background: var(--coral-ink);
+  transform-origin: left;
+  animation: archive-disarm 3s linear forwards;
+}
+@keyframes archive-disarm { to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .archive-sheet-purge.is-armed::after { animation: none; } }
+.archive-sheet-empty { line-height: 1.7; padding: 0 12px; }
+.archive-sheet-empty strong { color: var(--text-secondary); }
+.archive-sheet-empty p { margin: 8px 0 0; }
+.archive-sheet-old,
+.archive-sheet-other {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+.archive-sheet-plugin-theater { margin: 6px 4px; color: var(--text-tertiary); font-size: var(--t-xs); }
+.archive-sheet-selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--surface-rim);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+}
+.archive-sheet-selection .archive-sheet-restore { font-weight: var(--weight-bold); }
+/* 무장 문구가 길어져도 단추가 다음 줄로 뛰지 않는다 — 두 번째 누름의 포인터 자리를 보존한다. */
+.archive-sheet-selection .archive-sheet-purge { display: inline-grid; }
+.archive-sheet-selection .archive-sheet-purge::before {
+  content: attr(data-armed-label);
+  visibility: hidden;
+  font-weight: var(--weight-bold);
+  grid-area: 1 / 1;
+}
+.archive-sheet-selection .archive-sheet-purge > span { grid-area: 1 / 1; }
+.archive-sheet-deselect { margin-left: auto; min-height: 32px; padding: 0 8px; background: none; color: var(--text-tertiary); }
+.archive-sheet button[aria-disabled="true"] { cursor: progress; opacity: 0.6; }
+.archive-sheet :is(button, .archive-sheet-item):focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+@container (max-width: 480px) {
+  .archive-sheet-item { flex-wrap: wrap; gap: 4px 12px; }
+  .archive-sheet-item-main { flex-basis: 100%; }
+  .archive-sheet-actions { margin-left: auto; max-width: 100%; flex-wrap: wrap; gap: 4px 12px; }
+}
+@media (max-width: 480px) {
+  .archive-sheet-tools { gap: 8px; }
+  .archive-sheet-search { flex-basis: 100%; }
+  .archive-sheet-scope { width: 100%; }
+}
+.operation-search-archived { color: var(--text-tertiary); font-size: var(--t-xs); }

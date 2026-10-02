@@ -17,14 +17,18 @@ export interface ArchiveSectionCount {
  * 플러그인 보관함 칸과 활성 Theater에서의 수. 칸마다 자기 저장소를 구독하므로, 수가 바뀔 때만 다시 그린다 —
  * 스냅숏은 수의 나열이라 같은 수면 같은 문자열이다.
  */
-export function useArchiveSections(): readonly ArchiveSectionCount[] {
+export function useArchiveSections(query = "", theaterIds?: readonly string[]): readonly ArchiveSectionCount[] {
   const { archiveSections } = usePluginRegistry();
   const theaterId = useConsoleState().activeTheaterId;
+  const idsKey = JSON.stringify(theaterIds ?? [theaterId]);
   const subscribe = useCallback((listener: () => void) => {
     const offs = archiveSections.map((section) => section.subscribe(listener));
     return () => { for (const off of offs) off(); };
   }, [archiveSections]);
-  const snapshot = useCallback(() => archiveSections.map((section) => section.count(theaterId)).join(","), [archiveSections, theaterId]);
+  const snapshot = useCallback(() => {
+    const ids = JSON.parse(idsKey) as (string | null)[];
+    return archiveSections.map((section) => ids.reduce((sum, id) => sum + section.count(id, query), 0)).join(",");
+  }, [archiveSections, idsKey, query]);
   const counts = useSyncExternalStore(subscribe, snapshot, snapshot);
   const values = counts ? counts.split(",").map(Number) : [];
   return archiveSections.map((section, index) => ({ section, count: values[index] ?? 0 }));
@@ -32,9 +36,10 @@ export function useArchiveSections(): readonly ArchiveSectionCount[] {
 
 /** 보관함 전체 수 — 보관한 Operation과 플러그인 칸의 수를 더한다. */
 function useArchiveTotal(): { readonly total: number; readonly sections: readonly ArchiveSectionCount[] } {
-  const { total } = useOperationArchive();
+  const { totalsByTheater } = useOperationArchive();
+  const theaterId = useConsoleState().activeTheaterId;
   const sections = useArchiveSections();
-  return { total: total + sections.reduce((sum, entry) => sum + entry.count, 0), sections };
+  return { total: (theaterId ? totalsByTheater[theaterId] ?? 0 : 0) + sections.reduce((sum, entry) => sum + entry.count, 0), sections };
 }
 
 /** 사이드바 맨 아래의 보관함 입구 — 보관한 목록 바로 아래라 「치운 것은 여기 있다」가 한눈에 읽힌다. */

@@ -111,7 +111,7 @@ describe("Operation archive persistence and deletion", () => {
     await withArchiveDirectory(async (directory) => {
       const h = createArchiveHarness(directory);
       h.operations.create({ ...makeOperation("parent"), pluginId: null, payload: { session: { harness: "claude-code", id: "provider-session", transcriptPath: "/private/transcript" } } });
-      h.operations.createChild({ parentOperationId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111" });
+      h.operations.createChild({ parentOperationId: "parent", childSessionId: "11111111-1111-4111-8111-111111111111", payload: { session: { harness: "claude-code", sessionName: "표시용 구성원", id: "private-child-session", transcriptPath: "/private/child-transcript" } } });
       h.save();
       await expect(h.archive.archive("11111111-1111-4111-8111-111111111111")).rejects.toThrow("child_session_not_closable");
       const receipt = await h.archive.archive("parent");
@@ -123,13 +123,14 @@ describe("Operation archive persistence and deletion", () => {
       expect(() => h.operations.create(makeOperation("11111111-1111-4111-8111-111111111111"))).toThrow("operation_exists");
       expect(JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8")).operations.map((node: OperationNode) => node.id)).toEqual([]);
       const router = createOperationArchiveRouter({ archive: h.archive, isAuthorized: () => false,
-        readJsonBody: async <T,>() => ({}) as T, sanitize: createSanitizedOpDto,
+        readJsonBody: async <T,>() => ({}) as T, sanitize: (node) => createSanitizedOpDto(node, { includeSessionNames: true }),
         writeJson: (res, status, body) => Object.assign(res, { status, body }),
       });
       const readback: { status?: number; body?: unknown } = {};
       await router({ req: { method: "GET" } as never, res: readback as never, pathname: "/api/v1/operations/parent/describe" });
       expect(readback.status).toBe(200);
-      expect(JSON.stringify(readback.body)).not.toMatch(/provider-session|\/private\/transcript/);
+      expect(JSON.stringify(readback.body)).not.toMatch(/provider-session|private-child-session|\/private\//);
+      expect(JSON.stringify(readback.body)).toContain("표시용 구성원");
       const denied: { status?: number } = {};
       await router({ req: { method: "POST" } as never, res: denied as never, pathname: "/api/v1/operations/child/restore" });
       expect(denied.status).toBe(401);
@@ -147,9 +148,69 @@ describe("Operation archive persistence and deletion", () => {
       await restarted.archive.archive("parent");
       const confirm = restarted.archive.previewPurge("parent");
       await expect(restarted.archive.purge({ ...confirm, revision: confirm.revision - 1 })).rejects.toThrow("archive_revision_conflict");
-      await restarted.archive.purge(confirm);
+      const pending = await restarted.archive.purge(confirm);
+      expect(restarted.events.filter((event) => event.channel === "operation:purged")).toEqual([]);
+      restarted.clock.value = pending.purgeAt;
+      await restarted.archive.sweepExpired();
       expect(restarted.events.filter((event) => event.channel === "operation:purged").map((event) => event.operation.id).sort()).toEqual(["parent"]);
       expect(createArchiveHarness(directory).archive.describe("parent")).toBeNull();
+    });
+  });
+
+  // 유예 삭제는 기존 tombstone과 다르다. 새 지원 경로의 핵심은 만료 전 디스크 불변·재기동 취소·원자적인 일괄 확정이다.
+  it("keeps pending batches intact on disk, cancels on undo or restart, and commits the exact batch atomically", async () => {
+    await withArchiveDirectory(async (directory) => {
+      const h = createArchiveHarness(directory);
+      h.operations.create(makeOperation("a"));
+      h.operations.create(makeOperation("b"));
+      h.operations.createChild({ parentOperationId: "a", childSessionId: "11111111-1111-4111-8111-111111111111", payload: { session: { harness: "claude-code", id: "secret", sessionName: "구성원 이름" } } });
+      h.save();
+      await h.archive.archive("a"); await h.archive.archive("b");
+      const files = ["state.json", "operations-archive.json"].map((name) => path.join(directory, name));
+      const before = files.map((file) => fs.readFileSync(file, "utf8"));
+      const stale = h.archive.previewBatch(["a", "b"]);
+      await expect(h.archive.purge({ ...stale, operationIds: ["a", "a"] })).rejects.toThrow("invalid_archive_request");
+      const pending = await h.archive.purge(stale);
+      expect(files.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
+      expect(h.archive.listArchived().pendingPurges).toEqual([expect.objectContaining({ operationIds: ["a", "b"], purgeId: pending.purgeId })]);
+      await expect(h.archive.restore("a")).rejects.toThrow("pending_deletion");
+      expect(() => h.deletion.deleteTheater(THEATER.id)).toThrow("operation_busy");
+      await expect(h.archive.purge(stale)).rejects.toThrow("archive_revision_conflict");
+      await h.archive.undoPurge(pending.purgeId);
+      h.clock.value = pending.purgeAt;
+      await h.archive.sweepExpired();
+      expect(files.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
+      const abandoned = await h.archive.purge(h.archive.previewBatch(["a", "b"]));
+      h.archive.dispose(); // 종료와 크래시 모두 메모리 보류를 잃고 디스크 원본만 읽는다.
+      const restarted = createArchiveHarness(directory);
+      restarted.clock.value = abandoned.purgeAt + 60_000;
+      await restarted.archive.sweepExpired();
+      expect(restarted.archive.listArchived().entries.map((entry) => entry.operation.id).sort()).toEqual(["a", "b"]);
+      expect(restarted.archive.listArchived().pendingPurges).toEqual([]);
+      expect(restarted.archive.describe("11111111-1111-4111-8111-111111111111")?.operation.childSessions?.[0]?.payload.session).toEqual({ harness: "claude-code", id: "secret", sessionName: "구성원 이름" });
+      await expect(restarted.archive.restoreBatch({ ...restarted.archive.previewBatch(["a", "b"]), operationIds: ["a", "missing"] })).rejects.toThrow("unknown_operation");
+      expect(restarted.operations.list()).toEqual([]);
+      await expect(restarted.archive.purge(stale)).rejects.toThrow("archive_revision_conflict");
+      const restored = await restarted.archive.restoreBatch(restarted.archive.previewBatch(["a", "b"]));
+      expect(restored.operations.map((node) => node.id).sort()).toEqual(["a", "b"]);
+      expect(restored.operations.every((node) => node.payload.restoredDormant === true)).toBe(true);
+      expect(restored.operations[0]?.childSessions?.[0]?.payload.restoredDormant).toBe(true);
+      await restarted.archive.archive("a"); await restarted.archive.archive("b");
+      const final = await restarted.archive.purge(restarted.archive.previewBatch(["a", "b"]));
+      restarted.clock.value = final.purgeAt - 1;
+      await restarted.archive.sweepExpired();
+      expect(restarted.archive.listArchived().total).toBe(2);
+      restarted.clock.value = final.purgeAt;
+      await expect(restarted.archive.undoPurge(final.purgeId)).rejects.toThrow("archive_undo_conflict");
+      restarted.fault.finalize = true;
+      await expect(restarted.archive.sweepExpired()).rejects.toThrow("archive_finalize_failed");
+      expect(restarted.events.filter((event) => event.channel === "operation:purged")).toEqual([]);
+      const recovered = createArchiveHarness(directory);
+      recovered.archive.flushEvents();
+      expect(recovered.archive.listArchived().entries).toEqual([]);
+      expect(recovered.events.filter((event) => event.channel === "operation:purged").map((event) => event.operation.id).sort()).toEqual(["a", "b"]);
+      expect(recovered.archive.describe("11111111-1111-4111-8111-111111111111")).toBeNull();
+      recovered.archive.dispose(); restarted.archive.dispose();
     });
   });
 
@@ -243,6 +304,7 @@ function createArchiveHarness(directory: string) {
   const snapshot = (tombstones = deletion.list()): DurableConsoleState => ({ version: STATE_VERSION, theaters: theaters.list(), operations: operations.list(), groups: operations.listAllGroups(), deletionTombstones: tombstones });
   const save = (tombstones?: readonly DurableDeletionTombstone[], entries?: readonly ArchivedOperation[]) => storage.save(snapshot(tombstones), entries);
   const deletion = createDeferredDeletionCoordinator({ operations, theaters, archives: storage.entries, save,
+    assertMutable: (id) => archive.assertMutable(id),
     now: () => clock.value, beforePurge: (nodes) => purged.push(...nodes.map((node) => node.id).sort()),
     publish: () => {}, unregisterTheaterWorkspaces: () => {}, validateTheaterRestore: async () => {}, registerTheaterWorkspace: async () => {},
     setTimer: () => ({ unref() {} }) as unknown as ReturnType<typeof setTimeout>, clearTimer: () => {},
@@ -252,6 +314,7 @@ function createArchiveHarness(directory: string) {
     theaterExists: (id) => !!theaters.get(id), pendingDeletion: deletion.hasPendingOperation,
     stop: async (node) => { stopped.push(node.id); }, use: async () => {}, now: () => clock.value,
     publish: (event) => events.push(event), publishChanged: () => {},
+    setTimer: (() => ({ unref() {} })) as unknown as typeof setTimeout, clearTimer: () => {},
   });
   return { operations, theaters, archive, deletion, storage, save, fault, clock, events, purged, stopped };
 }

@@ -82,6 +82,8 @@ export const DELETION_GRACE_MS = 8000;
 
 export interface OperationSanitizeOptions {
   readonly sensitiveFields?: readonly string[];
+  /** 보관함 표시용 이름만 추가 허용한다. provider 세션 id·경로 허용목록은 바꾸지 않는다. */
+  readonly includeSessionNames?: boolean;
 }
 
 const FIXED_SENSITIVE_OPERATION_FIELDS = new Set([
@@ -106,13 +108,14 @@ export function createSanitizedOpDto(node: OperationNode, options: OperationSani
       ...(session.harness === "claude-code" ? { harness: "claude-code" } : {}),
       ...(typeof session.model === "string" ? { model: session.model } : {}),
       ...(typeof session.effort === "string" ? { effort: session.effort } : {}),
+      ...(options.includeSessionNames && typeof session.sessionName === "string" ? { sessionName: session.sessionName } : {}),
     };
   }
   delete payload.resumeAvailable;
   if (isResumableSession(node.payload?.session)) payload.resumeAvailable = true;
   return {
     ...node,
-    ...(node.childSessions ? { childSessions: node.childSessions.map((child) => ({ ...child, payload: sanitizeChildPayload(child.payload, sensitiveFields) })) } : {}),
+    ...(node.childSessions ? { childSessions: node.childSessions.map((child) => ({ ...child, payload: sanitizeChildPayload(child.payload, sensitiveFields, options) })) } : {}),
     // 구 버전의 열린 탭도 읽을 수 있는 wire 신원. 영속 상태의 core 소유권은 바꾸지 않는다.
     pluginId: node.pluginId === null && node.type === "agent" ? "terminal" : node.pluginId,
     payload,
@@ -121,7 +124,7 @@ export function createSanitizedOpDto(node: OperationNode, options: OperationSani
 
 // resume 라우트가 현재 지원하는 provider/sessionId 최소형과 동일하게 판정한다.
 // 제거된 provider의 durable payload는 보존하되, 실행 불가능한 Resume 표면은 노출하지 않는다.
-function sanitizeChildPayload(input: Record<string, unknown>, sensitiveFields: ReadonlySet<string>): Record<string, unknown> {
+function sanitizeChildPayload(input: Record<string, unknown>, sensitiveFields: ReadonlySet<string>, options: OperationSanitizeOptions): Record<string, unknown> {
   const payload = sanitizeRecord(input, new Set([...sensitiveFields, "providerTitle", "launchKey"]));
   if (isRecord(payload.session)) {
     const session = payload.session;
@@ -129,6 +132,7 @@ function sanitizeChildPayload(input: Record<string, unknown>, sensitiveFields: R
       ...(session.harness === "claude-code" ? { harness: "claude-code" } : {}),
       ...(typeof session.model === "string" ? { model: session.model } : {}),
       ...(typeof session.effort === "string" ? { effort: session.effort } : {}),
+      ...(options.includeSessionNames && typeof session.sessionName === "string" ? { sessionName: session.sessionName } : {}),
     };
   }
   delete payload.resumeAvailable;

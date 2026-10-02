@@ -12,6 +12,7 @@ import { TidiedList } from "./tidied.js";
  */
 
 const theaterOf = (theaterId: string | null) => theaterId ?? activeTheaterId();
+const matching = (objectives: readonly Objective[], query = "") => objectives.filter((objective) => objective.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 const completedOf = (objectives: readonly Objective[]) => objectives.filter((objective) => objective.done && !objective.removed)
   .sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0));
 const tidiedOf = (objectives: readonly Objective[]) => objectives.filter((objective) => objective.removed);
@@ -22,9 +23,9 @@ function openObjective(objectiveId: string, close: () => void): void {
   close();
 }
 
-function CompletedSection({ language, theaterId, close }: ArchiveSectionContext) {
+function CompletedSection({ language, theaterId, close, query }: ArchiveSectionContext) {
   const t = getT(language);
-  const objectives = completedOf(useObjectiveTheater(theaterOf(theaterId)).objectives);
+  const objectives = matching(completedOf(useObjectiveTheater(theaterOf(theaterId)).objectives), query);
   const day = new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric" });
   return (
     <ul className="objectives-archive-list">
@@ -41,9 +42,9 @@ function CompletedSection({ language, theaterId, close }: ArchiveSectionContext)
   );
 }
 
-function TidiedSection({ language, theaterId, close }: ArchiveSectionContext) {
+function TidiedSection({ language, theaterId, close, query }: ArchiveSectionContext) {
   const t = getT(language);
-  const objectives = tidiedOf(useObjectiveTheater(theaterOf(theaterId)).objectives);
+  const objectives = matching(tidiedOf(useObjectiveTheater(theaterOf(theaterId)).objectives), query);
   const call = async <R,>(path: string, body: Record<string, unknown>): Promise<R | null> => {
     const api = objectivesApi();
     if (!api) return null;
@@ -61,14 +62,14 @@ export const objectivesArchiveSections: readonly ArchiveSectionDescriptor[] = [
     id: "completed",
     title: (language) => getT(language)("objectives.archive.completed"),
     subscribe: subscribeObjective,
-    count: (theaterId) => completedOf(readTheater(theaterOf(theaterId)).objectives).length,
+    count: (theaterId, query) => matching(completedOf(readTheater(theaterOf(theaterId)).objectives), query).length,
     render: (ctx) => <CompletedSection {...ctx} />,
   },
   {
     id: "tidied",
     title: (language) => getT(language)("objectives.archive.tidied"),
     subscribe: subscribeObjective,
-    count: (theaterId) => tidiedOf(readTheater(theaterOf(theaterId)).objectives).length,
+    count: (theaterId, query) => matching(tidiedOf(readTheater(theaterOf(theaterId)).objectives), query).length,
     render: (ctx) => <TidiedSection {...ctx} />,
   },
 ];
