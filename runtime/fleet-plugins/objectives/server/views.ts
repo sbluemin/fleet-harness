@@ -4,7 +4,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { PromptLanguage } from "./prompts.js";
 import type { ObjectiveResult } from "./results.js";
 import type { ObjectiveStore } from "./store.js";
-import { commanderMode, latestRecord, missionReady, type Objective } from "./types.js";
+import { commanderMode, latestRecord, missionReady, ownAnswer, type Objective } from "./types.js";
 
 /** 목록 한 줄에 싣는 브리핑의 앞부분 길이 — 목표 여럿을 한 번에 견주는 데 쓰고, 전문은 목표 하나를 읽는다. */
 const ROW_BRIEF = 600;
@@ -117,11 +117,11 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     }),
     decisionRequestRevision: objective.decisionRequestRevision,
     ...(objective.decisionDelivery ? { decisionDelivering: true } : {}),
-    // 결정 — 사람이 보낸 답. 질문과 고른 선택지의 이름, 직접 쓴 말만 싣는다.
+    // 결정 — 사람이 보낸 답. 질문과 고른 선택지의 이름, 직접 쓴 말, 선택지를 모두 버린 내 의견 표시만 싣는다.
     ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ question: decision.question.text,
       ...withoutEmpty({
         selected: decision.answer.selectedOptionIds.flatMap((id) => decision.question.options.filter((option) => option.id === id).map((option) => option.label)),
-        text: decision.answer.text, missionId: decision.missionId, memberId: decision.memberId,
+        text: decision.answer.text, own: ownAnswer(decision.question, decision.answer), missionId: decision.missionId, memberId: decision.memberId,
       }),
       at: new Date(decision.at).toISOString() })) }),
   });

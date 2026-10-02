@@ -1,4 +1,4 @@
-import { MAX_CONTEXT, type DecisionAnswer, type DecisionRequest, type ObjectiveEditKind, type Objective } from "./types.js";
+import { MAX_CONTEXT, ownAnswer, type DecisionAnswer, type DecisionRequest, type ObjectiveEditKind, type Objective } from "./types.js";
 
 /**
  * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `fleet-objectives` 도구 설명과 보드를 읽고
@@ -93,7 +93,9 @@ export function decisionTurn(objective: Objective, request: DecisionRequest, ans
     const picked = question.options.filter((option) => answer?.selectedOptionIds.includes(option.id)).map((option) => quote(option.description ? `${option.label} — ${option.description}` : option.label));
     const lines = [`${index + 1}. ${quote(question.text)}`];
     if (picked.length) lines.push(`${ko ? "고른 것" : "Chosen"}:\n${picked.join("\n")}`);
-    if (answer?.text.trim()) lines.push(`${ko ? "직접 쓴 말" : "Written"}:\n${quote(answer.text)}`);
+    // 고른 것에 붙인 말, 선택지를 모두 버린 내 의견, 선택지가 없는 질문의 답을 이름으로 가른다.
+    const label = picked.length ? (ko ? "덧붙인 말" : "Added") : answer && ownAnswer(question, answer) ? (ko ? "선택지 대신 내 의견" : "Own answer instead of the options") : (ko ? "직접 쓴 말" : "Written");
+    if (answer?.text.trim()) lines.push(`${label}:\n${quote(answer.text)}`);
     return lines.join("\n");
   });
   const head = ko
