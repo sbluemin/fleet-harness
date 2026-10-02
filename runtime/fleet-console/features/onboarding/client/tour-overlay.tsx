@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OnboardingTour, OnboardingTourStep } from "@fleet-console/sdk/onboarding";
-import { ONBOARDING_BOUNDARY_ATTRIBUTE, ONBOARDING_BOUNDARY_SELECTOR, ONBOARDING_TOUR_LAYER_ATTRIBUTE } from "@fleet-console/sdk/onboarding/anchors";
+import { ONBOARDING_BOUNDARY_ATTRIBUTE, ONBOARDING_BOUNDARY_SELECTOR, ONBOARDING_TOUR_LAYER_ATTRIBUTE, ONBOARDING_WORK_SURFACE_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { onboardingT } from "./i18n.js";
@@ -90,26 +90,50 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
     if (lockedTour) {
       const tour = tours.find((entry) => entry.id === lockedTour.tourId);
       if (!tour || seen.includes(tourSeenKey(tour.id, lockedTour.phase))) return null;
+      // 존재를 알리던 스포트라이트는 사용자가 그 기능의 화면에 들어온 순간 할 일을 다 했다. 그대로 두면 카드가 칩 아래에
+      // 떠 그 화면의 컨트롤을 덮으므로, 같은 투어의 워크스루로 넘겨 안내를 화면 안의 카드 곁으로 옮긴다.
+      if (lockedTour.phase === "spotlight" && !seen.includes(tourSeenKey(tour.id, "walkthrough"))) {
+        const walkthrough = resolveWalkthrough(tour, document);
+        if (walkthrough) return walkthrough;
+      }
       const steps = lockedTour.phase === "spotlight"
         ? tour.spotlight && resolveAnchor(tour.spotlight, document) ? [tour.spotlight] : []
         : availableSteps(tour.walkthrough, document);
       if (steps.length === 0) return null;
       // 재생 중에도 발동과 같은 기준으로 다시 잰다 — 안내가 걸린 표면 위로 다른 모달이 열리면 물러난다.
-      if (isBlockedByModal(document, resolveAnchor(steps[0]!, document))) return null;
+      const anchor = resolveAnchor(steps[0]!, document);
+      if (isBlockedByModal(document, anchor)) return null;
+      if (lockedTour.phase === "spotlight" && anchor && isBlockedByWorkSurface(document, anchor)) return null;
       return { tour, phase: lockedTour.phase, steps } satisfies TourPresentation;
     }
     if (blocked()) return null;
     return resolveNextTour(tours, seen, document, isCompletedTourScreenVisible(completedTourIdRef.current, tours, document));
   }, [blocked, domRevision, lockedTour, seen, settings.state, tours, suspended]);
 
+  // 작업 표면에 물러난 스포트라이트는 잠금을 놓는다. 쥐고 있으면 사용자가 연 그 표면 안의 워크스루가 시작하지 못한다.
+  // 시청 기록은 그대로라 표면이 닫히면 다음 판정에서 다시 선다.
   useEffect(() => {
-    if (lockedTour || !resolved) return;
+    if (lockedTour?.phase !== "spotlight") return;
+    const spotlight = tours.find((entry) => entry.id === lockedTour.tourId)?.spotlight;
+    const anchor = spotlight ? resolveAnchor(spotlight, document) : null;
+    if (anchor && isBlockedByWorkSurface(document, anchor)) setLockedTour(null);
+  }, [domRevision, lockedTour, tours]);
+
+  useEffect(() => {
+    if (!resolved || (lockedTour?.tourId === resolved.tour.id && lockedTour.phase === resolved.phase)) return;
     setLockedTour({ tourId: resolved.tour.id, phase: resolved.phase });
     setStepIndex(0);
   }, [lockedTour, resolved]);
 
   const currentStep = resolved?.steps[Math.min(stepIndex, Math.max(0, resolved.steps.length - 1))] ?? null;
   const anchor = currentStep ? resolveAnchor(currentStep, document) : null;
+
+  // 스크롤되는 표면 안에서는 앵커가 보이는 영역 밖에 있을 수 있다. 스텝이 바뀐 순간 한 번만 가장 가까운 보이는 위치로
+  // 끌어온다. 자리 재기처럼 스크롤마다 다시 부르면 사용자가 굴린 화면을 매번 앵커로 되돌려, 앵커 밖의 컨트롤에는
+  // 스크롤로 닿을 수 없게 된다. nearest는 이미 보이는 앵커에는 아무 일도 하지 않는다.
+  useLayoutEffect(() => {
+    anchor?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [anchor, currentStep]);
 
   useLayoutEffect(() => {
     if (!currentStep) return;
@@ -118,9 +142,6 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
       return;
     }
     anchor.classList.add("is-feature-tour-anchor");
-    // 스크롤되는 표면 안에서는 앵커가 보이는 영역 밖에 있을 수 있다. 카드 자리를 잡기 전에 가장 가까운 보이는
-    // 위치로 끌어온다. nearest는 이미 보이는 앵커에는 아무 일도 하지 않는다.
-    anchor.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     const boundary = anchor.closest<HTMLElement>(ONBOARDING_BOUNDARY_SELECTOR);
     // 카드 크기는 레이아웃 크기로 잰다 — 변형이 걸린 순간에도 흔들리지 않는다.
     const card = cardRef.current;
@@ -215,12 +236,8 @@ function resolveNextTour(
   for (const tour of tours) {
     if (seen.includes(tourSeenKey(tour.id, "walkthrough"))) continue;
     if (tour.deferAfterAnotherTour === true && completedAnotherTour) continue;
-    const activationStep = tour.walkthrough.find((step) => step.anchor !== null);
-    if (!activationStep?.anchor) continue;
-    const activationAnchor = root.querySelector(activationStep.anchor);
-    if (activationAnchor === null || isBlockedByModal(root, activationAnchor)) continue;
-    const steps = availableSteps(tour.walkthrough, root);
-    if (steps.length > 0) return { tour, phase: "walkthrough", steps };
+    const walkthrough = resolveWalkthrough(tour, root);
+    if (walkthrough) return walkthrough;
   }
   // 스포트라이트는 방금 다른 투어를 끝낸 화면에서는 뜨지 않는다 — 한 스텝짜리 곁가지가 방금 끝낸 안내 뒤에 바로 붙으면
   // 사용자에게는 스텝을 합친 것과 다르지 않다. 끝낸 투어의 화면을 떠나면 다음 방문에 제 순서로 뜬다.
@@ -228,9 +245,19 @@ function resolveNextTour(
   for (const tour of tours) {
     if (!tour.spotlight || seen.includes(tourSeenKey(tour.id, "spotlight"))) continue;
     const anchor = resolveAnchor(tour.spotlight, root);
-    if (anchor !== null && !isBlockedByModal(root, anchor)) return { tour, phase: "spotlight", steps: [tour.spotlight] };
+    if (anchor !== null && !isBlockedByModal(root, anchor) && !isBlockedByWorkSurface(root, anchor)) return { tour, phase: "spotlight", steps: [tour.spotlight] };
   }
   return null;
+}
+
+// 워크스루는 첫 앵커가 선 스텝(활성 앵커)이 화면에 있고 모달에 가려지지 않았을 때만 시작한다.
+function resolveWalkthrough(tour: OnboardingTour, root: ParentNode): TourPresentation | null {
+  const activationStep = tour.walkthrough.find((step) => step.anchor !== null);
+  if (!activationStep?.anchor) return null;
+  const activationAnchor = root.querySelector(activationStep.anchor);
+  if (activationAnchor === null || isBlockedByModal(root, activationAnchor)) return null;
+  const steps = availableSteps(tour.walkthrough, root);
+  return steps.length > 0 ? { tour, phase: "walkthrough", steps } : null;
 }
 
 // 방금 끝낸 투어의 화면에 아직 머물러 있는가 — 미뤄둔 투어가 같은 방문에서 이어 재생되는 것만 막는다.
@@ -247,11 +274,21 @@ function resolveAnchor(step: OnboardingTourStep, root: ParentNode): HTMLElement 
 }
 
 export function visibleModals(root: ParentNode): readonly HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>('[aria-modal="true"]')].filter((element) => {
+  return visibleElements(root, '[aria-modal="true"]');
+}
+
+function visibleElements(root: ParentNode, selector: string): readonly HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(selector)].filter((element) => {
     if (element.hidden || element.getAttribute("aria-hidden") === "true") return false;
     const style = getComputedStyle(element);
     return style.display !== "none" && style.visibility !== "hidden";
   });
+}
+
+// 스포트라이트는 사용자가 열어 둔 작업 표면(레일 패널 등) 바깥을 가리키는 동안 물러난다. 칩 아래에 매달린 카드가 그
+// 표면의 컨트롤을 덮기 때문이다. 시청 기록은 남기지 않으므로 표면이 닫히면 다시 선다.
+function isBlockedByWorkSurface(root: ParentNode, anchor: Element): boolean {
+  return visibleElements(root, ONBOARDING_WORK_SURFACE_SELECTOR).some((surface) => !surface.contains(anchor));
 }
 
 // 열려 있는 모달은 안내를 막는다. 다만 그 모달 안의 컨트롤을 짚는 안내까지 막지는 않는다 — 사용자가 직접 연 표면에서

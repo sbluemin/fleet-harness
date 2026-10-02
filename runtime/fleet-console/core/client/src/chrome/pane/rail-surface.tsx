@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { ClientApiCapability, ClientExpandedSurfacesCapability } from "@fleet-console/sdk/plugin";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import { onboardingWorkSurface } from "@fleet-console/sdk/onboarding/anchors";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { PaneDescriptor, PaneOpenRequest } from "@fleet-console/sdk/pane";
 import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
@@ -419,6 +420,7 @@ function PaneHost({
       id={`rail-pane-${descriptor.id}`}
       className={`rail-pane role-${descriptor.role}${focused ? " is-focused" : ""}${visible ? "" : " is-parked"}${width === undefined ? "" : " is-sized"}`}
       data-pane={descriptor.id}
+      {...onboardingWorkSurface()}
       hidden={!visible}
       aria-hidden={visible ? undefined : true}
       inert={visible ? undefined : true}
