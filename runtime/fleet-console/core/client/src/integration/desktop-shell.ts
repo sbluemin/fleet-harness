@@ -1,4 +1,20 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { carryZenMode } from "./zen-mode.js";
+
+/** Desktop 셸이 가로채는 목록 항해. 셸은 Console 내부를 import하지 않아 같은 리터럴을 갖는다. */
+export const PICKER_SURFACE_PARAM = "desktop-surface";
+export const PICKER_SURFACE_OPEN = "host-picker";
+export const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
+export const PICKER_AT_PARAM = "at";
+export const PICKER_ANCHOR_PARAM = "anchor";
+
+export function desktopPickerUrl(homeOrigin: string, surface: string = PICKER_SURFACE_OPEN, at?: string, anchor?: string): string {
+  const url = new URL("/console/", `${homeOrigin}/`);
+  url.searchParams.set(PICKER_SURFACE_PARAM, surface);
+  if (at !== undefined) url.searchParams.set(PICKER_AT_PARAM, at);
+  if (anchor !== undefined) url.searchParams.set(PICKER_ANCHOR_PARAM, anchor);
+  return carryZenMode(url).toString();
+}
 
 /**
  * 창을 들고 있는 셸이 알려 준 "돌아갈 곳". 원격 콘솔이 서빙한 화면은 자기가 아닌 origin을
@@ -43,15 +59,15 @@ function getSnapshot(): DesktopShellHome {
   return snapshot;
 }
 
-/**
- * `reloadToken`이 바뀌면 다시 읽는다. 셸의 게시는 창을 띄우는 마감과 경주하므로 첫 읽기가 버전을
- * 놓칠 수 있다 — 그 값이 필요한 화면(도움말 메뉴)은 열릴 때 한 번 더 묻는다.
- */
 /** 이미 게시된 집만 읽는다. 종료 안내는 세션 없는 서버에 새 요청을 보내지 않는다. */
 export function useDesktopShellHome(): DesktopShellHome {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+/**
+ * `reloadToken`이 바뀌면 다시 읽는다. 셸의 게시는 창을 띄우는 마감과 경주하므로 첫 읽기가 버전을
+ * 놓칠 수 있다 — 그 값이 필요한 화면(도움말 메뉴)은 열릴 때 한 번 더 묻는다.
+ */
 export function useDesktopHomeOrigin(reloadToken = 0): DesktopShellHome {
   const home = useDesktopShellHome();
 

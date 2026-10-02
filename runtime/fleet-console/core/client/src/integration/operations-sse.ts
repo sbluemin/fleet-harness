@@ -1,7 +1,7 @@
 import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, fetchTheaters, resumeConsoleSession } from "./api.js";
 import { refreshOperationArchive } from "./operation-archive.js";
 import { OPERATION_CLUSTER_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
-import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
+import type { SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
 import { applyDesktopShellUpdateSnapshot } from "./desktop-shell-update.js";
@@ -386,7 +386,6 @@ function endSession(reason: SessionEndedReason): void {
   connectionGeneration += 1;
   setConnectionState("offline");
   applyControlReclaimed(reason);
-  window.dispatchEvent(new CustomEvent<SessionEndedDetail>(CONTROL_RECLAIMED_EVENT, { detail: { reason } }));
 }
 
 export function reconnectOperationsSseNow(): void {

@@ -6,8 +6,7 @@ import { revokeRemoteAccessSession } from "../../settings/client/global-settings
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { formatRelativeTime, useConsoleLocale, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 import { dismissControlCurtain } from "../../../core/client/src/integration/store.js";
-import { isDesktopShell, useDesktopShellHome } from "../../../core/client/src/integration/desktop-shell.js";
-import { hostPickerUrl } from "../../../core/client/src/chrome/components/command-band-system-cluster.js";
+import { desktopPickerUrl, isDesktopShell, useDesktopShellHome } from "../../../core/client/src/integration/desktop-shell.js";
 
 export function ControlBar() {
   const state = useConsoleState();
@@ -187,7 +186,7 @@ export function ControlReclaimedNotice() {
         <span className="control-reclaimed-eyebrow">{t(copy.eyebrow)}</span>
         <h2>{t(copy.title)}</h2>
         <p>{t(copy.body)}</p>
-        {isDesktopShell() && home.origin !== null ? <a className="control-reclaimed-home" href={hostPickerUrl(home.origin)}>{t("chrome.control.returnHome")}</a> : null}
+        {isDesktopShell() && home.origin !== null ? <a className="control-reclaimed-home" href={desktopPickerUrl(home.origin)}>{t("chrome.control.chooseHost")}</a> : null}
       </section>
     </div>,
     document.body,

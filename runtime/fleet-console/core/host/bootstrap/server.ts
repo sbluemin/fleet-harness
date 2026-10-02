@@ -1482,7 +1482,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 세션이 없다는 것은 회수·대체·만료·재시작 중 하나다. 그 기기가 아직 들고 있는 페어링
     // 쿠키로 끝난 사유를 찾아 — handle·기기 이름·openedAt은 들여다보지 않는다. 페어링이 없거나
     // 사유가 없으면(재시작·유휴) 지금처럼 사유 없는 401이다.
-    const paired = pairedDeviceStore.resolve(readPairingCookie(req.headers, listener.port), listener.audience);
+    const paired = pairedDeviceStore.peek(readPairingCookie(req.headers, listener.port), listener.audience);
     const reason = paired === null ? null : access.lookupSessionEnd(paired.id);
     return reason === null ? { admitted: false } : { admitted: false, reason };
   }

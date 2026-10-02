@@ -153,7 +153,10 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       expect(denied.status).toBe(401);
       expect(JSON.parse(denied.body)).toEqual({ error: "unauthorized" });
     }
-    expect((await readRemoteStatus(fixture)).rejectedJoins.count).toBe(0);
+    const deniedStatus = await readRemoteStatus(fixture);
+    expect(deniedStatus.rejectedJoins.count).toBe(0);
+    expect(deniedStatus.devices.find((entry) => entry.device === "first")!.lastSeenAt)
+      .toBe(held.devices.find((entry) => entry.device === "first")!.lastSeenAt);
 
     // 명시적 재오픈은 성공하고 그 페어링의 사유를 지운다. 옛 세션 쿠키는 여전히 죽어 있다.
     const resumed = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), first);

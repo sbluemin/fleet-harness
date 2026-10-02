@@ -36,7 +36,9 @@ export interface PairedDeviceStore {
   find(id: string): PairedDevice | null;
   /** 새 페어링과 그 비밀값. 상한에 닿으면 null을 돌려주고 조용히 밀어내지 않는다. */
   pair(input: { readonly audience: AccessAudience; readonly access: AccessClass; readonly device: string | null }): PairedDeviceGrant | null;
-  /** 비밀값을 그 페어링으로 되돌린다. audience가 다르면 없는 것으로 본다. */
+  /** 비밀값을 대조하되 접속 시각과 디스크를 갱신하지 않는다. 세션 거절의 사유 조회에 쓴다. */
+  peek(secret: string | null, audience: AccessAudience): PairedDevice | null;
+  /** 조인한 비밀값을 그 페어링으로 되돌리고 접속 시각을 갱신한다. */
   resolve(secret: string | null, audience: AccessAudience): PairedDevice | null;
   revoke(id: string): PairedDevice | null;
   /** 이 audience의 페어링을 전부 걷어낸다. 인증서 신원이 바뀌면 어차피 붙을 수 없다. */
@@ -104,6 +106,13 @@ export function createPairedDeviceStore(consoleDir: string, deps: PairedDeviceSt
     return rest;
   }
 
+  function findSecret(secret: string | null, audience: AccessAudience): number {
+    if (!secret) return -1;
+    const hash = hashPairingSecret(secret);
+    // audience가 어긋나면 없는 것으로 본다 — 루프백 쿠키가 원격 리스너를 열 수 없다.
+    return devices.findIndex((entry) => entry.secretHash === hash && entry.audience === audience);
+  }
+
   return {
     list: (audience) => devices.filter((entry) => entry.audience === audience).map(publish).sort((left, right) => right.pairedAt - left.pairedAt),
 
@@ -130,14 +139,15 @@ export function createPairedDeviceStore(consoleDir: string, deps: PairedDeviceSt
       return { device: publish(entry), secret };
     },
 
+    peek(secret, audience) {
+      const index = findSecret(secret, audience);
+      return index === -1 ? null : publish(devices[index]!);
+    },
+
     resolve(secret, audience) {
-      if (!secret) return null;
-      const hash = hashPairingSecret(secret);
-      const index = devices.findIndex((entry) => entry.secretHash === hash);
+      const index = findSecret(secret, audience);
       if (index === -1) return null;
       const entry = devices[index]!;
-      // audience가 어긋나면 없는 것으로 본다 — 루프백에서 얻은 쿠키가 원격 리스너를 열 수 없다.
-      if (entry.audience !== audience) return null;
       const seen = now();
       const refreshed: StoredDevice = { ...entry, lastSeenAt: seen };
       devices = devices.map((candidate, position) => (position === index ? refreshed : candidate));
