@@ -96,13 +96,22 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     return objectiveView(read);
   };
 
+  /** 짧은 목표 이름은 인증된 참여 범위 안에서만 푼다. 정확한 id와 기존 권한 판정은 그대로 둔다. */
+  const resolveObjectiveId = (reference: string, caller: ConsoleCaller | undefined): string => {
+    if (store.find(reference) || caller?.kind !== "operation") return reference;
+    const matches = store.all().filter((objective) => objective.id.startsWith(reference) && roleIn(objective, caller));
+    return matches.length === 1 ? matches[0]!.id : reference;
+  };
   const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, caller: ConsoleCaller | undefined, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> | unknown): PluginMcpTool => ({
     name, description, inputSchema: z.toJSONSchema(schema),
     execute: async (raw, context) => {
       const parsed = schema.safeParse(raw ?? {});
       if (!parsed.success) return refuse("invalid_arguments");
-      try { return await run(parsed.data, context.caller, context); }
-      catch (error) { return error instanceof ObjectiveStoreError ? refuse(error.code, error.code === "decision_delivering" ? { hint: DECISION_DELIVERING } : error.details) : error instanceof EvidenceError ? refuse(error.code, error.reason ? { reason: error.reason } : {}) : refuse("objectives_failed"); }
+      try {
+        const args = parsed.data;
+        return await run(typeof args.objectiveId === "string" ? { ...args, objectiveId: resolveObjectiveId(args.objectiveId, context.caller) } : args, context.caller, context);
+      }
+      catch (error) { return error instanceof ObjectiveStoreError ? refuse(error.code, error.code === "decision_delivering" ? { hint: DECISION_DELIVERING } : error.code === "unknown_objective" ? { hint: "Use mine to read this session's objective and its full objectiveId." } : error.details) : error instanceof EvidenceError ? refuse(error.code, error.reason ? { reason: error.reason } : {}) : refuse("objectives_failed"); }
     },
   });
   /** 쓰기의 문 — 지휘관만. 담당에게는 읽기 전용임을, 밖의 Operation 에게는 참여자가 아님을 말한다. */
