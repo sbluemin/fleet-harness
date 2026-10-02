@@ -48,6 +48,7 @@ export interface LaunchService {
   /** 완료 기록과 Core 요청 의도를 저장한 뒤 지휘관 ID 하나로 보관을 요청한다. */
   complete(objectiveId: string): Promise<Objective>;
   reopen(objectiveId: string): Promise<Objective>;
+  extend(objectiveId: string, context: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly operationId: string }>;
   /** 재시작 때 미완료 Core 요청만 재접수한다. 완료 상태만 보고 다시 보관하지 않는다. */
   resumeOperationIntents(): Promise<void>;
   rename(objectiveId: string, title: string): Promise<Objective>;
@@ -817,6 +818,23 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     } finally { followupWorkers.delete(workerKey); }
   };
 
+  const requestPlan = async (objectiveId: string, options?: LaunchOptions) => {
+    const language = languageOf(options);
+    let current = objective(objectiveId);
+    if (current.done) throw new ObjectiveStoreError("objective_done");
+    await ensureCommander(objectiveId);
+    rememberLanguage(objectiveId, language);
+    store.recordStage(objectiveId, "planned");
+    // 구상은 계획과 메모만이다 — 임무 수행도, 담당 기동도 「시작」이 한다.
+    if (!current.planning) current = store.setPlanning(objectiveId, true);
+    current = store.setCriteriaOpen(objectiveId, true);
+    const firstWake = neverStarted(objectiveId);
+    if (firstWake) current = store.setEdited(objectiveId, null);
+    if (!(await send(objectiveId, planTurn(current, language), humanWords(current.planRequest), true))) throw new ObjectiveStoreError("launch_failed");
+    if (firstWake) announceStarted(objectiveId);
+    return { objective: current, operationId: objectiveId };
+  };
+
   const service: LaunchService = {
     describe: () => ({ available: !!ctx.host.consoleControl }),
 
@@ -888,10 +906,25 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return objective(objectiveId);
     }),
 
+    extend: (objectiveId, context, options) => orderedOperationRequest(objectiveId, async () => {
+      const current = objective(objectiveId);
+      if (service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
+      const intent = current.done ? operationIntent(objectiveId, "ensure-active") : undefined;
+      return claim(objectiveId, async () => {
+        store.extend(objectiveId, context, intent);
+        await applyOperationIntent(objectiveId);
+        return requestPlan(objectiveId, options);
+      }, "plan");
+    }),
+
     async resumeOperationIntents() {
       for (const current of store.all()) {
-        if (!store.operationIntent(current.id)) continue;
-        try { await orderedOperationRequest(current.id, () => applyOperationIntent(current.id)); }
+        const intent = store.operationIntent(current.id);
+        if (!intent) continue;
+        try { await orderedOperationRequest(current.id, async () => {
+          await applyOperationIntent(current.id);
+          if (intent.extensionContext !== undefined) await service.requestPlan(current.id);
+        }); }
         catch (error) { console.warn(`[objectives] Operation request remains pending: ${error instanceof Error ? error.message : "unexpected_failure"}`); }
       }
     },
@@ -1022,22 +1055,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return store.memberLaunchState(objectiveId, memberId, { next: null, launch: record.next.was ?? null });
     }),
 
-    requestPlan: (objectiveId, options) => claim(objectiveId, async () => {
-      const language = languageOf(options);
-      let current = objective(objectiveId);
-      if (current.done) throw new ObjectiveStoreError("objective_done");
-      await ensureCommander(objectiveId);
-      rememberLanguage(objectiveId, language);
-      store.recordStage(objectiveId, "planned");
-      // 구상은 계획과 메모만이다 — 임무 수행도, 담당 기동도 「시작」이 한다.
-      if (!current.planning) current = store.setPlanning(objectiveId, true);
-      current = store.setCriteriaOpen(objectiveId, true);
-      const firstWake = neverStarted(objectiveId);
-      if (firstWake) current = store.setEdited(objectiveId, null);
-      if (!(await send(objectiveId, planTurn(current, language), humanWords(current.planRequest), true))) throw new ObjectiveStoreError("launch_failed");
-      if (firstWake) announceStarted(objectiveId);
-      return { objective: current, operationId: objectiveId };
-    }, "plan"),
+    requestPlan: (objectiveId, options) => claim(objectiveId, () => requestPlan(objectiveId, options), "plan"),
 
     missionPatched: (objectiveId, missionId, patch) => store.missionPatch(objectiveId, missionId, patch),
     missionAdded: (objectiveId, input, options) => store.missionAdd(objectiveId, input, { unplaced: options?.by === "human", ...(options?.by === "human" ? { by: "human" as const } : {}) }),

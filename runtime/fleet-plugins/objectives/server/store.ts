@@ -68,6 +68,8 @@ import {
   type DecisionQuestionInput,
   type DecisionRequest,
   storedDecisionFieldsSchema,
+  storedExtensionsSchema,
+  MAX_CONTEXT,
 } from "./types.js";
 
 /**
@@ -193,6 +195,8 @@ export interface ObjectiveStore {
   move(objectiveId: string, anchor: { readonly beforeId: string } | { readonly afterId: string }): Objective;
   complete(objectiveId: string, operationIntent?: StoredObjective["operationIntent"]): Objective;
   reopen(objectiveId: string, operationIntent?: StoredObjective["operationIntent"]): Objective;
+  /** 완료 복원은 의도만 먼저 쓰고, 호스트가 복원한 뒤 회차를 시작한다. */
+  extend(objectiveId: string, context: string, operationIntent?: StoredObjective["operationIntent"]): Objective;
   operationIntent(objectiveId: string): StoredObjective["operationIntent"];
   acknowledgeOperationIntent(objectiveId: string, requestId: string): void;
   /** 인계 대기의 목표를 검토 대기로 넘긴다 — 인계 기록을 남긴다. 지휘관은 회고와 함께, 사람은 회고 없이. */
@@ -373,6 +377,9 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
       const intent = parsed.operationIntent;
       if (intent !== undefined && (!intent || typeof intent !== "object" || typeof intent.requestId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(intent.requestId) || (intent.action !== "archive" && intent.action !== "ensure-active"))) throw new ObjectiveStoreError("invalid_operation_intent");
+      if (intent?.extensionContext !== undefined && (intent.action !== "ensure-active" || typeof intent.extensionContext !== "string" || !intent.extensionContext.trim() || intent.extensionContext.length > MAX_CONTEXT)) throw new ObjectiveStoreError("invalid_operation_intent");
+      const extensions = storedExtensionsSchema.safeParse(parsed.extensions ?? []);
+      if (!extensions.success || (parsed.extensionActive !== undefined && (parsed.extensionActive !== true || !extensions.data.length || parsed.done || parsed.handoff))) throw new ObjectiveStoreError("invalid_stored_extensions");
       const results = storedResultsSchema.safeParse(parsed.results === undefined ? [] : parsed.results);
       // 새 필드도 같은 손상 경계다. 아래 quarantine이 원본을 보존하며 다른 목표 읽기는 계속된다.
       if (!results.success) throw new ObjectiveStoreError("invalid_stored_results");
@@ -623,6 +630,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       awaitingHandoff: awaitingHandoff(stored),
       awaitingReview: awaitingReview(stored),
       handoff: stored.handoff ? { by: stored.handoff.by, at: stored.handoff.at, retrospective: stored.handoff.by === "commander" ? stored.handoff.retrospective : null } : null,
+      extensions: stored.extensions ?? [],
+      extensionActive: stored.extensionActive === true,
       criteria: (stored.criteria ?? []).map((criterion) => ({ ...criterion })),
       criteriaProposals: (stored.criteriaProposals ?? []).map((proposal) => ({ ...proposal })),
       members,
@@ -667,6 +676,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           member: member?.id ?? null,
           ...(mission.memberBy ? { memberBy: mission.memberBy } : {}),
           ...(mission.unplaced ? { unplaced: true as const } : {}),
+          ...(mission.by ? { by: mission.by } : {}),
           operationId: member && options.operations.get(member.id) ? member.id : null,
           sessionName: member?.sessionName ?? null,
           ...(member?.launch.mode === "model" && member.model ? { model: member.model } : {}),
@@ -861,7 +871,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     return { ...stored, missions };
   };
   /** 자리가 정해졌다 — 미분류 표시를 뗀다. */
-  const placed = (mission: StoredMission): StoredMission => (mission.unplaced ? (({ unplaced: _unplaced, ...rest }) => rest)(mission) : mission);
+  const placed = (mission: StoredMission): StoredMission => (mission.unplaced ? (({ unplaced: _unplaced, ...rest }) => ({ ...rest, by: "human" as const }))(mission) : mission);
   const withoutEdge = (mission: StoredMission, id: string): StoredMission => ({ ...mission, prerequisites: mission.prerequisites.filter((edge) => edge.id !== id) });
   const proposalsOf = (stored: StoredObjective, input: readonly CriterionProposalInput[]): readonly ObjectiveCriterionProposal[] => {
     const criteria = stored.criteria ?? [];
@@ -870,15 +880,17 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const targets = new Set<string>();
     return input.map((proposal): ObjectiveCriterionProposal => {
       const id = randomUUID();
-      if (!("revise" in proposal) && !("retire" in proposal)) return { id, kind: "add", text: proposal.text };
-      const reference = "revise" in proposal ? proposal.revise : proposal.retire;
+      if (!("revise" in proposal) && !("retire" in proposal) && !("recheck" in proposal)) return { id, kind: "add", text: proposal.text };
+      const reference = "revise" in proposal ? proposal.revise : "retire" in proposal ? proposal.retire : proposal.recheck;
+      if ("recheck" in proposal && !stored.extensionActive) throw new ObjectiveStoreError("recheck_not_extension");
       const target = typeof reference === "number" ? criteria[reference - 1] : criteria.find((criterion) => criterion.id === reference);
       if (!target) throw new ObjectiveStoreError("unknown_criterion");
+      if ("recheck" in proposal && (!target.met || !stored.extensions!.at(-1)!.criterionIds.includes(target.id))) throw new ObjectiveStoreError("criterion_not_recheckable");
       if (targets.has(target.id)) throw new ObjectiveStoreError("duplicate_criterion_proposal");
       targets.add(target.id);
       return "revise" in proposal
         ? { id, kind: "revise", target: target.id, text: proposal.text }
-        : { id, kind: "retire", target: target.id, reason: proposal.reason };
+        : { id, kind: "retire" in proposal ? "retire" : "recheck", target: target.id, reason: proposal.reason };
     });
   };
   const approve = (stored: StoredObjective, proposal: ObjectiveCriterionProposal): StoredObjective => {
@@ -890,7 +902,20 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     if (!criteria.some((criterion) => criterion.id === proposal.target)) throw new ObjectiveStoreError("unknown_criterion");
     return { ...stored, criteria: proposal.kind === "retire"
       ? criteria.filter((criterion) => criterion.id !== proposal.target)
-      : criteria.map((criterion) => criterion.id === proposal.target ? { id: criterion.id, text: proposal.text!, by: criterion.by } : criterion) };
+      : criteria.map((criterion) => criterion.id === proposal.target ? (({ met: _met, ...rest }) => ({ ...rest, ...(proposal.kind === "revise" ? { text: proposal.text! } : {}) }))(criterion) : criterion) };
+  };
+
+  const extended = (stored: StoredObjective, context: string): StoredObjective => {
+    if (stored.removed) throw new ObjectiveStoreError("objective_removed");
+    if (!stored.done && !awaitingReview(stored)) throw new ObjectiveStoreError("not_in_review");
+    const request = context.trim();
+    if (!request || request.length > MAX_CONTEXT) throw new ObjectiveStoreError("invalid_request");
+    const extensions = stored.extensions ?? [];
+    return { ...withoutDecisionRequest(stored), done: undefined, handoff: undefined, operationIntent: undefined,
+      planning: true, criteriaOpen: true, planRequest: request, extensionActive: true,
+      extensions: [...extensions, { n: extensions.length + 1, at: now(), context: request,
+        missionIds: stored.missions.map((mission) => mission.id), criterionIds: (stored.criteria ?? []).map((criterion) => criterion.id), previousHandoff: stored.handoff ?? null }],
+    };
   };
 
   const store: ObjectiveStore = {
@@ -1161,17 +1186,24 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 인계 대기는 넘기기를 거쳐야 완료된다. 남은 후보가 있으면 고르지 않은 완료도 후보 검토의 경계를 지난다 —
       // 그 밖의(진행 중이며 후보가 없는) 목표의 완료는 지금 그대로다.
       if (awaitingHandoff(stored) || (stored.followups ?? []).some((candidate) => candidate.state === "open")) assertReviewable(stored);
-      return { ...withoutDecisionRequest(stored), done: { at: now() }, planning: undefined, criteriaOpen: undefined, operationIntent };
+      return { ...withoutDecisionRequest(stored), done: { at: now() }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent };
     }),
     reopen: (objectiveId, operationIntent) => update(objectiveId, (stored) => (stored.done ? { ...stored, done: undefined, operationIntent } : stored)),
+    extend: (objectiveId, context, operationIntent) => update(objectiveId, (stored) => {
+      const next = extended(stored, context);
+      // 완료 표시는 복원이 성공하기 전까지 남긴다. 재시작도 같은 의도를 적용한다.
+      return operationIntent ? { ...stored, operationIntent: { ...operationIntent, extensionContext: context.trim() } } : next;
+    }),
     operationIntent: (objectiveId) => { try { return locate(objectiveId).stored.operationIntent; } catch (error) { if (error instanceof ObjectiveStoreError && error.code === "unknown_objective") return undefined; throw error; } },
     acknowledgeOperationIntent(objectiveId, requestId) {
-      update(objectiveId, (stored) => stored.operationIntent?.requestId === requestId ? { ...stored, operationIntent: undefined } : stored);
+      update(objectiveId, (stored) => stored.operationIntent?.requestId === requestId
+        ? stored.operationIntent.extensionContext !== undefined ? extended(stored, stored.operationIntent.extensionContext) : { ...stored, operationIntent: undefined }
+        : stored);
     },
     handOff: (objectiveId, input) => update(objectiveId, (stored) => {
       if (!awaitingHandoff(stored)) throw new ObjectiveStoreError("not_awaiting_handoff");
       const at = now();
-      return { ...stored, handoff: input.by === "commander" ? { by: "commander", at, retrospective: input.retrospective } : { by: "human", at } };
+      return { ...stored, extensionActive: undefined, handoff: input.by === "commander" ? { by: "commander", at, retrospective: input.retrospective } : { by: "human", at } };
     }),
 
     missionAdd: (objectiveId, input, addOptions) => update(objectiveId, (stored) => {
@@ -1180,7 +1212,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 선행을 함께 준 추가는 이미 자리가 있다 — 미분류는 선행 없이 더한 사람의 임무뿐이다.
       const unplaced = addOptions?.unplaced === true && input.prerequisites === undefined;
       if (input.member && !(stored.members ?? []).some((member) => member.id === input.member)) throw new ObjectiveStoreError("unknown_member");
-      const mission: StoredMission = { id: randomUUID(), text: input.text, prerequisites, ...(input.member ? { member: input.member } : {}), ...(addOptions?.by === "human" && input.member !== undefined ? { memberBy: "human" as const } : {}), ...(unplaced ? { unplaced: true as const } : {}) };
+      const mission: StoredMission = { id: randomUUID(), text: input.text, prerequisites, ...(input.member ? { member: input.member } : {}), ...(addOptions?.by === "human" && input.member !== undefined ? { memberBy: "human" as const } : {}), ...(unplaced ? { unplaced: true as const } : {}), ...(addOptions?.by === "human" ? { by: "human" as const } : {}) };
       // 새 일이 생겼다 — 앞선 충족 판단은 옛 보드에 대한 것이다.
       return withoutMet({ ...stored, missions: [...stored.missions, mission] });
     }),
@@ -1319,8 +1351,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         if (!byRole[0]) throw new ObjectiveStoreError("unknown_member");
         return byRole[0].id;
       };
-      // 구성원 기동은 임무 수행의 증거가 아니다. 완료·미분류·기록이 있는 임무만 보존한다.
-      const kept = stored.missions.filter((mission) => mission.done || mission.unplaced || !!mission.records?.length || mission.memberBy === "human");
+      // 사람의 임무는 배치 뒤에도 보존한다. 옛 미분류 레코드도 이번 쓰기부터 출처를 굳힌다.
+      const kept = stored.missions.filter((mission) => mission.done || mission.unplaced || mission.by === "human" || !!mission.records?.length || mission.memberBy === "human")
+        .map((mission) => mission.unplaced && !mission.by ? { ...mission, by: "human" as const } : mission);
+      const same = (text: string) => text.trim().toLowerCase();
+      if (kept.some((mission) => input.missions.some((planned) => same(planned.text) === same(mission.text)))) throw new ObjectiveStoreError("mission_kept");
       const keptIds = new Set(kept.map((mission) => mission.id));
       const freshIds = input.missions.map(() => randomUUID());
       const fresh: StoredMission[] = input.missions.map((mission, ix) => {
@@ -1382,6 +1417,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const target = criteria.find((entry) => entry.id === criterionId);
       if (!target) throw new ObjectiveStoreError("unknown_criterion");
       const met = evidence?.trim() || undefined;
+      // 회차가 끝날 때까지 옛 기준의 충족은 사람이 승인한 recheck로만 풀린다 — 구상 뒤 수행 중에도 같다.
+      if (!met && target.met && stored.extensionActive &&stored.extensions?.at(-1)?.criterionIds.includes(criterionId)) throw new ObjectiveStoreError("recheck_approval_required");
       if (target.met === met) return stored;
       return { ...stored, criteria: criteria.map((entry) => (entry.id === criterionId ? { id: entry.id, text: entry.text, by: entry.by, ...(met ? { met } : {}) } : entry)) };
     }),
@@ -1606,7 +1643,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         fresh = true;
         return foldBatches({
           ...stored,
-          done: { at: now() }, planning: undefined, criteriaOpen: undefined, operationIntent,
+          done: { at: now() }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, operationIntent,
           followups: (stored.followups ?? []).map((candidate) => (chosenIds.has(candidate.id) ? { ...candidate, state: "selected" as const, batchId: selection.batchId } : candidate)),
           followupBatches: [...batches, { id: selection.batchId, at: now(), launch: selection.launch, items }],
         });

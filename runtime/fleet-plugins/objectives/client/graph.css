@@ -18,6 +18,7 @@
 .objectives-graph-root { position: absolute; width: 12px; height: 12px; margin: -6px; border: 1.5px solid var(--text-tertiary); border-radius: 50%; background: var(--surface-panel); }
 .objectives-graph-label { position: absolute; z-index: 2; font-size: var(--t-xs); line-height: var(--graph-label-line); color: var(--text-secondary); white-space: nowrap; cursor: pointer; touch-action: none; }
 .objectives-graph-label > span { display: block; }
+.objectives-graph-label > .objectives-extension-chip { display: inline-flex; box-sizing: border-box; height: 20px; margin-bottom: 4px; }
 .objectives-graph-label.is-root { color: var(--text-tertiary); }
 .objectives-graph-label.is-done { color: var(--brass-ink); }
 .objectives-graph-label.is-root { font-size: var(--t-2xs); cursor: default; }

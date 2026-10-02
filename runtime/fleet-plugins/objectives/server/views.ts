@@ -4,7 +4,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { PromptLanguage } from "./prompts.js";
 import type { ObjectiveResult } from "./results.js";
 import type { ObjectiveStore } from "./store.js";
-import { commanderMode, latestRecord, missionReady, ownAnswer, type Objective } from "./types.js";
+import { commanderMode, extensionOf, latestRecord, missionReady, ownAnswer, type Objective } from "./types.js";
 
 /** 목록 한 줄에 싣는 브리핑의 앞부분 길이 — 목표 여럿을 한 번에 견주는 데 쓰고, 전문은 목표 하나를 읽는다. */
 const ROW_BRIEF = 600;
@@ -68,6 +68,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
         const latest = latestRecord(mission);
         return {
           n: index + 1, missionId: mission.id, text: mission.text, done: mission.done,
+          ...withoutEmpty({ by: mission.by, extension: extensionOf(objective.extensions, mission.id, "mission") }),
           prerequisites: mission.prerequisites.map(nOf).filter((value) => value >= 1),
           ...(Object.keys(why).length ? { why } : {}),
           member: mission.member ? ((member) => member ? { id: member.id, role: member.role } : null)(objective.members.find((candidate) => candidate.id === mission.member)) : null,
@@ -90,8 +91,9 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       results: objective.results.map(resultView),
       dueDate: objective.dueDate, today: objective.today,
       // 달성 기준 — n 은 1부터, 기준을 가리키는 번호. met 은 지휘관이 충족으로 표시한 근거(없으면 미충족).
-      criteria: objective.criteria.map((criterion, index) => ({ n: index + 1, id: criterion.id, text: criterion.text, by: criterion.by, met: criterion.met ?? null })),
+      criteria: objective.criteria.map((criterion, index) => ({ n: index + 1, id: criterion.id, text: criterion.text, by: criterion.by, met: criterion.met ?? null, ...withoutEmpty({ extension: extensionOf(objective.extensions, criterion.id, "criterion") }) })),
       criteriaOpen: objective.criteriaOpen,
+      extensionActive: objective.extensionActive,
       criteriaProposals: objective.criteriaProposals.map((proposal, index) => ({ n: index + 1, id: proposal.id, kind: proposal.kind,
         ...withoutEmpty({ target: proposal.target, targetN: proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) + 1 : null, text: proposal.text, reason: proposal.reason, annotation: proposal.annotation }) })),
       // 구성원 id 가 곧 그 세션의 Operation id 다.
@@ -99,6 +101,8 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
         state: ctx.host.operations.get(member.id) ? observe(member.id).state : "missing" as const })),
       done: !!objective.done, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview,
       handoff: objective.handoff ? { by: objective.handoff.by, at: new Date(objective.handoff.at).toISOString(), retrospective: objective.handoff.retrospective } : null,
+      extensions: objective.extensions.map((round) => ({ ...round, at: new Date(round.at).toISOString(),
+        previousHandoff: round.previousHandoff ? { ...round.previousHandoff, at: new Date(round.previousHandoff.at).toISOString() } : null })),
       addedBy: objective.addedBy,
       removed: objective.removed, merged: objective.merged,
     }),
