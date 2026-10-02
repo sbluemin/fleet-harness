@@ -1417,7 +1417,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const target = criteria.find((entry) => entry.id === criterionId);
       if (!target) throw new ObjectiveStoreError("unknown_criterion");
       const met = evidence?.trim() || undefined;
-      if (!met && target.met && stored.planning && stored.extensionActive && stored.extensions?.at(-1)?.criterionIds.includes(criterionId)) throw new ObjectiveStoreError("recheck_approval_required");
+      // 회차가 끝날 때까지 옛 기준의 충족은 사람이 승인한 recheck로만 풀린다 — 구상 뒤 수행 중에도 같다.
+      if (!met && target.met && stored.extensionActive &&stored.extensions?.at(-1)?.criterionIds.includes(criterionId)) throw new ObjectiveStoreError("recheck_approval_required");
       if (target.met === met) return stored;
       return { ...stored, criteria: criteria.map((entry) => (entry.id === criterionId ? { id: entry.id, text: entry.text, by: entry.by, ...(met ? { met } : {}) } : entry)) };
     }),

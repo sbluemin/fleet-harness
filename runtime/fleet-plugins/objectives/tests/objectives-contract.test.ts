@@ -325,6 +325,7 @@ describe("Objectives contract", () => {
     store.proposalsApproveAll(id);
     expect(store.find(id)!.criteria.map((criterion) => criterion.met)).toEqual(["original evidence", undefined, undefined]);
     await launch.startCommander(id);
+    expect((await call("mark_criterion", { n: 1, met: false })).structuredContent.error).toBe("recheck_approval_required");
     store.find(id)!.missions.filter((mission) => !mission.done).forEach((mission) => store.missionDone(id, mission.id, ["extension done"]));
     store.find(id)!.criteria.filter((criterion) => !criterion.met).forEach((criterion) => store.criterionMet(id, criterion.id, "new evidence"));
     store.handOff(id, { by: "commander", retrospective });
