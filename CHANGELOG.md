@@ -5,6 +5,31 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.208.0] - 2026-10-02
+
+### fleet-console
+
+#### Added
+- Objective Commanders can add members to an existing roster.
+- The chat `@` agent list now shows which model each agent runs on when it has one of its own.
+- Extend a completed or review-ready objective in place, plan and approve its added scope, and repeat with the same Commander while keeping each round's retrospective.
+- Answer an Objectives decision request in your own words when none of the Commander's options fit; the Commander is told you set its options aside, and Decisions marks the answer as your own.
+
+#### Changed
+- Agents in Console no longer start hidden subagents; when they try, they are pointed to Objectives members, which you can see and follow on the board. Each Theater can turn this off from its System prompt sheet, and Workflows still run their agents.
+- Keep the Zen toolbar out of the way while watching a full-size Operation, with tools available from a corner handle.
+- A collapsed Quota card shows a separate bar for each usage window, such as the session and the week, instead of only the most urgent one.
+
+#### Fixed
+- Console now shuts down right away when quit or restarted for an update while a terminal or chat is open, instead of hanging until it is force-stopped.
+- Reopening the Quota panel or reloading the page shows the last usage right away instead of a loading message, and refreshes it in the background.
+- Keep remote sessions disconnected after control is taken back or another device connects, with an ending notice instead of an error page.
+- Success criteria in Objectives stay readable when the tool panel is at its narrowest, instead of breaking one letter per line.
+- An open terminal panel now reattaches to its session when the session is put to sleep and woken right away, instead of sticking on "Ended" until the page is refreshed.
+
+#### Removed
+- The Built-in subagents list in Settings is gone; subagents are now chosen per Theater, and earlier per-name choices are not carried over.
+
 ## [1.207.0] - 2026-10-02
 
 ### fleet-console
