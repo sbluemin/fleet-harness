@@ -26,6 +26,8 @@ export interface EntryHintPorts {
   readonly railEntryElement: (railEntryId: string) => HTMLElement | null;
   /** 가로 도구 줄이면 그 바깥 변을 호스트가 알려 준다. 없으면 기존 세로 레일 배치다. */
   readonly railEntryHintAnchor?: (element: HTMLElement) => { readonly edge: number; readonly below: boolean } | null;
+  /** 접힌 도구 줄의 문. 보류 판정에만 쓰며 실제 힌트는 원래 아이콘이 보일 때 선다. */
+  readonly railEntryHintDoor?: (element: HTMLElement) => HTMLElement;
   readonly shortcutLabel: (commandId: string) => string;
 }
 
@@ -55,7 +57,8 @@ export function hasPendingHint(candidates: readonly EntryHintCandidate[], seen: 
   return candidates.some((candidate) => {
     if (seen.includes(candidate.seenKey)) return false;
     const target = ports.railEntryElement(candidate.hint.railEntryId);
-    return target !== null && isHintDoorShown(target);
+    if (target === null) return false;
+    return isHintDoorShown(ports.railEntryHintDoor?.(target) ?? target);
   });
 }
 

@@ -81,6 +81,10 @@ const ONBOARDING_PORTS = {
     const below = island.dataset.corner === "top-right";
     return { below, edge: below ? rect.bottom : rect.top };
   },
+  railEntryHintDoor: (element: HTMLElement) => {
+    const drawer = element.closest(".zen-bar .console-toolbar-drawer[inert]");
+    return drawer?.closest(".console-toolbar")?.querySelector<HTMLElement>(".console-toolbar-fold") ?? element;
+  },
   shortcutLabel: (commandId: string) => shortcutCommandLabel(commandId),
 } as const;
 
