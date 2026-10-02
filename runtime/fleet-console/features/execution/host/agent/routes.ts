@@ -331,6 +331,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     reminderWriter.cancel(id);
     workspaceContext.forget(id);
     observability.removeTerminalSession(id);
+    terminalGenerations.delete(id);
   });
   ctx.host.lifecycle.registerCleanup(ctx.host.events.subscribe("operation:archived", (payload) => {
     if (isOperationDeletedEventPayload(payload) && payload.pluginId === null) observability.removeTerminalSession(payload.operationId);
@@ -351,6 +352,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     launchAttachments.releaseSession(payload.operationId);
   });
 
+  // 관측의 생산자 세대. PTY 는 세션을 세우거나 재기동할 때마다 새 값이고, 채팅은 SDK 세션 인스턴스마다 하나다 — 인스턴스는
+  // 태어날 때 받은 seed 의 좌표로 서므로 인스턴스가 곧 한 세대다. 무작위 값이라 Console 을 다시 띄워도 옛 세대와 겹치지 않는다.
+  const terminalGenerations = new Map<string, string>();
+  const chatGenerations = new WeakMap<object, string>();
+  const chatGeneration = (chat: object): string => {
+    let generation = chatGenerations.get(chat);
+    if (!generation) { generation = crypto.randomUUID(); chatGenerations.set(chat, generation); }
+    return generation;
+  };
   const consoleObservationTimes = new Map<string, string>();
   const consoleAttentionReasons = new Map<string, "input" | "permission">();
   const unsubscribeConsoleObservation = observability.subscribeAll((event) => {
@@ -541,9 +551,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       // 표면은 소유권이 아니라 마커가 말한다 — 휴면한 채팅도 여전히 채팅이고, 재개하면
       // 터미널이 아니라 대화로 돌아온다. 살아 있는 산출(output)만 소유권을 따른다.
       const chatSurface = session.chatActive === true || ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true;
+      // 세대는 소유권을 따른다 — 살아 있는 생산자가 채팅이면 그 인스턴스, 아니면 마지막 PTY 기동.
+      const generation = runtime.lifecycle !== "live" ? undefined : session.chatActive === true ? (chat ? chatGeneration(chat) : undefined) : terminalGenerations.get(operationId);
       return {
         activity: runtime.lifecycle === "dormant" ? "ended" : runtime.activity,
-        lifecycle: runtime.lifecycle, observedAt: consoleObservationTimes.get(operationId) ?? new Date(session.createdAt).toISOString(), source: "host",
+        lifecycle: runtime.lifecycle, ...(generation ? { generation } : {}), observedAt: consoleObservationTimes.get(operationId) ?? new Date(session.createdAt).toISOString(), source: "host",
         attention: { kind: session.status === "error" ? "failure" : session.attentionPending ? consoleAttentionReasons.get(operationId) ?? "input" : "none" },
         surface: chatSurface ? "chat" : "terminal",
         supportedActions: ["send", ...(runtime.lifecycle === "dormant" ? ["resume" as const] : []), ...(runtime.lifecycle === "live" && (runtime.activity === "running" || (session.chatActive && runtime.activity === "awaiting")) && (session.chatActive || terminalRuntime.getSessionLastActivityAt(operationId) !== null) ? ["interrupt" as const] : [])],
@@ -1129,6 +1141,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (launchOptions.newOperationId && ctx.host.operations.get(launchOptions.newOperationId)) throw new ConsoleControlError("operation_id_taken");
     const sessionId = launchOptions.childSessionId ?? launchOptions.newOperationId ?? crypto.randomUUID();
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
+    terminalGenerations.set(sessionId, crypto.randomUUID());
     workspaceContext.observe(sessionId, theaterId, cwd);
     // 원문은 argv에 오르지 않고 파일 포인터가 첫 UserPromptSubmit이 된다. 그 지시는 절대
     // 경로라 deriveOperationLabel이 폐기하고, 작명이 후속 턴으로 밀린다. 원문은 이 시점에만
@@ -1334,6 +1347,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     options: { readonly fresh: boolean; readonly providerSession: CapturedAgentSession | undefined },
   ): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
     const { fresh, providerSession } = options;
+    // 새 세대는 좌표를 읽기 전에 — 이 기동은 아래에서 읽는 세션 좌표로 선다(패널 재개·휴면 중 전달 모두 이 코어를 지난다).
+    terminalGenerations.set(sessionId, crypto.randomUUID());
     // launchModel 도입 전 Operation은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
     // 신규 Quick Launch와 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
     const launchSession = readAgentSession(node.payload);

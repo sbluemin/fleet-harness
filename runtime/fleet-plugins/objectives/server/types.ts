@@ -94,9 +94,14 @@ export interface MemberNext {
   readonly failed?: string;
   /**
    * 예약할 때 그 세션이 휴면이었는가, 떠 있었는가. 휴면 중 예약은 다음에 관측이 live 면 이미 이 좌표로 깨었다는 뜻이라 적용된 것으로 본다.
-   * 떠 있던 세션은 프로세스 세대 표식이 없어 지금 프로세스와 다음 프로세스를 가를 수 없다 — 플러그인이 재개를 확인할 때만 거둔다.
+   * 떠 있던 중 예약은 관측 세대가 reservedGeneration 과 달라질 때 — 그 프로세스가 끝나고 새 프로세스가 이 좌표로 섰을 때 — 적용이다.
    */
   readonly reservedWhile?: "dormant" | "live";
+  /**
+   * 떠 있던 중 예약의 그때 관측 세대. 없는 live 예약은 세대 표식 이전에 저장됐다 — 그 프로세스는 Console 재시작과 함께 끝났으므로
+   * 세대가 보이는 live 관측이면 적용이다.
+   */
+  readonly reservedGeneration?: string;
 }
 
 export interface StoredMember {
