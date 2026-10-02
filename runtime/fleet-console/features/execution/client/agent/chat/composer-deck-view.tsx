@@ -69,7 +69,6 @@ const SKELETON_ROWS = 5;
 /** 덱이 쓸 수 있는 최대 높이와, 위가 이만큼은 남아야 뒤집지 않는다는 문턱. */
 const DECK_MAX_HEIGHT = 340;
 const DECK_FLIP_THRESHOLD = 220;
-const DECK_MIN_HEIGHT = 120;
 /** 덱과 상자 사이(`--space-2`)와 잘림 경계까지 남길 여유. */
 const DECK_EDGE_GAP = 12;
 
@@ -156,7 +155,9 @@ function readDeckPlacement(deck: HTMLElement): DeckPlacement | null {
   // 새 채팅 히어로처럼 상자가 패널 가운데 떠 있으면 위가 모자라 아래로 뒤집는다.
   const flip = !(above >= Math.min(want, DECK_FLIP_THRESHOLD) || above >= below);
   const room = flip ? below : above;
-  return { below: flip, maxHeight: Math.round(Math.max(DECK_MIN_HEIGHT, Math.min(DECK_MAX_HEIGHT, room))) };
+  // 하한을 두지 않는다 — 최소 높이 패널의 히어로에서는 위아래 모두 120px 남짓이라, 하한으로 키운 덱이
+  // 다시 패널 밖으로 넘어가 상단 테두리와 섹션 라벨이 잘렸다(실측 28px). 남은 공간이 곧 상한이다.
+  return { below: flip, maxHeight: Math.round(Math.max(0, Math.min(DECK_MAX_HEIGHT, room))) };
 }
 
 export interface ChatComposerDeckProps {
