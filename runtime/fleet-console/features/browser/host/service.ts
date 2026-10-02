@@ -432,7 +432,7 @@ export class BrowserService {
       defaultProfile: this.defaultProfile(),
       available,
       reason,
-      tabs: [...op.tabs.values()].map((tab) => ({ id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1 })),
+      tabs: [...op.tabs.values()].map((tab) => this.tabState(tab)),
       activeTabId: op.activeTabId,
       viewport: op.viewport,
       driving: op.agentSession !== null,
@@ -557,6 +557,10 @@ export class BrowserService {
     return tab;
   }
 
+  private tabState(tab: Tab): BrowserTabState {
+    return { id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1 };
+  }
+
   async createTab(operationId: string, url: string | null, actor: "user" | "agent"): Promise<BrowserTabState> {
     const op = this.operation(operationId);
     if (op.tabs.size >= MAX_TABS) throw new BrowserPolicyError("browser_tab_limit", `Tab cap reached (${MAX_TABS}). Close a tab before opening another.`);
@@ -588,7 +592,7 @@ export class BrowserService {
     await this.applyViewport(client, tab, op);
     await this.selectTab(operationId, tab.id);
     if (target) await this.navigateTab(op, tab, target.href);
-    return this.state(operationId).tabs.find((entry) => entry.id === tab.id)!;
+    return this.tabState(this.tab(op, tab.id));
   }
 
   async closeTab(operationId: string, tabId: string): Promise<void> {
@@ -659,7 +663,7 @@ export class BrowserService {
       const history = await client.send<{ currentIndex: number; entries: { id: number }[] }>("Page.getNavigationHistory", {}, tab.sessionId);
       const index = history.currentIndex + (target === "back" ? -1 : 1);
       const entry = history.entries[index];
-      if (!entry) return { tab: this.state(operationId).tabs.find((t) => t.id === tab.id)!, ok: false, error: `cannot go ${target}` };
+      if (!entry) return { tab: this.tabState(this.tab(op, tab.id)), ok: false, error: `cannot go ${target}` };
       await client.send("Page.navigateToHistoryEntry", { entryId: entry.id }, tab.sessionId);
       await new Promise((resolve) => setTimeout(resolve, 400));
       await this.refreshTab(client, tab);
@@ -673,7 +677,7 @@ export class BrowserService {
       const url = this.admit(op, target, actor);
       outcome = await this.navigateTab(op, tab, url.href);
     }
-    return { tab: this.state(operationId).tabs.find((t) => t.id === tab.id)!, ...outcome };
+    return { tab: this.tabState(this.tab(op, tab.id)), ...outcome };
   }
 
   private async refreshTab(client: CdpClient, tab: Tab): Promise<void> {

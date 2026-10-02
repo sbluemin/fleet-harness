@@ -118,6 +118,7 @@ type StubOptions = {
   hit?: { ok: boolean; reason?: string; x: number; y: number; disabled: boolean; hit: { tag: string; id: string | null; text: string; disabled: boolean; selector: string } | null };
   onDispatch?: () => void;
   delayBoxMs?: number;
+  detachOnNavigate?: boolean;
 };
 
 function createStubDesktop(options: StubOptions = {}) {
@@ -178,6 +179,11 @@ function createStubDesktop(options: StubOptions = {}) {
         case "Emulation.setDeviceMetricsOverride":
         case "Emulation.setEmulatedMedia":
           return {} as T;
+        case "Page.navigate": {
+          if (options.detachOnNavigate) desktop.emit({ method: "Target.detachedFromTarget", params: {}, sessionId: _sessionId });
+          desktop.emit({ method: "Page.loadEventFired", params: {}, sessionId: _sessionId });
+          return {} as T;
+        }
         case "Page.getLayoutMetrics": {
           const id = String(_sessionId ?? lastViewId);
           const size = sizes.get(id);
@@ -233,6 +239,25 @@ function createService(desktop: StubDesktop) {
 }
 
 describe("operation browser service contracts", () => {
+  it("reports a tab lost during navigation as a browser error rather than a successful missing tab", async () => {
+    const service = createService(createStubDesktop({ detachOnNavigate: true }));
+    const { screenshots } = store();
+    try {
+      const specs = createBrowserToolSpecs({ service, screenshots });
+      const context = { sessionLabel: OPERATION } as never;
+      const created = await specs.find((spec) => spec.id === "tabs_create")!.execute({}, context) as { content: { text: string }[] };
+      const { tabId } = JSON.parse(created.content[0]!.text);
+      const result = await specs.find((spec) => spec.id === "navigate")!.execute({ url: "http://localhost/", tabId }, context) as { isError: boolean; content: { text: string }[] };
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content[0]!.text)).toMatchObject({ error: "browser_tab_not_found", tabId });
+      expect(service.state(OPERATION).tabs).toEqual([]);
+    } finally {
+      service.endAgentSession(OPERATION);
+      await service.dispose();
+      screenshots.cleanup();
+    }
+  });
+
   it("restores desktop viewport from the native pane instead of keeping the previous preset", async () => {
     const desktop = createStubDesktop({ layout: { width: 1386, height: 1163 } });
     const service = createService(desktop);
