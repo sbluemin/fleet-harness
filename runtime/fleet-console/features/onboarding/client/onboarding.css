@@ -214,6 +214,44 @@
 
 .onboarding-welcome-primary:hover { background: color-mix(in oklch, var(--brass) 26%, transparent); }
 
+.onboarding-welcome-primary:disabled { opacity: 0.5; cursor: default; }
+
+/* 모두 정렬 진입 확인의 남길 패널 목록 */
+.align-fit-list {
+  display: grid;
+  gap: 2px;
+  max-height: min(34vh, 280px);
+  margin: 0;
+  padding: var(--space-1);
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+}
+
+.align-fit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  cursor: pointer;
+}
+
+.align-fit-row:hover { background: var(--hairline); }
+.align-fit-row.is-disabled { color: var(--text-tertiary); cursor: default; }
+.align-fit-row input { accent-color: var(--brass); }
+.align-fit-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.align-fit-meta {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
 @keyframes onboarding-welcome-in-from-next {
   from { opacity: 0; translate: 36px 0; }
   to { opacity: 1; translate: 0 0; }

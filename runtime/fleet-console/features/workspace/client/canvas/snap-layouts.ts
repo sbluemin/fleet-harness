@@ -5,14 +5,20 @@
 // 칸 나누기 규칙은 모두 정렬(alignZonesFor)과 같은 가족이다 — 모드 프레임 여백 18px,
 // 칸 사이 8px, 캡션 32px는 칸 위 띠를 캡션이 채운다는 전제로 본문에서 뺀다.
 
-import { OPERATION_WINDOW_CAPTION_HEIGHT, SNAP_FULL_PRESET_ID } from "./canvas-store.js";
+import {
+  ALIGN_MIN_BODY_HEIGHT,
+  ALIGN_MIN_BODY_WIDTH,
+  alignZonesFor,
+  type AlignAllLayout,
+  OPERATION_WINDOW_CAPTION_HEIGHT,
+  SNAP_FRAME_INSET,
+  SNAP_FULL_PRESET_ID,
+  SNAP_GAP,
+  type SnapRect,
+} from "./canvas-store.js";
 
-export interface SnapRect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
+export { SNAP_FRAME_INSET, SNAP_GAP };
+export type { SnapRect };
 
 export interface SnapPoint {
   readonly x: number;
@@ -46,9 +52,6 @@ export const SNAP_PRESETS: readonly SnapPreset[] = [
   { id: "stack", zones: [[0, 0, 1 / 2, 1], [1 / 2, 0, 1 / 2, 1 / 2], [1 / 2, 1 / 2, 1 / 2, 1 / 2]] },
 ];
 
-// 모드 프레임 여백(정렬 칸과 같은 18px)과 칸 사이 간격.
-export const SNAP_FRAME_INSET = 18;
-export const SNAP_GAP = 8;
 // 끌던 패널이 이 띠(아레나 위쪽)에 닿으면 레이아웃 바가 내려온다. 열린 뒤에는 히스테리시스만큼 더 참는다.
 export const SNAP_TOP_BAND = 44;
 export const SNAP_TOP_BAND_HYSTERESIS = 12;
@@ -150,6 +153,37 @@ export function evenAlignBodies(bodies: readonly SnapRect[]): SnapRect[] {
     });
   }
   return next;
+}
+
+/**
+ * 모두 정렬이 count개를 이 아레나에 펼칠 때 가장 작은 칸 본문 — 실제 정렬과 같은 순수 기하
+ * (alignZonesFor → snapZonesFor → evenAlignBodies)로 잰다. columns/rows는 alignZonesFor가 먼저
+ * grid로 대체한 뒤의 칸이다. 칸이 없으면 null.
+ */
+export function alignSmallestBody(count: number, layout: AlignAllLayout, arena: SnapRect): { readonly width: number; readonly height: number } | null {
+  const zones = alignZonesFor(count, layout, arena);
+  if (zones.length === 0) return null;
+  const bodies = evenAlignBodies(snapZonesFor(arena, { id: "align-all", zones }));
+  return {
+    width: Math.min(...bodies.map((body) => body.width)),
+    height: Math.min(...bodies.map((body) => body.height)),
+  };
+}
+
+/** count개를 펼친 가장 작은 본문이 하한(280×200)보다 작으면 true. */
+export function alignExceedsMinBody(count: number, layout: AlignAllLayout, arena: SnapRect): boolean {
+  const smallest = alignSmallestBody(count, layout, arena);
+  return smallest !== null && (smallest.width + EPSILON < ALIGN_MIN_BODY_WIDTH || smallest.height + EPSILON < ALIGN_MIN_BODY_HEIGHT);
+}
+
+/** 하한을 지키며 펼칠 수 있는 최대 개수(최소 1). 개수가 늘수록 본문이 작아지므로 처음 넘는 곳에서 멈춘다. */
+export function alignCapacity(layout: AlignAllLayout, arena: SnapRect, limit: number): number {
+  let capacity = 1;
+  for (let count = 2; count <= limit; count += 1) {
+    if (alignExceedsMinBody(count, layout, arena)) break;
+    capacity = count;
+  }
+  return capacity;
 }
 
 export interface SnapZoneHit {

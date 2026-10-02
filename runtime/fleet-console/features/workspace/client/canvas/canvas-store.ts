@@ -129,6 +129,20 @@ export const MIN_OPERATION_HEIGHT = 200;
 // 본문 위에 붙는 창 캡션 높이. CSS top:-32px / height:32px 와 한 값이다.
 // grid/rows 행 보폭에 넣어 아래 행 캡션이 위 행 본문을 침범하지 않게 한다.
 export const OPERATION_WINDOW_CAPTION_HEIGHT = 32;
+// 모드 프레임 여백과 칸 사이 간격.
+export const SNAP_FRAME_INSET = 18;
+export const SNAP_GAP = 8;
+// 모두 정렬이 지키는 칸 본문 하한(캡션 제외). 가장 작은 본문이 이보다 작아지면 터미널 출력이 사라져
+// 정렬 진입 때 최소화를 제안한다. columns/rows의 grid 대체 문턱(MIN_OPERATION_*)과는 따로 쓴다.
+export const ALIGN_MIN_BODY_WIDTH = 280;
+export const ALIGN_MIN_BODY_HEIGHT = 200;
+
+export interface SnapRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
 const OPERATION_FOCUS_PADDING = 96;
 // 불러온 패널이 아레나보다 클 때 왼쪽 위에 남기는 여백 — 모드 프레임 여백과 같은 값.
 const FOCUS_BRING_IN_INSET = 18;
@@ -533,13 +547,33 @@ export function getTheaterMinimizedIds(theaterIds: readonly string[]): readonly 
 // 모두 정렬 칸 나누기 — 보이는 패널 수만큼 스냅 칸 분수를 만든다.
 // grid: 열은 ceil(sqrt(n)), 행은 ceil(n / cols)이며 마지막 행은 남은 패널 수로 폭을
 // 재분배해 빈칸을 만들지 않는다. columns는 세로 띠 n개, rows는 가로 띠 n개다.
-// 분수라 snapZonesFor가 수동 스냅과 같은 18px 인셋·8px 간격·캡션 32px 문법으로 편다.
-export function alignZonesFor(count: number, layout: AlignAllLayout = "grid"): readonly SnapZoneFraction[] {
+// 띠 하나의 본문 폭(columns)이 MIN_OPERATION_WIDTH(320px) 미만이거나 본문 높이(rows)가
+// MIN_OPERATION_HEIGHT(200px) 미만으로 내려가면 자동으로 grid 배치로 대체한다.
+// 판정은 실제 아레나 크기(snapZonesFor가 쓰는 18px 인셋·8px 간격·캡션 32px 포함)로 한다.
+export function alignZonesFor(
+  count: number,
+  layout: AlignAllLayout = "grid",
+  arena?: SnapRect | null,
+): readonly SnapZoneFraction[] {
   if (!Number.isFinite(count) || count <= 0) return [];
   if (layout === "columns") {
+    if (arena) {
+      const innerWidth = Math.max(0, arena.width - SNAP_FRAME_INSET * 2);
+      const columnBodyWidth = (innerWidth - SNAP_GAP * (count - 1)) / count;
+      if (columnBodyWidth < MIN_OPERATION_WIDTH) {
+        return alignZonesFor(count, "grid", arena);
+      }
+    }
     return Array.from({ length: count }, (_, index) => [index / count, 0, 1 / count, 1] as SnapZoneFraction);
   }
   if (layout === "rows") {
+    if (arena) {
+      const innerHeight = Math.max(0, arena.height - SNAP_FRAME_INSET * 2);
+      const rowBodyHeight = (innerHeight - OPERATION_WINDOW_CAPTION_HEIGHT * count - SNAP_GAP * (count - 1)) / count;
+      if (rowBodyHeight < MIN_OPERATION_HEIGHT) {
+        return alignZonesFor(count, "grid", arena);
+      }
+    }
     return Array.from({ length: count }, (_, index) => [0, index / count, 1, 1 / count] as SnapZoneFraction);
   }
   const columns = Math.ceil(Math.sqrt(count));
@@ -1048,13 +1082,13 @@ export function setAlignAllLayout(layout: AlignAllLayout): void {
  * 자리 교환은 사이드바 순서 교환으로 이미 반영되므로 여기서 덮어쓸 것이 없다.
  * 같으면 손대지 않아 렌더 effect와 발산하지 않는다.
  */
-export function reconcileAlignAll(orderedIds: readonly string[]): void {
+export function reconcileAlignAll(orderedIds: readonly string[], arena?: SnapRect | null): void {
   const hold = state.snapHold;
   const meta = hold?.alignAll;
   if (!meta) return;
   const detached = new Set(meta.detached);
   const members = orderedIds.filter((sessionId) => !detached.has(sessionId));
-  const zones = alignZonesFor(members.length, meta.layout);
+  const zones = alignZonesFor(members.length, meta.layout, arena);
   const assignments: Record<string, number> = {};
   members.forEach((sessionId, index) => { assignments[sessionId] = index; });
   if (snapZonesEqual(hold.zones, zones) && assignmentsEqual(hold.assignments, assignments)) return;
