@@ -1,4 +1,4 @@
-import { type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
 import { EffortTrack, resolveRowEffort } from "@fleet-console/sdk/composer";
@@ -169,8 +169,6 @@ interface LaunchControlProps {
   readonly head?: ReactNode;
   /** 선택 방식 아래의 작은 안내 — 예: 라우팅은 새로 띄울 때만 판단한다. */
   readonly extrasCaption?: string;
-  /** 바깥(예: 실패 줄의 「다른 모델」)에서 메뉴를 모델 목록부터 연다. */
-  readonly openRef?: MutableRefObject<(() => void) | null>;
   /** 열 때 모델 목록(1단계)부터 — 배정 메뉴는 특별 항목을 먼저 보여야 한다. */
   readonly startAtList?: boolean;
   /**
@@ -184,7 +182,7 @@ const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
 const menuItems = (root: HTMLElement): HTMLButtonElement[] => [...root.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled),[role="menuitemradio"]:not(:disabled),[role="menuitemcheckbox"]:not(:disabled)')];
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption, openRef }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption }: LaunchControlProps) {
   const groups = useLaunchGroups();
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
@@ -204,11 +202,6 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
   const focusIntent = useRef<"first" | "last" | null>(null);
   const [pos, setPos] = useState<CSSProperties>({});
   const menuWidth = subagents ? 232 : MENU_WIDTH;
-  useEffect(() => {
-    if (!openRef) return;
-    openRef.current = () => { setFocused(false); focusIntent.current = "first"; setOpen(true); };
-    return () => { openRef.current = null; };
-  }, [openRef]);
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;

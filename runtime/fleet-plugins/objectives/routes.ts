@@ -52,7 +52,7 @@ export default definePlugin({
     const releaseChannel = ctx.host.events.registerSseChannel(OBJECTIVE_CHANNEL);
     ctx.host.lifecycle.registerCleanup(releaseChannel);
     let prStatus: PrStatusService | undefined;
-    const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, observe: (operationId) => ctx.host.consoleControl?.observe(operationId) ?? null, coordinates: (operationId) => ctx.host.consoleControl?.coordinates?.(operationId) ?? null, liveSwitch: !!ctx.host.consoleControl?.setCoordinates, emit: (event) => {
+    const store = createObjectiveStore({ dirOf, theaterIds: () => ctx.host.paths.listTheaterIds?.() ?? [], operations: ctx.host.operations, coordinates: (operationId) => ctx.host.consoleControl?.coordinates?.(operationId) ?? null, liveSwitch: !!ctx.host.consoleControl?.sleep, emit: (event) => {
       ctx.host.events.publish(OBJECTIVE_CHANNEL, event);
       prStatus?.refresh(event.objectiveId);
     } });
@@ -107,6 +107,9 @@ export default definePlugin({
     // 끝나지 않은 후속 생성 — 재시작 전에 creating 으로 남은 항목을 같은 키로 이어 간다(키 원장이 중복과 삭제 번복을 막는다).
     try { launch.resumeFollowups(); }
     catch (error) { console.warn(`[objectives] follow-up resume skipped: ${error instanceof Error ? error.message : String(error)}`); }
+    // 구성원의 모델 예약 — 「다음 재개」 시절의 옛 기록은 적용으로 거두고, 이번 턴 뒤를 기다리던 예약은 감시를 다시 건다.
+    try { launch.resumeReservations(); }
+    catch (error) { console.warn(`[objectives] member reservation resume skipped: ${error instanceof Error ? error.message : String(error)}`); }
 
     const routes = createObjectiveRoutes(ctx, store, launch, prStatus);
     for (const route of routes) {

@@ -1288,8 +1288,8 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-archive-tidied { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: var(--t-md); color: var(--text-primary); }
 
 /* ── 구성원 모델 변경 · 개시 전 라우팅 확인 ─────────────────────────────────────────
-   개시한 구성원의 행은 실행값 그대로 서고, 고른 값은 그 아래 「다음 재개부터」 예약 줄로 붙는다. 기동 근거는 행의 작은 표식(라우팅·폴백)이
-   말한다 — 라우팅은 중립 테두리, 폴백은 warn(상태 채널). 예약이 재개에 쓰이지 못하면 coral 줄이다. */
+   개시한 구성원의 행은 실행값 그대로 서고, 바꾼 경과(바꿨습니다·이번 턴 뒤·바뀌지 않음)는 모델 칩의 말풍선이 말한다. 기동 근거는 행의 작은
+   표식(라우팅·폴백)이 말한다 — 라우팅은 중립 테두리, 폴백은 warn(상태 채널). 바뀌지 않았으면 coral 말풍선이다. */
 .objectives-menu-head { display: grid; gap: 2px; margin: 0 0 4px; padding: 6px var(--space-2) 8px; border-bottom: 1px solid var(--hairline); font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); }
 .objectives-menu-head b { color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-menu-caption.objectives-menu-note { padding: 2px var(--space-2) 4px 14px; font-family: inherit; letter-spacing: 0; text-transform: none; color: var(--text-tertiary); }
@@ -1297,18 +1297,39 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-menu-item:disabled:hover { background: transparent; color: var(--text-secondary); }
 .objectives-member-via { flex: none; padding: 1px 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font: var(--weight-medium) var(--t-2xs)/1.3 var(--font-mono); }
 .objectives-member-via.is-fallback { border-color: color-mix(in oklch, var(--warn) 45%, transparent); color: var(--warn-ink); }
-.objectives-member-next { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 14px 6px 52px; padding: 4px 4px 4px 10px; border: 1px dashed var(--hairline-strong); border-radius: var(--radius-xs); font: var(--weight-regular) var(--t-xs)/1.4 var(--font-mono); color: var(--text-secondary); }
-.objectives-member-next-when { flex: none; color: var(--text-tertiary); }
-.objectives-member-next-arrow { flex: none; color: var(--text-tertiary); }
-.objectives-member-next-to { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
-.objectives-member-next-to .objectives-launch-model { overflow: hidden; text-overflow: ellipsis; }
-.objectives-member-next-x { flex: none; margin-left: auto; width: 20px; height: 20px; }
-.objectives-member-next.is-failed { flex-wrap: wrap; border-style: solid; border-color: color-mix(in oklch, var(--coral) 40%, transparent); background: color-mix(in oklch, var(--coral) 7%, transparent); font-family: inherit; }
-.objectives-member-next.is-failed .objectives-member-next-when { color: var(--coral-ink, var(--coral)); font-weight: var(--weight-medium); }
-.objectives-member-next-body { flex: 1 1 160px; min-width: 0; color: var(--text-secondary); }
-.objectives-member-next-other { flex: none; }
-.objectives-member-next.is-applied { border-style: solid; border-color: color-mix(in oklch, var(--positive) 45%, transparent); background: color-mix(in oklch, var(--positive) 7%, transparent); }
-.objectives-member-next.is-applied .objectives-member-next-when { color: var(--positive); }
+/* 띄운 구성원의 모델 변경 경과 — 칩 아래, 설명 줄의 오른쪽 칸에 서서 칩을 가리키는 한 줄 말풍선. 행의 칸이라 다른 행이나 조작을 덮지 않고
+   레일 밖으로 넘치지 않는다. 서 있는 동안 설명은 이름 칸 폭으로 접힌다. */
+.objectives-member:has(> .objectives-member-bubble) { grid-template-areas: "mark name meta" ". brief bubble"; }
+.objectives-member:has(> .objectives-member-remove):has(> .objectives-member-bubble) { grid-template-areas: "mark name meta remove" ". brief bubble bubble"; }
+.objectives-member > .objectives-member-bubble { grid-area: bubble; justify-self: end; align-self: start; max-width: 100%; }
+.objectives-member-bubble { position: relative; display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 16px; padding: 0 1px 0 7px; border: 1px solid color-mix(in oklch, var(--brass) 40%, var(--surface-rim-strong)); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); font: var(--weight-regular) var(--t-2xs)/1 var(--font-mono); white-space: nowrap; animation: objectives-balloon-in 160ms var(--ease-spring); }
+/* 꼬리 — 위의 칩을 가리킨다. 바탕이 불투명이라 꼬리가 테두리를 비치지 않는다. */
+.objectives-member-bubble::before { content: ""; position: absolute; top: -4px; right: 18px; width: 6px; height: 6px; background: inherit; border-left: 1px solid; border-top: 1px solid; border-color: inherit; transform: rotate(45deg); }
+/* 좁으면 머리말도 말줄임으로 물러난다 — 닫기(✕)는 언제나 보여야 한다. */
+.objectives-member-bubble-when { flex: 0 1 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; color: var(--brass-ink); font-weight: var(--weight-medium); }
+.objectives-member-bubble-arrow { flex: none; color: var(--text-tertiary); }
+.objectives-member-bubble-to { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+.objectives-member-bubble-x { flex: none; width: 14px; height: 14px; }
+.objectives-member-bubble.is-applied { padding-right: 7px; border-color: color-mix(in oklch, var(--positive) 50%, var(--surface-rim-strong)); background: color-mix(in oklch, var(--positive) 10%, var(--surface-panel-raised)); }
+.objectives-member-bubble.is-applied .objectives-member-bubble-when { color: var(--positive); }
+.objectives-member-bubble.is-failed { border-color: color-mix(in oklch, var(--coral) 45%, var(--surface-rim-strong)); background: color-mix(in oklch, var(--coral) 8%, var(--surface-panel-raised)); cursor: help; }
+.objectives-member-bubble.is-failed .objectives-member-bubble-when { color: var(--coral-ink, var(--coral)); }
+/* 아주 좁은 상세 — 말풍선은 모델·상태 줄의 오른쪽 끝, 칩과 같은 줄이다(꼬리는 왼쪽 칩을 가리킨다). 대기 말풍선은 바뀔 모델 이름만 남기고
+   「턴 뒤 →」와 강도는 읽기 도구·title 로만 남긴다. 위의 좁은 배치보다 뒤에 두어 말풍선 배치가 이긴다. */
+@container objectives-detail (width < 340px) {
+  .objectives-member:has(> .objectives-member-bubble) { grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-areas: "mark name name" ". brief brief" ". meta bubble"; }
+  .objectives-member:has(> .objectives-member-remove):has(> .objectives-member-bubble) { grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-areas: "mark name remove" ". brief brief" ". meta bubble"; }
+  .objectives-member > .objectives-member-bubble { align-self: center; }
+  /* 칩과 말풍선이 한 줄에 서도록 그동안 상태 낱말은 물러난다(말풍선이 그 경과를 말한다) — 감싸면 행이 자란다. 지우기는 말풍선 칸 폭과
+     무관하게 오른쪽 끝을 지킨다. */
+  .objectives-member:has(> .objectives-member-bubble) > .objectives-member-meta { flex-wrap: nowrap; }
+  .objectives-member:has(> .objectives-member-bubble) > .objectives-member-meta > .objectives-member-status { display: none; }
+  /* 칩도 그동안 강도를 접어 모델 이름에 자리를 준다 — 강도는 칩의 title 에 남는다. */
+  .objectives-member:has(> .objectives-member-bubble) > .objectives-member-meta :is(.objectives-launch-dot, .objectives-launch-effort) { display: none; }
+  .objectives-member:has(> .objectives-member-bubble) > .objectives-member-remove { justify-self: end; }
+  .objectives-member-bubble::before { top: 50%; right: auto; left: -4px; margin-top: -3px; border-top: 0; border-bottom: 1px solid; }
+  .objectives-member-bubble:not(.is-failed, .is-applied) :is(.objectives-member-bubble-when, .objectives-member-bubble-arrow, .objectives-member-bubble-effort) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
 .objectives-member-reason { margin: -2px 14px 6px 52px; font-size: var(--t-xs); line-height: 1.45; color: var(--warn-ink); }
 
 /* 개시 띠의 스위치 — 콘솔 공용 스위치(SettingsToggle) 옆에 낱말과 한 줄 설명. */
