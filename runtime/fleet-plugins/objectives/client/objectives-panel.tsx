@@ -1496,9 +1496,19 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   useEffect(() => { if (highlightMission && !missionsOpen) onOpenSection("detail:missions"); }, [highlightMission, missionsOpen, onOpenSection]);
   useEffect(() => {
     if (!highlightMission || !missionsOpen) return;
-    setMissionReveal({ id: highlightMission, at: Date.now() });
-    // 접힌 목록의 행은 숨어 있다 — 보이는 첫 자리(펼친 행, 아니면 그래프 노드)로 간다.
-    const frame = requestAnimationFrame(() => [...detailRef.current?.querySelectorAll(`[data-mission-id="${CSS.escape(highlightMission)}"]`) ?? []].find((element) => element.getClientRects().length > 0)?.scrollIntoView({ block: "nearest" }));
+    const row = detailRef.current?.querySelector<HTMLElement>(`.objectives-mission[data-mission-id="${CSS.escape(highlightMission)}"]`);
+    // 펼친 목록으로 갈 때는 그래프를 먼저 열지 않는다 — 서로 다른 두 scrollIntoView가 팝업과 초점을 옮겨 버린다.
+    if (!row?.getClientRects().length) { setMissionReveal({ id: highlightMission, at: Date.now() }); return; }
+    setMissionReveal(null);
+    // 행은 이 이동에서만 초점을 받는다 — 상시 tabindex는 마우스로 누른 행에 도구를 붙잡아 둔다.
+    const frame = requestAnimationFrame(() => {
+      row.scrollIntoView({ block: "nearest" });
+      if (row.hasAttribute("tabindex")) { row.focus({ preventScroll: true }); return; }
+      row.setAttribute("tabindex", "-1");
+      row.focus({ preventScroll: true });
+      if (document.activeElement === row) row.addEventListener("blur", () => row.removeAttribute("tabindex"), { once: true });
+      else row.removeAttribute("tabindex");
+    });
     return () => cancelAnimationFrame(frame);
   }, [highlightMission, missionsOpen, detailRef]);
   const unseenAny = objective.missions.some((mission) => unseenRecords(mission) > 0);
