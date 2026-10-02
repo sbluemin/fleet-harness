@@ -445,12 +445,19 @@ export function ActionBand(props: ActionBandProps) {
   /** 시트의 직접 지정 — 구성원 선택을 바꾸고(라우팅으로 되돌리기 포함) 결과를 다시 읽는다. 함께 판단한 구성원이면 새 판단은 없다. */
   const pickInSheet = (member: ObjectiveMember, launch: { mode: "model"; model: string; effort?: string } | null) => {
     if (!sheet) return;
+    const previous = sheet.overridden.get(member.id);
     const overridden = new Map(sheet.overridden);
     if (launch) overridden.set(member.id, launch); else overridden.delete(member.id);
     setSheet({ ...sheet, overridden });
     void request("/member/patch", { objectiveId, memberId: member.id, patch: { launch } }).then(() => loadPreview(false), (failure: unknown) => {
       const code = failure instanceof Error ? failure.message : "unknown";
-      setSheet((current) => current && { ...current, error: code });
+      // 저장되지 않은 선택을 행에 남기지 않는다 — 「이대로 개시」는 저장된 설정으로 띄우므로 행도 지정 전 값으로 돌아간다.
+      setSheet((current) => {
+        if (!current) return current;
+        const restored = new Map(current.overridden);
+        if (previous) restored.set(member.id, previous); else restored.delete(member.id);
+        return { ...current, overridden: restored, error: code };
+      });
     });
   };
   /** 「이대로 개시」 — 본 결과 그대로 띄운다. 그새 결과를 쓸 수 없게 됐으면 다시 읽어 보여 준다(바뀐 대상만 판단). */
