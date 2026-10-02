@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.209.0] - 2026-10-02
+
+### fleet-console
+
+#### Changed
+- 지휘관이 임무를 완료하면서 PR·파일·claude.ai Artifact 링크를 결과물로 넘기고, Objectives는 결과물을 그것을 만든 임무별로 묶어 보여 주며 그래프의 해당 임무에도 표시합니다. Artifact 링크 결과물이 있는 목표는 이전 버전의 Fleet에서 읽을 수 없습니다.
+
+#### Fixed
+- 잠자기나 네트워크 전환 뒤처럼 실시간 연결이 오류 없이 멈춰도 Console이 1분 남짓 안에 알아채 다시 연결하고, 그사이 놓친 Operation과 목표 변경을 새로고침 없이 반영합니다.
+
 ## [1.208.0] - 2026-10-02
 
 ### fleet-console

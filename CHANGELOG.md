@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.209.0] - 2026-10-02
+
+### fleet-console
+
+#### Changed
+- Commanders now hand over a mission's PRs, files and claude.ai Artifact links when they complete it, and Objectives lists results under the mission that produced them, with a marker on that mission in the graph. An objective holding an Artifact link result cannot be read by an earlier Fleet version.
+
+#### Fixed
+- Console now notices when its live connection silently stalls, such as after sleep or a network change, and reconnects within about a minute, catching up on Operation and objective changes without a page reload.
+
 ## [1.208.0] - 2026-10-02
 
 ### fleet-console
