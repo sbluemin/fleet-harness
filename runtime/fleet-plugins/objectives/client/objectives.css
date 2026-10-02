@@ -930,6 +930,16 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-criterion-state.is-met { color: var(--positive); }
 .objectives-criterion-remove { margin-top: 4px; opacity: 0.45; border-color: transparent; transition: opacity 120ms; }
 .objectives-criterion:hover .objectives-criterion-remove, .objectives-criterion:focus-within .objectives-criterion-remove { opacity: 1; }
+/* 아주 좁은 상세 — 상태 낱말을 본문 아랫줄(본문과 같은 들여쓰기)로 내려 기준 문장이 읽힐 폭을 남긴다.
+   간격을 여백으로 옮겨 없는 번호(추가 제안)·지우기(읽기 전용) 칸이 빈 간격을 남기지 않게 한다. */
+@container objectives-detail (width < 340px) {
+  .objectives-criterion { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-areas: "mark num body remove" ". . state ."; gap: 0; }
+  .objectives-criterion-mark { grid-area: mark; margin-right: 12px; }
+  .objectives-criterion-number { grid-area: num; margin-right: 12px; }
+  .objectives-criterion-body { grid-area: body; }
+  .objectives-criterion-remove { grid-area: remove; margin-left: 12px; }
+  .objectives-criterion-state { grid-area: state; margin: -4px 0 6px; }
+}
 
 /* 달성 기준 제안(A안) — 바뀔 기준 자리에 선다. 선택 띠가 아니라 전체 점선 테두리와 옅은 brass 워시로 가른다(왼쪽 세로 띠 없음).
    brass 는 「사람이 여기서 결정할 자리」를 짚는다. 결정 버튼은 제안 행 안에서만 선다. */
