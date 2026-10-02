@@ -1116,6 +1116,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         if (next === node.payload) return;
         pluginHostCapabilities.operations.patch(operationId, { payload: next });
       },
+      // 떠 있는 채팅의 모델·강도 — 채팅 화면의 메뉴와 같은 길. 적용되면 실행 호스트가 세션 좌표(payload)를 고친다.
+      setCoordinates: (operationId, input) => consoleControl.coordinates({ kind: "plugin", pluginId }, operationId, input),
+      coordinates: (operationId) => consoleControl.readCoordinates(operationId),
     }),
     createAgentHost: (pluginId) => {
       const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp });

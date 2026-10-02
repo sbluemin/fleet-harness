@@ -7,7 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { decisionTurn, humanWords, memberMessageTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, nextApplied, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
-import { COMMANDER_PRESET, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type Objective, type ObjectiveMember, type PlanInput, type RoutingDecision, type RoutingPreview, type SlotBy, type MissionAddInput, type MissionPatchInput } from "./types.js";
+import { COMMANDER_PRESET, COORDINATES_NOT_APPLIED, heldNextOutcome, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type Objective, type ObjectiveMember, type PlanInput, type RoutingDecision, type RoutingPreview, type SlotBy, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
 
 /**
  * 목표는 레코드로 태어난다. 첫 「개시」·「구상」에서만 같은 id 의 dormant 지휘관 Operation 을 세우고 깨운다.
@@ -606,41 +606,115 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     catch { return false; }
   };
 
+  /** 떠 있는 채팅의 호스트 좌표 — 실행값과 턴 경계를 기다리는 예약. 포트가 없는 호스트·휴면·터미널이면 null. */
+  const hostCoordinates = (operationId: string) => {
+    const observation = ctx.host.consoleControl?.observe(operationId);
+    if (!ctx.host.consoleControl?.setCoordinates || observation?.lifecycle !== "live" || observation.surface !== "chat") return null;
+    return ctx.host.consoleControl.coordinates?.(operationId) ?? null;
+  };
+  const setCoordinates = (operationId: string, preset: { readonly model: string; readonly effort?: string }) =>
+    ctx.host.consoleControl!.setCoordinates!(operationId, { model: preset.model, effort: preset.effort ?? null });
   /**
-   * 개시한 구성원의 모델 선택 — 자식 Operation 의 세션 좌표를 바꿔 다음 재개부터 쓰게 하고, 지금 실행값과 예약 전 선택을 기억한다.
-   * 실행 중인 프로세스는 건드리지 않는다(채팅·터미널 모두 다음 재개부터). 실행값과 같은 값을 고르면 예약을 거둔다.
-   * 라우팅은 새로 띄울 때만 판단하므로, 띄운 구성원이 라우팅으로 돌아가면 예약만 거둔다.
+   * 개시한 구성원의 모델 선택. 떠 있는 채팅은 호스트에 맡긴다 — 유휴면 곧바로, 턴이 돌면 그 턴이 닫히는 경계에서 바뀌고 세션 좌표는
+   * 적용될 때 호스트가 고친다(미리 고치면 채팅의 칩은 새 모델을 말하는데 답은 옛 모델이 한다). 휴면·터미널은 자식 Operation 의 세션
+   * 좌표를 바꿔 다음 재개부터 쓰게 하고, 지금 실행값과 예약 전 선택을 기억한다. 실행값과 같은 값을 고르면 예약을 거둔다.
+   * 라우팅은 새로 띄울 때만 판단하므로, 띄운 구성원이 라우팅으로 돌아가면 예약만 거둔다. 호스트가 거절한 변경은 오류 코드로 던진다.
    */
-  const reserve = (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: MemberNext }) => {
+  const reserve = async (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: MemberNext }) => {
     const node = ctx.host.operations.get(memberId);
     if (!node) return;
     const pending = before.next && !before.next.failed ? before.next : null;
-    const running = pending ? pending.from : presetOf(readOperationLaunch(node.payload));
+    // 호스트가 든 예약은 세션 좌표를 고치지 않았다 — 그때도 세션 좌표가 곧 실행값이다.
+    const parked = pending && pending.held !== "host" ? pending : null;
+    const running = parked ? parked.from : presetOf(readOperationLaunch(node.payload));
     const target = selection === null ? null : presetOf(selection.mode === "same" ? current.commander : selection);
+    const was = before.next ? before.next.was : before.launch;
+    const host = hostCoordinates(memberId);
+    if (host) {
+      // 재개 예약이 세션 좌표를 바꿔 두었다면 이 프로세스의 값이 아니다 — 먼저 실행값으로 되돌린다.
+      if (parked) patchMemberPreset(memberId, parked.from);
+      const live = { model: host.model, ...(host.effort ? { effort: host.effort } : {}) };
+      // 고른 값이 없으면(라우팅으로 되돌림) 지금 실행값을 다시 고른다 — 호스트는 그것을 예약을 거두는 것으로 받는다.
+      let goal = target?.model ? { ...target, model: target.model } : live;
+      let result = await setCoordinates(memberId, goal);
+      // 행만 고르면 메뉴가 지금 강도를 이어 싣는다 — 그 강도가 새 모델의 칩에 없으면 모델 기본으로 보낸다. 사람이 고른 칩은 언제나 그 모델의 것이다.
+      if (!result.ok && result.error === "invalid_effort" && goal.effort) {
+        goal = { model: goal.model };
+        result = await setCoordinates(memberId, goal);
+        if (result.ok && selection?.mode === "model") store.memberLaunchState(current.id, memberId, { launch: { mode: "model", model: goal.model } });
+      }
+      if (result.ok) {
+        store.memberLaunchState(current.id, memberId, result.applied === "scheduled"
+          ? { next: { model: goal.model, ...(goal.effort ? { effort: goal.effort } : {}), from: live, ...(was ? { was } : {}), reservedWhile: "live", held: "host" } }
+          // 곧바로 적용됐다 — 이제 그것이 실행값이고, 라우팅이 고른 모델도 아니다.
+          : { next: null, ...(result.applied === "now" ? { routed: null } : {}) });
+        // 곧바로 적용되면 실행값은 호스트가 고친 세션 좌표에만 있다 — 저장할 것이 없으면 위의 기록은 방송하지 않고, 선택을 적을 때의
+        // 방송은 옛 좌표를 실었다. 행이 새 실행값을 말하도록 합친 모양을 다시 방송한다.
+        if (result.applied === "now") store.refresh(current.id);
+        return;
+      }
+      // 그새 잠들었거나 채팅이 아직 서지 않았다 — 지금 상태에 맞는 재개 예약으로 남긴다.
+      if (result.error !== "chat_not_active") throw new ObjectiveStoreError(result.error);
+    }
     if (!target?.model || samePreset(target, running)) {
-      if (pending) patchMemberPreset(memberId, running);
+      if (parked) patchMemberPreset(memberId, running);
       store.memberLaunchState(current.id, memberId, { next: null });
       return;
     }
     patchMemberPreset(memberId, target);
-    const was = before.next ? before.next.was : before.launch;
     // 떠 있던 중 예약은 그 프로세스의 세대를 함께 남긴다 — 세대가 바뀌면 다음 프로세스가 이 좌표로 선 것이다. 바꿔 예약해도 프로세스는 그대로다.
     const observed = ctx.host.consoleControl?.observe(memberId);
-    const live = pending?.reservedWhile === "live" ? { generation: pending.reservedGeneration } : observed?.lifecycle === "live" ? { generation: observed.generation } : null;
+    const live = parked?.reservedWhile === "live" ? { generation: parked.reservedGeneration } : observed?.lifecycle === "live" ? { generation: observed.generation } : null;
     store.memberLaunchState(current.id, memberId, { next: { model: target.model, ...(target.effort ? { effort: target.effort } : {}), from: running, ...(was ? { was } : {}), reservedWhile: live ? "live" : "dormant", ...(live?.generation ? { reservedGeneration: live.generation } : {}) } });
   };
   /**
    * 아직 쓰이지 않은 예약 — 예약 뒤 새로 선 프로세스가 관측되면(nextApplied) 사람이 패널에서 깨웠든 지휘관이 말을 걸었든 이미 예약
    * 좌표로 섰으므로 적용으로 거둔다. 떠 있던 중 예약이 휴면으로 관측되면 옛 프로세스가 끝났으니 휴면 예약으로 고친다 — 세대 표식이
-   * 없는 호스트에서도 다음 깨움을 가를 수 있다.
+   * 없는 호스트에서도 다음 깨움을 가를 수 있다. 호스트가 든 턴 뒤 예약은 호스트 좌표를 다시 읽어 적용됐으면 거두고, 예약 없이 옛 값이면
+   * 적용되지 않은 것으로 남긴다.
    */
   const pendingNext = (objectiveId: string, memberId: string) => {
     const next = store.storedMember(objectiveId, memberId)?.next;
     if (!next || next.failed) return null;
+    if (next.held === "host") {
+      const node = ctx.host.operations.get(memberId);
+      const outcome = heldNextOutcome(next, hostCoordinates(memberId), node ? presetOf(readOperationLaunch(node.payload)) : {});
+      if (outcome === "pending") return next;
+      store.memberLaunchState(objectiveId, memberId, outcome === "applied" ? { next: null, routed: null } : { next: { ...next, failed: COORDINATES_NOT_APPLIED } });
+      return null;
+    }
     const observed = ctx.host.consoleControl?.observe(memberId);
     if (nextApplied(next, observed)) { store.memberLaunchState(objectiveId, memberId, { next: null, routed: null }); return null; }
     if (next.reservedWhile === "live" && observed?.lifecycle === "dormant") { const settled = { ...next, reservedWhile: "dormant" as const, reservedGeneration: undefined }; store.memberLaunchState(objectiveId, memberId, { next: settled }); return settled; }
     return next;
+  };
+  /**
+   * 턴 뒤 예약의 마감. 화면은 구성원의 턴이 닫히는 것을 보고 정산을 부르지만, 호스트는 그 경계에서 적용을 막 시작했을 뿐이라
+   * 대개 아직 예약으로 읽힌다 — 적용이 끝나도 활동은 더 바뀌지 않으므로, 여기서 짧게 다시 읽다가 예약이 비면 정산하고 방송한다.
+   * 구성원마다 하나만 돈다.
+   */
+  const settlePollers = new Map<string, { readonly objectiveId: string; timer: ReturnType<typeof setTimeout> }>();
+  const SETTLE_POLL_MS = 250;
+  const SETTLE_DEADLINE_MS = 60_000;
+  const stopSettling = (operationId: string) => {
+    for (const [memberId, poller] of settlePollers) {
+      if (memberId !== operationId && poller.objectiveId !== operationId) continue;
+      clearTimeout(poller.timer);
+      settlePollers.delete(memberId);
+    }
+  };
+  const settleAfterTurn = (objectiveId: string, memberId: string) => {
+    if (settlePollers.has(memberId)) return;
+    const deadline = Date.now() + SETTLE_DEADLINE_MS;
+    const tick = () => {
+      let next: ReturnType<typeof pendingNext> = null;
+      try { if (ctx.host.operations.get(memberId)) next = pendingNext(objectiveId, memberId); }
+      catch { /* 목표나 구성원이 그새 사라졌다 */ }
+      if (next?.held !== "host" || Date.now() >= deadline) { settlePollers.delete(memberId); return; }
+      poller.timer = setTimeout(tick, SETTLE_POLL_MS);
+    };
+    const poller = { objectiveId, timer: setTimeout(tick, SETTLE_POLL_MS) };
+    settlePollers.set(memberId, poller);
   };
 
   // 후보 UUID 를 별도 이름 공간의 안정 UUID 로 바꾼다. 배치가 재시작되어도 같은 후보는 같은 목표다.
@@ -854,7 +928,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     },
 
     memberNextSettle(objectiveId, memberId) {
-      pendingNext(objectiveId, memberId);
+      if (pendingNext(objectiveId, memberId)?.held === "host") settleAfterTurn(objectiveId, memberId);
       return objective(objectiveId);
     },
 
@@ -867,7 +941,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (referenceNode(memberId)) await accessOperation(memberId);
       editableObjective(objectiveId);
       // 실패한 예약은 좌표를 이미 실행값으로 되돌렸다 — 표시만 닫는다.
-      if (!record.next.failed) patchMemberPreset(memberId, record.next.from);
+      if (record.next.failed) { /* 표시만 */ }
+      else if (record.next.held === "host") {
+        // 호스트가 든 예약은 지금 실행값을 다시 골라 거둔다. 그새 잠들었으면 예약은 이미 사라졌다.
+        const host = hostCoordinates(memberId);
+        const result = host ? await setCoordinates(memberId, { model: host.model, ...(host.effort ? { effort: host.effort } : {}) }) : null;
+        if (result && !result.ok && result.error !== "chat_not_active") throw new ObjectiveStoreError(result.error);
+      } else patchMemberPreset(memberId, record.next.from);
+      stopSettling(memberId);
       return store.memberLaunchState(objectiveId, memberId, { next: null, launch: record.next.was ?? null });
     }),
 
@@ -900,13 +981,15 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if ((patch.subagents !== undefined || patch.launch !== undefined) && referenceNode(member.id)) await accessOperation(member.id);
       const latest = editableObjective(objectiveId);
       pendingNext(objectiveId, memberId);
-      const before = store.storedMember(objectiveId, memberId) ?? {};
+      const before: Pick<StoredMember, "launch" | "next"> = store.storedMember(objectiveId, memberId) ?? {};
       let next = store.memberPatch(objectiveId, memberId, patch);
       if (patch.subagents !== undefined) {
         if (ctx.host.operations.get(memberId)) rememberSubagentSpawn(memberId, patch.subagents === true);
       }
       if (patch.launch !== undefined && ctx.host.operations.get(memberId)) {
-        reserve(latest, memberId, patch.launch, before);
+        // 호스트가 바꾸지 못한 선택은 남기지 않는다 — 고른 값과 실행값이 갈린 채 행이 서면 사람은 바뀐 줄 안다.
+        try { await reserve(latest, memberId, patch.launch, before); }
+        catch (error) { store.memberLaunchState(objectiveId, memberId, { launch: before.launch ?? null }); throw error; }
         next = objective(objectiveId);
       }
       return next;
@@ -925,10 +1008,11 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
           await accessOperation(member.id);
           const latest = editableObjective(objectiveId);
           pendingNext(objectiveId, member.id);
-          const before = store.storedMember(objectiveId, member.id) ?? {};
+          const before: Pick<StoredMember, "launch" | "next"> = store.storedMember(objectiveId, member.id) ?? {};
           store.memberLaunchState(objectiveId, member.id, { launch: { mode: "same" } });
-          reserve(latest, member.id, { mode: "same" }, before);
-          reserved += 1;
+          // 한 구성원을 호스트가 거절해도 나머지는 이어 간다 — 그 구성원의 선택만 되돌린다.
+          try { await reserve(latest, member.id, { mode: "same" }, before); reserved += 1; }
+          catch (error) { if (!(error instanceof ObjectiveStoreError)) throw error; store.memberLaunchState(objectiveId, member.id, { launch: before.launch ?? null }); }
         }
       }
       const final = objective(objectiveId);
@@ -946,6 +1030,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         if (!ctx.host.operations.deleteChild(memberId)) throw new ObjectiveStoreError("child_delete_failed");
       }
       const result = store.memberRemove(objectiveId, memberId);
+      stopSettling(memberId);
       return { objective: result.objective, missionIds: result.missionIds };
     }),
 
@@ -1084,11 +1169,13 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return { objective: current, requested: requested.length, woken: requested.filter((target) => target.woken).length, rejected: targets.length - requested.length, excluded: Math.max(0, excluded), targets };
     },
 
-    operationDeleted() {
-      // 부모의 childSessions는 코어 삭제와 함께 원자적으로 사라진다.
+    operationDeleted(operationId) {
+      // 부모의 childSessions는 코어 삭제와 함께 원자적으로 사라진다. 그 구성원(또는 목표 전체)의 정산 폴링만 거둔다.
+      stopSettling(operationId);
     },
 
     operationPurged(operationId) {
+      stopSettling(operationId);
       store.forget(operationId);
     },
 
@@ -1105,6 +1192,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     dispose: () => {
       for (const timer of announceTimers) clearTimeout(timer);
       announceTimers.clear();
+      for (const poller of settlePollers.values()) clearTimeout(poller.timer);
+      settlePollers.clear();
       for (const waiter of [...decisionWaiters.values()]) waiter(null);
     },
   };
