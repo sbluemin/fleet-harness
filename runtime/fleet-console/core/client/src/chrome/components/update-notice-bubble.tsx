@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ApiError, applyConsoleUpdate } from "../../integration/api.js";
 import { requestDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
@@ -61,7 +61,7 @@ export function useUpdateNotice(input: {
   };
 }
 
-export function UpdateNoticeBubble({ kind, shellUpdate, latestVersion, consoleFolds, hasShell, onHomeConsole, onDismiss }: {
+export function UpdateNoticeBubble({ kind, shellUpdate, latestVersion, consoleFolds, hasShell, onHomeConsole, onDismiss, onEscape }: {
   readonly kind: UpdateNoticeKind;
   readonly shellUpdate: DesktopShellUpdate;
   readonly latestVersion: string | null;
@@ -69,8 +69,23 @@ export function UpdateNoticeBubble({ kind, shellUpdate, latestVersion, consoleFo
   readonly hasShell: boolean;
   readonly onHomeConsole: boolean;
   readonly onDismiss: () => void;
+  readonly onEscape: () => void;
 }) {
   const t = useT();
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // 버블 단계에서 듣는다 — 섬 안에 열린 메뉴(호스트 스위처 등)가 먼저 Escape를 소비하면 말풍선은 남는다.
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || !(event.target instanceof Node)) return;
+      const boundary = rootRef.current?.closest(".zen-bar") ?? rootRef.current?.closest(".command-band-system-anchor");
+      if (!boundary?.contains(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onEscape();
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [onEscape]);
   const [consoleState, setConsoleState] = useState<"idle" | "armed" | "applying">("idle");
   const shell = kind === "shell";
   const stage = shellUpdate.stage;
@@ -103,7 +118,7 @@ export function UpdateNoticeBubble({ kind, shellUpdate, latestVersion, consoleFo
     : consoleState === "armed" ? t("chrome.system.update.confirmHostRestartConfirm") : t("chrome.updateNotice.update");
 
   return (
-    <div className="command-band-update-bubble" role="status" aria-live="polite">
+    <div ref={rootRef} className="command-band-update-bubble" role="status" aria-live="polite">
       <div className="command-band-update-bubble-head">
         <span className="command-band-update-bubble-title">{title}</span>
         <button type="button" className="command-band-update-bubble-close" onClick={onDismiss} aria-label={t("chrome.toast.dismissNotification")}>×</button>
