@@ -3245,9 +3245,15 @@ export class AgentChatRegistry {
   private readonly disposals = new Map<string, Promise<void>>();
   private readonly generations = new Map<string, number>();
   private readonly createSdk: CreateChatSdk;
+  /** 같은 Operation 의 접은 PTY 자식이 사라졌는지 — false 면 새 세션을 세우지 않는다(같은 Claude 세션의 두 번째 필자). */
+  private readonly awaitPriorWriterExit: ((operationId: string) => Promise<boolean>) | undefined;
 
-  constructor(createSdk: CreateChatSdk = (options) => createClaudeGatewaySdk({ ...options, modelPolicy: claudeGatewayModelPolicy })) {
+  constructor(
+    createSdk: CreateChatSdk = (options) => createClaudeGatewaySdk({ ...options, modelPolicy: claudeGatewayModelPolicy }),
+    awaitPriorWriterExit?: (operationId: string) => Promise<boolean>,
+  ) {
     this.createSdk = createSdk;
+    this.awaitPriorWriterExit = awaitPriorWriterExit;
   }
 
   has(operationId: string): boolean {
@@ -3268,6 +3274,8 @@ export class AgentChatRegistry {
     const inFlight = this.ensureFlights.get(operationId);
     if (inFlight) return inFlight;
     const flight = (async () => {
+      // 터미널에서 넘어온 세션은 옛 CLI 가 실제로 사라진 뒤에만 선다 — 호출자는 chat_unavailable 로 답한다.
+      if (this.awaitPriorWriterExit && !await this.awaitPriorWriterExit(operationId)) throw new Error("chat_prior_writer_alive");
       const session = new AgentChatSession(operationId, seed(), this.createSdk);
       await session.replayTranscript();
       this.sessions.set(operationId, session);

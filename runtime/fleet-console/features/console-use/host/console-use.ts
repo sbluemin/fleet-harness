@@ -22,7 +22,8 @@ export interface ConsoleUseActions {
   resume?(operationId: string): Promise<{ readonly ok: true; readonly status: string } | { readonly ok: false; readonly error: string }>;
   /**
    * 살아 있는 터미널 Operation 을 휴면으로 — 프로세스는 끝나고 카드는 「종료됨」 선반에 남아 resume 으로 되살아난다.
-   * 유휴 청소기가 밟는 그 길이다. 돌아온 `lifecycle` 이 `ending` 이면 종료는 시작됐고 휴면 전이는 아직이다.
+   * 유휴 청소기가 밟는 그 길이다. 돌아온 `lifecycle` 이 `ending` 이면 휴면으로 전이했지만 옛 프로세스의 종료는 아직 확인하지 못했다 —
+   * 그사이 재개는 호스트가 그 종료까지 미룬다.
    */
   sleep?(operationId: string): Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
   /** 보관한다. 짧은 되돌리기 표면 뒤에도 보관함에서 복원할 수 있다. */

@@ -610,23 +610,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     ctx.host.consoleControl!.setCoordinates!(operationId, { model: preset.model, effort: preset.effort ?? null });
   const goalOf = (next: MemberNext) => ({ model: next.model, ...(next.effort ? { effort: next.effort } : {}) });
 
-  /** 다시 세운 세션이 휴면에 닿기를 기다리는 상한 — 호스트의 재우기 대기(5초)를 넘긴 「ending」 뒤에도 PTY 는 곧 내려온다. */
-  const SWITCH_SETTLE_MS = 10_000;
-  const SWITCH_POLL_MS = 100;
-  const untilDormant = async (operationId: string): Promise<boolean> => {
-    const deadline = Date.now() + SWITCH_SETTLE_MS;
-    while (ctx.host.consoleControl?.observe(operationId)?.lifecycle !== "dormant") {
-      if (Date.now() >= deadline) return false;
-      await new Promise((resolve) => setTimeout(resolve, SWITCH_POLL_MS));
-    }
-    return true;
-  };
   /**
    * 떠 있는 유휴 구성원을 이 좌표로 다시 세운다 — 재우고, 세션 좌표를 고치고, 그 세션째 깨운다(대화는 --resume 으로 이어진다). 좌표는
-   * 재우기가 받아들여지는 즉시 고친다 — 옛 프로세스는 이미 끝나는 중이고, 그사이 휴면 중 전달이 먼저 깨워도 새 좌표로 선다. 깨우기는
-   * 휴면을 관측한 뒤에만 보낸다 — 떠 있는 터미널에 보낸 재개는 프로세스를 그대로 두므로 바뀐 줄 알게 된다. 끝나기를 기다려도 떠 있으면
-   * 좌표를 실행값으로 되돌리고 "busy" 로 답한다(그새 턴이 시작돼 재울 수 없을 때와 같다). 깨우기가 거절되면(그새 노출이 꺼진 모델 등)
-   * 실행값으로 되돌려 다시 깨우고 그 코드로 던진다.
+   * 재우기가 받아들여지는 즉시 고친다 — 그사이 휴면 중 전달이 먼저 깨워도 새 좌표로 선다. 재우기가 `ending`(옛 프로세스의 종료를 아직
+   * 확인하지 못함)이어도 곧바로 깨운다 — 호스트가 옛 프로세스가 사라질 때까지 기동을 미루므로 같은 Claude 세션의 두 필자는 서지 않는다.
+   * 깨우기는 휴면을 관측한 뒤에만 보낸다 — 떠 있는 터미널에 보낸 재개는 프로세스를 그대로 두므로 바뀐 줄 알게 된다. 휴면이 보이지 않으면
+   * 좌표를 실행값으로 되돌리고 "busy" 로 답한다(그새 턴이 시작돼 재울 수 없을 때와 같다). 호스트가 상한 안에 옛 프로세스의 종료를 보지 못해
+   * operation_busy 로 거절했고 여전히 잠들어 있으면 좌표를 그대로 두고 "applied" 로 답한다 — 잠든 구성원은 좌표를 고친 것이 곧 적용이고
+   * 다음 깨움이 그 값으로 선다. 그 밖에 깨우기가 거절되면(그새 노출이 꺼진 모델 등) 실행값으로 되돌려 다시 깨우고 그 코드로 던진다.
    * 감수한 비용: 터미널 입력줄에 쓰다 만 글은 사라지고, 다시 뜨는 몇 초 동안 다른 세션의 SendMessage 는 이 세션에 닿지 않는다. 터미널의
    * 문맥이 새 모델의 창보다 큰지는 플러그인이 알 수 없다(채팅만 호스트가 막는다).
    */
@@ -641,12 +632,15 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       throw new ObjectiveStoreError(slept.error);
     }
     patchMemberPreset(operationId, goal);
-    if (slept.lifecycle === "ending" && !(await untilDormant(operationId))) { patchMemberPreset(operationId, running); return "busy"; }
+    if (ctx.host.consoleControl?.observe(operationId)?.lifecycle !== "dormant") { patchMemberPreset(operationId, running); return "busy"; }
     try { await control().request({ kind: "resume", operationId }); return "applied"; }
     catch (error) {
       // 휴면을 본 뒤 고친 좌표다 — 그새 누가 깨웠거나(not_dormant) 응답만 늦었으면(request_timeout) 떠 있는 것은 새 좌표로 선 프로세스다.
-      if (ctx.host.consoleControl?.observe(operationId)?.lifecycle === "live") return "applied";
+      const lifecycle = ctx.host.consoleControl?.observe(operationId)?.lifecycle;
+      if (lifecycle === "live") return "applied";
       const code = failureCode(error);
+      // 옛 프로세스가 아직 끝나지 않아 호스트가 기동을 거절했다 — 잠든 채 새 좌표를 들고 있으니 다음 깨움이 그 값으로 선다.
+      if (code === "operation_busy" && lifecycle === "dormant") return "applied";
       await resumeWith(operationId, running);
       throw new ObjectiveStoreError(code);
     }

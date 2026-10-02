@@ -1,6 +1,8 @@
+import { spawn } from "node:child_process";
+
 import { describe, expect, it, vi } from "vitest";
 
-import { createTerminalSessionManager } from "../features/execution/host/terminal/session-manager.js";
+import { createTerminalSessionManager, TERMINAL_PRIOR_WRITER_ALIVE } from "../features/execution/host/terminal/session-manager.js";
 import type { TerminalPtyDataDisposable, TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../features/execution/host/terminal/terminal-types.js";
 
 interface MockPty extends TerminalPtyHandle {
@@ -68,6 +70,33 @@ describe("terminal session manager", () => {
     expect(await stopped).toBe(true);
     expect(startShell).not.toHaveBeenCalled();
     expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("does not relaunch a session until the stopped writer process has exited", async () => {
+    // 접은 뒤에도 SIGHUP 을 무시하고 남는 실제 자식 — 같은 Claude 세션의 옛 필자 자리.
+    const writer = spawn(process.execPath, ["-e", "process.on('SIGHUP', () => {}); setInterval(() => {}, 1000); process.stdout.write('ready')"], { stdio: ["ignore", "pipe", "ignore"] });
+    try {
+      await new Promise<void>((resolve) => writer.stdout!.once("data", () => resolve()));
+      let launches = 0;
+      const startShell = vi.fn((): TerminalPtyHandle => (++launches === 1 ? Object.assign(createMockPty(), { pid: writer.pid }) : createMockPty()));
+      const manager = createTerminalSessionManager({
+        launch: async () => ({ bin: "mock", args: [], cwd: "/", env: {} }),
+        startShell,
+        priorWriterExitWaitMs: 300,
+      });
+      await manager.createSession({ sessionId: "member", cwd: "/" });
+      expect(await manager.terminateAndWait("member", 100)).toBe(false);
+
+      await expect(manager.createSession({ sessionId: "member", cwd: "/" })).rejects.toThrow(TERMINAL_PRIOR_WRITER_ALIVE);
+      expect(startShell).toHaveBeenCalledOnce();
+
+      const relaunched = manager.createSession({ sessionId: "member", cwd: "/" });
+      writer.kill("SIGKILL");
+      await relaunched;
+      expect(startShell).toHaveBeenCalledTimes(2);
+    } finally {
+      writer.kill("SIGKILL");
+    }
   });
 
   it("stops a session that finishes launching while server shutdown is waiting", async () => {

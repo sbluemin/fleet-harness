@@ -182,6 +182,7 @@ async function createHarness(options: {
     write: () => true,
     terminate: () => true,
     terminateAndWait: async () => true,
+    awaitWriterExit: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     getSessionLastActivityAt: () => null,
