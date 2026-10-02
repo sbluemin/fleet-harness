@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 
 import { ZenIslandControls } from "../../../../../features/workspace/client/zen/zen-island-controls.js";
 import { useAttentionQueue } from "../../../../../features/workspace/client/zen/use-attention-queue.js";
@@ -64,11 +63,12 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
     if (!active) return;
     const root = rootRef.current;
     if (!root) return;
-    // 메뉴는 섬 안, 말풍선·투어는 portal에 산다. 투어 동안은 숨은 앵커를 만들지 않는다.
+    // 투어는 접힌 DOM에도 앵커 표식을 붙인다. 섬 안 앵커만 펼침을 지키고, 바깥 투어는 가리지 않는다.
+    // 말풍선은 portal에 있으므로 섬 도구에서 열린 표식을 따로 읽는다.
     const measure = () => {
       const tooltip = document.querySelector(".console-toolbar-tip.is-visible[data-zen-island-tip]");
       const content = root.querySelector(".zen-bar-content");
-      setHeld(Boolean(content?.querySelector(OPEN_SURFACE) || document.querySelector(ONBOARDING_TOUR_LAYER_SELECTOR) || tooltip));
+      setHeld(Boolean(content?.querySelector(OPEN_SURFACE) || tooltip));
       setUpdateReady(Boolean(content?.querySelector(".command-band-update-dot")));
     };
     measure();
