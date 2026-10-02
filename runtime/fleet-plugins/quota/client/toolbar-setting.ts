@@ -18,6 +18,8 @@ let document_: Record<string, unknown> = {};
 let capability: ClientSettingsCapability | null = null;
 const listeners = new Set<() => void>();
 let writeChain: Promise<unknown> = Promise.resolve();
+/** 아직 끝나지 않은 쓰기 수 — 첫 읽기가 늦게 와도 사용자가 방금 고른 값을 덮지 않게. */
+let pendingWrites = 0;
 
 function emit(): void {
   for (const listener of listeners) listener();
@@ -25,10 +27,13 @@ function emit(): void {
 
 export function connectQuotaToolbarSetting(next: ClientSettingsCapability): () => void {
   capability = next;
-  void next.read("quota").then((value) => {
+  // 첫 읽기를 쓰기 줄의 맨 앞에 세운다 — 쓰기가 읽어 온 문서 위에 얹히고, 늦은 읽기가 새 값을 덮지 않는다.
+  writeChain = next.read("quota").then((value) => {
     if (capability !== next) return;
     document_ = value ?? {};
-    setting = persisted = { toolbarSummary: value?.toolbarSummary === true };
+    persisted = { toolbarSummary: value?.toolbarSummary === true };
+    if (pendingWrites > 0) return;
+    setting = persisted;
     emit();
   }).catch(() => undefined);
   return () => {
@@ -47,18 +52,21 @@ export function subscribeQuotaToolbarSetting(listener: () => void): () => void {
 
 /** 낙관 반영 후 저장한다. 실패하면 마지막으로 저장된 값으로 되돌린다. 쓰기는 한 줄로 세운다. */
 export function writeQuotaToolbarSummary(enabled: boolean): Promise<void> {
+  pendingWrites += 1;
+  setting = { toolbarSummary: enabled };
+  emit();
   const run = writeChain.then(async () => {
-    setting = { toolbarSummary: enabled };
-    emit();
     const nextDocument = { ...document_, toolbarSummary: enabled };
     try {
       await capability?.write("quota", nextDocument);
       document_ = nextDocument;
-      persisted = setting;
+      persisted = { toolbarSummary: enabled };
     } catch (error) {
       setting = persisted;
       emit();
       throw error;
+    } finally {
+      pendingWrites -= 1;
     }
   });
   writeChain = run.catch(() => undefined);

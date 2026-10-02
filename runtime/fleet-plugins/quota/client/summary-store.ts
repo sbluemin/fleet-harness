@@ -106,6 +106,7 @@ async function readSummary(): Promise<void> {
   const capability = api;
   if (capability === null || inFlight || panelHolds > 0) return;
   inFlight = true;
+  let revalidating = false;
   try {
     // 그릴 것이 없을 때만 만료된 캐시라도 먼저 받는다 — 패널의 첫 읽기와 같은 규칙.
     const response = await capability.fetch("quota", snapshot.data === null ? "summary?stale=1" : "summary");
@@ -113,10 +114,13 @@ async function readSummary(): Promise<void> {
     const result = await response.json() as SummaryResponse;
     // 그사이 패널이 열렸으면 패널의 답이 이긴다 — 늦게 온 이 답이 패널이 실은 값을 덮지 않게.
     if (panelHolds > 0) return;
-    emit({ ...snapshot, data: result, order: sanitizeProviderOrder(result.providerOrder), checkedAt: result.revalidating === true ? snapshot.checkedAt : Date.now() });
+    revalidating = result.revalidating === true;
+    emit({ ...snapshot, data: result, order: sanitizeProviderOrder(result.providerOrder), checkedAt: revalidating ? snapshot.checkedAt : Date.now() });
   } catch {
     // 요약은 곁눈의 신호다 — 실패는 다음 주기가 다시 묻는다. 오류 안내는 패널의 몫이다.
   } finally {
     inFlight = false;
   }
+  // 만료된 캐시를 받았으면 Gateway가 뒤에서 갱신 중이다 — 곧바로 다시 물어 그 single-flight에 합류한다(패널과 같은 규칙).
+  if (revalidating) void readSummary();
 }
