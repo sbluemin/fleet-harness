@@ -74,6 +74,7 @@ export function UpdateNoticeBubble({ kind, shellUpdate, latestVersion, consoleFo
   const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    // 버블 단계에서 듣는다 — 섬 안에 열린 메뉴(호스트 스위처 등)가 먼저 Escape를 소비하면 말풍선은 남는다.
     const keydown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || !(event.target instanceof Node)) return;
       const boundary = rootRef.current?.closest(".zen-bar") ?? rootRef.current?.closest(".command-band-system-anchor");
@@ -82,8 +83,8 @@ export function UpdateNoticeBubble({ kind, shellUpdate, latestVersion, consoleFo
       event.stopPropagation();
       onEscape();
     };
-    window.addEventListener("keydown", keydown, true);
-    return () => window.removeEventListener("keydown", keydown, true);
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
   }, [onEscape]);
   const [consoleState, setConsoleState] = useState<"idle" | "armed" | "applying">("idle");
   const shell = kind === "shell";

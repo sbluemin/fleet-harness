@@ -56,6 +56,8 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
   }, [active, sidebarShown]);
   useLayoutEffect(() => {
+    // 섬 안의 도구(예: 지도 닫기)로 감상에 들어가면 포커스가 남은 동안 펼침을 지켜 포커스가 숨지 않게 한다.
+    if (rootRef.current?.contains(document.activeElement)) return;
     setExpanded(false);
   }, [active, watching]);
   useLayoutEffect(() => {
