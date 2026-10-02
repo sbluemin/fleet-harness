@@ -82,8 +82,9 @@ export default definePlugin({
     // 후속으로 만든 Operation 이 지워지거나 돌아오면 그 원본의 배치 표시(생성됨·삭제됨)도 다시 방송한다.
     on("operation:deleted", (operationId) => { launch.operationDeleted(operationId); launch.followupTargetChanged(operationId); });
     on("operation:purged", (operationId) => { launch.operationPurged(operationId); launch.followupTargetChanged(operationId); });
-    // 원본이 복원되면 멈춰 있던 후속 생성을 같은 키로 이어 간다(지운 동안에는 만들지 않는다).
-    on("operation:restored", (operationId) => { launch.operationChanged(operationId); launch.resumeFollowups(operationId); launch.followupTargetChanged(operationId); });
+    // 원본이 복원되면 멈춰 있던 후속 생성을 같은 키로 이어 간다(지운 동안에는 만들지 않는다). 사라진 동안 놓았던 구성원의 이번 턴 뒤
+    // 예약도 다시 건다 — 삭제 유예에서 되돌렸든 보관에서 되살렸든(완료 해제 포함) 같은 사건이다.
+    on("operation:restored", (operationId) => { launch.operationChanged(operationId); launch.resumeFollowups(operationId); launch.followupTargetChanged(operationId); launch.resumeReservations(operationId); });
     on("operation:archived", (operationId) => { launch.operationChanged(operationId); launch.followupTargetChanged(operationId); });
     on("operation:renamed", (operationId) => launch.operationChanged(operationId));
     // 목표의 그룹은 지휘관 Operation 의 그룹이다 — 옮겨지면(사이드바·Console Use·목표 화면) 담당이 따라가고 화면을 다시 방송한다.

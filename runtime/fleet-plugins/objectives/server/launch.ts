@@ -66,8 +66,12 @@ export interface LaunchService {
   routingPreview(objectiveId: string, options?: { readonly rejudge?: boolean }): Promise<RoutingPreview>;
   /** 「이번 턴 뒤」 예약을 거둔다 — 세션은 실행값 그대로이고 예약 전 선택으로 돌아간다. 실패 표시도 같은 길로 닫는다. */
   memberNextCancel(objectiveId: string, memberId: string): Promise<Objective>;
-  /** 기동 때 — 「다음 재개」 시절의 옛 예약은 적용으로 거두고(세션 좌표가 이미 그 값이다), 이번 턴 뒤를 기다리던 예약의 감시를 다시 건다. */
-  resumeReservations(): void;
+  /**
+   * 기동 때 — 「다음 재개」 시절의 옛 예약은 적용으로 거두고(세션 좌표가 이미 그 값이다), 이번 턴 뒤를 기다리던 예약의 감시를 다시 건다.
+   * operationId 를 주면 그 Operation(지휘관이든 구성원이든)의 목표만 — 삭제 유예·보관에서 돌아온 목표다. 감시자는 사라진 Operation 의
+   * 예약을 놓으므로, 돌아온 뒤에는 여기서 다시 걸어야 옛 모델로 깨지 않는다.
+   */
+  resumeReservations(operationId?: string): void;
   requestPlan(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly operationId: string }>;
   missionPatched(objectiveId: string, missionId: string, patch: MissionPatchInput): Objective;
   /** 사람이 더한 임무(`by: "human"`)는 선행을 함께 주지 않았다면 미분류로 들어간다 — 지휘관의 추가는 지휘관이 이미 자리를 안다. */
@@ -999,8 +1003,9 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return task;
     },
 
-    resumeReservations() {
-      for (const current of store.all()) {
+    resumeReservations(operationId) {
+      const scope = operationId === undefined ? store.all() : [store.find(operationId) ?? store.findMember(operationId)?.objective].filter((entry): entry is Objective => !!entry);
+      for (const current of scope) {
         for (const member of current.members) {
           const next = store.storedMember(current.id, member.id)?.next;
           if (!next || next.failed) continue;

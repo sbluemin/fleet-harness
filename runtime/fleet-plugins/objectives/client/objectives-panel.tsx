@@ -730,7 +730,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
                 triggerText={display.text} triggerTitle={display.title}
                 head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : state === "idle" ? "objectives.members.menuHead.idle" : "objectives.members.menuHead.working")}</span></>}
                 extras={[{ id: "same", label: t("objectives.memberSelection.inherit"), hint: `${commanderWords.words.model} · ${commanderWords.words.effort}`, active: member.launch.mode === "same", onPick: () => pickLaunched(member, { mode: "same" }) }]}
-                extrasCaption={t("objectives.members.routeAtLaunch")}
+                extrasCaption={t("objectives.members.routeAtLaunch")} commitOnClose
                 subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
                 onChange={(choice) => { const model = choice.model ?? reserved?.model ?? member.model; if (model) pickLaunched(member, { mode: "model", model, effort: choice.effort }); }} />
             ) : (
