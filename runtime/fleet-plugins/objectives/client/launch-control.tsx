@@ -188,12 +188,15 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
   const groups = useLaunchGroups();
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
+  // 메뉴에서 방금 고른 값 — 저장이 방송으로 돌아오기 전에도 2단계(모델 한 줄 + 강도 트랙)가 그 모델로 선다. 값이 돌아오거나 메뉴가 닫히면 거둔다.
+  const [picked, setPicked] = useState<{ readonly model: string; readonly effort?: string } | null>(null);
   // 라우팅·지휘관과 같게를 골랐으면 모델 행은 선택이 아니다 — 모델이 비어 기본(Opus)으로 읽힌 행이 함께 체크되지 않게 한다.
-  const activeModel = extras?.some((extra) => extra.active) ? null : currentModel;
-  const currentEffort = effort ?? (model || extras?.length ? undefined : DEFAULT_LAUNCH.effort);
+  const activeModel = picked?.model ?? (extras?.some((extra) => extra.active) ? null : currentModel);
+  const currentEffort = picked ? picked.effort : effort ?? (model || extras?.length ? undefined : DEFAULT_LAUNCH.effort);
   const words = launchWords(rows, model, effort, t("objectives.commander.effortAuto"));
   const [open, setOpen] = useState(false);
   useEffect(() => { if (locked) setOpen(false); }, [locked]);
+  useEffect(() => { setPicked(null); }, [model, effort, open]);
   // 2단계 — 고른 모델 한 줄과 강도 트랙. 메뉴는 여기서 열리고, 모델명을 누르면 목록(1단계)으로 간다.
   const [focused, setFocused] = useState(!startAtList);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -307,7 +310,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
                   row={chosenRow}
                   apexPinnedOpen
                   value={resolveRowEffort(chosenRow, currentEffort ?? null)}
-                  onChange={(next) => onChange({ model: chosenRow.launch.model, effort: next ?? undefined })}
+                  onChange={(next) => { if (chosenRow.launch.model) setPicked({ model: chosenRow.launch.model, ...(next ? { effort: next } : {}) }); onChange({ model: chosenRow.launch.model, effort: next ?? undefined }); }}
                   // 값은 onChange 가 이미 실었다 — 고른 노브를 한 번 더 누르거나 Enter 는 「이걸로」라는 뜻이라 메뉴만 닫는다.
                   onConfirmCurrent={() => { setOpen(false); triggerRef.current?.focus(); }}
                   autoLabel={t("objectives.commander.effortAuto")}
@@ -341,7 +344,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
                     const active = row.launch.model === activeModel;
                     return (
                       <button key={row.id} type="button" role="menuitemradio" aria-checked={active} className={`objectives-menu-item${active ? " is-active" : ""}`}
-                        onClick={() => { onChange({ model: row.launch.model, effort: resolveRowEffort(row, currentEffort ?? null) ?? undefined }); setFocused(true); }}>
+                        onClick={() => { const chosenEffort = resolveRowEffort(row, currentEffort ?? null) ?? undefined; if (row.launch.model) setPicked({ model: row.launch.model, ...(chosenEffort ? { effort: chosenEffort } : {}) }); onChange({ model: row.launch.model, effort: chosenEffort }); setFocused(true); }}>
                         <span className="objectives-menu-label">{row.label}</span>
                         {active ? <span className="objectives-menu-chev" aria-hidden="true"><Chevron /></span> : null}
                       </button>
