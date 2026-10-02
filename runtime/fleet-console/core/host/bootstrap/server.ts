@@ -26,7 +26,7 @@ import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
 import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
-import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, withSubagentSpawn, withUserQuestions } from "@fleet-console/sdk/operations";
+import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, readOperationLaunch, withSubagentSpawn, withUserQuestions, type OperationLaunchChangedEvent } from "@fleet-console/sdk/operations";
 import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createConsoleControl } from "../../../features/console-use/host/console-control.js";
@@ -914,6 +914,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         archiveStorage.assertReady();
         const parentId = operations.getChild(id)?.parent.id;
         const before = operations.get(parentId ?? id);
+        const launchBefore = launchJson(id);
         const operation = operations.patch(id, input);
         if (operation && before) {
           persistDurableState();
@@ -923,6 +924,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           const changed = operations.get(parentId ?? id)!;
           if (sanitizedOperationJson(before) !== sanitizedOperationJson(changed)) {
             broadcastOperationChanged(changed);
+          }
+          // 플러그인 서버는 브라우저 SSE 를 듣지 못한다 — 세션 좌표·표면이 바뀐 때만 id 힌트를 낸다. 저장은 이미 끝났으니
+          // 구독자의 예외가 이 patch 를 부른 실행 경로로 새지 않게 격리한다.
+          if (launchBefore !== launchJson(id)) {
+            publishPluginEvent(OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, { operationId: id, parentOperationId: parentId ?? null } satisfies OperationLaunchChangedEvent, true);
           }
         } else if (operation) {
           persistDurableState();
@@ -2033,6 +2039,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     ];
     const { ts: _ts, ...rest } = createSanitizedOpDto(node, { sensitiveFields });
     return JSON.stringify(rest);
+  }
+  /** `operation:launch-changed` 게이트가 비교하는 모양 — 자식 세션이면 부모의 childSessions 안 그 자식의 payload 를 읽는다. */
+  function launchJson(id: string): string | null {
+    const payload = operations.getChild(id)?.child.payload ?? operations.get(id)?.payload;
+    return payload ? JSON.stringify(readOperationLaunch(payload)) : null;
   }
 
   /** 그룹 사건 — 이름·색·순서뿐이라 민감 필드가 없다. 원격 세션에도 그대로 흐른다. */

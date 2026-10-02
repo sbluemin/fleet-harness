@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
+import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import { createObjectiveConsoleTools } from "./server/console-tools.js";
@@ -87,6 +87,8 @@ export default definePlugin({
     on("operation:restored", (operationId) => { launch.operationChanged(operationId); launch.resumeFollowups(operationId); launch.followupTargetChanged(operationId); launch.resumeReservations(operationId); });
     on("operation:archived", (operationId) => { launch.operationChanged(operationId); launch.followupTargetChanged(operationId); });
     on("operation:renamed", (operationId) => launch.operationChanged(operationId));
+    // 사람이 채팅 화면에서 모델을 바꾸거나 채팅↔터미널을 전환해도 명단은 지금 세션 좌표를 말해야 한다 — 지휘관이든 구성원이든 그 목표를 다시 방송한다.
+    on(OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, (operationId) => launch.operationChanged(operationId));
     // 목표의 그룹은 지휘관 Operation 의 그룹이다 — 옮겨지면(사이드바·Console Use·목표 화면) 담당이 따라가고 화면을 다시 방송한다.
     on(OPERATION_GROUPED_EVENT_CHANNEL, (_operationId, payload) => {
       const event = payload as Partial<OperationGroupedEvent>;
