@@ -326,18 +326,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     const current = theaters.get(event.theaterId) ?? EMPTY;
     if (event.op === "remove") { setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
     if (!event.objective) return;
-    const exists = current.objectives.some((objective) => objective.id === event.objectiveId);
-    const merged = exists ? current.objectives.map((objective) => (objective.id === event.objectiveId ? event.objective! : objective)) : [event.objective, ...current.objectives];
-    // 위임 직후 담당 Operation 을 목표로 먼저 받아 왔을 수 있다 — 어느 목표의 담당이 된 Operation 은 목록에서 뺀다.
-    const members = memberIds(merged);
-    const objectives = members.size ? merged.filter((objective) => !members.has(objective.id)) : merged;
-    // 순서가 함께 오면 서버의 줄을 따른다 — 목록에 없는 id 는 건너뛰고, 순서에 없는 항목은 뒤에 그대로 둔다.
-    if (event.order) {
-      const rank = new Map(event.order.map((id, index) => [id, index]));
-      setTheater(event.theaterId, { objectives: [...objectives].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)) });
-      return;
-    }
-    setTheater(event.theaterId, { objectives });
+    upsertObjectiveLocally(event.objective, event.order);
   });
   const offGroup = ctx.consoleEvents.subscribe("group:changed", (payload) => {
     noteAlive();
@@ -424,6 +413,24 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
     clearRetryTimer();
   };
+}
+
+/** 목표 사건과 삭제 응답을 같은 규칙으로 반영한다 — 스트림을 놓쳐도 정리된 목표의 되돌리기 상태는 남는다. */
+export function upsertObjectiveLocally(objective: Objective, order?: readonly string[]): void {
+  unknownToServer.delete(objective.id);
+  const current = theaters.get(objective.theaterId) ?? EMPTY;
+  const exists = current.objectives.some((candidate) => candidate.id === objective.id);
+  const merged = exists ? current.objectives.map((candidate) => (candidate.id === objective.id ? objective : candidate)) : [objective, ...current.objectives];
+  // 위임 직후 담당 Operation 을 목표로 먼저 받아 왔을 수 있다 — 어느 목표의 담당이 된 Operation 은 목록에서 뺀다.
+  const members = memberIds(merged);
+  const objectives = members.size ? merged.filter((candidate) => !members.has(candidate.id)) : merged;
+  // 순서가 함께 오면 서버의 줄을 따른다 — 목록에 없는 id 는 건너뛰고, 순서에 없는 항목은 뒤에 그대로 둔다.
+  if (order) {
+    const rank = new Map(order.map((id, index) => [id, index]));
+    setTheater(objective.theaterId, { objectives: [...objectives].sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER)) });
+    return;
+  }
+  setTheater(objective.theaterId, { objectives });
 }
 
 /** 목표 하나를 이 화면에서 거둔다 — 영구 삭제 사건과, 휴지통처럼 사람이 지운 직후에 쓴다(서버의 remove 는 유예가 끝난 뒤에 온다). */
