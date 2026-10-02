@@ -836,7 +836,9 @@ function QuotaPanel({ ctx }: { readonly ctx: PaneContext }) {
             adoptFolded(sanitizeFoldedProviders(result.foldedProviders));
           }
           setRequestError(false);
-          setNow(Date.now());
+          const adoptedAt = Date.now();
+          setNow(adoptedAt);
+          setCheckedAt(adoptedAt);
         }
       })
       .catch(() => {
