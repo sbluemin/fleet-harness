@@ -1,5 +1,5 @@
 ---
-branch: fix-console-sse-half-open
+branch: fix/console-sse-half-open
 ---
 
 ### fleet-console
