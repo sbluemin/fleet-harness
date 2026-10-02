@@ -86,12 +86,15 @@ export function ResultsHeadTools({ objective, t, expanded }: { readonly objectiv
   </>;
 }
 
-export function ObjectiveResults({ objective, t, language, onShowMission, highlightMission }: {
+export const resultGroupKey = (objectiveId: string, missionId: string = "loose") => `result:${objectiveId}:${missionId}`;
+
+export function ObjectiveResults({ objective, t, language, onShowMission, highlightMission, groupOpen, onToggleGroup }: {
   readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale;
   readonly onShowMission: (missionId: string) => void; readonly highlightMission: string | null;
+  readonly groupOpen: (key: string) => boolean; readonly onToggleGroup: (key: string) => void;
 }) {
   const now = useNow();
-  // 열린 보기는 resultId로 고른다. 묶음 이동·교체도 현재 객체를 따르고, 이미지 넘기기는 장부 순서를 따른다.
+  // 열린 보기는 resultId로 고른다. 묶음 이동·교체도 현재 객체를 따르고, 이미지 넘기기는 같은 묶음 안에서만 한다.
   const [viewingId, setViewingId] = useState<string | null>(null);
   const openerRefs = useRef(new Map<string, HTMLButtonElement>());
   const openerRef = (id: string) => (node: HTMLButtonElement | null) => { if (node) openerRefs.current.set(id, node); else openerRefs.current.delete(id); };
@@ -100,7 +103,6 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
   const loose = objective.results.filter((result) => !result.sourceMissionId || !knownMissions.has(result.sourceMissionId));
   const ordered = [...groups.flatMap((group) => group.results), ...loose];
   const evidence = ordered.filter((result): result is EvidenceResult => result.kind === "evidence");
-  const images = evidence.filter((result) => result.mediaType !== "text/plain");
   const source = (result: ObjectiveResult) => {
     const n = result.sourceMissionId ? objective.missions.findIndex((mission) => mission.id === result.sourceMissionId) + 1 : 0;
     return n > 0 ? t("objectives.results.mission", { n }) : t(result.sourceMissionId ? "objectives.results.looseRemoved" : "objectives.results.looseNoSource");
@@ -109,6 +111,8 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
   const uploaded = (result: EvidenceResult) => t("objectives.results.uploaded", { ago: relative(result.capturedAt, now, language) });
   const close = () => { if (viewingId) openerRefs.current.get(viewingId)?.focus(); setViewingId(null); };
   const viewingLive = viewingId ? evidence.find((result) => result.id === viewingId) ?? null : null;
+  const viewingGroup = groups.find((group) => group.results.some((result) => result.id === viewingId));
+  const images = (viewingGroup?.results ?? loose).filter((result): result is EvidenceResult => result.kind === "evidence" && result.mediaType !== "text/plain");
   const imageIndex = viewingLive ? images.indexOf(viewingLive) : -1;
   const viewerImages = images.map((result) => ({
     src: resultFileUrl(objective.id, result), title: result.label ?? null, note: result.note ?? null,
@@ -116,17 +120,26 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
   }));
   const group = (mission: ObjectiveMission | null, n: number, results: readonly ObjectiveResult[]) => {
     const record = mission?.records.at(-1);
+    const key = resultGroupKey(objective.id, mission?.id);
+    const open = groupOpen(key);
+    const bodyId = `objectives-result-body-${objective.id}-${mission?.id ?? "loose"}`;
+    const name = mission ? `${t("objectives.graph.detail", { n })} · ${mission.text}` : t("objectives.results.loose");
     const groupImages = results.filter((result): result is EvidenceResult => result.kind === "evidence" && result.mediaType !== "text/plain");
     return <section key={mission?.id ?? "loose"} data-result-mission={mission?.id} className={`objectives-result-group${mission ? "" : " is-loose"}${highlightMission === mission?.id ? " is-highlight" : ""}`}>
-      {mission ? <button type="button" className="objectives-result-group-head" aria-label={`${t("objectives.graph.detail", { n })} · ${mission.text}`} onClick={() => onShowMission(mission.id)}>
-        <span className="objectives-result-mission-n" aria-hidden="true">{n}</span><span className="objectives-result-mission-title">{mission.text}</span>
-        <span className="objectives-result-group-count">{t("objectives.results.count", { count: results.length })} ↗</span>
-      </button> : <div className="objectives-result-group-head"><span className="objectives-result-mission-n is-loose" aria-hidden="true">—</span><span className="objectives-result-mission-title">{t("objectives.results.loose")}</span><span className="objectives-result-group-count">{t("objectives.results.count", { count: results.length })}</span></div>}
+      <div className="objectives-result-group-bar">
+        <button type="button" className="objectives-result-group-head" aria-label={`${name} · ${t("objectives.results.title")} ${t("objectives.results.count", { count: results.length })}`} aria-expanded={open} aria-controls={bodyId} onClick={() => onToggleGroup(key)}>
+          <span className="objectives-result-mission-n" aria-hidden="true">{mission ? n : "—"}</span><span className="objectives-result-mission-title">{mission?.text ?? t("objectives.results.loose")}</span>
+          <span className="objectives-result-group-count">{t("objectives.results.count", { count: results.length })}</span>
+          <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
+        </button>
+        {mission ? <button type="button" className="objectives-glyph objectives-result-goto" aria-label={`${t("objectives.graph.detail", { n })} · ${t("objectives.results.showInGraph")}`} title={t("objectives.results.showInGraph")} onClick={() => onShowMission(mission.id)}>↗</button>
+          : <span className="objectives-result-goto-space" aria-hidden="true" />}
+      </div>
+      <div id={bodyId} className="objectives-result-group-body" hidden={!open}>
       {record ? <div className="objectives-result-record">
         <span title={record.lines[0] ?? ""}><LinkText text={record.lines[0] ?? ""} /></span>
         <time dateTime={new Date(record.at).toISOString()} title={absolute(record.at, language)}>{t("objectives.results.lastRecord", { time: relative(record.at, now, language) })}</time>
       </div> : null}
-      {!mission ? <p className="objectives-result-loose-note">{t("objectives.results.looseNote")}</p> : null}
       {groupImages.length ? <div className="objectives-result-strip">{groupImages.map((result) => {
         const title = result.label ?? result.name;
         return <div key={result.id} className="objectives-result-thumb">
@@ -162,14 +175,16 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
         </div>;
       })}
       {results.filter((result): result is PrResult => result.kind === "pr").map((result) => <PrRow key={result.id} result={result} t={t} language={language} now={now} missionTag={sourceTag(result)} />)}
+      </div>
     </section>;
   };
 
+  const artifactVisible = groups.some(({ mission, results }) => groupOpen(resultGroupKey(objective.id, mission.id)) && results.some((result) => result.kind === "artifact"))
+    || groupOpen(resultGroupKey(objective.id)) && loose.some((result) => result.kind === "artifact");
   return <div className="objectives-results">
-    <p className="objectives-results-summary">{t("objectives.results.summary", { total: objective.missions.length, count: groups.length })}</p>
     {groups.map(({ mission, n, results }) => group(mission, n, results))}
     {loose.length ? group(null, 0, loose) : null}
-    {objective.results.some((result) => result.kind === "artifact") ? <p className="objectives-artifact-notice"><InfoGlyph /><span>{t("objectives.results.artifact.notice")}</span></p> : null}
+    {artifactVisible ? <p className="objectives-artifact-notice"><InfoGlyph /><span>{t("objectives.results.artifact.notice")}</span></p> : null}
     {viewingLive ? createPortal(
       viewingLive.mediaType === "text/plain"
         ? <EvidenceTextView t={t} src={resultFileUrl(objective.id, viewingLive)} name={viewingLive.name} caption={`${viewingLive.name} · ${bytesLabel(viewingLive.bytes)} · ${uploaded(viewingLive)} · ${source(viewingLive)}`} onClose={close} />
@@ -332,6 +347,7 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
   );
 }
 
+const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>;
 const ArtifactGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M2 6h12M4.5 4.3h.1M6.5 4.3h.1M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5" /></svg>;
 const ExternalGlyph = () => <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 2.5H2.5v7h7V7M7 2.5h2.5V5M9.5 2.5 5.5 6.5" /></svg>;
 const InfoGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6" /><path d="M8 7v4M8 4.8h.01" /></svg>;

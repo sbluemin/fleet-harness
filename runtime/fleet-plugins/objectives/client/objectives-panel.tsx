@@ -11,7 +11,7 @@ import { ActionBand, type MemberAwaiting, type MessageRecipient } from "./action
 import { DecisionGlyph, DecisionList, DecisionRequestBlock } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
-import { ObjectiveResults, ResultsGlyph, ResultsHeadTools } from "./results.js";
+import { ObjectiveResults, ResultsGlyph, ResultsHeadTools, resultGroupKey } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
 import { DatePicker } from "./date-picker.js";
@@ -399,6 +399,9 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         sectionOpen={(key) => isOpen(key, key !== "detail:missionList")}
         onToggleSection={(key) => toggleSection(key, key !== "detail:missionList")}
         onOpenSection={(key) => patchObjectiveView(theaterId, (view) => ({ collapsed: { ...view.collapsed, [key]: false } }))}
+        groupOpen={(key) => isOpen(key, false)}
+        onToggleGroup={(key) => toggleSection(key, false)}
+        onOpenGroup={(key) => patchObjectiveView(theaterId, (view) => ({ collapsed: { ...view.collapsed, [key]: false } }))}
         highlightMission={highlightMission}
         switcher={switcher}
         detailRef={detailRef}
@@ -847,6 +850,10 @@ interface DetailProps {
   readonly sectionOpen: (key: DetailSection) => boolean;
   readonly onToggleSection: (key: DetailSection) => void;
   readonly onOpenSection: (key: DetailSection) => void;
+  /** 결과물 묶음은 목표·임무 키별로 기억하며 기본은 접힘. 구획 접힘과는 독립이다. */
+  readonly groupOpen: (key: string) => boolean;
+  readonly onToggleGroup: (key: string) => void;
+  readonly onOpenGroup: (key: string) => void;
   readonly highlightMission: string | null;
   /** 제목 옆 ⌄ 전환 목록 — 사이드바가 보이면 없다. */
   readonly switcher: ReactNode;
@@ -1318,7 +1325,7 @@ function BriefSection({ objective, t, language, touchable, call, onOpenObjective
   </>);
 }
 
-function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, highlightMission, switcher, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
+function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, switcher, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
   const launchRows = useLaunchRows();
   const mode = commanderMode(objective.missions);
   const mergedFrom = criterionSources(objective);
@@ -1399,6 +1406,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     setZoomOpen(false);
     setMissionReveal(null);
     onOpenSection("detail:results");
+    onOpenGroup(resultGroupKey(objective.id, missionId));
     setResultReveal({ id: missionId, at: Date.now() });
   };
   const sendDecision = async (requestId: string, answers: readonly { questionId: string; selectedOptionIds: readonly string[]; text: string }[]) => {
@@ -1436,7 +1444,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
     const frame = requestAnimationFrame(() => {
       const group = detailRef.current?.querySelector<HTMLElement>(`[data-result-mission="${CSS.escape(resultReveal.id)}"]`);
       group?.scrollIntoView({ block: "start" });
-      group?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+      group?.querySelector<HTMLButtonElement>(".objectives-result-group-head")?.focus({ preventScroll: true });
     });
     const timer = setTimeout(() => setResultReveal(null), 1600);
     return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
@@ -1666,7 +1674,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           tools={<ResultsHeadTools objective={objective} t={t} expanded={resultsOpen} />}
           {...(objective.results.length > 0 ? { controls: "objectives-sec-results", expanded: resultsOpen, onToggle: () => onToggleSection("detail:results") } : {})}
         />
-        {objective.results.length > 0 ? <div id="objectives-sec-results" hidden={!resultsOpen}><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} /></div> : null}
+        {objective.results.length > 0 ? <div id="objectives-sec-results" hidden={!resultsOpen}><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} groupOpen={groupOpen} onToggleGroup={onToggleGroup} /></div> : null}
       </div>
   </>);
   const renderMissionDetail = (mission: ObjectiveMission, { close, select, state }: MissionDetailActions) => {
