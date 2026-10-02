@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { createPortal } from "react-dom";
 
@@ -16,7 +16,7 @@ import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDet
 import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { LaunchControl, LaunchedText, launchedWords, useLaunchRows } from "./launch-control.js";
+import { LaunchControl, LaunchedText, launchedWords, routingReason, useLaunchRows } from "./launch-control.js";
 import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
@@ -435,7 +435,10 @@ function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, t: T, r
   const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
   if (launched) {
     const running = launchedWords(rows, member.model, member.effort, labels);
-    return { text: <LaunchedText model={running.model} words={running.words} />, title: running.title, label: `${running.words.model} · ${running.words.effort}` };
+    // 라우팅으로 떴으면 그 근거, 폴백이면 사유가 풀네임 뒤에 붙는다 — 같은 「모델 · 강도」 줄이 어떻게 정해졌는지 말한다.
+    const title = member.routed?.via === "route" ? t("objectives.members.routedBecause", { model: running.title, because: member.routed.because })
+      : member.routed?.via === "fallback" ? t("objectives.members.fallbackBecause", { model: running.title, reason: routingReason(t, member.routed.reason) }) : running.title;
+    return { text: <LaunchedText model={running.model} words={running.words} />, title, label: `${running.words.model} · ${running.words.effort}` };
   }
   if (member.launch.mode === "route") return { text: <span className="objectives-launch-model">{t("objectives.memberSelection.route")}</span>, title: t("objectives.members.routeHint"), label: t("objectives.memberSelection.route") };
   if (member.launch.mode === "same") return { text: <span className="objectives-launch-model">{t("objectives.memberSelection.inherit")}</span>, title: t("objectives.memberSelection.inherit"), label: t("objectives.memberSelection.inherit") };
@@ -447,6 +450,8 @@ const memberLaunched = (member: ObjectiveMember, operationState: (operationId: s
 /** 저장값만. false와 키 없음은 꺼짐. 실행 중 세션에 적용됐는지는 여기서 말하지 않는다. */
 const memberSubagents = (member: ObjectiveMember): boolean => member.subagents === true;
 const MEMBER_LIVE = new Set(["running", "background", "idle", "awaiting"]);
+/** 라우팅이 꺼졌거나 후보가 없는 것은 실패가 아니라 설정 상태다 — 폴백 줄도 시트처럼 중립으로 말한다. */
+const ROUTING_OFF_REASONS = new Set(["routing_disabled", "routing_off", "no_candidate"]);
 
 /** 구성원 표식의 색 — 명단 순번으로 정체성 톤(--id-*) 8가지를 돌려 쓴다. 명단·임무 줄·배정 메뉴가 같은 구성원에 같은 색을 쓴다. */
 const MEMBER_TONES = 8;
@@ -473,6 +478,20 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   const batchTriggerRef = useRef<HTMLButtonElement | null>(null);
   const batchMenuRef = useRef<HTMLDivElement | null>(null);
   const balloonTimer = useRef<number | null>(null);
+  // 실패 줄의 「다른 모델」이 그 구성원의 메뉴를 연다 — 구성원마다 여는 손잡이 하나.
+  const openers = useRef(new Map<string, MutableRefObject<(() => void) | null>>());
+  const opener = (id: string) => { let ref = openers.current.get(id); if (!ref) { ref = { current: null }; openers.current.set(id, ref); } return ref; };
+  const cancelNext = (member: ObjectiveMember) => void call("/member/next-cancel", { objectiveId: objective.id, memberId: member.id });
+  // 휴면 중 예약한 구성원이 깨어 있는 것을 보면 서버가 그 예약을 거두게 한다 — 다시 휴면해도 옛 예약이 되살아나지 않는다(예약마다 한 번).
+  const settled = useRef(new Set<string>());
+  const wokenKeys = objective.members.filter((member) => member.next && !member.next.failed && member.next.reservedWhile === "dormant" && MEMBER_LIVE.has(member.sessionName !== null ? operationState(member.id) : "closed")).map((member) => `${member.id}:${member.next!.model}:${member.next!.effort ?? ""}`);
+  useEffect(() => {
+    for (const key of wokenKeys) {
+      if (settled.current.has(key)) continue;
+      settled.current.add(key);
+      void request("/member/next-settle", { objectiveId: objective.id, memberId: key.slice(0, key.indexOf(":")) }).catch(() => settled.current.delete(key));
+    }
+  }, [objective.id, wokenKeys.join("|")]);
   // 안내는 구성원마다 따로 사라진다 — 한 타이머를 공유하면 앞서 뜬 구성원의 안내가 남는다.
   const noteTimers = useRef(new Map<string, number>());
   const dropNote = (id: string) => {
@@ -560,7 +579,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         const old = objective.members.find((entry) => entry.id === member.id);
         return old && old.launch.mode !== member.launch.mode;
       });
-      const preservedCount = echoed.filter((member) => member.launch.mode === "model").length;
+      // 직접 지정과, 일괄 「라우팅」이 건너뛴 띄운 구성원 — 서버가 센다.
+      const preservedCount = (payload as { preserved?: number } | null)?.preserved ?? echoed.filter((member) => member.launch.mode === "model").length;
       const changedCount = changedMembers.length;
 
       settle({ kind: "done", changed: changedCount, preserved: preservedCount, mode });
@@ -642,10 +662,19 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       {...(objective.members.length > 0 ? { controls: "objectives-sec-members", expanded, onToggle } : {})} />
     <div id="objectives-sec-members" hidden={!expanded}>
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
-    {objective.members.map((member, index) => {
-      const count = objective.missions.filter((mission) => mission.member === member.id).length;
-      const state = member.sessionName !== null ? operationState(member.id) : "closed";
-      const display = memberLaunchDisplay(member, memberLaunched(member, operationState), t, rows);
+    {objective.members.map((shownMember, index) => {
+      const count = objective.missions.filter((mission) => mission.member === shownMember.id).length;
+      const state = shownMember.sessionName !== null ? operationState(shownMember.id) : "closed";
+      // 휴면 중 예약한 구성원이 깨어 있으면 그 재개가 이미 예약 좌표를 읽었다 — 서버가 다시 방송하기 전에도 실행값으로 보인다.
+      const wokeOnNext = !!shownMember.next && !shownMember.next.failed && shownMember.next.reservedWhile === "dormant" && MEMBER_LIVE.has(state);
+      const member: ObjectiveMember = wokeOnNext && shownMember.next ? { ...shownMember, model: shownMember.next.model, effort: shownMember.next.effort, routed: null, next: null } : shownMember;
+      const launched = memberLaunched(member, operationState);
+      const display = memberLaunchDisplay(member, launched, t, rows);
+      const routed = launched ? member.routed : null;
+      const next = launched ? member.next : null;
+      const reserved = next && !next.failed ? next : null;
+      const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
+      const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
       const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
       const allowed = memberSubagents(member);
       return (
@@ -666,15 +695,42 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
           </div>
           <div className="objectives-member-meta">
+            {routed ? <span className={`objectives-member-via is-${routed.via}`} title={t(routed.via === "route" ? "objectives.members.routedTitle" : ROUTING_OFF_REASONS.has(routed.reason) ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle")}>{t(routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback")}</span> : null}
+            {launched ? (
+              // 띄운 구성원 — 행은 실행값 그대로, 고른 값은 다음 재개부터의 예약이다. 라우팅은 새로 띄울 때만 판단하므로 고를 수 없다.
+              <LaunchControl key={member.id} t={t} model={reserved ? reserved.model : member.model} effort={reserved ? reserved.effort : member.effort} locked={!touchable} startAtList triggerLabel={t("objectives.members.modelAria", { role: member.role })}
+                triggerText={display.text} triggerTitle={display.title} openRef={opener(member.id)}
+                head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : "objectives.members.menuHead.live")}</span></>}
+                extras={[{ id: "same", label: t("objectives.memberSelection.inherit"), hint: `${commanderWords.words.model} · ${commanderWords.words.effort}`, active: member.launch.mode === "same", onPick: () => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "same" } } }) }]}
+                extrasCaption={t("objectives.members.routeAtLaunch")}
+                subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
+                onChange={(picked) => { const model = picked.model ?? reserved?.model ?? member.model; if (model) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "model", model, effort: picked.effort } } }); }} />
+            ) : (
             <LaunchControl key={member.id} t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} triggerLabel={t("objectives.members.modelAria", { role: member.role })}
               triggerText={display.text} triggerTitle={display.title}
               extras={[{ id: "route", label: t("objectives.memberSelection.route"), hint: t("objectives.members.routeHint"), active: member.launch.mode === "route", onPick: () => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: null } }) }, { id: "same", label: t("objectives.memberSelection.inherit"), active: member.launch.mode === "same", onPick: () => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "same" } } }) }]}
               subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
               onChange={(next) => { const model = next.model ?? (member.launch.mode === "model" ? member.launch.model : undefined); if (model) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "model", model, effort: next.effort } } }); }} />
+            )}
             <span className={`objectives-member-status is-${state}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}{allowed ? <span className="objectives-member-subagents">{t("objectives.members.subagentsMark")}</span> : null}</span>
           </div>
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
         </div>
+        {reserved ? (
+          <div className="objectives-member-next">
+            <span className="objectives-member-next-when">{t("objectives.members.next.when")}</span>
+            <span className="objectives-member-next-arrow" aria-hidden="true">→</span>
+            {((words) => <span className="objectives-member-next-to" title={words.title}><LaunchedText model={words.model} words={words.words} /></span>)(launchedWords(rows, reserved.model, reserved.effort, labels))}
+            {touchable ? <button type="button" className="objectives-glyph objectives-member-next-x" aria-label={t("objectives.members.next.cancel", { role: member.role })} title={t("objectives.members.next.cancel", { role: member.role })} onClick={() => cancelNext(member)}><CloseGlyph /></button> : null}
+          </div>
+        ) : next?.failed ? (
+          <div className="objectives-member-next is-failed" role="alert">
+            <span className="objectives-member-next-when">{t("objectives.members.next.failed")}</span>
+            <span className="objectives-member-next-body">{t("objectives.members.next.failedBody", { model: launchedWords(rows, next.model, next.effort, labels).title, reason: routingReason(t, next.failed) })}</span>
+            {touchable ? <button type="button" className="objectives-btn is-small objectives-member-next-other" onClick={() => opener(member.id).current?.()}>{t("objectives.members.next.other")}</button> : null}
+            {touchable ? <button type="button" className="objectives-glyph objectives-member-next-x" aria-label={t("objectives.members.next.dismiss")} title={t("objectives.members.next.dismiss")} onClick={() => cancelNext(member)}><CloseGlyph /></button> : null}
+          </div>
+        ) : routed?.via === "fallback" ? <p className="objectives-member-reason" title={routed.detail}>{routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) })}</p> : null}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
         {fault?.id === member.id ? <p className="objectives-member-note is-error" role="alert">{t("objectives.toast.failed", { code: fault.code })}</p> : null}
         </div>
@@ -1749,6 +1805,9 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           stateWord={memberStateWord}
           request={request}
           onFocusOperation={focusOperation}
+          routingTargets={objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, operationState))}
+          memberLaunched={(member) => memberLaunched(member, operationState)}
+          memberMark={(memberId) => <MemberMark role={objective.members.find((member) => member.id === memberId)?.role ?? "?"} tone={memberTone(objective, memberId)} />}
         />
       </div>
   );

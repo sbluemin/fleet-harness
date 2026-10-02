@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { type MutableRefObject, type ReactNode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
 import { EffortTrack, resolveRowEffort } from "@fleet-console/sdk/composer";
@@ -7,7 +7,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
-import type { ObjectiveMessageKey } from "./i18n/index.js";
+import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
  * 지휘관의 모델·강도 — 한 줄의 글("Opus · HIGH")이고, 누르면 **맵 우클릭 메뉴와 같은 문법**의 메뉴가 뜬다:
@@ -90,6 +90,11 @@ export function LaunchedText({ model, words }: { readonly model: string | null; 
     </>
   );
 }
+/** 라우팅 폴백·기동 거절의 사유 코드 → 사람의 말. 모르는 코드는 코드 그대로 보인다. */
+export function routingReason(t: Translate<ObjectiveMessageKey>, code: string): string {
+  const key = `objectives.routing.reason.${code}`;
+  return key in objectivesEn ? t(key as ObjectiveMessageKey) : t("objectives.routing.reason.other", { code });
+}
 export const loadLaunchRows = async (signal?: AbortSignal) => (await loadLaunchGroups(signal)).flatMap((group) => group.rows);
 
 /** "Opus" / "HIGH" — 카드·행·메뉴가 같은 낱말을 쓴다. 카탈로그에 없는 모델은 id 그대로. */
@@ -156,8 +161,14 @@ interface LaunchControlProps {
   readonly triggerText?: ReactNode;
   /** triggerText 의 풀네임 — 좁은 칸에서 잘린 모델 이름을 hover 로 읽는다. */
   readonly triggerTitle?: string;
-  /** 모델 목록 위에 서는 선택 방식(라우팅 · 지휘관과 같게). 고르면 메뉴가 닫힌다. */
-  readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly onPick: () => void }[];
+  /** 모델 목록 위에 서는 선택 방식(라우팅 · 지휘관과 같게). 고르면 메뉴가 닫힌다. 하나라도 active 면 모델 행은 선택으로 서지 않는다. */
+  readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void }[];
+  /** 메뉴 맨 위의 한 줄 — 개시한 구성원은 지금 실행 중인 모델과 고르면 언제 바뀌는지를 말한다. */
+  readonly head?: ReactNode;
+  /** 선택 방식 아래의 작은 안내 — 예: 라우팅은 새로 띄울 때만 판단한다. */
+  readonly extrasCaption?: string;
+  /** 바깥(예: 실패 줄의 「다른 모델」)에서 메뉴를 모델 목록부터 연다. */
+  readonly openRef?: MutableRefObject<(() => void) | null>;
   /** 열 때 모델 목록(1단계)부터 — 배정 메뉴는 특별 항목을 먼저 보여야 한다. */
   readonly startAtList?: boolean;
   /**
@@ -169,12 +180,14 @@ interface LaunchControlProps {
 
 const MENU_WIDTH = 216;
 const MENU_MARGIN = 12;
-const menuItems = (root: HTMLElement): HTMLButtonElement[] => [...root.querySelectorAll<HTMLButtonElement>('[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]')];
+const menuItems = (root: HTMLElement): HTMLButtonElement[] => [...root.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled),[role="menuitemradio"]:not(:disabled),[role="menuitemcheckbox"]:not(:disabled)')];
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption, openRef }: LaunchControlProps) {
   const groups = useLaunchGroups();
   const rows = groups.flatMap((group) => group.rows);
   const currentModel = model ?? DEFAULT_LAUNCH.model;
+  // 라우팅·지휘관과 같게를 골랐으면 모델 행은 선택이 아니다 — 모델이 비어 기본(Opus)으로 읽힌 행이 함께 체크되지 않게 한다.
+  const activeModel = extras?.some((extra) => extra.active) ? null : currentModel;
   const currentEffort = effort ?? (model || extras?.length ? undefined : DEFAULT_LAUNCH.effort);
   const words = launchWords(rows, model, effort, t("objectives.commander.effortAuto"));
   const [open, setOpen] = useState(false);
@@ -186,6 +199,11 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
   const focusIntent = useRef<"first" | "last" | null>(null);
   const [pos, setPos] = useState<CSSProperties>({});
   const menuWidth = subagents ? 232 : MENU_WIDTH;
+  useEffect(() => {
+    if (!openRef) return;
+    openRef.current = () => { setFocused(false); focusIntent.current = "first"; setOpen(true); };
+    return () => { openRef.current = null; };
+  }, [openRef]);
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
@@ -254,7 +272,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
   const title = triggerTitle ?? (triggerText ? undefined : `${modelFullName(rows, currentModel) || words.model} · ${words.effort}`);
   if (locked) return trigger ? null : <span className="objectives-launch is-locked" title={title ? `${title}\n${t("objectives.commander.locked")}` : t("objectives.commander.locked")}>{triggerText ?? text}</span>;
 
-  const chosenRow = rows.find((row) => row.launch.model === currentModel) ?? null;
+  const chosenRow = activeModel ? rows.find((row) => row.launch.model === activeModel) ?? null : null;
   const providerOf = (row: OperationLaunchVariantRow) => groups.find((group) => group.rows.includes(row))?.provider ?? null;
 
   return (
@@ -271,6 +289,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
       {/* body 포털 — 확대 표면은 transform 조상이라 fixed 가 그 안에 갇히고 overflow 에 잘린다(캔버스 메뉴와 같은 이유). */}
       {open ? createPortal(
         <div ref={menuRef} className={`objectives-menu${focused ? " is-focused" : ""}`} role="menu" aria-label={triggerLabel ?? t("objectives.launch.menuAria")} style={pos}>
+          {head ? <div className="objectives-menu-head">{head}</div> : null}
           {focused && chosenRow ? (
             <>
               <button type="button" role="menuitem" className="objectives-menu-item objectives-menu-back" onClick={() => setFocused(false)} aria-label={t("objectives.launch.backToModels")}>
@@ -300,11 +319,12 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
               {extras?.length ? (
                 <div className="objectives-menu-group">
                   {extras.map((extra) => (
-                    <button key={extra.id} type="button" role="menuitemradio" aria-checked={extra.active} className={`objectives-menu-item objectives-menu-extra${extra.active ? " is-active" : ""}`} onClick={() => { extra.onPick(); setOpen(false); }}>
+                    <button key={extra.id} type="button" role="menuitemradio" aria-checked={extra.active} disabled={extra.disabled} className={`objectives-menu-item objectives-menu-extra${extra.active ? " is-active" : ""}`} onClick={() => { extra.onPick(); setOpen(false); }}>
                       <span className="objectives-menu-label">{extra.label}{extra.hint ? <span className="objectives-menu-hint">{extra.hint}</span> : null}</span>
                       {extra.active ? <span className="objectives-menu-chev" aria-hidden="true"><Chevron /></span> : null}
                     </button>
                   ))}
+                  {extrasCaption ? <p className="objectives-menu-caption objectives-menu-note">{extrasCaption}</p> : null}
                   <div className="objectives-menu-divider" role="separator" />
                 </div>
               ) : null}
@@ -316,7 +336,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
                     <span>{group.caption}</span>
                   </p>
                   {group.rows.map((row) => {
-                    const active = row.launch.model === currentModel;
+                    const active = row.launch.model === activeModel;
                     return (
                       <button key={row.id} type="button" role="menuitemradio" aria-checked={active} className={`objectives-menu-item${active ? " is-active" : ""}`}
                         onClick={() => { onChange({ model: row.launch.model, effort: resolveRowEffort(row, currentEffort ?? null) ?? undefined }); setFocused(true); }}>

@@ -97,7 +97,8 @@ function harness(routingOrigin: () => string | null = () => null) {
   const keyed = new Map<string, string>();
   const deletedKeys = new Set<string>();
   const reservedKeys = new Set<string>();
-  const hostFault = { afterCreate: 0, sendError: null as string | null };
+  // rejectModel — 호스트가 그 모델의 기동·재개를 거절한다(그새 Gateway 노출이 꺼진 모델). 재개는 세션 좌표의 모델을 읽는다.
+  const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null };
   // 사람이 지운 사이드바 그룹 — 호스트의 groups.get 이 더는 돌려주지 않는다.
   const removedGroups = new Set<string>();
   const operationsHost = {
@@ -128,6 +129,8 @@ function harness(routingOrigin: () => string | null = () => null) {
     patch: (id: string, input: { title?: string; payload?: Record<string, unknown>; groupId?: string | null }) => {
       const node = operations.get(id); if (!node) return null;
       if (input.payload) node.payload = input.payload;
+      // 호스트처럼 자식 세션의 payload 패치는 부모 안의 그 자식 기록에 남는다.
+      if (input.payload && node.parentOperationId) { const child = operations.get(node.parentOperationId)?.childSessions?.find((entry) => entry.id === id); if (child) (child as { payload: Record<string, unknown> }).payload = input.payload; }
       if (input.title) node.title = input.title;
       // 호스트처럼 그룹이 실제로 바뀌면 operation:grouped 를 낸다.
       if (input.groupId !== undefined && (node.groupId ?? null) !== input.groupId) { const previousGroupId = node.groupId ?? null; node.groupId = input.groupId; for (const listener of grouped) listener({ operationId: id, theaterId: node.theaterId, groupId: input.groupId, previousGroupId }); }
@@ -138,7 +141,7 @@ function harness(routingOrigin: () => string | null = () => null) {
     deleteChild: (id: string) => { if (!operations.get(id)?.parentOperationId) return false; deleted.push(id); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
-  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++ });
+  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, lifecycle: (id) => (activity.has(id) ? (activity.get(id) === "dormant" ? "dormant" : "live") : null) });
   let routeBody: unknown;
   let authorized = true;
   let routeResult: { status: number; value: unknown } = { status: 0, value: null };
@@ -157,8 +160,9 @@ function harness(routingOrigin: () => string | null = () => null) {
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
           if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // resume 은 휴면만 세션째 되살린다.
-          if (input.kind === "resume") { if (activity.get(input.operationId!) !== "dormant") throw new Error("not_dormant"); resumed.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
+          if (input.kind === "resume") { if (activity.get(input.operationId!) !== "dormant") throw new Error("not_dormant"); if (hostFault.rejectModel && (operations.get(input.operationId!)?.payload.session as { model?: string } | undefined)?.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled"); resumed.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           if (input.launchKey && deletedKeys.has(input.launchKey)) throw new Error("launch_key_deleted");
+          if (hostFault.rejectModel && input.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled");
           if (input.launchKey && keyed.has(input.launchKey)) return { operationId: keyed.get(input.launchKey) };
           await new Promise((resolve) => setTimeout(resolve, 5));
           const id = input.childSessionId ?? input.newOperationId ?? `launched-${launches.length + 1}`;
@@ -343,6 +347,76 @@ describe("Objectives contract", () => {
     expect(operations.has(allowedOperationId)).toBe(false);
     launch.operationPurged(objective.id);
     expect(store.find(blockedOperationId)).toBeNull();
+  });
+
+  // 개시한 구성원의 모델은 세션 좌표가 권위다. 예약이 그 좌표를 바꾸고, 호스트가 한 구성원을 거절해도 개시는 이어져야 한다.
+  it("reserves a launched member's model for its next resume and keeps one refused member from stopping the muster", async () => {
+    const { store, launch, route, operations, activity, resumed, hostFault } = harness();
+    const objective = await launch.create({ theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
+    const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
+    await launch.startCommander(objective.id);
+    activity.set(reviewer.id, "dormant");
+    const session = () => operations.get(reviewer.id)!.payload.session as { model?: string; effort?: string };
+    const shown = () => store.find(objective.id)!.members.find((member) => member.id === reviewer.id)!;
+
+    // 고른 값은 다음 재개의 좌표가 되고, 행은 실행값을 지킨다. 지휘관에게 알릴 보드 편집이 아니다.
+    expect((await route("member/patch", { objectiveId: objective.id, memberId: reviewer.id, patch: { launch: { mode: "model", model: "fable", effort: "high" } } })).status).toBe(200);
+    expect(session()).toMatchObject({ model: "fable", effort: "high" });
+    expect(shown()).toMatchObject({ model: "sonnet", effort: "medium", next: { model: "fable", effort: "high", failed: null } });
+    expect(store.find(objective.id)!.edited).toBeUndefined();
+
+    // 그새 노출이 꺼졌다 — 예약한 구성원은 실행값으로 깨고, 새로 띄울 구성원 하나가 거절돼도 나머지와 지휘관 알림은 이어진다.
+    const late = store.memberAdd(objective.id, { role: "late", launch: { mode: "model", model: "fable" } }, "human").members.at(-1)!;
+    const routed = store.memberAdd(objective.id, { role: "routed" }, "human").members.at(-1)!;
+    hostFault.rejectModel = "fable";
+    const started = await launch.startCommander(objective.id);
+    expect(started.failed).toEqual([{ id: late.id, role: "late", error: "gateway_model_not_enabled" }]);
+    expect(resumed).toEqual([reviewer.id]);
+    expect(session()).toMatchObject({ model: "sonnet", effort: "medium" });
+    expect(shown().next).toMatchObject({ model: "fable", failed: "gateway_model_not_enabled" });
+    expect(store.find(objective.id)!.members.find((member) => member.id === late.id)!.sessionName).toBeNull();
+    // 라우팅이 닿지 않은 구성원은 지휘관 프리셋으로 뜨고, 그 사유가 행에 남는다.
+    expect(store.find(objective.id)!.members.find((member) => member.id === routed.id)).toMatchObject({ sessionName: expect.any(String), routed: { via: "fallback", reason: "routing_unavailable" } });
+
+    // 실패 표시를 닫으면 예약 전 선택으로 돌아간다. 휴면 중 다시 예약한 뒤 누가 깨우든(사람이 패널에서 직접 깨워도) 예약은 실행값이 된다.
+    await route("member/next-cancel", { objectiveId: objective.id, memberId: reviewer.id });
+    expect(shown()).toMatchObject({ next: null, launch: { mode: "model", model: "sonnet", effort: "medium" } });
+    hostFault.rejectModel = null;
+    activity.set(reviewer.id, "dormant");
+    await route("member/patch", { objectiveId: objective.id, memberId: reviewer.id, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } });
+    expect(shown().next).toMatchObject({ model: "opus[1m]", reservedWhile: "dormant" });
+    activity.set(reviewer.id, "idle");
+    expect(shown()).toMatchObject({ model: "opus[1m]", effort: "high", next: null });
+  });
+
+  // 판단 한 번은 비용과 공유 배분 기록을 남긴다 — 사람이 확인한 결과는 다시 판단하지 않고 그대로 띄우고, 설명이 바뀌면 띄우기 전에 멈춘다.
+  it("launches the routing the person reviewed without judging again and stops before launching when a role changed", async () => {
+    const { store, launch, route, operations, launches } = harness(() => "http://routing.invalid");
+    let judgments = 0;
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      judgments += 1;
+      const items = (JSON.parse(init.body) as { items: { key: string }[] }).items;
+      return Response.json({ mode: "model", decisions: items.map((item) => ({ key: item.key, model: "sonnet", effort: "low", label: "Sonnet", because: "Sonnet @low · AI model · difficulty low", fallback: false })) });
+    });
+    const objective = await launch.create({ theaterId: "t1", title: "Review first", groupId: null, note: "brief" });
+    const analyst = store.memberAdd(objective.id, { role: "analyst", brief: "reads the code" }, "human").members[0]!;
+
+    const first = await route("routing/preview", { objectiveId: objective.id });
+    expect((first.value.preview as { judged: boolean; members: unknown[] })).toMatchObject({ judged: true, members: [{ id: analyst.id, via: "route", model: "sonnet", effort: "low", because: "Sonnet @low · AI model · difficulty low" }] });
+    // 시트를 닫고 다시 열어도 같은 결과다.
+    expect((await route("routing/preview", { objectiveId: objective.id })).value.preview).toMatchObject({ judged: false });
+    expect(judgments).toBe(1);
+
+    store.memberPatch(objective.id, analyst.id, { brief: "reads the code and the gateway contract" });
+    expect((await route("commander/start", { objectiveId: objective.id, routing: "preview" })).value).toEqual({ error: "routing_preview_stale" });
+    expect(launches).toEqual([]);
+
+    await route("routing/preview", { objectiveId: objective.id });
+    expect(judgments).toBe(2);
+    expect((await route("commander/start", { objectiveId: objective.id, routing: "preview" })).status).toBe(200);
+    expect(judgments).toBe(2);
+    expect(operations.get(analyst.id)!.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(store.find(objective.id)!.members[0]).toMatchObject({ routed: { via: "route", because: "Sonnet @low · AI model · difficulty low" } });
   });
 
   it("batch-updates member launch mode to same or route while preserving custom models", async () => {

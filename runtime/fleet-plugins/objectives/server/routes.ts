@@ -168,7 +168,8 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표를 만들면 지휘관 Operation 이 dormant 로 함께 태어난다 — 깨우는 것은 「구상」·「시작」이다.
     { name: "objective/create", method: "POST", summary: "Create an objective without launching its Commander Operation.", handler: json(createObjectiveSchema, async ({ language, theaterId, title, groupId, note, dueDate, today, missions, viewMode }) => objective(await launch.create({ theaterId, title, groupId: groupId ?? null, note, dueDate, today, missions, viewMode }, { language }))) },
-    { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Operation's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), steerable(({ patch }) => only(patch, ["note"]), ({ objectiveId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], async () => {
+    // 라우팅 확인 스위치는 사람의 개시 방식이라 지휘관이 일하는 동안에도 받고, 지휘관에게 알릴 편집도 아니다.
+    { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Operation's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), steerable(({ patch }) => only(patch, ["note", "routingConfirm"]), ({ objectiveId, patch }) => edited([...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : [])], async () => {
       const { title, groupId, launch: preset, ...own } = patch;
       if (title !== undefined) await launch.rename(objectiveId, title);
       if (groupId !== undefined) await launch.regroup(objectiveId, groupId);
@@ -202,11 +203,21 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "followup/retry", method: "POST", summary: "Re-check or re-create a failed or unconfirmed follow-up with the same snapshot and key.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), ({ objectiveId, batchId, candidateId }) => objective(launch.retryFollowup(objectiveId, batchId, candidateId))) },
     { name: "followup/abandon", method: "POST", summary: "Give up a failed follow-up; the candidate returns to open.", handler: json(objectiveRef.extend({ batchId: ids, candidateId: ids }), ({ objectiveId, batchId, candidateId }) => objective(store.followupAbandon(objectiveId, batchId, candidateId))) },
     { name: "member/add", method: "POST", summary: "Add a member to the roster.", handler: json(objectiveRef.extend({ member: memberAddSchema }), steerable(() => true, ({ objectiveId, member }) => edited(["members"], () => store.memberAdd(objectiveId, member, "human")))) },
-    { name: "member/patch", method: "POST", summary: "Edit a member's role, brief, launch selection, or subagent opt-in.", handler: json(objectiveRef.extend({ memberId: ids, patch: memberPatchSchema }), steerable(() => true, ({ objectiveId, memberId, patch }) => edited(["members"], () => launch.memberPatched(objectiveId, memberId, patch)))) },
+    // 띄운 구성원의 모델만 바꾸면 다음 재개의 예약이다 — 지휘관의 일과 무관한 값이라 편집으로 쌓지 않는다.
+    { name: "member/patch", method: "POST", summary: "Edit a member's role, brief, launch selection, or subagent opt-in. For a member whose session exists, a launch selection reserves that model from its next resume.", handler: json(objectiveRef.extend({ memberId: ids, patch: memberPatchSchema }), steerable(() => true, ({ objectiveId, memberId, patch }) => {
+      const reservation = only(patch, ["launch"]) && !!(ctx.host.operations.describe ? ctx.host.operations.describe(memberId) : ctx.host.operations.get(memberId));
+      return edited(reservation ? [] : ["members"], () => launch.memberPatched(objectiveId, memberId, patch));
+    })) },
+    { name: "member/next-cancel", method: "POST", summary: "Cancel a member's next-resume model reservation (or dismiss its failure): the session returns to its running model and the earlier selection.", handler: json(objectiveRef.extend({ memberId: ids }), steerable(() => true, async ({ objectiveId, memberId }) => objective(await launch.memberNextCancel(objectiveId, memberId)))) },
+    // 플러그인 밖(구성원 패널 등)에서 깨운 구성원을 화면이 보았다 — 서버가 다시 관측해 휴면 중 예약을 적용으로 거둔다. 보드 편집이 아니다.
+    { name: "member/next-settle", method: "POST", summary: "Settle a member's next-resume reservation made while dormant once the server observes the session live (woken outside the plugin).", handler: json(objectiveRef.extend({ memberId: ids }), ({ objectiveId, memberId }) => objective(launch.memberNextSettle(objectiveId, memberId))) },
+    // 판단 한 번의 비용이 든다 — 같은 설명·같은 대상이면 10분 동안 다시 판단하지 않고, 개시가 그 결과를 그대로 쓴다.
+    { name: "routing/preview", method: "POST", summary: "Judge (or reuse, within 10 minutes and unchanged roles) the AI Gateway model for each member Commence would newly launch by routing; rejudge forces one new judgment.", handler: json(objectiveRef.extend({ rejudge: z.boolean().optional() }), unlessBusy(async ({ objectiveId, rejudge }) => ({ preview: await launch.routingPreview(objectiveId, { rejudge }) }))) },
     { name: "member/batch-launch", method: "POST", summary: "Set all eligible members' launch selection to same or route, preserving custom models.", handler: json(objectiveRef.merge(memberBatchLaunchSchema), steerable(() => true, async ({ objectiveId, mode }) => {
       const result = await launch.memberBatchLaunch(objectiveId, mode);
-      // 아무도 바뀌지 않은 선택은 보드 편집이 아니다 — 편집으로 적으면 지휘관의 결정 요청까지 거둔다.
-      return result.changed > 0 ? edited(["members"], () => result.objective) : objective(result.objective);
+      // 아무도 바뀌지 않은 선택은 보드 편집이 아니다 — 편집으로 적으면 지휘관의 결정 요청까지 거둔다. 띄운 구성원의 예약도 편집이 아니다.
+      const body = result.edits > 0 ? await edited(["members"], () => result.objective) : objective(result.objective);
+      return { ...body, changed: result.changed, preserved: result.preserved };
     })) },
     { name: "member/remove", method: "POST", summary: "Remove a member and return its mission ids for undo.", handler: json(objectiveRef.extend({ memberId: ids }), steerable(() => true, async ({ objectiveId, memberId }) => {
       const result = await launch.memberRemoved(objectiveId, memberId);
@@ -222,10 +233,10 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "plan/request", method: "POST", summary: "Ask the Commander to plan the objective (starts one when missing): it lays out missions, prerequisites and delegation; nothing runs until Commence. Optional context travels with the request and is kept on the objective.", handler: json(objectiveRef.extend({ context }), unlessBusy(({ objectiveId, language, context }) => { if (context !== undefined) store.patch(objectiveId, { planRequest: context }); return launch.requestPlan(objectiveId, { language }); })) },
     { name: "commander/compact", method: "POST", summary: "Send /compact to the Commander and every member Operation of an objective through the normal delivery path; returns per-target outcomes.", handler: json(objectiveRef, ({ objectiveId }) => launch.compact(objectiveId)) },
     { name: "commander/stop", method: "POST", summary: "Interrupt the Commander and every member Operation of an objective (roster stays).", handler: json(objectiveRef, ({ objectiveId }) => launch.stop(objectiveId)) },
-    { name: "commander/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once.", handler: json(objectiveRef.extend({ context }), (body) => {
+    { name: "commander/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once. routing \"preview\" launches routed members with the judgment the person just reviewed. Members the host refused are listed in failed.", handler: json(objectiveRef.extend({ context, routing: z.literal("preview").optional() }), (body) => {
       if (store.find(body.objectiveId)?.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
       if (launch.busy(body.objectiveId)) throw new ObjectiveStoreError("objective_busy");
-      return launch.startCommander(body.objectiveId, { language: body.language, context: body.context });
+      return launch.startCommander(body.objectiveId, { language: body.language, context: body.context, ...(body.routing ? { routing: body.routing } : {}) });
     }) },
     // 결정 요청에 대한 사람의 답 — 보드 편집이 아니다(edited 를 쌓지 않는다). 지휘관이 일하는 중에도 받고, 기준 제안이 남아도 보낸다.
     { name: "decision/answer", method: "POST", summary: "Answer the Commander's current decision request: every question at once. The answers reach the Commander (waking it when idle or dormant); once delivered they stay as decisions and the request clears.", handler: json(decisionAnswersSchema.extend({ objectiveId: ids, language }), ({ objectiveId, language, requestId, answers }) => launch.answerDecision(objectiveId, { requestId, answers }, { language }).then(objective)) },
