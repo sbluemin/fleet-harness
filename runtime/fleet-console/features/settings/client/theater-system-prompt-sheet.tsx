@@ -7,6 +7,7 @@ import { useViewMode } from "../../../core/client/src/integration/view-mode-stor
 import type { TheaterInfo } from "../../../core/client/src/integration/types.js";
 import { useTheaterLabel } from "../../../core/client/src/hooks/use-store.js";
 import { theaterInitials } from "../../workspace/client/sidebar/theater-initials.js";
+import { TheaterMonogram } from "../../workspace/client/sidebar/theater-monogram.js";
 import { CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS, fetchTheaterSystemPrompt, saveTheaterSystemPrompt, type ClaudeCodeSystemPromptMode, type TheaterSystemPrompt } from "./execution-settings.js";
 import "./theater-system-prompt-sheet.css";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
@@ -349,7 +350,7 @@ export function TheaterSystemPromptSheet() {
     <div className={`theater-prompt-backdrop${mobile ? " is-mobile" : ""}`} onPointerDown={close} aria-hidden="true" />
     <section ref={dialogRef} className={`theater-prompt-sheet${mobile ? " is-mobile" : ""}`} style={position} role="dialog" aria-modal="true" aria-label={t("sidebar.theater.prompt.dialogAria", { theater: theater.label })} onKeyDown={trapTab}>
       <header className="theater-prompt-header">
-        <span className="theater-prompt-mark" aria-hidden="true">{theaterInitials(theater.label)}</span>
+        <span className="theater-prompt-mark" aria-hidden="true"><TheaterMonogram>{theaterInitials(theater.label)}</TheaterMonogram></span>
         <span className="theater-prompt-heading"><strong>{theater.label}</strong><small>{t("sidebar.theater.prompt.title")}</small></span>
         <button ref={closeRef} type="button" className="theater-prompt-close" onClick={close} aria-label={t("sidebar.theater.prompt.close")}>×</button>
       </header>

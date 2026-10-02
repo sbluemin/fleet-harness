@@ -2,6 +2,7 @@ import type { OperationActivityVisual } from "../../../execution/client/operatio
 import { ArchiveEntry } from "../archive/archive-entry.js";
 import { openTheaterSystemPrompt, subscribeTheaterSystemPromptChange } from "../../../settings/client/theater-system-prompt-sheet.js";
 import { theaterInitials } from "./theater-initials.js";
+import { TheaterMonogram } from "./theater-monogram.js";
 export { theaterInitials } from "./theater-initials.js";
 import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../settings/client/execution-settings.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -1626,7 +1627,7 @@ function TheaterSectionHeader({
         title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : active ? theater.label : t("sidebar.theater.switchTo", { theater: theater.label })}
       >
         <span className="side-bar-theater-anchor" aria-hidden="true">
-          {theaterInitials(theater.label)}
+          <TheaterMonogram compact>{theaterInitials(theater.label)}</TheaterMonogram>
           {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
               얹으면 어느 Theater인지가 지워진다. */}
           {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}

@@ -19,6 +19,7 @@ import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/an
 import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import type { QuickLaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
 import { theaterInitials } from "../../../workspace/client/sidebar/operations-side-bar.js";
+import { TheaterMonogram } from "../../../workspace/client/sidebar/theater-monogram.js";
 import { isTriageActive } from "../../../workspace/client/canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../../../../core/client/src/integration/store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
@@ -824,7 +825,7 @@ export function QuickLaunch() {
         .map<QuickLaunchCommandRow>((theater) => ({
           id: `theater-${theater.id}`,
           label: theater.label,
-          lead: <span className="quick-launch-mark" aria-hidden="true">{theaterInitials(theater.label)}</span>,
+          lead: <span className="quick-launch-mark" aria-hidden="true"><TheaterMonogram>{theaterInitials(theater.label)}</TheaterMonogram></span>,
           checked: theater.id === theaterId,
           pick: () => {
             setTheaterId(theater.id);
@@ -1612,7 +1613,7 @@ export function QuickLaunch() {
             onClick={() => expandAndFocus({ addressFocused: true })}
             aria-label={t("chrome.quickLaunch.expand")}
           >
-            <span className="quick-launch-mark" aria-hidden="true">{activeTheater ? theaterInitials(activeTheater.label) : "—"}</span>
+            <span className="quick-launch-mark" aria-hidden="true"><TheaterMonogram>{activeTheater ? theaterInitials(activeTheater.label) : "—"}</TheaterMonogram></span>
             {kindIcon ? (
               <span className={`quick-launch-kind-icon${selectedProvider ? ` is-${selectedProvider}` : ""}`} aria-hidden="true">
                 {kindIcon}
@@ -1666,7 +1667,7 @@ export function QuickLaunch() {
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => { if (selectable) pickMention({ kind: "operation", entry }); }}
                     >
-                      <span className="quick-launch-mark" aria-hidden="true">{theaterInitials(entry.theaterLabel)}</span>
+                      <span className="quick-launch-mark" aria-hidden="true"><TheaterMonogram>{theaterInitials(entry.theaterLabel)}</TheaterMonogram></span>
                       <span className="quick-launch-mention-operation-mark">
                         <OperationNameMark
                           operation={entry}
@@ -1974,7 +1975,7 @@ export function QuickLaunch() {
             aria-expanded={popover === "theater"}
             onClick={() => setPopover(popover === "theater" ? null : "theater")}
           >
-            <span className="quick-launch-mark" aria-hidden="true">{activeTheater ? theaterInitials(activeTheater.label) : "—"}</span>
+            <span className="quick-launch-mark" aria-hidden="true"><TheaterMonogram>{activeTheater ? theaterInitials(activeTheater.label) : "—"}</TheaterMonogram></span>
             <span className="quick-launch-chip-label">{activeTheater?.label ?? t("chrome.quickLaunch.theaterUnset")}</span>
             <span className="quick-launch-caret" aria-hidden="true">▾</span>
           </ComposerChip>
@@ -2126,7 +2127,7 @@ export function QuickLaunch() {
                     inputRef.current?.focus();
                   }}
                 >
-                  <span className="quick-launch-mark" aria-hidden="true">{theaterInitials(theater.label)}</span>
+                  <span className="quick-launch-mark" aria-hidden="true"><TheaterMonogram>{theaterInitials(theater.label)}</TheaterMonogram></span>
                   <span className="quick-launch-pop-item-label">{theater.label}</span>
                   {theater.id === theaterId ? <span className="quick-launch-pop-check" aria-hidden="true">✓</span> : null}
                 </button>

@@ -5,6 +5,7 @@ import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationMarkVisual, resolveOperationActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { getIdleArrivalIds, getOperationStatusDetailSnapshot } from "../../../execution/client/operation-marks.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
+import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import type { OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveFleetMapDriftStyle, resolveFleetMapMarkerLayout, resolveFleetMapZoneLayout, type FleetMapKeepOut } from "./fleet-map-layout.js";
 import { FleetMapDetailCard, type FleetMapDetailStatus } from "./fleet-map-detail-card.js";
@@ -438,7 +439,7 @@ export function FleetMap({
                   전 Theater를 한 판에 얹으므로 이름표는 문이 아니라 지명이다(누름 없음). */}
               <header className="canvas-fleet-map-zone-head">
                 <span className="canvas-fleet-map-zone-title">
-                  <span className="canvas-fleet-map-zone-chip" aria-hidden="true">{theaterInitials(band.theater.label)}</span>
+                  <span className="canvas-fleet-map-zone-chip" aria-hidden="true"><TheaterMonogram compact>{theaterInitials(band.theater.label)}</TheaterMonogram></span>
                   <span className="canvas-fleet-map-zone-label">{band.theater.label}</span>
                 </span>
                 <span className="canvas-fleet-map-zone-counts">

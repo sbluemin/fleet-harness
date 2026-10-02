@@ -19,6 +19,7 @@ import { revealOperationStage } from "../../../../core/client/src/integration/st
 import { getTriageEnteredAt, getTriageSnapshot, pickTriageOperation, resolveTriageCounts, resolveTriageQueue, subscribeTriage, useTriageStage } from "../canvas/triage-store.js";
 import { highlightTriageDeckCard } from "../canvas/triage-watch-deck.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
+import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import { useContextMenuKeyboard } from "../sidebar/context-menu-keyboard.js";
 import type { ZenTaskbarProps } from "./zen-taskbar.js";
 import { useClusterIndex } from "../operation-clusters.js";
@@ -174,7 +175,7 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
       onKeyDown={(event) => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) { event.preventDefault(); onOpenOperationMenu(operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget); } }}>
       {operation.id === nextId ? <span className="war-room-next">{t("canvas.triage.next")}<span aria-hidden="true">▸</span></span> : null}
       <OperationNameMark operation={operation} status={visual} decorative className="zen-taskbar-op-mark" />
-      <span className="zen-taskbar-op-title">{operation.title}</span>{decision ? <DecisionRequestMark /> : null}<sup>{theaterInitials(theaterLabel(operation))}</sup>
+      <span className="zen-taskbar-op-title">{operation.title}</span>{decision ? <DecisionRequestMark /> : null}<sup><TheaterMonogram>{theaterInitials(theaterLabel(operation))}</TheaterMonogram></sup>
     </button>;
   };
   const menuItems = menu?.kind === "overflow" ? overflow : menu?.kind === "minimized" ? minimized : menu?.kind === "ended" ? ended : [...minimized, ...ended];
@@ -222,7 +223,7 @@ export function WarRoomTaskbar({ triageGlowHost, theaters, operations, operation
           menuReturnFocusRef.current?.focus({ preventScroll: true });
         }}>
         <OperationNameMark operation={operation} status={mark(operation)} decorative className="zen-taskbar-op-mark" />
-        <span className="zen-taskbar-menu-title">{operation.title}</span><span className="zen-taskbar-menu-count">{theaterInitials(theaterLabel(operation))}</span>
+        <span className="zen-taskbar-menu-title">{operation.title}</span><span className="zen-taskbar-menu-count"><TheaterMonogram>{theaterInitials(theaterLabel(operation))}</TheaterMonogram></span>
       </button>)}
     </div>, document.body) : null}
   </nav>;
