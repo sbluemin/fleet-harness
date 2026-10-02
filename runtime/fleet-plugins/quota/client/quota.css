@@ -9,17 +9,17 @@
 
 /* position: relative는 드롭 인디케이터의 기준 상자다 — 인디케이터는 스크롤 콘텐츠
    좌표(offsetTop)로 놓이므로 기준이 이 스크롤 컨테이너 자신이어야 한다. */
-/* 카드 밀도는 뷰포트가 아니라 이 패널의 폭이 정한다 — 레일은 240px까지 좁아지는데
-   창은 그대로다. 미디어 쿼리로 물으면 좁은 레일에서 넓은 화면의 답이 돌아온다. */
+/* 줄 밀도는 뷰포트가 아니라 이 패널의 폭이 정한다 — 레일은 240px까지 좁아지는데
+   창은 그대로다. 미디어 쿼리로 물으면 좁은 레일에서 넓은 화면의 답이 돌아온다.
+   카드 상자가 없는 목록이라 좌우 여백은 각 줄이 갖고, 본문은 위아래 숨만 둔다. */
 .quota-body {
   position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
   container: quota-panel / inline-size;
-  gap: 14px;
   min-height: 0;
-  padding: 16px;
+  padding: 6px 0;
   overflow-y: auto;
 }
 
@@ -70,6 +70,7 @@
   border-radius: var(--radius-xs);
   background: var(--ink-mid);
   box-shadow: var(--shadow-floating);
+  font-family: var(--font-body);
   opacity: 0;
   visibility: hidden;
   transition: opacity 120ms ease;
@@ -99,7 +100,7 @@
   margin-bottom: 0;
 }
 
-/* 조회 경로 고지. 연결 시점의 고지는 connect 카드가 따로 지고 있고, 이쪽은 이미
+/* 조회 경로 고지. 연결 시점의 고지는 연결 안내가 따로 지고 있고, 이쪽은 이미
    연결한 사용자를 위한 상시 확인용이라 같은 말풍선 안에 둔다. */
 .quota-legend__note {
   margin: 9px 0 0;
@@ -110,14 +111,14 @@
   line-height: 1.45;
 }
 
+/* 견본은 실제 막대와 같은 그림이어야 한다 — 테두리 없는 4px 트랙. */
 .quota-legend__swatch {
   position: relative;
   flex: none;
   width: 26px;
-  height: 6px;
-  margin-top: 4px;
+  height: 4px;
+  margin-top: 6px;
   overflow: hidden;
-  border: 1px solid var(--gauge-rim);
   border-radius: var(--radius-pill);
   background: var(--ink-veil);
 }
@@ -151,29 +152,40 @@
   );
 }
 
-.quota-provider {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--surface-glass);
-  padding: 14px;
+/* ── 공급자 줄 ─────────────────────────────────
+   카드 상자는 없다. 공급자 하나가 한 줄이고 줄 사이는 헤어라인이 가른다 — 파일·스킬
+   패널의 목록 문법이다. 인접 형제로 긋는 이유는 드래그 중에 드롭 인디케이터가 마지막
+   자식이 되기 때문이다: :last-child로 지우면 그동안 마지막 줄에 선이 생긴다. */
+.quota-provider + .quota-provider {
+  border-top: 1px solid var(--hairline);
 }
 
 .quota-provider__header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 22px;
+  gap: 2px;
+  padding: 0 8px 0 6px;
+}
+
+/* 제목은 펼침 버튼 하나를 감싼다(아코디언 문법). 남는 폭은 제목이 한 번만 가진다 —
+   그립이 앞에 서고 나머지 조각은 모두 버튼 안 격자가 배치한다. */
+.quota-provider__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font: inherit;
 }
 
 /* ── 공급자 재배열 ─────────────────────────────
-   그립을 잡는 순간 전 카드가 헤더 한 줄로 접혀(quota-body--compact) 드롭 타깃
-   전부가 한 화면에 들어온다. 놓으면 원래 밀도로 복귀한다. */
+   그립을 잡는 순간 전 줄의 상세가 접혀(quota-body--compact) 드롭 타깃 전부가 한
+   화면에 들어온다. 놓으면 원래 밀도로 복귀한다. 그립은 펼침 버튼의 형제다 — 버튼은
+   버튼을 품지 못하므로, 줄 버튼 안에 넣는 순간 재배열 손잡이가 접근성 트리에서 사라진다. */
 .quota-grip {
   display: grid;
+  flex: none;
   place-items: center;
   width: 18px;
-  height: 22px;
-  margin-left: -4px;
+  height: 28px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-xs);
@@ -185,7 +197,6 @@
 }
 
 .quota-provider:hover .quota-grip,
-.quota-connect-card:hover .quota-grip,
 .quota-grip:focus-visible {
   opacity: 1;
 }
@@ -204,184 +215,126 @@
   cursor: grabbing;
 }
 
-/* 접힘은 grid-template-rows 1fr→0fr 전환으로 만든다 — 높이 애니메이션 없이
-   내용 높이가 제각각인 카드를 같은 문법으로 접는다. */
-.quota-card__collapse {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows 180ms ease;
-}
-
-.quota-card__rest {
-  overflow: hidden;
-  min-height: 0;
-  /* 펼칠 때는 즉시 되살아나고, 접을 때만 전환이 끝난 뒤에 사라진다. */
-  transition: visibility 0s linear 0s;
-}
-
-.quota-body--compact {
-  user-select: none;
-}
-
-/* 드래그 중의 일괄 접힘과 사용자가 고른 카드별 접힘은 같은 그림을 쓴다 — 하나가
-   다른 문법으로 접히면 드래그를 놓는 순간 카드가 다른 밀도로 착지한다. */
-.quota-body--compact .quota-card__collapse,
-.quota-card--folded .quota-card__collapse {
-  grid-template-rows: 0fr;
-}
-
-/* 0fr은 상자를 없애지 않는다 — 높이 0의 내용은 화면에서만 사라지고 접근성 트리에는
-   그대로 남아, 스크린리더에는 접은 적 없는 카드로 읽힌다. visibility가 그 둘을 맞춘다. */
-.quota-body--compact .quota-card__rest,
-.quota-card--folded .quota-card__rest {
-  visibility: hidden;
-  transition: visibility 0s linear 180ms;
-}
-
-/* 두 카드형을 이름으로 다 적는다 — `.quota-card--folded` 한 클래스만으로는 파일 뒤쪽의
-   `.quota-connect-card { padding: 18px 16px }`와 특정성이 같아, 연결 카드만 20px 더
-   두꺼운 채로 접힌다. */
-.quota-body--compact .quota-provider,
-.quota-body--compact .quota-connect-card,
-.quota-provider.quota-card--folded,
-.quota-connect-card.quota-card--folded {
-  padding: 8px 12px;
-}
-
-/* 접힌 행에서는 헤더 우측 컨트롤을 치운다 — 한 줄로 접힌 카드에 남는 정보는 정체뿐이고,
-   연결 해제는 펼친 카드의 조작이다. */
-.quota-body--compact .quota-plan,
-.quota-body--compact .quota-disconnect,
-.quota-card--folded .quota-plan,
-.quota-card--folded .quota-disconnect {
-  display: none;
-}
-
-/* ── 카드별 접기 ───────────────────────────────
-   그립이 순서를 쥐듯 이 버튼은 밀도를 쥔다. 헤더 전체를 하나의 disclosure 버튼으로
-   만들지 않은 이유는 그 안에 이미 버튼이 둘 살기 때문이다 — 버튼은 버튼을 품지 못한다. */
+/* ── 줄 = 펼침 버튼 ────────────────────────────
+   이름·요약 어디를 눌러도 펼쳐진다. 격자 열: 글리프 | 이름(+꼬리표) | 미니 막대 | 퍼센트 | 셰브론. */
 .quota-fold {
   display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  margin-right: -2px;
-  padding: 0;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto 16px;
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 6px 0 4px;
   border: 0;
   border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
+  color: inherit;
   background: transparent;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  transition: color 120ms ease, transform 180ms ease;
 }
 
-.quota-fold:hover,
-.quota-fold:focus-visible {
-  color: var(--brass-ink);
+.quota-fold:hover {
+  background: var(--control-wash-hover);
 }
 
 .quota-fold:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: 1px;
+  outline: 1px solid var(--control-focus-ring);
+  outline-offset: -1px;
 }
 
-.quota-fold[aria-expanded="false"] {
-  transform: rotate(-90deg);
-}
-
-/* 드래그 중에는 밀도를 쥐는 손이 둘일 수 없다 — 일괄 접힘 위에서 카드별 접기 버튼이
-   자기 상태를 그리면 화살표가 가리키는 방향과 실제 행이 어긋난다. */
-.quota-body--compact .quota-fold {
-  visibility: hidden;
-}
-
-/* 접힌 행에 남는 요약. 이 자리가 비면 90%를 넘긴 공급자를 접어둔 사용자는 그 사실을
-   어디서도 듣지 못한다 — 쿼터는 이 패널 밖에 신호가 없다. */
-.quota-fold-spine {
-  --meter-accent: var(--ink-fog);
-  --meter-weight: var(--gauge-weight-quiet);
+.quota-fold__name {
   display: flex;
-  flex: none;
-  align-items: center;
-  gap: 7px;
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
 }
 
-.quota-fold-spine--warning {
-  --meter-accent: var(--warn);
-  --meter-weight: var(--gauge-weight-warn);
+.quota-fold__label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.quota-fold-spine--critical {
-  --meter-accent: var(--coral);
-  --meter-weight: var(--gauge-weight-critical);
-}
-
-.quota-fold-spine__percent {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
+/* 이 줄의 값이 지금 것이 아니라는 표시. 나이는 숫자라 표 숫자로 맞추되 서체는 본문이다. */
+.quota-fold__stale {
+  flex: none;
+  color: var(--warn-ink);
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.quota-fold-spine--warning .quota-fold-spine__percent {
+/* 창별 미니 막대. 그림은 펼친 미터와 같은 부품(.quota-meter 채널 + 트랙)이고 높이만 다르다. */
+.quota-fold__twin {
+  display: grid;
+  gap: 3px;
+  width: 56px;
+}
+
+.quota-fold__percent {
+  min-width: 34px;
+  padding: 0 2px;
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.quota-fold__percent--warning {
   color: var(--warn-ink);
 }
 
-.quota-fold-spine--critical .quota-fold-spine__percent {
+.quota-fold__percent--critical {
   color: var(--coral-ink);
 }
 
-/* 미터와 같은 채널을 탄다 — 심각도가 두 문법으로 갈리면 한 공급자가 접힘과 펼침에서
-   서로 다른 판정을 말한다. */
-.quota-fold-spine__bar {
-  position: relative;
-  width: 40px;
-  height: 4px;
+/* 읽을 수치가 없는 줄에 남는 한 마디. 없으면 그 줄은 이름만 남아 아직 못 읽은 줄과
+   구분되지 않는다. 미니 막대와 퍼센트 두 칸을 함께 차지한다. */
+.quota-fold__quiet {
+  grid-column: 3 / 5;
+  justify-self: end;
+  min-width: 0;
   overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--ink-veil);
-}
-
-.quota-fold-spine__fill {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklab, var(--meter-accent) var(--meter-weight), transparent);
-}
-
-.quota-fold-spine__reset {
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  white-space: nowrap;
-}
-
-.quota-fold-spine--quiet {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
+  font-size: var(--t-xs);
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* 위험한 채로 접힌 카드는 테두리도 그 판정을 입는다. 40px 행 일곱 줄을 훑을 때
-   한 줄만 읽게 만드는 것은 스파인의 숫자가 아니라 이 테두리다.
+/* 셰브론은 늘 마지막 열이다 — 요약이 비거나 미니 막대가 빠져도 자동 배치에 밀려 들어오지 않는다. */
+.quota-fold__chev {
+  display: grid;
+  grid-column: -2 / -1;
+  place-items: center;
+  color: var(--text-tertiary);
+  transition: transform 180ms var(--ease-glide);
+}
 
-   섞는 공간은 oklab이다 — oklch는 두 색상각 사이의 짧은 호를 도는데, coral(25°)과
-   hairline(245°)은 그 호가 자주색을 지나 실측에서 hue 309의 보라 테두리가 나왔다.
-   직교 좌표에서 섞으면 채도만 빠진 coral로 착지한다. */
-.quota-card--alarm {
-  border-color: color-mix(in oklab, var(--coral) 46%, var(--hairline));
+.quota-fold:hover .quota-fold__chev,
+.quota-fold:focus-visible .quota-fold__chev {
+  color: var(--brass-ink);
+}
+
+.quota-fold[aria-expanded="false"] .quota-fold__chev {
+  transform: rotate(-90deg);
+}
+
+/* 위험한 공급자는 이름 잉크가 그 판정을 입는다. 일곱 줄을 훑을 때 한 줄만 읽게 만드는
+   것은 이 이름이다 — 테두리는 상자가 없는 목록에서 설 자리가 없고, 퍼센트만으로는
+   눈이 오른쪽 열까지 가야 한다. 경고 단은 퍼센트만 말한다. */
+.quota-card--alarm .quota-fold__label {
+  color: var(--coral-ink);
 }
 
 .quota-card--dragging {
-  border-color: var(--brass);
   opacity: 0.5;
+  box-shadow: inset 2px 0 0 var(--brass);
 }
 
 .quota-drop-line {
@@ -395,60 +348,312 @@
   box-shadow: var(--brass-halo);
 }
 
-/* 스크린리더 전용 이동 공지. */
-.quota-live {
-  position: absolute;
-  width: 1px;
-  height: 1px;
+/* 드래그 중에는 밀도를 쥐는 손이 둘일 수 없다 — 일괄 접힘 위에서 셰브론이 자기 상태를
+   그리면 화살표가 가리키는 방향과 실제 줄이 어긋난다. */
+.quota-body--compact .quota-fold__chev {
+  visibility: hidden;
+}
+
+/* ── 펼침 상세 ─────────────────────────────────
+   접힘은 grid-template-rows 1fr→0fr 전환으로 만든다 — 높이 애니메이션 없이 내용 높이가
+   제각각인 상세를 같은 문법으로 접는다. */
+.quota-card__collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 180ms var(--ease-glide);
+}
+
+.quota-card__rest {
   overflow: hidden;
-  clip-path: inset(50%);
+  min-height: 0;
+  /* 펼칠 때는 즉시 되살아나고, 접을 때만 전환이 끝난 뒤에 사라진다. */
+  transition: visibility 0s linear 0s;
+}
+
+.quota-body--compact {
+  user-select: none;
+}
+
+/* 드래그 중의 일괄 접힘과 사용자가 고른 줄별 접힘은 같은 그림을 쓴다 — 하나가 다른
+   문법으로 접히면 드래그를 놓는 순간 줄이 다른 밀도로 착지한다. */
+.quota-body--compact .quota-card__collapse,
+.quota-card--folded .quota-card__collapse {
+  grid-template-rows: 0fr;
+}
+
+/* 0fr은 상자를 없애지 않는다 — 높이 0의 내용은 화면에서만 사라지고 접근성 트리에는
+   그대로 남아, 스크린리더에는 접은 적 없는 줄로 읽힌다. visibility가 그 둘을 맞춘다. */
+.quota-body--compact .quota-card__rest,
+.quota-card--folded .quota-card__rest {
+  visibility: hidden;
+  transition: visibility 0s linear 180ms;
+}
+
+/* 상세는 이름 열에 맞춰 들여 쓴다: 줄 여백 6 + 그립 18 + 2 + 버튼 여백 4 + 글리프 16 + 10. */
+.quota-detail {
+  padding: 0 16px 14px 56px;
+}
+
+/* 요금제는 칩이 아니라 이름 아래의 보조 문장이다 — 알약 테두리와 자간을 입히면 코드 태그로 읽힌다. */
+.quota-plan {
+  margin: 0 0 2px;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 로딩 상태 카드 — Ledger의 상태 카드 문법(ledger-state) 미러. */
-.quota-state {
-  padding: 20px 16px;
-  border: 1px dashed var(--hairline);
-  border-radius: var(--radius-md);
-  text-align: center;
+/* 상태 한 줄 — 신호는 6px 점 하나가 지고, 문장은 본문 잉크로 남는다. 틴트 면과 좌측 띠를
+   함께 쓰던 스트립은 목록의 한 줄 안에 상자를 하나 더 세웠다. */
+.quota-status {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1.45;
 }
 
-.quota-state > strong {
+.quota-status::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--ink-fog);
+  transform: translateY(-1px);
+}
+
+.quota-status--quiet {
+  color: var(--text-tertiary);
+}
+
+.quota-status--warn::before {
+  background: var(--warn);
+}
+
+.quota-status--error::before {
+  background: var(--coral);
+}
+
+.quota-meters {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+/* 심각도는 이 채널 하나로만 흐른다 — 채움과 예측 빗금이 각자 색을 집으면
+   한 막대가 두 판정을 말하게 된다. 그 채널은 색상과 함께 무게(--meter-weight)를 싣는다.
+   종이 위에서는 명도가 곧 무게의 반대이므로, 색상만 갈면 가장 옅어야 할 평상 막대가 가장
+   무거워진다 — 라이트 실측에서 평상 채움은 L44.9로 위험(L52.0)·경고(L55.0)보다 어두웠고,
+   그래서 100% 소진된 막대가 22% 막대보다 가볍게 읽혔다. 무게를 같은 채널에 실어 두면
+   심각도 역전이 재조율이 아니라 구조로 막힌다. 다크 3종은 전부 100%라 지금 그림 그대로다.
+   줄의 미니 막대도 같은 클래스를 입는다 — 접힘과 펼침이 같은 판정을 말한다. */
+.quota-meter {
+  --meter-accent: var(--ink-fog);
+  --meter-weight: var(--gauge-weight-quiet);
+  min-width: 0;
+}
+
+.quota-meter__top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.quota-meter__label {
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+}
+
+.quota-meter__window {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.quota-meter__percent {
+  margin-left: auto;
+  padding: 0 2px;
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-meter--warning {
+  --meter-accent: var(--warn);
+  --meter-weight: var(--gauge-weight-warn);
+}
+
+.quota-meter--critical {
+  --meter-accent: var(--coral);
+  --meter-weight: var(--gauge-weight-critical);
+}
+
+/* 트랙은 테두리 없는 4px이다. 빈 몫은 --ink-veil 면이 말하고, 테두리가 하던 액자 역할은
+   더 이상 필요 없다 — 라이트는 이미 림을 투명으로 꺼 두었고, 다크에서 1px 림은 4px 막대의
+   절반을 테두리로 만들었다. */
+.quota-meter__bar {
+  position: relative;
   display: block;
-  font-size: var(--t-base);
-  font-weight: var(--weight-medium);
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--ink-veil);
 }
 
-.quota-state > p {
-  margin: 6px 0 0;
+/* 줄의 미니 막대는 같은 트랙을 높이만 줄여 쓴다. */
+.quota-fold__twin .quota-meter__bar {
+  height: 3px;
+}
+
+.quota-meter__fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--meter-accent) var(--meter-weight), transparent);
+  transition: width 420ms var(--ease-glide), background-color 200ms ease;
+}
+
+/* The stretch the current burn rate reaches before the reset. Hatched rather
+   than solid so it never reads as allowance already spent. */
+.quota-meter__projection {
+  position: absolute;
+  inset-block: 0;
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--meter-accent) calc(var(--meter-weight) * 0.42), transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+/* Where the window's clock stands. Fill short of this mark is underspending,
+   past it is overspending — the comparison the bar exists to make. */
+.quota-meter__elapsed {
+  position: absolute;
+  inset-block: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  background: color-mix(in oklab, var(--text-primary) 62%, transparent);
+}
+
+/* 예측과 리셋은 문장이다 — mono로 찍으면 한글 자간이 벌어진다. 숫자만 표 숫자로 맞춘다.
+   좁은 폭에서는 낱말 중간이 아니라 줄째 내려간다. */
+.quota-meter__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-top: 5px;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-meter__forecast,
+.quota-meter__reset {
+  white-space: nowrap;
+}
+
+.quota-meter__reset {
+  margin-left: auto;
+  text-align: right;
+}
+
+.quota-meter--warning .quota-meter__percent,
+.quota-meter--warning .quota-meter__forecast {
+  color: var(--warn-ink);
+}
+
+.quota-meter--critical .quota-meter__percent,
+.quota-meter--critical .quota-meter__forecast {
+  color: var(--coral-ink);
+}
+
+/* 보유량이 있을 때만 나타나는 줄이라(visibleCredits) 상자 없이 상태 줄과 같은 높이의
+   한 문장으로 둔다. 만료 문구는 좁은 폭에서 줄째 내려간다. */
+.quota-credits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin: 12px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-credits__expiry {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.quota-connect p {
+  margin: 4px 0 12px;
   color: var(--text-tertiary);
   font-size: var(--t-md);
   line-height: 1.5;
 }
 
-.quota-state__mark {
-  display: block;
-  width: 8px;
-  height: 8px;
-  margin: 0 auto 12px;
-  border-radius: var(--radius-pill);
-  background: var(--aurora);
+.quota-connect .quota-connect__hint {
+  margin-top: -6px;
+  font-size: var(--t-xs);
 }
 
-/* 헤더 오른쪽에는 상태 칩·연결 해제·접기가 조합에 따라 0~3개 선다. 각자 margin-left:auto를
-   집으면 조합마다 상쇄 규칙이 하나씩 늘고, 그중 하나가 접힘에서 display:none이 되는 순간
-   형제 선택자는 여전히 맞아 남은 컨트롤이 제목에 붙는다. 여백은 제목이 한 번만 가진다. */
-.quota-provider__header h3,
-.quota-connect-card h3 {
-  margin: 0 auto 0 0;
-  font-size: var(--t-base);
+.quota-button {
+  padding: 6px 12px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  background: var(--ink-veil);
+  font: inherit;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
+  cursor: pointer;
 }
 
-.quota-connect-card h3 {
+.quota-button--primary {
+  border-color: var(--brass);
+}
+
+.quota-button:hover,
+.quota-button:focus-visible {
+  color: var(--brass-ink);
+}
+
+/* 연결 해제는 상세 맨 아래의 약한 행동이다 — 줄 위에 두면 요금제·요약과 같은 위계로 읽힌다. */
+.quota-detail__actions {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.quota-disconnect {
+  height: 22px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  background: transparent;
+  font: inherit;
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.quota-disconnect:hover,
+.quota-disconnect:focus-visible {
+  color: var(--brass-ink);
+}
+
+.quota-disconnect:focus-visible {
+  outline: 1px solid var(--control-focus-ring);
+  outline-offset: 1px;
 }
 
 .quota-provider__mark {
@@ -478,283 +683,77 @@
   color: var(--provider-xai);
 }
 
-.quota-plan {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  padding: 2px 9px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.08em;
+/* 응답이 바꾼 숫자만 한 번 숨을 쉰다 — 무엇이 갱신됐는지 보이는 유일한 움직임이다.
+   aurora는 "지금 일어남"을 말하는 신호 채널이라 바탕에만 옅게 얹고 잉크는 건드리지 않는다. */
+.quota-changed {
+  animation: quota-changed 900ms var(--ease-glide) 1;
 }
 
-.quota-disconnect {
-  padding: 2px 4px;
-  border: 0;
-  color: var(--text-tertiary);
-  background: transparent;
-  font: inherit;
-  font-size: var(--t-xs);
-  cursor: pointer;
+@keyframes quota-changed {
+  0% { background-color: color-mix(in oklab, var(--aurora) 16%, transparent); }
+  100% { background-color: transparent; }
 }
 
-.quota-disconnect:hover,
-.quota-disconnect:focus-visible {
-  color: var(--brass-ink);
-}
-
-/* 심각도는 이 채널 하나로만 흐른다 — 채움과 예측 빗금이 각자 색을 집으면
-   한 막대가 두 판정을 말하게 된다. 그 채널은 색상과 함께 무게(--meter-weight)를 싣는다.
-   종이 위에서는 명도가 곧 무게의 반대이므로, 색상만 갈면 가장 옅어야 할 평상 막대가 가장
-   무거워진다 — 라이트 실측에서 평상 채움은 L44.9로 위험(L52.0)·경고(L55.0)보다 어두웠고,
-   그래서 100% 소진된 막대가 22% 막대보다 가볍게 읽혔다. 무게를 같은 채널에 실어 두면
-   심각도 역전이 재조율이 아니라 구조로 막힌다. 다크 3종은 전부 100%라 지금 그림 그대로다. */
-.quota-meter {
-  --meter-accent: var(--ink-fog);
-  --meter-weight: var(--gauge-weight-quiet);
-  margin-top: 12px;
-}
-
-.quota-meter__top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 5px;
-}
-
-.quota-meter__label {
-  color: var(--text-secondary);
-  font-size: var(--t-md);
-}
-
-.quota-meter__window {
-  margin-left: 5px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-}
-
-.quota-meter__percent,
-.quota-meter__forecast,
-.quota-meter__reset {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
-}
-
-.quota-meter--warning {
-  --meter-accent: var(--warn);
-  --meter-weight: var(--gauge-weight-warn);
-}
-
-.quota-meter--critical {
-  --meter-accent: var(--coral);
-  --meter-weight: var(--gauge-weight-critical);
-}
-
-.quota-meter__bar {
-  position: relative;
-  height: 6px;
+/* 스크린리더 전용 이동 공지. */
+.quota-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  border: 1px solid var(--gauge-rim);
-  border-radius: var(--radius-pill);
-  background: var(--ink-veil);
-}
-
-.quota-meter__fill {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklab, var(--meter-accent) var(--meter-weight), transparent);
-  transition: width 200ms ease, background-color 200ms ease;
-}
-
-/* The stretch the current burn rate reaches before the reset. Hatched rather
-   than solid so it never reads as allowance already spent. */
-.quota-meter__projection {
-  position: absolute;
-  inset-block: 0;
-  background-image: repeating-linear-gradient(
-    135deg,
-    color-mix(in oklab, var(--meter-accent) calc(var(--meter-weight) * 0.42), transparent) 0 2px,
-    transparent 2px 5px
-  );
-}
-
-/* Where the window's clock stands. Fill short of this mark is underspending,
-   past it is overspending — the comparison the bar exists to make. */
-.quota-meter__elapsed {
-  position: absolute;
-  inset-block: 0;
-  width: 2px;
-  transform: translateX(-1px);
-  background: color-mix(in oklab, var(--text-primary) 62%, transparent);
-}
-
-.quota-meter__foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.quota-meter__risk {
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
-}
-
-.quota-meter--warning .quota-meter__risk {
-  color: var(--warn-ink);
-}
-
-.quota-meter--critical .quota-meter__risk {
-  color: var(--coral-ink);
-}
-
-.quota-meter__reset {
-  margin-left: auto;
-  color: var(--text-tertiary);
-  text-align: right;
-  font-size: var(--t-sm);
-}
-
-/* 바닥 행의 퍼센트는 기본(--t-sm)보다 한 단 작다 — 반 픽셀 차이는 보이지 않아 규칙이
-   있으나 마나였고, 한 단 내려야 "여기서는 작게"라는 의도가 실제로 읽힌다. */
-.quota-meter__foot .quota-meter__percent {
-  font-size: var(--t-xs);
-}
-
-.quota-meter--warning .quota-meter__percent,
-.quota-meter--warning .quota-meter__forecast {
-  color: var(--warn-ink);
-}
-
-.quota-meter--critical .quota-meter__percent,
-.quota-meter--critical .quota-meter__forecast {
-  color: var(--coral-ink);
-}
-
-/* 보유량이 있을 때만 나타나는 줄이라(visibleCredits) 문장이 아니라 칩으로 얹는다.
-   레일은 240px까지 좁아지므로 만료 문구는 접혀 내려가되 칩과 같은 줄을 먼저 시도한다. */
-.quota-credits {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 8px;
-  margin-top: 12px;
-  padding-top: 11px;
-  border-top: 1px solid var(--hairline);
-}
-
-.quota-credits__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-pill);
-  padding: 2px 9px 2px 7px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.02em;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
-.quota-credits small {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  white-space: nowrap;
-}
-
-.quota-connect-card {
-  padding: 18px 16px;
-  border: 1px dashed var(--hairline-strong);
+/* 로딩 상태 카드 — Ledger의 상태 카드 문법(ledger-state) 미러. 목록에는 줄 여백이 없으므로
+   상자가 자기 바깥 여백을 갖는다. */
+.quota-state {
+  margin: 10px 16px;
+  padding: 20px 16px;
+  border: 1px dashed var(--hairline);
   border-radius: var(--radius-md);
-  background: var(--surface-glass);
+  text-align: center;
 }
 
-.quota-connect-card p {
-  margin: 7px 0 12px;
+.quota-state > strong {
+  display: block;
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
+}
+
+.quota-state > p {
+  margin: 6px 0 0;
   color: var(--text-tertiary);
   font-size: var(--t-md);
   line-height: 1.5;
 }
 
-.quota-connect-card .quota-connect-card__hint {
-  margin-top: -5px;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+/* 기다림은 SDK LiveLine의 링 문법으로 말한다 — 정적인 점은 "멈춘 상태"와 구분되지 않는다. */
+.quota-state__mark {
+  display: block;
+  width: 9px;
+  height: 9px;
+  margin: 0 auto 12px;
+  border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
+  border-top-color: var(--aurora);
+  border-radius: var(--radius-pill);
+  animation: quota-orbit 0.9s linear infinite;
 }
 
-.quota-button {
-  padding: 6px 12px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xs);
-  color: var(--text-primary);
-  background: var(--ink-veil);
-  font: inherit;
-  font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-}
-
-.quota-button--primary {
-  border-color: var(--brass);
-}
-
-.quota-button:hover,
-.quota-button:focus-visible,
-.quota-refresh:hover,
-.quota-refresh:focus-visible {
-  color: var(--brass-ink);
-}
-
-.quota-strip {
-  margin-top: 12px;
-  padding: 8px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xs);
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-}
-
-.quota-strip--expired {
-  border-left: 3px solid var(--coral);
-  background: var(--coral-glow);
-}
-
-.quota-strip--error {
-  border-left: 3px solid var(--coral);
-  background: var(--coral-glow);
-}
-
-.quota-strip--stale {
-  border-left: 3px solid var(--warn);
-  background: var(--warn-glow);
-}
-
-.quota-error,
-.quota-signed-out {
-  margin-top: 12px;
-  color: var(--text-tertiary);
-  font-size: var(--t-md);
+@keyframes quota-orbit {
+  to { transform: rotate(360deg); }
 }
 
 .quota-error {
+  margin: 4px 16px 8px;
   color: var(--coral-ink);
+  font-size: var(--t-md);
 }
 
 .quota-footer {
   position: relative;
   flex: none;
   border-top: 1px solid var(--hairline);
-  padding: 9px 16px 10px;
+  padding: 7px 12px 7px 16px;
   background: var(--surface-glass);
 }
 
@@ -762,32 +761,96 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 26px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-sm);
 }
 
+.quota-footer__stamp {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* LiveLine은 자기 줄을 오른쪽 끝까지 벌리는 부품이지만, 푸터에서는 범례·새로고침과 한 줄을
+   나눠 쓴다 — 내용 폭만 차지하고 나이는 문구 바로 뒤에 붙는다. */
+.quota-footer__live {
+  flex: 0 1 auto;
+  min-height: 0;
+  padding: 0;
+}
+
+.quota-footer__live .fc-live-line__meta {
+  margin-left: 0;
+  overflow: hidden;
+  font-size: var(--t-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+
+/* Quiet Controls — 쉬는 면은 중립, 손이 닿으면 brass. */
 .quota-refresh {
-  padding: 4px 6px;
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
-  background: transparent;
+  background: var(--control-rest);
   font: inherit;
   font-family: var(--font-body);
   font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
   cursor: pointer;
 }
 
-/* 좁은 레일에서 헤더는 접기 버튼이 들어갈 28px을 갖고 있지 않다. 먼저 자리를 내주는
-   것은 정체를 말하는 조각들이다 — 상태 칩, 요약 막대, 리셋 시각, 사유 꼬리표가 빠지고
-   퍼센트만 남는다. 그 한 숫자가 접힌 행이 존재하는 이유이기 때문이다. */
-@container quota-panel (width < 300px) {
-  .quota-plan,
-  .quota-fold-spine__bar,
-  .quota-fold-spine__reset,
-  .quota-fold-spine--quiet {
+.quota-refresh:hover:not(:disabled),
+.quota-refresh:focus-visible {
+  color: var(--brass-ink);
+  background: var(--control-hover-fill);
+}
+
+.quota-refresh:focus-visible {
+  outline: 1px solid var(--control-focus-ring);
+  outline-offset: 1px;
+}
+
+.quota-refresh:disabled {
+  opacity: var(--control-disabled-opacity);
+  cursor: default;
+}
+
+/* 좁은 레일에서 줄은 꺾이지 않는다. 먼저 자리를 내주는 것은 미니 막대다 — 퍼센트가
+   그 줄이 존재하는 이유이고, 막대는 같은 판정을 한 번 더 말할 뿐이다. 상세 들여쓰기도
+   이름 열을 버리고 줄 여백에 맞춘다. */
+@container quota-panel (width < 320px) {
+  .quota-fold__twin {
+    width: 36px;
+  }
+
+  .quota-detail {
+    padding-left: 26px;
+  }
+}
+
+/* 가장 좁은 폭에서 이름은 마지막에 양보한다 — 정체를 잃은 줄은 읽을 수 없다. 상태 한 마디는
+   먼저 줄어들고, 온전한 문장은 펼친 상세와 줄 버튼의 이름이 말한다. */
+@container quota-panel (width < 270px) {
+  .quota-fold {
+    grid-template-columns: 16px minmax(0, 1fr) auto 16px;
+    column-gap: 8px;
+  }
+
+  .quota-fold__twin {
     display: none;
+  }
+
+  .quota-fold__quiet {
+    grid-column: 3 / 4;
+    max-width: 48px;
   }
 }
 
@@ -796,7 +859,12 @@
   .quota-legend__bubble,
   .quota-card__collapse,
   .quota-card__rest,
-  .quota-fold {
+  .quota-fold__chev {
     transition: none;
+  }
+
+  .quota-changed,
+  .quota-state__mark {
+    animation: none;
   }
 }

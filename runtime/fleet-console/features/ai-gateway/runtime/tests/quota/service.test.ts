@@ -31,7 +31,7 @@ describe("quota service", () => {
     expect(fetchClaude).not.toHaveBeenCalled();
   });
 
-  it("uses a five-minute cache, supports force bypass, and single-flights", async () => {
+  it("uses a five-minute cache, serves an expired one without lapsed windows, supports force bypass, and single-flights", async () => {
     let now = 1_000;
     let resolveClaude: ((value: ProviderSuccess) => void) | undefined;
     const fetchClaude = vi.fn(() => new Promise<ProviderSuccess>((resolve) => { resolveClaude = resolve; }));
@@ -45,13 +45,25 @@ describe("quota service", () => {
     const first = service.getSummary();
     const second = service.getSummary();
     await Promise.resolve();
-    resolveClaude?.(ok(now));
+    resolveClaude?.({
+      ...ok(now),
+      windows: [
+        { id: "session", usedPercent: 10, resetsAt: now + 200_000 },
+        { id: "weekly", usedPercent: 30, resetsAt: now + 7 * 86_400_000 },
+      ],
+    });
     await Promise.all([first, second]);
     expect(fetchClaude).toHaveBeenCalledTimes(1);
     now += 299_999;
     await service.getSummary();
     expect(fetchClaude).toHaveBeenCalledTimes(1);
+    expect(service.readCachedSummary()?.expired).toBe(false);
     now += 1;
+    // 만료된 값도 기다림 없이 내주되, 리셋이 지난 창은 이미 틀린 수치라 빠진다.
+    const cached = service.readCachedSummary();
+    expect(cached?.expired).toBe(true);
+    expect(cached?.summary.providers.claude.windows?.map((window) => window.id)).toEqual(["weekly"]);
+    expect(fetchClaude).toHaveBeenCalledTimes(1);
     const expired = service.getSummary();
     await Promise.resolve();
     resolveClaude?.(ok(now));
