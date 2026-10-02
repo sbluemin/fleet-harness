@@ -20,6 +20,11 @@ export interface TerminalRuntime {
   terminate(operationId: string): boolean;
   /** PTY를 접고 그 자식 프로세스가 실제로 끝날 때까지 기다린다. 제한 시간 안에 확인하지 못하면 false. */
   terminateAndWait(operationId: string, timeoutMs: number): Promise<boolean>;
+  /**
+   * 이 Operation 의 접은 PTY 자식이 사라질 때까지 기다린다. 남은 것이 없으면 곧바로 true, 제한 시간 안에 확인하지 못하면 false.
+   * PTY 재기동은 스스로 이 관문을 지나므로, 같은 Claude 세션을 다른 표면(채팅 SDK 자식)으로 이어 쓰는 쪽이 부른다.
+   */
+  awaitWriterExit(operationId: string, timeoutMs: number): Promise<boolean>;
   getMessagePolicy(operationId: string): CliMessagePolicy | undefined;
   getRenameCommand(operationId: string): string | undefined;
   getSessionLastActivityAt(operationId: string): number | null;
@@ -87,6 +92,7 @@ export function createTerminalRuntime(ctx: ConsoleRuntimeContext): TerminalRunti
     write: (operationId, data) => sessions.writeToSession(operationId, data),
     terminate: (operationId) => sessions.terminate(operationId),
     terminateAndWait: (operationId, timeoutMs) => sessions.terminateAndWait(operationId, timeoutMs),
+    awaitWriterExit: (operationId, timeoutMs) => sessions.awaitWriterExit(operationId, timeoutMs),
     getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
     getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
     getSessionLastActivityAt: (operationId) => sessions.getSessionLastActivityAt(operationId),

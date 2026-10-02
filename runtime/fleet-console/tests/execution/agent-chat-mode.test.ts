@@ -424,6 +424,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     },
     terminate,
     terminateAndWait: async (sessionId: string) => terminate(sessionId),
+    awaitWriterExit: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
     getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),

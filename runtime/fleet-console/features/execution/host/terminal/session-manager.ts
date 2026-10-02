@@ -20,6 +20,8 @@ export interface TerminalSessionManagerDeps {
   readonly onFailure?: (kind: string, error: unknown) => void;
   /** Monotonic clock for idle tracking. Defaults to `performance.now`. */
   readonly now?: () => number;
+  /** 같은 세션 id 를 다시 띄우기 전, 접은 옛 프로세스가 끝나기를 기다리는 상한. 기본 PRIOR_WRITER_EXIT_WAIT_MS. */
+  readonly priorWriterExitWaitMs?: number;
 }
 
 interface TerminalSession {
@@ -68,6 +70,11 @@ const THEATER_SHELL_SESSION_PREFIX = "shell:";
 // theater-shell 소켓 단절 후 PTY를 정리하기까지의 유예(일시적 WS 끊김 재연결을 흡수).
 const THEATER_SHELL_DETACH_GRACE_MS = 4_000;
 const TERMINAL_QUERY_RESIDUAL_LIMIT = 64;
+// 재우기의 대기(5초)를 넘긴 옛 프로세스에도 여유를 준다. 플러그인 요청 시한(20초) 안에 기동까지 끝나야 한다.
+export const PRIOR_WRITER_EXIT_WAIT_MS = 10_000;
+const PRIOR_WRITER_EXIT_POLL_MS = 250;
+/** 상한 안에 옛 프로세스가 사라지지 않아 같은 세션 id 의 기동을 거절했다. */
+export const TERMINAL_PRIOR_WRITER_ALIVE = "terminal_prior_writer_alive";
 const ANSI_ESCAPE = "\x1b";
 const ANSI_CSI_PREFIX = `${ANSI_ESCAPE}[`;
 const DSR_STATUS_QUERY = `${ANSI_CSI_PREFIX}5n`;
@@ -86,6 +93,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   const sessions = new Map<string, TerminalSession>();
   const pendingSessions = new Map<string, Promise<TerminalSession>>();
   const pendingLaunchGuards = new Map<string, { cancelled: boolean }>();
+  const priorWriterExitWaitMs = deps.priorWriterExitWaitMs ?? PRIOR_WRITER_EXIT_WAIT_MS;
+  // 접었지만 아직 사라지지 않은 PTY 자식의 pid. 세션은 kill 신호와 함께 맵에서 빠지고 종료 통지(휴면 전이)도 곧바로
+  // 나가므로, 이 기록이 없으면 다음 기동이 같은 Claude 세션의 두 번째 필자를 세운다. 사라진 것을 보면 스스로 지운다.
+  const exitingWriters = new Map<string, number>();
 
   function canAttach(): boolean {
     // 동시 세션 상한이 제거되어 항상 새 세션 부착을 허용한다.
@@ -173,10 +184,32 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       } finally { if (timer) clearTimeout(timer); }
     }
     // 종료 통지는 kill 신호를 보낸 직후 나간다 — 같은 Claude 세션을 이어 쓸 다음 필자는 프로세스가
-    // 실제로 사라진 것을 확인한 뒤에야 설 수 있다. pid를 모르면 확인할 수 없으므로 false다.
+    // 실제로 사라진 것을 확인한 뒤에야 설 수 있다(launchSession 의 관문). pid를 모르면 확인할 수 없으므로 false다.
     const pid = session.pty.pid;
     removeSession(session);
-    return typeof pid === "number" ? waitForProcessExit(pid, timeoutMs) : false;
+    return typeof pid === "number" ? awaitWriterExit(sessionId, timeoutMs) : false;
+  }
+
+  /** 이 세션 id 로 접은 옛 PTY 자식이 사라질 때까지 기다린다. 기록이 없으면 곧바로 true, 상한 안에 못 보면 false. */
+  async function awaitWriterExit(sessionId: string, timeoutMs: number): Promise<boolean> {
+    const pid = exitingWriters.get(sessionId);
+    if (pid === undefined) return true;
+    const exited = await waitForProcessExit(pid, timeoutMs);
+    if (exited && exitingWriters.get(sessionId) === pid) exitingWriters.delete(sessionId);
+    return exited;
+  }
+
+  /** 접은 PTY 자식을 사라질 때까지 기억한다. 기다리는 쪽이 없어도 지워야 늦게 온 기동이 재사용된 pid 를 기다리지 않는다. */
+  function trackWriterExit(session: TerminalSession): void {
+    const pid = session.pty.pid;
+    if (typeof pid !== "number") return;
+    exitingWriters.set(session.id, pid);
+    const poll = () => {
+      if (exitingWriters.get(session.id) !== pid) return;
+      if (!isProcessAlive(pid)) { exitingWriters.delete(session.id); return; }
+      setTimeout(poll, PRIOR_WRITER_EXIT_POLL_MS).unref?.();
+    };
+    poll();
   }
 
   function getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined {
@@ -253,6 +286,12 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   async function launchSession(context: TerminalTicketContext): Promise<TerminalSession> {
     const guard = { cancelled: false };
     pendingLaunchGuards.set(context.sessionId, guard);
+    // 같은 세션 id 의 옛 필자가 아직 살아 있으면 서지 않는다 — 재개·휴면 중 전달·소켓 부착이 모두 이 자리를 지난다.
+    // 기록이 없으면 기다리지 않는다 — 여느 기동에 한 틱도 보태지 않는다.
+    if (exitingWriters.has(context.sessionId)) {
+      if (!await awaitWriterExit(context.sessionId, priorWriterExitWaitMs)) throw new Error(TERMINAL_PRIOR_WRITER_ALIVE);
+      if (guard.cancelled) throw new Error("terminal_launch_cancelled");
+    }
     const launch = await deps.launch(context.cwd, {
       sessionId: context.sessionId,
       ...(context.operationId ? { operationId: context.operationId } : {}),
@@ -455,6 +494,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     if (sessions.get(session.id) !== session) return;
     void killSession(session, options).catch((error) => reportFailure("terminal_cleanup_failed", error));
     sessions.delete(session.id);
+    trackWriterExit(session);
     // 인스턴스 일치 가드 덕분에 PTY 자가종료(onExit)와 운영자 terminate가 겹쳐도 세션당 한 번만 통지된다.
     void notifySessionExit(session.id).catch((error) => reportFailure("terminal_exit_failed", error));
   }
@@ -486,7 +526,16 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, terminateAndWait, stop, writeToSession };
+  return { canAttach, createSession, attach, attachViewer, renegotiateSockets, getSessionMessagePolicy, getSessionRenameCommand, getSessionLastActivityAt, resolveSessionIdentity, terminate, terminateAndWait, awaitWriterExit, stop, writeToSession };
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
 }
 
 async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {

@@ -15,7 +15,7 @@ import { ConsoleControlError } from "../../../console-use/host/console-control.j
 import { retainSubagentSpawn, retainUserQuestions, subagentSpawnBlocked, userQuestionsBlocked, withSubagentSpawn, withUserQuestions, type OperationGeometry, type OperationLaunchKind, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "../context.js";
 import type { ConsoleRuntimeContext } from "../context.js";
-import { readSocketRole, readTicketChannel } from "../terminal/index.js";
+import { PRIOR_WRITER_EXIT_WAIT_MS, readSocketRole, readTicketChannel, TERMINAL_PRIOR_WRITER_ALIVE } from "../terminal/index.js";
 import type { TerminalRuntime } from "../terminal/index.js";
 
 import { createDefaultAgentCliDetector, validateAgentCliPathForSave, type AgentCliDetector } from "./agent-cli-detect.js";
@@ -215,7 +215,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
   const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
-  const chatRegistry = testChatSdkFactory ? new AgentChatRegistry(testChatSdkFactory) : new AgentChatRegistry();
+  const chatRegistry = new AgentChatRegistry(testChatSdkFactory, (operationId) => terminalRuntime.awaitWriterExit(operationId, PRIOR_WRITER_EXIT_WAIT_MS));
   // 줄바꿈 URL 확인은 호버마다 온다 — transcript 꼬리는 파일이 바뀔 때만 다시 읽는다.
   const transcriptLinks = createTranscriptLinkReader();
   const unbindChatAttach = terminalRuntime.bindChatAttach((socket, context) => {
@@ -373,9 +373,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 휴면은 PTY 종료의 결과다(handleExit). 유휴 청소기와 같은 terminate 를 밟되, 캡처된 provider
     // 세션이 없으면 그 종료가 삭제로 끝나므로 여기서 거절한다. 전이는 exit 콜백이 하므로 잠깐 기다려
     // 준다 — 그 안에 못 보면 `ending` 으로 답하고, 다음 관측이 휴면을 말한다.
-    // 휴면 전이는 kill 신호 직후에 나가므로 그것만으로는 옛 프로세스가 사라졌다는 뜻이 아니다. 이 답을 받고
-    // 곧바로 깨우는 호출자(구성원 모델 전환)가 같은 Claude 세션의 두 번째 필자를 세우지 않도록, `dormant` 는
-    // 프로세스 종료까지 확인한 뒤에만 답한다.
+    // 휴면 전이는 kill 신호 직후에 나가므로 그것만으로는 옛 프로세스가 사라졌다는 뜻이 아니다. `dormant` 는
+    // 프로세스 종료까지 확인한 뒤에만 답하고, 못 봤으면 `ending` 이다. 어느 쪽이든 곧바로 깨워도 된다 — 같은
+    // 세션의 다음 기동(PTY 재개·휴면 중 전달·채팅 자식)은 옛 프로세스가 사라질 때까지 기다리고, 상한을 넘기면
+    // operation_busy 로 거절해 휴면으로 남긴다(session-manager 의 관문).
     //
     // 채팅 표면에는 접을 PTY가 없다 — 대신 SDK 자식과 원장을 거두는 같은 결말을 밟고, 그
     // 전이는 그 자리에서 끝나므로 기다릴 것도 없다.
@@ -1431,6 +1432,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (error instanceof GatewayLaunchOptionError) {
         return { ok: false, status: gatewayLaunchOptionErrorStatus(error), error: error.code };
       }
+      // 접은 옛 프로세스가 아직 끝나지 않았다 — 같은 Claude 세션의 두 번째 필자를 세우지 않고 휴면으로 남긴다. 곧 다시 시도할 수 있다.
+      if (error instanceof Error && error.message === TERMINAL_PRIOR_WRITER_ALIVE) return { ok: false, status: 409, error: "operation_busy" };
       return { ok: false, status: 503, error: "terminal_unavailable" };
     }
   }

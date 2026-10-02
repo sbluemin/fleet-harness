@@ -929,7 +929,9 @@ export interface FleetPluginConsoleControlHost {
   /** 한 Operation 의 지금 관측 — 활동·생명주기·표면·마지막 산출. 모르면 null. */
   observe(operationId: string): ConsoleOperationObservation | null;
   /**
-   * 유휴 Agent Operation을 휴면으로 보낸다. 진행 중이면 not_idle; ending이면 전이가 진행 중이므로 재관측한다.
+   * 유휴 Agent Operation을 휴면으로 보낸다. 진행 중이면 not_idle. `dormant` 는 옛 프로세스가 끝난 것까지 확인했다는 뜻이고,
+   * `ending` 은 휴면으로 전이했지만 그 종료를 아직 확인하지 못했다는 뜻이다. 어느 쪽이든 곧바로 재개를 보내도 된다 — 호스트는 옛 프로세스가
+   * 사라질 때까지 다음 기동을 미루고, 상한 안에 사라지지 않으면 operation_busy 로 거절해 휴면으로 남긴다.
    * `endPendingWork` 는 interrupt 로 풀 수 없는 두 상태도 재운다 — 사람의 답을 기다리는 터미널 세션은 떠 있던 질문·허가 요청을 버리고,
    * 백그라운드 작업이 남은 세션은 그 작업을 끝낸다. 사람이 그 작업의 종결을 결정한 경우에만 쓴다. 실행 중인 턴은 여전히 not_idle 이다.
    */

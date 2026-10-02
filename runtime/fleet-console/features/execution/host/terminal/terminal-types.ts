@@ -137,6 +137,8 @@ export interface TerminalSessionManager {
   terminate(sessionId: string): boolean;
   /** `terminate`와 같이 접고, PTY 자식 프로세스가 실제로 끝날 때까지 기다린다. 제한 시간 안에 확인하지 못하면 false. */
   terminateAndWait(sessionId: string, timeoutMs: number): Promise<boolean>;
+  /** 이 세션 id 로 접은 옛 PTY 자식이 사라질 때까지 기다린다. 남은 것이 없으면 곧바로 true, 제한 시간 안에 확인하지 못하면 false. */
+  awaitWriterExit(sessionId: string, timeoutMs: number): Promise<boolean>;
   stop(): Promise<void>;
   writeToSession(sessionId: string, data: string): boolean;
 }
