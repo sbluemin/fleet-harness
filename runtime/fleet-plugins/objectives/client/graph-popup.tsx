@@ -5,11 +5,12 @@ import { intersects, type Rect } from "./graph-layout.js";
 const rect = (r: DOMRect): Rect => ({ x: r.left, y: r.top, w: r.width, h: r.height });
 
 /** 같은 DOM과 크기를 호버·고정에서 공유한다. 위치는 노드와 별개 층이므로 그래프를 밀지 않는다. */
-export function GraphPopup({ id, missionId, layout, boundary, pinned, closing, hidden, label, children, onKeep, onMove, onLeave, onPin, onEscape }: {
-  id: string; missionId: string; layout: object; boundary: HTMLElement; pinned: boolean; closing: boolean; hidden: boolean; label: string; children: ReactNode;
-  onKeep: () => void; onMove: (event: React.PointerEvent) => void; onLeave: () => void; onPin: () => void; onEscape: () => void;
+export function GraphPopup({ id, missionId, layout, boundary, pinned, closing, focus, hidden, label, children, onKeep, onMove, onLeave, onPin, onEscape, onAnchorLeave }: {
+  id: string; missionId: string; layout: object; boundary: HTMLElement; pinned: boolean; closing: boolean; focus: boolean; hidden: boolean; label: string; children: ReactNode;
+  onKeep: () => void; onMove: (event: React.PointerEvent) => void; onLeave: () => void; onPin: () => void; onEscape: () => void; onAnchorLeave: (container: HTMLElement) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const onAnchorLeaveRef = useRef(onAnchorLeave); onAnchorLeaveRef.current = onAnchorLeave;
   const [links, setLinks] = useState<{ d: string; down: boolean }[]>([]);
   const clipId = `${id}-links`;
   const [position, setPosition] = useState<{ x: number; y: number; width: number; height: number; side: string; tail: number } | null>(null);
@@ -20,9 +21,28 @@ export function GraphPopup({ id, missionId, layout, boundary, pinned, closing, h
     const node = boundary.querySelector<HTMLElement>(`[data-graph-node="${CSS.escape(missionId)}"]`);
     const name = boundary.querySelector<HTMLElement>(`[data-graph-label="${CSS.escape(missionId)}"]`);
     if (!pop || !node) { setPosition(null); return; }
+    const ancestors: HTMLElement[] = [];
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) ancestors.push(parent);
     const place = () => {
       if (!node.isConnected) { setPosition(null); return; }
       const nb = rect(node.getBoundingClientRect());
+      let visibleLeft = 0, visibleRight = innerWidth, visibleTop = 0, visibleBottom = innerHeight;
+      for (const ancestor of ancestors) {
+        const style = getComputedStyle(ancestor);
+        if (style.display === "contents") continue;
+        const clipX = /^(auto|scroll|hidden|clip)$/.test(style.overflowX), clipY = /^(auto|scroll|hidden|clip)$/.test(style.overflowY);
+        if (!clipX && !clipY) continue;
+        const bounds = ancestor.getBoundingClientRect();
+        const sx = ancestor.offsetWidth ? bounds.width / ancestor.offsetWidth : 1, sy = ancestor.offsetHeight ? bounds.height / ancestor.offsetHeight : 1;
+        if (clipX) { visibleLeft = Math.max(visibleLeft, bounds.left + ancestor.clientLeft * sx); visibleRight = Math.min(visibleRight, bounds.left + (ancestor.clientLeft + ancestor.clientWidth) * sx); }
+        if (clipY) { visibleTop = Math.max(visibleTop, bounds.top + ancestor.clientTop * sy); visibleBottom = Math.min(visibleBottom, bounds.top + (ancestor.clientTop + ancestor.clientHeight) * sy); }
+      }
+      if (nb.x + nb.w <= visibleLeft || nb.x >= visibleRight || nb.y + nb.h <= visibleTop || nb.y >= visibleBottom || visibleLeft >= visibleRight || visibleTop >= visibleBottom) {
+        onAnchorLeaveRef.current(boundary.closest<HTMLElement>(".objectives-detail:not(.is-two) .objectives-detail-scroll, .objectives-detail.is-two .objectives-detail-pane, .objectives-zoom") ?? boundary);
+        pop.style.visibility = "hidden";
+        setPosition(null);
+        return;
+      }
       const self = [nb, ...(name ? [rect(name.getBoundingClientRect())] : [])];
       const bb = boundary.getBoundingClientRect();
       const left = Math.max(8, bb.left + 4), right = Math.min(innerWidth - 8, bb.right - 4);
@@ -87,12 +107,24 @@ export function GraphPopup({ id, missionId, layout, boundary, pinned, closing, h
       }
     };
     place();
-    const observer = new ResizeObserver(place);
+    let frame = 0;
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; place(); }); };
+    const observer = new ResizeObserver(schedule);
     observer.observe(pop); observer.observe(boundary); observer.observe(node);
-    window.addEventListener("resize", place);
-    document.addEventListener("scroll", place, true);
-    return () => { observer.disconnect(); window.removeEventListener("resize", place); document.removeEventListener("scroll", place, true); };
+    for (const ancestor of ancestors) observer.observe(ancestor);
+    window.addEventListener("resize", schedule);
+    document.addEventListener("scroll", schedule, true);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("resize", schedule); document.removeEventListener("scroll", schedule, true); };
   }, [missionId, layout, boundary]);
+  const focused = useRef(false);
+  useLayoutEffect(() => { focused.current = false; }, [missionId, focus, closing]);
+  useLayoutEffect(() => {
+    const pop = ref.current;
+    if (!pop || !position || !focus || closing || hidden || focused.current) return;
+    // 위치가 커밋되어 보인 뒤에만 초점을 준다 — 스크롤 reveal과 같은 프레임의 숨은 DOM은 focus를 받지 못한다.
+    (pop.querySelector<HTMLElement>("textarea") ?? pop.querySelector<HTMLElement>("button:not(:disabled)"))?.focus({ preventScroll: true });
+    focused.current = pop.contains(document.activeElement);
+  }, [position, focus, closing, hidden, missionId]);
   return createPortal(<><div ref={ref} id={id} role="dialog" aria-label={label} data-graph-popup data-side={position?.side} className={`objectives-graph-popup${pinned ? " is-pinned" : ""}${closing ? " is-closing" : ""}`} style={{ left: position?.x ?? 0, top: position?.y ?? 0, width: position?.width ?? 280, maxHeight: position?.height ?? 490, visibility: !position || hidden ? "hidden" : undefined }} onPointerEnter={onKeep} onPointerMove={onMove} onPointerLeave={onLeave} onPointerDown={onPin} onFocus={onKeep} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onEscape(); } }}>
     <span className={`objectives-popup-tail is-${position?.side ?? "below"}`} style={position?.side === "left" || position?.side === "right" ? { top: position.tail } : { left: position?.tail ?? 20 }} />
     <div className="objectives-popup-body" style={{ maxHeight: position ? position.height - 22 : 468 }}>{children}</div>
