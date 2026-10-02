@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import WebSocket from "ws";
 
 import type { ConsoleLockPayload } from "../core/host/transport/console-contract-types.js";
 import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/shell/desktop-contract.js";
@@ -564,6 +565,37 @@ describe("console static and terminal ticket boundary", () => {
     expect(destroyed).toBe(1);
     handler.close();
   });
+
+  it("stops and releases the runtime lock while a page still holds a terminal WebSocket", async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-shell-"));
+    tempDirs.push(cwd);
+    let killed = 0;
+    const fixture = await startFixture({
+      terminalLaunch: createMockLaunch,
+      terminalStartShell: () => ({ ...createMockPty(), kill: () => { killed += 1; } }),
+    });
+    const theater = await createTheater(fixture, cwd);
+    const ticketResponse = await fetch(`${fixture.endpoint}api/v1/shell/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: theater.id }),
+    });
+    expect(ticketResponse.status).toBe(200);
+    const { ticket } = await ticketResponse.json() as { readonly ticket: string };
+    const socket = new WebSocket(`${fixture.endpoint.replace(/^http/u, "ws")}api/v1/terminal/ws?ticket=${encodeURIComponent(ticket)}`);
+    await new Promise<void>((resolve, reject) => {
+      socket.once("open", () => resolve());
+      socket.once("error", reject);
+    });
+    const socketClosed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+
+    // 업그레이드된 소켓이 리스너 close를 붙잡으면 stop은 영영 끝나지 않는다(SIGTERM 뒤 lock·자식이 남는 원인).
+    await fixture.server.stop();
+
+    expect(fs.existsSync(fixture.lockFile)).toBe(false);
+    expect(killed).toBe(1);
+    await socketClosed;
+  }, 10_000);
 });
 
 async function startReminderFixture(options: Parameters<typeof startFixture>[0] = {}): Promise<ServerFixture> {

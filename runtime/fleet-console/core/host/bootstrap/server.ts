@@ -2861,6 +2861,7 @@ async function startRemoteListener(input: {
   srv.timeout = SERVER_TIMEOUT_MS;
   srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
   srv.headersTimeout = SERVER_TIMEOUT_MS + 1000;
+  trackUpgradedSockets(srv);
   srv.on("upgrade", createUpgradeListener({ isHostAllowed: input.isHostAllowed, upgradeRegistry: input.upgradeRegistry, isAdmitted: input.isAdmitted }));
   await new Promise<void>((resolve, reject) => {
     const onError = (error: Error): void => reject(error);
@@ -2884,8 +2885,26 @@ function createHttpServer(
   srv.timeout = SERVER_TIMEOUT_MS;
   srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
   srv.headersTimeout = SERVER_TIMEOUT_MS + 1000;
+  trackUpgradedSockets(srv);
   srv.on("upgrade", createUpgradeListener({ isHostAllowed, upgradeRegistry }));
   return srv;
+}
+
+/**
+ * 업그레이드된 소켓(터미널·채팅 WebSocket)은 HTTP 연결 추적에서 빠져 `closeAllConnections()`가
+ * 끊지 못하지만, 리스너의 연결 수에는 남아 `close()` 콜백을 막는다. 그 소켓을 닫을 실행 정리는
+ * 리스너가 닫힌 뒤에야 돌므로, 리스너가 직접 세어 두었다가 닫을 때 거둔다. 닫힌 소켓은 바로 뺀다.
+ */
+const upgradedSockets = new WeakMap<http.Server | https.Server, Set<Duplex>>();
+
+function trackUpgradedSockets(srv: http.Server | https.Server): void {
+  const sockets = new Set<Duplex>();
+  upgradedSockets.set(srv, sockets);
+  srv.on("upgrade", (_req: http.IncomingMessage, socket: Duplex) => {
+    if (socket.destroyed) return;
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
 }
 
 async function maybeStartLoopbackServer(
@@ -2910,6 +2929,7 @@ async function maybeStartLoopbackServer(
 /**
  * 리스너를 닫는 유일한 방법. `close()`만 부르면 **열려 있는 연결이 끝날 때까지** 완료되지
  * 않는데, SSE 스트림과 원격 창의 소켓은 스스로 끝나지 않는다 — 그래서 연결도 함께 끊는다.
+ * 업그레이드된 WebSocket은 `closeAllConnections()`가 닿지 않으므로 따로 거둔다.
  * 이것을 빠뜨린 리스너 하나가 프로세스 전체의 종료를 막는다.
  */
 function closeHttpServer(srv: http.Server | https.Server | null): Promise<void> {
@@ -2920,6 +2940,7 @@ function closeHttpServer(srv: http.Server | https.Server | null): Promise<void> 
     }
     srv.close(() => resolve());
     srv.closeAllConnections?.();
+    for (const socket of upgradedSockets.get(srv) ?? []) socket.destroy();
   });
 }
 
