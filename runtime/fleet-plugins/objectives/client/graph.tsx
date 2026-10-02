@@ -68,7 +68,7 @@ const ZOOM_MIN_SCALE = 0.45;
 /** 확대 카드 안에서 그래프가 쓸 수 있는 칸 — 최대 폭·기본 폭·높이와, 카드에서 그래프 칸을 뺀 가로 여백. */
 interface ZoomFit { w: number; base: number; h: number; chromeX: number }
 interface Drag { from: string; x0: number; y0: number; x: number; y: number; over: string | null; moved: boolean; pointer: number }
-interface Popup { id: string; pinned: boolean; closing: boolean }
+interface Popup { id: string; pinned: boolean; closing: boolean; focus: boolean }
 const nodeId = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>("[data-graph-node], [data-graph-label]")?.dataset.graphNode ?? target.closest<HTMLElement>("[data-graph-label]")?.dataset.graphLabel ?? null : null;
 
 export function CoordinationGraph({ objective, t, states, onEdge, canEdit, renderDetail, onShowing, reveal, zoom = false, suspended = false, onFitWidth }: GraphProps) {
@@ -179,6 +179,18 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     setPopup({ ...old, pinned: false, closing: true });
     timers.current.exit = setTimeout(() => setPopup(null), matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 120);
   };
+  const closeOffscreen = (container: HTMLElement) => {
+    cancelOpen(); keep(); clearTimeout(timers.current.exit);
+    if (document.getElementById(popupId)?.contains(document.activeElement)) {
+      const tabIndex = container.getAttribute("tabindex");
+      if (tabIndex === null) container.setAttribute("tabindex", "-1");
+      const restore = () => { if (tabIndex === null && container.getAttribute("tabindex") === "-1") container.removeAttribute("tabindex"); };
+      container.focus({ preventScroll: true });
+      if (document.activeElement === container) container.addEventListener("blur", restore, { once: true }); else restore();
+    }
+    popupRef.current = null;
+    setPopup(null);
+  };
   const leave = (delay = 150) => {
     cancelOpen();
     if (popupRef.current?.pinned || popupRef.current?.closing) return;
@@ -186,8 +198,7 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   };
   const show = (id: string, pinned = false, focus = false) => {
     cancelOpen(); keep(); clearTimeout(timers.current.exit);
-    setPopup({ id, pinned, closing: false });
-    if (focus) requestAnimationFrame(() => (document.getElementById(popupId)?.querySelector<HTMLElement>("textarea") ?? document.getElementById(popupId)?.querySelector<HTMLElement>("button:not(:disabled)"))?.focus({ preventScroll: true }));
+    setPopup({ id, pinned, closing: false, focus });
   };
   const select = (id: string) => { box.current?.querySelector<HTMLElement>(`[data-graph-node="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" }); show(id, true, true); };
   useEffect(() => () => { clearTimeout(timers.current.open); clearTimeout(timers.current.close); clearTimeout(timers.current.exit); }, []);
@@ -325,6 +336,6 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     {loose.length ? <div className="objectives-graph-tray"><span className="objectives-graph-tray-title">{t("objectives.graph.unplaced")}</span>{loose.map(m => <div className="objectives-graph-tray-item" key={m.id}>{node(m)}{extensionLabels.get(m.id) ? <span className="objectives-extension-chip">{extensionLabels.get(m.id)}</span> : null}<span className="objectives-graph-tray-label" data-graph-label={m.id} onPointerDown={e => start(m.id, e)}>{m.text}</span></div>)}</div> : null}
     {drag?.moved ? <svg className="objectives-graph-dragline" aria-hidden="true"><path className={reason ? "is-no" : undefined} d={`M${drag.x0},${drag.y0} L${drag.x},${drag.y}`} /></svg> : null}
     {from && over && tipRect && boxRect ? <div className={`objectives-graph-drop-tip${reason ? " is-no" : ""}`} role="status" style={{ left: Math.max(4, Math.min(width - 224, tipRect.left - boxRect.left)), top: tipRect.bottom - boxRect.top + 6 }}><b>{reason ?? t("objectives.graph.drop", { from: number(from), to: number(over) })}</b>{reason ? null : <span>{t("objectives.graph.direction", { from: number(from), to: number(over) })}</span>}</div> : null}
-    {popup && shownMission && box.current && !suspended ? <GraphPopup id={popupId} missionId={popup.id} layout={layout} boundary={box.current} pinned={popup.pinned} closing={popup.closing} hidden={!!drag?.moved} label={t("objectives.graph.detail", { n: number(shownMission.id) })} onKeep={keep} onMove={hover} onLeave={() => leave()} onPin={() => { if (!popup.pinned) show(popup.id, true); }} onEscape={() => close(true)}>{renderDetail(shownMission, { close: () => close(true), select, state: states.get(shownMission.id)! })}</GraphPopup> : null}
+    {popup && shownMission && box.current && !suspended ? <GraphPopup id={popupId} missionId={popup.id} layout={layout} boundary={box.current} pinned={popup.pinned} closing={popup.closing} focus={popup.focus} hidden={!!drag?.moved} label={t("objectives.graph.detail", { n: number(shownMission.id) })} onKeep={keep} onMove={hover} onLeave={() => leave()} onPin={() => { if (!popup.pinned) show(popup.id, true); }} onEscape={() => close(true)} onAnchorLeave={closeOffscreen}>{renderDetail(shownMission, { close: () => close(true), select, state: states.get(shownMission.id)! })}</GraphPopup> : null}
   </div>;
 }
