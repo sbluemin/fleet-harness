@@ -6855,7 +6855,7 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* selected(「더블클릭으로 열기」의 한 번 클릭): 같은 brass 위치 채널이되 면을 칠하지 않는다 — 열림은 면+테두리, 고름은
    점선 테두리만이라 둘이 한 목록에 동시에 서도 무대에 선 것과 문맥만 옮긴 것이 갈린다. 이름은 1티어로 한 단 올린다.
-   여는 법은 위치 줄 자리의 힌트가 말한다(brass 잉크 — 위치에 대한 말이지 상태가 아니다). */
+   여는 법을 따로 적지 않는다 — 선택 전후로 행 높이와 위치 줄이 그대로여야 목록이 흔들리지 않는다. */
 .side-bar-cluster-row--selected,
 .side-bar-chip--selected {
   border-style: dashed;
@@ -6865,11 +6865,6 @@ body[data-companion-resizing="true"] .canvas-operation {
 .side-bar-cluster-row--selected .side-bar-cluster-row-title,
 .side-bar-chip--selected .side-bar-chip-name {
   color: var(--text-primary);
-}
-
-.side-bar-chip--selected .side-bar-chip-context.side-bar-chip-open-hint,
-.side-bar-cluster-row--selected .side-bar-cluster-row-meta.side-bar-cluster-row-open-hint {
-  color: var(--brass-ink);
 }
 
 /* minimized: 이름은 판독 가능한 --ink-muted 티어로 유지하고 "치워둠" 신호는 아이콘 감쇠로만

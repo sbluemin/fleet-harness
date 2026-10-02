@@ -302,9 +302,8 @@ export const canvasEn = {
 
   "sidebar.chip.focusAria": "Focus operation {title}{groupContext}",
   "sidebar.chip.focusedAria": "{title}{groupContext} (focused)",
-  "sidebar.chip.selectedAria": "{title}{groupContext} (selected — double-click or press Enter to open)",
-  "sidebar.chip.openHint": "Double-click · Enter to open",
-  "sidebar.row.selected": "selected — double-click or press Enter to open",
+  "sidebar.chip.selectedAria": "{title}{groupContext} (selected)",
+  "sidebar.row.selected": "selected",
   "sidebar.chip.resumeAria": "Start ended operation {title}{groupContext} again",
   "sidebar.chip.inGroup": " in group {name}",
   "sidebar.chip.gaze": "{caller}: {summary}",
@@ -669,9 +668,8 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "sidebar.chip.focusAria": "Operation {title}에 포커스{groupContext}",
   "sidebar.chip.focusedAria": "{title}{groupContext} (포커스됨)",
-  "sidebar.chip.selectedAria": "{title}{groupContext} (선택됨 — 더블클릭하거나 Enter로 열기)",
-  "sidebar.chip.openHint": "더블클릭 · Enter로 열기",
-  "sidebar.row.selected": "선택됨 — 더블클릭하거나 Enter로 열기",
+  "sidebar.chip.selectedAria": "{title}{groupContext} (선택됨)",
+  "sidebar.row.selected": "선택됨",
   "sidebar.chip.resumeAria": "종료된 Operation {title}{groupContext} 다시 시작",
   "sidebar.chip.inGroup": " · 그룹 {name}",
   "sidebar.chip.gaze": "{caller}: {summary}",

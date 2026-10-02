@@ -269,9 +269,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         onKeyUp={selectMode ? (event) => { if (event.key === " ") event.preventDefault(); } : undefined}
       >
         <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>
-        {selected ? (
-          <span className="side-bar-cluster-row-meta side-bar-cluster-row-open-hint" aria-hidden="true">{t("sidebar.chip.openHint")}</span>
-        ) : meta.length > 0 ? (
+        {meta.length > 0 ? (
           <span className="side-bar-cluster-row-meta" aria-hidden="true">
             {meta.map((part) => (
               <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{part.text}</span>

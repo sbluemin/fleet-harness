@@ -189,7 +189,7 @@ export function OperationsSideBarChip({
     statusLanded ? "side-bar-chip--status-landed" : "",
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
-    chipContext || selected ? "side-bar-chip--with-context" : "",
+    chipContext ? "side-bar-chip--with-context" : "",
   ].filter(Boolean).join(" ");
   const chipStyle = {
     "--i": index,
@@ -409,10 +409,7 @@ export function OperationsSideBarChip({
             </>
           )}
         </span>
-        {/* 고른 칩은 위치 줄 자리에 여는 법을 말한다 — 무대가 그대로라 고른 것과 연 것이 다르다는 사실이 여기서만 보인다. */}
-        {selected
-          ? <span className="side-bar-chip-context side-bar-chip-open-hint" aria-hidden="true">{t("sidebar.chip.openHint")}</span>
-          : chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
+        {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
         {/* 묶음의 단계 띠는 이름·위치 줄 아래 셋째 줄 — 이름 옆에 세우면 제목이 밀려 잘린다. */}
         {cluster ? cluster.strip : null}
       </span>
