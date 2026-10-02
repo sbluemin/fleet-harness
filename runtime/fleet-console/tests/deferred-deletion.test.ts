@@ -59,10 +59,11 @@ describe("deferred deletion coordinator", () => {
 
   it("hides a forgotten Theater prompt, restores it during grace, and purges it after expiry", async () => {
     const harness = createHarness();
-    let data: AgentOptionsData = { claudeCodeDisabledAgents: ["Explore"] };
+    let data: AgentOptionsData = { agentIdleDormantMinutes: 30 };
     const options = { load: () => data, update: (mutate: (current: AgentOptionsData) => AgentOptionsData) => (data = mutate(data)) };
     const prompts = createTheaterSystemPromptService(options, (id) => harness.theaters.get(id) !== null);
     prompts.save(THEATER.id, { mode: "off", body: "private instructions" });
+    prompts.keepSubagents(THEATER.id, true);
     harness.beforePurge.value = (_nodes, tombstone) => { if (tombstone.kind === "theater") prompts.purge(tombstone.targetId); };
     const deletion = harness.coordinator.deleteTheater(THEATER.id)!;
     expect(prompts.read(THEATER.id)).toBeNull();
@@ -71,7 +72,7 @@ describe("deferred deletion coordinator", () => {
     const again = harness.coordinator.deleteTheater(THEATER.id)!;
     harness.clock.value = again.expiresAt;
     harness.coordinator.sweepExpired();
-    expect(data).toEqual({ claudeCodeDisabledAgents: ["Explore"] });
+    expect(data).toEqual({ agentIdleDormantMinutes: 30 });
   });
 
   it("rolls memory back when the durable save fails", () => {

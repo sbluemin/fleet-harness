@@ -9,7 +9,7 @@ import type { PrStatusService } from "./pr-status.js";
 import { resultInputSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
+import { criterionProposalSchema, memberAddSchema, MAX_MISSIONS, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_EVIDENCE, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, text } from "./views.js";
 
 /**
@@ -174,7 +174,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     commanderTool("detach_result", "Detach a result by resultId. This removes the objective's reference, not a PR. Unknown result ids are refused as unknown_result; completed objectives refuse changes as objective_done.",
       z.object({ objectiveId: ids, resultId: ids }).strict(),
       ({ resultId }, objective) => { store.resultRemove(objective.id, resultId); return text({ ok: true }); }),
-    commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added (unplaced) missions stay and are referenced by missionId; restating one is refused as mission_kept. A mission's prerequisites are numbers n counting from 1 over this plan's own missions, or the missionId of a mission that stays. A mission may name a roster member by id or role; none means the Commander. Roster members are accepted only while empty (members_exist). Only a person's explicit Plan request opens success-criterion proposals: criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Use {text} to propose adding, {revise: criterion number or id, text} to revise, or {retire: criterion number or id, reason} to retire. Proposals require the person's approval and block commencement and steering until resolved (criteria_not_planning, criteria_pending). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed.",
+    commanderTool("plan", "Replace the open missions nobody has committed to yet. Finished, recorded, person-assigned and person-added (unplaced) missions stay and are referenced by missionId; restating one is refused as mission_kept. A mission's prerequisites are numbers n counting from 1 over this plan's own missions, or the missionId of a mission that stays. A mission may name a roster member by id or role; none means the Commander. Roster members are accepted only while empty (members_exist); enlist adds them later. Only a person's explicit Plan request opens success-criterion proposals: criteria replaces all pending proposals, [] withdraws them, and omission keeps them. Use {text} to propose adding, {revise: criterion number or id, text} to revise, or {retire: criterion number or id, reason} to retire. Proposals require the person's approval and block commencement and steering until resolved (criteria_not_planning, criteria_pending). An objective is not a single pass: the person can add, rerun, reopen and rearrange missions at any time, and the same members absorb that later work, so a member lasts longer than any mission it is first given. A plan made on a board the person has since edited is refused as board_changed.",
       z.object({ objectiveId: ids, missions: z.array(z.object({ text: z.string().trim().min(1).max(200), prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40), members: z.array(z.object({ role: z.string().trim().min(1).max(40), brief: z.string().max(300).optional() }).strict()).max(40).optional(), criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional() }).strict(),
       (args, objective) => {
         if (args.criteria !== undefined && !objective.criteriaOpen) return refuse("criteria_not_planning");
@@ -232,6 +232,16 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
       ({ requestId }, objective) => {
         const withdrawn = store.decisionWithdraw(objective.id, requestId);
         return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequestRevision: withdrawn.objective.decisionRequestRevision });
+      }),
+    commanderTool("enlist", "Add members to the roster, each a role and an optional brief; plan accepts members only while the roster is empty. A new member has no session until muster brings it up.",
+      z.object({ objectiveId: ids, members: z.array(memberAddSchema.pick({ role: true, brief: true })).min(1).max(MAX_MISSIONS) }).strict(),
+      ({ members }, objective) => {
+        // 한 명씩 저장하므로 상한을 넘길 요청은 아무도 더하기 전에 거절한다 — 일부만 남은 채 실패로 답하지 않는다.
+        if (objective.members.length + members.length > MAX_MISSIONS) return refuse("too_many_members");
+        const before = new Set(objective.members.map((member) => member.id));
+        let current = objective;
+        for (const member of members) current = store.memberAdd(objective.id, member, "commander");
+        return text({ ok: true, members: current.members.filter((member) => !before.has(member.id)).map((member) => ({ id: member.id, role: member.role })) });
       }),
     commanderTool("muster", "Bring every roster member to a live session: absent members launch waiting for a first message, dormant ones resume their own session, live ones stay as they are. A waiting session costs nothing until it receives a message; a session left idle after working can go dormant, and SendMessage and ListAgents reach only live sessions. A member knows only what it has been sent and what it has read, and keeps that across missions. A member whose launch or resume the host refuses comes back as state failed with its error code; the others proceed.",
       z.object({ objectiveId: ids }).strict(),

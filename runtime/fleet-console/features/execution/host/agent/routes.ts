@@ -19,7 +19,6 @@ import { readSocketRole, readTicketChannel } from "../terminal/index.js";
 import type { TerminalRuntime } from "../terminal/index.js";
 
 import { createDefaultAgentCliDetector, validateAgentCliPathForSave, type AgentCliDetector } from "./agent-cli-detect.js";
-import { createClaudeBuiltInAgentProbe } from "./claude-builtin-agents.js";
 import { buildAgentCliLaunchKinds } from "./agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, resolveAgentCliBinary } from "./agent-cli-paths.js";
@@ -46,7 +45,6 @@ import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
 import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
-import { resolveClaudeCodeDisabledAgents } from "../../../settings/host/execution-settings-routes.js";
 import type { TheaterSystemPromptService } from "../../../settings/host/agent-options.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
@@ -135,8 +133,6 @@ export async function registerAgentRoutes(
   registerRouter(ctx, "agent", api.handle, [
     { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http" },
     { method: "GET", path: "/agent-cli/state", summary: "Read installed Agent CLI status.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "GET", path: "/agent-cli/claude-agents", summary: "Read the installed Claude Code's built-in subagent roster.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "POST", path: "/agent-cli/claude-agents/refresh", summary: "Re-read the installed Claude Code's built-in subagent roster.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/agent-cli/diagnostics", summary: "Read Agent CLI diagnostics.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "PUT", path: "/agent-cli/path", summary: "Save an Agent CLI executable path.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Console Execution", gate: "loopback", transport: "sse" },
@@ -160,6 +156,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/attention", summary: "Receive an Agent attention hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/agent-call", summary: "Decide an Agent session's subagent call.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/auto-name", summary: "Receive an Agent auto-name hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/capture", summary: "Receive an Agent session capture hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -210,14 +207,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   // 설치돼 있는지에 따라 갈린다.
   const testDetector = (globalThis as { __fleetAgentCliDetector?: AgentCliDetector }).__fleetAgentCliDetector;
   const detector = testDetector ?? createDefaultAgentCliDetector(readAgentCliPaths);
-  // 설정 화면의 내장 서브에이전트 목록. 런치가 쓰는 것과 같은 바이너리 해석을 따른다.
-  const claudeBuiltInAgents = createClaudeBuiltInAgentProbe({
-    resolveBinary: async () => resolveAgentCliBinary({
-      cliCommand: CLAUDE_HARNESS_ID,
-      env: process.env,
-      userPaths: await readAgentCliPaths(),
-    }).resolved,
-  });
   const launchAttachments = createLaunchAttachmentStore({ dataDir: ctx.host.paths.consoleDataDir });
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   // 확인된 실행 중 PTY는 설정 파일이 나중에 바뀌어도 이미 Trust 문턱을 지났다. 재개 때는 다시 확인한다.
@@ -666,19 +655,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.http.writeJson(res, 200, { clis: await detector.detect() });
       return true;
     }
-    if (path === "/agent-cli/claude-agents") {
-      if (req.method !== "GET") return methodNotAllowed(res);
-      ctx.host.http.writeJson(res, 200, await claudeBuiltInAgents.read());
-      return true;
-    }
-    if (path === "/agent-cli/claude-agents/refresh") {
-      // 강제 갱신은 캐시를 버리고 Claude를 다시 띄우므로, 읽기와 달리 origin 승인을 요구한다 —
-      // 응답을 못 읽는 교차 출처 GET만으로 프로세스를 계속 띄우게 두지 않는다.
-      if (req.method !== "POST") return methodNotAllowed(res);
-      if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-      ctx.host.http.writeJson(res, 200, await claudeBuiltInAgents.read({ refresh: true }));
-      return true;
-    }
     if (path === "/agent-cli/diagnostics") {
       if (req.method !== "GET") return methodNotAllowed(res);
       if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
@@ -1039,6 +1015,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (action === "turn") return handleTurn(req, res, sessionId);
     if (action === "background") return handleBackground(req, res, sessionId);
     if (action === "attention") return handleAttention(req, res, sessionId);
+    if (action === "agent-call") return handleAgentCall(req, res, sessionId);
     if (action === "auto-name") return handleAutoName(req, res, sessionId);
     if (action === "capture") return handleCapture(req, res, sessionId);
     if (ctx.host.operations.isTransitioning?.(sessionId)) { ctx.host.http.writeJson(res, 409, { error: "operation_busy" }); return true; }
@@ -2183,11 +2160,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 터미널 런치와 같은 설정을 읽는다. 이 값이 두 표면에서 어떤 인자·옵션이 되는지는
     // admiral이 정한다 — CLI는 기본 프롬프트를 쓸 때 플래그를 싣지 않고 SDK는 그때 preset을
     // 싣는, 서로 뒤집힌 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
-    const chatGlobalOptions = deps.agentOptionsService.load();
     const chatTheaterPrompt = deps.theaterSystemPrompts?.read(node.theaterId);
-    const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node.payload)
-      ? [ALL_SUBAGENTS]
-      : resolveClaudeCodeDisabledAgents(chatGlobalOptions);
+    const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node.payload) ? [ALL_SUBAGENTS] : [];
     const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
@@ -2409,6 +2383,32 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const body = await ctx.host.http.readJsonBody<HookAttentionBody>(req);
     observability.notifySessionAttention(session, normalizeAttentionReason(body?.reason ?? readHookNotificationType(body?.input)));
     ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }
+
+  /** 서브에이전트 호출 hook의 질문. 답은 거절 사유이거나 null(허용)이다. 판단이 실패하면 hook이 막도록 오류로 답한다. */
+  async function handleAgentCall(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.isLockAuthorized(req)) return unauthorized(res);
+    if (!ctx.host.operations.get(sessionId)) {
+      ctx.host.http.writeJson(res, 404, { error: "unknown_operation" });
+      return true;
+    }
+    // 서브에이전트를 그대로 쓰기로 한 Theater에서는 아무것도 묻지 않는다 — 호출마다 읽어 떠 있는 세션에도 곧바로 닿는다.
+    const theaterId = ctx.host.operations.get(sessionId)?.theaterId;
+    if (deps.theaterSystemPrompts?.subagentsKept(theaterId)) {
+      ctx.host.http.writeJson(res, 200, { reason: null });
+      return true;
+    }
+    let reason: string | null;
+    try {
+      reason = ctx.agentCallRedirect?.(sessionId) ?? null;
+    } catch (error) {
+      ctx.recordFailure?.("agent-call-redirect", error);
+      ctx.host.http.writeJson(res, 500, { error: "agent_call_undecided" });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { reason });
     return true;
   }
 

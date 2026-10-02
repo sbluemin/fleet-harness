@@ -740,6 +740,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const mcpHttp = createMcpHttpTransport(() => pluginHostCapabilities.server.origin());
   const consoleAgentOwners = new Set<string>();
+  // 플러그인이 등록한 서브에이전트 호출 판단(redirectAgentCalls). 플러그인 id마다 하나다.
+  const agentCallRedirects = new Map<string, (operationId: string) => string | null>();
   const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), launchKeys, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), resolveOperation: operations.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
   let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
   const computerUseDirectory = path.join(fleetDataDir, "computer-use");
@@ -1123,6 +1125,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         pluginHostCapabilities.operations.patch(operationId, { payload: next });
       },
       // 떠 있는 채팅의 모델·강도 — 채팅 화면의 메뉴와 같은 길. 적용되면 실행 호스트가 세션 좌표(payload)를 고친다.
+      // 서브에이전트 호출의 거절 사유 — 플러그인마다 한 자리. 실행 기능의 hook 응답이 호출마다 읽는다.
+      redirectAgentCalls: (reason) => {
+        agentCallRedirects.set(pluginId, reason);
+        return () => { if (agentCallRedirects.get(pluginId) === reason) agentCallRedirects.delete(pluginId); };
+      },
       setCoordinates: (operationId, input) => consoleControl.coordinates({ kind: "plugin", pluginId }, operationId, input),
       coordinates: (operationId) => consoleControl.readCoordinates(operationId),
     }),
@@ -2361,6 +2368,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const agentCliPlugin = renderConsoleAgentCliPlugin({ transport: mcpHttp.transport });
         const execution = await startConsoleExecution(createConsoleRuntimeContext({
           consoleControl,
+          agentCallRedirect: (operationId) => {
+            for (const reason of agentCallRedirects.values()) {
+              const answer = reason(operationId);
+              if (answer !== null) return answer;
+            }
+            return null;
+          },
           host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
           dataDir: durablePaths.dir,
           recordFailure,

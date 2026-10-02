@@ -26,6 +26,11 @@ export interface ConsoleRuntimeContext {
   readonly agentCliPlugin: AgentCliPlugin;
   readonly host: ConsoleRuntimeHost;
   readonly consoleControl?: import("../../console-use/host/console-control.js").ConsoleControl;
+  /**
+   * 이 Operation의 서브에이전트(Agent 도구) 호출에 돌려줄 거절 사유. null이면 호출을 그대로 둔다.
+   * 사유는 등록한 플러그인이 정하고, 실행 기능은 묻고 전달만 한다.
+   */
+  readonly agentCallRedirect?: (operationId: string) => string | null;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
   registerWsHandler(path: string, handler: UpgradeHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }

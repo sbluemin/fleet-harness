@@ -16,6 +16,12 @@ export interface TheaterSystemPromptService {
   readonly exists: (theaterId: string) => boolean;
   readonly read: (theaterId: string | undefined) => ClaudeCodeTheaterSystemPrompt | null;
   readonly save: (theaterId: string, prompt: ClaudeCodeTheaterSystemPrompt | null) => ClaudeCodeTheaterSystemPrompt | null;
+  /**
+   * Whether this Theater's Claude Code sessions keep their subagents. False (the default) means a
+   * subagent call is answered in place of running, by whatever the host registered for that.
+   */
+  readonly subagentsKept: (theaterId: string | undefined) => boolean;
+  readonly keepSubagents: (theaterId: string, kept: boolean) => boolean;
   /** Called only when a forgotten Theater's grace period expires. Idempotent for purge retries. */
   readonly purge: (theaterId: string) => void;
 }
@@ -44,17 +50,36 @@ export function createTheaterSystemPromptService(
       });
       return updated.claudeCodeTheaterSystemPrompts?.[theaterId] ?? null;
     },
+    subagentsKept(theaterId) {
+      return !!theaterId && isRegistered(theaterId) && options.load().claudeCodeTheaterSubagents?.[theaterId] === true;
+    },
+    keepSubagents(theaterId, kept) {
+      if (!isRegistered(theaterId)) throw new Error("theater_not_found");
+      const updated = options.update((current) => withTheaterSubagents(current, theaterId, kept));
+      return updated.claudeCodeTheaterSubagents?.[theaterId] === true;
+    },
     purge(theaterId) {
       // The registry no longer contains the Theater, so only its stored id is needed here.
       options.update((current) => {
-        if (!current.claudeCodeTheaterSystemPrompts?.[theaterId]) return current;
-        const prompts = { ...current.claudeCodeTheaterSystemPrompts };
+        const released = withTheaterSubagents(current, theaterId, false);
+        if (!released.claudeCodeTheaterSystemPrompts?.[theaterId]) return released;
+        const prompts = { ...released.claudeCodeTheaterSystemPrompts };
         delete prompts[theaterId];
-        const { claudeCodeTheaterSystemPrompts: _previous, ...rest } = current;
+        const { claudeCodeTheaterSystemPrompts: _previous, ...rest } = released;
         return Object.keys(prompts).length ? { ...rest, claudeCodeTheaterSystemPrompts: prompts } : rest;
       });
     },
   };
+}
+
+/** 기본값(대체)은 키가 없는 것이다 — 켜 둔 Theater만 남긴다. 바뀔 것이 없으면 같은 객체를 돌려준다. */
+function withTheaterSubagents(current: AgentOptionsData, theaterId: string, kept: boolean): AgentOptionsData {
+  if ((current.claudeCodeTheaterSubagents?.[theaterId] === true) === kept) return current;
+  const theaters: Record<string, true> = { ...current.claudeCodeTheaterSubagents };
+  if (kept) theaters[theaterId] = true;
+  else delete theaters[theaterId];
+  const { claudeCodeTheaterSubagents: _previous, ...rest } = current;
+  return Object.keys(theaters).length ? { ...rest, claudeCodeTheaterSubagents: theaters } : rest;
 }
 
 /** 옛 자리의 파일 이름. Console 설정 파일과 이름이 같아 디렉터리만으로 구분된다. */

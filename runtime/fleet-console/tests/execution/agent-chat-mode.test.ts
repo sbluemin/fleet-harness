@@ -86,7 +86,7 @@ describe("agent chat mode routes", () => {
     expect(harness.operation(launched)?.payload.launchedBy).toEqual(caller);
   });
   it("routes an opted-in Console message through the existing Chat session and records its result", async () => {
-    const harness = await createHarness({ disabledAgents: ["Plan"], theaterPrompt: { mode: "append", body: "Theater rules" } });
+    const harness = await createHarness({ theaterPrompt: { mode: "append", body: "Theater rules" } });
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
@@ -114,12 +114,12 @@ describe("agent chat mode routes", () => {
     await vi.waitFor(() => expect(readOperationLaunch(harness.operation(commander)!.payload).started).toBe(true));
     // 태어날 때의 강제 차단은 채팅 프로세스의 SDK 입력에도 실린다.
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task"] });
-    // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스는 전역 옵트아웃만 쓴다 — 허용이 전역 제한까지 걷지 않는다.
+    // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스에는 차단 규칙이 없다.
     const member = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true })).operationId;
     harness.setSubagentSpawn(member, "default");
     await harness.consoleControl.request(caller, { kind: "send", operationId: member, text: "Start the mission" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Start the mission"));
-    expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent(Plan)"] });
+    expect(harness.openSession.mock.calls.at(-1)?.[0]).not.toHaveProperty("disallowedTools");
     // 수신 줄의 근거는 **보낸** 자식의 라이브 도구 호출과 그 결과, 그 둘뿐이다. 이 경로는 어느 쪽
     // 트랜스크립트도 읽지 않으며, 성공한 호출만이 받는 쪽 원장에 줄 하나를 세운다.
     const frames = await harness.openChatSocket(commander);
@@ -323,7 +323,7 @@ describe("agent chat mode routes", () => {
   });
 });
 
-async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly disabledAgents?: readonly string[]; readonly theaterPrompt?: { readonly mode: "on" | "append" | "off"; readonly body: string } } = {}) {
+async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly theaterPrompt?: { readonly mode: "on" | "append" | "off"; readonly body: string } } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir);
@@ -444,7 +444,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   };
   const consoleControl = createConsoleControl({ directory: path.join(fleetDataDir, "console-use"), operations: () => operations, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: (pluginId) => pluginId === "fleet-todo" });
   lifecycleCleanups.push(() => consoleControl.dispose());
-  const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null, ...(options.disabledAgents ? { claudeCodeDisabledAgents: options.disabledAgents } : {}) }), update: (mutate) => mutate({}) };
+  const agentOptionsStub: AgentOptionsService = { load: () => ({ agentIdleDormantMinutes: null }), update: (mutate) => mutate({}) };
   const ctx = {
     consoleControl,
     dataDir: fleetDataDir,
@@ -547,7 +547,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   process.env.FLEET_TERMINAL_CMD = "test-terminal";
   await registerAgentRoutes(ctx, terminalRuntime, {
     agentOptionsService: agentOptionsStub,
-    ...(options.theaterPrompt ? { theaterSystemPrompts: { exists: (id: string) => id === "theater-1", read: (id: string | undefined) => id === "theater-1" ? options.theaterPrompt! : null, save: () => null, purge: () => {} } } : {}),
+    ...(options.theaterPrompt ? { theaterSystemPrompts: { exists: (id: string) => id === "theater-1", read: (id: string | undefined) => id === "theater-1" ? options.theaterPrompt! : null, save: () => null, subagentsKept: () => false, keepSubagents: () => false, purge: () => {} } } : {}),
   });
   cleanups.push(async () => {
     if (previousTerminalCommand === undefined) delete process.env.FLEET_TERMINAL_CMD;

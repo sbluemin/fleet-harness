@@ -1129,6 +1129,9 @@ describe("Objectives contract", () => {
     expect((await call("muster", { objectiveId: objective.id }, commander)).structuredContent.error).toBe("planning_only");
     // 명단이 있으면 지휘관은 명단을 다시 쓰지 못한다(빈 명단으로 지우는 것도).
     expect((await call("plan", { objectiveId: objective.id, missions: [{ text: "p3" }], members: [] }, commander)).structuredContent.error).toBe("members_exist");
+    // 명단이 선 뒤의 일손은 enlist 로 더한다 — 서브에이전트 호출을 대신하는 자리다.
+    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review" }] }, commander)).structuredContent.members).toMatchObject([{ role: "review" }]);
+    expect(store.find(objective.id)!.members).toMatchObject([{ role: "build" }, { role: "review", by: "commander" }]);
     store.setPlanning(objective.id, false);
     const mustered = await call("muster", { objectiveId: objective.id }, commander);
     const member = (mustered.structuredContent.members as { id: string; state: string }[])[0]!;

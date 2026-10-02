@@ -103,3 +103,14 @@ export function decisionTurn(objective: Objective, request: DecisionRequest, ans
     : `The person answered decision request \`${request.id}\` on objective \`${objective.id}\`. The questions and the person's submitted answers follow.`;
   return `${head}\n\n${blocks.join("\n\n")}`;
 }
+
+/**
+ * 서브에이전트(Agent 도구) 호출이 받는 거절 사유 — 그 호출의 결과 자리에 서는 사실 한 줄이다. 모든 에이전트 Operation 은 자기 목표의
+ * 지휘관이므로 서브에이전트 대신 그 목표의 구성원이 일손이다. 절차는 쓰지 않는다: 도구 설명이 말하고 흐름은 모델이 잡는다.
+ * 구성원 세션은 관여하지 않는다(null) — 그 세션의 서브에이전트는 사람이 고른 허용값(subagents)이 정하고, 막힌 세션에는 도구가 없다.
+ */
+export function agentCallRedirect(objective: Objective | null, isMember: boolean): string | null {
+  if (isMember || !objective) return null;
+  if (objective.done) return `Subagents are not available in Fleet Console, and objective ${objective.id} is complete, so it takes no members. This Agent call did not run.`;
+  return `Subagents are not available in Fleet Console; members of objective ${objective.id} take their place through the fleet-objectives tools, and a member is reached by SendMessage. This Agent call did not run.`;
+}

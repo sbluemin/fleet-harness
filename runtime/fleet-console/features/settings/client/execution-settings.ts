@@ -64,8 +64,6 @@ export type DelegationRoutingMode = "jev" | "model";
 
 export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
-  /** 옵트아웃한 Claude Code 내장 서브에이전트 이름. 비어 있으면 전부 켜져 있다. */
-  readonly claudeCodeDisabledAgents: readonly string[];
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly wireLogEnabled: boolean;
@@ -79,7 +77,6 @@ export interface SystemPromptSettingsState {
 
 export type SystemPromptSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
-  | { readonly claudeCodeDisabledAgents: readonly string[] }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly wireLogEnabled: boolean }
   | { readonly delegationRoutingEnabled: boolean }
@@ -133,6 +130,31 @@ export async function saveTheaterSystemPrompt(theaterId: string, prompt: Theater
   return assertTheaterSystemPromptState(await response.json(), theaterId, response.status);
 }
 
+/** Theater의 서브에이전트 — false(기본)면 서브에이전트 호출 자리에 Objectives 구성원이 선다. */
+export interface TheaterSubagentsState { readonly theaterId: string; readonly subagentsKept: boolean }
+
+export async function fetchTheaterSubagents(theaterId: string, signal?: AbortSignal): Promise<TheaterSubagentsState> {
+  const response = await fetch(`/api/v1/agent/theater-subagents?theaterId=${encodeURIComponent(theaterId)}`, { signal });
+  await assertOk(response);
+  return assertTheaterSubagentsState(await response.json(), theaterId, response.status);
+}
+
+export async function saveTheaterSubagents(theaterId: string, subagentsKept: boolean, signal?: AbortSignal): Promise<TheaterSubagentsState> {
+  const response = await fetch(`/api/v1/agent/theater-subagents?theaterId=${encodeURIComponent(theaterId)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subagentsKept }), signal,
+  });
+  await assertOk(response);
+  return assertTheaterSubagentsState(await response.json(), theaterId, response.status);
+}
+
+function assertTheaterSubagentsState(value: unknown, theaterId: string, status: number): TheaterSubagentsState {
+  const result = (value ?? {}) as Partial<TheaterSubagentsState>;
+  if (result.theaterId !== theaterId || typeof result.subagentsKept !== "boolean") {
+    throw new TerminalSettingsApiError(status, "Invalid Theater subagents response");
+  }
+  return { theaterId, subagentsKept: result.subagentsKept };
+}
+
 function assertTheaterSystemPromptState(value: unknown, theaterId: string, status: number): TheaterSystemPromptState {
   if (!value || typeof value !== "object") throw new TerminalSettingsApiError(status, "Invalid Theater system prompt response");
   const result = value as Partial<TheaterSystemPromptState>;
@@ -160,7 +182,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   if (
     !payload
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
-    || !isStringList(payload.claudeCodeDisabledAgents)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.wireLogEnabled !== "boolean"
     || typeof payload.delegationRoutingEnabled !== "boolean"
@@ -172,7 +193,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   }
   return {
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
-    claudeCodeDisabledAgents: payload.claudeCodeDisabledAgents,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
     wireLogEnabled: payload.wireLogEnabled,
@@ -182,10 +202,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
   };
-}
-
-function isStringList(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
 function isXaiEndpointPreference(value: unknown): value is XaiEndpointPreference {
@@ -222,7 +238,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeDisabledAgents" | "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "aiGateway" | "wireLogEnabled" | "delegationRoutingEnabled" | "delegationRoutingMode" | "delegationRoutingModel" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -333,9 +349,6 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 }
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
-  if (field === "claudeCodeDisabledAgents") {
-    return { claudeCodeDisabledAgents: state.claudeCodeDisabledAgents };
-  }
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
   if (field === "wireLogEnabled") {
     return { wireLogEnabled: state.wireLogEnabled };
