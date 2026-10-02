@@ -11,11 +11,28 @@ import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverS
 import type { ControlHolder, OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
+/** 깨우기가 앞당긴 시도도 직전 시도와 이만큼은 떨어진다 — 백오프의 가장 짧은 대기와 같다. */
+const WAKE_MIN_GAP_MS = 1_000;
 const CONTROL_RECLAIM_NAVIGATION_DELAY_MS = 2_500;
 
 // 누락 스냅샷은 SSE가 열리기 전에만 hydrate해 이후 실시간 프레임을 덮어쓰지 않는다.
 let reconnectDelayMs = 1_000;
 let reconnectHandle: ReturnType<typeof setTimeout> | null = null;
+let pendingRetry: (() => void) | null = null;
+let reconnectDueAt = 0;
+let lastAttemptAt = 0;
+/**
+ * 깨우기는 시도를 **더하지 않고 당겨 쓴다.**
+ *
+ * 대기 중인 시도를 지금 돌리면, 앞당긴 시간만큼 다음 대기가 길어져 그다음 시도는 원래 일정의
+ * 자리에 그대로 선다. 그 빚을 다 갚기 전에는 다시 당기지 않으므로, 탭 전환을 아무리 연타해도
+ * 어느 구간의 시도 수는 백오프 일정보다 많아야 한 번 더 많다 — 장기 단절에서는 그대로 분당 2회다.
+ * 실패한 깨우기가 백오프를 1초로 되돌리지 않는 것도 같은 이유다: 되돌리면 1·2·4·8·16초 계단이
+ * 깨울 때마다 처음부터 다시 돌아 이 상한을 우회한다.
+ */
+let wakeBorrowedMs = 0;
+let wakeAllowedAt = 0;
+let wakeListenersInstalled = false;
 let activeSource: EventSource | null = null;
 let connectionGeneration = 0;
 let statusRefreshInFlight: Promise<void> | null = null;
@@ -87,10 +104,7 @@ export function resetConsoleChannelsForTest(): void {
 }
 
 export function connectOperationsSse(): void {
-  if (reconnectHandle !== null) {
-    clearTimeout(reconnectHandle);
-    reconnectHandle = null;
-  }
+  cancelScheduledRetry();
   activeSource?.close();
   const generation = ++connectionGeneration;
   const source = new EventSource("/api/v1/operations/events");
@@ -248,10 +262,8 @@ export function connectOperationsSse(): void {
       source.close();
       if (activeSource === source) activeSource = null;
       connectionGeneration += 1;
-      if (reconnectHandle !== null) {
-        clearTimeout(reconnectHandle);
-        reconnectHandle = null;
-      }
+      // 예약된 시도가 없으면 깨우기도 붙을 곳이 없다 — 회수된 화면은 온라인·복귀 신호에 다시 합류하지 않는다.
+      cancelScheduledRetry();
       // 사유를 실어 보낸다 — 안내 문구는 "주인이 되찾았다"와 "다른 기기가 이어받았다"로 갈린다.
       window.dispatchEvent(new CustomEvent<SessionEndedDetail>(CONTROL_RECLAIMED_EVENT, { detail: { reason: data.reason } }));
       window.setTimeout(() => location.reload(), CONTROL_RECLAIM_NAVIGATION_DELAY_MS);
@@ -263,6 +275,8 @@ export function connectOperationsSse(): void {
   source.onopen = () => {
     if (!isCurrentSource()) return;
     reconnectDelayMs = 1_000;
+    wakeBorrowedMs = 0;
+    wakeAllowedAt = 0;
     sessionResumeRefused = false;
     setConnectionState("live");
     refreshObserverStatus();
@@ -278,9 +292,11 @@ export function connectOperationsSse(): void {
     resetDesktopFullscreenSnapshot();
     // SSE 단절은 원격 제어 세션이 끝났다는 증거가 아니므로 holder는 마지막 권위 스냅샷을 유지한다.
     setConnectionState("offline");
-    reconnectHandle = setTimeout(() => {
+    const retry = () => {
       reconnectHandle = null;
+      pendingRetry = null;
       if (retryGeneration !== connectionGeneration) return;
+      lastAttemptAt = Date.now();
       setConnectionState("connecting");
       reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
       // 그룹·Theater는 사건으로만 흐르므로 끊긴 사이의 변경은 재조회로 메운다 — 스냅숏이 모두 온 뒤에야 스트림을 다시
@@ -307,16 +323,70 @@ export function connectOperationsSse(): void {
         .finally(() => {
           if (retryGeneration === connectionGeneration) connectOperationsSse();
         });
-    }, reconnectDelayMs);
+    };
+    // 깨우기로 당겨 쓴 시간은 이 대기에 얹어 갚고, 다 갚기 전에는 다시 당기지 않는다.
+    const now = Date.now();
+    // 방금 끊긴 연결도 직전 시도로 친다 — 첫 깨우기도 단절 1초 안에는 서버를 두드리지 않는다.
+    lastAttemptAt = now;
+    const delayMs = reconnectDelayMs + wakeBorrowedMs;
+    wakeAllowedAt = now + wakeBorrowedMs;
+    wakeBorrowedMs = 0;
+    pendingRetry = retry;
+    reconnectDueAt = now + delayMs;
+    reconnectHandle = setTimeout(retry, delayMs);
   };
 }
 
+/**
+ * 잠에서 깬 기기, 다시 붙은 네트워크, 돌아온 사람은 예약된 시도를 기다릴 이유가 없다.
+ *
+ * 백오프 타이머가 대기 중일 때만 그 시도를 당긴다 — connecting·live이거나, 회수처럼 의도적으로
+ * 닫혀 타이머가 없는 화면에서는 아무것도 하지 않는다. 시도를 새로 만들지 않으므로 상한은
+ * 백오프 일정이 그대로 쥔다(`wakeBorrowedMs` 참고).
+ */
+function wakeOperationsSse(): void {
+  if (reconnectHandle === null || pendingRetry === null) return;
+  const now = Date.now();
+  if (now < wakeAllowedAt) return;
+  const runAt = Math.max(now, lastAttemptAt + WAKE_MIN_GAP_MS);
+  // 잠든 사이 타이머가 멈췄다면 벽시계 기한은 이미 지났다 — 당겨 쓴 것 없이 지금 돌린다.
+  if (now < reconnectDueAt && runAt >= reconnectDueAt) return;
+  wakeBorrowedMs = Math.max(0, reconnectDueAt - runAt);
+  // 깨어나면 online·visibilitychange·focus가 한꺼번에 온다 — 이 시도가 끝나기 전의 신호는 모두 같은 시도다.
+  wakeAllowedAt = Number.POSITIVE_INFINITY;
+  clearTimeout(reconnectHandle);
+  reconnectDueAt = runAt;
+  reconnectHandle = setTimeout(pendingRetry, runAt - now);
+}
+
+/**
+ * 깨우기 신호는 문서 수명 동안 한 벌만 듣는다.
+ *
+ * focus도 듣는다: 창이 보이는 채 초점만 잃었다 돌아오는 경우(나란히 둔 창, Desktop 창)에는
+ * visibilitychange가 오지 않는다. 세 신호가 같은 상한을 거치므로 focus가 더하는 시도는 없다.
+ */
+export function installOperationsSseWake(): void {
+  if (wakeListenersInstalled) return;
+  wakeListenersInstalled = true;
+  window.addEventListener("online", wakeOperationsSse);
+  window.addEventListener("focus", wakeOperationsSse);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") wakeOperationsSse();
+  });
+}
+
+function cancelScheduledRetry(): void {
+  if (reconnectHandle !== null) clearTimeout(reconnectHandle);
+  reconnectHandle = null;
+  pendingRetry = null;
+}
+
 export function reconnectOperationsSseNow(): void {
-  if (reconnectHandle !== null) {
-    clearTimeout(reconnectHandle);
-    reconnectHandle = null;
-  }
+  cancelScheduledRetry();
   reconnectDelayMs = 1_000;
+  wakeBorrowedMs = 0;
+  wakeAllowedAt = 0;
+  lastAttemptAt = Date.now();
   // 수동 재연결도 "다시 연결하는 중"으로 전이시킨다 — 상태를 offline에 둔 채 재접속하면
   // 서버가 여전히 죽어 있을 때 버튼을 눌러도 화면이 그대로여서 눌린 것인지 알 수 없다.
   setConnectionState("connecting");

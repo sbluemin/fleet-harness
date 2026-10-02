@@ -36,7 +36,7 @@ import { readHostPickerSurface } from "../chrome/components/command-band-system-
 import { HostPickerScreen } from "../../../../features/remote-access/client/host-picker-surface.js";
 import { fetchGlobalSettingsState } from "../../../../features/settings/client/global-settings-api.js";
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
-import { connectOperationsSse } from "../integration/operations-sse.js";
+import { connectOperationsSse, installOperationsSseWake } from "../integration/operations-sse.js";
 import { installOperationArchive } from "../integration/operation-archive.js";
 import { installModalOpenMarker } from "../integration/modal-open-marker.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
@@ -124,6 +124,7 @@ if (app && hostPicker) {
   // 보관함의 수와 목록 — 보관된 Operation은 일반 목록에 없으므로 자기 사건으로 따라간다.
   installOperationArchive(subscribeConsoleChannel);
   connectOperationsSse();
+  installOperationsSseWake();
   consumeInitialZenModeParam();
   createRoot(app).render(
     <StrictMode>
