@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   applyObserverStatus: vi.fn(),
@@ -13,15 +13,8 @@ const mocks = vi.hoisted(() => ({
   setConnectionState: vi.fn(),
 }));
 
-vi.mock("../core/client/src/integration/api.js", () => ({
-  ApiError: class ApiError extends Error {
-    readonly status: number;
-
-    constructor(status: number, message: string) {
-      super(message);
-      this.status = status;
-    }
-  },
+vi.mock("../core/client/src/integration/api.js", async (importOriginal) => ({
+  ApiError: (await importOriginal<typeof import("../core/client/src/integration/api.js")>()).ApiError,
   fetchGroups: vi.fn(async () => null),
   fetchObserverStatus: mocks.fetchObserverStatus,
   fetchOperations: mocks.fetchOperations,
@@ -47,6 +40,8 @@ vi.mock("../core/client/src/integration/desktop-fullscreen.js", () => ({
 }));
 
 import { connectOperationsSse, reconnectOperationsSseNow } from "../core/client/src/integration/operations-sse.js";
+import { ApiError } from "../core/client/src/integration/api.js";
+import { getState as readState, setState } from "../core/client/src/integration/store.js";
 
 class TestEventSource {
   static instances: TestEventSource[] = [];
@@ -80,7 +75,16 @@ class TestEventSource {
 }
 
 describe("operations SSE update availability", () => {
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import("../core/client/src/integration/store.js")>("../core/client/src/integration/store.js");
+    setState({ controlReclaimed: null });
+    mocks.getState.mockImplementation(actual.getState);
+    mocks.fetchObserverStatus.mockResolvedValue({ version: "test", updateAvailable: false });
+    vi.stubGlobal("window", new EventTarget());
+  });
+
   afterEach(() => {
+    setState({ controlReclaimed: null });
     TestEventSource.instances = [];
     mocks.applyObserverStatus.mockReset();
     mocks.applyDesktopFullscreenSnapshot.mockReset();
@@ -119,7 +123,7 @@ describe("operations SSE update availability", () => {
   it("re-reads observer status instead of trusting an update frame payload", async () => {
     const status = { version: "1.0.0", updateAvailable: true };
     vi.stubGlobal("EventSource", TestEventSource);
-    mocks.getState.mockReturnValue({ activeTheaterId: "theater-1" });
+    mocks.getState.mockReturnValue({ activeTheaterId: "theater-1", controlReclaimed: null });
     mocks.fetchObserverStatus.mockResolvedValue(status);
 
     connectOperationsSse();
@@ -131,7 +135,7 @@ describe("operations SSE update availability", () => {
 
   it("does not hydrate or connect a delayed manual snapshot from a superseded generation", async () => {
     vi.stubGlobal("EventSource", TestEventSource);
-    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    mocks.getState.mockReturnValue({ activeTheaterId: null, controlReclaimed: null });
     let resolveStaleOperations: (operations: readonly { readonly id: string }[]) => void = () => {
       throw new Error("stale operations fetch did not start");
     };
@@ -157,10 +161,64 @@ describe("operations SSE update availability", () => {
     expect(TestEventSource.instances).toHaveLength(1);
   });
 
+  it("keeps a live session-ended frame disconnected without reloading or reconnecting", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    const reload = vi.fn();
+    vi.stubGlobal("location", { reload });
+    connectOperationsSse();
+    const source = TestEventSource.instances.at(-1)!;
+    source.emit("control:reclaimed", JSON.stringify({ reason: "superseded" }));
+    expect(readState().controlReclaimed).toBe("superseded");
+    expect(source.closed).toBe(true);
+    source.onerror?.();
+    reconnectOperationsSseNow();
+    connectOperationsSse();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(TestEventSource.instances).toHaveLength(1);
+    expect(mocks.resumeConsoleSession).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("recovers a lost session-ended frame from the retry 401 instead of joining again", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.fetchOperations.mockRejectedValue(new ApiError(401, "unauthorized", "reclaimed"));
+    connectOperationsSse();
+    const source = TestEventSource.instances.at(-1)!;
+    source.open();
+    source.onerror?.();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(readState().controlReclaimed).toBe("reclaimed");
+    expect(TestEventSource.instances).toHaveLength(1);
+    expect(mocks.resumeConsoleSession).not.toHaveBeenCalled();
+  });
+
+  it("resumes vanished sessions but stops joining when the pairing has been forgotten", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.fetchOperations.mockRejectedValue(new ApiError(401, "unauthorized"));
+    mocks.resumeConsoleSession.mockResolvedValueOnce(undefined).mockRejectedValue(new ApiError(401, "unauthorized"));
+    connectOperationsSse();
+    TestEventSource.instances.at(-1)!.open();
+    TestEventSource.instances.at(-1)!.onerror?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(1);
+    expect(readState().controlReclaimed).toBeNull();
+    TestEventSource.instances.at(-1)!.open();
+    TestEventSource.instances.at(-1)!.onerror?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(2);
+    TestEventSource.instances.at(-1)!.onerror?.();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(mocks.resumeConsoleSession).toHaveBeenCalledTimes(2);
+    expect(readState().controlReclaimed).toBeNull();
+  });
+
   it("strictly replaces control holder snapshots and preserves them across SSE loss", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", TestEventSource);
-    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    mocks.getState.mockReturnValue({ activeTheaterId: null, controlReclaimed: null });
     const actualState = await vi.importActual<typeof import("../core/client/src/integration/store.js")>("../core/client/src/integration/store.js");
     actualState.setState({ controlHolder: null, controlCurtainDismissed: false });
 

@@ -71,6 +71,7 @@ let state: ConsoleState = {
   connectionLostAt: null,
   controlHolder: null,
   controlCurtainDismissed: false,
+  controlReclaimed: null,
   consoleName: "",
   channel: "unknown",
   // The SDK ConsoleTheme union matches ThemeId; the selected theme passes
@@ -275,6 +276,11 @@ export function applyControlHolder(holder: ControlHolder | null): void {
     controlHolder: holder,
     ...(handleChanged ? { controlCurtainDismissed: false } : {}),
   });
+}
+
+/** 이 원격 세션이 회수·대체로 끝났다. 종착 상태로 굳어 그 뒤의 폴링·재합류가 멈춘다. */
+export function applyControlReclaimed(reason: "reclaimed" | "superseded"): void {
+  setState({ controlReclaimed: reason });
 }
 
 export function dismissControlCurtain(): void {

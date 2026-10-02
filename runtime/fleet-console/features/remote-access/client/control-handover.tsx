@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
+import type { SessionEndedReason } from "./control-session.js";
 import { revokeRemoteAccessSession } from "../../settings/client/global-settings-api.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { formatRelativeTime, useConsoleLocale, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 import { dismissControlCurtain } from "../../../core/client/src/integration/store.js";
+import { desktopPickerUrl, isDesktopShell, useDesktopShellHome } from "../../../core/client/src/integration/desktop-shell.js";
 
 export function ControlBar() {
   const state = useConsoleState();
@@ -173,17 +174,8 @@ const NOTICE_COPY = {
 
 export function ControlReclaimedNotice() {
   const t = useT();
-  const [reason, setReason] = useState<SessionEndedReason | null>(null);
-
-  useEffect(() => {
-    const showNotice = (event: Event) => {
-      // 사유를 읽지 못한 신호는 지금까지의 뜻으로 되돌린다 — 회수가 둘 중 훨씬 흔하다.
-      const detail = (event as CustomEvent<SessionEndedDetail>).detail;
-      setReason(detail?.reason === "superseded" ? "superseded" : "reclaimed");
-    };
-    window.addEventListener(CONTROL_RECLAIMED_EVENT, showNotice);
-    return () => window.removeEventListener(CONTROL_RECLAIMED_EVENT, showNotice);
-  }, []);
+  const reason = useConsoleState().controlReclaimed;
+  const home = useDesktopShellHome();
 
   if (reason === null) return null;
   const copy = NOTICE_COPY[reason];
@@ -194,6 +186,7 @@ export function ControlReclaimedNotice() {
         <span className="control-reclaimed-eyebrow">{t(copy.eyebrow)}</span>
         <h2>{t(copy.title)}</h2>
         <p>{t(copy.body)}</p>
+        {isDesktopShell() && home.origin !== null ? <a className="control-reclaimed-home" href={desktopPickerUrl(home.origin)}>{t("chrome.control.chooseHost")}</a> : null}
       </section>
     </div>,
     document.body,

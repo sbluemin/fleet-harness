@@ -6,7 +6,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { ApiError, applyConsoleUpdate, checkConsoleUpdate } from "../../integration/api.js";
 import { beginUpdateWatch, markUpdateDelegated } from "../../../../../features/updates/client/update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
-import { isDesktopShell, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
+import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
@@ -46,18 +46,6 @@ const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
 const GITHUB_LATEST_RELEASE_URL = "https://github.com/sbluemin/fleet-harness/releases/latest";
 
-/**
- * Desktop 셸과의 계약 리터럴 — 셸이 이 항해를 가로채므로 요청은 기계를 떠나지 않는다.
- * 같은 값이 fleet-desktop/src/remote-bridge.ts에도 선언되어 있다(Console 내부를 import하지
- * 않는다는 규칙 때문이며, DESKTOP_SHELL_PATH와 같은 방식이다). 한쪽만 고치면 목록이 열리지
- * 않고 창이 집으로 돌아가 버리므로, 양쪽을 함께 고친다.
- */
-const PICKER_SURFACE_PARAM = "desktop-surface";
-const PICKER_SURFACE_OPEN = "host-picker";
-const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
-/** 목록을 펼칠 때 실려 가는 값: 지금 사용자가 서 있는 콘솔과, 누른 칩의 자리. 남의 기계는 실리지 않는다. */
-const PICKER_AT_PARAM = "at";
-const PICKER_ANCHOR_PARAM = "anchor";
 /** 창 좌표로 말이 되는 상한. 이보다 큰 값은 칩의 자리가 아니다. */
 const PICKER_ANCHOR_LIMIT = 100_000;
 
@@ -127,14 +115,6 @@ function isConsoleOriginShape(origin: string): boolean {
   }
 }
 
-function pickerUrl(homeOrigin: string, surface: string, at?: string, anchor?: string): string {
-  const url = new URL("/console/", `${homeOrigin}/`);
-  url.searchParams.set(PICKER_SURFACE_PARAM, surface);
-  if (at !== undefined) url.searchParams.set(PICKER_AT_PARAM, at);
-  if (anchor !== undefined) url.searchParams.set(PICKER_ANCHOR_PARAM, anchor);
-  return carryZenMode(url).toString();
-}
-
 /** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, Zen 트레이에서는 위로 열린다(CSS가 자리로 판단). */
 export function ConsoleHelpMenu() {
   const state = useConsoleState();
@@ -184,7 +164,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
    * 셸에게 가야 한다 — 여기서 state만 내리면 빈 덮개가 콘솔을 가린 채 남는다.
    */
   const dismiss = () => {
-    if (inPicker) location.assign(pickerUrl(location.origin, PICKER_SURFACE_DISMISS));
+    if (inPicker) location.assign(desktopPickerUrl(location.origin, PICKER_SURFACE_DISMISS));
     else setOpen(false);
   };
 
@@ -395,7 +375,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   useEffect(() => {
     if (pickerHome === null || !open) return;
     setOpen(false);
-    location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current)));
+    location.assign(desktopPickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current)));
   }, [pickerHome, open, currentOrigin]);
 
   // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
@@ -439,7 +419,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
           aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
           data-tip={chipLabel}
           onClick={() => {
-            if (pickerHome !== null) { location.assign(pickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current))); return; }
+            if (pickerHome !== null) { location.assign(desktopPickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current))); return; }
             setOpen((previous) => !previous);
           }}
         >

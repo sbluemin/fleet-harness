@@ -18491,6 +18491,16 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
   max-width: 420px;
 }
 
+.control-reclaimed-home {
+  color: var(--text-primary);
+  text-underline-offset: 0.2em;
+}
+
+.control-reclaimed-home:hover,
+.control-reclaimed-home:focus-visible {
+  color: var(--brass-ink);
+}
+
 @media (max-width: 640px) {
   .control-bar {
     align-items: flex-start;

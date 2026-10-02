@@ -1,19 +1,18 @@
 import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, fetchTheaters, resumeConsoleSession } from "./api.js";
 import { refreshOperationArchive } from "./operation-archive.js";
 import { OPERATION_CLUSTER_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
-import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
+import type { SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
 import { applyDesktopShellUpdateSnapshot } from "./desktop-shell-update.js";
 import { forgetTriageOperation } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { applyTheaterLifecycle } from "../../../../features/workspace/client/theater.js";
-import { applyControlHolder, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationRemoved, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, hydrateTheaters, setConnectionState } from "./store.js";
+import { applyControlHolder, applyControlReclaimed, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationRemoved, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, hydrateTheaters, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
 /** 깨우기가 앞당긴 시도도 직전 시도와 이만큼은 떨어진다 — 백오프의 가장 짧은 대기와 같다. */
 const WAKE_MIN_GAP_MS = 1_000;
-const CONTROL_RECLAIM_NAVIGATION_DELAY_MS = 2_500;
 
 // 누락 스냅샷은 SSE가 열리기 전에만 hydrate해 이후 실시간 프레임을 덮어쓰지 않는다.
 let reconnectDelayMs = 1_000;
@@ -104,6 +103,7 @@ export function resetConsoleChannelsForTest(): void {
 }
 
 export function connectOperationsSse(): void {
+  if (getState().controlReclaimed !== null) return;
   cancelScheduledRetry();
   activeSource?.close();
   const generation = ++connectionGeneration;
@@ -251,22 +251,7 @@ export function connectOperationsSse(): void {
     try {
       const data = JSON.parse(msg.data) as { readonly reason?: unknown };
       if (!isSessionEnded(data)) return;
-      /**
-       * 서버는 이 프레임 뒤 스트림을 닫는다. 그 close가 onerror로 번지기 전에 이 source를 폐기해야
-       * 일반 단절로 오인한 자동 재합류가 호스트의 Take back을 곧바로 뒤집지 않는다.
-       *
-       * 페어링은 남기므로 Desktop의 호스트 목록처럼 사람이 명시적으로 다시 여는 길은 그대로다.
-       * 현재 문서의 401 자동 복구만 멈춘 뒤 reload한다. 새 문서는 일반 API의 401에서 pairing join을
-       * 시도하지 않고 종료 안내를 그대로 그리므로, 회수된 session이 같은 문서에서 되살아나지 않는다.
-       */
-      source.close();
-      if (activeSource === source) activeSource = null;
-      connectionGeneration += 1;
-      // 예약된 시도가 없으면 깨우기도 붙을 곳이 없다 — 회수된 화면은 온라인·복귀 신호에 다시 합류하지 않는다.
-      cancelScheduledRetry();
-      // 사유를 실어 보낸다 — 안내 문구는 "주인이 되찾았다"와 "다른 기기가 이어받았다"로 갈린다.
-      window.dispatchEvent(new CustomEvent<SessionEndedDetail>(CONTROL_RECLAIMED_EVENT, { detail: { reason: data.reason } }));
-      window.setTimeout(() => location.reload(), CONTROL_RECLAIM_NAVIGATION_DELAY_MS);
+      endSession(data.reason);
     } catch {
       // ignore malformed SSE event
     }
@@ -312,12 +297,18 @@ export function connectOperationsSse(): void {
         // 쓰지 않으면 원격 화면은 401을 영원히 반복하며, 사람에게는 "새 액세스 링크를
         // 받으라"는 잘못된 결론만 남는다. 여기서 한 번, 조용히 다시 합류한다.
         .catch(async (error: unknown) => {
-          if (!(error instanceof ApiError) || error.status !== 401) return;
+          if (retryGeneration !== connectionGeneration || !(error instanceof ApiError) || error.status !== 401) return;
+          // 회수·대체된 세션의 401은 사유를 싣고 온다. 재시작·유휴(vanished)와 달리 자동
+          // 재합류로 되살리지 않고, 살아 있는 프레임과 같은 종료 안내로 수렴한다.
+          if (error.sessionEndReason === "reclaimed" || error.sessionEndReason === "superseded") {
+            endSession(error.sessionEndReason);
+            return;
+          }
           if (sessionResumeRefused) return;
           await resumeConsoleSession().catch((joinError: unknown) => {
             // 401은 페어링이 정말 사라졌다는 답이다 — 더 두드려도 거절 카운터만 올린다.
             // 그 밖의 실패는 아직 답이 아니므로 다음 재시도에서 한 번 더 묻는다.
-            if (joinError instanceof ApiError && joinError.status === 401) sessionResumeRefused = true;
+            if (retryGeneration === connectionGeneration && joinError instanceof ApiError && joinError.status === 401) sessionResumeRefused = true;
           });
         })
         .finally(() => {
@@ -381,7 +372,24 @@ function cancelScheduledRetry(): void {
   pendingRetry = null;
 }
 
+/**
+ * 이 세션이 끝났다(회수·대체). 살아 있는 프레임으로 알았든 재연결 401 사유로 알았든 이 한
+ * 곳으로 수렴한다 — 스트림·재시도·자동 재합류를 모두 걷고 종료 안내만 남긴다. reload하지
+ * 않는다: 세션 없는 `/console/`은 401 JSON이므로 reload는 사람을 그 문서에 가둔다. 명시적
+ * 재오픈(Desktop·모바일 셸 join)만이 복귀 경로다.
+ */
+function endSession(reason: SessionEndedReason): void {
+  sessionResumeRefused = true;
+  cancelScheduledRetry();
+  activeSource?.close();
+  activeSource = null;
+  connectionGeneration += 1;
+  setConnectionState("offline");
+  applyControlReclaimed(reason);
+}
+
 export function reconnectOperationsSseNow(): void {
+  if (getState().controlReclaimed !== null) return;
   cancelScheduledRetry();
   reconnectDelayMs = 1_000;
   wakeBorrowedMs = 0;
@@ -407,6 +415,7 @@ export function reconnectOperationsSseNow(): void {
 }
 
 export function refreshObserverStatus(): void {
+  if (getState().controlReclaimed !== null) return;
   if (statusRefreshInFlight) {
     statusRefreshPending = true;
     return;
