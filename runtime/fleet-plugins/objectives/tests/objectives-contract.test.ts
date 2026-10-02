@@ -15,7 +15,7 @@ import { createLaunchService } from "../server/launch.js";
 import { createObjectiveMcpTools } from "../server/objective-tools.js";
 import { createObjectiveRoutes } from "../server/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../server/store.js";
-import { MAX_FOLLOWUPS, type ObjectiveEvent } from "../server/types.js";
+import { extensionOf, MAX_FOLLOWUPS, type ObjectiveEvent } from "../server/types.js";
 import { RESULT_LIMITS, type ObjectiveResult } from "../server/results.js";
 import { createGhPrLookup, createPrStatusService } from "../server/pr-status.js";
 
@@ -285,6 +285,76 @@ describe("Objectives contract", () => {
     launch.operationPurged("completion-recovery");
     expect(fs.existsSync(h.objectiveFile("completion-recovery"))).toBe(false);
     launch.dispose();
+  });
+
+  // 기존 완료 복구는 확장 회차의 승인·인계·회고 보존을 지나지 않는다. 같은 목표를 반복 확장하는 저장 계약이다.
+  it("extends completed and review-ready objectives repeatedly without losing prior hand-offs or human missions", async () => {
+    const h = harness();
+    const id = "scope-extension";
+    h.add(id, { payload: { session: { harness: "claude-code", sessionName: "same-commander", sessionId: "captured" } } });
+    h.store.adopt(id, { missions: [{ text: "original" }], criteria: ["retain", "recheck"] });
+    const original = h.store.find(id)!;
+    h.store.missionDone(id, original.missions[0]!.id, ["original done"]);
+    original.criteria.forEach((criterion) => h.store.criterionMet(id, criterion.id, "original evidence"));
+    const retrospective = { wentWell: [{ point: "original", because: "instructions" }], fellShort: [{ point: "gap", ifOnly: "check earlier" }] };
+    h.store.handOff(id, { by: "commander", retrospective });
+    await h.launch.complete(id);
+    const completed = h.store.find(id)!;
+    expect((await h.route("objective/extend", { objectiveId: id, context: " " })).status).toBe(400);
+    vi.spyOn(h.operationsHost, "access").mockRejectedValueOnce(new Error("restore_failed"));
+    expect((await h.route("objective/extend", { objectiveId: id, context: "add first scope", language: "en" })).value.error).toBe("restore_failed");
+    expect(h.store.find(id)).toMatchObject({ done: completed.done, extensions: [], handoff: completed.handoff });
+    // 복원 의도만 기록된 중단도 재시작에서 같은 회차로 끝낸다.
+    const store = createObjectiveStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], operations: h.operationsHost, emit: () => {} });
+    const launch = createLaunchService(h.ctx, store);
+    await launch.resumeOperationIntents();
+    expect(store.find(id)).toMatchObject({ done: null, planning: true, criteriaOpen: true, awaitingHandoff: false,
+      extensions: [{ n: 1, context: "add first scope", previousHandoff: { by: "commander", retrospective } }] });
+    const human = store.missionAdd(id, { text: "human addition" }, { unplaced: true, by: "human" }).missions.at(-1)!;
+    store.missionPatch(id, human.id, { prerequisites: [original.missions[0]!.id] });
+    const tools = createObjectiveMcpTools(h.ctx, store, launch);
+    const call = async (name: string, args: Record<string, unknown>) => await tools.find((tool) => tool.name === name)!.execute({ objectiveId: id, ...args }, { cwd: h.workspace, caller: { kind: "operation", operationId: id } }) as { isError: boolean; structuredContent: Record<string, unknown> };
+    await call("read", {});
+    expect((await call("mark_criterion", { n: 1, met: false })).structuredContent.error).toBe("recheck_approval_required");
+    expect((await call("plan", { missions: [{ text: "human addition" }] })).structuredContent.error).toBe("mission_kept");
+    expect((await call("plan", { missions: [{ text: "first extension" }], criteria: [{ recheck: original.criteria[1]!.id, reason: "scope changed" }, { text: "new criterion" }] })).isError).toBe(false);
+    expect(store.find(id)!.missions.some((mission) => mission.id === human.id && !mission.unplaced)).toBe(true);
+    expect(store.find(id)!.criteria.map((criterion) => criterion.met)).toEqual(["original evidence", "original evidence"]);
+    expect(store.find(id)!.extensions[0]!.previousHandoff).toEqual(completed.handoff && { by: "commander", at: completed.handoff.at, retrospective });
+    await expect(launch.startCommander(id)).rejects.toThrow("criteria_pending");
+    store.proposalsApproveAll(id);
+    expect(store.find(id)!.criteria.map((criterion) => criterion.met)).toEqual(["original evidence", undefined, undefined]);
+    await launch.startCommander(id);
+    store.find(id)!.missions.filter((mission) => !mission.done).forEach((mission) => store.missionDone(id, mission.id, ["extension done"]));
+    store.find(id)!.criteria.filter((criterion) => !criterion.met).forEach((criterion) => store.criterionMet(id, criterion.id, "new evidence"));
+    store.handOff(id, { by: "commander", retrospective });
+    await launch.complete(id);
+    expect((await launch.extend(id, "add second scope", { language: "en" })).objective.extensions).toHaveLength(2);
+    expect(h.sent.at(-1)!.text).toContain("extension 2");
+    expect(h.sent.at(-1)!.text).toContain("> add second scope");
+    const second = launch.planApplied(id, { missions: [{ text: "second extension" }], criteria: [{ text: "second criterion" }] });
+    expect(second.criteria.every((criterion) => !!criterion.met)).toBe(true);
+    const approvedSecond = store.proposalsApproveAll(id);
+    expect(extensionOf(second.extensions, second.missions.find((mission) => mission.text === "second extension")!.id, "mission")).toBe(2);
+    expect(extensionOf(approvedSecond.extensions, approvedSecond.criteria.at(-1)!.id, "criterion")).toBe(2);
+    await launch.startCommander(id);
+    store.find(id)!.missions.filter((mission) => !mission.done).forEach((mission) => store.missionDone(id, mission.id, ["second done"]));
+    store.find(id)!.criteria.filter((criterion) => !criterion.met).forEach((criterion) => store.criterionMet(id, criterion.id, "second evidence"));
+    store.handOff(id, { by: "human" });
+    // 완료 버튼을 거치지 않은 검토 대기도 같은 입구로 다음 회차에 들어간다.
+    await launch.extend(id, "third scope");
+    const reloaded = createObjectiveStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], operations: h.operationsHost, emit: () => {} });
+    expect(reloaded.find(id)!.extensions.map((round) => round.n)).toEqual([1, 2, 3]);
+    expect(reloaded.find(id)!.extensions.map((round) => round.previousHandoff?.by)).toEqual(["commander", "commander", "human"]);
+    expect(reloaded.find(id)!.extensions[0]!.previousHandoff).toMatchObject({ retrospective });
+    expect(reloaded.find(id)!.commander.sessionName).toBe("same-commander");
+    // 확장 인계 뒤의 일반 편집은 기존 전체 무효화 규칙이다 — 회차 기록만으로 보존 정책을 다시 켜지 않는다.
+    await launch.startCommander(id);
+    store.handOff(id, { by: "human" });
+    expect(store.find(id)!.extensionActive).toBe(false);
+    store.missionAdd(id, { text: "ordinary later edit" });
+    expect(store.find(id)!.criteria.every((criterion) => !criterion.met)).toBe(true);
+    launch.dispose(); h.launch.dispose();
   });
 
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {

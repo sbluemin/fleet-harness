@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Translate } from "@fleet-console/sdk/i18n";
-import { isLoose, missionReady, unseenRecords, wouldCycle, type Objective, type ObjectiveMission } from "../server/types.js";
+import { extensionOf, isLoose, missionReady, unseenRecords, wouldCycle, type Objective, type ObjectiveMission } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { graphLayout, stretchLayout, type GraphLayout, type Point } from "./graph-layout.js";
 import { GraphPopup } from "./graph-popup.js";
@@ -103,8 +103,12 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     return () => observer.disconnect();
   }, [zoom]);
   const loose = objective.missions.filter(isLoose);
+  const extensionLabels = useMemo(() => new Map(objective.missions.flatMap(m => {
+    const n = extensionOf(objective.extensions, m.id, "mission");
+    return n === null ? [] : [[m.id, t("objectives.extend.chip", { n })] as const];
+  })), [objective.missions, objective.extensions, t]);
   // 배치는 모양(임무·글꼴·폭 구간)별로 모듈 캐시에 담는다. 끄는 동안 오가는 폭과 다시 여는 레일은 담아 둔 배치를 다시 쓴다.
-  const shape = useMemo(() => objective.missions.filter(m => !isLoose(m)).map(m => `${m.id}\u0001${m.text}\u0001${m.prerequisites.join(",")}`).join("\u0002"), [objective.missions]);
+  const shape = useMemo(() => objective.missions.filter(m => !isLoose(m)).map(m => `${m.id}\u0001${m.text}\u0001${m.prerequisites.join(",")}\u0001${extensionLabels.get(m.id) ?? ""}`).join("\u0002"), [objective.missions, extensionLabels]);
   const layout = useMemo(() => {
     const commander = t("objectives.graph.commander");
     const run = (w: number) => {
@@ -112,7 +116,7 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
       let hit = layoutCache.get(key);
       if (hit) layoutCache.delete(key);
       else {
-        hit = graphLayout(objective.missions.filter(m => !isLoose(m)), w, wide, textMeasure(font, wide), commander);
+        hit = graphLayout(objective.missions.filter(m => !isLoose(m)), w, wide, textMeasure(font, wide), commander, 0, extensionLabels);
         if (layoutCache.size >= LAYOUT_CACHE_LIMIT) layoutCache.delete(layoutCache.keys().next().value!);
       }
       layoutCache.set(key, hit);
@@ -311,11 +315,11 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
       <div className={`objectives-graph-canvas${current ? " is-dim" : ""}`} style={{ width: layout.width, height: layout.height, ...(scale < 1 ? { transform: `scale(${scale})`, transformOrigin: "0 0" } : {}) }}>
         <svg className="objectives-graph-edges" width={layout.width} height={layout.height} aria-hidden="true">{layout.edges.map(e => <path key={`${e.from}-${e.to}`} data-from={e.from ?? undefined} data-to={e.to} className={`objectives-graph-edge${e.from ? "" : " is-root"}${current?.id === e.to ? " is-up" : current?.id === e.from ? " is-down" : ""}`} d={e.d} onClick={() => select(e.to)} />)}</svg>
         <span className="objectives-graph-root" style={{ left: layout.root.x, top: layout.root.y }} /><span className="objectives-graph-label is-root" style={{ left: layout.rootLabel.x, top: layout.rootLabel.y }}>{t("objectives.graph.commander")}</span>
-        {objective.missions.filter(m => !isLoose(m)).map(m => { const p = layout.pos.get(m.id)!, label = layout.labels.get(m.id); return <span key={m.id}>{node(m, { left: p.x, top: p.y })}{label ? <span data-graph-label={m.id} className={`objectives-graph-label is-${states.get(m.id)}${current && (current.id === m.id || current.prerequisites.includes(m.id) || m.prerequisites.includes(current.id)) ? " is-lit" : ""}`} style={{ left: label.x, top: label.y, width: label.w }} onPointerDown={e => start(m.id, e)}>{label.lines.map((line, i) => <span key={i}>{line}</span>)}</span> : null}</span>; })}
+        {objective.missions.filter(m => !isLoose(m)).map(m => { const p = layout.pos.get(m.id)!, label = layout.labels.get(m.id); return <span key={m.id}>{node(m, { left: p.x, top: p.y })}{label ? <span data-graph-label={m.id} className={`objectives-graph-label is-${states.get(m.id)}${current && (current.id === m.id || current.prerequisites.includes(m.id) || m.prerequisites.includes(current.id)) ? " is-lit" : ""}`} style={{ left: label.x, top: label.y, width: label.w }} onPointerDown={e => start(m.id, e)}>{label.extension ? <span className="objectives-extension-chip">{label.extension}</span> : null}{label.lines.map((line, i) => <span key={i}>{line}</span>)}</span> : null}</span>; })}
       </div>
       </div>
     </div>
-    {loose.length ? <div className="objectives-graph-tray"><span className="objectives-graph-tray-title">{t("objectives.graph.unplaced")}</span>{loose.map(m => <div className="objectives-graph-tray-item" key={m.id}>{node(m)}<span className="objectives-graph-tray-label" data-graph-label={m.id} onPointerDown={e => start(m.id, e)}>{m.text}</span></div>)}</div> : null}
+    {loose.length ? <div className="objectives-graph-tray"><span className="objectives-graph-tray-title">{t("objectives.graph.unplaced")}</span>{loose.map(m => <div className="objectives-graph-tray-item" key={m.id}>{node(m)}{extensionLabels.get(m.id) ? <span className="objectives-extension-chip">{extensionLabels.get(m.id)}</span> : null}<span className="objectives-graph-tray-label" data-graph-label={m.id} onPointerDown={e => start(m.id, e)}>{m.text}</span></div>)}</div> : null}
     {drag?.moved ? <svg className="objectives-graph-dragline" aria-hidden="true"><path className={reason ? "is-no" : undefined} d={`M${drag.x0},${drag.y0} L${drag.x},${drag.y}`} /></svg> : null}
     {from && over && tipRect && boxRect ? <div className={`objectives-graph-drop-tip${reason ? " is-no" : ""}`} role="status" style={{ left: Math.max(4, Math.min(width - 224, tipRect.left - boxRect.left)), top: tipRect.bottom - boxRect.top + 6 }}><b>{reason ?? t("objectives.graph.drop", { from: number(from), to: number(over) })}</b>{reason ? null : <span>{t("objectives.graph.direction", { from: number(from), to: number(over) })}</span>}</div> : null}
     {popup && shownMission && box.current && !suspended ? <GraphPopup id={popupId} missionId={popup.id} layout={layout} boundary={box.current} pinned={popup.pinned} closing={popup.closing} hidden={!!drag?.moved} label={t("objectives.graph.detail", { n: number(shownMission.id) })} onKeep={keep} onMove={hover} onLeave={() => leave()} onPin={() => { if (!popup.pinned) show(popup.id, true); }} onEscape={() => close(true)}>{renderDetail(shownMission, { close: () => close(true), select, state: states.get(shownMission.id)! })}</GraphPopup> : null}

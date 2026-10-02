@@ -32,7 +32,13 @@ export function planTurn(objective: Objective, language: PromptLanguage): string
     : `Plan objective \`${objective.id}\` — lay the lineup (members, missions, prerequisites and assignments) out on the board; do not carry out any mission.`;
   const annotated = objective.criteriaProposals.filter((proposal) => !!proposal.annotation).length;
   const notice = annotated ? (language === "ko" ? ` 제안 ${annotated}건에 사람의 어노테이션이 있습니다 — 보드에서 읽으세요.` : ` ${annotated} proposals have the person's annotations — read them on the board.`) : "";
-  return `${word}${notice}${quoted(objective.planRequest)}`;
+  const round = objective.extensionActive ? objective.extensions.at(-1) : undefined;
+  const extension = !round ? "" : language === "ko"
+    ? ` 확장 ${round.n} 회차입니다 — 끝난 임무와 기존 기준은 두고 더할 것만 구상하세요. 충족한 옛 기준을 다시 확인해야 하면 criteria에 {recheck: 기준 번호 또는 id, reason}으로 제안하세요. 사람이 승인한 기준만 충족 표시가 풀립니다.`
+    : ` This is extension ${round.n} — keep finished missions and existing criteria and plan only the added scope. Propose any old met criterion that needs rechecking in criteria with {recheck: criterion number or id, reason}; only the person's approval clears its met evidence.`;
+  const request = quoted(round?.context ?? objective.planRequest);
+  const replanning = round && objective.planRequest?.trim() && objective.planRequest.trim() !== round.context ? quoted(objective.planRequest) : "";
+  return `${word}${extension}${notice}${request}${replanning}`;
 }
 
 const EDIT_WORDS: Record<PromptLanguage, Record<ObjectiveEditKind, string>> = {

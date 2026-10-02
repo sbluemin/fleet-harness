@@ -2,7 +2,7 @@ import { missionDepths, type ObjectiveMission } from "../server/types.js";
 
 export interface Point { x: number; y: number }
 export interface Rect extends Point { w: number; h: number }
-interface Label extends Rect { lines: string[]; shown: number; full: boolean }
+interface Label extends Rect { lines: string[]; shown: number; full: boolean; extension?: string }
 export interface GraphEdge { from: string | null; to: string; d: string; points: Point[] }
 export const intersects = (a: Rect, b: Rect, pad = 0) => a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
 const SAMPLE_CELL = 24;
@@ -33,7 +33,7 @@ function ellipsize(text: string, width: number, count: number, measure: (value: 
 }
 
 /** 승인 v3의 깊이 열·충돌 회피 이름 배치. 공간이 부족하면 글자를 없애지 않고 캔버스를 넓힌다. */
-export function graphLayout(missions: readonly ObjectiveMission[], width: number, wide: boolean, measure: (value: string) => number, commander: string, extra = 0) {
+export function graphLayout(missions: readonly ObjectiveMission[], width: number, wide: boolean, measure: (value: string) => number, commander: string, extra = 0, extensions: ReadonlyMap<string, string> = new Map()) {
   const g = wide ? { r: 12, lfs: 12, llh: 16, lines: 1, rootX: 26, x0: 96, right: 70, capW: 210, minCol: 96 } : { r: 11, lfs: 11, llh: 14, lines: 2, rootX: 16, x0: 54, right: 30, capW: 110, minCol: 58 };
   const depth = missionDepths(missions);
   const cols = missions.length ? Math.max(...missions.map(m => depth.get(m.id) ?? 0)) + 1 : 1;
@@ -93,7 +93,9 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
       const preferred = up < down ? "above" : down < up ? "below" : p.col % 2 === 0 ? "above" : "below";
       let best: (Label & { score: number }) | null = null;
       for (const side of [preferred, preferred === "above" ? "below" : "above"]) for (const factor of [1, .84, .7, .58, .46, .36]) for (const count of g.lines > 1 ? [g.lines, 1] : [1]) {
-        const label = fitted(m, factor, count), w = Math.ceil(label.w) + 2, h = label.lines.length * g.llh;
+        const label = fitted(m, factor, count), extension = extensions.get(m.id);
+        // 회차 칩도 이름의 충돌 영역에 넣는다 — 별도로 덧그리면 간선·이웃 이름을 덮는다.
+        const w = Math.ceil(Math.max(label.w, extension ? measure(extension) + 14 : 0)) + 2, h = label.lines.length * g.llh + (extension ? 24 : 0);
         for (const dx of [0, -.3, .3, "L", "R", -.46, .46]) {
           const x = dx === "L" ? p.x - g.r + 1 : dx === "R" ? p.x + g.r - 1 - w : p.x - w / 2 + (dx as number) * w;
           const y = side === "above" ? p.y - g.r - 9 - h : p.y + g.r + 12, r = { x, y, w, h };
@@ -103,7 +105,7 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
           for (const [id, q] of pos) if (id !== m.id && Math.hypot(q.x - center.x, q.y - center.y) < own + 2) { closer = true; break; }
           if (closer) continue;
           const score = label.shown * 10 + (side === preferred ? 3 : 0) + (dx === 0 ? 2 : 0) - (typeof dx === "number" ? Math.abs(dx) * 2 : 1.2) - w * .01 - count * .5;
-          if (!best || score > best.score) best = { ...label, ...r, score };
+          if (!best || score > best.score) best = { ...label, ...r, score, ...(extension ? { extension } : {}) };
         }
       }
       if (best) { labels.set(m.id, best); occupied.push(best); }
@@ -119,7 +121,7 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
   }
   // 같은 짧은 접두사로 합쳐지는 이름과 사라진 이름에는 폭을 양보한다. 번호는 늘 별도로 유지한다.
   const shortNames = [...best.labels.values()].filter(l => !l.full && l.shown < 8).map(l => l.lines.join(""));
-  if (extra < 64 && (best.labels.size < missions.length || new Set(shortNames).size < shortNames.length)) return graphLayout(missions, width, wide, measure, commander, extra + 16);
+  if (extra < 64 && (best.labels.size < missions.length || new Set(shortNames).size < shortNames.length)) return graphLayout(missions, width, wide, measure, commander, extra + 16, extensions);
   const minY = Math.min(...[...pos.values()].map(p => p.y - g.r - 8), ...[...best.labels.values()].map(l => l.y), rootLabel.y, root.y - 10);
   const maxY = Math.max(...[...pos.values()].map(p => p.y + g.r + 11), ...[...best.labels.values()].map(l => l.y + l.h), rootLabel.y + rootLabel.h);
   const dy = 4 - minY;

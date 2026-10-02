@@ -6,10 +6,11 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 
-import { commanderMode, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
+import { commanderMode, extensionOf, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting, type MessageRecipient } from "./action-band.js";
 import { DecisionGlyph, DecisionList, DecisionRequestBlock } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
+import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
 import { ObjectiveResults, ResultsGlyph, ResultsHeadTools } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
@@ -1076,6 +1077,7 @@ const PROPOSAL_PLACEHOLDER: Readonly<Record<ObjectiveCriterionProposal["kind"], 
   add: "objectives.proposal.ph.add",
   revise: "objectives.proposal.ph.revise",
   retire: "objectives.proposal.ph.retire",
+  recheck: "objectives.proposal.ph.recheck",
 };
 
 /**
@@ -1083,7 +1085,8 @@ const PROPOSAL_PLACEHOLDER: Readonly<Record<ObjectiveCriterionProposal["kind"], 
  * 삭제는 원문 전체 취소선과 이유. 사람은 제안 문구를 고치지 않는다 — 승인·거절하거나 어노테이션을 달아 다시 구상하게 한다.
  * 어노테이션은 스티어링이 아니다: 저장만 하고, 다음 「다시 구상」 때 지휘관이 보드에서 읽는다.
  */
-function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, annotating, onAnnotate }: {
+function ProposalRow({ proposal, target, n, extension, objectiveId, t, call, touchable, annotating, onAnnotate }: {
+  readonly extension?: number | null;
   readonly proposal: ObjectiveCriterionProposal;
   /** 수정·삭제 대상인 승인된 기준 — 추가면 null. */
   readonly target: ObjectiveCriterion | null;
@@ -1103,7 +1106,7 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
   const settled = useRef(false);
   const open = touchable && annotating === proposal.id;
   const saved = proposal.annotation ?? "";
-  const label = proposal.kind === "add" ? t("objectives.proposal.add") : t(proposal.kind === "revise" ? "objectives.proposal.revise" : "objectives.proposal.retire", { n });
+  const label = proposal.kind === "add" ? t("objectives.proposal.add") : t(proposal.kind === "revise" ? "objectives.proposal.revise" : proposal.kind === "recheck" ? "objectives.proposal.recheck" : "objectives.proposal.retire", { n });
   const decide = (path: "/criterion/approve" | "/criterion/reject") => void call(path, { objectiveId, proposalId: proposal.id });
   /** 칸의 글을 저장한다 — 바뀌었을 때만. 빈 글은 어노테이션을 지운다. */
   const save = () => {
@@ -1122,13 +1125,20 @@ function ProposalRow({ proposal, target, n, objectiveId, t, call, touchable, ann
         {n > 0 ? <span className="objectives-criterion-number" aria-hidden="true">{n}</span> : null}
         <div className="objectives-criterion-body">
           <span className="objectives-proposal-kind">{label}</span>
+          <ExtensionChip n={extension ?? null} t={t} />
           {proposal.kind === "revise" && target ? <del className="objectives-proposal-text is-old"><LinkText text={target.text} /></del> : null}
           {proposal.kind === "retire"
             ? <>
               <del className="objectives-proposal-text"><LinkText text={target?.text ?? ""} /></del>
               {proposal.reason ? <span className="objectives-criterion-sub"><LinkText text={t("objectives.proposal.reason", { reason: proposal.reason })} /></span> : null}
             </>
-            : <span className="objectives-proposal-text"><LinkText text={proposal.text ?? ""} /></span>}
+            : proposal.kind === "recheck"
+              ? <>
+                <span className="objectives-proposal-text"><LinkText text={target?.text ?? ""} /></span>
+                {proposal.reason ? <span className="objectives-criterion-sub"><LinkText text={t("objectives.proposal.reason", { reason: proposal.reason })} /></span> : null}
+                <span className="objectives-criterion-sub">{t("objectives.proposal.recheckHint")}</span>
+              </>
+              : <span className="objectives-proposal-text"><LinkText text={proposal.text ?? ""} /></span>}
         </div>
         <span className="objectives-criterion-state is-proposal">{t("objectives.proposal.state")}</span>
       </div>
@@ -1457,6 +1467,9 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
 
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
+  const extension = objective.extensions.at(-1);
+  const missionExtension = (id: string) => extensionOf(objective.extensions, id, "mission");
+  const criterionExtension = (id: string) => extensionOf(objective.extensions, id, "criterion");
 
   const sHead = (<>
       <div className="objectives-group">
@@ -1495,6 +1508,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.objective.delete")} title={t("objectives.objective.delete")} onClick={async () => { if (removing.current) return; removing.current = true; const removed = await call<{ objective: Objective }>("/objective/remove", { objectiveId: objective.id }).finally(() => { removing.current = false; }); if (removed) { if (removed.objective.removed) upsertObjectiveLocally(removed.objective); else removeObjectiveLocally(objective.id); toast(t("objectives.toast.deleted")); } }}><TrashGlyph /></button> : null}
           {placeButton}
         </div>
+        {extension ? <div className="objectives-extension-current">
+          <div><ExtensionChip n={extension.n} t={t} /><time dateTime={new Date(extension.at).toISOString()}>{t("objectives.extend.started", { date: recordTime(extension.at, language, "") })}</time></div>
+          <p className="objectives-extension-request"><b>{t("objectives.extend.request")}</b><LinkText text={extension.context} /></p>
+        </div> : null}
         {busy ? <div className="objectives-busy-line" role="status"><i aria-hidden="true" /><span>{t(objective.planning ? "objectives.planning" : "objectives.busy")}</span></div> : null}
       </div>
   </>);
@@ -1588,15 +1605,19 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         <div id="objectives-sec-criteria" hidden={!criteriaOpen}>
           {objective.criteria.map((criterion, index) => {
             const proposal = proposals.find((candidate) => candidate.target === criterion.id);
-            if (proposal) return <ProposalRow key={proposal.id} proposal={proposal} target={criterion} n={index + 1} {...proposalProps} />;
+            const round = criterionExtension(criterion.id);
+            const divider = extension && (index === 0 || round !== criterionExtension(objective.criteria[index - 1]!.id)) ? <ExtensionDivider n={round} t={t} /> : null;
+            if (proposal) return <Fragment key={criterion.id}>{divider}<ProposalRow proposal={proposal} target={criterion} n={index + 1} extension={round} {...proposalProps} /></Fragment>;
             const evidence = criterion.met;
             return (
-              <div key={criterion.id} className={`objectives-criterion${evidence ? " is-met" : ""}`}>
+              <Fragment key={criterion.id}>{divider}
+              <div className={`objectives-criterion${evidence ? " is-met" : ""}`}>
                 <span className="objectives-criterion-mark" aria-hidden="true" />
                 <span className="objectives-criterion-number" aria-hidden="true">{index + 1}</span>
                 <div className="objectives-criterion-body">
                   <WrapText key={criterion.text} className="objectives-criterion-text" label={t("objectives.criteria.itemAria", { n: index + 1 })} editLabel={t("objectives.link.edit")} value={criterion.text} readOnly={!touchable} maxLength={300}
                     onCommit={(value) => { if (!value) return false; if (value !== criterion.text) void call("/criterion/patch", { objectiveId: objective.id, criterionId: criterion.id, patch: { text: value } }); return true; }} />
+                  <ExtensionChip n={round} t={t} />
                   {evidence ? <span className="objectives-criterion-sub is-evidence">{t("objectives.criteria.evidence", { evidence })}</span>
                     : criterion.by === "commander" ? <span className="objectives-criterion-sub">{t("objectives.criteria.proposed")}</span>
                     : mergedFrom.get(criterion.id) ? <span className="objectives-criterion-sub">{t("objectives.tidied.fromCriterion", { title: mergedFrom.get(criterion.id)! })}</span> : null}
@@ -1604,9 +1625,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
                 <span className={`objectives-criterion-state${evidence ? " is-met" : ""}`}>{t(evidence ? "objectives.criteria.met" : "objectives.criteria.unchecked")}</span>
                 {touchable ? <button type="button" className="objectives-glyph objectives-criterion-remove" title={t("objectives.criteria.remove")} aria-label={t("objectives.criteria.remove")} onClick={() => void call("/criterion/remove", { objectiveId: objective.id, criterionId: criterion.id })}><TrashGlyph /></button> : null}
               </div>
+              </Fragment>
             );
           })}
-          {proposals.filter((proposal) => proposal.kind === "add").map((proposal) => <ProposalRow key={proposal.id} proposal={proposal} target={null} n={0} {...proposalProps} />)}
+          {proposals.filter((proposal) => proposal.kind === "add").map((proposal) => <ProposalRow key={proposal.id} proposal={proposal} target={null} n={0} extension={extension?.n} {...proposalProps} />)}
           {touchable ? (
             <div className="objectives-row objectives-mission-add">
               <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
@@ -1640,7 +1662,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       {mission.why[other.id] && mission.why[other.id] !== "human" ? <small>{mission.why[other.id]}</small> : null}
     </div>;
     return <>
-      <div className="objectives-popup-head"><span>{t("objectives.graph.detail", { n: index })}</span><span className={`objectives-popup-state is-${state}`}><i />{t(`objectives.graph.state.${state}`)}</span><button type="button" className="objectives-glyph" aria-label={t("objectives.detail.close")} onClick={close}><CloseGlyph /></button></div>
+      <div className="objectives-popup-head"><span>{t("objectives.graph.detail", { n: index })}</span><ExtensionChip n={missionExtension(mission.id)} t={t} /><span className={`objectives-popup-state is-${state}`}><i />{t(`objectives.graph.state.${state}`)}</span><button type="button" className="objectives-glyph" aria-label={t("objectives.detail.close")} onClick={close}><CloseGlyph /></button></div>
       <WrapText key={`${mission.id}:${mission.text}`} className="objectives-popup-title" label={t("objectives.graph.titleInput", { n: index })} editLabel={t("objectives.link.edit")} value={mission.text} readOnly={!allowed} maxLength={200} onEscape={close} onCommit={value => { if (!value) return false; if (value !== mission.text) patch({ text: value }); return true; }} />
       {!allowed ? <p className="objectives-popup-hint">{t("objectives.graph.locked")}</p> : null}
       {!mission.done && state === "blocked" ? <p className="objectives-popup-hint">{t("objectives.missions.prerequisites", { missions: mission.prerequisites.filter(id => !objective.missions.find(m => m.id === id)?.done).map(numberOf).join("·") })}</p> : null}
@@ -1688,6 +1710,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         const recordsId = `objectives-records-${mission.id}`;
         return (
           <Fragment key={mission.id}>
+          {extension && (index === 0 || missionExtension(mission.id) !== missionExtension(objective.missions[index - 1]!.id)) ? <ExtensionDivider n={missionExtension(mission.id)} t={t} /> : null}
           <div
             data-mission-id={mission.id}
             className={`objectives-mission${mission.done ? " is-done" : ""}${!mission.done && ready ? " is-ready" : ""}${recordsOpen ? " is-expanded" : ""}${highlightMission === mission.id ? " is-highlight" : ""}${focused?.id === mission.id ? " is-focus" : focused?.prerequisites.includes(mission.id) ? " is-pre" : ""}`}
@@ -1703,6 +1726,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
               <WrapText key={mission.text} className="objectives-mission-text" label={`${index + 1}`} editLabel={t("objectives.link.edit")} value={mission.text} readOnly={!canEditMission(mission.id)} maxLength={200}
                 onCommit={(value) => { if (!value) return false; if (value !== mission.text) void call("/mission/patch", { objectiveId: objective.id, missionId: mission.id, patch: { text: value } }); return true; }} />
               <span className={`objectives-mission-sub${mission.operationId ? ` is-${operationState(mission.operationId)}` : " is-assign"}`} title={mission.operationId ? operationTitle(mission.operationId) : undefined}>{member ? <><MemberMark role={member.role} tone={memberTone(objective, member.id)} /><span className="objectives-mission-member-name">{member.role}</span></> : <><CommanderMark /><span className="objectives-mission-member-name is-commander">{t("objectives.memberSelection.self")}</span></>}</span>
+              <ExtensionChip n={missionExtension(mission.id)} t={t} />
               {mission.unplaced && !mission.done ? <span className="objectives-mission-sub is-unplaced">{t("objectives.missions.unplaced")}</span> : null}
             </div>
             {records.length > 0 ? (
@@ -1798,6 +1822,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
       ) : null}
   </>);
   const sRetro = (<>
+      {objective.extensions.length ? <div className="objectives-group">
+        <SectionHead glyph={<RetroGlyph />} label={t("objectives.extend.previous")} tools={<span className="objectives-criteria-count">{objective.extensions.length}</span>} />
+        <ExtensionHistory objective={objective} t={t} language={language} />
+      </div> : null}
       {/* 회고 — 후속 후보 아래(맨 끝). 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
       {objective.handoff ? (
       <div className="objectives-group">

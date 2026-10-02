@@ -1074,6 +1074,22 @@ button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass-in
 /* 인계 대기 — 아직 지휘관의 차례다. 활동 고리(실행·유휴)는 그대로 두고 가운데 점만 옅은 aurora 로 「검토 직전」을 말한다. 눌러도 완료하지 않고 상세를 연다. */
 .objectives-check.is-linked.is-handoff:not(.is-awaiting) i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: color-mix(in oklch, var(--aurora) 60%, transparent); }
 
+/* 확장 회차는 상태 색을 쓰지 않는다 — 숫자 칩과 구분선, 이전 회고의 접힘으로 범위를 나눈다. */
+.objectives-extension-chip { display: inline-flex; align-items: center; align-self: flex-start; box-sizing: border-box; min-width: 0; width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); font: var(--t-2xs)/1.5 var(--font-mono); white-space: normal; overflow-wrap: anywhere; }
+.objectives-extension-divider { display: flex; align-items: center; gap: 8px; margin: 8px 14px 3px; font: var(--t-2xs)/1.5 var(--font-mono); color: var(--text-tertiary); }
+.objectives-extension-divider::after { content: ""; height: 1px; flex: 1; background: var(--hairline); }
+.objectives-extension-current { margin: 0 14px 8px; }
+.objectives-extension-current > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.objectives-extension-current time, .objectives-extension-time { font: var(--t-2xs)/1.5 var(--font-mono); color: var(--text-tertiary); }
+.objectives-extension-time { display: block; margin: 4px 14px; }
+.objectives-extension-request { display: flex; flex-direction: column; gap: 3px; margin: 6px 0 0; font-size: var(--t-xs); line-height: 1.5; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-extension-request b { font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
+.objectives-extension-past { border-top: 1px solid var(--hairline); }
+.objectives-extension-past > summary { padding: 8px 14px; font: var(--t-xs)/1.5 var(--font-body); color: var(--text-secondary); cursor: pointer; overflow-wrap: anywhere; }
+.objectives-extension-past > summary:hover { background: var(--control-rest-hover); }
+.objectives-extension-past > summary:focus-visible { outline: 1px solid var(--brass); outline-offset: -2px; }
+.objectives-extension-past > .objectives-extension-request { margin: 2px 14px 8px; }
+
 /* 회고 — 두 표, 읽기 전용. 줄 사이 가는 선만 두고 칸은 반씩 나눈다. */
 .objectives-retro { display: flex; flex-direction: column; gap: 10px; padding: 2px 14px 8px; }
 .objectives-retro-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--t-sm); }

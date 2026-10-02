@@ -216,6 +216,8 @@ export interface StoredMission {
    * 사람이 편성에서 간선·「순서대로」·「병렬」로 직접 정하면 풀린다.
    */
   readonly unplaced?: true;
+  /** 사람이 더한 임무 — 배치 뒤에도 구상이 교체하지 않는다. */
+  readonly by?: "human";
   readonly records?: readonly StoredRecord[];
   /** 사람이 읽은 기록 수 — 이보다 많으면 안 읽은 기록이 있다. */
   readonly seen?: number;
@@ -231,7 +233,7 @@ export interface StoredCriterion {
 
 export interface ObjectiveCriterionProposal {
   readonly id: string;
-  readonly kind: "add" | "revise" | "retire";
+  readonly kind: "add" | "revise" | "retire" | "recheck";
   readonly target?: string;
   readonly text?: string;
   readonly reason?: string;
@@ -337,6 +339,20 @@ export type StoredHandoff =
   | { readonly by: "commander"; readonly at: number; readonly retrospective: Retrospective }
   | { readonly by: "human"; readonly at: number };
 
+/** 확장 회차 — 시작 때의 보드 가리킴과 직전 회차의 인계·회고는 이후 편집으로 지우지 않는다. */
+export interface ObjectiveExtension {
+  readonly n: number;
+  readonly at: number;
+  readonly context: string;
+  readonly missionIds: readonly string[];
+  readonly criterionIds: readonly string[];
+  readonly previousHandoff: StoredHandoff | null;
+}
+
+/** 처음 생긴 확장 회차 — 시작 스냅샷에 없는 항목이 그 회차에서 더해졌다. */
+export const extensionOf = (extensions: readonly ObjectiveExtension[], id: string, kind: "mission" | "criterion"): number | null =>
+  extensions.findLast((round) => !(kind === "mission" ? round.missionIds : round.criterionIds).includes(id))?.n ?? null;
+
 export interface DecisionOption {
   readonly id: string;
   readonly label: string;
@@ -440,7 +456,10 @@ export interface StoredObjective {
   /** 목표 완료 — 완료는 늘 사람이 누른다. */
   readonly done?: { readonly at: number };
   /** Core 요청 접수 전 중단을 복구하는 내부 의도. UI 상태나 구성원별 세대가 아니다. */
-  readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active" };
+  readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active"; readonly extensionContext?: string };
+  readonly extensions?: readonly ObjectiveExtension[];
+  /** 확장 회차의 옛 기준 보존 정책 — 인계·완료로 끝나며, 일반 재구상은 다시 켜지 않는다. */
+  readonly extensionActive?: true;
   /** 인계 기록 — 있으면 인계 대기를 지나 검토 대기다. */
   readonly handoff?: StoredHandoff;
   readonly criteria?: readonly StoredCriterion[];
@@ -535,6 +554,7 @@ export interface ObjectiveMission {
   readonly member: string | null;
   readonly memberBy?: "human";
   readonly unplaced?: true;
+  readonly by?: "human";
   /** 담당 Operation — 위임했을 때만. */
   readonly operationId: string | null;
   /** 담당 세션 이름·모델·강도 — 담당 Operation 에서 읽는다. */
@@ -579,6 +599,8 @@ export interface Objective {
   readonly awaitingReview: boolean;
   /** 인계 기록 — 검토 대기와 완료된 목표에 남는다. 사람이 넘겼으면 retrospective 가 null. */
   readonly handoff: ObjectiveHandoff | null;
+  readonly extensions: readonly ObjectiveExtension[];
+  readonly extensionActive: boolean;
   readonly criteria: readonly ObjectiveCriterion[];
   readonly criteriaProposals: readonly ObjectiveCriterionProposal[];
   readonly members: readonly ObjectiveMember[];
@@ -693,9 +715,9 @@ export function settled(objective: Pick<StoredObjective, "missions" | "criteria"
   return objective.missions.every((mission) => mission.done) && (objective.criteria ?? []).every((criterion) => !!criterion.met);
 }
 
-type ReviewShape = Pick<StoredObjective, "done" | "missions" | "criteria" | "criteriaProposals" | "handoff">;
+type ReviewShape = Pick<StoredObjective, "done" | "missions" | "criteria" | "criteriaProposals" | "handoff" | "planning" | "extensionActive">;
 /** 인계 대기 — 끝나지 않은 목표의 할 일이 끝났고, 아직 아무도 검토로 넘기지 않았다. */
-export const awaitingHandoff = (objective: ReviewShape): boolean => !objective.done && !objective.handoff && settled(objective);
+export const awaitingHandoff = (objective: ReviewShape): boolean => !objective.done && !(objective.planning && objective.extensionActive) && !objective.handoff && settled(objective);
 /** 검토 대기 — 끝나지 않은 목표의 할 일이 끝났고 인계 기록이 있다. */
 export const awaitingReview = (objective: ReviewShape): boolean => !objective.done && !!objective.handoff && settled(objective);
 
@@ -710,9 +732,11 @@ export function withValidHandoff<T extends ReviewShape>(objective: T): T {
 }
 
 /** 기준의 충족 표시를 모두 거둔다 — 새 작업이 생기면 앞선 판단은 옛 보드에 대한 것이다. */
-export function withoutMet<T extends Pick<StoredObjective, "criteria">>(objective: T): T {
-  if (!objective.criteria?.some((criterion) => criterion.met)) return objective;
-  return { ...objective, criteria: objective.criteria.map(({ met: _met, ...rest }) => rest) };
+export function withoutMet<T extends Pick<StoredObjective, "criteria" | "extensions" | "extensionActive">>(objective: T): T {
+  // 확장 시작 때 있던 기준은 사람이 승인한 recheck만 충족을 푼다. 이번 회차의 새 기준은 기존 무효화 규칙을 따른다.
+  const kept = new Set(objective.extensionActive ? objective.extensions?.at(-1)?.criterionIds ?? [] : []);
+  if (!objective.criteria?.some((criterion) => criterion.met && !kept.has(criterion.id))) return objective;
+  return { ...objective, criteria: objective.criteria.map((criterion) => kept.has(criterion.id) ? criterion : (({ met: _met, ...rest }) => rest)(criterion)) };
 }
 
 // ═══ 편성(의존 그래프) ═══════════════════════════════════════════════════════
@@ -861,6 +885,7 @@ export const criterionProposalSchema = z.union([
   z.object({ text: criterionText }).strict(),
   z.object({ revise: z.union([z.number().int().min(1), ids]), text: criterionText }).strict(),
   z.object({ retire: z.union([z.number().int().min(1), ids]), reason: criterionText }).strict(),
+  z.object({ recheck: z.union([z.number().int().min(1), ids]), reason: criterionText }).strict(),
 ]);
 export type CriterionProposalInput = z.output<typeof criterionProposalSchema>;
 
@@ -900,6 +925,16 @@ export const retrospectiveSchema = z.object({
   wentWell: z.array(z.object({ point: retroText, because: retroText }).strict()).min(1).max(MAX_RETRO_PAIRS),
   fellShort: z.array(z.object({ point: retroText, ifOnly: retroText }).strict()).min(1).max(MAX_RETRO_PAIRS),
 }).strict();
+/** 회차는 개수로 자르지 않는다 — 반복 확장의 번호와 이전 회고를 끝까지 보존한다. */
+export const storedExtensionsSchema = z.array(z.object({
+  n: z.number().int().positive(), at: z.number().finite(), context: z.string().trim().min(1).max(MAX_CONTEXT),
+  missionIds: z.array(ids).max(MAX_MISSIONS), criterionIds: z.array(ids).max(MAX_CRITERIA),
+  previousHandoff: z.discriminatedUnion("by", [
+    z.object({ by: z.literal("human"), at: z.number().finite() }).strict(),
+    z.object({ by: z.literal("commander"), at: z.number().finite(), retrospective: retrospectiveSchema }).strict(),
+  ]).nullable(),
+}).strict()).refine((rounds) => rounds.every((round, index) => round.n === index + 1), { message: "extension_sequence" });
+
 export const followupEvidenceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("file"), path: relativePath, line: z.number().int().min(1).optional(), note: evidenceNote }).strict(),
   z.object({ kind: z.literal("command"), text: oneLine(MAX_FOLLOWUP_EVIDENCE_TEXT), note: evidenceNote }).strict(),
