@@ -1,7 +1,7 @@
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { AgentHost } from "../agent/types.js";
-import type { ConsoleActionInput, ConsoleActionResult, ConsoleOperationObservation } from "../mcp/control.js";
+import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
 import type { ReactNode } from "react";
@@ -944,6 +944,14 @@ export interface FleetPluginConsoleControlHost {
    * 남은 질문 호출을 카드 없이 거절한다. 떠 있는 터미널 프로세스는 중단하지 않는다. 없는 Operation은 무시한다.
    */
   setUserQuestions?(operationId: string, policy: "blocked" | "default"): void;
+  /**
+   * 떠 있는 채팅 세션의 모델·강도를 바꾼다 — 채팅 화면의 모델 메뉴와 같은 후보·같은 검증을 지난다. 턴이 도는 중이면 그 턴이 닫히는
+   * 경계로 미루고(`scheduled`), 지금 실행값을 다시 고르면 예약을 거둔다. 이 플러그인이 띄운 Operation(또는 그 자식)만 받는다 —
+   * 아니면 `forbidden`. `effort` 는 런치 어휘이며 null 은 모델 기본이다. 휴면·터미널 세션은 `chat_not_active` 다.
+   */
+  setCoordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
+  /** 떠 있는 채팅 세션의 지금 좌표와 예약. 떠 있는 채팅이 아니면 null. */
+  coordinates?(operationId: string): ConsoleCoordinates | null;
   /**
    * 이 플러그인의 멱등 기동 키(`ConsoleActionInput.launchKey`) 상태 — absent(영속된 적 없음) · reserved(예약만) · pending(이 호스트에서
    * 기동 중) · live · deleting(삭제 유예) · purged. 다른 Theater 에 선 키는 `launch_key_conflict` 로 거절하고 그 Operation 을

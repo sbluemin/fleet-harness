@@ -38,6 +38,9 @@ import {
   OBJECTIVE_FILE,
   type MemberLaunch,
   type MemberNext,
+  COORDINATES_NOT_APPLIED,
+  heldNextOutcome,
+  type HostCoordinates,
   type MemberRouted,
   type StoredMember,
   type StoredMerge,
@@ -101,6 +104,10 @@ export interface ObjectiveStoreOptions {
   readonly now?: () => number;
   /** 세션의 지금 생명주기와 생산자 세대 — 예약이 이미 새 프로세스에 적용됐는지 투영이 가른다(nextApplied). 모르면 null. */
   readonly observe?: (operationId: string) => SessionObservation | null;
+  /** 떠 있는 채팅의 호스트 좌표 — 턴 뒤 예약이 적용됐는지 투영이 가른다. 떠 있는 채팅이 아니거나 모르면 null. */
+  readonly coordinates?: (operationId: string) => HostCoordinates | null;
+  /** 호스트가 떠 있는 채팅의 모델을 바꿀 수 있다 — 채팅 구성원의 메뉴가 「다음 재개부터」 대신 「지금·이번 턴 뒤」를 말한다. */
+  readonly liveSwitch?: boolean;
 }
 
 export type SessionObservation = Pick<ConsoleOperationObservation, "lifecycle" | "generation">;
@@ -108,9 +115,10 @@ export type SessionObservation = Pick<ConsoleOperationObservation, "lifecycle" |
 /**
  * 아직 쓰이지 않은 예약이 이미 실행값이 됐는가. 관측이 live 여야 하고 — 휴면 중 예약은 깨어난 것만으로, 떠 있던 중 예약은 그때의
  * 프로세스가 끝나고 새 세대가 섰을 때 적용이다. 세대를 모르는 관측(세대 표식이 없는 호스트)은 같은 프로세스로 본다.
+ * 호스트가 든 턴 뒤 예약은 같은 프로세스에서 바뀌므로 세대로 가르지 않는다 — 그 결말은 heldNextOutcome 이 호스트 좌표로 가른다.
  */
 export function nextApplied(next: MemberNext, observed: SessionObservation | null | undefined): boolean {
-  if (next.failed || observed?.lifecycle !== "live") return false;
+  if (next.failed || next.held === "host" || observed?.lifecycle !== "live") return false;
   if (next.reservedWhile !== "live") return true;
   return observed.generation !== undefined && observed.generation !== next.reservedGeneration;
 }
@@ -430,7 +438,7 @@ function storedRouted(value: StoredMember["routed"]): MemberRouted | null {
 }
 function storedNext(value: StoredMember["next"]): MemberNext | null {
   if (!value || typeof value !== "object" || !shortText(value.model, 128) || !value.from || typeof value.from !== "object") return null;
-  return { ...value, ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), ...(value.reservedWhile === "live" || value.reservedWhile === "dormant" ? {} : { reservedWhile: undefined }), ...(shortText(value.reservedGeneration, 128) ? {} : { reservedGeneration: undefined }) };
+  return { ...value, ...(shortText(value.effort, 32) ? {} : { effort: undefined }), ...(shortText(value.failed, 64) ? {} : { failed: undefined }), ...(value.reservedWhile === "live" || value.reservedWhile === "dormant" ? {} : { reservedWhile: undefined }), ...(shortText(value.reservedGeneration, 128) ? {} : { reservedGeneration: undefined }), ...(value.held === "host" ? {} : { held: undefined }) };
 }
 
 /** 기본값·빈 값은 쓰지 않는다 — 저장 모양에는 뜻이 있는 값만 남는다. */
@@ -591,14 +599,18 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 예약이 있으면 세션 좌표는 이미 다음 재개의 값이다 — 지금 프로세스의 실행값은 예약이 기억한 from 이다. 실패한 예약은 좌표를 되돌렸다.
       const stored = memberNode ? storedNext(member.next) : null;
       // 예약 뒤 새로 선 프로세스가 관측되면 그 기동이 이미 예약 좌표를 읽었다 — 예약이 곧 실행값이고, 라우팅이 고른 모델도 아니다.
-      const applied = !!stored && nextApplied(stored, options.observe?.(member.id));
-      const next = applied ? null : stored;
-      const running = next && !next.failed ? next.from : preset;
+      // 호스트가 든 턴 뒤 예약은 세션 좌표를 고치지 않았다 — 호스트 좌표를 다시 읽어 아직·적용됨·적용되지 않음을 가른다(저장은 정산이 한다).
+      const held = stored && !stored.failed && stored.held === "host" ? heldNextOutcome(stored, options.coordinates?.(member.id) ?? null, preset ?? {}) : null;
+      const applied = held ? held === "applied" : !!stored && nextApplied(stored, options.observe?.(member.id));
+      const next = applied ? null : held === "not_applied" ? { ...stored!, failed: COORDINATES_NOT_APPLIED } : stored;
+      // 실행값의 출처는 세션 좌표 하나다 — 그 좌표를 미리 바꿔 둔 재개 예약일 때만 예약이 기억한 from 이 지금 프로세스의 값이다.
+      const running = next && !next.failed && next.held !== "host" ? next.from : preset;
       return { id: member.id, role: member.role, by: member.by, ...(member.brief ? { brief: member.brief } : {}),
         subagents: member.subagents === true, launch: member.launch ?? { mode: "route" as const },
         sessionName: preset?.sessionName ?? null, ...(running?.model ? { model: running.model } : {}), ...(running?.effort ? { effort: running.effort } : {}),
         routed: memberNode && !applied ? storedRouted(member.routed) : null,
-        next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null, reservedWhile: next.reservedWhile ?? "dormant" } : null };
+        switchesLive: options.liveSwitch === true && preset?.viewMode === "chat",
+        next: next ? { model: next.model, ...(next.effort ? { effort: next.effort } : {}), failed: next.failed ?? null, reservedWhile: next.reservedWhile ?? "dormant", afterTurn: next.held === "host" } : null };
     });
     const byMember = new Map(members.map((member) => [member.id, member]));
     const recorded = load(node?.theaterId ?? pending!.theaterId).has(stored.operationId);

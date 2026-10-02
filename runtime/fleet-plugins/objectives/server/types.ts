@@ -99,9 +99,38 @@ export interface MemberNext {
   readonly reservedWhile?: "dormant" | "live";
   /**
    * 떠 있던 중 예약의 그때 관측 세대. 없는 live 예약은 세대 표식 이전에 저장됐다 — 그 프로세스는 Console 재시작과 함께 끝났으므로
-   * 세대가 보이는 live 관측이면 적용이다.
+   * 세대가 보이는 live 관측이면 적용이다. 호스트가 든 턴 뒤 예약(held)에는 쓰지 않는다.
    */
   readonly reservedGeneration?: string;
+  /**
+   * 떠 있는 채팅의 도는 턴 뒤 예약 — 호스트가 메모리에 들고 그 턴이 닫히는 경계에서 자식에 적용한다. 세션 좌표(payload)는 고치지 않았고
+   * 적용될 때 호스트가 고친다. 그래서 정산은 호스트 좌표를 다시 읽어서 한다: 예약이 남았으면 아직, 비었고 실행값이 이 값이면 적용됨,
+   * 비었는데 실행값이 다르면 적용되지 않음(버림·실패·사람의 취소, 또는 그사이 잠들어 사라짐).
+   */
+  readonly held?: "host";
+}
+
+/** 턴 뒤 예약이 적용되지 않은 채 사라졌다 — 실패 표시의 사유 코드다. */
+export const COORDINATES_NOT_APPLIED = "coordinates_not_applied";
+
+/** 정산에 쓰는 호스트 좌표 — 떠 있는 채팅의 실행값과 경계를 기다리는 예약. 떠 있는 채팅이 아니면 null 이다. */
+export interface HostCoordinates {
+  readonly model: string;
+  readonly effort: string | null;
+  readonly pending: { readonly model: string; readonly effort: string | null } | null;
+}
+
+const samePair = (a: MemberPreset, b: MemberPreset) => (a.model ?? "") === (b.model ?? "") && (a.effort ?? "") === (b.effort ?? "");
+
+/**
+ * 호스트가 든 예약의 지금 결말. `running` 은 호스트 좌표가 없을 때(휴면·터미널) 읽는 세션 좌표다 — 그 경우 메모리의 예약은
+ * 사라졌으므로 세션 좌표가 예약값이면 적용된 것이고 아니면 적용되지 않은 것이다.
+ */
+export function heldNextOutcome(next: Pick<MemberNext, "model" | "effort">, host: HostCoordinates | null, running: MemberPreset): "pending" | "applied" | "not_applied" {
+  const target = { model: next.model, ...(next.effort ? { effort: next.effort } : {}) };
+  if (host?.pending && samePair({ model: host.pending.model, ...(host.pending.effort ? { effort: host.pending.effort } : {}) }, target)) return "pending";
+  const now = host ? { model: host.model, ...(host.effort ? { effort: host.effort } : {}) } : running;
+  return samePair(now, target) ? "applied" : "not_applied";
 }
 
 export interface StoredMember {
@@ -125,8 +154,13 @@ export interface ObjectiveMember extends Omit<StoredMember, "launch" | "subagent
   readonly model?: string;
   readonly effort?: string;
   readonly routed: MemberRouted | null;
-  /** 다음 재개부터 쓸 값 — 실패했으면 failed 에 사유 코드. */
-  readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null; readonly reservedWhile: "dormant" | "live" } | null;
+  /**
+   * 채팅 구성원이라 떠 있는 동안 고른 모델을 호스트가 곧바로(유휴) 또는 이번 턴 뒤(작업 중) 바꾼다. 터미널이거나 호스트가 그 능력을
+   * 내놓지 않으면 false — 떠 있어도 다음 재개부터 바뀐다. 휴면 여부는 화면이 구성원의 지금 활동으로 가른다.
+   */
+  readonly switchesLive: boolean;
+  /** 다음 재개부터 쓸 값 — 실패했으면 failed 에 사유 코드. afterTurn 이면 다음 재개가 아니라 떠 있는 채팅의 도는 턴이 닫히는 경계에서 바뀌는(실패면 바뀌지 않은) 예약이다. */
+  readonly next: { readonly model: string; readonly effort?: string; readonly failed: string | null; readonly reservedWhile: "dormant" | "live"; readonly afterTurn: boolean } | null;
 }
 
 /** 라우팅 판단 결과를 다음 개시에 다시 쓰는 시간 — 그 뒤에는 다시 판단한다. */

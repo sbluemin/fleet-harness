@@ -179,6 +179,16 @@ describe("agent chat mode routes", () => {
     // 그 지시는 수신 줄을 만들지 않는다 — Console 발신과 세션 간 메시지는 서로 다른 문이다.
     expect(received()).toHaveLength(2);
     await expect(harness.consoleControl.request(caller, { kind: "send", operationId: sessionId, text: "/compact" })).resolves.toMatchObject({ operationId: sessionId });
+    // 떠 있는 채팅의 모델은 플러그인도 채팅 메뉴와 같은 길로 바꾼다 — 유휴면 곧바로 자식에 적용되고 세션 좌표가 따라온다.
+    // 살아 있는 프로세스를 바꾸는 문이라 그 플러그인이 띄운 Operation 만 받는다.
+    const plugin = { kind: "plugin" as const, pluginId: "fleet-todo" };
+    const owned = (await harness.consoleControl.request(plugin, { kind: "launch", theaterId: "theater-1", text: "Own work", viewMode: "chat" })).operationId;
+    await vi.waitFor(() => expect(harness.consoleControl.observe(owned)).toMatchObject({ lifecycle: "live", surface: "chat", activity: "idle" }));
+    await expect(harness.consoleControl.coordinates(plugin, owned, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: true, applied: "now" });
+    expect(harness.modelChanges.at(-1)).toBe("sonnet");
+    expect(harness.operation(owned)?.payload.session).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(harness.consoleControl.readCoordinates(owned)).toEqual({ model: "sonnet", effort: "low", pending: null });
+    await expect(harness.consoleControl.coordinates(plugin, commander, { model: "sonnet", effort: null })).resolves.toEqual({ ok: false, error: "forbidden" });
   });
   it("converts an idle live claude-gateway session: marks payload, invalidates tickets, terminates the pty", async () => {
     const harness = await createHarness();
@@ -338,6 +348,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   writeFileSync(claudeBin, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   vi.stubEnv("CLAUDE_BIN", claudeBin);
   const sends: string[] = [];
+  const modelChanges: string[] = [];
   const closeChat = vi.fn();
   let emitToLatest: (message: Record<string, unknown>) => void = () => { throw new Error("No open chat session"); };
   // 세션 하나가 여러 프롬프트를 받는다 — 보낼 때마다 그 턴의 메시지가 열린 스트림으로 흘러든다.
@@ -361,6 +372,8 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
       stopTask: async () => {},
       backgroundTasks: async () => true,
       getContextUsage: async () => null,
+      setModel: async (model: string) => { modelChanges.push(model); },
+      applySessionSettings: async () => {},
       close: () => { closeChat(); closed = true; wake(); },
       [Symbol.asyncIterator]() {
         return {
@@ -561,6 +574,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     openSession,
     closeChat,
     sends,
+    modelChanges,
     responses,
     writes,
     /** PTY가 방출하는 OSC 제목 — Claude Code의 작업 스피너와 유휴 글리프. */

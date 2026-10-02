@@ -36,7 +36,7 @@ import { writeAgentSessionEvents } from "./observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./osc-agent-activity.js";
 import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
-import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
+import { AgentChatRegistry, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
 import { maskChatText, neutralizeChatOriginTag, type ChatOrigin } from "./chat-events.js";
 import type { ConsoleUseActions } from "../../../console-use/host/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
@@ -627,6 +627,15 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
       return { operationId, delivery: "queued" };
     },
+    // 채팅 화면의 모델 메뉴와 같은 길 — 떠 있는 채팅 세션만 바꾼다. 휴면·터미널은 다음 기동의 좌표(payload)가 다룬다.
+    async coordinates(operationId, input) {
+      const node = ctx.host.operations.get(operationId);
+      if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) return { ok: false, error: "unknown_operation" };
+      const chat = chatRegistry.get(operationId);
+      if (!chat || ctx.host.operations.isTransitioning?.(operationId)) return { ok: false, error: "chat_not_active" };
+      return applyChatCoordinates(chat, input.model, input.effort);
+    },
+    readCoordinates: (operationId) => chatRegistry.get(operationId)?.readCoordinates() ?? null,
   });
   if (detachControl) ctx.host.lifecycle.registerCleanup(detachControl);
 
@@ -1915,6 +1924,21 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const body = await ctx.host.http.readJsonBody<{ readonly model?: unknown; readonly effort?: unknown }>(req);
     const model = typeof body?.model === "string" ? body.model : "";
     const effort = typeof body?.effort === "string" && body.effort.length > 0 ? body.effort : null;
+    const result = await applyChatCoordinates(chat, model, effort);
+    if (!result.ok) {
+      const status = result.error === "invalid_model" || result.error === "invalid_effort" ? 400 : result.error === "coordinates_apply_failed" ? 502 : 409;
+      ctx.host.http.writeJson(res, status, { error: result.error });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { ok: true, applied: result.applied });
+    return true;
+  }
+
+  /**
+   * 채팅 화면의 모델 메뉴와 플러그인의 Console 제어가 함께 지나는 변경 — 후보는 런치 메뉴가 세우는 그 행과 칩이다.
+   * 두 표면이 다른 목록으로 다루면 런치에서 끈 모델을 한쪽에서만 고를 수 있게 된다.
+   */
+  async function applyChatCoordinates(chat: NonNullable<ReturnType<AgentChatRegistry["get"]>>, model: string, effort: string | null): Promise<AgentChatCoordinatesResult | { readonly ok: false; readonly error: "invalid_model" }> {
     // 런치 메뉴와 같은 행을 세우되 CLI 설치 탐지는 건너뛴다 — 채팅이 이미 돌고 있으니 CLI는 있고,
     // 탐지는 바꿀 때마다 자식 프로세스를 띄워 응답을 초 단위로 늦춘다.
     const selection = deps.readAiGatewaySettings ? resolveAiGatewaySelection(deps.readAiGatewaySettings()) : undefined;
@@ -1922,21 +1946,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       .find((kind) => kind.id === "claude")
       ?.variants?.flatMap((group) => group.rows)
       .find((candidate) => candidate.launch.model === model);
-    if (!row) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_model" });
-      return true;
-    }
-    if (effort !== null && !(row.chips ?? []).some((chip) => chip.launch.effort === effort)) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_effort" });
-      return true;
-    }
-    const result = await chat.changeCoordinates(model, effort);
-    if (!result.ok) {
-      ctx.host.http.writeJson(res, result.error === "coordinates_apply_failed" ? 502 : 409, { error: result.error });
-      return true;
-    }
-    ctx.host.http.writeJson(res, 200, { ok: true, applied: result.applied });
-    return true;
+    if (!row) return { ok: false, error: "invalid_model" };
+    if (effort !== null && !(row.chips ?? []).some((chip) => chip.launch.effort === effort)) return { ok: false, error: "invalid_effort" };
+    return chat.changeCoordinates(model, effort);
   }
 
   /**

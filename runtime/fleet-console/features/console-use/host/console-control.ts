@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ensureSafeDirectory } from "@fleet-console/infra";
 import { sanitizeLaunchPrompt } from "@fleet-console/agent-runtime/fleet";
 import type { OperationNode } from "@fleet-console/sdk/operations";
-import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
+import type { ConsoleCaller, ConsoleActionInput, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
 import { LaunchKeyError, type LaunchKeyLedger, type LaunchKeyState } from "./launch-keys.js";
@@ -72,6 +72,9 @@ const INFLIGHT_LIMIT_MS = 24 * 60 * 60_000;
 export interface ConsoleExecutionAdapter {
   observe(operationId: string): ConsoleOperationObservation | null;
   execute(input: ConsoleActionInput, assertCurrent: () => void, settled: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, caller: ConsoleCaller): Promise<{ readonly operationId: string; readonly delivery: "queued" | "confirmed" | "requested" }>;
+  /** 떠 있는 채팅의 모델·강도 변경 — 채팅 화면의 라우트와 같은 검증·같은 세션 메서드를 지난다. 소유는 여기서 이미 따졌다. */
+  coordinates?(operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult>;
+  readCoordinates?(operationId: string): ConsoleCoordinates | null;
 }
 export interface ConsoleControlDeps {
   readonly directory: string;
@@ -384,11 +387,28 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     if (after < (events[0]?.seq ?? 1) - 1) fail("cursor_expired");
     return { cursor: `${epoch}:${sequence}`, events: events.filter((e) => e.seq > after), complete: true, retention: "1000 events; host lifetime" };
   }
+  /**
+   * 떠 있는 채팅의 모델·강도를 바꾼다. 돈이 드는 살아 있는 프로세스를 바꾸므로 그 플러그인이 띄운 Operation(또는 그 자식)만 받는다 —
+   * 자식 지우기와 같은 소유 규칙(`launchedBy`)이다. 검증과 적용은 실행 어댑터가 채팅 화면의 라우트와 같은 길로 한다.
+   */
+  async function coordinates(caller: ConsoleCaller, operationId: string, input: { readonly model: string; readonly effort: string | null }): Promise<ConsoleCoordinatesResult> {
+    const op = node(operationId);
+    if (!op) return { ok: false, error: "unknown_operation" };
+    const owners = [op, ...(op.parentOperationId ? [node(op.parentOperationId)] : [])];
+    const ownedBy = (candidate: OperationNode | undefined | null) => {
+      const by = candidate?.payload.launchedBy;
+      return caller.kind === "plugin" && !!by && typeof by === "object" && (by as { kind?: unknown }).kind === "plugin" && (by as { pluginId?: unknown }).pluginId === caller.pluginId;
+    };
+    if (!owners.some(ownedBy)) return { ok: false, error: "forbidden" };
+    if (!adapter?.coordinates) return { ok: false, error: "chat_not_active" };
+    return adapter.coordinates(operationId, input);
+  }
   function code(error: unknown) { return error instanceof ConsoleControlError ? error.code : error instanceof z.ZodError ? "invalid_arguments" : "execution_unavailable"; }
   return {
     attach(value: ConsoleExecutionAdapter) { if (adapter) throw new Error("Console execution already attached"); adapter = value; return () => { if (adapter === value) adapter = null; }; },
     observe, request, automation, readEvents, briefing, tick,
-    launchKeyState,
+    launchKeyState, coordinates,
+    readCoordinates(operationId: string): ConsoleCoordinates | null { return adapter?.readCoordinates?.(operationId) ?? null; },
     reserveLaunchKeys(caller: ConsoleCaller, theaterId: string, keys: readonly string[]) {
       if (caller.kind !== "plugin") return fail("invalid_launch_option");
       if (!deps.launchKeys) return fail("capability_unavailable");

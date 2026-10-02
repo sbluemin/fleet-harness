@@ -102,6 +102,9 @@ function harness(routingOrigin: () => string | null = () => null) {
     if (!state) return null;
     return state === "dormant" ? { lifecycle: "dormant" as const } : { lifecycle: "live" as const, ...(generations.has(id) ? { generation: generations.get(id) } : {}) };
   };
+  // 떠 있는 채팅의 호스트 좌표 — 호스트처럼 턴이 돌면 예약만, 유휴면 곧바로 적용하고 세션 좌표를 고친다. 강도는 모델의 칩만 받는다.
+  const hostChat = new Map<string, { model: string; effort: string | null; pending: { model: string; effort: string | null } | null }>();
+  const hostEfforts: Record<string, readonly string[]> = { fable: ["high"] };
   // 호스트의 멱등 기동 키 — 키 하나에 Operation 하나, 지운 키는 다시 만들지 않는다. hostFault 는 생성 뒤 응답을 잃는 장애다.
   const keyed = new Map<string, string>();
   const deletedKeys = new Set<string>();
@@ -150,7 +153,7 @@ function harness(routingOrigin: () => string | null = () => null) {
     deleteChild: (id: string) => { if (!operations.get(id)?.parentOperationId) return false; deleted.push(id); return operations.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
-  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, observe: observeLifecycle });
+  const store = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? path.join(workspace, "objectives") : null), operations: operationsHost, emit: (event) => events.push(event), now: () => clock++, observe: observeLifecycle, coordinates: (id) => hostChat.get(id) ?? null });
   let routeBody: unknown;
   let authorized = true;
   let routeResult: { status: number; value: unknown } = { status: 0, value: null };
@@ -197,6 +200,18 @@ function harness(routingOrigin: () => string | null = () => null) {
         },
         setSubagentSpawn: (operationId: string, policy: "blocked" | "default") => { subagentSpawns.push({ operationId, policy }); },
         setUserQuestions: (operationId: string, policy: "blocked" | "default") => { userQuestions.push({ operationId, policy }); },
+        coordinates: (operationId: string) => hostChat.get(operationId) ?? null,
+        setCoordinates: async (operationId: string, input: { model: string; effort: string | null }) => {
+          const chat = hostChat.get(operationId);
+          if (!chat) return { ok: false, error: "chat_not_active" };
+          if (input.effort && hostEfforts[input.model] && !hostEfforts[input.model]!.includes(input.effort)) return { ok: false, error: "invalid_effort" };
+          if (chat.model === input.model && chat.effort === input.effort) { chat.pending = null; return { ok: true, applied: "unchanged" }; }
+          if (activity.get(operationId) === "running") { chat.pending = { ...input }; return { ok: true, applied: "scheduled" }; }
+          Object.assign(chat, input, { pending: null });
+          const parent = [...operations.values()].find((candidate) => candidate.childSessions?.some((child) => child.id === operationId));
+          if (parent) parent.childSessions = parent.childSessions!.map((child) => child.id !== operationId ? child : { ...child, payload: { ...child.payload, session: { ...(child.payload.session as object), model: input.model, effort: input.effort ?? undefined } } });
+          return { ok: true, applied: "now" };
+        },
       },
       paths: { resolveTheaterPath: () => theaterPath },
     },
@@ -229,7 +244,7 @@ function harness(routingOrigin: () => string | null = () => null) {
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, interrupted, resumed, subagentSpawns, userQuestions, surfaces, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, wake };
+  return { ctx, store, events, launch, call, consoleTool, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, interrupted, resumed, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, wake };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -360,7 +375,7 @@ describe("Objectives contract", () => {
 
   // 개시한 구성원의 모델은 세션 좌표가 권위다. 예약이 그 좌표를 바꾸고, 호스트가 한 구성원을 거절해도 개시는 이어져야 한다.
   it("reserves a launched member's model for its next resume and keeps one refused member from stopping the muster", async () => {
-    const { store, launch, route, operations, activity, resumed, hostFault, wake } = harness();
+    const { store, launch, route, operations, activity, resumed, hostFault, wake, hostChat, events } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
     await launch.startCommander(objective.id);
@@ -413,6 +428,39 @@ describe("Objectives contract", () => {
     // 세대 표식 전에 저장된 live 예약의 프로세스는 Console 재시작과 함께 끝났다 — 세대가 보이는 live 관측이면 적용이다.
     store.memberLaunchState(objective.id, reviewer.id, { next: { model: "fable", from: { model: "sonnet", effort: "low" }, reservedWhile: "live" } });
     expect(shown().next).toBeNull();
+
+    // 떠 있는 채팅은 호스트가 바꾼다 — 도는 턴 뒤의 예약은 세션 좌표(채팅 칩이 읽는 값)를 미리 고치지 않는다.
+    await route("member/next-settle", { objectiveId: objective.id, memberId: reviewer.id });
+    hostChat.set(reviewer.id, { model: "sonnet", effort: "low", pending: null });
+    activity.set(reviewer.id, "running");
+    await route("member/patch", { objectiveId: objective.id, memberId: reviewer.id, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } });
+    expect(session()).toMatchObject({ model: "sonnet", effort: "low" });
+    expect(shown()).toMatchObject({ model: "sonnet", effort: "low", next: { model: "opus[1m]", effort: "high", afterTurn: true, failed: null } });
+    // 같은 프로세스에서 바뀌는 예약이라 세대로 가르지 않는다 — 생산자 세대가 바뀌어 보여도 호스트 좌표가 말하기 전에는 아직 예약이다.
+    wake(reviewer.id);
+    activity.set(reviewer.id, "running");
+    expect(shown().next).toMatchObject({ model: "opus[1m]", afterTurn: true, failed: null });
+    // 턴이 닫히는 경계에서 호스트가 적용했다 — 정산이 예약을 거두고, 행의 실행값과 선택이 같은 값을 말한다.
+    Object.assign(hostChat.get(reviewer.id)!, { model: "opus[1m]", effort: "high", pending: null });
+    Object.assign(session(), { model: "opus[1m]", effort: "high" });
+    activity.set(reviewer.id, "idle");
+    await route("member/next-settle", { objectiveId: objective.id, memberId: reviewer.id });
+    expect(shown()).toMatchObject({ model: "opus[1m]", effort: "high", launch: { mode: "model", model: "opus[1m]", effort: "high" }, next: null });
+    expect(store.storedMember(objective.id, reviewer.id)?.next).toBeUndefined();
+    // 경계에서 버려진 예약(그사이 문맥이 커짐)은 예약 없이 옛 값으로 남는다 — 「적용되지 않음」으로 드러난다.
+    activity.set(reviewer.id, "running");
+    await route("member/patch", { objectiveId: objective.id, memberId: reviewer.id, patch: { launch: { mode: "model", model: "sonnet", effort: "low" } } });
+    hostChat.get(reviewer.id)!.pending = null;
+    expect(shown()).toMatchObject({ model: "opus[1m]", next: { model: "sonnet", afterTurn: true, failed: "coordinates_not_applied" } });
+    await route("member/next-cancel", { objectiveId: objective.id, memberId: reviewer.id });
+    // 유휴 채팅은 곧바로 바뀐다 — 실행값은 호스트가 고친 세션 좌표에만 있어도, 방송된 행이 새 실행값을 말한다.
+    activity.set(reviewer.id, "idle");
+    await route("member/patch", { objectiveId: objective.id, memberId: reviewer.id, patch: { launch: { mode: "model", model: "sonnet", effort: "low" } } });
+    expect(events.filter((event) => event.objectiveId === objective.id).at(-1)?.objective?.members.find((member) => member.id === reviewer.id)).toMatchObject({ model: "sonnet", effort: "low", next: null });
+    // 행만 고르면 메뉴가 지금 강도를 이어 싣는다 — 새 모델에 없는 강도면 모델 기본으로 바꾼다(사람이 고르지 않은 값으로 거절하지 않는다).
+    expect((await route("member/patch", { objectiveId: objective.id, memberId: reviewer.id, patch: { launch: { mode: "model", model: "fable", effort: "low" } } })).status).toBe(200);
+    expect(shown()).toMatchObject({ model: "fable", launch: { mode: "model", model: "fable" }, next: null });
+    expect(shown().effort).toBeUndefined();
   });
 
   // 판단 한 번은 비용과 공유 배분 기록을 남긴다 — 사람이 확인한 결과는 다시 판단하지 않고 그대로 띄우고, 설명이 바뀌면 띄우기 전에 멈춘다.

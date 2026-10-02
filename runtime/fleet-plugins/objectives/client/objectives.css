@@ -1306,6 +1306,8 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-member-next.is-failed .objectives-member-next-when { color: var(--coral-ink, var(--coral)); font-weight: var(--weight-medium); }
 .objectives-member-next-body { flex: 1 1 160px; min-width: 0; color: var(--text-secondary); }
 .objectives-member-next-other { flex: none; }
+.objectives-member-next.is-applied { border-style: solid; border-color: color-mix(in oklch, var(--positive) 45%, transparent); background: color-mix(in oklch, var(--positive) 7%, transparent); }
+.objectives-member-next.is-applied .objectives-member-next-when { color: var(--positive); }
 .objectives-member-reason { margin: -2px 14px 6px 52px; font-size: var(--t-xs); line-height: 1.45; color: var(--warn-ink); }
 
 /* 개시 띠의 스위치 — 콘솔 공용 스위치(SettingsToggle) 옆에 낱말과 한 줄 설명. */

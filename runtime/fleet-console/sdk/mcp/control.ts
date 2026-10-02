@@ -80,6 +80,22 @@ export interface ConsoleActionResult {
   readonly delivery?: "queued" | "confirmed" | "requested";
 }
 
+/**
+ * 떠 있는 채팅 세션의 모델·강도 변경 결말. `now` 는 자식에 적용됐고, `scheduled` 는 도는 턴이 닫히는 경계에서 적용된다 —
+ * 그 예약은 호스트 메모리에만 있고 세션 좌표(payload)는 적용될 때 고쳐진다. `unchanged` 는 이미 그 값이라 예약도 거뒀다는 뜻이다.
+ * `chat_not_active` 는 떠 있는 채팅이 아니다(휴면·터미널·아직 세션 없음).
+ */
+export type ConsoleCoordinatesResult =
+  | { readonly ok: true; readonly applied: "now" | "scheduled" | "unchanged" }
+  | { readonly ok: false; readonly error: "unknown_operation" | "forbidden" | "chat_not_active" | "invalid_model" | "invalid_effort" | "context_exceeds_window" | "coordinates_apply_failed" };
+
+/** 떠 있는 채팅 세션의 지금 좌표와 턴 경계를 기다리는 예약. 예약은 적용이 끝나는 순간에야 비워진다. `effort` 는 런치 어휘다. */
+export interface ConsoleCoordinates {
+  readonly model: string;
+  readonly effort: string | null;
+  readonly pending: { readonly model: string; readonly effort: string | null } | null;
+}
+
 export interface ConsoleAutomationInput {
   readonly name: string;
   readonly theaterId: string;

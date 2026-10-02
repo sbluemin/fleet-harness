@@ -16,7 +16,7 @@ import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDet
 import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { LaunchControl, LaunchedText, launchedWords, routingReason, useLaunchRows } from "./launch-control.js";
+import { hasRoutingReason, LaunchControl, LaunchedText, launchedWords, routingReason, useLaunchRows } from "./launch-control.js";
 import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
@@ -487,7 +487,10 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   const settled = useRef(new Map<string, string>());
   const wokenKeys = objective.members.flatMap((member) => {
     if (!member.next || member.next.failed) return [];
-    const live = MEMBER_LIVE.has(member.sessionName !== null ? operationState(member.id) : "closed");
+    const state = member.sessionName !== null ? operationState(member.id) : "closed";
+    // 떠 있는 채팅의 턴 뒤 예약은 그 턴이 닫히는 것을 보면 서버가 호스트 좌표를 다시 읽어 마감한다(적용이 끝날 때까지 서버가 잠깐 더 본다).
+    if (member.next.afterTurn) return state === "idle" || state === "background" ? [`${member.id}:${member.next.model}:${member.next.effort ?? ""}:turn`] : [];
+    const live = MEMBER_LIVE.has(state);
     if (!live && member.next.reservedWhile === "dormant") return [];
     return [`${member.id}:${member.next.model}:${member.next.effort ?? ""}:${member.next.reservedWhile}:${live ? "live" : "ended"}`];
   });
@@ -516,8 +519,33 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     }
   };
 
+  // 바뀐 순간의 확인 — 곧바로 적용된 응답이나 이번 턴 뒤 예약의 정산을 보면 그 행 아래에 잠깐 「바꿨습니다」를 세운다. 서버에 남기지 않는 화면의 일시 상태다.
+  const [applied, setApplied] = useState<ReadonlyMap<string, { readonly model?: string; readonly effort?: string }>>(new Map());
+  const appliedTimers = useRef(new Map<string, number>());
+  const flashApplied = (id: string, to: { readonly model?: string; readonly effort?: string }) => {
+    const timer = appliedTimers.current.get(id);
+    if (timer !== undefined) window.clearTimeout(timer);
+    setApplied((current) => new Map(current).set(id, to));
+    appliedTimers.current.set(id, window.setTimeout(() => {
+      appliedTimers.current.delete(id);
+      setApplied((current) => { if (!current.has(id)) return current; const updated = new Map(current); updated.delete(id); return updated; });
+    }, 2_600));
+  };
+  // 턴 뒤 예약은 서버 방송으로 정산된다 — 직전 렌더에 그 예약이 있었고, 이제 실패 없이 사라져 실행값이 그 값이면 바뀐 순간이다.
+  const afterTurnSeen = useRef(new Map<string, { readonly model: string; readonly effort?: string }>());
+  useEffect(() => {
+    const seen = new Map<string, { readonly model: string; readonly effort?: string }>();
+    for (const member of objective.members) {
+      const before = afterTurnSeen.current.get(member.id);
+      if (before && !member.next && member.model === before.model && (member.effort ?? "") === (before.effort ?? "")) flashApplied(member.id, before);
+      if (member.next?.afterTurn && !member.next.failed) seen.set(member.id, { model: member.next.model, ...(member.next.effort ? { effort: member.next.effort } : {}) });
+    }
+    afterTurnSeen.current = seen;
+  }, [objective.members]);
+
   useEffect(() => () => {
     for (const timer of noteTimers.current.values()) window.clearTimeout(timer);
+    for (const timer of appliedTimers.current.values()) window.clearTimeout(timer);
     if (balloonTimer.current !== null) window.clearTimeout(balloonTimer.current);
   }, []);
 
@@ -545,6 +573,17 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     };
   }, [batchOpen]);
 
+  // 띄운 구성원의 모델 — 떠 있는 채팅은 호스트가 곧바로 또는 이번 턴 뒤 바꾼다. 호스트가 거절하면(문맥이 새 모델의 창보다 큼 등) 그 행에 사유가 선다.
+  const pickLaunched = (member: ObjectiveMember, launch: Record<string, unknown>) => {
+    void request("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } }).then(
+      (payload) => {
+        setFault((current) => current?.id === member.id ? null : current);
+        // 유휴 채팅은 곧바로 바뀐다 — 예약 없이 실행값이 달라졌으면 그 순간이다.
+        const echoed = (payload as { objective?: Objective } | null)?.objective?.members.find((entry) => entry.id === member.id);
+        if (echoed?.switchesLive && !echoed.next && (echoed.model !== member.model || (echoed.effort ?? "") !== (member.effort ?? ""))) flashApplied(member.id, { ...(echoed.model ? { model: echoed.model } : {}), ...(echoed.effort ? { effort: echoed.effort } : {}) });
+      },
+      (error: unknown) => setFault({ id: member.id, code: error instanceof Error ? error.message : "unknown" }));
+  };
   const toggleSubagents = (member: ObjectiveMember, live: boolean) => {
     if (saving.current.has(member.id)) return;
     const next = !memberSubagents(member);
@@ -673,13 +712,14 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const count = objective.missions.filter((mission) => mission.member === shownMember.id).length;
       const state = shownMember.sessionName !== null ? operationState(shownMember.id) : "closed";
       // 휴면 중 예약한 구성원이 깨어 있으면 그 재개가 이미 예약 좌표를 읽었다 — 서버가 다시 방송하기 전에도 실행값으로 보인다.
-      const wokeOnNext = !!shownMember.next && !shownMember.next.failed && shownMember.next.reservedWhile === "dormant" && MEMBER_LIVE.has(state);
+      const wokeOnNext = !!shownMember.next && !shownMember.next.failed && !shownMember.next.afterTurn && shownMember.next.reservedWhile === "dormant" && MEMBER_LIVE.has(state);
       const member: ObjectiveMember = wokeOnNext && shownMember.next ? { ...shownMember, model: shownMember.next.model, effort: shownMember.next.effort, routed: null, next: null } : shownMember;
       const launched = memberLaunched(member, operationState);
       const display = memberLaunchDisplay(member, launched, t, rows);
       const routed = launched ? member.routed : null;
       const next = launched ? member.next : null;
       const reserved = next && !next.failed ? next : null;
+      const appliedTo = launched ? applied.get(member.id) ?? null : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
       const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
       const status = state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : state === "running" || state === "background" ? t("objectives.members.working") : state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.idle");
@@ -707,11 +747,11 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
               // 띄운 구성원 — 행은 실행값 그대로, 고른 값은 다음 재개부터의 예약이다. 라우팅은 새로 띄울 때만 판단하므로 고를 수 없다.
               <LaunchControl key={member.id} t={t} model={reserved ? reserved.model : member.model} effort={reserved ? reserved.effort : member.effort} locked={!touchable} startAtList triggerLabel={t("objectives.members.modelAria", { role: member.role })}
                 triggerText={display.text} triggerTitle={display.title} openRef={opener(member.id)}
-                head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : "objectives.members.menuHead.live")}</span></>}
-                extras={[{ id: "same", label: t("objectives.memberSelection.inherit"), hint: `${commanderWords.words.model} · ${commanderWords.words.effort}`, active: member.launch.mode === "same", onPick: () => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "same" } } }) }]}
+                head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : !member.switchesLive ? "objectives.members.menuHead.live" : state === "idle" || state === "background" ? "objectives.members.menuHead.chatIdle" : "objectives.members.menuHead.chatRunning")}</span></>}
+                extras={[{ id: "same", label: t("objectives.memberSelection.inherit"), hint: `${commanderWords.words.model} · ${commanderWords.words.effort}`, active: member.launch.mode === "same", onPick: () => pickLaunched(member, { mode: "same" }) }]}
                 extrasCaption={t("objectives.members.routeAtLaunch")}
                 subagents={touchable ? { allowed, onToggle: () => toggleSubagents(member, MEMBER_LIVE.has(state)) } : undefined}
-                onChange={(picked) => { const model = picked.model ?? reserved?.model ?? member.model; if (model) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: { mode: "model", model, effort: picked.effort } } }); }} />
+                onChange={(picked) => { const model = picked.model ?? reserved?.model ?? member.model; if (model) pickLaunched(member, { mode: "model", model, effort: picked.effort }); }} />
             ) : (
             <LaunchControl key={member.id} t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} triggerLabel={t("objectives.members.modelAria", { role: member.role })}
               triggerText={display.text} triggerTitle={display.title}
@@ -725,21 +765,27 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
         </div>
         {reserved ? (
           <div className="objectives-member-next">
-            <span className="objectives-member-next-when">{t("objectives.members.next.when")}</span>
+            <span className="objectives-member-next-when">{t(reserved.afterTurn ? "objectives.members.next.whenTurn" : "objectives.members.next.when")}</span>
             <span className="objectives-member-next-arrow" aria-hidden="true">→</span>
             {((words) => <span className="objectives-member-next-to" title={words.title}><LaunchedText model={words.model} words={words.words} /></span>)(launchedWords(rows, reserved.model, reserved.effort, labels))}
             {touchable ? <button type="button" className="objectives-glyph objectives-member-next-x" aria-label={t("objectives.members.next.cancel", { role: member.role })} title={t("objectives.members.next.cancel", { role: member.role })} onClick={() => cancelNext(member)}><CloseGlyph /></button> : null}
           </div>
         ) : next?.failed ? (
           <div className="objectives-member-next is-failed" role="alert">
-            <span className="objectives-member-next-when">{t("objectives.members.next.failed")}</span>
-            <span className="objectives-member-next-body">{t("objectives.members.next.failedBody", { model: launchedWords(rows, next.model, next.effort, labels).title, reason: routingReason(t, next.failed) })}</span>
+            <span className="objectives-member-next-when">{t(next.afterTurn ? "objectives.members.next.failedTurn" : "objectives.members.next.failed")}</span>
+            <span className="objectives-member-next-body">{t(next.afterTurn ? "objectives.members.next.failedTurnBody" : "objectives.members.next.failedBody", { model: launchedWords(rows, next.model, next.effort, labels).title, reason: routingReason(t, next.failed) })}</span>
             {touchable ? <button type="button" className="objectives-btn is-small objectives-member-next-other" onClick={() => opener(member.id).current?.()}>{t("objectives.members.next.other")}</button> : null}
             {touchable ? <button type="button" className="objectives-glyph objectives-member-next-x" aria-label={t("objectives.members.next.dismiss")} title={t("objectives.members.next.dismiss")} onClick={() => cancelNext(member)}><CloseGlyph /></button> : null}
           </div>
+        ) : appliedTo ? (
+          <div className="objectives-member-next is-applied" role="status">
+            <span className="objectives-member-next-when">{t("objectives.members.next.applied")}</span>
+            <span className="objectives-member-next-arrow" aria-hidden="true">→</span>
+            {((words) => <span className="objectives-member-next-to" title={words.title}><LaunchedText model={words.model} words={words.words} /></span>)(launchedWords(rows, appliedTo.model, appliedTo.effort, labels))}
+          </div>
         ) : routed?.via === "fallback" ? <p className="objectives-member-reason" title={routed.detail}>{routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) })}</p> : null}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
-        {fault?.id === member.id ? <p className="objectives-member-note is-error" role="alert">{t("objectives.toast.failed", { code: fault.code })}</p> : null}
+        {fault?.id === member.id ? <p className="objectives-member-note is-error" role="alert">{hasRoutingReason(fault.code) ? routingReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}
         </div>
       );
     })}

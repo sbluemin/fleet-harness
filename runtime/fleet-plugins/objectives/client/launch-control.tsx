@@ -91,6 +91,8 @@ export function LaunchedText({ model, words }: { readonly model: string | null; 
   );
 }
 /** 라우팅 폴백·기동 거절의 사유 코드 → 사람의 말. 모르는 코드는 코드 그대로 보인다. */
+/** 사유 코드에 번역된 문면이 있는가 — 없으면 화면은 코드를 그대로 싣는 일반 실패 문면을 쓴다. */
+export const hasRoutingReason = (code: string): boolean => `objectives.routing.reason.${code}` in objectivesEn;
 export function routingReason(t: Translate<ObjectiveMessageKey>, code: string): string {
   const key = `objectives.routing.reason.${code}`;
   return key in objectivesEn ? t(key as ObjectiveMessageKey) : t("objectives.routing.reason.other", { code });
