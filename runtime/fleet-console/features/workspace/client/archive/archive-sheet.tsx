@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import {
   ApiError, previewOperationPurge, previewOperationBatch, purgeArchivedOperations, restoreArchivedOperations,
-  restoreOperationCluster, undoOperationPurge, readOperationLaunch,
+  restoreOperationCluster, undoOperationPurge, readOperationLaunch, OPERATION_PURGE_GRACE_MS,
   type OperationDescription, type OperationPendingPurge, type OperationPurgeConfirmation, type OperationPurgeResult,
 } from "@fleet-console/sdk/operations/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -95,6 +95,9 @@ function ArchiveSheetDialog() {
   const [restored, setRestored] = useState<readonly OperationDescription[]>([]);
   const [notice, setNotice] = useState<CoreMessageKey | null>(null);
   const [clock, setClock] = useState(Date.now());
+  // 확정 응답의 영수증 — 뒤따르는 목록 새로고침이 실패해도 유예 동안 되돌리기를 보여 준다.
+  // 만료는 서버 시각 대신 받은 순간부터의 유예로 잰다(기기 시계 차이로 바로 사라지지 않게).
+  const [receipts, setReceipts] = useState<readonly { readonly batch: OperationPendingPurge; readonly until: number }[]>([]);
   const focusRequest = useRef<{ id: string; index: number; kind: "next" | "restore" | "undo" } | null>(null);
   const lastFocused = useRef<{ id: string; index: number } | null>(null);
 
@@ -119,7 +122,8 @@ function ArchiveSheetDialog() {
   };
   const clusters = allClusters.filter((cluster) => (allTheaters || cluster.root.operation.theaterId === state.activeTheaterId) && matches(cluster));
   const otherCount = allTheaters || !query.trim() ? 0 : allClusters.filter((cluster) => !restoredIds.has(cluster.rootId) && cluster.root.operation.theaterId !== state.activeTheaterId && matches(cluster)).length + otherSections.reduce((sum, entry) => sum + entry.count, 0);
-  const pendingOf = (id: string) => archive.snapshot?.pendingPurges?.find((batch) => batch.operationIds.includes(id));
+  const pendingOf = (id: string) => archive.snapshot?.pendingPurges?.find((batch) => batch.operationIds.includes(id))
+    ?? receipts.find((entry) => entry.until > clock && entry.batch.operationIds.includes(id))?.batch;
   const selectable = clusters.filter((cluster) => !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId));
   const selectedIds = selectable.filter((cluster) => selected.has(cluster.rootId)).map((cluster) => cluster.rootId);
   const old = allClusters.filter((cluster) => (allTheaters || cluster.root.operation.theaterId === state.activeTheaterId) && !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId) && cluster.archivedAt < clock - 30 * 24 * 60 * 60 * 1000);
@@ -135,11 +139,15 @@ function ArchiveSheetDialog() {
   }, []);
   useEffect(() => () => { if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus(); }, []);
   useEffect(() => {
-    if (!archive.snapshot?.pendingPurges?.length) return;
+    if (!archive.snapshot?.pendingPurges?.length && !receipts.length) return;
     setClock(Date.now());
-    const timer = setInterval(() => setClock(Date.now()), 1000);
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setClock(now);
+      setReceipts((previous) => previous.some((entry) => entry.until <= now) ? previous.filter((entry) => entry.until > now) : previous);
+    }, 1000);
     return () => clearInterval(timer);
-  }, [archive.snapshot?.pendingPurges]);
+  }, [archive.snapshot?.pendingPurges, receipts.length]);
   // 스냅숏·다른 창의 변경으로 사라진 줄의 초점도 삭제 단추로 보내지 않는다.
   useLayoutEffect(() => {
     let request = focusRequest.current;
@@ -217,7 +225,9 @@ function ArchiveSheetDialog() {
       void refreshOperationArchive();
     } finally { busyRef.current = false; setBusy(false); }
   };
-  const purged = async (id: string) => {
+  const purged = async (id: string, result: unknown) => {
+    const receipt = receiptOf(result);
+    if (receipt) setReceipts((previous) => [...previous.filter((entry) => entry.batch.purgeId !== receipt.purgeId), { batch: receipt, until: Date.now() + OPERATION_PURGE_GRACE_MS }]);
     clearSelection();
     focusRequest.current = { id, index: clusters.findIndex((cluster) => cluster.rootId === id), kind: "undo" };
     await refreshOperationArchive();
@@ -227,6 +237,7 @@ function ArchiveSheetDialog() {
     busyRef.current = true; setBusy(true); setArmed(null);
     try {
       await undoOperationPurge(batch.purgeId);
+      setReceipts((previous) => previous.filter((entry) => entry.batch.purgeId !== batch.purgeId));
       focusRequest.current = { id, index: clusters.findIndex((cluster) => cluster.rootId === id), kind: "restore" };
       await refreshOperationArchive();
     } catch { setNotice("archive.notice.undoFailed"); void refreshOperationArchive(); }
@@ -300,7 +311,7 @@ function ArchiveSheetDialog() {
                           <><button type="button" className="archive-sheet-restore" aria-disabled={busy || undefined} onClick={() => { void restore([cluster.rootId]); }}>{t("archive.restore")}</button>
                             <ArchivePurgeButton targetId={cluster.rootId} title={node.title} currentRevision={archive.revision} preview={previewOperationPurge} purge={purgeArchivedOperations}
                               armed={armed === cluster.rootId} onArm={() => setArmed(cluster.rootId)} onDisarm={() => setArmed(null)} disabled={busy}
-                              onStart={() => setNotice(null)} onRefused={(message) => { setNotice(message); void refreshOperationArchive(); }} onPurged={() => { void purged(cluster.rootId); }} /></>}
+                              onStart={() => setNotice(null)} onRefused={(message) => { setNotice(message); void refreshOperationArchive(); }} onPurged={(result) => { void purged(cluster.rootId, result); }} /></>}
                       </div>
                     </article>;
                   })}
@@ -320,12 +331,19 @@ function ArchiveSheetDialog() {
           <button type="button" className="archive-sheet-restore" aria-disabled={busy || undefined} onClick={() => { void restore(selectedIds); }}>{t("archive.restoreAll")}</button>
           <ArchivePurgeButton targetId="batch" title={t("archive.selected", { count: selectedIds.length })} currentRevision={archive.revision} preview={() => previewOperationBatch(selectedIds)} purge={purgeArchivedOperations}
             armed={armed === "batch"} onArm={() => setArmed("batch")} onDisarm={() => setArmed(null)} armedLabel={t("archive.purgeBatchArmed", { count: selectedIds.length })} disabled={busy}
-            onStart={() => setNotice(null)} onRefused={(message) => { setNotice(message); void refreshOperationArchive(); }} onPurged={() => { void purged(selectedIds[0]!); }} />
+            onStart={() => setNotice(null)} onRefused={(message) => { setNotice(message); void refreshOperationArchive(); }} onPurged={(result) => { void purged(selectedIds[0]!, result); }} />
           <button type="button" className="archive-sheet-deselect" onClick={clearSelection}>{t("archive.deselect")}</button>
         </footer> : null}
       </div>
     </div>, document.body,
   );
+}
+
+/** 확정 응답에 보류 영수증이 있으면 꺼낸다. */
+function receiptOf(result: unknown): OperationPendingPurge | null {
+  if (!result || typeof result !== "object") return null;
+  const { purgeId, purgeAt, operationIds } = result as Partial<OperationPurgeResult>;
+  return typeof purgeId === "string" && typeof purgeAt === "number" && Array.isArray(operationIds) ? { purgeId, purgeAt, operationIds } : null;
 }
 
 /** 두 번 눌러 확정하며, 첫 누름의 revision과 서버가 preview한 대상 집합을 끝까지 검증한다. */
@@ -337,7 +355,7 @@ export function ArchivePurgeButton({ targetId, title, currentRevision, preview, 
   readonly purge: (confirmation: OperationPurgeConfirmation) => Promise<OperationPurgeResult | unknown>;
   readonly onStart: () => void;
   readonly onRefused: (notice: CoreMessageKey) => void;
-  readonly onPurged: () => void;
+  readonly onPurged: (result: unknown) => void;
   readonly armed?: boolean;
   readonly onArm?: () => void;
   readonly onDisarm?: () => void;
@@ -367,15 +385,16 @@ export function ArchivePurgeButton({ targetId, title, currentRevision, preview, 
     }
     disarm(); busyRef.current = true; setBusy(true); onStart();
     let notice: CoreMessageKey | null = null;
+    let result: unknown;
     try {
       const confirmation = await preview(targetId);
       if ((revisionRef.current >= 0 && revisionRef.current !== confirmation.revision) || armRevision.current !== confirmation.revision) notice = "archive.notice.purgeStale";
-      else await purge(confirmation);
+      else result = await purge(confirmation);
     } catch (error) {
       notice = error instanceof ApiError && error.message === "archive_revision_conflict" ? "archive.notice.purgeStale" : "archive.notice.purgeFailed";
     }
     busyRef.current = false; setBusy(false);
-    if (notice) onRefused(notice); else onPurged();
+    if (notice) onRefused(notice); else onPurged(result);
   };
   return <button type="button" className={`archive-sheet-purge${isArmed ? " is-armed" : ""}`} onClick={() => { void run(); }}
     onKeyDown={(event) => {
