@@ -117,6 +117,8 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
     },
     consoleEvents: {
       subscribe: () => () => undefined,
+      // 스트림이 없는 사본은 다시 붙을 일도 없다.
+      onReconnect: () => () => undefined,
     },
     surfaces: {
       open: () => "",

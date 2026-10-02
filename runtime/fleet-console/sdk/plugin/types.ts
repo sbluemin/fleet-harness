@@ -319,6 +319,15 @@ export interface ClientConsoleEventsCapability {
    * 올린 채널만 브라우저까지 온다. 받는 쪽이 없으면 프레임은 조용히 버려진다.
    */
   subscribe(channel: string, onEvent: (payload: unknown) => void): () => void;
+  /**
+   * 스트림이 끊겼다 다시 열릴 때마다 울린다. 첫 연결에서는 울리지 않는다.
+   *
+   * 서버는 단절 중에 보낸 프레임을 다시 보내지 않으므로, 사건으로만 갱신하던 플러그인 데이터는 이 신호에서 스스로
+   * 다시 읽어야 한다. 오류 없이 멈춘 연결도 호스트가 감지해 다시 열므로 이 신호에 포함된다. 코어 목록(Operation·그룹·
+   * Theater)은 이 신호 전에 이미 다시 읽혀 있다. 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 재연결을
+   * 알 길이 없는 것으로 다룬다.
+   */
+  onReconnect?(listener: () => void): () => void;
 }
 
 export interface ClientRailCapability {
@@ -414,8 +423,8 @@ export interface ClientConsoleStateCapability {
   /** 캔버스에서 활성인 Operation — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
   getActiveOperationId(): string | null;
   /**
-   * 코어 이벤트 스트림의 연결 상태 — 바뀌면 `subscribe` 가 울린다. `live` 로 돌아온 전이는 단절 중 놓친
-   * 플러그인 데이터를 다시 읽을 신호다. 스트림 프레임은 변화가 있을 때만 오므로, 한가한 Console 에서는 이 전이가 유일한 회복 증거다.
+   * 코어 이벤트 스트림의 연결 상태 — 바뀌면 `subscribe` 가 울린다. `live` 로 돌아온 전이는 서버가 다시 닿는다는 증거다.
+   * 이미 읽은 데이터를 단절 뒤에 다시 읽을 신호는 `consoleEvents.onReconnect` 다.
    * 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 `live` 로 다룬다.
    */
   getConnection?(): ConsoleConnectionState;

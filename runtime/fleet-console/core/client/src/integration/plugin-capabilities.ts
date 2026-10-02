@@ -7,7 +7,7 @@ import { applySearchParams, subscribeConsoleLocation } from "./console-location.
 import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
-import { subscribeConsoleChannel } from "./operations-sse.js";
+import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../chrome/rail/rail-store.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
@@ -93,6 +93,7 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
     },
     consoleEvents: {
       subscribe: (channel, onEvent) => subscribeConsoleChannel(channel, onEvent),
+      onReconnect: (listener) => subscribeConsoleReconnect(listener),
     },
     composer: {
       open: (options) => {
