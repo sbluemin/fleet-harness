@@ -27,7 +27,7 @@ import {
   saveStoredPanelWidth,
   type StoredPanelWidths,
 } from "./pane-width.js";
-import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
+import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { clearPaneWidth, setPaneWidth } from "../pane/pane-width-store.js";
@@ -319,7 +319,7 @@ export function useRailPanelContext(
 
 /**
  * 레일 도구 아이콘 목록 — 콘솔 도구모음의 도구 칸에 한 줄로 선다(모드와 무관한 하나의 목록·순서·켜짐).
- * 아이콘의 문서 id(rail-tab-*·rail-settings-toggle)는 패널 영역의 이름표와 온보딩 앵커가 가리킨다.
+ * 아이콘의 문서 id(rail-tab-*)는 패널 영역의 이름표와 온보딩 앵커가 가리킨다.
  */
 export function RailToolIcons({ context }: { readonly context: RailToolContext }) {
   const t = useT();
@@ -362,22 +362,8 @@ export function RailToolIcons({ context }: { readonly context: RailToolContext }
       {renderRuns(runsByScope.theater)}
       {runsByScope.theater.length > 0 && runsByScope.fleet.length > 0 ? divider : null}
       {renderRuns(runsByScope.fleet)}
-      {/* 설정은 도구 줄의 꼬리에 선다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류의 동작이라
-          구분선 뒤 마지막 자리에 둔다. 톱니는 메뉴가 아니라 설정 표면의 문이고, 켜짐은 다른 아이콘과
-          똑같은 활성 표식으로 "지금 여기"를 말한다. */}
-      {divider}
-      <button
-        id="rail-settings-toggle"
-        type="button"
-        className={`right-rail-ico right-rail-settings-btn${activePanelId === SETTINGS_RAIL_ENTRY_ID ? " is-active" : ""}`}
-        aria-pressed={activePanelId === SETTINGS_RAIL_ENTRY_ID}
-        aria-controls={activePanelId === SETTINGS_RAIL_ENTRY_ID ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
-        aria-label={t("settings.title")}
-        data-tip={t("settings.title")}
-        onClick={() => toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)}
-      >
-        <GearGlyph />
-      </button>
+      {/* 설정은 여기 없다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류라, 톱니는 도구모음의
+          시스템 칸 맨 끝(console-toolbar.tsx)에 선다. */}
     </>
   );
 

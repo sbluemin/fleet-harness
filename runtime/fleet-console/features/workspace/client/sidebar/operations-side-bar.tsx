@@ -40,7 +40,7 @@ import { clusterChipPropsFor } from "./cluster-rows.js";
 import { planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
-import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu } from "./side-bar-collapse-control.js";
+import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu, SideBarZenToggle } from "./side-bar-collapse-control.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import {
@@ -1054,12 +1054,13 @@ export function OperationsSideBar({
     >
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
-      {/* 상태별 보기는 목록 전체의 세션 스위치다. 그 왼쪽에 캔버스 모드(Cruise / War Room)가 서고,
-          우단은 두 모드가 공유하는 접기 컨트롤이다. */}
+      {/* 상태별 보기는 목록 전체의 세션 스위치다. 그 왼쪽에 캔버스 모드(Cruise / War Room)가, 다시 그 왼쪽에
+          Zen 켜고 끄기가 서고, 우단은 두 모드가 공유하는 접기 컨트롤이다. */}
       <div className="side-bar-top-strip">
         {theaters.length > 0 ? (
           <>
             <span className="side-bar-top-strip-eyebrow">{t(statusAxis ? "sidebar.view.byStatusEyebrow" : "sidebar.view.theaters")}</span>
+            <SideBarZenToggle />
             <CanvasModeSwitch />
             <SideBarStatusViewToggle active={statusAxis} />
             <SideBarViewMenu />

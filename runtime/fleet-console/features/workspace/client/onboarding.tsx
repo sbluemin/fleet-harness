@@ -6,7 +6,7 @@ import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
 const messagesEn = {
   "zenTaskbar.welcomeTitle": "Zen tools float at the bottom of the map",
   "zenTaskbar.welcomeBody": "Zen gives the whole canvas to your work. Open the sidebar from the floating tools to switch Theaters or handle anything needing attention.",
-  "zenTaskbar.welcomeNext": "Try it from the Zen button in the top bar.",
+  "zenTaskbar.welcomeNext": "Try it from the Zen button at the top of the sidebar.",
   "canvasModes.step1Title": "Two ways to work the canvas",
   "canvasModes.step1Body": "Cruise keeps panels where you drop them. Align all (Alt+F) lines every panel up at once, and drops them back where they were when you toggle it off. War Room brings up one waiting panel at a time, across every Theater.",
   "canvasModes.step2Title": "Each mode has its own tools",
@@ -28,7 +28,7 @@ const messagesEn = {
 const messagesKo: Record<keyof typeof messagesEn, string> = {
   "zenTaskbar.welcomeTitle": "Zen 도구가 맵 아래에 떠 있습니다",
   "zenTaskbar.welcomeBody": "Zen에서는 캔버스 전체를 작업에 씁니다. 부유 도구에서 사이드바를 열어 Theater를 오가고 「확인 필요」를 처리하세요.",
-  "zenTaskbar.welcomeNext": "상단 바의 Zen 버튼으로 켜 보세요.",
+  "zenTaskbar.welcomeNext": "사이드바 머리의 Zen 버튼으로 켜 보세요.",
   "canvasModes.step1Title": "화면을 쓰는 두 가지 방식입니다",
   "canvasModes.step1Body": "Cruise는 패널을 놓은 자리에 그대로 둡니다. 모두 정렬(Alt+F)은 열린 패널을 한 번에 정렬했다가 끄면 원래 자리로 돌려놓습니다. War Room은 답을 기다리는 패널을 Theater 구분 없이 한 건씩 올립니다.",
   "canvasModes.step2Title": "모드마다 도구가 다릅니다",
@@ -57,7 +57,7 @@ const CANVAS_MODE_SWITCH_ANCHOR = ".zen-sidebar-chrome:not([data-zen-hidden]) .o
 export const workspaceOnboarding: OnboardingContribution = {
   id: "workspace",
   // 업데이트한 사용자에게 Zen 부유 도구를 알린다. Zen은 켜기 전에는 보이지 않는 화면이라 투어가 짚을
-  // 자리가 없으므로, 켜는 곳(상단 바의 Zen 버튼)을 알리는 데서 그친다.
+  // 자리가 없으므로, 켜는 곳(사이드바 머리의 Zen 버튼)을 알리는 데서 그친다.
   welcome: {
     title: T("zenTaskbar.welcomeTitle"),
     body: T("zenTaskbar.welcomeBody"),
