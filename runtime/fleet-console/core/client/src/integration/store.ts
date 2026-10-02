@@ -627,9 +627,14 @@ export function applyGroupRemoved(groupId: string): void {
   setState({ groups: state.groups.filter((item) => item.id !== groupId) });
 }
 
+// 활성 Operation 은 활성 Theater 의 것이다 — 떠난 Theater 의 활성을 남기면 문맥을 따르는 표면(목표 레일 등)이
+// 보이지 않는 무대를 계속 겨눈다. 포인터 전환은 사이드바 pointerdown 이 이미 비우고, 키보드·팔레트·플러그인 전환도
+// 여기서 같아진다. 전 Theater 가 마운트인 선별(focusOperation 과 같은 가드) 동안은 다른 Theater 의 활성이 정상이다.
 export function setActiveTheater(theaterId: string | null): void {
   writeStoredActiveTheaterId(theaterId);
-  setState({ activeTheaterId: theaterId });
+  const activeTheaterOf = state.operations.find((operation) => operation.id === state.activeOperationId)?.theaterId;
+  const leftActive = activeTheaterOf !== undefined && activeTheaterOf !== theaterId && !focusTheaterSwitchSuppressed();
+  setState({ activeTheaterId: theaterId, ...(leftActive ? { activeOperationId: null, activeOperationAcknowledged: true } : {}) });
 }
 
 // 구성원은 패널로 서지 않는다 — 구성원을 가리킨 포커스는 부모 패널로 가고, 부모 패널이 그 구성원의 본문을 보인다.
