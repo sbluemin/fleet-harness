@@ -141,6 +141,36 @@ describe("fleet-console-use host", () => {
       expect((await third).caller.operationId).toBe("op-a");
     } finally { requests.dispose(); await connection.dispose(); await host.dispose(); }
   });
+  it("expires an idle turn-only grant on its own timer without any reader", async () => {
+    // 「이번 작업만」 허가는 예전에는 list() 를 읽을 때만(lazy) 걷혔다 — 폴링이 그 읽기를 계속했기 때문이다.
+    // 이제는 서버 타이머가 스스로 걷어야 아무도 읽지 않아도(idleMs 뒤) 허가가 사라지고 onChange 가 불린다.
+    // lazy 경로가 대신 지워 통과하는 일을 막기 위해, 타이머가 발화하기 전까지는 list()/granted() 를 부르지 않는다.
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    let time = 1_000;
+    const requests = createUseRequestBroker({ idleMs: 20, now: () => time, onChange });
+    try {
+      const held = requests.hold({ operationId: "op-a", capability: "console", tool: "console_context", authorized: () => false });
+      const request = requests.list().requests[0]!;
+      expect(requests.answer("op-a", request.id, "turn")).toEqual({ ok: true, capability: "console" });
+      expect(requests.list().grants.console).toEqual(["op-a"]);
+      onChange.mockClear();
+      // answer("turn") 시점에 시한 20 타이머가 걸렸다. 19 뒤 touch 가 시한을 다시 잰다.
+      time += 19; vi.advanceTimersByTime(19);
+      requests.touch("op-a", "console");
+      // touch 후 19 뒤에도 아직 살아 있다(연장된 시한은 touch 시점 + 20).
+      time += 19; vi.advanceTimersByTime(19);
+      expect(requests.list().grants.console).toEqual(["op-a"]);
+      // 시한을 넘긴다. 먼저 읽기(list) 없이 onChange 가 불렸는지 확인해 타이머가 스스로 걷었음을 증명한다.
+      time += 2; vi.advanceTimersByTime(2);
+      expect(onChange).toHaveBeenCalled();
+      expect(requests.list().grants.console).toEqual([]);
+      expect(await held).toBe("turn");
+    } finally {
+      requests.dispose();
+      vi.useRealTimers();
+    }
+  });
   it("binds aide execution to the host plugin owner without an Operation and revokes it on unload", async () => {
     const directory = mkdtempSync(path.join(tmpdir(), "console-aide-"));
     let granted = true; let available = true; let time = Date.now(); let executions = 0;

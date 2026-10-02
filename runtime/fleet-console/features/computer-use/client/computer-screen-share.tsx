@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { setOperationUseRequestIds } from "../../../core/client/src/integration/store.js";
+import { subscribeConsoleChannel } from "../../../core/client/src/integration/operations-sse.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import "../../execution/client/agent/computer-screen-share.css";
 
@@ -57,29 +58,44 @@ function readRequests(value: unknown): OperationUseRequest[] {
   });
 }
 
+/** operation-use 스냅샷(SSE 프레임과 /api/v1/operation-use 응답이 같은 모양)을 읽는다. */
+function readActivity(value: unknown): OperationUseActivity {
+  if (!value || typeof value !== "object") return EMPTY_ACTIVITY;
+  const record = value as Record<string, unknown>;
+  const ids = (v: unknown) => Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : [];
+  const requests = readRequests(record.requests);
+  const grants = record.grants as { console?: unknown; computer?: unknown } | undefined;
+  return { console: ids(record.console), computer: ids(record.computer), browser: ids(record.browser), requests, grants: { console: ids(grants?.console), computer: ids(grants?.computer) } };
+}
+
 /** 영상 수명은 Console가, 표시 위치는 해당 Operation이 소유한다. */
 export function ComputerScreenShareProvider({ children }: { children: ReactNode }) {
   const [capture, setCapture] = useState<Capture | null>(null);
   const [activity, setActivity] = useState<OperationUseActivity>(EMPTY_ACTIVITY);
   useEffect(() => {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const response = await fetch("/api/v1/operation-use", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) });
-        if (!response.ok) throw new Error("operation_use_unavailable");
-        const next = await response.json() as { console: string[]; computer: string[]; browser?: string[]; requests?: unknown; grants?: { console?: unknown; computer?: unknown } };
-        const ids = (value: unknown) => Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-        if (!controller.signal.aborted) {
-          const requests = readRequests(next.requests);
-          setActivity({ console: next.console, computer: next.computer, browser: next.browser ?? [], requests, grants: { console: ids(next.grants?.console), computer: ids(next.grants?.computer) } });
-          setOperationUseRequestIds(requests.map((request) => request.operationId));
-        }
-      } catch { if (!controller.signal.aborted) { setActivity(EMPTY_ACTIVITY); setOperationUseRequestIds([]); } }
-      finally { if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 400); }
+    let disposed = false;
+    // 스트림이 먼저 말을 걸었는가. mount 1회 조회가 늦게 돌아와 낡은 값을 되돌리지 않게 한다.
+    let streamed = false;
+    const apply = (value: unknown) => {
+      if (disposed) return;
+      const next = readActivity(value);
+      setActivity(next);
+      setOperationUseRequestIds(next.requests.map((request) => request.operationId));
     };
-    void poll();
-    return () => { controller.abort(); clearTimeout(timer); setOperationUseRequestIds([]); };
+    const unsubscribe = subscribeConsoleChannel("operation-use:state", (payload) => {
+      streamed = true;
+      apply(payload);
+    });
+    // 최초 mount 는 connectOperationsSse 가 연 스트림의 핸드셰이크 스냅샷보다 늦게 붙을 수 있다 — 1회 조회로 그 틈을 메운다.
+    // 이후 변화는 스트림이, 재연결은 서버가 다시 보내는 핸드셰이크 스냅샷이 채운다.
+    void fetch("/api/v1/operation-use", { signal: AbortSignal.timeout(3000) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("operation_use_unavailable");
+        const body = await response.json();
+        if (!streamed) apply(body);
+      })
+      .catch(() => undefined);
+    return () => { disposed = true; unsubscribe(); setOperationUseRequestIds([]); };
   }, []);
   useEffect(() => {
     if (!isDesktopShell()) return;

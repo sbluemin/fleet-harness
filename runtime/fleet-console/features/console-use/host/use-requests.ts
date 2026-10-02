@@ -58,6 +58,8 @@ export interface UseRequestBrokerOptions {
   readonly idleMs?: number;
   readonly recheckMs?: number;
   readonly now?: () => number;
+  /** 요청·허가가 바뀔 때마다 불린다 — 호스트가 이걸로 operation-use 스냅샷을 밀어낸다. */
+  readonly onChange?: () => void;
 }
 
 export const USE_REQUEST_HOLD_MS = 4 * 60_000;
@@ -81,7 +83,24 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
   const now = options.now ?? Date.now;
   const pending = new Map<string, PendingRequest>();
   const grants = new Map<string, number>();
+  // 「이번 작업만」 허가의 유휴 시한 타이머. 예전에는 읽을 때만(lazy) 정리했지만, 폴링을 걷어내면
+  // 아무도 읽지 않아 만료가 영영 안 온다 — 그래서 여기서 능동적으로 걷어낸다.
+  const grantTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let disposed = false;
+
+  const clearGrantTimer = (k: string) => {
+    const timer = grantTimers.get(k);
+    if (timer !== undefined) { clearTimeout(timer); grantTimers.delete(k); }
+  };
+  const scheduleGrantExpiry = (k: string) => {
+    clearGrantTimer(k);
+    const timer = setTimeout(() => {
+      grantTimers.delete(k);
+      if (grants.delete(k)) options.onChange?.();
+    }, idleMs);
+    timer.unref?.();
+    grantTimers.set(k, timer);
+  };
 
   const finish = (request: PendingRequest, outcome: UseHoldOutcome) => {
     if (pending.get(key(request.operationId, request.capability)) !== request) return;
@@ -90,6 +109,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
     for (const waiter of request.waiters) waiter.resolve(outcome);
     request.waiters.clear();
     syncRecheck();
+    options.onChange?.();
   };
 
   // 메뉴 스위치·설정으로 허용이 선 것을 알아채는 순찰. 요청이 있을 때만 돈다.
@@ -119,9 +139,10 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
   };
 
   const granted = (operationId: string, capability: UseCapability) => {
-    const at = grants.get(key(operationId, capability));
+    const k = key(operationId, capability);
+    const at = grants.get(k);
     if (at === undefined) return false;
-    if (now() - at > idleMs) { grants.delete(key(operationId, capability)); return false; }
+    if (now() - at > idleMs) { grants.delete(k); clearGrantTimer(k); return false; }
     return true;
   };
 
@@ -131,6 +152,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       if (input.authorized()) return Promise.resolve("authorized");
       const k = key(input.operationId, input.capability);
       let request = pending.get(k);
+      let changed = false;
       if (!request) {
         const created: PendingRequest = {
           id: randomUUID(),
@@ -144,8 +166,10 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
         created.timer.unref?.();
         request = created;
         pending.set(k, request);
+        changed = true;
       }
-      if (!request.tools.includes(input.tool)) request.tools.push(input.tool);
+      if (!request.tools.includes(input.tool)) { request.tools.push(input.tool); changed = true; }
+      if (changed) options.onChange?.();
       const current = request;
       return new Promise<UseHoldOutcome>((resolve) => {
         const onAbort = () => {
@@ -167,26 +191,33 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       const request = [...pending.values()].find((candidate) => candidate.id === requestId && candidate.operationId === operationId);
       if (!request) return { ok: false, error: "request_not_found" };
       if (answer !== "deny" && blockedOf(request)) return { ok: false, error: "experiment_disabled" };
-      if (answer === "turn") grants.set(key(operationId, request.capability), now());
+      if (answer === "turn") { grants.set(key(operationId, request.capability), now()); scheduleGrantExpiry(key(operationId, request.capability)); }
       finish(request, answer === "deny" ? "declined" : answer);
       return { ok: true, capability: request.capability };
     },
     granted,
     touch(operationId, capability) {
-      if (granted(operationId, capability)) grants.set(key(operationId, capability), now());
+      const k = key(operationId, capability);
+      if (granted(operationId, capability)) { grants.set(k, now()); scheduleGrantExpiry(k); }
     },
     settle(operationId) {
       for (const capability of ["console", "computer"] as const) {
-        grants.delete(key(operationId, capability));
-        const request = pending.get(key(operationId, capability));
+        const k = key(operationId, capability);
+        const hadGrant = grants.delete(k);
+        clearGrantTimer(k);
+        const request = pending.get(k);
         if (request) finish(request, "stopped");
+        else if (hadGrant) options.onChange?.();
       }
       syncRecheck();
     },
     revoke(operationId, capability) {
-      grants.delete(key(operationId, capability));
-      const request = pending.get(key(operationId, capability));
+      const k = key(operationId, capability);
+      const hadGrant = grants.delete(k);
+      clearGrantTimer(k);
+      const request = pending.get(k);
       if (request) finish(request, "stopped");
+      else if (hadGrant) options.onChange?.();
       syncRecheck();
     },
     list() {
@@ -210,6 +241,8 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       disposed = true;
       for (const request of [...pending.values()]) finish(request, "stopped");
       grants.clear();
+      for (const timer of grantTimers.values()) clearTimeout(timer);
+      grantTimers.clear();
       if (recheck) clearInterval(recheck);
       recheck = null;
     },
