@@ -74,6 +74,13 @@ const THEME_NOTICE_AUTO_DISMISS_MS = 8_000;
 // 온보딩 엔진이 코어 크롬에 닿는 창구 — 레일 진입점 버튼(RailIcon이 세우는 #rail-tab-<id>)과 단축키 표기.
 const ONBOARDING_PORTS = {
   railEntryElement: (railEntryId: string) => document.getElementById(`rail-tab-${railEntryId}`),
+  railEntryHintAnchor: (element: HTMLElement) => {
+    const island = element.closest<HTMLElement>(".zen-bar");
+    if (!island) return null;
+    const rect = island.getBoundingClientRect();
+    const below = island.dataset.corner === "top-right";
+    return { below, edge: below ? rect.bottom : rect.top };
+  },
   shortcutLabel: (commandId: string) => shortcutCommandLabel(commandId),
 } as const;
 
