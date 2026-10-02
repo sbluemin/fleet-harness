@@ -17,7 +17,7 @@ import { DatePicker } from "./date-picker.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, LaunchedText, launchedWords, routingReason, useLaunchRows } from "./launch-control.js";
-import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
+import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
   discardedFollowups,
@@ -1319,6 +1319,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const touchable = !objective.done;
   const notStarted = (mission: ObjectiveMission) => !mission.done;
   const canEditMission = (missionId: string) => { if (editable) return true; const target = objective.missions.find((candidate) => candidate.id === missionId); return touchable && !!target && notStarted(target); };
+  // 삭제 요청이 도는 동안의 두 번째 누름은 버린다 — 서버는 이미 정리된 목표의 삭제를 비우기(영구 삭제)로 받는다.
+  const removing = useRef(false);
   const [zoomOpen, setZoomOpen] = useState(false);
   // 확대 카드 폭 — 확대 그래프가 스크롤 없이 들어가는 폭을 알려 준다.
   const [zoomWidth, setZoomWidth] = useState<number | null>(null);
@@ -1490,7 +1492,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           <DetailTitle objective={objective} t={t} editable={editable} call={call} />
           {switcher}
           {otherRequests > 0 ? <button type="button" className="objectives-detail-requests" title={t("objectives.requests.othersTip")} onClick={onNextRequest}>{t("objectives.requests.others", { count: otherRequests })}</button> : null}
-          {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.objective.delete")} title={t("objectives.objective.delete")} onClick={async () => { const removed = await call<{ objective: Objective }>("/objective/remove", { objectiveId: objective.id }); if (removed && !removed.objective.removed) { removeObjectiveLocally(objective.id); toast(t("objectives.toast.deleted")); } }}><TrashGlyph /></button> : null}
+          {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.objective.delete")} title={t("objectives.objective.delete")} onClick={async () => { if (removing.current) return; removing.current = true; const removed = await call<{ objective: Objective }>("/objective/remove", { objectiveId: objective.id }).finally(() => { removing.current = false; }); if (removed) { if (removed.objective.removed) upsertObjectiveLocally(removed.objective); else removeObjectiveLocally(objective.id); toast(t("objectives.toast.deleted")); } }}><TrashGlyph /></button> : null}
           {placeButton}
         </div>
         {busy ? <div className="objectives-busy-line" role="status"><i aria-hidden="true" /><span>{t(objective.planning ? "objectives.planning" : "objectives.busy")}</span></div> : null}
