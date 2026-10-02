@@ -27,11 +27,22 @@ const id = z.string().uuid();
 const missionId = z.string().min(1).max(128);
 const label = z.string().trim().min(1).max(RESULT_LIMITS.label);
 const note = z.string().trim().min(1).max(RESULT_LIMITS.note).regex(/^[^\r\n]*$/);
-const commonInput = { label: label.optional(), note: note.optional(), sourceMissionId: missionId.optional() };
+const completionCommon = { label: label.optional(), note: note.optional() };
+const commonInput = { ...completionCommon, sourceMissionId: missionId.optional() };
+const url = z.string().trim().min(1).max(RESULT_LIMITS.url);
+
+export const completionResultInputSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("pr"), ...completionCommon, url }).strict(),
+  z.object({ kind: z.literal("evidence"), ...completionCommon, evidenceId: id }).strict(),
+  z.object({ kind: z.literal("artifact"), ...completionCommon, url }).strict(),
+]);
+export const completionResultsSchema = z.array(completionResultInputSchema).max(RESULT_LIMITS.count);
+export type CompletionResultInput = z.output<typeof completionResultInputSchema>;
 
 export const resultInputSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("pr"), ...commonInput, url: z.string().trim().min(1).max(RESULT_LIMITS.url) }).strict(),
-  z.object({ kind: z.literal("evidence"), ...commonInput, evidenceId: id }).strict(),
+  completionResultInputSchema.options[0].extend({ sourceMissionId: missionId.optional() }),
+  completionResultInputSchema.options[1].extend({ sourceMissionId: missionId.optional() }),
+  completionResultInputSchema.options[2].extend({ sourceMissionId: missionId.optional() }),
 ]);
 export type ResultInput = z.output<typeof resultInputSchema>;
 
@@ -87,11 +98,27 @@ export function prTarget(raw: string) {
   return { url: `https://github.com/${owner}/${repo}/pull/${number}`, host: "github.com" as const, owner, repo, number };
 }
 
+export function artifactTarget(raw: string) {
+  // 정규화 전에 주소 전체를 검사한다 — 포트·userinfo·query·fragment는 참조 계약 밖이다.
+  const match = /^(https):\/\/([^/]+)(\/artifact\/[A-Za-z0-9_-]{1,64}|\/code\/artifact\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})\/?$/.exec(raw.replace(/^https:/i, "https:"));
+  if (!match || match[2]!.toLowerCase() !== "claude.ai") {
+    let host: string | undefined;
+    try { host = new URL(raw).hostname.toLowerCase(); } catch { /* 형식 오류 */ }
+    throw new ResultValidationError(host && host !== "claude.ai" ? "unsupported_artifact_host" : "invalid_artifact_url");
+  }
+  const pathname = match[3]!;
+  return { url: `https://claude.ai${pathname.startsWith("/code/artifact/") ? pathname.toLowerCase() : pathname}` };
+}
+
 export function checkedResultInput(raw: unknown): ResultInput {
   const parsed = resultInputSchema.safeParse(raw);
   if (!parsed.success) throw new ResultValidationError("invalid_arguments");
   const input = parsed.data;
-  return input.kind === "pr" ? { ...input, url: prTarget(input.url).url } : input;
+  switch (input.kind) {
+    case "pr": return { ...input, url: prTarget(input.url).url };
+    case "artifact": return { ...input, url: artifactTarget(input.url).url };
+    case "evidence": return input;
+  }
 }
 
 const savedCommon = { id, ...commonInput, createdAt: timestamp, updatedAt: timestamp };
@@ -101,12 +128,16 @@ export const storedResultSchema = z.discriminatedUnion("kind", [
     catch { return false; }
   }),
   evidenceMetadataSchema.safeExtend({ kind: z.literal("evidence"), ...savedCommon }),
+  z.object({ kind: z.literal("artifact"), ...savedCommon, url: z.string().max(RESULT_LIMITS.url) }).strict().refine((value) => {
+    try { return artifactTarget(value.url).url === value.url; }
+    catch { return false; }
+  }),
 ]);
 export type ObjectiveResult = z.output<typeof storedResultSchema>;
 
 /** 결과물의 실체가 같으면 label·note 와 무관하게 한 줄이다. */
 export function resultIdentity(result: ResultInput | ObjectiveResult): string {
-  return result.kind === "pr" ? `pr:${result.url}` : `evidence:${result.evidenceId}`;
+  return result.kind === "evidence" ? `evidence:${result.evidenceId}` : `${result.kind}:${result.url}`;
 }
 
 export const storedResultsSchema = z.array(storedResultSchema).max(RESULT_LIMITS.count).refine((results) => {
@@ -122,7 +153,7 @@ export function patchedResultInput(result: ObjectiveResult, raw: ResultPatch): R
   const parsed = resultPatchSchema.safeParse(raw);
   if (!parsed.success || Object.keys(parsed.data).length === 0) throw new ResultValidationError("invalid_arguments");
   const patch = parsed.data;
-  const fields = ["label", "note", "sourceMissionId", result.kind === "pr" ? "url" : "evidenceId"];
+  const fields = ["label", "note", "sourceMissionId", result.kind === "evidence" ? "evidenceId" : "url"];
   if (Object.keys(patch).some((key) => !fields.includes(key))) throw new ResultValidationError("invalid_arguments");
   const input: Record<string, unknown> = { kind: result.kind };
   for (const field of fields) {

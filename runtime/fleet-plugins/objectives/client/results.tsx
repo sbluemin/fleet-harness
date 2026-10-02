@@ -5,15 +5,15 @@ import { renderMarkdown } from "@fleet-console/markdown/core";
 import "@fleet-console/markdown/styles.css";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
-import type { Objective, ObjectiveResult, PrObservation } from "../server/types.js";
+import type { Objective, ObjectiveMission, ObjectiveResult, PrObservation } from "../server/types.js";
 import { AttachmentView } from "./attachments.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 
 /**
- * 결과물 — 달성 기준 바로 아래, 모든 상태에서 같은 자리. 증거(이미지 썸네일·문서)가 먼저 서고 PR 이 뒤따른다.
- * 사람은 읽기만 한다 — 붙이고 고치는 것은 지휘관의 도구다. PR 상태는 서버의 관측을 그대로 옮기고, 조회 실패는 마지막 성공보다
- * 앞선 주 상태다(마지막 성공은 보조 줄). 파일은 목표·결과물 id 로 받아 온다 — 경로는 브라우저에 오지 않는다.
+ * 결과물 장부 — 임무 순서의 현재 결과물과 마지막 기록 한 줄. 임무 밖 연결도 끝 묶음에서 읽는다.
+ * 사람은 읽기만 한다 — 붙이고 고치는 것은 지휘관의 도구다. 파일은 목표·결과물 id 로 받으며 PR 상태는 서버 관측 그대로다.
+ * Artifact는 외부 링크만 열고 사본·미리보기·관측을 만들지 않는다. 기록 회차별 결과물 이력은 아니다.
  */
 
 type T = Translate<ObjectiveMessageKey>;
@@ -86,73 +86,112 @@ export function ResultsHeadTools({ objective, t, expanded }: { readonly objectiv
   </>;
 }
 
-export function ObjectiveResults({ objective, t, language }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale }) {
+export const resultGroupKey = (objectiveId: string, missionId: string = "loose") => `result:${objectiveId}:${missionId}`;
+
+export function ObjectiveResults({ objective, t, language, onShowMission, highlightMission, groupOpen, onToggleGroup }: {
+  readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale;
+  readonly onShowMission: (missionId: string) => void; readonly highlightMission: string | null;
+  readonly groupOpen: (key: string) => boolean; readonly onToggleGroup: (key: string) => void;
+}) {
   const now = useNow();
-  // 열린 보기는 결과물 id 로만 기억한다 — 교체되면 지금 객체(새 파일·형식)를 다시 고르고, 떼어지면 닫힌다.
-  // 이미지는 보기 안에서 넘겨 볼 수 있으므로 닫을 때 초점은 처음 누른 자리가 아니라 마지막으로 본 결과물의 입구로 돌아간다.
+  // 열린 보기는 resultId로 고른다. 묶음 이동·교체도 현재 객체를 따르고, 이미지 넘기기는 같은 묶음 안에서만 한다.
   const [viewingId, setViewingId] = useState<string | null>(null);
   const openerRefs = useRef(new Map<string, HTMLButtonElement>());
   const openerRef = (id: string) => (node: HTMLButtonElement | null) => { if (node) openerRefs.current.set(id, node); else openerRefs.current.delete(id); };
-  const evidence = objective.results.filter((result): result is EvidenceResult => result.kind === "evidence");
-  const prs = objective.results.filter((result): result is PrResult => result.kind === "pr");
-  const images = evidence.filter((result) => result.mediaType !== "text/plain");
-  const texts = evidence.filter((result) => result.mediaType === "text/plain");
-  const missionTag = (missionId: string | undefined) => {
-    const index = missionId ? objective.missions.findIndex((mission) => mission.id === missionId) : -1;
-    return index >= 0 ? ` · ${t("objectives.results.mission", { n: index + 1 })}` : "";
+  const groups = objective.missions.map((mission, index) => ({ mission, n: index + 1, results: objective.results.filter((result) => result.sourceMissionId === mission.id) })).filter((group) => group.results.length > 0);
+  const knownMissions = new Set(objective.missions.map((mission) => mission.id));
+  const loose = objective.results.filter((result) => !result.sourceMissionId || !knownMissions.has(result.sourceMissionId));
+  const ordered = [...groups.flatMap((group) => group.results), ...loose];
+  const evidence = ordered.filter((result): result is EvidenceResult => result.kind === "evidence");
+  const source = (result: ObjectiveResult) => {
+    const n = result.sourceMissionId ? objective.missions.findIndex((mission) => mission.id === result.sourceMissionId) + 1 : 0;
+    return n > 0 ? t("objectives.results.mission", { n }) : t(result.sourceMissionId ? "objectives.results.looseRemoved" : "objectives.results.looseNoSource");
   };
+  const sourceTag = (result: ObjectiveResult) => result.sourceMissionId && knownMissions.has(result.sourceMissionId) ? "" : ` · ${source(result)}`;
   const uploaded = (result: EvidenceResult) => t("objectives.results.uploaded", { ago: relative(result.capturedAt, now, language) });
   const close = () => { if (viewingId) openerRefs.current.get(viewingId)?.focus(); setViewingId(null); };
   const viewingLive = viewingId ? evidence.find((result) => result.id === viewingId) ?? null : null;
+  const viewingGroup = groups.find((group) => group.results.some((result) => result.id === viewingId));
+  const images = (viewingGroup?.results ?? loose).filter((result): result is EvidenceResult => result.kind === "evidence" && result.mediaType !== "text/plain");
   const imageIndex = viewingLive ? images.indexOf(viewingLive) : -1;
   const viewerImages = images.map((result) => ({
-    src: resultFileUrl(objective.id, result),
-    title: result.label ?? null,
-    note: result.note ?? null,
-    caption: `${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)}${missionTag(result.sourceMissionId)}`,
+    src: resultFileUrl(objective.id, result), title: result.label ?? null, note: result.note ?? null,
+    caption: `${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)} · ${source(result)}`,
   }));
-
-  return (
-    <div className="objectives-results">
-      {evidence.length ? <div className="objectives-results-kind">{t("objectives.results.evidence", { count: evidence.length })}</div> : null}
-      {images.length ? (
-        <div className="objectives-result-strip">
-          {images.map((result) => {
-            const title = result.label ?? result.name;
-            return (
-              <div key={result.id} className="objectives-result-thumb">
-                <button ref={openerRef(result.id)} type="button" className="objectives-result-thumb-hit" aria-label={t("objectives.results.zoom", { name: title })} title={`${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)}`} onClick={() => setViewingId(result.id)}>
-                  <span className="objectives-result-img"><img src={resultFileUrl(objective.id, result)} alt="" loading="lazy" draggable={false} /></span>
-                </button>
-                <span className="objectives-result-name" onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) return; setViewingId(result.id); }}><LinkText text={title} /></span>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-      {texts.map((result) => (
-        <div key={result.id} className="objectives-result-row is-button" onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) return; setViewingId(result.id); }}>
-          <span className="objectives-row-ic"><DocGlyph /></span>
+  const group = (mission: ObjectiveMission | null, n: number, results: readonly ObjectiveResult[]) => {
+    const record = mission?.records.at(-1);
+    const key = resultGroupKey(objective.id, mission?.id);
+    const open = groupOpen(key);
+    const bodyId = `objectives-result-body-${objective.id}-${mission?.id ?? "loose"}`;
+    const name = mission ? `${t("objectives.graph.detail", { n })} · ${mission.text}` : t("objectives.results.loose");
+    const groupImages = results.filter((result): result is EvidenceResult => result.kind === "evidence" && result.mediaType !== "text/plain");
+    return <section key={mission?.id ?? "loose"} data-result-mission={mission?.id} className={`objectives-result-group${mission ? "" : " is-loose"}${highlightMission === mission?.id ? " is-highlight" : ""}`}>
+      <div className="objectives-result-group-bar">
+        <button type="button" className="objectives-result-group-head" aria-label={`${name} · ${t("objectives.results.title")} ${t("objectives.results.count", { count: results.length })}`} aria-expanded={open} aria-controls={bodyId} onClick={() => onToggleGroup(key)}>
+          <span className="objectives-result-mission-n" aria-hidden="true">{mission ? n : "—"}</span><span className="objectives-result-mission-title">{mission?.text ?? t("objectives.results.loose")}</span>
+          <span className="objectives-result-group-count">{t("objectives.results.count", { count: results.length })}</span>
+          <span className="objectives-section-chev" aria-hidden="true"><ChevronGlyph /></span>
+        </button>
+        {mission ? <button type="button" className="objectives-glyph objectives-result-goto" aria-label={`${t("objectives.graph.detail", { n })} · ${t("objectives.results.showInGraph")}`} title={t("objectives.results.showInGraph")} onClick={() => onShowMission(mission.id)}>↗</button>
+          : <span className="objectives-result-goto-space" aria-hidden="true" />}
+      </div>
+      <div id={bodyId} className="objectives-result-group-body" hidden={!open}>
+      {record ? <div className="objectives-result-record">
+        <span title={record.lines[0] ?? ""}><LinkText text={record.lines[0] ?? ""} /></span>
+        <time dateTime={new Date(record.at).toISOString()} title={absolute(record.at, language)}>{t("objectives.results.lastRecord", { time: relative(record.at, now, language) })}</time>
+      </div> : null}
+      {groupImages.length ? <div className="objectives-result-strip">{groupImages.map((result) => {
+        const title = result.label ?? result.name;
+        return <div key={result.id} className="objectives-result-thumb">
+          <button ref={openerRef(result.id)} type="button" className="objectives-result-thumb-hit" aria-label={`${t("objectives.results.zoom", { name: title })} · ${source(result)}`} title={`${result.name} · ${uploaded(result)} · ${source(result)}`} onClick={() => setViewingId(result.id)}>
+            <span className="objectives-result-img"><img src={resultFileUrl(objective.id, result)} alt="" loading="lazy" draggable={false} /></span>
+          </button>
+          <span className="objectives-result-name" onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) return; setViewingId(result.id); }}><LinkText text={title} /></span>
+          {!mission ? <span className="objectives-result-sub">{source(result)}</span> : null}
+        </div>;
+      })}</div> : null}
+      {results.filter((result): result is EvidenceResult => result.kind === "evidence" && result.mediaType === "text/plain").map((result) => <div key={result.id} className="objectives-result-row is-button" onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) return; setViewingId(result.id); }}>
+        <span className="objectives-row-ic"><DocGlyph /></span>
+        <span className="objectives-result-body">
+          <span className="objectives-result-title is-mono"><LinkText text={result.label ?? result.name} /></span>
+          <span className="objectives-result-sub">{result.label ? `${result.name} · ` : ""}{t("objectives.results.text", { size: bytesLabel(result.bytes) })} · <time dateTime={new Date(result.capturedAt).toISOString()} title={absolute(result.capturedAt, language)}>{uploaded(result)}</time>{sourceTag(result)}</span>
+          {result.note ? <span className="objectives-result-sub"><LinkText text={result.note} /></span> : null}
+        </span>
+        <button ref={openerRef(result.id)} type="button" className="objectives-result-open" aria-label={`${t("objectives.results.openAria", { name: result.label ?? result.name })} · ${source(result)}`} onClick={() => setViewingId(result.id)}>{t("objectives.results.open")}</button>
+      </div>)}
+      {results.filter((result) => result.kind === "artifact").map((result) => {
+        const name = result.label ?? t("objectives.results.artifact.untitled");
+        return <div key={result.id} className="objectives-result-row is-button is-artifact" onClick={(event) => {
+          if (event.target instanceof Element && event.target.closest("a") || window.getSelection()?.toString()) return;
+          event.currentTarget.querySelector<HTMLAnchorElement>("a")?.click();
+        }}>
+          <span className="objectives-row-ic"><ArtifactGlyph /></span>
           <span className="objectives-result-body">
-            <span className="objectives-result-title is-mono"><LinkText text={result.label ?? result.name} /></span>
-            <span className="objectives-result-sub">
-              {result.label ? `${result.name} · ` : ""}{t("objectives.results.text", { size: bytesLabel(result.bytes) })} · <time dateTime={new Date(result.capturedAt).toISOString()} title={absolute(result.capturedAt, language)}>{uploaded(result)}</time>{missionTag(result.sourceMissionId)}
-            </span>
-            {result.note ? <span className="objectives-result-sub"><LinkText text={result.note} /></span> : null}
+            <a className={`objectives-result-title${result.label ? "" : " is-placeholder"}`} href={result.url} target="_blank" rel="noopener noreferrer" aria-label={t("objectives.results.artifact.openAria", { name })} title={t("objectives.results.artifact.tooltip")}>{name}</a>
+            <span className="objectives-result-sub"><span className="is-mono">claude.ai</span>{sourceTag(result)}</span>
+            {result.note ? <span className="objectives-result-sub">{result.note}</span> : null}
           </span>
-          <button ref={openerRef(result.id)} type="button" className="objectives-result-open" aria-label={t("objectives.results.openAria", { name: result.label ?? result.name })} onClick={() => setViewingId(result.id)}>{t("objectives.results.open")}</button>
-        </div>
-      ))}
-      {prs.length ? <div className="objectives-results-kind">{t("objectives.results.prs")}</div> : null}
-      {prs.map((result) => <PrRow key={result.id} result={result} t={t} language={language} now={now} missionTag={missionTag(result.sourceMissionId)} />)}
-      {viewingLive ? createPortal(
-        viewingLive.mediaType === "text/plain"
-          ? <EvidenceTextView t={t} src={resultFileUrl(objective.id, viewingLive)} name={viewingLive.name} caption={`${viewingLive.name} · ${bytesLabel(viewingLive.bytes)} · ${uploaded(viewingLive)}`} onClose={close} />
-          : <AttachmentView t={t} images={viewerImages} index={imageIndex} onIndex={(index) => setViewingId(images[index]!.id)} onClose={close} />,
-        document.body,
-      ) : null}
-    </div>
-  );
+          <span className="objectives-result-open" aria-hidden="true">{t("objectives.results.artifact.newTab")}<ExternalGlyph /></span>
+        </div>;
+      })}
+      {results.filter((result): result is PrResult => result.kind === "pr").map((result) => <PrRow key={result.id} result={result} t={t} language={language} now={now} missionTag={sourceTag(result)} />)}
+      </div>
+    </section>;
+  };
+
+  const artifactVisible = groups.some(({ mission, results }) => groupOpen(resultGroupKey(objective.id, mission.id)) && results.some((result) => result.kind === "artifact"))
+    || groupOpen(resultGroupKey(objective.id)) && loose.some((result) => result.kind === "artifact");
+  return <div className="objectives-results">
+    {groups.map(({ mission, n, results }) => group(mission, n, results))}
+    {loose.length ? group(null, 0, loose) : null}
+    {artifactVisible ? <p className="objectives-artifact-notice"><InfoGlyph /><span>{t("objectives.results.artifact.notice")}</span></p> : null}
+    {viewingLive ? createPortal(
+      viewingLive.mediaType === "text/plain"
+        ? <EvidenceTextView t={t} src={resultFileUrl(objective.id, viewingLive)} name={viewingLive.name} caption={`${viewingLive.name} · ${bytesLabel(viewingLive.bytes)} · ${uploaded(viewingLive)} · ${source(viewingLive)}`} onClose={close} />
+        : <AttachmentView t={t} images={viewerImages} index={imageIndex} onIndex={(index) => setViewingId(images[index]!.id)} onClose={close} />,
+      document.body,
+    ) : null}
+  </div>;
 }
 
 function PrRow({ result, t, language, now, missionTag }: { readonly result: PrResult; readonly t: T; readonly language: ConsoleLocale; readonly now: number; readonly missionTag: string }) {
@@ -308,6 +347,10 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
   );
 }
 
+const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>;
+const ArtifactGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M2 6h12M4.5 4.3h.1M6.5 4.3h.1M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5" /></svg>;
+const ExternalGlyph = () => <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 2.5H2.5v7h7V7M7 2.5h2.5V5M9.5 2.5 5.5 6.5" /></svg>;
+const InfoGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6" /><path d="M8 7v4M8 4.8h.01" /></svg>;
 const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
 /** 결과물 구획 머리 — 상자에 담긴 산출물. */
 export const ResultsGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 5.2 8 2.5l5.5 2.7v5.6L8 13.5l-5.5-2.7z" /><path d="M2.5 5.2 8 7.9l5.5-2.7M8 7.9v5.6" /></svg>;

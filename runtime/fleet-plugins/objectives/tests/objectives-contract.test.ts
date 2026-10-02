@@ -693,13 +693,17 @@ describe("Objectives contract", () => {
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [] });
     expect(reloaded.find(objective.id)!.missions[0]!.records.map((record) => [record.kind, record.lines])).toEqual([["done", ["a done"]], ["redone", ["a redone", "fixed the gap"]]]);
-    // 결과물은 임무 기록과 독립된 지휘관 도구다. 이전 저장에는 없고, 등록·수정·재시작을 지나 ID와 참조가 남는다.
+    // 완료 기록과 결과물을 함께 저장한다. 재완료는 기록을 더하고 결과물은 임무의 현재 연결로 남는다.
     expect(reloaded.find(objective.id)!.results).toEqual([]);
-    const pr = await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/Example/Project/pull/12/", sourceMissionId: a!.id } }, objective.id);
+    const pr = await call("complete_mission", { objectiveId: objective.id, missionId: a!.id, summary: ["PR ready"], results: [{ kind: "pr", url: "https://github.com/Example/Project/pull/12/" }] }, objective.id);
     expect(pr.isError).toBe(false);
-    const prId = pr.structuredContent.resultId as string;
-    expect(store.find(objective.id)!.results).toContainEqual(expect.objectContaining({ id: prId, kind: "pr", url: "https://github.com/example/project/pull/12", observation: { state: "unchecked", checkedAt: null, stale: true } }));
-    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/example/project/pull/12" } }, objective.id)).structuredContent).toMatchObject({ error: "result_exists", resultId: prId });
+    const [prId] = pr.structuredContent.resultIds as [string];
+    expect(store.find(objective.id)!.results).toContainEqual(expect.objectContaining({ id: prId, kind: "pr", sourceMissionId: a!.id, url: "https://github.com/example/project/pull/12", observation: { state: "unchecked", checkedAt: null, stale: true } }));
+    const beforeRedone = store.find(objective.id)!.missions[0]!.records.length;
+    expect((await call("complete_mission", { objectiveId: objective.id, missionId: a!.id, summary: ["Verified"], results: [] }, objective.id)).structuredContent).not.toHaveProperty("resultIds");
+    expect(store.find(objective.id)!.missions[0]!.records).toHaveLength(beforeRedone + 1);
+    expect(store.find(objective.id)!.results.map((result) => result.id)).toEqual([prId]);
+    expect((await call("complete_mission", { objectiveId: objective.id, missionId: a!.id, summary: ["Duplicate"], results: [{ kind: "pr", url: "https://github.com/example/project/pull/12" }] }, objective.id)).structuredContent).toMatchObject({ error: "result_exists", resultId: prId });
     expect((await call("update_result", { objectiveId: objective.id, resultId: prId, patch: { url: "https://github.com/example/project/pull/13", label: "Review", note: "Ready" } }, objective.id)).isError).toBe(false);
     const restored = createObjectiveStore({ dirOf: () => objectivesDir, operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     expect(restored.find(objective.id)!.results).toEqual(store.find(objective.id)!.results);
@@ -723,9 +727,9 @@ describe("Objectives contract", () => {
     expect(text.structuredContent).not.toHaveProperty("error");
     expect(pendingEvidence.structuredContent).not.toHaveProperty("error");
     expect(store.find(objective.id)!.results).toEqual([]);
-    const imageResult = await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: image.structuredContent.evidenceId } }, objective.id);
+    const imageResult = await call("complete_mission", { objectiveId: objective.id, missionId: a!.id, summary: ["Evidence ready"], results: [{ kind: "evidence", evidenceId: image.structuredContent.evidenceId }] }, objective.id);
     expect(imageResult.isError).toBe(false);
-    const imageId = imageResult.structuredContent.resultId as string;
+    const [imageId] = imageResult.structuredContent.resultIds as [string];
     expect((await resultFile(objective.id, imageId, false)).status).toBe(401);
     const imageResponse = await resultFile(objective.id, imageId);
     expect(imageResponse).toMatchObject({ status: 200, headers: { "Content-Type": "image/png", "X-Content-Type-Options": "nosniff" } });
@@ -794,13 +798,17 @@ describe("Objectives contract", () => {
     store.patch("beta", { note: "b, revised" });
     expect(bytes("alpha")).toEqual(alphaBefore);
 
-    // 쓰기가 실패하면 디스크도 캐시도 그대로다 — 반쯤 적용된 목표를 남기지 않는다.
+    // 완료·기록·결과물의 저장이 실패하면 디스크·캐시·방송 모두 이전 상태다.
+    const mission = store.missionAdd("alpha", { text: "Ship" }).missions[0]!;
+    const beforeCompletion = store.find("alpha");
+    const completionBytes = bytes("alpha"); const completionEvents = events.length;
     const failing = vi.spyOn(fs, "writeFileSync").mockImplementationOnce(() => { throw new Error("ENOSPC: no space left on device"); });
-    expect(() => store.patch("alpha", { note: "lost" })).toThrow(/ENOSPC/);
+    expect(() => store.missionDone("alpha", mission.id, ["lost"], [{ kind: "pr", url: "https://github.com/example/project/pull/1" }])).toThrow(/ENOSPC/);
     failing.mockRestore();
-    expect(store.find("alpha")!.note).toBe("a");
-    expect(bytes("alpha")).toEqual(alphaBefore);
-    expect(reload().find("alpha")!.note).toBe("a");
+    expect(store.find("alpha")).toEqual(beforeCompletion);
+    expect(bytes("alpha")).toEqual(completionBytes);
+    expect(events).toHaveLength(completionEvents);
+    expect(reload().find("alpha")).toEqual(beforeCompletion);
     const sourceDir = store.sharedDir("t1", "alpha"); fs.mkdirSync(sourceDir, { recursive: true });
     const source = path.join(fs.realpathSync(sourceDir), "EVIDENCE.md"); fs.writeFileSync(source, "# preserved source");
     const binaryDir = path.join(objectivesDir, "alpha", "evidence");
@@ -1183,7 +1191,7 @@ describe("Objectives contract", () => {
   });
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
-    const { ctx, store, call, launch, workspace, events, add } = harness();
+    const { ctx, store, call, launch, workspace, events, add, objectiveFile, operations, objectivesDir } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -1225,19 +1233,42 @@ describe("Objectives contract", () => {
     expect((await call("read", { objectiveId: shortId })).structuredContent).toEqual(missing);
     expect((await call("read", { objectiveId: collision }, member.id)).structuredContent.error).toBe("not_participant");
     expect((await call("mine", {}, commander)).structuredContent).toMatchObject({ role: "commander", objectiveId: objective.id });
-    // 새 결과물 도구도 같은 인증 caller 경계를 지난다. 접두어로 읽어도 구성원의 쓰기 권한은 늘지 않는다.
+    // 완료 첨부도 같은 caller 경계다. sourceMissionId는 입력으로 받지 않고 대상 임무로 지정한다.
+    const completion = { objectiveId: shortId, n: 1, summary: ["Results ready"] };
     const resultInput = { kind: "pr", url: "https://github.com/example/project/pull/1" };
-    expect((await call("attach_result", { objectiveId: shortId, result: resultInput }, member.id)).structuredContent.error).toBe("not_commander");
-    const attached = await call("attach_result", { objectiveId: shortId, result: resultInput }, commander);
-    const resultId = attached.structuredContent.resultId;
+    expect((await call("complete_mission", { ...completion, results: [resultInput] }, member.id)).structuredContent.error).toBe("not_commander");
+    expect((await call("complete_mission", { ...completion, results: [{ ...resultInput, sourceMissionId: "foreign" }] }, commander)).structuredContent.error).toBe("invalid_arguments");
+    const attached = await call("complete_mission", { ...completion, results: [resultInput, { kind: "artifact", url: "HTTPS://CLAUDE.AI/artifact/Board_1/" }] }, commander);
+    const [resultId, artifactId] = attached.structuredContent.resultIds as [string, string];
     expect(attached.isError).toBe(false);
+    const linked = store.find(objective.id)!;
+    expect(linked.results.map((result) => [result.id, result.kind, result.sourceMissionId])).toEqual([
+      [resultId, "pr", linked.missions[0]!.id], [artifactId, "artifact", linked.missions[0]!.id],
+    ]);
+    expect(linked.results[1]).toMatchObject({ url: "https://claude.ai/artifact/Board_1" });
+    expect(linked.missions[0]).toMatchObject({ done: true, records: [expect.objectContaining({ lines: ["Results ready"] })] });
     expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { label: "foreign" } }, other)).structuredContent.error).toBe("not_participant");
     expect((await call("detach_result", { objectiveId: objective.id, resultId })).structuredContent.error).toBe("not_participant");
     expect((await call("update_result", { objectiveId: objective.id, resultId, patch: { path: "/private/user-file" } }, commander)).structuredContent.error).toBe("invalid_arguments");
-    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: "12345678-1234-4123-8123-123456789012" } }, commander)).structuredContent.error).toBe("unknown_evidence");
-    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", path: "/private/user-file" } }, commander)).structuredContent.error).toBe("invalid_arguments");
-    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://elsewhere.invalid/o/r/pull/1" } }, commander)).structuredContent.error).toBe("unsupported_pr_host");
-    expect((await call("read", { objectiveId: objective.id }, member.id)).structuredContent.objective).toHaveProperty("results", expect.arrayContaining([expect.objectContaining({ id: resultId })]));
+    // 요청의 뒤 결과물이 거절돼도 앞 PR·완료·기록은 남지 않는다.
+    const beforeRejected = store.find(objective.id);
+    const beforeRejectedBytes = fs.readFileSync(objectiveFile(objective.id)); const beforeRejectedEvents = events.length;
+    expect((await call("complete_mission", { ...completion, n: 2, results: [{ kind: "pr", url: "https://github.com/example/project/pull/99" }, { kind: "evidence", evidenceId: "12345678-1234-4123-8123-123456789012" }] }, commander)).structuredContent.error).toBe("unknown_evidence");
+    expect((await call("complete_mission", { ...completion, n: 2, results: [resultInput] }, commander)).structuredContent).toMatchObject({ error: "result_exists", resultId });
+    expect((await call("complete_mission", { ...completion, n: 2, results: [{ kind: "pr", url: "https://github.com/example/project/pull/99" }, { kind: "pr", url: "https://github.com/Example/Project/pull/99/" }] }, commander)).structuredContent.error).toBe("result_exists");
+    expect(store.find(objective.id)).toEqual(beforeRejected);
+    expect(fs.readFileSync(objectiveFile(objective.id))).toEqual(beforeRejectedBytes);
+    expect(events).toHaveLength(beforeRejectedEvents);
+    expect((await call("complete_mission", { ...completion, results: [{ kind: "evidence", path: "/private/user-file" }] }, commander)).structuredContent.error).toBe("invalid_arguments");
+    expect((await call("complete_mission", { ...completion, results: [{ kind: "pr", url: "https://elsewhere.invalid/o/r/pull/1" }] }, commander)).structuredContent.error).toBe("unsupported_pr_host");
+    expect((await call("complete_mission", { ...completion, results: [{ kind: "artifact", url: "https://claude.ai/artifact/Board?token=secret" }] }, commander)).structuredContent.error).toBe("invalid_artifact_url");
+    expect((await call("update_result", { objectiveId: objective.id, resultId: artifactId, patch: { url: "HTTPS://CLAUDE.AI/code/artifact/ABCDEF12-ABCD-7123-8123-ABCDEF123456/", label: "Design" } }, commander)).isError).toBe(false);
+    const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
+    expect(reloaded.find(objective.id)!.results).toEqual(store.find(objective.id)!.results);
+    expect((await call("read", { objectiveId: objective.id }, member.id)).structuredContent.objective).toHaveProperty("results", expect.arrayContaining([
+      expect.objectContaining({ id: resultId }), expect.objectContaining({ id: artifactId, kind: "artifact", url: "https://claude.ai/code/artifact/abcdef12-abcd-7123-8123-abcdef123456" }),
+    ]));
+    expect((await call("detach_result", { objectiveId: objective.id, resultId: artifactId }, commander)).isError).toBe(false);
     expect(store.find(objective.id)!.results).toHaveLength(1);
     const own = store.sharedDir(objective.theaterId, objective.id); fs.mkdirSync(own, { recursive: true });
     const root = fs.realpathSync(own);
@@ -1275,8 +1306,9 @@ describe("Objectives contract", () => {
     expect(events).toHaveLength(beforeSeal);
     const sealed = await seal(ownFile);
     expect(sealed.isError).toBe(false);
-    expect((await call("attach_result", { objectiveId: other, result: { kind: "evidence", evidenceId: sealed.structuredContent.evidenceId } }, other)).structuredContent.error).toBe("unknown_evidence");
-    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "evidence", evidenceId: sealed.structuredContent.evidenceId } }, member.id)).structuredContent.error).toBe("not_commander");
+    const otherMission = store.missionAdd(other, { text: "Foreign evidence" }).missions[0]!;
+    expect((await call("complete_mission", { objectiveId: other, missionId: otherMission.id, summary: ["Foreign"], results: [{ kind: "evidence", evidenceId: sealed.structuredContent.evidenceId }] }, other)).structuredContent.error).toBe("unknown_evidence");
+    expect((await call("complete_mission", { ...completion, results: [{ kind: "evidence", evidenceId: sealed.structuredContent.evidenceId }] }, member.id)).structuredContent.error).toBe("not_commander");
     // 사람이 선행 없이 더한 임무는 미분류 — 지휘관이 자리를 정하기 전까지 준비되지 않는다.
     launch.missionAdded(objective.id, { text: "missed" }, { by: "human" });
     const board = async () => ((await call("read", { objectiveId: objective.id }, commander)).structuredContent.objective as { graph: { missions: { n: number; unplaced?: boolean; ready: boolean; prerequisites: number[]; member: { role: string } | null }[] } }).graph.missions;
@@ -1318,9 +1350,17 @@ describe("Objectives contract", () => {
     const results = await Promise.allSettled([launch.startCommander(other), launch.startCommander(other)]);
     expect(results.filter((result) => result.status === "fulfilled").length).toBe(2);
     // 결과물 수의 상한과 완료 잠금은 도구 호출을 우회한 저장에서도 유지된다.
-    for (let n = 2; n <= RESULT_LIMITS.count; n += 1) store.resultAdd(objective.id, { kind: "pr", url: `https://github.com/example/project/pull/${n}` });
-    expect((await call("attach_result", { objectiveId: objective.id, result: { kind: "pr", url: "https://github.com/example/project/pull/999" } }, commander)).structuredContent.error).toBe("too_many_results");
+    const capacityMission = store.find(objective.id)!.missions[0]!.id;
+    store.missionDone(objective.id, capacityMission, ["Batch ready"], Array.from({ length: RESULT_LIMITS.count - 1 }, (_, index) => ({ kind: "pr", url: `https://github.com/example/project/pull/${index + 2}` })));
+    const full = store.find(objective.id);
+    expect((await call("complete_mission", { ...completion, results: [{ kind: "pr", url: "https://github.com/example/project/pull/999" }] }, commander)).structuredContent.error).toBe("too_many_results");
+    expect(store.find(objective.id)).toEqual(full);
+    expect((await call("complete_mission", completion, commander)).isError).toBe(false);
     store.complete(objective.id);
+    const completed = store.find(objective.id);
+    expect((await call("complete_mission", completion, commander)).structuredContent.error).toBe("objective_done");
+    expect((await call("complete_mission", { ...completion, results: [{ kind: "pr", url: "https://github.com/example/project/pull/999" }] }, commander)).structuredContent.error).toBe("objective_done");
+    expect(store.find(objective.id)).toEqual(completed);
     expect((await call("detach_result", { objectiveId: objective.id, resultId }, commander)).structuredContent.error).toBe("objective_done");
   });
 
@@ -1437,10 +1477,10 @@ describe("Objectives contract", () => {
     const { store, add, events } = harness();
     add("pr-owner"); add("also-owner");
     const url = "https://github.com/example/project/pull/7";
-    const first = store.resultAdd("pr-owner", { kind: "pr", url }).result;
-    store.resultAdd("also-owner", { kind: "pr", url });
     const mission = store.missionAdd("pr-owner", { text: "Ready" }).missions[0]!;
-    store.missionDone("pr-owner", mission.id, ["Done"]);
+    const first = store.missionDone("pr-owner", mission.id, ["Done"], [{ kind: "pr", url }]).results[0]!;
+    const otherMission = store.missionAdd("also-owner", { text: "Ready" }).missions[0]!;
+    store.missionDone("also-owner", otherMission.id, ["Done"], [{ kind: "pr", url }]);
     store.handOff("pr-owner", { by: "human" });
     const handoff = store.find("pr-owner")!.handoff;
     const updatedAt = first.updatedAt;

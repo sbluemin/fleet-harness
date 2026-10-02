@@ -4,6 +4,7 @@ import { extensionOf, isLoose, missionReady, unseenRecords, wouldCycle, type Obj
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { graphLayout, stretchLayout, type GraphLayout, type Point } from "./graph-layout.js";
 import { GraphPopup } from "./graph-popup.js";
+import { ResultsGlyph } from "./results.js";
 import { usePointerDrag } from "./pointer-drag.js";
 import "./graph.css";
 
@@ -287,6 +288,8 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   }, [drag?.moved]);
   const current = popup && !popup.closing ? objective.missions.find(m => m.id === popup.id) : null;
   const number = (id: string) => objective.missions.findIndex(m => m.id === id) + 1;
+  const resultCounts = new Map<string, number>();
+  for (const result of objective.results) if (result.sourceMissionId) resultCounts.set(result.sourceMissionId, (resultCounts.get(result.sourceMissionId) ?? 0) + 1);
   const from = drag?.moved ? drag.from : link?.from, over = drag?.moved ? drag.over : link?.over;
   const reason = from && over ? check(from, over) : null;
   const targetNode = over ? box.current?.querySelector<HTMLElement>(`[data-graph-node="${CSS.escape(over)}"]`) : null;
@@ -297,11 +300,11 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     n?.focus({ preventScroll: true }); n?.scrollIntoView({ block: "nearest", inline: "nearest" });
     if (link) setLink({ ...link, over: id });
   };
-  const icon = (m: ObjectiveMission) => <><MissionNodeIcon state={states.get(m.id)!} number={number(m.id)} /><span className={`objectives-member-mark objectives-graph-mark ${m.member ? `is-tone-${Math.max(0, objective.members.findIndex(member => member.id === m.member)) % 8}` : "is-commander"}`} aria-hidden="true">{m.member ? marks.get(m.member) : "★"}</span>{m.records.length ? <span className={`objectives-graph-record${unseenRecords(m) ? " is-new" : ""}`} aria-hidden="true" /> : null}</>;
+  const icon = (m: ObjectiveMission) => <><MissionNodeIcon state={states.get(m.id)!} number={number(m.id)} /><span className={`objectives-member-mark objectives-graph-mark ${m.member ? `is-tone-${Math.max(0, objective.members.findIndex(member => member.id === m.member)) % 8}` : "is-commander"}`} aria-hidden="true">{m.member ? marks.get(m.member) : "★"}</span>{m.records.length ? <span className={`objectives-graph-record${unseenRecords(m) ? " is-new" : ""}`} aria-hidden="true" /> : null}{resultCounts.has(m.id) ? <span className="objectives-graph-results" aria-hidden="true"><ResultsGlyph /></span> : null}</>;
   const node = (m: ObjectiveMission, style?: CSSProperties) => {
     const active = current?.id === m.id, pre = current?.prerequisites.includes(m.id), post = current && m.prerequisites.includes(current.id);
     const member = objective.members.find(member => member.id === m.member)?.role ?? t("objectives.graph.commander");
-    return <button key={m.id} type="button" data-graph-node={m.id} data-mission-id={m.id} className={`objectives-graph-node is-${states.get(m.id)}${active ? popup?.pinned ? " is-pin" : " is-hov" : ""}${pre ? " is-pre" : ""}${post ? " is-post" : ""}${over === m.id ? reason ? " drop-no" : " drop-ok" : ""}`} style={style} aria-label={`${t("objectives.graph.nodeAria", { index: number(m.id), text: m.text })}. ${member}. ${t(`objectives.graph.state.${states.get(m.id)!}`)}. ${m.records.length ? t("objectives.records.count", { index: number(m.id), count: m.records.length }) : ""}${unseenRecords(m) ? ` · ${t("objectives.records.unseen", { count: unseenRecords(m) })}` : ""}`} aria-expanded={active} aria-controls={active ? popupId : undefined} onPointerDown={e => start(m.id, e)} onClick={e => { if (e.detail === 0) { if (link) { commitLink(link.from, m.id); setLink(null); } else if (active && popup?.pinned) close(true); else show(m.id, true, true); } }} onFocus={e => { if (e.currentTarget.matches(":focus-visible") && !popupRef.current?.pinned && !link) show(m.id); }} onBlur={e => { if (!document.getElementById(popupId)?.contains(e.relatedTarget as Node)) leave(); }} onKeyDown={e => {
+    return <button key={m.id} type="button" data-graph-node={m.id} data-mission-id={m.id} className={`objectives-graph-node is-${states.get(m.id)}${active ? popup?.pinned ? " is-pin" : " is-hov" : ""}${pre ? " is-pre" : ""}${post ? " is-post" : ""}${over === m.id ? reason ? " drop-no" : " drop-ok" : ""}`} style={style} aria-label={`${t("objectives.graph.nodeAria", { index: number(m.id), text: m.text })}. ${member}. ${t(`objectives.graph.state.${states.get(m.id)!}`)}. ${m.records.length ? t("objectives.records.count", { index: number(m.id), count: m.records.length }) : ""}${unseenRecords(m) ? ` · ${t("objectives.records.unseen", { count: unseenRecords(m) })}` : ""}${resultCounts.has(m.id) ? ` · ${t("objectives.graph.results", { count: resultCounts.get(m.id)! })}` : ""}`} title={resultCounts.has(m.id) ? t("objectives.graph.results", { count: resultCounts.get(m.id)! }) : undefined} aria-expanded={active} aria-controls={active ? popupId : undefined} onPointerDown={e => start(m.id, e)} onClick={e => { if (e.detail === 0) { if (link) { commitLink(link.from, m.id); setLink(null); } else if (active && popup?.pinned) close(true); else show(m.id, true, true); } }} onFocus={e => { if (e.currentTarget.matches(":focus-visible") && !popupRef.current?.pinned && !link) show(m.id); }} onBlur={e => { if (!document.getElementById(popupId)?.contains(e.relatedTarget as Node)) leave(); }} onKeyDown={e => {
       if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); setLink(null); close(true); }
       else if (e.key.toLowerCase() === "l") { e.preventDefault(); close(); setLink({ from: m.id, over: m.id }); }
       else if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(e.key)) { e.preventDefault(); const index = number(m.id) - 1, next = objective.missions[index + (["ArrowDown", "ArrowRight"].includes(e.key) ? 1 : -1)]; if (next) focusNode(next.id); }

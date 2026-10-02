@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readOperationLaunch, type OperationNode, type OperationDescription } from "@fleet-console/sdk/operations";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
-import { checkedResultInput, patchedResultInput, prTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
+import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import {
   MAX_CRITERIA,
@@ -204,8 +204,8 @@ export interface ObjectiveStore {
   /** `unplaced` — 사람이 선행 없이 더한 임무는 미분류로 들어간다(지휘관이 자리를 잡는다). */
   missionAdd(objectiveId: string, input: MissionAddInput, options?: { readonly unplaced?: boolean; readonly by?: "human" }): Objective;
   missionPatch(objectiveId: string, missionId: string, input: MissionPatchInput, options?: { readonly by?: "human" }): Objective;
-  /** 지휘관의 완료 — 완료로 두고 기록 한 건을 더한다. */
-  missionDone(objectiveId: string, missionId: string, lines: readonly string[]): Objective;
+  /** 지휘관의 완료 — 기록·완료·선택 결과물을 한 번에 저장한다. 결과물은 임무의 현재 연결로 남는다. */
+  missionDone(objectiveId: string, missionId: string, lines: readonly string[], results?: readonly CompletionResultInput[]): Objective;
   /** 사람이 이 임무의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
   missionSeen(objectiveId: string, missionId: string): Objective;
   missionRemove(objectiveId: string, missionId: string): Objective;
@@ -241,7 +241,6 @@ export interface ObjectiveStore {
   proposalAnnotate(objectiveId: string, proposalId: string, annotation: string): Objective;
   /** 사람의 편집을 쌓는다 · null 이면 지운다. 바뀐 것이 없으면 쓰지 않는다. */
   setEdited(objectiveId: string, kinds: readonly ObjectiveEditKind[] | null): Objective;
-  resultAdd(objectiveId: string, input: ResultInput): { readonly objective: Objective; readonly result: ObjectiveResult };
   resultUpdate(objectiveId: string, resultId: string, patch: ResultPatch): Objective;
   resultRemove(objectiveId: string, resultId: string): Objective;
   /** 조회를 시작한 대상이 그대로 있을 때만 사실을 갱신한다. 지휘관 편집 시각·충족 판단은 바꾸지 않는다. */
@@ -796,6 +795,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       ...(input.label ? { label: input.label } : {}), ...(input.note ? { note: input.note } : {}), ...(input.sourceMissionId ? { sourceMissionId: input.sourceMissionId } : {}) };
     switch (input.kind) {
       case "pr": return { ...common, kind: "pr", ...prTarget(input.url), observation: previous?.kind === "pr" && previous.url === input.url ? previous.observation : { state: "unchecked", checkedAt: null, stale: true } };
+      case "artifact": return { ...common, kind: "artifact", ...artifactTarget(input.url) };
       case "evidence": {
         // label만 고칠 때는 이미 보존된 bytes를 다시 수입하지 않는다. 새 id는 seal 서비스가 확인한다.
         const metadata = previous?.kind === "evidence" && previous.evidenceId === input.evidenceId
@@ -1239,14 +1239,27 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return input.done === false && mission.done ? withoutMet(replaced) : replaced;
     }),
 
-    missionDone: (objectiveId, missionId, lines) => update(objectiveId, (stored) => {
+    missionDone: (objectiveId, missionId, lines, rawResults = []) => update(objectiveId, (stored) => {
+      if (stored.done) throw new ObjectiveStoreError("objective_done");
       const { at, mission } = missionOf(stored, missionId);
+      const parsed = completionResultsSchema.safeParse(rawResults);
+      if (!parsed.success) throw new ObjectiveStoreError("invalid_arguments");
+      const identities = new Set<string>();
+      const added = parsed.data.map((raw) => {
+        const input = resultChecked(() => checkedResultInput({ ...raw, sourceMissionId: missionId }));
+        assertResultTarget(stored, input);
+        const identity = resultIdentity(input);
+        if (identities.has(identity)) throw new ObjectiveStoreError("result_exists");
+        identities.add(identity);
+        return resultChecked(() => makeResult(objectiveId, input));
+      });
+      const results = added.length ? checkedResults([...(stored.results ?? []), ...added]) : stored.results;
       const records = mission.records ?? [];
       const record: StoredRecord = { id: randomUUID(), at: now(), lines: [...lines] };
       const kept = [...records, record].slice(-MAX_RECORDS);
       // 밀려난 기록만큼 읽은 수도 줄인다 — 남은 기록 중 안 읽은 것이 그대로 안 읽은 것으로 남는다.
       const seen = Math.max(0, Math.min(mission.seen ?? 0, records.length) - (records.length + 1 - kept.length));
-      return replaceMission(stored, at, { ...mission, done: true, records: kept, seen });
+      return replaceMission({ ...stored, results }, at, { ...mission, done: true, records: kept, seen });
     }),
 
     missionSeen: (objectiveId, missionId) => update(objectiveId, (stored) => {
@@ -1443,17 +1456,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { ...stored, criteriaProposals: stored.criteriaProposals.map((entry) => entry.id === proposalId ? { ...entry, annotation: annotation.trim() || undefined } : entry) };
     }),
 
-    resultAdd(objectiveId, raw) {
-      const input = resultChecked(() => checkedResultInput(raw));
-      let result!: ObjectiveResult;
-      const objective = update(objectiveId, (stored) => {
-        if (stored.done) throw new ObjectiveStoreError("objective_done");
-        result = resultChecked(() => makeResult(objectiveId, input));
-        assertResultTarget(stored, result);
-        return { ...stored, results: checkedResults([...(stored.results ?? []), result]) };
-      });
-      return { objective, result };
-    },
     resultUpdate(objectiveId, resultId, patch) {
       const objective = update(objectiveId, (stored) => {
         if (stored.done) throw new ObjectiveStoreError("objective_done");
