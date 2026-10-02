@@ -10,7 +10,7 @@ const messagesEn = {
   "canvasModes.step1Title": "Two ways to work the canvas",
   "canvasModes.step1Body": "Cruise keeps panels where you drop them. Align all (Alt+F) lines every panel up at once, and drops them back where they were when you toggle it off. War Room brings up one waiting panel at a time, across every Theater.",
   "canvasModes.step2Title": "Each mode has its own tools",
-  "canvasModes.step2Body": "In Cruise, hover or press the active mode to open its tools. War Room keeps auto-stage and deck density beside the mode switch in the floating tools.",
+  "canvasModes.step2Body": "In Cruise, hover or press the active mode to open its tools. War Room keeps auto-stage and deck density beside Next in the floating tools.",
   "warRoom.step1Title": "War Room, one at a time",
   "warRoom.step1Body": "Whatever is waiting comes up one at a time, in the sidebar's attention queue order. These tools are War Room's own: this one cycles deck density 1.0x -> 1.6x, and pinch or Ctrl+wheel takes it anywhere from 1.0x to 2.0x.",
   "warRoom.step2Title": "One at a time",
@@ -32,7 +32,7 @@ const messagesKo: Record<keyof typeof messagesEn, string> = {
   "canvasModes.step1Title": "화면을 쓰는 두 가지 방식입니다",
   "canvasModes.step1Body": "Cruise는 패널을 놓은 자리에 그대로 둡니다. 모두 정렬(Alt+F)은 열린 패널을 한 번에 정렬했다가 끄면 원래 자리로 돌려놓습니다. War Room은 답을 기다리는 패널을 Theater 구분 없이 한 건씩 올립니다.",
   "canvasModes.step2Title": "모드마다 도구가 다릅니다",
-  "canvasModes.step2Body": "Cruise에서는 켜진 모드에 마우스를 올리거나 누르면 도구가 펼쳐집니다. War Room에서는 부유 섬의 모드 옆에 자동 올리기와 덱 배율이 있습니다.",
+  "canvasModes.step2Body": "Cruise에서는 켜진 모드에 마우스를 올리거나 누르면 도구가 펼쳐집니다. War Room에서는 부유 섬의 「다음」 옆에 자동 올리기와 덱 배율이 있습니다.",
   "warRoom.step1Title": "War Room은 한 번에 하나씩",
   "warRoom.step1Body": "기다리는 건이 사이드바 「확인 필요」 순서대로 하나씩 올라옵니다. 이 도구들은 War Room의 것입니다 — 여기서 덱 밀도를 1.0× → 1.6×로 순환하고, 핀치나 Ctrl+휠로는 1.0×~2.0× 사이 어디든 갈 수 있습니다.",
   "warRoom.step2Title": "한 번에 하나만 세웁니다",
@@ -52,6 +52,8 @@ function T(key: keyof typeof messagesEn): LocalizedText {
 }
 
 /** Zen 부유 도구를 알리는 웰컴과 캔버스(Cruise·War Room)의 투어. */
+const CANVAS_MODE_SWITCH_ANCHOR = ".zen-sidebar-chrome:not([data-zen-hidden]) .operations-side-bar:not(.is-closed) .command-band-mode-switch";
+
 export const workspaceOnboarding: OnboardingContribution = {
   id: "workspace",
   // 업데이트한 사용자에게 Zen 부유 도구를 알린다. Zen은 켜기 전에는 보이지 않는 화면이라 투어가 짚을
@@ -65,12 +67,13 @@ export const workspaceOnboarding: OnboardingContribution = {
   tours: [
     {
       id: "canvas-modes",
-      // 모드 스위치는 Operations 화면에 항상 있으므로 첫 방문에 바로 뜬다. 모드 이름의 뜻은 지금 세그먼트 툴팁에만 있어
-      // hover하지 않으면 닿지 않는다.
+      // 모드 스위치는 사이드바 머리에만 서므로 첫 방문에 바로 뜬다. 모드 이름의 뜻은 지금 세그먼트 툴팁에만 있어
+      // hover하지 않으면 닿지 않는다. 접히거나 Zen에서 숨은 사이드바의 스위치는 DOM에 남아도 보이지 않으니 앵커로
+      // 잡지 않는다 — 사이드바가 다시 보일 때 투어가 선다.
       spotlight: null,
       walkthrough: [
-        { anchor: ".command-band-mode-switch", title: T("canvasModes.step1Title"), body: T("canvasModes.step1Body") },
-        { anchor: ".command-band-mode-tray", title: T("canvasModes.step2Title"), body: T("canvasModes.step2Body") },
+        { anchor: CANVAS_MODE_SWITCH_ANCHOR, title: T("canvasModes.step1Title"), body: T("canvasModes.step1Body") },
+        { anchor: `${CANVAS_MODE_SWITCH_ANCHOR} .command-band-mode-tray`, title: T("canvasModes.step2Title"), body: T("canvasModes.step2Body") },
       ],
     },
     {

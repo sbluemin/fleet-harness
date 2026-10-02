@@ -2148,8 +2148,8 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".panel-edge-dock-filament {");
     // 엣지 독은 캔버스 위 부유 크롬이다 — 캔버스 제스처가 삼키지 않도록 blocker 마크를 단다.
     expect(edgeDocks).toContain("data-canvas-blocker");
-    // 도구모음이 중앙 트랙의 단독 승객이다. 캔버스 모드 스위치는 상태별 보기 토글 왼쪽 — 좌측 사이드바
-    // 머리와 Zen 작업 표시줄 — 에 선다. Zen에는 사이드바 하단 입구가 없어 보관함 입구가 둘 사이에 선다.
+    // 도구모음이 중앙 트랙의 단독 승객이다. 캔버스 모드 스위치는 좌측 사이드바 머리의 상태별 보기 토글
+    // 왼쪽 한 자리에만 선다 — Zen 작업 표시줄에 두 번째 스위치를 두지 않고, 섬의 사이드바 토글이 그 자리를 연다.
     expect(commandBand).toContain(`      <div className="command-band-center">
         <span ref={setToolbarHost} className="command-band-toolbar" />`);
     expect(toolbar).not.toContain("CanvasModeSwitch");
