@@ -234,6 +234,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
       id={tipId}
       className={`console-toolbar-tip${visible ? " is-visible" : ""}`}
       data-placement={tip?.placement ?? "below"}
+      data-zen-island-tip={tip?.target.closest(".zen-bar") ? "" : undefined}
       role="tooltip"
       aria-hidden={!visible || undefined}
     >

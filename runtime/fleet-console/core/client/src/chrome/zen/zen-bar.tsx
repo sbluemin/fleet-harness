@@ -1,23 +1,40 @@
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 
 import { ZenIslandControls } from "../../../../../features/workspace/client/zen/zen-island-controls.js";
-import { useTriageActive } from "../../../../../features/workspace/client/canvas/triage-store.js";
+import { useAttentionQueue } from "../../../../../features/workspace/client/zen/use-attention-queue.js";
+import { useSnapFullOperationId } from "../../../../../features/workspace/client/canvas/canvas-store.js";
+import { useTriageActive, useTriageMapOpen, useTriageStage } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { useT } from "../../i18n/index.js";
 import { setZenToolbarHost } from "../../integration/toolbar-slots.js";
-import { useZenModeState } from "../../integration/zen-mode.js";
+import { useZenModeState, useZenTransitionActive } from "../../integration/zen-mode.js";
 import { BrandMarkIcon, BrandWordmark } from "../components/command-band.js";
 import { useRailDragDeltaPx, useRailSettledPx } from "../rail/rail-store.js";
 
-/** 도구모음은 같은 DOM을 들고 옮겨 온다. 섬은 맵 아레나(사이드바·레일을 뺀 영역)의 아래 가운데에만 선다. */
+/** 같은 도구 DOM을 보존하되, 전체 칸·무대를 보는 동안에는 아레나 모서리의 손잡이로 물러난다. */
 const EDGE = 12;
 /** 크롬 카드와 아레나 사이 틈 — Operations의 CHROME_FLOAT_GUTTER와 같은 값. */
 const CHROME_GUTTER = 24;
+const OPEN_SURFACE = '[aria-expanded="true"]:not(.console-toolbar-fold), [role="menu"], [role="dialog"], .command-band-update-bubble, .is-feature-tour-anchor';
 
 export function ZenBar({ active, local = false }: { readonly active: boolean; readonly local?: boolean }) {
   const t = useT();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLButtonElement>(null);
+  const escapeFocusRef = useRef(false);
+  const [expanded, setExpanded] = useState(false);
+  const [held, setHeld] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
   const [layout, setLayout] = useState({ viewportWidth: window.innerWidth, sidebarRight: 0 });
   const warRoom = useTriageActive();
+  const staged = useTriageStage();
+  const mapOpen = useTriageMapOpen();
+  const snapFull = useSnapFullOperationId();
+  const transitionActive = useZenTransitionActive();
+  const { queue } = useAttentionQueue();
+  const watching = warRoom ? staged !== null && !mapOpen : snapFull !== null;
+  const receded = watching && !expanded && !held && !transitionActive;
   const zenState = useZenModeState();
   const sidebar = useSideBarState();
   const sidebarShown = zenState.sideBarRevealed && !sidebar.collapsed;
@@ -38,19 +55,73 @@ export function ZenBar({ active, local = false }: { readonly active: boolean; re
     window.addEventListener("resize", measure);
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
   }, [active, sidebarShown]);
+  useLayoutEffect(() => {
+    setExpanded(false);
+  }, [active, watching]);
+  useLayoutEffect(() => {
+    if (!active) return;
+    const root = rootRef.current;
+    if (!root) return;
+    // 메뉴는 섬 안, 말풍선·투어는 portal에 산다. 투어 동안은 숨은 앵커를 만들지 않는다.
+    const measure = () => {
+      const tooltip = document.querySelector(".console-toolbar-tip.is-visible[data-zen-island-tip]");
+      const content = root.querySelector(".zen-bar-content");
+      setHeld(Boolean(content?.querySelector(OPEN_SURFACE) || document.querySelector(ONBOARDING_TOUR_LAYER_SELECTOR) || tooltip));
+      setUpdateReady(Boolean(content?.querySelector(".command-band-update-dot")));
+    };
+    measure();
+    const observer = new MutationObserver(measure);
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "aria-expanded", "aria-describedby", "aria-hidden"] });
+    return () => observer.disconnect();
+  }, [active]);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!active || !root) return;
+    // 도구모음은 별도 React portal이다. 합성 이벤트의 트리가 아닌 실제 섬 DOM 경계로 출입을 잰다.
+    const enter = () => setExpanded(true);
+    const leave = () => setExpanded(false);
+    const focus = () => { if (!escapeFocusRef.current) setExpanded(true); };
+    const blur = (event: FocusEvent) => { if (!root.contains(event.relatedTarget as Node | null)) setExpanded(false); };
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || !watching || held) return;
+      event.preventDefault();
+      event.stopPropagation();
+      escapeFocusRef.current = true;
+      handleRef.current?.focus({ preventScroll: true });
+      escapeFocusRef.current = false;
+      setExpanded(false);
+    };
+    root.addEventListener("pointerenter", enter);
+    root.addEventListener("pointerleave", leave);
+    root.addEventListener("focusin", focus);
+    root.addEventListener("focusout", blur);
+    root.addEventListener("keydown", keydown);
+    return () => {
+      root.removeEventListener("pointerenter", enter);
+      root.removeEventListener("pointerleave", leave);
+      root.removeEventListener("focusin", focus);
+      root.removeEventListener("focusout", blur);
+      root.removeEventListener("keydown", keydown);
+    };
+  }, [active, watching, held]);
   const arenaLeft = layout.sidebarRight > 0 ? layout.sidebarRight + CHROME_GUTTER : 0;
-  // 섬의 폭은 내용이 정한다(max-content). 자리는 아레나 가운데 한 점과 translate -50%로만 정해 폭과 되먹임하지 않는다.
+  // 섬의 폭은 내용이 정한다. 감상 중에는 오른쪽 끝을 고정해 펼쳐도 손잡이가 포인터에서 달아나지 않는다.
   const center = (arenaLeft + layout.viewportWidth - arenaRight) / 2;
 
   return (
-    <div className={`zen-bar${warRoom ? " is-war-room" : ""}`} data-keep-operation-active="" hidden={!active} role="group" aria-label={t("zen.bar.aria")}
-      style={{ left: center, bottom: EDGE }}>
-      {active ? <ZenIslandControls /> : null}
-      <span className="zen-bar-toolbar" ref={setZenToolbarHost} />
-      <span className="zen-bar-brand" title={t("zen.bar.brand")}>
+    <div ref={rootRef} className={`zen-bar${warRoom ? " is-war-room" : ""}${watching && !transitionActive ? " is-watching" : ""}${receded ? " is-receded" : ""}`} data-keep-operation-active="" hidden={!active} role="group" aria-label={t("zen.bar.aria")}
+      style={{ left: watching && !transitionActive ? layout.viewportWidth - arenaRight - EDGE : center, bottom: EDGE }}>
+      <span className="zen-bar-content" inert={receded || undefined} aria-hidden={receded || undefined}>
+        {active ? <ZenIslandControls /> : null}
+        <span className="zen-bar-toolbar" ref={setZenToolbarHost} />
+      </span>
+      <button ref={handleRef} type="button" className="zen-bar-brand" aria-label={t("zen.bar.aria")} aria-expanded={!receded}
+        title={t("zen.bar.brand")} onClick={() => setExpanded(true)}>
         <BrandMarkIcon className="zen-bar-brand-glyph" local={local} />
         <BrandWordmark className="zen-bar-brand-wordmark" local={local} />
-      </span>
+        {receded && queue.length ? <span className="zen-island-count zen-bar-handle-count">{queue.length}</span> : null}
+        {receded && updateReady ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
+      </button>
     </div>
   );
 }

@@ -35,6 +35,8 @@ export function useMenuButtonKeyboard(
     };
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         setOpen(false);
         triggerRef.current?.focus();
         return;

@@ -269,6 +269,8 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         dismiss();
         triggerRef.current?.focus();
         return;
@@ -720,6 +722,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
         hasShell={shell.desktopVersion !== null}
         onHomeConsole={onHomeConsole}
         onDismiss={notice.dismiss}
+        onEscape={() => { notice.dismiss(); triggerRef.current?.focus(); }}
       />
     ) : null}
     {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")}>
