@@ -818,8 +818,9 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-launch.is-glyph { padding: 0; margin: 0; width: 22px; height: 22px; display: inline-grid; place-items: center; color: var(--text-tertiary); border-color: transparent; }
 .objectives-launch.is-glyph:hover, .objectives-launch.is-glyph[aria-expanded="true"] { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }
 .objectives-mission-add .objectives-launch.is-glyph { margin-left: auto; }
-.objectives-menu-extra .objectives-menu-label { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
-.objectives-menu-hint { font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0; text-transform: none; font-family: var(--font-ui, inherit); }
+/* 선택 방식(라우팅·지휘관과 같게·라우팅 결과 쓰기)과 그 설명은 사람의 말이다 — 모노 글꼴과 자간에서는 한글 낱말 사이가 한 칸 더 벌어지므로 본문 글꼴로 쓴다. */
+.objectives-menu-extra .objectives-menu-label { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; font-family: var(--font-body); letter-spacing: 0; }
+.objectives-menu-hint { font-size: var(--t-2xs); color: var(--text-tertiary); letter-spacing: 0; text-transform: none; font-family: var(--font-body); }
 /* 서브에이전트 허용 — 라디오가 아닌 체크. 보조 글은 두 줄까지 감싸고 자르지 않는다. 목록·강도 단계가 같은 푸터를 쓴다. */
 .objectives-menu-check { align-items: flex-start; }
 .objectives-menu-check-copy { display: grid; gap: 2px; flex: 1; min-width: 0; }
@@ -1318,20 +1319,26 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 
 /* 확인 시트 — 펼친 띠와 같은 한 장. 구성원 전원이 한 목록으로 모여 순서대로 읽힌다. */
 .objectives-routing-head { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.objectives-routing-head b { color: var(--text-primary); font-weight: var(--weight-bold); }
+.objectives-routing-head b { flex: none; color: var(--text-primary); font-weight: var(--weight-bold); white-space: nowrap; }
 .objectives-routing-head > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-routing-banner { margin: 8px 14px 0; padding: 6px 10px; border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--warn) 8%, transparent); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; }
-.objectives-routing-list { display: grid; gap: 2px; padding: 6px 8px 4px; }
-.objectives-routing-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-areas: "mark who pick" ". why why"; align-items: center; column-gap: 8px; row-gap: 2px; padding: 5px 6px; border-radius: var(--radius-xs); }
+/* 목록 자신이 폭을 잰다 — 좁은 패널에서 행이 두 줄 배치로 바뀌는 기준이다. */
+.objectives-routing-list { display: grid; gap: 2px; padding: 6px 8px 4px; container: objectives-routing / inline-size; }
+.objectives-routing-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) minmax(0, max-content); grid-template-areas: "mark who pick" ". why why"; align-items: center; column-gap: 8px; row-gap: 2px; padding: 5px 6px; border-radius: var(--radius-xs); }
 .objectives-routing-row > .objectives-member-mark { grid-area: mark; }
 .objectives-routing-row.is-fixed { opacity: 0.78; }
 .objectives-routing-who { grid-area: who; display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
-.objectives-routing-role { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-medium); color: var(--text-primary); }
-.objectives-routing-who small { flex: none; font: var(--weight-regular) var(--t-2xs)/1.3 var(--font-mono); color: var(--text-tertiary); }
-.objectives-routing-pick { grid-area: pick; display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 220px; }
-.objectives-routing-pick .objectives-launch { margin: 0; }
+.objectives-routing-role { flex: 0 1 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-medium); color: var(--text-primary); }
+/* 방식 낱말은 역할 이름보다 먼저 줄어든다(말줄임). 사람의 말이라 본문 글꼴이다. */
+.objectives-routing-who small { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-regular) var(--t-2xs)/1.3 var(--font-body); color: var(--text-tertiary); }
+/* 모델 낱말은 한 줄이다 — 넘치면 모델 이름만 말줄임하고 풀네임은 title 이 말한다. 글리프·강도는 자리를 지킨다. */
+.objectives-routing-pick { grid-area: pick; display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 100%; }
+.objectives-routing-pick .objectives-launch { margin: 0; min-width: 0; max-width: 100%; white-space: nowrap; }
+.objectives-routing-pick .objectives-launch > *, .objectives-routing-words > * { flex: none; }
+.objectives-routing-pick .objectives-launch > .objectives-routing-words, .objectives-routing-pick > .objectives-routing-words { flex: 0 1 auto; max-width: 100%; }
+.objectives-routing-pick .objectives-launch > .objectives-launch-model, .objectives-routing-words > .objectives-launch-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-routing-words { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 0; font: var(--weight-regular) var(--t-xs)/1.4 var(--font-mono); letter-spacing: 0.04em; color: var(--text-secondary); white-space: nowrap; }
-.objectives-routing-why { grid-area: why; min-width: 0; font-size: var(--t-xs); line-height: 1.4; color: var(--text-tertiary); overflow-wrap: anywhere; }
+.objectives-routing-why { grid-area: why; justify-self: start; text-align: left; min-width: 0; font-size: var(--t-xs); line-height: 1.4; color: var(--text-tertiary); overflow-wrap: anywhere; }
 .objectives-routing-why.is-warn { color: var(--warn-ink); }
 .objectives-routing-judging { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); }
 .objectives-routing-spinner { flex: none; width: 10px; height: 10px; border: 1.5px solid var(--hairline-strong); border-top-color: var(--text-secondary); border-radius: 50%; animation: objectives-routing-spin 900ms linear infinite; }
@@ -1340,3 +1347,8 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-routing-foot { display: flex; align-items: flex-start; gap: 10px; padding: 4px 14px 8px; font-size: var(--t-2xs); line-height: 1.45; color: var(--text-tertiary); }
 .objectives-routing-foot > span { flex: 1; min-width: 0; }
 .objectives-routing-foot .objectives-btn { flex: none; }
+/* 좁은 패널 — 고른 모델이 역할 줄 아래로 내려가 역할·방식 낱말과 겹치지 않는다. */
+@container objectives-routing (width < 380px) {
+  .objectives-routing-row { grid-template-columns: 20px minmax(0, 1fr); grid-template-areas: "mark who" ". pick" ". why"; }
+  .objectives-routing-pick { justify-content: flex-start; }
+}

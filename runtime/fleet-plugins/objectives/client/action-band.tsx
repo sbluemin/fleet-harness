@@ -97,7 +97,10 @@ export interface ActionBandProps {
 interface RoutingSheet {
   readonly phase: "judging" | "refreshing" | "ready";
   readonly preview: RoutingPreview | null;
-  readonly overridden: ReadonlySet<string>;
+  /** 시트에서 직접 지정한 값 — 저장이 방송으로 돌아오기 전에도 행이 그 모델을 말한다. */
+  readonly overridden: ReadonlyMap<string, { readonly model: string; readonly effort?: string }>;
+  /** 이 시트에서 본 판단 결과 — 다시 읽어도 직접 지정으로 대상에서 빠진 구성원의 결과를 남긴다. */
+  readonly known: ReadonlyMap<string, RoutingPreview["members"][number]>;
   readonly error: string | null;
 }
 /** 대상 전원에 걸친 사유 — 항목별 사유가 아니라 판단 자체가 돌지 못했다. 시트 위에 띠로 선다. */
@@ -421,11 +424,12 @@ export function ActionBand(props: ActionBandProps) {
   /** 판단(또는 캐시) — rejudge 면 다시 판단한다. 결과를 이미 보고 있으면 그대로 두고 갱신만 한다(refreshing). */
   const loadPreview = (rejudge: boolean) => {
     const token = ++sheetToken.current;
-    setSheet((current) => ({ phase: current?.preview && !rejudge ? "refreshing" : "judging", preview: current?.preview ?? null, overridden: current?.overridden ?? new Set(), error: null }));
+    setSheet((current) => ({ phase: current?.preview && !rejudge ? "refreshing" : "judging", preview: current?.preview ?? null, known: rejudge ? new Map() : current?.known ?? new Map(), overridden: current?.overridden ?? new Map(), error: null }));
     void request("/routing/preview", { objectiveId, ...(rejudge ? { rejudge: true } : {}) }).then((result) => {
       if (token !== sheetToken.current) return;
       const preview = (result as { preview?: RoutingPreview } | undefined)?.preview ?? null;
-      setSheet((current) => current && { ...current, phase: "ready", preview });
+      // 직접 지정으로 대상에서 빠진 구성원의 앞선 결과도 남긴다 — 「라우팅 결과 쓰기」가 무엇으로 돌아가는지 계속 말한다.
+      setSheet((current) => current && { ...current, phase: "ready", preview, known: new Map([...current.known, ...(preview?.members ?? []).map((entry) => [entry.id, entry] as const)]) });
     }, (failure: unknown) => {
       if (token !== sheetToken.current) return;
       const code = failure instanceof Error ? failure.message : "unknown";
@@ -441,8 +445,8 @@ export function ActionBand(props: ActionBandProps) {
   /** 시트의 직접 지정 — 구성원 선택을 바꾸고(라우팅으로 되돌리기 포함) 결과를 다시 읽는다. 함께 판단한 구성원이면 새 판단은 없다. */
   const pickInSheet = (member: ObjectiveMember, launch: { mode: "model"; model: string; effort?: string } | null) => {
     if (!sheet) return;
-    const overridden = new Set(sheet.overridden);
-    if (launch) overridden.add(member.id); else overridden.delete(member.id);
+    const overridden = new Map(sheet.overridden);
+    if (launch) overridden.set(member.id, launch); else overridden.delete(member.id);
     setSheet({ ...sheet, overridden });
     void request("/member/patch", { objectiveId, memberId: member.id, patch: { launch } }).then(() => loadPreview(false), (failure: unknown) => {
       const code = failure instanceof Error ? failure.message : "unknown";
@@ -645,7 +649,9 @@ export function ActionBand(props: ActionBandProps) {
   if (sheet) {
     const judging = sheet.phase === "judging";
     const settling = sheet.phase !== "ready";
-    const results = new Map((sheet.preview?.members ?? []).map((entry) => [entry.id, entry]));
+    // 판단 중일 때만 행 메뉴를 잠근다 — 직접 지정 뒤의 갱신(refreshing)이 메뉴를 닫으면 강도 단계로 이어지지 못한다.
+    const rowLocked = judging || sending;
+    const results = sheet.known;
     const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, labels);
     const wide = (sheet.preview?.members ?? []).flatMap((entry) => (entry.via === "fallback" && SET_WIDE_REASONS.has(entry.reason) ? [entry.reason] : []))[0];
     const minutes = sheet.preview ? Math.floor((Date.now() - sheet.preview.at) / 60_000) : 0;
@@ -655,7 +661,7 @@ export function ActionBand(props: ActionBandProps) {
     const memberRow = (member: ObjectiveMember) => {
       const result = results.get(member.id);
       const target = props.routingTargets.some((candidate) => candidate.id === member.id);
-      const picked = sheet.overridden.has(member.id) && member.launch.mode === "model";
+      const picked = sheet.overridden.get(member.id);
       const row = (label: string, pick: ReactNode, why?: { readonly text: string; readonly warn?: boolean }, fixed = false) => (
         <div key={member.id} className={`objectives-routing-row${fixed ? " is-fixed" : ""}`}>
           {props.memberMark(member.id)}
@@ -673,8 +679,8 @@ export function ActionBand(props: ActionBandProps) {
       const resultWords = result ? `${launchedWords(rows, shownModel?.model, shownModel?.effort, labels).title}${result.via === "fallback" ? ` · ${t("objectives.members.fallback")}` : ""}` : t("objectives.routing.atLaunch");
       const useResult = { id: "route", label: t("objectives.routing.useResult"), hint: resultWords };
       const onModel = (next: { model?: string; effort?: string }) => { if (next.model) pickInSheet(member, { mode: "model", model: next.model, ...(next.effort ? { effort: next.effort } : {}) }); };
-      if (picked && member.launch.mode === "model") {
-        return row(t("objectives.routing.viaPicked"), <LaunchControl t={t} model={member.launch.model} effort={member.launch.effort} locked={settling || sending} startAtList triggerLabel={t("objectives.routing.rowAria", { role: member.role })}
+      if (picked) {
+        return row(t("objectives.routing.viaPicked"), <LaunchControl t={t} model={picked.model} effort={picked.effort} locked={rowLocked} startAtList triggerLabel={t("objectives.routing.rowAria", { role: member.role })}
           extras={[{ ...useResult, active: false, onPick: () => pickInSheet(member, null) }]} onChange={onModel} />, { text: t("objectives.routing.picked") });
       }
       if (target) {
@@ -682,7 +688,7 @@ export function ActionBand(props: ActionBandProps) {
           : result ? <>{words(shownModel?.model, shownModel?.effort)}{result.via === "fallback" ? <span className="objectives-member-via is-fallback">{t("objectives.members.fallback")}</span> : null}</>
           : <span className="objectives-launch-model">{t("objectives.routing.atLaunch")}</span>;
         const why = !result || judging ? undefined : result.via === "route" ? (result.because ? { text: result.because } : undefined) : { text: t("objectives.routing.fallbackWhy", { reason: routingReason(t, result.reason) }), warn: true };
-        return row(t("objectives.routing.viaRoute"), <LaunchControl t={t} model={undefined} effort={undefined} locked={settling || sending} startAtList triggerLabel={t("objectives.routing.rowAria", { role: member.role })} triggerText={trigger}
+        return row(t("objectives.routing.viaRoute"), <LaunchControl t={t} model={undefined} effort={undefined} locked={rowLocked} startAtList triggerLabel={t("objectives.routing.rowAria", { role: member.role })} triggerText={trigger}
           extras={[{ ...useResult, active: true, onPick: () => undefined }]} onChange={onModel} />, why);
       }
       if (member.launch.mode === "model") return row(t("objectives.routing.fixedModel"), words(member.launch.model, member.launch.effort), undefined, true);
