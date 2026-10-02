@@ -4,8 +4,8 @@ branch: fix/quota-instant-reopen
 
 ### fleet-console
 #### Changed
-- Show each provider in the Quota panel as one summary line that expands in place, while keeping drag and keyboard reordering.
-  ko: Quota 패널은 공급자마다 한 줄 요약으로 보이고 그 자리에서 펼쳐지며, 드래그와 키보드로 순서를 바꾸는 기능은 그대로입니다.
+- A collapsed Quota card shows a separate bar for each usage window, such as the session and the week, instead of only the most urgent one.
+  ko: 접힌 Quota 카드가 가장 급한 창 하나만이 아니라 세션·주간처럼 창마다 막대를 따로 보여 줍니다.
 
 #### Fixed
 - Reopening the Quota panel or reloading the page shows the last usage right away instead of a loading message, and refreshes it in the background.
