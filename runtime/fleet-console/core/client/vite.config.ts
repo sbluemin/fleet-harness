@@ -10,6 +10,8 @@ export default defineConfig({
   root: path.resolve(__dirname),
   base: "/console/",
   plugins: [react(), fleetPluginsVirtualModule()],
+  // 비교 시제품 전용 빌드에만 모드 전환을 포함한다. 최종 제품에는 남기지 않는다.
+  define: { __FLEET_SHEET_PEEK_PROTOTYPE__: process.env.VITE_FLEET_SHEET_PEEK_PROTOTYPE === "1" },
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {

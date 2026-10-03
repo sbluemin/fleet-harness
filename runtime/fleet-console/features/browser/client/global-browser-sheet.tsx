@@ -49,6 +49,20 @@ import "./global-browser-sheet.css";
 
 const PLACE_POLL_MS = 200;
 const BROWSER_PROFILE = "default";
+
+// 임시 비교 스위치 — prototype 커밋 전체를 걷어 내면 제품 동작만 남는다.
+declare const __FLEET_SHEET_PEEK_PROTOTYPE__: boolean;
+type SheetPeekMode = "current" | "stay" | "park" | "aside";
+function readSheetPeekMode(): SheetPeekMode {
+  if (!__FLEET_SHEET_PEEK_PROTOTYPE__ || typeof window === "undefined") return "current";
+  try {
+    const mode = window.localStorage.getItem("fleet.debug.sheetPeekMode");
+    return mode === "stay" || mode === "park" || mode === "aside" ? mode : "current";
+  } catch { return "current"; }
+}
+function sidebarIsPeeking(sidebar: HTMLElement | null): boolean {
+  return sidebar?.matches(".is-closed.is-peeking") ?? false;
+}
 /** 시트가 알아볼 수 있는 최소 숨구멍 — 모자라면 크롬을 무시하고 여백을 줄인다. */
 const MIN_SHEET_WIDTH = 280;
 const MIN_SHEET_HEIGHT = 200;
@@ -104,6 +118,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const [notice, setNotice] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
   const [importSources, setImportSources] = React.useState<ChromeImportSources | null>(null);
+  const [sheetPeekMode] = React.useState(readSheetPeekMode);
+  const [sidebarPeeking, setSidebarPeeking] = React.useState(false);
   const [geometry, setGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   // scrim은 아레나(캔버스)만 덮는다 — 도구모음·섬·레일·사이드바는 기하 밖이라 그대로 조작된다.
   const [scrimGeometry, setScrimGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
@@ -170,10 +186,22 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     // 좌우·scrim도 같은 판정에서 나온다 — 닫힌 사이드바의 2px 테두리 자투리가
     // 왼쪽 간격을 38로 벌리지 않게(QA-16). War Room 접힘은 서랍만 걷고 밴드 줄이 남으니
     // 같은 규칙이 그대로 성립한다.
-    const sidebarCardRect = sidebar !== null && sidebar.offsetWidth > 4
+    const peeking = sidebarIsPeeking(sidebar);
+    const closed = sidebar?.classList.contains("is-closed") ?? false;
+    // current는 기존 판정을 그대로 둔다. 비교 모드는 접힘 전이의 잔폭도 카드로 세지 않는다.
+    let sidebarCardRect: Pick<DOMRect, "top" | "bottom" | "right"> | null = sidebar !== null && sidebar.offsetWidth > 4
       && window.getComputedStyle(sidebar).visibility !== "hidden"
+      && (sheetPeekMode === "current" || !closed)
       ? sidebar.getBoundingClientRect()
       : null;
+    if (sheetPeekMode === "aside" && peeking && sidebar) {
+      // 픽 카드의 200ms 폭 전이 첫 프레임을 읽으면 아직 폭이 0이다.
+      // 전이 목표 폭을 즉시 확보하고, 픽 종료에는 닫힌 카드의 잔폭을 즉시 무시한다.
+      const rect = sidebar.getBoundingClientRect();
+      const style = window.getComputedStyle(sidebar);
+      const width = Number.parseFloat(style.getPropertyValue("--side-bar-width")) || 280;
+      sidebarCardRect = { top: rect.top, bottom: rect.bottom, right: rect.left + width };
+    }
     const railCardRect = rail !== null && rail.offsetWidth > 4
       && window.getComputedStyle(rail).visibility !== "hidden"
       ? rail.getBoundingClientRect()
@@ -229,20 +257,37 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     setGeometry((current) => current && current.left === left && current.top === top && current.right === right && current.bottom === bottom
       ? current
       : { left, top, right, bottom });
-  }, []);
+  }, [sheetPeekMode]);
 
   React.useEffect(() => {
-    if (!open) { setGeometry(null); return; }
+    if (!open) { setGeometry(null); setSidebarPeeking(false); return; }
     measureGeometry();
     window.addEventListener("resize", measureGeometry);
     const timer = setInterval(measureGeometry, 1000);
-    return () => { window.removeEventListener("resize", measureGeometry); clearInterval(timer); };
-  }, [open, measureGeometry]);
+    // current는 1초 폴링을 포함한 canary 기준선 그대로다.
+    // 기존 기하 측정의 명시적 DOM 경계에서 카드 class만 관찰한다.
+    const sidebar = document.querySelector<HTMLElement>(".operations-side-bar");
+    const syncPeek = () => {
+      setSidebarPeeking(sidebarIsPeeking(sidebar));
+      measureGeometry();
+    };
+    const observer = sheetPeekMode !== "current" && sidebar ? new MutationObserver(syncPeek) : null;
+    if (observer && sidebar) {
+      observer.observe(sidebar, { attributes: true, attributeFilter: ["class"] });
+      syncPeek();
+    }
+    return () => {
+      window.removeEventListener("resize", measureGeometry);
+      clearInterval(timer);
+      observer?.disconnect();
+    };
+  }, [open, measureGeometry, sheetPeekMode]);
 
   // ---- 네이티브 뷰 배치: 겹침이 뜨면 즉시 물리고, 캐시된 정지 화면이 있으면 깐다. ----
   // 동기 캡처 대기는 절대 하지 않는다(H2). 정지 화면은 탭이 안정된 뒤 백그라운드에서 미리 찍어 둔다.
   // 토스트·말풍선은 뷰와 실제로 겹칠 때만 물린다 — 시트 밖으로 비킨 스택에 가려 정지만 보지 않게.
-  const parked = !available || activeTab === null || overlayActive || floatingOverlap;
+  const parked = !available || activeTab === null || overlayActive || floatingOverlap
+    || (sheetPeekMode === "park" && sidebarPeeking);
   React.useEffect(() => {
     if (!open) return;
     const element = viewportRef.current;
@@ -403,6 +448,9 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
           <section
         ref={sheetRef}
         id="fleet-browser-sheet"
+        data-peek-mode={__FLEET_SHEET_PEEK_PROTOTYPE__ ? sheetPeekMode : undefined}
+        data-peek-active={__FLEET_SHEET_PEEK_PROTOTYPE__ ? sidebarPeeking : undefined}
+        data-view-parked={__FLEET_SHEET_PEEK_PROTOTYPE__ ? parked : undefined}
         className="fleet-browser-sheet"
         role="region"
         aria-label={t("terminal.globalBrowser.sheetAria")}
