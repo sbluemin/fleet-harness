@@ -499,6 +499,13 @@
   inset-inline-end: 0;
 }
 
+/* 오버레이는 별도 창이다. 그 위에 남은 카드 손잡이가 문서의 터치를 가로채지 않게 한다. */
+.right-rail.has-detail-overlay .right-rail-resize-handle,
+.right-rail.is-overlay .right-rail-resize-handle {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .right-rail.is-overlay {
   z-index: calc(var(--z-rail) + 1);
 }

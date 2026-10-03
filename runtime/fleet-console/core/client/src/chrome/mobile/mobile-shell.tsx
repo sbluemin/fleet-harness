@@ -9,6 +9,7 @@ import { useT } from "../../i18n/index.js";
 import type { OperationNode, OperationNotification } from "../../integration/types.js";
 import { MobileOperationList } from "./mobile-operation-list.js";
 import { MobileSessionView } from "./mobile-session-view.js";
+import { MobileTools } from "./mobile-tools.js";
 import { setMobileSessionOpen, useMobileTab } from "./mobile-store.js";
 import "../../styles/mobile.css";
 
@@ -102,6 +103,8 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
         onClose={() => closeOperation(selectedOperation.id)}
       />
     );
+  } else if (activeTab === "tools") {
+    content = <MobileTools theme={theme} language={language} />;
   } else if (activeTab === "operations") {
     content = <MobileOperationList operations={operations} operationRuntime={operationRuntime} notificationIds={notificationIds} theaterLabel={theaterLabel} onOpen={openOperation} />;
   } else {

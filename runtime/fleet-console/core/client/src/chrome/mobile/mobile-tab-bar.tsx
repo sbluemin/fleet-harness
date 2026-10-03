@@ -7,7 +7,7 @@ type RouteTab = "theaters" | "settings";
 type TabId = MobileTab | RouteTab;
 
 // Theater leads because it contains the rest: a Theater holds Operations, and their alerts follow.
-const TABS: readonly TabId[] = ["theaters", "operations", "alerts", "settings"];
+const TABS: readonly TabId[] = ["theaters", "operations", "tools", "alerts", "settings"];
 const ROUTE_TABS: Readonly<Record<RouteTab, string>> = { theaters: "/theaters", settings: "/settings" };
 
 export function MobileTabBar({ onSelect }: { readonly onSelect?: (tab: MobileTab) => void }) {
@@ -68,6 +68,9 @@ function MobileTabIcon({ tab }: { readonly tab: TabId }) {
         <path d="M4 5h.01M4 10h.01M4 15h.01" strokeWidth="2.5" />
       </svg>
     );
+  }
+  if (tab === "tools") {
+    return <svg className="mobile-tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><rect x="3" y="5" width="14" height="12" rx="2" /><path d="M7 5V3h6v2M3 10h14M8 10v3h4v-3" /></svg>;
   }
   if (tab === "alerts") {
     return (

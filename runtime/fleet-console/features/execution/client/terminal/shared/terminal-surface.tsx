@@ -21,7 +21,7 @@ import { createWrappedLinkProvider } from "./terminal-wrapped-links.js";
 import { createFileLinkProvider, type TerminalFileLinkOutcome, type TerminalFileLinks } from "./terminal-file-links.js";
 import { isTerminalSearchShortcut, TerminalSearchBar } from "./terminal-search-bar.js";
 import { dispatchSyntheticTerminalWheel } from "./terminal-synthetic-wheel.js";
-import { createTerminalTouchGestures, MIN_FONT_SCALE } from "./terminal-touch-gestures.js";
+import { createTerminalTouchGestures } from "./terminal-touch-gestures.js";
 import { createXtermGestureOriginGuard } from "./terminal-xterm-gesture-origin.js";
 import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -253,10 +253,9 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // 실제 보정에 반영된 줌(=settle된 zoom). zoom prop은 보간 중 매 프레임 바뀌므로 디바운스로 이 값에 수렴시킨다.
   // 초기값을 zoom으로 두어 이미 확대된 패널이 마운트될 때 첫 렌더부터 올바른 스타일을 갖게 한다.
   const [appliedZoom, setAppliedZoom] = useState(zoom);
-  // A pinch scales this surface's font only. It multiplies the settings size rather than writing
-  // it back, so one terminal resized by hand does not resize every other one. A touch screen opens
-  // at the smallest step, where the most of a session fits; pinching out is how it grows.
-  const [touchFontScale, setTouchFontScale] = useState(() => (prefersTouchTerminal() ? MIN_FONT_SCALE : 1));
+  // 터치도 사용자가 정한 글꼴 크기(기본 14px)에서 시작한다. 핀치 배율은 이 표면에만 적용하며
+  // 서버 설정을 덮어쓰거나 다른 터미널의 크기를 바꾸지 않는다.
+  const [touchFontScale, setTouchFontScale] = useState(1);
   const touchFontScaleRef = useRef(touchFontScale);
   touchFontScaleRef.current = touchFontScale;
   // A touch keyboard has no Escape, no arrows, and no Ctrl, so the surface carries them itself.
@@ -1506,7 +1505,7 @@ function concatTerminalOutput(chunks: readonly Uint8Array[], totalBytes: number)
   return output;
 }
 
-/** A coarse pointer means fingers, and a finger-sized terminal starts at its smallest step. */
+/** 터치 키 바는 포인터 정밀도로 판정하며 글꼴 초기 크기와는 독립적이다. */
 function prefersTouchTerminal(): boolean {
   return typeof window !== "undefined"
     && typeof window.matchMedia === "function"

@@ -275,7 +275,7 @@ export function ExpandedSurfaceLayer() {
   );
 }
 
-function SurfacePane({
+export function SurfacePane({
   instance,
   descriptor,
   index,
