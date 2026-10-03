@@ -5,6 +5,38 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.211.0] - 2026-10-03
+
+### fleet-console
+
+#### Added
+- Bring your Google Chrome sign-ins into the Fleet Browser with "Import from browser" in its session menu, just like the Operation Browser. Not yet available on Windows.
+- Let a Commodore run a Theater's objectives on its own: it creates, starts, reviews and completes objectives in parallel, answers Commanders' decisions, reads their session transcripts when it needs to know why work stalled, and keeps improving the project from your directive and the intel you add. Turn it on in Settings > Experimental features > Autonomous operation, then use the glyph on the sidebar's Commodore row to hand the Theater over or take it back at any time.
+- Open the Commodore from its sidebar row in a sheet over the map to follow what it did and why, edit its directive and add intel; its settings pick the Commodore's model, how often it patrols and the Commander model for objectives it creates. Actions it takes on the board are labeled as the Commodore's.
+- Open files, read the wiki and use the Shell from a Tools tab in Console's mobile layout; Files switches between the tree and the document on narrow screens.
+- Review wiki conflicts with the base, current version and proposal side by side, then reject, resolve or re-propose; outdated Cowork drafts can be reapplied to the latest version or discarded, and overlapping changes keep the original draft.
+- Approve or reject several wiki proposals at once, with outdated proposals left out, and move through the wiki list and tag filters with the keyboard.
+- Browse large files safely, jump to the end or a chosen range of a log, and see list and search limits as counts.
+- Files opens single-clicked files in a reusable preview tab, keeps double-clicked or pinned tabs, and points legacy wiki copies left in the repository to their wiki entries.
+
+#### Changed
+- Links clicked anywhere in Console outside an Operation now ask whether to open in the Fleet Browser or your own browser, just like links inside an Operation.
+- Dark themes use accent colors more quietly: the gold accent now marks only where you are, what has focus, and the main action, while switches, slider fills, selections and decorations take a softer tone, and Maritime and Carbon accents are as restrained as Instrument's.
+- Raising glass opacity in a dark theme now keeps panels, bars, the sidebar and tool panels in the same tone as the default look instead of turning them into a lighter, bluer slab at 100%.
+- Usage limits now live in the toolbar: every supported provider's reading shows there by default, and clicking it opens the full details in a popup right below, where you also pick which providers to show. Hiding them all leaves a single icon that reopens the popup.
+- Settings sliders now use a larger handle that stays easy to see in light themes; the minus and plus buttons are gone, so use the arrow keys for one step or Shift+arrow for a larger jump. The AI Gateway compact timing slider uses the same handle and saves once when you let go.
+- The Shell marks where a restarted session begins, dims the earlier output and locks input while the connection is down; Ctrl-C stops a flood of output almost immediately.
+- Files and the wiki tell you when an open document changes or is deleted on disk instead of replacing it silently, and the wiki says when a restart ended an in-progress Cowork draft.
+
+#### Fixed
+- In dark themes, menus, popovers, dialogs, sheets, toasts, and hover cards no longer let text behind them show through, so their contents stay readable; the toolbar, sidebar, and panels keep their adjustable glass.
+- In Zen mode, the tool island no longer covers message boxes when snapped or aligned panels reach the bottom of the map; it tucks into a corner handle and glides in and out with the panels.
+- Reloading or reconnecting no longer prints Shell output twice, and Escape no longer closes the Shell from outside it.
+- Touchscreen terminals start at your configured font size instead of shrinking the text.
+
+#### Removed
+- The Usage limits side panel, its card reordering and collapsing, and the Usage limits section in Settings are gone; cards now appear in a fixed order.
+
 ## [1.210.1] - 2026-10-03
 
 Release v1.210.1
