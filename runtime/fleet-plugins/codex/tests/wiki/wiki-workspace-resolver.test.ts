@@ -47,6 +47,30 @@ async function fixture(hooks?: TestHooks) {
 }
 
 describe("createWikiWorkspaceResolver", () => {
+  it("labels only committed migrated entries while preserving legacy files and historical mappings", async () => {
+    const state = await fixture();
+    const legacy = path.join(state.cwd, ".fleet", "knowledge");
+    const markdown = '---\nid: "entry"\ntitle: "Original"\ntags: []\ncreated: "2026-10-03"\nupdated: "2026-10-03"\nversion: 1\n---\nOriginal body';
+    await mkdir(path.join(legacy, "wiki", "notes"), { recursive: true });
+    const original = path.join(legacy, "wiki", "notes", "entry.md");
+    await writeFile(original, markdown);
+    const resolved = state.resolver.resolve(state.cwd);
+    const label = path.join(legacy, ".codex-migration.json");
+    const expected = { schemaVersion: 1, entries: { "wiki/notes/entry.md": "entry" } };
+    expect(JSON.parse(await readFile(label, "utf8"))).toEqual(expected);
+    expect(await readFile(original, "utf8")).toBe(markdown);
+    expect(await readFile(path.join(resolved.wikiDir, "notes", "entry.md"), "utf8")).toBe(markdown);
+
+    // 이미 이주된 Theater는 다음 resolve에서 보충하며, 이주 뒤 추가된 옛 파일은 매핑하지 않는다.
+    await rm(label);
+    await writeFile(path.join(legacy, "wiki", "future.md"), markdown.replace('id: "entry"', 'id: "future"'));
+    state.resolver.resolve(state.cwd);
+    expect(JSON.parse(await readFile(label, "utf8"))).toEqual(expected);
+    await rm(path.join(resolved.wikiDir, "notes", "entry.md"));
+    state.resolver.resolve(state.cwd);
+    expect(JSON.parse(await readFile(label, "utf8"))).toEqual(expected);
+    expect(await readFile(original, "utf8")).toBe(markdown);
+  });
 
   it("rejects absolute, escaping, dangling, and directory symlinks before creating migration artifacts", async () => {
     const absolute = await fixture();

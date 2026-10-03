@@ -65,6 +65,9 @@ describe("queue POST actions", () => {
     });
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ error: "origin_mismatch" });
+    const batch = await fetch(`${baseUrl}/api/drydock/batch-decision`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "approve", patchIds: [PENDING_PATCH_ID] }) });
+    expect(batch.status).toBe(403);
+    await expect(batch.json()).resolves.toMatchObject({ error: "origin_mismatch" });
   });
 
   it("approves a valid pending patch → 200 and moves to archive", async () => {
@@ -80,6 +83,37 @@ describe("queue POST actions", () => {
     // patch should now be in archive
     const archivePath = durableArchiveMetaPath(PENDING_PATCH_ID);
     await expect(access(archivePath)).resolves.not.toThrow();
+
+    // 일괄 결정도 같은 승인 경계를 사용하고, 낡음·실패를 항목별로 숨기지 않는다.
+    const knowledge = path.join(resolveWorkspaceDirectory(path.join(fleetDataDir, "console"), tempDir).path, "knowledge");
+    const queue = path.join(knowledge, "queue");
+    const fresh = "2026-05-04T11-00-00-000Z-aabbcc01", stale = "2026-05-04T11-00-00-000Z-aabbcc02", failed = "2026-05-04T11-00-00-000Z-aabbcc03";
+    await writePatch(queue, fresh, "batch-entry", "Batch entry", "pending", "create_wiki");
+    await writePatch(queue, stale, "test-entry", "Stale", "pending", "update_wiki");
+    await writeFile(path.join(queue, stale, "meta.json"), JSON.stringify({ id: stale, status: "pending", createdAt: "2026-05-04", baseVersion: 1 }));
+    const currentFile = path.join(knowledge, "wiki", "test-entry.md");
+    await writeFile(currentFile, (await readFile(currentFile, "utf8")).replace("version: 1", "version: 2"));
+    await writePatch(queue, failed, "test-entry", "Collision", "pending", "create_wiki");
+    const batchRequest = (action: string, patchIds: string[], reason?: string) => fetch(`${baseUrl}/api/drydock/batch-decision`, { method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify({ action, patchIds, reason }) });
+    const approved = await batchRequest("approve", [stale, fresh, failed, PENDING_PATCH_ID]);
+    expect(approved.status).toBe(200);
+    const batch = await approved.json() as { results: Array<{ id: string; conflictId?: string }> };
+    expect(batch).toMatchObject({ results: [{ id: stale, outcome: "skipped", error: "stale_base" }, { id: fresh, outcome: "approved" }, { id: failed, outcome: "failed", error: "create_target_exists" }, { id: PENDING_PATCH_ID, outcome: "skipped", error: "patch_not_pending" }] });
+    const linked = batch.results.find(item => item.id === failed)?.conflictId;
+    expect(linked).toBeTruthy();
+    const conflictResponse = await fetch(`${baseUrl}/api/conflicts/${encodeURIComponent(linked!)}`);
+    expect(conflictResponse.status).toBe(200);
+    expect(await conflictResponse.json()).toMatchObject({ meta: { patchId: failed, title: "Collision" } });
+    expect(await readFile(path.join(knowledge, "wiki", "batch-entry.md"), "utf8")).toContain("테스트 본문");
+    expect(JSON.parse(await readFile(path.join(queue, stale, "meta.json"), "utf8"))).not.toHaveProperty("conflictId");
+    expect((await batchRequest("reject", [stale, failed])).status).toBe(400);
+    const rejected = await batchRequest("reject", [stale, failed], "Not needed");
+    expect(await rejected.json()).toMatchObject({ results: [{ id: stale, outcome: "rejected" }, { id: failed, outcome: "rejected" }] });
+    for (const id of [stale, failed]) expect(JSON.parse(await readFile(durableArchiveMetaPath(id), "utf8"))).toMatchObject({ status: "rejected", reason: "Not needed" });
+    const log = await readFile(path.join(knowledge, "log.md"), "utf8");
+    expect(log).toContain(fresh);
+    expect(log).toContain(stale);
+    expect(log).toContain("patch rejected");
   });
 
   it("rejects POST with oversized body → 413", async () => {

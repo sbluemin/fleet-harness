@@ -79,6 +79,12 @@ interface TerminalSession {
   readonly modeTracker: TerminalModeTracker;
   // 인메모리 유후 추적(서버 monotonic). 생성 시 시드되고 attach / PTY 출력 / binary 입력 / 서버 주입 write에서 갱신.
   lastActivityAt: number | undefined;
+  /**
+   * 출력 흐름 제어. 제어 소켓이 켜 둔 동안에만 동작한다 — 보낸 바이트 중 화면이 아직 파싱했다고
+   * 알리지(ack) 않은 양이 상한을 넘으면 PTY 읽기를 멈춘다. 멈춘 PTY의 자식은 커널 버퍼가 차면 쓰기에서
+   * 막히므로, Ctrl+C 뒤에 화면으로 쏟아질 이미 만들어진 출력이 그만큼으로 줄어든다(S-11).
+   */
+  flow: { enabled: boolean; unacked: number; paused: boolean };
 }
 
 interface KillSessionOptions {
@@ -97,6 +103,9 @@ const THEATER_SHELL_SESSION_PREFIX = "shell:";
 // theater-shell 소켓 단절 후 PTY를 정리하기까지의 유예(일시적 WS 끊김 재연결을 흡수).
 const THEATER_SHELL_DETACH_GRACE_MS = 4_000;
 const TERMINAL_QUERY_RESIDUAL_LIMIT = 64;
+/** 화면이 파싱했다고 알리지 않은 출력이 이만큼을 넘으면 PTY 읽기를 멈추고, 이 아래로 내려오면 다시 연다. */
+const FLOW_HIGH_WATERMARK_BYTES = 128 * 1024;
+const FLOW_LOW_WATERMARK_BYTES = 32 * 1024;
 // 재우기의 대기(5초)를 넘긴 옛 프로세스에도 여유를 준다. 플러그인 요청 시한(20초) 안에 기동까지 끝나야 한다.
 export const PRIOR_WRITER_EXIT_WAIT_MS = 10_000;
 const PRIOR_WRITER_EXIT_POLL_MS = 250;
@@ -140,6 +149,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     if (session.activeSocket && session.activeSocket !== socket) {
       session.activeSocket.close(4000, "terminal_replaced");
     }
+    // 새 제어 소켓은 흐름 제어를 스스로 켜야 한다 — 앞 소켓의 미확인 바이트를 물려받지 않는다.
+    resetFlow(session);
     session.activeSocket = socket;
     touchActivity(session);
     session.pty.resize(session.cols, session.rows);
@@ -384,6 +395,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       modeTracker: createTerminalModeTracker(),
       // 생성 시각으로 시드한다 — 조용한 PTY가 attach 전에 고아가 되어도 sweeper가 유후 판정할 수 있게 한다.
       lastActivityAt: now(),
+      flow: { enabled: false, unacked: 0, paused: false },
     };
     try {
       const dataDisposable = pty.onData((data) => handlePtyData(session, data));
@@ -422,6 +434,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.scrollback.push(buffer);
     while (session.scrollback.length > scrollbackLimit) session.scrollback.shift();
     liveSocket?.send(buffer, { binary: true });
+    if (liveSocket && session.flow.enabled) {
+      session.flow.unacked += buffer.length;
+      if (!session.flow.paused && session.flow.unacked > FLOW_HIGH_WATERMARK_BYTES) setPtyPaused(session, true);
+    }
     // 관전자는 같은 바이트를 받되 질의에는 답하지 않는다 — 응답 권한은 제어 소켓 하나에만
     // 있고, 둘이 답하면 PTY가 두 벌의 응답을 읽는다.
     for (const viewer of session.viewers) {
@@ -539,6 +555,19 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     } catch {
       return;
     }
+    if (isFlowFrame(frame)) {
+      // 켤 때부터 센다 — 그 전에 보낸 재생·출력은 화면이 이미 받았거나 받는 중이다.
+      session.flow.enabled = frame.enabled;
+      session.flow.unacked = 0;
+      if (!frame.enabled) setPtyPaused(session, false);
+      return;
+    }
+    if (isAckFrame(frame)) {
+      if (!session.flow.enabled) return;
+      session.flow.unacked = Math.max(0, session.flow.unacked - frame.bytes);
+      if (session.flow.paused && session.flow.unacked < FLOW_LOW_WATERMARK_BYTES) setPtyPaused(session, false);
+      return;
+    }
     if (!isResizeFrame(frame)) return;
     // 격자가 그대로면 PTY를 건드리지 않는다. pty.resize는 크기가 같아도 SIGWINCH를 보내고,
     // 전체 화면 TUI는 그 신호마다 프레임 전체를 다시 그린다 — 바뀐 것이 없을 때 그 재도색은
@@ -566,8 +595,27 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }, THEATER_SHELL_DETACH_GRACE_MS);
   }
 
+  /** 흐름 제어 상태를 처음으로 돌린다. 멈춘 채 두면 화면이 없는 동안 자식 프로세스가 영영 막힌다. */
+  function resetFlow(session: TerminalSession): void {
+    session.flow.enabled = false;
+    session.flow.unacked = 0;
+    setPtyPaused(session, false);
+  }
+
+  function setPtyPaused(session: TerminalSession, paused: boolean): void {
+    if (session.flow.paused === paused) return;
+    session.flow.paused = paused;
+    try {
+      if (paused) session.pty.pause?.();
+      else session.pty.resume?.();
+    } catch {
+      session.flow.paused = false;
+    }
+  }
+
   function detachSocket(session: TerminalSession, socket: TerminalSocket): void {
     if (session.activeSocket !== socket) return;
+    resetFlow(session);
     // 소켓이 끊겨도(콘솔 웹 종료·세션 전환 언마운트) PTY 세션은 유지한다. activeSocket만 비워
     // 죽은 소켓으로의 전송을 막고, 출력은 scrollback에 계속 쌓여 재연결 시 attach가 그대로 재생한다.
     // PTY는 오직 PTY 자가종료·운영자 terminate·서버 stop에서만 죽는다(자동 종료 grace 타이머는 제거됨).
@@ -804,6 +852,18 @@ function toBuffer(data: TerminalSocketData): Buffer {
   if (Buffer.isBuffer(data)) return data;
   if (Array.isArray(data)) return Buffer.concat(data);
   return Buffer.from(data);
+}
+
+function isFlowFrame(value: unknown): value is { readonly type: "flow"; readonly enabled: boolean } {
+  if (!value || typeof value !== "object") return false;
+  const frame = value as { readonly type?: unknown; readonly enabled?: unknown };
+  return frame.type === "flow" && typeof frame.enabled === "boolean";
+}
+
+function isAckFrame(value: unknown): value is { readonly type: "ack"; readonly bytes: number } {
+  if (!value || typeof value !== "object") return false;
+  const frame = value as { readonly type?: unknown; readonly bytes?: unknown };
+  return frame.type === "ack" && typeof frame.bytes === "number" && Number.isFinite(frame.bytes) && frame.bytes > 0;
 }
 
 function isResizeFrame(value: unknown): value is { readonly type: "resize"; readonly cols: number; readonly rows: number } {

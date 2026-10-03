@@ -16,6 +16,7 @@ const LOG_EVENTS: WikiLogEvent[] = [
   "patch set approved",
   "patch set partially approved",
   "conflict detected",
+  "conflict resolved",
   "drydock run",
   "index rebuilt",
 ];

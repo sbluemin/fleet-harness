@@ -1,6 +1,7 @@
 import type { AgentToolGroup } from "@fleet-console/sdk/agent";
 import { enqueueAndApprovePatch } from "../../wiki/index.js";
-import { computeContentHash, readPatchFile, readWikiEntry, resolveWikiEntryPath } from "../../wiki/index.js";
+import { computeContentHash, parseWikiEntry, readPatchFile, readWikiEntry, resolveWikiEntryPath, serializeWikiEntry } from "../../wiki/index.js";
+import { reapplyWikiEntry, WikiReapplyError } from "../../wiki/reapply.js";
 import { createWikiDraftToolSpecs } from "./draft-tools.js";
 import { getWikiToolSpecs, modelFacingWikiToolDescription } from "../../wiki-mcp.js";
 import type { MemoryPaths, Patch, WikiEntry } from "../../wiki/index.js";
@@ -79,12 +80,25 @@ export class CoworkService {
     let session = await this.required(workspaceId, id);
     if (session.state === "running") throw new Error("cowork_busy");
     if (session.state !== "idle") throw new Error("cowork_session_not_editable");
+    // 최신본을 읽지 못한 상태는 실행 전에 알린다 — idle과 코멘트를 그대로 보존한다.
+    if ((await this.describe(session)).freshness?.currentVersion === null) {
+      await this.changed(session);
+      throw new Error("cowork_entry_unavailable");
+    }
     const annotations = session.annotations;
     // 원샷 실행이라 provider는 이전 턴을 모른다 — 이번 프롬프트 이전까지의 대화를 실어 맥락을 복원한다.
     const history = (await this.store.transcript(workspaceId, id)).slice(-HISTORY_TURNS).map(turn => ({ role: turn.role, text: clipText(turn.text, 2000) }));
-    session = await this.changed(await this.store.update(workspaceId, id, s => ({ ...s, state: "running", annotations: [] })));
-    await this.store.appendTranscript(workspaceId, id, { role: "user", text: prompt, at: new Date().toISOString() });
+    let started = false;
     try {
+      session = await this.store.update(workspaceId, id, s => {
+        // 최신성 조회를 기다리는 사이 시작되거나 닫힌 세션을 덮어쓰지 않는다.
+        if (s.state === "running") throw new Error("cowork_busy");
+        if (s.state !== "idle") throw new Error("cowork_session_not_editable");
+        return { ...s, state: "running", annotations: [] };
+      });
+      started = true;
+      await this.changed(session);
+      await this.store.appendTranscript(workspaceId, id, { role: "user", text: prompt, at: new Date().toISOString() });
       const tools = createCoworkTools(this.store, workspaceId, id, this.cwd, this.resolver);
       const client = await this.connector.connect({ model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, tools });
       this.releaseLive(id);
@@ -107,6 +121,7 @@ export class CoworkService {
       });
       return session;
     } catch (error) {
+      if (!started) throw error;
       console.error(`[cowork] prompt setup failed (session ${id}):`, error instanceof Error ? error.message : error);
       this.releaseLive(id);
       await this.flushAssistantTurn(workspaceId, id);
@@ -131,6 +146,42 @@ export class CoworkService {
     const s = await this.store.update(workspaceId, id, old => ({ ...old, state: "closed" }));
     this.store.release(s);
     return this.changed(s);
+  }
+
+  async describe(session: CoworkSessionRecord): Promise<CoworkSessionDto> {
+    let markdown: string | null = null;
+    let version: number | null = null;
+    try {
+      const target = await resolveWikiEntryPath(session.entryId, this.paths);
+      if (target) {
+        markdown = await readPatchFile(join(this.paths.root, target));
+        version = parseWikiEntry(markdown).version;
+      }
+    } catch { markdown = null; /* 파싱 실패도 최신본을 읽지 못한 상태다 — 완료·복원 이벤트는 보존한다. */ }
+    return { ...this.dto(session), freshness: { stale: version !== session.baseVersion || markdown === null || computeContentHash(markdown) !== session.baseHash, currentVersion: version } };
+  }
+
+  async rebase(workspaceId: string, id: string, expectedRevision: number): Promise<CoworkSessionRecord> {
+    const session = await this.required(workspaceId, id);
+    if (session.state !== "idle") throw new Error("cowork_apply_busy");
+    if (session.revision !== expectedRevision) throw new Error("cowork_apply_stale_revision");
+    const target = await resolveWikiEntryPath(session.entryId, this.paths);
+    if (!target) throw new Error("cowork_entry_not_found");
+    const markdown = await readPatchFile(join(this.paths.root, target));
+    const latest = parseWikiEntry(markdown);
+    let draft: string;
+    try {
+      draft = session.draft === session.baseDraft ? markdown : serializeWikiEntry(reapplyWikiEntry(parseWikiEntry(session.baseDraft), parseDraft(session.draft), latest));
+    } catch (error) {
+      throw new Error(error instanceof WikiReapplyError ? `cowork_${error.code}` : "cowork_apply_invalid_draft");
+    }
+    if (draft.length > 1024 * 1024) throw new Error("cowork_reapply_limit");
+    const rebased = await this.store.update(workspaceId, id, old => {
+      if (old.state !== "idle" || old.revision !== expectedRevision || old.baseHash !== session.baseHash) throw new Error("cowork_apply_stale_revision");
+      // 선택 오프셋은 이전 판본의 좌표다. 인용·코멘트는 보존하되 잘못된 범위를 재사용하지 않는다.
+      return { ...old, draft, baseDraft: markdown, baseHash: computeContentHash(markdown), baseVersion: latest.version, targetPath: target, revision: old.revision + 1, selection: null, annotations: old.annotations.map(({ start: _start, end: _end, ...annotation }) => annotation) };
+    });
+    return this.changed(rebased);
   }
 
   async apply(workspaceId: string, id: string, expectedRevision?: number): Promise<CoworkSessionRecord> {
@@ -193,7 +244,7 @@ export class CoworkService {
   private composePrompt(prompt: string, annotations: CoworkSessionRecord["annotations"], selection: string | null, history: ReadonlyArray<{ role: string; text: string }>) { return JSON.stringify({ prompt, annotations: normalizeAnnotations(annotations), selection: selection ? { quote: selection } : undefined, history: history.length ? history : undefined }); }
   private async changed(s: CoworkSessionRecord) { await this.emit(s.workspaceId, s.id, "session"); return s; }
   private async flushAssistantTurn(workspaceId: string, id: string) { const text = this.streamBuffers.get(id); this.streamBuffers.delete(id); if (text) await this.store.appendTranscript(workspaceId, id, { role: "assistant", text, at: new Date().toISOString() }); }
-  private async emit(workspaceId: string, id: string, type: CoworkStoredEvent["type"], text?: string, includeSession = true) { const session = includeSession ? this.dto(await this.required(workspaceId, id)) : undefined; const event = await this.store.appendEvent(workspaceId, id, { type, text, session }); for (const cb of this.listeners.get(id) ?? []) cb(event); }
+  private async emit(workspaceId: string, id: string, type: CoworkStoredEvent["type"], text?: string, includeSession = true) { const session = includeSession ? await this.describe(await this.required(workspaceId, id)) : undefined; const event = await this.store.appendEvent(workspaceId, id, { type, text, session }); for (const cb of this.listeners.get(id) ?? []) cb(event); }
   private async required(workspaceId: string, id: string) { const s = await this.get(workspaceId, id); if (!s) throw new Error("cowork_session_not_found"); return s; }
 }
 

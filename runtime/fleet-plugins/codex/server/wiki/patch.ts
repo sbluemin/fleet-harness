@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import { lstatSync, realpathSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { constants, lstatSync, realpathSync } from "node:fs";
+import { mkdir, open, realpath } from "node:fs/promises";
+import { NOFOLLOW_FLAG } from "@fleet-console/infra/fs-store";
+import { reapplyWikiEntry } from "./reapply.js";
 import path from "node:path";
 
 import { getClaimsFile, listClaims } from "./claims.js";
-import { createConflict, resolveConflict } from "./conflicts.js";
+import { createConflict, readConflict, resolveConflict } from "./conflicts.js";
 import { appendLog } from "./log.js";
 import { ensureMemoryRoot } from "./paths.js";
 import { ensureWorkspaceSchema, inferTemplateIdFromTarget, scanTemplates, validateTemplateCompliance } from "./schema.js";
@@ -286,7 +288,7 @@ export async function enqueuePatch(patch: Patch, paths: MemoryPaths, metaOverrid
   await ensureMemoryRoot(paths);
   const patchId = buildPatchId(patch.frontmatter.created, patch.frontmatter.summary, patch.frontmatter.target, patch.body);
   const queueDir = path.join(paths.queueDir, patchId);
-  if (await pathExists(queueDir)) {
+  if (await pathExists(queueDir) || await pathExists(path.join(paths.archiveDir, patchId))) {
     throw new Error(`[fleet-wiki] patch id collision: ${patchId} - this should never happen with target+body hashing`);
   }
   await mkdir(queueDir);
@@ -298,6 +300,13 @@ export async function enqueuePatch(patch: Patch, paths: MemoryPaths, metaOverrid
       createdAt: patch.frontmatter.created,
       ...metaOverrides,
     };
+    const snapshot = await capturePatchBase(patch, meta, paths);
+    if (snapshot !== null) {
+      await writePatchFile(path.join(queueDir, PATCH_BASE_FILENAME), snapshot, paths);
+      meta.baseSnapshotHash = computeContentHash(snapshot);
+      meta.baseHash ??= meta.baseSnapshotHash;
+      meta.baseVersion ??= parseWikiEntry(snapshot).version;
+    }
     await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), meta satisfies PatchMeta, paths);
     await appendLog(paths, "patch enqueued", {
       patch_id: patchId,
@@ -313,6 +322,57 @@ export async function enqueuePatch(patch: Patch, paths: MemoryPaths, metaOverrid
     await removePath(queueDir);
     throw error;
   }
+}
+
+const MAX_BASE_BYTES = 1024 * 1024;
+
+async function readBoundedSnapshot(filePath: string, root: string): Promise<string | null> {
+  const [realRoot, target] = await Promise.all([realpath(root), realpath(filePath)]);
+  if (!target.startsWith(`${realRoot}${path.sep}`)) return null;
+  const file = await open(target, constants.O_RDONLY | NOFOLLOW_FLAG | (constants.O_NONBLOCK ?? 0));
+  try {
+    const info = await file.stat();
+    if (!info.isFile() || info.size > MAX_BASE_BYTES) return null;
+    const bytes = Buffer.alloc(MAX_BASE_BYTES + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const read = await file.read(bytes, length, bytes.length - length, null);
+      if (!read.bytesRead) break;
+      length += read.bytesRead;
+    }
+    if (length > MAX_BASE_BYTES) return null;
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, length));
+  } finally { await file.close(); }
+}
+
+export async function readWikiCurrentSnapshot(target: string, paths: MemoryPaths): Promise<string | null> {
+  assertCanonicalPatchTarget(target);
+  if (!target.startsWith("wiki/")) throw new Error("wiki patch must target wiki/");
+  assertNoSymlinkPathComponents(target, paths);
+  return readBoundedSnapshot(path.join(paths.root, target), paths.wikiDir);
+}
+
+async function capturePatchBase(patch: Patch, meta: PatchMeta, paths: MemoryPaths): Promise<string | null> {
+  if (patch.frontmatter.op === "create_wiki") return null;
+  try {
+    const snapshot = await readWikiCurrentSnapshot(patch.frontmatter.target, paths);
+    if (snapshot === null || (meta.baseHash !== undefined && computeContentHash(snapshot) !== meta.baseHash)) return null;
+    if (meta.baseVersion !== undefined && parseWikiEntry(snapshot).version !== meta.baseVersion) return null;
+    return snapshot;
+  } catch { return null; }
+}
+
+/** 기준본은 원래 제안 디렉터리와 함께 보관된다. 없는/변조된 기준본을 추측하지 않는다. */
+export async function readPatchBaseSnapshot(id: string, meta: PatchMeta, paths: MemoryPaths): Promise<string | null> {
+  assertSafeQueueId(id);
+  if (!meta.baseSnapshotHash) return null;
+  for (const root of [paths.queueDir, paths.archiveDir]) {
+    try {
+      const snapshot = await readBoundedSnapshot(path.join(root, id, PATCH_BASE_FILENAME), root);
+      if (snapshot !== null && computeContentHash(snapshot) === meta.baseSnapshotHash) return snapshot;
+    } catch { /* 다음 보관 위치를 확인한다. */ }
+  }
+  return null;
 }
 
 export async function listQueue(paths: MemoryPaths): Promise<Array<{ id: string; meta: PatchMeta }>> {
@@ -568,6 +628,57 @@ export async function rejectPatch(id: string, reason: string, paths: MemoryPaths
       result: "rejected",
     });
     return nextMeta;
+  });
+}
+
+export type ConflictDecision = "reject" | "repropose" | "resolve";
+
+/** 충돌 해결은 위키를 직접 덮지 않는다. 다시 제안도 새 승인 대기 항목만 만든다. */
+export async function decideWikiConflict(id: string, action: ConflictDecision, note: string, paths: MemoryPaths, expectedCurrentHash?: string): Promise<{ conflict: import("./types.js").ConflictMeta; patchId?: string }> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(id)) throw new Error("invalid_conflict_id");
+  if (!["reject", "repropose", "resolve"].includes(action)) throw new Error("invalid_action");
+  if (!note.trim() || note.length > 256) throw new Error("reason_required");
+  return withPatchEditLock(paths, `conflict:${id}`, async () => {
+    const conflictRoot = await realpath(paths.conflictsDir);
+    const conflictDir = await realpath(path.join(paths.conflictsDir, id));
+    if (!conflictDir.startsWith(`${conflictRoot}${path.sep}`)) throw new Error("invalid_conflict_id");
+    const record = await readConflict(id, paths);
+    if (record.meta.status !== "unresolved") throw new Error("conflict_not_open");
+    const patchId = record.meta.patchId;
+    if (patchId) assertSafeQueueId(patchId);
+    let replacement: string | undefined;
+    if (patchId && await pathExists(path.join(paths.queueDir, patchId))) {
+      const [queueRoot, patchDir] = await Promise.all([realpath(paths.queueDir), realpath(path.join(paths.queueDir, patchId))]);
+      if (!patchDir.startsWith(`${queueRoot}${path.sep}`)) throw new Error("invalid_patch");
+      await withPatchEditLock(paths, patchId, async () => {
+        const { patch, meta } = await showQueue(patchId, paths);
+        if (patch.frontmatter.target !== record.meta.target || path.basename(patch.frontmatter.target, ".md") !== record.meta.wikiId) throw new Error("conflict_patch_mismatch");
+        if (meta.status !== "pending") throw new Error("patch is not pending");
+        if (action === "repropose") {
+          if (patch.frontmatter.op !== "update_wiki") throw new Error("conflict_reapply_unavailable");
+          const base = await readPatchBaseSnapshot(patchId, meta, paths);
+          if (base === null) throw new Error("conflict_reapply_unavailable");
+          const current = await readWikiCurrentSnapshot(patch.frontmatter.target, paths);
+          if (current === null) throw new Error("conflict_reapply_unavailable");
+          const hash = computeContentHash(current);
+          if (!expectedCurrentHash || hash !== expectedCurrentHash) throw new Error("conflict_current_changed");
+          const entry = reapplyWikiEntry(parseWikiEntry(base), JSON.parse(patch.body) as WikiEntry, parseWikiEntry(current));
+          const next: Patch = { frontmatter: { ...patch.frontmatter, created: new Date().toISOString(), summary: patch.frontmatter.summary }, body: JSON.stringify({ ...entry, version: entry.version + 1, updated: new Date().toISOString() }) };
+          await validatePatch(next, paths);
+          replacement = await enqueuePatch(next, paths, { baseHash: hash, baseVersion: entry.version });
+        }
+        try {
+          await archiveQueueEntry(patchId, paths, { ...meta, status: "rejected", decidedAt: new Date().toISOString(), reason: note });
+        } catch (error) {
+          if (replacement) await removePath(path.join(paths.queueDir, replacement));
+          throw error;
+        }
+        await appendLog(paths, "patch rejected", { patch_id: patchId, conflict_id: id, reason: note, result: "rejected", replacement_patch_id: replacement ?? null });
+      });
+    } else if (action === "repropose") throw new Error("conflict_reapply_unavailable");
+    const conflict = await resolveConflict(id, { resolution: action === "repropose" ? "queued" : action === "reject" ? "rejected" : "manual", note }, paths);
+    await appendLog(paths, "conflict resolved", { conflict_id: id, action, note, patch_id: patchId ?? null, replacement_patch_id: replacement ?? null });
+    return { conflict, ...(replacement ? { patchId: replacement } : {}) };
   });
 }
 
@@ -907,9 +1018,14 @@ function parseInlineArray(value: string): string[] {
 async function archiveQueueEntry(id: string, paths: MemoryPaths, meta: PatchMeta): Promise<void> {
   const fromDir = path.join(paths.queueDir, id);
   const toDir = path.join(paths.archiveDir, id);
-  await removePath(toDir);
+  if (await pathExists(toDir)) throw new Error("patch archive collision");
   await movePath(fromDir, toDir);
-  await writeJsonFile(path.join(toDir, PATCH_META_FILENAME), meta, paths);
+  try {
+    await writeJsonFile(path.join(toDir, PATCH_META_FILENAME), meta, paths);
+  } catch (error) {
+    if (!(await pathExists(fromDir))) await movePath(toDir, fromDir);
+    throw error;
+  }
 }
 
 function buildQueueIdHelp(prefix: string, availableIds: string[]): string {
@@ -931,6 +1047,7 @@ export const INDEX_MD_FILENAME = "index.md";
 export const LOG_MD_FILENAME = "log.md";
 export const PATCH_FILENAME = "patch.md";
 export const PATCH_META_FILENAME = "meta.json";
+export const PATCH_BASE_FILENAME = "base.md";
 
 export const REQUIRED_WIKI_FRONTMATTER_KEYS = [
   "id",

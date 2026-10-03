@@ -8,7 +8,7 @@ import { openShellLink, useShellLinkChoice } from "../../agent/link-open.js";
 import { notifySharedFallback } from "../../../../browser/client/global-browser-store.js";
 import { useBrowserEngine } from "../../../../browser/client/browser-panel-store.js";
 import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
-import { TerminalSurface } from "../shared/index.js";
+import { TerminalSurface, type TerminalCarryOver, type TerminalExitInfo } from "../shared/index.js";
 import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
 import { getShellSessionSnapshot, readShellSession } from "./shell-session-store.js";
 import { ShellTheaterBadge, ShellTheaterBand } from "./shell-theater.js";
@@ -174,6 +174,14 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
 
   // 재시작(restart-at)으로 끝난 PTY 뒤에는 같은 자리에 새 표면을 붙인다 — 새 티켓이 새 PTY를 띄운다.
   const [surfaceKey, setSurfaceKey] = React.useState(0);
+  // 재시작으로 갈아 끼운 셸 위에 앞 셸의 흐린 화면과 구분선을 잇는다(K-10). 새 표면이 마운트 때 한 번 쓴다.
+  const [carryOver, setCarryOver] = React.useState<TerminalCarryOver | undefined>(undefined);
+  // 새 표면은 첫 렌더에서 carryOver를 붙잡는다(마운트 때 한 번만 쓴다). 그 커밋이 끝나면 곧바로 비운다 —
+  // 이 호스트는 Shell이 끝난 뒤에도 콘솔 수명 동안 살아 있으므로, 남겨 두면 다음에 새로 여는 Shell이
+  // 이미 끝난 세션의 화면과 "교체" 구분선을 다시 그린다.
+  React.useEffect(() => {
+    if (carryOver) setCarryOver(undefined);
+  }, [carryOver]);
   // 전역 Shell 링크는 2행 카드(Fleet / 내 브라우저)가 window.confirm을 대신한다.
   // 조기 반환보다 앞에서 건다 — 마운트 전에도 훅 순서는 같아야 한다.
   const shellLink = useShellLinkChoice(language ?? mount.context?.language ?? "en");
@@ -185,7 +193,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
 
   if (!mount.activated || !mount.context) return null;
   const context = mount.context;
-  const handleExit = () => {
+  const handleExit = (exit: TerminalExitInfo) => {
     const close = shellMountState.context?.close;
     // PTY가 끝났다. 사용자가 `exit`로 끝냈으면 서버가 고정을 풀었고(pinnedTheaterId null), 그때는
     // 보존할 세션이 없으니 portal을 내리고 페인도 거둔다. 재시작이 끝낸 것이면 서버가 이미 새 위치를
@@ -193,9 +201,11 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
     // 옛 종료가 페인을 닫는 경합도 없다.
     void readShellSession().then((state) => {
       if (state && !state.open && state.pinnedTheaterId !== null) {
+        setCarryOver(exit.transcript ? { transcript: exit.transcript, reason: "replaced", cols: exit.cols } : undefined);
         setSurfaceKey((key) => key + 1);
         return;
       }
+      setCarryOver(undefined);
       publishShellMount(EMPTY_SHELL_MOUNT);
       close?.();
     });
@@ -205,6 +215,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
     <>
       <TerminalSurface
         key={surfaceKey}
+        {...(carryOver ? { carryOver } : {})}
         operationId={SHELL_SURFACE_ID}
         ticketPath={SHELL_TICKET_PATH}
         wsPath={SHELL_WS_PATH}

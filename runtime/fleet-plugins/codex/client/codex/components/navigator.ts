@@ -77,7 +77,7 @@ function renderTagChip(tag: string, isActive: boolean): string {
   const label = isActive
     ? t("codex.nav.clearTagFilter", { tag })
     : t("codex.nav.filterByTag", { tag });
-  return `<button class="codex-nav-tag${isActive ? " is-active" : ""}" data-tag="${escapeHtml(tag)}" type="button" aria-pressed="${String(isActive)}" aria-label="${escapeHtml(label)}">${escapeHtml(tag)}</button>`;
+  return `<button class="codex-nav-tag${isActive ? " is-active" : ""}" data-tag="${escapeHtml(tag)}" tabindex="-1" type="button" aria-pressed="${String(isActive)}" aria-label="${escapeHtml(label)}">${escapeHtml(tag)}</button>`;
 }
 
 function renderEntry(entry: WikiIndexEntry, options: RenderEntryOptions): string {
@@ -86,7 +86,7 @@ function renderEntry(entry: WikiIndexEntry, options: RenderEntryOptions): string
     : false;
   const tags = entry.tags
     .slice(0, 3)
-    .map((tag) => renderTagChip(tag, tag === options.activeTag))
+    .map((tag) => `<span class="codex-nav-tag codex-nav-tag-info${tag === options.activeTag ? " is-active" : ""}">${escapeHtml(tag)}</span>`)
     .join("");
   const overflowTags = entry.tags.slice(3);
   const more = overflowTags.length > 0
@@ -104,10 +104,12 @@ function renderEntry(entry: WikiIndexEntry, options: RenderEntryOptions): string
   return `<div
     class="codex-nav-entry${options.isCurrent ? " is-current" : ""}"
     data-entry-id="${escapeHtml(entry.id)}"
-    tabindex="-1"
+    role="option"
+    id="codex-option-${escapeHtml(entry.id)}"
+    aria-selected="${String(options.isCurrent)}"
     ${options.isCurrent ? 'aria-current="page"' : ""}
   >
-    <button class="t" type="button" title="${escapeHtml(entry.title)}">${highlightMatch(entry.title, tagMatches ? "" : options.query)}</button>
+    <span class="t" title="${escapeHtml(entry.title)}">${highlightMatch(entry.title, tagMatches ? "" : options.query)}</span>
     ${aside}
     ${tags ? `<span class="tg">${tags}${more}</span>` : ""}
     ${options.snippet ? `<span class="snippet">${highlightMatch(options.snippet, options.query)}</span>` : ""}
@@ -198,6 +200,9 @@ export function mountNavigatorInto(
 ): NavigatorController {
   let currentQuery = "";
   let currentEntryId: string | null = null;
+  let activeOptionKey: string | null = null;
+  let activeTagKey: string | null = null;
+  let composing = false;
   let activeTag: string | null = null;
   let activeTheaterId = options.initialTheaterId;
   let serverResults: SearchEntry[] = [];
@@ -230,6 +235,7 @@ export function mountNavigatorInto(
           autocomplete="off"
           spellcheck="false"
           aria-label="${escapeHtml(t("codex.nav.searchAria"))}"
+          role="combobox" aria-autocomplete="list" aria-controls="codex-nav-list" aria-expanded="true"
         />
       </div>
       <div class="codex-nav-quick-row">
@@ -250,8 +256,9 @@ export function mountNavigatorInto(
         </div>
       </div>
       <div class="codex-navigator-scroll">
-        <div class="codex-nav-list" id="codex-nav-list"></div>
+        <div class="codex-nav-list" id="codex-nav-list" role="listbox" tabindex="0" aria-label="${escapeHtml(t("codex.nav.entries"))}"></div>
       </div>
+      <div class="codex-nav-tag-filters" role="toolbar" aria-label="${escapeHtml(t("codex.nav.tagFilters"))}" hidden></div>
     </div>
   `;
   }
@@ -260,6 +267,7 @@ export function mountNavigatorInto(
 
   const searchInput = root.querySelector<HTMLInputElement>(".codex-nav-search-input")!;
   const navList = root.querySelector<HTMLElement>("#codex-nav-list")!;
+  const tagToolbar = root.querySelector<HTMLElement>(".codex-nav-tag-filters")!;
   const eyebrow = root.querySelector<HTMLElement>("#codex-nav-eyebrow")!;
   const drydockBadge = root.querySelector<HTMLElement>("#codex-nav-drydock-badge")!;
   const activeFilterButton = root.querySelector<HTMLButtonElement>("[data-clear-tag]")!;
@@ -417,9 +425,53 @@ export function mountNavigatorInto(
     void revalidateScopes(["queue"]).catch(() => {});
   }
 
+  function optionKey(element: HTMLElement): string {
+    return element.dataset.entryId ? `entry:${element.dataset.entryId}` : element.dataset.templateId ? `template:${element.dataset.templateId}` : "schema";
+  }
+
+  function syncOptionState(state: AppState, restoreTag: string | null): void {
+    const rows = Array.from(navList.querySelectorAll<HTMLElement>(".codex-nav-entry:not([disabled])"));
+    if (rows.length && !rows.some(row => optionKey(row) === activeOptionKey)) activeOptionKey = rows.find(row => row.dataset.entryId === currentEntryId)?.dataset.entryId ? `entry:${currentEntryId}` : optionKey(rows[0]!);
+    for (const [index, row] of rows.entries()) {
+      row.setAttribute("role", "option");
+      row.tabIndex = -1;
+      if (!row.id) row.id = `codex-schema-option-${index}`;
+      row.setAttribute("aria-selected", String(mode === "entries" && row.dataset.entryId === currentEntryId));
+      row.dataset.active = String(optionKey(row) === activeOptionKey);
+    }
+    const active = rows.find(row => optionKey(row) === activeOptionKey);
+    if (document.activeElement === navList) active?.scrollIntoView({ block: "nearest" });
+    navList.setAttribute("aria-label", consoleT()(mode === "entries" ? "codex.nav.entries" : "codex.nav.schema"));
+    navList.setAttribute("aria-busy", String(state.loading));
+    searchInput.setAttribute("aria-expanded", String(mode === "entries" && rows.length > 0));
+    for (const control of [navList, searchInput]) {
+      if (active) control.setAttribute("aria-activedescendant", active.id);
+      else control.removeAttribute("aria-activedescendant");
+    }
+    const entry = mode === "entries" ? [...state.index, ...serverResults].find(item => item.id === active?.dataset.entryId) : null;
+    const tags = entry?.tags ?? [];
+    tagToolbar.hidden = tags.length === 0;
+    tagToolbar.setAttribute("aria-label", consoleT()("codex.nav.tagFilters"));
+    tagToolbar.innerHTML = tags.map(tag => renderTagChip(tag, tag === activeTag)).join("");
+    if (!tags.includes(activeTagKey ?? "")) activeTagKey = tags[0] ?? null;
+    const buttons = Array.from(tagToolbar.querySelectorAll<HTMLButtonElement>("[data-tag]"));
+    for (const button of buttons) button.tabIndex = button.dataset.tag === activeTagKey ? 0 : -1;
+    if (restoreTag !== null) {
+      const button = buttons.find(item => item.dataset.tag === restoreTag) ?? buttons[0];
+      if (button) { activeTagKey = button.dataset.tag!; for (const item of buttons) item.tabIndex = item === button ? 0 : -1; button.focus({ preventScroll: true }); }
+      else navList.focus({ preventScroll: true });
+    }
+  }
+
   function renderList(state: AppState): void {
+    const focused = document.activeElement;
+    const restoreTag = focused instanceof HTMLElement && tagToolbar.contains(focused) ? focused.dataset.tag ?? null : null;
+    try { renderListContents(state); } finally { syncOptionState(state, restoreTag); }
+  }
+
+  function renderListContents(state: AppState): void {
     const t = consoleT();
-    root.querySelectorAll<HTMLElement>("[data-mode]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.mode === mode)));
+    root.querySelectorAll<HTMLElement>("[data-mode]").forEach((button) => { button.setAttribute("aria-selected", String(button.dataset.mode === mode)); button.tabIndex = button.dataset.mode === mode ? 0 : -1; });
     searchInput.hidden = mode === "schema";
     sortControls.hidden = mode === "schema";
     activeFilterButton.hidden = mode === "schema" || activeTag === null;
@@ -532,6 +584,8 @@ export function mountNavigatorInto(
 
   function selectEntry(id: string): void {
     currentEntryId = id;
+    activeOptionKey = `entry:${id}`;
+    navList.focus({ preventScroll: true });
     renderList(getState());
     options.onRequest({ kind: "entry", id });
   }
@@ -555,9 +609,9 @@ export function mountNavigatorInto(
       return;
     }
     const schemaBtn = target.closest<HTMLElement>("[data-schema-resource]");
-    if (schemaBtn) { options.onRequest({ kind: "schema" }); return; }
+    if (schemaBtn) { navList.focus(); activateOption(schemaBtn); syncOptionState(getState(), null); return; }
     const templateBtn = target.closest<HTMLElement>("[data-template-id]");
-    if (templateBtn?.dataset.templateId) { options.onRequest({ kind: "schema", templateId: templateBtn.dataset.templateId }); return; }
+    if (templateBtn?.dataset.templateId) { navList.focus(); activateOption(templateBtn); syncOptionState(getState(), null); return; }
 
     const tagButton = target.closest<HTMLElement>("[data-tag]");
     if (tagButton?.dataset.tag) {
@@ -606,11 +660,86 @@ export function mountNavigatorInto(
   }
 
   function handleDocumentKeyDown(event: KeyboardEvent): void {
-    if (event.key !== "Escape" || !healthPopoverOpen) return;
+    if (event.key !== "Escape" || !healthPopoverOpen || !(event.target instanceof Node) || !healthStrip.contains(event.target) && !healthPopoverElement?.contains(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
     closeHealthPopover(true);
   }
 
+  function activateOption(row: HTMLElement): void {
+    activeOptionKey = optionKey(row);
+    if (row.dataset.entryId) selectEntry(row.dataset.entryId);
+    else if (row.dataset.templateId) options.onRequest({ kind: "schema", templateId: row.dataset.templateId });
+    else options.onRequest({ kind: "schema" });
+  }
+
+  function handleKeyDown(event: KeyboardEvent): void {
+    if (event.isComposing || composing || event.metaKey || event.ctrlKey || event.altKey || !(event.target instanceof HTMLElement)) return;
+    const target = event.target;
+    if (event.key === "Escape" && healthPopoverOpen && healthStrip.contains(target)) { event.preventDefault(); event.stopPropagation(); closeHealthPopover(true); return; }
+    const tag = target.closest<HTMLButtonElement>(".codex-nav-tag-filters [data-tag]");
+    if (tag) {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); navList.focus(); return; }
+      const buttons = Array.from(tagToolbar.querySelectorAll<HTMLButtonElement>("[data-tag]"));
+      const index = buttons.indexOf(tag);
+      const next = event.key === "ArrowRight" ? (index + 1) % buttons.length : event.key === "ArrowLeft" ? (index + buttons.length - 1) % buttons.length : event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : -1;
+      if (next >= 0) {
+        event.preventDefault(); event.stopPropagation();
+        activeTagKey = buttons[next]!.dataset.tag!;
+        for (const button of buttons) button.tabIndex = button === buttons[next] ? 0 : -1;
+        buttons[next]!.focus();
+      }
+      return;
+    }
+    const tab = target.closest<HTMLButtonElement>("[data-mode]");
+    if (tab && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault(); event.stopPropagation();
+      mode = mode === "entries" ? "schema" : "entries";
+      renderList(getState());
+      root.querySelector<HTMLElement>(`[data-mode=${mode}]`)?.focus();
+      return;
+    }
+    if (target !== searchInput && target !== navList) return;
+    if (event.key === "Escape") {
+      if (currentQuery || searchInput.value || activeTag) {
+        event.preventDefault(); event.stopPropagation();
+        currentQuery = ""; searchInput.value = ""; activeTag = null;
+        if (debounceTimer !== null) clearTimeout(debounceTimer);
+        requestServerSearch();
+        searchInput.focus();
+      }
+      return;
+    }
+    if (target === searchInput && searchInput.value !== currentQuery) {
+      currentQuery = searchInput.value;
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      requestServerSearch();
+    }
+    const rows = Array.from(navList.querySelectorAll<HTMLElement>(".codex-nav-entry:not([disabled])"));
+    const index = rows.findIndex(row => optionKey(row) === activeOptionKey);
+    if (event.key === "Enter" || event.key === " " && target === navList) {
+      if (index >= 0) { event.preventDefault(); event.stopPropagation(); activateOption(rows[index]!); }
+      return;
+    }
+    if (event.key === "ArrowRight" && target === navList && !tagToolbar.hidden) {
+      event.preventDefault(); event.stopPropagation(); tagToolbar.querySelector<HTMLElement>('[tabindex="0"]')?.focus(); return;
+    }
+    const next = event.key === "ArrowDown" ? target === searchInput ? 0 : Math.min(rows.length - 1, index + 1)
+      : event.key === "ArrowUp" ? target === searchInput ? rows.length - 1 : Math.max(0, index - 1)
+        : event.key === "Home" && target === navList ? 0 : event.key === "End" && target === navList ? rows.length - 1 : -1;
+    if (next < 0 || !rows[next]) return;
+    event.preventDefault(); event.stopPropagation();
+    activeOptionKey = optionKey(rows[next]!);
+    syncOptionState(getState(), null);
+    navList.focus({ preventScroll: true });
+    rows[next]!.scrollIntoView({ block: "nearest" });
+  }
+
+  const startComposition = () => { composing = true; };
+  const endComposition = () => { composing = false; handleSearchInput(); };
+
   function handleSearchInput(): void {
+    if (composing) return;
     if (debounceTimer !== null) clearTimeout(debounceTimer);
     searchController?.abort();
     searchController = null;
@@ -624,7 +753,10 @@ export function mountNavigatorInto(
   }
 
   root.addEventListener("click", handleClick);
+  root.addEventListener("keydown", handleKeyDown);
   searchInput.addEventListener("input", handleSearchInput);
+  searchInput.addEventListener("compositionstart", startComposition);
+  searchInput.addEventListener("compositionend", endComposition);
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("keydown", handleDocumentKeyDown);
 
@@ -639,7 +771,10 @@ export function mountNavigatorInto(
     destroy(): void {
       unsubscribe();
       root.removeEventListener("click", handleClick);
+      root.removeEventListener("keydown", handleKeyDown);
       searchInput.removeEventListener("input", handleSearchInput);
+      searchInput.removeEventListener("compositionstart", startComposition);
+      searchInput.removeEventListener("compositionend", endComposition);
       document.removeEventListener("click", handleDocumentClick);
       document.removeEventListener("keydown", handleDocumentKeyDown);
       closeHealthPopover();
@@ -651,6 +786,8 @@ export function mountNavigatorInto(
       activeTheaterId = theaterId;
       currentQuery = "";
       currentEntryId = null;
+      activeOptionKey = null;
+      activeTagKey = null;
       activeTag = null;
       serverResults = [];
       searchEpoch += 1;

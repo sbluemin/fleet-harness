@@ -3,11 +3,14 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { FileExplorerMessageKey } from "../i18n/index.js";
+import type { FileReadWindow } from "../../server/types.js";
 import { tokenize } from "../syntax/highlighter.js";
 
 /** Matches `.fexp-code-row` height (13px --t-md × 1.6, rounded). */
 const CODE_LINE_HEIGHT_PX = 21;
 const CODE_OVERSCAN_LINES = 8;
+/** 긴 한 줄의 토큰 DOM과 가로 레이아웃이 Console 전체를 막지 않도록 제한한다. */
+export const LONG_LINE_CHAR_CAP = 5000;
 /**
  * 줄바꿈을 켜면 한 줄의 높이가 내용에 따라 달라져 고정 높이 가상화의 인덱스↔스크롤 대응이 깨진다
  * (실측: 1,200줄 파일에서 끝까지 스크롤해도 1039행에서 멈춤). 그래서 줄바꿈 모드는 창을 나누지 않고
@@ -24,6 +27,7 @@ interface CodeViewerProps {
   readonly lang: string;
   readonly truncated?: boolean;
   readonly wrap?: boolean;
+  readonly readWindow?: FileReadWindow;
   readonly target?: {
     readonly lineNumber: number;
     readonly column?: number;
@@ -54,8 +58,11 @@ export function visibleLineWindow(
   return { start, end, offsetY: start * lineHeight, totalHeight };
 }
 
-export function CodeViewer({ content, lang, truncated, wrap = false, target, t }: CodeViewerProps) {
+export function CodeViewer({ content, lang, truncated, wrap = false, readWindow, target, t }: CodeViewerProps) {
   const lines = useMemo(() => content.split("\n"), [content]);
+  const longLineCount = useMemo(() => lines.filter((line) => line.length > LONG_LINE_CHAR_CAP).length, [lines]);
+  const [showFullLines, setShowFullLines] = useState(false);
+  useLayoutEffect(() => { setShowFullLines(false); }, [content]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const windowRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -85,6 +92,13 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
 
   useLayoutEffect(() => {
     const node = scrollRef.current;
+    if (!node || !readWindow || target) return;
+    node.scrollTop = readWindow.mode === "tail" ? node.scrollHeight : 0;
+    syncViewport();
+  }, [content, readWindow?.mode, readWindow?.startByte, readWindow?.endByte, syncViewport, target?.requestId]);
+
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
     if (!node || !target) return;
     const lineNumber = Math.min(lines.length, target.lineNumber);
     if (!wrapping) {
@@ -111,8 +125,10 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
     ? { start: 0, end: lines.length, offsetY: 0, totalHeight: 0 }
     : windowed;
   const rendered = useMemo(() => {
-    return lines.slice(start, end).map((line) => renderLine(line, lang));
-  }, [lang, lines, start, end]);
+    return lines.slice(start, end).map((line) => line.length > LONG_LINE_CHAR_CAP
+      ? escapeHtml(showFullLines ? line : line.slice(0, LONG_LINE_CHAR_CAP))
+      : renderLine(line, lang));
+  }, [lang, lines, start, end, showFullLines]);
   const rows = rendered.map((html, index) => {
     const lineNumber = start + index + 1;
     return (
@@ -128,6 +144,7 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
         } : undefined}
         rawLine={lines[start + index] ?? ""}
         lang={lang}
+        plainLongLine={(lines[start + index]?.length ?? 0) > LONG_LINE_CHAR_CAP}
       />
     );
   });
@@ -135,6 +152,12 @@ export function CodeViewer({ content, lang, truncated, wrap = false, target, t }
   return (
     <div className={`fexp-code-wrap${wrapping ? " is-wrap" : ""}${scrollTop > 1 ? " is-scrolled" : ""}${canScrollDown ? " can-scroll-down" : ""}${truncated ? " is-truncated" : ""}`}>
       {truncated && <div className="fexp-truncated-badge">{t("fileExplorer.viewer.truncated")}</div>}
+      {longLineCount > 0 && (
+        <div className="fexp-long-line-notice" role="status">
+          <span>{t(showFullLines ? "fileExplorer.viewer.longLinesFull" : "fileExplorer.viewer.longLines", { count: longLineCount, cap: LONG_LINE_CHAR_CAP })}</span>
+          <button type="button" aria-expanded={showFullLines} onClick={() => setShowFullLines((current) => !current)}>{t(showFullLines ? "fileExplorer.viewer.collapseLongLines" : "fileExplorer.viewer.fullLongLines")}</button>
+        </div>
+      )}
       <div
         ref={scrollRef}
         className="fexp-code-scroll"
@@ -166,14 +189,16 @@ function CodeRow({
   target,
   rawLine,
   lang,
+  plainLongLine,
 }: {
   readonly lineNumber: number;
   readonly html: string;
   readonly target?: { readonly ranges: readonly { readonly start: number; readonly end: number }[] };
   readonly rawLine: string;
   readonly lang: string;
+  readonly plainLongLine: boolean;
 }) {
-  const highlighted = target ? renderLineWithSearchRanges(rawLine, lang, target.ranges) : html;
+  const highlighted = !plainLongLine && target ? renderLineWithSearchRanges(rawLine, lang, target.ranges) : html;
   return (
     <div className={`fexp-code-row${target ? " is-search-target" : ""}`}>
       <span className="fexp-line-num" aria-hidden="true">{lineNumber}</span>
@@ -187,6 +212,7 @@ function CodeRow({
 }
 
 export function renderLine(line: string, lang: string): string {
+  if (line.length > LONG_LINE_CHAR_CAP) return escapeHtml(line.slice(0, LONG_LINE_CHAR_CAP)) + " …";
   if (lang === "plaintext" || lang === "markdown") return escapeHtml(line) || " ";
   const tokens = tokenize(line, lang);
   return tokens.map((tok) => {
@@ -200,6 +226,7 @@ export function renderLineWithSearchRanges(
   lang: string,
   ranges: readonly { readonly start: number; readonly end: number }[],
 ): string {
+  if (line.length > LONG_LINE_CHAR_CAP) return renderLine(line, "plaintext");
   const normalized = [...ranges]
     .filter((range) => range.start >= 0 && range.end > range.start && range.end <= line.length)
     .sort((left, right) => left.start - right.start || left.end - right.end);

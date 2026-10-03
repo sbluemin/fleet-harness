@@ -8,7 +8,7 @@ import { FileIcon } from "@fleet-console/sdk/components/file-icon";
 import { formatByteSize, formatRelativeTime } from "./format.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
-import { renderLine } from "./viewer/code.js";
+import { LONG_LINE_CHAR_CAP, renderLine } from "./viewer/code.js";
 import { cacheBustedImageSrc } from "./viewer/image.js";
 
 /**
@@ -176,6 +176,9 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
           ))}
           {state.lines.length === 0 && <span className="fexp-peek-line"><span className="fexp-peek-ln" aria-hidden="true">1</span><span className="fexp-peek-src"> </span></span>}
         </pre>
+      )}
+      {state.kind === "code" && state.lines.some((line) => line.length > LONG_LINE_CHAR_CAP) && (
+        <div className="fexp-peek-note">{t("fileExplorer.viewer.longLines", { count: state.lines.filter((line) => line.length > LONG_LINE_CHAR_CAP).length, cap: LONG_LINE_CHAR_CAP })}</div>
       )}
       {state.kind === "code" && state.lineCount !== undefined && state.lineCount > state.lines.length && (
         <div className="fexp-peek-more">{t("fileExplorer.peek.more", { count: state.lineCount - state.lines.length })}</div>

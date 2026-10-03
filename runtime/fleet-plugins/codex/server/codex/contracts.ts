@@ -98,6 +98,7 @@ export interface EntryResponse {
   raw?: RawSourceItem[];
   /** 본문에서 [[wiki:이 문서]]를 참조하는 다른 엔트리들(역링크). */
   backlinks?: EntryBacklink[];
+  pendingPatchCount?: number;
 }
 
 export interface DrydockPatchSetMember {
@@ -143,7 +144,17 @@ export interface DrydockListItem {
   proposer?: string;
   /** pending(queue) 항목에만 계산된다 — 결정된 패치의 diff는 현재 문서와 무의미하다. */
   diffstat?: DrydockDiffStat;
+  baseConflict?: DrydockBaseConflict;
 }
+
+export interface DrydockBatchResult {
+  id: string;
+  outcome: "approved" | "rejected" | "skipped" | "failed";
+  error?: string;
+  conflictId?: string;
+}
+
+export interface DrydockBatchResponse { ok: true; results: DrydockBatchResult[]; }
 
 export interface DrydockListResponse {
   items: DrydockListItem[];
@@ -215,6 +226,7 @@ export interface SchemaDocumentResponse {
 export interface ConflictListItem {
   id: string;
   title: string;
+  createdAt?: string;
   updated: string;
   status: "open" | "resolved" | "unknown";
   path: string;
@@ -222,10 +234,17 @@ export interface ConflictListItem {
 
 export interface ConflictDetailResponse {
   id: string;
+  title?: string;
+  status?: ConflictListItem["status"];
   meta: Record<string, unknown>;
+  base?: string | null;
   current: string | null;
+  currentHash?: string;
+  currentAtConflict?: string | null;
   proposed: string | null;
   rawSource: string | null;
+  canRepropose?: boolean;
+  pendingPatch?: boolean;
 }
 
 export interface CodexHealthResponse {
