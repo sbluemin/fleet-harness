@@ -284,7 +284,8 @@ code.hljs {
 }
 
 .markdown-body ul li::marker {
-  color: var(--brass-ink);
+  /* 글머리 점은 장식이다 — 다크는 3티어 잉크, 라이트(Whites)는 슬롯이 지금의 brass-ink를 잇는다. */
+  color: var(--quiet-decor-ink);
 }
 
 .markdown-body ol li::marker {
@@ -318,8 +319,10 @@ code.hljs {
 
 /* Frontmatter metadata card — YAML frontmatter (---) extracted in core.ts and
    rendered as a key/value manifest instead of a mangled setext heading. Keys
-   are mono uppercase eyebrows (brass), values body ink, on a glass surface
-   consistent with the Maritime "MANIFEST" language. */
+   are mono uppercase eyebrows, values body ink, on a glass surface
+   consistent with the Maritime "MANIFEST" language. The eyebrow is a standing
+   label, so dark themes use the tertiary ink; Whites keeps its brass through
+   the light side of light-dark(). */
 .markdown-body .frontmatter {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -334,7 +337,7 @@ code.hljs {
 
 .markdown-body .frontmatter dt {
   margin: 0;
-  color: var(--brass-bright);
+  color: light-dark(var(--brass-bright), var(--text-tertiary));
   font-family: var(--font-content);
   font-size: calc(var(--font-content-size) * 0.785714);
   font-weight: var(--weight-medium);

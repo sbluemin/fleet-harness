@@ -14704,10 +14704,10 @@ body[data-codex-side="true"] .command-card {
   overflow: hidden;
   /* Reading 오버레이는 우현 rail 카드와 동일한 carbon glass 표면을 쓴다(별도 블루
      그라디언트는 콘솔의 carbon dark 톤과 어긋났음): surface-glass-strong + ink-deep
-     + 우상단 brass 코너.
+     + 우상단 brass 코너. 코너는 상시 장식이라 lights-out 배수(--quiet-halo-gain)를 따른다 — 다크 0, Whites 1.
      팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
-    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 7%), transparent), transparent 56%),
     linear-gradient(
       var(--glass-tint-expanded),
       var(--glass-tint-expanded)
@@ -15507,7 +15507,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이
      (canonical 주석은 components.css의 .whatsnew-card 참조). */
   background:
-    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 7%), transparent), transparent 56%),
     linear-gradient(
       var(--glass-tint-expanded),
       var(--glass-tint-expanded)
