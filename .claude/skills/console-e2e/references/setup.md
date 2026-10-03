@@ -1,6 +1,6 @@
 # Isolated Console setup
 
-Build and boot the owned Console before connecting with the selected browser driver. Consult **Isolated Development Data** in `docs/fleet-development-reference.md`. If the run may start Claude (terminal or SDK/chat), complete [Claude state and trust preflight](claude-state.md) first; Fleet slot isolation alone does not isolate agent state.
+Build and boot the owned Console before connecting with the selected browser driver. Consult **Isolated Development Data** in `docs/fleet-development-reference.md`. If the run may start Claude (terminal or SDK/chat), complete [Claude state and trust preflight](claude-state.md) first, leaving only its folder-dialog Theater trust step for after boot; Fleet slot isolation alone does not isolate agent state.
 
 ## Isolate the Console
 
