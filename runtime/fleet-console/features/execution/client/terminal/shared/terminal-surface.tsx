@@ -46,7 +46,16 @@ export interface TerminalSurfaceProps {
   /** 독립 Shell은 terminal tint를, Operation 안의 Agent는 panel tint를 기준으로 투명 RGB floor를 만든다. */
   readonly surface?: "panel" | "shell";
   readonly theme?: TerminalThemeId;
-  readonly onExit?: () => void;
+  /**
+   * PTY가 끝났다. 그 순간의 화면을 흐린 글자로 옮긴 전사본을 함께 준다 — 같은 자리에 새 셸을 다시 붙이는
+   * 표면(Shell 재시작)이 앞 화면을 이어 보여 줄 수 있게 한다. 쓰지 않는 표면은 무시하면 된다.
+   */
+  readonly onExit?: (exit: TerminalExitInfo) => void;
+  /**
+   * 마운트할 때 첫 재생보다 먼저 쓸 앞 셸의 흔적. 같은 페인에서 셸을 갈아 끼운 경우에만 넘긴다 —
+   * 흐린 앞 화면과 "새 Shell" 구분선이 새 셸의 출력 위에 선다(K-10).
+   */
+  readonly carryOver?: TerminalCarryOver;
   // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
   readonly active?: boolean;
   /**
@@ -223,7 +232,17 @@ function terminalPolarityFor(theme: TerminalThemeId): "light" | "dark" {
   return LIGHT_TERMINAL_THEMES.has(theme) ? "light" : "dark";
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
+export interface TerminalExitInfo {
+  /** 끝난 셸의 화면을 흐린 글자로 다시 쓰는 바이트열(화면 초기화 없음). */
+  readonly transcript: string;
+}
+
+export interface TerminalCarryOver {
+  readonly transcript: string;
+  readonly reason: "replaced" | "consoleRestarted";
+}
+
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -289,6 +308,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   onOpenLinkDirectRef.current = onOpenLinkDirect;
   const knownLinksRef = useRef(knownLinks);
   knownLinksRef.current = knownLinks;
+  // 마운트 때 한 번만 읽는다 — 같은 표면에서 값이 바뀌어도 이미 그린 화면에 다시 쓰지 않는다.
+  const carryOverRef = useRef(carryOver);
   const localeRef = useRef(locale);
   localeRef.current = locale;
   // 비활성 Map 패널의 마운트 자동 포커스를 억제하기 위해 최신 active를 ref로 들고 있는다(마운트 effect는 재실행하지 않음).
@@ -584,7 +605,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
             });
           }
         },
-        onExit: () => onExitRef.current?.(),
+        onExit: () => onExitRef.current?.({ transcript: staleTranscript(terminal) }),
         /**
          * 다시 붙을 때마다 서버는 보유한 scrollback을 처음부터 다시 보낸다. 같은 PTY면 그 재생이 화면을
          * 다시 그리므로 앞 화면을 지우고(지우지 않으면 같은 출력이 두 벌 쌓인다), 다른 PTY면(세대가 바뀜 —
@@ -603,9 +624,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
             return;
           }
           const restarted = generation - previousGeneration > CONSOLE_RESTART_GENERATION_GAP;
-          const time = new Date().toLocaleTimeString(localeRef.current ?? "en", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-          const label = getT(localeRef.current)(restarted ? "terminal.session.consoleRestarted" : "terminal.session.replaced", { time });
-          terminal.write(`${staleTranscript(terminal)}\r\n\x1b[90m── ${label} ──\x1b[0m\r\n`);
+          terminal.write(`${TERMINAL_FULL_RESET}${staleTranscript(terminal)}${sessionDivider(restarted ? "consoleRestarted" : "replaced", localeRef.current)}`);
         },
         onControlLockChange: (lock) => { setControlLocked(lock === "locked"); },
         onStatus: (nextStatus, message) => {
@@ -656,6 +675,9 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         // fit/start를 호출하지 않는다 — 그렇지 않으면 빈 화면이나 잘못된 크기로 이어진다.
         if (disposed) return;
         fitAndResize();
+        // 앞 셸의 흔적은 맞춘 폭으로, 새 셸의 재생보다 먼저 쓴다 — 연결은 이 뒤에 열린다.
+        const carried = carryOverRef.current;
+        if (carried) terminal.write(`${carried.transcript}${sessionDivider(carried.reason, localeRef.current)}`);
         connection.start();
         setInputReadyEpoch((epoch) => epoch + 1);
         // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
@@ -1596,20 +1618,26 @@ const TERMINAL_FULL_RESET = "\x1bc";
 const CONSOLE_RESTART_GENERATION_GAP = 1_000;
 
 /**
- * 앞 셸의 화면을 흐린 글자로 다시 쓴다. 색은 잃지만 무엇이 지나갔는지는 남고, 새 셸의 출력과 섞여
- * 읽히지 않는다. 줄바꿈으로 이어진(wrapped) 줄은 한 줄로 합쳐 새 폭에 다시 접히게 한다.
+ * 앞 셸의 화면을 흐린 글자로 다시 쓴다(화면 초기화는 부르는 쪽이 정한다). 색은 잃지만 무엇이 지나갔는지는
+ * 남고, 새 셸의 출력과 섞여 읽히지 않는다. 화면에 보였던 줄 그대로(물리 행) 옮기고, 그동안 자동 줄바꿈을
+ * 꺼 새 폭이 더 좁으면 줄 끝이 잘리게 한다 — 이어 붙여 새 폭으로 다시 접으면 단어 한가운데서 꺾인다
+ * ("RE / ADME.md", D7).
  */
 function staleTranscript(terminal: XtermTerminal): string {
   const buffer = terminal.buffer.normal;
   const lines: string[] = [];
   for (let y = 0; y < buffer.length; y += 1) {
-    const line = buffer.getLine(y);
-    if (!line) continue;
-    const text = line.translateToString(true);
-    if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += text;
-    else lines.push(text);
+    lines.push(buffer.getLine(y)?.translateToString(true) ?? "");
   }
   while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  if (lines.length === 0) return "";
   const body = lines.map((line) => line.replace(/[\x00-\x1f\x7f]/g, "")).join("\r\n");
-  return `${TERMINAL_FULL_RESET}\x1b[2m${body}\x1b[0m`;
+  return `\x1b[?7l\x1b[2m${body}\x1b[0m\x1b[?7h\r\n`;
+}
+
+/** 새 셸이 시작된 자리. 흐린 앞 화면과 갈리도록 테마 강조색(cyan)·굵게 쓴다. */
+function sessionDivider(reason: TerminalCarryOver["reason"], locale: ConsoleLocale | undefined): string {
+  const time = new Date().toLocaleTimeString(locale ?? "en", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const label = getT(locale)(reason === "consoleRestarted" ? "terminal.session.consoleRestarted" : "terminal.session.replaced", { time });
+  return `\x1b[1;36m── ${label} ──\x1b[0m\r\n`;
 }
