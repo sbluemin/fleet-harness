@@ -10,7 +10,11 @@ import {
   createOpencodeGoAdapter,
   opencodeGoWire,
 } from "../../../../src/index.js";
-import type { CanonicalResponseEvent, CanonicalResponseRequest } from "../../../../src/index.js";
+import type {
+  CanonicalResponseEvent,
+  CanonicalResponseRequest,
+  CanonicalResponseSnapshot,
+} from "../../../../src/index.js";
 import { wireLogFixture } from "../../../helpers/wire-log.js";
 import { translateAnthropicRequest } from "../../../../src/downstream/wire/anthropic-messages/protocol.js";
 
@@ -353,5 +357,32 @@ describe("chat completions undeclared argument pruning", () => {
       "{\"claim\":\"c\",\"source\":\"s\",\"quote\":\"q\",\"quote_unused\":\"\"}",
       closedSchema(),
     )).toBe("{\"claim\":\"c\",\"source\":\"s\",\"quote\":\"q\"}");
+  });
+
+  it("records finish_reason on terminal response.completed snapshot", async () => {
+    async function completedSnapshot(finishReason?: string): Promise<CanonicalResponseSnapshot> {
+      const fetchMock = vi.fn<typeof fetch>(async () => sse(
+        chunk({
+          id: "c1",
+          model: "deepseek-v4-flash",
+          choices: [{ index: 0, delta: { content: "hello" }, ...(finishReason ? { finish_reason: finishReason } : {}) }],
+        }),
+        "data: [DONE]\n\n",
+      ));
+      const response = await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(
+        request(),
+        { apiKey: "k" },
+      );
+      if (!response.ok) throw new Error("expected ok");
+      const events = await collect(response.events);
+      const completed = events.find((event) => event.type === "response.completed");
+      if (completed?.type !== "response.completed") throw new Error("no response.completed");
+      return completed.response;
+    }
+
+    expect((await completedSnapshot("length")).incomplete).toEqual({ reason: "max_output_tokens" });
+    expect((await completedSnapshot("content_filter")).incomplete).toEqual({ reason: "content_filter" });
+    expect((await completedSnapshot("stop")).incomplete).toBeUndefined();
+    expect((await completedSnapshot("tool_calls")).incomplete).toBeUndefined();
   });
 });

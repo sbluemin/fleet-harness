@@ -662,6 +662,7 @@ async function* translateChatCompletionsStream(
   let textSeen = false;
   let accumulatedText = "";
   let usage: CanonicalUsage | null = null;
+  let finishReason: string | undefined;
   let failed = false;
   const toolCalls = new Map<number, PendingChatToolCall>();
 
@@ -698,6 +699,10 @@ async function* translateChatCompletionsStream(
     }
 
     const choices = Array.isArray(value.choices) ? value.choices : [];
+    const primaryChoice = isRecord(choices[0]) ? choices[0] : undefined;
+    if (typeof primaryChoice?.finish_reason === "string") {
+      finishReason = primaryChoice.finish_reason;
+    }
     for (const choice of choices) {
       if (!isRecord(choice)) continue;
       const delta = isRecord(choice.delta) ? choice.delta : {};
@@ -785,6 +790,7 @@ async function* translateChatCompletionsStream(
       yield { type: "response.output_item.done", output_index: outputIndex, item };
       outputIndex += 1;
     }
+    const incomplete = chatIncomplete(finishReason);
     yield {
       type: "response.completed",
       response: {
@@ -793,6 +799,7 @@ async function* translateChatCompletionsStream(
         // 하류 message_delta는 usage가 필수다. include_usage에도 usage 청크를 주지
         // 않는 백엔드에서는 0-usage로 완결하고, 실제 회계는 provider 콘솔이 맡는다.
         usage: usage ?? { input_tokens: 0, output_tokens: 0 },
+        ...(incomplete === undefined ? {} : { incomplete }),
       },
     };
   }
@@ -855,6 +862,16 @@ function chatFrameData(frame: string): RawWireEventPayload | undefined {
       `Chat Completions SSE contained invalid JSON: ${error instanceof Error ? error.message : String(error)}`
     );
   }
+}
+
+function chatIncomplete(finishReason: string | undefined): { reason?: string } | undefined {
+  if (finishReason === "length") {
+    return { reason: "max_output_tokens" };
+  }
+  if (finishReason === "content_filter") {
+    return { reason: "content_filter" };
+  }
+  return undefined;
 }
 
 function chatUsage(value: Record<string, unknown>): CanonicalUsage {

@@ -191,4 +191,30 @@ describe("antigravity adapter", () => {
       gate.dispose();
     }
   });
+
+  it("translates MAX_TOKENS to max_output_tokens, safety filters to content_filter, and leaves STOP complete", async () => {
+    async function streamCompleted(finishReason?: string) {
+      const stream = translateAntigravityStream(
+        frames(responseFrame([], {
+          candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason }],
+        })),
+        {
+          codec: createToolNameCodec(),
+          ledger: createAntigravitySignatureLedger(),
+          model: "gemini-3.7-flash",
+          callIdPrefix: "test",
+        },
+      );
+      const events = await collect(stream);
+      const completed = events.find((event) => event.type === "response.completed");
+      if (completed?.type !== "response.completed") throw new Error("no response.completed");
+      return completed.response;
+    }
+
+    expect((await streamCompleted("MAX_TOKENS")).incomplete).toEqual({ reason: "max_output_tokens" });
+    expect((await streamCompleted("SAFETY")).incomplete).toEqual({ reason: "content_filter" });
+    expect((await streamCompleted("RECITATION")).incomplete).toEqual({ reason: "content_filter" });
+    expect((await streamCompleted("STOP")).incomplete).toBeUndefined();
+    expect((await streamCompleted("FINISH_REASON_UNSPECIFIED")).incomplete).toBeUndefined();
+  });
 });
