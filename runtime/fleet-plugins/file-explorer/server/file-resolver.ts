@@ -22,15 +22,35 @@ export async function resolveFileForTheater(
   const root = path.resolve(theaterPath);
   if ((pathKind === "absolute") !== path.isAbsolute(requestedPath)) throw new FileResolveError("outside_theater");
   const candidate = path.resolve(root, requestedPath);
-  if (!isPathContained(root, candidate)) throw new FileResolveError("outside_theater");
+  if (pathKind === "theater-relative" && !isPathContained(root, candidate)) throw new FileResolveError("outside_theater");
   try {
-    const [realRoot, realCandidate] = await Promise.all([fs.realpath(root), fs.realpath(candidate)]);
-    if (!isPathContained(realRoot, realCandidate)) throw new FileResolveError("outside_theater");
+    const [realRoot, target] = await Promise.all([fs.realpath(root), resolveExistingAncestor(candidate)]);
+    if (!isPathContained(realRoot, target.path)) throw new FileResolveError("outside_theater");
+    if (target.missing) throw new FileResolveError("not_found");
+    const realCandidate = target.path;
     const stat = await fs.stat(realCandidate);
     if (!stat.isFile() && !stat.isDirectory()) throw new FileResolveError("not_found");
     return { path: path.relative(realRoot, realCandidate).split(path.sep).join("/"), kind: stat.isDirectory() ? "dir" : "file" };
   } catch (error) {
     if (error instanceof FileResolveError) throw error;
     throw new FileResolveError("not_found");
+  }
+}
+
+/** 없는 잎도 존재하는 조상까지 실제 경로로 풀어 별칭과 심링크 경계를 판정한다. */
+async function resolveExistingAncestor(candidate: string): Promise<{ readonly path: string; readonly missing: boolean }> {
+  let ancestor = candidate;
+  const suffix: string[] = [];
+  for (;;) {
+    try {
+      return { path: path.join(await fs.realpath(ancestor), ...suffix), missing: suffix.length > 0 };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) throw error;
+      suffix.unshift(path.basename(ancestor));
+      ancestor = parent;
+    }
   }
 }
