@@ -57,11 +57,13 @@ export async function loadChromeImportSources(t: T): Promise<{ readonly sources:
  * 가져오기 대화상자. `aria-modal` 이라 열린 동안 네이티브 뷰가 물러선다(오버레이 레지스트리).
  * `onImport` 는 성공하면 true — 대화상자를 닫고 안내를 띄우는 일은 부르는 쪽이 한다.
  */
-export function ChromeImportDialog({ t, sources, persistent, onClose, onImport }: {
+export function ChromeImportDialog({ t, sources, persistent, owner = "operation", onClose, onImport }: {
   readonly t: T;
   readonly sources: ChromeImportSources;
   /** 쿠키가 들어갈 세션 — 영속 프로필이면 남고 임시 세션이면 탭과 함께 사라진다. */
   readonly persistent: boolean;
+  /** 쿠키를 받는 브라우저 — 첫 줄과 임시 세션 설명이 그 브라우저의 이름으로 말한다. 영속 프로필 설명은 둘이 같다. */
+  readonly owner?: "operation" | "global";
   readonly onClose: () => void;
   readonly onImport: (profileId: string) => Promise<boolean>;
 }) {
@@ -76,7 +78,7 @@ export function ChromeImportDialog({ t, sources, persistent, onClose, onImport }
     <div className="op-browser__scrim" onClick={() => { if (!importing) onClose(); }}>
       <div className="op-browser__dialog" role="dialog" aria-modal="true" aria-label={t("terminal.browser.import.title")} onClick={(event) => event.stopPropagation()}>
         <div className="op-browser__dialog-head">
-          <div><h3>{t("terminal.browser.import.title")}</h3><p>{t("terminal.browser.import.body")}</p></div>
+          <div><h3>{t("terminal.browser.import.title")}</h3><p>{t(owner === "global" ? "terminal.globalBrowser.importBody" : "terminal.browser.import.body")}</p></div>
           <button type="button" className="op-browser__icon" aria-label={t("terminal.browser.close")} disabled={importing} onClick={onClose}>×</button>
         </div>
         <label className="op-browser__dialog-row">
@@ -92,7 +94,7 @@ export function ChromeImportDialog({ t, sources, persistent, onClose, onImport }
           <span className="op-browser__dialog-glyph" aria-hidden="true">{persistent ? <ProfileGlyph /> : <EphemeralGlyph />}</span>
           <span>
             <strong>{t(persistent ? "terminal.browser.import.intoProfile" : "terminal.browser.import.intoEphemeral")}</strong>
-            <span className="op-browser__help">{t(persistent ? "terminal.browser.import.intoProfileHelp" : "terminal.browser.import.intoEphemeralHelp")}</span>
+            <span className="op-browser__help">{t(persistent ? "terminal.browser.import.intoProfileHelp" : owner === "global" ? "terminal.globalBrowser.importIntoEphemeralHelp" : "terminal.browser.import.intoEphemeralHelp")}</span>
           </span>
         </div>
         <div className="op-browser__dialog-actions">

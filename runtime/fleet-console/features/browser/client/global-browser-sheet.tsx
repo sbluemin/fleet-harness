@@ -595,7 +595,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
         </div>
         <div className="fleet-browser-sheet__viewport" ref={viewportRef}>
           {notice ? <div className="op-browser__toast is-error" role="alert">{notice}</div> : info ? <div className="op-browser__toast" role="status">{info}</div> : null}
-          {importSources ? <ChromeImportDialog t={t} sources={importSources} persistent={persistent} onClose={() => setImportSources(null)} onImport={runImport} /> : null}
+          {importSources ? <ChromeImportDialog t={t} sources={importSources} persistent={persistent} owner="global" onClose={() => setImportSources(null)} onImport={runImport} /> : null}
           {confirming === "profile" ? (
             <div className="op-browser__toast has-action" role="status">
               {t("terminal.browser.profile.switchBody", { count: String(state?.tabs.length ?? 0) })}
