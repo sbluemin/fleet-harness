@@ -424,7 +424,8 @@
 }
 
 .fexp-search-result:hover,
-.fexp-search-result.is-cur {
+.fexp-search-result.is-cur,
+.fexp-search-result.is-active {
   background: color-mix(in oklch, var(--brass) 7%, transparent);
   box-shadow: inset 2px 0 var(--brass);
 }
@@ -1117,6 +1118,8 @@
 /* ── 행 ── */
 .fexp-tree-rowwrap {
   position: relative;
+  container-type: inline-size;
+  container-name: fexp-row;
 }
 
 .fexp-tree-row {
@@ -1126,7 +1129,7 @@
   box-sizing: border-box;
   gap: 6px;
   width: 100%;
-  height: 28px;
+  height: var(--fexp-row-height, 28px);
   min-width: 0;
   padding: 0 12px;
   background: none;
@@ -1222,6 +1225,10 @@
 .fexp-tree-rowwrap:focus-within .fexp-row-actions,
 .fexp-row-actions:has(.fexp-row-note) {
   opacity: 1;
+}
+
+.fexp-tree-rowwrap:hover .fexp-row-actions button,
+.fexp-tree-rowwrap:focus-within .fexp-row-actions button {
   pointer-events: auto;
 }
 
@@ -1232,6 +1239,7 @@
 }
 
 .fexp-row-action {
+  pointer-events: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1264,11 +1272,18 @@
   white-space: nowrap;
 }
 
-/* 표식 행들은 행과 같은 28px을 지켜 가상화 높이 계산을 보존한다. */
+/* 좁은 행에서는 본문 클릭을 우선한다. 보조 동작은 우클릭 메뉴/Space로 그대로 닿는다. */
+@container fexp-row (max-width: 220px) {
+  .fexp-row-actions { display: none; }
+  .fexp-tree-rowwrap:hover .fexp-tree-dot,
+  .fexp-tree-rowwrap:focus-within .fexp-tree-dot { opacity: 1; }
+}
+
+/* 표식 행도 실제 행 높이를 공유해 터치 전환 뒤의 가상화 좌표를 보존한다. */
 .fexp-tree-cap {
   display: flex;
   align-items: center;
-  height: 28px;
+  height: var(--fexp-row-height, 28px);
   padding-top: 0;
   padding-bottom: 0;
   font-family: var(--font-ui);
@@ -1283,7 +1298,7 @@
 .fexp-tree-vcs {
   display: flex;
   align-items: center;
-  height: 28px;
+  height: var(--fexp-row-height, 28px);
   padding-top: 0;
   padding-bottom: 0;
   font-size: var(--t-sm);
@@ -1298,7 +1313,7 @@
 .fexp-tree-empty-row {
   display: flex;
   align-items: center;
-  height: 28px;
+  height: var(--fexp-row-height, 28px);
   padding-top: 0;
   padding-bottom: 0;
   color: var(--text-tertiary);
@@ -1316,7 +1331,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: var(--fexp-row-height, 28px);
   padding-right: 12px;
   font-size: var(--t-sm);
   color: var(--text-tertiary);
@@ -1341,7 +1356,7 @@
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
-  height: 28px;
+  height: var(--fexp-row-height, 28px);
   padding: 0 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -1356,7 +1371,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 28px;
+  height: var(--fexp-row-height, 28px);
   padding: 0 12px;
 }
 
@@ -1716,6 +1731,18 @@
 }
 
 /* ✕는 손이 닿을 때만. 16px 자리는 늘 확보해 레이아웃이 튀지 않는다. */
+.fexp-tab.is-preview .fexp-chip-name { font-style: italic; color: var(--text-secondary); }
+.fexp-tab.is-preview .fexp-chip-name::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 5px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  vertical-align: middle;
+}
+
 .fexp-tab-close {
   display: inline-flex;
   align-items: center;
@@ -1754,8 +1781,11 @@
   width: 6px;
   height: 6px;
   border-radius: var(--radius-pill);
-  background: var(--brass);
+  background: var(--warn);
 }
+
+.fexp-tab.is-deleted .fexp-tab-close::before { background: var(--coral); }
+.fexp-tab.is-deleted .fexp-chip-name { text-decoration: line-through; }
 
 .fexp-tab.is-stale .fexp-tab-close-glyph {
   display: none;
@@ -1975,6 +2005,107 @@
   opacity: 1;
 }
 
+.fexp-tab-notice,
+.fexp-migrated-wiki {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--surface-rim);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+}
+
+.fexp-tab-notice {
+  color: var(--warn-ink);
+  background: color-mix(in oklch, var(--warn) 8%, transparent);
+}
+
+.fexp-tab-notice button,
+.fexp-migrated-wiki button {
+  padding: 2px 7px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--glass-tint-field);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.fexp-disk-banner,
+.fexp-read-window,
+.fexp-long-line-notice {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--surface-rim);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.fexp-disk-banner,
+.fexp-long-line-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  color: var(--warn-ink);
+  background: color-mix(in oklch, var(--warn) 8%, transparent);
+}
+
+.fexp-read-window {
+  color: var(--text-secondary);
+  background: var(--glass-tint-panel);
+}
+
+.fexp-read-window-actions,
+.fexp-read-window-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.fexp-read-window-range label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fexp-read-window-range input {
+  width: 110px;
+  min-width: 0;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--glass-tint-field);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.fexp-disk-banner button,
+.fexp-read-window button,
+.fexp-long-line-notice button {
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  padding: 2px 7px;
+  background: var(--glass-tint-field);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.fexp-disk-banner button:hover,
+.fexp-read-window button:hover,
+.fexp-long-line-notice button:hover {
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+}
+
+.fexp-read-window button:disabled { opacity: 0.45; cursor: default; }
+.fexp-read-window-line-note { display: block; margin-top: 5px; color: var(--text-tertiary); }
+
 /* ── 코드 뷰어 위·아래 페이드 ── */
 .fexp-code-wrap {
   position: relative;
@@ -2033,6 +2164,32 @@
 .fexp-tree-error-retry:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: -2px;
+}
+
+/* SDK의 공개 actionId로 Files 선반만 키운다. 부모 캡션의 높이와 닫기는 호스트 소유다. */
+@media (pointer: coarse) {
+  [data-caption-action^="file-explorer-"] { width: 44px; height: 44px; }
+  .fexp-tabs { height: 44px; }
+  .fexp-tab-open { min-width: 44px; }
+  .fexp-tab-close { width: 44px; height: 44px; margin-right: 0; opacity: 1; }
+  .fexp-tabs-more { min-width: 44px; height: 44px; justify-content: center; }
+  .fexp-search-result { min-height: 44px; }
+  .fexp-filter { height: 44px; }
+  .fexp-more-btn,
+  .fexp-refresh-btn { min-width: 44px; min-height: 44px; }
+  .fexp-options-menu .fexp-context-menu-item { min-height: 44px; }
+  /* 40px 행 밖으로 히트 영역을 부풀리지 않는다. 세로는 행 높이, 가로는 44px로 확보한다. */
+  .fexp-row-actions { gap: 4px; opacity: 1; }
+  .fexp-row-action { width: 44px; height: 40px; flex: 0 0 auto; pointer-events: auto; }
+  /* 터치에는 hover가 없으므로 동작을 보인다. 커진 선반이 본문을 가리는 폭에서는 메뉴로 넘긴다. */
+  @container fexp-row (min-width: 301px) {
+    .fexp-tree-row { padding-right: 164px; }
+  }
+  @container fexp-row (max-width: 300px) {
+    .fexp-row-actions { display: none; }
+    .fexp-tree-rowwrap:hover .fexp-tree-dot,
+    .fexp-tree-rowwrap:focus-within .fexp-tree-dot { opacity: 1; }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

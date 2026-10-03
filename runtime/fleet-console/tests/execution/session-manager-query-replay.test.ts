@@ -41,6 +41,36 @@ describe("session-manager terminal query replay", () => {
     await manager.stop();
   });
 
+  /**
+   * 흐름 제어: 화면이 파싱했다고 알리지 않은 출력이 쌓이면 PTY 읽기를 멈추고, 알림이 오면 다시 연다.
+   * 멈춘 PTY를 화면이 사라진 뒤에도 둔다면 그 셸의 자식 프로세스는 아무도 보지 않는 출력에 막혀 멈춘다 —
+   * 제어 소켓이 떨어지면 반드시 풀려야 한다.
+   */
+  it("pauses PTY reads on unacknowledged output and releases them when the control socket goes away", async () => {
+    const { manager, pty } = await createHarness();
+    const socket = createMockSocket();
+    await manager.attach(socket, CONTEXT);
+    const control = (frame: Record<string, unknown>) => socket.emitMessage(Buffer.from(JSON.stringify(frame)), false);
+    const burst = "x".repeat(64 * 1024);
+
+    control({ type: "flow", enabled: true });
+    pty.emitData(burst);
+    pty.emitData(burst);
+    pty.emitData(burst);
+    expect(pty.flow).toEqual(["pause"]);
+
+    control({ type: "ack", bytes: 3 * burst.length });
+    expect(pty.flow).toEqual(["pause", "resume"]);
+
+    pty.emitData(burst);
+    pty.emitData(burst);
+    pty.emitData(burst);
+    expect(pty.flow).toEqual(["pause", "resume", "pause"]);
+    socket.emitClose();
+    expect(pty.flow).toEqual(["pause", "resume", "pause", "resume"]);
+    await manager.stop();
+  });
+
   it("writes client binary input to the PTY without UTF-8 replacement", async () => {
     const { manager, pty } = await createHarness();
     const socket = createMockSocket();
@@ -58,6 +88,7 @@ describe("session-manager terminal query replay", () => {
 });
 
 interface MockPty extends TerminalPtyHandle {
+  readonly flow: Array<"pause" | "resume">;
   readonly written: Array<string | Buffer>;
   emitData(data: string): void;
 }
@@ -89,6 +120,13 @@ function createMockPty(): MockPty {
   const exitListeners: Array<() => void> = [];
   return {
     written: [],
+    flow: [],
+    pause() {
+      this.flow.push("pause");
+    },
+    resume() {
+      this.flow.push("resume");
+    },
     emitData(data) {
       for (const listener of dataListeners) listener(data);
     },

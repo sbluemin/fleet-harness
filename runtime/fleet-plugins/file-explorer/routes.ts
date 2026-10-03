@@ -2,6 +2,7 @@ import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import {
   handleFilesClipboard,
+  handleFilesDiskStatus,
   handleFilesGitStatus,
   handleFilesImage,
   handleFilesList,
@@ -31,6 +32,10 @@ export default definePlugin({
       await handleFilesResolve(req, res, ctx);
       return true;
     }, { method: "POST", path: "", summary: "Resolve a file reference within a Theater.", category: "File Explorer Plugin", gate: "origin-write", transport: "http" });
+    registerRouter(ctx, "files/disk-status", async ({ req, res }) => {
+      await handleFilesDiskStatus(req, res, ctx);
+      return true;
+    }, { method: "POST", path: "", summary: "Check open files for disk changes without reading their contents.", category: "File Explorer Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "files/read", async ({ req, res }) => {
       await handleFilesRead(req, res, ctx);
       return true;

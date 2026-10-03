@@ -132,10 +132,10 @@ function CodexReaderPane(ctx: PaneContext) {
       onPatchOpen: (pid) => openCodexReader({ kind: "drydock", patchId: pid }),
       onConflictOpen: (id) => openCodexReader({ kind: "conflicts", id }),
       onTagClick: (tag) => setNavigatorTagFilter(tag),
-      onDecided: () => {
+      onDecided: (kind) => {
         void loadInitialData();
         refreshCodexHealth();
-        openCodexReader({ kind: "drydock", patchId: undefined });
+        if (kind !== "conflicts") openCodexReader({ kind: "drydock", patchId: undefined });
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

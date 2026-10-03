@@ -54,6 +54,14 @@ export function describeTerminalFailure(code: string | undefined, t: Translate<T
         diagnostic,
         tone: "coral",
       };
+    // 닿지 않았다는 사실 말고는 코드가 더 말해 주는 것이 없다 — 진단 문자열을 싣지 않는다. 입력 잠금은
+    // 터미널 위의 칩이 이미 말하므로 카드에서 되풀이하지 않는다.
+    case "console_unreachable":
+      return {
+        title: t("terminal.failure.unreachable.title"),
+        cause: t("terminal.failure.unreachable.cause"),
+        tone: "warn",
+      };
     case "Unauthorized":
     case "unauthorized":
       return {

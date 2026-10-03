@@ -1,6 +1,19 @@
 import { useSyncExternalStore } from "react";
 
-export type MobileTab = "operations" | "alerts";
+export type MobileTab = "operations" | "tools" | "alerts";
+export type MobileTool = { readonly kind: "rail"; readonly id: string } | { readonly kind: "surface"; readonly instanceId: string };
+let activeTool: MobileTool | null = null;
+
+export function useMobileTool(): MobileTool | null {
+  return useSyncExternalStore(subscribe, () => activeTool);
+}
+
+/** 도구 시트의 선택만 보관한다. 본문·PTY의 수명은 기존 페인/표면 소유자가 지킨다. */
+export function setMobileTool(next: MobileTool | null): void {
+  activeTool = next;
+  if (next !== null) setMobileTab("tools");
+  for (const listener of listeners) listener();
+}
 
 const STORAGE_KEY = "fleet-console.mobile.activeTab";
 const listeners = new Set<() => void>();
@@ -39,9 +52,8 @@ function subscribe(listener: () => void): () => void {
 
 function readStoredTab(): MobileTab {
   try {
-    // "tools" was a tab before settings replaced it; a stored one falls back to operations.
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "alerts") return stored;
+    if (stored === "alerts" || stored === "tools") return stored;
   } catch { /* storage is optional */ }
   return "operations";
 }

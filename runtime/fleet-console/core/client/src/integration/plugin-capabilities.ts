@@ -1,4 +1,6 @@
 import type { PaneTarget } from "@fleet-console/sdk/pane";
+import type { ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
+import { setMobileTool } from "../chrome/mobile/mobile-store.js";
 import { landPaneTarget, type PaneTargetBinding, type PaneTargetPorts } from "../chrome/pane/pane-target.js";
 import { openPane } from "../chrome/pane/pane-store.js";
 import { getViewModeSnapshot } from "./view-mode-store.js";
@@ -23,6 +25,23 @@ export interface HostCapabilityDependencies {
   readonly railBindings: readonly PaneTargetBinding[];
 }
 
+function revealRailPanel(entryId: string): void {
+  openRailPanel(entryId);
+  if (getViewModeSnapshot().effective === "mobile") {
+    setMobileTool({ kind: "rail", id: entryId });
+    navigateConsoleRoute("/operations");
+  }
+}
+
+function revealExpandedSurface(request: ExpandedSurfaceOpenRequest): string {
+  const instanceId = openExpandedSurface(request);
+  if (getViewModeSnapshot().effective === "mobile") {
+    setMobileTool({ kind: "surface", instanceId });
+    navigateConsoleRoute("/operations");
+  }
+  return instanceId;
+}
+
 export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]): PaneTargetPorts {
   return {
     bindings,
@@ -31,15 +50,23 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
       setActiveTheater(theaterId);
       return true;
     },
-    openRail: openRailPanel,
+    openRail: revealRailPanel,
     openPane,
-    openExpanded: openExpandedSurface,
+    openExpanded: revealExpandedSurface,
     requestId: () => crypto.randomUUID(),
     showTarget: (target) => {
       if (getViewModeSnapshot().effective === "mobile" && target.paneId === SETTINGS_PANE_ID) {
         const section = target.params?.section;
         navigateConsoleRoute("/settings", section === undefined ? "" : `?section=${encodeURIComponent(section)}`);
         return true;
+      }
+      if (getViewModeSnapshot().effective === "mobile") {
+        const owner = bindings.find((binding) => binding.panes.some((pane) => pane.id === target.paneId));
+        if (owner?.panes.find((pane) => pane.id === target.paneId)?.mounts.includes("rail")) {
+          revealRailPanel(owner.entry.id);
+          openPane({ paneId: target.paneId, params: target.params, mount: "rail" });
+          return true;
+        }
       }
       navigateConsoleRoute("/operations");
       return false;
@@ -51,7 +78,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
 function revealShellOnSuccess(result: ShellOpenAtResult): ShellOpenAtResult {
   if (result.ok) {
     navigateConsoleRoute("/operations");
-    openExpandedSurface({ surfaceId: "shell" });
+    revealExpandedSurface({ surfaceId: "shell" });
   }
   return result;
 }
@@ -176,7 +203,7 @@ export function createHostCapabilities(
       subscribe: (listener) => subscribeConsoleLocation(listener),
     },
     surfaces: {
-      open: (request) => openExpandedSurface(request),
+      open: (request) => revealExpandedSurface(request),
       close: (instanceId) => closeExpandedSurface(instanceId),
       closeSurface: (surfaceId) => closeExpandedSurfacesOf(surfaceId),
       isOpen: (surfaceId) => getExpandedSurfaceState().instances.some((i) => i.surfaceId === surfaceId),
@@ -185,7 +212,7 @@ export function createHostCapabilities(
       open: (panelId, params) => {
         const primary = bindings.find((binding) => binding.entry.id === panelId)?.panes.find((pane) => pane.role === "primary");
         if (params && primary) land({ paneId: primary.id, params });
-        else openRailPanel(panelId);
+        else revealRailPanel(panelId);
       },
       close: (panelId) => closeRailPanel(panelId),
       isOpen: (panelId) => getRailStoreSnapshot().activePanelId === panelId,

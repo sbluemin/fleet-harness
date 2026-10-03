@@ -418,6 +418,14 @@
   background: var(--surface-panel);
 }
 
+/* 터치 동작이 44px로 커져도 본문 위로 넘치지 않도록 호스트 머리 행도 함께 확보한다. */
+@media (pointer: coarse) {
+  .pane-caption {
+    height: auto;
+    min-height: 44px;
+  }
+}
+
 .pane-caption-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -497,6 +505,13 @@
 
 .right-rail.has-inset-detail-overlay .rail-pane.is-overlay {
   inset-inline-end: 0;
+}
+
+/* 오버레이는 별도 창이다. 그 위에 남은 카드 손잡이가 문서의 터치를 가로채지 않게 한다. */
+.right-rail.has-detail-overlay .right-rail-resize-handle,
+.right-rail.is-overlay .right-rail-resize-handle {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .right-rail.is-overlay {

@@ -12,6 +12,8 @@ import { resolveActiveLocale } from "../i18n/index.js";
 import {
   CodexRequestError,
   decideDrydock,
+  decideDrydockBatch,
+  decideConflict,
   fetchConflictDetail,
   fetchConflicts,
   fetchDrydock,
@@ -29,6 +31,7 @@ import type {
   DrydockListResponse,
   DrydockMeta,
   EntryBacklink,
+  EntryResponse,
 } from "./api.js";
 import { installEntryLinkPreview } from "./components/link-preview.js";
 import type { EntryLinkPreview } from "./components/link-preview.js";
@@ -93,7 +96,7 @@ export interface MountReadingOptions {
   readonly onPatchOpen?: (patchId: string | undefined) => void;
   readonly onConflictOpen?: (conflictId: string | undefined) => void;
   /** 승인/반려 결정 완료 후 목록 갱신을 트리거하는 콜백 */
-  readonly onDecided?: () => void;
+  readonly onDecided?: (kind?: "drydock" | "conflicts") => void;
   /** 문서 헤더 태그 칩 클릭 — 카탈로그 태그 필터로 라우팅된다. */
   readonly onTagClick?: (tag: string) => void;
   readonly onEntryRendered?: (entryId: string) => void;
@@ -150,12 +153,19 @@ export function mountReadingInto(
   // 대기열 세그먼트·diff 표시 상태 — 목록은 pending/결정됨을 오가고,
   // update 패치 상세는 "변경만"이 기본이다(전문은 토글).
   let queueSegment: "pending" | "decided" = "pending";
+  let queueList: DrydockListResponse | null = null;
+  const queueSelected = new Set<string>();
+  let batchAction: "approve" | "reject" | null = null;
+  let batchBusy = false;
+  let batchReason = "";
+  let batchNotice = "";
+  let batchProblems: Array<{ label: string; conflictId?: string }> = [];
   let diffMode: "changes" | "full" = "changes";
   let detailDiffBlocks: readonly DraftBlock[] | null = null;
   let detailProposedToc = "";
   let detailProposedTocItems: readonly TocItem[] = [];
   // 읽는 중인 문서가 서버에서 바뀌었다는 사실. 본문은 그대로 두고 이 표식만 띄운다.
-  let staleKind: "updated" | "decided" | null = null;
+  let staleKind: "updated" | "decided" | "deleted" | null = null;
   // 지금 화면에 그려진 문서의 갱신 시각. 카탈로그의 같은 값과 어긋나면 이 문서가 바뀐 것이다.
   let renderedEntryStamp: string | null = null;
   // 지금 화면에 그려진 패치의 판본. 대기열에서 *다른* 패치가 움직인 것으로는 이 값이 변하지 않는다.
@@ -163,6 +173,12 @@ export function mountReadingInto(
   // 같은 이유로 충돌·스키마 문서도 자기 판본을 들고 있어야 한다 — 범위 이벤트는 어느 문서가
   // 바뀌었는지 말해 주지 않으므로, 비교 없이 알리면 옆 문서의 변화가 이 문서의 표식이 된다.
   let renderedConflictStamp: string | null = null;
+  let currentConflict: ConflictDetailResponse | null = null;
+  let conflictAction: "reject" | "repropose" | "resolve" | null = null;
+  let conflictBusy = false;
+  let conflictError: string | null = null;
+  let conflictNote = "";
+  let pendingRequestEpoch = 0;
   let renderedSchemaStamp: string | null = null;
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
@@ -172,6 +188,7 @@ export function mountReadingInto(
     const target = event.target;
     if (!(target instanceof Element)) return;
 
+    if (target.closest("[data-reader-dismiss]")) { event.preventDefault(); liveOpts.onClose(); return; }
     const readerRefresh = target.closest<HTMLElement>("[data-reader-refresh]");
     if (readerRefresh) {
       event.preventDefault();
@@ -197,14 +214,18 @@ export function mountReadingInto(
     const deleteButton = target.closest<HTMLButtonElement>("[data-entry-stage-delete]");
     if (deleteButton && currentEntryId) {
       event.preventDefault();
+      if (staleKind === "deleted") return;
+      const entryId = currentEntryId, theaterId = liveOpts.theaterId, epoch = entryRequestEpoch;
       const errorLabel = readContainer.querySelector<HTMLElement>("[data-entry-delete-error]");
       if (errorLabel) errorLabel.textContent = "";
       deleteButton.disabled = true;
-      void stageEntryDeletion(liveOpts.theaterId, currentEntryId).then(({ patchId }) => {
-        liveOpts.onPatchOpen?.(patchId);
+      void stageEntryDeletion(theaterId, entryId).then(({ patchId }) => {
+        if (!destroyed && epoch === entryRequestEpoch && entryId === currentEntryId && theaterId === liveOpts.theaterId) liveOpts.onPatchOpen?.(patchId);
       }).catch((error: unknown) => {
-        deleteButton.disabled = false;
-        if (errorLabel) errorLabel.textContent = error instanceof Error ? error.message : String(error);
+        if (destroyed || epoch !== entryRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
+        if (error instanceof CodexRequestError && error.status === 404) showStaleNotice("deleted");
+        else deleteButton.disabled = false;
+        if (errorLabel) errorLabel.textContent = patchActionMessage(error instanceof CodexRequestError ? error.code : "", "codex.reading.deleteActionFailed");
       });
       return;
     }
@@ -236,12 +257,26 @@ export function mountReadingInto(
       return;
     }
 
+    const select = target.closest<HTMLInputElement>("input[data-queue-select]");
+    if (select) {
+      if (select.checked && queueSelected.size >= 100) { select.checked = false; batchNotice = consoleT()("codex.reading.batchLimit"); }
+      else if (select.checked) queueSelected.add(select.dataset.queueSelect!);
+      else queueSelected.delete(select.dataset.queueSelect!);
+      redrawBatchControls();
+      return;
+    }
+    const batch = target.closest<HTMLElement>("[data-batch-action]");
+    if (batch) { event.preventDefault(); handleBatchAction(batch.dataset.batchAction); return; }
+
     // 대기열 세그먼트 전환 (대기 ↔ 결정됨)
     const segmentBtn = target.closest<HTMLElement>("[data-queue-segment]");
     if (segmentBtn) {
       event.preventDefault();
       const next = segmentBtn.dataset.queueSegment === "decided" ? "decided" : "pending";
+      if (batchBusy) return;
       if (next !== queueSegment) {
+        batchAction = null;
+        queueSelected.clear();
         queueSegment = next;
         void renderDrydockView(undefined);
       }
@@ -269,10 +304,13 @@ export function mountReadingInto(
       return;
     }
 
+    const conflictPanelTab = target.closest<HTMLElement>("[data-conflict-panel-tab]");
+    if (conflictPanelTab) { event.preventDefault(); selectConflictPanel(conflictPanelTab.dataset.conflictPanelTab); return; }
     const conflictActionBtn = target.closest<HTMLElement>("[data-conflict-action]");
-    if (conflictActionBtn?.dataset.conflictAction === "back") {
+    if (conflictActionBtn) {
       event.preventDefault();
-      liveOpts.onConflictOpen?.(undefined);
+      if (conflictActionBtn.dataset.conflictAction === "back") liveOpts.onConflictOpen?.(undefined);
+      else handleConflictAction(conflictActionBtn.dataset.conflictAction);
       return;
     }
 
@@ -299,6 +337,132 @@ export function mountReadingInto(
       return;
     }
 
+  }
+
+  function batchState(): QueueBatchState {
+    return { selected: queueSelected, action: batchAction, busy: batchBusy, reason: batchReason, notice: batchNotice, problems: batchProblems };
+  }
+
+  function redrawBatchControls(): void {
+    const slot = readContainer.querySelector<HTMLElement>("[data-batch-controls]");
+    if (slot && queueList) slot.innerHTML = renderBatchControls(queueList.items, batchState());
+  }
+
+  function redrawQueueList(): void {
+    if (!queueList) return;
+    readContainer.innerHTML = renderDrydockList(queueList, queueSegment, batchState());
+  }
+
+  function handleBatchAction(action: string | undefined): void {
+    if (!queueList || currentSubId || queueSegment !== "pending" || batchBusy) return;
+    if (action === "select" || action === "clear") {
+      queueSelected.clear();
+      if (action === "select") for (const item of queueList.items.filter(item => item.meta.status === "pending").slice(0, 100)) queueSelected.add(item.id);
+      batchAction = null;
+      redrawQueueList();
+      readContainer.querySelector<HTMLButtonElement>(`[data-batch-action=${action}]`)?.focus({ preventScroll: true });
+      return;
+    }
+    if (action === "cancel") { batchAction = null; redrawQueueList(); return; }
+    const chosen = queueList.items.filter(item => queueSelected.has(item.id) && item.meta.status === "pending");
+    if (action === "approve" || action === "reject") {
+      if (!chosen.length || action === "approve" && !chosen.some(item => !item.baseConflict)) return;
+      batchAction = action;
+      batchNotice = "";
+      batchProblems = [];
+      redrawQueueList();
+      readContainer.querySelector<HTMLElement>(action === "reject" ? "[data-batch-reason]" : "[data-batch-action=confirm]")?.focus({ preventScroll: true });
+      return;
+    }
+    if (action !== "confirm" || !batchAction) return;
+    if (batchAction === "reject" && !batchReason.trim()) { batchNotice = consoleT()("codex.reading.rejectReasonRequired"); redrawBatchControls(); return; }
+    const selectedAction = batchAction, ids = chosen.map(item => item.id), theaterId = liveOpts.theaterId, epoch = subRequestEpoch;
+    batchBusy = true;
+    redrawQueueList();
+    void decideDrydockBatch(theaterId, ids, selectedAction, batchReason.trim()).then(async result => {
+      if (!isCurrentSubRequest("drydock", undefined, epoch) || theaterId !== liveOpts.theaterId) return;
+      const decided = result.results.filter(item => item.outcome === "approved" || item.outcome === "rejected");
+      for (const item of decided) queueSelected.delete(item.id);
+      batchNotice = consoleT()("codex.reading.batchResult", { decided: decided.length, skipped: result.results.filter(item => item.outcome === "skipped").length, failed: result.results.filter(item => item.outcome === "failed").length });
+      batchProblems = result.results.filter(item => item.outcome === "skipped" || item.outcome === "failed").map(item => {
+        const proposal = chosen.find(candidate => candidate.id === item.id);
+        const name = proposal ? `${proposal.target ?? proposal.id} · ${localizedQueueSummary(proposal, consoleT())}` : item.id;
+        return { label: `${name}: ${patchActionMessage(item.error ?? "", item.outcome === "skipped" ? "codex.reading.batchSkipped" : "codex.reading.batchFailed")}`, conflictId: item.conflictId };
+      });
+      batchBusy = false;
+      batchAction = null;
+      // 목록 소유자는 유지한다. 단건용 onDecided는 navigation까지 수행하므로 여기서 호출하지 않는다.
+      await renderDrydockView(undefined);
+    }).catch(() => {
+      if (!isCurrentSubRequest("drydock", undefined, epoch)) return;
+      batchNotice = consoleT()("codex.reading.batchFailed");
+      batchBusy = false;
+      redrawQueueList();
+    }).finally(() => { batchBusy = false; });
+  }
+
+  function selectConflictPanel(panel: string | undefined): void {
+    if (!panel || !["base", "current", "proposed"].includes(panel)) return;
+    const comparison = readContainer.querySelector<HTMLElement>(".conflict-comparison");
+    if (!comparison) return;
+    comparison.dataset.activePanel = panel;
+    readContainer.querySelectorAll<HTMLButtonElement>("[data-conflict-panel-tab]").forEach(tab => { const active = tab.dataset.conflictPanelTab === panel; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
+  }
+
+  function handleComparisonKeyDown(event: KeyboardEvent): void {
+    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey || !(event.target instanceof Element)) return;
+    const tab = event.target.closest<HTMLButtonElement>("[data-conflict-panel-tab]");
+    if (!tab) return;
+    const tabs = Array.from(readContainer.querySelectorAll<HTMLButtonElement>("[data-conflict-panel-tab]"));
+    const index = tabs.indexOf(tab);
+    const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault(); event.stopPropagation();
+    selectConflictPanel(tabs[next]!.dataset.conflictPanelTab);
+    tabs[next]!.focus({ preventScroll: true });
+  }
+
+  function handleBatchInput(event: Event): void {
+    const target = event.target;
+    if (target instanceof HTMLTextAreaElement && target.hasAttribute("data-batch-reason")) batchReason = target.value;
+  }
+
+  function redrawConflictControls(): void {
+    const area = readContainer.querySelector<HTMLElement>("[data-conflict-controls]");
+    if (area && currentConflict) area.innerHTML = renderConflictControls(currentConflict, conflictAction, conflictBusy, conflictError, conflictNote);
+  }
+
+  function handleConflictAction(action: string | undefined): void {
+    if (!currentConflict || conflictBusy) return;
+    conflictNote = readContainer.querySelector<HTMLTextAreaElement>("[data-conflict-note]")?.value ?? conflictNote;
+    conflictError = null;
+    if (action === "cancel") { conflictAction = null; redrawConflictControls(); return; }
+    if (action === "reject" || action === "repropose" || action === "resolve") {
+      if (action === "repropose" && !currentConflict.canRepropose) return;
+      conflictAction = action;
+      redrawConflictControls();
+      readContainer.querySelector<HTMLTextAreaElement>("[data-conflict-note]")?.focus({ preventScroll: true });
+      return;
+    }
+    if (action !== "confirm" || !conflictAction) return;
+    if (!conflictNote.trim()) {
+      conflictError = consoleT()(conflictAction === "reject" ? "codex.reading.rejectReasonRequired" : conflictAction === "repropose" ? "codex.reading.reproposeReasonRequired" : "codex.reading.resolveReasonRequired");
+      redrawConflictControls();
+      return;
+    }
+    const detail = currentConflict, selected = conflictAction, theaterId = liveOpts.theaterId;
+    const epoch = subRequestEpoch;
+    conflictBusy = true;
+    redrawConflictControls();
+    void decideConflict(theaterId, detail.id, selected, conflictNote.trim(), detail.currentHash).then(async result => {
+      if (!isCurrentSubRequest("conflicts", detail.id, epoch) || theaterId !== liveOpts.theaterId) return;
+      liveOpts.onDecided?.("conflicts");
+      if (result.patchId) liveOpts.onPatchOpen?.(result.patchId);
+      else await renderConflictsView(detail.id);
+    }).catch(() => {
+      if (!isCurrentSubRequest("conflicts", detail.id, epoch)) return;
+      conflictError = consoleT()("codex.reading.conflictFailed");
+    }).finally(() => { if (isCurrentSubRequest("conflicts", detail.id, epoch)) { conflictBusy = false; redrawConflictControls(); } });
   }
 
   function handleDrydockAction(action: string | undefined): void {
@@ -414,6 +578,8 @@ export function mountReadingInto(
   }
 
   readContainer.addEventListener("click", handleClick);
+  readContainer.addEventListener("input", handleBatchInput);
+  readContainer.addEventListener("keydown", handleComparisonKeyDown);
 
   function installSpy(article: HTMLElement, items: TocItem[]): void {
     cleanupSpy?.();
@@ -447,25 +613,18 @@ export function mountReadingInto(
     const detail = (event as CustomEvent<CodexLiveChangedDetail>).detail;
     const scopes = new Set(detail?.scopes ?? []);
     if (opts.kind === "entry") {
-      if (!scopes.has("wiki") && !scopes.has("index")) return;
       if (!currentEntryId) return;
-      // 위키에서 *무언가* 바뀌었다고 이 문서가 바뀐 것은 아니다 — 옆 문서가 등재됐을 뿐인데
-      // "이 문서가 갱신됐다"고 말하면 그 표식은 곧 아무 뜻도 없는 소음이 된다.
-      const stamp = catalogStampFor(currentEntryId);
-      if (stamp === null) return;
-      if (renderedEntryStamp === null) {
-        // 문서를 그릴 때 카탈로그가 아직 비어 있었다 — 지금 값을 기준선으로 삼고,
-        // 다음 변화부터 비교한다. 근거 없는 알림보다 한 번 늦는 편이 정직하다.
-        renderedEntryStamp = stamp;
-        return;
-      }
-      if (stamp === renderedEntryStamp) return;
-      showStaleNotice("updated");
+      if (scopes.has("queue")) void refreshPendingCount(currentEntryId);
+      if (!scopes.has("wiki") && !scopes.has("index")) return;
+      void coworkController?.refresh();
+      // updated 필드가 그대로인 외부 편집과 카탈로그에서 빠진 삭제도 실제 API로 확인한다.
+      void noticeForOpenEntry(currentEntryId);
       return;
     }
     if (opts.kind === "drydock") {
       if (!scopes.has("queue")) return;
       if (!currentSubId) {
+        if (batchBusy) return;
         void renderDrydockView(undefined);
         return;
       }
@@ -493,6 +652,18 @@ export function mountReadingInto(
    * 읽던 제안이 밖에서 승인·반려됐다면 그렇게 말해야 한다 — "갱신됐다"로 뭉뚱그리면
    * 사용자는 아직 자기가 결정할 수 있다고 믿은 채 승인 버튼을 누르러 간다.
    */
+  async function refreshPendingCount(entryId: string): Promise<void> {
+    const epoch = ++pendingRequestEpoch;
+    const entryEpoch = entryRequestEpoch;
+    const theaterId = liveOpts.theaterId;
+    try {
+      const entry = await fetchEntry(theaterId, entryId);
+      if (destroyed || entryEpoch !== entryRequestEpoch || epoch !== pendingRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
+      const slot = readContainer.querySelector<HTMLElement>("[data-entry-pending]");
+      if (slot) slot.innerHTML = pendingPatchLabel(entry.pendingPatchCount ?? 0);
+    } catch { /* 조회 실패는 0건이라는 사실이 아니다. 기존 표식을 유지한다. */ }
+  }
+
   async function noticeForOpenPatch(patchId: string): Promise<void> {
     const wasPending = currentDetailMeta?.status === "pending";
     try {
@@ -553,21 +724,34 @@ export function mountReadingInto(
     return `${detail.meta.status}:${detail.meta.decidedAt ?? ""}:${detail.patch.body.length}:${detail.patch.body}`;
   }
 
-  function catalogStampFor(entryId: string): string | null {
-    return getState().index.find((entry) => entry.id === entryId)?.updated ?? null;
+  function entryStampOf(entry: EntryResponse): string { return JSON.stringify([entry.frontmatter, entry.body]); }
+
+  async function noticeForOpenEntry(entryId: string): Promise<void> {
+    const epoch = entryRequestEpoch, theaterId = liveOpts.theaterId;
+    try {
+      const entry = await fetchEntry(theaterId, entryId);
+      if (destroyed || epoch !== entryRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
+      if (!coworkController?.engaged() && renderedEntryStamp !== null && entryStampOf(entry) !== renderedEntryStamp) showStaleNotice("updated");
+    } catch (error) {
+      if (!destroyed && epoch === entryRequestEpoch && entryId === currentEntryId && theaterId === liveOpts.theaterId && error instanceof CodexRequestError && error.status === 404) showStaleNotice("deleted");
+    }
   }
 
-  function showStaleNotice(kind: "updated" | "decided"): void {
+  function showStaleNotice(kind: "updated" | "decided" | "deleted"): void {
     // 결정 사실은 단순 갱신보다 강한 소식이다 — 한 번 켜지면 갱신 문구로 내려가지 않는다.
-    if (staleKind === "decided" && kind === "updated") return;
+    if ((staleKind === "decided" || staleKind === "deleted") && kind === "updated") return;
     staleKind = kind;
+    if (kind === "deleted") {
+      readContainer.querySelector<HTMLButtonElement>("[data-entry-stage-delete]")?.setAttribute("disabled", "");
+      coworkController?.setWriteBlocked(true);
+    }
     const t = consoleT();
-    const label = kind === "decided" ? t("codex.reading.staleDecided") : t("codex.reading.staleUpdated");
-    const action = kind === "decided" ? t("codex.reading.staleSeeResult") : t("codex.reading.staleReload");
+    const label = kind === "deleted" ? t("codex.reading.staleDeleted") : kind === "decided" ? t("codex.reading.staleDecided") : t("codex.reading.staleUpdated");
+    const action = kind === "deleted" ? t("common.close") : kind === "decided" ? t("codex.reading.staleSeeResult") : t("codex.reading.staleReload");
     const existing = readContainer.querySelector<HTMLElement>(".codex-reader-stale");
     const markup = `
       <span class="codex-reader-stale-text">${escapeHtml(label)}</span>
-      <button class="codex-reader-stale-action" type="button" data-reader-refresh>${escapeHtml(action)}</button>
+      <button class="codex-reader-stale-action" type="button" ${kind === "deleted" ? "data-reader-dismiss" : "data-reader-refresh"}>${escapeHtml(action)}</button>
     `;
     if (existing) {
       existing.dataset.tone = kind;
@@ -630,6 +814,7 @@ export function mountReadingInto(
             ${renderSheetBreadcrumb(entry.frontmatter.title)}
             <h1>${escapeHtml(entry.frontmatter.title)}</h1>
             ${renderMetaChips(entry.frontmatter, { interactiveTags: true })}
+            <div data-entry-pending role="status">${pendingPatchLabel(entry.pendingPatchCount ?? 0)}</div>
             <button type="button" class="queue-back-btn" data-entry-stage-delete>${escapeHtml(t("codex.reading.proposeDelete"))}</button>
             <span data-entry-delete-error role="alert"></span>
           </header>
@@ -665,7 +850,7 @@ export function mountReadingInto(
       }
       // 지금 그린 본문이 어느 판본인지 적어 둔다 — 이후 카탈로그의 같은 값과 비교해
       // "이 문서가" 바뀌었는지 판정한다.
-      renderedEntryStamp = catalogStampFor(entryId);
+      renderedEntryStamp = entryStampOf(entry);
       opts.onEntryRendered?.(entryId);
     } catch (error) {
       if (!destroyed && requestEpoch === entryRequestEpoch && entryId === currentEntryId) {
@@ -765,7 +950,9 @@ export function mountReadingInto(
         if (!isCurrentSubRequest("drydock", patchId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
-        readContainer.innerHTML = renderDrydockList(list, queueSegment);
+        queueList = list;
+        for (const id of queueSelected) if (!list.items.some(item => item.id === id && item.meta.status === "pending")) queueSelected.delete(id);
+        readContainer.innerHTML = renderDrydockList(list, queueSegment, batchState());
       }
     } catch (error) {
       if (isCurrentSubRequest("drydock", patchId, requestEpoch)) {
@@ -778,6 +965,11 @@ export function mountReadingInto(
     if (destroyed) return;
     const requestEpoch = ++subRequestEpoch;
     currentSubId = conflictId;
+    currentConflict = null;
+    conflictAction = null;
+    conflictBusy = false;
+    conflictError = null;
+    conflictNote = "";
     staleKind = null;
     renderedConflictStamp = null;
     showLoading(readContainer, opts.tocContainer);
@@ -790,7 +982,9 @@ export function mountReadingInto(
         if (!isCurrentSubRequest("conflicts", conflictId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
+        currentConflict = detail;
         readContainer.innerHTML = renderConflictDetail(detail);
+        redrawConflictControls();
         renderedConflictStamp = JSON.stringify(detail);
       } else {
         const conflicts = await fetchConflicts(liveOpts.theaterId);
@@ -849,6 +1043,8 @@ export function mountReadingInto(
       subRequestEpoch += 1;
       schemaRequestEpoch += 1;
       readContainer.removeEventListener("click", handleClick);
+      readContainer.removeEventListener("input", handleBatchInput);
+      readContainer.removeEventListener("keydown", handleComparisonKeyDown);
       document.removeEventListener(CODEX_LIVE_CHANGED_EVENT, handleLiveChanged);
       linkPreview.destroy();
       fileLinks.destroy();
@@ -907,8 +1103,21 @@ function showLoading(readContainer: HTMLElement, tocContainer: HTMLElement): voi
   tocContainer.innerHTML = "";
 }
 
+function patchActionMessage(code: string, fallback: CoreMessageKey): string {
+  const t = consoleT();
+  switch (code) {
+    case "create_target_exists": return t("codex.reading.createTargetExists");
+    case "update_target_missing": case "delete_target_missing": case "entry_not_found": case "not_found": return t("codex.reading.entryUnavailable");
+    case "invalid_patch": return t("codex.reading.invalidProposal");
+    case "patch_busy": return t("codex.reading.patchBusy");
+    case "patch_not_pending": case "patch_not_found": return t("codex.reading.patchNotPending");
+    case "stale_base": return t("codex.reading.staleBadge");
+    default: return t(fallback);
+  }
+}
+
 function showError(readContainer: HTMLElement, tocContainer: HTMLElement, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = error instanceof CodexRequestError ? patchActionMessage(error.code, "codex.reading.requestFailed") : error instanceof Error ? error.message : String(error);
   readContainer.innerHTML = `<div class="codex-reader-error" role="alert">${escapeHtml(message)}</div>`;
   tocContainer.innerHTML = "";
 }
@@ -985,13 +1194,37 @@ function formatRelativeUpdatedIso(iso: string): string {
   return Number.isNaN(ms) ? iso : formatRelativeTime(ms, consoleLocale());
 }
 
-function renderDrydockList(list: DrydockListResponse, segment: "pending" | "decided"): string {
+interface QueueBatchState {
+  selected: ReadonlySet<string>;
+  action: "approve" | "reject" | null;
+  busy: boolean;
+  reason: string;
+  notice: string;
+  problems: readonly { label: string; conflictId?: string }[];
+}
+
+function renderBatchControls(items: readonly DrydockListItem[], state: QueueBatchState): string {
+  const t = consoleT();
+  const selected = items.filter(item => state.selected.has(item.id));
+  const stale = selected.filter(item => !!item.baseConflict).length;
+  const status = state.notice ? `<p role="status">${escapeHtml(state.notice)}</p>${state.problems.length ? `<ul>${state.problems.map(problem => `<li>${escapeHtml(problem.label)}${problem.conflictId ? ` <button type="button" class="queue-action-btn" data-conflict-id="${escapeAttribute(problem.conflictId)}">${escapeHtml(t("codex.reading.reviewConflict"))}</button>` : ""}</li>`).join("")}</ul>` : ""}` : "";
+  if (state.busy) return `<p role="status" aria-busy="true">${escapeHtml(t("codex.reading.processingAria"))}</p>`;
+  const count = state.action === "approve" ? selected.length - stale : selected.length;
+  if (state.action) return `${status}<p>${escapeHtml(t(state.action === "approve" ? "codex.reading.batchApproveConfirm" : "codex.reading.batchRejectConfirm", { count, skipped: stale }))}</p>
+    ${state.action === "reject" ? `<textarea data-batch-reason maxlength="256" rows="3" aria-label="${escapeAttribute(t("codex.reading.rejectPlaceholder"))}" placeholder="${escapeAttribute(t("codex.reading.rejectPlaceholder"))}">${escapeHtml(state.reason)}</textarea>` : ""}
+    <div class="queue-action-buttons"><button type="button" data-batch-action="confirm" class="queue-action-btn"${count === 0 ? " disabled" : ""}>${escapeHtml(t("codex.reading.batchConfirm"))}</button><button type="button" data-batch-action="cancel" class="queue-action-btn">${escapeHtml(t("common.cancel"))}</button></div>`;
+  return `${status}<p>${escapeHtml(t("codex.reading.batchSelection", { count: selected.length, skipped: stale }))}</p>
+    <div class="queue-action-buttons"><button type="button" data-batch-action="select" class="queue-action-btn">${escapeHtml(t("codex.reading.batchSelect"))}</button><button type="button" data-batch-action="clear" class="queue-action-btn"${!selected.length ? " disabled" : ""}>${escapeHtml(t("codex.reading.batchClear"))}</button>
+    <button type="button" data-batch-action="approve" class="queue-action-btn"${selected.length === stale ? " disabled" : ""}>${escapeHtml(t("codex.reading.batchApprove"))}</button><button type="button" data-batch-action="reject" class="queue-action-btn"${!selected.length ? " disabled" : ""}>${escapeHtml(t("codex.reading.batchReject"))}</button></div>`;
+}
+
+function renderDrydockList(list: DrydockListResponse, segment: "pending" | "decided", batch: QueueBatchState): string {
   const t = consoleT();
   const items = list.items;
   const emptyLabel = segment === "pending" ? t("codex.reading.noPendingPatches") : t("codex.reading.noDecidedPatches");
   const rows = items.length === 0
     ? `<div class="codex-reader-empty"><p class="queue-empty">${escapeHtml(emptyLabel)}</p></div>`
-    : `<div class="queue-row-list">${items.map(renderQueueRow).join("")}</div>`;
+    : `<div class="queue-row-list">${items.map(item => segment === "pending" ? `<div class="queue-selection-row"><input type="checkbox" data-queue-select="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("codex.reading.batchSelectItem", { name: item.target ?? item.summary ?? item.id }))}"${batch.selected.has(item.id) ? " checked" : ""}${batch.busy || batch.action ? " disabled" : ""}>${renderQueueRow(item)}</div>` : renderQueueRow(item)).join("")}</div>`;
   // 유틸 화면 — 디스플레이 타이포 대신 title 스케일(.document--utility)로 강등한다.
   return `
     <article class="document document--utility">
@@ -1008,6 +1241,7 @@ function renderDrydockList(list: DrydockListResponse, segment: "pending" | "deci
           <button type="button" data-queue-segment="decided" aria-pressed="${String(segment === "decided")}">${escapeHtml(t("codex.reading.segmentDecided", { count: list.archivedCount }))}</button>
         </div>
       </header>
+      ${segment === "pending" ? `<section class="queue-batch-controls" data-batch-controls aria-label="${escapeAttribute(t("codex.reading.batchReview"))}">${renderBatchControls(items, batch)}</section>` : ""}
       ${rows}
     </article>
   `;
@@ -1061,6 +1295,7 @@ function renderQueueRow(item: DrydockListItem): string {
           <span class="queue-row-target">${escapeHtml(target)}</span>
           ${diffstat}
           ${decided}
+          ${item.baseConflict ? `<span class="queue-row-stale" title="${escapeAttribute(patchBaseConflictMessage(item.baseConflict))}">${escapeHtml(t("codex.reading.staleBadge"))}</span>` : ""}
         </span>
         ${summary ? `<span class="queue-row-summary">${escapeHtml(summary)}</span>` : ""}
         ${metaParts.length > 0 ? `<span class="queue-row-meta">${metaParts.join(" \u00b7 ")}</span>` : ""}
@@ -1295,49 +1530,56 @@ function renderDecidedState(meta: DrydockMeta): string {
   return `<p class="queue-decision-decided ${cls}">${escapeHtml(label)}${reason}</p>`;
 }
 
+function pendingPatchLabel(count: number): string {
+  return count > 0 ? `<span class="entry-pending-patches">${escapeHtml(consoleT()("codex.reading.pendingPatches", { count }))}</span>` : "";
+}
+
 function conflictStatusLabel(status: string | undefined, t: T): string {
   if (status === "resolved") return t("codex.reading.conflictResolved");
-  if (status === "unresolved") return t("codex.reading.conflictUnresolved");
+  if (status === "unresolved") return t("codex.reading.conflictOpen");
   if (!status || status === "open") return t("codex.reading.conflictOpen");
-  return status;
+  return t("codex.reading.conflictUnknown");
 }
 
 function renderConflictDetail(detail: ConflictDetailResponse): string {
   const t = consoleT();
-  const status = conflictStatusLabel(detail.meta?.status as string | undefined, t);
+  const status = conflictStatusLabel(detail.status ?? detail.meta?.status as string | undefined, t);
   return `
-    <article class="document">
+    <article class="document document--conflict">
       <header class="document-header">
         <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.conflicts"))}</span></li></ol>
         </nav>
         <button type="button" class="queue-back-btn" data-conflict-action="back" aria-label="${escapeAttribute(t("codex.reading.backConflicts"))}">${escapeHtml(t("codex.reading.backConflicts"))}</button>
-        <h1>${escapeHtml(detail.id)}</h1>
+        <h1>${escapeHtml(detail.title ?? t("codex.reading.conflicts"))}</h1>
         <p class="eyebrow">${escapeHtml(t("codex.reading.conflictEyebrow", { status }))}</p>
       </header>
-      <div class="markdown-body">
-        ${renderConflictComparison(detail, t)}
-      </div>
+      <section data-conflict-controls></section>
+      ${renderConflictComparison(detail, t)}
     </article>
   `;
 }
 
-// current·proposed가 모두 있으면 블록 diff로 "어디가 갈라졌는가"를 직접 보여준다.
-// 한쪽만 있으면 기존 전문 나열로 강등한다.
+function renderConflictControls(detail: ConflictDetailResponse, action: "reject" | "repropose" | "resolve" | null, busy: boolean, error: string | null, note: string): string {
+  const t = consoleT();
+  if (detail.status === "resolved" || detail.meta.status === "resolved") return `<p class="conflict-resolved">${escapeHtml(t("codex.reading.conflictResolved"))}${typeof detail.meta.note === "string" ? ` · ${escapeHtml(detail.meta.note)}` : ""}</p>`;
+  if (detail.status === "unknown") return `<p>${escapeHtml(t("codex.reading.conflictUnknown"))}</p>`;
+  const warning = !detail.base ? `<p class="conflict-base-warning">${escapeHtml(t("codex.reading.conflictBaseMissing"))}</p>` : "";
+  const errorHtml = error ? `<p class="queue-action-error" role="alert">${escapeHtml(error)}</p>` : "";
+  if (!action) return `${warning}<div class="queue-action-buttons"><button type="button" class="queue-action-btn queue-action-btn--reject" data-conflict-action="reject">${escapeHtml(t("codex.reading.conflictReject"))}</button><button type="button" class="queue-action-btn queue-action-btn--approve" data-conflict-action="repropose"${detail.canRepropose ? "" : " disabled"}>${escapeHtml(t("codex.reading.conflictRepropose"))}</button><button type="button" class="queue-action-btn" data-conflict-action="resolve">${escapeHtml(t("codex.reading.conflictResolve"))}</button></div>${errorHtml}`;
+  const impact = action === "repropose" ? t("codex.reading.conflictReproposalImpact") : detail.pendingPatch ? t("codex.reading.conflictResolutionImpact") : t("codex.reading.conflictNoWrite");
+  return `${warning}<p class="queue-decision-confirm">${escapeHtml(impact)}</p><textarea data-conflict-note maxlength="256" rows="3" aria-label="${escapeAttribute(t("codex.reading.conflictNote"))}" placeholder="${escapeAttribute(t("codex.reading.conflictNote"))}">${escapeHtml(note)}</textarea><div class="queue-action-buttons"><button type="button" class="queue-action-btn${action === "reject" ? " queue-action-btn--reject" : ""}" data-conflict-action="confirm"${busy ? " disabled" : ""}>${escapeHtml(t("codex.reading.conflictConfirm"))}</button><button type="button" class="queue-action-btn" data-conflict-action="cancel"${busy ? " disabled" : ""}>${escapeHtml(t("common.cancel"))}</button></div>${errorHtml}`;
+}
+
 function renderConflictComparison(detail: ConflictDetailResponse, t: T): string {
-  if (detail.current && detail.proposed) {
-    const legend = `
-      <div class="queue-diff-legend" aria-hidden="true">
-        <span class="queue-diff-legend-item queue-diff-legend-item--added">${escapeHtml(t("codex.reading.proposed"))}</span>
-        <span class="queue-diff-legend-item queue-diff-legend-item--removed">${escapeHtml(t("codex.reading.current"))}</span>
-      </div>`;
-    const blocks = diffDraftBlocks(detail.current, detail.proposed);
-    return legend + renderDiffBlocks(blocks, "full");
-  }
-  const sections: string[] = [];
-  if (detail.current) sections.push(`<h2>${escapeHtml(t("codex.reading.current"))}</h2><pre><code>${escapeHtml(detail.current)}</code></pre>`);
-  if (detail.proposed) sections.push(`<h2>${escapeHtml(t("codex.reading.proposed"))}</h2><pre><code>${escapeHtml(detail.proposed)}</code></pre>`);
-  return sections.join("");
+  const body = (markdown: string) => markdown.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n)?/u, "");
+  const panel = (label: string, markdown: string | null | undefined, key?: string) => `<section class="conflict-compare-panel"${key ? ` id="conflict-panel-${key}" data-conflict-panel="${key}" role="tabpanel" aria-labelledby="conflict-tab-${key}"` : ""}><h2>${escapeHtml(label)}</h2><div class="markdown-body">${markdown ? renderMarkdown(body(markdown), { ...markdownCopyOptions(t), resolveWikiLink: entryPath, resolveLink: resolveCodexFileLink }).html + `<details><summary>${escapeHtml(t("codex.reading.conflictSource"))}</summary><pre><code>${escapeHtml(markdown)}</code></pre></details>` : `<p>${escapeHtml(t("codex.reading.conflictSnapshotMissing"))}</p>`}</div></section>`;
+  const labels = [["base", t("codex.reading.conflictBase")], ["current", t("codex.reading.current")], ["proposed", t("codex.reading.proposed")]] as const;
+  const tabs = `<div class="conflict-panel-tabs" role="tablist" aria-label="${escapeAttribute(t("codex.reading.conflictCompareAria"))}">${labels.map(([key, label]) => `<button id="conflict-tab-${key}" type="button" role="tab" data-conflict-panel-tab="${key}" aria-controls="conflict-panel-${key}" aria-selected="${String(key === "base")}" tabindex="${key === "base" ? "0" : "-1"}">${escapeHtml(label)}</button>`).join("")}</div>`;
+  const panels = `${tabs}<div class="conflict-comparison" data-active-panel="base">${panel(t("codex.reading.conflictBase"), detail.base, "base")}${panel(t("codex.reading.current"), detail.current, "current")}${panel(t("codex.reading.proposed"), detail.proposed, "proposed")}</div>`;
+  const diff = detail.current && detail.proposed ? `<details class="conflict-diff"><summary>${escapeHtml(t("codex.cowork.viewDiff"))}</summary>${renderDiffBlocks(diffDraftBlocks(body(detail.current), body(detail.proposed)), "full")}</details>` : "";
+  const historical = !detail.current && detail.currentAtConflict ? `<details><summary>${escapeHtml(t("codex.reading.conflictCaptured"))}</summary>${panel(t("codex.reading.conflictCaptured"), detail.currentAtConflict)}</details>` : "";
+  return `<div class="conflict-comparison-region">${panels}</div>` + diff + historical;
 }
 
 function copyCodeToClipboard(button: HTMLElement, code: string): void {
@@ -1359,6 +1601,13 @@ function copyCodeToClipboard(button: HTMLElement, code: string): void {
   }).catch(() => undefined);
 }
 
+function conflictCreatedLabel(item: ConflictListItem): string {
+  const time = Date.parse(item.createdAt ?? "");
+  if (!Number.isFinite(time)) return "";
+  const at = new Date(time).toLocaleString(consoleLocale(), { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 });
+  return consoleT()("codex.reading.conflictCreatedAt", { at });
+}
+
 function renderConflictList(conflicts: ConflictListItem[]): string {
   const t = consoleT();
   if (conflicts.length === 0) {
@@ -1375,10 +1624,11 @@ function renderConflictList(conflicts: ConflictListItem[]): string {
             .map(
               (item) =>
                 `<li class="queue-item">
-                  <button class="queue-row conflict-row" type="button" data-conflict-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(t("codex.reading.openConflict", { title: item.title || item.id }))}">
+                  <button class="queue-row conflict-row" type="button" data-conflict-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute([t("codex.reading.openConflict", { title: item.title || item.id }), conflictCreatedLabel(item)].filter(Boolean).join(" · "))}">
                     <span class="queue-row-body">
                       <strong class="queue-row-target">${escapeHtml(item.title || item.id)}</strong>
                       <span class="eyebrow">${escapeHtml(conflictStatusLabel(item.status, t))}</span>
+                      ${item.createdAt ? `<span class="queue-row-meta">${escapeHtml(conflictCreatedLabel(item))}</span>` : ""}
                     </span>
                   </button>
                 </li>`,

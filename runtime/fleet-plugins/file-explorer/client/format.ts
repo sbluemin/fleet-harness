@@ -1,6 +1,7 @@
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { FileExplorerMessageKey } from "./i18n/index.js";
+import type { FileReadWindow } from "../server/types.js";
 
 /** 뷰어 메타 바의 파일 크기 표기 — 1024 기수, KB/MB는 소수 한 자리. */
 export function formatByteSize(sizeBytes: number): string {
@@ -69,6 +70,7 @@ export function breadcrumbSegments(relativePath: string): readonly BreadcrumbSeg
 
 export interface ViewerMetaInput {
   readonly content: string;
+  readonly window?: FileReadWindow;
   readonly truncated?: boolean;
   readonly sizeBytes?: number;
 }
@@ -85,9 +87,9 @@ export function buildViewerMetaParts(
   if (input.truncated) {
     const shown = formatByteSize(loadedByteSize(input.content));
     const total = input.sizeBytes !== undefined ? formatByteSize(input.sizeBytes) : "";
-    const sizePart = shown && total
-      ? t("fileExplorer.viewer.partialMeta", { shown, total })
-      : shown || total;
+    const sizePart = input.window && input.window.startByte > 0
+      ? t("fileExplorer.viewer.partialWindowMeta", { start: formatByteSize(input.window.startByte), end: formatByteSize(input.window.endByte), total })
+      : shown && total ? t("fileExplorer.viewer.partialMeta", { shown, total }) : shown || total;
     return [
       sizePart,
       t("fileExplorer.viewer.linesLoaded", { count: lineCount }),

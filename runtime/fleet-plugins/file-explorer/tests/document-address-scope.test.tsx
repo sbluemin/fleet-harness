@@ -8,7 +8,7 @@ import type { PaneContext } from "@fleet-console/sdk/pane";
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 
 import { fileExplorerDocumentPane } from "../client/rail-panel.js";
-import { activateStoredDocument, getFileExplorerSnapshot } from "../client/view-store.js";
+import { activateStoredDocument, getFileExplorerSnapshot, pinStoredDocument } from "../client/view-store.js";
 
 /**
  * 주소는 자기 Theater 안에서만 뜻이 있다.
@@ -47,6 +47,7 @@ function paneCtx(theaterId: string, params: Record<string, string>): PaneContext
 
 beforeEach(() => {
   window.localStorage.clear();
+  vi.stubGlobal("EventSource", class extends EventTarget { close() {} });
   // 문서를 세우면 본문이 곧바로 읽기를 건다 — 빈 응답을 주면 뷰어가 내용 없는 코드 문서를
   // 그리다 터진다. 이 테스트의 관심은 주소의 범위이므로 읽기는 최소한으로 성립시킨다.
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
@@ -67,6 +68,57 @@ afterEach(() => {
   act(() => root.unmount());
   document.body.replaceChildren();
   vi.unstubAllGlobals();
+});
+
+describe("미리보기 문서 세션", () => {
+  it("미리보기는 대체하되 고정한 문서는 지키고 상한으로 닫힌 탭을 알린다", () => {
+    const theater = "preview-theater";
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx(theater, { theaterId: theater, path: "one.ts", requestId: "preview-1", preview: "true" }))); });
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx(theater, { theaterId: theater, path: "two.ts", requestId: "preview-2", preview: "true" }))); });
+    expect(getFileExplorerSnapshot(theater).openDocs.map((doc) => doc.relativePath)).toEqual(["two.ts"]);
+    act(() => { pinStoredDocument(theater, "two.ts"); });
+    act(() => { root.render(fileExplorerDocumentPane.render(paneCtx(theater, { theaterId: theater, path: "three.ts", requestId: "preview-3", preview: "true" }))); });
+    expect(getFileExplorerSnapshot(theater).openDocs).toMatchObject([{ relativePath: "two.ts", preview: false }, { relativePath: "three.ts", preview: true }]);
+    act(() => {
+      for (let index = 0; index < 21; index++) activateStoredDocument(theater, { relativePath: `kept-${index}.ts`, name: `kept-${index}.ts` });
+    });
+    const snapshot = getFileExplorerSnapshot(theater);
+    expect(snapshot.openDocs).toHaveLength(20);
+    expect(snapshot.discardedTabs?.count).toBeGreaterThan(0);
+    const saved = JSON.parse(window.localStorage.getItem(`fleet-console.fileExplorer.session.${theater}`)!);
+    expect(saved.openDocs).toEqual(snapshot.openDocs);
+  });
+});
+
+describe("보관한 문서의 다시 읽기", () => {
+  it("비활성 문서를 선택해도 이전 본문을 유지하고 명시적 다시 읽기로만 바꾼다", async () => {
+    let version = 1;
+    const reads: string[] = [];
+    vi.stubGlobal("EventSource", class extends EventTarget {
+      constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      close() {}
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      const request = JSON.parse(init.body as string);
+      const payload = url.endsWith("/disk-status")
+        ? { statuses: request.paths.map((relativePath: string) => ({ relativePath, state: "present", mtimeMs: version })) }
+        : { relativePath: request.relativePath, content: version === 1 ? "original-one" : "changed-one", lang: "text", binary: false, truncated: false, sizeBytes: 12, mtimeMs: version };
+      if (url.endsWith("/read")) reads.push(request.relativePath);
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    const theater = "preserved-document-theater";
+    const render = (path: string, requestId: string) => fileExplorerDocumentPane.render(paneCtx(theater, { theaterId: theater, path, requestId }));
+    await act(async () => { root.render(render("one.txt", "first")); });
+    await act(async () => { root.render(render("two.txt", "second")); });
+    version = 2;
+    await act(async () => { container.querySelector<HTMLButtonElement>('.fexp-tab-open[title="one.txt"]')!.click(); });
+    expect(container.querySelector(".fexp-viewer-body")?.textContent).toContain("original-one");
+    expect(getFileExplorerSnapshot(theater).docStates.get("one.txt")).toMatchObject({ kind: "code", stale: true });
+    expect(reads.filter((path) => path === "one.txt")).toHaveLength(1);
+    await act(async () => { container.querySelector<HTMLButtonElement>(".fexp-disk-banner button")!.click(); });
+    expect(container.querySelector(".fexp-viewer-body")?.textContent).toContain("changed-one");
+    expect(getFileExplorerSnapshot(theater).docStates.get("one.txt")).toMatchObject({ kind: "code", stale: false });
+  });
 });
 
 describe("문서 주소의 Theater 범위", () => {

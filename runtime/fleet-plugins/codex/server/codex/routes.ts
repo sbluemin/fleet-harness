@@ -8,6 +8,11 @@ import { diffDraftBlocks } from "@fleet-console/markdown/diff";
 import {
   approvePatch,
   readPatchBaseConflict,
+  readPatchBaseSnapshot,
+  readWikiCurrentSnapshot,
+  decideWikiConflict,
+  computeContentHash,
+  serializeWikiEntry,
   StalePatchBaseError,
   currentDeletionImpact,
   stageWikiDeletions,
@@ -34,6 +39,8 @@ import type {
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
+  DrydockBatchResponse,
+  DrydockBatchResult,
   DrydockDiffStat,
   DrydockListItem,
   DrydockListResponse,
@@ -231,15 +238,17 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
 async function routePost(url: URL, request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
   const stageMatch = url.pathname.match(/^\/api\/entry\/([^/]+)\/stage-delete$/);
   const decisionMatch = url.pathname.match(/^\/api\/drydock\/([^/]+)\/decision$/);
-  if (!decisionMatch && !stageMatch) {
+  const conflictMatch = url.pathname.match(/^\/api\/conflicts\/([^/]+)\/decision$/);
+  const batch = url.pathname === "/api/drydock/batch-decision";
+  if (!decisionMatch && !stageMatch && !conflictMatch && !batch) {
     response.writeHead(405, withSecurityHeaders({ ...JSON_HEADERS, allow: "GET, HEAD" }));
     response.end(JSON.stringify({ error: "method_not_allowed" }));
     return;
   }
 
-  const id = decodePathSegment((decisionMatch ?? stageMatch)![1] ?? "");
-  if (!(stageMatch ? isSafeEntryId(id) : SAFE_PATCH_ID.test(id))) {
-    sendJson(response, 400, { error: stageMatch ? "invalid_entry_id" : "invalid_patch_id" });
+  const id = batch ? "" : decodePathSegment((decisionMatch ?? stageMatch ?? conflictMatch)![1] ?? "");
+  if (!batch && !(stageMatch ? isSafeEntryId(id) : conflictMatch ? isSafeConflictId(id) : SAFE_PATCH_ID.test(id))) {
+    sendJson(response, 400, { error: stageMatch ? "invalid_entry_id" : conflictMatch ? "invalid_conflict_id" : "invalid_patch_id" });
     return;
   }
 
@@ -259,6 +268,9 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     sendJson(response, 415, { error: "unsupported_media_type" });
     return;
   }
+
+  if (batch) return runBatchDecision(request, response, context);
+  if (conflictMatch) return runConflictDecision(id, request, response, context);
 
   if (stageMatch) {
     const body = await readRequestBody(request);
@@ -388,6 +400,11 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
   }
 
   const backlinks = await collectEntryBacklinks(id, context.paths);
+  let pendingPatchCount = 0;
+  for (const item of await listQueue(context.paths)) {
+    if (item.meta.status !== "pending" || !SAFE_PATCH_ID.test(item.id)) continue;
+    try { if (!(await resolveSafeQueuePath(item.id, context.paths.queueDir))) continue; const { patch } = await showQueue(item.id, context.paths); if (derivePatchTargetId(patch.frontmatter.target) === id) pendingPatchCount++; } catch { /* 손상된 항목은 검사 화면이 보고한다. */ }
+  }
 
   const responseBody: EntryResponse = {
     frontmatter: {
@@ -408,6 +425,7 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
       supersedes: frontmatter.supersedes,
     } satisfies EntryFrontmatter,
     body,
+    pendingPatchCount,
     ...(raw !== undefined ? { raw } : {}),
     ...(backlinks.length > 0 ? { backlinks } : {}),
   };
@@ -520,6 +538,7 @@ async function handleDrydockList(url: URL, response: ServerResponse, context: Ro
       const diffstat = item.source === "queue"
         ? await computeDrydockDiffStat(patch, context.paths)
         : undefined;
+      const baseConflict = item.source === "queue" && item.meta.status === "pending" ? await readPatchBaseConflict(patch, item.meta, context.paths) : null;
       return {
         ...item,
         meta: item.meta as DrydockMeta,
@@ -528,6 +547,7 @@ async function handleDrydockList(url: URL, response: ServerResponse, context: Ro
         target: patch.frontmatter.target,
         proposer: patch.frontmatter.proposer,
         ...(diffstat ? { diffstat } : {}),
+        ...(baseConflict ? { baseConflict } : {}),
       };
     } catch {
       return { ...item, meta: item.meta as DrydockMeta };
@@ -625,6 +645,27 @@ async function handleConflictDetail(rawSegment: string, response: ServerResponse
   sendJson(response, 200, detail);
 }
 
+async function runConflictDecision(id: string, request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
+  const raw = await readRequestBody(request);
+  if (raw === BODY_TOO_LARGE) return sendJson(response, 413, { error: "payload_too_large" });
+  let body: { action?: unknown; note?: unknown; expectedCurrentHash?: unknown };
+  try { body = JSON.parse(raw ?? ""); if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error(); }
+  catch { return sendJson(response, 400, { error: "invalid_body" }); }
+  if (body.action !== "reject" && body.action !== "repropose" && body.action !== "resolve") return sendJson(response, 400, { error: "invalid_action" });
+  const note = typeof body.note === "string" ? body.note.trim() : "";
+  if (!note || note.length > MAX_REASON_LENGTH) return sendJson(response, 400, { error: "reason_required" });
+  if (!(await resolveSafeConflictDir(id, context.paths))) return sendJson(response, 404, { error: "not_found" });
+  try {
+    const result = await decideWikiConflict(id, body.action, note, context.paths, typeof body.expectedCurrentHash === "string" ? body.expectedCurrentHash : undefined);
+    sendJson(response, 200, { ok: true, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "internal_error";
+    const allowed = ["conflict_not_open", "conflict_reapply_unavailable", "conflict_current_changed", "conflict_patch_mismatch", "reapply_conflict", "reapply_limit", "patch is not pending"];
+    if (allowed.includes(message)) return sendJson(response, 409, { error: message === "patch is not pending" ? "patch_not_pending" : message });
+    sendJson(response, 400, { error: "invalid_conflict" });
+  }
+}
+
 async function runDecisionAction(
   patchId: string,
   request: IncomingMessage,
@@ -690,6 +731,56 @@ async function runDecisionAction(
   }
 }
 
+async function runBatchDecision(request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
+  const raw = await readRequestBody(request, 8192);
+  if (raw === BODY_TOO_LARGE) return sendJson(response, 413, { error: "payload_too_large" });
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(raw ?? "");
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid_body");
+  } catch { return sendJson(response, 400, { error: "invalid_body" }); }
+  const { action, patchIds } = body;
+  if (action !== "approve" && action !== "reject") return sendJson(response, 400, { error: "invalid_action" });
+  if (!Array.isArray(patchIds) || patchIds.length < 1 || patchIds.length > 100 || patchIds.some(id => typeof id !== "string" || !SAFE_PATCH_ID.test(id))) return sendJson(response, 400, { error: "invalid_patch_ids" });
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (action === "reject" && !reason) return sendJson(response, 400, { error: "reason_required" });
+  if (reason.length > MAX_REASON_LENGTH) return sendJson(response, 400, { error: "reason_too_long" });
+  const results: DrydockBatchResult[] = [];
+  const conflictLink = async (id: string): Promise<{ conflictId?: string }> => {
+    try {
+      if (!await resolveSafeQueuePath(id, context.paths.queueDir)) return {};
+      const linked = (await showQueue(id, context.paths)).meta.conflictId;
+      if (typeof linked === "string" && isSafeConflictId(linked) && await resolveSafeConflictDir(linked, context.paths)) return { conflictId: linked };
+    } catch { /* 충돌 조회 실패는 원래 항목의 실패 사유를 바꾸지 않는다. */ }
+    return {};
+  };
+  for (const id of new Set<string>(patchIds)) {
+    const key = `${context.workspaceId}:${id}`;
+    if (patchActionLocks.has(key)) { results.push({ id, outcome: "skipped", error: "patch_busy" }); continue; }
+    const operation = (async (): Promise<DrydockBatchResult> => {
+      try {
+        if (!await resolveSafeQueuePath(id, context.paths.queueDir)) return { id, outcome: "skipped", error: "patch_not_pending" };
+        const { patch, meta } = await showQueue(id, context.paths);
+        if (meta.status !== "pending") return { id, outcome: "skipped", error: "patch_not_pending" };
+        // 낡은 제안은 승인 호출 전에 제외한다. 실패한 승인이 충돌을 새로 만들지 않는다.
+        if (action === "approve" && await readPatchBaseConflict(patch, meta, context.paths)) return { id, outcome: "skipped", error: "stale_base", ...await conflictLink(id) };
+        if (action === "approve") await approvePatch(id, context.paths);
+        else await rejectPatch(id, reason, context.paths);
+        return { id, outcome: action === "approve" ? "approved" : "rejected" };
+      } catch (error) {
+        if (error instanceof StalePatchBaseError) return { id, outcome: "skipped", error: "stale_base", ...await conflictLink(id) };
+        const mapped = mapPatchError(error instanceof Error ? error.message : "");
+        if (mapped?.error === "patch_not_found" || mapped?.error === "patch_not_pending") return { id, outcome: "skipped", error: "patch_not_pending" };
+        return { id, outcome: "failed", error: mapped?.error ?? "internal_error", ...await conflictLink(id) };
+      }
+    })();
+    patchActionLocks.set(key, operation);
+    try { results.push(await operation); } finally { patchActionLocks.delete(key); }
+  }
+  // 일괄 결정은 비트랜잭션이다. 항목별 결과를 숨기거나 모두 성공이라고 단정하지 않는다.
+  sendJson(response, 200, { ok: true, results } satisfies DrydockBatchResponse);
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function buildSearchExcerpt(hit: BriefingHit, query: string): string {
@@ -741,14 +832,14 @@ function trimExcerptWindow(value: string, start: number, maxLength: number): { t
   return { text: text.replace(/\s+/g, " ").trim(), leadingEllipsis };
 }
 
-async function readRequestBody(request: IncomingMessage): Promise<string | null | typeof BODY_TOO_LARGE> {
+async function readRequestBody(request: IncomingMessage, maxBytes = MAX_POST_BODY_BYTES): Promise<string | null | typeof BODY_TOO_LARGE> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
     let exceeded = false;
     request.on("data", (chunk: Buffer) => {
       totalBytes += chunk.byteLength;
-      if (totalBytes > MAX_POST_BODY_BYTES) {
+      if (totalBytes > maxBytes) {
         exceeded = true;
         return;
       }
@@ -981,7 +1072,7 @@ async function listConflictSummaries(paths: MemoryPaths): Promise<ConflictListIt
           : typeof meta.target === "string"
             ? meta.target
             : id;
-      items.push({ id, title, updated, status, path: `conflicts/${id}` });
+      items.push({ id, title, updated, ...(typeof meta.createdAt === "string" ? { createdAt: meta.createdAt } : {}), status, path: `conflicts/${id}` });
     } catch {
       continue;
     }
@@ -999,9 +1090,32 @@ async function readConflictDetail(id: string, paths: MemoryPaths): Promise<Confl
   try {
     const meta = JSON.parse(await readFile(join(conflictDir, "meta.json"), "utf8")) as Record<string, unknown>;
     const current = await readOptionalFile(join(conflictDir, "current.md"));
-    const proposed = await readOptionalFile(join(conflictDir, "proposed.md"));
+    let proposed = await readOptionalFile(join(conflictDir, "proposed.md"));
     const rawSource = await readOptionalFile(join(conflictDir, "raw-source.md"));
-    return { id, meta, current, proposed, rawSource };
+    const liveCurrent = typeof meta.target === "string" ? await readWikiCurrentSnapshot(meta.target, paths).catch(() => null) : null;
+    let base: string | null = null;
+    let pendingPatch = false;
+    let canRepropose = false;
+    if (typeof meta.patchId === "string" && SAFE_PATCH_ID.test(meta.patchId)) {
+      for (const root of [paths.queueDir, paths.archiveDir]) {
+        const patchDir = await resolveSafeQueuePath(meta.patchId, root);
+        if (!patchDir) continue;
+        try {
+          const patch = await parsePatch(await readFile(join(patchDir, PATCH_FILENAME), "utf8"));
+          const patchMeta = JSON.parse(await readFile(join(patchDir, PATCH_META_FILENAME), "utf8")) as PatchMeta;
+          if (patch.frontmatter.target !== meta.target) continue;
+          base = await readPatchBaseSnapshot(meta.patchId, patchMeta, paths);
+          pendingPatch = root === paths.queueDir && patchMeta.status === "pending";
+          // 대기 제안은 충돌 기록 뒤에도 수정할 수 있다. 다시 제안이 실제로 소비할
+          // 최신 큐 본문을 보여 주고, 오래된 충돌 당시 제안을 현재 제안처럼 표시하지 않는다.
+          if (patch.frontmatter.op === "update_wiki") proposed = serializeWikiEntry(JSON.parse(patch.body) as WikiEntry);
+          canRepropose = pendingPatch && patch.frontmatter.op === "update_wiki" && base !== null && liveCurrent !== null;
+          break;
+        } catch { /* 오래된 고아 충돌은 읽기와 정리만 허용한다. */ }
+      }
+    }
+    const title = typeof meta.title === "string" ? meta.title : liveCurrent ? parseWikiEntry(liveCurrent).title : typeof meta.wikiId === "string" ? meta.wikiId : id;
+    return { id, title, status: meta.status === "resolved" ? "resolved" : meta.status === "unresolved" ? "open" : "unknown", meta, base, current: liveCurrent, currentAtConflict: current, ...(liveCurrent ? { currentHash: computeContentHash(liveCurrent) } : {}), proposed, rawSource, pendingPatch, canRepropose };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;

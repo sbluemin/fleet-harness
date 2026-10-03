@@ -38,6 +38,12 @@ export interface TerminalConnectionOptions {
   /** Called before retained output is parsed so a remount can select the PTY's current buffer first. */
   readonly onReplayState?: (state: TerminalReplayState) => void;
   readonly onExit?: () => void;
+  /**
+   * 소켓을 열기 직전마다 불린다(첫 연결 포함). 표면은 여기서 앞 연결이 남긴 화면을 정리한다 — 같은 PTY의
+   * 재생은 그 화면을 다시 그리고, 다른 PTY(세대가 바뀜)는 앞 화면 뒤에 이어진다. 돌려준 Promise가 끝나야
+   * 소켓을 연다 — 재생 바이트가 그 정리보다 먼저 쓰이면 안 된다.
+   */
+  readonly onAttach?: (info: TerminalAttachInfo) => void | Promise<void>;
   readonly location?: Pick<Location, "host" | "protocol">;
   readonly webSocketFactory?: (url: string) => WebSocketLike;
 }
@@ -49,6 +55,13 @@ export interface TerminalReplayState {
   readonly mouseEncoding?: "default" | "sgr" | "sgr-pixels";
 }
 
+export interface TerminalAttachInfo {
+  /** 이 연결 객체에서 몇 번째 부착인가(0부터). */
+  readonly attempt: number;
+  /** 티켓이 알려 준 PTY 세대. 세대를 말하지 않는 티켓(Agent)이면 없다. */
+  readonly generation?: number;
+}
+
 export interface TerminalCloseInfo {
   readonly code?: number;
 }
@@ -58,6 +71,12 @@ export interface TerminalConnection {
   readonly resize: (cols: number, rows: number) => void;
   /** 관전 중인 소켓을 끊고 제어로 다시 붙는다. 지금 몰고 있는 소켓은 밀려난다. */
   readonly takeBackControl: () => void;
+  /**
+   * 출력 흐름 제어를 켜고 끈다. 켜 두면 표면은 파싱을 마친 바이트를 `acknowledge`로 알려야 한다 —
+   * 서버는 알리지 않은 양이 쌓이면 PTY 읽기를 멈춘다. 연결이 바뀌어도 이 선택은 새 소켓에 다시 실린다.
+   */
+  readonly setFlowControl: (enabled: boolean) => void;
+  readonly acknowledge: (bytes: number) => void;
   readonly dispose: () => void;
 }
 
@@ -97,6 +116,9 @@ export class TerminalTicketError extends Error {
 }
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
+const TERMINAL_SOCKET_ERROR = "Terminal WebSocket error";
+/** fetch나 소켓이 서버에 닿지 못했다. 서버가 거절한 코드와 섞이지 않게 따로 이름을 붙인다. */
+const CONSOLE_UNREACHABLE = "console_unreachable";
 /** 이 횟수만큼 연달아 실패해야 화면이 실패를 말한다 — 한 번의 끊김은 재연결이 조용히 삼킨다. */
 const FAILURE_REPORT_THRESHOLD = 2;
 const MAX_RECONNECT_DELAY_MS = 5_000;
@@ -130,6 +152,13 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
   let role: TerminalSocketRole = "control";
   /** 연속 실패 횟수. 성공한 연결마다 0으로 돌아간다. */
   let consecutiveFailures = 0;
+  let attachAttempts = 0;
+  let flowControl = false;
+
+  const sendControl = (frame: Record<string, unknown>) => {
+    if (role === "viewer" || socket?.readyState !== OPEN_READY_STATE) return;
+    socket.send(JSON.stringify(frame));
+  };
 
   const disposeInput = () => {
     for (const subscription of inputSubscriptions) subscription.dispose();
@@ -153,7 +182,10 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       if (consecutiveFailures === 0) options.onStatus?.("connecting");
       try {
         const requested = role;
-        const { ticket, role: granted } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, requested, options.ticketFields);
+        const { ticket, role: granted, generation } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, requested, options.ticketFields);
+        if (abort.signal.aborted) return;
+        await options.onAttach?.({ attempt: attachAttempts, ...(generation === undefined ? {} : { generation }) });
+        attachAttempts += 1;
         if (abort.signal.aborted) return;
         // 요청한 등급과 받은 등급이 갈리면 서버가 내려보낸 것이다 — 그 상태에서는 되찾기를 제안하지 않는다.
         role = granted;
@@ -165,7 +197,13 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         consecutiveFailures += 1;
         // 첫 실패는 곧 이어지는 재연결이 삼키는 흔한 경우라 화면을 바꾸지 않는다. 두 번째부터는
         // 기다리면 풀릴 일이 아닐 수 있으므로 이유를 내보낸다 — 거절이 영구적인 경우가 이 경로다.
-        const code = err instanceof TerminalTicketError ? err.code : err instanceof Error ? err.message : String(err);
+        // 서버가 거절한 것(티켓 오류)과 서버에 닿지 않은 것(fetch·소켓 실패)을 가른다 — 닿지 않는데
+        // "거절했다"고 말하면 사용자는 재시작을 기다리는 대신 무언가를 고치려 든다(S-04).
+        const code = err instanceof TerminalTicketError
+          ? err.code
+          : err instanceof TypeError || (err instanceof Error && err.message === TERMINAL_SOCKET_ERROR)
+            ? CONSOLE_UNREACHABLE
+            : err instanceof Error ? err.message : String(err);
         if (consecutiveFailures >= FAILURE_REPORT_THRESHOLD) options.onStatus?.("failed", code);
       }
       await delay(reconnectDelay, abort.signal);
@@ -190,6 +228,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         lastSentSize = null;
         // 관전자는 PTY 크기를 협상하지 않는다 — 보는 사람의 창이 모는 사람의 터미널을 흔들면 안 된다.
         if (role !== "viewer" && pendingSize) sendResize(pendingSize.cols, pendingSize.rows);
+        if (flowControl) sendControl({ type: "flow", enabled: true });
       };
       ws.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
@@ -232,7 +271,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         });
       };
       ws.onerror = () => {
-        reject(new Error("Terminal WebSocket error"));
+        reject(new Error(TERMINAL_SOCKET_ERROR));
       };
       ws.onclose = (event) => {
         disposeInput();
@@ -279,6 +318,15 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       void connectLoop();
     },
     resize: sendResize,
+    setFlowControl: (enabled) => {
+      if (flowControl === enabled) return;
+      flowControl = enabled;
+      sendControl({ type: "flow", enabled });
+    },
+    acknowledge: (bytes) => {
+      if (!flowControl || bytes <= 0) return;
+      sendControl({ type: "ack", bytes });
+    },
     takeBackControl: () => {
       if (role === "control") return;
       role = "control";
@@ -301,7 +349,7 @@ export function buildTerminalWsUrl(ticket: string, targetLocation: Pick<Location
   return `${protocol}://${targetLocation.host}${pathname}?ticket=${encodeURIComponent(ticket)}`;
 }
 
-async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole, ticketFields?: Readonly<Record<string, string>>): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole }> {
+async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole, ticketFields?: Readonly<Record<string, string>>): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole; readonly generation?: number }> {
   const response = await fetch(ticketPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -310,12 +358,17 @@ async function requestTerminalTicket(ticketPath: string, operationId: string, si
     signal,
   });
   if (!response.ok) throw new TerminalTicketError(await readTicketErrorCode(response), response.status);
-  const payload = await response.json() as { readonly ticket?: unknown; readonly ttlMs?: unknown; readonly role?: unknown };
+  const payload = await response.json() as { readonly ticket?: unknown; readonly ttlMs?: unknown; readonly role?: unknown; readonly generation?: unknown };
   if (typeof payload.ticket !== "string" || typeof payload.ttlMs !== "number") {
     throw new Error("Invalid terminal ticket response");
   }
   // 옛 서버는 등급을 싣지 않는다. 그때는 요청한 대로 받은 것으로 본다.
-  return { ticket: payload.ticket, ttlMs: payload.ttlMs, role: payload.role === "viewer" ? "viewer" : (role ?? "control") };
+  return {
+    ticket: payload.ticket,
+    ttlMs: payload.ttlMs,
+    role: payload.role === "viewer" ? "viewer" : (role ?? "control"),
+    ...(typeof payload.generation === "number" && Number.isFinite(payload.generation) ? { generation: payload.generation } : {}),
+  };
 }
 
 async function readTicketErrorCode(response: Response): Promise<string> {

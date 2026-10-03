@@ -7,7 +7,7 @@ import { encodeSseData } from "../contracts.js";
 import { withSecurityHeaders } from "../contracts.js";
 import type { CoworkModelRow, CoworkOptionsResponse } from "../contracts.js";
 
-const CONFLICT_ERRORS = new Set(["cowork_busy", "cowork_apply_stale", "cowork_apply_busy", "cowork_apply_stale_revision"]);
+const CONFLICT_ERRORS = new Set(["cowork_busy", "cowork_apply_stale", "cowork_apply_busy", "cowork_apply_stale_revision", "cowork_reapply_conflict", "cowork_reapply_limit"]);
 
 // Cowork는 문서 위 경량 코워크다 — 강도는 게이트웨이 5단 중 상위 두 단(xhigh/max)을 내리지
 // 않는다. 모델은 컴포저가 고르지 않는다: Settings › 실험 기능 › AI 확장 › Cowork 행이 유일한 좌표이고,
@@ -62,11 +62,11 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
       const payload: CoworkOptionsResponse = { models, efforts, defaultModel: selection.model, defaultEffort: effort, rows, fallback: selection.fallback };
       return json(response, 200, payload);
     }
-    if (request.method === "POST" && parts.length === 3 && parts[2] === "sessions") { const b = await body(request); if (typeof b.entryId !== "string") return json(response, 400, { error: "invalid_entry_id" }); return json(response, 201, service.dto(await service.create(context.workspaceId, b.entryId, identity(b)))); }
+    if (request.method === "POST" && parts.length === 3 && parts[2] === "sessions") { const b = await body(request); if (typeof b.entryId !== "string") return json(response, 400, { error: "invalid_entry_id" }); return json(response, 201, await service.describe(await service.create(context.workspaceId, b.entryId, identity(b)))); }
     // 엔트리별 활성 세션 peek — 리딩 뷰가 세션을 만들지 않고 진행 중 초안을 복원할 때 쓴다.
-    if (request.method === "GET" && parts.length === 5 && parts[2] === "entries" && parts[4] === "session") { const s = await service.peek(context.workspaceId, decodeURIComponent(parts[3] ?? "")); return s ? json(response, 200, service.dto(s)) : json(response, 404, { error: "cowork_session_not_found" }); }
+    if (request.method === "GET" && parts.length === 5 && parts[2] === "entries" && parts[4] === "session") { const s = await service.peek(context.workspaceId, decodeURIComponent(parts[3] ?? "")); return s ? json(response, 200, await service.describe(s)) : json(response, 404, { error: "cowork_session_not_found" }); }
     const id = parts[3]; if (!id) return json(response, 404, { error: "not_found" });
-    if (request.method === "GET" && parts.length === 4) { const s = await service.get(context.workspaceId, id); return s ? json(response, 200, service.dto(s)) : json(response, 404, { error: "cowork_session_not_found" }); }
+    if (request.method === "GET" && parts.length === 4) { const s = await service.get(context.workspaceId, id); return s ? json(response, 200, await service.describe(s)) : json(response, 404, { error: "cowork_session_not_found" }); }
     if (request.method === "GET" && parts[4] === "events") {
       const s = await service.get(context.workspaceId, id);
       if (!s) return json(response, 404, { error: "cowork_session_not_found" });
@@ -93,16 +93,20 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
       return true;
     }
     const b = await body(request);
-    if (request.method === "POST" && parts[4] === "settings") return json(response, 200, service.dto(await service.settings(context.workspaceId, id, identity(b))));
-    if (request.method === "POST" && parts[4] === "selection") return json(response, 200, service.dto(await service.setSelection(context.workspaceId, id, typeof b.selection === "string" ? b.selection : null)));
+    if (request.method === "POST" && parts[4] === "settings") return json(response, 200, await service.describe(await service.settings(context.workspaceId, id, identity(b))));
+    if (request.method === "POST" && parts[4] === "selection") return json(response, 200, await service.describe(await service.setSelection(context.workspaceId, id, typeof b.selection === "string" ? b.selection : null)));
     if (request.method === "POST" && parts[4] === "annotations") {
       const annotations = Array.isArray(b.annotations) ? b.annotations.map(annotation).filter((value): value is CoworkAnnotationDto => value !== null) : [];
-      return json(response, 200, service.dto(await service.annotations(context.workspaceId, id, annotations)));
+      return json(response, 200, await service.describe(await service.annotations(context.workspaceId, id, annotations)));
     }
-    if (request.method === "POST" && parts[4] === "prompt") return json(response, 202, service.dto(await service.prompt(context.workspaceId, id, typeof b.prompt === "string" ? b.prompt : "")));
-    if (request.method === "POST" && parts[4] === "cancel") return json(response, 200, service.dto(await service.cancel(context.workspaceId, id)));
-    if (request.method === "POST" && parts[4] === "apply") return json(response, 200, service.dto(await service.apply(context.workspaceId, id, typeof b.expectedRevision === "number" ? b.expectedRevision : undefined)));
-    if (request.method === "POST" && (parts[4] === "close" || parts[4] === "discard")) return json(response, 200, service.dto(await service.close(context.workspaceId, id)));
+    if (request.method === "POST" && parts[4] === "prompt") return json(response, 202, await service.describe(await service.prompt(context.workspaceId, id, typeof b.prompt === "string" ? b.prompt : "")));
+    if (request.method === "POST" && parts[4] === "cancel") return json(response, 200, await service.describe(await service.cancel(context.workspaceId, id)));
+    if (request.method === "POST" && parts[4] === "rebase") {
+      if (typeof b.expectedRevision !== "number" || !Number.isSafeInteger(b.expectedRevision) || b.expectedRevision < 0) return json(response, 400, { error: "invalid_revision" });
+      return json(response, 200, await service.describe(await service.rebase(context.workspaceId, id, b.expectedRevision)));
+    }
+    if (request.method === "POST" && parts[4] === "apply") return json(response, 200, await service.describe(await service.apply(context.workspaceId, id, typeof b.expectedRevision === "number" ? b.expectedRevision : undefined)));
+    if (request.method === "POST" && (parts[4] === "close" || parts[4] === "discard")) return json(response, 200, await service.describe(await service.close(context.workspaceId, id)));
     return json(response, 404, { error: "not_found" });
   } catch (error) { const message = error instanceof Error ? error.message : "internal_error"; return json(response, CONFLICT_ERRORS.has(message) ? 409 : message.includes("not_found") ? 404 : 400, { error: message }); }
 }
