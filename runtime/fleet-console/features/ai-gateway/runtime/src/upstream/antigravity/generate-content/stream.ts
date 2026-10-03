@@ -82,6 +82,13 @@ function canonicalErrorType(status: string | undefined, code: number | undefined
   return "api_error";
 }
 
+/** `finishReason` values that mean the candidate finished; `FINISH_REASON_UNSPECIFIED` is documented as unused. */
+const ANTIGRAVITY_COMPLETE_REASONS: ReadonlySet<string> = new Set(["STOP", "FINISH_REASON_UNSPECIFIED"]);
+
+/**
+ * Safety and content-filter stops, across `finishReason` and `promptFeedback.blockReason` as the
+ * Gemini API and Vertex AI document them (`MODEL_ARMOR` and `JAILBREAK` are Vertex-only).
+ */
 const ANTIGRAVITY_CONTENT_FILTER_REASONS: ReadonlySet<string> = new Set([
   "SAFETY",
   "RECITATION",
@@ -89,14 +96,33 @@ const ANTIGRAVITY_CONTENT_FILTER_REASONS: ReadonlySet<string> = new Set([
   "PROHIBITED_CONTENT",
   "SPII",
   "IMAGE_SAFETY",
+  "IMAGE_PROHIBITED_CONTENT",
+  "IMAGE_RECITATION",
+  "MODEL_ARMOR",
+  "JAILBREAK",
 ]);
 
-function antigravityIncomplete(finishReason: string | undefined): { reason?: string } | undefined {
-  if (finishReason === "MAX_TOKENS") {
-    return { reason: "max_output_tokens" };
+/**
+ * Whether the upstream declared the answer unfinished, and why.
+ *
+ * Only a cap and a filter have Anthropic stop reasons. Every other stop — `OTHER`,
+ * `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL`, a value newer than this list — keeps the
+ * provider's own value, so the downstream wire turns it into an error that names it instead of
+ * ending the turn as if the answer were complete.
+ */
+function antigravityIncomplete(
+  finishReason: string | undefined,
+  promptBlockReason: string | undefined,
+): { reason?: string } | undefined {
+  if (finishReason !== undefined) {
+    if (ANTIGRAVITY_COMPLETE_REASONS.has(finishReason)) return undefined;
+    if (finishReason === "MAX_TOKENS") return { reason: "max_output_tokens" };
+    if (ANTIGRAVITY_CONTENT_FILTER_REASONS.has(finishReason)) return { reason: "content_filter" };
+    return { reason: finishReason };
   }
-  if (finishReason !== undefined && ANTIGRAVITY_CONTENT_FILTER_REASONS.has(finishReason)) {
-    return { reason: "content_filter" };
+  if (promptBlockReason !== undefined) {
+    if (ANTIGRAVITY_CONTENT_FILTER_REASONS.has(promptBlockReason)) return { reason: "content_filter" };
+    return { reason: `prompt blocked: ${promptBlockReason}` };
   }
   return undefined;
 }
@@ -348,7 +374,7 @@ export async function* translateAntigravityStream(
   if (!started) {
     throw new UpstreamProtocolError("Antigravity stream produced no response frames");
   }
-  const incomplete = antigravityIncomplete(finishReason ?? promptBlockReason);
+  const incomplete = antigravityIncomplete(finishReason, promptBlockReason);
   yield {
     type: "response.completed",
     response: {
