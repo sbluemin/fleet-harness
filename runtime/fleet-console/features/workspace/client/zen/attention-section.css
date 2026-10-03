@@ -7,8 +7,8 @@
   list-style: none;
 }
 .side-bar-attention.is-war-room {
-  border-color: color-mix(in oklch, var(--brass) 22%, transparent);
-  background: color-mix(in oklch, var(--brass) 4%, transparent);
+  border-color: var(--quiet-attention-rim);
+  background: var(--quiet-attention-fill);
 }
 .side-bar-attention-head {
   display: flex;
@@ -20,7 +20,7 @@
   font: var(--weight-bold) var(--t-2xs) var(--font-ui);
   white-space: nowrap;
 }
-.side-bar-attention.is-war-room .side-bar-attention-head { color: var(--brass-ink); }
+.side-bar-attention.is-war-room .side-bar-attention-head { color: var(--brass-quiet-ink); }
 .side-bar-attention-summary { margin-left: auto; color: var(--text-tertiary); font: var(--weight-regular) calc(var(--t-2xs) * .9) var(--font-ui); }
 .side-bar-attention-row {
   display: flex;

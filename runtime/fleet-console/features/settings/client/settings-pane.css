@@ -35,7 +35,7 @@
 .settings-pane .appearance-controls > .global-settings-row.is-stack > .global-settings-row-text { display: none; }
 .settings-pane .theme-grid { grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr)); gap: 10px; width: 100%; }
 .settings-pane .theme-card { min-width: 0; padding: 6px 6px 8px; border-radius: var(--radius-md); border-color: var(--hairline); background: none; box-shadow: none; }
-.settings-pane .theme-card.is-active { border-color: var(--brass); background: var(--brass-glow); }
+.settings-pane .theme-card.is-active { border-color: var(--quiet-choice-rim); background: var(--quiet-choice-fill); }
 .settings-pane .theme-card-swatch { min-width: 0; height: 32px; }
 .settings-pane .theme-card-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 .settings-pane .theme-card-polarity { letter-spacing: 0; text-transform: none; }
