@@ -304,8 +304,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
                 onClick={() => { if (tab.id !== state?.activeTabId) runTab(() => selectGlobalTab(tab.id)); }}
                 title={tab.url}
               >
-                {tab.favicon ? <img src={tab.favicon} alt="" width={14} height={14} /> : <GlobeGlyph />}
-                {tab.loading ? <span className="op-browser__tab-loading" aria-hidden="true" /> : null}
+                <GlobalTabIcon tab={tab} />
                 <span className="op-browser__tab-title">{tab.title || hostOf(tab.url) || t("terminal.browser.newTab")}</span>
                 <button
                   type="button"
@@ -541,8 +540,16 @@ function UrlParts({ url }: { readonly url: string }) {
   return <><strong>{host}</strong>{rest ? <span>{rest}</span> : null}</>;
 }
 
-function GlobeGlyph({ large }: { readonly large?: boolean }) {
-  const size = large ? 28 : 14;
+/** 탭 아이콘 — companion TabIcon과 같은 부품. 파비콘은 서버 프록시로 받고, 없거나 깨지면 지구본. */
+function GlobalTabIcon({ tab }: { readonly tab: { readonly id: string; readonly favicon: string | null } }) {
+  const [broken, setBroken] = React.useState<string | null>(null);
+  if (tab.favicon && broken !== tab.favicon) {
+    return <img className="op-browser__tab-icon" src={`/api/v1/browser/global/favicon?tabId=${encodeURIComponent(tab.id)}&v=${encodeURIComponent(tab.favicon)}`} alt="" draggable={false} onError={() => setBroken(tab.favicon)} />;
+  }
+  return <span className="op-browser__tab-icon is-fallback" aria-hidden="true"><GlobeGlyph /></span>;
+}
+
+function GlobeGlyph({ large }: { readonly large?: boolean }) {  const size = large ? 28 : 14;
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true" focusable="false">
       <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" />

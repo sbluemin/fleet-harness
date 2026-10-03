@@ -48,6 +48,61 @@ html[data-view-mode="mobile"] .fleet-browser-scrim {
   flex: none;
 }
 
+/* companion 캡션 규칙(.op-browser-cap: flex 1, height 100%)은 호스트 32px 밴드를
+   채우는 몸이다. 시트에서는 그 몸이 시트 전체를 삼키므로 32px로 고정한다(브리프).
+   탭 스트립 패딩·간격은 Operation 캡션과 같은 값이다. */
+.fleet-browser-sheet__cap.op-browser-cap {
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  gap: 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.fleet-browser-sheet__cap .op-browser__profile {
+  /* 메뉴(.op-browser__menu, absolute)가 버튼 아래에 달리게 — companion은 호스트
+     밴드를 기준점으로 쓰지만 시트에는 밴드가 없으므로 버튼 자리를 기준점으로 준다. */
+  position: relative;
+  align-self: center;
+}
+
+/* 시트 안 data-tip 말풍선 — companion 선택자(.op-browser [data-tip])가 시트 본문에는
+   닿지 않으므로 같은 한 줄을 시트 범위로 둔다. */
+.fleet-browser-sheet [data-tip] {
+  position: relative;
+}
+
+.fleet-browser-sheet [data-tip]:hover::after,
+.fleet-browser-sheet [data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  padding: 3px var(--space-2);
+  background: var(--ink-mid);
+  color: var(--text-primary);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 8px 20px oklch(0% 0 0 / 35%);
+}
+
+.fleet-browser-sheet .op-browser__viewport-menu [data-tip]:hover::after,
+.fleet-browser-sheet .fleet-browser-sheet__close[data-tip]:hover::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.fleet-browser-sheet [data-tip][aria-expanded="true"]::after {
+  display: none;
+}
+
 .fleet-browser-sheet__close {
   margin-left: auto;
 }
